@@ -1,0 +1,405 @@
+#pragma once
+
+#include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/invariants.hpp"
+
+namespace madspace {
+
+/**
+ * PDF-convolution mapping: parton momentum fractions from two random numbers.
+ *
+ * Trades the parton momentum fractions @f$x_1, x_2@f$ for the partonic
+ * invariant @f$\hat s = x_1 x_2 s_\mathrm{lab}@f$ and one angular variable [1].
+ * @f$\hat s@f$ is drawn in `[s_hat_min, s_hat_max]` with an @ref Invariant,
+ * which forwards @p invariant_power, @p mass and @p width. The momentum
+ * fractions then follow from logarithmic sampling,
+ *
+ * @f[
+ *   x_1 = \tau^{\,r}, \qquad x_2 = \tau^{\,1-r},
+ *   \qquad \tau = \hat s / s_\mathrm{lab},
+ * @f]
+ *
+ * which cancels the @f$1/x_1@f$ of the convolution measure. Choosing
+ * @p invariant_power @f$\simeq 1@f$ (the default) also absorbs the @f$1/\hat s@f$
+ * flux factor. A nonzero @p width instead resolves an s-channel resonance in
+ * @f$\hat s@f$ directly (Sec. 2.2.2 of [1]). This parametrization is specific
+ * to hadron collisions.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - `r_s` – `float`, shape `(batch,)` – random number for @f$\hat s@f$.
+ * - `r_x` – `float`, shape `(batch,)` – random number for the @f$x_1/x_2@f$
+ *   split.
+ *
+ * **Conditions**
+ * - None.
+ *
+ * **Outputs**
+ * - `x1` – `float`, shape `(batch,)` – first parton momentum fraction.
+ * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction.
+ * - `s_hat` – `float`, shape `(batch,)` – partonic invariant
+ *   @f$\hat s = x_1 x_2 s_\mathrm{lab}@f$.
+ *
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 2.2.2)
+ */
+class Luminosity : public Mapping {
+public:
+    /**
+     * @param s_lab           Hadronic invariant @f$s_\mathrm{lab}@f$ (squared
+     *                        collider energy).
+     * @param s_hat_min       Lower bound on @f$\hat s@f$, set by the final-state
+     *                        masses and analysis cuts.
+     * @param s_hat_max       Upper bound on @f$\hat s@f$; `0` uses
+     *                        @f$s_\mathrm{lab}@f$.
+     * @param invariant_power Exponent of the @f$1/\hat s^{\,p}@f$ sampling of
+     *                        @f$\hat s@f$; `1` absorbs the flux factor. See
+     *                        @ref Invariant.
+     * @param mass            Resonance mass for @f$\hat s@f$; see @ref Invariant.
+     * @param width           Resonance width; a nonzero value selects
+     *                        Breit-Wigner sampling of @f$\hat s@f$. See
+     *                        @ref Invariant.
+     */
+    Luminosity(
+        double s_lab,
+        double s_hat_min,
+        double s_hat_max = 0,
+        double invariant_power = 1,
+        double mass = 0,
+        double width = 0
+    );
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+
+    double _s_lab, _s_hat_min, _s_hat_max;
+    Invariant _invariant;
+};
+
+/**
+ * Momentum fractions for lepton beams, sampled directly.
+ *
+ * @ref Luminosity trades @f$x_1, x_2@f$ for @f$\hat s@f$ and a splitting
+ * variable, which suits a hadron collider. A lepton density instead
+ * diverges as @f$x \to 1@f$ on *each* beam, so the two fractions are drawn
+ * separately from that endpoint, as generate_x_ee of MadGraph's genps_fks.f
+ * draws them,
+ *
+ * @f[
+ *   1-x = r^{1/(1-p)} \,(1 - x_\mathrm{min}),
+ * @f]
+ * i.e. @f$x@f$ distributed as @f$(1-x)^{-p}@f$ over
+ * @f$[x_\mathrm{min}, 1]@f$, with @f$x_\mathrm{min} = \tau_\mathrm{min} =
+ * \hat s_\mathrm{min} / s_\mathrm{lab}@f$ for the first beam and
+ * @f$\tau_\mathrm{min} / x_1@f$ for the second. @f$x@f$ is computed as
+ * @f$x_\mathrm{min} + (1 - x_\mathrm{min})(1 - r^{1/(1-p)})@f$, which keeps
+ * its precision also close to a small @f$x_\mathrm{min}@f$. A range that is
+ * empty gives @f$x = 1@f$ and a zero Jacobian, and the inverse gives a zero
+ * Jacobian for a point outside the range, @f$x_1 < \tau_\mathrm{min}@f$.
+ *
+ * The Jacobian of each beam is
+ * @f$(1-x_\mathrm{min})^{1-p} (1-x)^{p} / (1-p)@f$. With @p reduced_density
+ * (the default) it omits the @f$(1-x)^{p}@f$, because @ref EEPartonDensity
+ * carries exactly that factor: the two cancel analytically, which avoids
+ * evaluating a divergence against a vanishing weight. **@p sampling_power
+ * must then equal the `ps_expo` the density was reduced with.** Using a
+ * different exponent leaves the cross section wrong by
+ * @f$(1-x)^{\Delta p}@f$ with nothing to flag it. (This mirrors `genps.f`,
+ * where the beam whose @f$x@f$ is *derived* rather than generated has the
+ * factor put back by hand.) Without @p reduced_density the Jacobian is the
+ * full one, for a density that is not reduced, such as the lepton PDFs of an
+ * NLO run, where the densities are also taken at momentum fractions other
+ * than the sampled ones.
+ *
+ * @f$1-x@f$ is returned alongside @f$x@f$: it is the quantity the density
+ * needs, and recovering it as @f$1-x@f$ from a rounded @f$x@f$ throws away
+ * the precision the sampling had in hand. It is kept at least the smallest
+ * normal double.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - `r1`, `r2` – `float`, shape `(batch,)` – random numbers, one per beam.
+ *
+ * **Conditions**
+ * - `s_hat_min` – `float`, shape `(batch,)` – @f$\hat s_\mathrm{min}@f$ of
+ *   each event, in place of that of the constructor, clipped to
+ *   @f$[0, s_\mathrm{lab}]@f$. Present only with @p s_hat_min_condition.
+ *
+ * **Outputs**
+ * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions.
+ * - `omx1`, `omx2` – `float`, shape `(batch,)` – @f$1-x_1@f$, @f$1-x_2@f$.
+ *   The inverse takes the fractions from them.
+ * - `s_hat` – `float`, shape `(batch,)` – @f$x_1 x_2 s_\mathrm{lab}@f$.
+ *
+ * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
+ * Jacobian of the transformation.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] J. Alwall et al., "The automated computation of tree-level and
+ *   next-to-leading order differential cross sections, and their matching to
+ *   parton shower simulations", https://arxiv.org/abs/1405.0301
+ */
+class LeptonLuminosity : public Mapping {
+public:
+    /**
+     * @param s_lab               Squared collider energy.
+     * @param s_hat_min           Lower bound on @f$\hat s@f$, from the
+     *                            final-state masses and the cuts.
+     * @param sampling_power      @f$p@f$ of the @f$(1-x)^{-p}@f$ sampling,
+     *                            in @f$[0, 1)@f$. With @p reduced_density it
+     *                            must match the density's reduction exponent.
+     *                            The default is `get_ee_expo()` of MadEvent.
+     * @param reduced_density     Leave the factor @f$(1-x)^{p}@f$ of each beam
+     *                            out of the Jacobian, for a reduced density.
+     * @param s_hat_min_condition Take the lower bound on @f$\hat s@f$ of each
+     *                            event from the `s_hat_min` condition.
+     * @throws std::invalid_argument for parameters out of their range.
+     */
+    LeptonLuminosity(
+        double s_lab,
+        double s_hat_min,
+        double sampling_power = 0.96,
+        bool reduced_density = true,
+        bool s_hat_min_condition = false
+    );
+    /// The squared collider energy.
+    double s_lab() const { return _s_lab; }
+    /// The lower bound on @f$\hat s@f$ of the constructor.
+    double s_hat_min() const { return _s_hat_min; }
+    /// The exponent @f$p@f$ of the sampling.
+    double sampling_power() const { return _power; }
+    /// Whether the Jacobian leaves the factors @f$(1-x)^{p}@f$ to the density.
+    bool reduced_density() const { return _reduced_density; }
+    /// Whether the mapping takes the `s_hat_min` condition.
+    bool s_hat_min_condition() const { return _s_hat_min_condition; }
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    // tau_min of the event and 1 - tau_min
+    std::pair<Value, Value>
+    tau_min(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+
+    double _s_lab, _s_hat_min, _power;
+    bool _reduced_density, _s_hat_min_condition;
+};
+
+/**
+ * Sample @f$\hat s@f$ from its *upper* endpoint, for dressed-lepton beams.
+ *
+ * The hadronic root sampling spreads @f$\hat s@f$ over its whole range, but a
+ * dressed-lepton density piles its weight at @f$\hat s \to s@f$, where
+ * neither beam has radiated. Integrating out the beam split at fixed
+ * @f$\tau@f$ leaves @f$(1-\tau)^{2\beta-2\kappa_0+1}@f$, which is
+ * @f$(1-\tau)^{-0.886}@f$ for the sharply peaked components -- integrable,
+ * but a sampler that ignores it puts 0.001% of its points where 7% of the
+ * weight is.
+ *
+ * So @f$s - \hat s@f$ is drawn as @f$r^{1/(1-p)}@f$ over the available range,
+ * the same law the beam split uses and with the same exponent. Unlike the
+ * beam split this Jacobian keeps its @f$(s-\hat s)^p@f$: there is no density
+ * factor in @f$\tau@f$ for it to cancel against.
+ *
+ * @f$s_\mathrm{max} - \hat s@f$ is returned alongside @f$\hat s@f$, for the
+ * same reason @ref LeptonLuminosity returns @f$1-x@f$: with @f$p = 0.96@f$
+ * the draw is @f$r^{25}@f$, which falls below the spacing of doubles at 1 for
+ * 22% of uniform @f$r@f$. Recovering the gap by subtracting @f$\hat s@f$ from
+ * @f$s@f$ then gives exactly zero, and @ref lepton_split can only answer with
+ * a zero Jacobian -- a fifth of the sample contributing nothing. Passed on as
+ * @p omtau it stays exact.
+ *
+ * @param fb      Builder to emit into.
+ * @param s_min   Lower bound on @f$\hat s@f$.
+ * @param s_max   Upper bound, normally @f$s_\mathrm{lab}@f$.
+ * @param r       Random number.
+ * @param power   @f$p@f$, the density's reduction exponent.
+ */
+struct LeptonSHatResult {
+    /// The sampled invariant.
+    Value s_hat;
+    /// @f$s_\mathrm{max} - \hat s@f$, exact however close to the endpoint.
+    Value s_gap;
+    /// @f$|d\hat s/dr|@f$.
+    Value det;
+};
+
+LeptonSHatResult lepton_s_hat(
+    FunctionBuilder& fb, Value s_min, Value s_max, Value r, double power
+);
+
+/// Result of @ref lepton_split: the two fractions and the Jacobian.
+struct LeptonSplitResult {
+    Value x1, x2, omx1, omx2, det;
+};
+
+/**
+ * Split a given @f$\hat s@f$ into two dressed-lepton momentum fractions.
+ *
+ * madspace samples @f$\hat s@f$ first -- the topology's root invariant is
+ * what carries the resonance structure -- and only then splits it, so this is
+ * the shape a dressed-lepton run needs. The hadronic split
+ * (@f$x_1 = \tau^r@f$) puts no weight at @f$x \to 1@f$, which is exactly
+ * where a dressed-lepton density lives.
+ *
+ * The larger fraction is drawn from the endpoint over
+ * @f$[\sqrt\tau, 1]@f$ and the other follows as @f$\tau/x@f$; which beam
+ * carries which is decided per event, so both orderings appear.
+ *
+ * **The derived fraction's @f$(1-x)^{-p}@f$ is put back explicitly.** The
+ * drawn one gets that factor by omission -- the density cancels it -- but the
+ * derived one never went through the transformation, so nothing cancels it
+ * there. `genps.f` makes the same correction in the same place.
+ *
+ * @p omtau is @f$1-\tau@f$, and must be built from the gap @ref lepton_s_hat
+ * returns rather than from @f$\tau@f$ itself. Both bounds of the draw are
+ * @f$O(1-\tau)@f$ -- @f$1-\sqrt\tau = (1-\tau)/(1+\sqrt\tau)@f$ and
+ * @f$1-x_b = (1-\tau-(1-x_a))/x_a@f$ -- so a @f$\tau@f$ that has rounded to
+ * 1 collapses them both to zero and the point is lost.
+ *
+ * @param fb       Builder to emit into.
+ * @param s_hat    The invariant to split.
+ * @param omtau    @f$1-\hat s/s_\mathrm{lab}@f$, to full precision.
+ * @param r_x      Random number for the drawn fraction.
+ * @param r_swap   Random number deciding which beam carries it.
+ * @param s_lab    Squared collider energy.
+ * @param power    @f$p@f$ of the sampling. With a reduced density it must
+ *                 match the density's reduction exponent.
+ * @param jacobian_power The power of @f$1-x@f$ of each beam in the Jacobian
+ *                 beyond the reduced one, 0 for a reduced density and
+ *                 @f$p@f$ for a full one. The drawn fraction is sampled as
+ *                 @ref LeptonLuminosity samples a beam, and the derived one
+ *                 gets @f$(1-x)^{\mathrm{jacobian\_power} - p}@f$.
+ *
+ * The returned Jacobian is that of @f$(\hat s, r) \to (x_1, x_2)@f$, the same
+ * convention `r_to_x1x2` uses, so it already carries the
+ * @f$d\hat s \to d\tau@f$ conversion.
+ */
+LeptonSplitResult lepton_split(
+    FunctionBuilder& fb,
+    Value s_hat,
+    Value omtau,
+    Value r_x,
+    Value r_swap,
+    double s_lab,
+    double power,
+    double jacobian_power = 0.
+);
+
+/**
+ * Dressed-lepton fractions sampled through a resonance in @f$\hat s@f$.
+ *
+ * @ref LeptonLuminosity covers the @f$x \to 1@f$ endpoint, which is where a
+ * dressed-lepton density puts its weight, but it is a poor fit to a narrow
+ * s-channel resonance. This is the companion channel: @f$\hat s@f$ is drawn
+ * with an @ref Invariant, exactly as @ref Luminosity does, and only then split
+ * into the two fractions. It is a variance-reduction channel — results are
+ * correct without it — and is meant to be mixed with @ref LeptonLuminosity by
+ * the usual multichannel weights.
+ *
+ * Only the *larger* fraction is drawn from the endpoint, over
+ * @f$[\sqrt\tau, 1]@f$; the other follows as @f$\tau/x@f$. Which beam gets
+ * which is decided per event, so both orderings are covered.
+ *
+ * **With a reduced density the derived fraction needs its @f$(1-x)^{-p}@f$
+ * put back.** The density is stored reduced by @f$p@f$ and the drawn
+ * fraction's Jacobian omits that factor to cancel it (see
+ * @ref LeptonLuminosity); the derived one never went through that
+ * transformation, so nothing cancels it there and the Jacobian has to supply
+ * it. `genps.f` makes the same correction, in the same place. Without
+ * @p reduced_density the Jacobian is the full one, as for
+ * @ref LeptonLuminosity, so that both channels can be mixed for a full
+ * density too.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Inputs**
+ * - `r_s` – `float`, shape `(batch,)` – random number for @f$\hat s@f$.
+ * - `r_x` – `float`, shape `(batch,)` – random number for the drawn fraction.
+ * - `r_swap` – `float`, shape `(batch,)` – random number deciding which beam
+ *   carries the drawn fraction.
+ *
+ * **Conditions**
+ * - `s_hat_min` – `float`, shape `(batch,)` – @f$\hat s_\mathrm{min}@f$ of
+ *   each event, in place of that of the constructor, clipped to
+ *   @f$[0, \hat s_\mathrm{max}]@f$. Present only with
+ *   @p s_hat_min_condition.
+ *
+ * **Outputs**
+ * - `x1`, `x2`, `omx1`, `omx2`, `s_hat` – as in @ref LeptonLuminosity.
+ */
+class LeptonLuminosityInvariant : public Mapping {
+public:
+    /**
+     * @param s_lab          Squared collider energy.
+     * @param s_hat_min      Lower bound on @f$\hat s@f$.
+     * @param s_hat_max      Upper bound; `0` uses @f$s_\mathrm{lab}@f$.
+     * @param sampling_power @f$p@f$; must match the density's reduction
+     *                       exponent, as for @ref LeptonLuminosity.
+     * @param mass           Resonance mass in @f$\hat s@f$.
+     * @param width          Resonance width; nonzero selects Breit-Wigner
+     *                       sampling. See @ref Invariant.
+     * @param invariant_power Exponent of the @f$1/\hat s^{\,n}@f$ sampling.
+     * @param reduced_density Leave the factors @f$(1-x)^{p}@f$ to the density,
+     *                       as for @ref LeptonLuminosity.
+     * @param s_hat_min_condition Take the lower bound on @f$\hat s@f$ of each
+     *                       event from the `s_hat_min` condition.
+     */
+    LeptonLuminosityInvariant(
+        double s_lab,
+        double s_hat_min,
+        double s_hat_max = 0.,
+        double sampling_power = 0.96,
+        double mass = 0.,
+        double width = 0.,
+        double invariant_power = 1.,
+        bool reduced_density = true,
+        bool s_hat_min_condition = false
+    );
+    /// Whether the Jacobian leaves the factors @f$(1-x)^{p}@f$ to the density.
+    bool reduced_density() const { return _reduced_density; }
+    /// Whether the mapping takes the `s_hat_min` condition.
+    bool s_hat_min_condition() const { return _s_hat_min_condition; }
+
+private:
+    Result build_forward_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+    Result build_inverse_impl(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& inputs,
+        const NamedVector<Value>& conditions
+    ) const override;
+
+    double _s_lab, _s_hat_min, _s_hat_max, _power;
+    bool _reduced_density, _s_hat_min_condition;
+    Invariant _invariant;
+};
+
+} // namespace madspace

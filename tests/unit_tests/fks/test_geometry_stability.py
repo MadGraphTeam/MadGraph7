@@ -21,6 +21,13 @@ class TestGeometryStability(unittest.TestCase):
         start = helpers.index("      subroutine getangles(")
         stop = helpers.index("      end subroutine getangles", start)
         angles = helpers[start:stop] + "      end subroutine getangles\n"
+        # The exact dot of the production helpers module.
+        start = helpers.index("      double precision function dot(")
+        stop = helpers.index("      end function dot", start)
+        (cls.work / "helpers.f").write_text(
+            "      module fks_phase_space_helpers\n      contains\n" +
+            helpers[start:stop] + "      end function dot\n"
+            "      end module fks_phase_space_helpers\n")
         sij = (ROOT / "Template/NLO/SubProcesses/fks_Sij.f").read_text()
         start = sij.index("      double precision function get_cms_energy(")
         stop = sij.index("      double precision function costh_fks", start)
@@ -30,12 +37,6 @@ module fks_phase_space_data
   implicit none
   real(8) :: ybst_til_tocm, shat
 end module
-
-real(8) function dot(a,b)
-  implicit none
-  real(8), intent(in) :: a(0:3), b(0:3)
-  dot=a(0)*b(0)-sum(a(1:3)*b(1:3))
-end function
 """)
         (cls.work / "driver.f90").write_text("""
 program geometry
@@ -68,7 +69,8 @@ end program
         cls.executable = cls.work / "geometry"
         subprocess.run(
             ["gfortran", "-O2", "-ffixed-line-length-132",
-             "-ffpe-trap=invalid,zero,overflow", "point_data.f90", "kernels.f",
+             "-ffpe-trap=invalid,zero,overflow", "point_data.f90", "helpers.f",
+             "kernels.f",
              "driver.f90", "-o", str(cls.executable)],
             cwd=cls.work, check=True, capture_output=True, text=True)
 

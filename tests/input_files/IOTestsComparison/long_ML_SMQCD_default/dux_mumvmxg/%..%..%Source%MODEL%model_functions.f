@@ -177,9 +177,9 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         TYPE(B0F_NODE),POINTER::ITEM1
         INTEGER::ICOMP
         FIND=.FALSE.
-        NULLIFY(ITEM%%PARENT)
-        NULLIFY(ITEM%%LEFT)
-        NULLIFY(ITEM%%RIGHT)
+        NULLIFY(ITEM%PARENT)
+        NULLIFY(ITEM%LEFT)
+        NULLIFY(ITEM%RIGHT)
         IF(.NOT.ASSOCIATED(HEAD))THEN
           HEAD => ITEM
           RETURN
@@ -188,24 +188,24 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         DO
         ICOMP=B0F_NODE_COMPARE(ITEM,ITEM1)
         IF(ICOMP.LT.0)THEN
-          IF(.NOT.ASSOCIATED(ITEM1%%LEFT))THEN
-            ITEM1%%LEFT => ITEM
-            ITEM%%PARENT => ITEM1
+          IF(.NOT.ASSOCIATED(ITEM1%LEFT))THEN
+            ITEM1%LEFT => ITEM
+            ITEM%PARENT => ITEM1
             EXIT
           ELSE
-            ITEM1 => ITEM1%%LEFT
+            ITEM1 => ITEM1%LEFT
           ENDIF
         ELSEIF(ICOMP.GT.0)THEN
-          IF(.NOT.ASSOCIATED(ITEM1%%RIGHT))THEN
-            ITEM1%%RIGHT => ITEM
-            ITEM%%PARENT => ITEM1
+          IF(.NOT.ASSOCIATED(ITEM1%RIGHT))THEN
+            ITEM1%RIGHT => ITEM
+            ITEM%PARENT => ITEM1
             EXIT
           ELSE
-            ITEM1 => ITEM1%%RIGHT
+            ITEM1 => ITEM1%RIGHT
           ENDIF
         ELSE
           FIND=.TRUE.
-          ITEM%%VALUE=ITEM1%%VALUE
+          ITEM%VALUE=ITEM1%VALUE
           EXIT
         ENDIF
         ENDDO
@@ -215,11 +215,11 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         INTEGER FUNCTION B0F_NODE_COMPARE(ITEM1,ITEM2) RESULT(RES)
         IMPLICIT NONE
         TYPE(B0F_NODE),POINTER,INTENT(IN)::ITEM1,ITEM2
-        RES=COMPLEX_COMPARE(ITEM1%%P2,ITEM2%%P2)
+        RES=COMPLEX_COMPARE(ITEM1%P2,ITEM2%P2)
         IF(RES.NE.0)RETURN
-        RES=COMPLEX_COMPARE(ITEM1%%M22,ITEM2%%M22)
+        RES=COMPLEX_COMPARE(ITEM1%M22,ITEM2%M22)
         IF(RES.NE.0)RETURN
-        RES=COMPLEX_COMPARE(ITEM1%%M12,ITEM2%%M12)
+        RES=COMPLEX_COMPARE(ITEM1%M12,ITEM2%M12)
         RETURN
         END
 
@@ -320,19 +320,19 @@ C       trajectory method as advocated in arXiv:1804.10017 (Eq.(E.47))
             INIT=1
           ENDIF
           ALLOCATE(ITEM)
-          ITEM%%P2=P2
-          ITEM%%M12=M12
-          ITEM%%M22=M22
+          ITEM%P2=P2
+          ITEM%M12=M12
+          ITEM%M22=M22
           FIND=.FALSE.
           CALL B0F_SEARCH(ITEM,B0F_BT,FIND)
           IF(FIND)THEN
-            B0F=ITEM%%VALUE
+            B0F=ITEM%VALUE
             DEALLOCATE(ITEM)
             RETURN
           ELSE
             LOGTERMS=LOG_TRAJECTORY(100,P2,M12,M22)
             B0F=-LOG(P2/M22)+LOGTERMS
-            ITEM%%VALUE=B0F
+            ITEM%VALUE=B0F
             RETURN
           ENDIF
         ELSE
@@ -546,7 +546,7 @@ C       segments from -DABS(tiny*Ga) to Ga
         IF(CONDITION)THEN
           MP_RECMS=EXPR
         ELSE
-          MP_RECMS=CMPLX(REAL(EXPR),KIND=16)
+          MP_RECMS=CMPLX(REAL(EXPR,KIND=16),KIND=16)
         ENDIF
         END
 
@@ -555,16 +555,16 @@ C       segments from -DABS(tiny*Ga) to Ga
         IMPLICIT NONE
         COMPLEX*32 TWOPII
         PARAMETER (TWOPII=2.0E0_16
-     $   *3.14169258478796109557151794433593750E0_16*(0.0E0_16
+     $   *3.141592653589793238462643383279502884197E0_16*(0.0E0_16
      $   ,1.0E0_16))
         COMPLEX*32 ARG_IN
         COMPLEX*32 ARG
         ARG=ARG_IN
         IF(ABS(IMAGPART(ARG)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16)
+          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16,KIND=16)
         ENDIF
         IF(ABS(REAL(ARG,KIND=16)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(0.0E0_16,IMAGPART(ARG))
+          ARG=CMPLX(0.0E0_16,IMAGPART(ARG),KIND=16)
         ENDIF
         IF(ARG.EQ.(0.0E0_16,0.0E0_16)) THEN
           MP_REGLOG=(0.0E0_16,0.0E0_16)
@@ -577,16 +577,16 @@ C       segments from -DABS(tiny*Ga) to Ga
         IMPLICIT NONE
         COMPLEX*32 TWOPII
         PARAMETER (TWOPII=2.0E0_16
-     $   *3.14169258478796109557151794433593750E0_16*(0.0E0_16
+     $   *3.141592653589793238462643383279502884197E0_16*(0.0E0_16
      $   ,1.0E0_16))
         COMPLEX*32 ARG_IN
         COMPLEX*32 ARG
         ARG=ARG_IN
         IF(ABS(IMAGPART(ARG)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16)
+          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16,KIND=16)
         ENDIF
         IF(ABS(REAL(ARG,KIND=16)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(0.0E0_16,IMAGPART(ARG))
+          ARG=CMPLX(0.0E0_16,IMAGPART(ARG),KIND=16)
         ENDIF
         IF(ARG.EQ.(0.0E0_16,0.0E0_16))THEN
           MP_REGLOGP=(0.0E0_16,0.0E0_16)
@@ -604,16 +604,16 @@ C       segments from -DABS(tiny*Ga) to Ga
         IMPLICIT NONE
         COMPLEX*32 TWOPII
         PARAMETER (TWOPII=2.0E0_16
-     $   *3.14169258478796109557151794433593750E0_16*(0.0E0_16
+     $   *3.141592653589793238462643383279502884197E0_16*(0.0E0_16
      $   ,1.0E0_16))
         COMPLEX*32 ARG_IN
         COMPLEX*32 ARG
         ARG=ARG_IN
         IF(ABS(IMAGPART(ARG)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16)
+          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16,KIND=16)
         ENDIF
         IF(ABS(REAL(ARG,KIND=16)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(0.0E0_16,IMAGPART(ARG))
+          ARG=CMPLX(0.0E0_16,IMAGPART(ARG),KIND=16)
         ENDIF
         IF(ARG.EQ.(0.0E0_16,0.0E0_16))THEN
           MP_REGLOGM=(0.0E0_16,0.0E0_16)
@@ -633,10 +633,10 @@ C       segments from -DABS(tiny*Ga) to Ga
         COMPLEX*32 ARG
         ARG=ARG_IN
         IF(ABS(IMAGPART(ARG)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16)
+          ARG=CMPLX(REAL(ARG,KIND=16),0.0E0_16,KIND=16)
         ENDIF
         IF(ABS(REAL(ARG,KIND=16)).EQ.0.0E0_16)THEN
-          ARG=CMPLX(0.0E0_16,IMAGPART(ARG))
+          ARG=CMPLX(0.0E0_16,IMAGPART(ARG),KIND=16)
         ENDIF
         MP_REGSQRT=SQRT(ARG)
         END
@@ -645,7 +645,7 @@ C       segments from -DABS(tiny*Ga) to Ga
         IMPLICIT NONE
         COMPLEX*32 TWOPII
         PARAMETER (TWOPII=2.0E0_16
-     $   *3.14169258478796109557151794433593750E0_16*(0.0E0_16
+     $   *3.141592653589793238462643383279502884197E0_16*(0.0E0_16
      $   ,1.0E0_16))
         COMPLEX*32 EXPR1_IN,EXPR2_IN
         COMPLEX*32 EXPR1,EXPR2
@@ -655,16 +655,16 @@ C       segments from -DABS(tiny*Ga) to Ga
         EXPR1=EXPR1_IN
         EXPR2=EXPR2_IN
         IF(ABS(IMAGPART(EXPR1)).EQ.0.0E0_16)THEN
-          EXPR1=CMPLX(REAL(EXPR1,KIND=16),0.0E0_16)
+          EXPR1=CMPLX(REAL(EXPR1,KIND=16),0.0E0_16,KIND=16)
         ENDIF
         IF(ABS(REAL(EXPR1,KIND=16)).EQ.0.0E0_16)THEN
-          EXPR1=CMPLX(0.0E0_16,IMAGPART(EXPR1))
+          EXPR1=CMPLX(0.0E0_16,IMAGPART(EXPR1),KIND=16)
         ENDIF
         IF(ABS(IMAGPART(EXPR2)).EQ.0.0E0_16)THEN
-          EXPR2=CMPLX(REAL(EXPR2,KIND=16),0.0E0_16)
+          EXPR2=CMPLX(REAL(EXPR2,KIND=16),0.0E0_16,KIND=16)
         ENDIF
         IF(ABS(REAL(EXPR2,KIND=16)).EQ.0.0E0_16)THEN
-          EXPR2=CMPLX(0.0E0_16,IMAGPART(EXPR2))
+          EXPR2=CMPLX(0.0E0_16,IMAGPART(EXPR2),KIND=16)
         ENDIF
         IF(EXPR1.EQ.(0.0E0_16,0.0E0_16))THEN
           MP_GRREGLOG=(0.0E0_16,0.0E0_16)
@@ -704,9 +704,9 @@ C       segments from -DABS(tiny*Ga) to Ga
           TYPE(MP_B0F_NODE),POINTER::ITEM1
           INTEGER::ICOMP
           FIND=.FALSE.
-          NULLIFY(ITEM%%PARENT)
-          NULLIFY(ITEM%%LEFT)
-          NULLIFY(ITEM%%RIGHT)
+          NULLIFY(ITEM%PARENT)
+          NULLIFY(ITEM%LEFT)
+          NULLIFY(ITEM%RIGHT)
           IF(.NOT.ASSOCIATED(HEAD))THEN
             HEAD => ITEM
             RETURN
@@ -715,24 +715,24 @@ C       segments from -DABS(tiny*Ga) to Ga
           DO
           ICOMP=MP_B0F_NODE_COMPARE(ITEM,ITEM1)
           IF(ICOMP.LT.0)THEN
-            IF(.NOT.ASSOCIATED(ITEM1%%LEFT))THEN
-              ITEM1%%LEFT => ITEM
-              ITEM%%PARENT => ITEM1
+            IF(.NOT.ASSOCIATED(ITEM1%LEFT))THEN
+              ITEM1%LEFT => ITEM
+              ITEM%PARENT => ITEM1
               EXIT
             ELSE
-              ITEM1 => ITEM1%%LEFT
+              ITEM1 => ITEM1%LEFT
             ENDIF
           ELSEIF(ICOMP.GT.0)THEN
-            IF(.NOT.ASSOCIATED(ITEM1%%RIGHT))THEN
-              ITEM1%%RIGHT => ITEM
-              ITEM%%PARENT => ITEM1
+            IF(.NOT.ASSOCIATED(ITEM1%RIGHT))THEN
+              ITEM1%RIGHT => ITEM
+              ITEM%PARENT => ITEM1
               EXIT
             ELSE
-              ITEM1 => ITEM1%%RIGHT
+              ITEM1 => ITEM1%RIGHT
             ENDIF
           ELSE
             FIND=.TRUE.
-            ITEM%%VALUE=ITEM1%%VALUE
+            ITEM%VALUE=ITEM1%VALUE
             EXIT
           ENDIF
           ENDDO
@@ -742,11 +742,11 @@ C       segments from -DABS(tiny*Ga) to Ga
           INTEGER FUNCTION MP_B0F_NODE_COMPARE(ITEM1,ITEM2) RESULT(RES)
           IMPLICIT NONE
           TYPE(MP_B0F_NODE),POINTER,INTENT(IN)::ITEM1,ITEM2
-          RES=MP_COMPLEX_COMPARE(ITEM1%%P2,ITEM2%%P2)
+          RES=MP_COMPLEX_COMPARE(ITEM1%P2,ITEM2%P2)
           IF(RES.NE.0)RETURN
-          RES=MP_COMPLEX_COMPARE(ITEM1%%M22,ITEM2%%M22)
+          RES=MP_COMPLEX_COMPARE(ITEM1%M22,ITEM2%M22)
           IF(RES.NE.0)RETURN
-          RES=MP_COMPLEX_COMPARE(ITEM1%%M12,ITEM2%%M12)
+          RES=MP_COMPLEX_COMPARE(ITEM1%M12,ITEM2%M12)
           RETURN
           END
 
@@ -795,7 +795,7 @@ C       segments from -DABS(tiny*Ga) to Ga
           COMPLEX*32 ZERO,TWOPII
           PARAMETER (ZERO=(0.0E0_16,0.0E0_16))
           PARAMETER (TWOPII=2.0E0_16
-     $     *3.14169258478796109557151794433593750E0_16*(0.0E0_16
+     $     *3.141592653589793238462643383279502884197E0_16*(0.0E0_16
      $     ,1.0E0_16))
           REAL*16 M,M2,GA,GA2
           REAL*16 TINY
@@ -848,19 +848,19 @@ C       segments from -DABS(tiny*Ga) to Ga
               INIT=1
             ENDIF
             ALLOCATE(ITEM)
-            ITEM%%P2=P2
-            ITEM%%M12=M12
-            ITEM%%M22=M22
+            ITEM%P2=P2
+            ITEM%M12=M12
+            ITEM%M22=M22
             FIND=.FALSE.
             CALL MP_B0F_SEARCH(ITEM, B0F_BT, FIND)
             IF(FIND)THEN
-              MP_B0F=ITEM%%VALUE
+              MP_B0F=ITEM%VALUE
               DEALLOCATE(ITEM)
               RETURN
             ELSE
               LOGTERMS=MP_LOG_TRAJECTORY(100,P2,M12,M22)
               MP_B0F=-LOG(P2/M22)+LOGTERMS
-              ITEM%%VALUE=MP_B0F
+              ITEM%VALUE=MP_B0F
               RETURN
             ENDIF
           ELSE
@@ -898,7 +898,7 @@ C       segments from -DABS(tiny*Ga) to Ga
             GA=-IMAGPART(P2)/M
           ENDIF
           GAMMA0=ONE+M12/P2-M22/P2
-          GAMMA1=M12/P2-CMPLX(0.0E0_16,1.0E0_16)*ABS(TINY)/P2
+          GAMMA1=M12/P2-CMPLX(0.0E0_16,1.0E0_16,KIND=16)*ABS(TINY)/P2
           IF(ABS(GA).EQ.0.0E0_16)THEN
             MP_SQRT_TRAJECTORY=SQRT(GAMMA0**2-4.0E0_16*GAMMA1)
             RETURN
@@ -907,15 +907,17 @@ C       segments from -DABS(tiny*Ga) to Ga
           DGA=(GA-GA_START)/N_SEG
           PREFACTOR=1.0E0_16
           GAI=GA_START
-          P2I=CMPLX(M**2,-GAI*M)
+          P2I=CMPLX(M**2,-GAI*M,KIND=16)
           GAMMA0I=ONE+M12/P2I-M22/P2I
-          GAMMA1I=M12/P2I-CMPLX(0.0E0_16,1.0E0_16)*ABS(TINY)/P2I
+          GAMMA1I=M12/P2I-CMPLX(0.0E0_16,1.0E0_16,KIND=16)*ABS(TINY)
+     $     /P2I
           ARGIM1=GAMMA0I**2-4.0E0_16*GAMMA1I
           DO I=1,N_SEG
             GAI=DGA*I+GA_START
-            P2I=CMPLX(M**2,-GAI*M)
+            P2I=CMPLX(M**2,-GAI*M,KIND=16)
             GAMMA0I=ONE+M12/P2I-M22/P2I
-            GAMMA1I=M12/P2I-CMPLX(0.0E0_16,1.0E0_16)*ABS(TINY)/P2I
+            GAMMA1I=M12/P2I-CMPLX(0.0E0_16,1.0E0_16,KIND=16)*ABS(TINY)
+     $       /P2I
             ARGI=GAMMA0I**2-4.0E0_16*GAMMA1I
             IF(IMAGPART(ARGI)*IMAGPART(ARGIM1).LT.0.0E0_16)THEN
               INTERSECTION=IMAGPART(ARGIM1)*(REAL(ARGI,KIND=16)
@@ -941,7 +943,7 @@ C       segments from -DABS(tiny*Ga) to Ga
           PARAMETER (ZERO=(0.0E0_16,0.0E0_16),ONE=(1.0E0_16,0.0E0_16))
           PARAMETER (HALF=(0.5E0_16,0.0E0_16))
           PARAMETER (TWOPII=2.0E0_16
-     $     *3.14169258478796109557151794433593750E0_16*(0.0E0_16
+     $     *3.141592653589793238462643383279502884197E0_16*(0.0E0_16
      $     ,1.0E0_16))
           COMPLEX*32 GAMMA0,GAMMAP,GAMMAM,SQRTTERM
           REAL*16 M,GA,DGA,GA_START
@@ -978,7 +980,7 @@ C       segments from -DABS(tiny*Ga) to Ga
           DGA=(GA-GA_START)/N_SEG
           ADDFACTOR(1:4)=ZERO
           GAI=GA_START
-          P2I=CMPLX(M**2,-GAI*M)
+          P2I=CMPLX(M**2,-GAI*M,KIND=16)
           SQRTTERMI=MP_SQRT_TRAJECTORY(N_SEG,P2I,M12,M22)
           GAMMA0I=ONE+M12/P2I-M22/P2I
           GAMMAPI=HALF*(GAMMA0I+SQRTTERMI)
@@ -989,7 +991,7 @@ C       segments from -DABS(tiny*Ga) to Ga
           ARGIM1(4)=(GAMMAMI-ONE)/GAMMAMI
           DO I=1,N_SEG
             GAI=DGA*I+GA_START
-            P2I=CMPLX(M**2,-GAI*M)
+            P2I=CMPLX(M**2,-GAI*M,KIND=16)
             SQRTTERMI=MP_SQRT_TRAJECTORY(N_SEG,P2I,M12,M22)
             GAMMA0I=ONE+M12/P2I-M22/P2I
             GAMMAPI=HALF*(GAMMA0I+SQRTTERMI)

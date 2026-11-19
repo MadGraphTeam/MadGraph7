@@ -1707,7 +1707,7 @@ c     Keep the PDF flavour average and the order of Sudakov-table calls.
       type(delta_connections), intent(in) :: connections
       integer in_con,out_con,isudtype,ip,lp,id
       double precision deltanum,deltaden,delta(2,2),gl(2),Fk(2)
-      double precision pdfnum,pdfden,PIk
+      double precision pdfnum,pdfden,PIk,gl_sum
       double precision pdg2pdf
       external pdg2pdf
 
@@ -1734,9 +1734,9 @@ c     the starting-scale PDFs: sum(pdfnum)/sum(pdfden).
             pdfden=0d0
             do ip=1,size(flavours)
                id=get_parton_id(flavours(ip),lp)
-               pdfnum=pdfnum+pdg2pdf(abs(beam_type),id,lp,bjorken,
+               pdfnum=pdfnum+pdg2pdf(abs(beam_type),id,ipart,bjorken,
      $              connections%stop(out_con))
-               pdfden=pdfden+pdg2pdf(abs(beam_type),id,lp,bjorken,
+               pdfden=pdfden+pdg2pdf(abs(beam_type),id,ipart,bjorken,
      $              connections%start(out_con))
             enddo
          else
@@ -1750,6 +1750,13 @@ c     This can occur at an isolated PDF scale.
          Fk(out_con)=pdfnum/pdfden
 c     Loop over gamma in eq.3.34.
          do in_con=1,connections%count
+c     A live line does not imply that every cross interval is ordered.
+c     An empty interval has unit no-emission probability.
+            if(connections%stop(out_con).ge.
+     $           connections%start(in_con))then
+               delta(out_con,in_con)=1d0
+               cycle
+            endif
             isudtype=connections%sudakov_type(in_con)
             deltanum=pysudakov_safe(connections%stop(out_con),
      $           connections%mass(in_con),pdg,isudtype,mcmass)
@@ -1771,11 +1778,19 @@ c     Loop over gamma in eq.3.34.
             endif
          enddo
       enddo
+c     Equal scales or flat Sudakov tables can make both g weights zero.
+c     Keep the equal-weight convention of the original Delta calculation.
+      gl_sum=sum(gl(1:connections%count))
+      if(gl_sum.gt.0d0)then
+         gl(1:connections%count)=gl(1:connections%count)/gl_sum
+      else
+         gl(1:connections%count)=1d0/dble(connections%count)
+      endif
 c     Sum the colour-line contributions in eq.3.34 and bound the result
 c     to interpret it as a probability at the accuracy used here.
       PIk=0d0
       do out_con=1,connections%count
-         PIk=PIk+gl(out_con)/sum(gl(1:connections%count))*Fk(out_con)
+         PIk=PIk+gl(out_con)*Fk(out_con)
      $        *product(delta(out_con,1:connections%count))
       enddo
       delta_leg_probability=min(max(PIk,0d0),1d0)
@@ -2069,6 +2084,7 @@ c     For Pythia: IF is identical to II.
      $     born_weights,born_spin_weights)
 c Return the scalar and azimuthal split amplitudes for one selected
 c Born flow and correction order, using Odagiri's prescription.
+      use fks_phase_space_data, only: p_i_fks_ev
       implicit none
       include 'orders.inc'
       include 'nFKSconfigs.inc'
@@ -2086,7 +2102,8 @@ c Born flow and correction order, using Odagiri's prescription.
       double complex borntilde,amp_split_borntilde(amp_split_size)
       double complex azifact
       double precision sumborn,flow_weight,flow_fraction
-      double precision cphi_mother,sphi_mother
+      double precision cphi_mother,sphi_mother,pboost(0:3,2)
+      logical me_boosted
       integer i,iamp,imother_fks
       integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
@@ -2115,20 +2132,22 @@ c Born flow and correction order, using Odagiri's prescription.
          stop 1
       endif
 
+      call me_frame_born_boost(p_born,pboost,me_boosted)
 c Rotate the second incoming leg into the matrix-element convention.
 c Exclude 2->1 Born processes, whose nonzero helicity configurations
 c can flip even though their matrix elements have no momentum dependence.
       if ((ileg.eq.1.or.ileg.eq.2).and.
-     $    (j_fks.eq.2.and.nexternal-1.ne.3)) then
+     $    (j_fks.eq.2.and.nexternal-1.ne.3).and.
+     $    .not.me_boosted) then
          do i=1,nexternal-1
             p_born_rot(0,i)=p_born(0,i)
             p_born_rot(1,i)=-p_born(1,i)
             p_born_rot(2,i)=p_born(2,i)
             p_born_rot(3,i)=-p_born(3,i)
          enddo
-         call sborn_native(p_born_rot,wgt_born)
+         call sborn_frame(p_born_rot,wgt_born)
       else
-         call sborn_native(p_born,wgt_born)
+         call sborn_frame(p_born,wgt_born)
       endif
 
       born=dble(ans_cnt(1,iord))
@@ -2143,6 +2162,11 @@ c can flip even though their matrix elements have no momentum dependence.
 c Complete the spin-correlated amplitudes with <ij>/[ij] and the
 c polarization-vector phase. Keep the original multiplication order.
       if (ileg.eq.1.or.ileg.eq.2) then
+         if (me_boosted) then
+            call azifact_mc_frame(p_born,j_fks,p_i_fks_ev,
+     $           p(0,j_fks),y_ij_fks,pboost,azifact,
+     $           cphi_mother,sphi_mother)
+         else
          azifact=mc_born_azimuth_phase(p,xi_i_fks,y_ij_fks,
      $        j_fks.eq.2)
          if (j_fks.eq.2) then
@@ -2151,6 +2175,7 @@ c polarization-vector phase. Keep the original multiplication order.
             cphi_mother=1d0
          endif
          sphi_mother=0d0
+         endif
          borntilde=-(cphi_mother+ximag*sphi_mother)**2*
      $        borntilde*dconjg(azifact)
          do iamp=1,amp_split_size
@@ -2165,10 +2190,17 @@ c ordering of the photon and fermion daughters.
             borntilde=czero
             amp_split_borntilde=czero
          elseif ((m_type.eq.8.or.m_type.eq.1).and.ch_m.eq.0d0) then
+            imother_fks=min(i_fks,j_fks)
+            if (me_boosted) then
+               call azifact_mc_frame(p_born,imother_fks,p_i_fks_ev,
+     $              p(0,j_fks),y_ij_fks,pboost,azifact,
+     $              cphi_mother,sphi_mother)
+            else
             azifact=mc_born_azimuth_phase(p,xi_i_fks,y_ij_fks,.false.)
             imother_fks=min(i_fks,j_fks)
             call getaziangles(p_born(0,imother_fks),
      $           cphi_mother,sphi_mother)
+            endif
             borntilde=-(cphi_mother-ximag*sphi_mother)**2*
      $           borntilde*azifact
             do iamp=1,amp_split_size
@@ -2227,6 +2259,7 @@ c The spinor ratio <ij>/[ij] common to ISR and FSR barred amplitudes.
 c At the collinear endpoint use the phase retained by the FKS map;
 c in the soft region use its rescaled emitted momentum.
       use fks_phase_space_data, only: xij_aor,p_i_fks_ev
+      use ALOHA_OBJECT
       implicit none
       double precision p(0:3,nexternal),xi_i_fks,y_ij_fks
       logical rotate_beam
@@ -2235,7 +2268,8 @@ c in the soft region use its rescaled emitted momentum.
       common/fks_indices/i_fks,j_fks
       double precision pi(0:3),pj(0:3),zero,vtiny
       parameter (zero=0d0,vtiny=1d-12)
-      double complex w1(6),w2(6),w3(6),w4(6),wij_angle,wij_recta
+      TYPE(ALOHA) w1,w2,w3,w4
+      double complex wij_angle,wij_recta
 
       if (1d0-y_ij_fks.lt.vtiny) then
          mc_born_azimuth_phase=xij_aor
@@ -2256,15 +2290,15 @@ c Rotation according to innerpin.m for the second incoming leg.
          pj(1)=-pj(1)
          pj(3)=-pj(3)
       endif
-      call IXXXSO(pi,zero,+1,+1,w1)
-      call OXXXSO(pj,zero,-1,+1,w2)
-      call IXXXSO(pi,zero,-1,+1,w3)
-      call OXXXSO(pj,zero,+1,+1,w4)
+      call IXXXXX(pi,zero,+1,+1,1,w1)
+      call OXXXXX(pj,zero,-1,+1,1,w2)
+      call IXXXXX(pi,zero,-1,+1,1,w3)
+      call OXXXXX(pj,zero,+1,+1,1,w4)
       wij_angle=(0d0,0d0)
       wij_recta=(0d0,0d0)
       do i=1,4
-         wij_angle=wij_angle+w1(i)*w2(i)
-         wij_recta=wij_recta+w3(i)*w4(i)
+         wij_angle=wij_angle+w1%W(i)*w2%W(i)
+         wij_recta=wij_recta+w3%W(i)*w4%W(i)
       enddo
       mc_born_azimuth_phase=wij_angle/wij_recta
       end function mc_born_azimuth_phase
@@ -3292,7 +3326,7 @@ c it does not configure a physical photon beam.
       logical hadron_beam,lepton_beam,quark_mother,lepton_mother
       double precision, parameter :: charge_zero=1d-12
       hadron_beam=abs(beam_type).eq.1.or.abs(beam_type).eq.2
-      lepton_beam=beam_type.eq.0.or.beam_type.eq.3.or.beam_type.eq.4
+      lepton_beam=beam_type.eq.0.or.abs(beam_type).eq.3.or.abs(beam_type).eq.4
       py8_qed_isr_support=.false.
       if (.not.(hadron_beam.or.lepton_beam)) return
 c A photon mother -> fermion daughter is implemented only when the
@@ -3861,16 +3895,15 @@ c   0 < delta <= 2.
       end function gfunction
 
       double precision function mc_shower_scale_mass()
-c Preserve the legacy massive-FSR bound from the prepared shower state.
-c Scale generation receives this value explicitly, avoiding a dependency
-c on the counterterm module. Other showers and Born-only paths do not
-c read the massive invariant, just as in the original scale prescription.
+c Use the emitter mass installed when selecting the current FKS sector.
+c Starting scales can be needed before the real MC invariants are prepared.
+c Keep the legacy shower and Born-only guards for the massive-FSR bound.
       use process_module, only: abrv_mod
       implicit none
       mc_shower_scale_mass=0d0
       if (abrv_mod.ne.'born'.and.
      $    shower_mc_mod(1:7).eq.'PYTHIA6') then
-         if (ileg.eq.3) mc_shower_scale_mass=sqrt(xm12)
+         if (ileg.eq.3) mc_shower_scale_mass=jmass
       endif
       end function mc_shower_scale_mass
 

@@ -69,6 +69,8 @@ c Vegas stuff
       common/SHevents/Hevents
       integer iFKS_picked
 c statistics for MadLoop      
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
 
@@ -118,6 +120,8 @@ c
       do i=0,9
         n1(i)=0
       enddo
+      NINJARS_DP_USAGE=0
+      NINJARS_QP_USAGE=0
 
       call setrun                !Sets up run parameters
       call configure_fxfx_sudakov(ickkw,nlo_ps,shower_mc,.true.)
@@ -128,7 +132,7 @@ c
       endif
       call setpara('param_card.dat')   !Sets up couplings and masses
       call setcuts               !Sets up cuts and particle masses
-      call printout              !Prints out a summary of paramaters
+      call printout              !Prints out a summary of parameters
       call run_printout          !Prints out a summary of the run settings
       call fill_configurations_common
       call check_amp_split 
@@ -233,7 +237,6 @@ c*************************************************************
 c Mass-shell stuff. This is MC-dependent
          call fill_MC_mshell()
          putonshell=.true.
-         if (ickkw.eq.-1) putonshell=.false.
          unwgt=.true.
          write(*,*) 'Generating ', nevts, ' events'
          if(nevts.eq.0) then
@@ -327,7 +330,7 @@ c Randomly pick the contribution that will be written in the event file
       endif
 
       if (ntot.ne.0) then
-         write(*,*) "Satistics from MadLoop:"
+         write(*,*) "Statistics from MadLoop:"
          write(*,*)
      &        "  Total points tried:                              ",ntot
          write(*,*)
@@ -355,6 +358,9 @@ c Randomly pick the contribution that will be written in the event file
               write(*,*) "#Unit ",j," = ",n1(j)
            endif
          enddo
+         write(*,*) '#ReturnCodeVersion = 2'
+         write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
+         write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
       endif
 
       call cpu_time(job_finished)
@@ -664,7 +670,9 @@ c
       include 'mc_histories.inc'
       logical firsttime,passcuts,passcuts_native_born,
      $     passcuts_nbody,passcuts_n1body
-      logical rejected_point,weights_valid,born_cuts_for_flow
+      logical rejected_point,weights_valid,born_cuts_for_flow,
+     $     calibrating_spread,folded
+      save folded
       save rejected_point
       data rejected_point/.false./
       integer i,ifl,proc_map(0:fks_configs,0:fks_configs),nFKS_picked_nbody,nFKS_in,nFKS_out,izero,mohdr,iFKS,sum,
@@ -678,6 +686,7 @@ c
       external passcuts,passcuts_native_born
       parameter (izero=0,mohdr=-100)
       data firsttime/.true./
+c fold is unused; it keeps the /cfl/ layout shared with other files.
       integer     fold,ifold_counter
       common /cfl/fold,ifold_counter
       integer              MCcntcalled
@@ -725,6 +734,8 @@ c
 c Each fold owns its Born sample; compatible sectors can reuse it.
       phase_space%born%valid=.false.
       have_sum_born=.false.
+      calibrating_spread=born_spread_phase.eq.1.or.
+     $                   born_spread_phase.eq.2
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
       endif
@@ -732,6 +743,7 @@ c Each fold owns its Born sample; compatible sectors can reuse it.
 c Find the nFKSprocess for which we compute the Born-like contributions
       if (firsttime) then
          firsttime=.false.
+         folded=any(ifold(1:ndim).gt.1)
 c Determines the proc_map that sets which FKS configuration can be
 c summed explicitly and which by MC-ing.
          call setup_proc_map(sum,proc_map,ini_fin_fks)
@@ -739,7 +751,7 @@ c For the S-events, we can combine processes when they give identical
 c processes at the Born. Make sure we check that we get indeed identical
 c IRPOC's
          call find_iproc_map()
-c For FxFx or UNLOPS matching with pythia8, set the correct attributes
+c For FxFx matching with pythia8, set the correct attributes
 c for the <event> tag in the LHEF file. "npNLO" are the number of Born
 c partons in this multiplicity when running the code at NLO accuracy
 c ("npLO" is -1 in that case). When running LO only, invert "npLO" and
@@ -758,7 +770,6 @@ c "npNLO".
          ifold_counter=ifold_counter+1
       endif
 
-      fold=ifl
 ! A failed colour draw or MC map invalidates the entire folded point.
 ! Keep advancing fold counters, but never retain a later fold by itself.
       if(rejected_point)goto 900
@@ -768,6 +779,8 @@ c "npNLO".
             virt_wgt_mint(0:amp_split_size)=0d0
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
+            call vs_begin_point
+            call reset_folded_virtual
             born_flow_picked=0
          endif
          MCcntcalled=0
@@ -817,6 +830,7 @@ c 1/proc_map(0,0)*vol1)
          p_lab=phase_space%p_lab
          p_cms=phase_space%p_cms
          if (p_born(0,1).lt.0d0) goto 12
+         call check_event_projection(.false.)
          if (FKSExplicitSum) then
             sum_born=phase_space%born%p
             sum_xbjrk=phase_space%born%xbjrk
@@ -876,15 +890,18 @@ c 1/proc_map(0,0)*vol1)
      $              ifold_counter,fksfather)
             endif
          elseif (ifl.eq.0) then
-            call sborn_native(p_born,wgt1)
+            call sborn_frame(p_born,wgt1)
             call get_born_flow(born_flow_picked,born_flow_factor)
             if(born_flow_picked.eq.0)goto 900
-! A second massive solution has no soft endpoint, but another sector
-! in an explicit FKS sum can have one at the same Born point. Check
+! A second massive solution has no soft endpoint, but another fold or
+! sector can have one at the same Born point. Check
 ! the physical Born cuts before marking its shared flow negative.
+! Without folding or an explicit FKS sum no other fold or sector can
+! give an S event at this Born, so H events keep their dipole scale.
 ! Born/virtual weights still require the reference sector's endpoint.
             born_cuts_for_flow=.false.
-            if(FKSExplicitSum.and.p1_cnt(0,1,0).lt.0d0)then
+            if(p1_cnt(0,1,0).lt.0d0.and.(folded.or.FKSExplicitSum)
+     $           .and.phase_space%born%event_projection)then
                p_born_flow(:,1:i_fks-1)=p_born(:,1:i_fks-1)
                p_born_flow(:,i_fks)=0d0
                p_born_flow(:,i_fks+1:nexternal)=
@@ -949,13 +966,10 @@ c the active Born. Starting scales still belong to the shared sample.
 c Every contribution has to have a viable set of Born momenta (even if
 c counter-event momenta do not exist).
             if (p_born(0,1).lt.0d0) cycle
+            call check_event_projection(.true.)
             if (FKSExplicitSum) then
 c All S records in this fold must describe the same underlying event.
 c Check the sampled Born before native H histories change active data.
-               if (.not.phase_space%born%event_projection) then
-                  write(*,*) 'FKSExplicitSum requires event projection'
-                  stop 1
-               endif
                if (have_sum_born) then
                   if (maxval(abs(phase_space%born%p-sum_born)).gt.
      $                1d-10*max(1d0,maxval(abs(sum_born))).or.
@@ -1037,23 +1051,26 @@ c check if event or counter-event passes cuts
 ! Another native Born projection can pass cuts even if this one does
 ! not. The complete H sum must still be evaluated in that case.
             if (.not.(passcuts_nbody.or.passcuts_n1body) .and.
-     $           (ickkw.eq.4 .or. abrv.eq.'real')) cycle
+     $           abrv.eq.'real') cycle
             first_native_H=icontr+1
 ! Share full real amplitudes at this physical point. Each native
 ! history retains its own counterevents and regulated factors; FxFx H
 ! weights and scales below are taken from the common outer real state.
             call mc_begin_real_point(p)
-! The complete H sum below replaces the outer H records. Suppress them
-! here, preserving the original path if no real point can be repartitioned.
-            mc_S_only=MCExplicitKLSum.and.ickkw.ne.4.and.abrv.ne.'real'.and.
-     $           p(0,1).gt.0d0.and.jacPS.gt.0d0.and.MC_HIST_COUNT.gt.0
+! Calibration fits S weights only. Retain their (1-P) real term and G
+! replacements, but omit H records and the complete inner H-history sum.
+! Outside calibration, suppress outer H only when it will be rebuilt.
+            mc_S_only=calibrating_spread.or.
+     $           (MCExplicitKLSum.and.abrv.ne.'real'.and.
+     $           p(0,1).gt.0d0.and.jacPS.gt.0d0.and.MC_HIST_COUNT.gt.0)
             call compute_NLOPS_flow_weights(p,p_cms,passcuts_nbody,passcuts_n1body,probne,weights_valid)
             mc_S_only=.false.
             if(.not.weights_valid)then
                call mc_end_real_point()
                goto 900
             endif
-            if (MCExplicitKLSum.and.ickkw.ne.4 .and. abrv.ne.'real') then
+            if (MCExplicitKLSum.and..not.calibrating_spread.and.
+     $           abrv.ne.'real') then
                call repartition_MC_H(first_native_H,p,p_lab,
      $              p_cms,jacPS,vegas_wgt,1d0/vol1,born_flow_factor,
      $              phase_space,weights_valid)
@@ -1106,6 +1123,8 @@ c Sum the contributions that can be summed before taking the ABS value
          call fill_mint_function_NLOPS(f,n1body_wgt)
          if(nonfinite_contribution)goto 900
          call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+c Use the final, finite PDF/bias weights of the complete point for the fit.
+         call virt_surrogate_fit_point
       endif
 
       return
@@ -1127,6 +1146,7 @@ c Sum the contributions that can be summed before taking the ABS value
          endif
       endif
       rejected_point=.true.
+      call vs_begin_point
       call mc_set_history(0)
       icontr=0
       born_flow_picked=0
@@ -1138,6 +1158,21 @@ c Sum the contributions that can be summed before taking the ABS value
       f=0d0
       if(ifl.eq.2)call fill_MC_integer(1,proc_map(0,1),0d0)
       return
+      contains
+      subroutine check_event_projection(sector_sum)
+c Folds must share their Born point, also in Born-only and virtual-only
+c runs. FKSExplicitSum only matters where sectors are summed: Born-only
+c and virtual-only runs never reach the real-emission sector loop.
+      logical,intent(in) :: sector_sum
+      if (phase_space%born%event_projection) return
+      if (folded) then
+         write(*,*) 'Folding requires event projection'
+         stop 1
+      elseif (sector_sum.and.FKSExplicitSum) then
+         write(*,*) 'FKSExplicitSum requires event projection'
+         stop 1
+      endif
+      end subroutine check_event_projection
       end
 
       subroutine repartition_MC_H(first_native,p,p_lab,p_cms,
@@ -1257,7 +1292,8 @@ c Sum the contributions that can be summed before taking the ABS value
       if (sector_weight.eq.0d0) return
 
 ! K_a is the full outer real measure, including its sampling probability
-! and orbit multiplicity, and the outer matrix-element channel weight.
+! and statistical compensation, and the outer matrix-element channel weight.
+! This compensation can exceed the strict MC orbit for tagged photons.
       outer_measure=xinorm_ev*xi_i_fks_ev*jacPS*vegas_wgt*
      $     sampling_wgt*fkssymmetryfactor*outer_channel
       if (outer_measure.le.0d0) return
@@ -1370,7 +1406,7 @@ c Sum the contributions that can be summed before taking the ABS value
 ! would require a flow map and support at a different Born point.
 ! q_b,c=p_b,c here; no additional outer 1/q_a,c belongs on this term.
             call set_alphaS(p1_cnt(0,1,0))
-            call sborn_native(p_born,born_weight)
+            call sborn_frame(p_born,born_weight)
             call get_born_flow(born_flow_picked,flow_factor_native)
             if(born_flow_picked.eq.0)then
                weights_valid=.false.
@@ -1653,7 +1689,7 @@ c Sum the contributions that can be summed before taking the ABS value
 
       weights_valid=.true.
       if (MCSubtractionAtFixedFlow.or..not.passcuts_nbody.or.
-     $     abrv.eq.'real'.or.ickkw.eq.4) then
+     $     abrv.eq.'real') then
          call compute_native_NLOPS_weights(p,p_cms,passcuts_nbody,passcuts_n1body,probne)
          weights_valid=.not.nonfinite_contribution
          return
@@ -1671,7 +1707,7 @@ c Sum the contributions that can be summed before taking the ABS value
          endif
       endif
       call set_alphaS(p1_cnt(0,1,0))
-      call sborn_native(p_born,born_weight)
+      call sborn_frame(p_born,born_weight)
       call get_born_flow_weights(flow_weights,sumborn)
       if (sumborn.le.0d0) then
          weights_valid=.false.
@@ -1853,16 +1889,6 @@ c summed explicitly and which by MC-ing.
          stop 1
       endif
       sum=3
-      if (ickkw.eq.4) then
-         if (FKSExplicitSum) then
-            write (*,*) 'FKSExplicitSum is not supported for UNLOPS',
-     $           ' (ickkw=4).'
-            stop 1
-         endif
-         sum=0
-         write (*,*)'Using ickkw=4, include only 1 FKS dir per'/
-     $        /' Born PS point (sum=0)'
-      endif
       do nFKSprocess=1,fks_integrated
          call fks_inc_chooser()
 c Set Bjorken x's to some random value before calling the dlum() function
@@ -1992,13 +2018,6 @@ c gluons splitting
                endif
             endif
          enddo
-      elseif (sum.eq.0 .and. ickkw.eq.4) then
-c MC over FKS directories (1 FKS directory per nbody PS point)
-         proc_map(0,0)=fks_integrated
-         do i=1,fks_integrated
-            proc_map(i,0)=1
-            proc_map(i,1)=i
-         enddo
       else
          write (*,*) 'sum not known in driver_mintMC.f',sum
          stop
@@ -2036,7 +2055,7 @@ c
 
 
       subroutine setup_event_attributes
-c For FxFx or UNLOPS matching with pythia8, set the correct attributes
+c For FxFx matching with pythia8, set the correct attributes
 c for the <event> tag in the LHEF file. "npNLO" are the number of Born
 c partons in this multiplicity when running the code at NLO accuracy
 c ("npLO" is -1 in that case). When running LO only, invert "npLO" and
@@ -2056,7 +2075,7 @@ c "npNLO".
       character*4      abrv
       common /to_abrv/ abrv
       if ((shower_mc.eq.'PYTHIA8' .or. shower_mc.eq.'HERWIG7') .and.
-     $     (ickkw.eq.3.or.ickkw.eq.4))then
+     $     ickkw.eq.3)then
          nattr=2
          nFKSprocess=1          ! just pick one
          call fks_inc_chooser()
@@ -2196,18 +2215,25 @@ c     if there are no soft singularities at all, just do something trivial
 
       subroutine special_check_SoftSing(isoft)
       use weight_lines
+      use extra_weights, only: QCD_power,orders_tag,amp_pos,wgtcpower,
+     $     cpower_pos
       implicit none
       include 'nexternal.inc'
       include 'fks_info.inc'
-      integer i_soft,isoft,i
+      include 'orders.inc'
+      integer i_soft,isoft,i,i_S
+      integer orders(nsplitorders)
+      integer get_orders_tag
       logical found_S
       i_soft=0
+      i_S=0
       found_S=.false.
       do i=1,icontr
          if (H_event(i)) then
             cycle
          else
             found_S=.true.
+            if (i_S.eq.0) i_S=i
          endif
          if (abs(pdg_type_d(nFKS(i),fks_i_d(nFKS(i)))).eq.21) then
             i_soft=i
@@ -2215,9 +2241,17 @@ c     if there are no soft singularities at all, just do something trivial
          endif
       enddo
       if (found_S .and. i_soft.eq.0) then
-         ! add an artificial contribution
+c Add an artificial, negligible Born contribution in a sector with a soft
+c singularity. It takes the coupling orders of an existing S contribution,
+c which passed the coupling-order selection of add_wgt.
          call update_fks_dir(isoft)
-         call add_wgt(2,1d-199,0d0,0d0)
+         call amp_split_pos_to_orders(amppos(i_S),orders)
+         QCD_power=orders(qcd_pos)
+         wgtcpower=0d0
+         if (cpower_pos.gt.0) wgtcpower=dble(orders(max(1,cpower_pos)))
+         orders_tag=get_orders_tag(orders)
+         amp_pos=amppos(i_S)
+         call add_wgt(2,orders,1d-199,0d0,0d0)
       endif
       return
       end

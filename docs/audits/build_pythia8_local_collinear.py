@@ -9,7 +9,7 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-PATCH = (ROOT / 'Template/NLO/MCatNLO/srcPythia8/patches'
+PATCH = (ROOT / 'Template/NLO/MCatNLO/pythia8/patches'
          '/pythia8318-local-quark-collinear.patch')
 SOFT_PATCH = PATCH.with_name('pythia8318-local-top-soft.patch')
 STOCK_HASHES = {

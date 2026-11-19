@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -37,13 +37,56 @@ if madgraph.ordering:
 
 class NoBornException(Exception): pass
 
+
+def check_corrections(nlo_mode, perturbation, has_corrections):
+    """Unless it is LOonly, a process definition must have some real or
+    virtual diagram"""
+    if not has_corrections and nlo_mode != 'LOonly':
+        raise fks_common.FKSProcessError(
+                'This process does not have any correction up to NLO in %s'\
+                %','.join(perturbation))
+
+
+def check_generation_mode(fksmulti, ncores_for_proc_gen):
+    """The serial mode generates the real and virtual amplitudes of a process
+    definition with its borns, the low_mem_multicore_nlo_generation one
+    (ncores_for_proc_gen) at the output: all the processes of an output are
+    generated in the same mode. Raise if the FKSMultiProcess fksmulti has
+    processes generated in the other mode."""
+    if fksmulti['process_definitions'] and \
+       bool(fksmulti['ncores_for_proc_gen']) != bool(ncores_for_proc_gen):
+        raise fks_common.FKSProcessError(
+            'The processes were generated with ' + \
+            'low_mem_multicore_nlo_generation %s: ' % \
+            bool(fksmulti['ncores_for_proc_gen']) + \
+            'set it back to add processes to them, or generate them all again.')
+
+
+def has_corrections(born_processes):
+    """Whether a real amplitude of the FKSProcesses born_processes has
+    diagrams, or else a virtual amplitude (of their virt_process) loop
+    diagrams: what FKSMultiProcess.generate_all checks in the serial mode,
+    from the amplitudes it generates and keeps. The
+    low_mem_multicore_nlo_generation mode generates them at the output: it
+    calls this function in a process of its own, which generates them only
+    until it finds a diagram, and does not keep them."""
+    for born in born_processes:
+        for real in born.real_amps:
+            if real.generate_real_amplitude()['diagrams']:
+                return True
+    for born in born_processes:
+        born.generate_virtual_amplitude()
+        if born.virt_amp is not None and born.virt_amp.get('loop_diagrams'):
+            return True
+    return False
+
 #===============================================================================
 # FKS Process
 #===============================================================================
 
 
 class FKSMultiProcess(diagram_generation.MultiProcess): #test written
-    """A multi process class that contains informations on the born processes 
+    """A multi process class that contains information on the born processes
     and the reals.
     """
 
@@ -101,7 +144,10 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         for born in self['born_processes']:
             # the copy.copy is needed as duplicate configurations will be removed on the fly
             for real in copy.copy(born.real_amps):
-                pdgs = ' '.join([ '%d' % pdg for pdg in real.pdgs])
+                # keyed on the polarizations too, for the same reason as
+                # FKSRealProcess.pdgs_pols: same flavours, different helicity
+                # is a different real. (This method has no caller today.)
+                pdgs = '%s' % (real.pdgs_pols,)
                 for info in copy.copy(real.fks_infos):
                     ij = [info['i'], info['j']]
                     try:
@@ -129,20 +175,34 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         legs (stored in pdgs, so that they need to be generated only once and then reicycled
         """
 
+        #swhich the other loggers off (also when the generation fails)
+        loggers_off = [logging.getLogger('madgraph.diagram_generation'), 
+                       logging.getLogger('madgraph.loop_diagram_generation')]
+        old_levels = [logg.level for logg in loggers_off]
+        for logg in loggers_off:
+            logg.setLevel(logging.WARNING)
+        try:
+            # The four gluon merging is validated at tree level only, and an
+            # NLO generation is left alone whatever the option says. fks reads
+            # the vertex decomposition of its real diagrams -- link_rb_configs
+            # finds the vertex splitting ij into i and j and takes it out --
+            # and the unrolling re-roots them, which can put that pair in the
+            # closing vertex, where there is nothing to take out.
+            with misc.TMP_variable(madgraph, 'merge_quartic_vertices', False):
+                self.generate_all(procdef, options)
+        finally:
+            for i, logg in enumerate(loggers_off):
+                logg.setLevel(old_levels[i])
+
+    def generate_all(self, procdef=None, options={}):
+        """Generates the born amplitudes, the born processes and the reals,
+        see __init__ which is the only caller."""
 
         if 'nlo_mixed_expansion' in options:
             self['nlo_mixed_expansion'] = options['nlo_mixed_expansion']
             del options['nlo_mixed_expansion']
         else:
             self['nlo_mixed_expansion'] = True
-
-
-        #swhich the other loggers off
-        loggers_off = [logging.getLogger('madgraph.diagram_generation'), 
-                       logging.getLogger('madgraph.loop_diagram_generation')]
-        old_levels = [logg.level for logg in loggers_off]
-        for logg in loggers_off:
-            logg.setLevel(logging.WARNING)
         
         self['real_amplitudes'] = diagram_generation.AmplitudeList()
         self['pdgs'] = []
@@ -164,6 +224,12 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         if 'init_lep_split' in list(options.keys()):
             self['init_lep_split']=options['init_lep_split']
             del options['init_lep_split']
+
+        # filter (see --loop_diagram_filter) of the loop diagrams of the
+        # virtual amplitudes; the one of the tree-level diagrams (born, real)
+        # is the 'diagram_filter' of the MultiProcess. Both are given to each
+        # FKSProcess, which keeps them
+        loop_diagram_filter = options.pop('loop_diagram_filter', False)
 
         # ncores_for_proc_gen has the following meaning
         #   0 : do things the old way
@@ -252,7 +318,10 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
 
             born = FKSProcess(amp, ncores_for_proc_gen = self['ncores_for_proc_gen'], \
                                    init_lep_split=self['init_lep_split'], \
-                                   ewsudakov = self['ewsudakov'])
+                                   ewsudakov = self['ewsudakov'], \
+                                   diagram_filter = self['diagram_filter'],
+                                   loop_diagram_filter = loop_diagram_filter,
+                                   loop_filter = self['loop_filter'])
             self['born_processes'].append(born)
 
             born.generate_reals(self['pdgs'], self['real_amplitudes'], combine = False)
@@ -260,23 +329,41 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             # finally combine the real amplitudes
             born.combine_real_amplitudes()
 
-        if not self['ncores_for_proc_gen']:
-            # old generation mode 
+        # the borns which fks_j_from_i looks for: those of this process
+        # definition only (not those added by another 'add process')
+        born_pdg_list = [born.get_pdg_codes() for born in self['born_processes']]
+        for born in self['born_processes']:
+            born.born_pdg_list = born_pdg_list
 
-            born_pdg_list = [[l['id'] for l in born.get_leglist()] \
-                    for born in self['born_processes'] ]
+        nlo_mode = self['process_definitions'][0].get('NLO_mode') if amps else None
+        if amps and nlo_mode not in ['all', 'real', 'LOonly']:
+            raise fks_common.FKSProcessError(\
+               "Not a valid NLO_mode for a FKSMultiProcess: %s" % nlo_mode)
+
+        if self['ncores_for_proc_gen']:
+            # low_mem_multicore_nlo_generation: the workers of
+            # FKSHelasMultiProcess generate the real and virtual amplitudes at
+            # the output, from what depends on the whole process definition:
+            # born_pdg_list and the processes of the virtual amplitudes
+            if nlo_mode == 'all':
+                self.set_virtual_processes()
+            # what the old mode checks below, from the amplitudes which it
+            # keeps: here a process of its own generates them, until it finds
+            # a diagram (see has_corrections)
+            if amps and nlo_mode != 'LOonly':
+                check_corrections(nlo_mode, perturbation,
+                        bool(self['born_processes']) and fks_common.low_mem_map(
+                            has_corrections, [self['born_processes']], 1)[0])
+
+        else:
+            # old generation mode 
 
             for born in self['born_processes']:
                 for real in born.real_amps:
                     real.find_fks_j_from_i(born_pdg_list)
             if amps:
-                if self['process_definitions'][0].get('NLO_mode') in ['all']:
+                if nlo_mode == 'all':
                     self.generate_virtuals()
-                
-                elif not self['process_definitions'][0].get('NLO_mode') in ['all', 'real','LOonly']:
-                    raise fks_common.FKSProcessError(\
-                       "Not a valid NLO_mode for a FKSMultiProcess: %s" % \
-                       self['process_definitions'][0].get('NLO_mode'))
 
                 # now get the total number of diagrams
                 n_diag_born = sum([len(amp.get('diagrams')) 
@@ -286,24 +373,18 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                 n_diag_virt = sum([len(amp.get('loop_diagrams')) 
                          for amp in self.get_virt_amplitudes()])
 
-                if n_diag_virt == 0 and n_diag_real ==0 and \
-                        not self['process_definitions'][0].get('NLO_mode') == 'LOonly':
-                    raise fks_common.FKSProcessError(
-                            'This process does not have any correction up to NLO in %s'\
-                            %','.join(perturbation))
+                check_corrections(nlo_mode, perturbation, n_diag_virt or n_diag_real)
 
                 logger.info(('Generated %d subprocesses with %d real emission diagrams, ' + \
                             '%d born diagrams and %d virtual diagrams') % \
                                     (len(self['born_processes']), n_diag_real, n_diag_born, n_diag_virt))
-
-            for i, logg in enumerate(loggers_off):
-                logg.setLevel(old_levels[i])
 
         self['has_isr'] = any([proc.isr for proc in self['born_processes']])
         self['has_fsr'] = any([proc.fsr for proc in self['born_processes']])
 
     def add(self, other):
         """combines self and other, extending the lists of born/real amplitudes"""
+        check_generation_mode(self, other['ncores_for_proc_gen'])
         self['process_definitions'].extend(other['process_definitions'])
         self['amplitudes'].extend(other['amplitudes'])
         self['born_processes'].extend(other['born_processes'])
@@ -339,13 +420,33 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         """For each process among the born_processes, creates the corresponding
         virtual amplitude"""
 
+        if not self.set_virtual_processes():
+            return
+        for i, born in enumerate(self['born_processes']):
+            if born.virt_process is None:
+                born.virt_amp = None
+                continue
+            logger.info('Generating virtual matrix element with MadLoop for process%s (%d / %d)' \
+                    % (born.virt_process.nice_string(print_weighted= False,
+                                    print_perturbated= False).replace('Process', ''),
+                        i + 1, len(self['born_processes'])))
+            born.generate_virtual_amplitude()
+
+
+    def set_virtual_processes(self):
+        """Set for each process among the born_processes the process of its
+        virtual amplitude (FKSProcess.virt_process), None if it has none: what
+        generate_virtuals generates, and the workers of the
+        low_mem_multicore_nlo_generation mode at the output. False if the
+        virtuals come from an OLP."""
+
         # If not using MadLoop, then the LH order file generation and processing
         # will be entirely done during the output, so nothing must be done at
         # this stage yet.
         if self['OLP']!='MadLoop':
             logger.info("The loop matrix elements will be generated by "+\
                                      '%s at the output stage only.'%self['OLP'])
-            return
+            return False
 
         if not self['nlo_mixed_expansion']:
             # determine the orders to be used to generate the loop
@@ -357,41 +458,27 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                     except KeyError:
                         loop_orders[coup] = val
 
-
-        for i, born in enumerate(self['born_processes']):
+        for born in self['born_processes']:
             myproc = copy.copy(born.born_amp['process'])
-            #misc.sprint(born.born_proc)
-            #misc.sprint(myproc.input_string())
-            #misc.sprint(myproc['orders'])
             # if [orders] are not specified, then
             # include all particles in the loops
             # i.e. allow all orders to be perturbed
-            # (this is the case for EW corrections, where only squared oders 
+            # (this is the case for EW corrections, where only squared orders
             # are imposed)
             if not self['nlo_mixed_expansion']:
                 myproc['orders'] = loop_orders
             elif not myproc['orders']:
                     myproc['perturbation_couplings'] = myproc['model']['coupling_orders']
-            # take the orders that are actually used bu the matrix element
+            # take the orders that are actually used by the matrix element
             upc = [[l['is_tagged'], l['id'] in [22]] for l in [ll for ll in myproc.get('legs') if not ll['state'] and 'is_tagged'in ll]]
             myproc['legs'] = fks_common.to_legs(copy.copy(myproc['legs']))
             # skip virtual amplitudes with both initial particles not being photons for UPC processes
             if [item[0] for item in upc]==[True,True] and [item[1] for item in upc]!=[True,True]:
                 logger.info(('Discarding virtual process%s in UPCs.')%myproc.nice_string(print_weighted= False,\
                                                                     print_perturbated= False).replace('Process', ''))
-                born.virt_amp = None
-                continue
-            logger.info('Generating virtual matrix element with MadLoop for process%s (%d / %d)' \
-                    % (myproc.nice_string(print_weighted= False, print_perturbated= False).replace(\
-                                                             'Process', ''),
-                        i + 1, len(self['born_processes'])))
-            try:
-                myamp = loop_diagram_generation.LoopAmplitude(myproc,  
-                                                loop_filter=self['loop_filter'])
-                born.virt_amp = myamp
-            except InvalidCmd:
-                logger.debug('invalid command for loop')
-                pass
+                myproc = None
+            born.virt_process = myproc
+        return True
 
 
 class FKSRealProcess(object): 
@@ -402,10 +489,12 @@ class FKSRealProcess(object):
     """
     
     def __init__(self, born_proc, leglist, ij, ij_id, born_pdgs, splitting_type,
-                 perturbed_orders = ['QCD']): #test written
+                 perturbed_orders = ['QCD'], diagram_filter = False): #test written
         """Initializes the real process based on born_proc and leglist.
-        Stores the fks informations into the list of dictionaries fks_infos
+        Stores the fks information into the list of dictionaries fks_infos
+        diagram_filter selects the diagrams of the real amplitude
         """      
+        self.diagram_filter = diagram_filter
         #safety check
         assert type(splitting_type) == list and not type(splitting_type) == str 
         self.fks_infos = []
@@ -444,6 +533,20 @@ class FKSRealProcess(object):
 
         legs = [(leg.get('id'), leg) for leg in leglist]
         self.pdgs = array.array('i',[s[0] for s in legs])
+        # Key deciding whether two real processes may share one amplitude /
+        # matrix element. The PDGs alone are not enough under a polarization
+        # restriction: two reals can carry the same flavours but fix a
+        # different helicity (p p > t{+} t~ [QCD] and p p > t{-} t~ [QCD] in
+        # one run), and a PDG-only key would bucket them together, silently
+        # giving one born the other's reals. An unpolarized process gets the
+        # PDG tuple plus a tuple of empty tuples, so nothing changes.
+        # Sorted and deduplicated to match IdentifyMETag.link_from_leg and
+        # Process.shell_polarization: '{+-}' and '{-+}' are one restriction,
+        # so they must share their reals just as they share their born.
+        self.pdgs_pols = (self.pdgs,
+                          tuple(MG.canonical_polarization(
+                                    leg.get('polarization'))
+                                for leg in leglist))
         self.colors = [leg['color'] for leg in leglist]
         self.particle_tags = [leg['is_tagged'] for leg in leglist]
         if not self.process['perturbation_couplings'] == ['QCD']:
@@ -462,7 +565,8 @@ class FKSRealProcess(object):
 
     def generate_real_amplitude(self):
         """generates the real emission amplitude starting from self.process"""
-        self.amplitude = diagram_generation.Amplitude(self.process)
+        self.amplitude = diagram_generation.Amplitude(self.process,
+                                                diagram_filter=self.diagram_filter)
         return self.amplitude
 
 
@@ -576,7 +680,8 @@ class FKSProcess(object):
 
 ###############################################################################
     
-    def __init__(self, start_proc = None, remove_reals = True, ncores_for_proc_gen=0, init_lep_split = False, ewsudakov = False):
+    def __init__(self, start_proc = None, remove_reals = True, ncores_for_proc_gen=0, init_lep_split = False, ewsudakov = False,
+                 diagram_filter = False, loop_diagram_filter = False, loop_filter = None):
         """initialization: starts either from an amplitude or a process,
         then init the needed variables.
         remove_borns tells if the borns not needed for integration will be removed
@@ -587,6 +692,13 @@ class FKSProcess(object):
            -1 : use all cores
         """
                 
+        # filters of the tree-level (born, real) and of the loop diagrams,
+        # and the loop_filter of the virtual amplitude, kept here since the
+        # FKSMultiProcess of several 'add process' are merged (see
+        # FKSMultiProcess.add)
+        self.diagram_filter = diagram_filter
+        self.loop_diagram_filter = loop_diagram_filter
+        self.loop_filter = loop_filter
         self.reals = []
         self.myorders = {}
         self.real_amps = []
@@ -594,58 +706,86 @@ class FKSProcess(object):
         self.init_lep_split = init_lep_split
         self.nincoming = 0
         self.virt_amp = None
+        # the process of virt_amp (see FKSMultiProcess.set_virtual_processes)
+        self.virt_process = None
+        # the pdgs of the borns of the process definition, for
+        # FKSRealProcess.find_fks_j_from_i (low_mem_multicore_nlo_generation)
+        self.born_pdg_list = None
         self.perturbation = 'QCD'
         self.born_amp = diagram_generation.Amplitude()
         self.extra_cnt_amp_list = diagram_generation.AmplitudeList()
         self.ncores_for_proc_gen = ncores_for_proc_gen
         self.sudakov_amps = []
+        # user number of each FKS-sorted born leg; see fks_common.get_user_leg_order
+        self.user_leg_order = []
 
         if not remove_reals in [True, False]:
             raise fks_common.FKSProcessError(\
                     'Not valid type for remove_reals in FKSProcess')
 
         if start_proc:
-            #initilaize with process definition (for test purporses)
+            #initialize with process definition (for test purposes)
             if isinstance(start_proc, MG.Process):
                 pertur = start_proc['perturbation_couplings']
                 if pertur:
                     self.perturbation = sorted(pertur)[0]
+                # record the user's leg numbering before sort_proc discards it
+                self.user_leg_order = fks_common.get_user_leg_order(\
+                                        start_proc, pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
-                                        start_proc, pert = self.perturbation)))
+                                        start_proc, pert = self.perturbation)),
+                                diagram_filter = self.diagram_filter)
             #initialize with an amplitude
             elif isinstance(start_proc, diagram_generation.Amplitude):
                 pertur = start_proc.get('process')['perturbation_couplings']
+                self.user_leg_order = fks_common.get_user_leg_order(\
+                                        start_proc['process'],
+                                        pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
                                     start_proc['process'], 
-                                    pert = self.perturbation)))
+                                    pert = self.perturbation)),
+                                diagram_filter = self.diagram_filter)
             else:
                 raise fks_common.FKSProcessError(\
                     'Not valid start_proc in FKSProcess')
             self.born_amp['process'].set('legs_with_decays', MG.LegList())
 
-            # special treatment of photon is needed !
-            #MZ to be fixed
-            ###self.isr = set([leg.get(color) for leg in self.leglist if not leg.get('state')]) != set([zero])
-            ###self.fsr = set([leg.get(color) for leg in self.leglist if leg.get('state')]) != set([zero])
+            # Radiation flags are filled from the accepted FKS sectors after
+            # generating the real amplitudes, including splitting restrictions.
             self.isr = False
             self.fsr = False
-            #######
             self.nincoming = len([l for l in self.born_amp['process']['legs'] \
                                   if not l['state']])
                 
             self.ndirs = 0
             # generate reals, when the mode is not LOonly
             # when is LOonly it is supposed to be a 'fake' NLO process
-            # e.g. to be used in merged sampels at high multiplicities
+            # e.g. to be used in merged samples at high multiplicities
             if self.born_amp['process']['NLO_mode'] != 'LOonly':
                 self.find_reals()
 
             # if ewsudakov is true, then look for the corresponding matrix elements
             self.ewsudakov = ewsudakov
             if ewsudakov:
-                self.sudakov_amps = sudakov.get_sudakov_amps(self.born_amp)
+                self.sudakov_amps = sudakov.get_sudakov_amps(self.born_amp,
+                                            diagram_filter=self.diagram_filter)
+
+
+    def generate_virtual_amplitude(self):
+        """Generate the virtual amplitude of the process self.virt_process,
+        if any"""
+        if self.virt_process is None:
+            return
+        try:
+            self.virt_amp = loop_diagram_generation.LoopAmplitude(
+                                self.virt_process,
+                                loop_filter=self.loop_filter,
+                                diagram_filter=self.diagram_filter,
+                                loop_diagram_filter=self.loop_diagram_filter)
+        except InvalidCmd:
+            logger.debug('invalid command for loop')
 
 
     def generate_real_amplitudes(self, pdg_list, real_amp_list):
@@ -658,14 +798,14 @@ class FKSProcess(object):
             identity = fks_common.external_process_identity(amp.process)
             try:
                 index = next(index for index, pdgs in enumerate(pdg_list)
-                             if pdgs == amp.pdgs and
+                             if pdgs == amp.pdgs_pols and
                              fks_common.external_process_identity(
                                  real_amp_list[index]['process']) == identity)
                 amp.amplitude = real_amp_list[index]
             except StopIteration:
                 amplitude = amp.generate_real_amplitude()
                 if amplitude['diagrams']:
-                    pdg_list.append(amp.pdgs)
+                    pdg_list.append(amp.pdgs_pols)
                     real_amp_list.append(amplitude)
                 else:
                     no_diags_amps.append(amp)
@@ -705,7 +845,7 @@ class FKSProcess(object):
         extra_cnt_pdgs = []
         for i, real_list in enumerate(self.reals):
             # i is the born leg which splits
-            # keep track of the id of the mother (will be used to constrct the
+            # keep track of the id of the mother (will be used to construct the
             # spin-correlated borns)
             ij_id = leglist[i].get('id')
             ij = leglist[i].get('number')
@@ -738,7 +878,8 @@ class FKSProcess(object):
                     has_coll_sing_born = False
                 else:
                     born_proc_coll_sing['squared_orders'][real_dict['perturbation'][0]] += -2
-                    has_coll_sing_born = bool(diagram_generation.Amplitude(born_proc_coll_sing)['diagrams'])
+                    has_coll_sing_born = bool(diagram_generation.Amplitude(born_proc_coll_sing,
+                                diagram_filter=self.diagram_filter)['diagrams'])
 
                 # check that there is at most one extra mother
                 allmothers = []
@@ -775,7 +916,8 @@ class FKSProcess(object):
                     
                     cnt_process_for_amp = copy.copy(cnt_process)
                     cnt_process_for_amp['squared_orders'] = copy.copy(cnt_process['squared_orders'])
-                    cnt_amp = diagram_generation.Amplitude(cnt_process_for_amp)
+                    cnt_amp = diagram_generation.Amplitude(cnt_process_for_amp,
+                                diagram_filter=self.diagram_filter)
 
                     if bool(cnt_amp['diagrams']) and \
                        cnt_process['squared_orders'][cnt_ord] >= 2:
@@ -783,7 +925,8 @@ class FKSProcess(object):
                         # check condition 2) above (has_coll_sing_cnt)
                         # MZMZ17062014 beware that the Amplitude reorders the legs
                         cnt_process['squared_orders'][cnt_ord] += -2
-                        born_cnt_amp = diagram_generation.Amplitude(cnt_process)
+                        born_cnt_amp = diagram_generation.Amplitude(cnt_process,
+                                diagram_filter=self.diagram_filter)
                         has_coll_sing_cnt = bool(born_cnt_amp['diagrams'])
 
                 # remember there is at most one mom
@@ -821,7 +964,8 @@ class FKSProcess(object):
                         born_proc, real_dict['leglist'], ij, ij_id, \
                         [born_pdgs], 
                         real_dict['perturbation'], \
-                        perturbed_orders = born_proc['perturbation_couplings']))
+                        perturbed_orders = born_proc['perturbation_couplings'],
+                        diagram_filter = self.diagram_filter))
 
                 # keep the extra_cnt if needed
                 if has_coll_sing_cnt:
@@ -847,26 +991,45 @@ class FKSProcess(object):
         if not self.ncores_for_proc_gen:
             self.generate_real_amplitudes(pdg_list, real_amp_list)
             self.link_born_reals()
+        self.update_radiation_flags()
+
+    def update_radiation_flags(self, real_amps=None):
+        """Record radiation represented by the retained real FKS sectors."""
+        if real_amps is None:
+            real_amps = self.real_amps
+        self.isr = any(info['j'] <= self.nincoming
+                       for real in real_amps for info in real.fks_infos)
+        self.fsr = any(info['j'] > self.nincoming
+                       for real in real_amps for info in real.fks_infos)
 
 
     def link_born_reals(self):
         """create the rb_links in the real matrix element to find 
-        which configuration in the real correspond to which in the born
+        which configuration in the real correspond to which in the born,
+        for each FKS configuration (the H events take the real configuration
+        of their born one, see export_fks.write_real_from_born_configs)
         """
 
-        # check that all splitting types are of ['QCD'] type, otherwise return
+        qcd_only = all(info['splitting_type'] == ['QCD'] \
+                       for real in self.real_amps for info in real.fks_infos)
         for real in self.real_amps:
             for info in real.fks_infos:
-                if info['splitting_type'] != ['QCD']:
-                    logger.info('link_born_real: skipping because not all splittings are QCD')
-                    return
-
-
-        for real in self.real_amps:
-            for info in real.fks_infos:
-                info['rb_links'] = fks_common.link_rb_configs(\
-                        self.born_amp, real.amplitude,
-                        info['i'], info['j'], info['ij'])
+                try:
+                    info['rb_links'] = fks_common.link_rb_configs(\
+                            self.born_amp, real.amplitude,
+                            info['i'], info['j'], info['ij'])
+                except Exception as error:
+                    if qcd_only:
+                        raise
+                    # (any error: an output with QED splittings does not need
+                    # them, but with --allow_qed_ps)
+                    logger.warning(('No born/real configuration links for the FKS ' + \
+                        'configuration i, j = %d, %d of %s (%s: %s): its H events ' + \
+                        'cannot have their intermediate resonances.') % \
+                        (info['i'], info['j'],
+                         real.process.nice_string(print_weighted=False).replace('Process: ', ''),
+                         type(error).__name__, error))
+                    info['rb_links'] = None
 
 
 
@@ -884,11 +1047,11 @@ class FKSProcess(object):
         # if [orders] are not specified, then
         # include all kind of splittings
         # i.e. allow all orders to be perturbed
-        # (this is the case for EW corrections, where only squared oders 
+        # (this is the case for EW corrections, where only squared orders
         # are imposed)
         if not pert_orders:
             if not self.born_amp['process']['orders']:
-                pert_orders = model['coupling_orders']
+                pert_orders = MG.visible_orders(model['coupling_orders'])
             else:
                 pert_orders = self.born_amp['process']['perturbation_couplings']
 
@@ -926,7 +1089,7 @@ class FKSProcess(object):
                 elif not self.init_lep_split and ninit_lep >= 1 and \
                   (i['state'] or i['id'] not in model.get_lepton_pdgs()):
                     splittings=[]
-                # UPC: 1.) final-state splitting is forbidded if not both initial-state particles are photons
+                # UPC: 1.) final-state splitting is forbidden if not both initial-state particles are photons
                 #      2.) initial-state photons are not allowed to split
                 #      3.) initial-state fermions are not allowed to undergo a QCD splitting
                 elif ninit_tag > 0 and ((i['state'] and ninit_ph < 2) or \

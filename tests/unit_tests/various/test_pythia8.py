@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -24,19 +25,46 @@ class TestPythiaWeightReader(unittest.TestCase):
         source = work / 'reader.cc'
         source.write_text(r'''
 #include "LHEFRead.h"
+#ifdef TEST_HWU
+extern "C" {
+  void pyabeg_(int&, char(*)[80]);
+  void pyanal_(int&, double*);
+  void pyaend_(double&);
+  void setup_event_(int&);
+}
+#else
 extern "C" int get_wgts_info_len(void) { return 80; }
+#endif
 int main(int argc, char** argv) {
   MyReader reader(argv[1]);
   char labels[1024][wgts_info_len_used];
   int count = 0;
   reader.lhef_read_wgtsinfo_(count, labels);
   std::cout << "count " << count << '\n';
-  if (argc > 2) std::cout << "label " << std::string(labels[1], 80) << '\n';
+  if (argc > 2) {
+    std::cout << "central " << std::string(labels[0], 80) << '\n';
+    std::cout << "label " << std::string(labels[1], 80) << '\n';
+  }
+#ifdef TEST_HWU
+  int first = 1;
+  setup_event_(first);
+  pyabeg_(count, labels);
+#endif
   double weights[1024] = {0.};
   for (int event = 0; event < 2; ++event) {
     reader.lhef_read_wgts_(weights);
     std::cout << "event " << event << ' ' << weights[1] << '\n';
+#ifdef TEST_HWU
+    int index = event + 1;
+    setup_event_(index);
+    weights[0] = 1.;
+    pyanal_(count, weights);
+#endif
   }
+#ifdef TEST_HWU
+  double norm = 1.;
+  pyaend_(norm);
+#endif
 }
 ''')
         cls.executable = work / 'reader'
@@ -45,7 +73,7 @@ int main(int argc, char** argv) {
                         str(cls.executable)], check=True, capture_output=True)
 
     def read_events(self, reweight, jwgtinfo=0, header=True,
-                    label='scale variation', show_label=False):
+                    label='scale variation', show_label=False, executable=None):
         weights = ("<initrwgt>\n<weightgroup name='test'>\n"
                    f"<weight id='1001'> {label} </weight>\n"
                    "</weightgroup>\n</initrwgt>\n") if reweight else ''
@@ -66,9 +94,10 @@ int main(int argc, char** argv) {
         contents += '</LesHouchesEvents>\n'
         path = Path(self.work.name) / 'events.lhe'
         path.write_text(contents)
-        result = subprocess.run([str(self.executable), str(path)] +
+        result = subprocess.run([str(executable or self.executable), str(path)] +
                                 (['labels'] if show_label else []),
-                                text=True, capture_output=True, timeout=3)
+                                cwd=self.work.name, text=True,
+                                capture_output=True, timeout=3)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
@@ -80,7 +109,7 @@ int main(int argc, char** argv) {
         self.assertEqual(self.read_events(False, header=False),
                          'count 1\nevent 0 0\nevent 1 0\n')
 
-    def test_reweighting_with_both_supported_weight_formats(self):
+    def test_reweighting_with_supported_weight_formats(self):
         for jwgtinfo in (0, 9, -9):
             with self.subTest(jwgtinfo=jwgtinfo):
                 self.assertEqual(self.read_events(True, jwgtinfo),
@@ -94,117 +123,107 @@ int main(int argc, char** argv) {
             self.assertIn('dyn= -1 muR=0.20000E+01 muF=0.10000E+01', output)
             self.assertEqual('tag=' in output, tag != 0)
 
+    def test_fortran_labels_are_space_padded_without_nuls(self):
+        for label in ('scale variation', 'x' * 79, 'x' * 100):
+            with self.subTest(label=label):
+                result = self.read_events(True, label=label, show_label=True)
+                central = next(line[8:] for line in result.splitlines()
+                               if line.startswith('central '))
+                variation = next(line[6:] for line in result.splitlines()
+                                 if line.startswith('label '))
+                self.assertEqual(central, 'central value'.ljust(80))
+                self.assertEqual(variation, (' ' + label + ' ')[:80].ljust(80))
+
+    @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+    def test_rates_analysis_output_can_be_read_as_hwu(self):
+        from madgraph.various.histograms import HwUList
+
+        work = Path(self.work.name)
+        (work / 'orders.inc').write_text(
+            '      integer amp_split_size\n      parameter(amp_split_size=1)\n')
+        (work / 'pineappl_maxproc.inc').write_text(
+            '      integer max_nproc,mxpdflumi\n'
+            '      parameter(max_nproc=1,mxpdflumi=1)\n')
+        (work / 'event.f').write_text('''      subroutine setup_event(iev)
+      include 'HEPMC.INC'
+      integer iev
+      logical pineappl
+      common /for_pineappl/ pineappl
+      pineappl=.false.
+      nevhep=iev
+      nhep=2
+      phep(3,1)=1d0
+      phep(3,2)=-1d0
+      evwgt=1d0
+      end
+''')
+        result = subprocess.run([
+            'gfortran', '-O0', '-fcheck=all', '-ffixed-line-length-none',
+            '-I', str(work), '-I', str(MCATNLO / 'include'), '-c',
+            str(ROOT / 'Template/NLO/FixedOrderAnalysis/HwU.f'),
+            str(MCATNLO / 'PY8Analyzer/py8an_HwU_rates.f'),
+            str(ROOT / 'Template/NLO/SubProcesses/pineappl_interface_dummy.f'),
+            'event.f'], cwd=work, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        executable = work / 'hwu_reader'
+        runtime = subprocess.check_output([
+            'gfortran', '-print-file-name=libgfortran' +
+            ('.dylib' if sys.platform == 'darwin' else '.so')], text=True).strip()
+        runtime_directory = str(Path(runtime).parent)
+        result = subprocess.run([
+            'g++', '-O0', '-DTEST_HWU', '-I', str(MCATNLO / 'include'),
+            'reader.cc', 'HwU.o', 'py8an_HwU_rates.o',
+            'pineappl_interface_dummy.o', 'event.o', '-L' + runtime_directory,
+            '-Wl,-rpath,' + runtime_directory, '-lgfortran', '-o',
+            str(executable)], cwd=work, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.read_events(True, label='dyn=-1 muR=2.0 muF=1.0', executable=executable)
+        output = work / 'MADatNLO.HwU'
+        self.assertNotIn(b'\0', output.read_bytes())
+        histograms = HwUList(str(output))
+        self.assertEqual(len(histograms), 1)
+        self.assertIn('central', histograms[0].bins.weight_labels)
+        self.assertAlmostEqual(histograms[0].bins[0].wgts['central'], 1.)
+
 
 @unittest.skipUnless(shutil.which('bash'), 'requires bash')
 class TestPythiaDeltaSteering(unittest.TestCase):
-    def steering(self, delta, dipole_setting, local=False, expected_error=None,
-                 collinear_patch=False, patch_available=False,
-                 soft_patch=False, soft_available=False):
-        with tempfile.TemporaryDirectory(prefix='mg5_py8_steering_') as tmp:
-            work = Path(tmp) / 'MCatNLO'
-            work.mkdir()
-            (Path(tmp) / 'Cards').mkdir()
-            (Path(tmp) / 'Cards/FKS_params.dat').write_text(
-                '#FKSPythiaLocalRecoil\n'+str(int(local))+'\n'
-                '#PythiaLocalCollinearPatch\n'+str(collinear_patch)+'\n'
-                '#PythiaLocalSoftPatch\n'+str(soft_patch)+'\n')
-            (work / 'xmldoc').mkdir()
-            (work / 'xmldoc/BeamParameters.xml').write_text(
-                '<flag name="Beams:setDipoleShowerStartingScalesFromLHEF" '
-                'default="off"/>\n' if dipole_setting else '<chapter/>\n')
-            (work / 'xmldoc/SpacelikeShowers.xml').write_text(
-                '<chapter>' + ('<flag name="SpaceShower:IFquarkCollinearCorrection" '
-                'default="off"/>' if patch_available else '') +
-                ('<flag name="SpaceShower:IFtopSoftCorrection" '
-                'default="off"/>' if soft_available else '') + '</chapter>\n')
-            card = ShowerCard()
-            card.testing = True
-            (work / 'shower.dat').write_text(card.write_card('PYTHIA8', ''))
-            # Exercise the complete production steering function. Compilation
-            # is unnecessary, and the default negative Lambda never enables
-            # its optional override (the only use of bc in this function).
-            command = r'''
-source "$1"
-source "$2"
-function bc { cat >/dev/null; echo 0; }
-thisdir="$PWD"
-MCMODE=PYTHIA8
-PY8VER=8.3
-UsedPdfLib=THISLIB
-BEAM1=1
-BEAM2=1
-ICKKW=0
-runMCMadFKS
-'''
-            result = subprocess.run(
-                [shutil.which('bash'), '-c', command, 'test',
-                 str(MCATNLO / 'Scripts/MCatNLO_MadFKS_PYTHIA8.Script'),
-                 str(work / 'shower.dat')], cwd=work,
-                env=dict(os.environ, DELTA='ON' if delta else 'OFF'),
-                text=True, capture_output=True, timeout=10)
-            if expected_error is not None:
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn(expected_error, result.stdout+result.stderr)
-                self.assertFalse((work / 'Pythia8.cmd').exists())
-                return
-            self.assertEqual(result.returncode, 0, result.stderr)
-            return (work / 'Pythia8.cmd').read_text()
+    """Starting scales of the Pythia8 command file written by MG5_aMC."""
+
+    def steering(self, delta, dipole_setting):
+        from madgraph.various import mcatnlo_shower
+
+        class Installation(object):
+            version = '8.312' if dipole_setting else '8.244'
+            path = '/fake'
+            def has_setting(self, name):
+                return dipole_setting or \
+                    name != 'Beams:setDipoleShowerStartingScalesFromLHEF'
+            def has_lhapdf6(self):
+                return True
+
+        contract = mcatnlo_shower.MatchingContract(parton_shower='PYTHIA8',
+                                                   mcatnlo_delta=delta)
+        run = {'nevents': 10, 'nevents_total': 10, 'event_norm': 'average',
+               'mc_masses': {5: 4.8}, 'pdf': ('internal', None, False), 'seed': 1}
+        return mcatnlo_shower.pythia8_settings(
+            contract, ShowerCard(), run, Installation()).render()
 
     def test_delta_keeps_particle_and_dipole_scales(self):
         result = self.steering(True, True)
         self.assertIn('Beams:setProductionScalesFromLHEF = on', result)
         self.assertIn('Beams:setDipoleShowerStartingScalesFromLHEF = on', result)
 
-    def test_legacy_pythia_has_no_unknown_setting(self):
-        result = self.steering(True, False)
-        self.assertIn('Beams:setProductionScalesFromLHEF = on', result)
-        self.assertNotIn('Beams:setDipoleShowerStartingScalesFromLHEF', result)
+    def test_legacy_pythia_is_refused_for_delta(self):
+        # Without per-dipole starting scales MC@NLO-Delta cannot be showered
+        # consistently: this is an error, no longer a silent downgrade.
+        from madgraph.various import mcatnlo_shower
+        with self.assertRaises(mcatnlo_shower.ShowerInterfaceError):
+            self.steering(True, False)
 
     def test_ordinary_mcatnlo_keeps_scalar_scale(self):
         result = self.steering(False, True)
-        self.assertNotIn('Beams:setProductionScalesFromLHEF', result)
+        self.assertIn('Beams:setProductionScalesFromLHEF = off', result)
         self.assertNotIn('Beams:setDipoleShowerStartingScalesFromLHEF', result)
-
-    def test_local_matching_uses_only_stock_settings(self):
-        result = self.steering(False, True, local=True)
-        for setting in ('SpaceShower:dipoleRecoil = on',
-                        'TimeShower:globalRecoil = off',
-                        'SpaceShower:pT0Ref force = 0.',
-                        'TimeShower:QEDshowerByOther = off',
-                        '6:mayDecay = off'):
-            self.assertIn(setting, result)
-        self.assertNotIn('singleTopLocal', result)
-        for pdg in range(1, 6):
-            self.assertNotRegex(result, r'(?m)^'+str(pdg)+r':m0\s*=\s*0(?:\.|\s)')
-
-    def test_local_matching_rejects_delta(self):
-        self.steering(True, True, local=True,
-                      expected_error='Single-top local recoil requires DELTA=OFF')
-
-    def test_collinear_patch_is_enabled_only_with_paired_counterterm(self):
-        result = self.steering(False, True, local=True, collinear_patch=True,
-                               patch_available=True)
-        self.assertIn('SpaceShower:IFquarkCollinearCorrection = on', result)
-        result = self.steering(False, True, local=True, patch_available=True)
-        self.assertIn('SpaceShower:IFquarkCollinearCorrection = off', result)
-
-    def test_collinear_patch_rejects_stock_library_or_global_matching(self):
-        self.steering(False, True, local=True, collinear_patch=True,
-                      expected_error='selected Pythia build lacks')
-        self.steering(False, True, collinear_patch=True, patch_available=True,
-                      expected_error='requires FKSPythiaLocalRecoil=1')
-
-    def test_top_soft_patch_is_paired_and_defaults_off(self):
-        result = self.steering(False, True, local=True, collinear_patch=True,
-                              patch_available=True, soft_patch=True, soft_available=True)
-        self.assertIn('SpaceShower:IFtopSoftCorrection = on', result)
-        result = self.steering(False, True, local=True, collinear_patch=True,
-                              patch_available=True, soft_available=True)
-        self.assertIn('SpaceShower:IFtopSoftCorrection = off', result)
-
-    def test_top_soft_patch_rejects_inconsistent_build_or_prescription(self):
-        self.steering(False, True, local=True, soft_patch=True,
-                      expected_error='requires PythiaLocalCollinearPatch')
-        self.steering(False, True, local=True, collinear_patch=True,
-                      patch_available=True, soft_patch=True,
-                      expected_error='selected Pythia build lacks the IF top soft patch')
+        result = self.steering(False, False)
+        self.assertIn('Beams:setProductionScalesFromLHEF = off', result)

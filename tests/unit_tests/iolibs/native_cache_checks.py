@@ -4,7 +4,8 @@ import json
 import re
 
 from madgraph.iolibs import born_support as support
-from models import import_ufo, model_reader
+from madgraph.models import import_ufo, model_reader
+from tests.unit_tests.iolibs import model_state_checks
 
 
 def check_real_cache(output, run_command):
@@ -12,6 +13,10 @@ def check_real_cache(output, run_command):
     model = support.expand(output/'Source/MODEL/coupl.inc')
     model += support.expand(output/'Source/MODEL/input.inc')
     members, sizes = support.common_members(model)
+    layout = model_state_checks.load_layout(output)
+    used = {name for group in ('fixed_members', 'dynamic_members')
+            for name, _, _ in layout[group]}
+    fixed = {name for name, _, _ in layout['fixed_members']}
     # Boost comparisons require gauge-consistent couplings. Arbitrary unrelated
     # GC values are sufficient for provider equality, but violate Ward identities.
     physical = model_reader.ModelReader(import_ufo.import_model('sm'))
@@ -45,9 +50,14 @@ def check_real_cache(output, run_command):
             matrices.append(work/source.name)
             source_lines = list(support.statements(source.read_text()))
             names = {name.lower():name.lower()+'_oracle' for line in source_lines
-                     for name in re.findall(r'(?i)(?:subroutine|function)\s+(\w+)',line)}
+                     for name in re.findall(r'(?i)^\s*(?:[\w*]+\s+)*?'
+                                            r'(?:subroutine|function)\s+(\w+)',line)}
             oracle_names[name] = name+'_oracle'
-            oracle = [support.rename(line,names) for line in source_lines]
+            # The original matrix owns the shared diagram-weight BLOCK DATA.
+            # Clone only evaluator routines, keeping its COMMON initializer
+            # defined once when the direct and oracle matrices are linked.
+            oracle = [support.rename(line,names) for routine_name in names
+                      for line in support.routine(source.read_text(),routine_name)]
             # Independent all-helicity sum, retaining the actual diagrams and
             # colour/order contractions but bypassing every learned zero mask.
             oracle = [re.sub(r'(?i)\bntry\s*=\s*ntry\s*\+\s*1', 'NTRY=1',line)
@@ -69,8 +79,11 @@ def check_real_cache(output, run_command):
             'active=shared_real_active', 'shared_real_active=.false.',
             'call smatrix_real_oracle(p,wgt)', 'shared_real_active=active', 'end']
         support.write_fortran(work/'oracle_chooser.f',oracle_chooser)
+        source = (sub/'born_support.f').read_text()
         support.write_fortran(work/'capture.f', support.routine(
-            (sub/'born_support.f').read_text(), 'mc_capture_model_state'))
+            source, 'mc_capture_model_state') + support.routine(
+            source, 'mc_prepare_model_configuration') +
+            model_state_checks.revision_helpers(output))
         support.write_fortran(work/'helpers.f', sum((support.routine(
             (sub/'splitorders_stuff.f').read_text(), name) for name in
             ('orders_to_amp_split_pos','amp_split_pos_to_orders','orders_equal')), []))
@@ -91,6 +104,7 @@ def check_real_cache(output, run_command):
                   for name,kind,index in members]
         lines += ['calls=0', 'hits=0', 'direct=0', 'do iteration=1,3']
         lines += ['%s=state%%%s_values(%s)' % member for member in members]
+        lines += ['call mc_born_model_changed()']
         for owner, sector in enumerate(record['sectors'], 1):
             masses = [literal(complex(physical.get_mass(leg[0])), 'real')
                       for leg in sector['processes'][0][1]]
@@ -133,16 +147,23 @@ def check_real_cache(output, run_command):
                       # result after A -> B -> A model-state changes.
                       'call mc_capture_model_state(state)']
             changed = next(v for v, kind, index in members
-                           if kind == 'complex' and v.startswith('gc_') and values.get(v,0j))
-            lines += [changed+'='+changed+'*(0.93d0,0.02d0)',
+                           if v in used and kind == 'complex' and
+                           v.startswith('gc_') and values.get(v,0j))
+            lines += [changed+'='+changed+'*(0.93d0,0.02d0)']
+            if changed in fixed:
+                lines += ['call mc_born_model_changed()']
+            lines += [
                       'i=calls', 'call smatrix_real(q,ans)', 'if(calls.ne.i+1)stop 93',
                       'call mc_end_real_point()',
                       'stage=3', 'call smatrix_reference(q,tmp(0))', 'call close_real(ans,tmp(0))',
                       'shared_real_active=.true.']
             lines += [name+'=(0d0,0d0)' for name,kind,index in members if name.startswith('gc_')]
+            if any(name.startswith('gc_') for name in fixed):
+                lines += ['call mc_born_model_changed()']
             lines += ['call smatrix_real(q,ans)', 'call close_real(ans,0d0)',
                       'call smatrix_reference(q,tmp(0))', 'call close_real(ans,tmp(0))']
             lines += ['%s=state%%%s_values(%s)' % member for member in members]
+            lines += ['call mc_born_model_changed()']
             lines += ['shared_real_active=.true.', 'stage=4', 'call smatrix_real(q,ans)',
                       'call close_real(ans,reference(MC_HIST_LAST(owner)))',
                       'call mc_end_real_point()', 'call set_native_history(0)']
@@ -156,10 +177,13 @@ def check_real_cache(output, run_command):
                   'if(abs(a-b).gt.1d-11*max(1d-50,abs(a),abs(b)))then',
                   "write(*,*)'Mismatch',a,b,owner,ihist,j,iteration,stage", 'stop 91', 'endif', 'end',
                   'subroutine mc_sync_native_tables()', 'end']
-        support.write_fortran(work/'check.f', lines)
-        paths = [sub/'mc_native_context.f90', work/'capture.f', sub/'real_me_chooser.f',
+        support.write_fortran(work/'check.f', model_state_checks.adapt_wide_driver(
+            lines, members, sizes, layout))
+        # MG7 matrices import the wavefunction record module defined here.
+        aloha = output/'Source/DHELAS/aloha_functions.f'
+        paths = [aloha, sub/'mc_native_context.f90', work/'capture.f', sub/'real_me_chooser.f',
                  *matrices, work/'wrappers.f', work/'oracle_chooser.f',work/'helpers.f',work/'check.f',
-                 *sorted((output/'Source/DHELAS').glob('*.f')),
+                 *(p for p in sorted((output/'Source/DHELAS').glob('*.f')) if p != aloha),
                  output/'Source/MODEL/model_functions.f']
         run_command(['gfortran','-O0','-g','-fcheck=all','-ffixed-line-length-none',
                      '-ffree-line-length-none','-I'+str(sub),'-I'+str(output/'lib'),

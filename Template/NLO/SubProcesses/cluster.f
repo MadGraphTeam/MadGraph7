@@ -51,6 +51,23 @@ C common block.
      $     ,nexternal),mass,get_mass_from_id
       logical skip_first,for_mcatnlo_scale,refresh_types
       external get_color,get_mass_from_id,qcd_vertex_mask
+c One <clustering> string per iproc of the current event
+      INTEGER MAXFKSLOC
+      PARAMETER (MAXFKSLOC=512)
+      CHARACTER*(2000) clusterstrings(0:MAXFKSLOC)
+      COMMON /c_clusterstrings/ clusterstrings
+      INTEGER iclus
+      INTEGER mother_pdg
+      CHARACTER*32 float,integf
+      CHARACTER*32 momstr
+      CHARACTER*32 cidstr
+      CHARACTER*8 role
+      CHARACTER*2000 temp
+      CHARACTER*64 temp0
+      CHARACTER*50 pairstr
+      CHARACTER*6  tmpidx
+      INTEGER cid, cidlocal, bitpos
+      integer get_step_mother_pdg
       if(timing_sampled)call timing_enter(timing_clustering)
       if (iproc_input.le.0) then      ! n-body contribution
          iproc=0
@@ -187,7 +204,64 @@ c form factor and renormalisation and factorisation scales.
       need_matching(1:nexternal)=-99
       call reweighting(next,nbr,skip_first,cluster_ij,table%ipdg,table%cluster_pdg(:,:,cluster_conf),cluster_scales,iord,
      $     qcd_count,sudakov,expanded_sudakov,nqcdrenscale,qcd_ren_scale,qcd_fac_scale,need_matching(1),for_mcatnlo_scale)
+c Clustering history for the LHE event record (FxFx weight calls only;
+c the clustering-only MC@NLO scale calls must not overwrite it):
+c  <clustering type="born|real" iproc="n" step_k="legs;scale;mom=pdg"
+c   ... final_scale="scale"></clustering>
+c legs: comma-separated external legs in the bitmask cluster_ij(k),
+c scale: cluster_scales(k), pdg: PDG code of the clustered mother.
+      if (.not.for_mcatnlo_scale) then
+         temp=''
+         if (iproc.eq.0) then
+            role='born'
+         else
+            role='real'
+         endif
+         write(cidstr,'(I0)') iproc
+         temp0='<clustering type="'//trim(adjustl(role))//'" iproc="'//
+     $        trim(adjustl(cidstr))//'"'
+         do iclus = 1, nbr
+            write(integf,'(I0)') iclus
+            write(float,'(ES20.10)') cluster_scales(iclus)
+            float = trim(adjustl(float))
+c external legs in the bitmask cluster_ij(iclus)
+            pairstr=''
+            cid=cluster_ij(iclus)
+            bitpos=1
+            cidlocal=cid
+            do while (cidlocal.gt.0)
+               if (btest(cidlocal,0) .and. bitpos.le.next) then
+                  write(tmpidx,'(I0)') bitpos
+                  pairstr=trim(pairstr)//','//trim(adjustl(tmpidx))
+               endif
+               cidlocal = ishft(cidlocal,-1)
+               bitpos = bitpos + 1
+            enddo
+            if (len_trim(pairstr).ge.1) pairstr=pairstr(2:)
+            mother_pdg = get_step_mother_pdg(iclus, nbr, iord,
+     $           table%cluster_pdg(:,:,cluster_conf))
+            write(momstr,'(I0)') mother_pdg
+            temp = trim(temp)//' step_'//trim(adjustl(integf))//'="'//
+     $           trim(pairstr)//';'//trim(float)//';mom='//
+     $           trim(adjustl(momstr))//'"'
+         enddo
+         write(float,'(ES20.10)') cluster_scales(0)
+         float = trim(adjustl(float))
+         temp = trim(temp)//' final_scale="'//trim(float)//'"'
+         clusterstrings(iproc) = trim(adjustl(trim(temp0)//' '//
+     $        trim(temp)//'></clustering>'))
+      endif
       if(timing_sampled)call timing_leave(timing_clustering)
+      return
+      end
+
+      integer function get_step_mother_pdg(iclus, nbr, iord, cluster_pdg)
+c Returns the PDG code of the mother for clustering step 'iclus'
+      implicit none
+      integer iclus, nbr
+      integer iord(0:nbr)
+      integer cluster_pdg(0:2,0:2*nbr)
+      get_step_mother_pdg = cluster_pdg(0,iord(iclus))
       return
       end
       
@@ -788,11 +862,11 @@ c If mother and daughter have the same ID, remove one of them
                   ida(j)=itree(j,i)
                   if(ida(j).lt.0) then
                      if (sprop(i).eq.sprop(ida(j))) then
-                        idenpart=ida(j) ! mother and daugher have same ID
+                        idenpart=ida(j) ! mother and daughter have same ID
                      endif
                   elseif (ida(j).gt.0) then
                      if (sprop(i).eq.ipdg(ida(j))) then
-                        idenpart=ida(j) ! mother and daugher have same ID
+                        idenpart=ida(j) ! mother and daughter have same ID
                      endif
                   endif
                enddo
@@ -864,7 +938,7 @@ c propagators.
                endif
             enddo
             if (.not.in_conf) then
-c s-channel is not in iconf. Set it as a invalid configuration
+c s-channel is not in iconf. Set it as an invalid configuration
                valid_conf(iconf)=.false.
                nvalid=nvalid-1
             endif
@@ -1168,7 +1242,7 @@ c particles, and the mother [cluster_pdg(0,0)] is the outgoing one.
          cluster_pdg(0,0)=ipdg(3)
          return
       endif
-      ! Loop over all the clusterings. Everytime there is a cluster with
+      ! Loop over all the clusterings. Every time there is a cluster with
       ! any of the two incoming lines, update the cluster_pdg(1:2,0)
       do i=1,nbr
          cij=cluster_ij(i)
@@ -2264,7 +2338,7 @@ c     don't rotate if nothing to rotate
 
       double precision function dj_clus(p1,p2)
 c***************************************************************************
-c     Uses Durham algorythm to calculate the y value for two partons
+c     Uses Durham algorithm to calculate the y value for two partons
 c     If collision type is hh, hadronic jet measure is used
 c       y_{ij} = 2min[p_{i,\perp}^2,p_{j,\perp}^2]/S
 c                  (cosh(\eta_i-\eta_j)-cos(\phi_1-\phi_2))
@@ -2319,7 +2393,7 @@ c***************************************************************************
       
       double precision function DJB_clus(p1)
 c***************************************************************************
-c     Uses kt algorythm to calculate the y value for one parton
+c     Uses kt algorithm to calculate the y value for one parton
 c       y_i    = p_{i,\perp}^2/S
 c***************************************************************************
       implicit none

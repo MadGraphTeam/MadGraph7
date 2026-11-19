@@ -4,7 +4,8 @@ c Public phase-space stages and their private implementation. Compiler
 c interfaces come from contained procedures, not repeated declarations.
 c Sampling and radiation kernels live in their own lower-level modules.
       use fks_born_sampling, only: generate_momenta_born,
-     $     initialize_born_chart,generate_tau_y_wrapper
+     $     initialize_born_chart,generate_tau_y_wrapper,
+     $     sample_real_channel
       use fks_radiation_maps, only: generate_momenta_massless_final,
      $     generate_momenta_massive_final,generate_momenta_initial,
      $     generate_momenta_massless_final_inverse,
@@ -27,7 +28,8 @@ c Sampling and radiation kernels live in their own lower-level modules.
      $     sample_fks_born_point,generate_fks_radiation,
      $     generate_born_contribution,generate_born_event,
      $     generate_real_phase_space,generate_prepared_fks_point,
-     $     generate_momenta,generate_native_momenta,invert_fks_radiation
+     $     generate_momenta,generate_native_momenta,invert_fks_radiation,
+     $     generate_momenta_real_channels
 
 c A reusable Born point is an input to radiation generation. Its
 c sampling measure and provenance remain independent of any radiation
@@ -95,6 +97,7 @@ c differ from the soft Born. Their availability is recorded explicitly.
          logical :: has_collinear_born=.false.
          logical :: has_reduced_born=.false.
          double complex :: spin_phase=(0d0,0d0)
+         double precision :: spin_transverse(0:3)=0d0
          double precision :: radiation_energies(3)=0d0
          integer :: solution_sign=0
          logical :: no_counterevents=.true.,event_projection=.true.
@@ -242,6 +245,22 @@ c agrees. Otherwise sample a new one, including the coupled lepton map.
       end subroutine generate_real_phase_space
 
 
+      subroutine generate_momenta_real_channels(ndim,iconfig,
+     &     representative_sector,x,p,wgt)
+c The complete real-tree channel has no Born chart or FKS endpoints.
+c Reset the same typed active data as radiation generation before sampling.
+      implicit none
+      include 'timing_variables.inc'
+      integer ndim,iconfig,representative_sector
+      double precision x(99),p(0:3,nexternal),wgt
+      if(timing_sampled)call timing_enter(timing_phase_space)
+      call reset_fks_kinematics()
+      call sample_real_channel(ndim,iconfig,representative_sector,
+     &     x,p,wgt)
+      if(timing_sampled)call timing_leave(timing_phase_space)
+      end subroutine generate_momenta_real_channels
+
+
       subroutine initialize_fks_phase_space(iconfig)
 c Install the integration channel, sampling chart and recoil context.
 c This routine neither samples momenta nor applies an integration weight.
@@ -293,6 +312,7 @@ c resonance descendants. Recoil selection must follow that operation.
       common/write_granny_resonance/which_is_granny,write_granny
       character*4 abrv
       common/to_abrv/abrv
+      logical default_members(nexternal)
 
       resonance_recoil=.false.
       resonance_members=.false.
@@ -301,9 +321,10 @@ c resonance descendants. Recoil selection must follow that operation.
       initial_recoil_leg=0
       pythia_recoil_pair=0
       call set_tau_min()
+      default_members=.false.
       if(granny_is_res)
-     $     resonance_members=granny_chain_real_final(1:nexternal)
-      call select_fks_recoil(resonance_members,abrv.ne.'born')
+     $     default_members=granny_chain_real_final(1:nexternal)
+      call select_fks_recoil(default_members,abrv.ne.'born')
       if(FKSPythiaLocalRecoil.eq.1)then
          call mc_select_pythia_pair(pythia_recoil_pair)
          if(j_fks.gt.nincoming)then
@@ -694,7 +715,7 @@ c unused by the current sector. Negative values are validity sentinels.
      $     p_i_cnt => p_i_fks_cnt,xi_cnt => xi_i_fks_cnt,xi_hat_ev => xi_i_hat_ev,
      $     xi_hat_cnt => xi_i_hat_cnt,xbjrk_ev,xbjrk_cnt,sqrtshat_ev,shat_ev,sqrtshat_cnt,shat_cnt,
      $     tau_ev,ycm_ev,tau_cnt,ycm_cnt,xi_max_ev => xiimax_ev,xi_max_cnt => xiimax_cnt,
-     $     xi_norm_ev => xinorm_ev,xi_norm_cnt => xinorm_cnt,spin_phase => xij_aor,veckn_ev,
+     $     xi_norm_ev => xinorm_ev,xi_norm_cnt => xinorm_cnt,spin_phase => xij_aor,xij_kperp,veckn_ev,
      $     veckbarn_ev,xp0jfks,solution_sign => isolsign,no_counterevents => nocntevents,
      $     ybst_til_tolab,ybst_til_tocm,sqrtshat,shat
 c Start a fresh real/endpoint result. Preserve the supplied Born point
@@ -732,6 +753,7 @@ c absent endpoints cannot inherit data from a previous radiation trial.
       xi_norm_ev=0d0
       xi_norm_cnt=0d0
       spin_phase=(0d0,0d0)
+      xij_kperp=0d0
       veckn_ev=0d0
       veckbarn_ev=0d0
       xp0jfks=0d0
@@ -921,7 +943,7 @@ c selected physical incoming momentum (and its PDF argument) changes.
      $           xbjrk_born,tau_born,ycm_born,shat_born,phi_i_fks,xp,
      $           rad(1:2),shat,stot,sqrtshat,tau,ycm,xbjrk,p_i_fks,
      $           xiimax,xinorm,xi_i_fks,y_ij_fks,xi_i_hat,xpswgt,
-     $           xjac,pass)
+     $           xjac,pass,nbody_only)
          endif
          if (.not.pass) goto 112
       else
@@ -1545,11 +1567,13 @@ c histories only consume momenta and active data, so skip their snapshot.
 
 
       subroutine invert_fks_radiation(xx,xjac0,xpswgt0,
-     $     stot,tau_born,ycm_born,xbjrk_born,p_lab,pb)
+     $     stot,tau_born,ycm_born,xbjrk_born,p_lab,pb,nbody_only)
       use fks_phase_space_data,only: resonance_momentum,resonance_mass2,resonance_recoil,
      $     resonance_members,initial_recoil_leg,pythia_recoil_pair,p_i_fks_cnt
 ! Input momenta are in the symmetric hadron frame used by generate_momenta.
 ! No Born integration-channel coordinates or Jacobians are recovered.
+! Pass the forward stage's mode to recover its ISR sampling coordinates.
+! Calls without an explicit mode retain the legacy COMMON convention.
       use fks_phase_space_helpers, only: boost_n1_to_its_cms,
      $     boost_n1_to_lab,get_xi_from_p,get_yij_from_p,get_phi_from_p
       use mc_native_context, only: native_mapping
@@ -1557,7 +1581,7 @@ c histories only consume momenta and active data, so skip their snapshot.
       double precision xjac0,xpswgt0,xx(3),p_cms(0:3,nexternal),stot
      $     ,tau_born,ycm_born,xbjrk_born(2),pb(0:3,
      $     -max_branch:nexternal-1),p_lab(0:3,nexternal)
-      integer i_fks,j_fks
+      integer i_fks,j_fks,hard_leg
       common/fks_indices/i_fks,j_fks
       double precision pmass(nexternal)
       common /to_mass/pmass
@@ -1569,6 +1593,7 @@ c histories only consume momenta and active data, so skip their snapshot.
       integer i,ib
       logical pass,softtest,colltest
       common/sctests/softtest,colltest
+      logical,intent(in),optional :: nbody_only
       m_j_fks=pmass(j_fks)
 
       xbjrk(1:2)=p_lab(0,1:2)/(sqrt(stot)/2d0)
@@ -1668,15 +1693,15 @@ c the real transverse direction when y rounds to one near a beam.
 
       call boost_n1_to_its_cms(p_lab,p_cms,y_lab_to_cms)
 
+      ycm=log(xbjrk(1)/xbjrk(2))/2d0
+      tau=xbjrk(1)*xbjrk(2)
+      shat=tau*stot
+      sqrtshat=sqrt(shat)
       xi_i_fks=get_xi_from_p(i_fks,p_cms)
       y_ij_fks=get_yij_from_p(i_fks,j_fks,p_cms,
      $     p_i_fks_cnt(:,0))
       phi_i_fks=get_phi_from_p(i_fks,j_fks,p_cms)
 
-      ycm=log(xbjrk(1)/xbjrk(2))/2d0
-      tau=xbjrk(1)*xbjrk(2)
-      shat=tau*stot
-      sqrtshat=sqrt(shat)
       if (j_fks.gt.nincoming) then
          if(resonance_recoil)then
             call invert_momenta_resonance_final(p_cms,
@@ -1697,8 +1722,15 @@ c the real transverse direction when y rounds to one near a beam.
          ycm_born=ycm
          xbjrk_born(1:2)=xbjrk(1:2)
       else
+c For hard ISR with a one-particle Born, recover 1-xi from its model
+c mass. Soft radiation keeps its energy to avoid subtraction near xi=0.
+         hard_leg=nincoming+1
+         if(hard_leg.eq.i_fks)hard_leg=hard_leg+1
+         if(nexternal.eq.nincoming+2.and.pmass(i_fks).eq.0d0.and.
+     $        pmass(hard_leg).gt.0d0.and.pmass(hard_leg)**2.lt.shat/2d0)
+     $        xi_i_fks=1d0-pmass(hard_leg)**2/shat
          call generate_momenta_initial_inverse(p_lab,xi_i_fks,y_ij_fks,phi_i_fks,pb,xx,xjac0,xpswgt0,shat,sqrtshat,i_fks,
-     $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born)
+     $     j_fks,stot,tau,ycm,xbjrk,tau_born,ycm_born,xbjrk_born,nbody_only)
       endif
       end subroutine invert_fks_radiation
 
@@ -1710,7 +1742,7 @@ c the real transverse direction when y rounds to one near a beam.
      $     y_ev => y_ij_fks_ev,p_i_ev => p_i_fks_ev,p_i_cnt => p_i_fks_cnt,xi_cnt => xi_i_fks_cnt,
      $     xi_hat_ev => xi_i_hat_ev,xi_hat_cnt => xi_i_hat_cnt,xbjrk_ev,xbjrk_cnt,sqrtshat_ev,shat_ev,
      $     sqrtshat_cnt,shat_cnt,tau_ev,ycm_ev,tau_cnt,ycm_cnt,xi_max_ev => xiimax_ev,
-     $     xi_max_cnt => xiimax_cnt,xi_norm_ev => xinorm_ev,xi_norm_cnt => xinorm_cnt,spin_phase => xij_aor,
+     $     xi_max_cnt => xiimax_cnt,xi_norm_ev => xinorm_ev,xi_norm_cnt => xinorm_cnt,spin_phase => xij_aor,xij_kperp,
      $     veckn_ev,veckbarn_ev,xp0jfks,solution_sign => isolsign,no_counterevents => nocntevents,
      $     tau_Born_lower_bound,tau_lower_bound_resonance,tau_lower_bound,ybst_til_tolab,ybst_til_tocm,
      $     sqrtshat,shat
@@ -1771,6 +1803,7 @@ c generation frame also for massive solutions with no counterevents.
       point%p_born_l=p_born_l
       point%p_born_ev=p_born_ev
       point%spin_phase=spin_phase
+      point%spin_transverse=xij_kperp
       point%radiation_energies(1)=veckn_ev
       point%radiation_energies(2)=veckbarn_ev
       point%radiation_energies(3)=xp0jfks
@@ -1821,7 +1854,7 @@ c generation frame also for massive solutions with no counterevents.
      $     y_ev => y_ij_fks_ev,p_i_ev => p_i_fks_ev,p_i_cnt => p_i_fks_cnt,xi_cnt => xi_i_fks_cnt,
      $     xi_hat_ev => xi_i_hat_ev,xi_hat_cnt => xi_i_hat_cnt,xbjrk_ev,xbjrk_cnt,sqrtshat_ev,shat_ev,
      $     sqrtshat_cnt,shat_cnt,tau_ev,ycm_ev,tau_cnt,ycm_cnt,xi_max_ev => xiimax_ev,
-     $     xi_max_cnt => xiimax_cnt,xi_norm_ev => xinorm_ev,xi_norm_cnt => xinorm_cnt,spin_phase => xij_aor,
+     $     xi_max_cnt => xiimax_cnt,xi_norm_ev => xinorm_ev,xi_norm_cnt => xinorm_cnt,spin_phase => xij_aor,xij_kperp,
      $     veckn_ev,veckbarn_ev,xp0jfks,solution_sign => isolsign,no_counterevents => nocntevents,
      $     tau_Born_lower_bound,tau_lower_bound_resonance,tau_lower_bound,ybst_til_tolab,ybst_til_tocm,
      $     sqrtshat,shat
@@ -1879,6 +1912,7 @@ c routine does not change process, shower, colour, PDF or coupling state.
       p_born_l=point%p_born_l
       p_born_ev=point%p_born_ev
       spin_phase=point%spin_phase
+      xij_kperp=point%spin_transverse
       veckn_ev=point%radiation_energies(1)
       veckbarn_ev=point%radiation_energies(2)
       xp0jfks=point%radiation_energies(3)

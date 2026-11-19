@@ -26,7 +26,7 @@ c     and the sign of ipdg flipped accordingly.
 c
 c     ibeam is the beam identity 1/2
 c      if set to -1/-2 it meand that ipdg should not be flipped even if ih<0
-c      usefull for re-weighting
+c      useful for re-weighting
 c***************************************************************************
       implicit none
 c
@@ -140,6 +140,7 @@ c     be saved
       xlast(i_replace)=x
       xmulast(i_replace)=xmu
       ihlast(i_replace)=ih
+      ipartlast(i_replace)=ipart
       imemlast(i_replace)=imem
       isetlast(i_replace)=iset
 c

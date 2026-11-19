@@ -1,0 +1,25 @@
+{
+  "name": "higgs_diphoton_stripped_evanescent_oracle",
+  "scope": "Nonchiral algebra and reduction oracle; not a supported loop-induced production process",
+  "generator": "tensor_oracle.py:diphoton_r2_oracle",
+  "source_example": "symbolica-community/examples/hep/Higgs_diphoton_decay.py",
+  "normalization": "Coefficient K defined by projected numerator = -4*Nc*Q^2*e^2*y*m*K; both fermion orientations included",
+  "metric": "+---",
+  "dimension": "D=4-2*eps",
+  "mu2": "-q_tilde^2",
+  "denominator_convention": "(q+V_i)^2-m_i^2+i0",
+  "shifts": [
+    ["0", "0", "0", "0"],
+    ["-1/2", "0", "0", "-1/2"],
+    ["-1", "0", "0", "0"]
+  ],
+  "mass_squared": ["4", "4", "4"],
+  "numerator_epsilon_sectors": ["2*mu2", "0", "0"],
+  "weighted_rank": 2,
+  "expected_laurent": {
+    "finite": "1",
+    "single_pole": "0",
+    "double_pole": "0"
+  },
+  "integral_normalization": "d^D q/(i*pi^(D/2)); scale factors tending to one leave this finite rational limit unchanged"
+}

@@ -190,6 +190,7 @@ c Labels returned here are REAL labels, including the empty emitted slot.
       request%colour=.false.
       request%charge=.false.
       request%sector=active_sector
+      request%helicity_frame=born_active_helicity_frame
       request%charges=charges
       request%m=m
       request%n=n
@@ -321,7 +322,7 @@ c Labels returned here are REAL labels, including the empty emitted slot.
       pas=0d0
       pas(:,1:nexternal-1)=p_born_ev
       call set_alphas(pas)
-      call sborn(p_born_ev,ans)
+      call sborn_frame(p_born_ev,ans)
       total=0d0
       do i=1,mapconfig(0)
          total=total+amp2(mapconfig(i))

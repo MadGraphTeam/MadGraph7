@@ -35,6 +35,13 @@ class TestFSRCollinearStability(unittest.TestCase):
             "      module fks_phase_space_helpers\n      contains\n" +
             fortran_routine(TEMPLATE / "genps_fks_helpers.f", "dot") +
             "      end module\n")
+        # The ALOHA wavefunction type, as the processes get it from the
+        # ALOHA template; the azimuthal spinor branch itself is not reached.
+        aloha = (ROOT / "aloha/template_files/aloha_functions.f").read_text()
+        start = aloha.index("      module ALOHA_OBJECT")
+        end = aloha.index("end module ALOHA_OBJECT", start)
+        (cls.work / "aloha.f").write_text(
+            aloha[start:end] + "end module ALOHA_OBJECT\n")
         (cls.work / "collinear.f").write_text("\n".join(
             fortran_routine(TEMPLATE / "fks_singular.f", name) for name in
             ("sborncol_fsr", "AP_reduced", "Qterms_reduced_timelike")))
@@ -86,7 +93,7 @@ program check_collinear
   enddo
 end program
 
-subroutine sborn_native(p,wgt)
+subroutine sborn_frame(p,wgt)
   implicit none
   include 'orders.inc'
   real(8) :: p(0:3,4),wgt
@@ -99,7 +106,7 @@ subroutine sborn_native(p,wgt)
   amp_split_cnt(1,1,1)=(1d0,0d0)
 end subroutine
 
-subroutine extra_cnt_native()
+subroutine extra_cnt_frame()
   stop 99
 end subroutine
 subroutine getaziangles()
@@ -111,13 +118,23 @@ end subroutine
 subroutine OXXXSO()
   stop 99
 end subroutine
+subroutine IXXXXX()
+  stop 99
+end subroutine
+subroutine OXXXXX()
+  stop 99
+end subroutine
+subroutine azifact_me_frame()
+  stop 99
+end subroutine
 """)
         cls.executable = cls.work / "check"
         build = subprocess.run([
             shutil.which("gfortran"), "-O2", "-fcheck=all",
             "-ffixed-line-length-none", "-ffpe-trap=invalid,zero,overflow",
             "-I", str(cls.work), str(TEMPLATE / "fks_phase_space_data.f"),
-            "geometry.f", "collinear.f", "driver.f90", "-o", str(cls.executable)],
+            "geometry.f", "aloha.f", "collinear.f", "driver.f90", "-o",
+            str(cls.executable)],
             cwd=cls.work, capture_output=True, text=True)
         if build.returncode:
             raise RuntimeError(build.stdout + build.stderr)

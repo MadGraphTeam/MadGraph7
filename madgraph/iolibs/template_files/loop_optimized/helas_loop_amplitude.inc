@@ -1,4 +1,5 @@
       SUBROUTINE %(proc_prefix)sLOOP_%(nloopline)d%(nwfsargs_header)s(%(pairingargs)s%(wfsargs)s%(margs)s RANK, SQUAREDSOINDEX, LOOPNUM)
+      USE ALOHA_OBJECT
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NLOOPLINE
@@ -70,9 +71,9 @@ C
 	  common/%(proc_prefix)sAMPL/AMPL
 ## }
 
-	  %(complex_dp_format)s W(20,NWAVEFUNCS)
+	  type(aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W
-      %(complex_mp_format)s MP_W(20,NWAVEFUNCS)
+      type(mp_aloha) MP_W(NWAVEFUNCS)
       common/%(proc_prefix)sMP_W/MP_W
 
 	  %(real_dp_format)s LSCALE 
@@ -114,9 +115,9 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
 		    MP_PL(I,J)=0.0e+0_16		    
 		  ENDIF
           DO K=TEMP,(TEMP+PAIRING(J)-1)
-            PL(I,J)=PL(I,J)-DBLE(W(1+I,WE(K)))
+            PL(I,J)=PL(I,J)-W(WE(K))%P(I)
 			IF (DOING_QP) THEN
-		      MP_PL(I,J)=MP_PL(I,J)-REAL(MP_W(1+I,WE(K)),KIND=16)	    
+		      MP_PL(I,J)=MP_PL(I,J)-MP_W(WE(K))%P(I)
 		    ENDIF
           ENDDO
           TEMP=TEMP+PAIRING(J)
@@ -158,6 +159,18 @@ C Ninja is used
 ## }
 	ENDIF
 ##	}
+## if(ninjars_available){
+      ELSEIF (MLReductionLib(I_LIB).EQ.8) THEN
+        IF (.NOT.DOING_QP) THEN
+          CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+        ELSE
+## if(ninjars_supports_quad_prec){
+          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+## } else {
+          STOP 'NinjaRS quadruple precision is unavailable'
+## }
+        ENDIF
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(SQUAREDSOINDEX,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
@@ -181,6 +194,18 @@ C Tensor Integral Reduction is used
 	    ENDIF
 
 ##	}
+## if(ninjars_available){
+      ELSEIF (MLReductionLib(I_LIB).EQ.8) THEN
+        IF (.NOT.DOING_QP) THEN
+          CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+        ELSE
+## if(ninjars_supports_quad_prec){
+          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+## } else {
+          STOP 'NinjaRS quadruple precision is unavailable'
+## }
+        ENDIF
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(1,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))

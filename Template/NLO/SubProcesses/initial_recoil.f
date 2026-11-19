@@ -254,14 +254,13 @@ c momentum loses all Born precision for a large borrowed energy.
      $        y,xim,xibm,ximax,cffa2,cffb2,cffc2,cffdel2,
      $        xiimax,xinorm)
          rat=xiimax/xinorm
-         branch_sign=u/mass*(2d0-xi*(1d0-y))*
-     $        (2d0-xi*(1d0+y))+xi*y*(1d0+xmjhat**2-xi)
+         branch_sign=(2d0-xi)*u+xi*ej*y
          if(branch_sign.ge.0d0)then
-            x(1)=(xi*rat/xinorm-sstiny)/(1d0-sstiny)
-            if(x(1).lt.-1d-12.or.x(1).gt.rat**2+1d-12)goto 900
-            x(1)=sqrt(max(0d0,min(rat**2,x(1))))
+            x(1)=(xi/xiimax-sstiny)/(1d0-sstiny)
+            if(x(1).lt.-1d-12.or.x(1).gt.1d0+1d-12)goto 900
+            x(1)=rat*sqrt(max(0d0,min(1d0,x(1))))
          else
-            x(1)=((2d0*xiimax-xi)/xinorm-sstiny)/(1d0-sstiny)
+            x(1)=(2d0*xiimax-xi)/xinorm
             if(x(1).lt.rat-1d-12.or.x(1).gt.1d0+1d-12)goto 900
             x(1)=max(rat,min(1d0,x(1)))
          endif
@@ -601,6 +600,7 @@ c The reduced emitted direction is also needed at the soft endpoint.
      $     phi,phase)
 c As for a resonance frame, transport the transverse helicity axis.
 c Supply the invariant mass explicitly: K is very boosted for small x.
+      use fks_phase_space_data, only: xij_kperp
       use fks_phase_space_helpers, only: getangles
       implicit none
       double precision mother(0:3),q(0:3),mass,phi,r(0:3),
@@ -611,6 +611,8 @@ c Supply the invariant mass explicitly: K is very boosted for small x.
       r=(/0d0,cos(phi),sin(phi),0d0/)
       call rotate_invar(r,rrot,cth,sth,cph,sph)
       call boostm(rrot,q,mass,rlab)
+c Keep the full four-vector in the Born frame for later me_frame boosts.
+      xij_kperp=rlab
       call boostm(mother,q,mass,mlab)
       call getangles(mlab,th,cth,sth,ph,cph,sph)
       call trp_rotate_invar(rlab,rrot,cth,sth,cph,sph)

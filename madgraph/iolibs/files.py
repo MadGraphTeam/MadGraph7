@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -103,8 +103,8 @@ def append_to_file(filename, myfunct, *args):
 # check piclke validity
 #===============================================================================
 def is_uptodate(picklefile, path_list=None, min_time=1343682423):
-    """Check if the pickle files is uptodate compare to a list of files. 
-    If no files are given, the pickle files is checked against it\' current 
+    """Check if the pickle file is up-to-date compared to a list of files.
+    If no files are given, the pickle file is checked against its current
     directory"""
     
     if not os.path.exists(picklefile):
@@ -246,6 +246,19 @@ def ln(file_pos, starting_dir='.', name='', log=True, cwd=None, abspath=False):
 
     if not abspath:
         target = os.path.relpath(file_pos, starting_dir)
+        # The kernel resolves '..' on the physical directory, so a relative
+        # path counted on a logical one that crosses a symlinked directory
+        # (macOS /var -> /private/var) lands elsewhere: count it on the
+        # physical directories then, or fall back to the absolute path.
+        if os.path.realpath(os.path.join(starting_dir, target)) != \
+                                                   os.path.realpath(file_pos):
+            phys_pos = os.path.join(
+                os.path.realpath(os.path.dirname(os.path.abspath(file_pos))),
+                os.path.basename(os.path.abspath(file_pos)))
+            target = os.path.relpath(phys_pos, os.path.realpath(starting_dir))
+            if os.path.realpath(os.path.join(starting_dir, target)) != \
+                                                   os.path.realpath(file_pos):
+                target = os.path.abspath(file_pos)
     else:
         target = file_pos
 

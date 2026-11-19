@@ -8,7 +8,10 @@ import sys
 import tempfile
 import unittest
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # test discovery must not require numpy
+    np = None
 
 from tests.unit_tests.fks.test_momentum_maps import (
     ROOT, TEMPLATE, fks_test_module, fortran_routine,
@@ -27,6 +30,7 @@ def boost(p, velocity):
         (gamma-1)*bp/b2 + gamma*p[0])*velocity]
 
 
+@unittest.skipIf(np is None, "requires numpy")
 @unittest.skipUnless(shutil.which("gfortran"), "requires gfortran")
 class TestPythiaLocalRecoil(unittest.TestCase):
     @classmethod

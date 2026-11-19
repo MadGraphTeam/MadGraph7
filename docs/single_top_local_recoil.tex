@@ -568,7 +568,7 @@ The new setting is
 SpaceShower:IFquarkCollinearCorrection = on
 \end{lstlisting}
 and is \emph{off} by default. The corresponding patch file is
-\file{Template/NLO/MCatNLO/srcPythia8/patches/pythia8318-local-quark-collinear.patch}.
+\file{Template/NLO/MCatNLO/pythia8/patches/pythia8318-local-quark-collinear.patch}.
 
 For the one-patch matching prescription, Eq.~\eqref{eq:DG} uses the corrected
 density and replaces $g_h(w)$ by $g_h(\xi_E)$, where
@@ -612,7 +612,7 @@ outgoing top/antitop colour partner. The new setting is
 SpaceShower:IFtopSoftCorrection = on
 \end{lstlisting}
 and is also off by default. The patch file is
-\file{Template/NLO/MCatNLO/srcPythia8/patches/pythia8318-local-top-soft.patch}.
+\file{Template/NLO/MCatNLO/pythia8/patches/pythia8318-local-top-soft.patch}.
 It is applied after the numerator patch.
 
 Both factors act inside the branching veto, before an emission is accepted.
@@ -779,11 +779,15 @@ The one-patch process additionally sets
 uses its compiled default, false. The default-recoil process does not turn
 on the local mode and keeps its ordinary summation settings.
 
-The shower launcher is
+The production runs used the shower launcher
 \file{Template/NLO/MCatNLO/Scripts/MCatNLO_MadFKS_PYTHIA8.Script}.
-It reads the paired FKS flags, checks that the selected XML declares the
-required shower setting, and writes the matching flag into
-\file{Pythia8.cmd}. It writes a declared optional flag off when the paired
+In MadGraph7 the Pythia8 settings are written by
+\file{madgraph/various/mcatnlo_shower.py} instead. The paired FKS flags are
+recorded at generation in the \code{<MCatNLOMatching>} block of the event
+file. The shower checks that the selected XML declares the required
+setting and locks the matching flag in \file{Pythia8.cmd}; the driver
+verifies the locked settings after initialisation. A declared optional
+flag is written off when the paired
 matching prescription is off, and avoids passing an unknown flag to stock
 Pythia. The selected build is given by \code{pythia8_path} in
 \file{Cards/amcatnlo_configuration.txt}. The process-local shower template
@@ -1329,8 +1333,9 @@ not decayed or removed it.
 The stable-top analysis now uses
 \file{Template/NLO/MCatNLO/include/HEPMC_ST_RECOIL.INC} with 100000 entries.
 At \code{PYABEG} it calls \code{hepmc_set_max_number_entries}, defined in
-\file{Template/NLO/MCatNLO/include/HEPEVTSize.h}, so HepMC uses the same
-array strides as the Fortran common block. Increasing only one side would
+\file{Template/NLO/MCatNLO/include/HEPEVTSize.h} for the production runs
+(in MadGraph7, in the driver \file{Template/NLO/MCatNLO/pythia8/mcatnlo_pythia8.cc}),
+so the event record uses the same array strides as the Fortran common block. Increasing only one side would
 misalign the record. The helper validates the declared capacity against
 the allocation supported by the HepMC headers. The analysis also refuses
 a record at the capacity limit, instead of using a possibly truncated state.
@@ -1494,7 +1499,8 @@ This report consolidates the implementation and evidence in the following
 records; their essential content is reproduced in the body, so they need
 not be read to understand the report.
 \begin{itemize}
-\item \file{docs/native_fks_projection.md}: map, measure, finite endpoint,
+\item \file{docs/native_fks_projection.md} (not carried over to MadGraph7;
+see commit e20b82a118): map, measure, finite endpoint,
 native replay, and the earlier fixed-order numerical comparisons.
 \item \file{docs/audits/pythia8318_singletop_local.md} and
 \file{docs/audits/pythia8318_singletop_local_validation.json}: stock-G

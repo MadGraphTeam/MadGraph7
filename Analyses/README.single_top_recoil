@@ -26,8 +26,8 @@ The common analysis is installed in each process's MCatNLO/PY8Analyzer/.
 Its master copy is Template/NLO/MCatNLO/PY8Analyzer/py8an_HwU_pp_tj_recoil.f.
 After editing that copy, copy it into the four processes before showering again.
 This analysis uses include/HEPMC_ST_RECOIL.INC with 100000 history entries;
-PYABEG configures the same capacity in HepMC through include/HEPEVTSize.h
-in the Pythia analysis driver. The stock 4000-entry record can silently
+PYABEG passes the same capacity to the Pythia8 driver
+(pythia8/mcatnlo_pythia8.cc), which fills /HEPEVT/ with these strides. The stock 4000-entry record can silently
 truncate long global-recoil histories and lose final particles, including
 the stable top. This interface fix is installed in all four processes and
 the export template. It does not change shower physics or event selection.

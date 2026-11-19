@@ -1,0 +1,782 @@
+<!-- SPDX-License-Identifier: 0BSD -->
+
+# Packaged Examples
+
+All TOML cards use schema version 1 and resolve paths relative to themselves.
+Create an editable workspace whose model/data assets are independent of the
+installation location with:
+
+```console
+pyamplicol examples copy ./pyamplicol-examples
+cd pyamplicol-examples
+```
+
+Keep the environment containing pyAmpliCol activated for top-level CLI and
+Python commands below, or invoke its executables by explicit path. Generated
+artifact API drivers additionally support the canonical source workflow: when
+the copied workspace is below a checkout containing `.venv` from
+`just dev-install`, the Python driver and C, C++, Fortran, and Rust Makefiles
+find that environment automatically. Explicit `RUSTICOL_CONFIG` and an active
+`PATH` still take precedence.
+
+The primary example uses the serialized external Standard Model and generates
+seven tree-level representatives for `p p > Z j j`. They cover all 18 ordered
+tree-level channels through automatic incoming/outgoing permutations.
+Expansion also finds `g g > Z g g`, which is loop-induced and therefore
+omitted:
+
+```console
+pyamplicol generate_pp_zjj_from_ufo_sm.toml
+pyamplicol evaluate_total.toml
+pyamplicol evaluate_resolved.toml
+pyamplicol benchmark.toml
+```
+
+`evaluate_total.toml` selects the concrete channel through the requested public
+ordering `d d~ > g z g`. Its representative stable ID is
+`p_p_to_z_j_j_3`. Its
+parameter card updates the genuine UFO external inputs `aS` and `MZ`.
+These three showcase cards print colorized terminal tables by default. Add
+`--json` when a machine-readable result is wanted instead.
+
+## Run Cards
+
+| File | Coverage |
+| --- | --- |
+| `generate_pp_zjj_from_ufo_sm.toml` | Generate a portable compiled-JIT-O2 multiprocess `p p > Z j j` artifact from the serialized UFO SM |
+| `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
+| `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
+| `benchmark.toml` | Short topology-replay benchmark of the same subprocess at one selected flow |
+| `qq_z6g_recurrence_jit_o2.toml` | `u u~ > Z + 6g` through the default recurrence schedule and prepared JIT O2 kernels |
+| `qq_z6g_compiled_jit_o3.toml` | The same `Z + 6g` workload through process-local compiled-DAG JIT O3 execution |
+| `qq_z6g_eager_jit_o2.toml` | The same `Z + 6g` workload through eager-DAG execution and prepared JIT O2 kernels |
+| `benchmark_z6g_single_flow_helicity_sum.toml` | Profile the default topology-replay layout for runtime flow selection with a helicity sum in `u u~ > Z + 6g` |
+| `benchmark_z6g_all_flows_single_helicity.toml` | Profile the explicit all-flow-union layout for an all-flow sum at one runtime-selected helicity in `u u~ > Z + 6g` |
+| `benchmark_z6g_generation_specialized_flow_helicity_sum.toml` | Generation-specialized flow baseline for the reusable-selector comparison |
+| `benchmark_z6g_generation_specialized_all_flows_single_helicity.toml` | Generation-specialized helicity baseline for the reusable-selector comparison |
+| `process_set_mixed_multiplicity.toml` | Named UFO-SM 2-to-2 and 2-to-3 requests |
+| `external_ufo_sm.toml` | Trusted UFO execution path |
+| `external_json_scalars.toml` | Scalar contact model and repeated particles |
+| `external_json_scalar_gravity.toml` | Proven massless spin-2 model path |
+| `builtin_sm_lc.toml` | Built-in compatibility SM, default recurrence JIT O2, `u u~ > g g`, LC |
+| `builtin_sm_nlc.toml` | Built-in compatibility SM, default recurrence JIT O2, contracted NLC |
+| `builtin_sm_full.toml` | Built-in compatibility SM, explicit compiled C++, contracted full color |
+| `builtin_sm_adjoint_fft.toml` | Certified pure-gluon tree, recurrence full color in the adjoint DDM FFT basis |
+| `builtin_sm_heft.toml` | Packaged scalar HEFT `g g > H g g`, one insertion, recurrence JIT O2 with adjoint DDM FFT |
+| `builtin_sm_eager.toml` | Built-in SM LC generation using the wheel-owned prepared JIT O2 pack |
+| `builtin_sm_on_the_fly.toml` | Built-in SM LC generation as a compact on-the-fly seed using the same prepared JIT O2 pack |
+| `otf_pp_zjj.toml` | Generate compact OTF LC `p p > Z j j`, then profile one flow with a helicity sum |
+| `generate_pp_4j_flavor_blind.toml` | Flavour-blind built-in SM `p p > j j j j` at `QED = 0`, LC: 23 generated representatives for 486 subprocesses |
+| `inspect_pp_4j.toml` | Summary of that artifact, including its process-group map |
+| `evaluate_pp_4j_member.toml` | Evaluate the non-generated member `u~ g > u~ g g g` through its representative |
+| `group_pp_4j.toml` | Numerical `group-processes` analysis of the generated representatives |
+| `loop_uux_ttxgg_generate.toml` | One-loop: generate `u u~ > t t~ g g`, NLO QCD virtual (Born-interfered), full colour |
+| `loop_uux_ttxgg_lc_generate.toml` | One-loop: the same at leading colour, for its colour-flow selection (the helicity selection runs at every accuracy) |
+| `loop_uux_ttxgg_check.toml` | One-loop: `pyamplicol check` (Catani poles, Ward identities of both gluons) of its artifact |
+| `loop_uux_ttxgg_evaluate.toml` | One-loop: evaluate with poles and the recommended stability checks |
+| `loop_uux_ttxgg_profile.toml` | One-loop: time per point and per stage (trees, dressing, scatter, reduction, rest) on both reduction backends; `--stability` for the stable-digit statistics |
+| `loop_uux_ddxepem_generate.toml` | One-loop: generate `u u~ > d d~ e+ e-`, NLO QCD+EW at every order, complex-mass scheme |
+| `loop_uux_ddxepem_check.toml` | One-loop: `pyamplicol check` of its artifact (poles against Catani's QCD and QED operators) |
+| `loop_uux_ddxepem_evaluate.toml` | One-loop: evaluate its four squared-order sectors and three Born orders |
+| `loop_uux_ddxepem_orders.toml` | One-loop: partial weights per squared coupling order (`--orders`) with their explicit sums |
+| `loop_uux_ddxepem_profile.toml` | One-loop: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
+| `loop_gg_zgg_generate.toml` | Loop-induced: generate `g g > z g g`, every quark loop (five massless flavours and the top) |
+| `loop_gg_zgg_check.toml` | Loop-induced: `pyamplicol check` (finiteness, Ward identity of the gluons) of its artifact |
+| `loop_gg_zgg_evaluate.toml` | Loop-induced: evaluate on TIRust (the default) with the recommended stability checks |
+| `loop_gg_zgg_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
+| `loop_gg_epemmpmm_generate.toml` | Loop-induced: generate `g g > e+ e- m+ m-` in the complex-mass scheme |
+| `loop_gg_epemmpmm_check.toml` | Loop-induced: `pyamplicol check` of its artifact |
+| `loop_gg_epemmpmm_evaluate.toml` | Loop-induced: evaluate on TIRust with the recommended stability checks |
+| `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
+| `all_options.toml` | Every current schema field, active and commented |
+
+## Generate Pure Gluons With Adjoint FFT
+
+This is the primary FFT example for certified pure Yang–Mills trees; the card
+selects adjoint explicitly rather than relying on the trace configuration
+default.
+
+```console
+pyamplicol generate --card builtin_sm_adjoint_fft.toml
+pyamplicol inspect artifacts/builtin_sm_adjoint_fft
+```
+
+The card keeps the same amplitude in the two-anchor DDM basis: for its five
+external gluons, it retains `3!` ordered amplitudes instead of the trace
+basis's `4!`. To use the original trace FFT, pass `--fft trace`. Either basis
+also supports `--execution-mode on-the-fly`; choose a different output path
+when comparing artifacts. The adjoint request adaptively selects DDM for
+certified Yang–Mills and single-insertion HEFT trees, exact fundamental
+chains/products for quarks, and trace tensors otherwise. Inspect saved
+`fft_basis_selection` for the actual representation and selection reason.
+Correlated generation is not supported by this option. In the benchmarked pure-gluon
+family the adjoint basis was faster than trace for six or more external gluons
+(3.9x per sample at ten gluons); compare setup and warmed runtime for other
+workloads.
+The generated Python, C, C++, Fortran, and Rust drivers need no new runtime
+option to evaluate it.
+
+## Generate Scalar HEFT Higgs Plus Two Jets
+
+The scalar HEFT card uses the packaged `built-in-sm-heft` model, so it does not
+need an external UFO checkout:
+
+```console
+pyamplicol generate --card builtin_sm_heft.toml
+pyamplicol inspect artifacts/builtin_sm_heft
+```
+
+The explicit `HIG = 1` limit retains one effective Higgs-gluon insertion and
+allows the certified DDM colour reduction. The four gluons in this example
+have `2!` DDM orderings instead of `3!` trace orderings; the Higgs is not
+counted as a coloured leg. The artifact uses full-colour recurrence over the
+wheel-owned prepared JIT O2 kernels. Use `--fft trace` to compare the original
+representation, without assuming a speedup at every multiplicity. See the website's
+[Models and Processes](https://madgraph.org/pyamplicol/user/models-and-processes/)
+guide for execution-mode and trusted-UFO details.
+
+## Process Grouping With `p p > j j j j`
+
+With five massless quark flavours, `p p > j j j j` expands into 486
+subprocesses. In pure QCD they fall into 23 classes whose members share one
+matrix element, related by a relabelling of quark flavours, charge
+conjugation, and a reordering of the legs within each side. Four cards
+generate one representative per class, show the grouping, evaluate a
+subprocess that was never generated, and run the numerical analysis:
+
+```console
+pyamplicol generate_pp_4j_flavor_blind.toml
+pyamplicol inspect_pp_4j.toml
+pyamplicol evaluate_pp_4j_member.toml
+pyamplicol group_pp_4j.toml
+```
+
+The same steps run in the private `examples run` workspace with
+`pyamplicol examples run generate_pp_4j_flavor_blind`, then
+`inspect_pp_4j`, `evaluate_pp_4j_member`, and `group_pp_4j`.
+
+**Generate.** The card uses the built-in SM with its default five-flavour `p`
+and `j`, `process.max_coupling_orders = { QED = 0 }`, and LC recurrence over
+the wheel-owned JIT O2 kernels. `process.flavor_blind = true` generates only
+the 23 class representatives into `artifacts/pp_4j_flavor_blind`, which takes
+about 30 seconds on an Apple M3 Pro laptop. The other 463 subprocesses, 140
+of them related by charge conjugation, are recorded in
+`artifacts/pp_4j_flavor_blind/process-groups.json` as members of their class.
+Equal matrix elements within a class are assumed, not verified. They hold for
+massless pure-QCD jets, so this request produces no relabelling warning; with
+photon, `Z` or `W` couplings allowed, generation warns about the relations
+that may break. The card refuses an existing output; add
+`--set generation.mode=replace` to regenerate.
+
+**Inspect.** `inspect_pp_4j.toml` is equivalent to
+`pyamplicol inspect artifacts/pp_4j_flavor_blind`. After the 23 generated
+processes it shows the process-group map: a summary of the 486 subprocesses,
+then one row per representative with the members routed through it, the
+charge-conjugated ones marked `C`. Select a representative to list its group
+member by member, or a member with `--full-physics` to see how it is routed:
+
+```console
+pyamplicol inspect artifacts/pp_4j_flavor_blind --process 'd g > d g g g'
+pyamplicol inspect artifacts/pp_4j_flavor_blind \
+  --process 'u~ g > u~ g g g' --full-physics
+```
+
+**Evaluate a member.** `u~ g > u~ g g g` is not in the artifact. The runtime
+finds it in `process-groups.json` and evaluates its representative
+`d g > d g g g` (relabelling `u -> d` plus charge conjugation) at the
+correspondingly permuted momenta. `data/pp_4j_momenta.json` holds one massless
+2-to-4 point at `sqrt(s) = 1 TeV` in the member's leg order. The total,
+`7.271103230388e-08`, agrees with a separately generated
+`u~ g > u~ g g g` to about `1e-14` relative. Any of the 486 subprocesses, in
+any order of the legs within each side, can be selected the same way:
+
+```console
+pyamplicol evaluate_pp_4j_member.toml \
+  --set 'evaluation.process=u~ u > u~ u g g'
+pyamplicol evaluate --card evaluate_pp_4j_member.toml --resolved \
+  --helicity 'h:-1,-1,-1,-1,-1,-1'
+```
+
+The resolved table lists helicities and LC flows in the member's leg order;
+for a conjugated member each flow word is reversed. Without `--helicity` it
+lists all 64 helicities times 24 flows. Python selects members
+with `Runtime.load("artifacts/pp_4j_flavor_blind", process="u~ g > u~ g g g")`,
+whose `representative_process_key`, `process_group_factor` and
+`charge_conjugated` describe the routing. The generated API drivers accept
+the same selection, for example:
+
+```console
+python artifacts/pp_4j_flavor_blind/API/python/check_standalone.py \
+  --process 'u~ g > u~ g g g' --kinematics data/pp_4j_momenta.json --json
+```
+
+**Group numerically.** `group_pp_4j.toml` is equivalent to
+`pyamplicol group-processes artifacts/pp_4j_flavor_blind`. It compares the 23
+generated representatives at random points, merges those whose resolved
+values agree up to a rational factor, and rewrites `process-groups.json` in
+place. The card sets `process.analyze_process_groups = "numerical"` because
+run cards otherwise use the schema default `none`; the `group-processes`
+subcommand defaults to `numerical`. Here the analysis takes about a second
+and reports no new relation: the 23 classes are already distinct. To test
+the flavour-blind assumption itself, generate all 486 subprocesses without
+`flavor_blind` (much slower) and let the analysis rebuild the same 23 groups;
+see the [process grouping guide](https://madgraph.org/pyamplicol/user/process-grouping/).
+
+## Run `q q~ > Z + 6g` With Recurrence, Compiled, And Eager
+
+Each matched card generates and profiles the same complete-selector,
+topology-replay LC workload:
+
+```console
+pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml
+pyamplicol profile --card qq_z6g_recurrence_jit_o2.toml
+
+pyamplicol generate --card qq_z6g_compiled_jit_o3.toml
+pyamplicol profile --card qq_z6g_compiled_jit_o3.toml
+
+pyamplicol generate --card qq_z6g_eager_jit_o2.toml
+pyamplicol profile --card qq_z6g_eager_jit_o2.toml
+```
+
+Recurrence JIT O2 is the default current-schedule lane, compiled JIT O3 builds
+process-local DAG evaluators, and eager-DAG JIT O2 applies prepared kernels to
+compact process tables. The explicit settings in these cards make the
+materialized-mode comparison stable if project defaults change again.
+
+## Generate A Compact On-The-Fly LC Artifact
+
+The dedicated OTF walkthrough expands `p p > Z j j`, loads the concrete
+ordering `d d~ > g z g`, warms one LC flow with a complete helicity sum, and
+then profiles the same selector workload:
+
+```console
+pyamplicol generate --card otf_pp_zjj.toml
+python python/otf_pp_zjj_warm_up.py
+pyamplicol profile --card otf_pp_zjj.toml
+```
+
+The Python step calls
+`Runtime.warm_up((point,), precision=16, color_flows=(flow,))`: its input is
+exactly one phase-space point, native `f64` is explicit, and omitting a
+helicity selector means sum every physical helicity. The standard terminal
+progress dashboard tracks query-family progress and live current/peak RSS.
+It is followed by a colored PrettyTable containing the selected stable flow
+ID, warm-up wall time, query counts, memory, and matrix element. Use
+`--color always` when capturing the ANSI-colored table through a pipe, or
+`--color-flow N` to choose another one-based physical flow.
+
+The `profile` command starts an independent runtime and prints pyAmpliCol's
+colored human benchmark tables. Its 128-point batches are throughput and
+benchmark-capacity measurements; they do not change the explicit
+`warm_up(...)` API's one-point contract.
+
+To reuse completed OTF preparation in another Python session or native program,
+call `runtime.save("process.otf-cache")` on the warmed handle. Load the same
+process output normally in the new program, then call
+`runtime.load_cache("process.otf-cache")` before evaluating with the same
+selectors. This is explicit API functionality: the separate CLI `profile`
+command above does not automatically read a saved cache. Small Python and
+C/C++/Fortran/Rust examples are in the online manual's
+[save/restore guide](https://madgraph.org/pyamplicol/user/runtime-and-selectors/#saving-an-otf-warm-cache)
+and [native API guide](https://madgraph.org/pyamplicol/user/native-apis/#saving-and-restoring-an-otf-cache).
+
+The smaller single-process card remains useful for quick inspection and a CLI
+profile without multiprocess expansion:
+
+```console
+pyamplicol generate --card builtin_sm_on_the_fly.toml
+pyamplicol inspect artifacts/builtin_sm_on_the_fly
+pyamplicol profile --card builtin_sm_on_the_fly.toml \
+  --color-flow 1 --batch-size 128 --target-runtime 5
+```
+
+The inspection reports the physical helicity/color-flow census without
+materializing either LC flow layout. The card's
+`evaluator.optimization.cores = 4` requests four query-construction threads; it
+does not promise four numerical-evaluation threads. Point-tile and workspace
+settings are not currently applied by this mode. The profile measures one
+runtime-selected LC flow with a helicity sum over 128-point batches. Generation
+requires the wheel-owned prepared JIT O2 bundle selected for the built-in
+model; the artifact carries the referenced kernels it needs at runtime.
+The walkthrough intentionally targets the practical OTF workload: LC,
+single-flow, helicity-sum execution at native `f64`. Contracted NLC and full
+color are available for low multiplicities but are not showcased here because
+their OTF construction cost grows quickly; higher-precision OTF execution is
+not available.
+
+## Reproduce The Z-Ladder Workloads
+
+These acceptance cards use two separately generated compiled-mode artifacts so
+their generation and profile logs remain independent. The first keeps the
+default `topology-replay` LC layout, selects flow ordinal `1` only at profile
+time, and sums all helicities. The second explicitly sets
+`color.lc_flow_layout = "all-flow-union"`, sums all flows, and selects one
+stable helicity ID only at profile time. The union shares currents across the
+physical flows and is optimized for this second workload.
+
+Both artifacts retain all physical LC flows and all physical helicities. Either
+can select any retained flow or helicity globally or per point at runtime;
+neither card fixes a selector at generation time. Generate and profile them
+independently:
+
+```console
+pyamplicol generate --card benchmark_z6g_single_flow_helicity_sum.toml
+pyamplicol profile --card benchmark_z6g_single_flow_helicity_sum.toml
+
+pyamplicol generate --card benchmark_z6g_all_flows_single_helicity.toml
+pyamplicol profile --card benchmark_z6g_all_flows_single_helicity.toml
+```
+
+Both profiles use native Rusticol wall timing, compressed JIT O3, 64-point
+batches, two warmups, at least five samples, and a twenty-second target. The
+cards use `u u~ > Z g g g g g g` as requested; the PDF's literal reference
+family uses `d d~ > Z + (n-1)g`, so replace `u u~` with `d d~` when reproducing
+that exact row rather than the equivalent up-quark topology.
+
+The runtime selector can be changed without regenerating. For example:
+
+```console
+pyamplicol profile \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --color-flow 2
+
+pyamplicol profile \
+  --card benchmark_z6g_all_flows_single_helicity.toml \
+  --helicity h:-1,+1,-1,+1,+1,-1,+1,-1,+1
+```
+
+Python's `Runtime.evaluate(..., color_flow_by_point=..., helicity_by_point=...)`
+accepts one physical selector per phase-space point. Homogeneous, alternating,
+and randomized selector batches all use the same complete artifact.
+
+The layout is also a dedicated CLI option. For example, this creates a union
+artifact from the otherwise topology-replay card:
+
+```console
+pyamplicol generate \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --lc-flow-layout all-flow-union \
+  --set generation.output=artifacts/uubar_z6g_all_flows_override
+```
+
+`topology-replay` remains the global default because it is optimized for a
+single runtime-selected flow with a helicity sum. `all-flow-union` is LC-only;
+configuration rejects it for NLC/full and for LC requests with a
+generation-selected color sector, a generation-selected helicity, or truncated
+color coverage.
+
+The execution mode can be overridden directly at invocation time. Use a
+different output so the eager artifact cannot collide with the compiled one:
+
+```console
+pyamplicol generate \
+  --card benchmark_z6g_single_flow_helicity_sum.toml \
+  --execution-mode eager \
+  --set generation.output=artifacts/uubar_z6g_single_flow_helicity_sum_eager
+```
+
+The eager override keeps the same complete reusable-selector contract and the
+card's LC flow layout. Eager generation and execution apply flow and helicity
+choices through Rusticol's selector schedule rather than generation-time
+specialization.
+
+`examples copy` also materializes wheel-owned `sm`, `scalars`, and
+`scalar_gravity` resources into `models/`. The included
+`python/copy_packaged_models.py` helper performs the resource-only operation for
+a separate workspace and refuses to merge into a non-empty destination unless
+`--force` is supplied. The public model API accepts filesystem paths, so no
+example relies on an installation directory.
+
+## One-Loop Examples
+
+### The master card: any process, the action on the command line
+
+`loop_generate.toml` is one card for any one-loop process: MG5_aMC's
+`loop_qcd_qed_sm` with its default restriction (QCD and QED corrections), the
+complex-mass scheme, stable external states (`[loop] external_widths =
+"zero"`), and the settings of all four actions. Name the process in MG5_aMC
+syntax with `--process` and the artifact with `--output`:
+
+```console
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output
+pyamplicol loop_generate.toml check    --output=./my_loop_output  # poles and Ward identities, regenerated in memory
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points: no momenta file needed
+pyamplicol loop_generate.toml profile  --output=./my_loop_output  # time per point and per stage
+pyamplicol loop_generate.toml profile  --output=./my_loop_output --runtime --stability  # and the stable digits
+```
+
+What each action does:
+
+| Action | What it does | Card section |
+| --- | --- | --- |
+| `generate` | writes the artifact to `--output` (default `generation.output`) | `[model]`, `[process]`, `[loop]`, `[generation]` |
+| `check` | regenerates the artifact's request in memory and checks the poles (Catani; loop-induced: finiteness) and Ward identities at seeded points; exit code 0 iff every check passed | `[check]` |
+| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles and a rotation stability estimate | `[evaluation]` |
+| `profile` | times batches of points per stage (trees, dressing, scatter, reduction) | `[benchmark]` |
+
+Steering:
+
+* **The process** (`--process`, repeatable; without it the card's entry,
+  the example above): MG5_aMC syntax. `[QCD]`, `[virt=QCD]`, `[QCD QED]` is
+  the one-loop virtual (only the virtual is computed; `[real=QCD]` is
+  refused), `[noborn=QCD]` a loop-induced |A_loop|^2 (`g g > h [noborn=QCD]`;
+  a process without a Born, `g g > h [QCD]`, is served loop-induced too),
+  `QED=2` an amplitude-order limit, `QCD^2<=4` a squared-order sector
+  selection (only the selected sectors are reported and summed), `/ z h` a
+  particle veto. Decay chains, `$` and `@N` are refused.
+  [Command-line guide](../docs/user/command-line-interface.md#mg5_amc-process-syntax).
+* **The artifact** (`--output DIR`): written by `generate`, read by the
+  other three (relative to the working directory).
+* **Any setting** (`--set PATH=VALUE`, repeatable), for example
+  `--set loop.model.scheme.mass_scheme=real-on-shell`,
+  `--set evaluation.reduction=ninjars` or `--set check.points=4`.
+* **Points**: `evaluate` and `profile` draw flat (RAMBO on diet) phase-space points
+  when no momenta file is given: `[evaluation.phase_space] points` (2),
+  `seed` (1; point i from seed + i) and `sqrt_s` (default: the artifact's
+  validation-point energy), with mu_r^2 = s per point; `--momenta FILE`
+  evaluates given points instead. Example:
+  `pyamplicol loop_generate.toml evaluate --output=./my_loop_output --set
+  evaluation.phase_space.points=5 --set evaluation.phase_space.sqrt_s=2000`.
+* **Widths**: an unstable external particle (a top, a Higgs) is stable in the
+  process: its width is fixed to zero by `external_widths = "zero"`; the
+  widths of particles that only propagate stay (complex masses).
+
+The four cards per process below stay as they are; the master card is the
+quickest way to try another process.
+
+Four one-loop walkthroughs, two Born-interfered virtuals and two loop-induced
+processes, each with one pure-QCD and one mixed QCD/electroweak case in the
+complex-mass scheme. Each has a generate, a check, an evaluate and a profile
+card, and `python/loop_walkthrough.py` runs every step from the generate card (to run them
+from a wheel built from a checkout, in a fresh environment, see
+[Build a wheel from a checkout and run the loop examples](../docs/user/installation.md#build-a-wheel-from-a-checkout-and-run-the-loop-examples)):
+
+```console
+pyamplicol loop_gg_zgg_generate.toml        # or: pyamplicol examples run loop_gg_zgg_generate
+pyamplicol check loop_gg_zgg_generate.toml  # the card's request, regenerated in memory
+pyamplicol loop_gg_zgg_check.toml           # the same checks on the generated artifact
+pyamplicol loop_gg_zgg_evaluate.toml        # coloured tables (--color never|always)
+pyamplicol loop_gg_zgg_profile.toml         # runtime of TIRust and NinjaRS side by side
+pyamplicol profile --card loop_gg_zgg_profile.toml --stability            # stable-digit statistics
+pyamplicol profile --card loop_gg_zgg_profile.toml --runtime --stability --stability-points 200 --loop-reduction tirust
+pyamplicol profile artifacts/loop_gg_zgg --momenta data/loop_gg_zgg_momenta.json --checked
+make -C native loop                         # the native client of the walkthrough
+python python/loop_walkthrough.py loop_gg_zgg_generate.toml --points 2 --regenerate \
+  --native-client native/loop_client
+```
+
+The evaluate cards print coloured tables: the finite part, the single and
+the double pole each in its own colour, the squared-order sectors, the
+carrier and the reduction backend of every point, and the stability verdicts
+(green: success or within the target; yellow: recovered, by a higher-precision
+rescue or the per-point fallback; red: failed, refused or above the target).
+The profile cards compare both reduction backends: `--runtime` (the default)
+times them in the default setup with the ratio between them, `--stability`
+measures over `[benchmark] stability_points` flat points the stable digits of
+pure binary64 against a re-run in the reference precision (`--ground-truth`,
+double-double by default), at the percentiles 1 per mil,
+1 %, 10 % and 50 % (a point a backend refuses in binary64 is measured with its
+best-effort value at its true digits; only a point with no binary64 value
+counts 0 digits), and
+how well the default rotation estimate predicts them
+([the command-line guide](../docs/user/command-line-interface.md#profile)).
+Every card draws 1000 points (the default), evaluated on 10 worker processes
+(`[benchmark] n_core`, `--n_core`); the progress display shows the estimated
+time to completion (`loop_gg_zgg` is the slow one: NinjaRS's double-double
+reference costs about 30 s per point), and Ctrl-C prints the tables of the
+points evaluated so far. `--stability-points` and `--n_core` change both.
+The tables come alone; `--fields-description-help` adds a plain-words
+description of every table and column.
+
+The walkthrough generates the artifact with the example's correlator
+declaration; `--regenerate` makes it do so even when the card's generation
+above already wrote `artifacts/loop_gg_zgg` without the declaration (without
+`--regenerate` it reuses an existing artifact, whose correlated step then
+refuses the undeclared correlators: generate it with `pyamplicol generate
+--card loop_gg_zgg_generate.toml --correlators data/loop_gg_zgg_correlators.json`
+instead to reuse it).
+
+The walkthrough steps, in order:
+
+1. **`pyamplicol check`** of the card, in its own process (exit code 0 iff
+   every applicable check passed): the Born-interfered poles against
+   Catani's operator of the requested
+   corrections and the Ward identity of every external gluon and photon; the
+   loop-induced finiteness and Ward probes; the Goldstone-equivalence probe
+   where it applies (otherwise its row reads "not applicable" with the
+   reason). A row double-double cannot decide (its residual above the
+   criterion while within ten times its own estimate) is re-run alone in
+   arbitrary precision at the digits derived from the shortfall
+   (`--arbitrary-digits` sets them); one still undecided there reads
+   "undecided" and fails the check (exit 1). The Ward rows of a request with
+   electroweak corrections and an on-shell zero-width external massive quark
+   read "not applicable" (its Ward identity is not guaranteed there; Ward
+   rows are not split by squared-order sector). See [the command-line guide](../docs/user/command-line-interface.md#check).
+2. **Generation** through the typed API (`Generator`, in a child process so
+   that the generation's memory is returned before the evaluation steps),
+   with the example's colour- and spin-correlator declaration (`data/<example>_correlators.json`;
+   on the command line `pyamplicol generate --card <card> --correlators
+   data/<example>_correlators.json`). The loop-induced generation probes are
+   off by default (`[generation] loop_induced_probes = true` or
+   `--loop-induced-probes` enables them); `pyamplicol check` runs the same
+   checks on demand, also for the Born-interfered examples.
+3. **Evaluation** with `reduction = "auto"` (the per-type default: TIRust for a
+   loop-induced process, NinjaRS for a Born-interfered one), poles and the
+   recommended stability checks, then the finite part only, then the other
+   backend explicitly (its deviation from `auto` printed).
+4. **Profile**: the coloured per-stage table (trees, dressing, scatter,
+   reduction, rest, read from the native executor's stage report of the timed
+   calls) for the checked default and for `reduction_unchecked=True`, a timing
+   mode with no accuracy certificate (python-api.md, "Unchecked reductions").
+5. **Correlated evaluation**: `evaluate_correlated_many` with the declared
+   colour histories T_i.T_j and a spin vector (transverse to the leg's
+   momentum) on the declared vector leg.
+6. **Helicity selection**: one helicity (the largest at the first point)
+   against the summed call, at the artifact's colour accuracy (only the
+   selected rows are formed: their trees, loop links and reduction lanes).
+7. **Partial weights per squared coupling order**: `evaluate_orders`, one
+   evaluation viewed per sector and Born order, and its explicit sum checked
+   against the correlated route's `"born"` total at the same settings summed
+   over the orders (a separate call that does not read the partials; bitwise
+   equal where it reads the same contraction as the plain evaluation): the
+   deviation is printed in units of roundoff of the pre-cancellation scale S
+   and must stay within ten times the evaluation's own estimate. The test
+   suite holds the sum against the resolved evaluation to rounding.
+8. **The native SDK** (`make -C native loop`, then `native/loop_client ARTIFACT
+   PROCESS MOMENTA.txt [HELICITY]`, which the walkthrough calls with
+   `SYMBOLICA_LICENSE` unset): open, `auto` and the other backend, the
+   unchecked setting, the correlated call and one helicity against the summed
+   call (loop-induced and Born-interfered processes alike; after one first
+   selected call, which forms a Born-interfered process's selection once). In
+   a source checkout without the
+   wheel's SDK, pass `LOOP_SDK_CFLAGS` and `LOOP_SDK_LIBS` (the Makefile's
+   comment).
+
+Times below: this host (an AMD EPYC server shared with other jobs), 2026-11-09,
+generation through the public CLI card with the probes off (default workers),
+`check` at two points, evaluation per point on one pinned core at a batch of
+8 points (medians of paired rounds), the profile at a batch of 32 points
+(median of three calls); the walkthrough's own wall time at its two points
+and at the CI smoke test's one point.
+
+### `u u~ > t t~ g g`, NLO QCD (Born-interfered)
+
+`loop_sm` with `restriction = "no_b_mass"` and `WT = 0` (the top is an
+external, on-shell state; a coloured particle's width breaks gauge invariance
+in a fixed-width propagator). Full colour by default, whose helicity
+selection keeps some helicity rows with every colour component; the optional
+leading-colour variant `loop_uux_ttxgg_lc_generate.toml` (`--lc-card`) adds
+its colour-flow selection. One squared
+order (QCD^10): its partial is the value. Colour histories T_1.T_5 and
+T_3.T_5 and a spin vector on gluon 5.
+
+Measured (2026-11-09): generation 11.4 s, peak 0.66 GiB (with the correlators
+12.6 s; the leading-colour variant 16.3 s, 0.68 GiB); `check` of the card 12.3
+s at two points (every pole and Ward row passes in binary64). Per point, one
+pinned core, a batch of 8: NinjaRS (`auto`) 22-23 ms checked and unchecked;
+TIRust 26 ms with all 8 points refused (an ill-conditioned Gram matrix, a
+typed refusal: the explicit backend has no fallback) and 47-49 ms unchecked;
+one helicity (h42, the largest at the first point) 12.7 ms against 22.0 ms summed
+(0.58; the reduction, 5.8 ms, is the summed call's: the selected row's seeds
+reduce the same lanes), at leading colour 4.9 ms against 7.5 ms (0.66). The
+whole walkthrough at two points (fresh workspace, both generations included):
+67 s, peak 0.77 GiB; at one point (the CI smoke test): 73 s.
+
+### `u u~ > d d~ e+ e-`, NLO QCD+EW at every order (complex-mass scheme)
+
+`loop_qcd_qed_sm_Gmu` with QCD and QED corrections, massless quarks
+(`MB = 0`, `MTA = 0`; under the complex-mass scheme the masses are fixed and
+the Yukawas follow) and the widths of the unstable particles in the
+propagators. `coupling_order_policy = "explicit"` with QCD <= 2, QED <= 4
+keeps both Born amplitude orders (QCD^2 QED^2 and QED^4; `"minimal"` keeps the
+lowest only): three Born squared orders (QCD^4 QED^4, QCD^2 QED^6, QED^8) and
+four virtual sectors (QCD^6 QED^4, QCD^4 QED^6, QCD^2 QED^8, QED^10), each
+printed apart by `loop_uux_ddxepem_orders.toml` and the walkthrough's step 7.
+The process has no external gluon, photon or massive vector: its Ward and
+Goldstone rows read "not applicable" and `check` decides on the pole check
+alone. Colour correlations only (no vector leg); the helicity selection at
+full colour (an electroweak model runs at full colour, where a selection keeps
+some helicity rows with every colour component): one helicity (h22, the
+largest at the first point) 64.0 ms against 108.2 ms summed per point, one
+pinned core, a batch of 8 (0.59; the reduction, 23 ms, is the summed call's).
+Generation threshold of this example: at most 10 minutes and 8 GiB.
+
+Measured (2026-11-09, on a shared host at load ~160-210): generation
+223-232 s, peak 7.65-8.37 GiB (three runs; the peak varies by run); `check` of the
+card 232 s, 7.64 GiB: every pole row of the four sectors passes in binary64
+at both points. Per point, one pinned core, a batch of 8: NinjaRS (`auto`)
+111-151 ms checked, 145-153 ms unchecked; TIRust 144-152 ms with 2 of 8
+points refused (an ill-conditioned Gram matrix, a typed refusal), 147 ms
+unchecked. At the four points of `data/loop_uux_ddxepem_momenta.json` the
+virtual equals Recola 2.3.0 (the smoke test reads the fixture
+`tests/fixtures/loop/uux-ddxepem-recola-cms.json`): every Born order to
+4e-14, both poles of every sector within the evaluation's estimate, and the
+finite parts within the two codes' complex-mass counterterm prescriptions
+(2e-6 to 5e-4 relative; the difference falls as the widths squared). The
+whole walkthrough at two points: 586 s (`check` 241 s, generation 315 s on
+the loaded host), peak 8.0 GiB; from the 1.0.3 wheel (2026-11-11, the four
+examples side by side): 868 s (`check` 435 s, generation 360 s), peak 19.6 GiB
+in the walkthrough's own process, reached in its evaluation steps 5 to 8.
+
+### `g g > z g g`, loop-induced (every quark loop)
+
+`loop_sm`, `restriction = "no_b_mass"`, `r2_strategy = "model"`, no particle
+veto: the five massless quarks and the top circulate (a top-only loop is not
+gauge invariant with an external Z, the t-b doublet's anomaly); massless tau,
+no fixed widths. A QCD-only request runs in unitary gauge, so the Goldstone
+row reads "not applicable" (the identity needs the Goldstone vertices). This
+is the loop-induced colour-correlation showcase: T_1.T_2, T_1.T_4 and T_4.T_5
+over its four gluons (non-trivial, unlike the two-parton T_1.T_2 = -C_A),
+plus a spin vector on gluon 4. One squared order (QCD^8 QED^2).
+
+Measured (2026-11-09): generation 10.4 s, peak 0.68 GiB (with the correlators
+10.6 s); `check` of the card 19.1 s at two points (finiteness and the Ward
+probe of the gluons pass in binary64). Per point, one pinned core, a batch of
+8: TIRust (`auto`) 187-194 ms checked and 68-73 ms unchecked; NinjaRS 298-315
+ms (unchecked 299-306 ms); one helicity 20 ms against 200 ms summed (0.10).
+The whole walkthrough at two points: 64 s, peak 1.9 GiB; at one point (the
+CI smoke test): 50 s.
+
+### `g g > e+ e- m+ m-`, loop-induced (complex-mass scheme)
+
+`loop_qcd_qed_sm_Gmu` (the shipped muon is `m-` / `m+`) with complex Z, W,
+H and top masses in the propagators and stable external leptons. Its two
+coloured partons make T_1.T_2 = -C_A |A|^2 trivial; it shows the spin vector
+on gluon 1. One squared order.
+
+Measured (2026-11-09, preparation cache cold): generation 129 s, peak
+4.19 GiB, of which 20.0 s is the electroweak request-model preparation;
+`check` of the card 132 s (preparation 20.5 s), 4.23 GiB. Per
+point, one pinned core, a batch of 8: TIRust (`auto`) 3.1 ms checked and
+unchecked; NinjaRS 4.6-4.7 ms; one helicity 1.8 ms against 3.1 ms summed
+(0.58). The whole walkthrough at two points: 266 s, peak 4.4 GiB in the
+generation's child process.
+
+## Typed Python
+
+Plan or generate the primary process through the typed API:
+
+```console
+python python/typed_generation.py artifacts/pp_zjj_typed --plan-only
+python python/typed_generation.py artifacts/pp_zjj_typed
+```
+
+The script compiles the external JSON model before planning, carries explicit
+`p`/`j` definitions in the resolved configuration, and writes the same root
+API bundle as the CLI.
+
+Evaluate with a parameter card plus a direct override:
+
+```console
+python python/runtime_evaluation.py \
+  artifacts/pp_zjj data/pp_zjj_momenta.json \
+  --process 'd d~ > g z g' \
+  --parameters data/model_parameters.json \
+  --set-parameter aS=0.1165
+```
+
+The JSON output includes the resolved tensor `shape`, flattened row-major
+`values`, its explicit `resolved_sum`, and the optimized
+`compatibility_total`, in addition to the selected physics-axis IDs.
+
+Benchmark the selected process:
+
+```console
+python python/benchmark.py artifacts/pp_zjj \
+  --process 'd d~ > g z g' \
+  --momenta data/pp_zjj_momenta.json \
+  --color-flow 1
+```
+
+The compact OTF counterpart uses the same phase-space point but explicitly
+prepares just one LC flow before evaluating it:
+
+```console
+python python/otf_pp_zjj_warm_up.py
+```
+
+`python/external_models.py` demonstrates explicit JSON and trusted-UFO
+`ModelSource` construction:
+
+```console
+python python/external_models.py models/json/sm/sm.json models/ufo/sm
+```
+
+## Generated Python, C, Rust, C++, And Fortran
+
+Every generated artifact contains one `API/` bundle. All drivers select a
+process, accept JSON/direct model-parameter updates, evaluate resolved values,
+sum them, and compare with the optimized total:
+
+```console
+python artifacts/pp_zjj/API/python/check_standalone.py \
+  --process 'd d~ > g z g' --set-parameter aS 0.117 0 --json
+make -C artifacts/pp_zjj/API/c run \
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --json'
+make -C artifacts/pp_zjj/API/rust run \
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --precision 16 --json'
+make -C artifacts/pp_zjj/API/cpp run \
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --json'
+make -C artifacts/pp_zjj/API/fortran run \
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --json'
+```
+
+The requested expression need not be a stored alias. Rusticol identifies a
+unique generated representative with the same incoming and outgoing particle
+multisets, then applies the side-preserving permutation to input momenta,
+helicity and LC-flow selectors, and resolved output metadata. Incoming and
+outgoing legs never cross `>`; an ambiguous match fails with the candidate
+stable process IDs.
+
+All five drivers also accept `--kinematics PATH`. The JSON file contains one
+point as `[external][4]`, or the same point wrapped as a singleton batch
+`[[external][4]]`, in the exact particle order written in `--process`. Each
+component may be a JSON number or a decimal string. Decimal strings avoid an
+f64 round trip in the arbitrary-precision Python driver; native drivers parse
+the same representation for f64. Multiple points, non-finite values, booleans,
+and mismatched shapes are rejected. Without this option the driver reorders
+the artifact's bundled validation point automatically.
+
+`--model-parameters data/model_parameters.json` applies a UFO-style flat JSON
+object before evaluation. Each mutable external parameter maps to a finite
+number or `[real, imaginary]`, matching a serialized UFO restriction card.
+Repeated `--set-parameter NAME REAL IMAG` options are applied afterward and
+therefore override the card atomically.
+
+In a copied workspace below a source checkout, this exact block works even in
+a later shell where `.venv` has not been activated. Artifacts generated by an
+older pyAmpliCol retain their older API files and must be regenerated once:
+
+```console
+../.venv/bin/pyamplicol generate_pp_zjj_from_ufo_sm.toml \
+  --set generation.mode=replace
+```
+
+The generated Rust source includes the wheel-owned safe wrapper located by
+`rusticol-config --rust-source` and is compiled directly with `rustc` plus
+`rusticol-config --rustflags`; no Rust crate dependency is needed. The Makefile
+also has an optional `run-script` target for separately installed
+`rust-script`, using `rusticol-config --cargo-rustflags`. C, Rust, C++, and
+Fortran support f64 (`--precision 16`) only. At f64, direct SymJIT,
+target-compatible ASM/C++, and eager JIT artifacts run without a Symbolica
+runtime. The Python driver also exposes precision-controlled Symbolica
+evaluation when exact expressions are available.
+
+## Hand-Written Native Examples
+
+`native/runtime.cpp`, `native/runtime.f90`, and `native/Makefile` consume only
+the SDK discovered from an installed wheel:
+
+```console
+make -C native
+native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_3 \
+  data/model_parameters.json
+native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_3 \
+  data/model_parameters.json
+```
+
+Both examples apply a direct `aS` override, evaluate the five-particle
+validation point, and verify that resolved components reproduce the total.
+
+Current release validation and upload status are listed in
+the [release and support guide](https://madgraph.org/pyamplicol/user/release-and-support/).

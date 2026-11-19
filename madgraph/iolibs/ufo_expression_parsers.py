@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2009 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2009 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -32,7 +32,7 @@ import madgraph.various.misc as misc
 from madgraph import MadGraph5Error
 import vendor.ply.lex as lex
 import vendor.ply.yacc as yacc
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 
 logger = logging.getLogger('madgraph.ufo_parsers')
 if madgraph.ordering:
@@ -52,12 +52,10 @@ class UFOExpressionParser(object):
     def __init__(self, **kw):
         """Initialize the lex and yacc"""
 
-        modname = self.__class__.__name__
         self.debugfile = os.path.devnull
-        self.tabmodule = os.path.join(root_path, "iolibs",  modname + "_" + "parsetab.py")
         lex.lex(module=self, debug=0)
         self.y=yacc.yacc(module=self, debug=0, debugfile=self.debugfile,
-                  tabmodule=self.tabmodule)
+                  write_tables=0)
         
     def parse(self, buf):
         """Parse the string buf"""
@@ -303,7 +301,7 @@ class UFOExpressionParserFortran(UFOExpressionParser):
     builtin_equiv = {'abs': 'ABS',
                      'bool': 'LOGICAL',
                      'float': 'REAL',
-                     #'complex': 'COMPLEX', handle separatly
+                     #'complex': 'COMPLEX', handle separately
                      'int': 'INTEGER',
                      'min': 'MIN',
                      'max': 'MAX'
@@ -718,9 +716,9 @@ class UFOExpressionParserMPFortran(UFOExpressionParserFortran):
         elif p[1] == 'sec': p[0] = '1e0_16/sin' + p[2]
         elif p[1] == 'acsc': p[0] = 'asin(1e0_16/' + p[2] + ')'
         elif p[1] == 'asec': p[0] = 'acos(1e0_16/' + p[2] + ')'
-        elif p[1] in ['atan', 'cmath.atan'] : p[0] = 'atan(real' + p[2]+')'
-        elif p[1] in ['tan', 'cmath.tan']: p[0] = 'tan(real' + p[2]+')'
-        elif p[1] == 're': p[0] = 'real' + p[2]
+        elif p[1] in ['atan', 'cmath.atan'] : p[0] = 'atan(real' + p[2][:-1]+',KIND=16))'
+        elif p[1] in ['tan', 'cmath.tan']: p[0] = 'tan(real' + p[2][:-1]+',KIND=16))'
+        elif p[1] == 're': p[0] = 'real' + p[2][:-1]+',KIND=16)'
         elif p[1] == 'im': p[0] = 'imag' + p[2]
         elif p[1] == 'arg': p[0] = 'mp_arg(CMPLX(' + p[2] + ',KIND=16))'
         elif p[1] == 'cmath.sqrt' or p[1] == 'sqrt': p[0] = 'sqrt(CMPLX(' + p[2] + ',KIND=16))'
@@ -738,9 +736,9 @@ class UFOExpressionParserMPFortran(UFOExpressionParserFortran):
         
         if p[2] == '.real':
             if p[1].startswith('('):
-                p[0] = 'real' +p[1]
+                p[0] = 'real' +p[1][:-1]+',KIND=16)'
             else:
-                p[0] = 'real(%s)' % p[1]
+                p[0] = 'real(%s,KIND=16)' % p[1]
         elif p[2] == '.imag':
             if p[1].startswith('('):
                 p[0] = 'imag' +p[1]
@@ -772,7 +770,7 @@ class UFOExpressionParserCPP(UFOExpressionParser):
     builtin_equiv = {'abs': 'ABS',
                      'bool': 'bool',
                      'float': 'float',
-                     #'complex': 'COMPLEX', handle separatly
+                     #'complex': 'COMPLEX', handle separately
                      'int': 'int',
                      'min': 'min',
                      'max': 'max'
@@ -900,7 +898,7 @@ class UFOExpressionParserCPP(UFOExpressionParser):
 class UFOExpressionParserPythonIF(UFOExpressionParser):
     """An ad hoc parser for UFO algebraic expressions with if statement, outputting
     Python-style code, with the conditional 'if' expressions simplified using
-    pre-defined set of variables specified when instanciating this parser."""
+    pre-defined set of variables specified when instantiating this parser."""
 
     logical_equiv = {'==':'==',
                      '>=':'>=',
@@ -914,7 +912,7 @@ class UFOExpressionParserPythonIF(UFOExpressionParser):
     builtin_equiv = {'abs': 'abs',
                      'bool': 'bool',
                      'float': 'float',
-                     #'complex': 'COMPLEX', handle separatly
+                     #'complex': 'COMPLEX', handle separately
                      'int': 'int',
                      'min': 'min',
                      'max': 'max'

@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2016 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2016 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -67,6 +67,7 @@ class Systematics(object):
                  ion_scaling=True,
                  weight_format=None,
                  weight_info=None,
+                 lo_nqcd=None,
                  ):
 
 
@@ -113,6 +114,17 @@ class Systematics(object):
 
         self.orig_pdf = self.banner.run_card.get_lhapdf_id()
         matching_mode = self.banner.get('run_card', 'ickkw')
+
+        # Reconstruction of the LO reweighting info for event files that do not
+        # carry an <mgrwt> block (e.g. the mg7 output): lo_nqcd is the single
+        # alpha_s power of the process, and the beam energies (needed for the
+        # Bjorken-x) come from the run_card. See Event.reconstruct_lo_weight.
+        self.lo_nqcd = lo_nqcd
+        try:
+            self.lo_ebeam = (float(self.banner.get('run_card', 'ebeam1')),
+                             float(self.banner.get('run_card', 'ebeam2')))
+        except Exception:
+            self.lo_ebeam = None
 
         #check for beam
         beam1, beam2 = self.banner.get_pdg_beam()
@@ -168,14 +180,15 @@ class Systematics(object):
                 raise SystematicsError('EVA only works with e/mu beams, not lpp* = %s' % self.b2)
             #self.b1 = beam1//2212
             isEVAxDIS=True
-        # none, chff, edff
-        if(self.banner.run_card['pdlabel'] in ['none','chff','edff']):
-            raise SystematicsError('Systematics not supported for pdlabel=none,chff,edff')
+        # none, and gamma-UPC (edff, chff, ... with neutron tagging)
+        pdlabel = self.banner.run_card['pdlabel']
+        if pdlabel == 'none' or banner_mod.is_upc_label(pdlabel):
+            raise SystematicsError('Systematics not supported for pdlabel=%s (none and gamma-UPC labels)' % pdlabel)
 
         self.orig_ion_pdf = False
         self.ion_scaling = ion_scaling
         self.only_beam = only_beam 
-        if isinstance(self.banner.run_card, banner_mod.RunCardLO):
+        if self.banner.run_card.LO:  # RunCardLO and the mg7 RunCardMG7 are LO
             self.is_lo = True
             if not self.banner.run_card['use_syst']:
                 raise SystematicsError('The events have not been generated with use_syst=True. Cannot evaluate systematics error on these events.')
@@ -293,7 +306,7 @@ class Systematics(object):
         # For e+/e- type of collision initialise the running of alps
         if self.b1 == 0 == self.b2 or isEVA:
             try:
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
             except ImportError:
                 root_path = pjoin(root, os.pardir, os.pardir)
                 try:
@@ -304,7 +317,7 @@ class Systematics(object):
                     cmd = me_int.Cmd(root_path,force_run=True)                
                 if 'mg5_path' in cmd.options and cmd.options['mg5_path']:
                     sys.path.append(cmd.options['mg5_path'])
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
                 
             if not hasattr(self.banner, 'param_card'):
                 param_card = self.banner.charge_card('param_card')
@@ -478,9 +491,14 @@ class Systematics(object):
         #print "normalisation is ", norm
         #print "nb_event is ", nb_event
     
-        max_scale, min_scale = 0,sys.maxsize
-        max_alps, min_alps = 0, sys.maxsize
-        max_dyn, min_dyn = 0,sys.maxsize
+        # Bounds of each envelope, None until a variation is met: a
+        # cross-section can be negative (an interference, for instance), so
+        # neither 0 nor sys.maxsize is a neutral starting value.
+        max_scale, min_scale = None, None
+        max_alps, min_alps = None, None
+        max_dyn, min_dyn = None, None
+        upper = lambda bound, value: value if bound is None else max(bound, value)
+        lower = lambda bound, value: value if bound is None else min(bound, value)
         pdfs = {}
         dyns = {} # dyn : {'max': , 'min':}
 
@@ -508,28 +526,28 @@ class Systematics(object):
             mur, muf, alps, dyn, pdf = arg[:5]
             if pdf == self.orig_pdf and (dyn==self.orig_dyn or dyn==-1)\
                                               and (mur!=1 or muf!=1 or alps!=1):
-                max_scale = max(max_scale,all_cross[i])
-                min_scale = min(min_scale,all_cross[i])
+                max_scale = upper(max_scale,all_cross[i])
+                min_scale = lower(min_scale,all_cross[i])
             if pdf == self.orig_pdf and mur==1 and muf==1 and \
                                     (dyn==self.orig_dyn or dyn==-1) and alps!=1:
-                max_alps = max(max_alps,all_cross[i])
-                min_alps = min(min_alps,all_cross[i]) 
+                max_alps = upper(max_alps,all_cross[i])
+                min_alps = lower(min_alps,all_cross[i])
             
             if pdf == self.orig_pdf and mur==1 and muf==1 and alps==1:
-                max_dyn = max(max_dyn,all_cross[i])
-                min_dyn = min(min_dyn,all_cross[i])
+                max_dyn = upper(max_dyn,all_cross[i])
+                min_dyn = lower(min_dyn,all_cross[i])
                                             
             if pdf == self.orig_pdf and (alps!=1 or mur!=1 or muf!=1) and \
                                                 (dyn!=self.orig_dyn or dyn!=-1):
                 if dyn not in dyns:
-                    dyns[dyn] = {'max':0, 'min':sys.maxsize,'central':0}
+                    dyns[dyn] = {'max':None, 'min':None,'central':0}
                 curr = dyns[dyn]
-                curr['max'] = max(curr['max'],all_cross[i])
-                curr['min'] = min(curr['min'],all_cross[i])
+                curr['max'] = upper(curr['max'],all_cross[i])
+                curr['min'] = lower(curr['min'],all_cross[i])
             if pdf == self.orig_pdf and (alps==1 and mur==1 and muf==1) and \
                                                 (dyn!=self.orig_dyn or dyn!=-1):
                 if dyn not in dyns:
-                    dyns[dyn] = {'max':0, 'min':sys.maxsize,'central':all_cross[i]}
+                    dyns[dyn] = {'max':None, 'min':None,'central':all_cross[i]}
                 else:
                     dyns[dyn]['central'] = all_cross[i]          
                 
@@ -549,12 +567,23 @@ class Systematics(object):
         resume.write( '#***************************************************************************\n')
         resume.write( "#\n")
         resume.write( '# original cross-section: %s\n' % all_cross[0])
-        if max_scale:
-            resume.write( '#     scale variation: +%2.3g%% -%2.3g%%\n' % ((max_scale-all_cross[0])/all_cross[0]*100,(all_cross[0]-min_scale)/all_cross[0]*100))
-        if max_alps:
-            resume.write( '#     emission scale variation: +%2.3g%% -%2.3g%%\n' % ((max_alps-all_cross[0])/all_cross[0]*100,(all_cross[0]-min_alps)/all_cross[0]*100))
-        if max_dyn and (max_dyn!= all_cross[0] or min_dyn != all_cross[0]):
-            resume.write( '#     central scheme variation: +%2.3g%% -%2.3g%%\n' % ((max_dyn-all_cross[0])/all_cross[0]*100,(all_cross[0]-min_dyn)/all_cross[0]*100))
+        # variations in percent of the size of the central value: '+' is the
+        # increase of the cross-section, also when it is negative. They are
+        # undefined (printed as nan) for a zero central value.
+        if all_cross[0]:
+            percent = lambda value: value / abs(all_cross[0]) * 100
+        else:
+            percent = lambda value: float('nan')
+        # a one-sided envelope (all the variations on the same side of the
+        # central value) is reported as 0% on the other side
+        up = lambda bound: percent(max(0., bound-all_cross[0]))
+        down = lambda bound: percent(max(0., all_cross[0]-bound))
+        if max_scale is not None:
+            resume.write( '#     scale variation: +%2.3g%% -%2.3g%%\n' % (up(max_scale),down(min_scale)))
+        if max_alps is not None:
+            resume.write( '#     emission scale variation: +%2.3g%% -%2.3g%%\n' % (up(max_alps),down(min_alps)))
+        if max_dyn is not None and (max_dyn!= all_cross[0] or min_dyn != all_cross[0]):
+            resume.write( '#     central scheme variation: +%2.3g%% -%2.3g%%\n' % (up(max_dyn),down(min_dyn)))
         if self.banner.run_card['pdlabel'] in ['eva']:
             resume.write( '# PDF variation not available for EVA.\n')
         elif self.orig_pdf.lhapdfID in pdfs:
@@ -566,7 +595,7 @@ class Systematics(object):
             except RuntimeError:
                 resume.write( '# PDF variation: missing combination\n')
             else:
-                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (pdferr.errplus*100/all_cross[0], pdferr.errminus*100/all_cross[0]))       
+                resume.write( '# PDF variation: +%2.3g%% -%2.3g%%\n' % (percent(pdferr.errplus), percent(pdferr.errminus)))
         # report error/central not directly linked to the central
         resume.write( "#\n")        
         for lhapdfid,values in pdfs.items():
@@ -584,10 +613,10 @@ class Systematics(object):
             try:
                 pdferr =  pdfset.uncertainty(values)
             except RuntimeError:
-                # the same error can happend to some other type of error like custom.
+                # the same error can happen to some other type of error like custom.
                 pass
             else:
-                resume.write( '#PDF %s: %g +%2.3g%% -%2.3g%%\n' % (pdfset.name, pdferr.central,pdferr.errplus*100/all_cross[0], pdferr.errminus*100/all_cross[0]))
+                resume.write( '#PDF %s: %g +%2.3g%% -%2.3g%%\n' % (pdfset.name, pdferr.central,percent(pdferr.errplus), percent(pdferr.errminus)))
 
         dyn_name = {1: r'\sum ET', 2:r'\sum\sqrt{m^2+pt^2}', 3:r'0.5 \sum\sqrt{m^2+pt^2}',4:r'\sqrt{\hat s}' }
         for key, curr in dyns.items():
@@ -596,10 +625,10 @@ class Systematics(object):
             central, maxvalue, minvalue = curr['central'], curr['max'], curr['min']
             if central == 0:
                 continue
-            if maxvalue == 0:
+            if maxvalue is None:
                 resume.write("# dynamical scheme # %s : %g # %s\n" %(key, central, dyn_name[key]))
             else:
-                resume.write("# dynamical scheme # %s : %g +%2.3g%% -%2.3g%% # %s\n" %(key, central, (maxvalue-central)/central*100,(central-minvalue)/central*100, dyn_name[key]))
+                resume.write("# dynamical scheme # %s : %g +%2.3g%% -%2.3g%% # %s\n" %(key, central, max(0., maxvalue-central)/abs(central)*100,max(0., central-minvalue)/abs(central)*100, dyn_name[key]))
       
         resume.write('\n'.join(to_report))
 
@@ -941,7 +970,14 @@ class Systematics(object):
         """ 
         pdf is a lhapdf object!"""
         
-        loinfo = event.parse_lo_weight()
+        loinfo = event.parse_lo_weight(nqcd=self.lo_nqcd, ebeam=self.lo_ebeam)
+        if loinfo is None:
+            raise SystematicsError(
+                "The event file does not contain the per-event reweighting "
+                "information (<mgrwt>: scales, x1/x2, parton PDGs and the "
+                "alpha_s power) required to compute LO systematics. For a "
+                "process with a single alpha_s power, pass lo_nqcd (that power) "
+                "so it can be reconstructed from the events.")
         if dyn == -1:
             mur = loinfo['ren_scale']
             if self.b1 != 0 and loinfo['pdf_pdg_code1']:
@@ -1121,7 +1157,7 @@ class Systematics(object):
         elif(vPol==-1):
             return self.get_eva_stripped_pdf_vm(muf,vPID,fPID,xx,beam,ievo_eva,evaorder)
         else:
-            raise SystematicsError("unknow EVA vPol: %s " % vPol)
+            raise SystematicsError("unknown EVA vPol: %s " % vPol)
         
     # scale dependence of f_V+ according to EVA accuracy
     def get_eva_stripped_pdf_vp(self, muf, vPID, fPID, xx, ebeam, ievo_eva=0, evaorder=0):
@@ -1323,6 +1359,8 @@ def call_systematics(args, result=sys.stdout, running=True,
 
 
     input, output = args[0:2]
+    if input.endswith('.gz') and not os.path.exists(input):
+        input = input[:-3]
     
     start_opts = 2
     if output and output.startswith('-'):
@@ -1345,7 +1383,7 @@ def call_systematics(args, result=sys.stdout, running=True,
                     opts[key]=[tuple(values)]
             elif key == 'result':
                 result = open(values[0],'w')
-            elif key in ['start_event', 'stop_event', 'only_beam']:
+            elif key in ['start_event', 'stop_event', 'only_beam', 'lo_nqcd']:
                 opts[key] = banner_mod.ConfigFile.format_variable(values[0], int, key)
             elif key in ['write_banner', 'ion_scalling', 'no_banner', 'no_closing_tag']:
                 opts[key] = banner_mod.ConfigFile.format_variable(values[0], bool, key)
@@ -1355,7 +1393,7 @@ def call_systematics(args, result=sys.stdout, running=True,
                 else:
                     opts[key] = values
         else:
-            raise SystematicsError("unknow argument %s" % arg)
+            raise SystematicsError("unknown argument %s" % arg)
 
     #load run_card and extract parameter if needed.
     if 'from_card' in opts:

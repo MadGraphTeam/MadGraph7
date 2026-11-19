@@ -3,31 +3,125 @@ from __future__ import absolute_import
 import math
 from math import sqrt, pow
 from itertools import product
+
+
+class _WView:
+    """A writable view into the spin-representation part of a WaveFunction.
+    
+    WaveFunction stores the 4-momentum in indices 0-1 (as complex numbers)
+    and the spin components starting at index 2.  This view provides
+    zero-based indexed access to those spin components so that ALOHA
+    routines can use ``wf.W[0]``, ``wf.W[1]``, … instead of
+    ``wf[2]``, ``wf[3]``, …
+    """
+
+    __slots__ = ('_wf',)
+
+    def __init__(self, wf):
+        self._wf = wf
+
+    def __getitem__(self, i):
+        return self._wf[i + 2]
+
+    def __setitem__(self, i, value):
+        self._wf[i + 2] = value
+
+    def __len__(self):
+        return len(self._wf) - 2
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+
+class FLV_Coupling_py:
+    """Python counterpart of the Fortran FLV_COUPLING type.
+
+    Holds numerical flavor-indexed coupling values for use inside Python
+    ALOHA routines generated with the ``M`` flag (flavor-merged models).
+
+    Attributes
+    ----------
+    partner  : dict {k1 -> k2}
+        Given the flavor index *k1* of the first fermion, gives the
+        expected flavor index *k2* of the second fermion.
+    partner2 : dict {k2 -> k1}
+        Reverse mapping.
+    val      : dict {k1 -> complex}
+        Actual coupling value indexed by the first-fermion flavor.
+    """
+
+    def __init__(self, flavors_dict):
+        """Build the coupling tables from a resolved-value dictionary.
+
+        Parameters
+        ----------
+        flavors_dict : dict
+            Maps flavor-index tuples ``(k1, k2, …)`` to complex coupling
+            values.  Exactly two non-zero entries are expected in each key.
+        """
+        self.partner = {}
+        self.partner2 = {}
+        self.val = {}
+        for key, value in flavors_dict.items():
+            non_zero = [i for i in key if i != 0]
+            if len(non_zero) == 2:
+                k1, k2 = non_zero
+            elif len(non_zero) == 1:
+                # Single merged leg: the unmerged partner gets flavor index 1,
+                # and which fermion (F1 or F2) carries the merged leg is decided
+                # by the position of the non-zero entry in the key (merged leg is
+                # F1 iff it is the first entry).  This must match the Fortran and
+                # C++ backends (base_objects.FLV_Coupling.get_partner_indices);
+                # otherwise single-merged-leg vertices such as `w+ ta+ vt~`
+                # (unmerged tau + merged neutrino) evaluate to zero here.
+                k = non_zero[0]
+                if key[0] == k:
+                    k1, k2 = k, 1
+                else:
+                    k1, k2 = 1, k
+            else:
+                continue
+            self.partner[k1] = k2
+            self.partner2[k2] = k1
+            self.val[k1] = value
+
+
 class WaveFunction(list):
-    """a objet for a WaveFunction"""
-    
-    spin_to_size={0:1,
-                  1:3,
-                  2:6,
-                  3:6,
-                  4:18,
-                  5:18}
-    
-    def __init__(self, spin= None, size=None):
-        """Init the list with zero value"""
-        
+    """A WaveFunction object with momenta, W (spin representation), and flavor."""
+
+    spin_to_size = {0: 1,
+                    1: 3,
+                    2: 6,
+                    3: 6,
+                    4: 18,
+                    5: 18}
+
+    def __init__(self, spin=None, size=None):
+        """Init the list with zero value and set extra attributes."""
+
         if spin:
             size = self.spin_to_size[spin]
-        list.__init__(self, [0]*size)
-        
+        list.__init__(self, [0] * size)
+        # Writable zero-based view into the spin components (list[2:])
+        self.W = _WView(self)
+        # Four-momentum [p0, p1, p2, p3] stored with the sign convention
+        # of the wavefunction initialisation function (ixxxxx uses −p·nsf,
+        # oxxxxx/vxxxxx/sxxxxx use +p·ns).
+        self.momenta = [0.0, 0.0, 0.0, 0.0]
+        # Flavor index for merged-particle models (−1 = no flavor / not merged)
+        self.flavor = -1
 
-def ixxxxx(p,fmass,nhel,nsf):
+
+def ixxxxx(p, fmass, nhel, nsf, flavor=-1):
     """Defines an inflow fermion."""
     
     fi = WaveFunction(2)
     
     fi[0] = complex(-p[0]*nsf,-p[3]*nsf)
-    fi[1] = complex(-p[1]*nsf,-p[2]*nsf) 
+    fi[1] = complex(-p[1]*nsf,-p[2]*nsf)
+    fi.momenta = [-p[0]*nsf, -p[1]*nsf, -p[2]*nsf, -p[3]*nsf]
+    fi.flavor = flavor
     nh = nhel*nsf 
     if (fmass != 0.):
         pp = min(p[0],sqrt(p[1]**2 + p[2]**2 + p[3]**2 ))
@@ -62,7 +156,15 @@ def ixxxxx(p,fmass,nhel,nsf):
             fi[5] = sfomeg[1]*chi[ip] 
     
     else: 
-        sqp0p3 = sqrt(max(p[0]+p[3],0.))*nsf
+        # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+        # backward-moving massless fermion, and everything below divides by
+        # it. Take it from the light-cone identity p+ p- = pT^2 instead.
+        if p[3] < 0. and (p[1] != 0. or p[2] != 0.):
+            sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsf
+        elif p[1] == 0. and p[2] == 0. and p[3] < 0.:
+            sqp0p3 = 0.
+        else:
+            sqp0p3 = sqrt(max(p[0]+p[3],0.))*nsf
         if (sqp0p3 == 0.):
             chi1 = complex(-nhel*sqrt(2.*p[0]),0.)
         else:
@@ -81,12 +183,14 @@ def ixxxxx(p,fmass,nhel,nsf):
     
     return fi 
 
-def oxxxxx(p,fmass,nhel,nsf):
+def oxxxxx(p, fmass, nhel, nsf, flavor=-1):
     """ initialize an outgoing fermion"""
     
     fo = WaveFunction(2)
     fo[0] = complex(p[0]*nsf,p[3]*nsf)
     fo[1] = complex(p[1]*nsf,p[2]*nsf)
+    fo.momenta = [p[0]*nsf, p[1]*nsf, p[2]*nsf, p[3]*nsf]
+    fo.flavor = flavor
     nh = nhel*nsf
     if (fmass != 0.):
         pp = min(p[0],sqrt(p[1]**2 + p[2]**2 + p[3]**2 ))
@@ -121,7 +225,15 @@ def oxxxxx(p,fmass,nhel,nsf):
             fo[5] = sfomeg[0]*chi[ip] 
             
     else: 
-        sqp0p3 = sqrt(max(p[0]+p[3],0.))*nsf
+        # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+        # backward-moving massless fermion, and everything below divides by
+        # it. Take it from the light-cone identity p+ p- = pT^2 instead.
+        if p[3] < 0. and (p[1] != 0. or p[2] != 0.):
+            sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsf
+        elif p[1] == 0. and p[2] == 0. and p[3] < 0.:
+            sqp0p3 = 0.
+        else:
+            sqp0p3 = sqrt(max(p[0]+p[3],0.))*nsf
         if (sqp0p3 == 0.):
             chi1 = complex(-nhel*sqrt(2.*p[0]),0.)
         else:
@@ -153,6 +265,7 @@ def vxxxxx(p,vmass,nhel,nsv):
 
     vc[0] = complex(p[0]*nsv,p[3]*nsv)
     vc[1] = complex(p[1]*nsv,p[2]*nsv)
+    vc.momenta = [p[0]*nsv, p[1]*nsv, p[2]*nsv, p[3]*nsv]
 
     if (nhel == 4):
         if (vmass == 0.):
@@ -205,6 +318,103 @@ def vxxxxx(p,vmass,nhel,nsv):
     
     return vc
 
+def vxxxxxr(p, vmass, nhel, nsv, r):
+    """A vector wavefunction in the axial gauge of the reference momentum r,
+    r.epsilon = 0: vxxxxx followed by eps - (r.eps)/(r.p) p (see vxxxxxr in
+    aloha_functions.f). r is ignored for a massive vector, for nhel = 0 or 4
+    and whenever r.p vanishes."""
+
+    vc = vxxxxx(p, vmass, nhel, nsv)
+    if vmass != 0. or abs(nhel) != 1:
+        return vc
+    q = vc.momenta
+    rdotp = r[0]*q[0] - r[1]*q[1] - r[2]*q[2] - r[3]*q[3]
+    if rdotp == 0.:
+        return vc
+    rdote = r[0]*vc[2] - r[1]*vc[3] - r[2]*vc[4] - r[3]*vc[5]
+    if rdote == 0.:
+        return vc
+    cfac = rdote/rdotp
+    for i in range(4):
+        vc[2+i] = vc[2+i] - cfac*q[i]
+    return vc
+
+def _hlspxx(p, pp):
+    """The two-component spinor of helicity +1 along the three-momentum of p
+    (of norm pp), normalised to one, with a real first component; the one of
+    helicity -1 is (-conjugate(chi[1]), chi[0]). Along +z for pp = 0."""
+
+    if pp == 0.:
+        return [complex(1.), complex(0.)]
+    # light-cone identity, as in ixxxxx: no |p|+p3 cancellation
+    if p[3] < 0.:
+        pp3 = max((p[1]**2 + p[2]**2)/(pp - p[3]), 0.)
+    else:
+        pp3 = max(pp + p[3], 0.)
+    if pp3 == 0.:
+        return [complex(0.), complex(1.)]
+    return [complex(sqrt(pp3*0.5/pp)), complex(p[1], p[2])/sqrt(2.*pp*pp3)]
+
+def ixxxxxr(p, fmass, nhel, nsf, flavor, r):
+    """A massive inflow fermion whose spin is quantised along the axis fixed
+    by the reference momentum r instead of its own momentum (Kleiss-Stirling
+    spinors, u(p,h;r) = (pslash + m) u0(r,-h)/sqrt(2 p.r)): see ixxxxxr in
+    aloha_functions.f for the numerically stable form used here; the same
+    arguments, the reference last. ixxxxx for a massless fermion or a
+    reference without direction."""
+
+    rr = sqrt(r[1]**2 + r[2]**2 + r[3]**2)
+    if fmass == 0. or rr == 0.:
+        return ixxxxx(p, fmass, nhel, nsf, flavor)
+    fi = WaveFunction(2)
+    fi[0] = complex(-p[0]*nsf, -p[3]*nsf)
+    fi[1] = complex(-p[1]*nsf, -p[2]*nsf)
+    fi.momenta = [-p[0]*nsf, -p[1]*nsf, -p[2]*nsf, -p[3]*nsf]
+    fi.flavor = flavor
+    pp = min(p[0], sqrt(p[1]**2 + p[2]**2 + p[3]**2))
+    xi = _hlspxx(p, pp)
+    rho = _hlspxx(r, rr)
+    c = xi[0]*rho[0] + xi[1].conjugate()*rho[1]
+    d = xi[0]*rho[1] - xi[1]*rho[0]
+    omp2 = p[0] + pp
+    omm2 = fmass**2/omp2
+    rn = 1./sqrt(omp2*abs(d)**2 + omm2*abs(c)**2)
+    fm = nsf*fmass*rn
+    omp2 = omp2*rn
+    omm2 = omm2*rn
+    if nhel*nsf == 1:
+        fi[2] = -fm*rho[1].conjugate()
+        fi[3] = fm*rho[0]
+        fi[4] = -omm2*(c*xi[1]).conjugate() - omp2*d.conjugate()*xi[0]
+        fi[5] = omm2*c.conjugate()*xi[0] - omp2*d.conjugate()*xi[1]
+    else:
+        fi[2] = omm2*c*xi[0] - omp2*d*xi[1].conjugate()
+        fi[3] = omm2*c*xi[1] + omp2*d*xi[0]
+        fi[4] = fm*rho[0]
+        fi[5] = fm*rho[1]
+    return fi
+
+def oxxxxxr(p, fmass, nhel, nsf, flavor, r):
+    """The Dirac conjugate of ixxxxxr: a massive outflow fermion whose spin
+    is quantised along the axis fixed by the reference momentum r. oxxxxx
+    for a massless fermion or a reference without direction."""
+
+    if fmass == 0. or (r[1] == 0. and r[2] == 0. and r[3] == 0.):
+        return oxxxxx(p, fmass, nhel, nsf, flavor)
+    fi = ixxxxxr(p, fmass, nhel, nsf, flavor, r)
+    fo = WaveFunction(2)
+    fo[0] = complex(p[0]*nsf, p[3]*nsf)
+    fo[1] = complex(p[1]*nsf, p[2]*nsf)
+    fo.momenta = [p[0]*nsf, p[1]*nsf, p[2]*nsf, p[3]*nsf]
+    fo.flavor = flavor
+    # fo = fi^dagger gamma0: the complex conjugate, with the upper and the
+    # lower two components exchanged
+    fo[2] = complex(fi[4]).conjugate()
+    fo[3] = complex(fi[5]).conjugate()
+    fo[4] = complex(fi[2]).conjugate()
+    fo[5] = complex(fi[3]).conjugate()
+    return fo
+
 def sign(x,y):
     """Fortran's sign transfer function"""
     try:
@@ -228,6 +438,7 @@ def sxxxxx(p,nss):
     sc[2] = complex(1.,0.)
     sc[0] = complex(p[0]*nss,p[3]*nss)
     sc[1] = complex(p[1]*nss,p[2]*nss)
+    sc.momenta = [p[0]*nss, p[1]*nss, p[2]*nss, p[3]*nss]
     return sc
 
 def sfdxxx(p,nss):
@@ -237,6 +448,7 @@ def sfdxxx(p,nss):
 
     sc[0] = complex(p[0]*nss,p[3]*nss)
     sc[1] = complex(p[1]*nss,p[2]*nss)
+    sc.momenta = [p[0]*nss, p[1]*nss, p[2]*nss, p[3]*nss]
     sc[6] = complex(1.,0.)
     return sc
 
@@ -262,30 +474,120 @@ def define_gauge_dir(q):
 
     return n
 
+def _fd_output_wavefunction(win):
+    """The four-momentum of the off-shell FD wavefunction *win*, and the output
+    wavefunction carrying that momentum and its flavor (components at zero).
+
+    The two momentum representations are populated inconsistently across
+    ALOHA routines: external FD wavefunctions (vfdxxxx / sfdxxx) fill the
+    packed complex slots win[0]/win[1] but leave .momenta at zero, whereas
+    off-shell ALOHA outputs (FFV.../VVV... routines) fill .momenta but leave
+    the packed slots at zero.  Reading only the packed slots therefore gave
+    q == 0 (hence n.q == 0 and a ZeroDivisionError) for every
+    internally-produced wavefunction -- in particular the null wavefunction a
+    merged-particle (M) routine returns on an invalid / unresolved flavor
+    combination.  Fall back between the two representations so the propagator
+    always sees the real momentum, and propagate it (in both representations)
+    and the flavor to the output so downstream propagators / .momenta
+    consumers keep working."""
+
+    if any(win.momenta):
+        mom = list(win.momenta)
+    else:
+        mom = [win[0].real, win[1].real, win[1].imag, win[0].imag]
+    wout = WaveFunction(size=7)
+    wout.momenta = mom
+    wout[0] = complex(mom[0], mom[3])
+    wout[1] = complex(mom[1], mom[2])
+    wout.flavor = win.flavor
+    return mom, wout
+
 def multiply_propagator_factor(win, m):
     """apply the FD gauge propagator projector"""
 
-    wout = WaveFunction(size=7)
-    wout[0] = win[0]
-    wout[1] = win[1]
+    mom, wout = _fd_output_wavefunction(win)
 
     q = [0j] * 5
-    q[0] = complex(-win[0].real, 0.)
-    q[1] = complex(-win[1].real, 0.)
-    q[2] = complex(-win[1].imag, 0.)
-    q[3] = complex(-win[0].imag, 0.)
+    q[0] = complex(-mom[0], 0.)
+    q[1] = complex(-mom[1], 0.)
+    q[2] = complex(-mom[2], 0.)
+    q[3] = complex(-mom[3], 0.)
     q[4] = -1j * m
 
     n = define_gauge_dir(q)
     w0 = list(win[2:7])
 
     nq = n[0] * q[0].real - n[1] * q[1].real - n[2] * q[2].real - n[3] * q[3].real
+    if nq == 0:
+        # Genuinely zero momentum (never a real propagator); nothing to project.
+        return wout
+
     js1 = (n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3]) / nq
-    js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] - q[4].conjugate() * w0[4]) / nq
+    # q[4] = -i*m enters as +i*m, not as its conjugate: the two only agree for
+    # a real mass, and the complex-mass scheme needs the analytic form
+    js2 = (q[0] * w0[0] - q[1] * w0[1] - q[2] * w0[2] - q[3] * w0[3] + q[4] * w0[4]) / nq
 
     for i in range(5):
         wout[i+2] = w0[i] - q[i] * js1 - n[i] * js2
 
+    return wout
+
+def fd_polarized_propagator(win, m, width, ipol):
+    """FD gauge: polarised propagator of a massive vector.
+
+    win is the off-shell wavefunction built with the ordinary FD numerator
+    (vector in win[2:6], Goldstone boson in win[6]), before the FD projector.
+    It is projected on one piece of the FD numerator
+        N = sum_T eps eps* + eps0 eps0* + (q^2-M^2) n n/(n.q)^2,
+    eps0 = (-M n/(n.q), i):
+        ipol = 0 {0}, 1 {T}, 2 {+}, 3 {-}, 4 {A}, 5 {S}, 6 {0S}
+    (aloha_writers.FD_POLARIZED_PROPAGATORS). {S} is {A} with its factor
+    (q^2-M^2)/(q^2-M^2+i M width) replaced by 1."""
+
+    mom, wout = _fd_output_wavefunction(win)
+
+    q = [complex(-x, 0.) for x in mom] + [-1j * m]
+    # a line at rest (|q| below 1e-10 q0, rounding): pin the axis of the
+    # helicities to +z, as the unitary-gauge polarised routines do
+    for i, pinned in ((1, 1e-30), (2, 0.), (3, 1e-15)):
+        if abs(q[0].real) * 1e-10 > abs(q[i].real):
+            q[i] = complex(pinned, 0.)
+    n = define_gauge_dir(q)
+    w0 = list(win[2:7])
+    w1 = [0j] * 5
+    nq = n[0] * q[0].real - n[1] * q[1].real - n[2] * q[2].real - n[3] * q[3].real
+    if nq == 0:
+        return wout
+    q2 = q[0].real**2 - q[1].real**2 - q[2].real**2 - q[3].real**2
+    nw = n[0] * w0[0] - n[1] * w0[1] - n[2] * w0[2] - n[3] * w0[3]
+    qh = [-n[1], -n[2], -n[3]]
+
+    if 1 <= ipol <= 3:
+        sca = qh[0] * w0[1] + qh[1] * w0[2] + qh[2] * w0[3]
+        for i in range(3):
+            w1[i+1] = w0[i+1] - qh[i] * sca
+        if ipol != 1:
+            cross = [qh[1] * w0[3] - qh[2] * w0[2],
+                     qh[2] * w0[1] - qh[0] * w0[3],
+                     qh[0] * w0[2] - qh[1] * w0[1]]
+            # helicity +1: (T - i qh x w)/2, -1: (T + i qh x w)/2
+            s = -1. if ipol == 2 else 1.
+            for i in range(3):
+                w1[i+1] = 0.5 * (w1[i+1] + s * 1j * cross[i])
+    if ipol in (0, 6):
+        c = m / nq * nw - 1j * w0[4]
+        for i in range(4):
+            w1[i] -= m / nq * n[i] * c
+        w1[4] += 1j * c
+    if ipol == 4:
+        for i in range(4):
+            w1[i] -= (q2 - m * m) / nq**2 * n[i] * nw
+    if ipol in (5, 6):
+        for i in range(4):
+            w1[i] -= (q2 - m * m + 1j * m * width) / nq**2 * n[i] * nw
+
+    for i in range(5):
+        wout[i+2] = w1[i]
     return wout
 
 def vfdxxxx(p,vmass,nhel,nsv):
@@ -296,6 +598,11 @@ def vfdxxxx(p,vmass,nhel,nsv):
 
     for i in range(6):
         vcfd[i] = vc[i]
+    # vxxxxx sets .momenta but the size-6 -> size-7 copy above only carries the
+    # packed slots; propagate .momenta too so routines that read it (e.g. the
+    # massless propagator denominator built from summed .momenta) get the real
+    # momentum instead of zero.
+    vcfd.momenta = list(vc.momenta)
 
     if vmass != 0.:
         pt2 = p[1]**2 + p[2]**2
@@ -446,6 +753,7 @@ def txxxxx(p, tmass, nhel, nst):
     tc[17] = ft[(3,3)]
     tc[0] = ft[(4,0)]
     tc[1] = ft[(5,0)]
+    tc.momenta = [ft[(4,0)].real, ft[(5,0)].real, ft[(5,0)].imag, ft[(4,0)].imag]
 
     return tc
 
@@ -533,7 +841,7 @@ def irxxxx(p, mass, nhel, nsr):
     
 
     if ( nhel >= -1 ):
-        # constract spinor+ 
+        # contract spinor+
         fip = [0] * 4
         sf, omega, sfomeg, chi = [0, 0], [0,0], [0,0], [0,0]
         nh = nsr
@@ -568,7 +876,15 @@ def irxxxx(p, mass, nhel, nsr):
                 fip[2] = sfomeg[1]*chi[im]
                 fip[3] = sfomeg[1]*chi[ip]
         else:
-            sqp0p3 = sqrt(max([p[0]+p[3],0])) * nsr
+            # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+            # backward-moving massless fermion, and everything below divides
+            # by it. Take it from the light-cone identity p+ p- = pT^2.
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3])) * nsr
+            elif p[1] == 0 and p[2] == 0 and p[3] < 0:
+                sqp0p3 = 0
+            else:
+                sqp0p3 = sqrt(max([p[0]+p[3],0])) * nsr
             chi[0] = sqp0p3
             if  sqp0p3 == 0:
                 chi[1] = -nhel *  sqrt(2*p[0])
@@ -586,7 +902,7 @@ def irxxxx(p, mass, nhel, nsr):
                 #fip(4) = complex( rZero )
             
     if ( nhel <= 1 ):
-        # constract spinor- 
+        # contract spinor-
         fim = [0] * 4
         sf, omega, sfomeg, chi = [0, 0], [0,0], [0,0], [0,0]
         nh = -nsr
@@ -621,7 +937,15 @@ def irxxxx(p, mass, nhel, nsr):
                 fim[2] = sfomeg[1]*chi[im]
                 fim[3] = sfomeg[1]*chi[ip]
         else:
-            sqp0p3 = sqrt(max([p[0]+p[3],0])) * nsr
+            # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+            # backward-moving massless fermion, and everything below divides
+            # by it. Take it from the light-cone identity p+ p- = pT^2.
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3])) * nsr
+            elif p[1] == 0 and p[2] == 0 and p[3] < 0:
+                sqp0p3 = 0
+            else:
+                sqp0p3 = sqrt(max([p[0]+p[3],0])) * nsr
             chi[0] = sqp0p3
             if  sqp0p3 == 0:
                 chi[1] = -nhel *  sqrt(2*p[0])
@@ -640,7 +964,7 @@ def irxxxx(p, mass, nhel, nsr):
       
     
 
-    # recurent relation put her for optimization
+    # recurrent relation put her for optimization
     cond1  = (pt == 0 and p[3] >= 0)
     cond2  = (pt == 0 and p[3] < 0)
     
@@ -693,7 +1017,8 @@ def irxxxx(p, mass, nhel, nsr):
     ri[16] = rc[(3,2)]
     ri[17] = rc[(3,3)]
     ri[0] = rc[(4,0)]
-    ri[1] = rc[(5,0)]              
+    ri[1] = rc[(5,0)]
+    ri.momenta = [-rc[(4,0)].real, -rc[(5,0)].real, -rc[(5,0)].imag, -rc[(4,0)].imag]
 
     return ri
 
@@ -778,7 +1103,7 @@ def orxxxx(p, mass, nhel, nsr):
             #   e0[2] = complex( rZero )
 
     if nhel >= -1:
-        #constract spinor+ 
+        #contract spinor+
         nh = nsr
         sqm, fop, omega, sf, sfomeg = [0]*2,[0]*4,[0]*2,[0]*2,[0]*2
         chi = [0]*2
@@ -817,7 +1142,12 @@ def orxxxx(p, mass, nhel, nsr):
                 fop[3] = sfomeg[0]*chi[ip]
 
         else:
-            if(p[1] == 0 and p[2] == 0 and p[3] < 0):
+            # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+            # backward-moving massless fermion, and everything below divides
+            # by it. Take it from the light-cone identity p+ p- = pT^2.
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsr
+            elif(p[1] == 0 and p[2] == 0 and p[3] < 0):
                 sqp0p3 = 0
             else:
                 sqp0p3 = sqrt(max(p[0]+p[3], 0))*nsr
@@ -841,7 +1171,7 @@ def orxxxx(p, mass, nhel, nsr):
          
     
     if ( nhel < 2 ):
-        # constract spinor+ 
+        # contract spinor+
         sqm, fom, omega, sf, sfomeg = [0]*2,[0]*4,[0]*2,[0]*2,[0]*2
         chi = [0]*2
 
@@ -883,7 +1213,12 @@ def orxxxx(p, mass, nhel, nsr):
                 fom[2] = sfomeg[0]*chi[im]
                 fom[3] = sfomeg[0]*chi[ip]
         else:
-            if(p[1] == 0 == p[2] and p[3] < 0):
+            # p[0]+p[3] is a cancelling difference of two ~|p| numbers for a
+            # backward-moving massless fermion, and everything below divides
+            # by it. Take it from the light-cone identity p+ p- = pT^2.
+            if p[3] < 0 and (p[1] != 0 or p[2] != 0):
+                sqp0p3 = sqrt((p[1]**2 + p[2]**2)/(abs(p[0]) - p[3]))*nsr
+            elif(p[1] == 0 == p[2] and p[3] < 0):
                 sqp0p3 = 0
             else:
                 sqp0p3 = sqrt(max([p[0]+p[3],0]))*nsr
@@ -961,6 +1296,7 @@ def orxxxx(p, mass, nhel, nsr):
     ro[17] = rc[(3,3)]
     ro[0] = rc[(4,0)]
     ro[1] = rc[(5,0)]
+    ro.momenta = [rc[(4,0)].real, rc[(5,0)].real, rc[(5,0)].imag, rc[(4,0)].imag]
     
     return ro
     

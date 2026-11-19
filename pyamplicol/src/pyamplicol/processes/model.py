@@ -1,0 +1,469 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import itertools
+import re
+from collections import Counter
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import cast
+
+from ..models.contracts import (
+    CompiledModelIR,
+    CompiledParameterRecord,
+    CompiledParticleRecord,
+    validate_color_representation,
+)
+from .conservation import ConservedCharges
+from .core_syntax import (
+    canonical_process_key,
+    split_process_set,
+)
+from .ir import (
+    CanonicalProcessIR,
+    ColorEndpointSummary,
+    ColorRole,
+    LegSide,
+    ParticleStatistics,
+    ProcessLegIR,
+    SourceOrientation,
+    WavefunctionFamily,
+)
+from .refusals import ProcessRequestUnsupported
+
+GOLDSTONE_FLAG_SPELLINGS = ("GoldstoneBoson", "goldstoneboson", "goldstone")
+
+
+def ufo_goldstone_flag(fields: Mapping[str, object]) -> bool:
+    """MadGraph's UFO convention: any truthy established Goldstone spelling.
+
+    ``GoldstoneBoson``, ``goldstoneboson`` and legacy ``goldstone`` are all
+    honoured; a false constructor default in one spelling must not hide a true
+    flag in another. Every reader of source or native particle metadata uses
+    this one interpretation (ufo_model_loader PR3 exposes the same; prefer it
+    once a release provides it).
+    """
+    return any(bool(fields.get(name)) for name in GOLDSTONE_FLAG_SPELLINGS)
+
+
+def is_external_model_particle(
+    *,
+    spin: int,
+    ghost_number: int,
+    goldstoneboson: bool,
+    propagating: bool,
+    auxiliary_kind: str | None,
+) -> bool:
+    """The declared external-state eligibility shared by model consumers."""
+    return (
+        spin > 0
+        and ghost_number == 0
+        and not goldstoneboson
+        and propagating
+        and auxiliary_kind is None
+    )
+
+
+def resolve_model_particle_name(
+    name: str, names: Sequence[str], *, model_name: str
+) -> str:
+    """Use the public exact-first, uniquely case-insensitive particle spelling."""
+    if name in names:
+        return name
+    folded = [
+        candidate for candidate in names if candidate.casefold() == name.casefold()
+    ]
+    if len(folded) == 1:
+        return folded[0]
+    if len(folded) > 1:
+        choices = ", ".join(sorted(folded))
+        raise ValueError(f"particle name {name!r} is case-ambiguous: {choices}")
+    raise ValueError(f"particle {name!r} is not an external state in {model_name}")
+
+
+# Whether Goldstone bosons are admitted as external legs (``goldstone_legs``).
+_GOLDSTONE_LEGS: ContextVar[bool] = ContextVar("goldstone_legs", default=False)
+
+
+@contextmanager
+def goldstone_legs() -> Iterator[None]:
+    """Admit the model's Goldstone bosons as external legs within the scope
+    (outside it they never are, ``is_external_model_particle``): the
+    amplitude with a Goldstone in place of a massive vector is the other side
+    of its Slavnov-Taylor identity, a gauge probe of the loop-induced engine
+    (``loops.v2.goldstone``), never a physical process."""
+
+    token = _GOLDSTONE_LEGS.set(True)
+    try:
+        yield
+    finally:
+        _GOLDSTONE_LEGS.reset(token)
+
+
+def goldstone_legs_admitted() -> bool:
+    """Whether the current scope admits Goldstone external legs
+    (``goldstone_legs``)."""
+
+    return _GOLDSTONE_LEGS.get()
+
+
+@dataclass(frozen=True)
+class ModelParticleCatalog:
+    model_name: str
+    particles: tuple[CompiledParticleRecord, ...]
+    parameters: tuple[CompiledParameterRecord, ...] = ()
+
+    def __post_init__(self) -> None:
+        names = [particle.name for particle in self.particles]
+        if len(names) != len(set(names)):
+            raise ValueError("compiled model contains duplicate particle names")
+        for particle in self.particles:
+            validate_color_representation(
+                particle.color,
+                context=f"particle {particle.name!r}",
+            )
+
+    @property
+    def by_name(self) -> dict[str, CompiledParticleRecord]:
+        return {particle.name: particle for particle in self.particles}
+
+    @property
+    def external_particles(self) -> tuple[CompiledParticleRecord, ...]:
+        goldstones = _GOLDSTONE_LEGS.get()
+        return tuple(
+            particle
+            for particle in self.particles
+            if is_external_model_particle(
+                spin=particle.spin,
+                ghost_number=particle.ghost_number,
+                goldstoneboson=particle.goldstoneboson and not goldstones,
+                propagating=particle.propagating,
+                auxiliary_kind=particle.auxiliary_kind,
+            )
+        )
+
+    def resolve(self, name: str, *, external: bool = True) -> CompiledParticleRecord:
+        candidates = self.external_particles if external else self.particles
+        canonical = resolve_model_particle_name(
+            name,
+            tuple(particle.name for particle in candidates),
+            model_name=self.model_name,
+        )
+        return next(particle for particle in candidates if particle.name == canonical)
+
+    def antiparticle(self, particle: CompiledParticleRecord) -> CompiledParticleRecord:
+        try:
+            return self.by_name[particle.antiname]
+        except KeyError as exc:
+            raise ValueError(
+                f"particle {particle.name!r} refers to absent antiparticle "
+                f"{particle.antiname!r}"
+            ) from exc
+
+    def validate_process_role(self, particle: CompiledParticleRecord) -> None:
+        """Reject colored roles unsupported by the current color planner."""
+
+        representation = validate_color_representation(
+            particle.color,
+            context=f"particle {particle.name!r}",
+        )
+        supported_colored_role = (
+            particle.color_role in {"fundamental", "antifundamental"}
+            and particle.statistics == "fermion"
+        ) or (
+            particle.color_role == "adjoint"
+            and particle.wavefunction_family == "vector"
+        )
+        if representation != 1 and not supported_colored_role:
+            raise ValueError(
+                f"particle {particle.name!r} has unsupported colored external-state "
+                f"role (spin={particle.spin}, color={representation}); current color "
+                "planning supports fundamental fermions and adjoint vectors"
+            )
+
+    def default_multiparticles(self) -> dict[str, tuple[str, ...]]:
+        partons = tuple(
+            particle.name
+            for particle in self.external_particles
+            if self._mass_is_compile_time_zero(particle.mass)
+            and (
+                (
+                    particle.statistics == "fermion"
+                    and particle.color_role in {"fundamental", "antifundamental"}
+                )
+                or (
+                    particle.wavefunction_family == "vector"
+                    and particle.color_role == "adjoint"
+                )
+            )
+        )
+        result = {} if not partons else {"p": partons, "j": partons}
+        result["all"] = tuple(particle.name for particle in self.external_particles)
+        return result
+
+    def _mass_is_compile_time_zero(self, name: str) -> bool:
+        if name.casefold() == "zero":
+            return True
+        parameter = next(
+            (parameter for parameter in self.parameters if parameter.name == name),
+            None,
+        )
+        if parameter is None or parameter.nature.casefold() != "internal":
+            return False
+        from ..models import compiler_symbolica as _sym
+
+        _sym._ensure_symbolica()
+        return (
+            _sym.E(parameter.resolved_expression).expand().to_canonical_string()
+            == _sym.E("0").to_canonical_string()
+        )
+
+
+def parse_multiparticle_definitions(
+    definitions: Sequence[str],
+    catalog: ModelParticleCatalog,
+) -> dict[str, tuple[str, ...]]:
+    result = dict(catalog.default_multiparticles())
+    for definition in definitions:
+        name, separator, raw_items = definition.partition("=")
+        name = name.strip()
+        if (
+            not separator
+            or not name
+            or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name)
+        ):
+            raise ValueError(
+                f"invalid multiparticle definition {definition!r}; "
+                "expected NAME=ITEM,ITEM"
+            )
+        items = tuple(item.strip() for item in raw_items.split(",") if item.strip())
+        if not items:
+            raise ValueError(f"multiparticle {name!r} has no members")
+        resolved = tuple(catalog.resolve(item).name for item in items)
+        result[name] = tuple(dict.fromkeys(resolved))
+    return result
+
+
+def expand_model_processes(
+    process_set: str,
+    catalog: ModelParticleCatalog,
+    *,
+    multiparticles: Mapping[str, Sequence[str]] | None = None,
+    charges: ConservedCharges | None = None,
+) -> tuple[str, ...]:
+    """Concrete processes of ``process_set``, one per multiset of each side.
+
+    Side permutations describe the same matrix element, so each side is
+    enumerated as a multiset. With ``charges``, processes violating a
+    conserved additive charge of the model are dropped.
+    """
+
+    aliases = {
+        name: tuple(values) for name, values in catalog.default_multiparticles().items()
+    }
+    if multiparticles is not None:
+        aliases.update({name: tuple(values) for name, values in multiparticles.items()})
+    expanded: dict[str, None] = {}
+    for process in split_process_set(process_set):
+        initial_text, separator, final_text = process.partition(">")
+        if not separator or ">" in final_text:
+            raise ValueError("invalid collision format; expected 'initial > final'")
+        initial_slots = _expanded_slots(initial_text, aliases, catalog)
+        final_slots = _expanded_slots(final_text, aliases, catalog)
+        require_external_leg_counts(len(initial_slots), len(final_slots))
+        finals: dict[tuple[int, ...], list[tuple[str, ...]]] = {}
+        for final in _side_multisets(final_slots):
+            key = () if charges is None else charges.total(final)
+            finals.setdefault(key, []).append(final)
+        for initial in _side_multisets(initial_slots):
+            key = () if charges is None else charges.total(initial)
+            for final in finals.get(key, ()):
+                concrete = f"{' '.join(initial)} > {' '.join(final)}"
+                expanded.setdefault(concrete, None)
+    return tuple(expanded)
+
+
+def require_external_leg_counts(initial: int, final: int) -> None:
+    """A process has one initial particle (a 1 -> n decay, n >= 2) or two (a
+    2 -> n scattering, n >= 1): the same rule for every process, whatever
+    its particles."""
+
+    if initial not in (1, 2):
+        raise ValueError(
+            "pyAmpliCol processes have one initial particle (a 1 -> n decay) or "
+            f"two (a 2 -> n scattering), not {initial}"
+        )
+    if final < 1 or initial + final < 3:
+        raise ValueError(
+            "pyAmpliCol processes need at least three external particles: a "
+            "decay at least two final particles, a scattering at least one"
+        )
+
+
+def _side_multisets(slots: Sequence[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
+    """Each particle multiset that fills ``slots`` once.
+
+    Slots with the same options are filled by non-decreasing option index:
+    the order in which a cartesian product meets a multiset first, unless
+    slots with different but overlapping options interleave.
+    """
+
+    groups: dict[tuple[str, ...], list[int]] = {}
+    for position, options in enumerate(slots):
+        groups.setdefault(options, []).append(position)
+    seen: set[tuple[str, ...]] = set()
+    for choice in itertools.product(
+        *(
+            itertools.combinations_with_replacement(options, len(positions))
+            for options, positions in groups.items()
+        )
+    ):
+        assignment = [""] * len(slots)
+        for positions, names in zip(groups.values(), choice, strict=True):
+            for position, name in zip(positions, names, strict=True):
+                assignment[position] = name
+        key = tuple(sorted(assignment))
+        if key not in seen:
+            seen.add(key)
+            yield tuple(assignment)
+
+
+def build_model_process_ir(
+    process: str,
+    model: CompiledModelIR,
+    *,
+    color_accuracy: str = "lc",
+) -> CanonicalProcessIR:
+    catalog = ModelParticleCatalog(model.name, model.particles, model.parameters)
+    initial_text, separator, final_text = process.partition(">")
+    if not separator or ">" in final_text:
+        raise ValueError("invalid collision format; expected 'initial > final'")
+    initial = tuple(catalog.resolve(token) for token in initial_text.split())
+    final = tuple(catalog.resolve(token) for token in final_text.split())
+    require_external_leg_counts(len(initial), len(final))
+    outgoing_initial = tuple(catalog.antiparticle(particle) for particle in initial)
+    canonical = f"{' '.join(particle.name for particle in initial)} > " + " ".join(
+        particle.name for particle in final
+    )
+    legs = tuple(
+        [
+            *(
+                _model_leg(
+                    label=index + 1,
+                    side="initial",
+                    particle=particle,
+                    outgoing_particle=outgoing_initial[index],
+                    catalog=catalog,
+                )
+                for index, particle in enumerate(initial)
+            ),
+            *(
+                _model_leg(
+                    label=len(initial) + index + 1,
+                    side="final",
+                    particle=particle,
+                    outgoing_particle=particle,
+                    catalog=catalog,
+                )
+                for index, particle in enumerate(final)
+            ),
+        ]
+    )
+    counts = Counter(leg.color_role for leg in legs)
+    return CanonicalProcessIR(
+        process=canonical,
+        key=canonical_process_key(canonical),
+        color_accuracy=color_accuracy,
+        legs=legs,
+        color_endpoints=ColorEndpointSummary(
+            fundamental_count=counts["fundamental"],
+            antifundamental_count=counts["antifundamental"],
+            pair_count=min(
+                counts["fundamental"],
+                counts["antifundamental"],
+            ),
+        ),
+    )
+
+
+def _expanded_slots(
+    text: str,
+    aliases: Mapping[str, Sequence[str]],
+    catalog: ModelParticleCatalog,
+) -> list[tuple[str, ...]]:
+    for bracket in re.findall(r"\[([^\]]*)\]", text):
+        # Model processes have no anonymous brackets; one of non-particles
+        # is MG5_aMC NLO syntax ('[QCD]').
+        unresolved = []
+        for item in bracket.split():
+            try:
+                catalog.resolve(item)
+            except ValueError:
+                unresolved.append(item)
+        if unresolved:
+            raise ProcessRequestUnsupported(
+                "madloop-syntax",
+                f"the bracket [{bracket.strip()}] holds no particles of "
+                f"{catalog.model_name} ('[QCD]' style NLO syntax)",
+            )
+    slots: list[tuple[str, ...]] = []
+    for token in text.split():
+        count, name = _repetition(token)
+        if name in aliases:
+            options = tuple(catalog.resolve(item).name for item in aliases[name])
+        else:
+            options = (catalog.resolve(name).name,)
+        slots.extend(options for _ in range(count))
+    return slots
+
+
+def _repetition(token: str) -> tuple[int, str]:
+    match = re.fullmatch(r"(?:(\d+)\*)?(.+)", token)
+    if match is None:
+        raise ValueError(f"invalid process token {token!r}")
+    count = int(match.group(1) or 1)
+    if count < 1:
+        raise ValueError(f"process repetition must be positive: {token!r}")
+    return count, match.group(2)
+
+
+def _model_leg(
+    *,
+    label: int,
+    side: str,
+    particle: CompiledParticleRecord,
+    outgoing_particle: CompiledParticleRecord,
+    catalog: ModelParticleCatalog,
+) -> ProcessLegIR:
+    catalog.validate_process_role(outgoing_particle)
+    return ProcessLegIR(
+        label=label,
+        side=cast(LegSide, side),
+        particle=particle.name,
+        outgoing_particle=outgoing_particle.name,
+        pdg=particle.pdg_code,
+        outgoing_pdg=outgoing_particle.pdg_code,
+        statistics=cast(ParticleStatistics, outgoing_particle.statistics),
+        wavefunction_family=cast(
+            WavefunctionFamily,
+            outgoing_particle.wavefunction_family,
+        ),
+        color_role=cast(ColorRole, outgoing_particle.color_role),
+        source_orientation=cast(
+            SourceOrientation,
+            outgoing_particle.source_orientation,
+        ),
+    )
+
+
+__all__ = [
+    "ModelParticleCatalog",
+    "build_model_process_ir",
+    "expand_model_processes",
+    "goldstone_legs",
+    "goldstone_legs_admitted",
+    "parse_multiparticle_definitions",
+    "require_external_leg_counts",
+]

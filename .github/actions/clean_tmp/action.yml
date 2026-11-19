@@ -1,0 +1,56 @@
+name: Clean /tmp
+description: >
+  Removes everything the runner user owns in /tmp (self-hosted runners only).
+  The alma10 machines (cern1-5) have a 20 GB disk with only 8 GB of /tmp
+  scratch, and /tmp persists between jobs: what one job leaves there (process
+  dirs, tempfile.mkdtemp trees of failed tests, ...) fills the next one's.
+  Use it right after the checkout and again as the last step with
+  `if: always()`. One runner per machine, so nothing else is using these files.
+  Fails (before any test runs) when /tmp itself is missing or not writable:
+  the tests cannot work then, and the machine needs fixing as root.
+  It also points XDG_CONFIG_HOME at a per-job directory, so MadGraph7's
+  per-user configuration (~/.mg7) does not persist from one job to the next,
+  makes sure numpy, scipy and matplotlib are importable, and warns about
+  missing system commands (see below).
+runs:
+  using: composite
+  steps:
+    - if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        if [ ! -d /tmp ] || [ ! -w /tmp ]; then
+          echo "::error::/tmp is missing or not writable on $RUNNER_NAME ($(hostname)): the machine needs fixing as root"
+          ls -ld /tmp || true
+          grep ' /tmp ' /proc/self/mountinfo || true
+          exit 1
+        fi
+        df -h /tmp
+        # MadGraph7 records a `set ... --global` and the tool paths of an
+        # `install` into an external prefix (the HEPTools build of
+        # selfhosted_heptools) in its per-user config, ~/.mg7. HOME persists on
+        # this machine, so without this the next jobs would inherit them; a
+        # GitHub-hosted job starts without one. RUNNER_TEMP is emptied per job.
+        mkdir -p "$RUNNER_TEMP/xdg-config"
+        echo "XDG_CONFIG_HOME=$RUNNER_TEMP/xdg-config" >> "$GITHUB_ENV"
+        # cern1-5 have numpy and scipy in ~/.local, left there by earlier
+        # unittest jobs (`pip install --user`), and several jobs (unittest
+        # bundles, IOTests) import them without installing them. A new or
+        # reinstalled machine gets the same, once, instead of failing those
+        # jobs with "No module named 'numpy'". matplotlib is what Rivet 4's
+        # rivet-mkhtml plots with (test_rivet_from_file).
+        python3 -c 'import numpy, scipy, matplotlib' 2> /dev/null \
+          || python3 -m pip install --user --quiet numpy scipy matplotlib \
+          || echo "::warning::could not install numpy/scipy/matplotlib into ~/.local on $RUNNER_NAME"
+        # system commands the tests need and this user cannot install (no
+        # sudo): without bc MadGraph refuses to run the parton shower, without
+        # pigz test_pigz_output_is_gzip_compatible skips (a skip fails the job)
+        for c in bc pigz; do
+          command -v "$c" > /dev/null \
+            || echo "::warning::$RUNNER_NAME ($(hostname)) has no '$c': install it as root (dnf install -y $c), some tests fail without it"
+        done
+        # Tests can leave read-only trees behind: make them writable first.
+        find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" \
+          -exec chmod -R u+w {} + -exec rm -rf {} + 2>/dev/null || true
+        left=$(find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" 2>/dev/null | wc -l)
+        [ "$left" -eq 0 ] || echo "::warning::$left entries in /tmp could not be removed"
+        df -h /tmp

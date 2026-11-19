@@ -65,7 +65,7 @@ Evidence for the direct manuscript changes
 * Template/NLO/SubProcesses/fks_powers.inc: distinguish analytic reference
   parameters xicut,deltaI,deltaO from numerical xiScut,deltaS. The old
   validation table's cutoff labels have been corrected accordingly.
-* VERSION; the two patches under Template/NLO/MCatNLO/srcPythia8/patches/;
+* VERSION; the two patches under Template/NLO/MCatNLO/pythia8/patches/;
   the process shower cards and private-build helper establish the software
   description. No public archive location is recorded in the workspace.
 

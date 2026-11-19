@@ -41,9 +41,8 @@ MATCHING_SOURCES = (
     "Template/NLO/SubProcesses/fks_powers.inc",
     "Template/NLO/MCatNLO/PY8Analyzer/py8an_HwU_pp_tj_recoil.f",
     "Template/NLO/MCatNLO/include/HEPMC_ST_RECOIL.INC",
-    "Template/NLO/MCatNLO/include/HEPEVTSize.h",
     "Template/NLO/MCatNLO/include/LHEFRead.h",
-    "Template/NLO/MCatNLO/Scripts/MCatNLO_MadFKS_PYTHIA8.Script",
+    "Template/NLO/MCatNLO/pythia8/mcatnlo_pythia8.cc",
     "Template/NLO/MCatNLO/shower_template.sh",
 )
 OUTPUT_NAMES = ("summary.txt", "events.lhe.gz", "plot_PYTHIA8_1_0.HwU",
@@ -370,7 +369,7 @@ def prepare(row, directory, cores, log):
     # Use the master analysis and matching HEPEVT layout in each fresh export.
     mc = ROOT / "Template/NLO/MCatNLO"
     for name in ("PY8Analyzer/py8an_HwU_pp_tj_recoil.f", "include/HEPMC_ST_RECOIL.INC",
-                 "include/HEPEVTSize.h", "shower_template.sh"):
+                 "shower_template.sh"):
         shutil.copy2(mc / name, directory / "MCatNLO" / name)
     configure_cores(directory, cores)
     (directory / "run_spec.json").write_text(json.dumps(row, indent=2) + "\n")

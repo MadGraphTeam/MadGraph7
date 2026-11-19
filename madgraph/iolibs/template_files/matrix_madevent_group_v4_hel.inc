@@ -1,8 +1,8 @@
-SUBROUTINE SMATRIX%(proc_id)s(P, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
+SUBROUTINE SMATRIX%(proc_id)s(P, IFLAV, RHEL, RCOL, channel, IVEC, ANS, IHEL, ICOL)
 C 
 %(info_lines)s
 C 
-C MadGraph5_aMC@NLO for Madevent Version
+C MadGraph7 for Madevent Version
 C 
 C Returns amplitude squared summed/avg over colors
 c and helicities
@@ -11,6 +11,7 @@ c  potentially times multi-channel weight
 C  
 %(process_lines)s
 C 
+    use model_object
     IMPLICIT NONE
 C  
 C CONSTANTS
@@ -33,6 +34,7 @@ C
     double precision RCOL ! random number for selecting helicity
     integer channel ! channel to keep for the multi-channel
     integer ivec ! for using the correct coupling
+    integer iflav
 c
 c   output argument
 c
@@ -47,9 +49,20 @@ C
         REAL*8 T
         REAL*8 R,SUMHEL,TS(NCOMB)
         INTEGER I,IDEN
-        INTEGER JC(NEXTERNAL),II
+        INTEGER FLAVOR(NEXTERNAL)
+        INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
+%(smatrix_hel_cross_decl)s
+C       Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
+C       table above can collapse distinct same-flavor / different-flavor
+C       leshouche rows that share the same coupling group; BROKEN_SYM needs
+C       row-level information to apply the identical-particle correction.
+        INTEGER FLAVOR_ROW(NEXTERNAL,%(max_flavor_row)s)
+        %(get_flavor_row_matrix)s
+        INTEGER IPSEL
+        COMMON /SUBPROC/ IPSEL
+        INTEGER BROKEN_SYM%(proc_id)s
         REAL*8 XTOT
-        INTEGER  J, JJ
+        INTEGER  J, JJ, JB
       double precision get_channel_cut
       external get_channel_cut
 
@@ -58,6 +71,7 @@ C GLOBAL VARIABLES
 C
     include '../../Source/vector.inc' ! defines VECSIZE_MEMMAX
     DOUBLE PRECISION AMP2(MAXAMPS), JAMP2(0:MAXFLOW)
+%(xg_jamp2_decl)s
 
 
 C
@@ -69,6 +83,9 @@ C
     REAL*8 POL(2)
     
     COMMON/TO_POLARIZATION/ POL
+C   a mirror process (IMIRROR=2) has the parton of beam 2 on leg 1
+    INTEGER IMIRROR, IPROC
+    COMMON/TO_MIRROR/ IMIRROR,IPROC
        double precision tmin_for_channel
        integer sde_strat ! 1 means standard single diagram enhancement strategy,
 c      	      	      	   2 means approximation by the	denominator of the propagator
@@ -84,17 +101,15 @@ ${helicity_lines}
 C ----------
 C BEGIN CODE
 C ----------
+%(smatrix_hel_cross_decode)s
+    CALL GET_FLAVOR%(proc_id)s(%(me_flav_key)s, FLAVOR)
 
-    DO I=1,NEXTERNAL
-       JC(I) = +1
-    ENDDO
-     
     IF (multi_channel) THEN
         DO I=1,NDIAGS
             AMP2(I)=0D0
         ENDDO
     ENDIF
-    JAMP2(0)=%(ncolor)d
+    JAMP2(0)=%(ncolor_flow)d
     DO I=1,INT(JAMP2(0))
             JAMP2(I)=0D0
     ENDDO
@@ -104,14 +119,22 @@ C ----------
 
     TS(:) = 0d0
 
-    call MATRIX%(proc_id)s(P ,JC(1), TS, AMP2, JAMP2, IVEC)
-    DO I=1,NCOMB     
-       T=TS(I)  
+    call MATRIX%(proc_id)s(%(hel_matrix_call_args)s)
+C   C-parity de-duplication: a dropped partner's HELAS calls
+C   were never generated, so its TS() is 0 here; copy the
+C   representative's identical |M|^2 back into it (the
+C   recycled MATRIX above computed only the representatives).
+${csym_reuse}
+    DO I=1,NCOMB
+       T=TS(I)
        DO JJ=1,nincoming
-          IF(POL(JJ).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JJ)))) THEN
-             T=T*ABS(POL(JJ))*NB_SPIN_STATE_IN(JJ)/2d0 ! NB_SPIN_STATE(JJ)/2d0 is added for polarised beam
-          ELSE IF(POL(JJ).NE.1d0)THEN
-             T=T*(2d0-ABS(POL(JJ)))*NB_SPIN_STATE_IN(JJ)/2d0
+C         JB: the beam leg JJ comes from
+          JB = JJ
+          IF (IMIRROR.EQ.2) JB = 3-JJ
+          IF(POL(JB).NE.1d0.AND.NHEL(JJ,I).EQ.INT(SIGN(1d0,POL(JB)))) THEN
+             T=T*ABS(POL(JB))*NB_SPIN_STATE_IN(JJ)/2d0 ! NB_SPIN_STATE(JJ)/2d0 is added for polarised beam
+          ELSE IF(POL(JB).NE.1d0)THEN
+             T=T*(2d0-ABS(POL(JB)))*NB_SPIN_STATE_IN(JJ)/2d0
           ENDIF
        ENDDO
        ANS=ANS+DABS(T)
@@ -135,7 +158,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     IF (MULTI_CHANNEL) THEN
         XTOT=0D0
         DO I=1,LMAXCONFIGS
-	    J = CONFSUB(%(proc_id)s, I)
+	    J = %(me_confsub_j)s
 	    if (J.ne.0)then
 	      if (sde_strat.eq.1)then
 	         AMP2(J) = AMP2(J) * GET_CHANNEL_CUT(P, I)
@@ -153,14 +176,34 @@ c         Set right sign for ANS, based on sign of chosen helicity
 	        stop 1
         ENDIF
     ENDIF
-    ANS=ANS/DBLE(IDEN)
+    IF (IPSEL.GE.1.AND.IPSEL.LE.%(max_flavor_row)s) THEN
+       FLAVOR_FOR_SYM(:) = FLAVOR_ROW(:, IPSEL)
+    ELSE
+       FLAVOR_FOR_SYM(:) = FLAVOR(:)
+    ENDIF
+%(smatrix_me_iden_line)s
 
+%(xg_jamp2_pub)s
     call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
 
     END
- 
- 
-Subroutine  MATRIX%(proc_id)s(P,IC, TS, AMP2, JAMP2, IVEC)
+%(crossing_routines_me)s
+
+
+      SUBROUTINE GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR_OUT)
+C     Returns the flavor array for a given flavor index IFLAV
+      IMPLICIT NONE
+      include 'nexternal.inc'
+      INTEGER IFLAV, I
+      INTEGER FLAVOR_OUT(NEXTERNAL)
+      INTEGER FLAVOR(NEXTERNAL,%(max_flavor)s)
+      %(get_flavor_matrix)s
+      FLAVOR_OUT(:) = FLAVOR(:, IFLAV)
+      RETURN
+      END
+
+
+Subroutine  MATRIX%(proc_id)s(P,%(hel_matrix_ic_param)sIFLAV, TS, AMP2, JAMP2, IVEC)
 C  
 %(info_lines)s
 C
@@ -169,6 +212,8 @@ c for the point with external lines W(0:6,NEXTERNAL)
 C  
 %(process_lines)s
 C  
+    use aloha_object
+    use model_object
     IMPLICIT NONE
 C  
 C CONSTANTS
@@ -179,7 +224,9 @@ C
     include 'nexternal.inc'
     include 'maxamps.inc'
     INTEGER    NWAVEFUNCS,     NCOLOR
-    PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d) 
+    PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d)
+    INTEGER    NCOLOR_FLOW
+    PARAMETER (NCOLOR_FLOW=%(ncolor_flow)d)
     REAL*8     ZERO
     PARAMETER (ZERO=0D0)
     COMPLEX*16 IMAG1
@@ -197,22 +244,31 @@ C
 C ARGUMENTS 
 C
     REAL*8 P(0:3,NEXTERNAL)
-    INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+    INTEGER IFLAV
+%(me_matrix_ic_decl)s
+    INTEGER FLAVOR(NEXTERNAL)
     REAL*8 TS(NCOMB)
     INTEGER IVEC
 C  
 C LOCAL VARIABLES 
 C  
     INTEGER I,J,M,N,K
-    COMPLEX*16 ZTEMP,TMP_JAMP(%(nb_temp_jamp)i)
+    COMPLEX*16 ZTEMP
+%(jamp_tmp_decl)s
+%(jamp_decl)s
     COMPLEX*16 TMP(%(wavefunctionsize)d)
     INTEGER CF(NCOLOR*(NCOLOR+1))
     INTEGER DENOM, CF_INDEX
+    COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
-    COMPLEX*16 W(%(wavefunctionsize)d,NWAVEFUNCS)
+${hr_gather_decl}
+    ${dead_row_decl}
+%(jampflow_decl)s
+    type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
     DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
+%(flavor_mask_decl)s
 
 	%(fake_width_declaration)s
 	logical first
@@ -246,14 +302,20 @@ C BEGIN CODE
 C ----------
 if (first) then
 	first=.false.
+    CALL %(proc_prefix)sINIT_CF%(proc_id)s()
 	%(fake_width_definitions)s
 endif
+C   Rebuild the FLAVOR(NEXTERNAL) array from the threaded flavor index.
+    CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
+%(flavor_mask_setup)s
     AMP(:,:) = (0d0,0d0)
 ${helas_calls}
+C     END OF RECYCLED HELAS BLOCK
 
     JAMP(:,:)  = (0d0,0d0)
-    DO K = 1, NCOMB
+    DO ${hr_gather_open}
 ${jamp_lines}
+%(jampflow_lines)s
         TS(K) = 0.D0 
     	DO M = 1, NAMPSO
           CF_INDEX = 0
@@ -271,19 +333,20 @@ ${jamp_lines}
         ENDDO ! I
     ENDDO ! M
     TS(K) = TS(K) / DENOM
-	if(sde_strat.eq.1) then
-        ${amp2_lines}
-	endif
-        Do I = 1, NCOLOR
+    ${dead_row_if}
+    ${amp2_row_lines}
+        Do I = 1, NCOLOR_FLOW
     	  DO M = 1, NAMPSO
     		DO N = 1, NAMPSO
 			%(select_configs_if)s
-                Jamp2(i)=Jamp2(i)+DABS(DBLE(Jamp(i,m)*dconjg(Jamp(i,n))))
+                Jamp2(i)=Jamp2(i)+DABS(DBLE(%(jamp_flow)s(i,m)*dconjg(%(jamp_flow)s(i,n))))
 			%(select_configs_endif)s
     		enddo
     	  enddo
         Enddo
-    ENDDO ! K
+    ${dead_row_endif}
+    ENDDO ! ${hr_gather_close}
+    ${amp2_cut_lines}
 
     END
 
@@ -294,3 +357,8 @@ ${jamp_lines}
     	    i =1
     return
     end
+
+
+%(color_init_routine)s
+
+    %(broken_sym_function)s

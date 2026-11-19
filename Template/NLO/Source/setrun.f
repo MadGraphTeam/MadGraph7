@@ -41,7 +41,7 @@ c Include all the parameters set in the run_card.dat
 
       include 'run_card.inc'
 c Set UPC parameter
-      if(lpp(1).eq.2.and.lpp(2).eq.2) then
+      if(abs(lpp(1)).eq.2.and.abs(lpp(2)).eq.2) then
         xiAI(1:2)=1d0 ! this should be an input in run_card.dat
         call get_nucleus_RA(nb_proton(1),nb_neutron(1),RAI(1))
         call get_nucleus_RA(nb_proton(2),nb_neutron(2),RAI(2))
@@ -89,11 +89,10 @@ c check that the event normalization input is reasoble
      &        /'Current input is: ', event_norm
          stop 1
       endif
-c Check parameters for FxFx/UNLOPS/NNLL-veto
-      if ( ickkw.ne.0 .and. ickkw.ne.4 .and. ickkw.ne.3 .and.
-     &     ickkw.ne.-1) then
+c Check the merging mode
+      if (ickkw.ne.0 .and. ickkw.ne.3) then
          write (*,*) 'ickkw parameter not known. ickkw=',ickkw
-         stop
+         stop 1
       endif
       chcluster=.false.
       ktscheme=1

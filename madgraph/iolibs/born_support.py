@@ -14,7 +14,6 @@ import itertools
 import json
 import os
 from pathlib import Path
-import pickle
 import re
 
 from madgraph import MadGraph5Error
@@ -30,13 +29,6 @@ def freeze(value):
     return value
 
 
-def load_element(element):
-    if isinstance(element, str):
-        with open(element, 'rb') as stream:
-            return pickle.load(stream)
-    return element
-
-
 def evaluator_tag(amplitude):
     """Use HELAS equivalence without merging native process identities.
 
@@ -50,30 +42,35 @@ def evaluator_tag(amplitude):
     return tag
 
 
-def prepare(exporter, elements):
+def context_record(exporter, me):
+    """The HELAS tag of the FKSHelasProcess me and its compatibility
+    signature, which prepare compares. (In the low_mem_multicore_nlo_generation
+    mode, the process which finalizes the matrix element computes it.)"""
+    born = me.born_me
+    proc = born['processes'][0]
+    tag = evaluator_tag(born['base_amplitude'])
+    signature = (
+        tuple(t.get_external_numbers() for t in tag[-1]),
+        freeze(proc['split_orders']), freeze(proc['born_sq_orders']),
+        freeze(proc['squared_orders']),
+        me.ewsudakov,
+        tuple(exporter.get_den_factor_lines(me)),
+        tuple(exporter.get_ij_lines(me)),
+        freeze([i['fks_info'] for i in me.get_fks_info_list()]),
+        tuple(evaluator_tag(e['base_amplitude'])
+              for e in me.extra_cnt_me_list))
+    return (tag, signature)
+
+
+def prepare(exporter, records):
     """Assign stable context/provider IDs using the existing HELAS tags.
 
     Keep native contexts even when their evaluator is shared. A tag alone is
     insufficient: the labelled external order, splitting orders, normalization
     and extra-Born roles are part of the compatibility contract as well.
+    records holds the name of the P directory of each matrix element,
+    followed by its context_record.
     """
-    records = []
-    for element in elements:
-        me = load_element(element)
-        born = me.born_me
-        proc = born['processes'][0]
-        tag = evaluator_tag(born['base_amplitude'])
-        signature = (
-            tuple(t.get_external_numbers() for t in tag[-1]),
-            freeze(proc['split_orders']), freeze(proc['born_sq_orders']),
-            freeze(proc['squared_orders']),
-            me.ewsudakov,
-            tuple(exporter.get_den_factor_lines(me)),
-            tuple(exporter.get_ij_lines(me)),
-            freeze([i['fks_info'] for i in me.get_fks_info_list()]),
-            tuple(evaluator_tag(e['base_amplitude'])
-                  for e in me.extra_cnt_me_list))
-        records.append(('P' + proc.shell_string(), tag, signature))
     providers = []
     registry = {}
     for context, (name, tag, signature) in enumerate(sorted(records), 1):
@@ -107,6 +104,8 @@ def worker_record(exporter, me, amp_orders):
                  born_orders=sq,
                  links=[link['link'] for link in me.color_links],
                  extra=len(me.extra_cnt_me_list),
+                 frame_map=list(getattr(me, 'user_leg_order', []) or
+                                range(1, len(proc.get_legs_with_decays())+1)),
                  born_identity=born['identical_particle_factor'], sectors=[],
                  helicity_matrices=[helicity_matrix_metadata(matrix, proc['model'])
                      for matrix in [born]+list(me.extra_cnt_me_list)+
@@ -322,7 +321,8 @@ def common_members(lines):
     declarations = {}
     commons = []
     for line in lines:
-        m = re.match(r'\s*(double precision|double complex|real\*8|complex\*16)\s+(.+)', line, re.I)
+        m = re.match(r'\s*(double precision|double complex|real\*8|complex\*16)'
+                     r'(?:\s*,\s*target)?\s*(?:::)?\s+(.+)', line, re.I)
         if m:
             kind = 'complex' if 'complex' in m[1].lower() else 'real'
             for var in re.split(r',\s*(?![^()]*\))', m[2]):
@@ -485,16 +485,129 @@ def helicity_matrix_metadata(matrix, model):
     return result
 
 
-def helicity_state_signature(root, records, model, members):
-    """Certify tree inputs for helicity masks and strong-coupling rescaling."""
+def explicit_helas_dependencies(root):
+    """Conservatively certify argument-only fixed-form HELAS helpers.
+
+    A homogeneous coupling graph does not constrain a custom helper's module,
+    COMMON, or external-function inputs. Reject those instead of assuming
+    they share the generated ALOHA routines' dependency contract. Calls may
+    only reach another inspected DHELAS routine or a numerical intrinsic.
+    Unknown formats/declarations also retain the full model-state key.
+    """
+    directory = root/'Source'/'DHELAS'
+    sources = sorted(path for path in directory.iterdir()
+                     if path.suffix.lower() in ('.f', '.f90', '.f95', '.for')) if directory.exists() else []
+    routines, names = [], set()
+    declaration = re.compile(r'\s*(?:double\s+(?:precision|complex)|'
+                             r'(?:real|complex|integer|logical)(?:\*\d+)?|'
+                             r'type\s*\(\s*(?:aloha|aloha2d)\s*\))'
+                             r'\s*(?:::)?\s+(.+)', re.I)
+    prepared, aloha_records = [], set()
+    start = re.compile(r'\s*(?:[\w*]+\s+)*?(?:subroutine|function)\s+(\w+)', re.I)
+    for path in sources:
+        if path.suffix != '.f':
+            return False
+        if any(line.lstrip().startswith('#') for line in path.read_text().splitlines()):
+            return False
+        try:
+            lines = expand(path)
+        except (OSError, MadGraph5Error):
+            return False
+        clean, module, record = [], False, None
+        for line in lines:
+            # String literals and diagnostics cannot declare dependencies.
+            line = re.sub(r'''('(?:[^']|'')*'|"(?:[^"]|"")*")''', '', line).split('!', 1)[0].lower()
+            if re.match(r'\s*module\s+aloha_object\s*$', line):
+                if module:
+                    return False
+                module = True
+                continue
+            if module:
+                # The built-in module carries record definitions only. No
+                # module variables, initializers, pointers or procedures may
+                # smuggle model inputs past the argument dependency proof.
+                match = re.fullmatch(r'\s*type\s+(aloha|aloha2d)\s*', line)
+                if match and record is None:
+                    record = match[1]
+                    aloha_records.add(record)
+                elif re.fullmatch(r'\s*end\s*type(?:\s+'+str(record)+r')?\s*', line) and record:
+                    record = None
+                elif re.fullmatch(r'\s*end\s*module(?:\s+aloha_object)?\s*', line) and record is None:
+                    module = False
+                elif record and (line.strip() == 'sequence' or re.fullmatch(
+                        r'\s*(?:double\s+(?:precision|complex)|integer)\s*::\s*'
+                        r'\w+(?:\([0-9,:+\- ]+\))?\s*', line)):
+                    pass
+                elif line.strip():
+                    return False
+                continue
+            clean.append(line)
+        if module or record:
+            return False
+        prepared.append(clean)
+    for lines in prepared:
+        current = []
+        for line in lines:
+            if re.fullmatch(r'\s*use\s+aloha_object\s*', line) and 'aloha' in aloha_records:
+                continue
+            if re.search(r'\b(common|use|module|external|save|data|entry|equivalence|procedure)\b', line):
+                return False
+            if ('::' in line and not declaration.match(line)) or re.search(r'\b(read|open|inquire|include)\b', line):
+                return False
+            match = start.match(line)
+            if match:
+                if current:
+                    routines.append(current)
+                current = [line]
+                if match[1] in names:
+                    return False
+                names.add(match[1])
+            else:
+                current.append(line)
+        if current:
+            routines.append(current)
+    intrinsics = set('abs acos aimag aint anint asin atan atan2 cmplx conjg cos '
+                     'cosh dabs dacos dasin datan datan2 dble dcmplx dconjg dcos '
+                     'dcosh ddim dexp dim dimag dint dlog dlog10 dmax1 dmin1 dmod '
+                     'dnint dsign dsin dsinh dsqrt dtan dtanh exp int log log10 '
+                     'max max0 max1 min min0 min1 mod nint real sign sin sinh '
+                     'sqrt tan tanh'.split())
+    syntax = {'if', 'elseif', 'while', 'parameter', 'dimension', 'write', 'format'}
+    for lines in routines:
+        arrays = set()
+        for line in lines:
+            if start.match(line):
+                continue
+            decl = declaration.match(line)
+            dimension = re.match(r'\s*dimension\s+(.+)', line)
+            if decl or dimension:
+                body = (decl or dimension)[1]
+                if '/' in body or '=' in body:
+                    return False
+                arrays.update(re.findall(r'\b(\w+)\s*\(', body))
+        for line in lines:
+            if start.match(line) or declaration.match(line) or re.match(r'\s*dimension\b', line):
+                continue
+            if any(name not in names for name in re.findall(r'\bcall\s+(\w+)', line)):
+                return False
+            # Components of a verified ALOHA record are argument/local data,
+            # not external functions or module state.
+            expressions = re.sub(r'%\s*\w+\s*\(', '%aloha_component(', line) if aloha_records else line
+            references = set(re.findall(r'\b(\w+)\s*\(', expressions))
+            if aloha_records:
+                references.discard('aloha_component')
+            if references - names - arrays - intrinsics - syntax:
+                return False
+    return True
+
+
+def helicity_state_signature(root, records, model, members, fixed_members=()):
+    """Certify tree inputs for masks, exact amplitude keys and G rescaling."""
     matrices = [matrix for record in records for matrix in record.get('helicity_matrices', [])]
     if not matrices or not all(matrix['homogeneous'] for matrix in matrices):
         return None
-    # Ordinary ALOHA routines depend only on their arguments. Custom HELAS
-    # routines with hidden model COMMONs need the conservative full-state key.
-    for path in (root/'Source'/'DHELAS').glob('*.f'):
-        if any(re.search(r'(?i)\bcommon\b', line) for line in expand(path)):
-            return None
+    if not explicit_helas_dependencies(root):
+        return None
     direct = set()
     for record in records:
         source = root/'SubProcesses'/record['directory']
@@ -507,10 +620,15 @@ def helicity_state_signature(root, records, model, members):
                            [('sminputs', (3,)), ('loop', (1,))])}
     used = {name: degree for matrix in matrices for name, degree in matrix['couplings'].items()}
     by_name = {name: (kind, index) for name, kind, index in members}
+    fixed_names = {name for name, _, _ in fixed_members}
     if 'g' not in by_name or by_name['g'][0] != 'real' or ':' in by_name['g'][1]:
         return None
     signature = dict(g=int(by_name['g'][1]), real=[], complex=[], couplings=[])
     for name in sorted(used):
+        if name in fixed_names:
+            if used[name] != 0:
+                return None
+            continue
         if name not in by_name or ':' in by_name[name][1]:
             return None
         kind, index = by_name[name]
@@ -542,6 +660,7 @@ def write_helicity_state_comparator(path, members, signature):
              '    logical::same_model',
              '    real(8)::ga,gb,pa,pb', '    complex(8)::ca,cb',
              '    born_helicity_state_equal=.false.',
+             '    if(a%configuration_epoch.ne.b%configuration_epoch)return',
              '    if(.not.allocated(a%real_values).or..not.allocated(b%real_values))return',
              '    if(.not.allocated(a%complex_values).or..not.allocated(b%complex_values))return',
              '    if(size(a%real_values).ne.size(b%real_values))return',
@@ -592,6 +711,42 @@ def write_helicity_state_comparator(path, members, signature):
     path.write_text(source)
 
 
+def write_amplitude_state_comparator(path, members, signature):
+    """Ignore only certified unused state; compare actual tree inputs exactly.
+
+    The signature's proof excludes hidden HELAS/model dependencies and covers
+    every exported tree squared order. Mask homogeneity alone is insufficient
+    for SAVEAMP reuse: G, every used coupling (including its phase), and every
+    direct/independent input must be identical. Unsupported models retain the
+    template's full-state predicate. No rescaling or numerical tolerance is
+    applied to an amplitude cache key.
+    """
+    if signature is None:
+        return
+    sizes = {kind: max([int(index.split(':')[-1]) for _, k, index in members if k == kind] or [0])
+             for kind in ('real', 'complex')}
+    indices = {kind: set(signature[kind]) for kind in ('real', 'complex')}
+    indices['real'].add(signature['g'])
+    for kind, index, _ in signature['couplings']:
+        indices[kind].add(index)
+    lines = ['  logical function born_amplitude_state_equal(a,b)',
+             '    type(BornModelState),intent(in)::a,b',
+             '    born_amplitude_state_equal=.false.',
+             '    if(a%configuration_epoch.ne.b%configuration_epoch)return',
+             '    if(.not.allocated(a%real_values).or..not.allocated(b%real_values))return',
+             '    if(.not.allocated(a%complex_values).or..not.allocated(b%complex_values))return']
+    for kind in ('real', 'complex'):
+        lines += ['    if(size(a%%%s_values).ne.%d.or.size(b%%%s_values).ne.%d)return' %
+                  (kind, sizes[kind], kind, sizes[kind])]
+        for index in sorted(indices[kind]):
+            lines += ['    if(a%%%s_values(%d).ne.b%%%s_values(%d))return' %
+                      (kind, index, kind, index)]
+    lines += ['    born_amplitude_state_equal=.true.', '  end function']
+    source = re.sub(r'  logical function born_amplitude_state_equal\(a,b\)[\s\S]*?  end function',
+                    '\n'.join(lines), path.read_text())
+    path.write_text(source)
+
+
 def routine(source, name):
     lines = list(statements(source))
     start = next(i for i, line in enumerate(lines)
@@ -639,17 +794,22 @@ def model_aware_helicity_filter(lines):
                     result += ['integer born_model_epoch,helicity_model_epoch',
                                'common/c_born_model_epoch/born_model_epoch',
                                'save helicity_model_epoch',
-                               'data helicity_model_epoch/-1/']
+                               'data helicity_model_epoch/-1/',
+                               'integer born_helicity_frame(2),helicity_frame(2)',
+                               'common/c_born_helicity_frame/born_helicity_frame',
+                               'save helicity_frame', 'data helicity_frame/2*-1/']
                     if scalar:
                         result += ['integer,save::helicity_sector=0']
                 if re.match(r'(?i)\s*ntry(?:\([^)]*\))?\s*=\s*ntry', statement):
                     result.pop()
-                    changed = 'helicity_model_epoch.ne.born_model_epoch'
+                    changed = ('helicity_model_epoch.ne.born_model_epoch.or.'
+                               'any(helicity_frame.ne.born_helicity_frame)')
                     if scalar:
                         changed += '.or.helicity_sector.ne.nfksprocess'
                     result += ['if(%s)then' % changed,
                                'ntry=0', 'goodhel=.false.',
-                               'helicity_model_epoch=born_model_epoch']
+                               'helicity_model_epoch=born_model_epoch',
+                               'helicity_frame=born_helicity_frame']
                     if scalar:
                         result += ['helicity_sector=nfksprocess']
                     result += ['endif', statement]
@@ -694,6 +854,11 @@ def optimize_real_helicities(lines):
         line = re.sub(r'(?i),\s*t_ident\(ncomb\)', '', line)
         line = re.sub(r'(?i),\s*t_save\(ncomb,0:nsqampso\)', '', line)
         line = re.sub(r'(?i)^(\s*integer\s+ihel\s*,\s*iden\s*,\s*i)\s*,\s*j\s*$', r'\1', line)
+        # MG7 replays the learned helicities once to make the first-point
+        # diagram weights follow the same mask as later calls. Native output
+        # computes every good helicity, so no equal-helicity tie is excluded.
+        line = re.sub(r'(?i)(goodhel\(ihel\))\s*\.and\.\s*t_ident\(ihel\)\s*\.le\.\s*0',
+                      r'\1', line)
         if re.match(r'(?i)\s*implicit\s+none\s*$', line):
             result += ['use mc_born_types,only:BornModelState,born_helicity_state_equal', line,
                        'type(BornModelState),save::helicity_model_state,helicity_current_state']
@@ -701,6 +866,7 @@ def optimize_real_helicities(lines):
             result += ['call mc_capture_model_state(helicity_current_state)',
                        'if(.not.born_helicity_state_equal(helicity_model_state,helicity_current_state))then',
                        'ntry=0', 'goodhel=.false.',
+                       'helicity_model_state%configuration_epoch=helicity_current_state%configuration_epoch',
                        'helicity_model_state%real_values=helicity_current_state%real_values',
                        'helicity_model_state%complex_values=helicity_current_state%complex_values',
                        'endif', line]
@@ -730,6 +896,91 @@ def write_real_helicity_filter(path):
             temporary.unlink()
 
 
+def write_native_frame_bridge(path):
+    """Route frame wrappers through native contexts without changing standalone.
+
+    Each context owns the mapping from FKS-sorted legs to the original user
+    order. A frame mask cached for another context must not survive a switch.
+    """
+    from madgraph.iolibs.native_histories import write
+    path = Path(path)
+    source = path.read_text()
+    if re.search(r'(?i)\bframe_map_active\b', source):
+        return
+    source = re.sub(r'(?i)\bcall\s+(sborn|sborn_sf|extra_cnt)\s*\(',
+                    lambda match: 'call '+match[1]+'_native(', source)
+    temporary = path.with_suffix('.frame.tmp')
+    for name in ('sborn_frame', 'sborn_onehel_frame', 'sborn_sf_frame',
+                 'extra_cnt_frame', 'binothlha_frame'):
+        result = []
+        for line in routine(source, name):
+            if line.strip().lower() == 'implicit none':
+                result += ['use mc_born_types,only:born_active_helicity_frame',
+                           'use mc_native_context,only:ensure_native_context,active_context']
+            result.append(line)
+            if line.strip().lower() == 'implicit none':
+                result.append('integer saved_helicity_frame(2),frame_leg')
+            if re.match(r'(?i)\s*call\s+get_frame_mask_born\(', line):
+                result.insert(len(result)-1, 'call ensure_native_context()')
+            if re.match(r'(?i)\s*call\s+(?:sborn_native|sborn_onehel|sborn_sf_native|extra_cnt_native|binothlha)\(', line):
+                result.pop()
+                result += ['saved_helicity_frame=born_active_helicity_frame',
+                           'if(any(ids.ne.0).and..not.'
+                           '(all(ids(1:nincoming).eq.1).and.'
+                           'all(ids(nincoming+1:nexternal-1).eq.0)).and..not.'
+                           '(all(ids(1:nincoming).eq.0).and.'
+                           'all(ids(nincoming+1:nexternal-1).eq.1)))then',
+                           'born_active_helicity_frame=[active_context,0]',
+                           'do frame_leg=1,nexternal-1',
+                           'if(ids(frame_leg).ne.0)born_active_helicity_frame(2)='
+                           'ibset(born_active_helicity_frame(2),frame_leg)',
+                           'enddo', 'endif', line,
+                           'born_active_helicity_frame=saved_helicity_frame']
+        write(temporary, result)
+        pattern = r'^\s{6}subroutine\s+'+name+r'\b[\s\S]*?^\s{6}end\s*$'
+        source, count = re.subn(pattern, lambda _: temporary.read_text().rstrip('\n'),
+                                source, flags=re.I|re.M)
+        if count != 1:
+            raise MadGraph5Error('Missing native frame wrapper: '+name)
+    for name, real in (('get_frame_mask_born', False), ('get_frame_mask_real', True)):
+        result = []
+        for line in routine(source, name):
+            lower = line.strip().lower()
+            if lower == 'implicit none':
+                result.append('use mc_native_context,only:native_epoch'+
+                              ('' if real else ',native_metadata'))
+            if lower == ('integer cached_id_r' if real else 'integer cached_id'):
+                result += ['integer cached_epoch', 'save cached_epoch',
+                           'data cached_epoch/-1/']
+                if not real:
+                    result.append('integer frame_map_active(nexternal-1)')
+            if re.match(r'(?i)\s*if\s*\(frame_id\.ne\.cached_id(?:_r)?\)\s*then', line):
+                line = line.replace(') then', '.or.native_epoch.ne.cached_epoch) then')
+                result.append(line)
+                if not real:
+                    result += ['frame_map_active=frame_map_born',
+                               'if(associated(native_metadata))then',
+                               'if(allocated(native_metadata%frame_map))'
+                               'frame_map_active=native_metadata%frame_map', 'endif']
+                continue
+            if not real:
+                line = line.replace('btest(frame_id, frame_map_born(i))',
+                                    'btest(frame_id, frame_map_active(i))')
+            result.append(line)
+            if re.match(r'(?i)\s*cached_id(?:_r)?\s*=\s*frame_id\s*$', line):
+                result.append('cached_epoch=native_epoch')
+        write(temporary, result)
+        pattern = r'^\s{6}subroutine\s+'+name+r'\b[\s\S]*?^\s{6}end\s*$'
+        source, count = re.subn(pattern, lambda _: temporary.read_text().rstrip('\n'),
+                                source, flags=re.I|re.M)
+        if count != 1:
+            raise MadGraph5Error('Missing native frame bridge routine: '+name)
+    temporary.unlink()
+    if path.is_symlink():
+        path.unlink()
+    path.write_text(source)
+
+
 def finalize(exporter):
     """Merge worker records, generate the DSO and replace legacy entry points."""
     root = Path(exporter.dir_path).resolve()
@@ -747,30 +998,46 @@ def finalize(exporter):
         histories=histories), indent=2, sort_keys=True)+'\n')
     model_lines = expand(root/'Source'/'MODEL'/'coupl.inc')
     model_lines += expand(root/'Source'/'MODEL'/'input.inc')
-    model_members, model_sizes = common_members(model_lines)
+    model_members, _ = common_members(model_lines)
     model_commons = {m.lower(): 'mcb_model_'+m.lower() for line in model_lines
                      for m in re.findall(r'(?i)common\s*/(\w+)/', line)}
-    signature = helicity_state_signature(root, records, exporter.model, model_members)
+    from madgraph.iolibs.model_state import build_model_state_layout
+    model_layout = build_model_state_layout(root, records, exporter.model, model_members)
+    dynamic_members = model_layout['dynamic_members']
+    model_sizes = model_layout['sizes']['dynamic']
+    (support/'model_state_layout.json').write_text(json.dumps(dict(
+        fixed_members=model_layout['fixed_members'], dynamic_members=dynamic_members,
+        fixed_sizes=model_layout['sizes']['fixed'], dynamic_sizes=model_sizes,
+        manifest=model_layout['manifest']), indent=2, sort_keys=True)+'\n')
+    signature = helicity_state_signature(root, records, exporter.model, dynamic_members,
+                                         model_layout['fixed_members'])
     providers = {}
     for record in records:
         if record['directory'] == record['source']:
             providers[record['provider']] = record
     for provider, record in sorted(providers.items()):
-        write_provider(root, support, record, model_members, model_commons,
-                       cache_model_installation=signature is not None)
+        write_provider(root, support, record, dynamic_members, model_commons,
+                       cache_model_installation=(signature is not None and
+                           not model_layout['manifest'].get('dynamic_writes')))
     for record in records:
         write_metadata(root, support, record)
-    write_api(support, records, providers, model_sizes, histories)
-    write_helicity_state_comparator(support/'mc_born_types.f90', model_members, signature)
+    write_api(support, records, providers, model_sizes, histories,
+              model_layout, model_lines, model_commons)
+    write_helicity_state_comparator(support/'mc_born_types.f90', dynamic_members, signature)
+    write_amplitude_state_comparator(support/'mc_born_types.f90', dynamic_members, signature)
     (support/'helicity_signature.json').write_text(json.dumps(
-        dict(mode='homogeneous_G' if signature else 'full_model_state', signature=signature),
+        dict(mode='homogeneous_G' if signature else 'exact_compact_state', signature=signature),
         indent=2, sort_keys=True)+'\n')
     write_build(root, support, providers, model_commons, records)
+    write_model_revision_hook(root)
     for record in records:
-        write_wrappers(root, record, model_members)
+        write_wrappers(root, record, dynamic_members, model_layout)
     from madgraph.iolibs import native_histories
     native_histories.export(root, records, histories)
     for record in records:
+        frame_bridge = root/'SubProcesses'/record['directory']/'boost_to_frame.f'
+        if frame_bridge.exists():
+            write_native_frame_bridge(frame_bridge)
         for source in (root/'SubProcesses'/record['directory']).glob('matrix_*.f'):
             write_real_helicity_filter(source)
 
@@ -993,6 +1260,8 @@ def provider_adapter(r, source, members, cache_model_installation=False):
              'integer,save::active_slot=0,model_epoch=0',
              'integer(8),save::clock=0',
              'integer born_model_epoch', 'common/c_born_model_epoch/born_model_epoch',
+             'integer born_helicity_frame(2)',
+             'common/c_born_helicity_frame/born_helicity_frame',
              'logical reuse_amplitudes,rebuild,scaled,model_changed',
              'double precision ratio,factors(%d)' % ng,
              'double complex saveamp(%d,%d)' % (ng,nh),
@@ -1005,7 +1274,10 @@ def provider_adapter(r, source, members, cache_model_installation=False):
              'common/to_amps_born/amp2b,jamp2b',
              'double precision wgt_hel(%d),wgt_hel_split(%d,%d)' % (nh,ns,nh),
              'common/c_born_hel/wgt_hel',
-             'common/c_born_hel_split/wgt_hel_split']
+             'common/c_born_hel_split/wgt_hel_split',
+             'logical learned_goodhel(%d,%d),saved_goodhel(%d)' %
+             (nh,max(1,len(r['sectors'])),nh),
+             'common/c_goodhel/learned_goodhel']
     if degrees and strong:
         lines += ['integer,parameter::strong_degrees(%d)=[%s]' %
                   (ng,','.join(map(str,degrees)))]
@@ -1028,6 +1300,7 @@ def provider_adapter(r, source, members, cache_model_installation=False):
               'double complex amp_split_ewsud_lo2(amp_split_size)',
               'common/to_amp_split_ewsud_lo2/amp_split_ewsud_lo2']
     lines += ['status=0', 'nfksprocess=request%sector',
+              'born_helicity_frame=request%helicity_frame',
               'if(nfksprocess.lt.1.or.nfksprocess.gt.%d) then' % max(1,len(r['sectors'])),
               'status=2', 'return', 'endif']
     if not r['sectors']:
@@ -1050,6 +1323,7 @@ def provider_adapter(r, source, members, cache_model_installation=False):
               'model_epoch=model_epoch+1', 'points%valid=.false.',
               'points%age=0', 'active_slot=0', 'endif',
               'cached_state%real_values=state%real_values',
+              'cached_state%configuration_epoch=state%configuration_epoch',
               'cached_state%complex_values=state%complex_values', 'endif',
               'born_model_epoch=model_epoch',
               # The active point already has the last installed model state.
@@ -1060,7 +1334,7 @@ def provider_adapter(r, source, members, cache_model_installation=False):
               'if(slot.eq.0)then', 'do i=1,cache_size',
               'if(.not.points(i)%valid)cycle',
               'if(.not.all(p.eq.points(i)%p))cycle',
-              'if(.not.born_model_state_equal(state,points(i)%state))then']
+              'if(.not.born_amplitude_state_equal(state,points(i)%state))then']
     if degrees and strong:
         lines += ['if(.not.born_helicity_state_equal(state,points(i)%state,.true.))cycle',
                   'scaled=.true.']
@@ -1117,6 +1391,7 @@ def provider_adapter(r, source, members, cache_model_installation=False):
               'if(.not.reuse_amplitudes.or.scaled)then',
               'points(slot)%amplitudes=saveamp', 'points(slot)%p=p',
               'points(slot)%state%real_values=state%real_values',
+              'points(slot)%state%configuration_epoch=state%configuration_epoch',
               'points(slot)%state%complex_values=state%complex_values', 'endif',
               'points(slot)%context=context',
               'points(slot)%sector=request%sector', 'points(slot)%valid=.true.']
@@ -1144,7 +1419,15 @@ def provider_adapter(r, source, members, cache_model_installation=False):
               'active_slot=slot', 'calculatedBorn=.true.',
               'if(request%helicities) then',
               'result%has_helicities=.true.',
+              # The exact numerical point may have been restored after the
+              # learned zero mask moved to another basis. Query helicities
+              # from its complete cached amplitudes without altering that
+              # mask's validity epoch or forcing a fresh HELAS evaluation.
+              'saved_goodhel=learned_goodhel(:,nfksprocess)',
+              'learned_goodhel(:,nfksprocess)='
+              'any(points(slot)%amplitudes.ne.(0d0,0d0),dim=1)',
               'wgt_hel=0d0', 'wgt_hel_split=0d0', 'call sborn_hel(p,ans)',
+              'learned_goodhel(:,nfksprocess)=saved_goodhel',
               'result%helicities=wgt_hel', 'result%helicity_orders=wgt_hel_split', 'endif',
               'if(request%colour.or.request%charge) then',
               'result%has_soft=.true.',
@@ -1167,15 +1450,54 @@ def provider_adapter(r, source, members, cache_model_installation=False):
     return lines
 
 
-def write_api(support, records, providers, sizes, histories):
+def write_api(support, records, providers, sizes, histories, model_layout=None,
+              model_lines=(), model_commons=None):
     template = Path(__file__).resolve().parents[2]/'Template'/'NLO'/'Source'/'BornSupport'
     (support/'mc_born_types.f90').write_text((template/'mc_born_types.f90').read_text())
+    fixed = model_layout['sizes']['fixed'] if model_layout else dict(real=0, complex=0)
+    fixed_members = model_layout['fixed_members'] if model_layout else []
     lines = ['module mc_born_support', 'use mc_born_types', 'implicit none',
              'private', 'public :: born_query, born_evaluate, born_model_dimensions',
+             'public :: born_configure_model,born_activate_model,born_model_configuration_dimensions',
+             'integer(8),save :: next_configuration_epoch=0',
              'contains', 'subroutine born_model_dimensions(nreal,ncomplex)',
              'integer,intent(out)::nreal,ncomplex',
              'nreal=%d' % sizes['real'], 'ncomplex=%d' % sizes['complex'],
+             'end subroutine', 'subroutine born_model_configuration_dimensions(nreal,ncomplex)',
+             'integer,intent(out)::nreal,ncomplex',
+             'nreal=%d' % fixed['real'], 'ncomplex=%d' % fixed['complex'],
              'end subroutine',
+             'logical function born_configuration_valid(configuration)',
+             'type(BornModelConfiguration),intent(in)::configuration',
+             'born_configuration_valid=.false.',
+             'if(.not.allocated(configuration%real_values).or..not.allocated(configuration%complex_values))return',
+             'if(size(configuration%%real_values).ne.%d.or.size(configuration%%complex_values).ne.%d)return' %
+             (fixed['real'], fixed['complex']),
+             'born_configuration_valid=.true.', 'end function',
+             'subroutine born_configure_model(configuration,status)',
+             'type(BornModelConfiguration),intent(inout)::configuration',
+             'integer,intent(out),optional::status',
+             'if(present(status))status=BORN_INVALID_CONFIGURATION',
+             'if(.not.born_configuration_valid(configuration))return',
+             'next_configuration_epoch=next_configuration_epoch+1',
+             'configuration%epoch=next_configuration_epoch',
+             'call born_activate_model(configuration,status)', 'end subroutine',
+             'subroutine born_activate_model(configuration,status)',
+             'type(BornModelConfiguration),intent(in)::configuration',
+             'integer,intent(out),optional::status',
+             'if(present(status))status=BORN_INVALID_CONFIGURATION',
+             'if(configuration%epoch.le.0.or.configuration%epoch.gt.next_configuration_epoch)return',
+             'if(.not.born_configuration_valid(configuration))return',
+             'if(configuration%epoch.ne.born_active_configuration_epoch)then',
+             'call born_install_configuration(configuration)',
+             'born_active_configuration_epoch=configuration%epoch',
+             'born_installed_provider=0', 'endif',
+             'if(present(status))status=BORN_OK', 'end subroutine',
+             'subroutine born_install_configuration(configuration)',
+             'type(BornModelConfiguration),intent(in)::configuration']
+    lines += [rename(line, model_commons or {}) for line in model_lines]
+    lines += ['%s=configuration%%%s_values(%s)' % member for member in fixed_members]
+    lines += ['end subroutine',
              'subroutine born_query(provider,context,metadata,status,details,require_complete)',
              'integer,intent(in)::provider,context',
              'type(BornMetadata),intent(out)::metadata',
@@ -1188,6 +1510,8 @@ def write_api(support, records, providers, sizes, histories):
                   'metadata%provider=provider', 'metadata%context=context']
         for key in ('nexternal','nincoming','nprocesses','ngraphs','ncolor','nhelicity','namps','nsqamps','extra'):
             lines += ['metadata%%%s=%d' % (key,r[key])]
+        lines += ['metadata%%frame_map=[%s]' % ','.join(map(str,
+                  r.get('frame_map', range(1, r['nexternal']))))]
         lines += ['metadata%%nsectors=%d' % max(1,len(r['sectors'])),
                   'metadata%%supports_correlations=%s' % ('.true.' if r['sectors'] else '.false.'),
                   'metadata%%nsplitorders=%d' % len(r['orders']),
@@ -1237,6 +1561,8 @@ def write_api(support, records, providers, sizes, histories):
               'type(BornResult),intent(inout)::result',
               'integer,intent(out)::status', 'type(BornMetadata)::metadata',
               'call born_reset_result(result)',
+              'status=BORN_INVALID_CONFIGURATION',
+              'if(state%configuration_epoch.le.0.or.state%configuration_epoch.ne.born_active_configuration_epoch)return',
               'call born_query(provider,context,metadata,status,details=.false.)',
               'if(status.ne.0)return', 'status=3',
               'if(size(p,1).ne.4.or.size(p,2).ne.metadata%nexternal-1)return',
@@ -1261,24 +1587,48 @@ def write_api(support, records, providers, sizes, histories):
     (support/'mc_born_support.f90').write_text('\n'.join(lines)+'\n')
 
 
-def write_wrappers(root, r, members):
+def write_model_revision_hook(root):
+    """Record completed cold model updates without a BornSupport dependency."""
+    path = root/'Source/MODEL/couplings.f'
+    source = path.read_text()
+    if re.search(r'(?i)subroutine\s+mc_born_model_changed\b', source):
+        return
+    coup = re.search(r'(?im)^ {6}subroutine\s+coup\s*\([^)]*\)[^\n]*$', source)
+    completed = re.search(r'(?im)^ {6}return\s*$', source[coup.end():]) if coup else None
+    if completed is None:
+        raise MadGraph5Error('Cannot locate the completed COUP model update')
+    offset = coup.end()+completed.start()
+    source = source[:offset]+'      call mc_born_model_changed()\n'+source[offset:]
+    result = ['subroutine mc_born_model_revision_value(value,changed)',
+               'implicit none', 'integer(8) value', 'logical changed',
+               'integer(8),save::revision=0',
+               'if(changed)revision=revision+1', 'value=revision', 'end',
+               'subroutine mc_born_model_changed()', 'implicit none',
+               'integer(8) ignored',
+               'call mc_born_model_revision_value(ignored,.true.)', 'end',
+               'integer(8) function mc_born_model_revision()', 'implicit none',
+               'call mc_born_model_revision_value(mc_born_model_revision,.false.)', 'end']
+    path.write_text(source.rstrip()+'\n\n'+'\n'.join('      '+line for line in result)+'\n')
+
+
+def write_wrappers(root, r, members, model_layout=None):
     directory = root/'SubProcesses'/r['directory']
+    fixed_members = model_layout['fixed_members'] if model_layout else []
+    fixed_sizes = model_layout['sizes']['fixed'] if model_layout else dict(real=0, complex=0)
     lines = ['subroutine mc_born_local(p,request,result)',
              'use mc_born_support', 'use mc_born_types', 'implicit none',
-             "include 'nexternal.inc'", "include 'coupl.inc'",
+             "include 'nexternal.inc'",
              "include 'timing_variables.inc'",
              'double precision p(0:3,nexternal-1)',
              'type(BornRequest) request', 'type(BornResult) result',
-             'type(BornModelState),save::state', 'integer nr,nc,status,nfksprocess',
+             'type(BornModelState),save::state', 'integer status,nfksprocess',
              'common/c_nfksprocess/nfksprocess',
              'double precision charges(nexternal-1)', 'common/c_charges_born/charges',
              ]
-    lines += expand(root/'Source'/'MODEL'/'input.inc')
     lines += ['if(timing_sampled)call timing_enter(timing_born)',
-              'call born_model_dimensions(nr,nc)',
-              'call born_resize_model_state(state,nr,nc)']
-    lines += ['state%%%s_values(%s)=%s' % (kind, index, name) for name,kind,index in members]
+              'call mc_capture_model_state(state)']
     lines += ['request%sector=nfksprocess', 'request%charges=charges',
+              'request%helicity_frame=born_active_helicity_frame',
               'call born_evaluate(%d,%d,p,state,request,result,status)' % (r['provider'],r['context']),
               'if(status.ne.0)then', "write(*,*)'Born support evaluation failed',status", 'stop 1',
               'endif', 'if(timing_sampled)call timing_leave(timing_born)', 'end']
@@ -1286,10 +1636,40 @@ def write_wrappers(root, r, members):
                'use mc_born_support','use mc_born_types','implicit none',
                "include 'coupl.inc'",'type(BornModelState) state','integer nr,nc']
     capture += expand(root/'Source'/'MODEL'/'input.inc')
-    capture += ['call born_model_dimensions(nr,nc)',
+    capture += ['call mc_prepare_model_configuration(state%configuration_epoch)',
+                'call born_model_dimensions(nr,nc)',
                 'call born_resize_model_state(state,nr,nc)']
     capture += ['state%%%s_values(%s)=%s' % (kind,index,name) for name,kind,index in members]
-    write_fortran(directory/'born_support.f', lines+capture+['end'])
+    prepare = ['subroutine mc_prepare_model_configuration(epoch)',
+               'use mc_born_support', 'use mc_born_types', 'implicit none',
+               "include 'coupl.inc'", *expand(root/'Source/MODEL/input.inc'),
+               'integer(8) epoch,current_revision,mc_born_model_revision',
+               'external mc_born_model_revision',
+               'integer(8),save::saved_revision=-1',
+               'type(BornModelConfiguration),save::configuration,candidate',
+               'integer status', 'logical same_configuration',
+               'current_revision=mc_born_model_revision()',
+               'if(saved_revision.ne.current_revision.or.configuration%epoch.eq.0)then',
+               'if(.not.allocated(candidate%%real_values))allocate(candidate%%real_values(%d))' % fixed_sizes['real'],
+               'if(.not.allocated(candidate%%complex_values))allocate(candidate%%complex_values(%d))' % fixed_sizes['complex']]
+    prepare += ['candidate%%%s_values(%s)=%s' % (kind,index,name)
+                for name,kind,index in fixed_members]
+    # A completed COUP may update only unused parameters or dynamic inputs.
+    # Compare the used fixed snapshot only at that explicit cold boundary.
+    prepare += ['same_configuration=.false.', 'if(configuration%epoch.gt.0)then',
+                'same_configuration=all(candidate%real_values.eq.configuration%real_values).and.'
+                'all(candidate%complex_values.eq.configuration%complex_values)',
+                'endif', 'if(.not.same_configuration)then',
+                'configuration%real_values=candidate%real_values',
+                'configuration%complex_values=candidate%complex_values',
+                'call born_configure_model(configuration,status)',
+                'if(status.ne.0)stop "Invalid native Born model configuration"',
+                'endif', 'saved_revision=current_revision', 'endif',
+                'if(configuration%epoch.ne.born_active_configuration_epoch)then',
+                'call born_activate_model(configuration,status)',
+                'if(status.ne.0)stop "Cannot reactivate native Born model configuration"',
+                'endif', 'epoch=configuration%epoch', 'end']
+    write_fortran(directory/'born_support.f', lines+capture+['end']+prepare)
     declarations = ['use mc_born_types', 'implicit none', "include 'nexternal.inc'",
                     "include 'orders.inc'", 'double precision p(0:3,nexternal-1),ans',
                     'type(BornRequest),save::request', 'type(BornResult),save::result']
@@ -1364,6 +1744,7 @@ def write_build(root, support, providers, model_commons, records):
     deps.mkdir(exist_ok=True)
     dep_objects = []
     rules = []
+    modules, module_uses = {}, {}
     script = ('import re, sys\nfrom pathlib import Path\nMadGraph5Error=RuntimeError\n\n'+
               '\n\n'.join(inspect.getsource(f) for f in (statements,expand,rename,write_fortran))+
               '\nnames='+repr(model_commons)+'\n'+
@@ -1376,7 +1757,9 @@ def write_build(root, support, providers, model_commons, records):
                 continue
             name = kind+'_'+path.name
             write_fortran(deps/name, [rename(line, model_commons) for line in expand(path)])
-            dep_objects.append('deps/'+Path(name).stem+'.o')
+            obj = 'deps/'+Path(name).stem+'.o'
+            dep_objects.append(obj)
+            module_uses[obj] = list(statements((deps/name).read_text()))
             inputs = sorted(os.path.relpath(p,support) for p in include_dependencies(path))
             rules += ['deps/%s: refresh_dependency.py %s' % (name,' '.join(inputs)),
                       '\t$(PYTHON) refresh_dependency.py %s $@' % os.path.relpath(path,support)]
@@ -1385,5 +1768,24 @@ def write_build(root, support, providers, model_commons, records):
     objects = ['p%d/%s.o' % (pid, name) for pid in sorted(providers)
                for name in ('matrix','adapter')]
     objects += ['c%d/metadata.o' % r['context'] for r in records]
+    # MG7 HELAS carries type(aloha) wavefunctions. Its module is defined in
+    # aloha_functions.f; every generated HELAS/provider using it must wait
+    # for that object, including in a parallel BornSupport build.
+    for obj, lines in module_uses.items():
+        for line in lines:
+            match = re.match(r'(?i)\s*module\s+(?!procedure\b)(\w+)', line)
+            if match:
+                modules[match[1].lower()] = obj
+    for obj in objects:
+        module_uses[obj] = list(statements((support/Path(obj).with_suffix('.f')).read_text()))
+    for obj, lines in module_uses.items():
+        required = set()
+        for line in lines:
+            match = re.match(r'(?i)\s*use\s+(\w+)', line)
+            if match and match[1].lower() in modules:
+                required.add(modules[match[1].lower()])
+        required.discard(obj)
+        if required:
+            rules.append('%s: %s' % (obj, ' '.join(sorted(required))))
     (support/'providers.mk').write_text('PROVIDER_OBJECTS = '+' '.join(objects)+'\n'+
         'DEPENDENCY_OBJECTS = '+' '.join(dep_objects)+'\n'+ '\n'.join(rules)+'\n')

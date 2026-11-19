@@ -7,7 +7,10 @@ import subprocess
 import sys
 import unittest
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # test discovery must not require numpy
+    np = None
 
 from tests.unit_tests.fks.test_momentum_maps import (
     ROOT, TEMPLATE, fortran_routine, mc_counterterm_test_module,
@@ -17,6 +20,7 @@ from tests.unit_tests.fks import test_pythia_local_recoil as recoil_tests
 boost, dot = recoil_tests.boost, recoil_tests.dot
 
 
+@unittest.skipIf(np is None, "requires numpy")
 @unittest.skipUnless(shutil.which("gfortran"), "requires gfortran")
 class TestPythiaLocalMatching(unittest.TestCase):
     run_map = recoil_tests.TestPythiaLocalRecoil.run_map
@@ -138,7 +142,8 @@ class TestPythiaLocalMatching(unittest.TestCase):
         card = work / 'FKS_params.dat'
         for mode, local, success in ((None, 0, True), (0, 0, True), (1, 1, True),
                                      (1, 0, False), (-1, 1, False), (2, 1, False)):
-            text = f'#FKSPythiaLocalRecoil\n{local}\n#FKSExplicitSum\n.true.\n'
+            text = (f'#FKSPythiaLocalRecoil\n{local}\n#FKSExplicitSum\n.true.\n'
+                    '#MCExplicitKLSum\n.true.\n')
             if mode is not None:
                 text += f'#PythiaLocalGProfile\n{mode}\n'
             card.write_text(text)

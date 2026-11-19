@@ -1,9 +1,10 @@
 program check_initial_recoil
-  use fks_phase_space_data, only: spin => xij_aor
+  use fks_phase_space_data, only: spin => xij_aor,xij_kperp
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use mc_native_context, only: native_mapping
   use fks_phase_space, only: generate_FKS_kinematics,generate_native_momenta, &
        invert_fks_radiation
+  use fks_phase_space_helpers, only: getangles
   implicit none
   include 'nexternal.inc'
   double precision, parameter :: pi=3.1415926535897932d0
@@ -17,6 +18,7 @@ program check_initial_recoil
   double precision :: gx(160),gw(160),volume,reference,r,ss,cs,angs,mlog,t
   double precision :: xifix,yfix
   common/cxiyfix/xifix,yfix
+  double precision :: kperp_save(0:3)
   complex*16 :: spinsave
   logical :: pass,softtest,colltest
   common/sctests/softtest,colltest
@@ -58,6 +60,8 @@ program check_initial_recoil
         enddo
       enddo
     enddo
+  elseif(mode.eq.'massive_boundary')then
+    call check_massive_boundary()
   elseif(mode.eq.'minimal')then
     native_mapping=.true.
     mj=1000d0
@@ -131,6 +135,7 @@ program check_initial_recoil
       native_mapping=native.eq.1
       do masscase=0,1
         mj=80d0*masscase
+        if(mode.eq.'spin'.and.masscase.ne.0)cycle
         do beam=1,2
           do ib=1,size(fractions)
             xbar=fractions(ib)
@@ -139,6 +144,10 @@ program check_initial_recoil
               do ir=1,size(xs)
                 do iy=1,size(ys)
                   rnd=[xs(ir),ys(iy),0.317d0]
+                  if(mode.eq.'spin')then
+                    colltest=.true.
+                    yfix=1d0-1d-9
+                  endif
                   call forward(-100,p,jac,ps)
                   if(.not.pass)then
                     write(*,*)'rejected',native,mj,beam,xbar,rnd
@@ -148,6 +157,7 @@ program check_initial_recoil
                   call invariants(p)
                   spinsave=spin
                   ratio0=ratio
+                  kperp_save=xij_kperp
                   if(mode.eq.'production')then
                     call production_roundtrip()
                   elseif(mode.eq.'inverse')then
@@ -172,6 +182,11 @@ program check_initial_recoil
                       error stop 'FI inverse radiation measure'
                     endif
                     if(mj.eq.0d0.and.abs(spin-spinsave).gt.1d-7)error stop 'FI inverse spin phase'
+                    if(mj.eq.0d0.and.maxval(abs(xij_kperp-kperp_save)).gt.2d-7) &
+                         error stop 'FI inverse spin vector'
+                  elseif(mode.eq.'spin')then
+                    call check_spin_state(p,.true.)
+                    colltest=.false.
                   elseif(mode.eq.'limits'.or.mode.eq.'endpoints')then
                     if(isign.eq.-1)cycle
                     call forward(0,again,j2,ps2)
@@ -213,11 +228,100 @@ program check_initial_recoil
         enddo
       enddo
     enddo
-    if(nminus.eq.0)error stop 'massive second branch untested'
+    if(mode.ne.'spin'.and.nminus.eq.0)error stop 'massive second branch untested'
   endif
   write(*,*)'PASS '//trim(mode)
 
 contains
+
+  subroutine check_massive_boundary()
+    double precision, parameter :: cutoff=1d-6
+    double precision :: boundary,expected,offsets(5)=[1d-4,1d-6,1d-8,1d-10,1d-12]
+    integer :: side,point
+    native_mapping=.false.
+    mj=173d0
+    xbar=0.6d0
+    do beam=1,2
+      do perm=1,2
+        call fixture(perm)
+        rnd=[0.5d0,sqrt(((1d0+0.805d0)/2d0-5d-7)/(1d0-5d-7)),0.317d0]
+        call forward(-100,p,jac,ps)
+        if(.not.pass)error stop 'FI massive boundary seed rejected'
+        boundary=xmax/xnorm
+        if(boundary.le.0.5d0.or.boundary.ge.1d0-1d-4)error stop 'FI fixture has no second branch'
+        do side=-1,1,2
+          do point=1,size(offsets)
+            rnd(1)=boundary+side*offsets(point)
+            call forward(-100,p,jac,ps)
+            if(.not.pass)error stop 'FI massive branch boundary rejected'
+            if(isign.ne.-side)error stop 'FI massive branch sign'
+            if(side.lt.0)then
+              expected=xmax*(cutoff+(1d0-cutoff)*(rnd(1)/boundary)**2)
+            else
+              expected=2d0*xmax-xnorm*rnd(1)
+            endif
+            if(xi.gt.xmax+1d-13.or.abs(xi-expected).gt.1d-13) &
+                 error stop 'FI massive xi outside two-piece support'
+            call invariants(p)
+            if(point.gt.2)cycle ! The turning point makes the inverse ill-conditioned.
+            call check_boundary_inverse()
+          enddo
+        enddo
+        ! Approach the stationary-daughter endpoint from within its support.
+        rnd(1)=1d0-1d-4
+        call forward(-100,p,jac,ps)
+        if(.not.pass.or.isign.ne.-1)error stop 'FI massive terminal branch rejected'
+        expected=2d0*xmax-xnorm*rnd(1)
+        if(abs(xi-expected).gt.1d-13)error stop 'FI massive terminal branch shifted'
+        call check_boundary_inverse()
+      enddo
+    enddo
+  end subroutine
+
+  subroutine check_boundary_inverse()
+    ratio0=ratio
+    jinv=1d0
+    psinv=1d0
+    call invert_momenta_initial_recoil(p,beam,xbar*ratio0,ifks,jfks,mj, &
+         projected,inv,jinv,psinv,qmap,m2,xback,pass)
+    if(.not.pass.or.maxval(abs(inv-rnd)).gt.2d-10.or.abs(xback/xbar-1d0).gt.2d-8)then
+      write(*,*)'FI branch inverse',beam,rnd,inv,xback
+      error stop 'FI massive boundary inverse coordinates'
+    endif
+    if(abs(jinv/jac-1d0).gt.5d-6.or.abs(psinv/ps-1d0).gt.5d-6) &
+         error stop 'FI massive boundary inverse measure'
+  end subroutine
+
+  subroutine check_spin_state(real_point,physical_pair)
+    double precision, intent(in) :: real_point(0:3,nexternal)
+    logical, intent(in) :: physical_pair
+    double precision :: restq(0:3),mother(0:3),unit(0:3),rotated(0:3),transported(0:3)
+    double precision :: born_short(0:3,nexternal-1),partition(0:3,nexternal-1),saved(0:3)
+    double precision :: th0,cth0,sth0,phi0,cph0,sph0
+    complex*16 :: phase0
+    logical :: valid
+    integer :: leg,b,jborn
+    restq=[q(0),-q(1:3)]
+    call boostx(born(:,jfks),restq,mother)
+    call getangles(mother,th0,cth0,sth0,phi0,cph0,sph0)
+    unit=[0d0,cos(2d0*pi*rnd(3)),sin(2d0*pi*rnd(3)),0d0]
+    call rotate_invar(unit,rotated,cth0,sth0,cph0,sph0)
+    call boostx(rotated,q,transported)
+    b=0
+    do leg=1,nexternal
+      if(leg.eq.ifks)cycle
+      b=b+1
+      born_short(:,b)=born(:,leg)
+      if(leg.eq.jfks)jborn=b
+    enddo
+    call check_recoil_spin(born_short,jborn,real_point(:,ifks),real_point(:,jfks),transported,physical_pair)
+    ! This auxiliary projection must not replace the active local spin data.
+    saved=xij_kperp
+    phase0=spin
+    call project_global_fsr_partition(real_point,ifks,jfks,mj,partition,valid)
+    if(.not.valid)error stop 'spin fixture global partition projection'
+    if(any(xij_kperp.ne.saved).or.spin.ne.phase0)error stop 'global projection replaced local spin state'
+  end subroutine
 
   subroutine production_roundtrip()
   use fks_phase_space_data,only: resq => resonance_momentum,resmass2 => resonance_mass2, &
@@ -288,6 +392,7 @@ contains
     ratio_save=ratio
     call generate_FKS_kinematics(xgen(1:3),nbody,j0,ps0,stot,s,sqrts,taub,yb,xb,mb,jout,out,valid)
     if(.not.valid.or.jout.le.0d0)error stop 'production FI map rejected'
+    if(mj.eq.0d0)call check_spin_state(out,.false.)
     if(maxval(abs(out-p)).gt.3d-5)error stop 'production FI map differs from direct map'
     if(maxval(abs(pbe-born_save)).gt.3d-5)error stop 'FI real partition projection differs from common Born'
     flux=1d0/(2d0*s*ratio_save*(2d0*pi)**(3*(nexternal-nincoming)-7))
@@ -329,6 +434,7 @@ contains
       pbe=-33d0
       call generate_native_momenta(lab,out,outlab,outcms,jnew,valid)
       if(.not.valid)error stop 'FI native replay rejected'
+      if(mj.eq.0d0)call check_spin_state(out,.false.)
       if(maxval(abs(pb-born_save)).gt.3d-5)error stop 'FI native replay Born CM'
       if(abs(jnew*21d0/jout-1d0).gt.5d-5)error stop 'FI native replay real measure'
       do k=-2,2

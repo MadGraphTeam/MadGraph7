@@ -16,9 +16,12 @@ module FKSParams
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
-  logical :: MCExplicitKLSum=.true.
+  ! Native virtual surrogate: 0 = grid/polynomial, 1 = colour dipoles,
+  ! 2 = colour dipoles and logarithms of all Born pairs (default).
+  integer :: VirtTrickSurrogate=2
+  logical :: MCExplicitKLSum=.false.
   logical :: MCSubtractionAtFixedFlow=.true.
-  logical :: FKSExplicitSum=.false.
+  logical :: FKSExplicitSum=.true.
   logical :: FxFxPythia8FiniteTerms=.false.
   logical, private :: FxFxPythia8Matching=.false.
   integer :: FKSFinalRecoil=0
@@ -60,7 +63,7 @@ contains
              endif
           elseif (buff .eq. '#PrecisionVirtualAtRunTime') then
              read(68,*,end=999) PrecisionVirtualAtRunTime
-             if (IRPoleCheckThreshold .lt. -1.01d0 ) then
+             if (PrecisionVirtualAtRunTime .lt. -1.01d0 ) then
                 stop 'PrecisionVirtualAtRunTime must be >= -1.0d0.'
              endif
           else if (buff .eq. '#NHelForMCoverHels') then
@@ -141,6 +144,12 @@ contains
              read(68,*,end=999) FKSExplicitSum
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
+          else if (buff .eq. '#VirtTrickSurrogate') then
+             read(68,*,end=999) VirtTrickSurrogate
+             if (VirtTrickSurrogate.lt.0.or.VirtTrickSurrogate.gt.2) then
+                write(*,*) 'VirtTrickSurrogate must be 0, 1 or 2.'
+                stop 1
+             endif
           else if (buff .eq. '#VetoedContributionTypes') then
              read(68,*,end=999) VetoedContributionTypes(0)
              if (VetoedContributionTypes(0) .lt. 0.or. &
@@ -267,6 +276,7 @@ contains
        write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
        write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
+       write(*,*) ' > VirtTrickSurrogate        = ',VirtTrickSurrogate
        write(*,*) ' > FKSFinalRecoil            = ',FKSFinalRecoil
        write(*,*) ' > FKSISRMapping             = ',FKSISRMapping
        write(*,*) ' > FKSPythiaLocalRecoil      = ',FKSPythiaLocalRecoil
@@ -302,6 +312,7 @@ contains
     Min_virt_fraction=0.005d0
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
+    VirtTrickSurrogate=2
     FKSFinalRecoil=0
     FKSISRMapping=0
     FKSPythiaLocalRecoil=0
@@ -310,9 +321,9 @@ contains
     PythiaLocalGWidth=0.01d0
     PythiaLocalGProfile=0
     Pythia8MMaxGamma=10d0
-    MCExplicitKLSum=.true.
+    MCExplicitKLSum=.false.
     MCSubtractionAtFixedFlow=.true.
-    FKSExplicitSum=.false.
+    FKSExplicitSum=.true.
     FxFxPythia8FiniteTerms=.false.
     IncludeBornContributions=.true.
     SelectedContributionTypes(0)=0

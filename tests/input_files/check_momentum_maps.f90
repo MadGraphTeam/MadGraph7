@@ -32,9 +32,10 @@ program check_momentum_maps
   call get_command_argument(1,mode)
   softtest=.false.
   colltest=.false.
-  if (mode.eq.'isr'.or.mode.eq.'isr_fks'.or. &
+  if (mode.eq.'isr'.or.mode.eq.'isr_fks'.or.index(mode,'isr_nlops').eq.1.or. &
        mode.eq.'isr_symmetric'.or.mode.eq.'isr_automatic'.or.mode.eq.'isr_symmetric_fks'.or. &
-       mode.eq.'isr_symmetric_bounds') then
+       mode.eq.'isr_symmetric_bounds'.or.mode.eq.'isr_lower_bound'.or. &
+       mode.eq.'isr_bjorken_boundary'.or.mode.eq.'isr_symmetric_boundary') then
      call check_isr_mapping(trim(mode))
      write(*,*) 'PASS ',trim(mode)
      stop
@@ -42,6 +43,31 @@ program check_momentum_maps
   if (mode.eq.'native_projection') then
      call check_native_projection()
      write(*,*) 'PASS native_projection'
+     stop
+  endif
+  if (mode.eq.'delayed_soft_endpoint') then
+     call check_delayed_soft_endpoint()
+     write(*,*) 'PASS delayed_soft_endpoint'
+     stop
+  endif
+  if (mode.eq.'massive_boundary') then
+     call check_massive_boundary()
+     write(*,*) 'PASS massive_boundary'
+     stop
+  endif
+  if (mode.eq.'massive_precision') then
+     call check_massive_precision()
+     write(*,*) 'PASS massive_precision'
+     stop
+  endif
+  if (mode.eq.'fsr_cutoff_jacobians') then
+     call check_fsr_cutoff_jacobians()
+     write(*,*) 'PASS fsr_cutoff_jacobians'
+     stop
+  endif
+  if (mode.eq.'near_axis_angles') then
+     call check_near_axis_angles()
+     write(*,*) 'PASS near_axis_angles'
      stop
   endif
   if (mode.eq.'dijet_isr_boundary') then
@@ -563,12 +589,507 @@ program check_momentum_maps
   if(mode.eq.'native_massive'.and.nratios.eq.0)error stop 'no counterevent ratios tested'
   write(*,*) 'PASS ',trim(mode),nchecked,nplus,nminus
 contains
+  subroutine check_massive_precision()
+    use fks_phase_space_helpers, only: get_massive_fsr_bounds
+    integer,parameter :: qp=selected_real_kind(30)
+    double precision,parameter :: openings(3)=[-.805d0,.4d0,-.98d0]
+    double precision :: xim,xibm,ximax,a,b,c,delta,ratio,gap,sq,coordinate,distance,observed
+    double precision :: conditioned,path_weight,physical_weight
+    real(qp) :: wq,mq,rq,mjq,mrq,yq,lambdaq,ximq,sqq,uq,aq,xmaxq,xnormq
+    real(qp) :: xq,ratioq,gq,d1q,dmq,xiq,dq,eiq,hq,bq,cq,kq,ejq,reference,expected
+    integer :: configuration,opening_index,sample,point,slot
+    native_mapping=.false.
+    mass=173d0
+    do configuration=1,4
+      sqrtshat=1000d0
+      mrec=173d0
+      if(configuration.eq.2.or.configuration.eq.4)mrec=0d0
+      if(configuration.eq.3)sqrtshat=(mass+mrec)*(1d0+1d-8)
+      if(configuration.eq.4)sqrtshat=mass*(1d0+1d-6)
+      shat=sqrtshat**2
+      momentum=sqrt((sqrtshat-mass-mrec)*(sqrtshat+mass+mrec)* &
+           (sqrtshat-mass+mrec)*(sqrtshat+mass-mrec))/(2d0*sqrtshat)
+      energy=hypot(momentum,mass)
+      born(:,1)=[sqrtshat/2d0,0d0,0d0,sqrtshat/2d0]
+      born(:,2)=[sqrtshat/2d0,0d0,0d0,-sqrtshat/2d0]
+      born(:,3)=[energy,.3d0*momentum,.4d0*momentum,sqrt(.75d0)*momentum]
+      born(:,4)=[hypot(momentum,mrec),-born(1:3,3)]
+      wq=real(sqrtshat,qp)
+      mq=real(mass,qp)
+      rq=real(mrec,qp)
+      mjq=mq/wq
+      mrq=rq/wq
+      lambdaq=((wq-mq-rq)*(wq+mq+rq)*(wq-mq+rq)*(wq+mq-rq))/wq**4
+      ximq=(wq-mq-rq)*(wq-mq+rq)/(wq*(wq-mq))
+      do opening_index=1,size(openings)
+        yij=openings(opening_index)
+        call get_massive_fsr_bounds(shat,sqrtshat,mass,mrec**2,yij, &
+             xim,xibm,ximax,a,b,c,delta,xiimax,xinorm,gap,sq)
+        yq=real(yij,qp)
+        aq=1-mjq*mjq*(1-yq*yq)
+        sqq=mjq*sqrt(4*mrq*mrq+(1-yq*yq)*lambdaq)
+        uq=(mjq*ximq*yq)**2/(sqq+sqrt(sqq*sqq+aq*(mjq*ximq*yq)**2))
+        xmaxq=ximq
+        xnormq=ximq
+        if(yij.lt.0d0)then
+          xmaxq=ximq+uq
+          xnormq=ximq+2*uq
+        endif
+        if(abs(real(xim,qp)/ximq-1).gt.3d-13.or. &
+             abs(real(xiimax,qp)/xmaxq-1).gt.3d-13.or. &
+             abs(real(xinorm,qp)/xnormq-1).gt.3d-13)then
+          write(*,*) 'bounds precision',configuration,opening_index,xim,ximq,xiimax,xmaxq,xinorm,xnormq
+          error stop 'massive threshold bounds precision'
+        endif
+        ratio=xiimax/xinorm
+        do sample=1,8
+          coordinate=.3d0*ratio
+          if(sample.eq.2)coordinate=.8d0*ratio
+          if(sample.eq.3)coordinate=ratio*(1d0-1d-6)
+          if(sample.eq.4)coordinate=ratio*(1d0-1d-10)
+          if(sample.eq.5)coordinate=ratio+(1d0-ratio)*1d-6
+          if(sample.eq.6)coordinate=ratio+(1d0-ratio)*1d-10
+          if(sample.eq.7)coordinate=1d0-1d-6
+          if(sample.eq.8)coordinate=1d0-1d-10
+          if(coordinate.eq.ratio.or.(yij.ge.0d0.and.sample.ge.5.and.sample.le.6))cycle
+          rnd=[coordinate,sqrt(((1d0-openings(opening_index))/2d0-5d-7)/(1d0-5d-7)),.317d0]
+          p=0d0
+          p(:,1:4)=born
+          jac=2d0*pi
+          pswgt=1d0
+          call generate_momenta_massive_final(-100,isign,5,3,born(:,3),shat,sqrtshat,mass,rnd,mrec**2,p, &
+               2d0*pi*rnd(3),xiimax,xinorm,xi,yij,xihat,pifks,jac,pswgt,pass)
+          if(.not.pass.or..not.all(ieee_is_finite(p)).or..not.ieee_is_finite(pswgt)) &
+               error stop 'nonfinite massive precision point'
+          call get_massive_fsr_bounds(shat,sqrtshat,mass,mrec**2,yij, &
+               xim,xibm,ximax,a,b,c,delta,xiimax,xinorm,gap,sq)
+          ratio=xiimax/xinorm
+          observed=sqrt(sum(p(1:3,3)**2))
+          ! Resolve the sampled distance from the nearest physical endpoint
+          ! in quad precision. Rounding xi itself to double can erase that
+          ! distance, so do not demand relative endpoint digits from it.
+          yq=real(yij,qp)
+          aq=1-mjq*mjq*(1-yq*yq)
+          sqq=mjq*sqrt(4*mrq*mrq+(1-yq*yq)*lambdaq)
+          uq=(mjq*ximq*yq)**2/(sqq+sqrt(sqq*sqq+aq*(mjq*ximq*yq)**2))
+          xq=real(coordinate,qp)
+          ratioq=real(ratio,qp)
+          if(isign.eq.1)then
+            gq=real(xiimax,qp)*(1-real(1d-6,qp))*(1-(xq/ratioq)**2)
+            dmq=gq
+            if(yij.lt.0d0)dmq=dmq-uq
+          elseif(coordinate-ratio.le.1d0-coordinate)then
+            dmq=real(xinorm,qp)*(xq-ratioq)-uq
+          else
+            dmq=-real(xinorm,qp)*(1-xq)
+          endif
+          xiq=ximq-dmq
+          eiq=xiq*wq/2
+          hq=(wq*wq+mq*mq-rq*rq)/2-wq*eiq
+          aq=(wq-eiq)**2-(eiq*yq)**2
+          bq=2*hq*eiq*yq
+          ! Factor the constant coefficient near the stationary endpoint;
+          ! the otherwise independent energy-conservation quadratic would
+          ! itself lose reference digits by subtracting two O(W**4) terms.
+          cq=-(wq-mq)*wq*dmq/2*((wq-eiq)*mq+hq)
+          dq=bq*bq-4*aq*cq
+          if(dq.le.0)error stop 'nonphysical endpoint-distance reference'
+          kq=(-bq+isign*sqrt(dq))/(2*aq)
+          ejq=sqrt(kq*kq+mq*mq)
+          expected=2*wq*wq/(4*acos(-1._qp))**3*(kq/real(momentum,qp))/ &
+               abs(2-xiq*(1-ejq*yq/kq))
+          path_weight=real(expected,8)
+          if(abs(real(observed,qp)-kq).gt.3d-12*max(abs(kq),wq*1d-24))then
+            write(*,*) 'path root',configuration,opening_index,sample,coordinate,ratio,observed,kq
+            write(*,*) 'path geometry',xim,ximq,gap,uq,sq,sqq,xiimax,xinorm,dmq,xi,xiq
+            error stop 'massive sampled-path root precision'
+          endif
+          if(abs(pswgt-path_weight).gt.3d-12*max(path_weight,shat*1d-24))then
+            write(*,*) 'path precision',configuration,opening_index,sample,coordinate,ratio,pswgt,path_weight
+            error stop 'massive sampled-path phase-space precision'
+          endif
+          ! An independent, dimensionful energy-conservation quadratic checks
+          ! the physical root and units. Its density is ill-conditioned near
+          ! the junction and the stationary daughter, so account for rounding
+          ! of the returned xi instead of demanding meaningless relative digits.
+          eiq=real(xi,qp)*wq/2
+          yq=real(yij,qp)
+          aq=(wq-eiq)**2-(eiq*yq)**2
+          bq=2*((wq*wq+mq*mq-rq*rq)/2-wq*eiq)*eiq*yq
+          cq=(wq-eiq)**2*mq*mq-((wq*wq+mq*mq-rq*rq)/2-wq*eiq)**2
+          dq=bq*bq-4*aq*cq
+          distance=min(abs(coordinate-ratio),1d0-coordinate)
+          conditioned=4d-12+128d0*epsilon(1d0)/max(distance,1d-15)
+          if(dq.gt.0)then
+            kq=(-bq+isign*sqrt(dq))/(2*aq)
+            ejq=sqrt(kq*kq+mq*mq)
+            if(abs(real(observed,qp)-kq).gt.conditioned*max(abs(kq),wq*1d-14))then
+              write(*,*) 'physical root',configuration,opening_index,sample,observed,kq,conditioned
+              error stop 'massive physical root precision'
+            endif
+            reference=2*wq*wq/(4*acos(-1._qp))**3*(kq/real(momentum,qp))/ &
+                 abs(2-real(xi,qp)*(1-ejq*yq/kq))
+            physical_weight=real(reference,8)
+            if(abs(pswgt-physical_weight).gt.conditioned*max(physical_weight,shat*1d-24))then
+              write(*,*) 'physical phase',configuration,opening_index,sample,pswgt,physical_weight,conditioned
+              error stop 'massive physical phase-space precision'
+            endif
+          elseif(distance.gt.1d-12)then
+            error stop 'massive precision point outside physical support'
+          endif
+          remainder=sum(p(:,1:2),dim=2)-sum(p(:,3:5),dim=2)
+          if(maxval(abs(remainder))/sqrtshat.gt.2d-12)then
+            write(*,*) 'precision conservation',configuration,opening_index,sample,rnd,remainder/sqrtshat
+            error stop 'massive precision momentum conservation'
+          endif
+        enddo
+        if(configuration.eq.1.and.openings(opening_index).lt.0d0)then
+          ! The exactly coalescent real density is singular, but its soft
+          ! endpoint remains a valid independent Born configuration.
+          rnd=[ratio,sqrt(((1d0-openings(opening_index))/2d0-5d-7)/(1d0-5d-7)),.317d0]
+          do point=1,2
+            slot=-100
+            if(point.eq.2)slot=0
+            p=0d0
+            p(:,1:4)=born
+            jac=2d0*pi
+            pswgt=1d0
+            call generate_momenta_massive_final(slot,isign,5,3,born(:,3),shat,sqrtshat,mass,rnd,mrec**2,p, &
+                 2d0*pi*rnd(3),xiimax,xinorm,xi,yij,xihat,pifks,jac,pswgt,pass)
+            if(slot.eq.-100)then
+              if(pass.or.jac.ne.-105d0)error stop 'singular massive junction retained'
+            else
+              if(.not.pass.or.jac.le.0d0.or..not.all(ieee_is_finite(p)).or. &
+                   .not.ieee_is_finite(pswgt))error stop 'junction lost its soft endpoint'
+            endif
+          enddo
+        endif
+      enddo
+    enddo
+  end subroutine check_massive_precision
+
+  subroutine check_near_axis_angles()
+    use fks_phase_space_helpers, only: getangles
+    double precision,parameter :: scales(3)=[1d0,1d-200,1d200]
+    double precision :: vector(0:3),rotated(0:3),restored(0:3),axis(0:3)
+    double precision :: theta,ctheta,stheta,azimuth,cazimuth,sazimuth
+    double precision :: small,norm,direction(3),ux,uy,tol
+    integer :: pole,power,quadrant,scale_index
+    tol=16d0*epsilon(1d0)
+    ! Keep nonzero transverse components even when cos(theta) rounds to +/-1.
+    ! Their known 3:4 ratio also checks the azimuth in every quadrant.
+    do pole=-1,1,2
+      do power=2,12
+        small=10d0**(-power)
+        norm=sqrt(1d0+small**2)
+        do quadrant=0,3
+          ux=.6d0
+          uy=.8d0
+          if(btest(quadrant,0))ux=-ux
+          if(btest(quadrant,1))uy=-uy
+          direction=[small*ux,small*uy,dble(pole)]/norm
+          do scale_index=1,size(scales)
+            vector=[2d0,small*ux,small*uy,dble(pole)]*scales(scale_index)
+            call getangles(vector,theta,ctheta,stheta,azimuth,cazimuth,sazimuth)
+            if(.not.all(ieee_is_finite([theta,ctheta,stheta,azimuth,cazimuth,sazimuth]))) &
+                 error stop 'nonfinite near-axis angles'
+            if(abs(stheta/(small/norm)-1d0).gt.tol.or. &
+                 abs(ctheta-direction(3)).gt.tol)error stop 'near-axis polar direction lost'
+            if(abs(cazimuth-ux).gt.tol.or.abs(sazimuth-uy).gt.tol.or. &
+                 abs(azimuth-atan2(uy,ux)).gt.tol)error stop 'near-axis azimuth lost'
+            if(abs(theta-atan2(small,dble(pole))).gt.tol)error stop 'near-axis polar angle'
+            axis=[1d0,0d0,0d0,1d0]
+            call rotate_invar(axis,rotated,ctheta,stheta,cazimuth,sazimuth)
+            if(maxval(abs(rotated(1:2)/direction(1:2)-1d0)).gt.tol.or. &
+                 abs(rotated(3)-direction(3)).gt.tol)error stop 'near-axis rotation lost direction'
+            vector=[2d0,.31d0,-.27d0,.63d0]
+            call rotate_invar(vector,rotated,ctheta,stheta,cazimuth,sazimuth)
+            call trp_rotate_invar(rotated,restored,ctheta,stheta,cazimuth,sazimuth)
+            if(maxval(abs(restored-vector)).gt.tol)error stop 'near-axis inverse rotation'
+          enddo
+          ! The FSR map must retain the Born emitter's transverse momentum,
+          ! not merely pass an angle-reconstruction unit test.
+          native_mapping=.false.
+          sqrtshat=1000d0
+          shat=sqrtshat**2
+          mrec=173d0
+          energy=(shat-mrec**2)/(2d0*sqrtshat)
+          born(:,1)=[sqrtshat/2d0,0d0,0d0,sqrtshat/2d0]
+          born(:,2)=[sqrtshat/2d0,0d0,0d0,-sqrtshat/2d0]
+          born(:,3)=[energy,energy*direction]
+          born(:,4)=born(:,1)+born(:,2)-born(:,3)
+          p=0d0
+          p(:,1:4)=born
+          rnd=[.63d0,.42d0,.317d0]
+          jac=2d0*pi
+          pswgt=1d0
+          call generate_momenta_massless_final(-100,5,3,born(:,3),shat,sqrtshat,rnd,mrec**2,p, &
+               2d0*pi*rnd(3),xiimax,xinorm,xi,yij,xihat,pifks,jac,pswgt,pass)
+          if(.not.pass.or..not.all(ieee_is_finite(p)))error stop 'near-axis FSR map rejected'
+          remainder=sum(p(:,1:2),dim=2)-sum(p(:,3:5),dim=2)
+          if(maxval(abs(remainder))/sqrtshat.gt.tol)error stop 'near-axis map momentum conservation'
+        enddo
+      enddo
+      vector=[1d0,0d0,0d0,dble(pole)]
+      call getangles(vector,theta,ctheta,stheta,azimuth,cazimuth,sazimuth)
+      if(.not.all(ieee_is_finite([theta,ctheta,stheta,azimuth,cazimuth,sazimuth]))) &
+           error stop 'nonfinite exact-axis angles'
+      if(ctheta.ne.dble(pole).or.stheta.ne.0d0.or.abs(theta-acos(dble(pole))).gt.tol.or. &
+           azimuth.ne.0d0.or.cazimuth.ne.1d0.or.sazimuth.ne.0d0)error stop 'exact-axis angle convention'
+    enddo
+    vector=0d0
+    call getangles(vector,theta,ctheta,stheta,azimuth,cazimuth,sazimuth)
+    if(.not.all(ieee_is_finite([theta,ctheta,stheta,azimuth,cazimuth,sazimuth]))) &
+         error stop 'nonfinite zero-vector angles'
+    if(theta.ne.0d0.or.ctheta.ne.1d0.or.stheta.ne.0d0.or.azimuth.ne.0d0.or. &
+         cazimuth.ne.1d0.or.sazimuth.ne.0d0)error stop 'zero-vector angle convention'
+  end subroutine check_near_axis_angles
+
+  subroutine check_fsr_cutoff_jacobians()
+    double precision,parameter :: step=1d-5
+    double precision :: center(3),shifted(3),j0,jwork,coordinate0,coordinate_plus,coordinate_minus
+    double precision :: angle0,angle_plus,angle_minus,radial_derivative,angular_derivative,expected,ratio
+    double precision :: xi_fix,y_fix
+    common/cxiyfix/xi_fix,y_fix
+    integer :: mapping,mass_case,branch,slot
+    sqrtshat=1000d0
+    shat=sqrtshat**2
+    do mapping=0,1
+      native_mapping=mapping.eq.1
+      do mass_case=0,1
+        mass=173d0*mass_case
+        mrec=173d0
+        energy=(shat+mass**2-mrec**2)/(2d0*sqrtshat)
+        momentum=sqrt(energy**2-mass**2)
+        born(:,1)=[sqrtshat/2d0,0d0,0d0,sqrtshat/2d0]
+        born(:,2)=[sqrtshat/2d0,0d0,0d0,-sqrtshat/2d0]
+        born(:,3)=[energy,0.3d0*momentum,0.4d0*momentum,sqrt(0.75d0)*momentum]
+        born(:,4)=born(:,1)+born(:,2)-born(:,3)
+        do branch=1,1+mass_case
+          center=[.45d0,sqrt(((1d0+.805d0)/2d0-5d-7)/(1d0-5d-7)),.317d0]
+          call cutoff_point(-100,center,j0,coordinate0,angle0)
+          ratio=xiimax/xinorm
+          if(branch.eq.2)then
+            center(1)=(1d0+ratio)/2d0
+            if(native_mapping)center(1)=.99d0
+          endif
+          shifted=center
+          shifted(1)=center(1)+step
+          call cutoff_point(-100,shifted,jwork,coordinate_plus,angle0)
+          shifted(1)=center(1)-step
+          call cutoff_point(-100,shifted,jwork,coordinate_minus,angle0)
+          radial_derivative=(coordinate_plus-coordinate_minus)/(2d0*step)
+          shifted=center
+          shifted(2)=center(2)+step
+          call cutoff_point(-100,shifted,jwork,coordinate0,angle_plus)
+          shifted(2)=center(2)-step
+          call cutoff_point(-100,shifted,jwork,coordinate0,angle_minus)
+          angular_derivative=(angle_plus-angle_minus)/(2d0*step)
+          expected=2d0*pi*abs(radial_derivative*angular_derivative)
+          call cutoff_point(-100,center,j0,coordinate0,angle0)
+          if(abs(j0/expected-1d0).gt.2d-8)error stop 'FSR Jacobian differs from sampled-coordinate derivative'
+          if(mass_case.eq.1.and.mapping.eq.0.and.isign.ne.3-2*branch) &
+               error stop 'FSR Jacobian fixture missed massive branch'
+          invborn=0d0
+          jacinv=1d0
+          pswgtinv=1d0
+          if(mass_case.eq.0)then
+            call generate_momenta_massless_final_inverse(p,xi,yij,2d0*pi*center(3), &
+                 invborn,inv,jacinv,pswgtinv,shat,sqrtshat,5,3)
+          else
+            call generate_momenta_massive_final_inverse(p,xi,yij,2d0*pi*center(3), &
+                 invborn,inv,jacinv,pswgtinv,shat,sqrtshat,5,3,mass)
+          endif
+          if(jacinv.le.0d0.or.maxval(abs(inv-center)).gt.1d-9.or. &
+               abs(jacinv/expected-1d0).gt.2d-8)error stop 'FSR inverse cutoff Jacobian'
+          ! A projected endpoint retains the sampling measure of its real
+          ! coordinate; massive second solutions have no soft endpoint.
+          if(branch.eq.1)then
+            do slot=-2,2
+              if(mass_case.eq.1.and.slot.ne.0)cycle
+              call cutoff_point(slot,center,jwork,coordinate0,angle0)
+              if(abs(jwork/j0-1d0).gt.1d-12)error stop 'FSR endpoint cutoff Jacobian'
+            enddo
+          endif
+        enddo
+        if(mapping.ne.0)cycle
+        ! Diagnostic limit tests turn the cutoffs off and omit the Jacobian
+        ! for their fixed coordinate, independently of the endpoint slot.
+        softtest=.true.
+        xi_fix=.02d0
+        call cutoff_point(-100,center,jwork,coordinate0,angle0)
+        expected=2d0*pi*4d0*center(2)
+        if(abs(jwork/expected-1d0).gt.1d-12)error stop 'FSR soft-test Jacobian'
+        softtest=.false.
+        if(mass_case.ne.0)cycle
+        colltest=.true.
+        y_fix=.2d0
+        call cutoff_point(-100,center,jwork,coordinate0,angle0)
+        expected=2d0*pi*2d0*center(1)
+        if(abs(jwork/expected-1d0).gt.1d-12)error stop 'FSR collinear-test Jacobian'
+        colltest=.false.
+      enddo
+    enddo
+    native_mapping=.false.
+  end subroutine
+
+  subroutine cutoff_point(slot,coordinates,jacobian,radial,angle)
+    integer,intent(in) :: slot
+    double precision,intent(in) :: coordinates(3)
+    double precision,intent(out) :: jacobian,radial,angle
+    p=0d0
+    p(:,1:4)=born
+    jacobian=2d0*pi
+    pswgt=1d0
+    if(mass.eq.0d0)then
+      call generate_momenta_massless_final(slot,5,3,born(:,3),shat,sqrtshat,coordinates,mrec**2,p, &
+           2d0*pi*coordinates(3),xiimax,xinorm,xi,angle,xihat,pifks,jacobian,pswgt,pass)
+    else
+      call generate_momenta_massive_final(slot,isign,5,3,born(:,3),shat,sqrtshat,mass,coordinates,mrec**2,p, &
+           2d0*pi*coordinates(3),xiimax,xinorm,xi,angle,xihat,pifks,jacobian,pswgt,pass)
+    endif
+    if(.not.pass.or.jacobian.le.0d0)error stop 'invalid FSR cutoff-Jacobian fixture'
+    yij=angle
+    radial=xi/xinorm
+    if(native_mapping.and.mass.gt.0d0)radial=1d0-sqrt(sum(p(1:3,3)**2))/momentum
+  end subroutine
+
+  subroutine check_massive_boundary()
+    use fks_phase_space_helpers, only: get_massive_fsr_bounds
+    integer,parameter :: qp=selected_real_kind(30)
+    double precision,parameter :: angles(3)=[-0.805d0,-0.4d0,-0.98d0]
+    double precision :: ratio,xim,xibm,ximax,a,b,c,d,offset,expected_xi
+    double precision :: emitted_xi,opening,azimuth,tolerance
+    real(qp) :: wq,eiq,mq,mrq,yq,aq,bq,cq,dq,uq,ejq,ubq,weightq
+    integer :: recoil_case,angle_case,power,side,expected_sign
+    native_mapping=.false.
+    mass=173d0
+    sqrtshat=1000d0
+    shat=sqrtshat**2
+    do recoil_case=0,1
+      mrec=173d0*recoil_case
+      energy=(shat+mass**2-mrec**2)/(2d0*sqrtshat)
+      momentum=sqrt(energy**2-mass**2)
+      born(:,1)=[sqrtshat/2d0,0d0,0d0,sqrtshat/2d0]
+      born(:,2)=[sqrtshat/2d0,0d0,0d0,-sqrtshat/2d0]
+      born(:,3)=[energy,0.3d0*momentum,0.4d0*momentum,sqrt(0.75d0)*momentum]
+      born(:,4)=born(:,1)+born(:,2)-born(:,3)
+      do angle_case=1,size(angles)
+        opening=angles(angle_case)
+        call get_massive_fsr_bounds(shat,sqrtshat,mass,mrec**2,opening, &
+             xim,xibm,ximax,a,b,c,d,xiimax,xinorm)
+        ratio=xiimax/xinorm
+        if(ratio.le.0d0.or.ratio.ge.1d0)error stop 'boundary fixture lacks two solutions'
+        do power=12,4,-1
+          offset=10d0**(-power)
+          do side=-1,1,2
+            opening=angles(angle_case)
+            rnd=[ratio+side*offset,sqrt(((1d0-opening)/2d0-5d-7)/(1d0-5d-7)),0.317d0]
+            phi=2d0*pi*rnd(3)
+            p=0d0
+            p(:,1:4)=born
+            jac=2d0*pi
+            pswgt=1d0
+            call generate_momenta_massive_final(-100,isign,5,3,born(:,3), &
+                 shat,sqrtshat,mass,rnd,mrec**2,p,phi,xiimax,xinorm,xi,yij, &
+                 xihat,pifks,jac,pswgt,pass)
+            expected_sign=-side
+            if(.not.pass.or.isign.ne.expected_sign)error stop 'wrong massive boundary branch'
+            ! The old map exceeded xi_max in a finite band and left a gap
+            ! on the other branch; neither is a rounding-sized effect.
+            if(xi.gt.xiimax+32d0*epsilon(xiimax).or.xi.lt.0d0) &
+                 error stop 'massive boundary outside physical support'
+            if(side.lt.0)then
+              expected_xi=xiimax*(1d-6+(1d0-1d-6)*(rnd(1)/ratio)**2)
+            else
+              expected_xi=2d0*xiimax-xinorm*rnd(1)
+            endif
+            if(abs(xi-expected_xi).gt.32d0*epsilon(xi))error stop 'massive branches leave a gap'
+            if(.not.all(ieee_is_finite(p)).or..not.ieee_is_finite(jac*pswgt)) &
+                 error stop 'nonfinite point beside massive branch boundary'
+            ! Independently solve energy conservation with higher precision:
+            ! (W-E_i)*sqrt(u**2+m**2)+E_i*y*u=(W**2+m**2-M**2)/2-W*E_i.
+            wq=real(sqrtshat,qp)
+            eiq=real(xi,qp)*wq/2
+            mq=real(mass,qp)
+            mrq=real(mrec,qp)
+            yq=real(yij,qp)
+            aq=(wq-eiq)**2-(eiq*yq)**2
+            bq=2*((wq*wq+mq*mq-mrq*mrq)/2-wq*eiq)*eiq*yq
+            cq=(wq-eiq)**2*mq*mq-((wq*wq+mq*mq-mrq*mrq)/2-wq*eiq)**2
+            dq=bq*bq-4*aq*cq
+            if(dq.le.0)error stop 'nonphysical massive boundary quadratic'
+            uq=(-bq+expected_sign*sqrt(dq))/(2*aq)
+            ejq=sqrt(uq*uq+mq*mq)
+            ubq=real(momentum,qp)
+            weightq=2*wq*wq/(4*acos(-1._qp))**3*(uq/ubq)/ &
+                 abs(2-real(xi,qp)*(1-ejq*yq/uq))
+            ! Resolving a turning point amplifies floating-point errors by
+            ! roughly epsilon/|x-ratio|; do not require a finite density at
+            ! the exactly singular point itself.
+            tolerance=2d-8+32d0*epsilon(xi)/offset
+            if(abs(pswgt/real(weightq,8)-1d0).gt.tolerance) &
+                 error stop 'massive boundary phase-space weight'
+            emitted_xi=get_xi_from_p(5,p)
+            opening=get_yij_from_p(5,3,p,saved_pi_cnt(:,0))
+            azimuth=get_phi_from_p(5,3,p)
+            jacinv=1d0
+            pswgtinv=1d0
+            call generate_momenta_massive_final_inverse(p,emitted_xi,opening,azimuth, &
+                 invborn,inv,jacinv,pswgtinv,shat,sqrtshat,5,3,mass)
+            if(jacinv.le.0d0.or.maxval(abs(inv-rnd)).gt.2d-8) &
+                 error stop 'massive boundary inverse coordinates'
+            if(maxval(abs(invborn(:,1:4)-born))/sqrtshat.gt.2d-9) &
+                 error stop 'massive boundary inverse Born'
+            if(abs(jacinv/jac-1d0).gt.2d-8.or. &
+                 abs(pswgtinv/pswgt-1d0).gt.tolerance)error stop 'massive boundary inverse measure'
+          enddo
+        enddo
+      enddo
+    enddo
+  end subroutine check_massive_boundary
+
+  subroutine check_delayed_soft_endpoint()
+    ! A randomly shifted two-point rule may visit the massive second
+    ! solution before the first solution. Its first virtual evaluation
+    ! therefore occurs on a later fold at the same sampled Born point.
+    use fks_phase_space_data, only: nocntevents,jac_cnt,xiimax_ev,xinorm_ev
+    double precision :: pmass(5),mb(4),rad(3),first_boundary
+    common/to_mass/pmass
+    integer :: i_fks,j_fks
+    common/fks_indices/i_fks,j_fks
+    native_mapping=.false.
+    sqrtshat=1000d0
+    shat=sqrtshat**2
+    mass=173d0
+    mrec=300d0
+    energy=(shat+mass**2-mrec**2)/(2d0*sqrtshat)
+    momentum=sqrt(energy**2-mass**2)
+    born(:,1)=[sqrtshat/2d0,0d0,0d0,sqrtshat/2d0]
+    born(:,2)=[sqrtshat/2d0,0d0,0d0,-sqrtshat/2d0]
+    born(:,3)=[energy,0.3d0*momentum,0.4d0*momentum,sqrt(0.75d0)*momentum]
+    born(:,4)=born(:,1)+born(:,2)-born(:,3)
+    mb=[0d0,0d0,mass,mrec]
+    pmass=[mb,0d0]
+    i_fks=5
+    j_fks=3
+    rad=[0.999d0,0.999d0,0.137d0]
+    call generate_massive_born_point(rad,born,mb)
+    first_boundary=xiimax_ev/xinorm_ev
+    if(.not.nocntevents.or.any(jac_cnt(0:2).gt.0d0))error stop 'first fold has a soft endpoint'
+    rad(1:2)=modulo(rad(1:2)+0.5d0,1d0)
+    call generate_massive_born_point(rad,born,mb)
+    if(nocntevents.or.jac_cnt(0).le.0d0)error stop 'later fold lacks a soft endpoint'
+    write(*,*)'First/later massive branch boundaries:',first_boundary,xiimax_ev/xinorm_ev
+  end subroutine check_delayed_soft_endpoint
+
   subroutine check_massive_born_measure()
     ! Integrate the actual endpoint measure over both massive branches.
     ! Removing the analytic soft radiation volume must leave one Born
     ! measure for each emitter, including when their branch boundaries differ.
     use fks_phase_space_data, only: p1_cnt,jac_cnt, &
          xiimax_ev,xinorm_ev,nocntevents,isolsign
+    use fks_radiation_maps, only: fsr_born_cutoff_factor
     integer,parameter :: nx=16,ny=16
     double precision,parameter :: recoils(4)=[4.7d0,300d0,900d0,173d0]
     double precision :: mb(4),pmass(5)
@@ -627,7 +1148,10 @@ contains
                            error stop 'first branch lost its soft counterevent'
                       if(maxval(abs(p1_cnt(:,1:4,0)-born)).gt.1d-9.or. &
                            any(p1_cnt(:,5,0).ne.0d0))error stop 'endpoint changed Born point'
-                      w=jac_cnt(0)/born_flux*xinorm_ev/(xiimax_ev*soft_volume)
+                      ! Use the same sampled auxiliary volume as the Born
+                      ! prefactor, keeping its integral exactly normalized.
+                      w=jac_cnt(0)/born_flux*xinorm_ev/ &
+                           (xiimax_ev*soft_volume*fsr_born_cutoff_factor())
                    endif
                    total=total+w*dx/ny
                 enddo

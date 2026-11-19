@@ -10,7 +10,7 @@ STDHEPDIR= ./StdHEP/
 
 GENERIC = $(alfas_functions).o rw_routines.o kin_functions.o		\
 	  run_printout.o dgauss.o ranmar.o setrun.o derivative.o	\
-	  zerox64_cernlib.o timing.o
+	  zerox64_cernlib.o timing.o mg5_citation.o impose_frame_rest.o
 
 ifneq ("$(wildcard ./RUNNING)","")
 	LINKLIBS += -lrunning
@@ -38,6 +38,7 @@ $(LIBDIR)librunning.$(libext): RUNNING
 $(LIBDIR)libdhelas.a: DHELAS
 	rm -f $(LIBDIR)libdhelas.a
 	cd DHELAS; make
+	if [ -f DHELAS/aloha_object.mod ]; then cp -f DHELAS/aloha_object.mod $(LIBDIR); fi
 
 $(LIBDIR)libgeneric.a: $(GENERIC)
 	rm -f $(LIBDIR)libgeneric.a
@@ -56,7 +57,9 @@ $(LIBDIR)libpdf.a: PDF
 	rm -f $(LIBDIR)libpdf.a
 	cd PDF; make	
 
-ifneq (,$(filter edff chff, $(pdlabel)))
+# gamma-UPC pdlabels (edff, chff, edpf, edf1n2n, ...) all start with ed or ch,
+# a prefix no other pdlabel uses (checked in tests/unit_tests/various/test_gamma_upc.py)
+ifneq (,$(filter ed% ch%, $(pdlabel)))
 $(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC
 	cd PDF/gammaUPC; make ; cd ../../
 else
@@ -70,13 +73,14 @@ $(LIBDIR)libcernlib.a: CERNLIB
 
 $(LIBDIR)libmodel.a: MODEL param_card.inc
 	rm -f $(LIBDIR)libmodel.a
-	cd MODEL; make	
+	cd MODEL; make
+	if [ -f MODEL/model_object.mod ]; then cp -f MODEL/model_object.mod $(LIBDIR); fi
 
 run_card.inc: ../Cards/run_card.dat
-	../bin/aMCatNLO treatcards run
+	../bin/aMCatNLO --allow-stdin treatcards run
 
 param_card.inc: ../Cards/param_card.dat
-	../bin/aMCatNLO treatcards param
+	../bin/aMCatNLO --allow-stdin treatcards param
 
 CutTools: $(LIBDIR)libcts.a
 libcuttools: $(LIBDIR)libcts.a

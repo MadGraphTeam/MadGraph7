@@ -1,12 +1,12 @@
 ################################################################################
 #
-# Copyright (c) 2011 The MadGraph5_aMC@NLO Development team and Contributors
+# Copyright (c) 2011 The MadGraph7 Development team and Contributors
 #
-# This file is a part of the MadGraph5_aMC@NLO project, an application which 
+# This file is a part of the MadGraph7 project, an application which 
 # automatically generates Feynman diagrams and matrix elements for arbitrary
 # high-energy processes in the Standard Model and beyond.
 #
-# It is subject to the MadGraph5_aMC@NLO license which should accompany this 
+# It is subject to the MadGraph7 license which should accompany this 
 # distribution.
 #
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
@@ -33,6 +33,59 @@ else:
     import madgraph.various.misc as misc
     from madgraph import MadGraph5Error
 
+# Version 1 is retained for unmarked historical files. Format 2 retires
+# PJFry and gives NinjaRS one units digit; precision uses dedicated counters.
+MADLOOP_LEGACY_UNIT_BACKENDS = (
+    ('unidentified', 'Not identified (CTModeRun != -1)'),
+    ('CutTools_DP', 'CutTools (double precision)'),
+    ('PJFry', 'PJFry++'),
+    ('IREGI', 'IREGI'),
+    ('Golem', 'Golem95'),
+    ('Samurai', 'Samurai'),
+    ('Ninja', 'Ninja (double precision)'),
+    ('COLLIER', 'COLLIER'),
+    ('Ninja_QP', 'Ninja (quadruple precision)'),
+    ('CutTools_QP', 'CutTools (quadruple precision)'),
+)
+MADLOOP_RETURN_CODE_VERSION = 2
+MADLOOP_UNIT_BACKENDS = tuple(
+    ('NinjaRS', 'NinjaRS') if unit == 2 else backend
+    for unit, backend in enumerate(MADLOOP_LEGACY_UNIT_BACKENDS))
+MADLOOP_BACKEND_LABELS = dict(MADLOOP_LEGACY_UNIT_BACKENDS + MADLOOP_UNIT_BACKENDS + (
+    ('NinjaRS_DP', 'NinjaRS (double precision)'),
+    ('NinjaRS_QP', 'NinjaRS (quadruple precision)'),
+))
+
+
+def decode_madloop_backend_usage(unit_counts, ninjars_dp=0, ninjars_qp=0,
+                                 format_version=1):
+    """Decode one versioned histogram without modifying the input.
+
+    Unmarked files use version 1, including the historical NinjaRS aliases.
+    Version 2 assigns unit 2 exclusively to NinjaRS. Its DP/QP counters split
+    this bucket directly; there is no subtraction from another backend.
+    Decode each source before aggregating statistics from different versions.
+    """
+    if format_version not in (1, MADLOOP_RETURN_CODE_VERSION):
+        raise MadGraph5Error('Unsupported MadLoop return-code format %s.' %
+                             format_version)
+    usage = {backend: unit_counts[unit]
+             for unit, (backend, _) in enumerate(MADLOOP_LEGACY_UNIT_BACKENDS)}
+    if format_version == 1:
+        # These aliases belong only to previously serialized files.
+        usage['Ninja_QP'] -= ninjars_dp
+        usage['PJFry'] -= ninjars_qp
+    else:
+        if (ninjars_dp < 0 or ninjars_qp < 0 or
+                ninjars_dp + ninjars_qp != unit_counts[2]):
+            raise MadGraph5Error('Inconsistent NinjaRS precision counters in '
+                                 'MadLoop return-code format 2.')
+        usage['PJFry'] = 0
+    usage['NinjaRS_DP'] = ninjars_dp
+    usage['NinjaRS_QP'] = ninjars_qp
+    return usage
+
+
 class RunStatistics(dict):
     """ A class to store statistics about a MadEvent run. """
     
@@ -57,6 +110,8 @@ class RunStatistics(dict):
           'Samurai_usage'      : 0,
           'Ninja_usage'        : 0,
           'Ninja_QP_usage'     : 0,
+          'NinjaRS_DP_usage'   : 0,
+          'NinjaRS_QP_usage'   : 0,
           'COLLIER_usage'      : 0,
           'max_precision'      : 1.0e99,
           'min_precision'      : 0.0,
@@ -114,21 +169,24 @@ class RunStatistics(dict):
         
         u_return_code = xml_node.getElementsByTagName('u_return_code')
         u_codes = [int(_) for _ in getData(u_return_code[0]).split(',')]
-        self['CutTools_DP_usage'] = u_codes[1]
-        self['PJFry_usage']       = u_codes[2]
-        self['IREGI_usage']       = u_codes[3]
-        self['Golem_usage']       = u_codes[4]
-        self['Samurai_usage']     = u_codes[5]
-        self['Ninja_usage']       = u_codes[6]
-        self['COLLIER_usage']     = u_codes[7]        
-        self['Ninja_QP_usage']    = u_codes[8]
-        self['CutTools_QP_usage'] = u_codes[9]
+        ninjars_usage = {}
+        for precision in ('DP', 'QP'):
+            nodes = xml_node.getElementsByTagName(
+                'ninjars_%s_usage' % precision.lower())
+            ninjars_usage[precision] = int(getData(nodes[0])) if nodes else 0
+        versions = xml_node.getElementsByTagName('return_code_version')
+        version = int(getData(versions[0])) if versions else 1
+        self.update((backend + '_usage', count) for backend, count in
+                    decode_madloop_backend_usage(
+                        u_codes, ninjars_usage['DP'], ninjars_usage['QP'],
+                        version).items()
+                    if backend != 'unidentified')
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
         self['DP_usage']          = t_codes[1]
         self['QP_usage']          = t_codes[2]
         self['DP_init_usage']     = t_codes[3]
-        self['DP_init_usage']     = t_codes[4]
+        self['QP_init_usage']     = t_codes[4]
         h_return_code = xml_node.getElementsByTagName('h_return_code')
         h_codes = [int(_) for _ in getData(h_return_code[0]).split(',')]
         self['unknown_stability']  = h_codes[1]
@@ -157,7 +215,7 @@ class RunStatistics(dict):
         """Returns a one-line string summarizing the run statistics 
         gathered for the channel G."""
         
-        # Do not return anythign for now if there is no madloop calls. This can
+        # Do not return anything for now if there is no madloop calls. This can
         # change of course if more statistics are gathered, unrelated to MadLoop.
         if self['n_madloop_calls']==0:
             return ''
@@ -181,7 +239,9 @@ class RunStatistics(dict):
           ('Samurai',float(self['Samurai_usage'])/self['n_madloop_calls']),
           ('COLLIER',float(self['COLLIER_usage'])/self['n_madloop_calls']),          
           ('Ninja_DP',float(self['Ninja_usage'])/self['n_madloop_calls']),
-          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls'])]
+          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_DP',float(self['NinjaRS_DP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls'])]
 
         tools_used = [(_[0],'%.3g'%(100.0*_[1])) for _ in tools_used if _[1] > 0.0 ]
 
@@ -269,11 +329,12 @@ class OneResult(object):
         self.th_nunwgt = 0 # associated number of event with th_maxwgt 
                            #(this is theoretical do not correspond to a number of written event)
         self.timing = 0
+        self.subprocess_weights = []  # per-leshouche-row relative weights (from grouped DSIG)
         return
     
     #@cluster.multiple_try(nb_try=5,sleep=20)
     def read_results(self, filepath):
-        """read results.dat and fullfill information"""
+        """read results.dat and fill information"""
         
         if isinstance(filepath, str):
             finput = open(filepath)
@@ -306,17 +367,17 @@ class OneResult(object):
                          self.maxit, self.nunwgt, self.luminosity, self.wgt, \
                          self.xsec = data[:10]
                 except ValueError:
-                    log = pjoin(os.path.dirname(filepath), 'log.txt')
+                    # filepath may be a file descriptor (not a path string), so
+                    # derive the directory from the opened file object's name.
+                    log = pjoin(os.path.dirname(finput.name), 'log.txt')
                     if os.path.exists(log):
                         if 'end code not correct' in line:
                             error_code = data[4]
-                            log = pjoin(os.path.dirname(filepath), 'log.txt')
                             raise Exception("Reported error: End code %s \n Full associated log: \n%s"\
                                   % (error_code, open(log).read()))
                         else:
-                            log = pjoin(os.path.dirname(filepath), 'log.txt')
                             raise Exception("Wrong formatting in results.dat: %s \n Full associated log: \n%s"\
-                                %  (line, open(log).read()))                        
+                                %  (line, open(log).read()))
                 if len(data) > 10:
                     self.maxwgt = data[10]
                 if len(data) >12:
@@ -357,7 +418,9 @@ class OneResult(object):
     def parse_xml_results(self, xml):
         """ Parse the xml part of the results.dat file."""
 
-        dom = minidom.parseString(xml)
+        # Wrap in a <root> element so minidom can handle multiple top-level XML
+        # fragments (e.g. <run_statistics> and <subprocess_weights> coexisting).
+        dom = minidom.parseString('<root>%s</root>' % xml)
                     
         statistics_node = dom.getElementsByTagName("run_statistics")
         
@@ -367,10 +430,19 @@ class OneResult(object):
             except ValueError as IndexError:
                 logger.warning('Fail to read run statistics from results.dat')
         else:
-            lo_statistics_node = dom.getElementsByTagName("lo_statistics")[0]
-            timing = lo_statistics_node.getElementsByTagName('cumulated_time')[0]
-            timing= timing.firstChild.nodeValue
-            self.timing = 0.3 + float(timing) #0.3 is the typical latency of bash script/...
+            lo_statistics_node = dom.getElementsByTagName("lo_statistics")
+            if lo_statistics_node:
+                timing = lo_statistics_node[0].getElementsByTagName('cumulated_time')[0]
+                timing= timing.firstChild.nodeValue
+                self.timing = 0.3 + float(timing) #0.3 is the typical latency of bash script/...
+
+        subprocess_weights_node = dom.getElementsByTagName("subprocess_weights")
+        if subprocess_weights_node:
+            try:
+                text = subprocess_weights_node[0].firstChild.nodeValue
+                self.subprocess_weights = [float(x) for x in text.split()]
+            except Exception:
+                pass
 
 
     def set_mfactor(self, value):
@@ -456,6 +528,23 @@ class Combine_results(list, OneResult):
         if update_statistics:
             self.run_statistics.aggregate_statistics([_.run_statistics for _ in self])
 
+        # Aggregate per-leshouche-row subprocess weights across G directories.
+        # Use a cross-section-weighted average so that more-contributing channels
+        # dominate the combined weights.
+        sources = [one for one in self if one.subprocess_weights]
+        if sources:
+            total_axsec = sum(one.axsec for one in sources)
+            if total_axsec > 0:
+                n = len(sources[0].subprocess_weights)
+                combined = [0.0] * n
+                for one in sources:
+                    if len(one.subprocess_weights) == n:
+                        for i, w in enumerate(one.subprocess_weights):
+                            combined[i] += w * one.axsec / total_axsec
+                self.subprocess_weights = combined
+            else:
+                self.subprocess_weights = sources[-1].subprocess_weights
+
     def compute_average(self, error=None):
         """compute the value associate to this combination"""
 
@@ -517,7 +606,7 @@ class Combine_results(list, OneResult):
         #    nb_iter = 0 
         #nb_iter = misc.mmin([len(a.ysec_iter) for a in self], 0)
         #misc.sprint(nb_iter)
-        # syncronize all iterations to a single one
+        # synchronize all iterations to a single one
         for oneresult in self:
             oneresult.change_iterations_number(0)
             
@@ -682,6 +771,12 @@ class Combine_results(list, OneResult):
         if self.timing:
             text = """<lo_statistics>\n<cumulated_time> %s </cumulated_time>\n</lo_statistics>"""
             fsock.writelines(text % self.timing)
+
+        if self.subprocess_weights:
+            fsock.writelines('<subprocess_weights>\n')
+            for w in self.subprocess_weights:
+                fsock.writelines('%.10E\n' % w)
+            fsock.writelines('</subprocess_weights>\n')
         
 
 
@@ -707,8 +802,20 @@ function UrlExists(url) {
 </script>
 """ 
 
-def collect_result(cmd, folder_names=[], jobs=None, main_dir=None):
-    """ """ 
+def collect_result(cmd, folder_names=[], jobs=None, main_dir=None, apply_symmetry=True):
+    """Collect subprocess integration results.
+
+    Args:
+        cmd: MadEvent command interface.
+        folder_names: Optional glob-like folder suffix patterns to read.
+        jobs: Optional explicit job descriptors.
+        main_dir: Optional base directory override for readonly/gridpack modes.
+        apply_symmetry: If False, do not apply symfact.dat multiplicative
+            factors when attaching channel results.
+
+    Returns:
+        Combine_results: Aggregated run result object with subprocess entries.
+    """ 
 
     run = cmd.results.current['run_name']
     all = Combine_results(run)
@@ -733,7 +840,8 @@ def collect_result(cmd, folder_names=[], jobs=None, main_dir=None):
                             dir = folder.replace('*', name)
                         else:
                             dir = folder.replace('*', '_G' + name)
-                        P_comb.add_results(dir, pjoin(Pdir,dir,'results.dat'), mfactor)
+                        sym_factor = mfactor if apply_symmetry else 1
+                        P_comb.add_results(dir, pjoin(Pdir,dir,'results.dat'), sym_factor)
                 if jobs:
                     for job in [j for j in jobs if j['p_dir'] == Pdir]:
                         P_comb.add_results(os.path.basename(job['dirname']),\
@@ -748,7 +856,8 @@ def collect_result(cmd, folder_names=[], jobs=None, main_dir=None):
                         path = pjoin(main_dir, os.path.basename(Pdir), os.path.basename(G),'results.dat')
                     else:
                         path = pjoin(G,'results.dat')
-                    P_comb.add_results(os.path.basename(G), path, mfactors[G])
+                    sym_factor = mfactors[G] if apply_symmetry else 1
+                    P_comb.add_results(os.path.basename(G), path, sym_factor)
 
         P_comb.compute_values()
         all.append(P_comb)
@@ -815,4 +924,3 @@ def make_all_html_results(cmd, folder_names = [], jobs=[], get_attr=None):
         return getattr(Presults, get_attr)
 
             
-
