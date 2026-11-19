@@ -1959,7 +1959,12 @@ class StoredColumns:
         """The executor's plan argument and seed records (``V2Executor``'s
         ``overlay``): a formed set's stored plan (or companion's) with its
         overlay, the native load of what ``_plan`` merges as JSON; any other
-        set's plan JSON (``_plan``)."""
+        set's plan JSON (``_plan``). A formed set whose seeds are the plan's
+        own (a null overlay) takes the plan program the artifact's admission
+        loaded (``native_process.AdmittedPlan``: the same program, not loaded
+        again); a set with seeds of its own first releases that program when
+        the process's executor has not taken it, so the session holds one
+        program, as before the admission kept it."""
 
         from .native_trees import executor_program
 
@@ -1972,6 +1977,14 @@ class StoredColumns:
             plan, overlay = process.plan, self.set.overlay_json
         if overlay is None:
             raise ValueError("the column set stores no companion seeds")
+        admitted = None if twin else process.admitted
+        if admitted is not None:
+            if json.loads(overlay) is None:
+                program = admitted.get()
+                if program is not None:
+                    return program, None
+            elif not admitted.taken:
+                admitted.release()
         return executor_program(plan), overlay
 
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):

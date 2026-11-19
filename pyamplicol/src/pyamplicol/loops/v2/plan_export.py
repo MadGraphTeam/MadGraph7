@@ -2146,8 +2146,7 @@ class NativeExecutor:
         contraction: Literal["auto", "direct", "fft"] | None = None,
         catani: bool = False,
         route: Literal["R1", "R2"] | None = None,
-        program: Any = None,
-        scaleless_program: Any = None,
+        program: Callable[[], Any] | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -2197,14 +2196,14 @@ class NativeExecutor:
         # process's compressed stored member of either (``StoredMember``,
         # inflated by the native executor itself: M-FINAL MF-8G-2 item 2).
         self._plan_json = self.exported.stored() if plan_json is None else plan_json
-        # ``program``: the native program of ``plan_json`` as an artifact's
-        # admission loaded it (``V2AdmittedPlan``, the rule kernel forms):
-        # the first native executor takes it instead of loading the plan
-        # again; ``scaleless_program`` the companion's, for its executor.
+        # ``program``: the getter of the native program of ``plan_json`` as
+        # an artifact's admission loaded it (``native_process.AdmittedPlan.
+        # get``: a ``V2AdmittedPlan``, the rule kernel forms, or None once
+        # released): the first native executor takes it instead of loading
+        # the plan again.
         if program is not None and plan_json is None:
             raise ValueError("an admitted program needs its stored plan")
         self._program = program
-        self._scaleless_program = scaleless_program
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
         # (exported plan, its JSON) of the companion when the caller holds it
@@ -2278,10 +2277,13 @@ class NativeExecutor:
                     )
                     return found
             trees = self.exported.trees.executor_argument() if native_trees else None
-            plan = (
-                self._program
+            admitted = (
+                self._program()
                 if self._program is not None and self.forms == "rule"
-                else executor_program(self._plan_json)
+                else None
+            )
+            plan = (
+                admitted if admitted is not None else executor_program(self._plan_json)
             )
             found = self._native[key] = self.slice.native.V2Executor(
                 plan,
@@ -2335,7 +2337,6 @@ class NativeExecutor:
                     # The companion's families carry pole residues only: its
                     # seeds take the FFT where certified, never required.
                     contraction="direct" if self.contraction == "direct" else "auto",
-                    program=None if plan_json is None else self._scaleless_program,
                 )
             self._scaleless.append(built)
         return self._scaleless[0]
@@ -2348,15 +2349,18 @@ class NativeExecutor:
         unchecked: bool = False,
         scaleless: bool = False,
     ) -> None:
-        """Build what this executor's first call in ``precision``'s carrier
-        with ``reduction`` ("ninjars" or "tirust") would build lazily, without
-        evaluating a point (``V2Executor.warm``): its native executor of the
-        carrier, the carrier's tree runtime, the backend and, through one
-        synthetic lane per (propagators, rank) class of the plan, what the
-        backend's first reductions build, in the ``unchecked`` mode; with
-        ``scaleless`` also the certified-scaleless companion's (which the "uv"
-        and "ir" pole selections run). Kept for the executor's lifetime; later
-        values are unchanged."""
+        """Build most of what this executor's first call in ``precision``'s
+        carrier with ``reduction`` ("ninjars" or "tirust") would build
+        lazily, without evaluating a point (``V2Executor.warm``): its native
+        executor of the carrier, the carrier's tree runtime, the families' walk
+        data, the backend and, through one synthetic lane per (propagators,
+        rank) class its lanes reach, what the backend's first reductions
+        build, in the ``unchecked`` mode; with ``scaleless`` also the
+        certified-scaleless companion's (which the "uv" and "ir" pole
+        selections run). Left lazy: NinjaRS's lower class of a lane whose top
+        coefficients vanish at its point, and the binary64 fast engine's exact
+        fallback (lanes at its absolute thresholds). Kept for the executor's
+        lifetime; later values are unchanged."""
 
         arithmetic, digits = self._arithmetic(precision, False)
         executors = [self]

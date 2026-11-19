@@ -869,8 +869,8 @@ def test_the_admitted_program_is_shared_and_the_warm_entry_changes_no_value(
     def values(prepare: bool) -> list[str]:
         runtime = Runtime.load(quark_controls, process="uudd")
         backend = runtime._backend
-        program = backend._executor._program
-        assert program is not None and program.families > 0
+        admitted = backend._native_process.admitted
+        assert admitted is not None and admitted.get().families > 0
         if prepare:
             for carrier in carriers:
                 backend.prepare(reduction="auto", **carrier)
@@ -891,6 +891,69 @@ def test_the_admitted_program_is_shared_and_the_warm_entry_changes_no_value(
         loop_native.V2Executor(admitted, forms="fused")
     with pytest.raises(ValueError, match="reduction must be"):
         Runtime.load(quark_controls, process="uudd")._backend.prepare(reduction="x")
+
+
+@pytest.mark.loop_physics
+def test_the_admitted_program_is_released_by_clear_and_the_companion_not_kept(
+    quark_controls, loop_native
+):
+    """The admitted plan program is held for the process's executors only:
+    the first evaluation takes it, ``clear`` releases it (the next executor
+    loads the plan member, values unchanged), and the certified-scaleless
+    companion's program is not kept from the admission."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.cli.flat_points import draw_flat_points
+
+    flat = draw_flat_points(
+        quark_controls, process="uudd", points=2, seed=5, sqrt_s=None
+    )
+    points, scales = flat.as_inputs(exact=False), flat.mu_r2()
+    runtime = Runtime.load(quark_controls, process="uudd")
+    backend = runtime._backend
+    admitted = backend._native_process.admitted
+    assert admitted is not None and not admitted.taken
+    assert not hasattr(backend, "_programs")
+    first = repr(runtime.evaluate(points, mu_r2=scales).values)
+    assert admitted.taken
+    runtime.clear()
+    assert admitted.get() is None
+    assert repr(runtime.evaluate(points, mu_r2=scales).values) == first
+
+
+@pytest.mark.loop_physics
+def test_prepare_auto_warms_only_the_backends_the_native_module_serves(
+    quark_controls, loop_native, monkeypatch
+):
+    """``prepare(reduction="auto")`` warms the backends the artifact admits
+    AND the native module serves in the carrier (a native without TIRust
+    warms NinjaRS only); an explicit backend the module does not serve is
+    ``ReductionUnavailable``."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    backend = Runtime.load(quark_controls, process="uudd")._backend
+    warmed: list[str] = []
+    monkeypatch.setattr(
+        backend._executor,
+        "prepare",
+        lambda setting, reduction, **options: warmed.append(reduction),
+    )
+
+    class NinjaOnly:
+        def __getattr__(self, name):
+            return getattr(loop_native, name)
+
+        def reduction_backends(self):
+            return json.dumps({"ninjars": ["double", "double-double", "arbitrary"]})
+
+    backend._native = NinjaOnly()
+    backend.prepare(reduction="auto")
+    assert warmed == ["ninjars"]
+    with pytest.raises(ReductionUnavailable):
+        backend.prepare(reduction="tirust")
+    assert warmed == ["ninjars"]
 
 
 @pytest.mark.loop_physics
