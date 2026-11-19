@@ -554,6 +554,8 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
         assert report["stability_setup"]["interrupted"] is False
         assert report["stability_setup"]["requested"] == 7
         report["stability_setup"].pop("n_core")
+        # The workers' memory rule: the host's memory now and the workers.
+        report["stability_setup"].pop("memory")
         for row in report["stability"]:
             row.pop("seconds")
             # Every sample's record (the per-sample dump) reproduces the
