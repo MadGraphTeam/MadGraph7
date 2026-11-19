@@ -34,7 +34,7 @@ int main() {
 ''')
         cls.executable = directory / 'probe'
         templates = Path(__file__).resolve().parents[3] / 'madgraph/iolibs/template_files/madmatrix'
-        subprocess.run(['g++', '-std=c++17', '-O3', '-ffast-math',
+        subprocess.run(['g++', '-std=c++20', '-O3', '-ffast-math',
                         '-I' + str(templates), str(source), '-o', str(cls.executable)],
                        check=True, capture_output=True, text=True)
 
@@ -169,7 +169,7 @@ int main() {
             source = directory/'runtime.cc'; source.write_text(source_text)
             for backend, flags in backends:
                 executable = directory/backend
-                compiled = subprocess.run(['g++', '-std=c++17', '-O3', '-ffast-math', *flags,
+                compiled = subprocess.run(['g++', '-std=c++20', '-O3', '-ffast-math', *flags,
                     '-DMGONGPU_FPTYPE_DOUBLE', '-DMGONGPU_FPTYPE2_DOUBLE',
                     *self.header_flags(templates, backend), str(source), '-o', str(executable)],
                     capture_output=True, text=True, timeout=60)
@@ -258,13 +258,13 @@ cxtype_amp_sv probe(const fptype_momenta_sv* input) {
             for backend, flags in backends:
                 for defines, precision in precisions:
                     with self.subTest(backend=backend, precision=precision):
-                        result = subprocess.run(['g++','-std=c++17','-O3','-ffast-math',
+                        result = subprocess.run(['g++','-std=c++20','-O3','-ffast-math',
                             *flags,*['-D'+name for name in defines],*self.header_flags(templates, backend),
                             '-fsyntax-only',str(source)],capture_output=True,text=True,timeout=60)
                         self.assertEqual(result.returncode, 0, result.stderr)
             if shutil.which('nvcc'):
                 cuda=directory/'probe.cu';cuda.write_text(source.read_text())
-                result=subprocess.run(['nvcc','-std=c++17','--use_fast_math',
+                result=subprocess.run(['nvcc','-std=c++20','--use_fast_math',
                     '-allow-unsupported-compiler','-arch=sm_90',
                     '-DMGONGPU_FPTYPE_DOUBLE','-DMGONGPU_FPTYPE2_DOUBLE',
                     *self.header_flags(templates, 'cuda'),'-c',str(cuda),'-o',str(directory/'probe.o')],

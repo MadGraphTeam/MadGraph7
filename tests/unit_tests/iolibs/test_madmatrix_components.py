@@ -81,7 +81,7 @@ int main() {
                 for color_precision in ['DOUBLE', 'FLOAT']:
                     with self.subTest(backend=name, color_precision=color_precision):
                         executable = directory/(name+'-'+color_precision)
-                        command = ['g++', '-std=c++17', '-O3', '-ffast-math', *flags,
+                        command = ['g++', '-std=c++20', '-O3', '-ffast-math', *flags,
                             '-DMGONGPU_FPTYPE_DOUBLE', '-DMGONGPU_FPTYPE2_'+color_precision,
                             '-I'+str(directory), '-I'+str(templates/'backend'/backend),
                             '-I'+str(templates/'backend/common'), str(source),
