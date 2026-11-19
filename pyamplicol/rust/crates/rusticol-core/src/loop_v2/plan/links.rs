@@ -185,12 +185,12 @@ pub(super) struct DerivedSteps {
 /// Each content's rows in block-row order (the inverse of
 /// [`RowSpace::content_rows`]): the rows a dressed edge links every source
 /// row to.
-pub(super) fn content_lists(content_rows: &[WordMap<Row, u32>]) -> Vec<Vec<Row>> {
+pub(super) fn content_lists(content_rows: &[std::sync::Arc<WordMap<Row, u32>>]) -> Vec<Vec<Row>> {
     content_rows
         .iter()
         .map(|rows| {
             let mut list = vec![(0, 0); rows.len()];
-            for (&row, &index) in rows {
+            for (&row, &index) in rows.iter() {
                 list[index as usize] = row;
             }
             list
@@ -209,7 +209,7 @@ pub(super) fn derive(
     family: &FamilyFile,
     file: &PlanFile,
     space: &RowSpace,
-    content_rows: &[WordMap<Row, u32>],
+    content_rows: &[std::sync::Arc<WordMap<Row, u32>>],
     dressed: Option<&[Vec<Row>]>,
 ) -> RusticolResult<DerivedSteps> {
     let mut outputs: Vec<Option<Vec<Row>>> = vec![None; family.steps.len()];

@@ -652,7 +652,7 @@ fn content(
     named: &mut Vec<u64>,
     largest_rank: usize,
 ) -> RusticolResult<(u64, u64)> {
-    for e in &c.fused {
+    for e in c.fused.iter() {
         let degree: u64 = e[2..].iter().map(|&x| u64::from(x)).sum();
         require(
             degree <= c.degree as u64 && degree <= largest_rank as u64,
@@ -689,7 +689,7 @@ fn content(
         tally.keep(t.slots.len() as u64, size_of::<u64>());
         tally.keep(t.dimensions.len() as u64, size_of::<usize>());
         tally.keep(t.rows.len() as u64, size_of::<(usize, Vec<usize>)>());
-        for (_, blocks) in &t.rows {
+        for (_, blocks) in t.rows.iter() {
             tally.keep(blocks.len() as u64, size_of::<usize>());
         }
         if t.vertex >= 0 {
@@ -724,8 +724,8 @@ fn content(
     named.clear();
     named.resize(c.row_helicities.len(), 0);
     for t in &c.terms {
-        for (row, _) in &t.rows {
-            if let Some(count) = named.get_mut(*row) {
+        for (row, _) in t.rows.iter() {
+            if let Some(count) = named.get_mut(row) {
                 *count += 1;
             }
         }

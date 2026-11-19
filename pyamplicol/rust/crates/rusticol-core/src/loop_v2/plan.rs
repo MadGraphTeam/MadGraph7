@@ -217,8 +217,12 @@ struct ContentFile {
     rows: usize,
     /// The content's legs and, per block row, their helicities (leg order).
     mask: u64,
-    row_helicities: Vec<Vec<i32>>,
-    fused: Vec<[u32; 6]>,
+    /// Shared by the contents whose lists are equal (one per distinct list
+    /// in a decoded binary member: `binary::shared_arc`).
+    #[serde(deserialize_with = "shared_list")]
+    row_helicities: Arc<Vec<Vec<i32>>>,
+    #[serde(deserialize_with = "shared_list")]
+    fused: Arc<Vec<[u32; 6]>>,
     terms: Vec<TermFile>,
 }
 
@@ -226,39 +230,175 @@ struct ContentFile {
 #[serde(deny_unknown_fields)]
 struct TermFile {
     slots: Vec<u64>,
-    dimensions: Vec<usize>,
+    #[serde(deserialize_with = "shared_list")]
+    dimensions: Arc<Vec<usize>>,
     bindings: Vec<BindingFile>,
     vertex: i64,
     split: Vec<SplitFile>,
-    rows: Vec<(usize, Vec<usize>)>,
+    #[serde(deserialize_with = "term_rows")]
+    rows: TermRows,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SplitFile {
     kernel: usize,
-    inputs: Vec<(String, usize, usize)>,
-    entries: Vec<(usize, usize)>,
+    #[serde(deserialize_with = "shared_list")]
+    inputs: Arc<Vec<(String, usize, usize)>>,
+    #[serde(deserialize_with = "shared_list")]
+    entries: Arc<Vec<(usize, usize)>>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BindingFile {
     kernel: usize,
-    inputs: Vec<(String, usize, usize)>,
-    entries: Vec<usize>,
+    #[serde(deserialize_with = "shared_list")]
+    inputs: Arc<Vec<(String, usize, usize)>>,
+    #[serde(deserialize_with = "shared_list")]
+    entries: Arc<Vec<usize>>,
+}
+
+/// A shared list of the file model from its JSON (each record its own).
+fn shared_list<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Arc::new)
+}
+
+/// A content term's rows from their JSON (`[[row, [block, ...]], ...]`).
+fn term_rows<'de, D>(deserializer: D) -> Result<TermRows, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let rows = Vec::<(usize, Vec<usize>)>::deserialize(deserializer)?;
+    let mut out = TermRows::default();
+    for (row, blocks) in &rows {
+        out.push(*row, blocks)
+            .map_err(|error| serde::de::Error::custom(error.message()))?;
+    }
+    Ok(out)
+}
+
+/// The rows of a content term, `(content row, block row id per slot)`,
+/// stored flat (a large plan has tens of millions of term rows: one list
+/// per row was most of its decoded model and of its loaded contents).
+/// Iterated as `(&row, &[block])`; its `Debug` form is the list of pairs.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct TermRows {
+    rows: Vec<u32>,
+    /// Row `k`'s blocks are `blocks[ends[k - 1]..ends[k]]` (`0` before the
+    /// first).
+    ends: Vec<u32>,
+    blocks: Vec<u32>,
+}
+
+impl TermRows {
+    /// Append a row (its values and block count must fit `u32`, as every
+    /// row index of the loaded plan does).
+    pub(crate) fn push(&mut self, row: usize, blocks: &[usize]) -> RusticolResult<()> {
+        let narrow = |value: usize| u32::try_from(value).map_err(|_| invalid("content term row"));
+        self.rows.push(narrow(row)?);
+        for &block in blocks {
+            self.blocks.push(narrow(block)?);
+        }
+        self.ends.push(narrow(self.blocks.len())?);
+        Ok(())
+    }
+
+    /// Reserve `rows` rows and `blocks` blocks more, fallibly.
+    pub(crate) fn try_reserve(&mut self, rows: usize, blocks: usize) -> Result<(), ()> {
+        self.rows.try_reserve_exact(rows).map_err(|_| ())?;
+        self.ends.try_reserve_exact(rows).map_err(|_| ())?;
+        self.blocks.try_reserve(blocks).map_err(|_| ())
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// Row `k`: its content row and block row ids.
+    pub fn get(&self, k: usize) -> (usize, &[u32]) {
+        let start = if k == 0 { 0 } else { self.ends[k - 1] as usize };
+        (
+            self.rows[k] as usize,
+            &self.blocks[start..self.ends[k] as usize],
+        )
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &[u32])> + '_ {
+        (0..self.len()).map(move |k| self.get(k))
+    }
+
+    /// The heap the rows hold.
+    pub fn heap_bytes(&self) -> usize {
+        4 * (self.rows.capacity() + self.ends.capacity() + self.blocks.capacity())
+    }
+}
+
+impl std::fmt::Debug for TermRows {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SeedFile {
-    columns: Vec<Vec<(usize, String, String)>>,
+    /// Per column its `(Born component, re, im)` terms; the weights' texts
+    /// are the decoded member's string table's (`Stream::text`), shared.
+    #[serde(deserialize_with = "seed_columns")]
+    columns: Vec<Vec<(usize, Text, Text)>>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SeedKeyFile {
-    classes: Vec<(usize, String, String)>,
+    #[serde(deserialize_with = "seed_terms")]
+    classes: Vec<(usize, Text, Text)>,
+}
+
+/// An exact weight's text in the file model, shared with the decoded
+/// member's string table (a large plan holds tens of millions of weights
+/// over a few hundred distinct texts).
+pub(crate) type Text = Arc<str>;
+
+/// A text from its JSON.
+fn text<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Text, D::Error> {
+    String::deserialize(deserializer).map(Text::from)
+}
+
+/// `(index, re, im)` terms from their JSON.
+fn seed_terms<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<(usize, Text, Text)>, D::Error> {
+    let terms = Vec::<(usize, String, String)>::deserialize(deserializer)?;
+    Ok(terms
+        .into_iter()
+        .map(|(k, re, im)| (k, Text::from(re), Text::from(im)))
+        .collect())
+}
+
+/// A seed class's columns from their JSON.
+fn seed_columns<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<Vec<(usize, Text, Text)>>, D::Error> {
+    let columns = Vec::<Vec<(usize, String, String)>>::deserialize(deserializer)?;
+    Ok(columns
+        .into_iter()
+        .map(|terms| {
+            terms
+                .into_iter()
+                .map(|(k, re, im)| (k, Text::from(re), Text::from(im)))
+                .collect()
+        })
+        .collect())
 }
 
 #[derive(Deserialize)]
@@ -275,7 +415,8 @@ struct FamilyFile {
 #[serde(deny_unknown_fields)]
 struct LeafFile {
     seed: usize,
-    weight: String,
+    #[serde(deserialize_with = "text")]
+    weight: Text,
 }
 
 #[derive(Deserialize)]
@@ -484,7 +625,7 @@ pub struct ContentTerm {
     /// shift) and contracts it with each row's block components.
     pub vertex: Option<TermVertex>,
     /// (content row, block row id per slot).
-    pub rows: Vec<(usize, Vec<usize>)>,
+    pub rows: TermRows,
 }
 
 impl ContentTerm {
@@ -503,11 +644,12 @@ pub struct Content {
     pub degree: usize,
     pub rows: usize,
     pub terms: Vec<ContentTerm>,
-    /// `(d_in, d_out)` layout for open-loop inputs.
-    pub open: SegmentLayout,
+    /// `(d_in, d_out)` layout for open-loop inputs (shared by the contents
+    /// of one fused list and dimensions).
+    pub open: Arc<SegmentLayout>,
     /// `(1, d_in * d_out)` layout for seeded inputs: a seed is `δ_ab` times
     /// a scalar, so the cut index `a` becomes the incoming index `β`.
-    pub seeded: SegmentLayout,
+    pub seeded: Arc<SegmentLayout>,
 }
 
 impl Content {
@@ -526,9 +668,9 @@ impl Content {
         d_alpha: usize,
     ) -> (&SegmentLayout, usize, usize, usize) {
         if seeded {
-            (&self.seeded, 1, 1, self.d_in * self.d_out)
+            (&*self.seeded, 1, 1, self.d_in * self.d_out)
         } else {
-            (&self.open, d_alpha, self.d_in, self.d_out)
+            (&*self.open, d_alpha, self.d_in, self.d_out)
         }
     }
 
@@ -583,19 +725,20 @@ pub struct Leaf {
 
 /// The distinct leaf weights of a plan's families, each text parsed once.
 #[derive(Default)]
-struct LeafWeights<'a> {
+struct LeafWeights {
     values: Vec<Rational>,
-    index: HashMap<&'a str, u32>,
+    /// By text (owned: the family records are dropped as they are loaded).
+    index: HashMap<String, u32>,
 }
 
-impl<'a> LeafWeights<'a> {
-    fn get(&mut self, text: &'a str) -> RusticolResult<u32> {
+impl LeafWeights {
+    fn get(&mut self, text: &str) -> RusticolResult<u32> {
         if let Some(&found) = self.index.get(text) {
             return Ok(found);
         }
         let next = u32::try_from(self.values.len()).map_err(|_| invalid("leaf weights"))?;
         self.values.push(exact(text)?);
-        self.index.insert(text, next);
+        self.index.insert(text.to_owned(), next);
         Ok(next)
     }
 }
@@ -1955,7 +2098,7 @@ struct Shared<'a> {
     seeds: usize,
     policy: FormPolicy,
     rows: &'a links::RowSpace,
-    content_rows: &'a [WordMap<links::Row, u32>],
+    content_rows: &'a [Arc<WordMap<links::Row, u32>>],
     /// Dressed-row plans: each content's rows in block-row order.
     dressed: Option<&'a [Vec<links::Row>]>,
 }
@@ -2048,7 +2191,7 @@ fn split_candidate(
             }
             row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
-                row_of[*row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
+                row_of[row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
             }
             filtered.clear();
             filtered.extend(edge.links.iter().filter_map(|link| {
@@ -2170,7 +2313,7 @@ impl LoopProgramV4 {
         binary::PlanModel::from_json(json)?.program_unprobed(policy)
     }
 
-    fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
+    fn from_file(mut file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
         require(admitted_schema(file.schema), "unsupported plan schema")?;
         let amplitude = file.schema == AMPLITUDE_PLAN_SCHEMA;
         if amplitude {
@@ -2252,8 +2395,22 @@ impl LoopProgramV4 {
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut contents = Vec::with_capacity(file.contents.len());
         let mut vertices: Vec<Option<Vertex>> = Vec::new();
-        for c in &file.contents {
-            let (open, seeded) = layouts(c)?;
+        // A content's layouts are a function of its fused list (shared when
+        // decoded) and dimensions: the contents of one key share them.
+        type Layouts = (Arc<SegmentLayout>, Arc<SegmentLayout>);
+        let mut layouts_of: WordMap<(usize, usize, usize), Layouts> = WordMap::default();
+        for index in 0..file.contents.len() {
+            let c = &file.contents[index];
+            let key = (Arc::as_ptr(&c.fused) as usize, c.d_in, c.d_out);
+            let (open, seeded) = match layouts_of.get(&key) {
+                Some((open, seeded)) => (Arc::clone(open), Arc::clone(seeded)),
+                None => {
+                    let (open, seeded) = layouts(c)?;
+                    let made = (Arc::new(open), Arc::new(seeded));
+                    layouts_of.insert(key, (Arc::clone(&made.0), Arc::clone(&made.1)));
+                    made
+                }
+            };
             require(
                 open.degree() <= c.degree,
                 "content kernel degree above q-degree",
@@ -2297,22 +2454,22 @@ impl LoopProgramV4 {
                         Ok(Binding {
                             kernel: b.kernel,
                             inputs,
-                            entries: b.entries.clone(),
+                            entries: b.entries.to_vec(),
                         })
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;
-                for (row, blocks) in &t.rows {
+                for (row, blocks) in t.rows.iter() {
                     require(
-                        *row < c.rows
+                        row < c.rows
                             && blocks.len() == t.slots.len()
-                            && blocks.iter().all(|&b| b < file.block_rows.len()),
+                            && blocks.iter().all(|&b| (b as usize) < file.block_rows.len()),
                         "content term row",
                     )?;
                     for binding in &bindings {
                         for input in &binding.inputs {
                             if let KernelInput::Current { slot, component } = *input {
                                 require(
-                                    component < file.block_rows[blocks[slot]],
+                                    component < file.block_rows[blocks[slot] as usize],
                                     "block current component",
                                 )?;
                             }
@@ -2360,13 +2517,13 @@ impl LoopProgramV4 {
                                 _ => {}
                             }
                         }
-                        Ok((b.kernel, inputs, b.entries.clone()))
+                        Ok((b.kernel, inputs, b.entries.to_vec()))
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;
-                for (_row, blocks) in &t.rows {
+                for (_row, blocks) in t.rows.iter() {
                     for (slot, &block) in blocks.iter().enumerate() {
                         require(
-                            file.block_rows[block] == t.dimensions[slot],
+                            file.block_rows[block as usize] == t.dimensions[slot],
                             "block row dimension",
                         )?;
                     }
@@ -2397,17 +2554,23 @@ impl LoopProgramV4 {
                 };
                 terms.push(ContentTerm {
                     slots: t.slots.clone(),
-                    dimensions: t.dimensions.clone(),
+                    dimensions: t.dimensions.to_vec(),
                     bindings,
                     vertex,
-                    rows: t.rows.clone(),
+                    // Moved from the file model below (no copy).
+                    rows: TermRows::default(),
                 });
             }
+            let (d_in, d_out, degree, rows) = (c.d_in, c.d_out, c.degree, c.rows);
+            // The file's term rows are read only here: the program takes them.
+            for (term, from) in terms.iter_mut().zip(&mut file.contents[index].terms) {
+                term.rows = std::mem::take(&mut from.rows);
+            }
             contents.push(Content {
-                d_in: c.d_in,
-                d_out: c.d_out,
-                degree: c.degree,
-                rows: c.rows,
+                d_in,
+                d_out,
+                degree,
+                rows,
                 terms,
                 open,
                 seeded,
@@ -2456,14 +2619,13 @@ impl LoopProgramV4 {
                                         .ok()
                                         .filter(|&c| c < born_components)
                                         .ok_or_else(|| invalid("seed component"))?;
-                                    let weight = match weight_index.get(&(re.as_str(), im.as_str()))
-                                    {
+                                    let weight = match weight_index.get(&(&**re, &**im)) {
                                         Some(&found) => found,
                                         None => {
                                             let next = u32::try_from(seed_weights.len())
                                                 .map_err(|_| invalid("seed weights"))?;
                                             seed_weights.push([exact(re)?, exact(im)?]);
-                                            weight_index.insert((re, im), next);
+                                            weight_index.insert((&**re, &**im), next);
                                             next
                                         }
                                     };
@@ -2509,16 +2671,39 @@ impl LoopProgramV4 {
             Vec::new()
         };
         let rows = links::RowSpace::new(&file)?;
+        // A content's row map is a function of its legs, row count and row
+        // helicities: the contents of one decoded list (shared) and legs share
+        // one map (a large plan has hundreds of thousands of contents over a
+        // few thousand such keys).
+        let mut known: WordMap<(u64, usize, usize), Arc<WordMap<links::Row, u32>>> =
+            WordMap::default();
         let content_rows = file
             .contents
             .iter()
-            .map(|content| rows.content_rows(content))
+            .map(|content| {
+                let key = (
+                    content.mask,
+                    content.rows,
+                    Arc::as_ptr(&content.row_helicities) as usize,
+                );
+                if let Some(found) = known.get(&key) {
+                    return Ok(Arc::clone(found));
+                }
+                let found = Arc::new(rows.content_rows(content)?);
+                known.insert(key, Arc::clone(&found));
+                Ok(found)
+            })
             .collect::<RusticolResult<Vec<_>>>()?;
+        drop(known);
         let content_lists = if dressed {
             links::content_lists(&content_rows)
         } else {
             Vec::new()
         };
+        // The family records are consumed one by one below: each is dropped
+        // once its family is derived, so the decoded families shrink while
+        // the program grows (nothing after the loop reads them).
+        let family_files = std::mem::take(&mut file.families);
         let shared = Shared {
             file: &file,
             contents: &contents,
@@ -2530,10 +2715,10 @@ impl LoopProgramV4 {
             dressed: dressed.then_some(content_lists.as_slice()),
         };
         let mut leaf_weights = LeafWeights::default();
-        for f in &file.families {
+        for f in family_files {
             order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
             families.push(Self::family(
-                f,
+                &f,
                 &shared,
                 &mut tables,
                 &mut split_inputs,
@@ -2611,12 +2796,12 @@ impl LoopProgramV4 {
         Ok(program)
     }
 
-    fn family<'a>(
-        f: &'a FamilyFile,
+    fn family(
+        f: &FamilyFile,
         shared: &Shared<'_>,
         tables: &mut Tables,
         split_inputs: &mut SplitInputs,
-        leaf_weights: &mut LeafWeights<'a>,
+        leaf_weights: &mut LeafWeights,
     ) -> RusticolResult<Family> {
         let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
         let full = super::bounds::check_legs(file.legs).map_err(invalid)?;

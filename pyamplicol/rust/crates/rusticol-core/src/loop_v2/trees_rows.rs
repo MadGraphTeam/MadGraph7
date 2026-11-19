@@ -67,11 +67,11 @@ impl Restriction {
     /// current rows read.
     fn reading(plan: &LoopProgramV4, rows: Vec<bool>, read: &ReadRows) -> Self {
         let mut blocks = vec![false; plan.block_rows.len()];
-        let mut mark = |ids: &[usize]| ids.iter().for_each(|&id| blocks[id] = true);
+        let mut mark = |ids: &[u32]| ids.iter().for_each(|&id| blocks[id as usize] = true);
         for (factor, &(content, _shift)) in plan.factors.iter().enumerate() {
             for term in &plan.contents[content].terms {
-                for (row, ids) in &term.rows {
-                    if read.factors[factor][*row] {
+                for (row, ids) in term.rows.iter() {
+                    if read.factors[factor][row] {
                         mark(ids);
                     }
                 }
