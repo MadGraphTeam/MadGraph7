@@ -748,10 +748,68 @@ def write_check(path, info, replace_dict, proc_prefix=''):
     dump += text[text.index('      SUBROUTINE SETONIA_IF_NEEDED()'):]
     with open(pjoin(path, 'dump_gpd.f'), 'w') as fsock:
         fsock.write(dump)
+    f2py = F2PY_TEMPLATE % {'prefix': proc_prefix, 'nphys': info.nphys,
+                            'namp': replace_dict['ncolor'] * nhphys,
+                            'setonia': "      CALL SETONIA('../../Cards/onia_card.dat')" if info.onia else ''}
+    with open(pjoin(path, 'f2py_gpd.f'), 'w') as fsock:
+        fsock.write(f2py)
     mc = MC_TEMPLATE % {'prefix': proc_prefix, 'nphys': info.nphys}
     mc += text[text.index('      SUBROUTINE SETONIA_IF_NEEDED()'):]
     with open(pjoin(path, 'mc_gpd.f'), 'w') as fsock:
         fsock.write(mc)
+
+
+F2PY_TEMPLATE = """C     f2py wrappers of the GPD process (madgraph/iolibs/gpd_export.py),
+C     built by 'make gpd2py.so' and used from the P-dir (Cards in ../../):
+C       import gpd2py
+C       gpd2py.py_gpd_init()                  # param_card, onia_card, gpd_card
+C       me2 = gpd2py.py_smatrix_gpd(p, xi, t, mu)   # p(0:3, NPHYS), pair = 2 xi P
+C       c = gpd2py.py_gpd_cff(p, xi, t, mu)         # CFFs (NAMP, 4): H, E, Ht, Et
+C       av, aa = gpd2py.py_gpd_kernel(p, xi, t, mu, x)   # kernel at one x
+C     A process refused at run time (double pole) stops the interpreter.
+      SUBROUTINE PY_GPD_INIT()
+      IMPLICIT NONE
+      CALL SETPARA('../../Cards/param_card.dat')
+%(setonia)s
+      CALL GPD_INIT()
+      END
+
+      SUBROUTINE PY_SMATRIX_GPD(P, XI, T, MU, ANS)
+      IMPLICIT NONE
+      INTEGER NPHYS
+      PARAMETER (NPHYS=%(nphys)d)
+CF2PY INTENT(IN) :: P(0:3,NPHYS)
+CF2PY INTENT(IN) :: XI, T, MU
+CF2PY INTENT(OUT) :: ANS
+      REAL*8 P(0:3,NPHYS), XI, T, MU, ANS
+      CALL %(prefix)sSMATRIX_GPD(P, XI, T, MU, ANS)
+      END
+
+      SUBROUTINE PY_GPD_CFF(P, XI, T, MU, C)
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+CF2PY INTENT(IN) :: P(0:3,NPHYS)
+CF2PY INTENT(IN) :: XI, T, MU
+CF2PY INTENT(OUT) :: C(NAMP,4)
+      REAL*8 P(0:3,NPHYS), XI, T, MU
+      COMPLEX*16 C(NAMP,4), C2(NAMP,4)
+      CALL %(prefix)sGPD_CFF(P, XI, T, MU, C, C2)
+      END
+
+      SUBROUTINE PY_GPD_KERNEL(P, XI, T, MU, X, AV, AA)
+      IMPLICIT NONE
+      INTEGER NPHYS, NAMP
+      PARAMETER (NPHYS=%(nphys)d, NAMP=%(namp)d)
+CF2PY INTENT(IN) :: P(0:3,NPHYS)
+CF2PY INTENT(IN) :: XI, T, MU, X
+CF2PY INTENT(OUT) :: AV(NAMP), AA(NAMP)
+      REAL*8 P(0:3,NPHYS), XI, T, MU, X
+      COMPLEX*16 AV(NAMP), AA(NAMP)
+      CALL %(prefix)sGPD_SET_POINT(P, XI, T, MU)
+      CALL %(prefix)sGPD_KERNEL(X, NAMP, AV, AA)
+      END
+"""
 
 
 GPD_CARD = """#*********************************************************************
@@ -796,5 +854,18 @@ dump_gpd: $(LIBS) $(PROCESS) dump_gpd.o makefile $(LIBDIR)/libgpd.$(libext)
 
 $(LIBDIR)/libgpd.$(libext):
 	$(MAKE) -C "$(LIBDIR)/../Source/GPD" standalone
+
+# python: the process, GPD, HELAS and model objects in one shared library
+ifeq ($(shell uname),Darwin)
+GPD_WHOLE = $(foreach l,$(LIBDIR)/libgpd.$(libext) $(LIBS),-Wl,-force_load,$(l))
+else
+GPD_WHOLE = -Wl,--whole-archive $(LIBDIR)/libgpd.$(libext) $(LIBS) -Wl,--no-whole-archive
+endif
+libgpdme.$(dylibext): $(PROCESS) $(LIBS) $(LIBDIR)/libgpd.$(libext)
+	$(FC) $(DYNLIBFLAG) $(RPATHFLAG)libgpdme.$(dylibext) -o libgpdme.$(dylibext) $(PROCESS) $(GPD_WHOLE)
+
+gpd2py.so: f2py_gpd.f libgpdme.$(dylibext) makefile
+	LDFLAGS="-Wl,-rpath,$(HERE)" $(F2PY) -c f2py_gpd.f -L$(HERE) -lgpdme -m gpd2py
+	touch gpd2py.so
 """
     return text
