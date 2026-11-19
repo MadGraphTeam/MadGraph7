@@ -339,7 +339,10 @@ pub fn load_loop_v2_artifact_threads(
 /// plan loads on the calling thread alone), each holding pyAmpliCol's
 /// Symbolica key as an executor's threads do; a thread that cannot start
 /// leaves its work to the others or to the calling thread
-/// ([`load_loop_v2_artifact_threads`]).
+/// ([`load_loop_v2_artifact_threads`]). Called from inside a rayon pool's
+/// worker, a load decodes on that pool's threads (the bound is then the
+/// caller's pool for the decode; the derivation's workers keep to
+/// `threads`); no production caller loads from inside a pool.
 #[cfg(feature = "loop-v2")]
 pub fn on_load_threads<R: Send>(threads: Option<usize>, run: impl FnOnce() -> R + Send) -> R {
     let threads = threads.map_or_else(default_load_threads, |threads| threads.max(1));

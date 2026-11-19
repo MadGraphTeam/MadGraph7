@@ -2446,7 +2446,10 @@ thread_local! {
 /// chunk of records (at most `n / PARALLEL_RECORDS`), on a pool started for
 /// the load at the first such list and grown when a later one uses more
 /// ([`load_pool`]). A cheap plan loads on the calling thread alone. The
-/// program is the same for any bound.
+/// threads working at once never exceed the bound; while the decode's pool
+/// grows, the threads of the pool it replaces exit asynchronously (rayon
+/// does not join them), so up to about twice the bound may be alive for a
+/// moment. The program is the same for any bound.
 pub fn with_load_threads<R>(threads: usize, run: impl FnOnce() -> R) -> R {
     struct Restore(usize, Option<Arc<rayon::ThreadPool>>);
     impl Drop for Restore {
@@ -2553,6 +2556,19 @@ static FORCE_PIPELINE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 #[doc(hidden)]
 pub fn force_pipeline_for_tests(force: bool) {
     FORCE_PIPELINE.store(force, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Tests: the parallel load's merge panics before it replays this family
+/// (`usize::MAX`: never), as a bug in the replay would.
+static PANIC_IN_MERGE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
+
+#[doc(hidden)]
+pub fn panic_in_merge_for_tests(family: Option<usize>) {
+    PANIC_IN_MERGE.store(
+        family.unwrap_or(usize::MAX),
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 impl LoopProgramV4 {
@@ -3280,6 +3296,19 @@ impl LoopProgramV4 {
                 sequential = true;
                 return;
             }
+            // However the merge ends (the end, an error, a worker's panic,
+            // or a panic of its own), no family starts any more and every
+            // waiting worker wakes and returns, so the scope joins them.
+            struct Stop<F: FnMut()>(F);
+            impl<F: FnMut()> Drop for Stop<F> {
+                fn drop(&mut self) {
+                    (self.0)();
+                }
+            }
+            let _stop = Stop(|| {
+                lock().stop = true;
+                start_work.notify_all();
+            });
             // The merge, in family order.
             let mut merged = 1.0;
             for index in 0..count {
@@ -3305,6 +3334,9 @@ impl LoopProgramV4 {
                         break;
                     }
                 };
+                if PANIC_IN_MERGE.load(std::sync::atomic::Ordering::Relaxed) == index + 1 {
+                    panic!("test: a panic in the merge of family {}", index + 1);
+                }
                 let start = Instant::now();
                 if let Err(error) = recording.replay(&mut family, ids) {
                     outcome = Err(error);
@@ -3330,9 +3362,6 @@ impl LoopProgramV4 {
                 }
                 spawn_to(allowed);
             }
-            let mut st = lock();
-            st.stop = true;
-            start_work.notify_all();
         };
         std::thread::scope(|threads| {
             let thread = |_: usize| {

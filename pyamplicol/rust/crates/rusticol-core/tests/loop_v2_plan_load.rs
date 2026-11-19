@@ -9,7 +9,8 @@
 
 use rusticol_core::loop_v2::plan::binary::{PlanModel, program_digest, read_binary};
 use rusticol_core::loop_v2::plan::{
-    LoopProgramV4, force_pipeline_for_tests, load_threads_started, with_load_threads,
+    LoopProgramV4, force_pipeline_for_tests, load_threads_started, panic_in_merge_for_tests,
+    with_load_threads,
 };
 use serde_json::{Value, json};
 
@@ -157,8 +158,10 @@ fn a_load_starts_only_the_threads_its_work_uses() {
         let digest = with_load_threads(bound, || program_digest(&read_binary(&large).unwrap()));
         let started = load_threads_started();
         assert_eq!(digest, sequential, "bound {bound}");
-        // The decode: at most 2000 / 256 = 7 threads (a pool grown at most
-        // to twice a former one); the workers: one fewer than the bound.
+        // Threads started, a replaced pool's included: the decode's pools
+        // at most 2000 / 256 = 7 threads (each grown pool at least twice
+        // the former), the workers one fewer than the bound. The threads
+        // working at once stay within the bound.
         let decode = if bound == 1 { 0 } else { bound.min(7) };
         assert!(
             started <= decode + bound - 1,
@@ -169,6 +172,49 @@ fn a_load_starts_only_the_threads_its_work_uses() {
         }
     }
     force_pipeline_for_tests(false);
+}
+
+#[test]
+fn a_panic_in_the_merge_ends_the_load() {
+    // A panic on the merging thread (as a bug in the replay would raise)
+    // stops the workers and is raised by the load, which does not hang.
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let member = std::sync::Arc::new(
+        PlanModel::from_json(&serde_json::to_vec(&families_plan(2000)).unwrap())
+            .unwrap()
+            .binary()
+            .unwrap(),
+    );
+    force_pipeline_for_tests(true);
+    let quiet = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let mut outcomes = Vec::new();
+    for bound in [2, 8] {
+        for family in [1, 1000] {
+            panic_in_merge_for_tests(Some(family));
+            let (send, receive) = std::sync::mpsc::channel();
+            let member = std::sync::Arc::clone(&member);
+            std::thread::spawn(move || {
+                let outcome = std::panic::catch_unwind(|| {
+                    with_load_threads(bound, || read_binary(&member).map(|_| ()))
+                });
+                let _ = send.send(outcome.is_err());
+            });
+            // A watchdog: the load returns (its panic) well within it.
+            let panicked = receive.recv_timeout(std::time::Duration::from_secs(60));
+            outcomes.push((bound, family, panicked));
+        }
+    }
+    panic_in_merge_for_tests(None);
+    std::panic::set_hook(quiet);
+    force_pipeline_for_tests(false);
+    for (bound, family, panicked) in outcomes {
+        assert_eq!(
+            panicked,
+            Ok(true),
+            "bound {bound}, family {family}: the load hung or did not panic"
+        );
+    }
 }
 
 #[test]
