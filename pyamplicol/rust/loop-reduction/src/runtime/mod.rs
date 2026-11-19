@@ -19,6 +19,7 @@ mod stability;
 mod v2_execution;
 mod v2_reduce;
 mod v2_seeds;
+mod v2_warm;
 pub use batch::{Batch, BatchCarrier, Data, shape};
 pub use coefficients::{CoefficientEvaluator, exact_state};
 pub use exact::decimal_rational;
@@ -33,14 +34,14 @@ pub use v2_execution::{
     Reduction, TIRUST_NOT_BUILT, TypedBatch, V2Backends, V2ReductionBackend, backend_carriers,
     ninjars_refusal, plan_histogram, rank_refusal,
 };
-/// The warm entry of a reduction backend (`V2Executor.warm`).
-pub use v2_execution::{warm as warm_backend, warm_classes};
 pub use v2_reduce::{
     FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
     V2Output, V2Reducer, fast_engine_threshold, fast_options, reaches_fast_threshold,
     shift_coefficients, tensor_rank, true_rank,
 };
 pub use v2_seeds::V2SeedFourier;
+/// The warm entry of a reduction backend (`V2Executor.warm`).
+pub use v2_warm::{warm as warm_backend, warm_classes};
 
 /// Install immutable source-scalar callbacks before decoding saved programs.
 pub fn register_scalar_primitives() {
