@@ -635,6 +635,53 @@ KERNELSPEC void kernel_com_p_in(FIn<T, 0> e_cm, FOut<T, 1> p1, FOut<T, 1> p2) {
     p2[3] = -p_com;
 }
 
+// The incoming momenta of an event on their mass shell, keeping their sum and
+// directions; the ratio s_hat / sqrt(lambda(s_hat, m1^2, m2^2)) of the massive
+// flux to the massless one, zero below threshold. madevent's genps.f has
+// massive incoming particles so (mom2cx and its flux), the phase-space
+// mappings build them massless.
+template <typename T>
+KERNELSPEC void kernel_incoming_on_shell(
+    FIn<T, 2> p_ext, FIn<T, 1> masses, FOut<T, 2> p_out, FOut<T, 0> flux_ratio
+) {
+    using F = FVal<T>;
+    for (std::size_t i = 0; i < p_ext.size(); ++i) {
+        for (std::size_t j = 0; j < 4; ++j) {
+            p_out[i][j] = static_cast<F>(p_ext[i][j]);
+        }
+    }
+    F m1 = masses[0], m2 = masses[1];
+    F e_a = p_ext[0][0], z_a = p_ext[0][3];
+    F e_b = p_ext[1][0], z_b = p_ext[1][3];
+    F e_tot = e_a + e_b, z_tot = z_a + z_b;
+    F s = e_tot * e_tot - z_tot * z_tot;
+    F threshold = (m1 + m2) * (m1 + m2);
+    if (!(s > threshold) || !(e_tot > 0.)) {
+        flux_ratio = 0.;
+        return;
+    }
+    F sqrt_s = sqrt(s);
+    F lambda = (s - threshold) * (s - (m1 - m2) * (m1 - m2));
+    F p_cm = sqrt(lambda) / (2. * sqrt_s);
+    F e1 = (s + m1 * m1 - m2 * m2) / (2. * sqrt_s);
+    F e2 = (s + m2 * m2 - m1 * m1) / (2. * sqrt_s);
+    // the boost from the rest frame of the pair to the frame of p_ext
+    F cosh_y = e_tot / sqrt_s, sinh_y = z_tot / sqrt_s;
+    // direction of the first incoming particle in the rest frame
+    F z_a_cm = cosh_y * z_a - sinh_y * e_a;
+    F sign = z_a_cm >= 0. ? 1. : -1.;
+    F z1 = sign * p_cm, z2 = -sign * p_cm;
+    p_out[0][0] = cosh_y * e1 + sinh_y * z1;
+    p_out[0][1] = 0.;
+    p_out[0][2] = 0.;
+    p_out[0][3] = cosh_y * z1 + sinh_y * e1;
+    p_out[1][0] = cosh_y * e2 + sinh_y * z2;
+    p_out[1][1] = 0.;
+    p_out[1][2] = 0.;
+    p_out[1][3] = cosh_y * z2 + sinh_y * e2;
+    flux_ratio = s / sqrt(lambda);
+}
+
 template <typename T>
 KERNELSPEC void kernel_r_to_x1x2(
     FIn<T, 0> r,

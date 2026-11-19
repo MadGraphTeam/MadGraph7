@@ -725,6 +725,24 @@ com_p_in:
       desc: "incoming momentum along -z"
   desc: "Builds the two incoming momenta for a given center-of-mass energy."
 
+incoming_on_shell:
+  inputs:
+    - name: p_ext
+      type: [float, n, 4]
+      desc: "external momenta, the two incoming ones first, along the beam axis"
+    - name: masses
+      type: [float, single, 2]
+      desc: "masses of the two incoming particles"
+  outputs:
+    - name: p_out
+      type: [float, n, 4]
+      desc: "the same momenta with the incoming ones on their mass shell"
+    - name: flux_ratio
+      type: [float]
+      desc: "s_hat / sqrt(lambda(s_hat, m1^2, m2^2)), zero below threshold"
+  vectorized: False
+  desc: "Puts the two incoming momenta on their mass shell, with the same sum (so the same s_hat and rapidity) and the same directions, and returns the ratio of the massive flux 1/(2 sqrt(lambda)) to the massless 1/(2 s_hat), as madevent's genps.f has them for massive partons. Below the threshold (m1 + m2)^2 the momenta are unchanged and the ratio is zero."
+
 r_to_x1x2:
   inputs:
     - name: r
@@ -3171,24 +3189,6 @@ interpolate_pdf:
       desc: "PDF value per requested flavour"
   vectorized: False
   desc: "Evaluates parton densities by bicubic interpolation of a log-x / log-Q2 grid, and outside of it by the continuation extrapolator of LHAPDF (zero above the last x knot). See @ref PartonDensity."
-
-incoming_on_shell:
-  inputs:
-    - name: p_ext
-      type: [float, n, 4]
-      desc: "external momenta, the two incoming ones first, along the beam axis"
-    - name: masses
-      type: [float, single, 2]
-      desc: "masses of the two incoming particles"
-  outputs:
-    - name: p_out
-      type: [float, n, 4]
-      desc: "the same momenta with the incoming ones on their mass shell"
-    - name: flux_ratio
-      type: [float]
-      desc: "s_hat / sqrt(lambda(s_hat, m1^2, m2^2)), zero below threshold"
-  vectorized: False
-  desc: "Puts the two incoming momenta on their mass shell, with the same sum (so the same s_hat and rapidity) and the same directions, and returns the ratio of the massive flux 1/(2 sqrt(lambda)) to the massless 1/(2 s_hat), as madevent's genps.f has them for massive partons. Below the threshold (m1 + m2)^2 the momenta are unchanged and the ratio is zero."
 
 eva_density:
   inputs:

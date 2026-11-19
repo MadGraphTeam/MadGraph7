@@ -809,15 +809,15 @@ NamedVector<Value> Integrand::build_channel_part(
     );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
-    if (_eva) {
-        // The mapping hands out massless incoming momenta. EVA's W and Z are
-        // massive: on their mass shell, with the massive flux, as madevent.
-        auto& masses = _mapping.incoming_masses();
-        if (masses.size() == 2 && (masses.at(0) > 0. || masses.at(1) > 0.)) {
-            auto on_shell = fb.incoming_on_shell(momenta, masses);
-            momenta = on_shell.at(0);
-            weights_before_cuts.push_back(on_shell.at(1));
-        }
+    // The mapping hands out massless incoming momenta. Massive ones (EVA's W
+    // and Z, monochromatic W or muon beams, massive partons) go on their mass
+    // shell, with the same sum, and the flux 1/(2 sqrt(lambda)) replaces the
+    // massless 1/(2 s_hat) of diff_cross_section, as in madevent.
+    if (auto& masses = _mapping.incoming_masses();
+        masses.size() == 2 && (masses.at(0) > 0. || masses.at(1) > 0.)) {
+        auto on_shell = fb.incoming_on_shell(momenta, masses);
+        momenta = on_shell.at(0);
+        weights_before_cuts.push_back(on_shell.at(1));
     }
     Value x0 = mapping_result["x1"];
     Value x1 = mapping_result["x2"];

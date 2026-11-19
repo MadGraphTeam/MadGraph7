@@ -1055,6 +1055,16 @@ class MadgraphProcess:
                 beam_args["eva_evolution"],
                 "" if beam_args["eva_xcut"] else ", no x cut")
 
+        # Monochromatic beams of massive particles (W/Z without EVA, muons of
+        # a model with a muon mass): s and the rapidity of the beams are those
+        # of the massive beam momenta, as madevent's stot (genps.f, lpp = 0),
+        # not 4 E1 E2. The incoming momenta are then put on their mass shell
+        # by the Integrand. Only for one set of incoming masses: different
+        # beam particles in different subprocesses are not one collider.
+        if self.leptonic and not self.is_decay and not self.eva and \
+                not beam_args.get("lepton_density", ""):
+            self._massive_beams()
+
         # A dressed-lepton density is not the same thing as beam.leptonic:
         # 'leptonic' means no parton luminosity at all (monochromatic beams),
         # while a density brings ISR and, for the collider-specific sets,
@@ -2687,6 +2697,35 @@ class MadgraphProcess:
                 if error:
                     raise ValueError(error)
         return self._lepton_density
+
+    def _massive_beams(self) -> None:
+        """e_cm and beam_rapidity of monochromatic beams of massive incoming
+        particles, see init_beam."""
+        masses = {tuple(abs(self.get_mass(pid))
+                        for pid in clean_pids(meta["incoming"]))
+                  for meta in self.subprocess_data}
+        if len(masses) != 1:
+            if any(any(m > 0. for m in pair) for pair in masses):
+                logger.warning(
+                    "monochromatic beams with different incoming masses in "
+                    "different subprocesses %s: s = 4 E1 E2 is kept",
+                    sorted(masses))
+            return
+        m1, m2 = masses.pop()
+        if m1 == 0. and m2 == 0.:
+            return
+        e1, e2 = self.beam_energies
+        if e1 < m1 or e2 < m2:
+            raise ValueError(
+                "beam energies %g, %g GeV below the masses %g, %g GeV of the "
+                "incoming particles" % (e1, e2, m1, m2))
+        p1 = math.sqrt(e1 * e1 - m1 * m1)
+        p2 = math.sqrt(e2 * e2 - m2 * m2)
+        e_tot, p_tot = e1 + e2, p1 - p2
+        self.e_cm = math.sqrt(m1 * m1 + m2 * m2 + 2. * (e1 * e2 + p1 * p2))
+        self.beam_rapidity = 0.5 * math.log((e_tot + p_tot) / (e_tot - p_tot))
+        logger.info("massive beams (%g, %g GeV): sqrt(s) = %.10g GeV",
+                    m1, m2, self.e_cm)
 
     def eva_flux(self, api=None):
         """The ms.EvaFlux of an EVA run (beam.eva), None otherwise. Its

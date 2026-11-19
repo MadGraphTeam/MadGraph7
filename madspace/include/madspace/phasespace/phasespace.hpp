@@ -260,8 +260,8 @@ public:
     /// Whether the mapping takes the `mirror_index` condition.
     bool mirror_beams() const { return _mirror_beams; }
     /// Masses of the incoming particles. The mapping hands them out massless
-    /// (along the beams, at the sampled s_hat); @ref Integrand puts them on
-    /// their mass shell for EVA beams.
+    /// (along the beams, at the sampled s_hat); @ref Integrand puts massive
+    /// ones on their mass shell, with the massive flux.
     const std::vector<double>& incoming_masses() const {
         return _topology.incoming_masses();
     }
