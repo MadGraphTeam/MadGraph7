@@ -2726,16 +2726,15 @@ contains
   subroutine increase_gen_counters_middle(vn)
     implicit none
     integer :: vn
-   !  gen_counters(3)=gen_counters(3)+1
-   !  if (vn.eq.1) then
-   !     gen_counters(5)=gen_counters(5)+1
-   !  else
-   !     gen_counters(6)=gen_counters(6)+1
-   !  endif
-   !  if (f(1).eq.0d0) then
-   !     gen_counters(4)=gen_counters(4)+1
-   !  endif
-    call increase_gen_counters_middle_vec(vn,1)
+    gen_counters(3)=gen_counters(3)+1
+    if (vn.eq.1) then
+       gen_counters(5)=gen_counters(5)+1
+    else
+       gen_counters(6)=gen_counters(6)+1
+    endif
+    if (f(1).eq.0d0) then
+       gen_counters(4)=gen_counters(4)+1
+    endif
   end subroutine increase_gen_counters_middle
 
   subroutine increase_gen_counters_middle_vec(vn,vector_size)

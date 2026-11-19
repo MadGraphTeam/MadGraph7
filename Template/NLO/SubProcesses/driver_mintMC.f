@@ -399,7 +399,8 @@ c
 c
 c     Local
 c
-      integer i
+      integer i,job_vector_size,input_status
+      character*512 job_header
       double precision dconfig
 c
 c     Global
@@ -614,8 +615,28 @@ c$$$            endif
 c
       lbw(0)=0
 
+c     Current job files carry an explicit vector size after the run mode.
+c     Older native event jobs continue directly with the integer pair.
+      read(*,'(A)',iostat=input_status) job_header
+      if (input_status.gt.0) error stop 'Invalid MINT job header'
+      if (imode.eq.2.and.input_status.ne.0)
+     &   error stop 'Missing event generation job header'
+      if (input_status.eq.0) then
+         if (imode.eq.2) then
+            read(job_header,*,iostat=input_status) p_label,nevts
+         else
+            input_status=-1
+         endif
+         if (input_status.ne.0) then
+            read(job_header,*,iostat=input_status) job_vector_size
+            if (input_status.ne.0)
+     &         error stop 'Invalid MINT vector size'
+            if (job_vector_size.ne.1)
+     &         error stop 'Native scalar MINT requires vector size 1'
+            if (imode.eq.2) read(*,*) p_label,nevts
+         endif
+      endif
       if (imode.eq.2) then
-         read(*,*) p_label,nevts
          read(*,*) nevents,event_weight,dum1,dum2,dum3
          read(*,*) NPRUP
          do i=1,NPRUP
