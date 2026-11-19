@@ -562,7 +562,8 @@ class DefaultCliServices:
         ):
             raise ConfigurationError(
                 "arithmetic, mu_r2, r2_strategy, poles, stability checks, "
-                "reduction and on_failure options require a virtual artifact; "
+                "reduction, --no-lane-rescue and on_failure options require a "
+                "virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None

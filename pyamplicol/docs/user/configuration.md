@@ -1058,8 +1058,10 @@ rebuilt in that carrier, in the checked and the unchecked mode alike
 ([Python API](python-api.md), "Lane rescue of refused reduction lanes").
 `false` leaves such a lane to fail its point: pure binary64 evaluations,
 bitwise and failure for failure as before (e.g. to time binary64 alone over
-the points that survive it). The standalone SDKs always rescue (their C ABI
-has no setter for it).
+the points that survive it). The standalone SDKs rescue by default too, and
+`rusticol_virtual_set_lane_rescue(handle, 0)` turns it off
+([native APIs](native-apis.md)). Lanes a backend accepts are never rescued,
+however inaccurate (the stability estimate reports them).
 
 **Rank beyond N+2 (TIR-only artifacts; open, untested for correctness).**
 NinjaRS reduces loop numerators of rank at most N+2 over N propagators;

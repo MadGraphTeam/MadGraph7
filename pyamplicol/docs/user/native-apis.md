@@ -946,7 +946,9 @@ a backend refuses again in double-double, then arbitrary precision, from its
 binary64 coefficients and the point improved in that carrier, in the checked
 and the unchecked mode ([Python API](python-api.md), "Lane rescue of refused
 reduction lanes"); 0 leaves such a lane to fail its point; each result
-records `"lane_rescue"` in its `"reduction"` diagnostics; any other value is
+records `"lane_rescue"` in its `"reduction"` diagnostics (the setting; an SDK
+result carries no per-point record of which lanes were rescued, unlike the
+Python API's `VirtualLaneDiagnostic.lane_rescue`); any other value is
 an invalid argument. With stability checks that lack the
 reduction-direction check, a point with rescued lanes gets the estimate of
 the checks with the rescaled reduction-direction check added, as in the

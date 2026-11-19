@@ -1069,8 +1069,8 @@ class Runtime:
             options["lane_rescue"] = lane_rescue_value(lane_rescue)
         if options and not self._virtual:
             raise CompatibilityError(
-                "poles, stability_checks, reduction_target, reduction_unchecked "
-                "and reduction are virtual options"
+                "poles, stability_checks, reduction_target, reduction_unchecked, "
+                "lane_rescue and reduction are virtual options"
             )
         return options
 

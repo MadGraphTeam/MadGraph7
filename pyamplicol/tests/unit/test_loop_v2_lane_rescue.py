@@ -209,9 +209,78 @@ def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
         if p in served:
             assert "reduction-rescaled" in names, names
             assert checked.diagnostics[p].lane_rescue is not None
+            # Review B2: the detail names the rescue and the added check.
+            assert "lane rescue:" in checked.diagnostics[p].detail
+            assert "reduction-direction check" in checked.diagnostics[p].detail
             # Re-reduced on TIRust (not the default backend): the estimate
             # of the direct call with the same checks, bitwise.
             assert estimate == direct.stability[p]
         else:
             assert "reduction-rescaled" not in names, names
     assert checked.values == plain.values
+
+
+def _estimates(node):
+    """Every stability estimate in a result's (possibly nested) estimates."""
+
+    if node is None:
+        return []
+    if hasattr(node, "checks") and hasattr(node, "relative"):
+        return [node]
+    if isinstance(node, (tuple, list)):
+        return [e for item in node for e in _estimates(item)]
+    if hasattr(node, "values") and callable(node.values):
+        return [e for item in node.values() for e in _estimates(item)]
+    return []
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("route", ["helicities", "resolved", "correlated"])
+def test_the_mapping_routes_record_the_rescue_and_extend_the_estimate(
+    aag,  # noqa: F811
+    route,
+):
+    """Review B1: on the selected (``helicities=``), resolved and correlated
+    routes a point with rescued lanes carries its record
+    (``VirtualLaneDiagnostic.lane_rescue``, merged over its reference and
+    rotated evaluations) and, with checks that lack the reduction check,
+    the estimate of every output with the rescaled reduction check added,
+    bitwise a direct call's with the recommended checks; the other points
+    keep the call's checks."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+    artifact, exact_points, exact_scales = aag
+    runtime = Runtime.load(artifact, process="p")
+    common = dict(
+        mu_r2=exact_scales, poles="none", reduction="tirust", on_failure="return"
+    )
+    calls = {
+        "helicities": lambda **kw: runtime.evaluate(
+            exact_points, helicities=["h0"], **common, **kw
+        ),
+        "resolved": lambda **kw: runtime.evaluate_resolved(
+            exact_points, **common, **kw
+        ),
+        "correlated": lambda **kw: runtime.evaluate_correlated(
+            exact_points, **common, **kw
+        ),
+    }
+    call = calls[route]
+    checked = call(stability_checks=VirtualStabilityChecks(1))
+    direct = call(stability_checks=VirtualStabilityChecks(1, True, rescaled=True))
+    served = [p for p, lane in enumerate(checked.diagnostics) if lane.lane_rescue]
+    assert served, "the fixture points include rescued ones"
+    for p, lane in enumerate(checked.diagnostics):
+        if not lane.valid:
+            continue
+        found = _estimates(checked.stability[p])
+        assert found, (route, p)
+        names = [{name for name, _ in e.checks} for e in found]
+        if p in served:
+            assert all("reduction-rescaled" in n for n in names), (route, p, names)
+            assert found == _estimates(direct.stability[p]), (route, p)
+            assert "lane rescue:" in lane.detail
+        else:
+            assert all("reduction-rescaled" not in n for n in names), (route, p)

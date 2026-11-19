@@ -1058,7 +1058,10 @@ status best-effort; since 1.0.3) at its true digits, its estimate being the
 call's checks' estimate of that value; it is never accepted, so it always
 counts as flagged. A point whose refused lanes the lane rescue served (cause
 kind `lane rescue`) is measured like an accepted one, its estimate covering
-the mixed total. A point with no binary64 value at all ("no value") counts
+the mixed total. Lanes a backend accepts are never rescued, however
+inaccurate: such points are measured (and flagged by their estimate) as
+before (on flat 2 -> 6 gluon points 10 of the 23 points NinjaRS accepts have
+an estimate above 1e-5, 3 above 1). A point with no binary64 value at all ("no value") counts
 0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
 reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.

@@ -2804,7 +2804,7 @@ class VirtualProfileResult:
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
     # The timed points served with a lane rescue (``VirtualLaneDiagnostic.
     # lane_rescue``: reduction lanes refused in binary64 reduced again in a
-    # higher carrier; the checked mode only) and their causes
+    # higher carrier; in the checked and the unchecked mode) and their causes
     # (``lane_rescue_reason``), most frequent first.
     lane_rescue_points: int = 0
     lane_rescue_reasons: tuple[tuple[str, int], ...] = ()

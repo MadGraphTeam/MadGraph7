@@ -834,21 +834,45 @@ TIRust point's other lanes (true error above the one-rotation estimate on
 points; above the extended estimate on 1 of 185, by 3 %, and on none of
 the 100), exactly as a best-effort value's uncertainty includes the
 recommended checks. Other points keep the call's checks. The standalone
-SDKs' binary64 checks do the same (equal estimates).
+SDKs' binary64 checks do the same (equal estimates). The selected
+(`helicities=`, `color_flows=`), resolved and correlated routes do the same
+for every output they return. The re-run costs a whole checked evaluation of
+the rescued points (g g > g g g TIRust: 0.42 s per rescued point with it,
+0.19 s without, 0.22 s for a direct call with the rotation and the rescaled
+check); a best-effort point with rescued lanes is re-run too (its public
+estimate then includes the check; its best-effort uncertainty already did).
+
+Lanes a backend ACCEPTS are never rescued, however inaccurate: the rescue
+acts on refusals only. On flat 2 -> 6 gluon points (NinjaRS, binary64, one
+rotation) 23 of 32 points are accepted, and 10 of those have an estimate
+above the default target 1e-5, 3 of them above 1: their accuracy is what
+the stability estimate says, and a rescue policy (`VirtualRescuePolicy`)
+is what raises it.
 
 `lane.lane_rescue` (a `VirtualLaneRescue`, `None` without one) gives per
 carrier the lanes it served (`lanes`, e.g. `(("double-double", 3),)`,
-counted over the point's evaluations), `count` and the highest `carrier`.
+counted over the point's evaluations), `moments` the same for a
+loop-induced checked call's term-scale moments (counted apart), `count` and
+the highest `carrier`; the lane's `detail` adds "lane rescue: N lanes in
+<carrier>" (with checks: "its estimate includes the rescaled
+reduction-direction check").
 A lane refused at every rescue carrier leaves the point failed exactly as
 before (its reason ends with each carrier's status), and the mechanisms
 below then act unchanged: `"auto"`'s per-point fallback, a rescue policy's
 next level, the best-effort value. `lane_rescue=False` (`Runtime.load` or
 `evaluate`; `evaluation.lane_rescue`, `--no-lane-rescue`) turns it off:
 refused lanes fail their points exactly as before. `evaluate_resolved` and
-`evaluate_correlated` (and their variants) take the same keyword; their
-results carry no `lane_rescue` record yet. The lane rescue's time is part
-of the call (`profile`: the reduction stage) and its points are counted in
-`profile`'s cause tables under "lane rescue".
+`evaluate_correlated` (and their variants) take the same keyword and carry
+the same record. Under a rescue policy a level's attempt
+(`VirtualRescueAttempt`) records no lane rescue: a point rescued at level 0
+that then misses its target is evaluated again at the next level, and its
+diagnostic is that level's. The lane rescue's time is part of the call
+(`profile`: the reduction stage) and its points are counted in `profile`'s
+cause tables under "lane rescue". Its engines (per rescue carrier, one per
+evaluation backend, built at the first rescued lane and kept) cost a first
+call and memory: on 6-gluon NinjaRS points about 3.6 s and 19 MB for the
+double-double engine, 35 s and about 640 MB for the 500-digit one (TIRust's
+500-digit engine: about 57 MB).
 
 ### Best-effort values of refused points
 

@@ -695,7 +695,9 @@ class VirtualRescuePolicy:
 
     Level 0 evaluates the whole batch. A point that fails (also in one of its
     rotated evaluations) or misses the level's target is evaluated again at
-    the next level from its original exact inputs (no value is promoted); an
+    the next level from its original exact inputs (no value is promoted,
+    except the refused lanes' binary64 coefficients, lifted exactly into the
+    lane rescue's higher-carrier reduction inside a level); an
     accepted point is never evaluated again. At the last level a point that
     evaluates keeps its value, with the target marked as not met; a point
     that fails at every level is a failed lane (raised under
