@@ -186,10 +186,13 @@ def _build_inputs(export, directory):
             variables[match[1]] = match[2]
         _need(set(variables) == {'DEFAULT_F2PY_COMPILER', 'DEFAULT_F_COMPILER',
                                 'DEFAULT_CPP_COMPILER', 'MACFLAG', 'MG5AMC_VERSION',
-                                'STDLIB', 'PYTHIA8_PATH', 'STDLIB_FLAG'},
+                                'STDLIB', 'PYTHIA8_PATH', 'STDLIB_FLAG', 'AMP_FLAG'},
               'Unknown compiler option variable')
         _need(re.fullmatch(r'[A-Za-z0-9_./+-]+', variables['DEFAULT_F_COMPILER']),
               'Fortran compiler wrapper/options outside proof')
+        # Optimisation flag of the tree-level and MadEvent amplitude sources;
+        # no loop recipe reads it. Only its default (empty) is within the proof.
+        _need(variables['AMP_FLAG'] == '', 'Amplitude optimisation flag outside proof')
     path = export / 'SubProcesses/MadLoop_makefile_definitions'
     if path.exists():
         _need(_inside(path, export), 'External reducer definitions')

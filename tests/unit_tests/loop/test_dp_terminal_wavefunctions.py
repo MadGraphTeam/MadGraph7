@@ -530,6 +530,25 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
                 (export / 'Source/make_opts').write_text(text)
                 self.assertFalse(self.validate(fixture))
 
+    def test_standard_make_opts_accepted_and_amp_flag_checked(self):
+        """A real export's make_opts is the repository template with values filled
+        in: the proof must accept it, so that a new variable there fails here
+        rather than silently keeping every export on the ordinary updaters."""
+        template = (Path(__file__).resolve().parents[3] /
+                    'Template/LO/Source/.make_opts').read_text()
+        self.assertIn('\nAMP_FLAG=\n', template)
+        cases = ((template, True),
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=-O0\n'), False),
+                 (template.replace('\nAMP_FLAG=\n', '\n'), False),
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nNEW_FLAG=\n'), False))
+        for index, (text, accepted) in enumerate(cases):
+            with self.subTest(case=index):
+                export = self.work / ('make_opts_export_%d' % index)
+                fixture = self.fixture(directory=export / 'SubProcesses/P0_test')
+                (export / 'Source').mkdir()
+                (export / 'Source/make_opts').write_text(text)
+                self.assertEqual(self.validate(fixture), accepted)
+
     def test_modified_merger_or_create_consumer_rejected(self):
         changes = (
             ('WL(I,J,I)*CONST', 'WL(I,J,1)*CONST'),
