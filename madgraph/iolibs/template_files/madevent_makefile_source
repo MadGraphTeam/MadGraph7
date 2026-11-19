@@ -54,7 +54,9 @@ $(LIBDIR)libgeneric.$(libext): $(GENERIC)
 # libdhelas.a to be rebuilt.
 $(LIBDIR)libdhelas.$(libext): DHELAS | $(LIBDIR)libmodel.$(libext)
 	cd DHELAS && make%(dhelas_dual)s
-$(LIBDIR)libpdf.$(libext): PDF $(alfas_functions).o | $(LIBDIR)libmodel.$(libext)
+# libgammaUPC first: the PDF makefile runs make in PDF/gammaUPC as well, and
+# two makes there at once (make -j) corrupt its modules and archive
+$(LIBDIR)libpdf.$(libext): PDF $(alfas_functions).o | $(LIBDIR)libmodel.$(libext) $(LIBDIR)libgammaUPC.$(libext)
 	cd PDF && make
 ifneq (,$(filter edff chff, $(pdlabel1) $(pdlabel2)))
 $(LIBDIR)libgammaUPC.$(libext): PDF/gammaUPC

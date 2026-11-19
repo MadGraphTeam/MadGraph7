@@ -557,6 +557,9 @@ c
       double precision ebi(0:3), ebo(0:3)
       double precision ptcltmp(nexternal), pdum(0:3)
       integer beam_number
+      double precision gpd_evt_t(2, vecsize_memmax)
+      integer gpd_evt_set
+      common/gpd_event/gpd_evt_t, gpd_evt_set
       
       integer idup(nexternal,maxproc,maxsproc)
       integer mothup(2,nexternal)
@@ -809,6 +812,12 @@ c     the writing of intermediate particles
 #endif
       call addmothers(ipsel,jpart,pb,isym,jsym,sscale,aaqcd,aaqed,buff,
      $                npart,numproc,flip, icol, ivec)
+c     GPD processes (madgraph/iolibs/gpd_madevent.py): t of the elastic
+c     proton per GPD beam, for the record of the protons (gpd_lhe.py)
+      if (gpd_evt_set.eq.1 .and. buff(1:1).eq.' ') then
+        write(buff,'(a,2e21.13)') '#gpd', gpd_evt_t(1,ivec),
+     $    gpd_evt_t(2,ivec)
+      endif
 
       if (nincoming.eq.1)then
         do i=-nexternal+3,2*nexternal-3

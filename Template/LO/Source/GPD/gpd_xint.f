@@ -94,6 +94,16 @@ C     are added here. IERR=1: a double pole that does not cancel.
 
       CALL GPD_INIT()
       IERR = 0
+C     real poles at -+xi up to rounding (a propagator next to a GPD leg that
+C     meets an on-shell leg of the same mass) are put at -+xi exactly: in a
+C     boosted frame the rounding of K^2 can leave them ~1e-13 off, and the
+C     window between the pole and the breakpoint at -+xi would then be as
+C     narrow, with propagators evaluated where they are rounding noise
+      DO I = 1, NP
+        IF (DIMAG(AP(I)).NE.0D0) CYCLE
+        IF (ABS(DBLE(AP(I))-XI).LT.1D-8*XI) AP(I) = DCMPLX(XI, 0D0)
+        IF (ABS(DBLE(AP(I))+XI).LT.1D-8*XI) AP(I) = DCMPLX(-XI, 0D0)
+      ENDDO
       NAMPS = N
       XIC = XI
       TC = T

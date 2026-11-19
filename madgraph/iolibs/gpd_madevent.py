@@ -40,6 +40,7 @@ the gamma-UPC single-photon flux for a photon (Source/PDF/pdg2pdf.f).
 import collections
 import os
 import re
+import shutil
 
 import madgraph
 import madgraph.core.base_objects as base_objects
@@ -217,7 +218,13 @@ C     which SMATRIX%(n)d divides out. The other slots are zero.
       COMMON/TO_SUB_DIAG/SUBDIAG, IB
       INTEGER GIVEC
       COMMON/GPD_IVEC/GIVEC
+C     t of the elastic proton per GPD beam, for the event record (unwgt.f
+C     writes it as a '#gpd' line, madgraph/various/gpd_lhe.py adds the protons)
+      DOUBLE PRECISION GPD_EVT_T(2, VECSIZE_MEMMAX)
+      INTEGER GPD_EVT_SET
+      COMMON/GPD_EVENT/GPD_EVT_T, GPD_EVT_SET
       DOUBLE PRECISION ZETA, XI, T, MU, TMIN, DELTA, U, R, WT, ANS, DSUM(0:3)
+      DOUBLE PRECISION SHAT
       DOUBLE PRECISION PMASS(NEXTERNAL), ZERO
       LOGICAL OFFSH
       PARAMETER (ZERO=0D0)
@@ -260,6 +267,11 @@ C     pair fraction is not fixed by the delta function there): refused
       GIVEC = IVEC
       CALL GPD_INIT()
       ZETA = XBK(IB(2))
+C     the elastic proton: W = sqrt((q + p)^2) above M_X + m_p, with
+C     W^2 = shat/zeta + m_p^2 (massless pair kinematics)
+      SHAT = (P(0,1)+P(0,2))**2 - (P(1,1)+P(1,2))**2
+     &     - (P(2,1)+P(2,2))**2 - (P(3,1)+P(3,2))**2
+      IF (SHAT/ZETA + MPROT**2 .LT. (SQRT(SHAT) + MPROT)**2) RETURN
       XI = ZETA/(2D0-ZETA)
       MU = SQRT(Q2FACT(IB(2)))
       GPD_BEAM = IB(2)
@@ -268,6 +280,8 @@ C     pair fraction is not fixed by the delta function there): refused
       CALL RANMAR(R)
       U = -LOG(1D0 - R*(1D0-EXP(-GPD_BMAP*DELTA)))/GPD_BMAP
       T = TMIN - U
+      GPD_EVT_T(IB(2), IVEC) = T
+      GPD_EVT_SET = 1
       WT = (1D0-EXP(-GPD_BMAP*DELTA))/GPD_BMAP*EXP(GPD_BMAP*U)
       IF (GPD_XMODE.EQ.1) THEN
         USEMC = 1
@@ -431,6 +445,9 @@ def finish_output(exporter, dir_path):
                                 "$(filter edff chff, $(pdlabel1) $(pdlabel2) edff)")
             with open(mk, 'w') as fsock:
                 fsock.write(text)
+    # the elastic protons of the event record (madevent_interface.py)
+    shutil.copy(pjoin(madgraph.MG5DIR, 'madgraph', 'various', 'gpd_lhe.py'),
+                pjoin(dir_path, 'bin', 'internal', 'gpd_lhe.py'))
     card = pjoin(dir_path, 'Cards', 'gpd_card.dat')
     if not os.path.exists(card):
         with open(card, 'w') as fsock:

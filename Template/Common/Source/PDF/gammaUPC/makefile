@@ -1,5 +1,7 @@
 
 LIBRARY       = libgammaUPC.$(libext)
+# serial: the rules 'X.o X.mod: X.f90' would run twice at once under make -j
+.NOTPARALLEL:
 LIBDIR        = ../../../lib/
 
 include ../../make_opts

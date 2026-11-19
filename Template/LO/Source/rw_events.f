@@ -79,7 +79,8 @@ c     Clustering scales
          buff=''
         endif
       else
-        if(buff(1:7).ne.'<scales') then
+c       ('#gpd': t of the elastic proton of GPD processes, gpd_lhe.py)
+        if(buff(1:7).ne.'<scales'.and.buff(1:4).ne.'#gpd') then
          backspace(lun)
          buff=''
         endif

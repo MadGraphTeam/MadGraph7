@@ -4214,11 +4214,29 @@ Beware that this can be dangerous for local multicore runs.""")
             self.correct_bias()
         elif self.run_card['custom_fcts']:
             self.correct_bias()
+        if nb_event and os.path.exists(pjoin(self.me_dir, 'bin', 'internal', 'gpd_lhe.py')):
+            self.add_gpd_protons()
         logger.info("combination of events done in %s s ", time.time()-start)
         
         self.to_store.append('event')
 
     ############################################################################ 
+    def add_gpd_protons(self):
+        """GPD processes (lpp = 5): the elastic protons of the event record,
+        from the t of each event (bin/internal/gpd_lhe.py)."""
+        if 5 not in (abs(self.run_card['lpp1']), abs(self.run_card['lpp2'])):
+            return
+        if MADEVENT:
+            import internal.gpd_lhe as gpd_lhe
+        else:
+            import madgraph.various.gpd_lhe as gpd_lhe
+        for name in ['unweighted_events.lhe.gz', 'unweighted_events.lhe']:
+            path = pjoin(self.me_dir, 'Events', self.run_name, name)
+            if os.path.exists(path):
+                gpd_lhe.add_protons(path, [self.run_card['ebeam1'], self.run_card['ebeam2']],
+                                    seed=self.run_card['iseed'], logger=logger)
+                break
+
     def do_combine_events_partial(self, line, preprocess_only=False):
         """ """
 
