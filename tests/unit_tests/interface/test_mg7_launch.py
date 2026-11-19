@@ -1284,6 +1284,7 @@ class MG7ReweightingTest(unittest.TestCase):
                                   lambda p: calls.append(('systematics',))), \
                 mock.patch.object(driver, 'run_reweighting',
                                   lambda p, c, decision: calls.append(('reweight', decision))), \
+                mock.patch.object(driver, 'run_precision_validation'), \
                 mock.patch.object(driver, 'run_selected_tools', fake_tools):
             launch.MG7Cmd(me_dir=self.me_dir).do_generate_events('--reweight=%s' % card)
         self.assertEqual(calls, [('prepare', 'ON', None), ('systematics',),
@@ -1505,6 +1506,7 @@ class MG7ReweightingTest(unittest.TestCase):
                 mock.patch.object(driver, 'MadgraphProcess', lambda: process), \
                 mock.patch.object(driver, 'run_lhe_postprocessing'), \
                 mock.patch.object(driver, 'run_reweighting', failing), \
+                mock.patch.object(driver, 'run_precision_validation'), \
                 mock.patch.object(driver, 'run_selected_tools',
                                   lambda switch, p: calls.append('tools')), \
                 self.assertLogs('madevent', 'WARNING') as logs:
@@ -1515,6 +1517,71 @@ class MG7ReweightingTest(unittest.TestCase):
         self.assertIn("'reweight run_01'", text)
         self.assertTrue(os.path.exists(os.path.join('Events', 'run_01',
                                                     'reweighting_crash.log')))
+
+    def test_validation_fptype_of_the_run_card(self):
+        """[run] validation: unset ("", "none", missing) is off, a precision
+        name is mapped to its FPTYPE, anything else is taken as given."""
+        from madgraph.mg7 import driver
+        for value, expected in (('', None), ('none', None), ('None', None), (None, None),
+                                ('all64', 'd'), (' ALL64 ', 'd'), ('d', 'd'), ('e', 'e'),
+                                ('validation', 'validation')):
+            self.assertEqual(driver.validation_fptype({'run': {'validation': value}}),
+                             expected, value)
+        self.assertIsNone(driver.validation_fptype({'run': {}}))
+
+    def test_precision_validation_is_off_by_default(self):
+        """Without [run] validation nothing runs: madtrex is not even imported."""
+        from madgraph.mg7 import driver
+        from madgraph.various.banner import RunCardMG7
+        process = mock.Mock(run_card=RunCardMG7())
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': None}):
+            self.assertIsNone(driver.run_precision_validation(process))
+
+    def test_precision_validation_runs_at_the_run_card_fptype(self):
+        from madgraph.mg7 import driver
+        madtrex = mock.Mock()
+        madtrex.run_precision_validation.return_value = {'digits': {}}
+        process = mock.Mock(run_card={'run': {'validation': 'all64',
+                                              'output_format': 'lhe_npy'}},
+                            events_path='Events/run_01/events.npy')
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
+                mock.patch('madgraph.iolibs.template_files.mg7.madtrex', madtrex,
+                           create=True):
+            self.assertEqual(driver.run_precision_validation(process), {'digits': {}})
+        madtrex.run_precision_validation.assert_called_once_with(
+            'd', events_path='Events/run_01/events.npy', process_directory=os.getcwd())
+
+    def test_precision_validation_skips_compact_npy(self):
+        """compact_npy events have no flavor/helicity for MadtRex: skipped
+        with a warning, not an error."""
+        from madgraph.mg7 import driver
+        process = mock.Mock(run_card={'run': {'validation': 'd',
+                                              'output_format': 'compact_npy'}})
+        with self.assertLogs('madevent', 'WARNING') as logs:
+            self.assertIsNone(driver.run_precision_validation(process))
+        self.assertIn('compact_npy', '\n'.join(logs.output))
+
+    def test_a_failing_precision_validation_does_not_stop_the_run(self):
+        """A failure is reported with a crash log, and None returned."""
+        os.makedirs(os.path.join('Events', 'run_01'))
+        from madgraph.mg7 import driver
+        madtrex = mock.Mock()
+        madtrex.run_precision_validation.side_effect = RuntimeError('no such FPTYPE')
+        process = mock.Mock(run_card={'run': {'validation': 'd',
+                                              'output_format': 'lhe_npy'}},
+                            events_path='Events/run_01/events.npy',
+                            run_path=os.path.abspath(os.path.join('Events', 'run_01')))
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
+                mock.patch('madgraph.iolibs.template_files.mg7.madtrex', madtrex,
+                           create=True), \
+                self.assertLogs('madevent', 'WARNING') as logs:
+            self.assertIsNone(driver.run_precision_validation(process))
+        self.assertIn('precision validation failed: no such FPTYPE', '\n'.join(logs.output))
+        self.assertTrue(os.path.exists(os.path.join(
+            'Events', 'run_01', 'precision_validation_crash.log')))
 
     def test_existing_run_finds_the_event_file_and_its_format(self):
         import gzip
