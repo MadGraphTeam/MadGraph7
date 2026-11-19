@@ -982,7 +982,7 @@ endif
 # SHAREDWF=auto: SigmaKin.o is built without (sw0) and with (sw1) wavefunctions in shared memory, each
 # side picking its fast-math mode as above. Shared memory pays only where calculate_jamps spills without
 # it, so it is kept once that stack exceeds SHAREDWF_STACK bytes (pp > tt~/l+l- + 0-3 jets on L40S and
-# H100: up to 1.7x faster above 168 B, up to 15% slower below 104 B).
+# H100: up to 1.7x faster above 168 B, up to 15%% slower below 104 B).
 ifeq ($(BACKEND),cuda)
 ifneq ($(filter auto,$(FASTMATH) $(SHAREDWF)),)
 FASTMATH_STACK_GROWTH ?= 128
