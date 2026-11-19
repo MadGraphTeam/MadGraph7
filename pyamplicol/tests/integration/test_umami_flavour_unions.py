@@ -294,6 +294,27 @@ def test_union_artifacts_route_members_as_assignments(built):
     assert any(runtime.get("assignment", 0) > 0 for runtime in runtimes)
 
 
+def _partition(documents):
+    """Per provider channel, the physical flavours of each entry."""
+
+    return [
+        sorted(
+            sorted(
+                tuple(data["pdg_ids"][term["pdg_ids"]])
+                for term in entry["matrix_elements"]
+            )
+            for entry in channel["processes"]
+        )
+        for data, _ in documents
+        for channel in data["channels"]
+    ]
+
+
+def test_union_partition_equals_per_flavour(built):
+    # a template's own flavour shares its entry with all-pattern members
+    assert _partition(built["umami"]["union"]) == _partition(built["umami"]["flavour"])
+
+
 def test_union_matrix_elements_equal_per_flavour_artifacts(built):
     unions, flavours = built["umami"]["union"], built["umami"]["flavour"]
     expected = _members(flavours)
