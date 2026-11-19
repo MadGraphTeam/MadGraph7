@@ -398,6 +398,78 @@ end module
             TestBornLibrary.run_command(['./check'],tmp)
 
     @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+    def test_born_completed_sectors_relearn_after_model_and_frame_changes(self):
+        # Like the scalar Born, the dispatcher owns DO_TRY while its learning
+        # subroutine owns the per-sector counts and the shared helicity mask.
+        routines = """subroutine evaluate(nfksprocess,expected,weight,calls)
+implicit none
+integer nfksprocess,expected,weight,calls,i
+logical do_try(2),goodhel(2,2)
+data do_try/2*.true./
+common/c_goodhel/goodhel
+weight=0
+calls=0
+if(do_try(nfksprocess)) then
+call learn(nfksprocess,do_try(nfksprocess),expected,weight,calls)
+else
+do i=1,2
+if(.not.goodhel(i,nfksprocess))cycle
+calls=calls+1
+if(i.eq.expected)weight=weight+1
+enddo
+endif
+end
+subroutine learn(nfksprocess,learning,expected,weight,calls)
+implicit none
+integer nfksprocess,expected,weight,calls,ntry(2),i
+logical learning,goodhel(2,2)
+data ntry/2*0/
+common/c_goodhel/goodhel
+ntry(nfksprocess)=ntry(nfksprocess)+1
+do i=1,2
+if(.not.goodhel(i,nfksprocess).and.ntry(nfksprocess).ge.2)cycle
+calls=calls+1
+if(i.eq.expected)then
+weight=weight+1
+goodhel(i,nfksprocess)=.true.
+endif
+enddo
+if(ntry(nfksprocess).ge.2)learning=.false.
+end""".splitlines()
+        program = """program check
+implicit none
+integer epoch,frame(2)
+common/c_born_model_epoch/epoch
+common/c_born_helicity_frame/frame
+epoch=1
+frame=0
+call check_sector(1,1,2)
+call check_sector(1,1,1)
+call check_sector(1,1,1)
+epoch=2
+call check_sector(2,2,2)
+call check_sector(1,2,2)
+call check_sector(1,2,1)
+call check_sector(2,2,1)
+frame=[7,3]
+call check_sector(2,1,2)
+call check_sector(1,1,2)
+call check_sector(1,1,1)
+contains
+subroutine check_sector(sector,expected,count)
+integer sector,expected,count,weight,calls
+call evaluate(sector,expected,weight,calls)
+if(weight.ne.1.or.calls.ne.count)stop 1
+end subroutine
+end""".splitlines()
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)/'check.f'
+            support.write_fortran(source, program+support.model_aware_helicity_filter(routines))
+            TestBornLibrary.run_command(['gfortran','-fcheck=all','-ffixed-line-length-none',
+                                         'check.f','-o','check'],tmp)
+            TestBornLibrary.run_command(['./check'],tmp)
+
+    @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
     def test_cached_helicities_preserve_the_other_frame_zero_mask(self):
         # Compile the production adapter and mask transformation together.
         # The two bases have disjoint nonzero amplitudes, so an intervening

@@ -849,6 +849,18 @@ def model_aware_helicity_filter(lines):
     Keeping the epoch local to each routine also handles a counterterm first
     requested several calls after the main Born discovered the new model.
     """
+    model_and_frame = [
+        'integer born_model_epoch,helicity_model_epoch',
+        'common/c_born_model_epoch/born_model_epoch',
+        'save helicity_model_epoch', 'data helicity_model_epoch/-1/',
+        'integer born_helicity_frame(2),helicity_frame(2)',
+        'common/c_born_helicity_frame/born_helicity_frame',
+        'save helicity_frame', 'data helicity_frame/2*-1/']
+    state_changed = ('helicity_model_epoch.ne.born_model_epoch.or.'
+                     'any(helicity_frame.ne.born_helicity_frame)')
+    remember_state = ['helicity_model_epoch=born_model_epoch',
+                      'helicity_frame=born_helicity_frame']
+    dispatch = re.compile(r'(?i)\s*if\s*\(\s*do_try\(nfksprocess\)\s*\)\s*then')
     result, routine_lines = [], []
     for line in lines:
         routine_lines.append(line)
@@ -866,28 +878,30 @@ def model_aware_helicity_filter(lines):
                         r'maxval(abs(borns(\1,1:nsqampso))).ne.0d0', statement)
                 result.append(statement)
                 if re.match(r'(?i)\s*implicit\s+none\s*$', statement):
-                    result += ['integer born_model_epoch,helicity_model_epoch',
-                               'common/c_born_model_epoch/born_model_epoch',
-                               'save helicity_model_epoch',
-                               'data helicity_model_epoch/-1/',
-                               'integer born_helicity_frame(2),helicity_frame(2)',
-                               'common/c_born_helicity_frame/born_helicity_frame',
-                               'save helicity_frame', 'data helicity_frame/2*-1/']
+                    result += model_and_frame
                     if scalar:
                         result += ['integer,save::helicity_sector=0']
                 if re.match(r'(?i)\s*ntry(?:\([^)]*\))?\s*=\s*ntry', statement):
                     result.pop()
-                    changed = ('helicity_model_epoch.ne.born_model_epoch.or.'
-                               'any(helicity_frame.ne.born_helicity_frame)')
+                    changed = state_changed
                     if scalar:
                         changed += '.or.helicity_sector.ne.nfksprocess'
                     result += ['if(%s)then' % changed,
-                               'ntry=0', 'goodhel=.false.',
-                               'helicity_model_epoch=born_model_epoch',
-                               'helicity_frame=born_helicity_frame']
+                               'ntry=0', 'goodhel=.false.', *remember_state]
                     if scalar:
                         result += ['helicity_sector=nfksprocess']
                     result += ['endif', statement]
+        elif any(dispatch.match(s) for s in routine_lines):
+            # The caller disables learning after MAX_TRY in each FKS sector.
+            # The learner clears all masks on a new model or helicity frame.
+            # Reopen every sector here, including those that had left training.
+            for statement in routine_lines:
+                if dispatch.match(statement):
+                    result += ['if(%s)then' % state_changed, 'do_try=.true.',
+                               *remember_state, 'endif']
+                result.append(statement)
+                if re.match(r'(?i)\s*implicit\s+none\s*$', statement):
+                    result += model_and_frame
         else:
             result += routine_lines
         routine_lines = []
