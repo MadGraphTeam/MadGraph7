@@ -669,6 +669,22 @@ pub mod v2 {
         };
     }
 
+    /// An executor's thread pool: `threads` workers (None: rayon's default,
+    /// `RAYON_NUM_THREADS` else every core). The DoubleFloat and
+    /// arbitrary-precision reduction builds Symbolica expressions on these
+    /// workers: pyAmpliCol's library key unlocks them for their lifetime
+    /// (`crate::licence`).
+    fn executor_pool(threads: Option<usize>) -> RusticolResult<rayon::ThreadPool> {
+        let mut builder =
+            rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
+        if let Some(threads) = threads {
+            builder = builder.num_threads(threads.max(1));
+        }
+        builder
+            .build()
+            .map_err(|e| RusticolError::internal(e.to_string()))
+    }
+
     impl V2Executor {
         /// `threads = None` uses the machine's parallelism.
         pub fn new(
@@ -681,21 +697,10 @@ pub mod v2 {
                     "unsupported SIMD lane count {lanes} (1, 2, 4, 8, 16 or 32)"
                 )));
             }
-            // The DoubleFloat and arbitrary-precision reduction builds
-            // Symbolica expressions on these workers: pyAmpliCol's library
-            // key unlocks them for their lifetime (`crate::licence`).
-            let mut builder =
-                rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
-            if let Some(threads) = threads {
-                builder = builder.num_threads(threads.max(1));
-            }
-            let pool = builder
-                .build()
-                .map_err(|e| RusticolError::internal(e.to_string()))?;
             Ok(Self {
                 plan,
                 lanes,
-                pool,
+                pool: executor_pool(threads)?,
                 fourier: None,
                 live: std::sync::Mutex::new(None),
             })
@@ -735,6 +740,23 @@ pub mod v2 {
 
         pub fn lanes(&self) -> usize {
             self.lanes
+        }
+
+        /// Bound this executor's later work to `threads` threads (None: rayon's
+        /// default, `RAYON_NUM_THREADS` else every core): its pool is built
+        /// again at that size (a pool of the same size is kept). The values
+        /// do not depend on the count.
+        pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+            let wanted = threads.map(|threads| threads.max(1));
+            if wanted != Some(self.pool.current_num_threads()) {
+                self.pool = executor_pool(threads)?;
+            }
+            Ok(())
+        }
+
+        /// The threads of this executor's pool.
+        pub fn threads(&self) -> usize {
+            self.pool.current_num_threads()
         }
 
         /// Run `op` on this executor's thread pool (its `threads` bound):

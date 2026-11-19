@@ -18,6 +18,7 @@ from pyamplicol.config import (
     Action,
     BenchmarkConfig,
     ConfigResolution,
+    ConfigurationError,
     GenerationConfig,
     PoleSelection,
     R2Strategy,
@@ -81,6 +82,7 @@ _benchmark_factory: BenchmarkFactory | None = None
 
 if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.config.runtime_options import RuntimeOptionsSource
     from pyamplicol.loops.v2.checks import CheckReport
     from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
@@ -217,6 +219,14 @@ def _process_set(
 def _validate_progress(progress: ProgressSink | None) -> None:
     if progress is not None and not isinstance(progress, ProgressSink):
         raise TypeError("progress must implement ProgressSink.emit(event)")
+
+
+def _validate_threads(value: object) -> int:
+    """A thread count (``Runtime.load(threads=)``): a positive integer."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("threads must be a positive integer")
+    return value
 
 
 def _validate_precision(precision: int) -> int:
@@ -529,6 +539,10 @@ class Runtime:
         ):
             raise TypeError("Runtime backend does not implement RuntimeBackend")
         self._backend = backend
+        # The call options a runtime-options TOML gave at load
+        # (``Runtime.load(options=)``: poles, on_failure, stability_checks),
+        # used by every call that names none.
+        self._call_defaults: dict[str, object] = {}
 
     @classmethod
     def load(
@@ -548,6 +562,8 @@ class Runtime:
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
         lane_rescue: bool | None = None,
+        threads: int | None = None,
+        options: RuntimeOptionsSource | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -579,40 +595,94 @@ class Runtime:
         default True) is the lane rescue of every call that sets none: True
         reduces a reduction lane the backend refuses again in a higher
         carrier (docs/user/python-api.md, "Lane rescue of refused reduction
-        lanes"), False leaves it to fail its point.
+        lanes"), False leaves it to fail its point; ``threads`` (a positive
+        integer; v2 virtual runtimes) is the number of native threads of the
+        load and of every evaluation (default: rayon's rule,
+        ``RAYON_NUM_THREADS`` else every core).
+
+        ``options`` is a runtime-options TOML (a path, a TOML text or a parsed
+        mapping; its ``[evaluation]`` table, a full run card accepted:
+        docs/user/configuration.md, "Runtime options"): its load-time
+        settings apply where the matching keyword is not given, its
+        ``poles``, ``on_failure`` and ``[evaluation.stability_checks]`` to
+        every call that names none (the checks to a call that names no
+        ``stability`` policy either; refused with a load-time ``stability``).
+        Precedence: keyword > options > default.
         """
 
+        calls: dict[str, object] = {}
+        if options is not None:
+            from pyamplicol.config.runtime_options import (
+                CALL_OPTIONS,
+                read_runtime_options,
+            )
+
+            given = read_runtime_options(options)
+            keywords = {
+                "arithmetic": arithmetic,
+                "precision": precision,
+                "reduction": reduction,
+                "reduction_target": reduction_target,
+                "reduction_unchecked": reduction_unchecked,
+                "lane_rescue": lane_rescue,
+                "kinematics_improvement": kinematics_improvement,
+                "kinematics_improvement_binary64": kinematics_improvement_binary64,
+                "threads": threads,
+            }
+            merged = {
+                name: given[name] if value is None and name in given else value
+                for name, value in keywords.items()
+            }
+            (
+                arithmetic,
+                precision,
+                reduction,
+                reduction_target,
+                reduction_unchecked,
+                lane_rescue,
+                kinematics_improvement,
+                kinematics_improvement_binary64,
+                threads,
+            ) = merged.values()
+            calls = {name: given[name] for name in CALL_OPTIONS if name in given}
+            if stability is not None and calls.get("stability_checks") is not None:
+                raise ConfigurationError(
+                    "the runtime options' stability_checks and a load-time "
+                    "stability policy are exclusive"
+                )
         path = Path(os.fspath(artifact)).expanduser().resolve(strict=False)
         parameters = dict(model_parameters) if model_parameters is not None else None
-        options: dict[str, object] = {}
+        loads: dict[str, object] = {}
         if arithmetic is not None:
-            options["arithmetic"] = arithmetic
+            loads["arithmetic"] = arithmetic
         if precision is not None:
-            options["precision"] = _validate_precision(precision)
+            loads["precision"] = _validate_precision(precision)
         if r2_strategy is not None:
-            options["r2_strategy"] = r2_strategy
+            loads["r2_strategy"] = r2_strategy
         if stability is not None:
             if not isinstance(stability, VirtualRescuePolicy):
                 raise TypeError("stability requires a VirtualRescuePolicy")
-            options["stability"] = stability
+            loads["stability"] = stability
         if reduction is not None:
-            options["reduction"] = reduction_request(reduction)
+            loads["reduction"] = reduction_request(reduction)
         if reduction_target is not None:
-            options["reduction_target"] = reduction_target_value(reduction_target)
+            loads["reduction_target"] = reduction_target_value(reduction_target)
         if reduction_unchecked is not None:
-            options["reduction_unchecked"] = reduction_unchecked_value(
+            loads["reduction_unchecked"] = reduction_unchecked_value(
                 reduction_unchecked
             )
         if lane_rescue is not None:
-            options["lane_rescue"] = lane_rescue_value(lane_rescue)
-        options.update(
+            loads["lane_rescue"] = lane_rescue_value(lane_rescue)
+        if threads is not None:
+            loads["threads"] = _validate_threads(threads)
+        loads.update(
             _kinematics_options(kinematics_improvement, kinematics_improvement_binary64)
         )
         loader = _get_runtime_loader()
-        if options and not _accepts_keyword_arguments(loader, *options):
+        if loads and not _accepts_keyword_arguments(loader, *loads):
             raise CompatibilityError(
                 "runtime loader does not support load-time "
-                + ", ".join(options)
+                + ", ".join(loads)
                 + "; install a loader supporting these options"
             )
         backend = cast(Callable[..., RuntimeBackend], loader)(
@@ -620,9 +690,22 @@ class Runtime:
             process=process,
             model_parameters=parameters,
             mute_warnings=mute_warnings,
-            **options,
+            **loads,
         )
-        return backend if isinstance(backend, cls) else cls(backend)
+        runtime = backend if isinstance(backend, cls) else cls(backend)
+        if calls:
+            given_calls = {
+                name: value
+                for name, value in calls.items()
+                if not (name == "poles" and value == "all")
+                and not (name == "stability_checks" and value is None)
+            }
+            if given_calls and not runtime._virtual:
+                raise CompatibilityError(
+                    ", ".join(given_calls) + " are virtual options"
+                )
+            runtime._call_defaults = calls
+        return runtime
 
     @property
     def physics(self) -> ProcessPhysics:
@@ -955,6 +1038,7 @@ class Runtime:
                 reduction_target,
                 reduction_unchecked,
                 lane_rescue,
+                rescue=stability is not None,
             )
         )
         options.update(
@@ -1021,6 +1105,8 @@ class Runtime:
     ) -> dict[str, object]:
         """Forward explicit options without changing old backend call signatures."""
         options: dict[str, object] = {}
+        if on_failure is None:
+            on_failure = cast(Any, self._call_defaults.get("on_failure"))
         if on_failure is not None:
             # None: the virtual runtime's default ("best-effort", m-lit
             # ux-besteffort); a tree runtime has no per-point failure policy.
@@ -1063,11 +1149,19 @@ class Runtime:
         reduction_target: float | None = None,
         reduction_unchecked: bool | None = None,
         lane_rescue: bool | None = None,
+        *,
+        rescue: bool = False,
     ) -> dict[str, object]:
         """Pole-selection, stability-check, reduction-backend, target
         accuracy, unchecked-reduction and lane-rescue options, forwarded only
-        when set."""
+        when set. A pole selection or stability checks the call does not
+        name are the runtime options' (``Runtime.load(options=)``), the
+        checks only for a call naming no stability policy (``rescue``)."""
         options: dict[str, object] = {}
+        if poles is None:
+            poles = cast(Any, self._call_defaults.get("poles"))
+        if checks is None and not rescue:
+            checks = cast(Any, self._call_defaults.get("stability_checks"))
         if poles is not None:
             options["poles"] = pole_selection(poles)
         if checks is not None:
@@ -1280,6 +1374,7 @@ class Runtime:
                 reduction_target,
                 reduction_unchecked,
                 lane_rescue,
+                rescue=stability is not None,
             )
         )
         options.update(
@@ -1669,6 +1764,7 @@ class Runtime:
                 reduction_target,
                 reduction_unchecked,
                 lane_rescue,
+                rescue=stability is not None,
             )
         )
         options.update(
@@ -1817,6 +1913,7 @@ class Runtime:
                 reduction_target,
                 reduction_unchecked,
                 lane_rescue,
+                rescue=stability is not None,
             )
         )
         options.update(

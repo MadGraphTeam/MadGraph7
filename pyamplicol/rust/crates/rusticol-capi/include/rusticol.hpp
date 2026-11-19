@@ -669,6 +669,11 @@ public:
     void set_kinematics_improvement_binary64(bool binary64) {
         check(rusticol_runtime_set_kinematics_improvement_binary64(handle_, binary64 ? 1 : 0));
     }
+    // Runtime options of a TOML text (its [evaluation] table; a tree runtime
+    // takes the two kinematics keys): checked first, nothing changes on an error.
+    void set_options(const std::string &options_toml) {
+        check(rusticol_runtime_set_options(handle_, options_toml.c_str()));
+    }
 
     void mute_warnings() { check(rusticol_runtime_mute_warnings(handle_, 1)); }
     void unmute_warnings() { check(rusticol_runtime_mute_warnings(handle_, 0)); }

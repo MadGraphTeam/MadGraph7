@@ -699,6 +699,16 @@ impl Runner {
         })
     }
 
+    /// Bound the runner's later work to `threads` threads (its executors'
+    /// pools built again at that size; [`V2Runtime::set_threads`]).
+    pub(crate) fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        self.threads = threads;
+        for executor in self.executors.values_mut() {
+            executor.set_threads(threads)?;
+        }
+        Ok(())
+    }
+
     fn executor(&mut self, lanes: usize) -> RusticolResult<&V2Executor> {
         if !self.executors.contains_key(&lanes) {
             let executor = with_fourier(
@@ -1228,13 +1238,24 @@ pub fn is_v2_artifact(path: impl AsRef<Path>) -> RusticolResult<bool> {
 impl V2Runtime {
     /// Open one process (`process`: its id or expression; none: the only
     /// one) of a plan v4 artifact with native point inputs. `threads` bounds
-    /// the executor's threads (none: every core).
+    /// the threads of the load and of every later evaluation (none: rayon's
+    /// default, `RAYON_NUM_THREADS` else every core; [`Self::set_threads`]).
     pub fn open(
         path: impl AsRef<Path>,
         process: Option<&str>,
         threads: Option<usize>,
     ) -> RusticolResult<Self> {
         let path = path.as_ref().to_path_buf();
+        rusticol_core::loop_artifact::on_load_threads(threads, || {
+            Self::open_bounded(path, process, threads)
+        })
+    }
+
+    fn open_bounded(
+        path: std::path::PathBuf,
+        process: Option<&str>,
+        threads: Option<usize>,
+    ) -> RusticolResult<Self> {
         let verified = VerifiedArtifact::open(&path)?;
         let artifact = load_loop_v2_artifact(&verified, process)?;
         let externals = model_externals(&verified)?;
@@ -1947,6 +1968,28 @@ impl V2Runtime {
             self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
+    }
+
+    /// Bound the threads of the following evaluations to `threads` (None:
+    /// rayon's default, `RAYON_NUM_THREADS` else every core): the pools of
+    /// every executor of the runtime (the process's, its companion's, the
+    /// observable column sets') are built again at that size, the ones
+    /// formed later take it. The values do not depend on the count.
+    pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        self.threads = threads;
+        self.process.set_threads(threads)?;
+        if let Some(scaleless) = &mut self.scaleless {
+            scaleless.set_threads(threads)?;
+        }
+        if let Some(observables) = &mut self.observables {
+            observables.set_threads(threads)?;
+        }
+        Ok(())
+    }
+
+    /// The thread bound of the following evaluations (None: rayon's default).
+    pub fn threads(&self) -> Option<usize> {
+        self.threads
     }
 
     /// The reduction backend of the following evaluations: NinjaRS (the

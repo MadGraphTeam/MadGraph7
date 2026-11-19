@@ -2441,7 +2441,9 @@ def _runtime_worker(
             action=Action.BENCHMARK, evaluation=evaluation, benchmark=benchmark
         )
         begin = time.perf_counter()
-        runtime = Runtime.load(artifact, process=process, **options)
+        # --runtime-threads is the runtime's thread bound (evaluation.threads'
+        # mechanism): its load and every timed call on that many threads.
+        runtime = Runtime.load(artifact, process=process, threads=threads, **options)
         sender.send(("monitor", "loaded", {"seconds": time.perf_counter() - begin}))
         profile = profile_virtual(
             runtime,
@@ -2468,7 +2470,7 @@ def _runtime_worker(
             gc.collect()
             pin_threads(1)
             single = one_thread_profile(
-                Runtime.load(artifact, process=process, **options),
+                Runtime.load(artifact, process=process, threads=1, **options),
                 config,
                 budget=one_thread,
                 points=points,
@@ -2569,7 +2571,7 @@ def _stability_worker(
     from pyamplicol.api import Runtime
 
     _WORKER.update(
-        runtime=Runtime.load(artifact, process=process, **options),
+        runtime=Runtime.load(artifact, process=process, threads=1, **options),
         warm=warm,
         checks=checks,
         defaulted=defaulted,

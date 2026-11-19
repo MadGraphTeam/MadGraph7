@@ -75,6 +75,19 @@ struct ColumnSet {
     twin: Option<Runner>,
 }
 
+impl Observables {
+    /// Bound the column sets' runners to `threads` threads
+    /// (`V2Runtime::set_threads`).
+    pub(super) fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        for set in self.sets.values_mut() {
+            for runner in [&mut set.runner, &mut set.twin].into_iter().flatten() {
+                runner.set_threads(threads)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The output columns of a set: per column its key, whether it is directed
 /// (a history with a bra: complex outputs), and per sector its (direct,
 /// swapped) lane columns.

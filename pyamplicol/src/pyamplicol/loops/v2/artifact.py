@@ -1332,7 +1332,9 @@ def _not_storable(request: Any, what: str, error: Exception) -> Exception:
 # --------------------------------------------------------------------- runtime
 
 
-def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
+def admit(
+    native: Any, root: Path, process_id: str, threads: int | None = None
+) -> dict[str, Any]:
     """Admit one plan v4 process through the native artifact loader.
 
     ``rusticol_core::loop_artifact::load_loop_v2_artifact`` checks the
@@ -1340,12 +1342,16 @@ def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
     digest, and validates the program, whose families, reduction buckets,
     legs, helicity rows and sectors must equal the declarations. Returns its
     description (identity, plan digest and size, buckets, program shape,
-    metadata and request).
+    metadata and request). ``threads`` bounds the load's threads (None:
+    rayon's rule).
     """
 
     try:
         return cast(
-            dict[str, Any], json.loads(native.admit_v2_artifact(str(root), process_id))
+            dict[str, Any],
+            json.loads(
+                native.admit_v2_artifact(str(root), process_id, threads=threads)
+            ),
         )
     except ValueError as error:
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
@@ -1638,6 +1644,7 @@ class V2VirtualRuntime:
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
         lane_rescue: bool | None = None,
+        threads: int | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1680,7 +1687,11 @@ class V2VirtualRuntime:
         selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
         native = load_loop_native()
-        admission = admit(native, root, process_id)
+        # The native threads of the load and of every evaluation (None:
+        # rayon's rule, RAYON_NUM_THREADS else every core): the admission's
+        # decode and every executor's pool (``evaluation.threads``).
+        self._threads = None if threads is None else _threads(threads)
+        admission = admit(native, root, process_id, self._threads)
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
         model_payload = _json_payload(manifest, "model/compiled-model.json")
@@ -1768,7 +1779,7 @@ class V2VirtualRuntime:
         self._prepared_fixed = frozenset(record.get("preparation_fixed_parameters", ()))
         self._scale_parameter = record["scale_parameter"]
         self._executor = self._native_process.executor(
-            native, externals=self._externals
+            native, externals=self._externals, **self._thread_options()
         )
         self._parameters = self._checked_parameters(model_parameters)
         self._load_seconds = time.perf_counter() - started
@@ -1854,6 +1865,11 @@ class V2VirtualRuntime:
             )
             for item in self._metadata["sectors"]
         )
+
+    def _thread_options(self) -> dict[str, int]:
+        """The executors' thread bound (``threads=``; none: rayon's rule)."""
+
+        return {} if self._threads is None else {"threads": self._threads}
 
     def _kinematics(self, setting: str | None, binary64: bool | None) -> Any:
         """A call's kinematics improvement settings (``pyamplicol.
@@ -2008,6 +2024,7 @@ class V2VirtualRuntime:
                     mapping=self._mapping,
                     arithmetic=self._load_request[0] or self.default_arithmetic,
                     precision=self._load_request[1],
+                    **self._thread_options(),
                 )
                 runtime.set_model_parameters(self._parameters)
                 # The kinematics improvement's targets: the masses this
@@ -3175,7 +3192,7 @@ class V2VirtualRuntime:
         """Drop the native executors (and their master caches)."""
         with self._lock:
             self._executor = self._native_process.executor(
-                self._native, externals=self._externals
+                self._native, externals=self._externals, **self._thread_options()
             )
             if self._observables is not None:
                 self._observables.clear()
@@ -3222,6 +3239,12 @@ def _stored_member(group_member: Any, representative: str) -> Any:
 
 def _zero(carrier: str) -> Any:
     return 0.0 if carrier == "double" else Decimal(0)
+
+
+def _threads(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("threads must be a positive integer")
+    return value
 
 
 def _digits(value: int) -> int:

@@ -317,6 +317,41 @@ pub fn open_loop_v2_artifact(
     load_loop_v2_artifact(&VerifiedArtifact::open(path)?, requested_process)
 }
 
+/// [`load_loop_v2_artifact`] with at most `threads` threads (None: as
+/// without a bound, rayon's default, `RAYON_NUM_THREADS` else every core;
+/// [`on_load_threads`]): the program is the same for every count.
+#[cfg(feature = "loop-v2")]
+pub fn load_loop_v2_artifact_threads(
+    artifact: &VerifiedArtifact,
+    requested_process: Option<&str>,
+    threads: Option<usize>,
+) -> RusticolResult<LoadedLoopV2Artifact> {
+    on_load_threads(threads, || {
+        load_loop_v2_artifact(artifact, requested_process)
+    })
+}
+
+/// `run` (plan loads, an executor's construction) with at most `threads`
+/// threads: on a pool of that many workers (they hold pyAmpliCol's
+/// Symbolica key, as an executor's do), so the loads' parallel decoding
+/// stays on them (`loop_v2::plan::binary`'s reader takes the pool it runs
+/// in) instead of rayon's global pool. None runs `run` on the calling
+/// thread as before (rayon's default rule). A pool that cannot start runs
+/// `run` on the calling thread.
+pub fn on_load_threads<R: Send>(threads: Option<usize>, run: impl FnOnce() -> R + Send) -> R {
+    let Some(threads) = threads else {
+        return run();
+    };
+    match rayon::ThreadPoolBuilder::new()
+        .num_threads(threads.max(1))
+        .start_handler(|_| crate::licence::unlock_thread())
+        .build()
+    {
+        Ok(pool) => pool.install(run),
+        Err(_) => run(),
+    }
+}
+
 /// Admit one plan v4 process: the envelope, its execution and physics
 /// declarations, the plan member and its digest, and the validated program,
 /// whose families, reduction buckets, legs, helicity rows and sectors must

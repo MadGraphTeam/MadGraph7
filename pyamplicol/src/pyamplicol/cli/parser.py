@@ -890,6 +890,17 @@ def _add_evaluation_options(
             "default on"
         ),
     )
+    parser.add_argument(
+        "--threads",
+        dest="evaluation.threads",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help=(
+            "v2 virtuals: the native threads of the artifact's load and of "
+            "every evaluation (default: RAYON_NUM_THREADS, else every core)"
+        ),
+    )
     _add_kinematics_options(parser)
     parser.add_argument(
         "--resolved",

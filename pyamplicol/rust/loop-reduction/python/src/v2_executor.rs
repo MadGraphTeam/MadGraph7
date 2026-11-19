@@ -1556,15 +1556,17 @@ impl V2Executor {
         // (`program_bytes`); `load_with` reads either form. With `overlay`
         // (a column set's seed records, `native_observables.with_overlay`)
         // the plan with them, without forming the merged plan JSON.
+        // With `threads`, the decode runs on that many threads
+        // (`loop_artifact::on_load_threads`), not on rayon's global pool.
         let plan = {
             let data = program_bytes(&plan)?;
             Arc::new(
-                match &overlay {
+                rusticol_core::loop_artifact::on_load_threads(threads, || match &overlay {
                     Some(overlay) => {
                         LoopProgramV4::load_overlaid(&data, overlay.as_bytes(), policy)
                     }
                     None => LoopProgramV4::load_with(&data, policy),
-                }
+                })
                 .map_err(error)?,
             )
         };
@@ -2330,13 +2332,22 @@ impl V2Executor {
 /// the declared metadata, the generation request and the companion plan of
 /// certified-scaleless families (digest and families, or null).
 #[pyfunction]
-#[pyo3(signature = (path, process=None))]
-fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
+#[pyo3(signature = (path, process=None, threads=None))]
+fn admit_v2_artifact(
+    py: Python<'_>,
+    path: &str,
+    process: Option<&str>,
+    threads: Option<usize>,
+) -> PyResult<String> {
     let _unlock = pyamplicol::unlock();
-    use rusticol_core::loop_artifact::{loop_v2_capability, open_loop_v2_artifact};
+    use rusticol_core::loop_artifact::{load_loop_v2_artifact_threads, loop_v2_capability};
 
+    // `threads` bounds the load's threads (None: rayon's default).
     let loaded = py
-        .detach(|| open_loop_v2_artifact(path, process))
+        .detach(|| {
+            let artifact = rusticol_core::VerifiedArtifact::open(path)?;
+            load_loop_v2_artifact_threads(&artifact, process, threads)
+        })
         .map_err(error)?;
     // The admitted process's own runtime (v4 Born-interfered, v5
     // loop-induced): the loader checked it against its contribution.

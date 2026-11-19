@@ -1601,6 +1601,12 @@ class EvaluationConfig:
     # reduces a refused reduction lane again in a higher carrier (checked and
     # unchecked mode alike); false leaves it to fail its point.
     lane_rescue: bool = field(default=True, metadata=_setting("bool"))
+    # The native threads of the runtime's load and of its evaluations
+    # (``Runtime.load(threads=)``, the CLI's ``--threads``, the SDKs'
+    # ``rusticol_virtual_set_threads``; USER 2026-11-19): every native pool
+    # of the runtime at that many threads. None (the default): rayon's rule,
+    # ``RAYON_NUM_THREADS`` else every core, as before the option.
+    threads: int | None = field(default=None, metadata=_setting("int", nullable=True))
     # The kinematics improvement of the input points (m-lit lit-psimprove;
     # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
     # its fallback to 1, finished by the projection where MadLoop leaves the
@@ -1700,6 +1706,11 @@ class EvaluationConfig:
             lane_rescue(self.lane_rescue)
         except ValueError as exc:
             raise ConfigurationError(f"evaluation.lane_rescue: {exc}") from exc
+        object.__setattr__(
+            self,
+            "threads",
+            _optional_integer(self.threads, "evaluation.threads", minimum=1),
+        )
         if self.kinematics_improvement is not None:
             from pyamplicol import kinematics
 
