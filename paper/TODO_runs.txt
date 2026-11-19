@@ -12,7 +12,8 @@ without starting integrations. Central rows C_GLB/C_LOC/C_Q/C_QT are now
 explicit in proposed_runs.csv, with fixed generation/shower seeds.
 The twelve F integrations and
 the POWHEG sample do not require repetition for this fix. See
-docs/audits/singletop_normalization_mcexplicit.json for closure evidence.
+docs/audits/singletop_normalization_mcexplicit.json (commit e20b82a118)
+for closure evidence.
 
 2026-10-24. proposed_runs.csv records all campaign definitions, including
 seeds and the requested POWHEG comparison. The twelve fixed-order runs

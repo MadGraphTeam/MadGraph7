@@ -272,7 +272,11 @@ Target: unmodified PYTHIA 8.318, with SHA256
     79b9f2334af443005b7c4722dc629ca4facdce6663b73815c1fa0278aacfa789
   share/Pythia8/xmldoc/SpacelikeShowers.xml
     0d4d3c6b54e7dc8f1dfb89088a96c9354a07ec447cb1b5a96b81baba00d09d2e
-Build a private copy in a new prefix, leaving the stock build untouched:
-  python3 docs/audits/build_pythia8_local_collinear.py STOCK NEW_PREFIX [--top-soft]
-and select it with pythia8_path. These patches touch the same files as the
+Apply them in order in a separate source checkout (the top-soft patch
+only after the collinear one), then build it in a new prefix, leaving
+the stock build untouched:
+  patch --batch --fuzz=0 -p1 < /path/to/pythia8318-local-quark-collinear.patch
+  patch --batch --fuzz=0 -p1 < /path/to/pythia8318-local-top-soft.patch
+  ./configure --prefix=NEW_PREFIX && make -j4 && make install
+and select NEW_PREFIX with pythia8_path. These patches touch the same files as the
 hadron-beam gamma -> q qbar patch; applying both together is untested.

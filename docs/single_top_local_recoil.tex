@@ -1086,7 +1086,8 @@ subtraction closure. The prepared MC@NLO sources and executables have
 been updated. Saved events and plots are preserved as historical
 diagnostics, not validated predictions. Fixed-order and POWHEG results
 are unaffected. Numerical checks are recorded under
-\file{docs/audits/singletop_normalization_mcexplicit.json}.
+\file{docs/audits/singletop_normalization_mcexplicit.json}
+(commit e20b82a118).
 
 The following values are taken from the four current
 \file{Events/run_01/plot_PYTHIA8_1_0.HwU} files, as summarized in
@@ -1396,7 +1397,8 @@ for both patches. Ratios are always to default. \code{--run} and
 useful when short validation runs have different names in each process.
 
 Private builds can be reproduced in \emph{new} prefixes outside the stock
-source tree:
+source tree with the builder and checks of \file{docs/audits}, which are
+not part of the MadGraph7 branch and remain in commit e20b82a118:
 \begin{lstlisting}
 python3 docs/audits/build_pythia8_local_collinear.py STOCK NEW_ONE_PATCH
 python3 docs/audits/build_pythia8_local_collinear.py STOCK NEW_TWO_PATCHES --top-soft
@@ -1497,7 +1499,8 @@ S. H\"oche, S. Mrenna, S. Payne, C. T. Preuss and P. Skands,
 
 This report consolidates the implementation and evidence in the following
 records; their essential content is reproduced in the body, so they need
-not be read to understand the report.
+not be read to understand the report. The \file{docs/audits} records are
+not part of the MadGraph7 branch; they remain in commit e20b82a118.
 \begin{itemize}
 \item \file{docs/native_fks_projection.md} (not carried over to MadGraph7;
 see commit e20b82a118): map, measure, finite endpoint,

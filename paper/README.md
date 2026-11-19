@@ -1,5 +1,8 @@
 # MC@NLO matching with Pythia8 with local recoil (paper)
 
+The audit records cited below (`docs/audits/`) are not part of the
+MadGraph7 branch; they remain in commit e20b82a118.
+
 The existing MC@NLO samples and their figures require regeneration. On
 25 October 2026, inclusive closure exposed an uninitialized coloured core
 mother momentum in `cluster.f`, which corrupted the shower damping scales.

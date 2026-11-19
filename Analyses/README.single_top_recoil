@@ -64,7 +64,7 @@ Its ./bin/generate_events -f generates events and showers them automatically.
 The special outgoing-collinear G correction is replaced by the patched
 kernel in both shower and matching; the ordinary soft G and its C-SC overlap
 remain. See pp_tj_local_patch/README.local_patch and
-docs/audits/pythia8318_local_collinear_patch.txt. After generating all three:
+Template/NLO/MCatNLO/pythia8/patches/README. After generating all three:
 
     python3 Analyses/compare_pp_tj_recoil.py --patched
     python3 Analyses/compare_pp_tj_recoil.py --patched --shape
