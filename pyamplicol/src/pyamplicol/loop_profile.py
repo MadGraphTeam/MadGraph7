@@ -2775,12 +2775,14 @@ def _stability_records(
             ):
                 # A success its checks do not trust to resolve binary64's
                 # digits is no reference: it takes the path of a failed
-                # reference point.
+                # reference point (its estimate shown as relative_text).
+                from pyamplicol.loops.v2.stability import relative_text
+
                 value = None
                 reason = (
-                    f"failed: stability checks: estimate "
-                    f"{float(estimate.relative):.1e} above binary64's unit "
-                    f"roundoff {float(_UNIT_ROUNDOFF):.1e}"
+                    "failed: stability checks: estimate "
+                    f"{relative_text(float(estimate.relative), '.1e')} above "
+                    f"binary64's unit roundoff {float(_UNIT_ROUNDOFF):.1e}"
                 )
             exact = None if value is None else _exact_total(value)
             records.append(
@@ -3441,12 +3443,14 @@ def _stability(
             if record[1] is None:
                 dd[backend][index] = (*record, None)
             elif spread is not None:
+                from pyamplicol.loops.v2.stability import relative_text
+
                 dd[backend][index] = (
                     index,
                     None,
                     "failed: stability checks: the backends' checked references "
-                    f"differ by {float(spread):.1e}, above binary64's unit "
-                    f"roundoff {float(_UNIT_ROUNDOFF):.1e}",
+                    f"differ by {relative_text(float(spread), '.1e')}, above "
+                    f"binary64's unit roundoff {float(_UNIT_ROUNDOFF):.1e}",
                     None,
                     None,
                 )

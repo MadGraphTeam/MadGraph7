@@ -1200,7 +1200,7 @@ def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_referen
         index, value, reason, text = records[1]
         assert (index, value, text) == (30, None, None)
         assert reason == (
-            "failed: stability checks: estimate 4.9e+01 above binary64's unit "
+            "failed: stability checks: estimate >1 above binary64's unit "
             "roundoff 1.1e-16"
         )
         # The bound is binary64's unit roundoff, inclusive: an estimate of
