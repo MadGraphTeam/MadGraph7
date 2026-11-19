@@ -75,20 +75,49 @@ pub(super) struct RecurrenceNativeRuntime {
 /// patterns before squaring; the template alone selects every pattern with +1.
 pub(super) struct PatternSelection {
     destination_patterns: Box<[u32]>,
+    /// Consecutive (sector, helicity) group of each destination: the contracted
+    /// colour domain of a pattern-resolved contracted template.
+    group_by_destination: Box<[u32]>,
+    group_count: usize,
     signs: Box<[f64]>,
     combined_re: Vec<f64>,
     combined_im: Vec<f64>,
 }
 
 impl PatternSelection {
-    fn for_plan(plan: &DirectRecurrencePlan) -> Option<Self> {
+    fn for_plan(plan: &DirectRecurrencePlan) -> RusticolResult<Option<Self>> {
         let patterns = plan.destination_patterns();
-        patterns.is_pattern_resolved().then(|| Self {
+        if !patterns.is_pattern_resolved() {
+            return Ok(None);
+        }
+        let mut group_by_destination = Vec::with_capacity(plan.amplitude_destinations().len());
+        let mut seen = BTreeSet::new();
+        let mut previous = None;
+        for destination in plan.amplitude_destinations() {
+            let key = (
+                destination.target_sector_id,
+                destination.target_helicity_id_or_sentinel,
+            );
+            if previous != Some(key) {
+                if !seen.insert(key) {
+                    return Err(RusticolError::integrity(
+                        "pattern-resolved destinations of one sector and helicity are not consecutive",
+                    ));
+                }
+                previous = Some(key);
+            }
+            group_by_destination.push(u32::try_from(seen.len() - 1).map_err(|_| {
+                RusticolError::artifact("pattern-resolved destination group exceeds u32")
+            })?);
+        }
+        Ok(Some(Self {
             destination_patterns: patterns.destination_patterns.clone().into_boxed_slice(),
+            group_by_destination: group_by_destination.into_boxed_slice(),
+            group_count: seen.len(),
             signs: vec![1.0; patterns.pattern_count as usize].into_boxed_slice(),
             combined_re: Vec::new(),
             combined_im: Vec::new(),
-        })
+        }))
     }
 
     fn select(&mut self, patterns: &[u32], signs: &[i32]) -> RusticolResult<()> {
@@ -899,7 +928,7 @@ impl RecurrenceNativeRuntime {
         }
         let backend_name = backend_owner.summary().backend.clone();
         let strategy = plan.strategy();
-        let pattern_selection = PatternSelection::for_plan(&plan);
+        let pattern_selection = PatternSelection::for_plan(&plan)?;
         let order_catalog = AmplitudeOrderCatalog::from_plan(plan.amplitude_orders())?;
         let has_color_contraction = color_contraction.is_some();
         if public_flow_ids.is_empty() && strategy != RecurrenceStrategy::ContractedColorUnion {
@@ -1014,7 +1043,13 @@ impl RecurrenceNativeRuntime {
                 })?;
                 let destination_physics_helicity =
                     contracted_destination_helicity_map(&contraction, &direct_helicity_to_physics)?;
-                let replay_routes = contracted_replay_routes(&scheduler, &contraction)?;
+                let replay_routes = contracted_replay_routes(
+                    &scheduler,
+                    &contraction,
+                    pattern_selection
+                        .as_ref()
+                        .map(|patterns| patterns.group_count),
+                )?;
                 RecurrenceNativeSelectors::ContractedColorUnion {
                     contraction,
                     destination_physics_helicity,
@@ -1070,21 +1105,26 @@ impl RecurrenceNativeRuntime {
             external_source_count,
             effective_point_tile_size,
         )?;
+        // Replay routes and pattern sums both assemble the contracted domain in scratch.
         let contracted_replay_len = match &selectors {
             RecurrenceNativeSelectors::ContractedColorUnion {
                 contraction,
                 replay_routes,
                 ..
-            } if !replay_routes.is_empty() => usize::try_from(contraction.destination_count())
-                .ok()
-                .and_then(|destinations| {
-                    usize::try_from(scheduler.point_tile_size())
-                        .ok()
-                        .and_then(|points| destinations.checked_mul(points))
-                })
-                .ok_or_else(|| {
-                    RusticolError::artifact("contracted replay amplitude workspace overflows usize")
-                })?,
+            } if !replay_routes.is_empty() || pattern_selection.is_some() => {
+                usize::try_from(contraction.destination_count())
+                    .ok()
+                    .and_then(|destinations| {
+                        usize::try_from(scheduler.point_tile_size())
+                            .ok()
+                            .and_then(|points| destinations.checked_mul(points))
+                    })
+                    .ok_or_else(|| {
+                        RusticolError::artifact(
+                            "contracted replay amplitude workspace overflows usize",
+                        )
+                    })?
+            }
             _ => 0,
         };
 
@@ -1320,6 +1360,157 @@ impl RecurrenceNativeRuntime {
                 }
                 tile_start = tile_stop;
             }
+        }
+        Ok(())
+    }
+
+    /// Whether pattern assignments contract colour (one program run serves every
+    /// helicity, so callers need not split points by helicity).
+    pub(super) fn is_contracted(&self) -> bool {
+        matches!(
+            self.selectors,
+            RecurrenceNativeSelectors::ContractedColorUnion { .. }
+        )
+    }
+
+    /// Contracted-colour form of [`Self::run_pattern_assignments_into`]: every tile runs
+    /// the template once; each selection sums its patterns before the contraction.
+    /// `helicity_by_point` (physical indices) keeps only each point's own helicity;
+    /// `point_selections` (CSR offsets, selection indices) restricts each point's selections.
+    pub(super) fn run_contracted_pattern_assignments_into(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        helicity_by_point: Option<&[u32]>,
+        point_selections: Option<(&[usize], &[usize])>,
+        signs: &[&[f64]],
+        resolved: bool,
+        outputs: &mut [&mut [f64]],
+    ) -> RusticolResult<()> {
+        if self.pattern_selection.is_none() || !self.is_contracted() {
+            return Err(RusticolError::compatibility(
+                "contracted pattern assignments require a pattern-resolved contracted template",
+            ));
+        }
+        if signs.len() != outputs.len() {
+            return Err(RusticolError::internal(
+                "pattern assignments need one output per selection",
+            ));
+        }
+        if batch.external_count() != self.external_source_count {
+            return Err(RusticolError::invalid_argument(
+                "recurrence input has the wrong external momentum count",
+            ));
+        }
+        if point_selections.is_some_and(|(offsets, slots)| {
+            offsets.len() != batch.point_count() + 1
+                || offsets.last() != Some(&slots.len())
+                || slots.iter().any(|slot| *slot >= signs.len())
+        }) {
+            return Err(RusticolError::internal(
+                "contracted pattern assignments need one selection list per point",
+            ));
+        }
+        if helicity_by_point.is_some_and(|values| values.len() != batch.point_count()) {
+            return Err(RusticolError::internal(
+                "contracted pattern assignments need one helicity per point",
+            ));
+        }
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        let helicity_count = physics.manifest.helicities.len();
+        let block = if resolved { helicity_count } else { 1 };
+        for output in outputs.iter_mut() {
+            if output.len() != batch.point_count() * block {
+                return Err(RusticolError::internal(
+                    "pattern assignment output has the wrong length",
+                ));
+            }
+            output.fill(0.0);
+        }
+        self.prepare_parameters(common)?;
+        let normalization_factor = common.normalization_factor;
+        let mut tile_start = 0usize;
+        while tile_start < batch.point_count() {
+            let tile_stop =
+                (tile_start + self.effective_point_tile_size()).min(batch.point_count());
+            let point_count =
+                self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
+            let input_len = self.external_tile_input_len(point_count)?;
+            self.ensure_primary_symmetric_group_color_workspace_for_capacity(point_count)?;
+            let Self {
+                scheduler,
+                selectors:
+                    RecurrenceNativeSelectors::ContractedColorUnion {
+                        contraction,
+                        destination_physics_helicity,
+                        ..
+                    },
+                external_momenta,
+                contracted_replay_re,
+                contracted_replay_im,
+                color_transform_re,
+                color_transform_im,
+                symmetric_group_color_workspace,
+                pattern_selection: Some(patterns),
+                ..
+            } = self
+            else {
+                unreachable!("contracted pattern template checked above");
+            };
+            let point_stride = scheduler.point_tile_size() as usize;
+            let direct_output = scheduler.execute_contracted_tile_from_external_planes::<false>(
+                direct_point_count(point_count)?,
+                &external_momenta[..input_len],
+            )?;
+            let requests = |point: usize| {
+                point_selections.map(|(offsets, slots)| &slots[offsets[point]..offsets[point + 1]])
+            };
+            for (selection, (output, signs)) in outputs.iter_mut().zip(signs).enumerate() {
+                // Only selections some point of this tile requested.
+                if point_selections.is_some()
+                    && !(tile_start..tile_stop)
+                        .any(|point| requests(point).is_some_and(|own| own.contains(&selection)))
+                {
+                    continue;
+                }
+                let tile = combine_contracted_patterns(
+                    &direct_output,
+                    patterns,
+                    signs,
+                    point_stride,
+                    contracted_replay_re,
+                    contracted_replay_im,
+                )?;
+                contract_color_tile(
+                    &tile,
+                    contraction,
+                    destination_physics_helicity,
+                    &physics,
+                    None,
+                    normalization_factor,
+                    color_transform_re,
+                    color_transform_im,
+                    symmetric_group_color_workspace.as_mut(),
+                    |point, helicity, value| {
+                        let global = tile_start + point;
+                        if helicity_by_point
+                            .is_some_and(|values| values[global] as usize != helicity)
+                            || requests(global).is_some_and(|own| !own.contains(&selection))
+                        {
+                            return;
+                        }
+                        let index = if resolved {
+                            global * helicity_count + helicity
+                        } else {
+                            global
+                        };
+                        output[index] += value;
+                    },
+                )?;
+            }
+            tile_start = tile_stop;
         }
         Ok(())
     }
@@ -1616,7 +1807,9 @@ impl RecurrenceNativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
     ) -> RusticolResult<Option<CompanionSingletonSelection>> {
+        // A companion of a pattern-resolved template would sum every pattern.
         if self.helicity_selector_companion.is_none()
+            || self.pattern_selection.is_some()
             || !matches!(
                 &self.selectors,
                 RecurrenceNativeSelectors::ContractedColorUnion { .. }
@@ -3322,6 +3515,7 @@ impl RecurrenceNativeRuntime {
             symmetric_group_color_workspace,
             order_catalog,
             order_state,
+            pattern_selection,
             ..
         } = self
         else {
@@ -3331,6 +3525,43 @@ impl RecurrenceNativeRuntime {
         };
         let input = &external_momenta[..input_len];
         let point_count_u32 = direct_point_count(point_count)?;
+        if let Some(patterns) = pattern_selection.as_ref() {
+            if partials.is_some() {
+                return Err(RusticolError::compatibility(
+                    "coupling-order partials are unavailable for pattern-resolved recurrence templates",
+                ));
+            }
+            let point_stride = scheduler.point_tile_size() as usize;
+            let direct_output = if profiled {
+                scheduler
+                    .execute_contracted_tile_from_external_planes::<true>(point_count_u32, input)?
+            } else {
+                scheduler
+                    .execute_contracted_tile_from_external_planes::<false>(point_count_u32, input)?
+            };
+            let reduction_started = profiled.then(Instant::now);
+            let tile = combine_contracted_patterns(
+                &direct_output,
+                patterns,
+                &patterns.signs,
+                point_stride,
+                contracted_replay_re,
+                contracted_replay_im,
+            )?;
+            contract_color_tile(
+                &tile,
+                contraction,
+                destination_physics_helicity,
+                physics,
+                selected_helicities,
+                normalization_factor,
+                color_transform_re,
+                color_transform_im,
+                symmetric_group_color_workspace.as_mut(),
+                accumulate,
+            )?;
+            return Ok(reduction_started.map_or(Duration::ZERO, |started| started.elapsed()));
+        }
         let mut orders = match partials {
             Some(partials) => Some((
                 partials,
@@ -3839,6 +4070,7 @@ fn contracted_selection_has_computed_destination(
 fn contracted_replay_routes(
     scheduler: &DirectRecurrenceExecutionRuntime,
     contraction: &RecurrenceColorContraction,
+    pattern_group_count: Option<usize>,
 ) -> RusticolResult<Vec<ContractedReplayRoute>> {
     let plan = scheduler.plan();
     if plan.strategy() != RecurrenceStrategy::ContractedColorUnion {
@@ -3847,12 +4079,19 @@ fn contracted_replay_routes(
         ));
     }
     if plan.replay_targets().is_empty() {
-        if contraction.destination_count() as usize != plan.amplitude_destinations().len() {
+        // A pattern-resolved template contracts its (sector, helicity) pattern sums.
+        let domain = pattern_group_count.unwrap_or(plan.amplitude_destinations().len());
+        if contraction.destination_count() as usize != domain {
             return Err(RusticolError::integrity(
                 "non-replayed contracted color destinations disagree with the Direct plan",
             ));
         }
         return Ok(Vec::new());
+    }
+    if pattern_group_count.is_some() {
+        return Err(RusticolError::integrity(
+            "pattern-resolved contracted recurrence cannot replay",
+        ));
     }
     if contraction.sector_count() != plan.physical_sector_count()
         || contraction.component_count() as usize != plan.resolved_helicities().len()
@@ -4239,6 +4478,68 @@ impl ContractedAmplitudeTile for DirectRecurrenceTileOutput<'_> {
     fn destination_im(&self, destination_id: u32) -> Option<&[f64]> {
         DirectRecurrenceTileOutput::destination_im(self, destination_id)
     }
+}
+
+/// Signed pattern sums of each (sector, helicity) group of a pattern-resolved
+/// contracted template, as the `[group][point]` tile its contraction reads.
+fn combine_contracted_patterns<'a, T: ContractedAmplitudeTile>(
+    output: &T,
+    patterns: &PatternSelection,
+    signs: &[f64],
+    point_stride: usize,
+    values_re: &'a mut [f64],
+    values_im: &'a mut [f64],
+) -> RusticolResult<ContractedReplayTile<'a>> {
+    let point_count = output.point_count();
+    let required = patterns.group_count.checked_mul(point_stride);
+    if required.is_none_or(|len| values_re.len() < len || values_im.len() < len)
+        || point_count > point_stride
+    {
+        return Err(RusticolError::integrity(
+            "contracted pattern workspace is too small",
+        ));
+    }
+    let mut previous = None;
+    for (destination, (&group, &pattern)) in patterns
+        .group_by_destination
+        .iter()
+        .zip(&patterns.destination_patterns)
+        .enumerate()
+    {
+        let start = group as usize * point_stride;
+        let re = &mut values_re[start..start + point_count];
+        let im = &mut values_im[start..start + point_count];
+        if previous != Some(group) {
+            re.fill(0.0);
+            im.fill(0.0);
+            previous = Some(group);
+        }
+        let sign = signs.get(pattern as usize).copied().unwrap_or(0.0);
+        if sign == 0.0 {
+            continue;
+        }
+        let destination = u32::try_from(destination)
+            .map_err(|_| RusticolError::artifact("amplitude destination exceeds u32"))?;
+        let (Some(source_re), Some(source_im)) = (
+            output.destination_re(destination),
+            output.destination_im(destination),
+        ) else {
+            return Err(RusticolError::integrity(
+                "pattern-resolved amplitude destination is absent",
+            ));
+        };
+        for point in 0..point_count {
+            re[point] = sign.mul_add(source_re[point], re[point]);
+            im[point] = sign.mul_add(source_im[point], im[point]);
+        }
+    }
+    Ok(ContractedReplayTile {
+        values_re,
+        values_im,
+        point_count,
+        point_stride,
+        destination_count: patterns.group_count,
+    })
 }
 
 struct ContractedReplayTile<'a> {
@@ -5250,6 +5551,8 @@ mod replay_destination_helicity_tests {
         };
         let mut selection = PatternSelection {
             destination_patterns: vec![0, 1, 1, 0].into_boxed_slice(),
+            group_by_destination: vec![0, 0, 1, 1].into_boxed_slice(),
+            group_count: 2,
             signs: vec![1.0, 1.0].into_boxed_slice(),
             combined_re: Vec::new(),
             combined_im: Vec::new(),

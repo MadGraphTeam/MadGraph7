@@ -2587,6 +2587,13 @@ impl NativeRuntime {
                     "evaluate_assignments requires a recurrence lane",
                 ));
             };
+            // Contracted colour runs the whole template per tile: no helicity split.
+            let contracted = lane.is_contracted();
+            if contracted && color_by_point.is_some() {
+                return Err(RusticolError::selector(
+                    "contracted-colour assignments have no colour-flow selector",
+                ));
+            }
             // Exact request partition: points sharing the program mask and selectors.
             let mut partitions =
                 BTreeMap::<(Option<u64>, Option<u32>, Option<u32>), Vec<usize>>::new();
@@ -2600,8 +2607,10 @@ impl NativeRuntime {
                 }
                 partitions
                     .entry((
-                        mask,
-                        helicity_by_point.map(|values| values[point]),
+                        mask.filter(|_| !contracted),
+                        helicity_by_point
+                            .filter(|_| !contracted)
+                            .map(|values| values[point]),
                         color_by_point.map(|values| values[point]),
                     ))
                     .or_default()
@@ -2614,7 +2623,14 @@ impl NativeRuntime {
             } else {
                 1
             };
-            for ((mask, helicity, color), points) in partitions {
+            for ((mask, helicity, color), mut points) in partitions {
+                if contracted {
+                    // Equal requests share tiles: each tile contracts few assignments.
+                    let request = |point: &usize| {
+                        &assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
+                    };
+                    points.sort_by(|left, right| request(left).cmp(request(right)));
+                }
                 let mut requested = points
                     .iter()
                     .flat_map(|point| {
@@ -2650,7 +2666,36 @@ impl NativeRuntime {
                     .map(|id| &*assignments[*id as usize].signs)
                     .collect::<Vec<_>>();
                 let mut values = vec![vec![0.0; points.len() * block]; requested.len()];
-                {
+                if contracted {
+                    let helicities = helicity_by_point.map(|values| {
+                        points
+                            .iter()
+                            .map(|point| values[*point])
+                            .collect::<Vec<_>>()
+                    });
+                    // Per point its slots in `requested`.
+                    let mut slot_offsets = Vec::with_capacity(points.len() + 1);
+                    let mut slots = Vec::new();
+                    slot_offsets.push(0);
+                    for point in &points {
+                        for id in
+                            &assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
+                        {
+                            slots.push(requested.binary_search(id).expect("requested assignment"));
+                        }
+                        slot_offsets.push(slots.len());
+                    }
+                    let mut outputs = values.iter_mut().map(Vec::as_mut_slice).collect::<Vec<_>>();
+                    lane.run_contracted_pattern_assignments_into(
+                        &mut self.runtime,
+                        batch,
+                        helicities.as_deref(),
+                        Some((slot_offsets.as_slice(), slots.as_slice())),
+                        &signs,
+                        resolved,
+                        &mut outputs,
+                    )?;
+                } else {
                     let mut outputs = values.iter_mut().map(Vec::as_mut_slice).collect::<Vec<_>>();
                     lane.run_pattern_assignments_into(
                         &mut self.runtime,

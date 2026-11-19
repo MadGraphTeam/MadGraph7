@@ -200,6 +200,9 @@ pub const FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY: &str =
 /// Runtime feature: pattern tables and assignments relabelled by template slot symmetries.
 pub const FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY: &str =
     "rusticol.flavour-union-relabelling.v1";
+/// Runtime feature: flavour-union templates and assignments of contracted (full) colour.
+pub const FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY: &str =
+    "rusticol.flavour-union-contracted-colour.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
 pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "pyamplicol-compiled-plane-kernel-v2";
 pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "pyamplicol-symjit-plane-application-v2";
@@ -356,6 +359,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY,
@@ -417,6 +422,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | EAGER_RUNTIME_LAYOUT_CAPABILITY
         | FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY
         | FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY
+        | FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY
         | RECURRENCE_RUNTIME_CAPABILITY
         | RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY
         | RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
@@ -4767,7 +4773,12 @@ impl NativeUnionRelabelling {
             })?;
         let mut mapped = pairs
             .iter()
-            .map(|[f, a]| [permutation[*f as usize] as u32, permutation[*a as usize] as u32])
+            .map(|[f, a]| {
+                [
+                    permutation[*f as usize] as u32,
+                    permutation[*a as usize] as u32,
+                ]
+            })
             .collect::<Vec<_>>();
         mapped.sort_unstable();
         self.pattern_by_pairs.get(&mapped).copied().ok_or_else(|| {
