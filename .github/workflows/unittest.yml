@@ -403,11 +403,12 @@ jobs:
             ./tests/test_manager.py tests.unit_tests.ewsudakov -t0
 
       # ---- unittest_mg7_event_stream ----
-      - name: "unittest_mg7_event_stream: run EventStream tests with NumPy"
+      - name: "unittest_mg7_event_stream: run EventStream and cluster-combine tests with NumPy"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py tests.unit_tests.iolibs.test_mg7_event_stream -t0
+            ./tests/test_manager.py tests.unit_tests.iolibs.test_mg7_combine_cluster -t0
 
       # ---- unittest_madspin_sequential ----
       # MadSpin density primitives and decay/mass drawing (sequential accept/reject),
@@ -616,7 +617,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_hel_recycle test_transpole test_copy_events_no_blank_line test_combine_grid test_gen_ximprove_resubmit -t0
+            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_loop_f2py_makefile test_hel_recycle test_transpole test_copy_events_no_blank_line test_combine_grid test_gen_ximprove_resubmit -t0
 
       - name: "unittest_various_uncovered"
         if: ${{ !cancelled() }}
