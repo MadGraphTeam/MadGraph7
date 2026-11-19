@@ -26,6 +26,9 @@ from tests.unit.test_loop_v2_sdk_extras import _error, _sdk
 from tests.unit.test_loop_v2_sdk_induced import _evaluate, _python_flat, _same
 from tests.unit.test_loop_v2_sdk_parity import POINT_173, ggtt  # noqa: F401
 
+# The loop tier (the native loop extension, a generated g g > t t~ artifact).
+pytestmark = pytest.mark.loop_physics
+
 STATUS_INVALID_ARGUMENT = 1
 POINTS = [POINT_173, POINT_173]
 SCALES = ["1000000", "1000000"]
