@@ -1,0 +1,525 @@
+{
+  "scope": "actual57matched gauge CT entries; local tensor evidence only",
+  "lorentz": [
+    {
+      "lorentz": "VVV2",
+      "source_expression": "P(3,1)*Metric(1,2)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          0,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          0,
+          5
+        ]
+      ],
+      "checks": 130,
+      "maximum_scaled_error": 1.241893030811997e-16
+    },
+    {
+      "lorentz": "VVV3",
+      "source_expression": "P(3,2)*Metric(1,2)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          1,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          1,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          1,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          1,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          1,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          1,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          1,
+          5
+        ]
+      ],
+      "checks": 130,
+      "maximum_scaled_error": 1.6806963645767964e-16
+    },
+    {
+      "lorentz": "VVV4",
+      "source_expression": "P(2,1)*Metric(1,3)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          2,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          2,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          2,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          2,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          2,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          2,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          2,
+          5
+        ]
+      ],
+      "checks": 130,
+      "maximum_scaled_error": 1.241893030811997e-16
+    },
+    {
+      "lorentz": "VVV5",
+      "source_expression": "P(2,3)*Metric(1,3)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          3,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          3,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          3,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          3,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          3,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          3,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          3,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          3,
+          5
+        ]
+      ],
+      "checks": 130,
+      "maximum_scaled_error": 2.0882224546887624e-16
+    },
+    {
+      "lorentz": "VVV6",
+      "source_expression": "P(1,2)*Metric(2,3)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          4,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          4,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          4,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          4,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          4,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          4,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          4,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          4,
+          5
+        ]
+      ],
+      "checks": 130,
+      "maximum_scaled_error": 1.8240073787526121e-16
+    },
+    {
+      "lorentz": "VVV7",
+      "source_expression": "P(1,3)*Metric(2,3)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          5,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          0,
+          0,
+          5,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          5,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          5,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          5,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          5,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          5,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          74,
+          0,
+          5,
+          5
+        ]
+      ],
+      "checks": 130,
+      "maximum_scaled_error": 2.084189930194893e-16
+    },
+    {
+      "lorentz": "VV4",
+      "source_expression": "P(1,2)*P(2,2) - (3*P(-1,2)**2*Metric(1,2))/2.",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          60,
+          0,
+          2,
+          2
+        ]
+      ],
+      "checks": 34,
+      "maximum_scaled_error": 4.374363488329081e-16
+    },
+    {
+      "lorentz": "VV2",
+      "source_expression": "Metric(1,2)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          60,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          60,
+          0,
+          0,
+          3
+        ]
+      ],
+      "checks": 34,
+      "maximum_scaled_error": 1.1102230246251565e-16
+    },
+    {
+      "lorentz": "VV3",
+      "source_expression": "P(-1,2)**2*Metric(1,2)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          60,
+          0,
+          1,
+          1
+        ]
+      ],
+      "checks": 34,
+      "maximum_scaled_error": 1.6821708289151276e-16
+    },
+    {
+      "lorentz": "VV5",
+      "source_expression": "P(1,2)*P(2,2) - P(-1,2)**2*Metric(1,2)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          130,
+          0,
+          1,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          130,
+          0,
+          1,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          130,
+          0,
+          1,
+          4
+        ]
+      ],
+      "checks": 34,
+      "maximum_scaled_error": 9.074842391027969e-16
+    },
+    {
+      "lorentz": "VV1",
+      "source_expression": "P(1,2)*P(2,2)",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          130,
+          0,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          130,
+          0,
+          0,
+          2
+        ]
+      ],
+      "checks": 34,
+      "maximum_scaled_error": 1.8198350688107596e-16
+    }
+  ],
+  "color": {
+    "2": {
+      "source_color_basis_count": 1,
+      "complex_trace_probe_count": 2,
+      "exact_overlap_checks": 9,
+      "nonreal_overlap_count": 0,
+      "provider": "MadGraph UFOMG5Converter.treat_color + ColorMatrix, Nc=3",
+      "native_color_arithmetic": "exact native SU(3) tensor component contraction",
+      "color_sources": [
+        "Identity(1,2)",
+        "Tr(1,2)",
+        "Tr(1,2)"
+      ],
+      "reference_code_sha256": "e0a5bc944d069bb021017d46c752e6a52a43dfb73216ac4cab28dce7e373f10e"
+    },
+    "3": {
+      "source_color_basis_count": 1,
+      "complex_trace_probe_count": 2,
+      "exact_overlap_checks": 9,
+      "nonreal_overlap_count": 4,
+      "provider": "MadGraph UFOMG5Converter.treat_color + ColorMatrix, Nc=3",
+      "native_color_arithmetic": "exact native SU(3) tensor component contraction",
+      "color_sources": [
+        "f(1,2,3)",
+        "Tr(1,2,3)",
+        "Tr(1,3,2)"
+      ],
+      "reference_code_sha256": "e0a5bc944d069bb021017d46c752e6a52a43dfb73216ac4cab28dce7e373f10e"
+    }
+  },
+  "source_preserved": true,
+  "scalar_coefficients_certified": false,
+  "full_process_certified": false
+}

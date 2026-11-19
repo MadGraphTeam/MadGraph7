@@ -41,7 +41,7 @@ ifdef lhapdf
   else ifneq (,$(filter 0 1,$(lhapdfsubversion))) # 6.0.X, 6.1.X
     $(error LHAPDF 6.2 or later is required)
   else
-    CXXFLAGS+=-std=c++11
+    CXXFLAGS+=-std=c++20
     PDF  += pdf_lhapdf62.o
   endif
 else

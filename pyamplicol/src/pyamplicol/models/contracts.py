@@ -4,9 +4,10 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, TypeAlias, cast
 
-from .._internal.physics.symbols import symbols
+from .._internal.physics.symbols import UFO_HEAD, symbols
+from ..api.errors import ModelError
 from ._physics_ir import (
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledCurrentOrderingRecord,
@@ -29,12 +30,48 @@ from .contact_decomposition import (
     compiled_contact_orbit_step,
     contact_orbit_evaluator_class_is_certifiable,
 )
+from .order_names import require_distinct_order_keys
 
 PROPAGATOR_SOURCE_FIELD = "pyamplicol_source"
 DEFAULT_FEYNMAN_PROPAGATOR_SOURCE = "default-feynman"
 MODEL_SUPPLIED_PROPAGATOR_SOURCE = "model-supplied"
 
 SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
+
+# Auxiliary kind of the colour-flow U(1) subtraction current: the singlet part
+# a colour-flow gluon removes, which colour-flow compilation adds as a synthetic
+# vector particle.
+U1_SUBTRACTION_AUXILIARY_KIND = "u1-subtraction-color-flow-vector"
+# Names of the colour-flow U(1) bookkeeping (``compiler_color_flow``): the
+# prefixes of the synthetic subtraction and identity particles, the auxiliary
+# kind suffix of the identity contact lines (their contact line's kind, so
+# that contact bookkeeping keeps reading their origin) and the vertex suffix
+# of the U(1)-projection copies. Here, not in the compiler, so that DAG colour
+# code reads them without importing the model compilers.
+U1_SUBTRACTION_PREFIX = "__pyamplicol_u1_subtraction_"
+U1_IDENTITY_PREFIX = "__pyamplicol_u1_identity_"
+U1_IDENTITY_SUFFIX = ":u1-identity"
+U1_PROJECTION_SUFFIX = "::u1-projection"
+
+# Tree kernels exist in two variants. ``transverse`` is the compile-time
+# default: proven massless Yang-Mills vertices drop the terms proportional to
+# each input current's self-contraction p_i.J_i, which is exact for conserved
+# Berends-Giele currents. ``full`` keeps the complete Feynman rule; it is needed
+# wherever an input current is not conserved (CT=1 currents, Ward or
+# non-transverse spin sources).
+TreeKernelVariant: TypeAlias = Literal["transverse", "full"]
+TREE_KERNEL_VARIANTS: tuple[TreeKernelVariant, ...] = ("transverse", "full")
+
+# The gauge of a compiled tree model's massive vectors. ``unitary`` is the
+# compile-time default: a massive vector propagates with
+# -i (g - p p / M^2) / (p^2 - M^2 + i M W) and absorbs its Goldstone, whose
+# vertices leave the tree model. ``feynman`` is the 't Hooft-Feynman gauge
+# (xi = 1): the vector propagates with -i g / (p^2 - M^2 + i M W) and its
+# Goldstone is an explicit field of the tree model (``compiler_gauge``). It is
+# admissible only on a UFO model that declares gauge 1 (``models.loading``);
+# a model's UFO counterterms are Feynman-gauge rules.
+ModelGauge: TypeAlias = Literal["unitary", "feynman"]
+MODEL_GAUGES: tuple[ModelGauge, ...] = ("unitary", "feynman")
 
 _CANONICAL_COMPONENT_DIMENSIONS = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}
 
@@ -366,7 +403,14 @@ class CompiledPropagatorRecord:
 
 @dataclass(frozen=True)
 class CompiledGoldstonePartnerRecord:
-    """Compiler-owned disposition of one UFO-declared Goldstone mode."""
+    """Compiler-owned disposition of one UFO-declared Goldstone mode.
+
+    ``absorbed``: the unitary-gauge ``vector`` absorbs it (its vertices leave
+    the tree model). ``explicit``: a propagating field of the tree model, the
+    partner of the 't Hooft-Feynman-gauge ``vector`` (a ``feynman`` model), or
+    of no vector (``vector`` is ``None``). ``model-supplied``: ``vector`` has a
+    model-supplied propagator, which is applied as written.
+    """
 
     goldstone: str
     vector: str | None
@@ -381,8 +425,8 @@ class CompiledGoldstonePartnerRecord:
             raise ValueError(f"invalid compiled Goldstone policy {self.policy!r}")
         if not self.goldstone or not self.mass_expression or not self.association_basis:
             raise ValueError("compiled Goldstone metadata must not be empty")
-        if self.policy == "explicit" and self.vector is not None:
-            raise ValueError("an explicit Goldstone mode cannot name a vector partner")
+        if self.policy == "explicit" and self.vector == "":
+            raise ValueError("an explicit Goldstone partner must not be empty")
         if self.policy != "explicit" and not self.vector:
             raise ValueError(
                 f"a {self.policy} Goldstone mode must name its vector partner"
@@ -1059,6 +1103,23 @@ class CompiledClosureContractionRecord:
         )
 
 
+class ProcessGlobalUFOSymbol(ModelError, ValueError):
+    """A compiled model expression that retains a process-global ``UFO::``
+    head: every model expression must be regenerated through the model symbol
+    registry (``symbols.model(name)``). ``context`` names the expression and
+    ``expression`` is its text. A ``ModelError`` (typed through
+    ``ModelSource.compile``) and a ``ValueError``."""
+
+    def __init__(self, context: str, expression: str) -> None:
+        super().__init__(
+            f"{context} retains a process-global UFO symbol (in "
+            f"{expression[:200]!r}); regenerate it through the model symbol "
+            "registry"
+        )
+        self.context = context
+        self.expression = expression
+
+
 @dataclass(frozen=True)
 class CompiledModelIR:
     name: str
@@ -1074,8 +1135,19 @@ class CompiledModelIR:
     tensor_orderings: tuple[TensorOrderingIR, ...] = ()
     current_orderings: tuple[CompiledCurrentOrderingRecord, ...] = ()
     goldstone_partners: tuple[CompiledGoldstonePartnerRecord, ...] = ()
+    tree_kernel_variant: TreeKernelVariant = "transverse"
+    gauge: ModelGauge = "unitary"
 
     def __post_init__(self) -> None:
+        if self.tree_kernel_variant not in TREE_KERNEL_VARIANTS:
+            raise ValueError(
+                f"unsupported tree kernel variant {self.tree_kernel_variant!r}"
+            )
+        if self.gauge not in MODEL_GAUGES:
+            raise ValueError(f"unsupported model gauge {self.gauge!r}")
+        # Order names are case-insensitive identifiers (the tree engine keys
+        # them by ``order_key``): two declared names one key apart are refused.
+        require_distinct_order_keys(order.name for order in self.orders)
         self._validate_particle_identities()
         self._validate_goldstone_partners()
         self._validate_contractions()
@@ -1083,11 +1155,10 @@ class CompiledModelIR:
         self._validate_contact_orbit_contracts()
         self._validate_tensor_orderings()
         for context, expression in self._executable_expressions():
-            if "UFO::" in expression:
-                raise ValueError(
-                    f"{context} retains a process-global UFO symbol; "
-                    "regenerate it through the model symbol registry"
-                )
+            # The ``UFO::`` namespace itself, never a model namespace whose
+            # name ends in ``UFO`` (``model_<dir>_UFO::...``).
+            if UFO_HEAD.search(expression):
+                raise ProcessGlobalUFOSymbol(context, expression)
 
     def _validate_particle_identities(self) -> None:
         by_name: dict[str, CompiledParticleRecord] = {}
@@ -1167,6 +1238,7 @@ class CompiledModelIR:
             self.particles,
             self.parameters,
             self.propagators,
+            gauge=self.gauge,
         )
         if self.goldstone_partners != expected:
             raise ValueError(
@@ -1777,6 +1849,14 @@ class CompiledModelIR:
             ],
             "goldstone_partners": [item.to_dict() for item in self.goldstone_partners],
             "max_vertex_valence": self.max_vertex_valence,
+            # Written only off the default so transverse artifacts are unchanged.
+            **(
+                {}
+                if self.tree_kernel_variant == "transverse"
+                else {"tree_kernel_variant": self.tree_kernel_variant}
+            ),
+            # Likewise only off the default: unitary-gauge IR is unchanged.
+            **({} if self.gauge == "unitary" else {"gauge": self.gauge}),
         }
 
     @staticmethod
@@ -2049,6 +2129,11 @@ class CompiledModelIR:
                 CompiledGoldstonePartnerRecord.from_dict(item)
                 for item in _required_mappings(payload, "goldstone_partners")
             ),
+            tree_kernel_variant=cast(
+                TreeKernelVariant,
+                str(payload.get("tree_kernel_variant", "transverse")),
+            ),
+            gauge=cast(ModelGauge, str(payload.get("gauge", "unitary"))),
         )
 
 
@@ -2325,8 +2410,10 @@ def _compiled_lc_color_closure_terms(
 
 
 __all__ = [
+    "MODEL_GAUGES",
     "SUPPORTED_COLOR_REPRESENTATIONS",
     "TENSOR_ORDERING_CONTRACT_VERSION",
+    "TREE_KERNEL_VARIANTS",
     "CompiledClosureContractionRecord",
     "CompiledContactDecompositionProof",
     "CompiledContactDecompositionSplit",
@@ -2344,9 +2431,12 @@ __all__ = [
     "CompiledParticleRecord",
     "CompiledPropagatorRecord",
     "CompiledVertexTerm",
+    "ModelGauge",
+    "ProcessGlobalUFOSymbol",
     "TensorAxisIR",
     "TensorIndexBindingIR",
     "TensorOrderingIR",
+    "TreeKernelVariant",
     "compiled_current_dimension",
     "compiled_particle_component_dimension",
     "compiled_particle_is_chiral_eligible",

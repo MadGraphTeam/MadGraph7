@@ -30,8 +30,6 @@
 // For simplicity, keep this code hardcoded also for SM processes (a nullptr is needed as in the case nBsm == 0)
 %(bsmdefine)s
 
-#ifndef MGONGPU_HARDCODE_PARAM%(eftwarn0)s
-
 #include "read_slha.h"
 
 #include <map>
@@ -64,11 +62,6 @@ namespace madmatrix
   {
   public:
 
-    // The model parameters of the process whose matrix element this thread evaluates (set by
-    // calculate_jamps): the HelAmps routines that read a model parameter (the custom propagators
-    // of a UFO model) take it from there. Each CPPProcess owns its own Parameters.
-    static thread_local const Parameters* current;
-
     // Define "zero"
     double zero, ZERO;
 
@@ -90,23 +83,11 @@ namespace madmatrix
     // Set couplings that are unchanged during the run
     void setIndependentCouplings();
 
-    // Set parameters that are changed event by event
-    //void setDependentParameters(); // now computed event-by-event (running alphas #373)
-
-    // Set couplings that are changed event by event
-    //void setDependentCouplings(); // now computed event-by-event (running alphas #373)
-
     // Print parameters that are unchanged during the run
     void printIndependentParameters();
 
     // Print couplings that are unchanged during the run
     void printIndependentCouplings();
-
-    // Print parameters that are changed event by event
-    //void printDependentParameters(); // now computed event-by-event (running alphas #373)
-
-    // Print couplings that are changed event by event
-    //void printDependentCouplings(); // now computed event-by-event (running alphas #373)
 
     // BSM parameters that do not depend on alphaS but are needed in the computation of alphaS-dependent couplings;
     static constexpr int nBsmIndepParam = %(nbsmip)i;
@@ -183,48 +164,6 @@ namespace madmatrix
 
 } // end namespace madmatrix
 
-#else%(eftwarn1)s
-
-#include <cassert>
-#include <limits>
-
-//One namespace. Split ber backend.
-namespace madmatrix
-{
-  // Hardcoded constexpr physics parameters
-  namespace Parameters // keep the same name rather than HardcodedParameters for simplicity
-  {
-    // Model parameters independent of aS
-    constexpr double zero = 0;
-    constexpr double ZERO = 0;
-    %(hardcoded_independent_parameters)s
-    // Model couplings independent of aS
-    %(hardcoded_independent_couplings)s
-    // Model parameters dependent on aS
-    %(hardcoded_dependent_parameters)s
-    // Model couplings dependent on aS
-    %(hardcoded_dependent_couplings)s
-    // Print parameters that are unchanged during the run
-    void printIndependentParameters();
-
-    // Print couplings that are unchanged during the run
-    void printIndependentCouplings();
-
-    // Print parameters that are changed event by event
-    //void printDependentParameters(); // now computed event-by-event (running alphas #373)
-
-    // Print couplings that are changed event by event
-    //void printDependentCouplings(); // now computed event-by-event (running alphas #373)
-
-    // BSM parameters that do not depend on alphaS but are needed in the computation of alphaS-dependent couplings;
-    constexpr int nBsmIndepParam = %(nbsmip)i;
-    %(hasbsmip)s__device__ constexpr double mdl_bsmIndepParam[nBsmIndepParam] = { %(bsmip)s };
-  }
-
-} // end namespace madmatrix
-
-#endif
-
 //==========================================================================
 
 //One namespace. Split ber backend.
@@ -247,11 +186,7 @@ namespace madmatrix
 #pragma nv_diag_suppress 177 // e.g. <<warning #177-D: variable "mdl_G__exp__2" was declared but never referenced>>
 #endif
     __host__ __device__ inline const DependentCouplings_sv computeDependentCouplings_fromG( const fptype_sv& G_sv, const double* bsmIndepParamPtr )
-    {
-#ifdef MGONGPU_HARDCODE_PARAM
-      using namespace Parameters;
-#else%(eftspecial0)s
-#endif
+    {%(eftspecial0)s
       // NB: hardcode cxtype cI(0,1) instead of cxtype (or hardcoded cxsmpl) mdl_complexi (which exists in Parameters) because:
       // (1) mdl_complexi is always (0,1); (2) mdl_complexi is undefined in device code; (3) need cxsmpl conversion to cxtype in code below
       const cxtype cI( 0., 1. );
@@ -276,7 +211,7 @@ namespace madmatrix
         // Model parameters dependent on aS
 %(dcoupsetdpar2)s
         // Model couplings dependent on aS
-  %(dcoupsetdcoup2)s
+%(dcoupsetdcoup2)s
       }%(dcoupoutdcoup2)s
 #endif
       return out;

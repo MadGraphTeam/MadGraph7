@@ -270,6 +270,7 @@ pub(crate) fn valid_parts() -> DirectRecurrencePlanParts {
             vec![valid_three_line_traversal_certificate()],
         )
         .unwrap(),
+        amplitude_orders: DirectAmplitudeOrders::without_coupling_orders(1),
     }
 }
 

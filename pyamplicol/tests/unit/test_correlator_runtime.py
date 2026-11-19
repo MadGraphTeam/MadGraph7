@@ -725,6 +725,7 @@ def test_public_runtime_forwards_typed_helicity_id_and_validates_precision():
     )
     runtime = object.__new__(Runtime)
     runtime._correlated_evaluator = recorder
+    runtime._backend = SimpleNamespace(contribution_kind="tree")
     helicity = HelicityConfiguration("h:1", 0, (1,), True, False, "h:1", 1)
     assert (
         runtime.evaluate_correlated(

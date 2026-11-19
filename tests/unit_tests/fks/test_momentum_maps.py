@@ -180,6 +180,9 @@ class TestMomentumMaps(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("PASS " + name, result.stdout)
 
+    def test_shifted_folds_can_first_reach_a_soft_endpoint_on_a_later_fold(self):
+        self.check_map("delayed_soft_endpoint")
+
     def test_native_projection_and_shared_state(self):
         self.check_map("native_projection")
 
@@ -195,8 +198,27 @@ class TestMomentumMaps(unittest.TestCase):
     def test_single_top_native_massless_recoil(self):
         self.check_map("singletop_recoil")
 
+    def test_isr_endpoint_roundoff_keeps_bjorken_fractions_physical(self):
+        self.check_map("isr_bjorken_boundary")
+        self.check_map("isr_symmetric_boundary")
+
     def test_initial_state_recoil_and_endpoints(self):
         self.check_map("isr")
+
+    def test_matched_initial_state_recoil_inverse_and_measure(self):
+        self.check_map("isr_nlops")
+
+    def test_matched_initial_state_log_sampling_and_exclusions(self):
+        self.check_map("isr_nlops_sampling")
+
+    def test_matched_initial_state_log_tail_and_soft_integrals(self):
+        self.check_map("isr_nlops_integrals")
+
+    def test_public_initial_state_mode_overrides_legacy_common(self):
+        self.check_map("isr_nlops_api")
+
+    def test_matched_initial_state_log_upper_endpoint(self):
+        self.check_map("isr_nlops_endpoints")
 
     def test_symmetric_initial_state_recoil_inverse_measure_and_endpoints(self):
         self.check_map("isr_symmetric")

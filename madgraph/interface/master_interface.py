@@ -37,6 +37,7 @@ sys.path.insert(0, root_path)
 pjoin = os.path.join
 
 import madgraph
+import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 import madgraph.loop.loop_base_objects as loop_base_objects
@@ -279,8 +280,13 @@ class Switcher(object):
                 self.change_principal_cmd('MadLoop')
         else:
             self.change_principal_cmd('MadGraph')
-        
-        return self.cmd.do_check(self, line, *args, **opts)
+
+        try:
+            return self.cmd.do_check(self, line, *args, **opts)
+        finally:
+            # check sets the color basis itself (set_color_basis_mode, DDM after
+            # 'set color_basis ddm'): it must not leak to the next command
+            color_amp.set_ddm_basis(False)
 
     def do_generate(self, line, *args, **opts):
 
@@ -539,8 +545,12 @@ class Switcher(object):
         # if there is a path, find what output has been done
         if path:
             type = self.cmd.find_output_type(self, path)
+            if type == 'pythia8':
+                # refused before any change of interface (the aMC@NLO launch
+                # would otherwise switch to MadLoop before MadGraph refuses it)
+                raise self.InvalidCmd(MGcmd.PYTHIA8_LAUNCH_DROPPED % path)
             if type in ['standalone_fortran', 'standalone_cpp_family',
-                        'pythia8', 'madevent', 'amcatnlo_fks_sa']:
+                        'madevent', 'amcatnlo_fks_sa']:
                 self.change_principal_cmd('MadGraph')
             elif type == 'aMC@NLO':
                 self.change_principal_cmd('aMC@NLO')
@@ -639,6 +649,9 @@ class Switcher(object):
     def help_set2_gauge(self, *args, **opts):
         return self.cmd.help_set2_gauge(self, *args, **opts)
 
+    def help_set2_auto_gauge(self, *args, **opts):
+        return self.cmd.help_set2_auto_gauge(self, *args, **opts)
+
     def help_set2_group_subprocesses(self, *args, **opts):
         return self.cmd.help_set2_group_subprocesses(self, *args, **opts)
 
@@ -674,6 +687,9 @@ class Switcher(object):
 
     def help_set2_zerowidth_tchannel(self, *args, **opts):
         return self.cmd.help_set2_zerowidth_tchannel(self, *args, **opts)
+    
+    def help_set2_zerowidth_external(self, *args, **opts):
+         return self.cmd.help_set2_zerowidth_external(self, *args, **opts)
 
        
     def help_tutorial(self, *args, **opts):

@@ -604,7 +604,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
             (0..contraction_entries.row_count as usize)
                 .map(|index| {
                     Ok(GenericColorContractionEntryManifest {
-                        _exact_weight: if include_exact_weights {
+                        exact_weight: if include_exact_weights {
                             eager_exact_color_weight(decoded, weight_ids[index])?
                         } else {
                             None
@@ -621,6 +621,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
                             symmetry_ids[index],
                             "contraction symmetry",
                         )?,
+                        nc_degree: None,
                     })
                 })
                 .collect::<RusticolResult<Vec<_>>>()?,
@@ -644,7 +645,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
         let repeated_entries = (0..contraction_entries.row_count as usize)
             .map(|index| {
                 Ok(GenericRepeatedColorContractionEntryManifest {
-                    _exact_weight: if include_exact_weights {
+                    exact_weight: if include_exact_weights {
                         eager_exact_color_weight(decoded, weight_ids[index])?
                     } else {
                         None
@@ -683,6 +684,7 @@ pub(super) fn load_eager_color_topology_replay_manifests(
         includes_color_factor: true,
         entries,
         repeated_block,
+        nc_expansion: None,
     };
     Ok(Some((amplitude_manifest, contraction_manifest)))
 }
@@ -1799,6 +1801,8 @@ fn manifest_color_accuracy(physics: &ProcessPhysicsV1) -> &'static str {
         crate::ColorAccuracy::Lc => "lc",
         crate::ColorAccuracy::Nlc => "nlc",
         crate::ColorAccuracy::Full => "full",
+        crate::ColorAccuracy::StrictLc => "strict-lc",
+        crate::ColorAccuracy::StrictNlc => "strict-nlc",
     }
 }
 

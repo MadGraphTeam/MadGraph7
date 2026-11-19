@@ -170,6 +170,7 @@ class TimingMetadataTests(unittest.TestCase):
                 self.assertFalse(list(base.glob('*/SavedRunInfos')))
 
     def test_cli_provenance_is_explicit_boolean_for_timing_and_profile_only(self):
+        from madgraph.various import process_checks
         source = ROOT/'madgraph/interface/madgraph_interface.py'
         tree = ast.parse(source.read_text())
         checker = next(n for n in tree.body if isinstance(n, ast.ClassDef)
@@ -193,13 +194,15 @@ class TimingMetadataTests(unittest.TestCase):
                 if value is not None:
                     args.append('--timing_provenance='+value)
                 scope['check_check'](owner, args)
-                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os)
+                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os,
+                              process_checks=process_checks)
                 exec(compile(ast.Module(body=[parse], type_ignores=[]), str(source), 'exec'), values)
                 self.assertIs(values['options']['timing_provenance'], expected)
             for invalid in ('yes', 'True=garbage', 'False=garbage'):
                 args = [mode, 'u', 'u~', '>', 'z', '[virt=QCD]', '--timing_provenance='+invalid]
                 scope['check_check'](owner, args)
-                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os)
+                values = dict(args=args, i=-1, options={}, MLoptions={}, CMS_options={}, self=owner, os=os,
+                              process_checks=process_checks)
                 with self.assertRaisesRegex(ValueError, 'must be True or False'):
                     exec(compile(ast.Module(body=[parse], type_ignores=[]), str(source), 'exec'), values)
         with self.assertRaisesRegex(ValueError, 'unknown option --timing_provenance'):

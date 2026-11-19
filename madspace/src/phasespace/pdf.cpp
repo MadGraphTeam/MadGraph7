@@ -751,6 +751,20 @@ void AlphaSGrid::initialize_coefficients(Tensor tensor) const {
         }
         ++q_idx;
     }
+    // the extrapolation of AlphaS_Ipol of LHAPDF in the padding segments: below
+    // the grid alpha_s at the first knot and the logarithmic gradient to the
+    // next knot of another q (a first knot can be a flavor threshold), which
+    // kernel_interpolate_alpha_s takes as a power of q^2, and above the grid
+    // the last value at both ends of the cubic
+    std::size_t next = 1;
+    while (q.at(next) == q.at(0)) {
+        ++next;
+    }
+    tensor_view[0][0] = values.at(0);
+    tensor_view[1][0] =
+        std::log(values.at(next) / values.at(0)) / (logq2.at(next) - logq2.at(0));
+    tensor_view[0][grid_idx] = values.back();
+    tensor_view[1][grid_idx] = values.back();
 }
 
 void AlphaSGrid::initialize_logq2(Tensor tensor) const {

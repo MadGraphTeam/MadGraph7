@@ -1,0 +1,39 @@
+{
+  "kind": "pyamplicol-process-groups",
+  "schema_version": 1,
+  "analyses": [],
+  "groups": [
+    {
+      "representative": {
+        "process_id": "selftest_virtual_ew",
+        "process": "e- e+ > e- e+"
+      },
+      "members": [
+        {
+          "process_id": "selftest_virtual_ew",
+          "process": "e- e+ > e- e+",
+          "pdgs": [
+            11,
+            -11,
+            11,
+            -11
+          ],
+          "initial_count": 2,
+          "factor": {
+            "numerator": 1,
+            "denominator": 1
+          },
+          "permutation": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "conjugated": false,
+          "basis": "identity",
+          "generated": true
+        }
+      ]
+    }
+  ]
+}

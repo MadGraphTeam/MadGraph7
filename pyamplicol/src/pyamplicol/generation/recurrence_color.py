@@ -33,7 +33,6 @@ _FACTOR_SYMMETRIC_GROUP_FOURIER = 3
 _FLAG_INCLUDES_COLOR_FACTOR = 1 << 0
 _KNOWN_FLAGS = _FLAG_INCLUDES_COLOR_FACTOR
 _MAX_FACTOR_RANK = 31  # 2**rank must fit the u32 local-group count.
-_MAX_SYMMETRIC_GROUP_DEGREE = 10
 _ZERO_SECTOR_OWNER = 0xFFFF_FFFF
 
 # magic; 14 u32 fields; 7 u64 fields
@@ -715,10 +714,9 @@ def _encode_symmetric_group_convolution(
     """
 
     degree = _checked_u32("symmetric-group degree", block.degree)
-    if degree < 2 or degree > _MAX_SYMMETRIC_GROUP_DEGREE:
+    if degree < 2:
         raise RecurrenceColorCodecError(
-            "symmetric-group convolution degree must be in "
-            f"[2, {_MAX_SYMMETRIC_GROUP_DEGREE}]"
+            "symmetric-group convolution degree must be at least 2"
         )
     group_order = math.factorial(degree)
     channels = tuple(

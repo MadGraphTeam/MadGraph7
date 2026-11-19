@@ -1,0 +1,1291 @@
+{
+ "process": "g g > u u~ u u~ QED=0 [virt=QCD]",
+ "name": "gg_uuxuux",
+ "pdgs": [
+  21,
+  21,
+  2,
+  -2,
+  2,
+  -2
+ ],
+ "correction": "QCD",
+ "born_orders": {
+  "QCD": 4,
+  "QED": 0
+ },
+ "loop_orders": {
+  "QCD": 6,
+  "QED": 0
+ },
+ "scheme": "qcd",
+ "scheme_description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+ "restriction": "no_b_mass",
+ "madloop_model": "loop_sm-no_b_mass",
+ "gauge": "Feynman",
+ "parameter_overrides": {},
+ "born_orders_all": [
+  {
+   "QCD": 4,
+   "QED": 0
+  }
+ ],
+ "squared_split_orders": {
+  "born": [
+   {
+    "index": 1,
+    "QCD": 8,
+    "QED": 0
+   }
+  ],
+  "loop": [
+   {
+    "index": 1,
+    "QCD": 10,
+    "QED": 0
+   }
+  ]
+ },
+ "source": "independent references: MadLoop/MG5_aMC 3.7.0; Recola2 2.2.5 (tree ${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3; OpenLoops 2.1.5",
+ "scope": "Independent provider references at exact on-shell decimal points; MadLoop in quadruple precision at every point (return codes 328, 329); recola as configured in its recorded settings; openloops as configured in its recorded settings; timings are single-run by-products, not benchmarks.",
+ "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
+ "normalization": {
+  "initial_average": 256,
+  "final_symmetry": 4,
+  "denominator": 1024
+ },
+ "normalization_denominator": 1024,
+ "points": [
+  [
+   [
+    "655.36",
+    "0",
+    "0",
+    "655.36"
+   ],
+   [
+    "655.36",
+    "0",
+    "0",
+    "-655.36"
+   ],
+   [
+    "94.921241505625212928",
+    "-9.8231381331968",
+    "-81.649264541008135520256",
+    "47.401958251720287633408"
+   ],
+   [
+    "465.154064623758787072",
+    "147.8911877331968",
+    "439.851352191836167520256",
+    "32.051340094941536366592"
+   ],
+   [
+    "495.284693870616",
+    "-138.0680496",
+    "-448.088807650828032",
+    "159.563661653338176"
+   ],
+   [
+    "255.36",
+    "0",
+    "89.88672",
+    "-239.01696"
+   ]
+  ],
+  [
+   [
+    "409.6",
+    "0",
+    "0",
+    "409.6"
+   ],
+   [
+    "409.6",
+    "0",
+    "0",
+    "-409.6"
+   ],
+   [
+    "147.65034383852904448",
+    "-24.896386777088",
+    "-130.45395104156223799296",
+    "64.51790928670249648128"
+   ],
+   [
+    "289.34979374771095552",
+    "86.949442777088",
+    "275.66297919923775799296",
+    "13.15368547584214351872"
+   ],
+   [
+    "222.59986241376",
+    "-62.053056",
+    "-201.38822815767552",
+    "71.71400523745536"
+   ],
+   [
+    "159.6",
+    "0",
+    "56.1792",
+    "-149.3856"
+   ]
+  ],
+  [
+   [
+    "640",
+    "0",
+    "0",
+    "640"
+   ],
+   [
+    "640",
+    "0",
+    "0",
+    "-640"
+   ],
+   [
+    "97.01692865075617792",
+    "-10.430731108352",
+    "-83.61401293191423197184",
+    "48.08514463732902592512"
+   ],
+   [
+    "454.16221384268382208",
+    "144.083467108352",
+    "429.59327357921535197184",
+    "30.86892100507481407488"
+   ],
+   [
+    "479.44585750656",
+    "-133.652736",
+    "-433.75926064730112",
+    "154.46093435759616"
+   ],
+   [
+    "249.375",
+    "0",
+    "87.78",
+    "-233.415"
+   ]
+  ],
+  [
+   [
+    "655.36",
+    "0",
+    "0",
+    "655.36"
+   ],
+   [
+    "655.36",
+    "0",
+    "0",
+    "-655.36"
+   ],
+   [
+    "94.921241505625212928",
+    "-9.8231381331968",
+    "-81.649264541008135520256",
+    "47.401958251720287633408"
+   ],
+   [
+    "465.154064623758787072",
+    "147.8911877331968",
+    "439.851352191836167520256",
+    "32.051340094941536366592"
+   ],
+   [
+    "495.284693870616",
+    "-138.0680496",
+    "-448.088807650828032",
+    "159.563661653338176"
+   ],
+   [
+    "255.36",
+    "0",
+    "89.88672",
+    "-239.01696"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000",
+  "700",
+  "1400",
+  "500"
+ ],
+ "point_construction": {
+  "construction": "tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact",
+  "cuts": {
+   "min_2pipj_over_s": "1/1000",
+   "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs",
+   "resonances": [
+    "91.188",
+    "125",
+    "173"
+   ]
+  },
+  "sqrt_s": [
+   "1310.72",
+   "819.2",
+   "1280",
+   "1310.72"
+  ],
+  "scale_variation": {
+   "point": 4,
+   "copy_of_point": 1,
+   "mu_r_factor": "1/2",
+   "row": 3,
+   "copy_of_row": 0
+  }
+ },
+ "parameters": {
+  "aS": "0.118",
+  "aEWM1": "132.507",
+  "Gf": "0.0000116639",
+  "MZ": "91.188",
+  "MH": "125",
+  "MT": "173",
+  "ymt": "173"
+ },
+ "fixed_parameters": {
+  "MB": "0",
+  "ymb": "0",
+  "MTA": "0",
+  "ymtau": "0",
+  "WT": "0",
+  "WW": "0",
+  "WZ": "0",
+  "WH": "0"
+ },
+ "derived_parameters": {
+  "MW": "80.4190024457561601055171371731",
+  "alpha": "0.00754677111397888413442308708219"
+ },
+ "active_flavours": 5,
+ "loop_quark_flavours": 6,
+ "rows": [
+  {
+   "born": 1.435998444902697e-09,
+   "finite": -3.457524059079545e-10,
+   "single_pole": -9.417796114469454e-10,
+   "double_pole": -3.056425193743912e-10,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 329,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "born": 1.435998444902697e-09
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 10,
+      "QED": 0,
+      "finite": -3.457524059079545e-10,
+      "single_pole": -9.417796114469454e-10,
+      "double_pole": -3.056425193743912e-10,
+      "accuracy": 0.0,
+      "born_sector": {
+       "QCD": 8,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 1.435998444902697e-09,
+     "finite": -3.457524059079545e-10,
+     "single_pole": -9.417796114469454e-10,
+     "double_pole": -3.056425193743912e-10,
+     "accuracy": 0.0
+    }
+   },
+   "born_from_madloop_double_pole": 1.4359984449021886e-09,
+   "providers": {
+    "madloop": {
+     "born": 1.435998444902697e-09,
+     "finite": -3.457524059079545e-10,
+     "single_pole": -9.417796114469454e-10,
+     "double_pole": -3.056425193743912e-10,
+     "accuracy": 0.0,
+     "status": 329,
+     "seconds": 132.406805,
+     "universal_double_pole_relative_error": 3.540265408786603e-13
+    },
+    "recola": {
+     "born": 1.4359984449026861e-09,
+     "finite": -3.457524059111282e-10,
+     "single_pole": -9.417796114501934e-10,
+     "double_pole": -3.0564251937780007e-10,
+     "seconds": 0.423306455,
+     "raw": {
+      "born": 1.4359984449026861e-09,
+      "finite": 1.5700938649073429e-10,
+      "single_pole": -9.417796114501934e-10,
+      "double_pole": -3.0564251937780007e-10
+     },
+     "universal_double_pole_relative_error": 1.0806689761085747e-11
+    },
+    "openloops": {
+     "born": 1.4359984449026897e-09,
+     "finite": -3.4575240590657106e-10,
+     "single_pole": -9.417796114469372e-10,
+     "double_pole": -3.056425193744872e-10,
+     "accuracy": -1.0,
+     "seconds": 0.494586119,
+     "universal_double_pole_relative_error": 3.484446603965809e-14
+    }
+   },
+   "provider_pair_relative_errors": {
+    "madloop-recola": {
+     "born": 7.632419906325367e-15,
+     "finite": 9.1790690706823e-12,
+     "single_pole": 3.448709905906932e-12,
+     "double_pole": 1.1153104646757829e-11
+    },
+    "madloop-openloops": {
+     "born": 5.184285219390815e-15,
+     "finite": 4.0013013672658014e-12,
+     "single_pole": 8.783165429565326e-15,
+     "double_pole": 3.1410763803712296e-13
+    },
+    "recola-openloops": {
+     "born": 2.4481346869345644e-15,
+     "finite": 1.3180370437911373e-11,
+     "single_pole": 3.457493071336467e-12,
+     "double_pole": 1.083899700872411e-11
+    }
+   },
+   "provider_pair_strict_relative_errors": {
+    "madloop-recola": {
+     "born": 7.632419906325367e-15,
+     "finite": 9.1790690706823e-12,
+     "single_pole": 3.448709905906932e-12,
+     "double_pole": 1.1153104646757829e-11
+    },
+    "madloop-openloops": {
+     "born": 5.184285219390815e-15,
+     "finite": 4.0013013672658014e-12,
+     "single_pole": 8.783165429565326e-15,
+     "double_pole": 3.1410763803712296e-13
+    },
+    "recola-openloops": {
+     "born": 2.4481346869345644e-15,
+     "finite": 1.3180370437911373e-11,
+     "single_pole": 3.457493071336467e-12,
+     "double_pole": 1.083899700872411e-11
+    }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.541154820689449e-13,
+    "max_sector_double_pole_relative_error": 3.540265408786603e-13,
+    "outlier": {
+     "rule": 1,
+     "ruling": "pending: routed to the user via the coordinator",
+     "conditions": {
+      "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+      "ii": "holds: OpenLoops (ppjjjj, binary64) = DD to 5.5e-13 (mq-validate F3)"
+     },
+     "providers": {
+      "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 3.5e-13",
+      "openloops": "misses the universal double pole by 3.5e-14; MadLoop - OpenLoops: finite 4.0e-12, double pole 3.1e-13",
+      "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+     }
+    },
+    "reason": "rule 1 outlier at point 0: no provider value satisfies rule 1 (i) here; ruling pending"
+   }
+  },
+  {
+   "born": 3.5337038014349506e-09,
+   "finite": -1.1955160106510263e-09,
+   "single_pole": -2.4400621231731545e-09,
+   "double_pole": -7.521248622710083e-10,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 328,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "born": 3.5337038014349506e-09
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 10,
+      "QED": 0,
+      "finite": -1.1955160106510263e-09,
+      "single_pole": -2.4400621231731545e-09,
+      "double_pole": -7.521248622710083e-10,
+      "accuracy": 0.0,
+      "born_sector": {
+       "QCD": 8,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 3.5337038014349506e-09,
+     "finite": -1.1955160106510263e-09,
+     "single_pole": -2.4400621231731545e-09,
+     "double_pole": -7.521248622710083e-10,
+     "accuracy": 0.0
+    }
+   },
+   "born_from_madloop_double_pole": 3.5337038014349473e-09,
+   "providers": {
+    "madloop": {
+     "born": 3.5337038014349506e-09,
+     "finite": -1.1955160106510263e-09,
+     "single_pole": -2.4400621231731545e-09,
+     "double_pole": -7.521248622710083e-10,
+     "accuracy": 0.0,
+     "status": 328,
+     "seconds": 64.9719144,
+     "universal_double_pole_relative_error": 9.623176579995868e-16
+    },
+    "recola": {
+     "born": 3.533703801434952e-09,
+     "finite": -1.1955160106596009e-09,
+     "single_pole": -2.4400621231445903e-09,
+     "double_pole": -7.52124862276019e-10,
+     "seconds": 0.389889571,
+     "raw": {
+      "born": 3.533703801434952e-09,
+      "finite": 4.167979782175324e-11,
+      "single_pole": -2.4400621231445903e-09,
+      "double_pole": -7.52124862276019e-10
+     },
+     "universal_double_pole_relative_error": 6.660750406775344e-12
+    },
+    "openloops": {
+     "born": 3.5337038014349423e-09,
+     "finite": -1.195516010652197e-09,
+     "single_pole": -2.440062123173508e-09,
+     "double_pole": -7.521248622710076e-10,
+     "accuracy": -1.0,
+     "seconds": 0.472547074,
+     "universal_double_pole_relative_error": 5.498958045711934e-16
+    }
+   },
+   "provider_pair_relative_errors": {
+    "madloop-recola": {
+     "born": 3.5112476555779645e-16,
+     "finite": 7.172262147283042e-12,
+     "single_pole": 1.1706341671143651e-11,
+     "double_pole": 6.662125146286763e-12
+    },
+    "madloop-openloops": {
+     "born": 2.3408317703853103e-15,
+     "finite": 9.792151267610638e-13,
+     "single_pole": 1.4492242164986638e-13,
+     "double_pole": 8.248437068567896e-16
+    },
+    "recola-openloops": {
+     "born": 2.691956535943106e-15,
+     "finite": 6.193047020528042e-12,
+     "single_pole": 1.1851264092791821e-11,
+     "double_pole": 6.6629499899936135e-12
+    }
+   },
+   "provider_pair_strict_relative_errors": {
+    "madloop-recola": {
+     "born": 3.5112476555779645e-16,
+     "finite": 7.172262147283042e-12,
+     "single_pole": 1.1706341671143651e-11,
+     "double_pole": 6.662125146286763e-12
+    },
+    "madloop-openloops": {
+     "born": 2.3408317703853103e-15,
+     "finite": 9.792151267610638e-13,
+     "single_pole": 1.4492242164986638e-13,
+     "double_pole": 8.248437068567896e-16
+    },
+    "recola-openloops": {
+     "born": 2.691956535943106e-15,
+     "finite": 6.193047020528042e-12,
+     "single_pole": 1.1851264092791821e-11,
+     "double_pole": 6.6629499899936135e-12
+    }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 9.363327081541241e-16,
+    "max_sector_double_pole_relative_error": 9.623176579995868e-16,
+    "outlier": null,
+    "reason": null
+   }
+  },
+  {
+   "born": 1.4927555493611866e-09,
+   "finite": -8.350480402185515e-10,
+   "single_pole": -1.20636247506226e-09,
+   "double_pole": -3.177228837099597e-10,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 329,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "born": 1.4927555493611866e-09
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 10,
+      "QED": 0,
+      "finite": -8.350480402185515e-10,
+      "single_pole": -1.20636247506226e-09,
+      "double_pole": -3.177228837099597e-10,
+      "accuracy": 0.0,
+      "born_sector": {
+       "QCD": 8,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 1.4927555493611866e-09,
+     "finite": -8.350480402185515e-10,
+     "single_pole": -1.20636247506226e-09,
+     "double_pole": -3.177228837099597e-10,
+     "accuracy": 0.0
+    }
+   },
+   "born_from_madloop_double_pole": 1.4927555493627723e-09,
+   "providers": {
+    "madloop": {
+     "born": 1.4927555493611866e-09,
+     "finite": -8.350480402185515e-10,
+     "single_pole": -1.20636247506226e-09,
+     "double_pole": -3.177228837099597e-10,
+     "accuracy": 0.0,
+     "status": 329,
+     "seconds": 132.72107,
+     "universal_double_pole_relative_error": 1.0622139833960468e-12
+    },
+    "recola": {
+     "born": 1.4927555493611884e-09,
+     "finite": -8.350480402275003e-10,
+     "single_pole": -1.2063624750642909e-09,
+     "double_pole": -3.1772288371190995e-10,
+     "seconds": 0.390161332,
+     "raw": {
+      "born": 1.4927555493611884e-09,
+      "finite": -3.124148449925221e-10,
+      "single_pole": -1.2063624750642909e-09,
+      "double_pole": -3.1772288371190995e-10
+     },
+     "universal_double_pole_relative_error": 7.199070659789038e-12
+    },
+    "openloops": {
+     "born": 1.492755549361196e-09,
+     "finite": -8.350480402229017e-10,
+     "single_pole": -1.2063624750619365e-09,
+     "double_pole": -3.177228837095868e-10,
+     "accuracy": -1.0,
+     "seconds": 0.505639211,
+     "universal_double_pole_relative_error": 1.178068204625536e-13
+    }
+   },
+   "provider_pair_relative_errors": {
+    "madloop-recola": {
+     "born": 1.2467924698325708e-15,
+     "finite": 1.0716449387618903e-11,
+     "single_pole": 1.6835198714736101e-12,
+     "double_pole": 6.138158409222292e-12
+    },
+    "madloop-openloops": {
+     "born": 6.372494845810885e-15,
+     "finite": 5.209452189427541e-12,
+     "single_pole": 2.681015251999958e-13,
+     "double_pole": 1.1736748563473785e-12
+    },
+    "recola-openloops": {
+     "born": 5.125702375978321e-15,
+     "finite": 5.506997198220051e-12,
+     "single_pole": 1.9516213966731544e-12,
+     "double_pole": 7.311833265562466e-12
+    }
+   },
+   "provider_pair_strict_relative_errors": {
+    "madloop-recola": {
+     "born": 1.2467924698325708e-15,
+     "finite": 1.0716449387618903e-11,
+     "single_pole": 1.6835198714736101e-12,
+     "double_pole": 6.138158409222292e-12
+    },
+    "madloop-openloops": {
+     "born": 6.372494845810885e-15,
+     "finite": 5.209452189427541e-12,
+     "single_pole": 2.681015251999958e-13,
+     "double_pole": 1.1736748563473785e-12
+    },
+    "recola-openloops": {
+     "born": 5.125702375978321e-15,
+     "finite": 5.506997198220051e-12,
+     "single_pole": 1.9516213966731544e-12,
+     "double_pole": 7.311833265562466e-12
+    }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 1.0622671842962233e-12,
+    "max_sector_double_pole_relative_error": 1.0622139833960468e-12,
+    "outlier": {
+     "rule": 1,
+     "ruling": "pending: routed to the user via the coordinator",
+     "conditions": {
+      "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+      "ii": "fails: OpenLoops (ppjjjj, binary64) = DD to 1.2e-12 (mq-validate F3)"
+     },
+     "providers": {
+      "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 1.1e-12",
+      "openloops": "misses the universal double pole by 1.2e-13; MadLoop - OpenLoops: finite 5.2e-12, double pole 1.2e-12",
+      "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+     }
+    },
+    "reason": "rule 1 outlier at point 2: no provider value satisfies rule 1 (i) here; ruling pending"
+   }
+  },
+  {
+   "born": 1.435998444902697e-09,
+   "finite": 9.28822357505007e-11,
+   "single_pole": -5.180691103197512e-10,
+   "double_pole": -3.056425193743912e-10,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 329,
+   "sectors": {
+    "born": [
+     {
+      "QCD": 8,
+      "QED": 0,
+      "born": 1.435998444902697e-09
+     }
+    ],
+    "loop": [
+     {
+      "QCD": 10,
+      "QED": 0,
+      "finite": 9.28822357505007e-11,
+      "single_pole": -5.180691103197512e-10,
+      "double_pole": -3.056425193743912e-10,
+      "accuracy": 0.0,
+      "born_sector": {
+       "QCD": 8,
+       "QED": 0
+      }
+     }
+    ],
+    "total": {
+     "born": 1.435998444902697e-09,
+     "finite": 9.28822357505007e-11,
+     "single_pole": -5.180691103197512e-10,
+     "double_pole": -3.056425193743912e-10,
+     "accuracy": 0.0
+    }
+   },
+   "born_from_madloop_double_pole": 1.4359984449021886e-09,
+   "providers": {
+    "madloop": {
+     "born": 1.435998444902697e-09,
+     "finite": 9.28822357505007e-11,
+     "single_pole": -5.180691103197512e-10,
+     "double_pole": -3.056425193743912e-10,
+     "accuracy": 0.0,
+     "status": 329,
+     "seconds": 132.09827,
+     "universal_double_pole_relative_error": 3.540265408786603e-13
+    },
+    "recola": {
+     "born": 1.4359984449026861e-09,
+     "finite": 9.28822357466272e-11,
+     "single_pole": -5.180691103229616e-10,
+     "double_pole": -3.0564251937786624e-10,
+     "seconds": 0.390909985,
+     "raw": {
+      "born": 1.4359984449026861e-09,
+      "finite": 5.956440281485985e-10,
+      "single_pole": -5.180691103229616e-10,
+      "double_pole": -3.0564251937786624e-10
+     },
+     "universal_double_pole_relative_error": 1.1023199064628411e-11
+    },
+    "openloops": {
+     "born": 1.4359984449026897e-09,
+     "finite": 9.288223575182815e-11,
+     "single_pole": -5.180691103196202e-10,
+     "double_pole": -3.056425193745121e-10,
+     "accuracy": -1.0,
+     "seconds": 0.504797869,
+     "universal_double_pole_relative_error": 4.651567068400743e-14
+    }
+   },
+   "provider_pair_relative_errors": {
+    "madloop-recola": {
+     "born": 7.632419906325367e-15,
+     "finite": 4.1703269810760136e-11,
+     "single_pole": 6.196839940705069e-12,
+     "double_pole": 1.1369613950300417e-11
+    },
+    "madloop-openloops": {
+     "born": 5.184285219390815e-15,
+     "finite": 1.4291827186767055e-11,
+     "single_pole": 2.528711457670771e-13,
+     "double_pole": 3.9546777476076134e-13
+    },
+    "recola-openloops": {
+     "born": 2.4481346869345644e-15,
+     "finite": 5.5995096996931174e-11,
+     "single_pole": 6.4497110864705796e-12,
+     "double_pole": 1.0974146175543996e-11
+    }
+   },
+   "provider_pair_strict_relative_errors": {
+    "madloop-recola": {
+     "born": 7.632419906325367e-15,
+     "finite": 4.1703269810760136e-11,
+     "single_pole": 6.196839940705069e-12,
+     "double_pole": 1.1369613950300417e-11
+    },
+    "madloop-openloops": {
+     "born": 5.184285219390815e-15,
+     "finite": 1.4291827186767055e-11,
+     "single_pole": 2.528711457670771e-13,
+     "double_pole": 3.9546777476076134e-13
+    },
+    "recola-openloops": {
+     "born": 2.4481346869345644e-15,
+     "finite": 5.5995096996931174e-11,
+     "single_pole": 6.4497110864705796e-12,
+     "double_pole": 1.0974146175543996e-11
+    }
+   },
+   "reference": {
+    "status": "ok",
+    "comparison": "relative",
+    "absolute_scale_row": null,
+    "absolute_scale": null,
+    "born_source": "madloop",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.541154820689449e-13,
+    "max_sector_double_pole_relative_error": 3.540265408786603e-13,
+    "outlier": {
+     "rule": 1,
+     "ruling": "pending: routed to the user via the coordinator",
+     "conditions": {
+      "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+      "ii": "fails: OpenLoops (ppjjjj, binary64) = DD to 2.6e-12 (mq-validate F3)"
+     },
+     "providers": {
+      "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 3.5e-13",
+      "openloops": "misses the universal double pole by 4.7e-14; MadLoop - OpenLoops: finite 1.4e-11, double pole 4.0e-13",
+      "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+     }
+    },
+    "reason": "rule 1 outlier at point 3: no provider value satisfies rule 1 (i) here; ruling pending"
+   }
+  }
+ ],
+ "per_helicity": null,
+ "primary_provider": "madloop",
+ "universal_double_pole_factor": -0.21284321056156136,
+ "maximum_provider_relative_error": 5.5995096996931174e-11,
+ "error_metric": "|a-b|/max(|a|,|b|,|Born|*coupling/(2pi)) for Laurent coefficients, |a-b|/max(|a|,|b|) for Born; strict relative errors also listed per row",
+ "maximum_universal_double_pole_relative_error": 1.1023199064628411e-11,
+ "tolerance": 2e-08,
+ "validation_status": "passed",
+ "validated_providers": [
+  "madloop",
+  "recola",
+  "openloops"
+ ],
+ "excluded_providers": {},
+ "providers": {
+  "madloop": {
+   "provider": "madloop",
+   "process_name": "gg_uuxuux",
+   "host": "itphlies",
+   "cpu": null,
+   "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_uuxuux/points.json",
+   "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+   "settings": {
+    "absent_card_parameters_fixed_to_zero": [
+     "MB",
+     "ymb"
+    ],
+    "MadLoopParams": {
+     "MLReductionLib": "6|7|1",
+     "COLLIERGlobalCache": "-1",
+     "MLStabThres": "1.000000d-03",
+     "ImprovePSPoint": "2",
+     "HelicityFilterLevel": "0"
+    },
+    "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 9.118800e+01 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 173 # mt\n      15 0 # mta\n      23 91.188 # mz\n      25 125 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 8.041900e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 132.507 # aewm1\n      2 0.0000116639 # gf\n      3 0.118 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 173 # ymt\n      15 0 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0 # wt\nDECAY 23 0 # wz\nDECAY 24 0 # ww\nDECAY 25 0 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.441404e+00 # g0 : wz\nDECAY 251 2.047600e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  gh\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+    "MadLoopParams_overrides": {
+     "HelicityFilterLevel": "0"
+    },
+    "export": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_uuxuux/madloop-export",
+    "fortran_flags": {
+     "export_make_opts": {
+      "GLOBAL_FLAG": "-O",
+      "ALOHA_FLAG": "",
+      "MATRIX_FLAG": ""
+     },
+     "mg5_production": {
+      "GLOBAL_FLAG": "-O",
+      "ALOHA_FLAG": "",
+      "MATRIX_FLAG": ""
+     },
+     "production_build": true,
+     "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+    },
+    "mg5_quadruple_precision_model_function_repairs": [
+     "added KIND=16 to 19 CMPLX calls in MP_ functions",
+     "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+    ],
+    "requested_relative_accuracy": 1e-13,
+    "stability_check": "forced on every call",
+    "quadruple_precision_stage": "every point: the run's loop_matrix.f copy bypasses MadLoop's double-precision acceptance, so its quadruple-precision stage (MLStabThres test over two propagator directions; Ninja, else CutTools) evaluates every point (references.force_quadruple_stage)",
+    "quadruple_precision_required": true
+   },
+   "generation": {
+    "process_name": "gg_uuxuux",
+    "mg5": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+    "model": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/models/loop_sm-no_b_mass",
+    "command": "g g > u u~ u u~ QED=0 [virt=QCD]",
+    "host": "itphlies",
+    "pid": 2291440,
+    "status": "compiled",
+    "graph_generation_s": 21.453284508083016,
+    "process": "Process: g g > u u~ u u~ QED=0 [ virt = QCD ]",
+    "born": 72,
+    "loops": 3060,
+    "identified_loop_records": 2284,
+    "count_convention": "loops: sum of native diagram.multiplier",
+    "born_orders": [
+     {
+      "QCD": 4,
+      "QED": 0,
+      "count": 72
+     }
+    ],
+    "loop_orders": [
+     {
+      "QCD": 6,
+      "QED": 0,
+      "count": 3060
+     }
+    ],
+    "UVCT_diagrams": 144,
+    "attached_CT_vertices": 3676,
+    "source_export_s": 36.08657020400278,
+    "subprocess_directories": [
+     "P0_gg_uuxuux"
+    ],
+    "fortran_flags": {
+     "GLOBAL_FLAG": "-O",
+     "ALOHA_FLAG": "",
+     "MATRIX_FLAG": ""
+    },
+    "compile_s": 13.469359384151176,
+    "compile_jobs": 4
+   },
+   "version": "MadLoop/MG5_aMC 3.7.0",
+   "provenance": {
+    "MG5_aMC": {
+     "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0",
+     "version": "3.7.0"
+    },
+    "reducer_libraries": {
+     "libcts.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+      "version": null
+     },
+     "libiregi.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+      "version": null
+     },
+     "libninja.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+      "version": "1.2.0"
+     },
+     "libavh_olo.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+      "version": "3.6"
+     },
+     "libcollier.a": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+      "version": "1.2.9"
+     }
+    }
+   },
+   "split_order_indices": [
+    1,
+    1,
+    1,
+    1
+   ],
+   "initial_call_seconds": 134.29834,
+   "initialization_calls": 1,
+   "squared_split_orders": {
+    "born": [
+     {
+      "index": 1,
+      "QCD": 8,
+      "QED": 0
+     }
+    ],
+    "loop": [
+     {
+      "index": 1,
+      "QCD": 10,
+      "QED": 0
+     }
+    ]
+   },
+   "process_wall_seconds": 928.4905621511862,
+   "split_points": {
+    "jobs": 4,
+    "initial_call_seconds": [
+     134.29834,
+     65.4512034,
+     133.145398,
+     133.226704
+    ],
+    "process_wall_seconds": [
+     266.7472508221399,
+     130.47019816702232,
+     265.9118696330115,
+     265.3612435290124
+    ],
+    "cpus": [
+     15,
+     18,
+     22,
+     23
+    ],
+    "note": "one job per point: every point is also the job's initialisation point; process_wall_seconds is the sum over the jobs, initial_call_seconds the first job's (all jobs listed here)"
+   },
+   "evaluation_seconds": [
+    132.406805,
+    64.9719144,
+    132.72107,
+    132.09827
+   ],
+   "secondary_runs": {
+    "mlstabthres": {
+     "settings": {
+      "requested_relative_accuracy": 1e-13,
+      "stability_check": "forced on every call",
+      "fortran_flags": {
+       "export_make_opts": {
+        "GLOBAL_FLAG": "-O",
+        "ALOHA_FLAG": "",
+        "MATRIX_FLAG": ""
+       },
+       "mg5_production": {
+        "GLOBAL_FLAG": "-O",
+        "ALOHA_FLAG": "",
+        "MATRIX_FLAG": ""
+       },
+       "production_build": true,
+       "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+      },
+      "MadLoopParams": {
+       "MLReductionLib": "6|7|1",
+       "COLLIERGlobalCache": "-1",
+       "MLStabThres": "1.000000d-03",
+       "ImprovePSPoint": "2"
+      }
+     },
+     "version": "MadLoop/MG5_aMC 3.7.0",
+     "evaluation_seconds": [
+      61.9806135,
+      29.4489317,
+      88.9852676,
+      64.0573525
+     ],
+     "statuses": [
+      329,
+      328,
+      329,
+      329
+     ],
+     "estimated_accuracies": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "relative_deviation_from_reference_run": [
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      }
+     ],
+     "initial_call_seconds": 203.229026,
+     "cpu": null
+    }
+   }
+  },
+  "recola": {
+   "provider": "recola",
+   "process_name": "gg_uuxuux",
+   "host": "itphlies",
+   "cpu": 206,
+   "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_uuxuux/points.json",
+   "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+   "settings": {
+    "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+    "commands": [
+     "mass W 80.4190024457561601055171371731 0",
+     "mass Z 91.188 0",
+     "mass H 125 0",
+     "mass top 173 0",
+     "mass bottom 0 0",
+     "mass charm 0 0",
+     "mass strange 0 0",
+     "mass up 0 0",
+     "mass down 0 0",
+     "mass tau 0 0",
+     "mass muon 0 0",
+     "mass electron 0 0",
+     "alpha0 0.00754677111397888413442308708219",
+     "onshell",
+     "alphas 0.118 1000 5",
+     "legs 6",
+     "born_gs 4",
+     "loop_gs 6",
+     "pow_lo 4",
+     "pow_nlo 5",
+     "process g g -> u u~ u u~",
+     "generate"
+    ],
+    "collier_cache": "on",
+    "dynamic_settings": 1,
+    "compute_ir_poles": 1,
+    "delta_uv": 0,
+    "delta_ir": [
+     0,
+     0
+    ],
+    "mu_uv=mu_ir=mu_r": true
+   },
+   "provenance": {
+    "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+    "self_reported_version": "2.2.5",
+    "linked": {
+     "librecola.so": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0/librecola.so",
+      "version": "2.2.5"
+     },
+     "libcollier.so": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/COLLIER-1.2.8/libcollier.so",
+      "version": "1.2.8"
+     },
+     "libmodelfile.so": {
+      "path": "${LOOP_REFERENCE_ROOT}/models/SM_2.2.3/libmodelfile.so",
+      "version": "2.2.3"
+     }
+    }
+   },
+   "version": "Recola2 2.2.5 (tree ${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3",
+   "generation_seconds": 6.31725246,
+   "initial_call_seconds": 0.556295811,
+   "process_wall_seconds": 8.505256565986201,
+   "evaluation_seconds": [
+    0.423306455,
+    0.389889571,
+    0.390161332,
+    0.390909985
+   ]
+  },
+  "openloops": {
+   "provider": "openloops",
+   "process_name": "gg_uuxuux",
+   "host": "itphlies",
+   "cpu": 21,
+   "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_uuxuux/points.json",
+   "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+   "settings": {
+    "commands": [
+     "int truepoles 1",
+     "int polenorm 0",
+     "int ct_on 1",
+     "int r2_on 1",
+     "int iop_on 0",
+     "int nf 6",
+     "int nq_nondecoupled 5",
+     "int coupling_qcd_0 4",
+     "int coupling_qcd_1 1",
+     "int coupling_ew_0 0",
+     "int coupling_ew_1 0",
+     "int ew_scheme 1",
+     "int ew_renorm_scheme 1",
+     "int complex_mass_scheme 0",
+     "double gmu 0.0000116639",
+     "double mass(23) 91.188",
+     "double width(23) 0",
+     "double mass(24) 80.4190024457561601055171371731",
+     "double width(24) 0",
+     "double mass(25) 125",
+     "double width(25) 0",
+     "double mass(6) 173",
+     "double width(6) 0",
+     "double mass(5) 0",
+     "double width(5) 0",
+     "double mass(4) 0",
+     "double mass(15) 0",
+     "double mass(13) 0",
+     "double mass(11) 0",
+     "double alpha_s 0.118",
+     "register 11 21 21 -> 2 -2 2 -2"
+    ],
+    "OpenLoopsPath": "${LOOP_REFERENCE_ROOT}/sources/OpenLoops-2.1.5"
+   },
+   "version": "OpenLoops 2.1.5",
+   "provenance": {
+    "openloops": {
+     "path": "${LOOP_REFERENCE_ROOT}/sources/OpenLoops-2.1.5",
+     "release": "2.1.5"
+    },
+    "linked": {
+     "libopenloops.so.2": {
+      "path": "${LOOP_REFERENCE_ROOT}/sources/OpenLoops-2.1.5/lib/libopenloops.so.2.1.5",
+      "version": null
+     }
+    }
+   },
+   "library": {
+    "name": "ppjjjj",
+    "loops": "lt",
+    "git_revision": "d3d5302",
+    "process_api_version": "2",
+    "date": "2022-06-29-10-34-49",
+    "hash": "133a4991b6c4ad66c6e46cc9dfbdb8cb"
+   },
+   "start_seconds": 0.001767185,
+   "initial_call_seconds": 0.588079527,
+   "process_wall_seconds": 2.6904479621443897,
+   "evaluation_seconds": [
+    0.494586119,
+    0.472547074,
+    0.505639211,
+    0.504797869
+   ]
+  }
+ },
+ "timing_only_runs": {},
+ "tolerance_scope": "'tolerance' and 'validation_status' are the references.py merge's provider-agreement check (the G1 2e-8 tolerance); they are not M-QCD acceptance values: m-qcd/PLAN.md \u00a71.4 applies, with each point's 'reference' record",
+ "mqcd_run": {
+  "id": "gg_uuxuux",
+  "process": "gg_uuxuux",
+  "export": "runs/mqcd/gg_uuxuux/madloop-export",
+  "split_points": true,
+  "second_providers": [
+   "openloops",
+   "recola"
+  ],
+  "second_provider_trigger": "\u00a74.1: rule 1 (DD against MadLoop) exceeded 1e-12 at points 0, 2, 3 (mq-validate finding F3: MadLoop's CutTools quadruple-precision values, return code 329, 3.5e-12 .. 1.2e-11 off); the installed ppjjjj library and Recola (a third independent value for the user's ruling, audit of fix round 2), no installation; outcome recorded in the fixture's provider pairs",
+  "point_status": {
+   "0": {
+    "outlier": {
+     "rule": 1,
+     "ruling": "pending: routed to the user via the coordinator",
+     "conditions": {
+      "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+      "ii": "holds: OpenLoops (ppjjjj, binary64) = DD to 5.5e-13 (mq-validate F3)"
+     },
+     "providers": {
+      "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 3.5e-13",
+      "openloops": "misses the universal double pole by 3.5e-14; MadLoop - OpenLoops: finite 4.0e-12, double pole 3.1e-13",
+      "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+     }
+    },
+    "reason": "rule 1 outlier at point 0: no provider value satisfies rule 1 (i) here; ruling pending"
+   },
+   "2": {
+    "outlier": {
+     "rule": 1,
+     "ruling": "pending: routed to the user via the coordinator",
+     "conditions": {
+      "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+      "ii": "fails: OpenLoops (ppjjjj, binary64) = DD to 1.2e-12 (mq-validate F3)"
+     },
+     "providers": {
+      "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 1.1e-12",
+      "openloops": "misses the universal double pole by 1.2e-13; MadLoop - OpenLoops: finite 5.2e-12, double pole 1.2e-12",
+      "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+     }
+    },
+    "reason": "rule 1 outlier at point 2: no provider value satisfies rule 1 (i) here; ruling pending"
+   },
+   "3": {
+    "outlier": {
+     "rule": 1,
+     "ruling": "pending: routed to the user via the coordinator",
+     "conditions": {
+      "i": "fails: MadLoop's own accuracy at the point is 0.0 (forced quadruple-precision stage, CutTools, return code 329); an accuracy of 0.0 covers no nonzero difference, so rule 1 (i) cannot hold at any point where DD and MadLoop differ (mq-validate F3: by 3.5e-12 or more)",
+      "ii": "fails: OpenLoops (ppjjjj, binary64) = DD to 2.6e-12 (mq-validate F3)"
+     },
+     "providers": {
+      "madloop": "CutTools quadruple precision (329, accuracy 0.0); misses its own universal double pole by 3.5e-13",
+      "openloops": "misses the universal double pole by 4.7e-14; MadLoop - OpenLoops: finite 1.4e-11, double pole 4.0e-13",
+      "recola": "Recola (COLLIER, binary64) differs from MadLoop and OpenLoops by 1.7e-12 .. 5.6e-11 (Laurent coefficients) at every point, including point 1 where MadLoop (Ninja, 328) and OpenLoops agree to 1e-12: not a 1e-12 reference for this process, so it decides no point"
+     }
+    },
+    "reason": "rule 1 outlier at point 3: no provider value satisfies rule 1 (i) here; ruling pending"
+   }
+  },
+  "reference_notes": {
+   "0": "OUTLIER (rule 1): reference.outlier; OpenLoops satisfies (ii) only, (i) fails",
+   "1": "MadLoop's quadruple-precision stage takes Ninja (328) and agrees with OpenLoops to 1e-12",
+   "2": "OUTLIER (rule 1): reference.outlier; no provider is a 1e-12 reference",
+   "3": "OUTLIER (rule 1): reference.outlier; no provider is a 1e-12 reference"
+  },
+  "points": {
+   "generator": "exact"
+  }
+ }
+}

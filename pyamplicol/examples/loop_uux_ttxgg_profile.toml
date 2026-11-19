@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: profile the uux_ttxgg artifact (time per stage, optimistic
+# default; add --checked for the checked timing mode) on both
+# reduction backends side by side; --stability adds the stable-digit statistics
+# (pyamplicol profile --card loop_uux_ttxgg_profile.toml --stability).
+
+schema_version = 1
+action = "benchmark"
+
+[evaluation]
+artifact = "artifacts/loop_uux_ttxgg"
+momenta = "data/loop_uux_ttxgg_momenta.json"
+
+[benchmark]
+# profile: the counts come from the time budgets (about 10 s for the runtime
+# timing, a minute per stability worker) so that an expensive process stays
+# bounded; --completion-time 10m sets the whole profile's time instead, and
+# batch_size, minimum_samples or stability_points set here are honoured.
+# --stability runs on 10 worker processes (n_core, --n_core; at most the
+# usable cores). The live display shows every phase with its ETA; Ctrl-C
+# prints the tables of what is complete.
+n_core = 10

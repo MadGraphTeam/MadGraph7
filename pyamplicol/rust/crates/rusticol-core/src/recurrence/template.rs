@@ -1444,7 +1444,7 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 self.parameters.len(),
                 "parameter dependencies",
             )?;
-            if dependencies.contains(&(index as u32)) {
+            if u32::try_from(index).is_ok_and(|id| dependencies.contains(&id)) {
                 return Err(invalid(format!(
                     "parameter {index} depends directly on itself"
                 )));

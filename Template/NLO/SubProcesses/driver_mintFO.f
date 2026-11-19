@@ -311,8 +311,6 @@ c PineAPPL
       common /for_pineappl/ pineappl
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
-      integer     fold,ifold_counter
-      common /cfl/fold,ifold_counter
       integer ini_fin_fks_map(0:2,0:fks_configs)
       save ini_fin_fks_map
       include 'has_ewsudakov.inc'
@@ -327,6 +325,7 @@ c Share the sampled Born within this evaluation when sectors permit it.
          pass_cuts_check=.false.
       endif
       call vs_begin_point
+      call reset_folded_virtual
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
@@ -339,7 +338,6 @@ c Share the sampled Born within this evaluation when sectors permit it.
          write (*,*) 'ERROR ifl not equal to zero in sigint',ifl
          stop 1
       endif
-      fold=ifl
       if (pineappl .and. sum) then
          write (*,*) 'WARNING: PineAPPL only possible '/
      &        /'with MC over FKS directories',pineappl,sum

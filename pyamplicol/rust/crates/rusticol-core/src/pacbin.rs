@@ -55,6 +55,9 @@ pub enum PacbinMemberKind {
     ColorContraction = 10,
     /// A payload declared by the artifact manifest, stored in its payload container.
     DeclaredPayload = 11,
+    /// A one-loop runtime plan (upstream pyAmpliCol numbers it 11; 11 is
+    /// `DeclaredPayload` here, which MadGraph7 artifacts already carry).
+    LoopRuntimePlan = 12,
 }
 
 impl PacbinMemberKind {
@@ -70,6 +73,7 @@ impl PacbinMemberKind {
             9 => Ok(Self::OnTheFlyProcessSeed),
             10 => Ok(Self::ColorContraction),
             11 => Ok(Self::DeclaredPayload),
+            12 => Ok(Self::LoopRuntimePlan),
             _ => Err(compatibility(format!(
                 "unknown pacbin member kind: {value}"
             ))),
@@ -434,7 +438,7 @@ impl PacbinReader {
     }
 
     /// Authenticate and snapshot an already-open, metadata-checked container.
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(crate) fn open_file_with_sha256(
         file: File,
@@ -466,7 +470,7 @@ impl PacbinReader {
         Self::from_storage(storage, verify_payloads)
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     fn open_file_storage(mut file: File, path: &Path) -> RusticolResult<(PacbinStorage, [u8; 32])> {
         let expected_length = file
@@ -529,7 +533,7 @@ impl PacbinReader {
         Self::from_storage(PacbinStorage::Owned(bytes.into_boxed_slice()), true)
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     fn from_storage(bytes: PacbinStorage, verify_payloads: bool) -> RusticolResult<Self> {
         let index = parse_and_validate(bytes.as_ref(), verify_payloads)?;
@@ -1155,7 +1159,7 @@ fn normalize_logical_path_impl(value: &str) -> Result<String, String> {
     Ok(parts.join("/"))
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn parse_and_validate(bytes: &[u8], verify_payloads: bool) -> RusticolResult<PacbinIndex> {
     let minimum_size = HEADER_SIZE

@@ -33,7 +33,8 @@ tests). Each test:
      entry may add cuts (``"cuts": {"<cut>.<bound>": value}``), set
      ``[phasespace] cut_decays`` (``"cut_decays": true``), set ``[beam]``
      entries (``"beam": {"ebeam1": 250.0}``, e.g. the energy of a lepton
-     collider, whose default is 500 GeV per beam) and switch MadNIS off
+     collider, whose default is 500 GeV per beam), set ``[phasespace]``
+     entries (``"phasespace": {"ktdurham": 30.0}``) and switch MadNIS off
      (``"madnis": false``, see below),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
@@ -111,7 +112,7 @@ import traceback
 import unittest
 
 import madgraph.interface.master_interface as MGCmd
-import madgraph.various.misc as misc
+import tests
 
 pjoin = os.path.join
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -163,24 +164,19 @@ def _require_mg7_runtime(test):
     Only a skip gate: the run itself must locate LHAPDF from the configuration
     the way a user's ``bin/generate_events`` does, with no environment help.
     """
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    if not has_mg7:
+    if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
         test.skipTest('mg7 runtime stack (madspace) unavailable')
 
-    if not misc.resolve_lhapdf().find_set(_REFERENCE_PDF):
+    if not tests.lhapdf_data_path(_REFERENCE_PDF):
         test.skipTest('%s LHAPDF data not found (set the lhapdf option or '
                       '$LHAPDF_DATA_PATH)' % _REFERENCE_PDF)
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
-                   cut_decays=None, madnis=None, beam=None):
+                   cut_decays=None, madnis=None, beam=None, phasespace=None):
     """Set the event count, (optionally) neutralise the jet cuts, add the
-    entry's extra cuts and set its cut_decays, [beam] entries and MadNIS
-    switch.
+    entry's extra cuts and set its cut_decays, [beam] / [phasespace] entries
+    and MadNIS switch.
 
     The reference cross-sections were produced with FIXED scales
     (mu = 91.188 GeV) and with the NNPDF23_lo_as_0130_qed PDF set. The
@@ -223,6 +219,10 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
         t, count = re.subn(r'(?m)^%s = .*$' % re.escape(key),
                            lambda m: '%s = %s' % (key, json.dumps(value)), t)
         assert count == 1, 'no [beam] %s in %s' % (key, toml_path)
+    for key, value in (phasespace or {}).items():
+        # e.g. the CKKW-L merging cut ktdurham / ptlund
+        t, count = re.subn(r'(?m)^%s = [^#\n]*' % key, '%s = %r ' % (key, value), t)
+        assert count == 1, 'no %s in %s' % (key, toml_path)
     if madnis is not None:
         # the first `enable` after the [madnis] header ([vegas] and
         # [systematics] have one too)
@@ -340,7 +340,8 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
                        entry.get('cuts'), entry.get('cut_decays'),
-                       entry.get('madnis'), entry.get('beam'))
+                       entry.get('madnis'), entry.get('beam'),
+                       entry.get('phasespace'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:
