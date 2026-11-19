@@ -129,6 +129,15 @@ Full-colour and next-to-leading-colour Born-interfered virtuals take a
 run-time helicity selection (`helicities=`) in the Python API and the native
 SDKs.
 
+The runtime settings of a one-loop runtime are supplied the same way in
+every interface: one by one (keywords, flags, SDK setters) or together in a
+runtime-options TOML, the run card's `[evaluation]` table (`evaluate
+--card`, `Runtime.load(..., options=)`, `rusticol_virtual_set_options`;
+a full run card is accepted). `evaluation.threads` (`--threads`,
+`Runtime.load(threads=)`, `rusticol_virtual_set_threads`) bounds the native
+threads of a runtime's load and evaluations; unset, `RAYON_NUM_THREADS` or
+every core as before. See [Configuration](configuration.md#runtime-options).
+
 `pyamplicol check` runs the pole (Catani; finiteness for loop-induced
 processes), Ward and Goldstone checks of a one-loop run card or artifact,
 regenerated in memory, escalating undecided rows to double-double and

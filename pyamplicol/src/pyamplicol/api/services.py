@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pyamplicol as _pyamplicol
@@ -520,6 +521,10 @@ class Generator:
 class Runtime:
     """Typed Python facade for one process in a generated Rusticol artifact."""
 
+    # The call options of the runtime options (``Runtime.load(options=)``);
+    # none by default.
+    _call_defaults: Mapping[str, object] = MappingProxyType({})
+
     def __init__(self, backend: RuntimeBackend) -> None:
         # Python 3.11 runtime Protocol checks invoke properties. Match the
         # static lookup used by newer Python versions, preserving lazy physics.
@@ -542,7 +547,7 @@ class Runtime:
         # The call options a runtime-options TOML gave at load
         # (``Runtime.load(options=)``: poles, on_failure, stability_checks),
         # used by every call that names none.
-        self._call_defaults: dict[str, object] = {}
+        self._call_defaults = MappingProxyType({})
 
     @classmethod
     def load(
@@ -618,32 +623,27 @@ class Runtime:
             )
 
             given = read_runtime_options(options)
-            keywords = {
-                "arithmetic": arithmetic,
-                "precision": precision,
-                "reduction": reduction,
-                "reduction_target": reduction_target,
-                "reduction_unchecked": reduction_unchecked,
-                "lane_rescue": lane_rescue,
-                "kinematics_improvement": kinematics_improvement,
-                "kinematics_improvement_binary64": kinematics_improvement_binary64,
-                "threads": threads,
-            }
-            merged = {
-                name: given[name] if value is None and name in given else value
-                for name, value in keywords.items()
-            }
-            (
-                arithmetic,
-                precision,
-                reduction,
-                reduction_target,
-                reduction_unchecked,
-                lane_rescue,
-                kinematics_improvement,
-                kinematics_improvement_binary64,
-                threads,
-            ) = merged.values()
+            # A keyword given wins over the TOML's value (``given``: Any).
+            if arithmetic is None:
+                arithmetic = given.get("arithmetic")
+            if precision is None:
+                precision = given.get("precision")
+            if reduction is None:
+                reduction = given.get("reduction")
+            if reduction_target is None:
+                reduction_target = given.get("reduction_target")
+            if reduction_unchecked is None:
+                reduction_unchecked = given.get("reduction_unchecked")
+            if lane_rescue is None:
+                lane_rescue = given.get("lane_rescue")
+            if kinematics_improvement is None:
+                kinematics_improvement = given.get("kinematics_improvement")
+            if kinematics_improvement_binary64 is None:
+                kinematics_improvement_binary64 = given.get(
+                    "kinematics_improvement_binary64"
+                )
+            if threads is None:
+                threads = given.get("threads")
             calls = {name: given[name] for name in CALL_OPTIONS if name in given}
             if stability is not None and calls.get("stability_checks") is not None:
                 raise ConfigurationError(
@@ -704,7 +704,7 @@ class Runtime:
                 raise CompatibilityError(
                     ", ".join(given_calls) + " are virtual options"
                 )
-            runtime._call_defaults = calls
+            runtime._call_defaults = MappingProxyType(calls)
         return runtime
 
     @property
