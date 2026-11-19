@@ -816,9 +816,11 @@ took):
   A value stated in a run card counts as given even when it equals the
   default (`n_core = 10`, `ground_truth = "double-double"`): leave a
   setting out of the card to keep its default behaviour. A
-  `--target-runtime` given alone is the runtime timing's budget per backend:
-  the counts follow it as they follow the default budget (the minimums,
-  more calls while it affords them).
+  `--target-runtime` given alone is each backend's timed binary64 budget
+  (its start-up and warm-up outside it, the reference pass's budget the
+  same on top), and the counts are chosen from it: one warm-up, the
+  largest batch whose five calls fit it, the minimum calls and more while
+  it affords them (not the default batch and calls as if given).
 - neither: the default budgets, 10 s for the runtime timing of all backends
   and one minute of work per `--n_core` worker for the stability run (about
   a minute of wall time whatever `--n_core`: more workers, more points). On
@@ -864,25 +866,30 @@ took):
     `--loop-reduction` one backend. With one backend in the stability run
     and an arbitrary-precision ground truth, every reference is certified by
     its own checks (there is no second backend's reference to agree with).
-  Nothing is left out on an over-estimate. Before the runtime timing the
-  measurement's one-point costs decide only on a true lower bound (the
-  16-point call at one point's cost, the warming at the entry's or that
-  point's, the reference at its measured point or at least the binary64
-  point, a checked stability point at least one optimistic pass): a
-  backend or the reference is left out there only when it surely exceeds
-  the budget, and the measurement stops after the default backend when its
-  lower bound alone decides. Rule A is then decided again on the default
-  backend's runtime row (its 16-point call measured), which runs first:
-  the other backends start only when that row keeps them. Without a
-  measurement phase, rule B is decided by the first backend's runtime
-  timing on a lower bound of every backend's minimum (its measured
-  16-point call, its reference at least its binary64 pass), and holds for
-  every backend: the multipliers are all shown or none. The record and the
-  `counts` row are re-planned from every runtime row's measured costs. A
-  backend profiled alone keeps the per-backend share it has beside the
-  others (its row does not depend on which other rows are shown). A notice
-  says what was left out, and the `counts` row repeats it ("TIRust not
-  profiled (--all-backends)", "no dd multiplier (--ground-truth)").
+  One decision, whatever the path: each rule is a function of what this
+  run has measured so far (`profile_plan.rule_b_drops`, `rule_a_drops`),
+  called again whenever a measured number arrives: each step of the
+  measurement, the first backend's runtime timing after its binary64 call
+  and after its untimed reference point, the default backend's runtime
+  row. It drops something only when a lower bound of the real cost exceeds
+  the budget: the chunk call at one measured point's cost (a chunk costs
+  at least one of its points), a warm-up at one point, an untimed
+  reference point at its measured cold cost, a timed one at least the
+  binary64 point, a checked stability point at least one optimistic pass.
+  The bound only grows, so a drop is final, and the verdict follows the
+  measured numbers alone: the measurement, a run without one (where the
+  first backend's untimed reference point measures the reference before
+  its timed point runs), with or without a previous profile (whose costs
+  set ETAs only). Rule B is judged on the default backend, profiled first:
+  its own minimum with its reference against the budget of all backends
+  (a lower bound of theirs), so that every path decides on the same
+  numbers; its verdict holds for every backend (all multipliers or none).
+  Rule A never counts a reference that rule B could leave out. The record
+  and the `counts` row are re-planned from what ran. A backend profiled
+  alone keeps the per-backend share it has beside the others. A notice
+  says what was left out (and when it was measured in a runtime timing),
+  and the `counts` row repeats it ("TIRust not profiled (--all-backends)",
+  "no dd multiplier (--ground-truth)").
 
   The stability run starts no more worker processes than the memory holds:
   at most three quarters of the memory available when it starts, at one
