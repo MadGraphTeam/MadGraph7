@@ -271,7 +271,7 @@ for metric in ("relative", "scale"):
     (value,) = result.values[0]
     found.append(
         [metric, record.met, estimate.relative, estimate.scale, level.target,
-         str(value.finite)]
+         str(value.finite), dict(estimate.checks)]
     )
 print(json.dumps(found))
 """
@@ -307,8 +307,12 @@ def test_g_g_to_z_reads_right_in_arbitrary_precision(li, tmp_path, digits):
         check=True,
     )
     found = json.loads(child.stdout.strip().splitlines()[-1])
-    for metric, met, relative, scale_estimate, target, value in found:
+    for metric, met, relative, scale_estimate, target, value, checks in found:
         assert met is (metric == "scale"), (digits, metric, found)
+        # Every check keeps its size (review M1: the native re-test budget
+        # and term scale read 0.0 above ~308 digits as binary64): the
+        # rescaled re-test reads 1.95 at 57 digits, 3.07 at 500.
+        assert checks["reduction-rescaled"] > 0.1, (digits, checks)
         assert relative > 1 / RESCUE_TARGET_OF_ZERO, found
         assert scale_estimate <= target, found
         assert abs(Decimal(value)) < Decimal(10) ** (-digits), value
