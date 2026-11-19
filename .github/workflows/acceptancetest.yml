@@ -812,6 +812,13 @@ jobs:
             ./tests/test_manager.py test_madspin_onium_decay_2to2 -pA -t0 -l INFO
             ./tests/test_manager.py test_madspin_onium_radiative -pA -t0 -l INFO
 
+      - name: test exclusive photoproduction with GPDs
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gpd_standalone -pA -t0 -l INFO
+            ./tests/test_manager.py test_gpd_madevent -pA -t0 -l INFO
+            ./tests/test_manager.py test_gpd_refusals -pA -t0 -l INFO
+
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
