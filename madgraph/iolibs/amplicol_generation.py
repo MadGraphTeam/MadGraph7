@@ -57,7 +57,7 @@ def generate_artifact(pyamplicol, artifact, accuracy, process, model,
                'coupling_order_policy': 'explicit',
                'max_coupling_orders': process['orders']}
     if flavor_unions:
-        # one pattern-resolved template per quark-flavour union (leading colour)
+        # one pattern-resolved template per quark-flavour union
         options['flavor_unions'] = True
     config = resolve_config({
         'schema_version': 1,
@@ -96,7 +96,7 @@ def generate(job):
         for accuracy in ('lc', 'full'):
             generate_artifact(pyamplicol, os.path.join(path, accuracy), accuracy,
                               process, model,
-                              flavor_unions=accuracy == 'lc' and job.get('flavor_unions', False))
+                              flavor_unions=job.get('flavor_unions', False))
         # the flavour switch of lc_flavors = two_lines_resample
         providers.append(umami_reweight.write_reweight_provider(
             os.path.join(path, 'lc'), os.path.join(path, 'full'),

@@ -53,7 +53,7 @@ class TestGenerationInProcess(unittest.TestCase):
         self.run_export(lambda job: jobs.append(job) or [], flavor_unions=True)
         self.assertTrue(jobs[0]['flavor_unions'])
 
-    def test_flavor_unions_apply_to_the_leading_colour_artifact(self):
+    def test_flavor_unions_apply_to_both_colour_artifacts(self):
         from madgraph.iolibs import amplicol_generation
         configs = []
         config_module = mock.Mock(resolve_config=lambda value: configs.append(value) or value)
@@ -61,12 +61,31 @@ class TestGenerationInProcess(unittest.TestCase):
         process = {'multiparticles': {}, 'orders': {'QED': 0}, 'expression': 'p p > j j'}
         with mock.patch.dict(sys.modules, {'pyamplicol': pyamplicol,
                                            'pyamplicol.config': config_module}):
-            for accuracy, unions in (('lc', False), ('lc', True), ('full', False)):
+            for accuracy, unions in (('lc', False), ('lc', True), ('full', False),
+                                     ('full', True)):
                 amplicol_generation.generate_artifact(
                     pyamplicol, '/tmp/a', accuracy, process, None, flavor_unions=unions)
         self.assertEqual([c['process'].get('flavor_unions', False) for c in configs],
-                         [False, True, False])
+                         [False, True, False, True])
         self.assertTrue(all(c['process']['flavor_blind_strict'] for c in configs))
+
+    def test_generate_passes_flavor_unions_to_both_artifacts(self):
+        from madgraph.iolibs import amplicol_generation
+        calls = []
+        licensing = mock.Mock()
+        licensing.detect_symbolica_license.return_value.licensed = True
+        artifacts = mock.Mock()
+        modules = {'pyamplicol': mock.Mock(), 'pyamplicol.artifacts': artifacts,
+                   'pyamplicol.licensing': licensing}
+        job = {'model': {}, 'flavor_unions': True,
+               'processes': [{'path': '/tmp/p0'}]}
+        with mock.patch.dict(sys.modules, modules), \
+                mock.patch.object(amplicol_generation, 'model_source'), \
+                mock.patch.object(amplicol_generation, 'generate_artifact',
+                                  lambda *args, **kwargs: calls.append(
+                                      (args[2], kwargs['flavor_unions']))):
+            amplicol_generation.generate(job)
+        self.assertEqual(calls, [('lc', True), ('full', True)])
 
     def test_failure_raises(self):
         def fail(job):

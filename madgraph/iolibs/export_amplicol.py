@@ -523,7 +523,7 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
                                interactive=None, jobs=None, flavor_unions=False):
     """The body of export_amplicol_processes. ``interactive`` and ``jobs`` are
     those of the pyamplicol installation, see bootstrap.ensure_pyamplicol;
-    ``flavor_unions`` generates the leading-colour artifacts with flavour-union
+    ``flavor_unions`` generates the LC and full-colour artifacts with flavour-union
     templates (option amplicol_flavor_unions)."""
     pyamplicol = check_pyamplicol(interactive, jobs)
     subproc_dir = pjoin(dir_path, 'SubProcesses')

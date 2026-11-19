@@ -13798,8 +13798,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.options['merge_same_topologies'] = banner_module.ConfigFile.format_variable(args[0], bool, 'merge_same_topologies')
 
     def set2_amplicol_flavor_unions(self, args, log=True):
-        """Set whether the leading-colour [amplicol] artifacts evaluate the flavours
-        of a quark-flavour union through one template (pyamplicol
+        """Set whether the leading- and full-colour [amplicol] artifacts evaluate
+        the flavours of a quark-flavour union through one template (pyamplicol
         process.flavor_unions, experimental). Default: False
         """
         args = ['amplicol_flavor_unions'] + args
