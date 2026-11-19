@@ -270,9 +270,10 @@ fn v2_plan_read_pool() -> Option<bool> {
 /// of the member, and a JSON through `LoopProgramV4::load`. A diagnostic: the
 /// digest formats the program beyond the reader's bound (`program_digest`),
 /// so fail-closed probes call `v2_plan_load(data, digest=False)` instead.
-/// With `threads`, the read runs on a thread pool of that many threads (the
-/// families derived in parallel and merged in family order): the digest is
-/// the same for every count.
+/// With `threads`, the read uses at most that many threads, started as its
+/// work uses them (`loop_artifact::on_load_threads`: the families derived in
+/// parallel and merged in family order): the digest is the same for every
+/// count.
 #[pyfunction]
 #[pyo3(signature = (data, threads=None))]
 fn v2_plan_read(py: Python<'_>, data: &[u8], threads: Option<usize>) -> PyResult<String> {

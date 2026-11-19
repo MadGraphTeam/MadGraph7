@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: 0BSD
 //! The plan loader's parallel family load and shared tables: the program is
 //! the sequential load's at any thread count (the families merged in family
-//! order), the first error in family order is the one returned, and the
-//! shared segment layouts are keyed by their contents' dimensions.
+//! order), the first error in family order is the one returned, a load
+//! starts only the threads its work uses, and the shared segment layouts are
+//! keyed by their contents' dimensions.
 
 #![cfg(feature = "loop-v2")]
 
 use rusticol_core::loop_v2::plan::binary::{PlanModel, program_digest, read_binary};
-use rusticol_core::loop_v2::plan::{LoopProgramV4, force_pipeline_for_tests};
+use rusticol_core::loop_v2::plan::{
+    LoopProgramV4, force_pipeline_for_tests, load_threads_started, with_load_threads,
+};
 use serde_json::{Value, json};
 
 /// A plan of `families` families of one seeded trace step each, over a fused
@@ -106,6 +109,48 @@ fn the_first_error_in_family_order_is_returned_on_any_thread_count() {
     for threads in [2, 3, 8] {
         let error = on_threads(threads, || load(&plan).unwrap_err());
         assert_eq!(error, sequential, "{threads} threads");
+    }
+    force_pipeline_for_tests(false);
+}
+
+#[test]
+fn a_load_starts_only_the_threads_its_work_uses() {
+    let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let member = |families: usize| {
+        PlanModel::from_json(&serde_json::to_vec(&families_plan(families)).unwrap())
+            .unwrap()
+            .binary()
+            .unwrap()
+    };
+    // A cheap plan (one family, lists below a parallel chunk) loads on the
+    // calling thread alone, whatever the bound.
+    let cheap = member(1);
+    let sequential = program_digest(&read_binary(&cheap).unwrap());
+    for bound in [1, 8, 384] {
+        let digest = with_load_threads(bound, || program_digest(&read_binary(&cheap).unwrap()));
+        assert_eq!(digest, sequential, "bound {bound}");
+        assert_eq!(load_threads_started(), 0, "bound {bound}");
+    }
+    // A plan of 2000 families: its family list decodes in parallel chunks
+    // and its families derive on workers (all of them, forced), never more
+    // threads than the bound's, nor than the chunks' and the window's.
+    let large = member(2000);
+    let sequential = program_digest(&read_binary(&large).unwrap());
+    force_pipeline_for_tests(true);
+    for bound in [1, 2, 3, 8, 64] {
+        let digest = with_load_threads(bound, || program_digest(&read_binary(&large).unwrap()));
+        let started = load_threads_started();
+        assert_eq!(digest, sequential, "bound {bound}");
+        // The decode: at most 2000 / 256 = 7 threads (a pool grown at most
+        // to twice a former one); the workers: one fewer than the bound.
+        let decode = if bound == 1 { 0 } else { bound.min(7) };
+        assert!(
+            started <= decode + bound - 1,
+            "bound {bound}: {started} threads started"
+        );
+        if bound > 1 {
+            assert!(started > 0, "bound {bound}: a parallel load");
+        }
     }
     force_pipeline_for_tests(false);
 }

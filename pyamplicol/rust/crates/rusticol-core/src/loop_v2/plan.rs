@@ -2422,10 +2422,110 @@ fn choose_form(
     Ok((split, (fused_cost, split_cost)))
 }
 
-/// The threads of the pool the caller runs on (1 outside a pool: a load
-/// outside a pool is sequential).
+/// The thread bound of a load running on this thread ([`with_load_threads`]):
+/// the bound (0 outside such a load), the decode's pool started for it so far
+/// (`binary::Reader`), and the threads the load started.
+struct LoadThreads {
+    bound: usize,
+    pool: Option<Arc<rayon::ThreadPool>>,
+    started: usize,
+}
+
+thread_local! {
+    static LOAD: std::cell::RefCell<LoadThreads> = const {
+        std::cell::RefCell::new(LoadThreads { bound: 0, pool: None, started: 0 })
+    };
+}
+
+/// Run `run` (a plan load) on the calling thread with at most `threads`
+/// threads, without starting a thread pool for it: the load starts the
+/// threads its work uses, up to the bound and no more. The families'
+/// derivation starts its workers one by one as the families' work asks for
+/// them (`LoopProgramV4::pipeline`); a decoded list of `n` records uses one
+/// thread per [`binary`]'s parallel chunk of records (at most
+/// `n / PARALLEL_RECORDS`), on a pool started for the load at the first such
+/// list and grown when a later one uses more ([`load_pool`]). A cheap plan
+/// loads on the calling thread alone. The program is the same for any bound.
+pub fn with_load_threads<R>(threads: usize, run: impl FnOnce() -> R) -> R {
+    struct Restore(usize, Option<Arc<rayon::ThreadPool>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            LOAD.with(|load| {
+                let mut load = load.borrow_mut();
+                load.bound = self.0;
+                load.pool = self.1.take();
+            });
+        }
+    }
+    let _restore = LOAD.with(|load| {
+        let mut load = load.borrow_mut();
+        load.started = 0;
+        Restore(
+            std::mem::replace(&mut load.bound, threads.max(1)),
+            load.pool.take(),
+        )
+    });
+    run()
+}
+
+/// The threads the last load on this thread under [`with_load_threads`]
+/// started (its decode pools' and its derivation's workers). A diagnostic.
+#[doc(hidden)]
+pub fn load_threads_started() -> usize {
+    LOAD.with(|load| load.borrow().started)
+}
+
+/// The thread bound of a load on this thread ([`with_load_threads`]).
+pub(super) fn load_bound() -> Option<usize> {
+    LOAD.with(|load| match load.borrow().bound {
+        0 => None,
+        bound => Some(bound),
+    })
+}
+
+/// Records `threads` threads started by the load on this thread.
+fn load_started(threads: usize) {
+    LOAD.with(|load| load.borrow_mut().started += threads);
+}
+
+/// A pool of at least `threads` threads for the load on this thread (its
+/// decode, [`with_load_threads`]): the load's pool when it has as many,
+/// else a new one of `threads` (at least twice the former's, within the
+/// load's bound, so a load starts at most about twice the threads its
+/// largest list uses), its threads holding pyAmpliCol's Symbolica key as an
+/// executor's do. None when the pool cannot start.
+pub(super) fn load_pool(threads: usize) -> Option<Arc<rayon::ThreadPool>> {
+    LOAD.with(|load| {
+        let mut load = load.borrow_mut();
+        if let Some(pool) = &load.pool
+            && pool.current_num_threads() >= threads
+        {
+            return Some(Arc::clone(pool));
+        }
+        let former = load
+            .pool
+            .as_ref()
+            .map_or(0, |pool| pool.current_num_threads());
+        let threads = threads.max(2 * former).min(load.bound.max(threads));
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .start_handler(|_| crate::licence::unlock_thread())
+            .build()
+            .ok()
+            .map(Arc::new)?;
+        load.started += threads;
+        load.pool = Some(Arc::clone(&pool));
+        Some(pool)
+    })
+}
+
+/// The threads a family load may use: the bound of a load on this thread
+/// ([`with_load_threads`]), else those of the pool the caller runs on, else
+/// one (a load outside both is sequential).
 pub(super) fn pool_threads() -> usize {
-    if rayon::current_thread_index().is_some() {
+    if let Some(bound) = load_bound() {
+        bound
+    } else if rayon::current_thread_index().is_some() {
         rayon::current_num_threads()
     } else {
         1
@@ -3010,18 +3110,20 @@ impl LoopProgramV4 {
     }
 
     /// The families derived in parallel and merged in family order (an
-    /// ordered pipeline): worker loops on the caller's pool derive families
-    /// against a [`Recording`] of the ids they draw, into a reorder window of
-    /// at most `window` families started and not yet merged; the caller
-    /// replays each recording on the registries in family order as soon as
-    /// it is there ([`Recording::replay`]), so every id and shared list is
-    /// the sequential load's. The families' own work decides how many
-    /// workers run: the first family is derived and merged by the caller,
-    /// timing both, and as many workers derive at once as the derivation
-    /// takes replays (the running means' ratio, at least one, at most the
-    /// window's workers and the families left); the others wait on a
-    /// condition, idle. When a family derives faster than it replays, the
-    /// rest load sequentially. The first error in family order is the one
+    /// ordered pipeline): worker threads derive families against a
+    /// [`Recording`] of the ids they draw, into a reorder window of at most
+    /// `window` families started and not yet merged; the caller replays each
+    /// recording on the registries in family order as soon as it is there
+    /// ([`Recording::replay`]), so every id and shared list is the
+    /// sequential load's. The families' own work decides how many workers
+    /// run: the first family is derived and merged by the caller, timing
+    /// both, and as many workers derive at once as the derivation takes
+    /// replays (the running means' ratio, at least one, at most the window's
+    /// workers and the families left). A worker thread is started only when
+    /// that count grows (a load starts no thread its families do not use);
+    /// one that is no longer allowed waits on a condition, asleep. When a
+    /// family derives faster than it replays, or no worker thread can start,
+    /// the rest load sequentially. The first error in family order is the one
     /// returned, and a later family's panic is raised only if the merge
     /// reaches it (as sequentially). Returns the largest loop order + 1.
     fn pipeline(
@@ -3099,56 +3201,71 @@ impl LoopProgramV4 {
         };
         let mut outcome: RusticolResult<()> = Ok(());
         let mut panic = None;
-        rayon::scope(|scope| {
-            // A worker: starts the next family while the window and the
-            // allowed workers let it, else waits (asleep) for the merge.
-            let worker = |_: &rayon::Scope<'_>| {
-                loop {
-                    let index = {
-                        let mut st = lock();
-                        loop {
-                            if st.stop || st.next >= count {
-                                return;
-                            }
-                            if st.busy < st.allowed && st.next < st.merged + window {
-                                break;
-                            }
-                            st = start_work
-                                .wait(st)
-                                .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        }
-                        st.busy += 1;
-                        st.next += 1;
-                        st.next - 1
-                    };
-                    let f = rest[index]
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .take()
-                        .expect("a family is derived once");
-                    let start = Instant::now();
-                    let derived = catch_unwind(AssertUnwindSafe(|| {
-                        let mut recording = Recording::default();
-                        Self::family(&f, shared, &mut recording).map(|family| (family, recording))
-                    }));
-                    let seconds = start.elapsed().as_secs_f64();
-                    drop(f);
+        let mut sequential = false;
+        // A worker: starts the next family while the window and the
+        // allowed workers let it, else waits (asleep) for the merge.
+        let worker = || {
+            let _unlock = crate::licence::unlock();
+            loop {
+                let index = {
                     let mut st = lock();
-                    st.busy -= 1;
-                    st.done.insert(index, (derived, seconds));
-                    merge_work.notify_one();
-                }
-            };
-            // Workers are started as the families' work allows more (never
-            // more than it uses: an idle worker waits, asleep).
+                    loop {
+                        if st.stop || st.next >= count {
+                            return;
+                        }
+                        if st.busy < st.allowed && st.next < st.merged + window {
+                            break;
+                        }
+                        st = start_work
+                            .wait(st)
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    }
+                    st.busy += 1;
+                    st.next += 1;
+                    st.next - 1
+                };
+                let f = rest[index]
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
+                    .expect("a family is derived once");
+                let start = Instant::now();
+                let derived = catch_unwind(AssertUnwindSafe(|| {
+                    let mut recording = Recording::default();
+                    Self::family(&f, shared, &mut recording).map(|family| (family, recording))
+                }));
+                let seconds = start.elapsed().as_secs_f64();
+                drop(f);
+                let mut st = lock();
+                st.busy -= 1;
+                st.done.insert(index, (derived, seconds));
+                merge_work.notify_one();
+            }
+        };
+        std::thread::scope(|scope| {
+            // Workers are threads started one by one as the families' work
+            // allows more (never more than it uses: an idle worker waits,
+            // asleep); a thread that cannot start leaves the others to it.
+            let worker = &worker;
             let mut spawned = 0;
             let mut spawn_to = |allowed: usize| {
                 while spawned < allowed {
-                    scope.spawn(worker);
+                    let started = std::thread::Builder::new()
+                        .name("rusticol-load".into())
+                        .spawn_scoped(scope, worker);
+                    if started.is_err() {
+                        break;
+                    }
                     spawned += 1;
+                    load_started(1);
                 }
+                spawned
             };
-            spawn_to(lock().allowed);
+            if spawn_to(lock().allowed) == 0 {
+                // No worker: the caller derives the rest itself.
+                sequential = true;
+                return;
+            }
             // The merge, in family order.
             let mut merged = 1.0;
             for index in 0..count {
@@ -3207,6 +3324,15 @@ impl LoopProgramV4 {
             resume_unwind(payload);
         }
         outcome?;
+        if sequential {
+            for f in rest {
+                let f = f
+                    .into_inner()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .expect("no family was started");
+                families.push(Self::family(&f, shared, ids)?);
+            }
+        }
         // The orders of the families merged by the workers' records.
         for family in families.iter() {
             order_count = order_count.max(family.orders.iter().map(|&o| o + 1).max().unwrap_or(0));

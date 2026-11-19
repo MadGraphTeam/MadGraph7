@@ -1882,9 +1882,11 @@ thread_local! {
     static SEQUENTIAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// [`read_binary_with`] within the caller's thread bound: inside a pool's
-/// worker on that pool's threads, else sequentially on the calling thread,
-/// never starting rayon's global pool (whose workers would outlive the call).
+/// [`read_binary_with`] within the caller's thread bound: under a load's
+/// bound (`plan::with_load_threads`) with the threads its work uses, inside a
+/// pool's worker on that pool's threads, else sequentially on the calling
+/// thread, never starting rayon's global pool (whose workers would outlive
+/// the call).
 /// The loader's read of a stored member (`LoopProgramV4::load_with`): an
 /// executor or runtime built with a thread bound starts no other threads
 /// (M-FINAL MF-8G-1 item 5; the JSON load is sequential too). The model and
@@ -1896,7 +1898,7 @@ pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<
 /// `read` (a read of a binary member) within the caller's thread bound
 /// ([`read_binary_bounded`]).
 pub(super) fn read_bounded<T>(read: impl FnOnce() -> RusticolResult<T>) -> RusticolResult<T> {
-    if rayon::current_thread_index().is_some() {
+    if rayon::current_thread_index().is_some() || super::load_bound().is_some() {
         return read();
     }
     struct Reset;
@@ -1929,8 +1931,10 @@ pub fn read_pool() -> Option<bool> {
 /// sequential decode charges, probes and makes fallibly every allocation it
 /// makes (the parallel one adds per-thread state: the workers' malloc arenas,
 /// created lazily after the probes, rayon's queues and the chunks' cursors);
-/// else inside a pool's worker that pool's, else the global pool's, started
-/// first. rayon starts the global pool lazily at its first use and panics
+/// else the bound of a load on this thread (`plan::with_load_threads`: each
+/// list then decodes on the load's pool with the threads it uses,
+/// [`Reader::list_threads`]); else inside a pool's worker that pool's, else
+/// the global pool's, started first. rayon starts the global pool lazily at its first use and panics
 /// there when a worker cannot be spawned, and never starts it after a failed
 /// start (any later use panics too): the reader starts it itself, and a
 /// pool that cannot start, or whose start failed before (outside this
@@ -1940,6 +1944,9 @@ pub fn read_pool() -> Option<bool> {
 fn read_threads() -> usize {
     if allocations_can_fail() || SEQUENTIAL.with(std::cell::Cell::get) {
         return 1;
+    }
+    if let Some(bound) = super::load_bound() {
+        return bound;
     }
     if rayon::current_thread_index().is_some() {
         return rayon::current_num_threads();
@@ -2161,18 +2168,40 @@ impl<'a> Reader<'a> {
     /// chunk's state cannot be allocated or a chunk fails (the caller decodes
     /// the section sequentially from its start), an error when the skip pass
     /// refuses the member.
+    /// The threads a list of `len` records decodes with: the read's, and
+    /// under a load's bound on this thread (`plan::with_load_threads`) one
+    /// per [`PARALLEL_RECORDS`] records at most, on the load's pool (a load
+    /// starts no thread its lists do not use).
+    fn list_threads(&self, len: usize) -> usize {
+        if rayon::current_thread_index().is_none() && super::load_bound().is_some() {
+            self.threads.min(len / PARALLEL_RECORDS).max(1)
+        } else {
+            self.threads
+        }
+    }
+
     fn parallel<T, F>(
         &mut self,
         col: Col,
         len: usize,
         items: &mut Vec<T>,
         visit: &F,
+        threads: usize,
     ) -> RusticolResult<bool>
     where
         T: Fresh + Send,
         F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
     {
-        let threads = self.threads;
+        // Under a load's bound, the load's pool of the list's threads (a
+        // pool that cannot start: the sequential decode).
+        let pool = if rayon::current_thread_index().is_none() && super::load_bound().is_some() {
+            match super::load_pool(threads) {
+                Some(pool) => Some(pool),
+                None => return Ok(false),
+            }
+        } else {
+            None
+        };
         // A chunk holds at least the records below which a list decodes
         // sequentially (PARALLEL_RECORDS): a large pool does not split a list
         // into chunks too small to repay their cursors' states.
@@ -2211,34 +2240,40 @@ impl<'a> Reader<'a> {
         *items = buffer;
         items.resize_with(len, T::fresh);
         let (cursors, strings, schema) = (&self.cursors, &self.strings, self.schema);
-        let decoded = items
-            .par_chunks_mut(chunk)
-            .zip(starts.par_windows(2))
-            .try_for_each(|(records, window)| {
-                let [start, end] = window else {
-                    return Err(());
-                };
-                let mut copy = Vec::new();
-                copy.try_reserve_exact(cursors.len()).map_err(drop)?;
-                copy.extend_from_slice(cursors);
-                let mut reader = Reader {
-                    cursors: copy,
-                    strings: Arc::clone(strings),
-                    budget: Budget {
-                        declared: end.1,
-                        used: 0,
-                    },
-                    tables: Vec::new(),
-                    skip: false,
-                    threads,
-                    schema,
-                };
-                reader.restore(start);
-                for record in records {
-                    visit(&mut reader, record).map_err(drop)?;
-                }
-                if reader.at(end) { Ok(()) } else { Err(()) }
-            });
+        let mut decode = || {
+            items
+                .par_chunks_mut(chunk)
+                .zip(starts.par_windows(2))
+                .try_for_each(|(records, window)| {
+                    let [start, end] = window else {
+                        return Err(());
+                    };
+                    let mut copy = Vec::new();
+                    copy.try_reserve_exact(cursors.len()).map_err(drop)?;
+                    copy.extend_from_slice(cursors);
+                    let mut reader = Reader {
+                        cursors: copy,
+                        strings: Arc::clone(strings),
+                        budget: Budget {
+                            declared: end.1,
+                            used: 0,
+                        },
+                        tables: Vec::new(),
+                        skip: false,
+                        threads,
+                        schema,
+                    };
+                    reader.restore(start);
+                    for record in records {
+                        visit(&mut reader, record).map_err(drop)?;
+                    }
+                    if reader.at(end) { Ok(()) } else { Err(()) }
+                })
+        };
+        let decoded = match &pool {
+            Some(pool) => pool.install(decode),
+            None => decode(),
+        };
         Ok(decoded.is_ok())
     }
 }
@@ -2310,7 +2345,8 @@ impl Stream for Reader<'_> {
         let len = self.len(col, 0)?;
         self.budget
             .charge(col, allocation(len, size_of::<T::Layout>()))?;
-        if self.threads == 1 || self.skip || len < PARALLEL_RECORDS {
+        let threads = self.list_threads(len);
+        if threads == 1 || self.skip || len < PARALLEL_RECORDS {
             return fill(self, col, len, items, visit);
         }
         // The section's start, where the sequential decode takes over when
@@ -2318,7 +2354,7 @@ impl Stream for Reader<'_> {
         let Some(section) = self.state() else {
             return fill(self, col, len, items, visit);
         };
-        if self.parallel(col, len, items, &visit)? {
+        if self.parallel(col, len, items, &visit, threads)? {
             return Ok(());
         }
         *items = Vec::new();

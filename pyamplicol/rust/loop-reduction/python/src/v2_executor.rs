@@ -1541,13 +1541,15 @@ impl V2Executor {
             admitted.get().program.clone()
         } else {
             let data = program_bytes(&plan)?;
+            // Within the executor's thread bound, the threads started as the
+            // load's work uses them (`loop_artifact::on_load_threads`).
             Arc::new(
-                match &overlay {
+                rusticol_core::loop_artifact::on_load_threads(threads, || match &overlay {
                     Some(overlay) => {
                         LoopProgramV4::load_overlaid(&data, overlay.as_bytes(), policy)
                     }
                     None => LoopProgramV4::load_with(&data, policy),
-                }
+                })
                 .map_err(error)?,
             )
         };
@@ -2426,10 +2428,11 @@ impl V2AdmittedPlan {
 /// [`admit_v2_artifact`], also returning the admitted programs (the plan's
 /// and its certified-scaleless companion's, or None) as [`V2AdmittedPlan`]s:
 /// the artifact runtime hands them to its executors, so a loaded process's
-/// plan is read and derived once (`loops/v2/artifact.py`). `threads` is the
-/// load's thread pool (None: rayon's default, `RAYON_NUM_THREADS` or every
-/// core, as the runtime's executors; `loop_artifact::
-/// load_loop_v2_artifact_threads`): the programs are the same for any count.
+/// plan is read and derived once (`loops/v2/artifact.py`). `threads` bounds
+/// the load's threads (None: rayon's default, `RAYON_NUM_THREADS` or the
+/// cores of the affinity mask, as the runtime's executors), started only as
+/// its work uses them (`loop_artifact::on_load_threads`): the programs are
+/// the same for any count.
 #[pyfunction]
 #[pyo3(signature = (path, process=None, threads=None))]
 fn admit_v2_artifact_program(
