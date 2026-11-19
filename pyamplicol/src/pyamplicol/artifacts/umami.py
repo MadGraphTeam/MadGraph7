@@ -21,6 +21,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from itertools import combinations_with_replacement, islice, permutations
+from operator import itemgetter
 from typing import TYPE_CHECKING, Any
 
 from .api_bundle import ApiBundlePayload
@@ -272,6 +273,14 @@ def _color_flow(
     return result
 
 
+def _picker(indices):
+    """The tuple of the values at ``indices`` of a sequence (an itemgetter)."""
+    if len(indices) == 1:
+        index = indices[0]
+        return lambda values: (values[index],)
+    return itemgetter(*indices)
+
+
 def _safe_replay(process: UmamiProcessInput) -> dict[str, tuple[str, tuple[int, ...]]]:
     """Convert certified label maps; weights may fold reflection, not one flow."""
     physics = process.physics
@@ -318,7 +327,7 @@ def _safe_replay(process: UmamiProcessInput) -> dict[str, tuple[str, tuple[int, 
                 perm[i] != i for i, p in enumerate(external) if p["role"] == "initial"
             ):
                 continue
-            if {tuple(h[i] for i in perm) for h in helicities} != helicities:
+            if set(map(_picker(perm), helicities)) != helicities:
                 continue
             word = _word(sector)
             target_ids = [_flow_id(word)]
@@ -582,6 +591,16 @@ def _intern(table: _InternTable, value: Any) -> int:
     return index
 
 
+def _intern_vector(table: _InternTable, values: list) -> int:
+    """_intern of a flat list (its key is the tuple, as _frozen gives it)."""
+    key = tuple(values)
+    index = table.positions.get(key)
+    if index is None:
+        index = table.positions[key] = len(table)
+        table.append(values)
+    return index
+
+
 def _intern_mappings(data, mappings) -> int:
     """The index of a list of helicity mappings in ``data["helicity_mappings"]``."""
     table = data["helicity_mappings"]
@@ -621,9 +640,8 @@ def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
         )
 
     def helicity_domain(candidate):
-        return tuple(
-            sorted(tuple(h["values"][slot] for slot in candidate) for h in helicities)
-        )
+        values = _picker(candidate)
+        return tuple(sorted(values(h["values"]) for h in helicities))
 
     starts = [0]
     if flow is not None and word_size:
@@ -668,10 +686,61 @@ def _add_terms(entry, terms):
             existing["factor"] += term["factor"]
 
 
-def _exported_entry(data, relabel, member, contribution, helicity_groups, mappings):
+def _exported_helicities(data, relabel, helicity_groups, mappings, cache):
+    """The relabelled helicity groups and the mappings index of a source, once
+    per relabelling in ``cache``."""
+    if None not in cache:
+        # the distinct helicities of the source, and the groups and mappings by them
+        positions: dict[tuple, int] = {}
+        for group in helicity_groups.values():
+            for values in group:
+                positions.setdefault(tuple(values), len(positions))
+        for mapping in mappings:
+            positions.setdefault(tuple(mapping["helicity"]), len(positions))
+        cache[None] = (
+            list(positions),
+            [[positions[tuple(v)] for v in g] for g in helicity_groups.values()],
+            [positions[tuple(m["helicity"])] for m in mappings],
+        )
+    key = tuple(relabel)
+    if key not in cache:
+        vectors, group_positions, mapping_positions = cache[None]
+        table = data["helicities"]
+        inverse = [0] * len(relabel)
+        for slot, target in enumerate(relabel):
+            inverse[target] = slot
+        # interned in the order of the groups, then of the mappings
+        indices = []
+        for vector in map(_picker(inverse), vectors):
+            index = table.positions.get(vector)
+            if index is None:
+                index = table.positions[vector] = len(table)
+                table.append(list(vector))
+            indices.append(index)
+        cache[key] = (
+            [[indices[k] for k in group] for group in group_positions],
+            _intern_mappings(
+                data,
+                [
+                    {**m, "helicity": indices[k]}
+                    for m, k in zip(mappings, mapping_positions, strict=True)
+                ],
+            ),
+        )
+    groups, mappings_index = cache[key]
+    return [list(group) for group in groups], mappings_index
+
+
+def _exported_entry(
+    data, relabel, member, contribution, helicity_groups, mappings, cache
+):
     """An exported contribution with its final-state legs relabelled; its
-    ``multichannels`` are filled in by _group_phasespace_channels."""
+    ``multichannels`` are filled in by _group_phasespace_channels. ``cache``
+    holds the helicities of the source per relabelling."""
     pdgs, order, flow, runtime = contribution
+    helicities, mappings_index = _exported_helicities(
+        data, relabel, helicity_groups, mappings, cache
+    )
     color_index = (
         None if flow is None else _intern(data["color_flows"], _relabelled(flow, relabel))
     )
@@ -681,28 +750,18 @@ def _exported_entry(data, relabel, member, contribution, helicity_groups, mappin
     return {
         "matrix_elements": [
             {
-                "pdg_ids": _intern(data["pdg_ids"], _relabelled(list(pdgs), relabel)),
+                "pdg_ids": _intern_vector(
+                    data["pdg_ids"], _relabelled(list(pdgs), relabel)
+                ),
                 "factor": 1.0,
             }
         ],
-        "color_order": _intern(data["color_orders"], [relabel[slot] for slot in order]),
-        "color_flows": color_index,
-        "helicities": [
-            [_intern(data["helicities"], _relabelled(v, relabel)) for v in group]
-            for group in helicity_groups.values()
-        ],
-        "helicity_mappings": _intern_mappings(
-            data,
-            [
-                {
-                    **mapping,
-                    "helicity": _intern(
-                        data["helicities"], _relabelled(mapping["helicity"], relabel)
-                    ),
-                }
-                for mapping in mappings
-            ],
+        "color_order": _intern_vector(
+            data["color_orders"], [relabel[slot] for slot in order]
         ),
+        "color_flows": color_index,
+        "helicities": helicities,
+        "helicity_mappings": mappings_index,
         "runtime": entry_runtime,
         "members": [] if member is None else [member],
         "multichannels": [],
@@ -819,17 +878,21 @@ def _merge_flavour_orbits(data):
 def _export_helicities(data, runtime_helicities):
     """Map runtime helicities to exported ones, given in the input leg order."""
     entries = [e for c in data["channels"] for e in c["processes"]]
+    # the export of a (runtime process, permutation), shared by its runtimes
+    cache: dict[tuple, list[int]] = {}
     for runtime in [e["runtime"] for e in entries] + [
         m["runtime"] for e in entries for m in e["members"]
     ]:
         permutation = runtime["permutation"]
-        exported = []
-        for values in runtime_helicities[runtime["process_index"]]:
-            ordered = [0] * len(values)
-            for runtime_leg, input_leg in enumerate(permutation):
-                ordered[input_leg] = values[runtime_leg]
-            exported.append(_intern(data["helicities"], ordered))
-        runtime["helicity_export"] = exported
+        key = (runtime["process_index"], tuple(permutation))
+        if key not in cache:
+            exported = cache[key] = []
+            for values in runtime_helicities[runtime["process_index"]]:
+                ordered = [0] * len(values)
+                for runtime_leg, input_leg in enumerate(permutation):
+                    ordered[input_leg] = values[runtime_leg]
+                exported.append(_intern_vector(data["helicities"], ordered))
+        runtime["helicity_export"] = list(cache[key])
 
 
 def build_umami_metadata(
@@ -1088,6 +1151,7 @@ def _build_provider(
         # once its final-state legs are relabelled to the channel.
         helicity_groups: dict[str, list[list[int]]] = {}
         helicity_mappings = []
+        helicity_cache: dict[tuple, tuple] = {}
         for h in helicities:
             key = str(h.get("representative_id", h["id"]))
             helicity_groups.setdefault(key, []).append(list(h["values"]))
@@ -1305,6 +1369,7 @@ def _build_provider(
                     (pdgs, order, flow, runtime),
                     helicity_groups,
                     helicity_mappings,
+                    helicity_cache,
                 )
                 # Its own channel first: the copy is weighted by its density
                 # over those of all its partners, in the copy's legs.
