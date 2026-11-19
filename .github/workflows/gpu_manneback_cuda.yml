@@ -71,10 +71,11 @@ jobs:
       nevents: ${{ inputs.nevents || '1000' }}
       # 30 min, not 20 as on lemaitre4: the runner set-up and checkout are sometimes slow here
       time_limit: ${{ inputs.time_limit || '00:30:00' }}
-      # A100 (40 and 80 GB) nodes only, not the other GPUs of the partition (V100, A10, L40s,
-      # RTX, H200, ...). An empty extra_sbatch input also gets this constraint: there is no way
-      # to request any GPU of the partition from the Run workflow form
-      extra_sbatch: ${{ inputs.extra_sbatch || '--constraint=TeslaA100|TeslaA100_80' }}
+      # A100 (40 and 80 GB) nodes only: every other GPU node of the partition is excluded
+      # (RTX 2080 Ti, V100, L40s, A10, RTX 3090, H200). Not --constraint=TeslaA100|TeslaA100_80:
+      # ceci-gate refuses '|' in extra sbatch options. A node added to the partition later is
+      # not excluded. An empty extra_sbatch input also gets this list
+      extra_sbatch: ${{ inputs.extra_sbatch || '--exclude=mb-cas[001,101-102],mb-gen[001-002],mb-icg[101-102],mb-rom101,mb-tur[101-102,111-116]' }}
       keep_workdir: ${{ inputs.keep_workdir || false }}
       # on push (no inputs) always; on "Run workflow" as ticked (default ticked)
       interference: ${{ github.event_name == 'push' || inputs.interference }}
