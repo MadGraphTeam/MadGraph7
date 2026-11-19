@@ -2937,7 +2937,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (invert .cc/.cu, add debug printouts)
     def generate_process_files(self):
-        """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
+        """Generate CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_colorflows()
@@ -3129,22 +3129,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             return
         with open(pjoin(self.path, 'crossing_demo.dat'), 'w') as fsock:
             fsock.write(' '.join(str(i) for i in ids) + '\n')
-
-    # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
-    def edit_mgonGPU(self):
-        """Generate mgOnGpuConfig.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_mgonGPU')
-        template = open(pjoin(self.template_path,'madmatrix','mgOnGpuConfig.h'),'r').read()
-        replace_dict = {}
-        nexternal, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
-        replace_dict['nincoming'] = nincoming
-        replace_dict['noutcoming'] = nexternal - nincoming
-        replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
-        ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # this is the correct P1-specific nwf, now in CPPProcess.h (#644)
-        replace_dict['wavefuncsize'] = 6
-        ff = open(pjoin(self.path, '..','..','src','mgOnGpuConfig.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
 
     _blas_available = None
     _blas_flags = ''
