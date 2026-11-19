@@ -100,6 +100,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
         case = self.oracle['cases'][name]
         output_path = pjoin(self.tmpdir, name)
         cmd = self._new_cmd()
+        cmd._experimental_nlo_flavor_grouping = True
         self._run(cmd, 'set apply_flavor_grouping True --no_save')
         self._run(
             cmd, 'set low_mem_multicore_nlo_generation %s --no_save' %

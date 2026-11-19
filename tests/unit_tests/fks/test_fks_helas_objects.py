@@ -939,6 +939,7 @@ class testFKSHelasObjects(unittest.TestCase):
         """Fixed particles inside merged groups stay fixed in NLO syntax."""
 
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('import model loop_sm')
         interface.exec_cmd('generate e+ e- > d d~ [real=QCD]')
@@ -958,6 +959,7 @@ class testFKSHelasObjects(unittest.TestCase):
                             for entry in flavor_map))
 
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('import model loop_sm')
         interface.exec_cmd('generate u u~ > w+ w- [real=QED]')
@@ -1009,6 +1011,7 @@ class testFKSHelasObjects(unittest.TestCase):
 
         for grouped in (False, True):
             interface = MGCmd.MasterCmd()
+            interface._experimental_nlo_flavor_grouping = True
             interface.no_notification()
             for line in [
                     'set apply_flavor_grouping %s --no_save' % grouped,
@@ -1080,6 +1083,7 @@ class testFKSHelasObjects(unittest.TestCase):
         """Mixed QCD/QED W+j keeps only executable physical FKS classes."""
 
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('set nlo_mixed_expansion True')
         interface.exec_cmd(
@@ -1112,6 +1116,7 @@ class testFKSHelasObjects(unittest.TestCase):
         generation.
         """
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('set nb_core 1')
         interface.exec_cmd('set low_mem_multicore_nlo_generation True')
@@ -1146,6 +1151,7 @@ class testFKSHelasObjects(unittest.TestCase):
         model_path = os.path.abspath(os.path.join(
             root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('import model %s' % model_path)
         interface.exec_cmd('generate p p > w+ w- [QED]')
@@ -1173,6 +1179,7 @@ class testFKSHelasObjects(unittest.TestCase):
         import madgraph.various.banner as banner_mod
         for grouping in (True, False):
             interface = MGCmd.MasterCmd()
+            interface._experimental_nlo_flavor_grouping = True
             interface.no_notification()
             interface.exec_cmd('set apply_flavor_grouping %s' % grouping)
             interface.exec_cmd('import model loop_sm')
@@ -1192,6 +1199,7 @@ class testFKSHelasObjects(unittest.TestCase):
         model_path = os.path.abspath(os.path.join(
             root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('import model %s' % model_path)
         interface.exec_cmd('set include_lepton_initiated_processes True')

@@ -184,6 +184,7 @@ class TestFKSStandalone(unittest.TestCase):
         self._run(cmd, 'launch %s -f' % path)
 
     def _set_grouping(self, cmd, process):
+        cmd._experimental_nlo_flavor_grouping = process not in UNGROUPED_PROCESSES
         self._run(cmd, 'set apply_flavor_grouping %s --no_save' %
                   (process not in UNGROUPED_PROCESSES))
 
@@ -1093,6 +1094,7 @@ C     batched one reuses, as set_goodhel does in a run
         for grouped in (False, True):
             path = pjoin(self.tmpdir, 'wj_ordered_%s' % grouped)
             cmd = self._new_cmd()
+            cmd._experimental_nlo_flavor_grouping = grouped
             for line in [
                     'set apply_flavor_grouping %s --no_save' % grouped,
                     'set low_mem_multicore_nlo_generation False --no_save',
@@ -1160,6 +1162,7 @@ C     batched one reuses, as set_goodhel does in a run
 
         cmd = self._new_cmd()
         self._run(cmd, 'set nlo_mixed_expansion True --no_save')
+        cmd._experimental_nlo_flavor_grouping = True
         self._run(cmd, 'set apply_flavor_grouping True --no_save')
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate p p > w+ j QED^2=4 QCD^2=4 '
@@ -1529,6 +1532,7 @@ C     batched one reuses, as set_goodhel does in a run
         path = pjoin(self.tmpdir, 'pp_wpj_mixed_limits')
         cmd = self._new_cmd()
         self._run(cmd, 'set nlo_mixed_expansion True --no_save')
+        cmd._experimental_nlo_flavor_grouping = True
         self._run(cmd, 'set apply_flavor_grouping True --no_save')
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate p p > w+ j QED^2=4 QCD^2=4 '

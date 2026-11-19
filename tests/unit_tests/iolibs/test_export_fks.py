@@ -311,6 +311,7 @@ class TestGroupedFKSMetadata(unittest.TestCase):
                                           'P0_QxQ_veep': -1}}
         for process, filters in expected.items():
             interface = MGCmd.MasterCmd()
+            interface._experimental_nlo_flavor_grouping = True
             interface.no_notification()
             interface.exec_cmd('import model loop_sm')
             interface.exec_cmd('generate %s' % process)
@@ -532,6 +533,7 @@ class TestGroupedFKSMetadata(unittest.TestCase):
 
     def test_write_fks_info_uses_physical_flavor_classes(self):
         interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
         interface.no_notification()
         interface.exec_cmd('import model loop_sm')
         interface.exec_cmd('generate p p > w+ w- [QCD]')
@@ -895,6 +897,8 @@ class IOExportFKSTest(IOTests.IOTestManager):
                                precmd=True, postcmd=True)
 
         interface = MGCmd.MasterCmd()
+        # The archived exporter fixtures describe grouped physical-flavour tables.
+        interface._experimental_nlo_flavor_grouping = True
         
         if model.endswith('CMS'):
             run_cmd('set complex_mass_scheme')

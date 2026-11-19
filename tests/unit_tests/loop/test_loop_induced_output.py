@@ -96,7 +96,7 @@ VIRTUAL_PROCESS = 'u u~ > d d~ [virt=QCD]'
 
 
 
-def get_interface(process=LOOP_INDUCED_PROCESS, model='loop_sm'):
+def get_interface(process=LOOP_INDUCED_PROCESS, model='loop_sm', grouped=False):
     """A fresh MasterCmd with 'process' generated, ready to be output.
 
     Not cached: 'output' populates _curr_matrix_elements, and a second output
@@ -104,6 +104,7 @@ def get_interface(process=LOOP_INDUCED_PROCESS, model='loop_sm'):
     """
 
     interface = MGCmd.MasterCmd()
+    interface._experimental_nlo_flavor_grouping = grouped
     interface.no_notification()
     if model:
         interface.exec_cmd('import model %s' % model, printcmd=False,
@@ -161,7 +162,8 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
     def test_grouped_light_quark_loop_induced(self):
         """Physical Z-coupled loop flavours survive grouped generation."""
 
-        grouped = get_interface(LIGHT_QUARK_LOOP_INDUCED_PROCESS)
+        grouped = get_interface(LIGHT_QUARK_LOOP_INDUCED_PROCESS, grouped=True)
+        self.assertTrue(grouped._curr_model.merged_particles)
         interface = MGCmd.MasterCmd()
         interface.no_notification()
         interface.exec_cmd('set apply_flavor_grouping False', printcmd=False,
@@ -174,20 +176,50 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
         for key in ('loop_diagrams', 'born_diagrams'):
             self.assertEqual(len(grouped._curr_amps[0].get(key)),
                              len(interface._curr_amps[0].get(key)))
-        me = get_matrix_element(LIGHT_QUARK_LOOP_INDUCED_PROCESS)
+        me = loop_helas_objects.LoopHelasProcess(
+            grouped._curr_amps, optimized_output=True,
+            compute_loop_nc=True).get_matrix_elements()[0]
         flavors, pdgs = me.get_external_flavors(return_pdgs=True)
         self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
         self.assertEqual([list(p) for p in pdgs], [[21, 21, 23, 23]])
 
-    def test_validate_model_preserves_supported_flavor_grouping(self):
-        """NLO validation must not reload and replace a supported grouped
-        model or silently flip the user's apply_flavor_grouping option.
-        """
+    def test_nlo_grouping_is_disabled_for_generation(self):
+        """FKS, MadLoop and automatic loop-model upgrades use physical PDGs."""
+        cmd = MGCmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set apply_flavor_grouping True --no_save')
+        cmd.exec_cmd('import model sm')
+        self.assertTrue(cmd._curr_model.merged_particles)
+        cmd.exec_cmd('define qq = u c')
+        cmd.exec_cmd('generate qq u~ > z [real=QCD]')
+        self.assertFalse(cmd._curr_model.merged_particles)
+        self.assertEqual(set(cmd._multiparticles['qq']), {2, 4})
+        self.assertTrue(cmd.options['apply_flavor_grouping'])
+        cmd.exec_cmd('set apply_flavor_grouping True --no_save')
+        cmd.exec_cmd('generate u u~ > z [virt=QCD]')
+        self.assertEqual(cmd._curr_model['name'], 'loop_sm')
+        self.assertFalse(cmd._curr_model.merged_particles)
+
+        # Check an explicit loop-model import as well as sm -> loop_sm.
+        cmd.exec_cmd('import model loop_sm')
+        cmd.exec_cmd('generate u u~ > z [QCD]')
+        self.assertFalse(cmd._curr_model.merged_particles)
+        self.assertNotIn('_experimental_nlo_flavor_grouping', cmd.options)
+        self.assertRaises(InvalidCmd, lambda: cmd.exec_cmd(
+            'set _experimental_nlo_flavor_grouping True --no_save',
+            errorhandling=False))
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate u u~ > z')
+        self.assertTrue(cmd._curr_model.merged_particles)
+
+    def test_developer_validation_preserves_supported_flavor_grouping(self):
+        """A developer can retain supported grouped models for regression studies."""
         model = import_ufo.import_model(
             'loop_sm', options={'apply_flavor_grouping': False})
         model.merge_flavor([1, 2, 3, 4])
 
         interface = loop_interface.LoopInterface()
+        interface._experimental_nlo_flavor_grouping = True
         interface._curr_model = model
         interface.options['apply_flavor_grouping'] = True
         interface.validate_model(loop_type='virtual', coupling_type=['QCD'])

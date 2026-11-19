@@ -17,6 +17,7 @@
 """
 
 from __future__ import absolute_import
+import copy
 import os
 import shutil
 import time
@@ -164,6 +165,10 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
     """ An additional layer between MadGraphInterface and LoopInterface as well
     as aMCatNLO interface, to put the common feature of these two here."""
 
+    # Developer opt-in for experiments with grouped FKS and MadLoop amplitudes.
+    # Deliberately outside the command options, saved configuration and run cards.
+    _experimental_nlo_flavor_grouping = False
+
     def rate_proc_difficulty(self, proc, mode):
         """ Gives an integer more or less representing the difficulty of the process.
         For now it is very basic and such that "difficult" processes start at 
@@ -308,8 +313,32 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
 
 
 
-    def validate_model(self, loop_type='virtual',coupling_type=['QCD'], stop=True):
-        """ Upgrade the model sm to loop_sm if needed """
+    def validate_model(self, loop_type='virtual', coupling_type='QCD', stop=True):
+        """Use physical flavours for NLO, including any automatic model upgrade."""
+        if self._experimental_nlo_flavor_grouping:
+            return self._validate_loop_model(loop_type, coupling_type, stop)
+
+        with misc.TMP_variable(self.options, 'apply_flavor_grouping', False):
+            if self._curr_model and self._curr_model.merged_particles:
+                if self.model_edited_since_import():
+                    raise self.InvalidCmd('NLO generation requires physical flavours. '
+                        'Use "set apply_flavor_grouping False" before importing and '
+                        'modifying this model.')
+                logger.info('Reloading the model with physical flavours for NLO.')
+                model = self._curr_model.get('modelpath+restriction')
+                import_flags = [flag for flag in self.history.get('full_model_line').split()
+                                if flag in ('-modelname', '--modelname', '--noprefix')]
+                multiparticles = copy.deepcopy(self._multiparticles)
+                # do_import clears both the current process and its generate line.
+                generate_info = self._generate_info
+                mg_interface.MadGraphCmd.do_import(
+                    self, ' '.join(['model', model] + import_flags))
+                self._generate_info = generate_info
+                self._multiparticles.update(multiparticles)
+            return self._validate_loop_model(loop_type, coupling_type, stop)
+
+    def _validate_loop_model(self, loop_type, coupling_type, stop):
+        """Upgrade sm to loop_sm and select a supported gauge if needed."""
 
         # Allow to call this function with a string instead of a list of
         # perturbation orders.

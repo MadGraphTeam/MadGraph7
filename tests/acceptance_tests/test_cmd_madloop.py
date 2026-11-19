@@ -180,6 +180,15 @@ class TestCmdLoop(unittest.TestCase):
             self.assertTrue(all(int(code) // 100 == 2 for row, code in statuses), output)
         return values
 
+    def _run_grouped_generation(self, command_file, env):
+        """Run the grouped oracle in a fresh developer-enabled interpreter."""
+        script = ('import runpy, sys\n'
+                  'from madgraph.interface.loop_interface import CommonLoopInterface\n'
+                  'CommonLoopInterface._experimental_nlo_flavor_grouping = True\n'
+                  'runpy.run_path("bin/madgraph", run_name="__main__")')
+        return self._run_checked([sys.executable, '-O', '-c', script, command_file],
+                                 MG5DIR, env)
+
     def _check_grouped_virtual_oracle(self, process, oracle_name, expected,
                                       extra_checks=None, model='loop_sm',
                                       setup=(), definitions=(), warmup=0):
@@ -233,9 +242,7 @@ class TestCmdLoop(unittest.TestCase):
                           ['add process %s' % item for item in process[1:]]),
                         'output %s -f' % output,
                         'quit', '']))
-                generation_log = self._run_checked(
-                    [pjoin(MG5DIR, 'bin', 'madgraph'), command_file],
-                    MG5DIR, env)
+                generation_log = self._run_grouped_generation(command_file, env)
                 self.assertTrue(os.path.isdir(pjoin(output, 'Source')),
                                 generation_log)
 
@@ -492,8 +499,7 @@ class TestCmdLoop(unittest.TestCase):
                         'import model loop_sm',
                         'generate g g > z z [sqrvirt=QCD]',
                         'output standalone %s -f' % output, 'quit', '']))
-                log = self._run_checked([pjoin(MG5DIR, 'bin', 'madgraph'), commands],
-                                        MG5DIR, env)
+                log = self._run_grouped_generation(commands, env)
                 self.assertTrue(os.path.isdir(pjoin(output, 'Source')), log)
                 self._run_checked(['make'], pjoin(output, 'Source'), env)
                 virtual = pjoin(output, 'SubProcesses', 'P0_gg_zz')
