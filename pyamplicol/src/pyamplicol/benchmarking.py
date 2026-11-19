@@ -2840,6 +2840,13 @@ class VirtualProfileResult:
         if self.prepared_seconds is None:
             # No warm entry ran: the document as before it existed.
             out.pop("prepared_seconds")
+        reference = self.reference
+        if reference is not None and reference.prepared_seconds is None:
+            out["reference"] = {
+                item.name: getattr(reference, item.name)
+                for item in fields(reference)
+                if item.name != "prepared_seconds"
+            }
         if not self.reference_skipped:
             out.pop("reference_skipped")
         return out
@@ -3015,7 +3022,7 @@ def profile_virtual(
     artifact: os.PathLike[str] | str | None = None,
     optimistic: bool = False,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
-    point_seconds: float | None = None,
+    warm_entry: bool = False,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -3139,18 +3146,22 @@ def profile_virtual(
     report(0, bench.warmup_runs + max(bench.minimum_samples, 1), None, ())
     with peak_memory() as peak:
         # The optimistic pass's warm entry instead of its untimed warm-up
-        # point where a point is dear (``_prepared``; ``point_seconds``: a
-        # binary64 point's measured or remembered cost), inside the peak's
-        # region as the warm-up call would be.
+        # point (``warm_entry``: the caller's ``profile_plan.takes_entry``),
+        # inside the peak's region as the warm-up call would be.
         prepared = (
-            _prepared(runtime, point_seconds, options, options.get("reduction"))
-            if optimistic and bench.warmup_runs > 0
+            _prepared(runtime, options, options.get("reduction"))
+            if warm_entry and optimistic and bench.warmup_runs > 0
             else None
         )
-        if prepared is not None:
-            bench = replace(bench, warmup_runs=bench.warmup_runs - 1)
+        # The binary64 calls' warm-ups (one fewer after the entry); the
+        # reference pass keeps its own (``_reference_timing``).
+        calls = (
+            bench
+            if prepared is None
+            else replace(bench, warmup_runs=bench.warmup_runs - 1)
+        )
         profile = _profile_virtual_calls(
-            runtime, batches, bench, options, scales, report
+            runtime, batches, calls, options, scales, report
         )
     profile = replace(profile, peak_memory=peak.result, prepared_seconds=prepared)
     if monitor is not None:
@@ -3341,9 +3352,13 @@ def _reference_calls(
         return max(len(walls) + int(room // estimate), len(walls), 1)
 
     def fitted(per_point: float | None) -> int:
+        # What the budget affords, down to a power of two (no padded lane in
+        # any carrier: binary64's chunk is one, the extended carriers run a
+        # batch in chunks of the widths of its binary digits).
         if per_point is None or per_point <= 0.0:
             return size
-        return max(1, min(size, int(budget // per_point)))
+        affords = max(1, min(size, int(budget // per_point)))
+        return 1 << (affords.bit_length() - 1)
 
     done = 0
     per_point = prior
@@ -3424,7 +3439,8 @@ def _reference_timing(
         **{
             k: v
             for k, v in reference.items()
-            if k not in ("points", "budget", "seconds_per_point", "unless_over")
+            if k
+            not in ("points", "budget", "seconds_per_point", "unless_over", "entry")
         },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
@@ -3482,10 +3498,11 @@ def _reference_timing(
             )
 
     prepared = None
-    if warm:
-        # The warm entry instead of the untimed point where a point is dear.
+    if warm and reference.get("entry"):
+        # The warm entry instead of the untimed point (the caller's
+        # ``profile_plan.takes_entry``).
         report(0, 1, prior, ())
-        prepared = _prepared(runtime, prior, options, backend)
+        prepared = _prepared(runtime, options, backend)
         warm = prepared is None
     walls, size = _reference_calls(budget, warm, size, call, report, prior)
     return PrecisionTiming(
@@ -3506,29 +3523,18 @@ def _reference_timing(
 
 def _prepared(
     runtime: Any,
-    point_seconds: float | None,
     options: Mapping[str, Any],
     backend: str | None,
 ) -> float | None:
     """The warm entry of a stream (``prepare`` of the runtime's backend: it
     builds what the carrier's first evaluation with ``backend`` builds
     lazily, without a point, in the unchecked mode of ``options``) in place
-    of its untimed warm-up point, when the runtime offers one and the
-    point's expected cost (``point_seconds``) exceeds
-    ``MEASURE_REPEAT_SECONDS``, the bound on a first call's lazy set-up
-    (else the point costs no more than the entry: a few seconds on a cheap
-    process). Its seconds, or None when it did not run (no entry, a cheap
-    point, an unknown backend, or the entry failed: the point then warms)."""
-
-    from pyamplicol.profile_plan import MEASURE_REPEAT_SECONDS
+    of its untimed warm-up point. Its seconds, or None when it did not run
+    (no entry, an unknown backend, or the entry failed: the point then
+    warms)."""
 
     prepare = getattr(getattr(runtime, "_backend", runtime), "prepare", None)
-    if (
-        not callable(prepare)
-        or backend is None
-        or point_seconds is None
-        or point_seconds <= MEASURE_REPEAT_SECONDS
-    ):
+    if not callable(prepare) or backend is None:
         return None
     carrier = {k: options[k] for k in ("arithmetic", "precision") if k in options}
     begin = time.perf_counter()

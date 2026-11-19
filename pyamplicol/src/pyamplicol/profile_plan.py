@@ -93,6 +93,12 @@ class Costs:
     stability_reference: float | None
     start: float
     reference_estimated: bool = False
+    # The seconds of the warm entry when a stream warms through it instead
+    # of its untimed warm-up point (``takes_entry``): binary64's and the
+    # reference's; None: the warm-up point (``binary64_warmup``,
+    # ``reference_warmup``).
+    binary64_warm: float | None = None
+    reference_warm: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +176,48 @@ def warmup_seconds(call: float, per_point: float) -> float:
     return per_point if call > WARMUP_CALL_SECONDS else call
 
 
+def binary64_warmup(costs: Costs, call: float) -> float:
+    """The seconds that warm a backend's binary64 stream before its timed
+    calls of ``call`` seconds: its warm entry's (``Costs.binary64_warm``),
+    else the untimed warm-up (``warmup_seconds``)."""
+
+    if costs.binary64_warm is not None:
+        return costs.binary64_warm
+    return warmup_seconds(call, costs.binary64)
+
+
+def reference_warmup(costs: Costs) -> float:
+    """The seconds that warm a backend's reference stream: its warm entry's
+    (``Costs.reference_warm``), else its untimed one-point call (the
+    reference's cost per point; 0 without a reference)."""
+
+    if costs.reference_warm is not None:
+        return costs.reference_warm
+    return costs.reference or 0.0
+
+
+def takes_entry(
+    point: float | None, *, entry: float | None = None, excess: float | None = None
+) -> bool:
+    """Whether a stream whose runtime offers the warm entry warms through it
+    instead of its untimed warm-up ``point`` (its seconds; None: unknown):
+    when the entry's remembered cost (``entry``, a previous profile's) is
+    known, when the point costs more; else when the measured first-call
+    excess of the stream (``excess``: its first one-point call over its
+    second, what a first call builds lazily, about what the entry builds) is
+    known, when the point costs more than it; else (no cost known: a dear
+    point not measured twice, or nothing measured) the entry: it costs
+    seconds, a dear point minutes."""
+
+    if point is None:
+        return True
+    if entry is not None:
+        return point > entry
+    if excess is not None:
+        return point > excess
+    return True
+
+
 def task_points(point_seconds: float, points: int) -> int:
     """The points of one stability task (one backend and precision) out of
     a chunk of ``points``: about ``TASK_SECONDS`` of work at
@@ -197,11 +245,13 @@ def runtime_counts(
     chunks_max = max(batch_max // lanes, 1)
     reference = 0.0
     measured = 0.0 if costs.reference_estimated else (costs.reference or 0.0)
+    # The reference stream's warming (its untimed point, or its entry).
+    warming = 0.0 if costs.reference_estimated else reference_warmup(costs)
     if costs.reference is not None:
         # An estimated cost sets no budget: the reference pass's own warm-up
         # fits its chunk to the share (at least one point).
         reference = max(REFERENCE_SHARE * budget, measured)
-    left = max(budget - reference - measured, 0.0)
+    left = max(budget - reference - warming, 0.0)
     per_chunk = lanes * costs.binary64
     chunks = (
         int(left // ((STABLE_CALLS + 1) * per_chunk)) if per_chunk > 0 else chunks_max
@@ -209,13 +259,13 @@ def runtime_counts(
     chunks = min(max(chunks, 1), chunks_max)
     batch = chunks * lanes
     call = batch * costs.binary64
-    warm = warmup_seconds(call, costs.binary64)
+    warm = binary64_warmup(costs, call)
     # The timed calls' budget: what is left (none: the minimum calls only,
     # however fast they turn out); the expected seconds at least the minimum.
     timed = max(left - warm, 0.0)
     expected = costs.start + warm + max(timed, RUNTIME_MINIMUM_CALLS * call)
     if costs.reference is not None:
-        expected += costs.reference + max(reference, costs.reference)
+        expected += reference_warmup(costs) + max(reference, costs.reference)
     return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, timed, reference, expected)
 
 
@@ -251,7 +301,12 @@ def minimum_counts(
 
 
 def reference_affects_counts(
-    binary64: float, start: float, *, backends: int, lanes: int
+    binary64: float,
+    start: float,
+    *,
+    backends: int,
+    lanes: int,
+    warm: float | None = None,
 ) -> bool:
     """Whether a backend's reference cost can change its runtime counts
     under the default budget (``DEFAULT_RUNTIME_SECONDS`` shared by
@@ -264,11 +319,15 @@ def reference_affects_counts(
     and no timed budget left whatever the reference costs, and with a
     larger share a cheap reference would leave a timed budget a dear one
     would not (the exact condition). Then the measurement need not time the
-    reference: the runtime timing's reference warm-up measures it."""
+    reference: the runtime timing's reference warm-up measures it.
+    ``warm``: the binary64 stream's warming when it is not the warm-up
+    (the warm entry's seconds, ``binary64_warmup``)."""
 
     budget = max(DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start, 0.0)
     left = (1.0 - REFERENCE_SHARE) * budget
-    return left > warmup_seconds(max(lanes, 1) * binary64, binary64)
+    if warm is None:
+        warm = warmup_seconds(max(lanes, 1) * binary64, binary64)
+    return left > warm
 
 
 def scope_minimum(
@@ -281,9 +340,9 @@ def scope_minimum(
     parts)."""
 
     call = lanes * costs.binary64
-    seconds = call + warmup_seconds(call, costs.binary64)
+    seconds = call + binary64_warmup(costs, call)
     if reference and costs.reference is not None:
-        seconds += 2.0 * costs.reference
+        seconds += reference_warmup(costs) + costs.reference
     return seconds + (costs.start if start else 0.0)
 
 
@@ -343,14 +402,15 @@ def timing_scope(
 
 
 def runtime_minimum(costs: Costs, *, lanes: int) -> float:
-    """The seconds of a backend's minimal runtime timing: its start-up, one
-    warm-up (``warmup_seconds``) and one timed call of one chunk, and the
-    reference's one-point warm-up and one timed point."""
+    """The seconds of a backend's minimal runtime timing: its start-up, its
+    binary64 warming (``binary64_warmup``: one warm-up, or the warm entry)
+    and one timed call of one chunk, and the reference's warming
+    (``reference_warmup``) and one timed point."""
 
     call = lanes * costs.binary64
-    seconds = costs.start + call + warmup_seconds(call, costs.binary64)
+    seconds = costs.start + call + binary64_warmup(costs, call)
     if costs.reference is not None:
-        seconds += 2 * costs.reference
+        seconds += reference_warmup(costs) + costs.reference
     return seconds
 
 
@@ -669,14 +729,17 @@ __all__ = [
     "RuntimeCounts",
     "admit_chunk",
     "affordable_chunk",
+    "binary64_warmup",
     "measurement_affects_counts",
     "minimum_counts",
     "plan",
     "reference_affects_counts",
+    "reference_warmup",
     "runtime_counts",
     "scope_minimum",
     "stability_points",
     "stability_wall",
+    "takes_entry",
     "task_points",
     "timing_scope",
     "warmup_seconds",

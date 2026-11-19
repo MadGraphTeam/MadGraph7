@@ -691,14 +691,18 @@ def _runtime_setup(
         f"{row.profile.batch}"
         for row in profiled
     )
-    warmups = sorted(
-        {
-            f"{row.profile.warmup} warm-up"
-            if getattr(row.profile, "prepared_seconds", None) is None
-            else "a warm entry"
-            for row in profiled
-        }
-    )
+
+    def warming(profile: Any) -> str:
+        """How a stream was warmed: its untimed warm-up calls, the warm
+        entry, or the entry and the warm-ups after it."""
+
+        entry = getattr(profile, "prepared_seconds", None) is not None
+        calls = f"{profile.warmup} warm-up"
+        if not entry:
+            return calls
+        return "a warm entry" + (f" and {calls}" if profile.warmup else "")
+
+    warmups = sorted({warming(row.profile) for row in profiled})
     text = (
         f"binary64, finite part, {reduction}, on {core}; {points}, a new batch "
         f"every call; the median of each backend's timed calls"
@@ -711,10 +715,18 @@ def _runtime_setup(
         if row.profile.reference is not None
     ]
     if truth is not None and truth.present and references:
+        warmed = sorted(
+            {
+                warming(row.profile.reference)
+                for row in profiled
+                if row.profile.reference is not None
+            }
+        )
         text += (
             f"; the {truth.label} multiplier from "
             + " / ".join(map(str, references))
             + " reference points"
+            + (f" after {' / '.join(warmed)}" if warmed != ["1 warm-up"] else "")
         )
     return text
 
@@ -779,12 +791,15 @@ def profile_loop(
         STABILITY_PRIOR,
         Costs,
         Plan,
+        binary64_warmup,
         measurement_affects_counts,
         minimum_counts,
         reference_affects_counts,
+        reference_warmup,
         runtime_counts,
         scope_minimum,
         stability_wall,
+        takes_entry,
         timing_scope,
         warmup_seconds,
     )
@@ -969,6 +984,58 @@ def profile_loop(
 
     # An explicit --ground-truth keeps the runtime timing's reference pass.
     is_default_truth_forced = not is_default(bench.ground_truth)
+    # The warm entry (``prepare`` of the runtime's backend, loadfast): the
+    # streams that warm through it instead of their untimed warm-up point
+    # (``profile_plan.takes_entry``), counted as such by every plan.
+    has_entry = callable(
+        getattr(getattr(runtime, "_backend", runtime), "prepare", None)
+    )
+    excess: dict[tuple[str, str], float] = {}
+
+    def entry_cost(backend: str, precision: str) -> float | None:
+        return None if history is None else history.cost(backend, f"{precision}-entry")
+
+    def warms_through_entry(backend: str, precision: str, point: float | None) -> bool:
+        """Whether this stream warms through the entry: the runtime offers
+        it, the binary64 stream only in the optimistic pass, and
+        ``takes_entry`` from the point's cost (None: unknown), the entry's
+        remembered cost and the measured first-call excess."""
+
+        if not has_entry or (precision == "binary64" and checked):
+            return False
+        return takes_entry(
+            point,
+            entry=entry_cost(backend, precision),
+            excess=excess.get((backend, precision)),
+        )
+
+    def entry_warming(backend: str, precision: str) -> float:
+        """The entry's expected seconds: remembered, else the first-call
+        excess it replaces, else none known (seconds, negligible against
+        the dear point it replaces)."""
+
+        known = entry_cost(backend, precision)
+        if known is None:
+            known = excess.get((backend, precision))
+        return 0.0 if known is None else known
+
+    def with_warming(backend: str, cost: Any) -> Any:
+        """``cost`` with its streams' warming by the entry where they take
+        it (``Costs.binary64_warm`` / ``reference_warm``)."""
+
+        call = DEFAULT_LANES * cost.binary64
+        point = warmup_seconds(call, cost.binary64)
+        return replace(
+            cost,
+            binary64_warm=entry_warming(backend, "binary64")
+            if warms_through_entry(backend, "binary64", point)
+            else None,
+            reference_warm=entry_warming(backend, "reference")
+            if cost.reference is not None
+            and warms_through_entry(backend, "reference", cost.reference)
+            else None,
+        )
+
     # The scope rules' inputs (below, after the measurement): counts given
     # (how many points or calls run) are honoured as given; a given
     # --target-runtime is the runtime timing's budget (counts given with it
@@ -1083,12 +1150,16 @@ def profile_loop(
                 # timing measures it with its own reference warm-up.
                 reference_needed=(
                     (
-                        lambda binary64, count: (
+                        lambda backend, binary64, count: (
                             reference_affects_counts(
                                 binary64,
                                 load_seconds + 1.0,
                                 backends=count,
                                 lanes=DEFAULT_LANES,
+                                warm=with_warming(
+                                    backend,
+                                    Costs(binary64, None, 0.0, None, 0.0),
+                                ).binary64_warm,
                             )
                             and not (
                                 # Rule B will leave the reference out: this
@@ -1107,12 +1178,14 @@ def profile_loop(
                     else None
                 ),
                 enough=enough,
+                excess=excess,
             )
         )
     except KeyboardInterrupt:
         monitor.close(False)
         raise
     measured_at = monitor.elapsed()
+    costs = {b: with_warming(b, c) for b, c in costs.items()}
     priors: dict[str, Any] = {}
     # The minimum runtime timing, as the notices name it (the reference
     # point only when no scope rule can leave it out: given, or with
@@ -1132,12 +1205,15 @@ def profile_loop(
     if blind:
         # The minimum counts; a previous profile's costs only for the ETA.
         priors = {
-            backend: Costs(
-                binary64,
-                history.cost(backend, "reference") if truth.present else None,
-                0.0,
-                None,
-                load_seconds + 1.0,
+            backend: with_warming(
+                backend,
+                Costs(
+                    binary64,
+                    history.cost(backend, "reference") if truth.present else None,
+                    0.0,
+                    None,
+                    load_seconds + 1.0,
+                ),
             )
             for backend in backends
             if history is not None
@@ -1407,7 +1483,7 @@ def profile_loop(
                 call = backend_bench.batch_size * cost.binary64
                 warmups = int(backend_bench.warmup_runs)
                 later["binary64"] = (
-                    (warmup_seconds(call, cost.binary64) + (warmups - 1) * call)
+                    (binary64_warmup(cost, call) + (warmups - 1) * call)
                     if warmups
                     else 0.0
                 ) + max(
@@ -1415,7 +1491,7 @@ def profile_loop(
                     max(int(backend_bench.minimum_samples), 1) * call,
                 )
                 if timed_reference and cost.reference is not None:
-                    later["reference"] = cost.reference + max(
+                    later["reference"] = reference_warmup(cost) + max(
                         reference_budget, cost.reference
                     )
                 if one_thread is not None:
@@ -1453,6 +1529,17 @@ def profile_loop(
                         if reference_over is not None
                         else {}
                     ),
+                    # Warmed through the entry (``takes_entry``; unknown
+                    # cost: the entry).
+                    "entry": warms_through_entry(
+                        backend,
+                        "reference",
+                        costs[backend].reference
+                        if backend in costs
+                        else priors[backend].reference
+                        if backend in priors
+                        else None,
+                    ),
                     **(
                         {"seconds_per_point": costs[backend].reference}
                         if backend in costs and costs[backend].reference is not None
@@ -1471,15 +1558,19 @@ def profile_loop(
                     run,
                     reference=reference,
                     one_thread=one_thread,
-                    # A binary64 point's cost (the measurement's, else a
-                    # previous profile's): whether the warm entry replaces
-                    # the untimed point (``benchmarking._prepared``).
-                    point_seconds=(
-                        costs[backend].binary64
-                        if backend in costs
-                        else priors[backend].binary64
-                        if backend in priors
-                        else None
+                    # Whether the warm entry replaces the untimed binary64
+                    # warm-up (``takes_entry`` from its cost: the
+                    # measurement's, else a previous profile's, else
+                    # unknown).
+                    warm_entry=warms_through_entry(
+                        backend,
+                        "binary64",
+                        None
+                        if (known := costs.get(backend) or priors.get(backend)) is None
+                        else warmup_seconds(
+                            backend_bench.batch_size * known.binary64,
+                            known.binary64,
+                        ),
                     ),
                 )
             except ReductionUnavailable as error:
@@ -1523,6 +1614,10 @@ def profile_loop(
                     if result.reference is None
                     else result.reference.seconds_per_point,
                     0.0,
+                    binary64_warm=result.prepared_seconds,
+                    reference_warm=None
+                    if result.reference is None
+                    else result.reference.prepared_seconds,
                 )
                 if scope_minimum(
                     measured, lanes=DEFAULT_LANES, reference=True
@@ -1586,8 +1681,29 @@ def profile_loop(
                     STABILITY_PRIOR * profile.seconds_per_point,
                     reference,
                     load_seconds + 1.0,
+                    binary64_warm=profile.prepared_seconds,
+                    reference_warm=None
+                    if profile.reference is None
+                    else profile.reference.prepared_seconds,
                 )
-        if blind or timed_references:
+        # The streams the entry warmed, as they ran (``prepared_seconds``):
+        # the plan's warming from now on (the record, the history).
+        entry_ran = False
+        for row in rows:
+            profile = row.profile
+            if profile is None or row.backend not in costs:
+                continue
+            reference = profile.reference
+            warmed = replace(
+                costs[row.backend],
+                binary64_warm=profile.prepared_seconds,
+                reference_warm=None
+                if reference is None
+                else reference.prepared_seconds,
+            )
+            entry_ran = entry_ran or warmed != costs[row.backend]
+            costs[row.backend] = warmed
+        if blind or timed_references or entry_ran:
             # The record and the counts row from the costs measured: the
             # minimums' time, whether they exceed the budget, the stability
             # plan, the expected seconds; the counts that ran stay its own.
@@ -2353,8 +2469,9 @@ def _measure(
     *,
     history: _ProfileHistory | None = None,
     provisional: Callable[[dict[str, Any], float], None] | None = None,
-    reference_needed: Callable[[float, int], bool] | None = None,
+    reference_needed: Callable[[str, float, int], bool] | None = None,
     enough: Callable[[Mapping[str, Any]], bool] | None = None,
+    excess: dict[tuple[str, str], float] | None = None,
 ) -> dict[str, Any]:
     """The measurement phase of a time-budgeted profile, on this process's
     loaded runtime, per backend: the binary64 cost per point of an
@@ -2450,7 +2567,11 @@ def _measure(
         prior = prior_point(backend, precision)
         per_point = seconds(1, prior)
         if per_point <= MEASURE_REPEAT_SECONDS:
+            first = per_point
             per_point = seconds(1, per_point)
+            if excess is not None:
+                # The first call's lazy set-up (``profile_plan.takes_entry``).
+                excess[(backend, precision)] = max(first - per_point, 0.0)
         if per_point * len(points) <= WARMUP_CALL_SECONDS:
             per_point = seconds(len(points), per_point * len(points))
         return per_point
@@ -2552,7 +2673,9 @@ def _measure(
                 if (
                     precision == "reference"
                     and reference_needed is not None
-                    and not reference_needed(measured["binary64"], len(backends))
+                    and not reference_needed(
+                        backend, measured["binary64"], len(backends)
+                    )
                 ):
                     estimated.add(backend)
                     done += 1
@@ -2609,7 +2732,7 @@ def _measure(
         # A backend refused: the others' shares grew; a reference cost that
         # can now change the counts is measured after all.
         if reference_needed is None or reference_needed(
-            costs[backend].binary64, len(costs)
+            backend, costs[backend].binary64, len(costs)
         ):
             reference = cost(backend, "reference")
             known[(backend, "reference")] = reference
@@ -2717,6 +2840,13 @@ class _ProfileHistory:
                 self._store.observe(
                     f"cost:{backend}:reference", 1e6 * float(cost.reference)
                 )
+            # The warm entry's seconds where it ran (``takes_entry``).
+            for precision in ("binary64", "reference"):
+                warm = getattr(cost, f"{precision}_warm", None)
+                if warm:
+                    self._store.observe(
+                        f"cost:{backend}:{precision}-entry", 1e6 * float(warm)
+                    )
         for name, value in seconds.items():
             self._store.observe(name, float(value))
         self._store.store(list(backends))
@@ -2773,7 +2903,7 @@ def _isolated_profile(
     *,
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
-    point_seconds: float | None = None,
+    warm_entry: bool = False,
 ) -> VirtualProfileResult:
     """``benchmarking.profile_virtual`` of one backend (``request``) on
     ``points`` (None: the artifact's distinct flat points) in a fresh
@@ -2812,7 +2942,7 @@ def _isolated_profile(
             request,
             None if reference is None else dict(reference),
             one_thread,
-            point_seconds,
+            warm_entry,
         ),
         name="pyamplicol-loop-runtime-profile",
         daemon=True,
@@ -2875,7 +3005,7 @@ def _runtime_worker(
     request: str,
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
-    point_seconds: float | None = None,
+    warm_entry: bool = False,
 ) -> None:
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
     parent, every thread pool at ``benchmark.runtime_threads`` threads
@@ -2923,7 +3053,7 @@ def _runtime_worker(
             reference=reference,
             optimistic=not benchmark.checked,
             monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
-            point_seconds=point_seconds,
+            warm_entry=warm_entry,
         )
         if threads > 1 and one_thread is not None:
             # The gain: the same calls on one thread, after the N-thread

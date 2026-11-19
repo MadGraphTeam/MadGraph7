@@ -1458,8 +1458,6 @@ def test_a_refusing_backend_takes_no_share_of_the_budget(uux_ddx, monkeypatch):
         return load(cls, *args, **kwargs)
 
     monkeypatch.setattr(Runtime, "load", classmethod(slow))
-    runtime = load(Runtime, uux_ddx)
-    assert lp._serving(runtime, ("ninjars", "tirust")) == ["tirust"]
     config = resolve_config(
         {
             "action": "benchmark",
@@ -1475,13 +1473,13 @@ def test_a_refusing_backend_takes_no_share_of_the_budget(uux_ddx, monkeypatch):
     assert report.plan["runtime"]["tirust"]["budget_seconds"] > 0.0
 
 
-@pytest.mark.parametrize("point_seconds", [None, 1e-3, 1e3])
-def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, point_seconds):
+@pytest.mark.parametrize("warm_entry", [False, True])
+def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, warm_entry):
     """With a warm entry on the runtime's backend (``prepare``, loadfast) and
-    a dear binary64 point (above ``MEASURE_REPEAT_SECONDS``) the optimistic
-    timing warms through it, in its backend and unchecked mode, instead of
-    the untimed warm-up point: no warm-up call, the timed calls unchanged;
-    an unknown or cheap point keeps the warm-up point (inert without the
+    the caller's decision (``warm_entry``, ``profile_plan.takes_entry``) the
+    optimistic timing warms through it, in its backend and unchecked mode,
+    instead of the untimed warm-up point: no warm-up call, the timed calls
+    unchanged; without the decision the warm-up point (inert without the
     entry, as on this base)."""
 
     from pyamplicol.api import Runtime
@@ -1509,11 +1507,11 @@ def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, point_seconds)
             points=_points(uux_ddx) * 8,
             reduction="tirust",
             optimistic=True,
-            point_seconds=point_seconds,
+            warm_entry=warm_entry,
         )
     finally:
         Runtime.evaluate = evaluate
-    if point_seconds == 1e3:
+    if warm_entry:
         assert prepared == [{"reduction": "tirust", "unchecked": True}]
         assert result.warmup == 0 and result.prepared_seconds is not None
         assert calls == [4]
@@ -1607,6 +1605,11 @@ def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
     assert all(p is not None and p.reference is not None for p in rows.values())
     assert report.plan["omitted_backends"] == []
     assert report.plan["omitted_reference"] is None
+    # No warm entry ran: no prepared_seconds key at either level (m-c).
+    for profile in rows.values():
+        document = profile.cli_json()
+        assert "prepared_seconds" not in document
+        assert "prepared_seconds" not in document["reference"]
 
 
 @pytest.mark.parametrize(
@@ -1722,3 +1725,79 @@ def test_the_measurement_stops_after_a_decisive_default_backend(
     assert {row.backend for row in report.runtime or report.stability or ()} == {
         "ninjars"
     }
+
+
+def test_the_plan_counts_the_warm_entry_not_a_point(uux_ddx, monkeypatch):
+    """With a warm entry (a stub ``prepare``) and a dear reference point
+    (every double-double call slowed by 3 s), the reference streams warm
+    through the entry, and the record's minimums are those of what ran: no
+    untimed reference point counted (ptimereview2 W-B1: 2 x 3 s too many);
+    the JSON names the entry's seconds, and the setup row the entry."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import resolve_config
+
+    evaluate = Runtime.evaluate
+    load = Runtime.load.__func__
+
+    def slow(self, batch, *args, **kwargs):
+        if kwargs.get("arithmetic") == "double-double":
+            time.sleep(3.0)
+        return evaluate(self, batch, *args, **kwargs)
+
+    def with_entry(cls, *args, **kwargs):
+        runtime = load(cls, *args, **kwargs)
+        runtime._backend.prepare = lambda **options: time.sleep(0.01)
+        return runtime
+
+    def in_process(
+        artifact,
+        process,
+        options,
+        config,
+        points,
+        request,
+        run,
+        *,
+        reference=None,
+        one_thread=None,
+        warm_entry=False,
+    ):
+        runtime = Runtime.load(artifact, process=process, **options)
+        return profile_virtual(
+            runtime,
+            config,
+            points=points,
+            artifact=artifact,
+            reduction=request,
+            reference=reference,
+            optimistic=True,
+            warm_entry=warm_entry,
+        )
+
+    monkeypatch.setattr(Runtime, "evaluate", slow)
+    monkeypatch.setattr(Runtime, "load", classmethod(with_entry))
+    monkeypatch.setattr(lp, "_isolated_profile", in_process)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    for profile in rows.values():
+        assert profile.reference is not None
+        assert profile.reference.prepared_seconds is not None
+        assert profile.reference.warmup == 0
+    assert report.seconds is not None
+    # What ran: each reference one timed 3 s point after its entry; the
+    # warm-up point the entry replaced would add 2 x 3 s.
+    assert report.plan["minimum_seconds"] <= report.seconds + 3.0
+    assert "after a warm entry" in (report.runtime_setup or "")

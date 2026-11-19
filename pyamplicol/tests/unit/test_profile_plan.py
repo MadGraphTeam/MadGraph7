@@ -72,7 +72,12 @@ def test_a_reference_cost_that_cannot_change_the_counts_is_not_needed():
     from pyamplicol.profile_plan import DEFAULT_RUNTIME_SECONDS, REFERENCE_SHARE
 
     for binary64, start, backends in itertools.product(
-        (1e-5, 1e-3, 0.05, 0.6, 200.0), (0.5, 3.0, 1200.0), (1, 2)
+        # 0.1 s at a 3 s start-up on 2 backends sits in the band where the
+        # share (2 s) beats the warm-up (1.6 s) but its 3/4 do not (ptimereview2
+        # m-a: the rule before b5c9f61da measured the reference there).
+        (1e-5, 1e-3, 0.05, 0.1, 0.6, 200.0),
+        (0.5, 3.0, 1200.0),
+        (1, 2),
     ):
         share = max(DEFAULT_RUNTIME_SECONDS / backends - start, 0.0)
         needed = reference_affects_counts(
@@ -813,22 +818,18 @@ class _StubRuntime:
 
 
 @pytest.mark.parametrize(
-    ("with_prepare", "point_seconds", "prepared"),
-    [
-        (True, 10.0 * MEASURE_REPEAT_SECONDS, True),
-        (True, 0.01, False),
-        (False, 1e3, False),
-    ],
+    ("with_prepare", "entry", "prepared"),
+    [(True, True, True), (True, False, False), (False, True, False)],
 )
 def test_the_warm_entry_replaces_a_dear_reference_warm_up(
-    with_prepare, point_seconds, prepared
+    with_prepare, entry, prepared
 ):
     """The reference pass warms its carrier through the runtime's warm entry
-    (``prepare``, when it has one) instead of the untimed warm-up point when
-    a point is dear (above ``MEASURE_REPEAT_SECONDS``): the entry runs once
-    in the timed calls' carrier, backend and unchecked mode, no untimed call
-    is made and the first timed call is call 0; a cheap point, or a runtime
-    without the entry, keeps today's untimed point."""
+    (``prepare``) instead of the untimed warm-up point when the caller says
+    so (``reference["entry"]``, ``profile_plan.takes_entry``): the entry
+    runs once in the timed calls' carrier, backend and unchecked mode, no
+    untimed call is made and the first timed call is call 0; otherwise, or
+    on a runtime without the entry, today's untimed point."""
 
     from pyamplicol.benchmarking import _PointBatches, _reference_timing
 
@@ -844,7 +845,8 @@ def test_the_warm_entry_replaces_a_dear_reference_warm_up(
             "arithmetic": "double-double",
             "reduction": "ninjars",
             "budget": 1e-9,
-            "seconds_per_point": point_seconds,
+            "seconds_per_point": 10.0,
+            "entry": entry,
         },
         binary64=1e-3,
     )
@@ -944,3 +946,41 @@ def test_the_backend_rule_counts_the_stability_run():
     # The stability run alone (no --runtime).
     assert scope(40.0, runtime_asked=False) == (True, ())
     assert scope(40.0 * (1 - 1e-9), runtime_asked=False) == (True, ("tirust",))
+
+
+def test_a_stream_takes_the_warm_entry_by_its_costs():
+    """``takes_entry``: the entry when the point costs more than the entry's
+    remembered cost, else (none remembered) more than the measured
+    first-call excess, else (no cost known) the entry; and every plan counts
+    the entry, not a point, for such a stream (ptimereview2 W-B1)."""
+
+    from pyamplicol.profile_plan import (
+        binary64_warmup,
+        reference_warmup,
+        runtime_minimum,
+        scope_minimum,
+        takes_entry,
+    )
+
+    assert takes_entry(None) and takes_entry(1e-3)
+    assert takes_entry(10.0, entry=5.0) and not takes_entry(5.0, entry=5.0)
+    assert not takes_entry(0.7, excess=1.5) and takes_entry(20.0, excess=5.0)
+    # The remembered entry wins over the excess.
+    assert not takes_entry(3.0, entry=5.8, excess=1.0)
+    point = _costs(200.0, 30.0, 10.0)
+    warmed = replace(point, binary64_warm=0.5, reference_warm=70.0)
+    call = LANES * 200.0
+    assert binary64_warmup(point, call) == warmup_seconds(call, 200.0)
+    assert binary64_warmup(warmed, call) == 0.5
+    assert reference_warmup(point) == 6000.0 and reference_warmup(warmed) == 70.0
+    assert runtime_minimum(warmed, lanes=LANES) == pytest.approx(
+        10.0 + call + 0.5 + 70.0 + 6000.0
+    )
+    assert runtime_minimum(point, lanes=LANES) - runtime_minimum(
+        warmed, lanes=LANES
+    ) == pytest.approx(200.0 - 0.5 + 6000.0 - 70.0)
+    assert scope_minimum(warmed, lanes=LANES, reference=True) == pytest.approx(
+        call + 0.5 + 70.0 + 6000.0
+    )
+    counts = runtime_counts(warmed, 0.0, lanes=LANES, batch_max=128)
+    assert counts.expected == pytest.approx(10.0 + 0.5 + call + 70.0 + 6000.0)
