@@ -890,9 +890,17 @@ def profile_loop(
         )
         bench = replace(bench, runtime_threads=threads)
         config = replace(config, benchmark=bench)
+    # The runtime counts given (honoured as given); a --target-runtime given
+    # alone is the runtime timing's budget per backend (the counts follow it,
+    # as they follow the default budget).
     runtime_given = any(
         not is_default(getattr(bench, name))
-        for name in ("target_runtime", "minimum_samples", "batch_size", "warmup_runs")
+        for name in ("minimum_samples", "batch_size", "warmup_runs")
+    )
+    runtime_share = (
+        float(bench.target_runtime)
+        if completion is None and not is_default(bench.target_runtime)
+        else None
     )
     stability_given = (
         None if is_default(bench.stability_points) else int(bench.stability_points)
@@ -945,6 +953,9 @@ def profile_loop(
                 elapsed=elapsed,
                 stability_start=start,
                 runtime_counts_given=runtime_given and completion is None,
+                runtime_budget=None
+                if runtime_share is None or runtime_given
+                else runtime_share * max(len(costs_map), 1),
                 stability_points_given=given_points,
                 tail_seconds_per_point=tail if completion is not None else 0.0,
                 runtime_target=float(bench.target_runtime),
@@ -1080,13 +1091,23 @@ def profile_loop(
         stability_budget = DEFAULT_STABILITY_SECONDS_PER_CORE if want_stability else 0.0
         return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
 
-    def stability_minimum(cost: Any) -> float:
+    def stability_minimum(cost: Any, *, lower: bool = False) -> float:
         """A backend's stability-run minimum (``STABILITY_MINIMUM`` points
         with its reference, on the workers; its start with
-        --completion-time), 0 without --stability."""
+        --completion-time), 0 without --stability. ``lower``: a true lower
+        bound (a checked point costs at least one optimistic pass, a
+        reference point at least its measured point or, estimated, the
+        binary64 point)."""
 
         if not want_stability:
             return 0.0
+        if lower:
+            reference = (
+                cost.binary64
+                if cost.reference is None or cost.reference_estimated
+                else cost.reference
+            )
+            cost = replace(cost, stability=cost.binary64, stability_reference=reference)
         return stability_wall([cost], STABILITY_MINIMUM, workers) + (
             load_seconds + 1.0 if completion is not None else 0.0
         )
@@ -1105,16 +1126,19 @@ def profile_loop(
             or set(found) != {default}
         ):
             return False
-        cost = found[default]
+        # A true lower bound (``scope_minimum(lower=True)``): the measured
+        # one-point costs never drop a backend on an over-estimate.
+        cost = with_warming(default, found[default])
         alone = (
             scope_minimum(
                 cost,
                 lanes=DEFAULT_LANES,
                 reference=not (timing_alone and not is_default_truth_forced),
+                lower=True,
             )
             if want_runtime
             else 0.0
-        ) + stability_minimum(cost)
+        ) + stability_minimum(cost, lower=True)
         if alone > budget_bound(1):
             early.extend(b for b in backends if b != default)
             return True
@@ -1129,7 +1153,9 @@ def profile_loop(
         and completion is None
         and not runtime_given
         and not measurement_affects_counts(
-            load_seconds + 1.0, backends=len(_serving(runtime, backends))
+            load_seconds + 1.0,
+            backends=len(_serving(runtime, backends)),
+            share=runtime_share,
         )
     )
     try:
@@ -1162,17 +1188,26 @@ def profile_loop(
                                     backend,
                                     Costs(binary64, None, 0.0, None, 0.0),
                                 ).binary64_warm,
+                                share=runtime_share,
                             )
                             and not (
-                                # Rule B will leave the reference out: this
-                                # backend's binary64 minimum alone exceeds
-                                # the budget.
-                                want_runtime
-                                and not want_stability
+                                # Rule B will leave the reference out: a
+                                # lower bound of this backend's minimum
+                                # alone (``scope_minimum(lower=True)``:
+                                # its call and warming at one measured
+                                # point each) exceeds the budget.
+                                timing_alone
                                 and not is_default_truth_forced
-                                and binary64 * DEFAULT_LANES
-                                + warmup_seconds(binary64 * DEFAULT_LANES, binary64)
-                                > BUDGET_TOLERANCE * DEFAULT_RUNTIME_SECONDS
+                                and scope_minimum(
+                                    with_warming(
+                                        backend,
+                                        Costs(binary64, None, 0.0, None, 0.0),
+                                    ),
+                                    lanes=DEFAULT_LANES,
+                                    reference=False,
+                                    lower=True,
+                                )
+                                > budget_bound(count)
                             )
                         )
                     )
@@ -1188,6 +1223,25 @@ def profile_loop(
         raise
     measured_at = monitor.elapsed()
     costs = {b: with_warming(b, c) for b, c in costs.items()}
+
+    def cap_workers(profiles: Sequence[Any]) -> None:
+        """The stability workers the memory holds, for the plan, its ETA and
+        rule A's stability minimum (``_stability`` applies the same rule
+        when it starts, ``_memory_record``); a --n_core given stays."""
+
+        nonlocal workers
+        from pyamplicol.profile_plan import memory_workers
+
+        if not want_stability or not is_default(bench.n_core):
+            return
+        estimate = _worker_memory(
+            load_peak, _own_peak_bytes() if costs and not blind else None, profiles
+        )
+        available = _available_memory()
+        if estimate and available is not None:
+            workers = min(workers, memory_workers(estimate, available))
+
+    cap_workers(())
     priors: dict[str, Any] = {}
     # The minimum runtime timing, as the notices name it (the reference
     # point only when no scope rule can leave it out: given, or with
@@ -1282,17 +1336,26 @@ def profile_loop(
             runtime=want_runtime,
             reference_rule=timing_alone,
             start=completion is not None,
-            extra={b: stability_minimum(c) for b, c in estimates.items()},
+            extra={b: stability_minimum(c, lower=True) for b, c in estimates.items()},
+            # Before the runtime timing on true lower bounds: a backend or
+            # the reference is left out only when surely past the budget;
+            # rule A is decided again on the default backend's runtime row.
+            lower=True,
         )
         if found:
             omitted = [b for b in backends if b != default]
-    # Without them, the runtime timing's own costs decide: a backend's
-    # worker skips its reference pass when its minimum with the reference
-    # (at the reference's prior) exceeds the whole budget.
+    # Rule B on the runtime timing's own costs: the first backend's worker
+    # leaves out its reference pass when its lower bound (its measured
+    # binary64 call, the reference at least its binary64 pass) exceeds the
+    # budget of every backend; its verdict holds for every backend (all or
+    # none: no mixed table).
     reference_over = (
-        budget_bound(1)
-        if timing_alone and timed_reference and not force_reference and not decided
+        budget_bound(len(serving))
+        if timing_alone and timed_reference and not force_reference
         else None
+    )
+    reference_decider = next(
+        (b for b in backends if b in serving and b not in omitted), None
     )
 
     def omit_notice() -> None:
@@ -1314,7 +1377,9 @@ def profile_loop(
     if omitted and bench.all_backends is None:
         omit_notice()
     if decided and (omitted or not timed_reference):
-        # The plan of what runs: the default backend alone, no reference.
+        # The plan of what runs, no reference; the default backend alone
+        # keeps the share it has beside the others (its row does not depend
+        # on which other rows are shown).
         costs = {
             b: c
             if timed_reference
@@ -1322,10 +1387,13 @@ def profile_loop(
                 c, reference=None, stability_reference=None, reference_estimated=False
             )
             for b, c in costs.items()
-            if b not in omitted
         }
         if not blind:
             planned, stability_start = planning(costs, measured_at)
+            planned = replace(
+                planned,
+                runtime={b: c for b, c in planned.runtime.items() if b not in omitted},
+            )
         minimum_calls = "one timed call of one chunk per backend" + (
             " and its reference point" if timed_reference else ""
         )
@@ -1338,7 +1406,7 @@ def profile_loop(
                 "runtime": (
                     f"{_duration(float(bench.target_runtime))} per backend for the "
                     "runtime timing (--target-runtime)"
-                    if runtime_given
+                    if runtime_given or runtime_share is not None
                     else f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing"
                 ),
                 "stability": (
@@ -1528,7 +1596,7 @@ def profile_loop(
                     "budget": max(reference_budget, 1e-9),
                     **(
                         {"unless_over": reference_over}
-                        if reference_over is not None
+                        if reference_over is not None and backend == reference_decider
                         else {}
                     ),
                     # Warmed through the entry (``takes_entry``; unknown
@@ -1595,17 +1663,30 @@ def profile_loop(
                 current[0] = None
             run.finish(result)
             rows.append(BackendRuntime(backend, result, requested=request))
+            if backend == reference_decider and result.reference_skipped:
+                from pyamplicol.loops.v2.reduction import NAMES
+
+                # Rule B on this backend's measured costs: no reference for
+                # any backend (all or none).
+                timed_reference = False
+                _notice(
+                    f"the runtime minimums with their {truth.name} reference "
+                    f"exceed the budget (measured on {NAMES.get(backend, backend)}): "
+                    f"no {truth.label} multiplier (an explicit --ground-truth "
+                    "measures it)"
+                )
             if (
                 rules
-                and not decided
                 and not asked_backends
                 and not omitted
                 and backend == default
                 and len(serving) > 1
                 and _served_points(result)
             ):
-                # The default backend's measured minimum (rule A when no
-                # cost was known before the runtime timing).
+                # Rule A's decision on the default backend's runtime row,
+                # measured before any other backend starts (the ones after
+                # it read it here): its chunk's cost per point, its warming,
+                # its reference as run, the stability part at a lower bound.
                 measured = Costs(
                     result.seconds_per_point,
                     None
@@ -1623,7 +1704,7 @@ def profile_loop(
                 )
                 if scope_minimum(
                     measured, lanes=DEFAULT_LANES, reference=True
-                ) + stability_minimum(measured) > budget_bound(1):
+                ) + stability_minimum(measured, lower=True) > budget_bound(1):
                     omitted = [b for b in backends if b != default]
                     omit_notice()
         # A backend that failed every timed point is not compared (its time
@@ -1664,51 +1745,38 @@ def profile_loop(
                 stability_reference=seconds,
                 reference_estimated=False,
             )
-        if blind:
-            # The costs the runtime timing measured (one optimistic pass per
-            # point in binary64 and in the reference): the stability run's
-            # priors and the plan's record, as if measured first.
-            for row in rows:
-                profile = row.profile
-                if profile is None or not _served_points(profile):
-                    continue
-                reference = (
-                    None
-                    if profile.reference is None
-                    else profile.reference.seconds_per_point
-                )
-                costs[row.backend] = Costs(
-                    profile.seconds_per_point,
-                    reference,
-                    STABILITY_PRIOR * profile.seconds_per_point,
-                    reference,
-                    load_seconds + 1.0,
-                    binary64_warm=profile.prepared_seconds,
-                    reference_warm=None
-                    if profile.reference is None
-                    else profile.reference.prepared_seconds,
-                )
-        # The streams the entry warmed, as they ran (``prepared_seconds``):
-        # the plan's warming from now on (the record, the history).
-        entry_ran = False
+        # The record, the counts row, the stability plan and the history
+        # from what ran: every runtime row's measured costs (its chunk's
+        # binary64 cost per point, its reference point, the entry where it
+        # warmed), the backends left out or refused dropped; the counts
+        # that ran stay the record's, their expected seconds re-planned.
+        ran: dict[str, Any] = {}
         for row in rows:
             profile = row.profile
-            if profile is None or row.backend not in costs:
+            if profile is None or not _served_points(profile):
                 continue
             reference = profile.reference
-            warmed = replace(
-                costs[row.backend],
+            seconds = None if reference is None else reference.seconds_per_point
+            ran[row.backend] = Costs(
+                profile.seconds_per_point,
+                seconds,
+                STABILITY_PRIOR * profile.seconds_per_point,
+                seconds,
+                load_seconds + 1.0,
                 binary64_warm=profile.prepared_seconds,
                 reference_warm=None
                 if reference is None
                 else reference.prepared_seconds,
             )
-            entry_ran = entry_ran or warmed != costs[row.backend]
-            costs[row.backend] = warmed
-        if blind or timed_references or entry_ran:
-            # The record and the counts row from the costs measured: the
-            # minimums' time, whether they exceed the budget, the stability
-            # plan, the expected seconds; the counts that ran stay its own.
+        if ran:
+            costs = ran
+            cap_workers(
+                [
+                    row.profile
+                    for row in rows
+                    if row.profile is not None and row.backend not in omitted
+                ]
+            )
             replanned, stability_start = planning(costs, measured_at)
             planned = replace(
                 replanned,
@@ -1719,6 +1787,7 @@ def profile_loop(
                         else counts
                     )
                     for backend, counts in planned.runtime.items()
+                    if backend not in omitted
                 },
             )
 
@@ -1883,6 +1952,8 @@ def profile_loop(
                     and completion is None
                 ),
             },
+            # A --target-runtime given alone: the runtime budget per backend.
+            "runtime_target": runtime_share if not runtime_given else None,
             # What the runtime timing left out on an expensive process: the
             # backends (rule A) and the reference multiplier (rule B).
             "omitted_backends": list(omitted),
@@ -2119,6 +2190,21 @@ def _own_peak_bytes() -> float | None:
 
     try:
         with open("/proc/self/status", encoding="ascii") as status:
+            for line in status:
+                if line.startswith("VmHWM:"):
+                    return float(line.split()[1]) * 1024.0
+    except OSError:
+        pass
+    return None
+
+
+def _process_peak_bytes(pid: int | None) -> float | None:
+    """Another process's peak resident set size (VmHWM; None unknown)."""
+
+    if pid is None:
+        return None
+    try:
+        with open(f"/proc/{pid}/status", encoding="ascii") as status:
             for line in status:
                 if line.startswith("VmHWM:"):
                     return float(line.split()[1]) * 1024.0
@@ -3953,17 +4039,58 @@ def _stability(
         if is_default(bench.n_core):
             _notice(
                 f"the stability run starts {memory['fits']} workers instead of "
-                f"{workers}: each holds about {need} (measured), "
-                f"{held} available"
+                f"{workers}: each holds about {need} (measured), three quarters "
+                f"of the {held} available hold {memory['fits']}"
             )
             workers = int(memory["fits"])
         else:
             _notice(
                 f"--n_core {workers} given: its workers need about "
                 f"{_gib(workers * memory['per_worker_bytes'])} ({need} each, "
-                f"measured), {held} available",
+                f"measured), more than three quarters of the {held} available",
                 warning=True,
             )
+    # A task of several points (a stream's point cheaper than a task's
+    # work, ``task_points``) holds more than the one-point calls the
+    # estimate measured: the first worker runs its first task alone and its
+    # own peak sets the workers (``_run_pool``'s ``probe``); a task of one
+    # point is that measurement's own evaluation, nothing to probe.
+    probe = None
+    if memory is not None and workers > 1:
+        from pyamplicol.config.models import is_default
+        from pyamplicol.profile_plan import memory_workers
+
+        point_costs = [
+            seconds
+            for backend in backends
+            if (cost := (costs or {}).get(backend)) is not None
+            for seconds in (cost.stability, cost.stability_reference)
+            if seconds
+        ]
+        chunked = not point_costs or any(
+            task_points(seconds, DEFAULT_LANES) > 1 for seconds in point_costs
+        )
+        if chunked and is_default(bench.n_core):
+
+            def probe(peak: float) -> int:
+                available = _available_memory()
+                fits = (
+                    workers
+                    if available is None
+                    else min(workers, memory_workers(peak, available))
+                )
+                memory.update(
+                    probed_bytes=peak, probed_workers=fits, available_bytes=available
+                )
+                if fits < workers:
+                    _notice(
+                        f"the stability run keeps {fits} of its {workers} workers: "
+                        f"its first worker holds {_gib(peak)} after its first task, "
+                        "three quarters of the "
+                        f"{_gib(available or 0.0)} available hold {fits}"
+                    )
+                return fits
+
     # The flat points as the chunks need them (point i from seed + i), and
     # every point's inputs (the per-point record).
     inputs: dict[int, tuple[Any, Any]] = {}
@@ -4392,6 +4519,7 @@ def _stability(
                 refuse,
                 tick,
                 first_interrupt,
+                probe=probe,
             )
     except KeyboardInterrupt:
         interrupted = True
@@ -4549,7 +4677,9 @@ def _stability(
         "interrupted": interrupted,
         "n_core": workers,
         # The workers' memory rule (``_memory_record``; None: not measured).
-        "memory": None if memory is None else {**memory, "workers": workers},
+        "memory": None
+        if memory is None
+        else {**memory, "workers": int(memory.get("probed_workers", workers))},
         "seed": space.seed,
         "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
         "generator": (
@@ -4668,6 +4798,7 @@ def _run_pool(
     refuse: Any,
     tick: Any = None,
     first_interrupt: list[bool] | None = None,
+    probe: Callable[[float], int] | None = None,
 ) -> bool:
     """Run the stability tasks on ``workers`` spawned processes
     (``_stability_worker``), handing every finished task to ``harvest``;
@@ -4697,9 +4828,31 @@ def _run_pool(
     interrupted = False
     source = [tasks]
     last_tick = time.perf_counter()
+    # ``probe``: the first worker runs its first task alone (the pool spawns
+    # a process per submit while none is idle), then ``probe(its peak
+    # resident size)`` sets how many may run (``_stability``'s memory rule);
+    # fewer than ``workers``: at most that many tasks are queued, so no
+    # further process is spawned.
+    probing = [probe is not None and workers > 1]
+    limit = [workers]
+
+    def queued() -> int:
+        if probing[0]:
+            return 1
+        return 2 * workers if limit[0] >= workers else limit[0]
+
+    def measure() -> None:
+        probing[0] = False
+        peaks = [
+            peak
+            for process in list(getattr(executor, "_processes", {}).values())
+            if (peak := _process_peak_bytes(process.pid)) is not None
+        ]
+        if peaks and probe is not None:
+            limit[0] = max(1, min(workers, probe(max(peaks))))
 
     def refill() -> None:
-        while source and len(pending) < 2 * workers:
+        while source and len(pending) < queued():
             chunk = source[0]()
             if chunk is None:
                 source.clear()
@@ -4729,6 +4882,8 @@ def _run_pool(
                     harvest(*future.result())
                 except ReductionUnavailable as error:
                     refuse(backend, error)
+            if probing[0] and done:
+                measure()
             refill()
     except KeyboardInterrupt:
         interrupted = True

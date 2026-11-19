@@ -285,7 +285,9 @@ def runtime_counts(
     return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, timed, reference, expected)
 
 
-def measurement_affects_counts(start: float, *, backends: int) -> bool:
+def measurement_affects_counts(
+    start: float, *, backends: int, share: float | None = None
+) -> bool:
     """Whether any measured cost can change the runtime counts under the
     default budget (``DEFAULT_RUNTIME_SECONDS`` shared by ``backends``,
     each backend's ``start`` excluded, ``_split_runtime``): False when the
@@ -294,7 +296,9 @@ def measurement_affects_counts(start: float, *, backends: int) -> bool:
     measurement need not run: each runtime timing's warm-ups measure its
     costs."""
 
-    return DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start > 0.0
+    if share is None:
+        share = DEFAULT_RUNTIME_SECONDS / max(backends, 1)
+    return share - start > 0.0
 
 
 def minimum_counts(
@@ -323,6 +327,7 @@ def reference_affects_counts(
     backends: int,
     lanes: int,
     warm: float | None = None,
+    share: float | None = None,
 ) -> bool:
     """Whether a backend's reference cost can change its runtime counts
     under the default budget (``DEFAULT_RUNTIME_SECONDS`` shared by
@@ -339,7 +344,9 @@ def reference_affects_counts(
     ``warm``: the binary64 stream's warming when it is not the warm-up
     (the warm entry's seconds, ``binary64_warmup``)."""
 
-    budget = max(DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start, 0.0)
+    if share is None:
+        share = DEFAULT_RUNTIME_SECONDS / max(backends, 1)
+    budget = max(share - start, 0.0)
     left = (1.0 - REFERENCE_SHARE) * budget
     if warm is None:
         warm = warmup_seconds(max(lanes, 1) * binary64, binary64)
@@ -347,14 +354,36 @@ def reference_affects_counts(
 
 
 def scope_minimum(
-    costs: Costs, *, lanes: int, reference: bool, start: bool = False
+    costs: Costs,
+    *,
+    lanes: int,
+    reference: bool,
+    start: bool = False,
+    lower: bool = False,
 ) -> float:
     """A backend's runtime minimum for the scope rules (``timing_scope``):
-    its binary64 warm-up (``warmup_seconds``) and one timed call of one
-    chunk of ``lanes``, with ``reference`` the reference's untimed and timed
+    its binary64 warming (``binary64_warmup``) and one timed call of one
+    chunk of ``lanes``, with ``reference`` the reference's warming and timed
     point, with ``start`` its start-up (``runtime_minimum`` with these
-    parts)."""
+    parts). ``costs.binary64`` is then a chunk's cost per point (a timed
+    call's). ``lower``: a true lower bound from the measurement's one-point
+    costs instead (``costs.binary64`` one one-point call): the chunk call at
+    one point's cost (a call of a chunk costs at least a call of one of its
+    points), the warming at the entry's cost or that point's, the reference
+    at its measured point or, estimated, at the binary64 point (a pass in a
+    wider carrier costs at least the binary64 pass)."""
 
+    if lower:
+        point = costs.binary64
+        seconds = point + (
+            costs.binary64_warm if costs.binary64_warm is not None else point
+        )
+        if reference and costs.reference is not None:
+            timed = point if costs.reference_estimated else costs.reference
+            seconds += timed + (
+                costs.reference_warm if costs.reference_warm is not None else timed
+            )
+        return seconds + (costs.start if start else 0.0)
     call = lanes * costs.binary64
     seconds = call + binary64_warmup(costs, call)
     if reference and costs.reference is not None:
@@ -375,6 +404,7 @@ def timing_scope(
     reference_rule: bool = True,
     start: bool = False,
     extra: Mapping[str, float] | None = None,
+    lower: bool = False,
 ) -> tuple[bool, tuple[str, ...]]:
     """What a profile whose minimums exceed its budget runs (USER
     2026-11-19), from the backends' ``costs`` (those that can serve) and
@@ -386,8 +416,11 @@ def timing_scope(
     Then the backends (rule A): the ``default`` alone when its minimum for
     everything asked (its runtime minimum when ``runtime``, with the
     reference as just decided, and ``extra[default]``: the stability run's
-    minimum) exceeds ``bound(1)``, unless ``asked_backends``. The reference's
-    decision (True: timed) and the backends left out."""
+    minimum) exceeds ``bound(1)``, unless ``asked_backends``. ``lower``:
+    judged on true lower bounds (``scope_minimum``; ``extra`` then too),
+    so that before the runtime timing nothing is left out on an
+    over-estimate. The reference's decision (True: timed) and the backends
+    left out."""
 
     names = list(costs)
     extra = extra or {}
@@ -399,7 +432,9 @@ def timing_scope(
         and not force_reference
         and names
         and sum(
-            scope_minimum(costs[b], lanes=lanes, reference=True, start=start)
+            scope_minimum(
+                costs[b], lanes=lanes, reference=True, start=start, lower=lower
+            )
             for b in names
         )
         > bound(len(names))
@@ -408,7 +443,9 @@ def timing_scope(
     omitted: tuple[str, ...] = ()
     if not asked_backends and default in costs and len(names) > 1:
         alone = extra.get(default, 0.0) + (
-            scope_minimum(costs[default], lanes=lanes, reference=timed, start=start)
+            scope_minimum(
+                costs[default], lanes=lanes, reference=timed, start=start, lower=lower
+            )
             if runtime
             else 0.0
         )
@@ -494,6 +531,7 @@ def plan(
     stability_points_given: int | None = None,
     tail_seconds_per_point: float = 0.0,
     runtime_target: float = DEFAULT_RUNTIME_SECONDS,
+    runtime_budget: float | None = None,
 ) -> Plan:
     """The counts of a profile (module docstring) from the backends'
     ``costs``: the phases asked for (``runtime``, ``stability``), the
@@ -504,7 +542,10 @@ def plan(
     ``runtime_counts_given`` / ``stability_points_given``: the counts given
     (honoured without ``completion``); ``tail_seconds_per_point``: the
     serial seconds per stability point after the run (statistics, records),
-    part of the completion time; ``runtime_target``: the runtime counts'
+    part of the completion time; ``runtime_budget``: the runtime timing's
+    budget of all backends under the time budgets (a given --target-runtime
+    per backend; None: ``DEFAULT_RUNTIME_SECONDS``); ``runtime_target``: the
+    runtime counts'
     time budget per backend when they are given (``--target-runtime``)."""
 
     backends = list(costs)
@@ -586,8 +627,10 @@ def plan(
     )
     counts = {}
     runtime_seconds = 0.0
+    if runtime_budget is None:
+        runtime_budget = DEFAULT_RUNTIME_SECONDS
     if runtime and not runtime_counts_given:
-        counts = _split_runtime(costs, DEFAULT_RUNTIME_SECONDS, lanes, batch_max)
+        counts = _split_runtime(costs, runtime_budget, lanes, batch_max)
         runtime_seconds = sum(c.expected for c in counts.values())
     points = None
     wall = 0.0
@@ -611,9 +654,7 @@ def plan(
     unmet = []
     if runtime:
         budget = (
-            DEFAULT_RUNTIME_SECONDS
-            if not runtime_counts_given
-            else runtime_target * len(values)
+            runtime_budget if not runtime_counts_given else runtime_target * len(values)
         )
         if minimum_runtime - sum(c.start for c in values) > BUDGET_TOLERANCE * budget:
             unmet.append("runtime")

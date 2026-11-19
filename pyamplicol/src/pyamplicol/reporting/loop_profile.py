@@ -172,9 +172,16 @@ def _counts_cell(report: Any, color: bool) -> str | None:
     elif rule == "counts":
         text = f"as given{took_text}"
     else:
+        target = plan.get("runtime_target")
+        runtime = (
+            f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing"
+            if target is None
+            else f"--target-runtime {duration_text(float(target))} per backend "
+            "for the runtime timing"
+        )
         text = (
-            f"from the time budgets: {DEFAULT_RUNTIME_SECONDS:g} s for the runtime "
-            f"timing, {duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
+            f"from the time budgets: {runtime}, "
+            f"{duration_text(DEFAULT_STABILITY_SECONDS_PER_CORE)} per "
             f"stability worker{took_text}"
         )
     if not plan.get("feasible", True):
@@ -190,23 +197,29 @@ def _counts_cell(report: Any, color: bool) -> str | None:
 
 def _workers_text(report: Any, color: bool) -> str:
     """The stability run's workers when the memory set them: fewer than
-    --n_core (or a --n_core given that does not fit), with one worker's
-    measured memory and the memory available."""
+    --n_core (three quarters of the memory available hold only them at one
+    worker's measured size: the estimate, or the first worker's own peak
+    after its first task), or a --n_core given that does not fit."""
 
     setup = getattr(report, "stability_setup", None) or {}
     memory = setup.get("memory") or {}
     workers, asked = memory.get("workers"), memory.get("asked")
-    if not memory or workers is None or memory.get("fits", workers) >= asked:
+    if not memory or workers is None or asked is None:
         return ""
-    each = float(memory["per_worker_bytes"]) / 2**30
-    held = float(memory["available_bytes"]) / 2**30
-    text = (
-        f"; stability on {workers} workers (memory: {each:.1f} GiB each, "
-        f"{held:.1f} GiB available)"
-        if workers < asked
-        else f"; --n_core {asked} needs {asked * each:.1f} GiB, "
-        f"{held:.1f} GiB available"
-    )
+    each = float(memory.get("probed_bytes") or memory["per_worker_bytes"]) / 2**30
+    held = float(memory.get("available_bytes") or 0.0) / 2**30
+    if workers < asked:
+        text = (
+            f"; stability on {workers} workers (memory: {each:.1f} GiB each, "
+            f"3/4 of {held:.1f} GiB available)"
+        )
+    elif memory.get("n_core_given") and memory.get("fits", asked) < asked:
+        text = (
+            f"; --n_core {asked} needs {asked * each:.1f} GiB, more than 3/4 of "
+            f"{held:.1f} GiB available"
+        )
+    else:
+        return ""
     return palette.paint(text, palette.RECOVERED, color=color)
 
 

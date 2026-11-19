@@ -3190,27 +3190,20 @@ def _reference_over(
     profile: VirtualProfileResult, reference: Mapping[str, Any], batch: int
 ) -> bool:
     """Whether the reference pass is left out (``reference["unless_over"]``,
-    ``loop_profile``'s rule B without known costs): this backend's runtime
-    minimum, its binary64 warm-up and one timed call of one chunk at the
-    measured binary64 cost and the reference's warm-up and point at its
-    cost (the caller's, else binary64 x ``REFERENCE_PRIOR``), exceeds it."""
+    ``loop_profile``'s rule B on the runtime timing's own costs): a true
+    lower bound of this backend's runtime minimum, its timed call of one
+    chunk at the measured binary64 cost and the reference's untimed and
+    timed point at least that binary64 pass each (a pass in a wider carrier
+    costs at least the binary64 one), exceeds it."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
-    from pyamplicol.profile_plan import warmup_seconds
 
     bound = reference.get("unless_over")
     per_point = profile.seconds_per_point
     if bound is None or per_point is None:
         return False
-    arithmetic = str(reference.get("arithmetic"))
-    point = reference.get("seconds_per_point")
-    prior = (
-        float(point)
-        if point is not None
-        else per_point * REFERENCE_PRIOR.get(arithmetic, REFERENCE_PRIOR["arbitrary"])
-    )
     call = min(DEFAULT_LANES, max(batch, 1)) * per_point
-    return call + warmup_seconds(call, per_point) + 2.0 * prior > float(bound)
+    return call + 2.0 * per_point > float(bound)
 
 
 def one_thread_profile(

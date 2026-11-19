@@ -813,6 +813,12 @@ took):
   measurement is back, with the time the whole command then takes (the
   header's `counts` row states the same number), and the minimums run.
 - the counts given on the command line or in a run card: honoured as given.
+  A value stated in a run card counts as given even when it equals the
+  default (`n_core = 10`, `ground_truth = "double-double"`): leave a
+  setting out of the card to keep its default behaviour. A
+  `--target-runtime` given alone is the runtime timing's budget per backend:
+  the counts follow it as they follow the default budget (the minimums,
+  more calls while it affords them).
 - neither: the default budgets, 10 s for the runtime timing of all backends
   and one minute of work per `--n_core` worker for the stability run (about
   a minute of wall time whatever `--n_core`: more workers, more points). On
@@ -858,22 +864,37 @@ took):
     `--loop-reduction` one backend. With one backend in the stability run
     and an arbitrary-precision ground truth, every reference is certified by
     its own checks (there is no second backend's reference to agree with).
-  The costs are the measurement's, else a previous profile's of the
-  artifact, else (no measurement phase) the runtime timing's own: a
-  backend's reference pass is left out when its binary64 minimum at the
-  measured cost and its reference at its prior (60 times binary64 in
-  double-double) exceed the budget, and the other backends when the default
-  backend's measured minimum does. A notice says what was left out, and the
-  `counts` row repeats it ("TIRust not profiled (--all-backends)", "no dd
-  multiplier (--ground-truth)").
+  Nothing is left out on an over-estimate. Before the runtime timing the
+  measurement's one-point costs decide only on a true lower bound (the
+  16-point call at one point's cost, the warming at the entry's or that
+  point's, the reference at its measured point or at least the binary64
+  point, a checked stability point at least one optimistic pass): a
+  backend or the reference is left out there only when it surely exceeds
+  the budget, and the measurement stops after the default backend when its
+  lower bound alone decides. Rule A is then decided again on the default
+  backend's runtime row (its 16-point call measured), which runs first:
+  the other backends start only when that row keeps them. Without a
+  measurement phase, rule B is decided by the first backend's runtime
+  timing on a lower bound of every backend's minimum (its measured
+  16-point call, its reference at least its binary64 pass), and holds for
+  every backend: the multipliers are all shown or none. The record and the
+  `counts` row are re-planned from every runtime row's measured costs. A
+  backend profiled alone keeps the per-backend share it has beside the
+  others (its row does not depend on which other rows are shown). A notice
+  says what was left out, and the `counts` row repeats it ("TIRust not
+  profiled (--all-backends)", "no dd multiplier (--ground-truth)").
 
   The stability run starts no more worker processes than the memory holds:
   at most three quarters of the memory available when it starts, at one
   worker's resident size as this run measured it (the profile's own process
   after loading the artifact and measuring every backend, or the load plus
-  each backend's increase in its runtime timing's process). Fewer workers
+  each backend's increase in its runtime timing's process); the plan, its
+  ETA and rule A count those workers. When a stability task holds several
+  points (a point cheaper than a task's work), the first worker runs its
+  first task alone and its own peak sets how many follow. Fewer workers
   than `--n_core` then run, said in a notice and in the `counts` row
-  ("stability on 3 workers (memory: 36.5 GiB each, 150.0 GiB available)").
+  ("stability on 3 workers (memory: 36.5 GiB each, 3/4 of 150.0 GiB
+  available)").
   A `--n_core` given (command line or run card) is honoured, with a warning
   when its workers do not fit. The runtime timing runs one process at a
   time.
