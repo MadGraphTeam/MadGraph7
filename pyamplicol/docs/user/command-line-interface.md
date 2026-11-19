@@ -885,7 +885,9 @@ took):
   row. It drops something only when a lower bound of the real cost exceeds
   the budget: the chunk call at one measured point's cost (a chunk costs
   at least one of its points), a warm-up at one point, an untimed
-  reference point at its measured cold cost, a timed one at least the
+  reference point at its measured cold cost (a stream that warms through
+  the warm entry instead counts the entry's measured seconds, none before
+  it ran, never a point it does not run), a timed one at least the
   binary64 point, a checked stability point at least one optimistic pass,
   a stability reference point at least the cold one for the first point of
   each worker only and one binary64 point for the others; without

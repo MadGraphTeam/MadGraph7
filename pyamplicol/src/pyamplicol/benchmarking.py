@@ -3183,9 +3183,9 @@ def profile_virtual(
     timing = None
     scope = None if reference is None else reference.get("scope")
 
-    def drops(reference_point: float | None = None) -> bool:
+    def drops(reference_point: float | None = None, entry: float | None = None) -> bool:
         return scope is not None and _scope_drops(
-            profile, scope, bench.batch_size, reference_point
+            profile, scope, bench.batch_size, reference_point, entry
         )
 
     skipped = reference is not None and drops()
@@ -3202,6 +3202,9 @@ def profile_virtual(
                 binary64=profile.seconds_per_point,
                 monitor=monitor,
                 stop=drops if scope is not None else None,
+                entry_stop=(lambda seconds: drops(entry=seconds))
+                if scope is not None
+                else None,
             )
         if timing is None:
             skipped = True
@@ -3220,11 +3223,15 @@ def _scope_drops(
     scope: Mapping[str, Any],
     batch: int,
     reference_point: float | None = None,
+    entry: float | None = None,
 ) -> bool:
     """Rule B re-called by the decider's runtime timing on its own measured
     numbers (``profile_plan.rule_b_drops``): this backend's ``Known`` from the
     parent's (``scope["known"]``) with its measured binary64 chunk, its warm
-    entry and, after its untimed reference point, that point's seconds."""
+    entry and, after its untimed reference point, that point's seconds; a
+    reference that warms through the entry (``reference_entry``, no untimed
+    point) counts the entry's measured seconds (``entry``, none before),
+    never the cold point (m-4)."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.profile_plan import Known, lower_bound
@@ -3238,6 +3245,9 @@ def _scope_drops(
         if reference_point is not None
         else given.get("reference"),
         start=float(given.get("start") or 0.0),
+        warm_entry=profile.prepared_seconds is not None,
+        reference_entry=bool(given.get("reference_entry")) and reference_point is None,
+        reference_warm=entry,
     )
     total = lower_bound(known, lanes=min(DEFAULT_LANES, max(batch, 1)), reference=True)
     return total > float(scope["bound"])
@@ -3473,6 +3483,7 @@ def _reference_pass(
     binary64: float | None = None,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
     stop: Callable[[float], bool] | None = None,
+    entry_stop: Callable[[float], bool] | None = None,
 ) -> tuple[PrecisionTiming | None, float | None]:
     """The reference carrier's time per point (``PrecisionTiming``): one
     fully optimistic pass per point, the unchecked reduction of the
@@ -3489,7 +3500,9 @@ def _reference_pass(
     carrier. Call k takes the first points of the binary64 timing's batch
     k. ``binary64``: the binary64 seconds per point (the ETA prior before a
     reference call is back, with ``REFERENCE_PRIOR``); ``monitor("reference",
-    ...)`` after each call."""
+    ...)`` after each call; ``stop`` after the untimed point and
+    ``entry_stop`` after the warm entry (their seconds; True: no timed
+    call)."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
 
@@ -3570,6 +3583,9 @@ def _reference_pass(
         report(0, 1, prior, ())
         prepared = _prepared(runtime, options, backend)
         warm = prepared is None
+        # Rule B re-called with the entry's measured seconds (m-4).
+        if prepared is not None and entry_stop is not None and entry_stop(prepared):
+            return None, None
     first: list[float] = []
 
     def stopped(per_point: float) -> bool:

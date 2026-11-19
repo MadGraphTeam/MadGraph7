@@ -921,6 +921,20 @@ def test_the_scope_rules_at_their_thresholds():
     assert lower_bound(
         a, lanes=LANES, reference=True, stability_workers=8, runtime=False
     ) == pytest.approx(20.0)
+    # Through the warm entry (m-4): no cold point and no warm-up point, the
+    # entries' measured seconds once they ran; the stability run's workers
+    # still warm cold.
+    entry = replace(a, warm_entry=True, reference_entry=True)
+    assert lower_bound(entry, lanes=LANES, reference=True) == pytest.approx(
+        16 * 0.3 + 0.3
+    )
+    ran = replace(entry, warm=0.12, reference_warm=0.25)
+    assert lower_bound(ran, lanes=LANES, reference=True) == pytest.approx(
+        16 * 0.3 + 0.12 + 0.25 + 0.3
+    )
+    assert lower_bound(
+        ran, lanes=LANES, reference=True, stability_workers=1, runtime=False
+    ) == pytest.approx(alone_stability)
     # One backend: rule A has nothing to drop; nothing known: nothing dropped.
     assert not rule_a_drops(
         {"ninjars": a}, "ninjars", lambda n: 0.0, lanes=LANES, reference=True
@@ -928,13 +942,63 @@ def test_the_scope_rules_at_their_thresholds():
     assert not rule_b_drops({"ninjars": Known()}, lambda n: 0.0, lanes=LANES)
 
 
+def test_the_decider_counts_the_entry_not_the_cold_point():
+    """``benchmarking._scope_drops`` (the decider's runtime timing, rule B
+    open): a reference that warms through the entry counts the entry's
+    measured seconds, none before it ran, never the parent's cold point;
+    after an untimed point (no entry) that point counts (m-4)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.benchmarking import _scope_drops
+
+    profile = SimpleNamespace(seconds_per_point=0.3, prepared_seconds=0.12)
+    call = 16 * 0.3 + 0.12 + 0.3  # the chunk call, its entry, a timed point
+
+    def scope(entry):
+        known = {"point": 0.8, "reference": 16.0, "start": 3.0}
+        return {"bound": call + 1.0, "known": {**known, "reference_entry": entry}}
+
+    # The cold point (16 s) would drop it; the entry's 0.25 s does not.
+    assert _scope_drops(profile, scope(False), 16)
+    assert not _scope_drops(profile, scope(True), 16)
+    assert not _scope_drops(profile, scope(True), 16, entry=0.25)
+    assert _scope_drops(profile, scope(True), 16, entry=1.5)
+    # An untimed point ran (the entry did not): it counts.
+    assert _scope_drops(profile, scope(True), 16, reference_point=16.0)
+
+
 def _known_after(stage, true, known):
-    """``known`` after one more measured number of a backend's profile."""
+    """``known`` after one more measured number of a backend's profile
+    (with its binary64 point: whether its streams warm through the entry;
+    with its chunk: the binary64 entry's seconds where it ran)."""
 
     from pyamplicol.profile_plan import Known
 
     k = known or Known()
-    return replace(k, **{stage: true[stage]})
+    numbers = {stage: true[stage]}
+    if stage == "point":
+        numbers.update(warm_entry=true["entry"], reference_entry=true["entry"])
+    if stage == "chunk":
+        numbers["warm_entry"] = true["entry"]
+        if true["entry"]:
+            numbers["warm"] = true["warm"]
+    return replace(k, **numbers)
+
+
+def _reference_warms(known, true, *, scope):
+    """The runtime timing's reference warming: the entry where its stream
+    takes it (with rule B open, ``scope``, only with its cost known: else
+    the untimed point measures it), else the untimed point (m-4). The
+    updated ``known`` and whether the entry warmed it."""
+
+    if true["entry"] and (known.reference is not None or not scope):
+        return replace(
+            known, reference_entry=True, reference_warm=true["reference_warm"]
+        ), True
+    if known.reference is None:
+        known = _known_after("reference", true, known)
+    return replace(known, reference_entry=False), False
 
 
 def _scope_path(path, mode, backends):
@@ -987,45 +1051,45 @@ def _scope_path(path, mode, backends):
         omitted = tuple(names[1:])
     timed = mode["truth"] and not b_drops()
     if not mode["runtime"]:
-        return timed, omitted, known
+        return timed, omitted, known, {name: False for name in names}
     # The runtime timing: the default backend first.
     known[default] = _known_after("chunk", backends[default], known[default])
+    # Whether each backend's reference warms through the entry on this path
+    # (the default's decided below; the others' timings have no scope).
+    through = {name: backends[name]["entry"] for name in names}
     if timed and b_drops():
         timed = False
-    elif timed and mode["rule_b"]:
-        if known[default].reference is None:
-            known[default] = _known_after(
-                "reference", backends[default], known[default]
-            )
-        if b_drops():
+    elif timed:
+        # Its warming (the entry, or its untimed point), rule B re-called
+        # on it while open, then its timed point (all reported by the row).
+        known[default], through[default] = _reference_warms(
+            known[default], backends[default], scope=mode["rule_b"]
+        )
+        if mode["rule_b"] and b_drops():
             timed = False
         else:
             known[default] = _known_after(
                 "reference_timed", backends[default], known[default]
             )
-    elif timed:
-        # Its untimed point, then its timed one (both reported by the row).
-        if known[default].reference is None:
-            known[default] = _known_after(
-                "reference", backends[default], known[default]
-            )
-        known[default] = _known_after(
-            "reference_timed", backends[default], known[default]
-        )
     if not omitted and a_drops():
         omitted = tuple(names[1:])
-    return timed, omitted, known
+    return timed, omitted, known, through
 
 
-def _true_minimum(costs, *, reference, workers, runtime=True):
-    """A backend's real minimal profile (what the lower bounds bound): a
-    stability worker's first reference point cold, its others warm."""
+def _true_minimum(costs, *, reference, workers, runtime=True, through=False):
+    """A backend's real minimal profile (what the lower bounds bound): its
+    binary64 warm-up its entry's seconds where its streams take the entry,
+    else a point; its reference warmed by the entry (``through``) or by its
+    cold point; a stability worker's first reference point cold, its others
+    warm."""
 
     seconds = 0.0
     if runtime:
-        seconds += LANES * costs["chunk"] + costs["point"]
+        warm = costs["warm"] if costs["entry"] else costs["point"]
+        seconds += LANES * costs["chunk"] + warm
         if reference:
-            seconds += costs["reference"] + costs["reference_timed"]
+            untimed = costs["reference_warm"] if through else costs["reference"]
+            seconds += untimed + costs["reference_timed"]
     if workers is not None:
         colds = min(workers, STABILITY_MINIMUM)
         stream = (
@@ -1144,22 +1208,28 @@ def _modes():
 def _cases():
     """One backend, or two whose references may differ (the default's
     first): the same binary64 costs, a reference at least the binary64 point
-    (a wider carrier costs at least the binary64 pass)."""
+    (a wider carrier costs at least the binary64 pass); without or with the
+    warm entry on every stream (``entry``: a quarter of the binary64 point,
+    an eighth of the cold reference point, m-4)."""
 
     pairs = [(r,) for r in _REFERENCE] + list(itertools.product(_REFERENCE, repeat=2))
     for mode_name, mode in _modes():
-        for b64, refs in itertools.product(_BINARY64, pairs):
+        for b64, refs, entry in itertools.product(_BINARY64, pairs, (False, True)):
             point, chunk = _BINARY64[b64]
             backends = {}
             for name, ref in zip(("ninjars", "tirust"), refs, strict=False):
                 cold, warm = _REFERENCE[ref] or (10 * point, 8 * point)
+                cold = max(cold, 10 * point)
                 backends[name] = {
                     "point": point,
                     "chunk": chunk,
-                    "reference": max(cold, 10 * point),
+                    "reference": cold,
                     "reference_timed": max(warm, 8 * point),
+                    "entry": entry,
+                    "warm": point / 4,
+                    "reference_warm": cold / 8,
                 }
-            yield (mode_name, b64, *refs), mode, backends
+            yield (mode_name, b64, *refs, "entry" if entry else "point"), mode, backends
 
 
 @pytest.mark.parametrize(
@@ -1179,23 +1249,35 @@ def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
 
     from pyamplicol.profile_plan import Known, lower_bound
 
-    measured, measured_omitted, _ = _scope_path("measured", mode, backends)
-    blind, blind_omitted, _ = _scope_path("blind", mode, backends)
+    measured, measured_omitted, _, measured_through = _scope_path(
+        "measured", mode, backends
+    )
+    blind, blind_omitted, _, blind_through = _scope_path("blind", mode, backends)
     names = list(backends)
     default = backends[names[0]]
     bound = mode["bound"]
     assert measured_omitted == blind_omitted, case
     # Rule B: the measured path knows more (the other backends' binary64
     # points and references): it drops whenever the blind path does, and
-    # may drop where the blind path cannot see it (ptimereview5 B-1).
-    assert blind or not measured, case
+    # may drop where the blind path cannot see it (ptimereview5 B-1). With
+    # the warm entry the blind path's untimed cold point measures the
+    # reference (its cost unknown) where the measured path warms it through
+    # the entry: a drop on what that path ran (m-4).
+    assert (
+        blind
+        or not measured
+        or (measured_through[names[0]] and not blind_through[names[0]])
+    ), case
     # Rule B is judged on the backends rule A keeps.
     running = [n for n in names if n not in measured_omitted]
-    for timed in (measured, blind):
+    for timed, through in ((measured, measured_through), (blind, blind_through)):
         if mode["truth"] and not timed:
-            # (i): the minimums of the running backends with their reference.
+            # (i): the minimums of the running backends with their reference
+            # as it warms on this path (the entry: never the cold point).
             assert sum(
-                _true_minimum(backends[n], reference=True, workers=None)
+                _true_minimum(
+                    backends[n], reference=True, workers=None, through=through[n]
+                )
                 for n in running
             ) > bound(len(running)), case
     if mode["rule_b"] and measured:
@@ -1203,7 +1285,12 @@ def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
         # reference) summed never exceeds the bound with the references kept.
         assert sum(
             lower_bound(
-                Known(point=costs["point"], reference=costs["reference"]),
+                Known(
+                    point=costs["point"],
+                    reference=costs["reference"],
+                    warm_entry=costs["entry"],
+                    reference_entry=costs["entry"],
+                ),
                 lanes=LANES,
                 reference=True,
             )
@@ -1215,6 +1302,7 @@ def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
             reference=mode["a_reference"],
             workers=mode["workers"],
             runtime=mode["runtime"],
+            through=measured_through[names[0]],
         ) > bound(1), case
         # (ii): never for a reference rule B could drop.
         if mode["rule_b"]:
