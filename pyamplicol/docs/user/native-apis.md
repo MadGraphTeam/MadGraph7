@@ -829,7 +829,14 @@ Python API's `stability_checks=`: `rusticol_virtual_set_stability_checks`
 `set_stability_checks`) takes a count of default rotations or rotation
 specifications, the reduction-direction check, its rescaled variant and the
 cross-backend check. Without checks (the default, or a rotation count of 0
-with the other checks off) nothing else runs and no estimate is formed. With
+with the other checks off) nothing else runs and no estimate is formed. The
+SDK has no per-backend default set: the checks a caller sets are run as set
+on every backend (an explicit set is never changed, as in the Python API).
+For TIRust-served evaluations (the loop-induced `"auto"` and `"tirust"`) set
+one rotation with the reduction-direction check and its rescaled variant,
+the recommended checks and the Python API's default set for TIRust
+(USER 2026-11-19: one rotation alone under-states the error of accepted
+TIRust points, on 144 of 200 flat g g > g g g points). With
 checks, every successful point of a binary64 ordinary evaluation carries its
 estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
 to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the

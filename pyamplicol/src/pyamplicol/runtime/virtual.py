@@ -1077,7 +1077,11 @@ class V2ObservablesRuntime:
         checks: VirtualStabilityChecks | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
         served: Mapping[int, VirtualReduction] | None = None,
+        rescues: Sequence[Any] | None = None,
     ) -> VirtualEvaluation:
+        """``results``: one output per point; ``rescues``: per point its lane
+        rescue when ``results`` are outputs taken from each point's mapping
+        (``plan_export.RescuedOutputs``; else read from the result)."""
 
         born_orders = self._default_born_orders()
         checked = checks is not None and checks.enabled
@@ -1152,7 +1156,11 @@ class V2ObservablesRuntime:
                     index,
                     reductions=reductions,
                     served=served,
-                    lane_rescue=getattr(result, "lane_rescue", ()),
+                    lane_rescue=(
+                        getattr(result, "lane_rescue", ())
+                        if rescues is None
+                        else rescues[index]
+                    ),
                 )
             )
         return VirtualEvaluation(
@@ -1504,6 +1512,7 @@ class V2ObservablesRuntime:
                 checks,
                 reductions,
                 served,
+                [getattr(result, "lane_rescue", ()) for result in per_point],
             ),
             kinematics,
         )
@@ -1584,6 +1593,7 @@ class V2ObservablesRuntime:
                         checks,
                         reductions,
                         served,
+                        [getattr(results, "lane_rescue", ()) for results in per_point],
                     ),
                     kinematics,
                 )
