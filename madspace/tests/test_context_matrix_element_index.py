@@ -5,6 +5,9 @@ import pytest
 
 import madspace as ms
 
+# explicit CPU context
+pytestmark = pytest.mark.cpu_only
+
 
 @pytest.fixture
 def context():
