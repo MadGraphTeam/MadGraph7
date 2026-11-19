@@ -81,8 +81,9 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # 154: benchmark.completion_time (`profile --completion-time`); 155:
     # benchmark.samples_output (`profile --samples-output`); 156:
     # benchmark.runtime_threads (`profile --runtime-threads`); 157:
-    # evaluation.lane_rescue (`--lane-rescue`, USER 2026-11-18).
-    assert len(FIELD_REGISTRY) == 157
+    # evaluation.lane_rescue (`--lane-rescue`, USER 2026-11-18); 158:
+    # benchmark.all_backends (`profile --all-backends`).
+    assert len(FIELD_REGISTRY) == 158
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
