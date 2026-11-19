@@ -654,7 +654,7 @@ class MadgraphProcess:
             backend, fptype = self.helicity_choice_build
             spread = not self.is_decay and (
                 not self.leptonic or bool(self._lepton_density_name)
-                or self.eva)
+                or getattr(self, "eva", False))
             choice = helicity_choice_module.choose(
                 path_format.format(device=backend, fptype=fptype), param_card,
                 parameters, self.e_cm, self.beam_rapidity, spread)
@@ -2780,7 +2780,7 @@ class MadgraphProcess:
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
             return [2212, 2212], list(self.beam_energies)
-        if self.eva:
+        if getattr(self, "eva", False):
             # the leptons radiating the vector bosons
             beam = self.run_card["beam"]
             return ([int(beam["lepton1"]), int(beam["lepton2"])],

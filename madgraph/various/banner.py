@@ -9514,17 +9514,7 @@ class RunCardMG7(RunCard):
             # particle
             self._sync_jet_group(old, self['beam']['max_jet_flavor'])
 
-        if beam_id and beam_id <= leptons:
-            # lepton collider: no PDF, lower default energy. The jet cuts stay,
-            # as in madevent's run_card (ptj/etaj/drjj are not hadron-collider
-            # specific): without them e+ e- > j j j (j) is infrared divergent,
-            # the survey is orders of magnitude off and the integration ends
-            # on a non-finite weight at a soft/collinear point.
-            self['beam']['leptonic'] = True
-            self['beam']['ebeam1'] = 500.0
-            self['beam']['ebeam2'] = 500.0
-            self['beam']['fixed_fact_scale'] = True
-        elif beam_id and not (beam_id & hadronic) and self.eva_beams(proc_def):
+        if beam_id and self.eva_beams(proc_def):
             # W/Z (and photons) on both beams: effective vector bosons from
             # e+ e- beams, as madevent sets it up (lpp1 = -3, lpp2 = 3,
             # pdlabel = eva, 15 TeV beams, a fixed factorisation scale). Not
@@ -9539,6 +9529,16 @@ class RunCardMG7(RunCard):
                         'polarization2', 'eva_order', 'eva_evolution',
                         'eva_xcut'):
                 self.user_set.add('beam.' + key)
+        elif beam_id and beam_id <= leptons:
+            # lepton collider: no PDF, lower default energy. The jet cuts stay,
+            # as in madevent's run_card (ptj/etaj/drjj are not hadron-collider
+            # specific): without them e+ e- > j j j (j) is infrared divergent,
+            # the survey is orders of magnitude off and the integration ends
+            # on a non-finite weight at a soft/collinear point.
+            self['beam']['leptonic'] = True
+            self['beam']['ebeam1'] = 500.0
+            self['beam']['ebeam2'] = 500.0
+            self['beam']['fixed_fact_scale'] = True
         elif beam_id and not (beam_id & hadronic):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
@@ -10196,14 +10196,13 @@ class RunCardMG7(RunCard):
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
         # EVA: pdlabel eva on two e/mu beams (madevent's pdlabel1/2 follow
         # pdlabel; one EVA beam only has no mg7 equivalent)
-        eva_labels = []
-        for i in (1, 2):
-            label = ''
-            for name in ('pdlabel%d' % i, 'pdlabel'):
-                if name in lo:
-                    label = str(lo[name]).lower()
-                    break
-            eva_labels.append(label == 'eva')
+        # (pdlabel eva is both beams; pdlabel1/2 only follow pdlabel once the
+        # LO card is checked)
+        eva_labels = [
+            (str(lo['pdlabel']).lower() if 'pdlabel' in lo else '') == 'eva'
+            or (str(lo['pdlabel%d' % i]).lower()
+                if 'pdlabel%d' % i in lo else '') == 'eva'
+            for i in (1, 2)]
         eva = all(eva_labels) and all(is_lep(l) for l in lpps)
         eva_keys = set()
         if eva:

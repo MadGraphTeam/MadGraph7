@@ -1337,7 +1337,8 @@ class MadgraphSubprocess:
             discrete_flavor = ms.DiscreteSampler(
                 [flavor_count], f"{prefix}.discrete_flavor",
                 # EVA beams have densities, so a prior
-                [] if self.process.leptonic and not self.process.eva else [0]
+                [] if self.process.leptonic and not getattr(self.process, "eva", False)
+                else [0]
             )
             for context in self.process.contexts:
                 discrete_flavor.initialize_globals(context)
@@ -1373,7 +1374,7 @@ class MadgraphSubprocess:
         mapping still has to sample x. The two senses of the word part here.
         """
         return (self.process.leptonic and self.process.lepton_density is None
-                and not self.process.eva)
+                and not getattr(self.process, "eva", False))
 
     def eva_flux(self):
         """The EVA beams (ms.EvaFlux) of an EVA run, None otherwise, after
@@ -1382,7 +1383,7 @@ class MadgraphSubprocess:
         [surrogate]), and a helicity that means something (not the helicity
         sum of an interference)."""
         incoming = clean_pids(self.meta["incoming"])
-        if not self.process.eva:
+        if not getattr(self.process, "eva", False):
             if (self.ps_leptonic and not self.process.is_decay
                     and any(abs(pid) in (23, 24) for pid in incoming)
                     and not getattr(self.process, "_warned_monochromatic_v", False)):
@@ -1408,6 +1409,24 @@ class MadgraphSubprocess:
                 "not a W, Z or photon; EVA beams need vector bosons on both "
                 "incoming legs (set beam.eva = false for other processes)"
                 % (self.meta["incoming"], self.meta["outgoing"]))
+        # the incoming W/Z are put on their mass shell (as madevent), which a
+        # single outgoing particle lighter than them cannot reach
+        incoming_mass = sum(self.incoming_masses)
+        if len(self.outgoing_masses) == 1 and \
+                self.outgoing_masses[0] <= incoming_mass:
+            raise ValueError(
+                "beam.eva: %s > %s is below the threshold of its on-shell "
+                "incoming vector bosons (%g <= %g GeV), so it has no phase "
+                "space" % (self.meta["incoming"], self.meta["outgoing"],
+                           self.outgoing_masses[0], incoming_mass))
+        if self.unmerged_meta is not None and len({
+                tuple(self.process.get_mass(pid)
+                      for pid in clean_pids(self.unmerged_meta[index]["incoming"]))
+                for index in self.meta["subprocesses"]}) > 1:
+            # the phase-space channels put one set of masses on shell
+            raise NotImplementedError(
+                "beam.eva with merged subprocesses whose incoming vector bosons "
+                "have different masses: set phasespace.merge_subprocesses = false")
         if self.process.surrogate is not None:
             raise NotImplementedError(
                 "beam.eva cannot be combined with a [surrogate]: the EVA "

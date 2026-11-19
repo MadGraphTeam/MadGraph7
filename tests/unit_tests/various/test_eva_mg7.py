@@ -251,5 +251,126 @@ class TestEvaKernel(unittest.TestCase):
             np.testing.assert_allclose(dyn, got[np.arange(n), index], rtol=1e-15)
 
 
+class TestEvaRunCard(unittest.TestCase):
+    """The [beam] EVA keys of the mg7 run card and the madevent translation."""
+
+    @staticmethod
+    def proc_def(*initials):
+        class PC(dict):
+            def __init__(self):
+                super().__init__(ninitial=2, loop_induced=False, colored_pdgs=[])
+
+        procs = []
+        for initial in initials:
+            legs = [{'state': False, 'id': i} for i in initial]
+            legs += [{'state': True, 'id': 6}, {'state': True, 'id': -6}]
+            procs.append({'legs': legs})
+        return PC(), [procs]
+
+    def test_default_card_of_a_w_w_process_has_eva_beams(self):
+        """w+ w- > t t~ used to run silently with monochromatic W beams; the
+        default is now madevent's: e+ e- at 2 x 15 TeV, pdlabel eva, fixed
+        mu_F"""
+        charac, proc_def = self.proc_def([24, -24])
+        card = banner_mod.RunCardMG7()
+        card.create_default_for_process(charac, '', proc_def)
+        beam = card['beam']
+        self.assertIs(beam['eva'], True)
+        self.assertIs(beam['leptonic'], True)
+        self.assertEqual((beam['lepton1'], beam['lepton2']), (-11, 11))
+        self.assertEqual((beam['ebeam1'], beam['ebeam2']), (15000., 15000.))
+        self.assertIs(beam['fixed_fact_scale'], True)
+        card.check_validity()
+        # the EVA settings are written out
+        import io
+        out = io.StringIO()
+        card.write(out)
+        self.assertIn('eva = true', out.getvalue())
+        self.assertIn('eva_order = 0', out.getvalue())
+        # madevent's rule: a W or Z on each beam, photons allowed next to them
+        for initials, eva in ((([23, 23],), True), (([22, 24], [24, 22]), True),
+                              (([22, 22],), False), (([12, -12],), False),
+                              (([24, 11],), False)):
+            charac, proc_def = self.proc_def(*initials)
+            card = banner_mod.RunCardMG7()
+            card.create_default_for_process(charac, '', proc_def)
+            self.assertIs(card['beam']['eva'], eva, initials)
+
+    def test_set_madevent_beam_settings(self):
+        card = banner_mod.RunCardMG7()
+        card.set_lo_beam_param('lpp1', '-4')
+        card.set_lo_beam_param('lpp2', '4')
+        self.assertEqual((card['beam']['lepton1'], card['beam']['lepton2']), (-13, 13))
+        self.assertIs(card['beam']['leptonic'], True)
+        self.assertIs(card['beam']['eva'], False)
+        card.set_lo_beam_param('pdlabel', 'eva')
+        self.assertIs(card['beam']['eva'], True)
+        card.set_lo_beam_param('polbeam1', '-80')
+        card.set_lo_beam_param('polbeam2', '30')
+        self.assertEqual(card['beam']['polarization1'], -80.)
+        self.assertEqual(card['beam']['polarization2'], 30.)
+        card.set_lo_beam_param('evaorder', '2')
+        card.set_lo_beam_param('ievo_eva', '1')
+        card.set_lo_beam_param('eva_xcut', '0')
+        self.assertEqual(card['beam']['eva_order'], 2)
+        self.assertEqual(card['beam']['eva_evolution'], 'pt')
+        self.assertIs(card['beam']['eva_xcut'], False)
+        card.check_validity()
+        for name, value in (('evaorder', '3'), ('ievo_eva', '2'),
+                            ('polbeam1', '120'), ('eva_xcut', 'x')):
+            with self.assertRaises(banner_mod.InvalidRunCard):
+                card.set_lo_beam_param(name, value)
+        # another label switches EVA off
+        card.set_lo_beam_param('pdlabel', 'none')
+        self.assertIs(card['beam']['eva'], False)
+        # and a polarisation without EVA is refused
+        with self.assertRaises(banner_mod.InvalidRunCard):
+            card.check_validity()
+
+    def test_invalid_eva_cards(self):
+        card = banner_mod.RunCardMG7()
+        card.set('beam.eva', True)
+        card.set('beam.leptonic', False)
+        with self.assertRaises(banner_mod.InvalidRunCard):
+            card.check_validity()  # EVA needs lepton beams
+        card.set('beam.leptonic', True)
+        card.check_validity()
+        card.set('beam.lepton_density', 'isronlyll')
+        with self.assertRaises(banner_mod.InvalidRunCard):
+            card.check_validity()
+        card.set('beam.lepton_density', '')
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        with self.assertRaises(banner_mod.InvalidRunCard):
+            card.check_validity()
+
+    def test_from_lo_card(self):
+        lo = banner_mod.RunCardLO()
+        for name, value in (('lpp1', -4), ('lpp2', 4), ('ebeam1', 5000.),
+                            ('ebeam2', 5000.), ('pdlabel', 'eva'),
+                            ('polbeam1', -80.), ('evaorder', 2),
+                            ('ievo_eva', 1), ('eva_xcut', 0),
+                            ('fixed_fac_scale', True)):
+            lo.set(name, value, user=True)
+        mg7, dropped = banner_mod.RunCardMG7.from_LO(lo, warn=False)
+        beam = mg7['beam']
+        self.assertIs(beam['eva'], True)
+        self.assertIs(beam['leptonic'], True)
+        self.assertEqual((beam['lepton1'], beam['lepton2']), (-13, 13))
+        self.assertEqual(beam['polarization1'], -80.)
+        self.assertEqual(beam['eva_order'], 2)
+        self.assertEqual(beam['eva_evolution'], 'pt')
+        self.assertIs(beam['eva_xcut'], False)
+        self.assertFalse([d for d in dropped if 'eva' in d or 'polbeam' in d
+                          or 'lpp' in d or 'pdlabel' in d], dropped)
+        # EVA on one beam only has no mg7 equivalent: reported
+        lo = banner_mod.RunCardLO()
+        for name, value in (('lpp1', -3), ('lpp2', 3), ('pdlabel1', 'eva'),
+                            ('pdlabel2', 'none')):
+            lo.set(name, value, user=True)
+        mg7, dropped = banner_mod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertIs(mg7['beam']['eva'], False)
+        self.assertTrue(any('EVA' in d for d in dropped), dropped)
+
+
 if __name__ == '__main__':
     unittest.main()
