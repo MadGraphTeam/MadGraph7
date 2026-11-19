@@ -25,6 +25,32 @@ def test_a_lane_rescue_record_names_its_carriers_and_counts():
             VirtualLaneRescue(bad)
 
 
+def test_the_rescue_text_counts_and_names_the_added_check_only_when_added():
+    """Review m-a: "1 lane" / "N lanes" (and moments), and the estimate
+    clause only when the rescaled check was added to the call's checks."""
+
+    from pyamplicol.api.virtual_results import (
+        VirtualLaneRescue,
+        VirtualStabilityChecks,
+        rescue_text,
+    )
+    from pyamplicol.loops.v2.reduction import rescued_checks
+
+    one = VirtualLaneRescue((("double-double", 1),), (("arbitrary", 1),))
+    assert rescue_text(one, False) == (
+        "lane rescue: 1 lane in double-double, 1 term-scale moment in arbitrary"
+    )
+    two = VirtualLaneRescue((("double-double", 2),))
+    assert rescue_text(two, True) == (
+        "lane rescue: 2 lanes in double-double (its estimate includes the "
+        "rescaled reduction-direction check)"
+    )
+    # Added for one rotation; not for the reversed or the rescaled check.
+    assert rescued_checks(VirtualStabilityChecks(1)) is not None
+    assert rescued_checks(VirtualStabilityChecks(1, True)) is None
+    assert rescued_checks(VirtualStabilityChecks(1, True, rescaled=True)) is None
+
+
 def test_the_native_rescued_lanes_are_counted_per_carrier_over_evaluations():
     from pyamplicol.loops.v2.plan_export import merged_rescue, point_rescued
 
@@ -218,6 +244,18 @@ def test_a_rescued_point_estimate_includes_the_reduction_direction_check(
         else:
             assert "reduction-rescaled" not in names, names
     assert checked.values == plain.values
+    # Review m-a: with the call's own (reversed) reduction check nothing is
+    # added, and the detail does not claim it.
+    reversed_ = runtime.evaluate(
+        exact_points, stability_checks=VirtualStabilityChecks(1, True), **call
+    )
+    for p, lane in enumerate(reversed_.diagnostics):
+        if lane.lane_rescue is None:
+            continue
+        names = {name for name, _budget in reversed_.stability[p].checks}
+        assert "reduction-rescaled" not in names, names
+        assert "lane rescue:" in lane.detail
+        assert "its estimate includes" not in lane.detail, lane.detail
 
 
 def _estimates(node):
@@ -284,3 +322,66 @@ def test_the_mapping_routes_record_the_rescue_and_extend_the_estimate(
             assert "lane rescue:" in lane.detail
         else:
             assert all("reduction-rescaled" not in n for n in names), (route, p)
+
+
+@pytest.fixture(scope="module")
+def uux_ttxgg(loop_native, tmp_path_factory):
+    """u u~ > t t~ g g (Born-interfered; explicit TIRust refuses lanes on
+    about a quarter of the flat points) from its shipped card, and sixteen
+    flat points (seed 1), as ``test_loop_v2_best_effort.heavy``."""
+
+    import shutil
+
+    from pyamplicol.cli.flat_points import draw_flat_points
+    from pyamplicol.cli.main import main
+    from tests.unit.test_examples import EXAMPLES
+
+    if "tirust" not in __import__("json").loads(loop_native.reduction_backends()):
+        pytest.skip("the staged native extension is built without TIRust")
+    root = tmp_path_factory.mktemp("uux_ttxgg")
+    for item in EXAMPLES.iterdir():
+        if item.name.endswith(".toml"):
+            shutil.copy(item, root / item.name)
+    shutil.copytree(EXAMPLES / "data", root / "data")
+    artifact = root / "artifact"
+    card = root / "loop_uux_ttxgg_generate.toml"
+    assert main(
+        [str(card), "--progress", "off", "--set", f"generation.output={artifact}"]
+    ) in (0, None)
+    flat = draw_flat_points(artifact, process=None, points=16, seed=1, sqrt_s=None)
+    return artifact, flat.as_inputs(exact=True), flat.mu_r2()
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("route", ["helicities", "resolved", "correlated"])
+def test_the_born_interfered_routes_record_the_rescue(uux_ttxgg, route):
+    """Review m-c: the Born-interfered mapping routes (``StoredColumns``)
+    carry a rescued point's record and its extended estimate, bitwise a
+    direct call's with the recommended checks (the loop-induced routes:
+    ``test_the_mapping_routes_record_the_rescue_and_extend_the_estimate``)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+    artifact, points, scales = uux_ttxgg
+    runtime = Runtime.load(artifact)
+    common = dict(mu_r2=scales, poles="none", reduction="tirust", on_failure="return")
+    calls = {
+        "helicities": lambda **kw: runtime.evaluate(
+            points, helicities=[f"h{i}" for i in range(8)], **common, **kw
+        ),
+        "resolved": lambda **kw: runtime.evaluate_resolved(points, **common, **kw),
+        "correlated": lambda **kw: runtime.evaluate_correlated(points, **common, **kw),
+    }
+    call = calls[route]
+    checked = call(stability_checks=VirtualStabilityChecks(1))
+    direct = call(stability_checks=VirtualStabilityChecks(1, True, rescaled=True))
+    served = [p for p, lane in enumerate(checked.diagnostics) if lane.lane_rescue]
+    assert served, "the fixture points include rescued ones"
+    for p in served:
+        found = _estimates(checked.stability[p])
+        assert found and found == _estimates(direct.stability[p]), (route, p)
+        assert all(
+            "reduction-rescaled" in {name for name, _ in e.checks} for e in found
+        )
+        assert "lane rescue:" in checked.diagnostics[p].detail

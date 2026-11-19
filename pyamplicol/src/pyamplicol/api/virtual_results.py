@@ -949,21 +949,25 @@ class VirtualVerificationDiagnostic:
     detail: str
 
 
-def rescue_text(rescue: VirtualLaneRescue, checked: bool) -> str:
+def rescue_text(rescue: VirtualLaneRescue, added: bool) -> str:
     """A lane diagnostic's text of its lane rescue (the "detail" column):
-    "lane rescue: N lanes in <carrier>, ..." (and the moments); with
-    stability checks (``checked``) also that the point's estimate includes
-    the rescaled reduction-direction check (``reduction.rescued_checks``),
-    the reason it may list a check the call did not ask for (review B2)."""
+    "lane rescue: N lanes in <carrier>, ..." (and the moments); when the
+    rescaled reduction-direction check was ADDED to the call's checks
+    (``added``: ``reduction.rescued_checks`` of them is not None) also that
+    the point's estimate includes it, the reason it may list a check the
+    call did not ask for (review B2, m-a)."""
 
-    parts = [f"{n} lanes in {c}" for c, n in rescue.lanes]
-    parts += [f"{n} term-scale moments in {c}" for c, n in rescue.moments]
+    def count(n: int, noun: str) -> str:
+        return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+    parts = [f"{count(n, 'lane')} in {c}" for c, n in rescue.lanes]
+    parts += [f"{count(n, 'term-scale moment')} in {c}" for c, n in rescue.moments]
     return (
         "lane rescue: "
         + ", ".join(parts)
         + (
             " (its estimate includes the rescaled reduction-direction check)"
-            if checked
+            if added
             else ""
         )
     )

@@ -2792,6 +2792,8 @@ class V2VirtualRuntime:
 
         from pyamplicol.runtime.virtual import v2_public_estimate
 
+        from .reduction import rescued_checks
+
         with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
         detail = "accuracy is estimated only by the requested stability checks"
@@ -2898,7 +2900,11 @@ class V2VirtualRuntime:
             text = (
                 detail
                 if rescue is None
-                else detail + "; " + rescue_text(rescue, checks.enabled)
+                # The clause on the estimate only when the rescaled check was
+                # added (review m-a: not with a reduction check of the call's).
+                else detail
+                + "; "
+                + rescue_text(rescue, rescued_checks(checks) is not None)
             )
             diagnostics.append(
                 VirtualLaneDiagnostic(

@@ -469,6 +469,16 @@ def v2_r2_strategy(value: R2Strategy | str | None) -> R2Strategy:
     return strategy
 
 
+def _rescaled_added(checks: Any) -> bool:
+    """Whether a rescued point's estimate gets the rescaled
+    reduction-direction check added to ``checks`` (``reduction.
+    rescued_checks``; the lane diagnostic's text, review m-a)."""
+
+    from pyamplicol.loops.v2.reduction import rescued_checks
+
+    return rescued_checks(checks) is not None
+
+
 def v2_options(
     *,
     helicities: Sequence[str] | None = None,
@@ -998,6 +1008,7 @@ class V2ObservablesRuntime:
         reductions: Mapping[str, VirtualReduction] | None = None,
         served: Mapping[int, VirtualReduction] | None = None,
         lane_rescue: tuple[tuple[str, int], ...] = (),
+        added: bool = False,
     ) -> VirtualLaneDiagnostic:
         bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
             precision.digits * math.log2(10)
@@ -1053,7 +1064,7 @@ class V2ObservablesRuntime:
                 if checked
                 else "no stability check requested"
             )
-            + ("" if rescue is None else "; " + rescue_text(rescue, checked)),
+            + ("" if rescue is None else "; " + rescue_text(rescue, added)),
             reduction=reduction,
             lane_rescue=rescue,
         )
@@ -1161,6 +1172,7 @@ class V2ObservablesRuntime:
                         if rescues is None
                         else rescues[index]
                     ),
+                    added=_rescaled_added(checks),
                 )
             )
         return VirtualEvaluation(
@@ -1823,6 +1835,7 @@ class V2ObservablesRuntime:
                     reductions=reductions,
                     served=served,
                     lane_rescue=getattr(result, "lane_rescue", ()),
+                    added=_rescaled_added(checks),
                 )
             )
             estimates.append(

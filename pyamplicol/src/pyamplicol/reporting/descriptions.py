@@ -542,7 +542,14 @@ def _virtual(value: Any) -> list[Block]:
                 ("bits", "the mantissa bits of that precision"),
                 ("reduction", "the reduction backend that served the point"),
                 ("accuracy established", "whether a requested target was proven"),
-                ("detail", "the reason of a refusal or fallback"),
+                (
+                    "detail",
+                    "the reason of a refusal or fallback; for a point whose "
+                    "refused reduction lanes the lane rescue served, 'lane "
+                    "rescue: N lanes in <carrier>' and, when the call's checks "
+                    "had no reduction-direction check, that its estimate "
+                    "includes the rescaled one",
+                ),
             ],
         ),
     ]
@@ -576,10 +583,14 @@ def _virtual(value: Any) -> list[Block]:
                 [
                     (
                         None,
-                        "Relative error estimates from the requested checks: "
-                        "green within the target, red above.",
+                        "Relative error estimates from the requested checks, "
+                        "with the rescaled reduction-direction check added on "
+                        "points with rescued lanes when the requested checks "
+                        "had no reduction check (and on TIRust's points under "
+                        "a default check set): green within the target, red "
+                        "above.",
                     ),
-                    ("checks", "each check and its own estimate"),
+                    ("checks", "each check that ran and its own estimate"),
                 ],
             )
         )
