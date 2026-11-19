@@ -8912,6 +8912,142 @@ fn validate_pending_closure_obligations(
     let Some(pairing_catalog) = pairing_catalog else {
         return Ok(());
     };
+    let rule_ids = pairing_catalog
+        .rules()
+        .iter()
+        .map(|rule| rule.rule_id)
+        .collect::<BTreeSet<_>>();
+    let result = validate_closure_obligations_with_rules(closures, &rule_ids, prepared_sectors);
+    #[cfg(test)]
+    assert_eq!(
+        result.as_ref().map_err(ToString::to_string),
+        validate_pending_closure_obligations_reference(
+            closures,
+            &rule_ids.iter().copied().collect::<Vec<_>>(),
+            prepared_sectors,
+        )
+        .as_ref()
+        .map_err(ToString::to_string),
+    );
+    result
+}
+
+/// One pass over the closure map: keys of one destination (sector, complete
+/// source states) are contiguous and ascending, as in the former per-destination scan.
+fn validate_closure_obligations_with_rules(
+    closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    rule_ids: &BTreeSet<u32>,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+) -> RusticolResult<()> {
+    let mut rows = Vec::<&PendingClosureProofContribution>::new();
+    let mut entries = closures.iter().peekable();
+    while let Some((key, group)) = entries.next() {
+        rows.clear();
+        rows.extend(group.contributions.iter());
+        while let Some(&(next, next_group)) = entries.peek() {
+            if next.target_sector_id != key.target_sector_id
+                || next.complete_source_states != key.complete_source_states
+            {
+                break;
+            }
+            rows.extend(next_group.contributions.iter());
+            entries.next();
+        }
+        validate_closure_destination(key.target_sector_id, &rows, rule_ids, prepared_sectors)?;
+    }
+    Ok(())
+}
+
+fn validate_closure_destination(
+    sector_id: u32,
+    rows: &[&PendingClosureProofContribution],
+    rule_ids: &BTreeSet<u32>,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+) -> RusticolResult<()> {
+    let prepared_sector = prepared_sectors.get(sector_id)?;
+    let sector = prepared_sector.row;
+    let realized_pairings = rows
+        .iter()
+        .flat_map(|row| row.pairing_certificate_ids.iter().copied())
+        .collect::<BTreeSet<_>>();
+    if realized_pairings.is_empty() {
+        return Err(invalid(format!(
+            "closure destination for sector {sector_id} realizes no fermion pairing rule"
+        )));
+    }
+    for pairing_id in &realized_pairings {
+        if !rule_ids.contains(pairing_id) {
+            return Err(invalid(format!(
+                "closure destination for sector {sector_id} references absent pairing rule {pairing_id}"
+            )));
+        }
+    }
+    if sector.kind()? == ProcessLCSectorKind::OpenLines && sector.open_string_range.count == 3 {
+        for pairing_id in realized_pairings.iter().copied() {
+            let matching_rows = rows
+                .iter()
+                .filter(|row| row.pairing_certificate_ids.contains(&pairing_id))
+                .collect::<Vec<_>>();
+            if matching_rows
+                .iter()
+                .any(|row| row.three_line_certificate.is_none())
+            {
+                return Err(invalid(format!(
+                    "three-line closure sector {sector_id} pairing {pairing_id} has an uncertified traversal"
+                )));
+            }
+            let traversal_kinds = matching_rows
+                .into_iter()
+                .map(|row| {
+                    let certificate = row
+                        .three_line_certificate
+                        .as_ref()
+                        .expect("presence checked above");
+                    if certificate.sector_id != sector_id
+                        || certificate.pairing_rule_id != pairing_id
+                    {
+                        return Err(invalid(format!(
+                            "three-line closure sector {sector_id} pairing {pairing_id} \
+                             has a traversal certificate for sector {} pairing {}",
+                            certificate.sector_id, certificate.pairing_rule_id,
+                        )));
+                    }
+                    match u32::from(certificate.kind) {
+                        THREE_LINE_DIRECT_CERTIFICATE_ID | THREE_LINE_PARTNER_CERTIFICATE_ID => {
+                            Ok(u32::from(certificate.kind))
+                        }
+                        kind => Err(invalid(format!(
+                            "three-line closure sector {sector_id} pairing {pairing_id} \
+                             has invalid traversal kind {kind}"
+                        ))),
+                    }
+                })
+                .collect::<RusticolResult<BTreeSet<_>>>()?;
+            if traversal_kinds.is_empty() {
+                return Err(invalid(format!(
+                    "three-line closure sector {sector_id} pairing {pairing_id} \
+                     realizes no certified traversal"
+                )));
+            }
+        }
+    }
+    if prepared_sector.expected_components.len() != sector.open_string_range.count as usize
+        && sector.kind()? == ProcessLCSectorKind::OpenLines
+    {
+        return Err(invalid(
+            "closure obligation open-line component count is inconsistent",
+        ));
+    }
+    Ok(())
+}
+
+/// Former quadratic validator, kept to check the linear pass in tests.
+#[cfg(test)]
+fn validate_pending_closure_obligations_reference(
+    closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    rule_ids: &[u32],
+    prepared_sectors: &PreparedClosureSectorCatalog,
+) -> RusticolResult<()> {
     let destinations = closures
         .keys()
         .map(|key| (key.target_sector_id, key.complete_source_states.clone()))
@@ -8936,11 +9072,7 @@ fn validate_pending_closure_obligations(
             )));
         }
         for pairing_id in &realized_pairings {
-            if pairing_catalog
-                .rules()
-                .iter()
-                .all(|rule| rule.rule_id != *pairing_id)
-            {
+            if rule_ids.iter().all(|rule_id| rule_id != pairing_id) {
                 return Err(invalid(format!(
                     "closure destination for sector {sector_id} references absent pairing rule {pairing_id}"
                 )));
@@ -15678,6 +15810,92 @@ mod tests {
         assert_eq!(telemetry.closure_color_attempt_count, 1);
         assert_eq!(telemetry.closure_group_count, 1);
         assert_eq!(telemetry.closure_proof_contribution_count, 1);
+    }
+
+    #[test]
+    fn linear_closure_obligation_validation_matches_reference() {
+        let mut process = scalar_reference_process(2);
+        process
+            .physical_lc_sectors
+            .push(ProcessPhysicalLCSectorRow {
+                sector_id: 1,
+                ..process.physical_lc_sectors[0]
+            });
+        let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let prepared_sectors = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &BTreeSet::from([0, 1]),
+        )
+        .unwrap();
+        let rule_ids = BTreeSet::from([1_u32, 2]);
+        let mut seed = 0x9e37_79b9_u64;
+        let mut next = |bound: u32| {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((seed >> 33) % u64::from(bound)) as u32
+        };
+        let mut outcomes = BTreeSet::new();
+        for _ in 0..2000 {
+            let mut closures = BTreeMap::<PendingClosureKey, PendingClosureGroup>::new();
+            for _ in 0..next(10) {
+                let key = PendingClosureKey {
+                    target_sector_id: if next(25) == 0 { 2 } else { next(2) },
+                    complete_source_states: (0..next(2))
+                        .map(|slot| SourceStateAssignment::new(slot, next(2)))
+                        .collect(),
+                    pattern_id: [None, Some(0), Some(1)][next(3) as usize],
+                    closure_template_id: next(3),
+                    quantum_flow_template_id: None,
+                    parent_current_ids: vec![next(3), next(3)].into_boxed_slice(),
+                };
+                let pairing_certificate_ids = match next(40) {
+                    0 => Vec::new(),
+                    1 => vec![3],
+                    _ => vec![1 + next(2)],
+                };
+                closures
+                    .entry(key)
+                    .or_insert_with(|| PendingClosureGroup {
+                        contributions: Vec::new(),
+                        exact_factor: ExactComplexRational::ONE,
+                    })
+                    .contributions
+                    .push(PendingClosureProofContribution {
+                        construction_parent_ids: [0, 1],
+                        construction_parent_permutation: [0, 1],
+                        reconstruction_parent_permutation: [0, 1],
+                        evaluator_parent_permutation: [0, 1],
+                        closure_template_semantic_digest: digest(1),
+                        color_witness_term_id: 0,
+                        color_witness_proof_digest: digest(2),
+                        three_line_certificate: None,
+                        pairing_certificate_ids: pairing_certificate_ids.into_boxed_slice(),
+                        reflection_certificate_id: None,
+                        exact_factor: ExactComplexRational::ONE,
+                    });
+            }
+            let linear =
+                validate_closure_obligations_with_rules(&closures, &rule_ids, &prepared_sectors)
+                    .map_err(|error| error.to_string());
+            let reference = validate_pending_closure_obligations_reference(
+                &closures,
+                &[1, 2],
+                &prepared_sectors,
+            )
+            .map_err(|error| error.to_string());
+            assert_eq!(linear, reference);
+            outcomes.insert(match linear {
+                Ok(()) => "ok",
+                Err(message) if message.contains("absent pairing rule") => "absent rule",
+                Err(message) if message.contains("realizes no fermion pairing") => "no pairing",
+                Err(message) if message.contains("closure sector is absent") => "absent sector",
+                Err(message) => panic!("unexpected validation error {message}"),
+            });
+        }
+        assert_eq!(outcomes.len(), 4, "{outcomes:?}");
     }
 
     #[test]
