@@ -43,8 +43,9 @@ except ImportError:
 
 PROCESSES_FILE = 'madmatrix_processes.json'
 
-# The FPTYPE of the libraries this module builds and loads: the default of
-# madmatrix.mk, made explicit since it is part of the library names
+# The FPTYPE of the libraries this module builds and loads, explicit since it
+# is part of the library names: color32, the precision the density matrices
+# were validated in (madmatrix.mk itself defaults to v, denom64, since then)
 FPTYPE = 'm'
 
 

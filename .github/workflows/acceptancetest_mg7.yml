@@ -658,6 +658,17 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madmatrix_mssm_gogo -pA -t0 -l INFO
 
+      # ---- acceptancetest_mg7_precision_check ----
+      # The default precision denom64 (FPTYPE=v) and [run] precision_check: a
+      # fraction of the events evaluated again with an all64 (FPTYPE=d) build,
+      # the two built side by side; the check reproduces the |M|^2 of the run.
+      # Needs the madspace + LHAPDF(NNPDF23) stack.
+      - name: "acceptancetest_mg7_precision_check"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_precision_check_mg7 test_precision_check_reproduces_the_run_mg7 -pA -t0 -l INFO
+
   acceptancetest_mg7_madtrex:
     needs: build_madspace
     # MadtRex (madtrex/, 'install madtrex'): built on top of the cached madspace

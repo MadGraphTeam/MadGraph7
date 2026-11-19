@@ -25,6 +25,7 @@ import madgraph.various.py8_bstrahl as py8_bstrahl
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7 import options
 from madgraph.mg7 import plots
+from madgraph.mg7 import precision_check
 from madgraph.mg7 import systematics_summary
 from madgraph.mg7.bootstrap import INSTALL_DIR as _INSTALL_DIR
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
@@ -1912,6 +1913,7 @@ class MadgraphProcess:
             meta for meta in self.subprocess_data if not is_amplicol(meta)
         ]
         self.helicity_choice_build = None
+        self.precision_check_builds = None
         if not madmatrix_data:
             return backends
 
@@ -1978,13 +1980,14 @@ class MadgraphProcess:
         for backend, fptype in builds:
             # by library: the flavours of a split subprocess share one; a library
             # built with other recycling settings is rebuilt too: its SigmaKin.o
-            # records them in build.<backend>/.hrflags (madmatrix.mk)
+            # records them in build.<backend>_<fptype>/.hrflags (madmatrix.mk)
             missing = list({
                 meta["me_path"]: meta for meta in madmatrix_data
                 if not os.path.isfile(
                     meta["me_path"].format(device=backend, fptype=fptype)
                 )
-                or self.hel_recycling_flags_changed(meta["path"], backend, hr_flags)
+                or self.hel_recycling_flags_changed(
+                    meta["path"], backend, fptype, hr_flags)
             }.values())
             if not missing:
                 continue
@@ -2003,7 +2006,68 @@ class MadgraphProcess:
             logger.info(
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
+        self.compile_precision_check(
+            madmatrix_data, subproc_path, cpu_backends, fptype, builds,
+            hr_args, hr_flags, nb_core, log_path)
         return resolved
+
+    def precision_check_enabled(self, fptype: str) -> bool:
+        """Whether this run checks the precision of its matrix elements on a
+        fraction of its events (see precision_check.py). A card without the
+        entry checks nothing."""
+        return (
+            fptype != "d"
+            and float(self.run_card["run"].get("precision_check", 0)) > 0
+            and not self.run_card["run"]["dummy_matrix_element"]
+            and self.gridpack_run_mode == "regular"
+            and not self.gridpack_data_only
+        )
+
+    def compile_precision_check(
+        self, madmatrix_data, subproc_path, cpu_backends, fptype, builds,
+        hr_args, hr_flags, nb_core, log_path
+    ) -> None:
+        """Build the two CPU libraries the precision check compares: one in
+        the precision of the run and one in all64 (FPTYPE=d), on the CPU
+        backend of the run, else on the scalar one. A failure only disables
+        the check."""
+        if not self.precision_check_enabled(fptype):
+            return
+        backend = cpu_backends[0] if cpu_backends else "scalar"
+        checks = [(backend, fptype), (backend, "d")]
+        try:
+            for build_backend, build_fptype in checks:
+                if (build_backend, build_fptype) in builds:
+                    continue
+                missing = [
+                    meta for meta in madmatrix_data
+                    if not os.path.isfile(meta["me_path"].format(
+                        device=build_backend, fptype=build_fptype))
+                    or self.hel_recycling_flags_changed(
+                        meta["path"], build_backend, build_fptype, hr_flags)
+                ]
+                if not missing:
+                    continue
+                logger.info(
+                    "precision check (%s of the events): compilation of SubProcesses "
+                    "for '%s' with FPTYPE=%s, see log detail in %s",
+                    self.run_card["run"]["precision_check"], build_backend,
+                    build_fptype, log_path)
+                start_time = time.time()
+                make_args = [f"BACKEND={build_backend}", f"FPTYPE={build_fptype}",
+                             "USEBUILDDIR=1"] + self.extra_make_args + hr_args
+                if (len(missing) >= PCH_MIN_SUBPROCESSES
+                        and not any(arg.startswith("PCH=") for arg in make_args)):
+                    make_args.append("PCH=1")
+                self.make_subprocesses(subproc_path, make_args, nb_core, log_path)
+                logger.info(
+                    f"Compilation for the precision check done in "
+                    f"{time.time() - start_time:.1f} s"
+                )
+        except RuntimeError as error:
+            logger.warning("no precision check for this run: %s", error)
+            return
+        self.precision_check_builds = tuple(checks)
 
     def compile_amplicol(self) -> None:
         """Build the libraries of the [amplicol] processes that are missing."""
@@ -2071,14 +2135,17 @@ class MadgraphProcess:
         return [f"HRMAXMB={max_mb}", f"HRNOBLAS={no_blas}"]
 
     @staticmethod
-    def hel_recycling_flags_changed(proc_path: str, backend: str, hr_flags: str) -> bool:
-        """Whether a --hel_recycling subprocess was built for this backend with
-        other recycling settings than hr_flags (see .hrflags in madmatrix.mk)."""
+    def hel_recycling_flags_changed(
+        proc_path: str, backend: str, fptype: str, hr_flags: str
+    ) -> bool:
+        """Whether a --hel_recycling subprocess was built for this backend and
+        FPTYPE with other recycling settings than hr_flags (see .hrflags in
+        madmatrix.mk)."""
         if backend.startswith(("cuda", "hip")):
             return False
         if not os.path.isfile(os.path.join(proc_path, "HelRecycling.inc")):
             return False
-        marker = os.path.join(proc_path, f"build.{backend}", ".hrflags")
+        marker = os.path.join(proc_path, f"build.{backend}_{fptype}", ".hrflags")
         try:
             with open(marker) as fsock:
                 return fsock.read().strip() != hr_flags
@@ -2402,6 +2469,7 @@ class MadgraphProcess:
             self.event_generator.generate()
             control.armed = False
             self.write_events(output_format)
+        precision_check.run(self)
 
     def write_events(self, output_format) -> None:
         """Combine the generated events into the output_format file, then write

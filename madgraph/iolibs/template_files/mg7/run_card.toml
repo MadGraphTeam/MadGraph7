@@ -12,6 +12,8 @@ cpu_mode = %(run.cpu_mode)s
 madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
+# fraction of the events evaluated again in all64 to check the precision (0: no check)
+precision_check = %(run.precision_check)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 # cpu gzip of the lhe output: auto uses pigz when installed; false uses gzip

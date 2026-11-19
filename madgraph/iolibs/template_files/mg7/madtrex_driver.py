@@ -342,7 +342,7 @@ def default_output_path(events_path: str) -> str:
 # reweighting doesn't need MadGraph's card machinery. MadGraph always writes
 # every entry out, so these only matter for hand-written cards.
 _RUN_CARD_DEFAULTS = {
-    "run": {"device": ["cpu"], "cpu_mode": "auto", "precision": "color32"},
+    "run": {"device": ["cpu"], "cpu_mode": "auto", "precision": "denom64"},
     "beam": {
         "leptonic": False,
         "pdf1": "NNPDF40_lo_as_01180",
