@@ -215,7 +215,12 @@ shared: lib$(LIBALLME).$(dylibext)
 # builds them from a signature file (f2py -h), so no Fortran source is copied
 # to meson's build directory, where INCLUDE files are not found and the
 # P*/f2py_wrapper.f of different subprocesses would overwrite each other.
-F2PY_ENV = FC="$(FC)" LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(LD_F2PY)"
+# Of the loop libraries, LDFLAGS takes only the library paths and linker
+# options (run paths): the libraries themselves are in the wrapped library.
+# meson also links LDFLAGS into its compiler sanity check, which runs in its
+# build directory, where a relative run path ($ORIGIN, as for TIRust with
+# internal dependencies) does not find a shared library.
+F2PY_ENV = FC="$(FC)" LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS) $(filter -L% -Wl%,$(LINK_LOOP_LIBS)) $(LD_F2PY)"
 
 # library of matrix$(MENUM)py, named after the output and subprocess
 # directories, like liball after the output one: f2py modules of several
