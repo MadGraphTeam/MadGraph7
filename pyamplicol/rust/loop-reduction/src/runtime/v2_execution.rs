@@ -869,15 +869,70 @@ mod rescue_settings_tests {
         tir.set_target_acceptance(0.25);
         tir.rescue_index(carrier).unwrap();
         assert_eq!(tir.rescue_settings(index).0, Some(0.25));
-        // An expert's method_choice=false: rebuilt without it.
+        // An expert's method_choice=false on the SAME evaluation backend (its
+        // kept rescue backends moved over, review m-c): the kept one, built
+        // with the method choice, is rebuilt without it, at the same index.
         if let V2Backends::TiRust(main) = &mut tir {
             let mut options = *main.options();
             options.method_choice = false;
-            **main = crate::v2_tir::TirReductionBackend::with_histogram([(4, 4)], 53, options)
-                .expect("TIRust backend");
+            let mut changed =
+                crate::v2_tir::TirReductionBackend::with_histogram([(4, 4)], 53, options)
+                    .expect("TIRust backend");
+            changed.rescue = std::mem::take(&mut main.rescue);
+            **main = changed;
         }
-        let index = tir.rescue_index(carrier).unwrap();
-        assert!(!tir.rescue_settings(index).2);
+        assert!(tir.rescue_settings(index).2, "kept as built");
+        let rebuilt = tir.rescue_index(carrier).unwrap();
+        assert_eq!(rebuilt, index);
+        assert!(
+            !tir.rescue_settings(index).2,
+            "rebuilt without the method choice"
+        );
+    }
+
+    /// Review m-c (m2): `reduce_exact` returns a rescued lane's tracked
+    /// uncertainty in units of the EVALUATION carrier's unit roundoff: a
+    /// tadpole reduced by NinjaRS at 30 digits (about 2^-100 relative) for a
+    /// binary64 evaluation reads about 2^(53-100) |A0|, not 2^-100 |A0|.
+    #[test]
+    fn rescued_tracked_uncertainties_are_in_units_of_the_evaluation_roundoff() {
+        use rusticol_core::loop_execution::v2::LaneKey;
+        use symbolica::domains::rational::Rational;
+        let carrier = RescueCarrier::Arbitrary(30);
+        let reducer = V2Reducer::new("arbitrary", Some(30), "generic", true).expect("NinjaRS");
+        let mut ninja = V2Backends::NinjaRs(V2ReductionBackend::new(reducer, PoleSelection::BOTH));
+        let q = |n: i64| Rational::from(n);
+        let tadpole = ExactLanes {
+            family: 0,
+            propagators: 1,
+            rank: 0,
+            points: vec![0],
+            keys: vec![LaneKey {
+                family: 0,
+                order: 0,
+                column: 0,
+            }],
+            shifts: vec![q(0), q(0), q(0), q(0)],
+            masses: vec![[q(1), q(0)]],
+            scales: vec![q(1)],
+            s_matrix: vec![q(0)],
+            coefficients: vec![[q(1), q(0)]],
+        };
+        let high = Float::with_val(carrier.bits(), 0);
+        let out = reduce_exact(&mut ninja, &[tadpole], Poles::All, None, &high, &0.0_f64)
+            .expect("the tadpole reduces");
+        let value = match &out.outcomes.0[0][0] {
+            Ok(value) => value[0],
+            Err(status) => panic!("refused: {status}"),
+        };
+        let size = value.re.abs() + value.im.abs();
+        let tracked = out.tracked.expect("NinjaRS's arbitrary precision tracks");
+        let u = tracked[0][0][0];
+        assert!(size > 0.0 && u > 0.0, "{size} {u}");
+        // In units of 2^-53: far above the unscaled 2^-100 |A0|, below |A0|.
+        let bits = carrier.bits() as i32;
+        assert!(u > size * 2f64.powi(53 - bits - 16), "{u} vs {size}");
+        assert!(u < size * 2f64.powi(53 - bits + 16), "{u} vs {size}");
     }
 
     #[test]

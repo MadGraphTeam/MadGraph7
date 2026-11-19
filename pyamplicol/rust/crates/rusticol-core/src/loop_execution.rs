@@ -3005,6 +3005,10 @@ pub mod v2 {
             tracked: Option<f64>,
             /// The shifts of every rescue group received (review m8).
             shifts: Vec<Vec<Rational>>,
+            /// Whether the binary64 refusals state a measure (review m-c).
+            measures: bool,
+            /// The measures of the last `reduce`'s refused lanes.
+            last: Vec<MeasuredLane>,
         }
 
         impl V2Backend<f64> for Rescuing {
@@ -3018,6 +3022,25 @@ pub mod v2 {
             ) -> RusticolResult<Reduced<f64>> {
                 self.calls
                     .push(groups.iter().flat_map(|g| g.points.clone()).collect());
+                if self.measures {
+                    self.last = groups
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(group, g)| {
+                            g.points.iter().enumerate().filter(|(_, p)| **p == 0).map(
+                                move |(lane, _)| MeasuredLane {
+                                    group,
+                                    lane,
+                                    check: false,
+                                    measure: LaneMeasure {
+                                        kind: MeasureKind::MethodChoiceDeviation,
+                                        value: 0.5,
+                                    },
+                                },
+                            )
+                        })
+                        .collect();
+                }
                 let direct = groups
                     .iter()
                     .map(|group| {
@@ -3041,6 +3064,10 @@ pub mod v2 {
 
             fn rescue_carriers(&self, _zero: &f64) -> Vec<RescueCarrier> {
                 vec![RescueCarrier::DoubleDouble, RescueCarrier::Arbitrary(77)]
+            }
+
+            fn take_lane_measures(&mut self) -> Vec<MeasuredLane> {
+                std::mem::take(&mut self.last)
             }
 
             fn rescue(
@@ -3090,6 +3117,62 @@ pub mod v2 {
                     tracked,
                 })
             }
+        }
+
+        /// Review m-c (m4): a refused lane's measure reaches its point only
+        /// when the lane stays refused at every rescue carrier (a rescued
+        /// lane's measure would feed a later best-effort record).
+        #[test]
+        fn a_rescued_lanes_measure_does_not_reach_its_point() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let momentum = |e: i64| -> Vec<Rational> {
+                [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
+            };
+            let batch = V2Batch {
+                momenta: vec![momentum(1), momentum(2)],
+                scales: vec![Rational::from(1); 2],
+                masses: vec![Rational::from(0)],
+                masses_imaginary: Vec::new(),
+                leg_masses: Vec::new(),
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new(); 2],
+                born: vec![vec![Complex::new(1.0, 1.0)], vec![Complex::new(3.0, 0.0)]],
+            };
+            let run = |backend: &mut Rescuing, rescue: RescueInputs| {
+                let options = V2Options {
+                    chunk_families: 1,
+                    rescue,
+                    ..V2Options::default()
+                };
+                executor.evaluate(&batch, &0.0, backend, options).unwrap()
+            };
+            // Rescued (in double-double): no measure on the point.
+            let mut backend = Rescuing {
+                measures: true,
+                ..Rescuing::default()
+            };
+            let (results, _) = run(&mut backend, RescueInputs::Exact);
+            assert!(results[0].failures.is_empty() && !results[0].rescued.is_empty());
+            assert!(results[0].measures.is_empty(), "{:?}", results[0].measures);
+            // Refused at every carrier: both lanes' measures.
+            let mut backend = Rescuing {
+                measures: true,
+                refuse_all: true,
+                ..Rescuing::default()
+            };
+            let (results, _) = run(&mut backend, RescueInputs::Exact);
+            assert!(!results[0].failures.is_empty());
+            assert_eq!(results[0].measures.len(), 2);
+            // Without the rescue: at once, as before (the point fails in its
+            // first bucket chunk and is compacted out of the second).
+            let mut backend = Rescuing {
+                measures: true,
+                ..Rescuing::default()
+            };
+            let (results, _) = run(&mut backend, RescueInputs::Off);
+            assert_eq!(results[0].measures.len(), 1);
         }
 
         /// Review m8: the rescue reduces at the point improved in the rescue
