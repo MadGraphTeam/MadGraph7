@@ -355,7 +355,7 @@ c spectator their transverse projections are an orthonormal 2D basis.
      $     q(0:3),mass2,beam_ratio,p(0:3),pr(0:3),reservoir(0:3),
      $     pp,pm,rp,mass,rad,c,v,d,n,a,b,a0,delta,
      $     u(2),vv(2),kt(2),kp,km,jp,jm,trans(2),
-     $     aa,bb,st,ct,qr(0:3),mother(0:3),sstiny,cctiny
+     $     aa,bb,st,ct,qr(0:3),mother(0:3),sstiny,cctiny,vbar
       double precision,parameter :: pi=3.1415926535897932d0
       double precision xi_fix,y_fix
       common/cxiyfix/xi_fix,y_fix
@@ -387,19 +387,25 @@ c spectator their transverse projections are an orthonormal 2D basis.
       if(abs(icountevts).eq.1.or.abs(icountevts).eq.2)then
          y=dble(sign(1,icountevts))
          v=1d0+y
+         vbar=1d0-y
       elseif(colltest)then
          y=y_fix
          v=1d0+y
+         vbar=1d0-y
       elseif(native_mapping)then
          rad=min(x(2),1d0-x(2))
          if(x(2).le.0.5d0)then
+c Keep 1+y and 1-y separately: 2-v cancels near the collinear limit.
             v=2d0*cos(pi*rad/2d0)**2
+            vbar=2d0*sin(pi*rad/2d0)**2
          else
             v=2d0*sin(pi*rad/2d0)**2
+            vbar=2d0*cos(pi*rad/2d0)**2
          endif
          y=cos(pi*x(2))
       else
          v=2d0*(1d0-cctiny)*(1d0-x(2))*(1d0+x(2))
+         vbar=2d0*(cctiny+(1d0-cctiny)*x(2)**2)
          y=v-1d0
       endif
       if(.not.colltest)then
@@ -443,11 +449,11 @@ c Two energy hemispheres retain both the soft and hard complements.
       n=2d0*c*c+xi*v*(1d0+c)
       if(d.le.0d0.or.n.le.0d0)goto 900
       aa=v/n
-      bb=c*c*(2d0-v)/n
+      bb=c*c*vbar/n
       a=xi*aa
       b=xi*bb
       a0=c*d/n
-      delta=xi*c*(2d0-v)/d
+      delta=xi*c*vbar/d
       trans=cos(phi)*u+sin(phi)*vv
 c The reduced emitted direction is also needed at the soft endpoint.
       kt=sqrt(max(0d0,aa*bb*mass2))*trans
@@ -495,6 +501,7 @@ c The reduced emitted direction is also needed at the soft endpoint.
      $     i_fks,j_fks,pborn,x,xjac,xpswgt,q,mass2,xbar,pass)
       use fks_phase_space_data, only: xinorm_ev
       use fks_radiation_maps, only: native_fsr_angle
+      use fks_phase_space_helpers, only: null_pair_kt
       use mc_native_context, only: native_mapping
       implicit none
       include 'nexternal.inc'
@@ -505,7 +512,7 @@ c The reduced emitted direction is also needed at the soft endpoint.
      $     bornratio,alpha,a0,delta,c,xi,eta,beta,phi,angle,
      $     u(2),v(2),kt(2),krest(0:3),jrest(0:3),mass,
      $     work(0:3,nexternal),xiimax,xinorm,y,xihat,
-     $     phat(0:3),beam_ratio,sstiny,cctiny
+     $     phat(0:3),beam_ratio,sstiny,cctiny,onemz
       double precision,parameter :: pi=3.1415926535897932d0
       logical pass,softtest,colltest
       common/sctests/softtest,colltest
@@ -532,7 +539,15 @@ c The reduced emitted direction is also needed at the soft endpoint.
      $     1d-9*max(1d0,maxval(abs(p))))goto 900
       bornratio=(pp-unchanged(0)-idir*unchanged(3))/
      $     (2d0*p(0,irec))
-      if(bornratio.le.0d0.or.bornratio.gt.1d0)goto 900
+      if(bornratio.le.0d0.or.bornratio.gt.1d0+1d-10)goto 900
+      bornratio=min(1d0,bornratio)
+c The Born keeps this balance, which absorbs an imbalance of the input.
+c The transverse momentum of k relative to the pair, and 1-bornratio =
+c k.j/(p_a.(k+j)), cancel in it for soft or collinear daughters; their
+c rounding to zero collapses the radiation frame. Take these small
+c quantities from the light-cone components of the daughters.
+      kt=null_pair_kt(km,p(1:2,i_fks),jm,p(1:2,j_fks))
+      onemz=sum(kt**2)*pm/(2d0*p(0,irec)*km*jm)
       xbar=xreal*bornratio
       reservoir=(1d0-xbar)/xreal*p(:,irec)
       q=mother+reservoir
@@ -541,7 +556,7 @@ c The reduced emitted direction is also needed at the soft endpoint.
       mass=sqrt(mass2)
       alpha=km/pm
       a0=jm/pm
-      delta=(xreal-xbar)/(1d0-xbar)
+      delta=xreal*onemz/(1d0-xbar)
       if(delta.lt.0d0.or.delta.ge.1d0)goto 900
       beta=delta*a0
       c=a0*(1d0-xreal)/(1d0-xbar)
@@ -552,7 +567,6 @@ c The reduced emitted direction is also needed at the soft endpoint.
       jrest=(/eta,-krest(1),0d0,a0-delta*alpha/)
       angle=native_fsr_angle(krest,jrest)
       call null_recoil_axes(mother,q,mass,u,v)
-      kt=p(1:2,i_fks)-alpha*mother(1:2)
       phi=modulo(atan2(sum(kt*v),sum(kt*u)),2d0*pi)
       if(native_mapping)then
          if(xi.le.0.5d0)then

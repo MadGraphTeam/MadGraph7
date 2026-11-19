@@ -108,6 +108,9 @@ class TestInitialRecoil(unittest.TestCase):
     def test_production_flux_pdfs_counterevents_and_asymmetric_inverse(self):
         self.check_map("production")
 
+    def test_extreme_soft_and_collinear_native_round_trip(self):
+        self.check_map("extreme")
+
     def test_single_massive_born_final_state_without_auxiliary_slot(self):
         result = subprocess.run([str(self.minimal_executable), "minimal"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

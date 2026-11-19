@@ -10,6 +10,7 @@ c callers. Soft coordinate recovery takes its endpoint direction explicitly.
      $     get_recoil,boost_isr_recoil,isr_recoil_boost,
      $     prepare_isr_recoil_boost,apply_isr_recoil_boost
       public dot,rho,sumdot,pt,deltaR,delta_phi,delta_y,HTo2,HT,
+     $     null_pair_kt,
      $     boost_n1_to_its_cms,boost_n1_to_lab,get_xi_from_p,
      $     get_yij_from_p,get_phi_from_p,flip_momenta,
      $     apply_momentum_permutation
@@ -498,6 +499,18 @@ c Scale light-cone components instead of subtracting boosted E/pz.
         double precision,dimension(0:3) :: p1,p2
         dot=p1(0)*p2(0)-p1(1)*p2(1)-p1(2)*p2(2)-p1(3)*p2(3)
       end function dot
+
+
+      function null_pair_kt(km,kt,jm,jt) result(rel)
+c Transverse momentum of k relative to the pair k+j, kt-alpha*(kt+jt) with
+c alpha=km/(km+jm), for null k and j given by their positive minus and
+c transverse light-cone components. Written as (jm*kt-km*jt)/(km+jm) it
+c has no cancellation for soft daughters; (k+j)^2=|rel|^2*
+c (km+jm)^2/(km*jm).
+        implicit none
+        double precision km,kt(2),jm,jt(2),rel(2)
+        rel=(jm*kt-km*jt)/(km+jm)
+      end function null_pair_kt
 
 
       subroutine rotate_invar_inverse(pin,pout,cth,sth,cphi,sphi)

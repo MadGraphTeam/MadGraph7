@@ -1,4 +1,5 @@
 """Regressions for the angular failures seen in the stable-top local map."""
+from fractions import Fraction
 import math
 from pathlib import Path
 import random
@@ -21,6 +22,7 @@ class TestGeometryStability(unittest.TestCase):
         (cls.work / "helpers.f").write_text(
             "      module fks_phase_space_helpers\n      contains\n" +
             fortran_routine(TEMPLATE / "genps_fks_helpers.f", "dot") +
+            fortran_routine(TEMPLATE / "genps_fks_helpers.f", "null_pair_kt") +
             "      end module\n")
         sij = (TEMPLATE / "fks_Sij.f").read_text()
         start = sij.index("      double precision function get_cms_energy(")
@@ -35,10 +37,12 @@ end module
         (cls.work / "driver.f90").write_text("""
 program geometry
   use fks_phase_space_data
+  use fks_phase_space_helpers, only: null_pair_kt
   implicit none
   integer :: mode, count, i
   real(8) :: p1(0:3),p2(0:3),ka(0:3),kb(0:3),q(0:3)
   real(8) :: th,cth,sth,phi,cphi,sphi,m1,m2,e1,e2,b1,b2,ct
+  real(8) :: km,kt(2),jm,jt(2)
   read(*,*) count
   do i=1,count
     read(*,*) mode
@@ -46,6 +50,9 @@ program geometry
       read(*,*) p1
       call getangles(p1,th,cth,sth,phi,cphi,sphi)
       write(*,'(6ES26.17E3)') th,cth,sth,phi,cphi,sphi
+    elseif(mode.eq.3) then
+      read(*,*) km,kt,jm,jt
+      write(*,'(2ES26.17E3)') null_pair_kt(km,kt,jm,jt)
     else
       read(*,*) ybst_til_tocm,m1,m2,e1,e2
       read(*,*) p1
@@ -272,6 +279,30 @@ end program
             tolerance = 5.e-13 if ratio <= 5650. else 5.e-11
             self.assertAlmostEqual(1.-row[0]*row[2], target, delta=tolerance)
             self.assertEqual(row[1], 1.)
+
+    def test_null_pair_kt_keeps_soft_and_collinear_precision(self):
+        """(k+j)^2 of null momenta from their relative transverse momentum,
+        against exact rational arithmetic on the same inputs. The momentum
+        balance of the local recoil inverses lost it to rounding."""
+        cases, expected = [], []
+        for km, kt, jm, jt, tol in [
+                # ultra-soft k or j at a generic angle: relative precision
+                (3.7e-16, (2.1e-16, -1.3e-16), 412., (88., -31.), 1e-13),
+                (5.1, (2.2, -0.7), 4.3e-15, (1.9e-15, -6e-16), 1e-13),
+                # soft k at an angle 4e-8 to j: precision ~ eps/angle
+                (1e-8, (4.0000004e-9, 1e-9), 300., (120., 30.), 1e-7),
+                (7., (1., 2.), 3., (-2., .5), 1e-13)]:
+            cases.append(["3", self.line([km, *kt, jm, *jt])])
+            km, jm = Fraction(km), Fraction(jm)
+            kp = sum(Fraction(x)**2 for x in kt) / km
+            jp = sum(Fraction(x)**2 for x in jt) / jm
+            exact = (kp + jp) * (km + jm) - sum(
+                (Fraction(a) + Fraction(b))**2 for a, b in zip(kt, jt))
+            expected.append((km, jm, exact, tol))
+        for row, (km, jm, exact, tol) in zip(self.run_cases(cases), expected):
+            mass2 = sum(Fraction(x)**2 for x in row) * (km + jm)**2 / (km * jm)
+            self.assertGreater(exact, 0)
+            self.assertLess(abs(mass2 / exact - 1), tol)
 
 
 if __name__ == "__main__":

@@ -2399,14 +2399,14 @@ c A soft endpoint instead represents the coefficient of dw/w.
      $     partner,mass,xreal,pborn,xbar,w,pass)
 c Invariant IF projection. Use unchanged spectators for a small xBorn:
 c subtracting the emitted momentum from a large incoming vector is unstable.
-      use fks_phase_space_helpers, only: dot,rho
+      use fks_phase_space_helpers, only: dot,rho,null_pair_kt
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       implicit none
       integer i_fks,j_fks,partner,i,ib
       double precision p(0:3,nexternal),mass,xreal,
      $     pborn(0:3,nexternal-1),xbar,w,unchanged(0:3),
      $     mother(0:3),denom,z,nf,ni,pfk,paf,pak,kp,km,jp,jm,
-     $     pp,pm,alpha,trans(2)
+     $     pp,pm,trans(2)
       integer idir
       logical pass
       pass=.false.
@@ -2441,10 +2441,11 @@ c subtracting the emitted momentum from a large incoming vector is unstable.
      $        (2d0*p(0,j_fks))
          if(z.le.0d0.or.z.gt.1d0+1d-10)return
          z=min(1d0,z)
-         alpha=km/pm
-         trans=p(1:2,i_fks)-alpha*mother(1:2)
+c The relative transverse momentum, and w=1-z, cancel in the balance for
+c soft or collinear daughters: take them from the light-cone components.
+         trans=null_pair_kt(km,p(1:2,i_fks),jm,p(1:2,partner))
          w=sum(trans**2)*pm/(2d0*p(0,j_fks)*km*jm)
-         if(w.lt.0d0.or.w.ge.1d0)return
+         if(w.ge.1d0)return
          xbar=xreal*z
          ib=0
          do i=1,nexternal

@@ -15,12 +15,16 @@ program check_initial_recoil
   double precision :: xs(5)=[0.002d0,0.1d0,0.55d0,0.85d0,0.98d0]
   double precision :: ys(4)=[0.03d0,0.35d0,0.75d0,0.97d0]
   double precision :: fractions(3)=[0.1d0,0.6d0,0.97d0]
+  ! Native ultra-soft gluon or quark (xi or 1-xi ~ 2e-20), a soft-collinear
+  ! point, and nearly collinear or antiparallel daughters.
+  double precision :: extreme_x(3)=[1d-10,1d-6,1d0-1d-10]
+  double precision :: extreme_y(4)=[1d-8,0.35d0,0.75d0,1d0-1d-8]
   double precision :: gx(160),gw(160),volume,reference,r,ss,cs,angs,mlog,t
   double precision :: xifix,yfix
   common/cxiyfix/xifix,yfix
   double precision :: kperp_save(0:3)
   complex*16 :: spinsave
-  logical :: pass,softtest,colltest
+  logical :: pass,softtest,colltest,spin_checks=.true.
   common/sctests/softtest,colltest
   character(len=32) :: mode
   integer :: native,masscase,beam,ib,perm,ir,iy,ifks,jfks,isign,i,j,nminus
@@ -107,6 +111,38 @@ program check_initial_recoil
           write(*,*)'volume',beam,mj,volume,reference,volume/reference
           error stop 'FI hadronic measure volume'
         endif
+      enddo
+    enddo
+  elseif(mode.eq.'extreme')then
+    native=1
+    native_mapping=.true.
+    ! The azimuth of nearly collinear or ultra-soft daughters is known only
+    ! to ~eps/angle, so the generic-point spin-phase checks do not apply.
+    spin_checks=.false.
+    do masscase=0,1
+      mj=80d0*masscase
+      do beam=1,2
+        do ib=1,size(fractions)
+          xbar=fractions(ib)
+          do perm=1,2
+            call fixture(perm)
+            do ir=1,size(extreme_x)
+              ! A massive emitter at rest in the radiation frame has no angles.
+              if(mj.gt.0d0.and.extreme_x(ir).gt.0.5d0)cycle
+              do iy=1,size(extreme_y)
+                rnd=[extreme_x(ir),extreme_y(iy),0.317d0]
+                call forward(-100,p,jac,ps)
+                if(.not.pass)then
+                  write(*,*)'rejected',mj,beam,xbar,rnd
+                  error stop 'extreme FI map rejected'
+                endif
+                call invariants(p)
+                ratio0=ratio
+                call production_roundtrip()
+              enddo
+            enddo
+          enddo
+        enddo
       enddo
     enddo
   elseif(mode.eq.'invalid')then
@@ -392,7 +428,7 @@ contains
     ratio_save=ratio
     call generate_FKS_kinematics(xgen(1:3),nbody,j0,ps0,stot,s,sqrts,taub,yb,xb,mb,jout,out,valid)
     if(.not.valid.or.jout.le.0d0)error stop 'production FI map rejected'
-    if(mj.eq.0d0)call check_spin_state(out,.false.)
+    if(mj.eq.0d0.and.spin_checks)call check_spin_state(out,.false.)
     if(maxval(abs(out-p)).gt.3d-5)error stop 'production FI map differs from direct map'
     if(maxval(abs(pbe-born_save)).gt.3d-5)error stop 'FI real partition projection differs from common Born'
     flux=1d0/(2d0*s*ratio_save*(2d0*pi)**(3*(nexternal-nincoming)-7))
@@ -434,7 +470,7 @@ contains
       pbe=-33d0
       call generate_native_momenta(lab,out,outlab,outcms,jnew,valid)
       if(.not.valid)error stop 'FI native replay rejected'
-      if(mj.eq.0d0)call check_spin_state(out,.false.)
+      if(mj.eq.0d0.and.spin_checks)call check_spin_state(out,.false.)
       if(maxval(abs(pb-born_save)).gt.3d-5)error stop 'FI native replay Born CM'
       if(abs(jnew*21d0/jout-1d0).gt.5d-5)error stop 'FI native replay real measure'
       do k=-2,2
