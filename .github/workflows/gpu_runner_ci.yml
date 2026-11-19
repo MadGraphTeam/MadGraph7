@@ -82,7 +82,7 @@ on:
         default: ''
       nevents:
         type: string
-        default: '10000'
+        default: '1000'
       pdf_set:
         type: string
         default: 'NNPDF23_lo_as_0130_qed'

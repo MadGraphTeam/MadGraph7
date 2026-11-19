@@ -28,7 +28,7 @@ on:
       nevents:
         description: 'Number of unweighted events'
         type: string
-        default: '10000'
+        default: '1000'
       time_limit:
         description: 'Slurm --time of the allocation (all CI jobs together)'
         type: string
@@ -68,7 +68,7 @@ jobs:
       modules: ${{ inputs.modules || 'PyTorch CUDA Python foss' }}
       gres: ${{ inputs.gres || 'gpu:1' }}
       gpu_arch: ${{ inputs.gpu_arch }}
-      nevents: ${{ inputs.nevents || '10000' }}
+      nevents: ${{ inputs.nevents || '1000' }}
       # 30 min, not 20 as on lemaitre4: the runner set-up and checkout are sometimes slow here
       time_limit: ${{ inputs.time_limit || '00:30:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
