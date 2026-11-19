@@ -11,6 +11,7 @@ mod coefficients;
 mod exact;
 mod fast;
 pub(crate) mod frames;
+mod lane_status;
 mod master_cache;
 
 mod predicates;

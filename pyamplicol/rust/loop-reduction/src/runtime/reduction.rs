@@ -174,8 +174,10 @@ where
                 .map_err(error)?;
         }
         let mut results = Vec::with_capacity(3);
+        let mut refusals = Vec::with_capacity(3);
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if !self.active[index] {
+                refusals.push(Vec::new());
                 results.push(
                     ids.iter()
                         .map(|&id| Lane {
@@ -206,6 +208,7 @@ where
                     )
                     .map_err(error)?,
             );
+            refusals.push(super::lane_status::generic_refusals());
         }
         let mut sectors = results.into_iter();
         let zero = sectors.next().unwrap();
@@ -230,7 +233,11 @@ where
                     .iter()
                     .enumerate()
                     .find(|(_, status)| **status != EvaluationStatus::Success)
-                    .map(|(sector, status)| format!("epsilon sector {sector}: {status:?}"));
+                    .map(|(sector, status)| {
+                        let text =
+                            super::lane_status::generic_status(status, row, &refusals[sector]);
+                        format!("epsilon sector {sector}: {text}")
+                    });
                 let value = match (zero.value, one.value, two.value) {
                     (Some(a), Some(b), Some(c)) => Some(Laurent::epsilon_sectors(a, b, c)),
                     _ => None,

@@ -131,8 +131,10 @@ pub fn fast_engine_threshold() -> f64 {
 /// thresholds, `FastOptions { stability_threshold: 0, relative_tolerance: 0
 /// }`: Ninja's stability test `relative(x, s)` becomes `x >= 0 && x > 0`, so
 /// a lane fails only where a tested quantity is exactly zero or NaN (a
-/// Euclidean-plane cut basis, `FastStatus::Unstable`), or as `NonFinite` /
-/// `MasterFailed`. `infrared_eps` keeps its meaning (a routing rule:
+/// Euclidean-plane cut basis, `FastStatus::Unstable`), by the box
+/// mu-expansion's conditioning screen (kept), or as `NonFinite` /
+/// `MasterFailed`; an `Unstable` lane's status text names the test and its
+/// numbers (`super::lane_status`). `infrared_eps` keeps its meaning (a routing rule:
 /// [`fast_engine_threshold`] reads the default).
 pub fn fast_options(unchecked: bool) -> FastOptions {
     let defaults = FastOptions::default();
@@ -712,11 +714,13 @@ impl FastEngine {
                 &mut self.statuses,
             )
             .map_err(error)?;
+        let records = super::lane_status::fast_instabilities(lanes);
         Ok(self
             .statuses
             .iter()
             .zip(&self.results)
-            .map(|(&status, result)| {
+            .zip(&records)
+            .map(|((&status, result), record)| {
                 if status == FastStatus::Success {
                     Outcome {
                         status: "success".into(),
@@ -725,7 +729,7 @@ impl FastEngine {
                     }
                 } else {
                     Outcome {
-                        status: format!("{status:?}"),
+                        status: super::lane_status::fast_status(status, record.as_ref()),
                         value: None,
                         uv: None,
                     }
