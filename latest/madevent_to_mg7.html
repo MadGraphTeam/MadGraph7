@@ -918,8 +918,19 @@ no counterpart. The integration and the hardware are configured in <code class="
 <p>As MadEvent, MG7 sets up MLM merging by itself when the process has several jet
 multiplicities (for example <code class="docutils literal notranslate"><span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">w+</span></code> with <code class="docutils literal notranslate"><span class="pre">add</span> <span class="pre">process</span> <span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">w+</span> <span class="pre">j</span></code>): the scale choice
 <code class="docutils literal notranslate"><span class="pre">&quot;mlm&quot;</span></code>, a merging cut <code class="docutils literal notranslate"><span class="pre">xqcut</span> <span class="pre">=</span> <span class="pre">30</span></code> GeV and no jet <code class="docutils literal notranslate"><span class="pre">delta_r</span></code> cuts. The shower then does
-the jet matching (<code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">JetMatching:qCut</span> <span class="pre">=</span> <span class="pre">1.5</span> <span class="pre">xqcut</span></code>). It is not set up for an
-output with <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses.</p>
+the jet matching (<code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">JetMatching:qCut</span> <span class="pre">=</span> <span class="pre">1.5</span> <span class="pre">xqcut</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">JetMatching:coneRadius</span></code> equal to <code class="docutils literal notranslate"><span class="pre">beam.jet_radius</span></code>). It is not set up for an output
+with <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses.</p>
+<p>By default MG7 reads the scales off the clustering in its own way. To cluster the events as
+MadEvent does, type <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">mlm</span> <span class="pre">madevent</span></code> in the launch question. It turns MLM merging on and
+sets every hidden clustering option to MadEvent’s choice: <code class="docutils literal notranslate"><span class="pre">scale_scheme</span></code>,
+<code class="docutils literal notranslate"><span class="pre">clustering_measure</span></code> and <code class="docutils literal notranslate"><span class="pre">clustering_history</span></code> become <code class="docutils literal notranslate"><span class="pre">&quot;madevent&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">min_scale</span></code> becomes
+MadEvent’s 2 GeV floor, and <code class="docutils literal notranslate"><span class="pre">jet_scale_scheme</span></code>, <code class="docutils literal notranslate"><span class="pre">parton_line_scheme</span></code>,
+<code class="docutils literal notranslate"><span class="pre">alphas_reweighting</span></code> and <code class="docutils literal notranslate"><span class="pre">pdf_reweighting</span></code> are set to the values the two codes share. A
+merging cut of 30 GeV is added if <code class="docutils literal notranslate"><span class="pre">xqcut</span></code> is 0. <code class="docutils literal notranslate"><span class="pre">jet_radius</span></code>, <code class="docutils literal notranslate"><span class="pre">max_jet_flavor</span></code> and
+<code class="docutils literal notranslate"><span class="pre">mlm_shower_start</span></code> are left as they are, since MadEvent has them as run card parameters too
+(<code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">maxjetflavor</span></code> and <code class="docutils literal notranslate"><span class="pre">mlm_shower_start</span></code>). A MadEvent run card with <code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code> is
+converted the same way. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">mlm</span> <span class="pre">mg7</span></code> puts MG7’s defaults back.</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
@@ -955,7 +966,12 @@ on when <code class="docutils literal notranslate"><span class="pre">xqcut</span
 <td><p><code class="docutils literal notranslate"><span class="pre">beam.pdf_reweighting</span></code></p></td>
 <td><p>Hidden in both.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sys_alpsfact</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beam.jet_radius</span></code></p></td>
+<td><p>The jet radius <span class="math notranslate nohighlight">\(D\)</span> of the clustering measure, 1 by default. Hidden in both.
+The shower matches the jets with the same value.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sys_alpsfact</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">systematics.alps</span></code></p></td>
 <td></td>
 </tr>

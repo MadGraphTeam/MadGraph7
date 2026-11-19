@@ -730,16 +730,17 @@
 <h1>LeptonLuminosity<a class="headerlink" href="#leptonluminosity" title="Link to this heading">¶</a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="madspace.LeptonLuminosity">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">LeptonLuminosity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_lab</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_hat_min</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_power</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.96</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.LeptonLuminosity" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">LeptonLuminosity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_lab</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_hat_min</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_power</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">SupportsFloat</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.96</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reduced_density</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s_hat_min_condition</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.LeptonLuminosity" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="Mapping.html#madspace.Mapping" title="madspace._madspace_py.Mapping"><code class="xref py py-class docutils literal notranslate"><span class="pre">Mapping</span></code></a></p>
-<p>Momentum fractions for dressed-lepton beams, sampled directly.</p>
-<p>Luminosity trades <span class="math notranslate nohighlight">\(x_1, x_2\)</span> for <span class="math notranslate nohighlight">\(\hat s\)</span> and a splitting variable, which suits a hadron collider. A dressed-lepton density instead diverges as <span class="math notranslate nohighlight">\(x \to 1\)</span> on <em>each</em> beam, so the two fractions are drawn separately from that endpoint,</p>
+<p>Momentum fractions for lepton beams, sampled directly.</p>
+<p>Luminosity trades <span class="math notranslate nohighlight">\(x_1, x_2\)</span> for <span class="math notranslate nohighlight">\(\hat s\)</span> and a splitting variable, which suits a hadron collider. A lepton density instead diverges as <span class="math notranslate nohighlight">\(x \to 1\)</span> on <em>each</em> beam, so the two fractions are drawn separately from that endpoint, as generate_x_ee of MadGraph’s genps_fks.f draws them,</p>
 <div class="math-wrapper docutils container">
 <div class="math notranslate nohighlight">
-\[ \begin{align}\begin{aligned}  1-x = r^{1/(1-p)} \,(1 - x_\mathrm{min}),\\i.e. :math:`x` distributed as :math:`(1-x)^{-p}` over :math:`[x_\mathrm{min}, 1]`, with :math:`x_\mathrm{min}` set by :math:`\hat s_\mathrm{min}` (and, for the second beam, by the first fraction).\end{aligned}\end{align} \]</div>
+\[ \begin{align}\begin{aligned}  1-x = r^{1/(1-p)} \,(1 - x_\mathrm{min}),\\i.e. :math:`x` distributed as :math:`(1-x)^{-p}` over :math:`[x_\mathrm{min}, 1]`, with :math:`x_\mathrm{min} = \tau_\mathrm{min} =\end{aligned}\end{align} \]</div>
 </div>
-<p><strong>``sampling_power`` must equal the ``ps_expo`` the density was reduced with.</strong> The returned Jacobian deliberately omits the <span class="math notranslate nohighlight">\((1-x)^{p}\)</span> of the transformation, because EEPartonDensity carries exactly that factor: the two cancel analytically, which is the whole point of the reduction and avoids evaluating a divergence against a vanishing weight. Using a different exponent here leaves the cross section wrong by <span class="math notranslate nohighlight">\((1-x)^{\Delta p}\)</span> with nothing to flag it. (This mirrors <code class="docutils literal notranslate"><span class="pre">genps.f</span></code>, where the beam whose <span class="math notranslate nohighlight">\(x\)</span> is <em>derived</em> rather than generated has the factor put back by hand.)</p>
-<p><span class="math notranslate nohighlight">\(1-x\)</span> is returned alongside <span class="math notranslate nohighlight">\(x\)</span>: it is the quantity the density needs, and recovering it as <span class="math notranslate nohighlight">\(1-x\)</span> from a rounded <span class="math notranslate nohighlight">\(x\)</span> throws away the precision the sampling had in hand.</p>
+<p>hat <a href="#id1"><span class="problematic" id="id2">s_</span></a>mathrm{min} / <a href="#id3"><span class="problematic" id="id4">s_</span></a>mathrm{lab}` for the first beam and <span class="math notranslate nohighlight">\(\tau_\mathrm{min} / x_1\)</span> for the second. <span class="math notranslate nohighlight">\(x\)</span> is computed as <span class="math notranslate nohighlight">\(x_\mathrm{min} + (1 - x_\mathrm{min})(1 - r^{1/(1-p)})\)</span>, which keeps its precision also close to a small <span class="math notranslate nohighlight">\(x_\mathrm{min}\)</span>. A range that is empty gives <span class="math notranslate nohighlight">\(x = 1\)</span> and a zero Jacobian, and the inverse gives a zero Jacobian for a point outside the range, <span class="math notranslate nohighlight">\(x_1 &lt; \tau_\mathrm{min}\)</span>.</p>
+<p>The Jacobian of each beam is <span class="math notranslate nohighlight">\((1-x_\mathrm{min})^{1-p} (1-x)^{p} / (1-p)\)</span>. With <code class="docutils literal notranslate"><span class="pre">reduced_density</span></code> (the default) it omits the <span class="math notranslate nohighlight">\((1-x)^{p}\)</span>, because EEPartonDensity carries exactly that factor: the two cancel analytically, which avoids evaluating a divergence against a vanishing weight. <strong>``sampling_power`` must then equal the ``ps_expo`` the density was reduced with.</strong> Using a different exponent leaves the cross section wrong by <span class="math notranslate nohighlight">\((1-x)^{\Delta p}\)</span> with nothing to flag it. (This mirrors <code class="docutils literal notranslate"><span class="pre">genps.f</span></code>, where the beam whose <span class="math notranslate nohighlight">\(x\)</span> is <em>derived</em> rather than generated has the factor put back by hand.) Without <code class="docutils literal notranslate"><span class="pre">reduced_density</span></code> the Jacobian is the full one, for a density that is not reduced, such as the lepton PDFs of an NLO run, where the densities are also taken at momentum fractions other than the sampled ones.</p>
+<p><span class="math notranslate nohighlight">\(1-x\)</span> is returned alongside <span class="math notranslate nohighlight">\(x\)</span>: it is the quantity the density needs, and recovering it as <span class="math notranslate nohighlight">\(1-x\)</span> from a rounded <span class="math notranslate nohighlight">\(x\)</span> throws away the precision the sampling had in hand. It is kept at least the smallest normal double.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Inputs</strong></p>
 <ul class="simple">
@@ -747,23 +748,69 @@
 </ul>
 <p><strong>Conditions</strong></p>
 <ul class="simple">
-<li><p>None.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">s_hat_min</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – <span class="math notranslate nohighlight">\(\hat s_\mathrm{min}\)</span> of each event, in place of that of the constructor, clipped to <span class="math notranslate nohighlight">\([0, s_\mathrm{lab}]\)</span>. Present only with <code class="docutils literal notranslate"><span class="pre">s_hat_min_condition</span></code>.</p></li>
 </ul>
 <p><strong>Outputs</strong></p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">x1</span></code>, <code class="docutils literal notranslate"><span class="pre">x2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – momentum fractions.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">omx1</span></code>, <code class="docutils literal notranslate"><span class="pre">omx2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – <span class="math notranslate nohighlight">\(1-x_1\)</span>, <span class="math notranslate nohighlight">\(1-x_2\)</span>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">omx1</span></code>, <code class="docutils literal notranslate"><span class="pre">omx2</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – <span class="math notranslate nohighlight">\(1-x_1\)</span>, <span class="math notranslate nohighlight">\(1-x_2\)</span>. The inverse takes the fractions from them.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">s_hat</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – <span class="math notranslate nohighlight">\(x_1 x_2 s_\mathrm{lab}\)</span>.</p></li>
+</ul>
+<p>In addition every mapping returns a <code class="docutils literal notranslate"><span class="pre">det</span></code> (<code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code>), the Jacobian of the transformation.</p>
+<p><strong>References</strong></p>
+<ul class="simple">
+<li><p>[1] T. Heimel, O. Mattelaer, R. Winterhalder, “MadSpace”, <a class="reference external" href="https://arxiv.org/abs/2602.06895">https://arxiv.org/abs/2602.06895</a></p></li>
+<li><p>[2] J. Alwall et al., “The automated computation of tree-level and
+next-to-leading order differential cross sections, and their matching to
+parton shower simulations”, <a class="reference external" href="https://arxiv.org/abs/1405.0301">https://arxiv.org/abs/1405.0301</a></p></li>
 </ul>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>s_lab</strong> – Squared collider energy.</p></li>
 <li><p><strong>s_hat_min</strong> – Lower bound on <span class="math notranslate nohighlight">\(\hat s\)</span>, from the final-state masses and the cuts.</p></li>
-<li><p><strong>sampling_power</strong> – <span class="math notranslate nohighlight">\(p\)</span> of the <span class="math notranslate nohighlight">\((1-x)^{-p}\)</span> sampling. Must match the density’s reduction exponent; the default is <code class="docutils literal notranslate"><span class="pre">get_ee_expo()</span></code> of MadEvent.</p></li>
+<li><p><strong>sampling_power</strong> – <span class="math notranslate nohighlight">\(p\)</span> of the <span class="math notranslate nohighlight">\((1-x)^{-p}\)</span> sampling, in <span class="math notranslate nohighlight">\([0, 1)\)</span>. With <code class="docutils literal notranslate"><span class="pre">reduced_density</span></code> it must match the density’s reduction exponent. The default is <code class="docutils literal notranslate"><span class="pre">get_ee_expo()</span></code> of MadEvent.</p></li>
+<li><p><strong>reduced_density</strong> – Leave the factor <span class="math notranslate nohighlight">\((1-x)^{p}\)</span> of each beam out of the Jacobian, for a reduced density.</p></li>
+<li><p><strong>s_hat_min_condition</strong> – Take the lower bound on <span class="math notranslate nohighlight">\(\hat s\)</span> of each event from the <code class="docutils literal notranslate"><span class="pre">s_hat_min</span></code> condition.</p></li>
 </ul>
 </dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>for parameters out of their range.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>std::invalid_argument</p>
+</dd>
 </dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.LeptonLuminosity.reduced_density">
+<span class="sig-name descname"><span class="pre">reduced_density</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.LeptonLuminosity.reduced_density" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the Jacobian leaves the factors <span class="math notranslate nohighlight">\((1-x)^{p}\)</span> to the density.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.LeptonLuminosity.s_hat_min">
+<span class="sig-name descname"><span class="pre">s_hat_min</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#madspace.LeptonLuminosity.s_hat_min" title="Link to this definition">¶</a></dt>
+<dd><p>The lower bound on <span class="math notranslate nohighlight">\(\hat s\)</span> of the constructor.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.LeptonLuminosity.s_hat_min_condition">
+<span class="sig-name descname"><span class="pre">s_hat_min_condition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.LeptonLuminosity.s_hat_min_condition" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the mapping takes the <code class="docutils literal notranslate"><span class="pre">s_hat_min</span></code> condition.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.LeptonLuminosity.s_lab">
+<span class="sig-name descname"><span class="pre">s_lab</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#madspace.LeptonLuminosity.s_lab" title="Link to this definition">¶</a></dt>
+<dd><p>The squared collider energy.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.LeptonLuminosity.sampling_power">
+<span class="sig-name descname"><span class="pre">sampling_power</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.LeptonLuminosity" title="madspace._madspace_py.LeptonLuminosity"><span class="pre">madspace._madspace_py.LeptonLuminosity</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#madspace.LeptonLuminosity.sampling_power" title="Link to this definition">¶</a></dt>
+<dd><p>The exponent <span class="math notranslate nohighlight">\(p\)</span> of the sampling.</p>
+</dd></dl>
+
 </dd></dl>
 
 </section>
@@ -824,7 +871,14 @@
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">LeptonLuminosity</a><ul>
-<li><a class="reference internal" href="#madspace.LeptonLuminosity"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LeptonLuminosity"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.LeptonLuminosity.reduced_density"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity.reduced_density()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LeptonLuminosity.s_hat_min"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity.s_hat_min()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LeptonLuminosity.s_hat_min_condition"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity.s_hat_min_condition()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LeptonLuminosity.s_lab"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity.s_lab()</span></code></a></li>
+<li><a class="reference internal" href="#madspace.LeptonLuminosity.sampling_power"><code class="docutils literal notranslate"><span class="pre">LeptonLuminosity.sampling_power()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
