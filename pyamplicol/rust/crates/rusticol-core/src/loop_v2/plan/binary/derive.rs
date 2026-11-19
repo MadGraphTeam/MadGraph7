@@ -131,6 +131,12 @@ pub struct DeriveBound {
     pub allocated: u64,
     /// Iterations of the scalar-driven loops.
     pub work: u64,
+    /// The most one family holds while a parallel load has it in flight
+    /// (derived, not yet merged): its temporaries and, as an upper bound of
+    /// its derived records and the recorded copies of its link lists, what
+    /// it keeps. A load with `w` families in flight needs `w` times this
+    /// beyond [`Self::memory`] ([`Self::in_flight_memory`]).
+    pub in_flight: u64,
 }
 
 impl DeriveBound {
@@ -143,6 +149,12 @@ impl DeriveBound {
     /// [`margin`].
     pub fn reserved(&self) -> u64 {
         margin(self.memory)
+    }
+
+    /// The peak of a load with `families` families in flight at once.
+    pub fn in_flight_memory(&self, families: u64) -> u64 {
+        self.memory
+            .saturating_add(self.in_flight.saturating_mul(families))
     }
 }
 
@@ -221,6 +233,7 @@ struct Tally {
     growth: u64,
     allocated: u64,
     work: u64,
+    in_flight: u64,
 }
 
 impl Tally {
@@ -410,6 +423,7 @@ impl Tally {
                 .saturating_add(self.growth),
             allocated: self.allocated,
             work: self.work,
+            in_flight: self.in_flight,
         }
     }
 }
@@ -942,6 +956,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // The index owns its texts (the family records are dropped as loaded).
     tally.map_grown(leaves, size_of::<(String, u32)>());
     for f in &file.families {
+        let kept_before = tally.kept;
         tally.keep_grown(f.leaves.len() as u64, size_of::<Leaf>());
         for leaf in &f.leaves {
             tally.weight(&leaf.weight)?;
@@ -1053,7 +1068,11 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         tally.keep_grown(edges_here, size_of::<usize>());
         tally.keep_grown(parts_here, size_of::<usize>());
         tally.keep_grown(parts_here, size_of::<usize>());
-        tally.alive(family.saturating_add(most_map.max(most_step)));
+        let transient = family.saturating_add(most_map.max(most_step));
+        tally.alive(transient);
+        tally.in_flight = tally
+            .in_flight
+            .max(transient.saturating_add(tally.kept.saturating_sub(kept_before)));
         if file.column_rows.is_some() && !dressed {
             // The live-row pruning of the family (`live.rs`, after every
             // family is derived, with the plan's flag per seeded object
