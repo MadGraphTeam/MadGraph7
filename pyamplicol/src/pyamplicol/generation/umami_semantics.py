@@ -28,13 +28,12 @@ _TOKEN = re.compile(r"[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_][A-Za-z_0-9]*)*")
 _NONE = (1 << 32) - 1
 
 
+_KEY_ENCODER = json.JSONEncoder(sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
 def _key(value: object) -> str:
-    digest = hashlib.sha256()
-    for chunk in json.JSONEncoder(
-        sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).iterencode(value):
-        digest.update(chunk.encode("utf-8"))
-    return digest.hexdigest()
+    # One-shot encode uses the C encoder (iterencode is pure Python); same text.
+    return hashlib.sha256(_KEY_ENCODER.encode(value).encode("utf-8")).hexdigest()
 
 
 class ParameterSemantics:

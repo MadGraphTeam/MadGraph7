@@ -2449,16 +2449,31 @@ def encode_recurrence_process_binding(
     )
 
 
+_PLAIN_SCALARS = frozenset((str, int, float, bool, type(None)))
+_PLAIN_FIELDS: dict[type, tuple[str, ...]] = {}
+
+
 def _schedule_plain(value: object) -> object:
+    kind = type(value)
+    # Exact-type fast paths; the generic checks below give the same results.
+    if kind in _PLAIN_SCALARS:
+        return value
+    if kind is tuple or kind is list:
+        return [_schedule_plain(item) for item in value]
     if is_dataclass(value) and not isinstance(value, type):
+        names = _PLAIN_FIELDS.get(kind)
+        if names is None:
+            names = _PLAIN_FIELDS.setdefault(
+                kind, tuple(item.name for item in fields(value))
+            )
         result: dict[str, object] = {}
-        for item in fields(value):
-            if item.name == "process_id":
-                result[item.name] = "<shared-schedule>"
-            elif item.name in {"process_support_mask", "support_mask"}:
-                result[item.name] = 1
+        for name in names:
+            if name == "process_id":
+                result[name] = "<shared-schedule>"
+            elif name in {"process_support_mask", "support_mask"}:
+                result[name] = 1
             else:
-                result[item.name] = _schedule_plain(getattr(value, item.name))
+                result[name] = _schedule_plain(getattr(value, name))
         return result
     if isinstance(value, Mapping):
         return {
