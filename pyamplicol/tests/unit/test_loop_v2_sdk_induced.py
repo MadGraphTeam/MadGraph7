@@ -980,6 +980,9 @@ int main(int argc, char **argv) {
   }
   try {
     rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
+    // The lane rescue off, as the Python calls of the modules using this
+    // client (their fallback and guard are what is tested).
+    runtime.set_lane_rescue(false);
     runtime.set_reduction_target(std::strtod(argv[4], nullptr));
     runtime.set_arithmetic(argv[5]);
     if (argc > 6) runtime.set_poles(argv[6]);

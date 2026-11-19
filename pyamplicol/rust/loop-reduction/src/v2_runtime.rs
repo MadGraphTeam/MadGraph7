@@ -1179,6 +1179,10 @@ pub struct V2Runtime {
     unchecked: bool,
     /// The lane rescue of every evaluation ([`V2Runtime::set_lane_rescue`]).
     lane_rescue: bool,
+    /// Per point of the last executor call of a batch, whether the lane
+    /// rescue served one of its lanes (`PointResult::rescued`; read by the
+    /// stability monitor, `monitor::rescued_estimates`).
+    pub(crate) rescued_last: Vec<bool>,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -1408,6 +1412,7 @@ impl V2Runtime {
             target,
             unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
             lane_rescue: crate::reduction_policy::DEFAULT_LANE_RESCUE,
+            rescued_last: Vec::new(),
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -2178,6 +2183,18 @@ impl V2Runtime {
         let zero_c = C::new(arith.zero(), arith.zero());
         // `numbers.real(0)`: the default of an absent component.
         let real_zero = arith.real_int(0);
+        // Which points the lane rescue served, the companion's lanes included
+        // (`V2Runtime::rescued_last`).
+        self.rescued_last = results
+            .iter()
+            .enumerate()
+            .map(|(index, result)| {
+                !result.rescued.is_empty()
+                    || twin_results
+                        .as_ref()
+                        .is_some_and(|twin| !twin[index].rescued.is_empty())
+            })
+            .collect();
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);

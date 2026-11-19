@@ -427,6 +427,7 @@ int main(int argc, char **argv) {
     rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
     runtime.set_poles("none");
     runtime.set_reduction("tirust");
+    runtime.set_lane_rescue(false);
     auto result = runtime.evaluate(momenta, points, scales);
     std::printf("statuses");
     for (auto status : result.statuses()) std::printf(" %u", status);
@@ -483,6 +484,8 @@ program best_effort_client
   if (ierr /= VIRTUAL_OK) stop 2
   call runtime%set_reduction('tirust', ierr=ierr)
   if (ierr /= VIRTUAL_OK) stop 3
+  call runtime%set_lane_rescue(.false., ierr=ierr)
+  if (ierr /= VIRTUAL_OK) stop 3
   call runtime%evaluate(momenta, scales, result, ierr=ierr, error_message=message)
   if (ierr /= VIRTUAL_OK) stop 4
   write(*, '(a,*(1x,i0))') 'statuses', result%statuses
@@ -525,6 +528,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut runtime = Runtime::open(&args[1], Some(args[2].as_str()), None, None)?;
     runtime.set_poles("none")?;
     runtime.set_reduction("tirust")?;
+    runtime.set_lane_rescue(false)?;
     let result = runtime.evaluate(&momenta, points, None, &scales, false, None)?;
     let codes: Vec<String> = result
         .statuses
@@ -591,7 +595,9 @@ def test_every_sdk_returns_refused_points_with_their_best_effort_value(
     BEST_EFFORT with the SDK's own unchecked TIRust values (bitwise) and the
     Python API's best-effort values, a finite uncertainty (rotation re-test)
     and the refusal in the diagnostics; "return" keeps them FAILED; "raise"
-    is a runtime error; the accepted points keep their values."""
+    is a runtime error; the accepted points keep their values. The clients
+    turn the lane rescue off, as this module's Python calls do
+    (``_without_lane_rescue``): the refusals are what is tested."""
 
     import ctypes
     import subprocess
