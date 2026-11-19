@@ -1863,6 +1863,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                                    complex_map_name='m_complex_model_params') + \
                                '\n' + \
                                self.write_register_parameters(self.coups_indep, [])
+        # Normalize only the explicit QED power. The card's masses, widths
+        # and mixing parameters remain in the amplitudes at their card values.
+        # Use the same positive charge convention as Fortran's GAL(1).
+        names = {p.name.lower(): p.name for p in self.params_indep}
+        if 'aewm1' in names:
+            reference = 'sqrt(4. * M_PI / std::abs(%s))' % names['aewm1']
+        elif 'mdl_ee' in names:
+            reference = 'std::abs(%s)' % names['mdl_ee']
+        else:
+            reference = '0.'   # No defined electric charge in this model.
+        replace_dict['ew_reference'] = reference
         replace_dict['register_slha_keys'] = \
                                self.write_register_slha_keys(
                                    [e for e in self.params_ext_slha if e[0] != 'aS'])
@@ -3219,7 +3230,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         payload = {
             'process': process.nice_string().strip(),
             'nexternal': me.get_nexternal_ninitial()[0],
-            'umami_minor': 3,
+            'umami_minor': 4,
             'flavours': [[list(row) for row in group]
                          for group in self.runtime_flavor_groups(me)],
             'split_orders': list(process.get('split_orders') or []),
@@ -3230,14 +3241,52 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return hashlib.sha256(encoded).hexdigest()
 
     def edit_process_fingerprint(self):
-        """Write the identity queried through UMAMI metadata."""
-        path = pjoin(self.path, 'process_fingerprint.h')
-        with open(path, 'w') as stream:
-            stream.write(
-                '#ifndef MADMATRIX_PROCESS_FINGERPRINT_H\n'
-                '#define MADMATRIX_PROCESS_FINGERPRINT_H 1\n'
-                '#define MADMATRIX_PROCESS_FINGERPRINT "%s"\n'
-                '#endif\n' % self.process_fingerprint())
+        """Write the per-library identity and the UMAMI order and external-leg tables."""
+        me = self.matrix_elements[0]
+        process = me.get('processes')[0]
+        model = process.get('model')
+        orders, _ = me.get_split_orders_mapping()
+        names = list(process.get('split_orders'))
+        selected = self.split_orders_info()
+        powers = [order[i] for i in range(len(names)) for order in orders]
+        qed = [order[names.index('QED')] for order in orders] if 'QED' in names else []
+        legs = process.get('legs_with_decays')
+        particles = [model.get_particle(leg.get('id')) for leg in legs]
+        charges = [particle.get_charge() for particle in particles]
+        # get_meta has no flavour argument. Only expose unambiguous leg data.
+        physical_legs = (len(self.physical_flavor_rows()) == 1
+                         and not getattr(self, 'use_crossing', False)
+                         and not any(isinstance(charge, tuple) for charge in charges))
+        ew_resolved = orders and ('QED' in names or 'QED' not in model.get('coupling_orders'))
+        tagged = sum(leg.get('id') == 22 and dict.get(leg, 'is_tagged', False) for leg in legs)
+        scheme = ''
+        if model.get('startfromalpha0'):
+            scheme = 'alpha(0)'
+        elif model.get('name').lower().startswith('loop_qcd_qed_sm_gmu'):
+            scheme = 'G_mu'
+        arrays = {
+            'int powers': powers or [0],
+            'int qed': qed or [0] * max(1, len(orders)),
+            'bool selected': ['true' if keep else 'false' for keep in
+                              (selected['chosen'] if selected else [True])],
+            'int colors': [particle.get_color() for particle in particles],
+            'double charges': [0 if isinstance(q, tuple) else float(q) for q in charges],
+        }
+        lines = ['#pragma once', '#define MADMATRIX_PROCESS_FINGERPRINT "%s"' %
+                 self.process_fingerprint(), 'namespace UmamiOrders {',
+                 'constexpr char names[] = %s;' % json.dumps(','.join(names)),
+                 'constexpr char alphaScheme[] = %s;' % json.dumps(scheme),
+                 'constexpr bool resolved = %s;' % ('true' if orders else 'false'),
+                 'constexpr bool hasQED = %s;' % ('true' if any(qed) else 'false'),
+                 'constexpr bool ewResolved = %s;' % ('true' if ew_resolved else 'false'),
+                 'constexpr bool physicalLegs = %s;' % ('true' if physical_legs else 'false'),
+                 'constexpr int taggedPhotons = %d;' % tagged]
+        for decl, values in arrays.items():
+            lines.append('constexpr %s[] = { %s };' %
+                         (decl, ', '.join(map(str, values))))
+        lines.append('}')
+        with open(pjoin(self.path, 'process_fingerprint.h'), 'w') as stream:
+            stream.write('\n'.join(lines) + '\n')
 
     _blas_available = None
     _blas_flags = ''

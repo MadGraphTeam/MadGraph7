@@ -7,7 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
-#include "process_fingerprint.h"
+#include "UmamiOrderMetadata.h"
 #include "ColorData.h" // diagram-to-color configuration map
 #include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
@@ -419,7 +419,7 @@ extern "C"
         *static_cast<int*>( result ) = ProcessData::nsqampso;
         break;
       default:
-        return UMAMI_ERROR_UNSUPPORTED_META;
+        return orderMetadata( meta_key, result );
     }
     return UMAMI_SUCCESS;
   }
@@ -428,7 +428,7 @@ extern "C"
   {
     // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
     // HELICITY_INDEX, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, true };
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, true, UmamiOrders::ewResolved };
     *supported = data;
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -547,6 +547,7 @@ extern "C"
     const double* momenta_in = nullptr;
     const double* alpha_s_in = nullptr;
     const double* g_strong_in = nullptr;
+    const double* g_ew_in = nullptr;
     const unsigned int* flavor_indices_in = nullptr;
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
@@ -564,6 +565,10 @@ extern "C"
           break;
         case UMAMI_IN_ALPHA_S:
           alpha_s_in = static_cast<const double*>( input );
+          break;
+        case UMAMI_IN_G_EW:
+          if( !UmamiOrders::ewResolved ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
+          g_ew_in = static_cast<const double*>( input );
           break;
         case UMAMI_IN_G_STRONG:
           g_strong_in = static_cast<const double*>( input );
@@ -651,12 +656,18 @@ extern "C"
       }
     }
 
+    const double reference_ew = g_ew_in && UmamiOrders::hasQED ? static_cast<UmamiInstance*>( handle )->process.modelParameters().ewReference() : 1.;
+    if( g_ew_in && !( reference_ew > 0. ) ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
     if( count == 0 ) return UMAMI_SUCCESS;
     for( std::size_t event = 0; flavor_indices_in && event < count; ++event )
       if( flavor_indices_in[event + offset] >= ProcessData::nmaxflavor ) return UMAMI_ERROR;
     // Components retain their physical helicity sum; the separate signed
     // interference-helicity estimator has no all-component output contract.
-    if( squared_orders_out && ProcessData::nampso > 1 && random_helicity_in &&
+    // A change of relative order weights also changes sampling probabilities.
+    if( g_ew_in && ProcessData::nampso > 1 &&
+        ( amp2_out || diagram_out || color_out || ( helicity_out && !helicity_in ) ) )
+      return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
+    if( ( squared_orders_out || g_ew_in ) && ProcessData::nampso > 1 && random_helicity_in &&
         !helicity_in && !static_cast<UmamiInstance*>( handle )->summed_helicity )
       return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
@@ -721,7 +732,7 @@ extern "C"
     HostBufferBase<fptype, false> color_random( rounded_count );
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
-    const bool capture_squared_orders = squared_orders_out && ProcessData::nampso > 1;
+    const bool capture_squared_orders = ( squared_orders_out || g_ew_in ) && ProcessData::nampso > 1;
     HostBufferBase<fptype, false> squared_orders(
       capture_squared_orders ? rounded_count * ProcessData::nsqampso : 0 );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
@@ -817,15 +828,23 @@ extern "C"
       capture_squared_orders ? squared_orders.data() : nullptr,
       rounded_count );
 
-    if( squared_orders_out )
+    if( squared_orders_out || g_ew_in )
     {
-      for( int iso = 0; iso < ProcessData::nsqampso; ++iso )
-        for( std::size_t event = 0; event < count; ++event )
+      for( std::size_t event = 0; event < count; ++event )
+      {
+        const std::size_t lane = sort_flavors ? permutation[event] : event;
+        double selected_total = 0.;
+        for( int iso = 0; iso < ProcessData::nsqampso; ++iso )
         {
-          const std::size_t source_event = sort_flavors ? permutation[event] : event;
-          squared_orders_out[iso * stride + event + offset] = capture_squared_orders
-            ? squared_orders[iso * rounded_count + source_event] : matrix_elements[source_event];
+          double component = capture_squared_orders ? squared_orders[iso * rounded_count + lane]
+                                                    : matrix_elements[lane];
+          if( g_ew_in && UmamiOrders::qed[iso] )
+            component *= std::pow( g_ew_in[offset + event] / reference_ew, UmamiOrders::qed[iso] );
+          if( squared_orders_out ) squared_orders_out[iso * stride + offset + event] = component;
+          if( UmamiOrders::selected[iso] ) selected_total += component;
         }
+        if( g_ew_in && m2_out ) m2_out[event + offset] = selected_total;
+      }
     }
 
     if ( sort_flavors )
@@ -838,7 +857,7 @@ extern "C"
         std::size_t i_vector = i_sorted % page_size; // vector lane
 
         double denominator = denominators[i_sorted];
-        if( m2_out != nullptr )
+        if( m2_out && !g_ew_in )
         {
           m2_out[i_event + offset] = matrix_elements[i_sorted];
         }
@@ -870,7 +889,7 @@ extern "C"
         std::size_t i_vector = i_event % page_size;
 
         double denominator = denominators[i_event];
-        if( m2_out != nullptr )
+        if( m2_out && !g_ew_in )
         {
           m2_out[i_event + offset] = matrix_elements[i_event];
         }

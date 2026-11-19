@@ -181,7 +181,7 @@ class TestNLORealOffloadContract(unittest.TestCase):
             with open(path) as stream:
                 header = stream.read()
             self.assertRegex(
-                header, r'#define\s+UMAMI_MINOR_VERSION\s+3\b')
+                header, r'#define\s+UMAMI_MINOR_VERSION\s+4\b')
             for symbol in required:
                 self.assertIn(symbol, header)
 
@@ -195,7 +195,9 @@ _Static_assert(UMAMI_IN_G_STRONG==15,"NLO input");
 _Static_assert(UMAMI_OUT_CUT==6,"upstream outputs");
 _Static_assert(UMAMI_OUT_MATRIX_ELEMENT_RATIO==12,"upstream outputs");
 _Static_assert(UMAMI_OUT_SQUARED_ORDERS==13,"NLO output");
-_Static_assert(UMAMI_MINOR_VERSION==3,"additive ABI");
+_Static_assert(UMAMI_IN_G_EW==16,"optional EW coupling");
+_Static_assert(UMAMI_META_SQUARED_ORDER_POWERS==10,"coupling powers");
+_Static_assert(UMAMI_MINOR_VERSION==4,"additive ABI");
 '''
         for path in self._umami_headers():
             compiled = subprocess.run(['gcc', '-std=c11', '-x', 'c',
@@ -238,10 +240,11 @@ _Static_assert(UMAMI_MINOR_VERSION==3,"additive ABI");
         """Changing build identity must load the newly selected actual DSO."""
         exporter = object.__new__(madmatrix_output.ProcessExporterMadMatrixNLOReal)
         manifest = {'library_model': 'fixture_plus_model', 'nexternal': 4,
+                    'split_order_names': ['QCD', 'QED'],
                     'real_matrix_elements': [{
                         'library_process_id': 'PMM_B1_R1',
                         'process_fingerprint': 'fixture',
-                        'local_squared_orders': [[4]],
+                        'local_squared_orders': [[4, 2]],
                         'local_flavours': [[1, -1, 21, 21]],
                         'backend_capabilities': {'cuda': True}}]}
         with tempfile.TemporaryDirectory() as root:
@@ -262,6 +265,9 @@ UmamiStatus umami_get_meta(UmamiMetaKey key, void* value) {
     case UMAMI_META_ABI_MAJOR_VERSION: *static_cast<int*>(value)=UMAMI_MAJOR_VERSION; break;
     case UMAMI_META_ABI_MINOR_VERSION: *static_cast<int*>(value)=UMAMI_MINOR_VERSION; break;
     case UMAMI_META_PROCESS_FINGERPRINT: *static_cast<const char**>(value)="fixture"; break;
+    case UMAMI_META_COUPLING_NAMES: *static_cast<const char**>(value)="QCD,QED"; break;
+    case UMAMI_META_SQUARED_ORDER_POWERS:
+      static_cast<int*>(value)[0]=4; static_cast<int*>(value)[1]=2; break;
     case UMAMI_META_PARTICLE_COUNT: *static_cast<int*>(value)=4; break;
     case UMAMI_META_SQUARED_ORDER_COUNT: *static_cast<int*>(value)=1; break;
     default: return UMAMI_ERROR_UNSUPPORTED_META;
@@ -273,8 +279,11 @@ UmamiStatus umami_initialize(UmamiHandle* handle, const char*) {
 }
 UmamiStatus umami_free(UmamiHandle) { return UMAMI_SUCCESS; }
 UmamiStatus umami_matrix_element(UmamiHandle, size_t, size_t, size_t,
-  size_t, const UmamiInputKey*, const void* const*, size_t,
+  size_t n_inputs, const UmamiInputKey* keys, const void* const* inputs, size_t,
   const UmamiOutputKey*, void* const* outputs) {
+  if (n_inputs==4 && (keys[1]!=UMAMI_IN_G_STRONG || keys[3]!=UMAMI_IN_G_EW ||
+      *static_cast<const double*>(inputs[1])!=1. || *static_cast<const double*>(inputs[3])!=1.))
+    return UMAMI_ERROR;
   *static_cast<double*>(outputs[0])=FIXTURE_VALUE; return UMAMI_SUCCESS;
 }
 }
@@ -317,6 +326,15 @@ UmamiStatus umami_matrix_element(UmamiHandle, size_t, size_t, size_t,
                     self.assertEqual(bridge.mg7_nlo_real_evaluate(
                         context, 1, 1, momenta, coupling, flavour, result), 0)
                     self.assertEqual(result[0], value)
+                    bridge.mg7_nlo_real_evaluate_ew.argtypes = [
+                        ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t,
+                        ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+                        ctypes.c_double, ctypes.POINTER(ctypes.c_int32),
+                        ctypes.POINTER(ctypes.c_double)]
+                    coupling[0] = 2.
+                    self.assertEqual(bridge.mg7_nlo_real_evaluate_ew(
+                        context, 1, 1, momenta, coupling, 3., flavour, result), 0)
+                    self.assertEqual(result[0], value * 2.**4 * 3.**2)
                 finally:
                     self.assertEqual(bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
                 previous = os.stat(bridge_path).st_mtime_ns

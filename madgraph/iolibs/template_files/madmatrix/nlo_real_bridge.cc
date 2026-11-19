@@ -35,6 +35,7 @@ namespace
     int squared_order_count = 0;
     int particle_count = 0;
     int flavour_count = 0;
+    std::vector<int> qcd_power, qed_power;
     std::string error;
   };
 
@@ -149,13 +150,32 @@ extern "C"
               real.get_meta( UMAMI_META_PARTICLE_COUNT,
                              &real.particle_count ) != UMAMI_SUCCESS )
             throw std::runtime_error( "incomplete UMAMI metadata in " + path );
-          if( major != UMAMI_MAJOR_VERSION || minor < 3 )
+          if( major != UMAMI_MAJOR_VERSION || minor < 4 )
             throw std::runtime_error( "incompatible UMAMI ABI in " + path );
           if( !fingerprint || std::string( fingerprint ) != config.fingerprint )
             throw std::runtime_error( "process fingerprint mismatch in " + path );
           if( real.squared_order_count != config.squared_order_count ||
               real.particle_count != MG7_NLO_PARTICLE_COUNT )
             throw std::runtime_error( "process dimension mismatch in " + path );
+          const char* names = nullptr;
+          if( real.get_meta( UMAMI_META_COUPLING_NAMES, &names ) != UMAMI_SUCCESS ||
+              !names || std::string( names ) != MG7_NLO_COUPLINGS )
+            throw std::runtime_error( "coupling order names mismatch in " + path );
+          std::vector<int> powers( real.squared_order_count * MG7_NLO_COUPLING_COUNT );
+          if( powers.empty() ||
+              real.get_meta( UMAMI_META_SQUARED_ORDER_POWERS, powers.data() ) != UMAMI_SUCCESS )
+            throw std::runtime_error( "missing squared-order powers in " + path );
+          real.qcd_power.assign( real.squared_order_count, 0 );
+          real.qed_power.assign( real.squared_order_count, 0 );
+          std::istringstream columns( names );
+          for( int column = 0; column < MG7_NLO_COUPLING_COUNT; ++column )
+          {
+            std::string name;
+            std::getline( columns, name, ',' );
+            auto first = powers.begin() + column * real.squared_order_count;
+            if( name == "QCD" ) real.qcd_power.assign( first, first + real.squared_order_count );
+            if( name == "QED" ) real.qed_power.assign( first, first + real.squared_order_count );
+          }
           real.flavour_count = config.flavour_count;
           if( initialize( &real.handle, selected_param_card.c_str() ) != UMAMI_SUCCESS ||
               !real.handle )
@@ -196,9 +216,9 @@ extern "C"
     }
   }
 
-  int mg7_nlo_real_evaluate( void* opaque, int real_me_id,
+  static int evaluate_real( void* opaque, int real_me_id,
                              size_t event_count, const double* momenta,
-                             const double* g_strong, const int32_t* flavour,
+                             const double* g_strong, const double* g_ew, const int32_t* flavour,
                              double* squared_orders )
   {
     BridgeContext* context = static_cast<BridgeContext*>( opaque );
@@ -224,13 +244,17 @@ extern "C"
           return fail( context, "one NLO real batch must have one local flavour" );
         local_flavour[event] = static_cast<unsigned int>( flavour[event] );
       }
+      // Legacy callers provide physical G and take e from the parameter card.
+      // The NLO workflow supplies both couplings and requests unit blocks.
+      std::vector<double> unit;
+      if( g_ew ) unit.assign( event_count, 1. );
       const UmamiInputKey input_keys[] = {
-        UMAMI_IN_MOMENTA, UMAMI_IN_G_STRONG, UMAMI_IN_FLAVOR_INDEX };
-      const void* inputs[] = { momenta, g_strong, local_flavour.data() };
+        UMAMI_IN_MOMENTA, UMAMI_IN_G_STRONG, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_G_EW };
+      const void* inputs[] = { momenta, g_ew ? unit.data() : g_strong, local_flavour.data(), unit.data() };
       const UmamiOutputKey output_keys[] = { UMAMI_OUT_SQUARED_ORDERS };
       void* outputs[] = { squared_orders };
       const UmamiStatus status = real.evaluate(
-        real.handle, event_count, event_count, 0, 3, input_keys, inputs,
+        real.handle, event_count, event_count, 0, g_ew ? 4 : 3, input_keys, inputs,
         1, output_keys, outputs );
       if( status != UMAMI_SUCCESS )
       {
@@ -238,6 +262,16 @@ extern "C"
         message << "UMAMI evaluation failed for real ME " << real_me_id
                 << " with status " << static_cast<int>( status );
         return fail( context, message.str() );
+      }
+      if( g_ew )
+      {
+        for( int order = 0; order < real.squared_order_count; ++order )
+        {
+          const double ew_weight = std::pow( *g_ew, real.qed_power[order] );
+          for( size_t event = 0; event < event_count; ++event )
+            squared_orders[order * event_count + event] *=
+              std::pow( g_strong[event], real.qcd_power[order] ) * ew_weight;
+        }
       }
       // Non-finite components are returned unchanged. At degenerate
       // soft/collinear points the retained Fortran real matrix element is
@@ -255,6 +289,22 @@ extern "C"
     {
       return fail( context, "unknown exception in NLO real evaluation" );
     }
+  }
+
+  int mg7_nlo_real_evaluate( void* context, int real_me_id, size_t count,
+                             const double* momenta, const double* g_strong,
+                             const int32_t* flavour, double* squared_orders )
+  {
+    return evaluate_real( context, real_me_id, count, momenta, g_strong,
+                          nullptr, flavour, squared_orders );
+  }
+
+  int mg7_nlo_real_evaluate_ew( void* context, int real_me_id, size_t count,
+                                const double* momenta, const double* g_strong,
+                                double g_ew, const int32_t* flavour, double* squared_orders )
+  {
+    return evaluate_real( context, real_me_id, count, momenta, g_strong,
+                          &g_ew, flavour, squared_orders );
   }
 
   int mg7_nlo_real_finalize( void** opaque )

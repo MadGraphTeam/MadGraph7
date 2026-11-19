@@ -14,6 +14,11 @@ int mg7_nlo_real_initialize(void **context, const char *param_card,
 int mg7_nlo_real_evaluate(void *context, int real_me_id, size_t event_count,
                           const double *momenta, const double *g_strong,
                           const int32_t *flavour, double *squared_orders);
+/* Physical components for the caller's G and e, reconstructed from unit
+ * coupling blocks and the local order powers published by the provider. */
+int mg7_nlo_real_evaluate_ew(void *context, int real_me_id, size_t event_count,
+                             const double *momenta, const double *g_strong,
+                             double g_ew, const int32_t *flavour, double *squared_orders);
 int mg7_nlo_real_finalize(void **context);
 const char *mg7_nlo_real_last_error(void *context);
 

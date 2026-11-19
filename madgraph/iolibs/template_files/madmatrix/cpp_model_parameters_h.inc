@@ -66,6 +66,7 @@ namespace madmatrix
     double zero, ZERO;
 
     %(independent_parameters)s
+    double ewReference() const { return %(ew_reference)s; }
 
     %(independent_couplings)s
 

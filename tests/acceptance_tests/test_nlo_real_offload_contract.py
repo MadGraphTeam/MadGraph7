@@ -832,6 +832,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
       LOGICAL ACTIVE(VECTOR_SIZE)
       INTEGER COUP_INDEX(VECTOR_SIZE),I,J,K
       DATA ACTIVE / %(active)s /
+C     Initialize the native EW coupling for the caller-side order weights.
+      CALL SETPARA('param_card.dat')
       DO I=1,VECTOR_SIZE
         READ(*,*) G_STRONG(I)
         DO J=1,NEXTERNAL
@@ -1485,6 +1487,71 @@ class TestNLORealFortranOracle(unittest.TestCase):
             self.assertFalse(context.value)
             os.rename(relocated, generated_path)
 
+    def _check_real_umami_order_blocks(self, output, manifest, references, backend='scalar'):
+        """Compare raw strided order blocks at independent couplings to native Fortran."""
+        real = manifest['real_matrix_elements'][0]
+        library = ctypes.CDLL(self._library_path(output, manifest, real, backend))
+        library.umami_get_meta.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        library.umami_matrix_element.argtypes = [
+            ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t,
+            ctypes.c_size_t, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_void_p),
+            ctypes.c_size_t, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_void_p)]
+        names, orders = ctypes.c_char_p(), ctypes.c_int()
+        self.assertEqual(library.umami_get_meta(11, ctypes.byref(names)), 0)
+        self.assertEqual(names.value, b'QCD,QED')
+        self.assertEqual(library.umami_get_meta(9, ctypes.byref(orders)), 0)
+        powers = (ctypes.c_int * (2 * orders.value))()
+        selected = (ctypes.c_bool * orders.value)()
+        self.assertEqual(library.umami_get_meta(10, powers), 0)
+        self.assertEqual(library.umami_get_meta(17, selected), 0)
+        self.assertEqual(list(zip(powers[:orders.value], powers[orders.value:])),
+                         list(map(tuple, real['local_squared_orders'])))
+        nlegs = manifest['nexternal']
+        charges = (ctypes.c_double * nlegs)()
+        colors = (ctypes.c_int * nlegs)()
+        self.assertEqual(library.umami_get_meta(12, colors), 0)
+        self.assertEqual(library.umami_get_meta(13, charges), 0)
+        self.assertEqual(list(colors), [3, -3, 3, -3, 8])
+        self.assertEqual(list(charges), [2/3, -2/3, 2/3, -2/3, 0.])
+        card = pjoin(output, 'Cards', 'param_card.dat')
+        handle = ctypes.c_void_p()
+        self.assertEqual(library.umami_initialize(ctypes.byref(handle), card.encode()), 0)
+        try:
+            aewm1 = ctypes.c_double()
+            self.assertEqual(library.umami_get_parameter(handle, b'aEWM1', ctypes.byref(aewm1), None), 0)
+            card_e = math.sqrt(4. * math.pi / aewm1.value)
+            # Only lanes 1 and 2 belong to the batch. Fill the borders with sentinels.
+            stride, count, offset = 4, 2, 1
+            momenta = (ctypes.c_double * (4 * nlegs * stride))()
+            gs = (ctypes.c_double * stride)(0., 1., 0.7, 0.)
+            ew = (ctypes.c_double * stride)(0., 1., 0.27, 0.)
+            total = (ctypes.c_double * stride)(*([-1.] * stride))
+            blocks = (ctypes.c_double * (stride * orders.value))(*([-1.] * stride * orders.value))
+            for lane, point in enumerate(references, offset):
+                for ipart, vector in enumerate(point['momenta']):
+                    for mu, value in enumerate(vector):
+                        momenta[(mu * nlegs + ipart) * stride + lane] = value
+            ins = (ctypes.c_void_p * 3)(*map(ctypes.addressof, (momenta, gs, ew)))
+            outs = (ctypes.c_void_p * 2)(*map(ctypes.addressof, (total, blocks)))
+            self.assertEqual(library.umami_matrix_element(
+                handle, count, stride, offset, 3, (ctypes.c_int * 3)(0, 15, 16), ins,
+                2, (ctypes.c_int * 2)(0, 13), outs), 0)
+            for lane, point in enumerate(references, offset):
+                expected = [component['value'] * (gs[lane] / point['g_strong']) ** qs
+                            * (ew[lane] / card_e) ** qe for component, (qs, qe)
+                            in zip(point['local_squared_orders'], real['local_squared_orders'])]
+                scale = max(map(abs, expected))
+                for order, value in enumerate(expected):
+                    self._assert_close(blocks[order * stride + lane], value, scale=scale)
+                self._assert_close(total[lane], sum(value for keep, value in
+                                   zip(selected, expected) if keep), scale=scale)
+            self.assertEqual(list(total)[::3], [-1., -1.])
+            for order in range(orders.value):
+                self.assertEqual(blocks[order * stride], -1.)
+                self.assertEqual(blocks[order * stride + stride - 1], -1.)
+        finally:
+            self.assertEqual(library.umami_free(handle), 0)
+
     def test_restricted_orders_scalar_and_batch(self):
         """The bridge returns all local orders; production must select NLO orders."""
         case = dict(self.oracle['cases']['grouped_qcd_ttx'])
@@ -1520,8 +1587,10 @@ class TestNLORealFortranOracle(unittest.TestCase):
                 self._assert_close(a['value'], b['value'], scale=scale)
 
         with open(pjoin(subproc, 'nlo_real_manifest.json')) as stream:
-            row = json.load(stream)['fks_rows'][0]
+            manifest = json.load(stream)
+        row = manifest['fks_rows'][0]
         reference = [r for r in records['fortran'] if r['fks_row'] == row['fks_row']]
+        self._check_real_umami_order_blocks(output_path, manifest, reference)
         # Include a masked lane: compacted multi-order batches must also filter.
         reference.insert(1, reference[0])
         text = self._compile_batch_wrapper_driver(

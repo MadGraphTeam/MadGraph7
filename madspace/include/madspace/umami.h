@@ -30,7 +30,7 @@ extern "C" {
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-#define UMAMI_MINOR_VERSION 3
+#define UMAMI_MINOR_VERSION 4
 
 typedef enum {
     /** operation was executed successfully */
@@ -82,6 +82,22 @@ typedef enum {
     UMAMI_META_PROCESS_FINGERPRINT,
     /** `int` specifying the number of local squared-order components */
     UMAMI_META_SQUARED_ORDER_COUNT,
+    /** int[orders * couplings], powers[order + orders * coupling] */
+    UMAMI_META_SQUARED_ORDER_POWERS,
+    /** const char*, comma-separated names in coupling-axis order */
+    UMAMI_META_COUPLING_NAMES,
+    /** int[particle count], signed colour representations in physical leg order */
+    UMAMI_META_COLOR_REPRESENTATIONS,
+    /** double[particle count], electric charges in units of e, physical incoming convention */
+    UMAMI_META_CHARGES,
+    /** const char*, EW input scheme when specified by the model */
+    UMAMI_META_ALPHA_SCHEME,
+    /** const char*, regularization scheme, for loop providers */
+    UMAMI_META_LOOP_SCHEME,
+    /** int, number of tagged external photons */
+    UMAMI_META_TAGGED_PHOTONS,
+    /** bool[orders], components included in OUT_MATRIX_ELEMENT */
+    UMAMI_META_SQUARED_ORDER_SELECTED,
 } UmamiMetaKey;
 
 typedef enum {
@@ -121,10 +137,13 @@ typedef enum {
     UMAMI_IN_BEAM_INDEX,
     /** direct value of the strong coupling G, type: `double`, shape: `()` */
     UMAMI_IN_G_STRONG,
+    /** electric coupling, double (). Scales the explicit QED power of each
+     * squared order at fixed masses and mixing. Omit to retain the card coupling. */
+    UMAMI_IN_G_EW,
 } UmamiInputKey;
 
 /** Number of values in `UmamiInputKey` */
-#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_G_STRONG + 1)
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_G_EW + 1)
 
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */

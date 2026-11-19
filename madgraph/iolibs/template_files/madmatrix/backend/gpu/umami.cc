@@ -7,7 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
-#include "process_fingerprint.h"
+#include "UmamiOrderMetadata.h"
 #include "ColorData.h" // diagram-to-color configuration map
 #include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
@@ -186,6 +186,9 @@ namespace
     int* color_out,
     int* helicity_out,
     const int* helicity_in,
+    const double* g_ew_in,
+    double reference_ew,
+    int qed_power,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -205,8 +208,11 @@ namespace
       }
     }
 
-    if( m2_out ) m2_out[i_event + offset] = matrix_elements[i_event];
-    if( squared_orders_out ) squared_orders_out[i_event + offset] = matrix_elements[i_event];
+    const double component = g_ew_in && qed_power
+      ? matrix_elements[i_event] * pow( g_ew_in[i_event + offset] / reference_ew, qed_power )
+      : matrix_elements[i_event];
+    if( m2_out ) m2_out[i_event + offset] = component;
+    if( squared_orders_out ) squared_orders_out[i_event + offset] = component;
     if( amp2_out )
     {
       double denominator = denominators[i_event];
@@ -575,7 +581,7 @@ extern "C"
         *static_cast<int*>( result ) = ProcessData::nsqampso;
         break;
       default:
-        return UMAMI_ERROR_UNSUPPORTED_META;
+        return orderMetadata( meta_key, result );
     }
     return UMAMI_SUCCESS;
   }
@@ -584,7 +590,7 @@ extern "C"
   {
     // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
     // HELICITY_INDEX, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, true };
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, true, UmamiOrders::ewResolved && ProcessData::nsqampso == 1 };
     *supported = data;
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -707,6 +713,7 @@ extern "C"
     const double* momenta_in = nullptr;
     const double* alpha_s_in = nullptr;
     const double* g_strong_in = nullptr;
+    const double* g_ew_in = nullptr;
     const unsigned int* flavor_indices_in = nullptr;
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
@@ -724,6 +731,10 @@ extern "C"
           break;
         case UMAMI_IN_ALPHA_S:
           alpha_s_in = static_cast<const double*>( input );
+          break;
+        case UMAMI_IN_G_EW:
+          if( !( UmamiOrders::ewResolved && ProcessData::nsqampso == 1 ) ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
+          g_ew_in = static_cast<const double*>( input );
           break;
         case UMAMI_IN_G_STRONG:
           g_strong_in = static_cast<const double*>( input );
@@ -800,10 +811,12 @@ extern "C"
       }
     }
 
+    const double reference_ew = g_ew_in && UmamiOrders::hasQED ? instance->process.modelParameters().ewReference() : 1.;
+    if( g_ew_in && !( reference_ew > 0. ) ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
     if( count == 0 ) return UMAMI_SUCCESS;
     // The exact bridge shape also accepts generic device buffers. Device calls
     // retain the ordinary asynchronous stream semantics.
-    const bool dense_nlo = input_count == 3 && output_count == 1 &&
+    const bool dense_nlo = input_count == ( g_ew_in ? 4u : 3u ) && output_count == 1 &&
       momenta_in && g_strong_in && flavor_indices_in && squared_orders_out &&
       stride == count && offset == 0 && gpu_stream == nullptr && ProcessData::nsqampso == 1 &&
       !device_momenta( momenta_in );
@@ -825,9 +838,9 @@ extern "C"
     unsigned int *flavor_indices, *diagram_index, *diagram_given;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    double *staged_momenta, *staged_g, *staged_result;
+    double *staged_momenta, *staged_g, *staged_ew, *staged_result;
     unsigned int* staged_flavors;
-    std::array<std::pair<void**, std::size_t>, 23> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 24> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -853,6 +866,7 @@ extern "C"
         // njampso = ncolor per amplitude split order (just ncolor without split orders)
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&staged_momenta), dense_nlo ? count * ProcessData::npar * 4 * sizeof( double ) : 0},
+        {reinterpret_cast<void**>(&staged_ew), dense_nlo && g_ew_in ? count * sizeof( double ) : 0},
         {reinterpret_cast<void**>(&staged_g), dense_nlo ? count * sizeof( double ) : 0},
         {reinterpret_cast<void**>(&staged_flavors), dense_nlo ? count * sizeof( unsigned int ) : 0},
         {reinterpret_cast<void**>(&staged_result), dense_nlo ? count * sizeof( double ) : 0},
@@ -880,6 +894,11 @@ extern "C"
       gpuMemcpyAsync( staged_flavors, flavor_indices_in, count * sizeof( unsigned int ), gpuMemcpyHostToDevice, gpu_stream );
       momenta_in = staged_momenta;
       g_strong_in = staged_g;
+      if( g_ew_in )
+      {
+        gpuMemcpyAsync( staged_ew, g_ew_in, count * sizeof( double ), gpuMemcpyHostToDevice, gpu_stream );
+        g_ew_in = staged_ew;
+      }
       flavor_indices_in = staged_flavors;
       squared_orders_out = staged_result;
     }
@@ -991,6 +1010,9 @@ extern "C"
       color_out,
       helicity_out,
       helicity_in,
+      g_ew_in,
+      reference_ew,
+      UmamiOrders::qed[0],
       count,
       stride,
       offset );
