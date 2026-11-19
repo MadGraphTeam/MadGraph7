@@ -200,16 +200,19 @@ def test_only_failed_or_unconverged_points_escalate_in_order():
 
 
 @pytest.mark.loop_fast
-def test_a_point_whose_estimate_does_not_improve_is_not_escalated():
-    """The stopping rule: a point whose estimate is no smaller than its best
-    estimate at fewer precision bits stays at that level (target not met),
-    as an integrated zero whose relative estimate grows with the digits;
-    a failed attempt, or a level of the same precision on the other
-    backend, never stops a point; the last level keeps every point."""
+def test_only_a_numerical_zero_is_not_escalated():
+    """The stopping rule (review B3): a point is not escalated when its
+    estimate grew, against the next lower precision, at least by the square
+    root of the two levels' unit-roundoff ratio (binary64 -> double-double:
+    2^25.5 = 4.7e7), a numerical zero's signature; it stays at that level
+    with the target not met. A smaller growth (a ruined point's flat, noisy
+    estimate above 1), a failed attempt, or a level of the same precision on
+    the other backend never stops a point; the last level keeps every
+    point."""
 
     table = (
-        (1e-2, 1e-4, FAIL, 1e-2),
-        (1e-1, 3e-5, 1e-1, FAIL),
+        (1e-2, 1e-2, FAIL, 1e-2),
+        (1e7, 1e-1, 1e-1, FAIL),
         (1e-9, 1e-9, 1e-9, 5e-2),
     )
     fake = _Fake(THREE, table)
@@ -219,10 +222,27 @@ def test_a_point_whose_estimate_does_not_improve_is_not_escalated():
     assert [record.met for record in result.rescue] == [False, True, True, False]
     stopped = result.diagnostics[0]
     assert stopped.status == "rescued" and not stopped.accuracy_established
-    assert "not escalated: no better than double's 1.00e-02" in stopped.detail
+    assert "not escalated: its estimate grew from the double level's" in (
+        stopped.detail
+    )
     assert result.values[0][0].finite == _value(1, 0, "double-double")
+    # Point 1 grew by 10 only (no zero): escalated, and served.
+    assert "not escalated" not in result.diagnostics[1].detail
     # Point 3 failed at level 1 and reaches the last level, which keeps it.
     assert "not met at the final level" in result.diagnostics[3].detail
+    # HC05 #40 point 29 on the review's ladder (50, 57, 500 digits): 13.96
+    # then 48.8, a growth of 3.5 against the sqrt(10^7) = 3.2e3 needed:
+    # escalated to 500 digits, which serves it.
+    digits = VirtualRescuePolicy(
+        tuple(VirtualRescueLevel("arbitrary", d) for d in (50, 57, 500))
+    )
+    fake = _Fake(digits, ((13.96,), (48.8,), (1e-9,)))
+    (record,) = rescue(digits, 1, fake).rescue
+    assert record.level == 2 and record.met
+    # ... while a growth like g g > z's (a numerical zero) stops at 57.
+    fake = _Fake(digits, ((13.96,), (13.96 * 3.2e3,), (1e-9,)))
+    (record,) = rescue(digits, 1, fake).rescue
+    assert record.level == 1 and not record.met
     # Two levels at the same precision (the other backend) never stop a point.
     backends = VirtualRescuePolicy(
         (
@@ -231,7 +251,7 @@ def test_a_point_whose_estimate_does_not_improve_is_not_escalated():
             VirtualRescueLevel("double-double"),
         )
     )
-    fake = _Fake(backends, ((1e-2,), (1e-1,), (1e-9,)))
+    fake = _Fake(backends, ((1e-2,), (1e9,), (1e-9,)))
     (record,) = rescue(backends, 1, fake).rescue
     assert record.level == 2 and record.met
 

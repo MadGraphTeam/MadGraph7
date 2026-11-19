@@ -13,11 +13,12 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
    evaluations included) or whose estimate missed the level's target is
    evaluated again at the next level, from its original exact inputs (no
    value is promoted, MASTER_PLAN §2.18); an accepted point is never
-   evaluated again; a point whose estimate is no smaller than its best
-   estimate at fewer precision bits (same metric) is not escalated either
-   (the stopping rule, ``_stalled``: more digits did not improve it, its
-   error is not the carrier's rounding) and keeps that level's value with
-   the target not met;
+   evaluated again; a point whose estimate grew, against the next lower
+   precision under the same metric, at least by the square root of the two
+   levels' unit-roundoff ratio is not escalated either (the stopping rule,
+   ``_stalled``: the signature of a numerical zero, whose value falls like
+   u^2 and its error like u) and keeps that level's value with the target
+   not met;
 3. at the last level a point that evaluates keeps its value with the target
    marked as not met; a point that failed at every level is a failed lane,
    or, under ``on_failure="best-effort"``, a best-effort lane when the last
@@ -28,10 +29,10 @@ A level compares the public estimate's field named by its ``metric`` with
 its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced
 process, m-lit PLAN §2.a.8; numerical, never declared, RULED Q13) can never
 meet a "relative" or "finite" target, its value being itself rounding: its
-relative estimate grows with the precision (|A|^2 falls with the unit
-roundoff squared, E with the unit roundoff), so the stopping rule keeps it
-at the first level of higher precision whose estimate is no better, with
-the target not met (g g > z on the loop-induced default stack: the
+relative estimate grows like 1 / u (|A|^2 falls with the unit roundoff
+squared, E with the unit roundoff), so the stopping rule keeps it at the
+first level of higher precision where it grew at least by sqrt(u_lower /
+u), with the target not met (g g > z on the loop-induced default stack: the
 double-double level; before the rule it climbed to the last level). The
 opt-in "scale" metric (``VirtualRescueLevel.metric``: E <= target x S,
 the estimate against the pre-cancellation scale S of its floor,
@@ -53,6 +54,7 @@ only, in no SDK, the CLI or the configuration.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, cast
@@ -219,33 +221,62 @@ def rescue(
 def _stalled(
     history: list[VirtualRescueAttempt], levels: tuple[VirtualRescueLevel, ...]
 ) -> VirtualRescueAttempt | None:
-    """The stopping rule (USER 2026-11-18 ladder round): a point whose
-    estimate at its latest level (the last of ``history``, one attempt per
-    level from level 0) is no smaller than its best estimate at fewer
-    precision bits under the same metric is not escalated: more digits did
-    not improve it, so its error is not the carrier's rounding (an
-    integrated zero, whose relative estimate grows as |A|^2 falls with the
-    unit roundoff squared, e.g. g g > z: 4.7e15 in binary64, 8.4e33 in
-    double-double, 3.0e99 at 57 digits). Returns that lower-precision
-    attempt, or None (escalate). A failed attempt has no estimate and never
-    stops a point; nor does a level of the same precision (the other
-    backend)."""
+    """The stopping rule ("stop when no gain", USER 2026-11-18; refined by
+    review B3): a point is not escalated when its estimate at its latest
+    level (the last of ``history``, one attempt per level from level 0)
+    GREW, against its estimate at the next lower precision under the same
+    metric, at least by sqrt(u_lower / u_latest), the square root of the
+    ratio of the two levels' unit roundoffs. That growth is the signature of
+    a numerical zero: its value is rounding of the size u^2 (|A|^2 of
+    amplitudes that vanish to u) while its absolute error falls like u, so
+    its relative estimate grows like 1 / u (g g > z: 4.7e15 in binary64,
+    8.4e33 in double-double, a growth of 1.8e18 against the 4.7e7 needed).
+    A real point's relative estimate falls with u, or, ruined (a relative
+    estimate above 1 has no order), stays flat and noisy, its error and its
+    wrong value falling together (HC05 #40 point 29: 13.96 at 50 digits,
+    48.8 at 57, a growth of 3.5 against the 3.2e3 needed): both escalate.
+    Returns the lower-precision attempt compared with, or None (escalate).
+    A failed attempt has no estimate and never stops a point; nor does a
+    level of the same precision (the other backend)."""
 
     latest = history[-1]
     if latest.estimate is None:
         return None
-    metric = levels[len(history) - 1].metric
+    k = len(history) - 1
+    metric = levels[k].metric
     lower = [
-        attempt
-        for attempt, level in zip(history[:-1], levels, strict=False)
+        (j, attempt)
+        for j, attempt in enumerate(history[:-1])
         if attempt.estimate is not None
         and attempt.precision_bits < latest.precision_bits
-        and level.metric == metric
+        and levels[j].metric == metric
     ]
     if not lower:
         return None
-    best = min(lower, key=lambda attempt: cast(float, attempt.estimate))
-    return best if latest.estimate >= cast(float, best.estimate) else None
+    # The next lower precision (its best estimate where two backends ran).
+    bits = max(attempt.precision_bits for _, attempt in lower)
+    j, below = min(
+        ((j, attempt) for j, attempt in lower if attempt.precision_bits == bits),
+        key=lambda item: cast(float, item[1].estimate),
+    )
+    before, after = cast(float, below.estimate), latest.estimate
+    if not before or not after:
+        return None
+    needed = (_log2_roundoff(levels[j]) - _log2_roundoff(levels[k])) / 2
+    grew = math.log2(after) - math.log2(before) if math.isfinite(after) else math.inf
+    return below if grew >= needed else None
+
+
+def _log2_roundoff(level: VirtualRescueLevel) -> float:
+    """log2 of a level's unit roundoff: 2^-53 binary64, 2^-104
+    double-double (``assemble.Precision.unit_roundoff``), 0.5 x 10^(1 - d)
+    at d digits."""
+
+    if level.arithmetic == "double":
+        return -53.0
+    if level.arithmetic == "double-double":
+        return -104.0
+    return -1.0 + (1 - cast(int, level.precision)) * math.log2(10.0)
 
 
 def _attempt(
@@ -288,10 +319,11 @@ def _detail(
     if record.met:
         verdict = f"within the target {record.target:.1e}"
     elif stalled is not None:
+        backend = "" if stalled.reduction is None else f" {stalled.reduction.effective}"
         verdict = (
-            f"target {record.target:.1e} not met; not escalated: no better than "
-            f"{stalled.arithmetic}'s "
-            f"{relative_text(cast(float, stalled.estimate))} at fewer bits"
+            f"target {record.target:.1e} not met; not escalated: its estimate "
+            f"grew from the {stalled.arithmetic}{backend} level's at least by the "
+            "square root of their unit-roundoff ratio, as a numerical zero's does"
         )
     else:
         verdict = f"target {record.target:.1e} not met at the final level"

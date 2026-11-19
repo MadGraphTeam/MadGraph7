@@ -1372,14 +1372,19 @@ evaluates, with no estimate. How a batch runs:
    original exact inputs; no lower-precision value is reused. Escalated points
    are evaluated one per native call, so each carrier builds one executor and
    compiles its kernels once.
-3. Accepted points are never evaluated again. A point whose estimate is no
-   smaller than its best estimate at fewer precision bits is not escalated
-   either (more digits did not improve it, so its error is not the carrier's
-   rounding): it keeps that level's value with the target not met, and its
-   detail says `not escalated`. This stops an integrated zero (g g > z,
-   Landau-Yang: its relative estimate grows with the digits, 4.7e15 in
-   binary64, 8.4e33 in double-double) at double-double instead of every
-   higher level; a failed attempt never stops a point. At the last level a
+3. Accepted points are never evaluated again. A point whose estimate grew,
+   against the next lower precision, at least by the square root of the two
+   levels' unit-roundoff ratio is not escalated either: that is the
+   signature of a numerical zero (its value is rounding of the size u^2 while
+   its error falls like u, so its relative estimate grows like 1 / u). It
+   keeps that level's value with the target not met, and its detail says
+   `not escalated`. This stops an integrated zero (g g > z, Landau-Yang:
+   4.7e15 in binary64, 8.4e33 in double-double, a growth of 1.8e18 against
+   the 4.7e7 needed) at double-double instead of every higher level. A real
+   point escalates: its estimate falls with u, or, at a ruined point, stays
+   flat and noisy above 1 (HC05 point 29: 13.96 at 50 digits, 48.8 at 57, a
+   growth of 3.5 against the 3.2e3 needed); a failed attempt never stops a
+   point. At the last level a
    point that evaluates keeps its value with the target marked as not met;
    a point that
    failed at every level is returned with its best-effort value
