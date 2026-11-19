@@ -120,8 +120,14 @@ def test_wide_edges():
     path), a negative base takes an integer power with its exponent, a
     foreign type is not compared silently, equal values hash equal."""
 
-    for value in (3.7e-5, 0.81, 2.5e7):
+    # Values where libm pow and the correctly rounded sqrt differ by 1 ulp.
+    for value in (8.522513224083059e-17, 629422423279058.1):
+        assert math.sqrt(value) != value**0.5
         assert float(Wide(value) ** 0.5) == value**0.5
+    # binary64's power overflows: the exponent-safe path takes over.
+    assert math.isclose(float(Wide(1e200) ** 2 / Wide(1e200) / Wide(1e200)), 1.0)
+    assert math.isclose(float(Wide(2.0) ** 2000 / Wide(2.0) ** 1999), 2.0)
+    assert hash(Wide(1e-310)) == hash(1e-310) and Wide(1e-310) == 1e-310
     assert math.isclose(float(Wide(-1.0, -3000) ** 2 / Wide(1.0, -6000)), 1.0)
     assert float(Wide(-2.0) ** 3) == -8.0
     with pytest.raises(ValueError):

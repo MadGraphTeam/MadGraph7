@@ -183,7 +183,11 @@ class Wide:
             return -out if int(power) % 2 else out
         rounded = float(self)
         if _normal(rounded):
-            found = rounded**power
+            try:
+                found = rounded**power
+            except OverflowError:
+                # (binary64's power overflows: the general path below.)
+                found = math.inf
             if _normal(found):
                 # Inside binary64's range: binary64's own power (libm pow),
                 # bitwise the float path.
@@ -234,7 +238,7 @@ class Wide:
         # Equal values hash equal: a ``Wide`` inside binary64's range as its
         # float.
         rounded = float(self)
-        if rounded == 0.0 or _normal(rounded) or not math.isfinite(self.m):
+        if Wide(rounded) == self or not math.isfinite(self.m):
             return hash(rounded)
         return hash((self.m, self.e))
 
