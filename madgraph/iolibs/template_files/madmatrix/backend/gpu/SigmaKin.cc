@@ -864,7 +864,7 @@ namespace madmatrix
       // No sum and no choice: each event was evaluated for its given helicity only, whose
       // |M|^2 (signed, with an interference) is the one entry of ghelAllMEs (nhel == 1)
       allMEs[ievt] = ghelAllMEs[ievt];
-      allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+      allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
       return;
     }
     // no helicity (0) unless one is chosen below: a vanishing or NaN |M|^2 chooses none, and
@@ -903,7 +903,7 @@ namespace madmatrix
         if constexpr( use_crossing )
           allselhel[ievt] = selected_hel_code( dcGoodHel[ighelLast], iflavorVec[ievt] );
         else
-          allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+          allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allMEs[ievt] = copysign( absTotal, ghelAllMEs[ighelLast * nevt + ievt] );
         return;
       }
@@ -930,7 +930,7 @@ namespace madmatrix
         else
         {
           (void)iflavorVec;
-          const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+          const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
           allselhel[ievt] = ihelF;
         }
         break;
@@ -1030,7 +1030,7 @@ namespace madmatrix
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
-          allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
+          allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
           break;
         }
       }
@@ -1076,7 +1076,7 @@ namespace madmatrix
   {
     mgDebugInitialise();
 
-    // SANITY CHECKS for cudacpp code generation (see issues #272 and #343 and PRs #619, #626, #360, #396 and #754)
+    // SANITY CHECKS for madmatrix code generation
     {
       // nprocesses == 2 may happen for "mirror processes" such as P0_uux_ttx within pp_tt012j (see PR #754)
       static_assert( nproc == 1 || nproc == 2, "Assume nprocesses == 1 or 2" );

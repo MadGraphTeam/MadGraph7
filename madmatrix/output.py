@@ -29,7 +29,6 @@ import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.various.misc as misc
 
-from . import launch_plugin
 
 def relative_path_list(relative_path, files_list):
     return list(map(lambda f: pjoin(relative_path, f), files_list))
@@ -93,8 +92,8 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - use a custom OneProcessExporter
     oneprocessclass = model_handling.OneProcessExporterMadMatrix
 
-    # Crossing symmetry (extended flavor id) is supported by the madmatrix /
-    # cudacpp backends, cpu/simd and GPU (gated by --use_crossing, default on,
+    # Crossing symmetry (extended flavor id) is supported by the madmatrix
+    # backends, cpu/simd and GPU (gated by --use_crossing, default on,
     # and by the matrix element recording a crossed subprocess: see
     # ProcessExporterMG7.generate_subprocess_directory). The MG7 (pure-cpp
     # mg7_v5) exporter keeps supports_crossing=False. When the machinery is off
@@ -346,9 +345,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # libraries of P-wave bound states) is passed by keyword to all of them
         if not getattr(self, 'has_madmatrix', True):
             return
-        if hasattr(model , 'cudacpp_wanted_ordered_couplings'):
-            wanted_couplings = model.cudacpp_wanted_ordered_couplings
-            del model.cudacpp_wanted_ordered_couplings
+        if hasattr(model , 'madmatrix_wanted_ordered_couplings'):
+            wanted_couplings = model.madmatrix_wanted_ordered_couplings
+            del model.madmatrix_wanted_ordered_couplings
         return super().convert_model(model, wanted_lorentz, wanted_couplings, **opts)
 
     # AV (default from OM's tutorial) - overload settings and add a debug printout

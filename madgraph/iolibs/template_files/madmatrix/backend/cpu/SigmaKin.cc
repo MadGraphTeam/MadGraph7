@@ -386,7 +386,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   // SCALAR channelId for the whole SIMD neppV2 event page (C++), i.e. one or two neppV event page(s)
-  // The cudacpp implementation ASSUMES (and checks! #898) that all channelIds are the same in a neppV2 SIMD event page
+  // The madmatrix implementation ASSUMES (and checks!) that all channelIds are the same in a neppV2 SIMD event page
   // **NB! in "mixed" precision, using SIMD, calculate_wavefunctions computes MEs for TWO neppV pages with a single channelId! #924
   __device__ INLINE unsigned int
   getChannelId( const unsigned int* allChannelIds, const int ievt00, bool sanityCheckMixedPrecision = true )
@@ -1610,7 +1610,7 @@ namespace madmatrix
     // The same row choice as the positive case (selected_helicity): the lane's own
     // crossed helicity code with crossing, and the C-parity partner of a
     // de-duplicated representative picked within its |T| bin [absLo, absHi)
-    selhel = selected_helicity( params, ighelLast, flavor_id, rndhel * absTotal, absLo, absHi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+    selhel = selected_helicity( params, ighelLast, flavor_id, rndhel * absTotal, absLo, absHi ); // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
     return std::copysign( absTotal, tLast );
   }
 
@@ -1640,7 +1640,7 @@ namespace madmatrix
   {
     mgDebugInitialise();
 
-    // SANITY CHECKS for cudacpp code generation (see issues #272 and #343 and PRs #619, #626, #360, #396 and #754)
+    // SANITY CHECKS for madmatrix code generation
     {
       // nprocesses == 2 may happen for "mirror processes" such as P0_uux_ttx within pp_tt012j (see PR #754)
       static_assert( nproc == 1 || nproc == 2, "Assume nprocesses == 1 or 2" );
@@ -1841,7 +1841,7 @@ namespace madmatrix
         {
           // No choice: each event was evaluated for its given helicity only, whose |M|^2 (signed,
           // with an interference) is the color sum above
-          allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+          allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
 #if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           allselhel[ievt + neppV] = allihel[ievt + neppV] + 1;
 #endif
@@ -1896,7 +1896,7 @@ namespace madmatrix
             const fptype chi = MEs_ighel[ighel];
             if( ighel > 0 ) clo = MEs_ighel[ighel - 1];
 #endif
-            const int ihelF = selected_helicity( params, ighel, iflavorVec[ievt], allrndhel[ievt] * ctot, clo, chi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+            const int ihelF = selected_helicity( params, ighel, iflavorVec[ievt], allrndhel[ievt] * ctot, clo, chi ); // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
             allselhel[ievt] = ihelF;
             break;
           }
@@ -1912,7 +1912,7 @@ namespace madmatrix
             const fptype ctot = MEs_ighel2[nGoodLoop - 1][ieppV];
             const fptype chi = MEs_ighel2[ighel][ieppV];
             if( ighel > 0 ) clo = MEs_ighel2[ighel - 1][ieppV];
-            const int ihelF = selected_helicity( params, ighel, iflavorVec[ievt2], allrndhel[ievt2] * ctot, clo, chi ); // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+            const int ihelF = selected_helicity( params, ighel, iflavorVec[ievt2], allrndhel[ievt2] * ctot, clo, chi ); // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
             allselhel[ievt2] = ihelF;
             break;
           }
@@ -2015,7 +2015,7 @@ namespace madmatrix
           {
             if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
             {
-              allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
+              allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
               break;
             }
           }

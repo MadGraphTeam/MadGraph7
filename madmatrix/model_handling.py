@@ -688,7 +688,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
     def get_coupling_def(self):
         """Define the coupling constant"""
-        # This is the same as the parent class method, but adapted for CUDACPP types
+        # This is the same as the parent class method, but adapted for madmatrix types
 
         nb_coupling = 0 
         for ftype, name in self.declaration:
@@ -1862,7 +1862,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             dcoupdecl = [ '      cxtype_sv %s;' % name for name in self.coups_dep ]
             replace_dict['dcoupdecl'] = '\n'.join( dcoupdecl )
             dcoupsetdpar = []
-            # Special handling of G and aS parameters (cudacpp starts from G, while UFO starts from aS)
+            # Special handling of G and aS parameters (madmatrix starts from G, while UFO starts from aS)
             # For simplicity, compute these parameters directly from G, rather than from another such parameter
             # (e.g. do not compute mdl_sqrt__aS as sqrt of aS, which would require defining aS first)
             gparameters = { 'aS' : 'G * G / 4. / M_PI',
@@ -2184,9 +2184,9 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ###for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
         super().__init__(*args, **kwargs)
         self.process_class = 'CPPProcess'
-        ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+cudacpp (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
-        if 'prefix' in kwargs: proc_id = kwargs['prefix']+1 # madevent+cudacpp (ime+1 from ProcessExporterFortranMEGroup.generate_subprocess_directory)
-        else: proc_id = 0 # standalone_cudacpp
+        ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+madmatrix (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
+        if 'prefix' in kwargs: proc_id = kwargs['prefix']+1 # madevent+madmatrix (ime+1 from ProcessExporterFortranMEGroup.generate_subprocess_directory)
+        else: proc_id = 0 # standalone
         ###misc.sprint(proc_id)
         self.proc_id = proc_id
 
@@ -2949,7 +2949,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
         # itself is the dispatcher that fans out over all the P* directories.
         # NB: this symlink is overwritten by the madevent makefile if this exists (#480)
-        # NB: this relies on the assumption that cudacpp code is generated before madevent code
+        # NB: this relies on the assumption that madmatrix code is generated before madevent code
         files.ln(pjoin(self.path, "..", self.p_makefile), self.path, "makefile")
 
     def edit_colorflows(self):
@@ -3534,7 +3534,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Return the Helicity matrix definition lines for this matrix element"""
         helicity_line = '  static constexpr short helicities[ncomb][npar] = {\n    '; # AV (this is tHel)
         helicity_line_list = []
-        for helicities in matrix_element.get_helicity_matrix(allow_reverse=True): # AV was False: different order in Fortran and cudacpp! #569
+        for helicities in matrix_element.get_helicity_matrix(allow_reverse=True): # AV was False: different order in Fortran and madmatrix! #569
             helicity_line_list.append( '{ ' + ', '.join(['%d'] * len(helicities)) % tuple(helicities) + ' }' ) # AV
         return helicity_line + ',\n    '.join(helicity_line_list) + ' };' # AV
 
@@ -3590,7 +3590,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         return ret_lines
 
     # ------------------------------------------------------------------
-    # Crossing symmetry (extended flavor id) for the madmatrix / cudacpp
+    # Crossing symmetry (extended flavor id) for the madmatrix
     # CPU-SIMD backend. Mirrors export_cpp.get_crossing_replace_dict and the
     # fortran path but adapted to the SIMD structure of this backend: the
     # per-event momentum permutation lives in calculate_jamps (emitted into
@@ -3876,10 +3876,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     self.flv_couplings_map[coupling.name] = coupling
         with super().gauge_cache(gauge, model):
             yield self
-        if hasattr(model, 'cudacpp_wanted_ordered_couplings'):
-            session.cudacpp_wanted_ordered_couplings = \
-                                        model.cudacpp_wanted_ordered_couplings
-            del model.cudacpp_wanted_ordered_couplings
+        if hasattr(model, 'madmatrix_wanted_ordered_couplings'):
+            session.madmatrix_wanted_ordered_couplings = \
+                                        model.madmatrix_wanted_ordered_couplings
+            del model.madmatrix_wanted_ordered_couplings
 
     # AV - replace helas_call_writers.GPUFOHelasCallWriter method (improve formatting of CPPProcess.cc)
     # [GPUFOHelasCallWriter.format_coupling is called by GPUFOHelasCallWriter.get_external_line/generate_helas_call]
@@ -4017,7 +4017,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             # one access type per vertex routine: CDPF_ACCESS cannot also read the
             # all-events buffer of an ordinary running coupling (on the GPU)
             raise Exception('a vertex mixing a running flavored coupling with another running coupling is not supported: %s' % call)
-        model.cudacpp_wanted_ordered_couplings = self.wanted_ordered_dep_couplings + self.wanted_ordered_indep_couplings + self.wanted_ordered_flv_couplings
+        model.madmatrix_wanted_ordered_couplings = self.wanted_ordered_dep_couplings + self.wanted_ordered_indep_couplings + self.wanted_ordered_flv_couplings
         return call
 
     # AV - new method for formatting wavefunction/amplitude calls
@@ -4963,7 +4963,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
-    # (cudacpp's MADMATRIX_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
+    # (the MADMATRIX_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
     # ixzxxx call is gone with them: get_external_line never emits those)
     def get_external(self, wf, argument):
         if getattr(self, 'use_crossing_ic', False):

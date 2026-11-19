@@ -176,7 +176,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allselhel[ievt] = ihelF;
         //printf( "select_hel: ievt=%4d ihel=%4d\n", ievt, ihelF );
         break;
@@ -287,7 +287,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allselhel[ievt] = ihelF;
         //printf( "select_hel: ievt=%4d ihel=%4d
 ", ievt, ihelF );

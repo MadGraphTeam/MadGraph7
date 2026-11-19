@@ -199,8 +199,8 @@ class UFOModelConverterCPP(object):
             # these are the only ones settable by name at runtime (e.g. via
             # the UMAMI set_parameter interface). NB: this list is consumed
             # only by write_set_parameters() below, not by param.expr itself,
-            # since other UFOModelConverterCPP subclasses (e.g. the MadMatrix/
-            # cudacpp backend) read param.expr directly for purposes (like
+            # since other UFOModelConverterCPP subclasses (e.g. the MadMatrix
+            # backend) read param.expr directly for purposes (like
             # generating hardcoded/constexpr parameter mirrors) that require
             # it to remain a single plain assignment.
             self.params_ext_names.append(param.name)
