@@ -5357,6 +5357,10 @@ mod eager_integration_tests;
 mod recurrence_integration_tests;
 
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
+#[path = "engine/union_crossing_prototype_tests.rs"]
+mod union_crossing_prototype_tests;
+
+#[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_v3_manifest_tests.rs"]
 mod eager_v3_manifest_tests;
 
