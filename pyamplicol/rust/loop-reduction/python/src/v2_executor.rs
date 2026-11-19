@@ -67,6 +67,11 @@ trait Exchanged: V2Carrier {
     }
 }
 
+/// A real's binary64 value (`Real::to_f64`).
+fn binary64<T: Exchanged + Real>(x: &T) -> f64 {
+    x.to_f64()
+}
+
 /// `values` as `Reals`: decimal texts where the carrier gives them, else
 /// binary64 (`to_f64`, as before).
 fn reals<T: Exchanged + Real>(values: &[T]) -> Reals {
@@ -130,8 +135,23 @@ impl Exchanged for Float {
         )
     }
     fn magnitude_texts(values: &[Self]) -> Option<Vec<String>> {
-        // 20 significant digits: a magnitude's size, at any exponent.
-        Some(values.iter().map(|x| format!("{x:.20e}")).collect())
+        // Inside binary64's range the shortest round-trip text of `to_f64()`,
+        // so that Python reads exactly that float (as before, no second
+        // rounding); outside it (zero, subnormal, overflow) 21 significant
+        // digits: a magnitude's size at any exponent.
+        Some(
+            values
+                .iter()
+                .map(|x| {
+                    let f = binary64(x);
+                    if f.is_normal() {
+                        format!("{f:e}")
+                    } else {
+                        format!("{x:.20e}")
+                    }
+                })
+                .collect(),
+        )
     }
 }
 
