@@ -461,11 +461,19 @@ class DefaultFloat(float):
     __slots__ = ()
 
 
-def is_default(value: object) -> bool:
-    """Whether a ``BenchmarkConfig`` count or duration was left at its
-    default rather than given."""
+class DefaultStr(str):
+    """A setting left at its default (``DefaultInt``): ``benchmark.
+    ground_truth``, which a loop profile on an expensive process may leave
+    out of its runtime timing unless it was given."""
 
-    return isinstance(value, (DefaultInt, DefaultFloat))
+    __slots__ = ()
+
+
+def is_default(value: object) -> bool:
+    """Whether a ``BenchmarkConfig`` count, duration or setting was left at
+    its default rather than given."""
+
+    return isinstance(value, (DefaultInt, DefaultFloat, DefaultStr))
 
 
 _DURATION = re.compile(
@@ -1748,7 +1756,9 @@ class BenchmarkConfig:
     # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
     # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
     # accepted; read by both tables (``loop_profile.ground_truth``).
-    ground_truth: str = field(default="double-double", metadata=_setting("str"))
+    ground_truth: str = field(
+        default=DefaultStr("double-double"), metadata=_setting("str")
+    )
     # The runtime timing of a loop profile in the checked mode (``--checked``):
     # the backends' own acceptance checks, a refused point served best-effort
     # and the default backend as "auto". False (the default): one fully
@@ -1772,6 +1782,14 @@ class BenchmarkConfig:
     # core, a Monte Carlo worker's. The stability workers stay at one
     # thread each (``n_core`` is their count).
     runtime_threads: int = field(default=1, metadata=_setting("int"))
+    # Whether a loop profile times every reduction backend
+    # (``--all-backends``): None (the default) times every one unless the
+    # process's default backend alone exceeds the runtime budget at its
+    # minimal counts (then the default only, ``loop_profile``); True every
+    # one whatever the budget; False the default only.
+    all_backends: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability", "checked"):
@@ -1786,7 +1804,14 @@ class BenchmarkConfig:
                 "benchmark.runtime_threads must be a positive thread count "
                 "(1: one core, the default)"
             )
-        object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))
+        truth = _ground_truth(self.ground_truth)
+        object.__setattr__(
+            self,
+            "ground_truth",
+            DefaultStr(truth) if isinstance(self.ground_truth, DefaultStr) else truth,
+        )
+        if self.all_backends is not None and type(self.all_backends) is not bool:
+            raise ConfigurationError("benchmark.all_backends must be a boolean")
         if self.completion_time is not None:
             object.__setattr__(
                 self, "completion_time", parse_duration(self.completion_time)
