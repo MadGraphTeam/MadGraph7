@@ -23,8 +23,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "1f97452722a96c630ab8242e660193372449af59",
-      "note": "1f974527 (NinjaRS PR #19: main 3116e5e6 = ac66cf6c + PR #16 box-Gram conditioning bound, + the Unstable-cause records of the fast engine and the box-Gram refusal records of the generic engine); ac66cf6c = branch symbolica-community-2 = main be6d3e04 + the d0424f9e re-pin (MadLoop bridge interface included) = main b51b7465's crate sources (per-row evaluation without the fork-only batch evaluator) with its pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f"
+      "revision": "66fe54337226edb5b173dcea4ce2e2f599512fde",
+      "note": "66fe5433 (NinjaRS PR #19: main 3116e5e6 = ac66cf6c + PR #16 box-Gram conditioning bound, + the Unstable-cause records of the fast engine and the box-Gram refusal records of the generic engine); ac66cf6c = branch symbolica-community-2 = main be6d3e04 + the d0424f9e re-pin (MadLoop bridge interface included) = main b51b7465's crate sources (per-row evaluation without the fork-only batch evaluator) with its pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f"
     },
     {
       "name": "oneloopmaster",
