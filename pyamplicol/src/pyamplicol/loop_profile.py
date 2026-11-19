@@ -782,6 +782,8 @@ def profile_loop(
         minimum_counts,
         reference_affects_counts,
         runtime_counts,
+        scope_minimum,
+        timing_scope,
         warmup_seconds,
     )
     from pyamplicol.profile_plan import plan as plan_profile
@@ -963,6 +965,8 @@ def profile_loop(
         rest = sum(future_of(planned_now, costs_map).values())
         provisional_end[0] = time.perf_counter() + left + rest
 
+    # An explicit --ground-truth keeps the runtime timing's reference pass.
+    is_default_truth_forced = not is_default(bench.ground_truth)
     # Under the default budget a start-up that takes a backend's share
     # leaves every backend the minimum counts whatever it costs: nothing is
     # measured here (no evaluation in this process); each runtime timing's
@@ -995,11 +999,24 @@ def profile_loop(
                 # timing measures it with its own reference warm-up.
                 reference_needed=(
                     (
-                        lambda binary64, count: reference_affects_counts(
-                            binary64,
-                            load_seconds + 1.0,
-                            backends=count,
-                            lanes=DEFAULT_LANES,
+                        lambda binary64, count: (
+                            reference_affects_counts(
+                                binary64,
+                                load_seconds + 1.0,
+                                backends=count,
+                                lanes=DEFAULT_LANES,
+                            )
+                            and not (
+                                # Rule B will leave the reference out: this
+                                # backend's binary64 minimum alone exceeds
+                                # the budget.
+                                want_runtime
+                                and not want_stability
+                                and not is_default_truth_forced
+                                and binary64 * DEFAULT_LANES
+                                + warmup_seconds(binary64 * DEFAULT_LANES, binary64)
+                                > BUDGET_TOLERANCE * DEFAULT_RUNTIME_SECONDS
+                            )
                         )
                     )
                     if want_runtime and completion is None and not runtime_given
@@ -1055,6 +1072,105 @@ def profile_loop(
         )
     else:
         planned, stability_start = planning(costs, measured_at)
+    # The runtime timing alone on an expensive process (USER 2026-11-19):
+    # ``timed_reference`` (rule B) and ``omitted`` (rule A), decided from the
+    # costs known now (the measurement, else a previous profile's), else as
+    # the runtime timing measures them (``reference_over``, the default
+    # backend's row).
+    default = DEFAULTS.get(contribution)
+    timing_alone = want_runtime and not want_stability
+    force_reference = is_default_truth_forced
+    asked_backends = evaluation.reduction is not None or bench.all_backends is not None
+    serving = [b for b in _serving(runtime, backends) if b in backends]
+    timed_reference = truth.present
+    omitted: list[str] = (
+        [b for b in backends if b != default]
+        if bench.all_backends is False and default in backends
+        else []
+    )
+
+    def budget_bound(count: int) -> float:
+        """The seconds the runtime minimums of ``count`` backends may take
+        before the budget in force counts as exceeded, the counts row's
+        rule (``profile_plan.plan``): the default budget (all backends) or
+        --target-runtime per backend within ``BUDGET_TOLERANCE``, start-ups
+        aside; with --completion-time what is left of it, start-ups in."""
+
+        if completion is not None:
+            return completion - measured_at
+        budget = (
+            float(bench.target_runtime) * count
+            if runtime_given
+            else DEFAULT_RUNTIME_SECONDS
+        )
+        return BUDGET_TOLERANCE * budget
+
+    # The backends measured (a refusing one dropped), else a previous
+    # profile's costs when it holds every serving backend's.
+    estimates = (
+        dict(costs)
+        if costs
+        else {b: priors[b] for b in serving}
+        if serving and all(b in priors for b in serving)
+        else {}
+    )
+    decided = bool(timing_alone and estimates)
+    if decided:
+        timed_reference, found = timing_scope(
+            estimates,
+            default,
+            budget_bound,
+            lanes=DEFAULT_LANES,
+            reference=timed_reference,
+            force_reference=force_reference,
+            asked_backends=asked_backends,
+            start=completion is not None,
+        )
+        if found:
+            omitted = [b for b in backends if b != default]
+    # Without them, the runtime timing's own costs decide: a backend's
+    # worker skips its reference pass when its minimum with the reference
+    # (at the reference's prior) exceeds the whole budget.
+    reference_over = (
+        budget_bound(1)
+        if timing_alone and timed_reference and not force_reference and not decided
+        else None
+    )
+
+    def omit_notice() -> None:
+        from pyamplicol.loops.v2.reduction import NAMES
+
+        _notice(
+            f"the default backend {NAMES.get(default, default)} alone exceeds "
+            "the runtime budget at its minimal counts: "
+            + ", ".join(NAMES.get(b, b) for b in omitted)
+            + " not profiled (--all-backends profiles every backend)"
+        )
+
+    if truth.present and not timed_reference:
+        _notice(
+            f"the runtime minimums with their {truth.name} reference exceed the "
+            f"budget: no {truth.label} multiplier (an explicit --ground-truth "
+            "measures it)"
+        )
+    if omitted and bench.all_backends is None:
+        omit_notice()
+    if decided and (omitted or not timed_reference):
+        # The plan of what runs: the default backend alone, no reference.
+        costs = {
+            b: c
+            if timed_reference
+            else replace(
+                c, reference=None, stability_reference=None, reference_estimated=False
+            )
+            for b, c in costs.items()
+            if b not in omitted
+        }
+        if not blind:
+            planned, stability_start = planning(costs, measured_at)
+        minimum_calls = "one timed call of one chunk per backend" + (
+            " and its reference point" if timed_reference else ""
+        )
     if not planned.feasible:
         # One number, the header's too: the whole command with the minimums.
         if completion is not None:
@@ -1092,6 +1208,8 @@ def profile_loop(
             warning=True,
         )
     future = future_of(planned, costs)
+    for backend in omitted:
+        future.pop(f"runtime:{backend}", None)
     if blind:
         # A backend without a previous profile's costs has no estimate yet.
         for backend in backends:
@@ -1150,6 +1268,8 @@ def profile_loop(
         rows = []
         default = DEFAULTS.get(contribution)
         for position, backend in enumerate(backends):
+            if backend in omitted:
+                continue
             # The optimistic pass: the backend alone. The checked mode: the
             # default backend as "auto" (with its per-point fallback), unless
             # one backend was asked for.
@@ -1214,7 +1334,7 @@ def profile_loop(
                     float(backend_bench.target_runtime),
                     max(int(backend_bench.minimum_samples), 1) * call,
                 )
-                if truth.present and cost.reference is not None:
+                if timed_reference and cost.reference is not None:
                     later["reference"] = cost.reference + max(
                         reference_budget, cost.reference
                     )
@@ -1243,11 +1363,16 @@ def profile_loop(
             current[0] = run
             reference = (
                 None
-                if truth.arithmetic == "none"
+                if not timed_reference
                 else {
                     **truth.options,
                     "reduction": backend,
                     "budget": max(reference_budget, 1e-9),
+                    **(
+                        {"unless_over": reference_over}
+                        if reference_over is not None
+                        else {}
+                    ),
                     **(
                         {"seconds_per_point": costs[backend].reference}
                         if backend in costs and costs[backend].reference is not None
@@ -1297,6 +1422,31 @@ def profile_loop(
                 current[0] = None
             run.finish(result)
             rows.append(BackendRuntime(backend, result, requested=request))
+            if (
+                timing_alone
+                and not decided
+                and not asked_backends
+                and not omitted
+                and backend == default
+                and len(serving) > 1
+                and _served_points(result)
+            ):
+                # The default backend's measured minimum (rule A when no
+                # cost was known before the runtime timing).
+                measured = Costs(
+                    result.seconds_per_point,
+                    None
+                    if result.reference is None
+                    else result.reference.seconds_per_point,
+                    0.0,
+                    None,
+                    0.0,
+                )
+                if scope_minimum(
+                    measured, lanes=DEFAULT_LANES, reference=True
+                ) > budget_bound(1):
+                    omitted = [b for b in backends if b != default]
+                    omit_notice()
         # A backend that failed every timed point is not compared (its time
         # is that of failing, not of serving the process).
         served = [
@@ -1491,7 +1641,7 @@ def profile_loop(
         physics.process,
         contribution,
         DEFAULTS.get(contribution),
-        backends,
+        tuple(b for b in backends if b not in omitted),
         _runtime_setup(
             checked,
             None if points else evaluation.phase_space.seed,
@@ -1524,6 +1674,22 @@ def profile_loop(
                     and completion is None
                 ),
             },
+            # What the runtime timing left out on an expensive process: the
+            # backends (rule A) and the reference multiplier (rule B).
+            "omitted_backends": list(omitted),
+            "omitted_reference": (
+                truth.label
+                if truth.present
+                and want_runtime
+                and (
+                    not timed_reference
+                    or any(
+                        getattr(row.profile, "reference_skipped", False)
+                        for row in runtime_rows or ()
+                    )
+                )
+                else None
+            ),
             "runtime_counts": {
                 row.backend: {
                     "batch": row.profile.batch,

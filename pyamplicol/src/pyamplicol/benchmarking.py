@@ -2820,6 +2820,9 @@ class VirtualProfileResult:
     # The seconds of the binary64 warm entry when it replaced the untimed
     # warm-up point (``_prepared``; None: none ran).
     prepared_seconds: float | None = None
+    # The reference pass was asked for but not run: its minimum exceeded
+    # ``reference["unless_over"]`` (``profile_virtual``).
+    reference_skipped: bool = False
     # With N > 1 native threads (``profile --runtime-threads``): the time per
     # point of the same calls' points on one thread (a short timing of its
     # own, ``one_thread_profile``) and its timed calls; None: not measured.
@@ -2837,6 +2840,8 @@ class VirtualProfileResult:
         if self.prepared_seconds is None:
             # No warm entry ran: the document as before it existed.
             out.pop("prepared_seconds")
+        if not self.reference_skipped:
+            out.pop("reference_skipped")
         return out
 
 
@@ -3151,7 +3156,10 @@ def profile_virtual(
     if monitor is not None:
         monitor("binary64-result", {"profile": profile})
     timing = None
-    if reference is not None:
+    skipped = reference is not None and _reference_over(
+        profile, reference, bench.batch_size
+    )
+    if reference is not None and not skipped:
         with peak_memory() as reference_peak:
             timing = _reference_timing(
                 runtime,
@@ -3164,7 +3172,34 @@ def profile_virtual(
                 monitor=monitor,
             )
         timing = replace(timing, peak_memory=reference_peak.result)
-    return replace(profile, reference=timing)
+    return replace(profile, reference=timing, reference_skipped=skipped)
+
+
+def _reference_over(
+    profile: VirtualProfileResult, reference: Mapping[str, Any], batch: int
+) -> bool:
+    """Whether the reference pass is left out (``reference["unless_over"]``,
+    ``loop_profile``'s rule B without known costs): this backend's runtime
+    minimum, its binary64 warm-up and one timed call of one chunk at the
+    measured binary64 cost and the reference's warm-up and point at its
+    cost (the caller's, else binary64 x ``REFERENCE_PRIOR``), exceeds it."""
+
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.profile_plan import warmup_seconds
+
+    bound = reference.get("unless_over")
+    per_point = profile.seconds_per_point
+    if bound is None or per_point is None:
+        return False
+    arithmetic = str(reference.get("arithmetic"))
+    point = reference.get("seconds_per_point")
+    prior = (
+        float(point)
+        if point is not None
+        else per_point * REFERENCE_PRIOR.get(arithmetic, REFERENCE_PRIOR["arbitrary"])
+    )
+    call = min(DEFAULT_LANES, max(batch, 1)) * per_point
+    return call + warmup_seconds(call, per_point) + 2.0 * prior > float(bound)
 
 
 def one_thread_profile(
@@ -3389,7 +3424,7 @@ def _reference_timing(
         **{
             k: v
             for k, v in reference.items()
-            if k not in ("points", "budget", "seconds_per_point")
+            if k not in ("points", "budget", "seconds_per_point", "unless_over")
         },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))

@@ -860,3 +860,53 @@ def test_the_warm_entry_replaces_a_dear_reference_warm_up(
         assert timing.warmup == 1 and timing.prepared_seconds is None
         assert calls == [(1, "double-double"), (1, "double-double")]
     assert timing.samples == 1 and timing.points == 1
+
+
+def test_the_timing_scope_rules_at_their_thresholds():
+    """``timing_scope`` (USER 2026-11-19): no reference when the minimums of
+    every backend with their reference points exceed the bound (rule B),
+    then the default backend alone when its own minimum, with the reference
+    as decided, exceeds the bound of one (rule A); exactly at the bound
+    nothing changes; an explicit ground truth keeps the reference, backends
+    asked for keep every one."""
+
+    from pyamplicol.profile_plan import scope_minimum, timing_scope
+
+    costs = {"ninjars": _costs(0.5, 30.0), "tirust": _costs(1.0, 10.0)}
+    with_reference = sum(
+        scope_minimum(c, lanes=LANES, reference=True) for c in costs.values()
+    )
+    alone = scope_minimum(costs["ninjars"], lanes=LANES, reference=False)
+    alone_with = scope_minimum(costs["ninjars"], lanes=LANES, reference=True)
+
+    def scope(all_bound, one_bound, **options):
+        return timing_scope(
+            costs,
+            "ninjars",
+            lambda n: all_bound if n > 1 else one_bound,
+            lanes=LANES,
+            reference=options.pop("reference", True),
+            force_reference=options.pop("force", False),
+            asked_backends=options.pop("asked", False),
+        )
+
+    # At the bounds: everything timed.
+    assert scope(with_reference, alone_with) == (True, ())
+    # Just above the all-backend bound with the reference: rule B; the
+    # default alone (without it) fits.
+    assert scope(with_reference * (1 - 1e-9), alone) == (False, ())
+    # And the default alone without its reference above its bound: rule A.
+    assert scope(with_reference * (1 - 1e-9), alone * (1 - 1e-9)) == (
+        False,
+        ("tirust",),
+    )
+    # The reference forced: rule A judges the default with it.
+    assert scope(with_reference / 2, alone_with, force=True) == (True, ())
+    assert scope(with_reference / 2, alone_with * (1 - 1e-9), force=True) == (
+        True,
+        ("tirust",),
+    )
+    # Backends asked for: rule A never.
+    assert scope(1e-9, 1e-9, asked=True) == (False, ())
+    # No reference asked (--ground-truth none): rule B is moot.
+    assert scope(1e-9, alone, reference=False) == (False, ())

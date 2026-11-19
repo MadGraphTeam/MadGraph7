@@ -177,7 +177,12 @@ def _profile(report: Any) -> list[Block]:
                     "that cannot change the counts is not measured first, "
                     "and when loading the artifact alone takes a backend's "
                     "share every backend runs the minimums, measured as they "
-                    "run)",
+                    "run). When the runtime timing alone (no --stability) "
+                    "cannot meet its budget even at its minimal counts, it "
+                    "times no reference ('no dd multiplier': an explicit "
+                    "--ground-truth times it) and, when the default backend "
+                    "alone still exceeds it, that backend only ('TIRust not "
+                    "profiled': --all-backends, or --loop-reduction, chooses)",
                 ),
                 (
                     "ground truth",

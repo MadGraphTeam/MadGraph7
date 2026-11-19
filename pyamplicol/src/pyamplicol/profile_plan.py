@@ -30,7 +30,7 @@ they take instead."""
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
 # The user's minimums: one timed call (one filled SIMD chunk) per backend
@@ -269,6 +269,69 @@ def reference_affects_counts(
     budget = max(DEFAULT_RUNTIME_SECONDS / max(backends, 1) - start, 0.0)
     left = (1.0 - REFERENCE_SHARE) * budget
     return left > warmup_seconds(max(lanes, 1) * binary64, binary64)
+
+
+def scope_minimum(
+    costs: Costs, *, lanes: int, reference: bool, start: bool = False
+) -> float:
+    """A backend's runtime minimum for the scope rules (``timing_scope``):
+    its binary64 warm-up (``warmup_seconds``) and one timed call of one
+    chunk of ``lanes``, with ``reference`` the reference's untimed and timed
+    point, with ``start`` its start-up (``runtime_minimum`` with these
+    parts)."""
+
+    call = lanes * costs.binary64
+    seconds = call + warmup_seconds(call, costs.binary64)
+    if reference and costs.reference is not None:
+        seconds += 2.0 * costs.reference
+    return seconds + (costs.start if start else 0.0)
+
+
+def timing_scope(
+    costs: Mapping[str, Costs],
+    default: str | None,
+    bound: Callable[[int], float],
+    *,
+    lanes: int,
+    reference: bool,
+    force_reference: bool,
+    asked_backends: bool,
+    start: bool = False,
+) -> tuple[bool, tuple[str, ...]]:
+    """What a runtime timing alone (no stability run) times on a process
+    whose minimums exceed its budget (USER 2026-11-19), from the backends'
+    ``costs`` (those that can serve) and ``bound(n)``, the seconds the
+    minimums of n backends may take before the budget counts as exceeded:
+    first the reference (rule B): none when the minimums of every backend
+    with their reference points (``scope_minimum``) exceed ``bound`` of
+    them, unless ``force_reference``; then the backends (rule A): the
+    ``default`` alone when its minimum, with the reference as just decided,
+    exceeds ``bound(1)``, unless ``asked_backends``. The reference's
+    decision (True: timed) and the backends left out."""
+
+    names = list(costs)
+    timed = reference
+    if (
+        timed
+        and not force_reference
+        and names
+        and sum(
+            scope_minimum(costs[b], lanes=lanes, reference=True, start=start)
+            for b in names
+        )
+        > bound(len(names))
+    ):
+        timed = False
+    omitted: tuple[str, ...] = ()
+    if (
+        not asked_backends
+        and default in costs
+        and len(names) > 1
+        and scope_minimum(costs[default], lanes=lanes, reference=timed, start=start)
+        > bound(1)
+    ):
+        omitted = tuple(b for b in names if b != default)
+    return timed, omitted
 
 
 def runtime_minimum(costs: Costs, *, lanes: int) -> float:
@@ -603,8 +666,10 @@ __all__ = [
     "plan",
     "reference_affects_counts",
     "runtime_counts",
+    "scope_minimum",
     "stability_points",
     "stability_wall",
     "task_points",
+    "timing_scope",
     "warmup_seconds",
 ]

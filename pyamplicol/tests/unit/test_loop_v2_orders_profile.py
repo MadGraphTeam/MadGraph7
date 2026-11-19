@@ -1518,3 +1518,81 @@ def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, point_seconds)
         assert result.warmup == 1 and calls == [1, 4, 4]
         assert "prepared_seconds" not in result.cli_json()
     assert result.samples == 1 and result.batch == 4
+
+
+@pytest.mark.parametrize(
+    ("given", "measured"),
+    [
+        ({}, True),
+        ({}, False),
+        ({"all_backends": True}, True),
+        ({"ground_truth": "double-double"}, True),
+        ({"ground_truth": "double-double"}, False),
+        ({"stability": True, "stability_points": 4}, True),
+    ],
+)
+def test_an_exceeded_budget_times_the_default_backend_alone(
+    uux_ddx, monkeypatch, given, measured
+):
+    """A runtime budget the minimums exceed (forced: 1 ms) on the runtime
+    timing alone (USER 2026-11-19): no reference pass and the default
+    backend only, from the measurement or, without one (``measured`` False:
+    the start-up takes the share), from the runtime timing's own costs; the
+    record and the counts row name what was left out. --all-backends keeps
+    every backend, an explicit --ground-truth the multiplier, --stability
+    both (its true digits need the reference)."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-3)
+    if not measured:
+        monkeypatch.setattr(
+            plan_module, "measurement_affects_counts", lambda *a, **k: False
+        )
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1, **given},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    stability = given.get("stability", False)
+    forced = "ground_truth" in given
+    every = given.get("all_backends") or stability
+    assert set(rows) == ({"ninjars", "tirust"} if every else {"ninjars"})
+    assert report.backends == tuple(rows)
+    for profile in rows.values():
+        assert profile is not None
+        assert (profile.reference is not None) == (forced or stability)
+    plan = report.plan
+    assert plan["omitted_backends"] == ([] if every else ["tirust"])
+    assert plan["omitted_reference"] == (None if forced or stability else "dd")
+    text = _counts_cell(report, False) or ""
+    assert ("TIRust not profiled (--all-backends)" in text) == (not every)
+    assert ("no dd multiplier (--ground-truth)" in text) == (not (forced or stability))
+
+
+def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
+    """On a cheap process with the default budget nothing is left out."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    assert all(p is not None and p.reference is not None for p in rows.values())
+    assert report.plan["omitted_backends"] == []
+    assert report.plan["omitted_reference"] is None

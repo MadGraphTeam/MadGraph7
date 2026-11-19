@@ -830,6 +830,30 @@ took):
   the budget, with their time in the `counts` row, follows from the costs
   the timing measured).
 
+  The runtime timing alone (no `--stability`) then also narrows what it
+  times, by the `counts` row's own rule (the minimums exceed the budget in
+  force by more than a factor 1.5: the default 10 s of all backends, or
+  `--target-runtime` per backend; with `--completion-time` what is left of
+  it, start-ups included). First the reference: when the minimums of every
+  backend with their reference points (one untimed and one timed point
+  each) exceed it, no reference point is evaluated at all, and the `(dd xN)`
+  / `(arb(D) xN)` multiplier is not shown, as with `--ground-truth none`;
+  an explicit `--ground-truth` (any value, also double-double, on the
+  command line or in a run card) times it anyway. Then the backends: when
+  the default backend alone, with the reference as just decided, still
+  exceeds it, only the default backend is profiled; `--all-backends` times
+  every backend whatever the budget (`--no-all-backends` the default only),
+  `--loop-reduction` one backend. The costs are the measurement's, else a
+  previous profile's of the artifact, else (no measurement phase) the
+  runtime timing's own: a backend's reference pass is left out when its
+  binary64 minimum at the measured cost and its reference at its prior
+  (60 times binary64 in double-double) exceed the budget, and the other
+  backends when the default backend's measured minimum does. A notice says
+  what was left out, and the `counts` row repeats it ("TIRust not profiled
+  (--all-backends)", "no dd multiplier (--ground-truth)"). With
+  `--stability` every backend and its reference run: the stability run's
+  true digits need them.
+
 Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase

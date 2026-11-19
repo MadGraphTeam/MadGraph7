@@ -148,7 +148,7 @@ def _counts_cell(report: Any, color: bool) -> str | None:
                 palette.RECOVERED,
                 color=color,
             )
-        return text
+        return text + _omitted_text(plan, color)
     given = plan.get("given") or {}
     if rule == "counts" and not all(
         given.get(part, True) for part in ("runtime", "stability")
@@ -185,7 +185,29 @@ def _counts_cell(report: Any, color: bool) -> str | None:
             palette.RECOVERED,
             color=color,
         )
-    return text
+    return text + _omitted_text(plan, color)
+
+
+def _omitted_text(plan: Any, color: bool) -> str:
+    """What the runtime timing left out because its minimums exceed the
+    budget (``loop_profile``: the other backends when the default alone
+    does, the reference multiplier), with the option that asks for it."""
+
+    from pyamplicol.loops.v2.reduction import NAMES
+
+    parts = []
+    backends = plan.get("omitted_backends") or []
+    if backends:
+        parts.append(
+            ", ".join(NAMES.get(b, b) for b in backends)
+            + " not profiled (--all-backends)"
+        )
+    label = plan.get("omitted_reference")
+    if label:
+        parts.append(f"no {label} multiplier (--ground-truth)")
+    if not parts:
+        return ""
+    return palette.paint("; " + "; ".join(parts), palette.RECOVERED, color=color)
 
 
 def _header(report: Any, prettytable: Any, color: bool) -> str:
