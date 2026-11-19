@@ -1676,3 +1676,49 @@ def test_a_default_budget_with_the_stability_run_keeps_both(uux_ddx):
     assert set(rows) == {"ninjars", "tirust"}
     assert all(p is not None and p.reference is not None for p in rows.values())
     assert report.plan["omitted_backends"] == []
+
+
+@pytest.mark.parametrize("stability", [False, True])
+def test_the_measurement_stops_after_a_decisive_default_backend(
+    uux_ddx, monkeypatch, stability
+):
+    """When the default backend's measured costs alone decide rule A
+    (forced 1 ms budgets), the measurement does not time the other backends:
+    this process evaluates on the default backend only (with --stability;
+    the runtime timing alone has no measurement phase there, and decides
+    after the default backend's timing)."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-3)
+    monkeypatch.setattr(plan_module, "DEFAULT_STABILITY_SECONDS_PER_CORE", 1e-3)
+    backends: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, batch, *args, **kwargs):
+        backends.append(kwargs.get("reduction"))
+        return evaluate(self, batch, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "evaluate", recorded)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "runtime": not stability,
+                "stability": stability,
+                "n_core": 2,
+            },
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    # --stability: measured, the default backend only; the runtime timing
+    # alone at 1 ms: no measurement phase (the start-up takes the share).
+    assert set(backends) == ({"ninjars"} if stability else set())
+    assert report.plan["omitted_backends"] == ["tirust"]
+    assert {row.backend for row in report.runtime or report.stability or ()} == {
+        "ninjars"
+    }

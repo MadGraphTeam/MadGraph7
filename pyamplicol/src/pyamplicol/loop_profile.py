@@ -969,6 +969,88 @@ def profile_loop(
 
     # An explicit --ground-truth keeps the runtime timing's reference pass.
     is_default_truth_forced = not is_default(bench.ground_truth)
+    # The scope rules' inputs (below, after the measurement): counts given
+    # (how many points or calls run) are honoured as given; a given
+    # --target-runtime is the runtime timing's budget (counts given with it
+    # win); --completion-time overrules every count.
+    default = DEFAULTS.get(contribution)
+    counts_given = completion is None and (
+        any(
+            not is_default(getattr(bench, name))
+            for name in ("batch_size", "minimum_samples", "warmup_runs")
+        )
+        or (want_stability and stability_given is not None)
+    )
+    target_given = completion is None and not is_default(bench.target_runtime)
+    rules = not counts_given
+    timing_alone = rules and want_runtime and not want_stability
+    asked_backends = evaluation.reduction is not None or bench.all_backends is not None
+    serving = [b for b in _serving(runtime, backends) if b in backends]
+    early: list[str] = []
+
+    def budget_bound(count: int) -> float:
+        """The seconds the minimums of ``count`` backends may take before
+        the budget in force counts as exceeded, the counts row's rule
+        (``profile_plan.plan``), start-ups aside: ``BUDGET_TOLERANCE`` x the
+        budgets of the parts asked, the runtime timing's (the default for
+        all backends, or a given --target-runtime per backend) and the
+        stability run's (``DEFAULT_STABILITY_SECONDS_PER_CORE`` of wall);
+        with --completion-time what is left of it, start-ups in."""
+
+        if completion is not None:
+            return completion - monitor.elapsed()
+        runtime_budget = (
+            (
+                float(bench.target_runtime) * count
+                if target_given
+                else DEFAULT_RUNTIME_SECONDS
+            )
+            if want_runtime
+            else 0.0
+        )
+        stability_budget = DEFAULT_STABILITY_SECONDS_PER_CORE if want_stability else 0.0
+        return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
+
+    def stability_minimum(cost: Any) -> float:
+        """A backend's stability-run minimum (``STABILITY_MINIMUM`` points
+        with its reference, on the workers; its start with
+        --completion-time), 0 without --stability."""
+
+        if not want_stability:
+            return 0.0
+        return stability_wall([cost], STABILITY_MINIMUM, workers) + (
+            load_seconds + 1.0 if completion is not None else 0.0
+        )
+
+    def enough(found: Mapping[str, Any]) -> bool:
+        """Rule A decided by the default backend's measured costs alone
+        (measured first): its minimum for everything asked, without the
+        reference when rule B may drop it (a lower bound), exceeds the
+        budget, so the other backends are not profiled (nor measured)."""
+
+        if (
+            completion is not None
+            or not rules
+            or asked_backends
+            or len(serving) < 2
+            or set(found) != {default}
+        ):
+            return False
+        cost = found[default]
+        alone = (
+            scope_minimum(
+                cost,
+                lanes=DEFAULT_LANES,
+                reference=not (timing_alone and not is_default_truth_forced),
+            )
+            if want_runtime
+            else 0.0
+        ) + stability_minimum(cost)
+        if alone > budget_bound(1):
+            early.extend(b for b in backends if b != default)
+            return True
+        return False
+
     # Under the default budget a start-up that takes a backend's share
     # leaves every backend the minimum counts whatever it costs: nothing is
     # measured here (no evaluation in this process); each runtime timing's
@@ -1024,6 +1106,7 @@ def profile_loop(
                     if want_runtime and completion is None and not runtime_given
                     else None
                 ),
+                enough=enough,
             )
         )
     except KeyboardInterrupt:
@@ -1091,63 +1174,13 @@ def profile_loop(
     # it (rule A, ``omitted``), decided from the costs known now (the
     # measurement, else a previous profile's), else as the runtime timing
     # measures them (``reference_over``, the default backend's row).
-    default = DEFAULTS.get(contribution)
-    # Counts given (how many points or calls run) are honoured as given; a
-    # given --target-runtime is the runtime timing's budget (counts given
-    # with it win); --completion-time overrules every count.
-    counts_given = completion is None and (
-        any(
-            not is_default(getattr(bench, name))
-            for name in ("batch_size", "minimum_samples", "warmup_runs")
-        )
-        or (want_stability and stability_given is not None)
-    )
-    target_given = completion is None and not is_default(bench.target_runtime)
-    rules = not counts_given
-    timing_alone = rules and want_runtime and not want_stability
     force_reference = is_default_truth_forced
-    asked_backends = evaluation.reduction is not None or bench.all_backends is not None
-    serving = [b for b in _serving(runtime, backends) if b in backends]
     timed_reference = truth.present
     omitted: list[str] = (
         [b for b in backends if b != default]
-        if bench.all_backends is False and default in backends
+        if (bench.all_backends is False and default in backends) or early
         else []
     )
-
-    def budget_bound(count: int) -> float:
-        """The seconds the minimums of ``count`` backends may take before
-        the budget in force counts as exceeded, the counts row's rule
-        (``profile_plan.plan``), start-ups aside: ``BUDGET_TOLERANCE`` x the
-        budgets of the parts asked, the runtime timing's (the default for
-        all backends, or a given --target-runtime per backend) and the
-        stability run's (``DEFAULT_STABILITY_SECONDS_PER_CORE`` of wall);
-        with --completion-time what is left of it, start-ups in."""
-
-        if completion is not None:
-            return completion - measured_at
-        runtime_budget = (
-            (
-                float(bench.target_runtime) * count
-                if target_given
-                else DEFAULT_RUNTIME_SECONDS
-            )
-            if want_runtime
-            else 0.0
-        )
-        stability_budget = DEFAULT_STABILITY_SECONDS_PER_CORE if want_stability else 0.0
-        return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
-
-    def stability_minimum(cost: Any) -> float:
-        """A backend's stability-run minimum (``STABILITY_MINIMUM`` points
-        with its reference, on the workers; its start with
-        --completion-time), 0 without --stability."""
-
-        if not want_stability:
-            return 0.0
-        return stability_wall([cost], STABILITY_MINIMUM, workers) + (
-            stability_start if completion is not None else 0.0
-        )
 
     # The backends measured (a refusing one dropped), else a previous
     # profile's costs when it holds every serving backend's.
@@ -2321,6 +2354,7 @@ def _measure(
     history: _ProfileHistory | None = None,
     provisional: Callable[[dict[str, Any], float], None] | None = None,
     reference_needed: Callable[[float, int], bool] | None = None,
+    enough: Callable[[Mapping[str, Any]], bool] | None = None,
 ) -> dict[str, Any]:
     """The measurement phase of a time-budgeted profile, on this process's
     loaded runtime, per backend: the binary64 cost per point of an
@@ -2568,6 +2602,9 @@ def _measure(
             load_seconds + 1.0,
             reference_estimated=backend in estimated,
         )
+        if enough is not None and enough(costs):
+            # The backends after this one are not profiled (``enough``).
+            break
     for backend in [b for b in costs if b in estimated]:
         # A backend refused: the others' shares grew; a reference cost that
         # can now change the counts is measured after all.
