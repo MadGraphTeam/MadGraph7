@@ -921,11 +921,13 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // index by text.
     let leaves: u64 = file.families.iter().map(|f| f.leaves.len() as u64).sum();
     tally.keep_grown(leaves, size_of::<Rational>());
-    tally.map_grown(leaves, size_of::<(&str, u32)>());
+    // The index owns its texts (the family records are dropped as loaded).
+    tally.map_grown(leaves, size_of::<(String, u32)>());
     for f in &file.families {
         tally.keep_grown(f.leaves.len() as u64, size_of::<Leaf>());
         for leaf in &f.leaves {
             tally.weight(&leaf.weight)?;
+            tally.keep(leaf.weight.len() as u64, 1);
         }
         tally.keep(f.sequence.len() as u64, size_of::<(u64, usize)>());
         tally.keep(f.orders.len() as u64, size_of::<usize>());

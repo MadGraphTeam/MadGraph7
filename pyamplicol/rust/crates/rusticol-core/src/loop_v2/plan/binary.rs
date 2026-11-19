@@ -614,7 +614,7 @@ fn list<S: Stream, T: Fresh>(
     let len = stream.len(col, items.len())?;
     // A crafted length is refused here, beyond the declared size, before its
     // buffer is reserved (and a damaged one at its first exhausted column).
-    stream.charge(col, allocation(len, size_of::<T>()))?;
+    stream.charge(col, allocation(len, size_of::<T::Layout>()))?;
     fill(stream, col, len, items, visit)
 }
 
@@ -749,12 +749,59 @@ fn option<S: Stream, T: Fresh>(
 /// (`fresh_records!`), so a field added to a file type without a column fails
 /// to compile here.
 trait Fresh {
+    /// The record layout the member's declared decoded size counts a list
+    /// buffer of this type at: the type itself, but for the file model's
+    /// shared and flat forms (texts, shared lists, flat term rows), whose
+    /// records count at the layouts they replaced ([`declared`]), so that
+    /// a member's declared size is the same as before them (members written
+    /// before and after decode alike, and the writer writes the same bytes).
+    type Layout;
     fn fresh() -> Self;
+}
+
+/// The file model's former record layouts ([`Fresh::Layout`]): the
+/// records as they were before the shared lists, flat term rows and shared
+/// texts.
+mod declared {
+    #![allow(dead_code)]
+    pub(super) struct Content {
+        d_in: usize,
+        d_out: usize,
+        degree: usize,
+        rows: usize,
+        mask: u64,
+        row_helicities: Vec<Vec<i32>>,
+        fused: Vec<[u32; 6]>,
+        terms: Vec<()>,
+    }
+    pub(super) struct Term {
+        slots: Vec<u64>,
+        dimensions: Vec<usize>,
+        bindings: Vec<()>,
+        vertex: i64,
+        split: Vec<()>,
+        rows: Vec<(usize, Vec<usize>)>,
+    }
+    pub(super) struct Binding {
+        kernel: usize,
+        inputs: Vec<(String, usize, usize)>,
+        entries: Vec<usize>,
+    }
+    pub(super) struct Split {
+        kernel: usize,
+        inputs: Vec<(String, usize, usize)>,
+        entries: Vec<(usize, usize)>,
+    }
+    pub(super) struct Leaf {
+        seed: usize,
+        weight: String,
+    }
 }
 
 macro_rules! fresh_scalars {
     ($($ty:ty),* $(,)?) => {
         $(impl Fresh for $ty {
+            type Layout = Self;
             fn fresh() -> Self {
                 <$ty>::default()
             }
@@ -765,48 +812,56 @@ macro_rules! fresh_scalars {
 fresh_scalars!(bool, i8, i32, i64, u32, u64, usize, String);
 
 impl Fresh for super::Text {
+    type Layout = String;
     fn fresh() -> Self {
         Self::from("")
     }
 }
 
 impl<T> Fresh for Vec<T> {
+    type Layout = Self;
     fn fresh() -> Self {
         Vec::new()
     }
 }
 
 impl<T> Fresh for Arc<Vec<T>> {
+    type Layout = Vec<T>;
     fn fresh() -> Self {
         Arc::new(Vec::new())
     }
 }
 
 impl Fresh for super::TermRows {
+    type Layout = Vec<(usize, Vec<usize>)>;
     fn fresh() -> Self {
         Self::default()
     }
 }
 
 impl<T> Fresh for Option<T> {
+    type Layout = Self;
     fn fresh() -> Self {
         None
     }
 }
 
 impl<T: Fresh, const N: usize> Fresh for [T; N] {
+    type Layout = [T::Layout; N];
     fn fresh() -> Self {
         std::array::from_fn(|_| T::fresh())
     }
 }
 
 impl<A: Fresh, B: Fresh> Fresh for (A, B) {
+    type Layout = (A::Layout, B::Layout);
     fn fresh() -> Self {
         (A::fresh(), B::fresh())
     }
 }
 
 impl<A: Fresh, B: Fresh, C: Fresh> Fresh for (A, B, C) {
+    type Layout = (A::Layout, B::Layout, C::Layout);
     fn fresh() -> Self {
         (A::fresh(), B::fresh(), C::fresh())
     }
@@ -2234,7 +2289,8 @@ impl Stream for Reader<'_> {
         F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
     {
         let len = self.len(col, 0)?;
-        self.budget.charge(col, allocation(len, size_of::<T>()))?;
+        self.budget
+            .charge(col, allocation(len, size_of::<T::Layout>()))?;
         if self.threads == 1 || self.skip || len < PARALLEL_RECORDS {
             return fill(self, col, len, items, visit);
         }
@@ -2256,8 +2312,11 @@ impl Stream for Reader<'_> {
 
 /// The traversal fills fresh records when reading.
 macro_rules! fresh_records {
-    ($($name:ident { $($field:ident),* $(,)? }),* $(,)?) => {
+    (@layout $name:ident) => { $name };
+    (@layout $name:ident, $layout:ty) => { $layout };
+    ($($name:ident $(as $layout:ty)? { $($field:ident),* $(,)? }),* $(,)?) => {
         $(impl Fresh for $name {
+            type Layout = fresh_records!(@layout $name $(, $layout)?);
             fn fresh() -> Self {
                 Self { $($field: Fresh::fresh()),* }
             }
@@ -2272,14 +2331,14 @@ fresh_records! {
         column_rows, column_weights, dressed,
     },
     KernelFile { inputs, outputs },
-    ContentFile { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },
-    TermFile { slots, dimensions, bindings, vertex, split, rows },
-    SplitFile { kernel, inputs, entries },
-    BindingFile { kernel, inputs, entries },
+    ContentFile as declared::Content { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },
+    TermFile as declared::Term { slots, dimensions, bindings, vertex, split, rows },
+    SplitFile as declared::Split { kernel, inputs, entries },
+    BindingFile as declared::Binding { kernel, inputs, entries },
     SeedFile { columns },
     SeedKeyFile { classes },
     FamilyFile { sequence, rank, orders, leaves, steps },
-    LeafFile { seed, weight },
+    LeafFile as declared::Leaf { seed, weight },
     StepFile { seeded, trace, out, d_alpha, d_out, degree, rank_in, edges, rows },
     EdgeFile { leaf, child, factor, links },
     ForwardFile { states },
@@ -2295,6 +2354,46 @@ fresh_records! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The declared decoded size counts the file model's list buffers at the
+    /// record layouts it had before its shared lists, flat rows and shared
+    /// texts (64-bit sizes), so that members written before them decode
+    /// (charges equal to their declarations) and the writer writes the same
+    /// bytes.
+    /// Stored plan members decode with their charges equal to their
+    /// declared decoded size (evidence runs: `LOOP_PLAN_MEMBERS`, PACBIN
+    /// paths separated by `:`; the main plan and the companion of each).
+    #[test]
+    #[ignore = "stored members from LOOP_PLAN_MEMBERS (evidence runs)"]
+    fn stored_members_decode_within_their_declared_size() {
+        let paths = std::env::var("LOOP_PLAN_MEMBERS").expect("LOOP_PLAN_MEMBERS");
+        for path in paths.split(':').filter(|p| !p.is_empty()) {
+            let reader = crate::pacbin::PacbinReader::open(path).unwrap();
+            let main = crate::loop_runtime::read_loop_program_v4_json(&reader).unwrap();
+            PlanModel::from_binary(&main).unwrap();
+            if let Some(companion) =
+                crate::loop_runtime::read_loop_program_v4_scaleless_json(&reader).unwrap()
+            {
+                PlanModel::from_binary(&companion).unwrap();
+            }
+            println!("decoded {path}");
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn list_buffers_count_at_the_former_record_layouts() {
+        assert_eq!(size_of::<<ContentFile as Fresh>::Layout>(), 112);
+        assert_eq!(size_of::<<TermFile as Fresh>::Layout>(), 128);
+        assert_eq!(size_of::<<BindingFile as Fresh>::Layout>(), 56);
+        assert_eq!(size_of::<<SplitFile as Fresh>::Layout>(), 56);
+        assert_eq!(size_of::<<LeafFile as Fresh>::Layout>(), 32);
+        assert_eq!(
+            size_of::<<(usize, super::super::Text, super::super::Text) as Fresh>::Layout>(),
+            56
+        );
+        assert_eq!(size_of::<<(usize, Vec<usize>) as Fresh>::Layout>(), 32);
+    }
 
     #[test]
     fn columns_pick_the_narrowest_form() {
