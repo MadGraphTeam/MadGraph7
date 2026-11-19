@@ -169,14 +169,23 @@ pub mod virtual_amplitudes {
             let mut handle = ptr::null_mut();
             // SAFETY: owned strings and handle output live for the full call.
             check(unsafe {
-                ffi::rusticol_virtual_open_with_options(
-                    path.as_ptr(),
-                    optional_pointer(&process),
-                    optional_pointer(&parameters),
-                    optional_pointer(&strategy),
-                    optional_pointer(&options),
-                    &mut handle,
-                )
+                match &options {
+                    None => ffi::rusticol_virtual_open(
+                        path.as_ptr(),
+                        optional_pointer(&process),
+                        optional_pointer(&parameters),
+                        optional_pointer(&strategy),
+                        &mut handle,
+                    ),
+                    Some(_) => ffi::rusticol_virtual_open_with_options(
+                        path.as_ptr(),
+                        optional_pointer(&process),
+                        optional_pointer(&parameters),
+                        optional_pointer(&strategy),
+                        optional_pointer(&options),
+                        &mut handle,
+                    ),
+                }
             })?;
             let mut runtime = Self {
                 handle: NonNull::new(handle).ok_or_else(|| {

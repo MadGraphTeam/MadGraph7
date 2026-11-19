@@ -516,7 +516,7 @@ def test_values_do_not_depend_on_the_thread_count(ggtt):  # noqa: F811
 
 
 THREADS_SCRIPT = r"""
-import sys, time
+import json, sys
 from pyamplicol import Runtime
 
 def threads():
@@ -538,7 +538,7 @@ for runtime in runtimes:
     # An extended carrier too: the kinematics improvement and the generic
     # reduction engines.
     runtime.evaluate([point] * 2, mu_r2=["1000000"] * 2, arithmetic="double-double")
-print(before, threads(), [r.inspect()["runtime_options"]["threads"] for r in runtimes])
+print(before, threads(), json.dumps([r.inspect()["runtime_options"]["threads"] for r in runtimes]))
 """
 
 
