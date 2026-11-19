@@ -33,7 +33,6 @@
 #define CONSTEXPRMATHVAR constexpr
 #endif
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // Constexpr implementation of sqrt (see https://stackoverflow.com/a/34134071)

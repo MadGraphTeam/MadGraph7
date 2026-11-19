@@ -15,7 +15,6 @@
 #include "MemoryAccessMomenta.h" // for MemoryAccessMomentaBase::neppM
 #include "MemoryBuffers.h"       // for HostBufferCouplings::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------

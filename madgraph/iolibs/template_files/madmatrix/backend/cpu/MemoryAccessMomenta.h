@@ -13,7 +13,6 @@
 #include "MemoryAccessHelpers.h"
 #include "MadMatrixCxtypes.h"
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------

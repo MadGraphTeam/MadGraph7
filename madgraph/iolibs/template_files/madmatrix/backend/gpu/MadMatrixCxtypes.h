@@ -327,7 +327,6 @@ namespace madmatrix
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) TYPEDEFS
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // --- Type definitions (complex type: cxtype)
@@ -397,7 +396,6 @@ namespace madmatrix
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) FUNCTIONS AND OPERATORS
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
 #if defined MADMATRIX_CUCXTYPE_CXSMPL or defined MADMATRIX_HIPCXTYPE_CXSMPL or defined MADMATRIX_CPPCXTYPE_CXSMPL
@@ -836,7 +834,6 @@ namespace madmatrix
 // COMPLEX TYPES: WRAPPER OVER RI FLOATING POINT PAIR (cxtype_ref)
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
@@ -956,11 +953,7 @@ namespace madmatrix
   typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
 
   // narrowing/casting operators for unification
-#ifdef MADMATRIX_SIMD_DENOM64
-  inline fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return fpdenom_narrow( p ); }
-#else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); }
-#endif
   inline __host__ __device__ fptype_denom_sv fpdenom_bcast( fptype_denom s ) { return fptype_denom_sv{} + s; }
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }

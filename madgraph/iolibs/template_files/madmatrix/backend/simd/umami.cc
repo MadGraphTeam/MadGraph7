@@ -50,9 +50,6 @@ namespace
   // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
   // std::numeric_limits<double>::min(), which is a host function and cannot be
   // called from device code.
-#ifdef MADMATRIX_GPUIMPL
-  __host__ __device__
-#endif
     inline double
     channel_amp2( double numerator, double denominator )
   {
@@ -635,7 +632,7 @@ extern "C"
     // precision (double amplitudes, float colour algebra): the batch is rounded up
     // to that, and no further. Every extra event is computed for nothing: a call
     // with one event used to evaluate two of them on the scalar backend.
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     constexpr std::size_t page_size2 = 2 * vector_size;
 #else
     constexpr std::size_t page_size2 = vector_size;

@@ -13,7 +13,6 @@
 #include "MadMatrixCxtypes.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------

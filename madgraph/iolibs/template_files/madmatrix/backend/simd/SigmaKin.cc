@@ -59,7 +59,7 @@ namespace madmatrix
   using Parameters_independentCouplings::nicoup; // #couplings that are fixed for all events (do not depend on running alphas QCD)
 
   // The number of SIMD vectors of events processed by calculate_jamps
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
   constexpr int nParity = 2;
 #else
   constexpr int nParity = 1;
@@ -399,21 +399,16 @@ namespace madmatrix
       // First - and/or only - neppV page of channels (iParity=0 => ievt0 = ievt00 + 0 * neppV)
       const unsigned int* channelIds = CID_ACCESS::ieventAccessRecordConst( allChannelIds, ievt00 ); // fix bug #899/#911
       uint_sv channelIds_sv = CID_ACCESS::kernelAccessConst( channelIds );                           // fix #895 (compute this only once for all diagrams)
-#ifndef MADMATRIX_SIMD
-      // NB: channelIds_sv is a scalar in no-SIMD C++
-      channelId = channelIds_sv;
-#else
       // NB: channelIds_sv is a vector in SIMD C++
       channelId = channelIds_sv[0];    // element[0]
       for( int i = 1; i < neppV; ++i ) // elements[1...neppV-1]
       {
         assert( channelId == channelIds_sv[i] ); // SANITY CHECK #898: check that all events in a SIMD vector have the same channelId
       }
-#endif
       assert( channelId > 0 ); // SANITY CHECK: scalar channelId must be > 0 if multichannel is enabled (allChannelIds != nullptr)
       if( sanityCheckMixedPrecision )
       {
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
         // Second neppV page of channels (iParity=1 => ievt0 = ievt00 + 1 * neppV)
         const unsigned int* channelIds2 = CID_ACCESS::ieventAccessRecordConst( allChannelIds, ievt00 + neppV ); // fix bug #899/#911
         uint_v channelIds2_v = CID_ACCESS::kernelAccessConst( channelIds2 );                                    // fix #895 (compute this only once for all diagrams)
@@ -455,7 +450,6 @@ namespace madmatrix
   // code generator, which maps it to its parameter. The events of a SIMD page
   // have different invariant masses: the mass is a vector, which the overloads of
   // ixxxxx/oxxxxx/vxxxxx below take.
-#ifdef MADMATRIX_SIMD
   template<class M_ACCESS>
   inline fptype_amp_v
   offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
@@ -514,20 +508,6 @@ namespace madmatrix
   {
     wavefunction_per_lane_mass<W_ACCESS>( vmass, vc, [&]( const fptype_amp m, ALOHAOBJ& out ) { vxxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsv, flv, out, ipar ); } );
   }
-#else
-  template<class M_ACCESS>
-  inline fptype_amp
-  offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
-  {
-    (void)poleMass;
-    const fptype_amp e = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 0, ipar ) );
-    const fptype_amp px = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar ) );
-    const fptype_amp py = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar ) );
-    const fptype_amp pz = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar ) );
-    const fptype_amp m2 = e * e - px * px - py * py - pz * pz;
-    return m2 > 0 ? fpsqrt( m2 ) : 0;
-  }
-#endif
 
   //--------------------------------------------------------------------------
 
@@ -543,16 +523,11 @@ namespace madmatrix
                   const unsigned int* iflavorVec, // input: indices of the flavor combinations (crossing: the code of allihel)
                   const int ievt0 )               // input: first event number in current C++ event page
   {
-#ifdef MADMATRIX_SIMD
     for( int ieppV = 0; ieppV < neppV; ieppV++ )
     {
       const short* heli = ( allihel != nullptr ? cHel[base_row_of_code( allihel[ievt0 + ieppV], iflavorVec[ievt0 + ieppV] )] : hel );
       for( int ipar = 0; ipar < npar; ipar++ ) hel_sv[ipar][ieppV] = heli[ipar];
     }
-#else
-    const short* heli = ( allihel != nullptr ? cHel[base_row_of_code( allihel[ievt0], iflavorVec[ievt0] )] : hel );
-    for( int ipar = 0; ipar < npar; ipar++ ) hel_sv[ipar] = heli[ipar];
-#endif
   }
 
   //--------------------------------------------------------------------------
@@ -584,9 +559,7 @@ namespace madmatrix
   // cancellation (dropped, d d~ > g g is 1.5e-5 off at 1e-6 rad), so they
   // stay, as in the fortran standalone warm-up (AMP.ne.0).
 #ifdef MG_HR_PROBE
-#if defined MADMATRIX_SIMD or !defined MADMATRIX_FPTYPE_DOUBLE
 #error "MG_HR_PROBE needs BACKEND=scalar FPTYPE=d"
-#endif
   static std::vector<double> hrProbeAbs2;           // |amp|^2 at the current point, by amplitude number
   static std::vector<std::vector<char>> hrProbeSeen;  // [ihel][namp]: evaluated at this helicity
   static std::vector<std::vector<char>> hrProbeAlive; // [ihel][namp]: not a cancellation zero
@@ -1214,7 +1187,7 @@ namespace madmatrix
     for( int ighel = 0; ighel < cNGoodHel; ighel++ )
     {
       const fptype_sv me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       const fptype_sv me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
       cxtype_amp_sv jamp_sv[nParity * njampso] = {};
@@ -1225,7 +1198,7 @@ namespace madmatrix
       fptype_sv& me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
       me1 = me1 + ( me1 - me1before ) * csymExtra;
       MEs_ighel[ighel] = me1;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       fptype_sv& me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
       me2 = me2 + ( me2 - me2before ) * *csymExtra2;
       MEs_ighel2[ighel] = me2;
@@ -1330,7 +1303,7 @@ namespace madmatrix
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
     // HELICITY LOOP: CALCULATE WAVEFUNCTIONS
     const int npagV = maxtry / neppV;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT /* clang-format off */
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     // Mixed fptypes #537: float for color algebra and double elsewhere
     // Delay color algebra and ME updates (only on even pages)
     assert( npagV % 2 == 0 ); // SANITY CHECK for mixed fptypes: two neppV-pages are merged to one 2*neppV-page
@@ -1394,7 +1367,7 @@ namespace madmatrix
 #endif
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT /* clang-format off */
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       const int ievt00 = ipagV2 * neppV * 2; // loop on two SIMD pages (neppV events) at a time
 #else
       const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
@@ -1406,13 +1379,13 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           allMEs[ievt] = 0;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           allMEs[ievt2] = 0;
 #endif
         }
         constexpr fptype_amp_sv* jamp2_sv = nullptr; // no need for color selection during helicity filtering
-#if defined MADMATRIX_SIMD and !( defined MADMATRIX_FPTYPE_AMP_FLOAT ) and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE2_FLOAT
         cxtype_amp_sv jamp_sv[2 * njampso] = {}; // all zeros
 #else
         cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
@@ -1424,7 +1397,7 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           helMEs[(size_t)ihel * maxtry0 + ievt] = allMEs[ievt];
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           helMEs[(size_t)ihel * maxtry0 + ievt2] = allMEs[ievt2];
 #endif
@@ -1745,7 +1718,7 @@ namespace madmatrix
     // evaluation in which the events of a SIMD page carry different helicities in lock-step,
     // and everything below (color sum, color and channel choice) runs on that one helicity.
     const int nhelEval = ( allihel != nullptr ? 1 : cNGoodHel );
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     // Mixed fptypes #537: float for color algebra and double elsewhere
     // Delay color algebra and ME updates (only on even pages)
     assert( npagV % 2 == 0 );     // SANITY CHECK for mixed fptypes: two neppV-pages are merged to one 2*neppV-page
@@ -1766,7 +1739,7 @@ namespace madmatrix
 #endif // _OPENMP
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       const int ievt00 = ipagV2 * neppV * 2; // loop on two SIMD pages (neppV events) at a time
 #else
       const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
@@ -1774,7 +1747,7 @@ namespace madmatrix
       // Running sum of partial amplitudes squared for event by event color selection (#402)
       fptype_amp_sv jamp2_sv[nParity * ncolor_flow] = {};
       fptype_sv MEs_ighel[ncomb] = {}; // sum of MEs for all good helicities up to ighel (first - and/or only - neppV page)
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (second neppV page)
 #endif
 
@@ -1788,7 +1761,7 @@ namespace madmatrix
       fptype_sv csymExtra{};
       for( int ie = 0; ie < neppV; ie++ )
         reinterpret_cast<fptype*>( &csymExtra )[ie] = ( allihel == nullptr && csym_lane_on( params, iflavorVec[ievt00 + ie] ) ) ? (fptype)1. : (fptype)0.;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       fptype_sv csymExtra2{};
       for( int ie = 0; ie < neppV; ie++ )
         reinterpret_cast<fptype*>( &csymExtra2 )[ie] = ( allihel == nullptr && csym_lane_on( params, iflavorVec[ievt00 + neppV + ie] ) ) ? (fptype)1. : (fptype)0.;
@@ -1803,7 +1776,7 @@ namespace madmatrix
       if( hrUseRecycling && allihel == nullptr && !params.hrStale )
       {
         hr_page( params, allmomenta, allcouplings, iflavorVec, allMEs, allNumerators, allDenominators, jamp2_sv, MEs_ighel,
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
                  MEs_ighel2, csymExtra, &csymExtra2,
 #else
                  nullptr, csymExtra, nullptr,
@@ -1843,7 +1816,7 @@ namespace madmatrix
         // color_sum_cpu_blas and is applied while it builds the running sums.
         if( nhelEval > 0 )
         {
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), nhelEval, ievt00,
                               reinterpret_cast<const fptype*>( &csymExtra ), reinterpret_cast<const fptype*>( &csymExtra2 ) );
 #else
@@ -1861,7 +1834,7 @@ namespace madmatrix
           // Snapshot the running |M|^2 sum before this helicity's contribution is
           // added, so the C-parity step below can add the very same contribution again
           const fptype_sv me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const fptype_sv me2before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
           cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
@@ -1870,7 +1843,7 @@ namespace madmatrix
           calculate_jamps( params, ( allihel != nullptr ? nullptr : cHel[ihel] ), allihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
           color_sum_cpu( allMEs, jamp_sv, ievt00 );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
           // C-parity weight 2 where the lane's sum was de-duplicated: the mirror
@@ -1880,7 +1853,7 @@ namespace madmatrix
             fptype_sv& me1 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
             me1 = me1 + ( MEs_ighel[ighel] - me1before ) * csymExtra;
             MEs_ighel[ighel] = me1;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
             fptype_sv& me2 = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
             me2 = me2 + ( MEs_ighel2[ighel] - me2before ) * csymExtra2;
             MEs_ighel2[ighel] = me2;
@@ -1898,7 +1871,7 @@ namespace madmatrix
       {
         const int ievt = ievt00 + ieppV;
         allselhel[ievt] = 0;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
         allselhel[ievt00 + ieppV + neppV] = 0;
 #endif
         if( allihel != nullptr )
@@ -1906,7 +1879,7 @@ namespace madmatrix
           // No choice: each event was evaluated for its given helicity only, whose |M|^2 (signed,
           // with an interference) is the color sum above
           allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           allselhel[ievt + neppV] = allihel[ievt + neppV] + 1;
 #endif
           continue;
@@ -1917,14 +1890,10 @@ namespace madmatrix
           {
             fptype ighelSum[ncomb];
             for( int ighel = 0; ighel < nGoodLoop; ighel++ )
-#if defined MADMATRIX_SIMD
               ighelSum[ighel] = MEs_ighel[ighel][ieppV];
-#else
-              ighelSum[ighel] = MEs_ighel[ighel];
-#endif
             if( valid_flavor_id( iflavorVec[ievt] ) )
               *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( params, ighelSum, nGoodLoop, iflavorVec[ievt], allrndhel[ievt], allselhel[ievt] );
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
             const int ievt2 = ievt00 + ieppV + neppV;
             for( int ighel = 0; ighel < nGoodLoop; ighel++ )
               ighelSum[ighel] = MEs_ighel2[ighel][ieppV];
@@ -1934,38 +1903,24 @@ namespace madmatrix
             continue;
           }
         }
-#if defined MADMATRIX_SIMD
         const bool okcdf = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt] ) && selectable_total( MEs_ighel[nGoodLoop - 1][ieppV] );
-#else
-        const bool okcdf = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt] ) && selectable_total( MEs_ighel[nGoodLoop - 1] );
-#endif
         for( int ighel = 0; okcdf && ighel < nGoodLoop; ighel++ )
         {
-#if defined MADMATRIX_SIMD
           const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[nGoodLoop - 1][ieppV] );
-#else
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[nGoodLoop - 1] );
-#endif
           if( okhel )
           {
             // Unnormalised CDF bin [clo,chi) of the selected ighel, and the total
             // ctot the stored variate is normalised by (okhel tested rnd < hi/tot)
             fptype clo = (fptype)0;
-#if defined MADMATRIX_SIMD
             const fptype ctot = MEs_ighel[nGoodLoop - 1][ieppV];
             const fptype chi = MEs_ighel[ighel][ieppV];
             if( ighel > 0 ) clo = MEs_ighel[ighel - 1][ieppV];
-#else
-            const fptype ctot = MEs_ighel[nGoodLoop - 1];
-            const fptype chi = MEs_ighel[ighel];
-            if( ighel > 0 ) clo = MEs_ighel[ighel - 1];
-#endif
             const int ihelF = selected_helicity( params, ighel, iflavorVec[ievt], allrndhel[ievt] * ctot, clo, chi ); // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
             allselhel[ievt] = ihelF;
             break;
           }
         }
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
         const int ievt2 = ievt00 + ieppV + neppV;
         const bool okcdf2 = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt2] ) && selectable_total( MEs_ighel2[nGoodLoop - 1][ieppV] );
         for( int ighel = 0; okcdf2 && ighel < nGoodLoop; ighel++ )
@@ -1983,7 +1938,7 @@ namespace madmatrix
         }
 #endif
       }
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       const int vecsize = 2 * neppV;
 #else
       const int vecsize = neppV;
@@ -2064,13 +2019,8 @@ namespace madmatrix
               targetamp[icolC] = 0;
             else
               targetamp[icolC] = targetamp[icolC - 1];
-#ifdef MADMATRIX_SIMD
             if( madmatrix::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
               jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )][ieppV % neppV];
-#else
-            if( madmatrix::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )];
-#endif
           }
           const int ievt = ievt00 + ieppV;
           allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
@@ -2091,7 +2041,7 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           allselcol[ievt] = 0; // no color selected in Fortran range [1,ncolor] if channelId == 0 (see #931)
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           allselcol[ievt2] = 0; // no color selected in Fortran range [1,ncolor] if channelId == 0 (see #931)
 #endif

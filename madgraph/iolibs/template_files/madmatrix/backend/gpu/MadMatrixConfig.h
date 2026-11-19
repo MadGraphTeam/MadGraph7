@@ -10,14 +10,14 @@
 #include <sstream>
 #include <string>
 
-// Is this a GPU (CUDA, HIP) or CPU implementation?
+// CUDA or HIP implementation
 #ifdef __CUDACC__ // this must be __CUDACC__
 #define MADMATRIX_GPUIMPL cuda
 #elif defined __HIPCC__
 #define MADMATRIX_GPUIMPL hip
 #include "hip/hip_runtime.h" // needed for blockDim, blockIdx, threadIdx: better in MadMatrixConfig.h than in GpuAbstraction.h
 #else
-#undef MADMATRIX_GPUIMPL
+#error The gpu backend must be compiled with nvcc or hipcc
 #endif
 
 // Make sure that __HIP_PLATFORM_NVIDIA__ is undefined
@@ -91,36 +91,14 @@
 
 // Complex type in HIP: cxsmpl (ONLY ONE OPTION POSSIBLE? #810)
 // (NB THIS IS MADMATRIX_*HIP*CXTYPE_xxx)
-#elif defined __HIPCC__
+#else
 #define MADMATRIX_HIPCXTYPE_CXSMPL 1 // default for HIP
-
-// Complex type in C++: std::complex or cxsmpl (CHOOSE ONLY ONE)
-// (NB THIS IS MADMATRIX_*CPP*CXTYPE_xxx)
-#else
-//#define MADMATRIX_CPPCXTYPE_STDCOMPLEX 1 // ~8 percent slower on float, same on double (5.1E6/double, 9.4E6/float)
-#define MADMATRIX_CPPCXTYPE_CXSMPL 1 // new default (5.1E6/double, 10.2E6/float)
 #endif
 
-// Choose if cuBLAS and hipBLAS are supported for generating random numbers
-// For both CUDA and HIP, by default, do not inline, but allow this macro to be set from outside with e.g. -DMADMATRIX_HAS_NO_BLAS
-// (there may exist CUDA/HIP installations, e.g. using the HPC package, which do not include cuBLAS/hipBLAS?)
-#ifdef __CUDACC__ // this must be __CUDACC__
-//#undef MADMATRIX_HAS_NO_BLAS // default
-////#define MADMATRIX_HAS_NO_BLAS 1
-#elif defined __HIPCC__
-//#undef MADMATRIX_HAS_NO_BLAS // default
-////#define MADMATRIX_HAS_NO_BLAS 1
-#else
-#define MADMATRIX_HAS_NO_BLAS 1
-#endif
+// cuBLAS and hipBLAS are used unless -DMADMATRIX_HAS_NO_BLAS is passed
+// (some CUDA/HIP installations, e.g. using the HPC package, do not include them)
 
-// CUDA nsight compute (ncu) debug: add dummy lines to ease SASS program flow navigation
-#ifdef __CUDACC__ // this must be __CUDACC__
-#undef MADMATRIX_NSIGHT_DEBUG // default in CUDA
-//#define MADMATRIX_NSIGHT_DEBUG 1 // CURRENTLY NO LONGER SUPPORTED!
-#else
-#undef MADMATRIX_NSIGHT_DEBUG // only option in HIP or C++
-#endif /* clang-format on */
+/* clang-format on */
 
 // SANITY CHECKS (floating point precision for everything but color algebra #537)
 #if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE_FLOAT
@@ -279,35 +257,14 @@ using madmatrix::fptype_denom;
 using madmatrix::fptype_amp;
 using madmatrix::fptype_colour;
 
-// Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
-#ifdef MADMATRIX_NOARMNEON
-#undef __ARM_NEON
-#endif
-
 // C++ SIMD vectorization width (this will be used to set neppV)
 #undef MADMATRIX_SIMD
 
-// macro for computing denom twice to fill rest of SIMD lane for rest
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_FLOAT and defined MADMATRIX_FPTYPE_MOMENTA_DOUBLE
-#define MADMATRIX_SIMD_DENOM64 1
-#endif
-
-/* clang-format off */
-// CUDA nsight compute (ncu) debug: add dummy lines to ease SASS program flow navigation [NB: CURRENTLY NO LONGER SUPPORTED!]
-// Arguments (not used so far): text is __FUNCTION__, code is 0 (start) or 1 (end)
-//#if defined __CUDACC__ && defined MADMATRIX_NSIGHT_DEBUG // this must be __CUDACC__
-//#define mgDebugDeclare() __shared__ float mgDebugCounter[madmatrix::ntpbMAX];
-//#define mgDebugInitialise() { mgDebugCounter[threadIdx.x] = 0; }
-//#define mgDebug( code, text ) { mgDebugCounter[threadIdx.x] += 1; }
-//#define mgDebugFinalise() { if ( blockIdx.x == 0 && threadIdx.x == 0 ) printf( "MGDEBUG: counter=%f\n", mgDebugCounter[threadIdx.x] ); }
-//#else
+// No-op debug macros (the nsight-based variant is no longer supported)
 #define mgDebugDeclare() /*noop*/
 #define mgDebugInitialise() /*noop*/
 #define mgDebug( code, text ) /*noop*/
 #define mgDebugFinalise() /*noop*/
-//#endif /* clang-format on */
-
-// Define empty CUDA/HIP declaration specifiers for C++
 
 // For SANITY CHECKS: check that neppR, neppM, neppV... are powers of two (https://stackoverflow.com/a/108360)
 inline constexpr bool

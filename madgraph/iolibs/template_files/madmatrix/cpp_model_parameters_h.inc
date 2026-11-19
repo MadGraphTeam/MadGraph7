@@ -36,7 +36,6 @@
 #include <set>
 #include <string>
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // Define FLV_COUPLING struct
@@ -166,7 +165,6 @@ namespace madmatrix
 
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   namespace Parameters_dependentCouplings

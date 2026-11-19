@@ -413,7 +413,6 @@ namespace madmatrix
 // COMPLEX TYPES: WRAPPER OVER RI FLOATING POINT PAIR (cxtype_ref)
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]

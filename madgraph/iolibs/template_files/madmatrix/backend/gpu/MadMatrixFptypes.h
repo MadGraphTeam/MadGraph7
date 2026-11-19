@@ -13,7 +13,6 @@
 #include <cmath>
 #include <type_traits>
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //==========================================================================

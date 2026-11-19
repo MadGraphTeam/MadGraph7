@@ -34,7 +34,6 @@
 //#undef MADMATRIX_HAS_CPPCXTYPEV_BRK // gcc test (very slightly slower? issue #172)
 #endif
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
 
@@ -229,7 +228,6 @@ namespace madmatrix
 
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
 
