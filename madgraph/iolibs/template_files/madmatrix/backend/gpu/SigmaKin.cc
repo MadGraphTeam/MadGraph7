@@ -383,9 +383,25 @@ namespace madmatrix
 #ifdef MADMATRIX_NO_SHARED_WF
     return 0;
 #else
-    if( sm == 80 || sm == 87 ) return 166912;
-    if( sm >= 90 && sm < 120 ) return 232448;
-    return 101376;
+    switch( sm )
+    {
+      case 70:
+      case 72: return 98304;
+      case 75: return 65536;
+      case 80:
+      case 87: return 166912;
+      case 86:
+      case 89:
+      case 120:
+      case 121: return 101376;
+      case 90:
+      case 100:
+      case 101:
+      case 103:
+      case 107:
+      case 110: return 232448;
+      default: return 49152; // Unknown arch: no opt-in needed.
+    }
 #endif
   }
 
