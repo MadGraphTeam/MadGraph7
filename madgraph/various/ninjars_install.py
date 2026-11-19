@@ -359,7 +359,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,
-              'compiler_runtime': 'gnu-linux-libgcc_s-before-rust',
+              'compiler_runtime': 'gnu-linux-static-libgcc-before-rust',
               'build_provenance': _dependency_provenance(bridge)}
     (libdir / CONFIG_NAME).write_text(json.dumps(config, indent=2) + '\n')
     # This exercises the installed Fortran module and both numerical domains.

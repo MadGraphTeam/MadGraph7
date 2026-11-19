@@ -92,5 +92,11 @@ For a manual Fortran link, use both installed flag files in this order::
 
 Here ``PREFIX`` is the NinjaRS installation directory, usually
 ``HEPTools/ninjars``. The current validated compiler-runtime policy is
-GNU Fortran on Linux and places ``-lgcc_s`` before the archive. Additional
+GNU Fortran on Linux and places the compiler's static ``libgcc.a`` (the path
+``gfortran -print-file-name=libgcc.a`` reports), followed by ``-lgcc_s``,
+before the archive. ``-lgcc_s`` alone is not enough on some toolchains, for
+example GNU Fortran on Nix: the archive's own binary128 helpers still win and
+the installer's rounding check fails. Installations that record only
+``-lgcc_s`` passed that check on their own toolchain and remain usable;
+``install ninjars --update`` switches them to the current order. Additional
 platforms require validation of their compiler-runtime resolution.

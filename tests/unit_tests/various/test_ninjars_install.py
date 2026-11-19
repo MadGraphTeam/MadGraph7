@@ -51,7 +51,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             (lib / 'libninjars.a').write_text('new working archive')
             (lib / 'mninjars.mod').write_text('Fortran module')
             (lib / 'ninjars-native-libs.txt').write_text('-lgmp -lmpfr -lpthread\n')
-            (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
+            (lib / 'ninjars-link-before.txt').write_text(
+                shlex.join(['/compiler runtime/libgcc.a', '-lgcc_s']) + '\n')
 
     @staticmethod
     def snapshot(directory):
@@ -106,7 +107,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             config = ninjars_install.read_config(libdir)
             self.assertTrue(config['quad_precision'])
             self.assertEqual(config['native_libs'], ['-lgmp', '-lmpfr', '-lpthread'])
-            self.assertEqual(config['link_before'], ['-lgcc_s'])
+            self.assertEqual(config['link_before'], ['/compiler runtime/libgcc.a', '-lgcc_s'])
+            self.assertEqual(config['compiler_runtime'], 'gnu-linux-static-libgcc-before-rust')
             provenance = config['build_provenance']
             self.assertEqual(provenance['lock_sha256'], hashlib.sha256(
                 (self.bridge/'Cargo.lock').read_bytes()).hexdigest())
@@ -117,6 +119,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertIn('#' + 'b'*40,
                           provenance['git_dependencies'][1]['source'])
             smoke_link = run.call_args_list[1].args[0]
+            self.assertLess(smoke_link.index('/compiler runtime/libgcc.a'),
+                            smoke_link.index('-lgcc_s'))
             self.assertLess(smoke_link.index('-lgcc_s'), next(
                 i for i, arg in enumerate(smoke_link) if arg.endswith('/libninjars.a')))
             self.assertTrue((self.prefix / 'lib' / 'libninjars.a').is_file())
