@@ -6,6 +6,7 @@ import json
 import math
 import re
 import tomllib
+import warnings
 from importlib import resources
 from pathlib import Path, PurePosixPath
 
@@ -15,6 +16,86 @@ MANIFEST_LINE = re.compile(r"([0-9a-f]{64})  ([^\r\n]+)")
 HOST_PATH_MARKERS = (b"/Users/", b"/home/", b"file://")
 
 EXPECTED_UFO_FILES = {
+    # MG5_aMC 3.7.0 models/loop_sm byte for byte (user ruling 2026-10-28
+    # ~15:25 (4)): every module and restriction card, no MG5_aMC cache.
+    "loop_sm": {
+        "CT_couplings.py",
+        "CT_parameters.py",
+        "CT_vertices.py",
+        "__init__.py",
+        "coupling_orders.py",
+        "couplings.py",
+        "function_library.py",
+        "lorentz.py",
+        "object_library.py",
+        "parameters.py",
+        "particles.py",
+        "restrict_c_mass.dat",
+        "restrict_ckm.dat",
+        "restrict_default.dat",
+        "restrict_lepton_masses.dat",
+        "restrict_no_b_mass.dat",
+        "restrict_no_masses.dat",
+        "restrict_no_tau_mass.dat",
+        "restrict_no_widths.dat",
+        "restrict_parallel_test.dat",
+        "restrict_test.dat",
+        "restrict_zeromass_ckm.dat",
+        "vertices.py",
+        "write_param_card.py",
+    },
+    # H.-S. Shao's QCD+QED loop models (MG5_aMC's online model database,
+    # m-sm PLAN Q5 (a)): every module and restriction card, no MG5_aMC cache,
+    # backup, AppleDouble or hidden file and no SMWidth tool; the G_mu
+    # download's Python-2 modules take the Python-3 conversion.
+    "loop_qcd_qed_sm": {
+        "CT_couplings.py",
+        "CT_parameters.py",
+        "CT_vertices.py",
+        "__init__.py",
+        "coupling_orders.py",
+        "couplings.py",
+        "function_library.py",
+        "lorentz.py",
+        "object_library.py",
+        "parameters.py",
+        "particles.py",
+        "restrict_ckm.dat",
+        "restrict_default.dat",
+        "restrict_no_widths.dat",
+        "restrict_parallel_test.dat",
+        "restrict_with_b_mass.dat",
+        "restrict_with_b_mass_no_widths.dat",
+        "restrict_with_technical.dat",
+        "vertices.py",
+        "write_param_card.py",
+    },
+    "loop_qcd_qed_sm_Gmu": {
+        "CT_couplings.py",
+        "CT_parameters.py",
+        "CT_vertices.py",
+        "__init__.py",
+        "coupling_orders.py",
+        "couplings.py",
+        "function_library.py",
+        "lorentz.py",
+        "object_library.py",
+        "parameters.py",
+        "particles.py",
+        "restrict_a0.dat",
+        "restrict_ckm.dat",
+        "restrict_default.dat",
+        "restrict_no_widths.dat",
+        "restrict_parallel_test.dat",
+        "restrict_parallel_test_WW.dat",
+        "restrict_parallel_test_WZ.dat",
+        "restrict_parallel_test_ZZ.dat",
+        "restrict_with_b_mass.dat",
+        "restrict_with_b_mass_no_width.dat",
+        "restrict_with_technical.dat",
+        "vertices.py",
+        "write_param_card.py",
+    },
     "scalar_gravity": {
         "__init__.py",
         "coupling_orders.py",
@@ -185,8 +266,11 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
 
     transformations = {entry["id"] for entry in provenance["transformations"]}
     records = provenance["files"]
-    assert len(records) == 66
-    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 27
+    assert len(records) == 134
+    # The UFOmodeldb issue-1 model patch (user rule 2026-10-30 ~12:45) changes
+    # three loop_qcd_qed_sm modules and one loop_qcd_qed_sm_Gmu card; the
+    # TeX-name escape repair (ufo-texname-escape-v1) one more module.
+    assert sum(entry["upstream_exact_blob_match"] for entry in records) == 77
 
     record_paths = set()
     for entry in records:
@@ -199,6 +283,11 @@ def test_provenance_covers_every_source_asset_and_license() -> None:
         assert re.fullmatch(r"[0-9a-f]{64}", entry["source_sha256"])
         assert re.fullmatch(r"[0-9a-f]{40}", entry["source_blob_oid"])
         assert entry["transformation_id"] in transformations
+        base = entry.get("base_transformation_id")
+        assert (base is not None) == (
+            entry["transformation_id"] == "ufo-texname-escape-v1"
+        )
+        assert base is None or base in transformations
         assert set(entry["license_ids"]).issubset(licenses)
         record_paths.add(relative)
 
@@ -222,8 +311,15 @@ def test_ufo_directories_are_complete_and_syntactically_valid() -> None:
         model_root = ufo_root / model
         actual = {path.name for path in model_root.iterdir() if path.is_file()}
         assert actual == expected
+        # Compile-time warnings are errors: Python >= 3.12 prints a
+        # SyntaxWarning for an invalid escape such as '\\lambda' in a
+        # non-raw literal when the model is first imported (3.11: a hidden
+        # DeprecationWarning).
         for path in model_root.glob("*.py"):
-            compile(path.read_bytes(), path.as_posix(), "exec")
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", SyntaxWarning)
+                warnings.simplefilter("error", DeprecationWarning)
+                compile(path.read_bytes(), path.as_posix(), "exec", dont_inherit=True)
 
 
 def test_all_json_is_parseable_and_models_have_expected_shape() -> None:

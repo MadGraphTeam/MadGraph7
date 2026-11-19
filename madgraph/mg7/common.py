@@ -2,6 +2,7 @@
 
 import logging
 import os
+import glob
 import re
 import subprocess
 import sys
@@ -47,6 +48,25 @@ LOG_LEVEL_MAP = {
 def ms_log_handler(level: ms.Logger.LogLevel, message: str):
     logger.log(LOG_LEVEL_MAP[level], message)
 ms.Logger.set_log_handler(ms_log_handler)
+
+
+def new_run_path(run_name: str) -> str:
+    """Create and return the next free Events/<run_name>_NN."""
+    os.makedirs("Events", exist_ok=True)
+    run_dir_prefix = os.path.join("Events", f"{run_name}_")
+    existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+    run_index = 1
+    for run_dir in existing_run_dirs:
+        run_index_str = run_dir[len(run_dir_prefix):]
+        if run_index_str.isnumeric():
+            run_index = max(run_index, int(run_index_str) + 1)
+    while True:
+        try:
+            run_path = f"{run_dir_prefix}{run_index:02d}"
+            os.mkdir(run_path)
+            return run_path
+        except FileExistsError:
+            run_index += 1
 
 
 def get_start_time():
@@ -163,9 +183,19 @@ def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
     beam = run_card["beam"]
     return bool(
         mlm_clustering and not is_decay and not leptonic
+        and beam["dynamical_scale_choice"] != "ckkwl"
         and beam["pdf_reweighting"]
         and (beam["scale_scheme"] == "madevent"
              or beam["clustering_mean_pdf_ladder"]))
+
+
+def mlm_clustering_history(run_card):
+    """The clustering_history of the scale's MLM clustering. Pinned to
+    all_diagrams under "ckkwl", keeping that scale a function of the momenta."""
+    beam = run_card["beam"]
+    if beam["dynamical_scale_choice"] == "ckkwl":
+        return "all_diagrams"
+    return beam["clustering_history"]
 
 
 def interference_helicities_summed(run_card):
@@ -184,10 +214,16 @@ def interference_helicities_summed(run_card):
 def lhe_helicities(meta, run_card):
     """The helicity table the LHE completer writes for a subprocess: its own,
     or 9 for every particle of an interference subprocess whose |M|^2 is the
-    helicity sum (interference_helicities_summed)."""
+    helicity sum (interference_helicities_summed), and for the massive
+    fermions whose two spin states are not helicity states (the
+    "unknown_helicity" legs: output --axial_gauge=True)."""
     helicities = meta["helicities"]
     if meta.get("interference") and interference_helicities_summed(run_card):
         return [[9] * len(row) for row in helicities]
+    unknown = set(meta.get("unknown_helicity", ()))
+    if unknown:
+        return [[9 if i in unknown else hel for i, hel in enumerate(row)]
+                for row in helicities]
     return helicities
 
 

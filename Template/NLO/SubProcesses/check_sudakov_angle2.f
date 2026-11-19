@@ -1,4 +1,5 @@
       Program DRIVER
+      use fks_phase_space_data, only: p_born
 c**************************************************************************
 c     This is the driver for the whole calculation
 c**************************************************************************
@@ -21,16 +22,13 @@ C
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
       double precision p(0:3, nexternal), prambo(0:3,100)
-      double precision p_born(0:3,nexternal-1),p_born_first(0:3,nexternal-1)
-      common/pborn/p_born
+      double precision p_born_first(0:3,nexternal-1)
       double precision pswgt
       double precision fks_double, fks_single
       double precision, allocatable :: virt_wgts(:,:)
       double precision double, single, finite
       double precision born, virt_wgt
       double precision totmass
-      logical calculatedborn
-      common/ccalculatedborn/calculatedborn
       logical fksprefact
       parameter (fksprefact=.true.)
       integer nfksprocess
@@ -328,7 +326,6 @@ c initialization
           finite=0d0
           single=0d0
           double=0d0
-          calculatedborn = .false.
 
           if (.not.first_time_momenta) goto 201
 

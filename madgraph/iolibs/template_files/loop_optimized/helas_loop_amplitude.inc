@@ -159,6 +159,18 @@ C Ninja is used
 ## }
 	ENDIF
 ##	}
+## if(ninjars_available){
+      ELSEIF (MLReductionLib(I_LIB).EQ.8) THEN
+        IF (.NOT.DOING_QP) THEN
+          CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+        ELSE
+## if(ninjars_supports_quad_prec){
+          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+## } else {
+          STOP 'NinjaRS quadruple precision is unavailable'
+## }
+        ENDIF
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(SQUAREDSOINDEX,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
@@ -182,6 +194,18 @@ C Tensor Integral Reduction is used
 	    ENDIF
 
 ##	}
+## if(ninjars_available){
+      ELSEIF (MLReductionLib(I_LIB).EQ.8) THEN
+        IF (.NOT.DOING_QP) THEN
+          CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+        ELSE
+## if(ninjars_supports_quad_prec){
+          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+## } else {
+          STOP 'NinjaRS quadruple precision is unavailable'
+## }
+        ENDIF
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(1,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))

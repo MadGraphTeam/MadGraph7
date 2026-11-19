@@ -6,6 +6,7 @@ from .inspection import (
     ArtifactAliasInspection,
     ArtifactDependencyInspection,
     ArtifactInspection,
+    ArtifactLoopInspection,
     ArtifactProcessInspection,
     inspect_artifact,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "ArtifactBuilder",
     "ArtifactDependencyInspection",
     "ArtifactInspection",
+    "ArtifactLoopInspection",
     "ArtifactManifest",
     "ArtifactProcessInspection",
     "ArtifactTransaction",

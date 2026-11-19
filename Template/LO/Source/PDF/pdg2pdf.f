@@ -121,7 +121,16 @@ c       change e/mu/tau = 8/9/10 to 11/13/15
         do i_ee = 1, n_ee
           ee_components(i_ee) = compute_eepdf(x,omx_ee(iabs(beamid)),xmu,i_ee,ipart,ih_local)
         enddo
-        pdg2pdf =  ee_components(1) ! temporary to test pdf load
+c       A dressed-lepton density is not one number but the n_ee components
+c       just filled: the luminosity is their beam-by-beam contraction
+c       (ee_comp_prod), not a product of two scalars.  There is no scalar
+c       this function could return, so it returns zero rather than one of
+c       the components: a caller which forgets to pick ee_components up
+c       (auto_dsig does it right after this call) then gets an obvious zero
+c       instead of a plausible cross section that quietly misses the
+c       beamstrahlung, which is 13% of the luminosity at FCC-ee.  The NLO
+c       pdg2pdf.f does the same.
+        pdg2pdf = 0d0
 c        write(*,*), x, beamid ,omx_ee(iabs(beamid)),xmu,1,ipart,ih_local,pdg2pdf
         return
       endif

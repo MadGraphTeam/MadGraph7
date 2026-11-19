@@ -68,13 +68,15 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Import `pyamplicol` | Yes | Registers the package key; public exports remain lazy. |
 | Inspect an artifact | Startup only | Reads metadata and indexes only. |
 | Ordinary Python f64 evaluation (`precision=16`) | Startup only | Runs through Rusticol and the artifact's native evaluator. |
-| C11/C++17/Fortran 2008/Rust 2021 runtime | No | Ordinary and opt-in correlated APIs are f64-only. |
+| C11/C++17/Fortran 2008/Rust 2021 runtime and the UMAMI provider (tree) | No: neither a user licence nor the package key | Every tree call is f64-only: values, helicity- and colour-resolved values, global and per-point helicity / colour-flow selections, squared-order partials, colour- and spin-correlated values, the OTF warm-up and parameter updates; see [Concurrent processes without a license](#concurrent-processes-without-a-license). |
 | Direct JIT f64 load | Startup only in Python | Uses the separate MIT-licensed SymJIT runtime. |
 | Compatible C++/ASM evaluator load | Startup only in Python | Uses the artifact's target-native library. |
 | Compile a JSON/UFO model | Yes | Symbolic model construction. |
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
+| Virtual (one-loop) evaluation at f64 | No (native code), except loops at light masses | Runs the artifact's stored SymJIT applications at any model parameters, scale and pole selection; see [Concurrent processes without a license](#concurrent-processes-without-a-license). A loop whose squared masses or invariants lie strictly between 0 and 1e-9 in the model's units is reduced by the exact engine natively under the package key, as double-double is. |
+| Virtual evaluation in double-double or arbitrary precision | Yes, natively, under the package key | The loop runtime decodes saved Symbolica evaluator state in its Rust copy of Symbolica, which pyAmpliCol's key unlocks. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
 change the terms governing Symbolica use during generation.
@@ -87,8 +89,8 @@ artifact. Rusticol loads and lowers that application to native code without:
 - performing Symbolica computations (Python package startup registers the key);
 - reading `SYMBOLICA_LICENSE`;
 - applying Symbolica's generation-time worker clamp;
-- linking the arbitrary-precision Symbolica/Rug/Malachite closure into the
-  wheel's f64 native SDK.
+- calling into the arbitrary-precision Symbolica/Rug closure, which the native
+  libraries still link for the loop runtime (see below).
 
 This is the deployment path shared by ordinary Python evaluation at precision
 16 and the C11, C++17, Fortran 2008, and Rust 2021 APIs.
@@ -103,6 +105,82 @@ values = runtime.evaluate(momenta, precision=16)
 Independent runtime handles can execute concurrently even when their artifact
 was generated under restricted Symbolica conditions. Do not call one mutable
 handle concurrently because its parameter and warning state is handle-local.
+
+## Concurrent processes without a license
+
+The package key licenses the Python `symbolica` module. The native extension
+(and the native loop SDK) contains its own Rust copy of Symbolica. pyAmpliCol
+registers the same package key with that copy too, and every native call runs
+under it: each entry point of the native extension (the bindings of the tree
+runtime and of the loop module, loop generation included) and of the native
+SDKs holds the key on its calling thread, and pyAmpliCol's native worker pools
+hold it on their workers. Generation, check, evaluation and profiling without a
+personal licence therefore show no restricted-mode banner and never abort
+because another unlicensed Symbolica process of the user holds the restricted
+thread. Without the key, that copy would run restricted: the
+first Symbolica operation of a process takes the user's single restricted
+thread, and any other process of the same user that needs one then aborts
+with "Cannot start another restricted Symbolica thread while this user's
+thread allowance is in use". A personal `SYMBOLICA_LICENSE` is used as
+before. If the package key is expired or rejected, the native code falls back
+to the personal license or to the restricted mode, as the Python side does.
+
+- Importing pyAmpliCol and f64 tree evaluation perform no Symbolica operation
+  in the native code, so any number of unlicensed processes can load and
+  evaluate tree artifacts concurrently. This holds for the Python API and for
+  the native SDKs (the static archive links Symbolica through the loop
+  runtime, but tree evaluation never calls it). The native SDKs need no
+  Symbolica licensing at all in binary64, neither a personal licence nor
+  pyAmpliCol's package key, for every tree call they offer: ordinary values,
+  helicity- and colour-resolved values, global and per-point helicity and
+  colour-flow selections, squared-order partials, colour- and spin-correlated
+  values, the on-the-fly warm-up and model-parameter updates, in the C, C++,
+  Fortran and Rust APIs and the UMAMI provider, in every tree execution mode
+  (recurrence, compiled, on-the-fly, eager). The test
+  `tests/integration/test_native_sdk_tree_licence_free.py` runs them in
+  concurrent processes without `SYMBOLICA_LICENSE` and with
+  `PYAMPLICOL_NATIVE_LIBRARY_KEY=off` while another process holds the
+  restricted Symbolica permit, bitwise as the licensed run. On an x86-64 CPU
+  without AVX and FMA3 a SymJIT tree artifact is refused with the reason
+  rather than evaluated through Symbolica. Tree evaluation at other
+  precisions uses the Python `symbolica` module, which the package key
+  unlocks, so concurrent unlicensed processes work there too.
+- Virtual (one-loop) evaluation of a v2 artifact in f64 (the default
+  `precision=16`) runs the SymJIT applications stored in the artifact and
+  performs no Symbolica operation in the native code, so any number of
+  unlicensed processes (for example a Monte Carlo farm) evaluate virtuals
+  concurrently; it does not depend on the package key either. On an x86-64
+  CPU without AVX and FMA3, where SymJIT cannot compile, f64 evaluates the
+  saved Symbolica states instead, under the package key. One more exception:
+  a loop whose squared masses or invariants at a point lie strictly between
+  0 and 1e-9 in the model's units (a keV-scale mass in GeV; see "Light
+  masses in binary64" in the configuration guide) is reduced by the exact
+  generic engine, which uses Symbolica in the native code under the package
+  key. Such evaluations also run in concurrent unlicensed processes, but
+  they need the package key (or a personal licence) as double-double does.
+  Model parameters, the renormalisation scale and the pole selection can
+  change freely without Symbolica. The binary64 parameter program
+  (couplings, counterterm couplings and masses as functions of the model
+  parameters) is never checked at run time. The zero imaginary part of a
+  branch-cut argument (`log`, `sqrt`, a power) is made positive, so an
+  argument on its cut takes the principal value, `log(-x) = log(x) + iπ`;
+  under the complex-mass scheme an argument that is real when some widths
+  are zero reads its real part when they are, in every precision (its
+  imaginary part could otherwise come out as a rounding residue of either
+  sign); and every branch of a model helper's conditional (`recms`,
+  `reglog`, `grreglog`, ...) is evaluated and the one the parameters pick is
+  selected. Checked against MadLoop and double-double/arbitrary precision
+  on the complex-mass control `e- e+ > mu- mu+` at zero, partial-zero
+  (54 random rows) and physical widths.
+- Double-double and arbitrary-precision virtual evaluation decode saved
+  Symbolica evaluator states natively under the package key, so they also
+  run in concurrent unlicensed processes.
+
+The wheel's native SDK archive contains this loop runtime and therefore links
+Symbolica. `PYAMPLICOL_NATIVE_LIBRARY_KEY=off` disables the package key in
+the native code (a diagnostic; the portability tests use it to show that f64
+virtual evaluation and every f64 tree call of the native SDKs perform no
+Symbolica operation).
 
 See [Runtime and Selectors](runtime-and-selectors.md) and [Native APIs](native-apis.md).
 
@@ -266,8 +344,13 @@ model with `--jit-compress` or `--no-jit-compress`.
 | Component | Role | License/provenance boundary |
 | --- | --- | --- |
 | pyAmpliCol and project Rusticol source | Public package/runtime implementation | BSD Zero Clause License (`0BSD`). |
-| Symbolica | Symbolic generation and Python exact runtime | Proprietary Symbolica Software License Agreement; project redistribution permission is documented separately. |
+| Symbolica | Symbolic generation, Python exact runtime, and the Rust crates linked into the native libraries | Symbolica Source-Available License 1.0 (proprietary, source-available terms); project redistribution permission is documented separately in `licenses/Symbolica.txt`. |
 | SymJIT | Native JIT application runtime | MIT License. |
+| NinjaRS | One-loop integrand reduction, linked into the native libraries | BSD Zero Clause License (`0BSD`). |
+| oneloopmaster | One-loop scalar integrals, linked into the native libraries | BSD Zero Clause License (`0BSD`); a transcription of OneLOop, relicensed with Andreas van Hameren's permission; see `licenses/oneloopmaster.txt`. |
+| TIRust | One-loop tensor-integral reduction, linked into the native libraries (default cargo feature `tir`) | BSD Zero Clause License (`0BSD`), including its scalar masters transcribed from OneLOop with Andreas van Hameren's permission; see `licenses/TIRust.txt`. |
+| GammaLoop crates (FeynKit, Spenso, Idenso, linnet) | Loop kinematics and tensor algebra, linked into the native libraries | MIT OR Apache-2.0, MIT, or GammaLoop's no-restrictions license per crate; the vendored `dot-parser` declares GPL-2.0-or-later. |
+| Other linked Rust crates (including Rug with GMP, MPFR and MPC) | Native dependencies | Their own licenses, reproduced under `licenses/rust/`; GMP, MPFR, MPC and the Rust crates `rug` and `gmp-mpfr-sys` are LGPL-3.0-or-later. |
 | UFO model loader | External UFO loading | MIT License. |
 | Bundled SM/scalar/scalar-gravity assets | Example/model data | Asset-specific provenance and reproduced terms in `PROVENANCE.toml` and `licenses/`. |
 | Optional original Fortran AmpliCol checkout | Independent campaign oracle | Not bundled in wheels or sdists; its upstream metadata/terms remain separate. |

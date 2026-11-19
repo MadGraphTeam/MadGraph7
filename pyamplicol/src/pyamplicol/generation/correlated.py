@@ -25,6 +25,7 @@ from pyamplicol.color.correlator_matrices import (
     build_color_correlator_matrices,
     process_color_legs,
 )
+from pyamplicol.color.nc_expansion import NcExpansion
 from pyamplicol.color.plan import GenericColorPlan, build_color_plan
 from pyamplicol.config import (
     Action,
@@ -89,6 +90,11 @@ def correlated_configuration(
         raise ValueError(
             "adjoint FFT is not supported for correlated matrix elements; "
             "use the direct colour contraction"
+        )
+    if effective.process.loop_coupling_orders is not None:
+        raise GenerationError(
+            "virtual correlated generation is not integrated; loop corrections "
+            "cannot use the tree coherent generation path"
         )
     result = replace(
         effective,
@@ -301,6 +307,7 @@ class CorrelatedGenerationBackend(GenerationBackend):
             color_order_mask_pruning=False,
             species_reachability_pruning=False,
             progress_callback=progress_callback,
+            nc_expansion=self._nc_expansion,
         )
         if dag.truncated:
             raise GenerationError(
@@ -425,11 +432,15 @@ class CorrelatedGenerationBackend(GenerationBackend):
             )
             groups = cast(Sequence[Mapping[str, object]], amplitude["coherent_groups"])
             basis_by_helicity: dict[tuple[int, ...], set[int]] = {}
+            grades_by_sector: dict[int, set[int]] = {}
             for group in groups:
                 helicities = tuple(cast(Sequence[int], group["helicities"]))
                 sector_id = cast(int, group["color_sector_id"])
                 basis = basis_by_helicity.setdefault(helicities, set())
                 basis.add(sector_id)
+                grades_by_sector.setdefault(sector_id, set()).add(
+                    cast(int, group.get("nc_grade", 0))
+                )
             if not basis_by_helicity:
                 raise GenerationError("correlated amplitudes have no coherent groups")
             owners = next(iter(basis_by_helicity.values()))
@@ -439,21 +450,34 @@ class CorrelatedGenerationBackend(GenerationBackend):
                 )
             # Open-line colour plans retain aliases whose amplitudes already
             # belong to canonical owners.  Never contract those aliases twice.
+            expansion = self._nc_expansion
             matrices = build_color_correlator_matrices(
                 metadata.color_plan,
                 declarations.color_requests,
                 sector_ids=sorted(owners),
                 color_accuracy=cast(
                     Literal["lc", "nlc", "full"],
-                    self._run_config.color.accuracy
+                    self._color_accuracy
+                    if expansion is not None
+                    else self._run_config.color.accuracy
                     if self._run_config is not None
                     else "lc",
                 ),
+                nc_expansion=expansion,
             )
+            records = [matrix.to_json_dict() for matrix in matrices]
+            if expansion is not None:
+                for record in records:
+                    record["nc_expansion"] = _with_reported_degrees(
+                        cast(Mapping[str, object], record["nc_expansion"]),
+                        cast(Sequence[Mapping[str, object]], record["entries"]),
+                        grades_by_sector,
+                        expansion,
+                    )
             processes[process_id] = {
                 "declarations": declarations.to_json_dict(),
                 "spin_legs": list(declarations.spin_legs),
-                "matrices": [matrix.to_json_dict() for matrix in matrices],
+                "matrices": records,
                 # The native execution schema keeps root group IDs but omits
                 # these compiler descriptors, needed only by this consumer.
                 "coherent_groups": groups,
@@ -474,9 +498,43 @@ class CorrelatedGenerationBackend(GenerationBackend):
         return {"correlators": {"schema_version": 1, "path": CORRELATOR_PAYLOAD_PATH}}
 
     def _write_artifact(self, *args: object, **kwargs: object) -> ArtifactWriteResult:
-        return super()._write_artifact(
-            *args, **kwargs, payload_hook=self._write_correlator_payload
-        )
+        # A caller's payload hook (the loop service's skipped members) is
+        # composed with the correlator payload.
+        extra = kwargs.pop("payload_hook", None)
+
+        def payload(builder: ArtifactBuilder) -> Mapping[str, object]:
+            out = dict(self._write_correlator_payload(builder))
+            if callable(extra):
+                out.update(extra(builder))
+            return out
+
+        return super()._write_artifact(*args, **kwargs, payload_hook=payload)
+
+
+def _with_reported_degrees(
+    record: Mapping[str, object],
+    entries: Sequence[Mapping[str, object]],
+    grades_by_sector: Mapping[int, set[int]],
+    expansion: NcExpansion,
+) -> dict[str, object]:
+    """The matrix's expansion record with the N_c degrees it reports: the
+    degree window of a strict truncation, or for the graded full colour every
+    degree from P down to the lowest reachable one (p + g_l + g_r over the
+    entries and the grades of their sectors' amplitude groups)."""
+
+    reference = cast(int, record["reference_degree"])
+    depth = expansion.depth
+    if depth is None:
+        reachable = [
+            cast(int, entry["nc_power"]) + left + right
+            for entry in entries
+            for left in grades_by_sector.get(cast(int, entry["left_sector_id"]), {0})
+            for right in grades_by_sector.get(cast(int, entry["right_sector_id"]), {0})
+        ]
+        lowest = min(reachable, default=reference)
+    else:
+        lowest = reference - depth
+    return {**record, "degrees": list(range(reference, lowest - 1, -1))}
 
 
 def generate_correlated(

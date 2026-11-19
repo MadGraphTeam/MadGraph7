@@ -17,6 +17,7 @@ import logging
 import os
 import time
 import re
+import shlex
 import glob
 import inspect
 import sys
@@ -96,6 +97,8 @@ class Cluster(object):
     name = 'mother class'
     identifier_length = 14
     badstatus = ''
+    # when set, the name of every job, instead of one derived from its path
+    jobs_identifier = None
 
     def __init__(self,*args, **opts):
         """Init the cluster"""
@@ -133,6 +136,22 @@ class Cluster(object):
         # controlling jobs in controlled type submission
         self.packet = {}
         self.id_to_packet = {}
+
+    def extra_submit_args(self):
+        """The arguments of the cluster_extra_args option for the submit
+        command (sbatch, qsub, bsub), e.g. "--gres=gpu:1" to ask for a GPU."""
+        extra = self.options.get('cluster_extra_args')
+        if not extra or extra == 'None':
+            return []
+        return shlex.split(extra)
+
+    def extra_submit_lines(self):
+        """The cluster_extra_args option as lines of a condor submit file,
+        given as "request_gpus = 1; request_memory = 8GB"."""
+        extra = self.options.get('cluster_extra_args')
+        if not extra or extra == 'None':
+            return ''
+        return '\n'.join(line.strip() for line in extra.split(';') if line.strip())
 
     def submit(self, prog, argument=[], cwd=None, stdout=None, stderr=None, 
                log=None, required_output=[], nb_submit=0):
@@ -267,7 +286,9 @@ class Cluster(object):
     def get_jobs_identifier(self, path, second_path=None):
         """get a unique run_name for all the jobs helps to identify the runs 
         in the controller for some cluster."""
-        
+
+        if self.jobs_identifier:
+            return self.jobs_identifier
         if second_path:
             path = os.path.realpath(pjoin(path, second_path))
         elif not os.path.exists(path):
@@ -679,6 +700,7 @@ class MultiCore(Cluster):
         self.done_pid = []  # list of job finisned
         self.done_pid_queue = queue.Queue()
         self.fail_msg = None
+        self._failure_lock = threading.Lock()
 
         mg5_gpu_env_str = 'MG5_GPU_VISIBLE_DEVICES'
         gpu_variables = [['NVIDIA_VISIBLE_DEVICES', 'CUDA_VISIBLE_DEVICES'],
@@ -708,24 +730,36 @@ class MultiCore(Cluster):
         else:
             t = threading.Thread(target=self.worker)
         t.daemon = True
-        t.start()
         self.demons.append(t)
+        try:
+            t.start()
+        except BaseException:
+            self.demons.remove(t)
+            raise
 
 
     def worker(self, env2=None):
         import queue
-        import _thread
-        while not self.stoprequest.isSet():
-            try:
-                args = self.queue.get(timeout=10)
-                tag, exe, arg, opt = args
-                if 'env' not in opt and env2:
-                    opt['env'] = env2
-                if 'env' in opt and env2:
-                    for key in env2:
-                        if key not in opt['env']:
-                            opt['env'][key] = env2[key]
+        import threading
+        try:
+            while not self.stoprequest.isSet():
                 try:
+                    args = self.queue.get(timeout=10)
+                except queue.Empty:
+                    continue
+                tag = pid = None
+                try:
+                    # A stopped worker may have been waiting in queue.get().
+                    # A wake-up or queued job must not start cancelled work.
+                    if self.stoprequest.isSet():
+                        break
+                    tag, exe, arg, opt = args
+                    if 'env' not in opt and env2:
+                        opt['env'] = env2
+                    if 'env' in opt and env2:
+                        for key in env2:
+                            if key not in opt['env']:
+                                opt['env'][key] = env2[key]
                     # check for executable case
                     if isinstance(exe,str):
                         if os.path.exists(exe) and not exe.startswith('/'):
@@ -743,12 +777,15 @@ class MultiCore(Cluster):
                             proc = misc.Popen(exe,  **opt)
                         pid = proc.pid
                         self.pids.put(pid)
+                        # Failure can race with process creation in another
+                        # worker, before its PID was available to remove().
+                        if self.stoprequest.isSet():
+                            self.remove()
                         proc.wait()
                         if proc.returncode not in [0, 143, -15] and not self.stoprequest.isSet():
                             fail_msg = 'program %s launch ends with non zero status: %s. Stop all computation' % \
                             (' '.join([exe]+arg), proc.returncode)
                             logger.warning(fail_msg)
-                            self.stoprequest.set()
                             self.remove(fail_msg)
                     # handle the case when this is a python function. Note that
                     # this use Thread so they are NO built-in parallelization this is
@@ -763,39 +800,39 @@ class MultiCore(Cluster):
                             returncode = exe(*arg, **opt)
                         except Exception as error:
                             #logger.warning("fct %s does not return 0. Stopping the code in a clean way. The error was:\n%s", exe, returncode)
-                            self.stoprequest.set()
                             self.remove("Function %s raised the following exception: %s\n %s" % (exe, type(error), error))
-                except Exception as error:
-                    self.fail_msg = sys.exc_info()
+                except BaseException as error:
                     logger.warning(str(error))
-                    self.stoprequest.set()
-                    self.remove(error)
-                    
-                    if __debug__:
-                        raise self.fail_msg[1].with_traceback(self.fail_msg[2])
-
-                self.queue.task_done()
-                self.done.put(tag)
-                self.done_pid_queue.put(pid)
-                #release the mother to print the status on the screen
-                try:
+                    self.remove(sys.exc_info())
+                finally:
+                    if tag is not None:
+                        self.done.put(tag)
+                    if pid is not None:
+                        self.done_pid_queue.put(pid)
                     self.lock.set()
-                except _thread.error:
-                    continue
-            except queue.Empty:
-                continue
-        import threading
-        self.demons.remove(threading.current_thread())  
+                    # Finish bookkeeping before queue.join() can release wait().
+                    self.queue.task_done()
+        finally:
+            self.demons.remove(threading.current_thread())
             
     
     def submit(self, prog, argument=[], cwd=None, stdout=None, stderr=None,
                log=None, required_output=[], nb_submit=0, python_opts={}):
         """submit a job on multicore machine"""
-        
+        # Callers may remove() again after wait() has already cleaned up.
+        # Retire any idle workers before reopening that fully reset pool.
+        if (self.stoprequest.isSet() and self.fail_msg is None and
+                self.submitted.empty() and self.queue.empty()):
+            self._stop_workers()
+            self._reset_batch(reset_work_queue=True, failed=True)
+
         # open threads if needed   
-        self.stoprequest.clear()     
-        if len(self.demons) < self.nb_core:
-            self.start_demon()
+        # Submissions racing a stopped batch remain cancelled until wait()
+        # has reported its error and retired the workers.
+        with self._failure_lock:
+            if self.fail_msg is None and not self.stoprequest.isSet():
+                if len(self.demons) < self.nb_core:
+                    self.start_demon()
         
         tag = (prog, tuple(argument), cwd, nb_submit)
         if isinstance(prog, str):
@@ -824,20 +861,31 @@ class MultiCore(Cluster):
 
     def remove(self, error=None):
         """Ensure that all thread are killed"""
+        import queue
         
         # ensure the worker to stop
-        self.stoprequest.set()
-        if error and not self.fail_msg:
-            self.fail_msg = error
+        with self._failure_lock:
+            if error and self.fail_msg is None:
+                self.fail_msg = error
+            self.stoprequest.set()
+        # A failed worker can leave queued jobs with nobody left to run them.
+        # Wake wait() so it reports the failure instead of waiting for the queue.
+        self.lock.set()
             
         # cleaning the queue done_pid_queue and move them to done_pid        
-        while not self.done_pid_queue.empty():
-            pid = self.done_pid_queue.get()
+        while True:
+            try:
+                pid = self.done_pid_queue.get_nowait()
+            except queue.Empty:
+                break
             self.done_pid.append(pid)
-#            self.done_pid_queue.task_done()
+            self.done_pid_queue.task_done()
 
-        while not self.pids.empty():
-            pid = self.pids.get()
+        while True:
+            try:
+                pid = self.pids.get_nowait()
+            except queue.Empty:
+                break
             self.pids.task_done()
             if isinstance(pid, tuple):
                 continue
@@ -847,6 +895,57 @@ class MultiCore(Cluster):
                             % {'pid':pid} )
             out = os.system('kill -15 %(pid)s > /dev/null 2>&1' % {'pid':pid} )   
 
+
+    def _stop_workers(self):
+        """Retire workers before cancelling queued work or replacing queues."""
+        import queue
+        self.stoprequest.set()
+        workers = list(self.demons)
+        for worker in workers:
+            self.queue.put(None)  # wake workers blocked in queue.get()
+        for worker in workers:
+            worker.join()
+        while True:
+            try:
+                self.queue.get_nowait()
+            except queue.Empty:
+                break
+            self.queue.task_done()
+
+    def _reset_batch(self, reset_work_queue=False, failed=False):
+        import queue
+        if failed:
+            for packet in self.packet.values():
+                while True:
+                    try:
+                        packet.queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    packet.queue.task_done()
+            self.packet = {}
+            self.retry_args = {}
+        if reset_work_queue:
+            self.queue = queue.Queue()
+        self.lock.clear()
+        self.done = queue.Queue()
+        self.done_pid = []
+        self.done_pid_queue = queue.Queue()
+        self.nb_done = 0
+        self.submitted = queue.Queue()
+        self.pids = queue.Queue()
+        self.id_to_packet = {}
+        with self._failure_lock:
+            self.fail_msg = None
+            self.stoprequest.clear()
+
+    @staticmethod
+    def _raise_failure(failure):
+        if isinstance(failure, BaseException):
+            raise failure
+        if isinstance(failure, str):
+            raise Exception(failure)
+        if failure:
+            raise failure[1].with_traceback(failure[2])
 
 
     def wait(self, me_dir, update_status, update_first=None):
@@ -858,10 +957,16 @@ class MultiCore(Cluster):
 
         try: # to catch KeyBoardInterupt to see which kind of error to display 
             last_status = (0, 0, 0)
+            Idle, Running, Done = last_status
             sleep_time = 1
             use_lock = True
             first = True
             while True:
+                if self.fail_msg is not None or self.stoprequest.isSet():
+                    # Join stopped workers before draining their queues;
+                    # cancelled jobs need not have completion records.
+                    self.stoprequest.set()
+                    break
                 force_one_more_loop = False # some security
                             
                 # Loop over the job tagged as done to check if some packet of jobs
@@ -896,19 +1001,6 @@ class MultiCore(Cluster):
                     self.queue.join()
                     break
                 
-                if self.stoprequest.isSet() and Running <= 0 and not force_one_more_loop:
-                    # A job failed: the workers have stopped and the jobs
-                    # still in the queue will never start. Drop them rather
-                    # than wait for them forever; the failure is raised below.
-                    while True:
-                        try:
-                            self.queue.get_nowait()
-                        except queue.Empty:
-                            break
-                        self.queue.task_done()
-                    update_status(0, 0, Done)
-                    break
-
                 if (Idle, Running, Done) != last_status:
                     if first and update_first:
                         update_first(Idle, Running, Done)
@@ -918,8 +1010,11 @@ class MultiCore(Cluster):
                     last_status = (Idle, Running, Done)
                 
                 # cleaning the queue done_pid_queue and move them to done_pid
-                while not self.done_pid_queue.empty():
-                    pid = self.done_pid_queue.get()
+                while True:
+                    try:
+                        pid = self.done_pid_queue.get_nowait()
+                    except queue.Empty:
+                        break
                     self.done_pid.append(pid)
                     self.done_pid_queue.task_done()
                          
@@ -940,43 +1035,25 @@ class MultiCore(Cluster):
                 update_first(Idle, Running, Done)
             
             if self.stoprequest.isSet():
-                if isinstance(self.fail_msg, Exception):
-                    raise self.fail_msg
-                elif isinstance(self.fail_msg, str):
-                    raise Exception(self.fail_msg)
-                elif self.fail_msg:
-                    # can happen that stoprequest is set but not fail if no job have been resubmitted
-                    raise self.fail_msg[1].with_traceback(self.fail_msg[2])
+                self._raise_failure(self.fail_msg)
                 # self.fail_msg is None can happen when no job was submitted -> ignore
 
-            # reset variable for next submission
-            try:
-                self.lock.clear()
-            except Exception:
-                pass
-            self.done = queue.Queue()
-            self.done_pid = []
-            self.done_pid_queue = queue.Queue()
-            self.nb_done = 0
-            self.submitted = queue.Queue()
-            self.pids = queue.Queue()
-            self.stoprequest.clear()
-            self.id_to_packet = {}
-
-
-        except KeyboardInterrupt:
-            # if one of the node fails -> return that error
-            if isinstance(self.fail_msg, Exception):
-                raise self.fail_msg
-            elif isinstance(self.fail_msg, str):
-                raise Exception(self.fail_msg)
-            elif self.fail_msg:
-                raise self.fail_msg[1].with_traceback(self.fail_msg[2])
-            # else return original error
-            raise 
-
-        if not self.keep_thread:
-            self.stoprequest.set()
+        except BaseException as error:
+            failure = self.fail_msg
+            self.remove()
+            self._stop_workers()
+            self._reset_batch(reset_work_queue=True, failed=True)
+            # Preserve the existing preference for a worker's error if the
+            # user interrupts while that failure is being reported.
+            if isinstance(error, KeyboardInterrupt) and failure is not None:
+                self._raise_failure(failure)
+            raise
+        else:
+            cancelled = self.stoprequest.isSet()
+            stopped = cancelled or not self.keep_thread
+            if stopped:
+                self._stop_workers()
+            self._reset_batch(reset_work_queue=stopped, failed=cancelled)
 
 class CondorCluster(Cluster):
     """Basic class for dealing with cluster submission"""
@@ -1021,6 +1098,7 @@ class CondorCluster(Cluster):
             requirement = 'Requirements = ' + ' && '.join(requirement)
         else:
             requirement = ''
+        requirement += '\n' + self.extra_submit_lines()
 
         if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
               and self.options['cluster_walltime'] != 'None':
@@ -1048,7 +1126,8 @@ class CondorCluster(Cluster):
 
         dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
-                'requirement': requirement, 'walltime': walltime, 'vacatetime': ''}
+                'requirement': requirement, 'walltime': walltime, 'vacatetime': '',
+                'dmtcp_path': ''}
 
         if self.checkpointing:
 
@@ -1168,6 +1247,7 @@ class CondorCluster(Cluster):
             requirement = 'Requirements = ' + ' && '.join(requirement)
         else:
             requirement = ''
+        requirement += '\n' + self.extra_submit_lines()
 
         if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
               and self.options['cluster_walltime'] != 'None':
@@ -1414,6 +1494,7 @@ class PBSCluster(Cluster):
 
         if self.cluster_queue and self.cluster_queue != 'None':
             command.extend(['-q', self.cluster_queue])
+        command.extend(self.extra_submit_args())
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,
@@ -1579,6 +1660,7 @@ class SGECluster(Cluster):
 
         if self.cluster_queue and self.cluster_queue != 'None':
             command.extend(['-q', self.cluster_queue])
+        command.extend(self.extra_submit_args())
 
         a = misc.Popen(command, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
@@ -1698,6 +1780,7 @@ class LSFCluster(Cluster):
         
         if self.cluster_queue and self.cluster_queue != 'None':
             command.extend(['-q', self.cluster_queue])
+        command.extend(self.extra_submit_args())
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,
@@ -1829,7 +1912,7 @@ class GECluster(Cluster):
         a = misc.Popen(['qsub','-o', stdout,
                                      '-e', stderr,
                                      '-V', # export the submission environment (incl. MG5_CITATION_DIR)
-                                     tmp_submit],
+                                     ] + self.extra_submit_args() + [tmp_submit],
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT,
                                      stdin=subprocess.PIPE, cwd=cwd)
@@ -2015,6 +2098,7 @@ class SLURMCluster(Cluster):
         # export the full submission environment to the job (incl.
         # MG5_CITATION_DIR) regardless of the site default for SBATCH_EXPORT
         command.insert(1, '--export=ALL')
+        command[1:1] = self.extra_submit_args()
 
 
         jobenv = os.environ.copy()

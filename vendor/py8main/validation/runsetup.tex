@@ -1,0 +1,84 @@
+% Run setup for the beamstrahlung figure (beamstrahlung_fccee.pdf).
+% Drop into the lepton-collisions section; \label and citation keys are
+% provisional, check them against biblio.bib.
+
+We illustrate the interplay between beamstrahlung, initial-state radiation
+and the parton shower with the process $e^-e^+\to\mu^-\mu^+$, generated at
+leading order with the dressed-lepton densities of
+ref.~\cite{Frixione:2021zdp}.  We consider the two FCC-ee operating points,
+the $ZH$ run at $\sqrt{s}=240$~GeV (\texttt{pdlabel}~$=$~\texttt{fcce240ll},
+\texttt{ebeam1}~$=$~\texttt{ebeam2}~$=120$~GeV) and the $t\bar t$ run at
+$\sqrt{s}=365$~GeV (\texttt{fcce365ll}, $182.5$~GeV per beam), together
+with the ILC at $\sqrt{s}=500$~GeV (\texttt{ilc500ll}, $250$~GeV per beam)
+as a linear-collider reference.  The beams
+are unpolarised and specified with \texttt{lpp1}~$=3$, \texttt{lpp2}~$=-3$;
+renormalisation and factorisation scales are dynamical
+(\texttt{dynamical\_scale\_choice}~$=-1$, \texttt{scalefact}~$=1$).  The
+muons satisfy the default run-card cuts, $p_T>10$~GeV, $|\eta|<2.5$ and
+$\Delta R_{\mu\mu}>0.4$, with no cut on $m(\mu^-\mu^+)$.  We generate
+$2\times10^4$ unweighted events at each FCC-ee energy and $1.5\times10^4$
+for the ILC, obtaining $\sigma=3.866(6)$~pb at $240$~GeV,
+$\sigma=1.518(3)$~pb at $365$~GeV and $\sigma=0.7622(14)$~pb at $500$~GeV.
+
+Because a dressed-lepton density convolutes beamstrahlung with ISR, the
+momentum fraction carried by the incoming lepton is the product
+$x=x_{\rm BS}\,x_{\rm ISR}$.  \MGvii\ samples that splitting event by event
+and records $x_{\rm BS1,2}$ in the event file, so that a shower can be told
+the beam energy that was actually available at the collision.  Events are
+showered with \PYTHIA~8.318~\cite{Bierlich:2022pfr} through the dedicated
+main program distributed with the code, which reads those fractions and
+degrades each beam to $x_{\rm BS}\,p$ before the event is processed; the
+space-like shower then reconstructs $x_{\rm ISR}$ alone.  QED radiation off
+leptons is enabled in both showers
+(\texttt{SpaceShower:QEDshowerByL}~$=$~\texttt{TimeShower:QEDshowerByL}~$=$
+\texttt{on}) together with the lepton densities
+(\texttt{PDF:lepton}~$=$~\texttt{on}); multiparton interactions and
+hadronisation are switched off, being irrelevant here.
+
+The upper panel of fig.~\ref{fig:beamstrahlung} shows the cumulative
+distribution of $E_\gamma^{\rm fwd}$, the summed energy of final-state
+photons emitted within $|p_z|/E>0.999$ of either beam, restricted to the
+events in which at least one beam radiated.  This is the ISR that the
+space-like shower builds.  The dashed curves are obtained by showering the
+same events with the beams left at their nominal energy, which is what a
+shower unaware of beamstrahlung does.  At the FCC-ee the two treatments are
+nearly indistinguishable, because the energy at stake is only
+a few $10^{-5}$ of the beam; at the ILC they separate clearly, the
+shower producing on average $9.1$~GeV more forward radiation than it should
+against the $10.3$~GeV per event that beamstrahlung had in fact carried away
+before the collision, and the fraction of events with no forward photon at
+all changing from $23\%$ to $40\%$.  The middle panel shows the underlying
+spectra: $6.2\%$ ($10.7\%$) of the FCC-ee beams radiate at $240$ ($365$)~GeV
+with a mean relative energy loss of $1.6\times10^{-5}$ ($3.8\times10^{-5}$), against $30.3\%$ and
+$1.0\times10^{-2}$ at the ILC.  The lower panel translates this into the
+collision energy left after beamstrahlung,
+$\sqrt{s'}/\sqrt{s}=\sqrt{x_{\rm BS1}x_{\rm BS2}}$: $0.2\%$ ($0.7\%$) of
+the FCC-ee events at $240$ ($365$)~GeV fall below $0.999$, whereas $39\%$ of the ILC ones do.
+The treatment is therefore essentially inert at a circular collider, as it
+should be, and necessary at a linear one.
+
+% Reproduction: vendor/py8main/validation/ holds dump.cc, which showers an
+% event file with and without degraded beams and writes the per-event
+% quantities, and mg7plot.py, which produces this figure.  Regenerated on
+% 2026-11-07 at 6bbff4cb93 (Pythia 8.318), one process directory per density;
+% the first version (fdb2bbccec) lost the beamstrahlung components to flavour
+% grouping and ran the 365 GeV sample with the fcce240ll density.
+
+% Cross-check of the shipped spectra against the machine designs.  The
+% parameterisations are fits to GuineaPig runs, and the shipped coefficients
+% imply, per beam,
+%
+%   set        <dE>/E    sqrt(<dE^2>)/E     design delta_BS
+%   ilc250      0.48%        1.74%          0.65-0.97%
+%   ilc500      0.89%        3.14%          1.9%   (4.5% is the 1 TeV row)
+%   clic3000    2.69%       11.53%          ~30%
+%   fcce240     0.0017%      0.014%         sub-MeV per crossing
+%   fcce365     0.0038%      0.024%
+%
+% For the two ILC points the quoted design value lies between the mean and
+% the RMS of the shipped spectrum, and the 500/250 ratio (1.85) matches the
+% design one (about 2), so the fits are consistent with the ILC design once
+% one is careful about which moment delta_BS denotes.  CLIC3000 is not: even
+% its RMS falls a factor three short of the design figure, and that is also
+% the only file whose coefficients are written as single-precision literals
+% and whose exponential factor is a function of x/z rather than of 1-x/z.

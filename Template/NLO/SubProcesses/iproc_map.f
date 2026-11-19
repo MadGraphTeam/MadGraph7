@@ -22,7 +22,7 @@ c absolute value).
      &     ,particle_type(nexternal),pdg_type(nexternal)
       common /c_fks_inc/fks_j_from_i,particle_type,pdg_type
       double precision dummy,dlum
-      integer maxproc_found_first,i,j,ii,jj,k,kk
+      integer maxproc_found_first,i,j,ii,jj
       integer id_current(nexternal,maxproc),id_first(nexternal,maxproc)
      $     ,nequal,equal_to(maxproc,fks_configs)
      $     ,equal_to_inverse(maxproc,fks_configs)
@@ -51,6 +51,7 @@ c Set Bjorken x's to some random value before calling the dlum() function
 c 1. First map the IPROC's for this nFKSprocess to the underlying Born
 c to get the unique IPROC's
          iproc_save(nFKSprocess)=iproc
+         if(nFKSprocess.gt.fks_integrated)cycle
          do j=1,iproc
             do i=1,nexternal-1
                if (i.eq.min(j_fks,i_fks)) then
@@ -82,6 +83,7 @@ c equal_to() that maps the IPROC to the set of unique IPROCs
                equal_to(j,nFKSprocess)=1
                equal_to_inverse(1,nFKSprocess)=j
             elseif (j.gt.1) then
+               nequal=0
                do jj=1,maxproc_found
                   nequal=0
                   do ii=1,nexternal-1
@@ -195,9 +197,12 @@ c Print the map to the screen
             write (*,'(i4)', advance="no") etoi(j,nFKSprocess)
          enddo
          write (*,'(a)') ''
-         if (nFKSprocess.eq.fks_configs) 
+         if (nFKSprocess.eq.fks_integrated)
      &        write (*,*) '================================'
       enddo
+      nFKSprocess=1
+      call fks_inc_chooser()
+      call leshouche_inc_chooser()
       return
       end
 
@@ -213,12 +218,11 @@ c Print the map to the screen
       include 'nFKSconfigs.inc'
       include 'nexternal.inc'
       include 'genps.inc'
-      include "leshouche_decl.inc"
       include "reweight_pineappl.inc"
       include "pineappl_common.inc"
 *
       character*200 buffer
-      integer procnum,i,l,j,ll,found_a,found_m
+      integer i,l,j,ll,found_a,found_m
       logical found_appl(mxpdflumi),found_mg(maxproc)
       integer  nmatch_total
 
@@ -347,7 +351,7 @@ c Print the map to the screen
          if(flav_map_debug) then
             write(6,*) " "
             write(6,*) " nFKSprocess  = ",nFKSprocess 
-            write(6,*) " maxproc_used = ",maxproc_used
+            write(6,*) " maxproc = ",maxproc
             write(6,*) " niprocs      = ",niprocs
             do l=1,niprocs
                write(6,*) l,IDUP(1,l),IDUP(2,l)

@@ -21,7 +21,11 @@ P3(:) = -V3 % P (:)
  V3%W(:) = (0d0,0d0)
   return
 endif
-    denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI* W3))
+    if (dble(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).gt.0d0) then
+       denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI* W3))
+    else
+       denom = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+    endif
     V3%W(1)= denom*(-CI)*(F2 % W(3)*F1 % W(1)+F2 % W(4)*F1 % W(2)+F2 % W(1)*F1 % W(3)+F2 % W(2)*F1 % W(4))
     V3%W(2)= denom*(-CI)*(-F2 % W(4)*F1 % W(1)-F2 % W(3)*F1 % W(2)+F2 % W(2)*F1 % W(3)+F2 % W(1)*F1 % W(4))
     V3%W(3)= denom*(-CI)*(-CI*(F2 % W(4)*F1 % W(1)+F2 % W(1)*F1 % W(4))+CI*(F2 % W(3)*F1 % W(2)+F2 % W(2)*F1 % W(3)))

@@ -5,6 +5,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -17,7 +18,8 @@ def fortran_routine(source, name):
                       + name + r"\(", source, re.I | re.M)
     if start is None:
         raise AssertionError("Missing Fortran routine " + name)
-    end = re.search(r"^      end\s*$", source[start.start():], re.I | re.M)
+    end = re.search(r"^      end(?:[ \t]+(?:subroutine|function)\b[^\n]*)?[ \t]*$",
+                    source[start.start():], re.I | re.M)
     return source[start.start():start.start() + end.end()] + "\n"
 
 
@@ -27,12 +29,21 @@ class TestRealChannelsPhaseSpace(unittest.TestCase):
 
     def integrate(self, nexternal, nincoming, tree, masses=None, pdf=False,
                   propagators=None):
-        source = (ROOT / "Template/NLO/SubProcesses/genps_fks.f").read_text()
-        routines = ["generate_momenta_real_channels", "generate_inv_mass_sch",
-                    "generate_si", "generate_t_channel_branchings",
-                    "fill_born_momenta", "generate_tau_BW", "generate_tau",
-                    "generate_y", "trans_x", "lambda", "yminmax", "gentcms"]
-        selected = "\n".join(fortran_routine(source, name) for name in routines)
+        template = ROOT / "Template/NLO/SubProcesses"
+        source = (template / "genps_fks.f").read_text()
+        # Keep the real sampler's module interfaces and shared active data.
+        # Only the high-level wrapper/reset are selected: the rest of that
+        # module requires unrelated native-history metadata.
+        selected = ("      module fks_phase_space\n"
+                    "      use fks_born_sampling,only:sample_real_channel\n"
+                    "      use fks_phase_space_data,only:p_born,p1_cnt,jac_cnt\n"
+                    "      implicit none\n      include 'genps.inc'\n"
+                    "      include 'nexternal.inc'\n"
+                    "      double precision counter_y(-2:2)\n"
+                    "      contains\n")
+        selected += "\n".join(fortran_routine(source, name) for name in
+                              ("generate_momenta_real_channels", "reset_fks_kinematics"))
+        selected += "      end module fks_phase_space\n"
         kin = (ROOT / "Template/NLO/Source/kin_functions.f").read_text()
         selected += fortran_routine(kin, "dot")
         singular = (ROOT / "Template/NLO/SubProcesses/fks_singular.f").read_text()
@@ -52,6 +63,7 @@ class TestRealChannelsPhaseSpace(unittest.TestCase):
         # constant, so its exact dx1 dx2 integral equals the fixed-energy one.
         program = """program check_real_map
 use mint_module
+use fks_phase_space,only:generate_momenta_real_channels
 implicit none
 include 'genps.inc'
 include 'nexternal.inc'
@@ -120,8 +132,8 @@ end program
          order(-i)=-i
       enddo
       end
-      subroutine generate_ee_tau_y
-      stop 99
+      double precision function get_ee_expo()
+      get_ee_expo=0.5d0
       end
 """
         with tempfile.TemporaryDirectory(prefix="mg5-real-map-") as tmp:
@@ -140,11 +152,21 @@ end program
                 "      common/to_test_beams/ebeam,lpp\n")
             (tmp / "mint.f90").write_text(
                 "module mint_module\nlogical :: new_point=.true.\nend module\n")
+            shutil.copyfile(template / 'timing_variables.inc', tmp / 'timing_variables.inc')
+            shutil.copyfile(template / 'genps_fks_sampling.f', tmp / 'sampling.f')
+            (tmp / "native.f90").write_text(
+                "module mc_native_context\nlogical :: native_mapping=.false.\nend module\n")
             (tmp / "maps.f").write_text(selected + support)
             (tmp / "check.f90").write_text(program)
-            command = ["gfortran", "-O0", "-g", "-fcheck=all",
+            command = ["gfortran", "-O0", "-g", "-fcheck=all", "-I.",
                        "-ffixed-line-length-none", "-ffree-line-length-none",
-                       "-fallow-argument-mismatch", "-o", "check", "mint.f90",
+                       "-ffunction-sections", "-fdata-sections",
+                       "-Wl,-dead_strip" if sys.platform == "darwin" else "-Wl,--gc-sections",
+                       "-o", "check", "mint.f90", "native.f90",
+                       str(template / "fks_phase_space_data.f"),
+                       str(template.parent / "Source/timing.f"),
+                       str(template / "genps_fks_helpers.f"),
+                       "sampling.f",
                        "maps.f", "check.f90"]
             command += [str(ROOT / "HELAS" / name)
                         for name in ("mom2cx.F", "boostx.F", "rotxxx.F")]

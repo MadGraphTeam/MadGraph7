@@ -31,8 +31,11 @@ tests). Each test:
      which set the template defaults to; it also sets the event count and, for
      the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md). An
      entry may add cuts (``"cuts": {"<cut>.<bound>": value}``), set
-     ``[phasespace] cut_decays`` (``"cut_decays": true``) and switch MadNIS
-     off (``"madnis": false``, see below),
+     ``[phasespace] cut_decays`` (``"cut_decays": true``), set ``[beam]``
+     entries (``"beam": {"ebeam1": 250.0}``, e.g. the energy of a lepton
+     collider, whose default is 500 GeV per beam), set ``[phasespace]``
+     entries (``"phasespace": {"ktdurham": 30.0}``) and switch MadNIS off
+     (``"madnis": false``, see below),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
   5. asserts the relative difference to the reference stays within the
@@ -56,7 +59,7 @@ the VEGAS multichannel sampling alone, including the inclusive ``p p > ...``
 ones (whose reference is the sum of the sub-channel references); the other
 half keeps the default, so both samplers stay covered.
 
-Four knobs are read from the environment so the CI can dial them without
+Five knobs are read from the environment so the CI can dial them without
 touching the code:
 
   * ``MG7_XSEC_TOLERANCE`` -- allowed relative difference on top of the MC
@@ -73,6 +76,12 @@ touching the code:
                              run card's ``max_overweight_truncation``
                              (default 2.5; the tail is a sum over a handful
                              of events at 10k, so it fluctuates)
+  * ``MG7_XSEC_MAX_REL_ERROR`` -- largest MC error of the run, relative
+                             to the reference (default 0.1). The sigma allowance above grows
+                             with the run's own error, so a divergent
+                             integral (e+ e- > j j j j without jet cuts:
+                             4e3 +- 4e3 pb against 0.55 pb) would pass on
+                             its error bar alone; a sane run has ~0.25%.
 
 Run everything locally with e.g.::
 
@@ -103,7 +112,7 @@ import traceback
 import unittest
 
 import madgraph.interface.master_interface as MGCmd
-import madgraph.various.misc as misc
+import tests
 
 pjoin = os.path.join
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -122,6 +131,7 @@ _TOLERANCE = float(os.environ.get('MG7_XSEC_TOLERANCE', 0.01))
 _EVENTS = int(os.environ.get('MG7_XSEC_EVENTS', 10000))
 _NSIGMA = float(os.environ.get('MG7_XSEC_NSIGMA', 3))
 _OVERWEIGHT_FACTOR = float(os.environ.get('MG7_XSEC_OVERWEIGHT_FACTOR', 2.5))
+_MAX_REL_ERROR = float(os.environ.get('MG7_XSEC_MAX_REL_ERROR', 0.1))
 
 # Optional: when set (by the CI workflow), one JSON result record per process
 # is written here so a later job can build a GitHub Actions job summary out of
@@ -154,23 +164,19 @@ def _require_mg7_runtime(test):
     Only a skip gate: the run itself must locate LHAPDF from the configuration
     the way a user's ``bin/generate_events`` does, with no environment help.
     """
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    if not has_mg7:
+    if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
         test.skipTest('mg7 runtime stack (madspace) unavailable')
 
-    if not misc.resolve_lhapdf().find_set(_REFERENCE_PDF):
+    if not tests.lhapdf_data_path(_REFERENCE_PDF):
         test.skipTest('%s LHAPDF data not found (set the lhapdf option or '
                       '$LHAPDF_DATA_PATH)' % _REFERENCE_PDF)
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
-                   cut_decays=None, madnis=None):
+                   cut_decays=None, madnis=None, beam=None, phasespace=None):
     """Set the event count, (optionally) neutralise the jet cuts, add the
-    entry's extra cuts and set its cut_decays and MadNIS switch.
+    entry's extra cuts and set its cut_decays, [beam] / [phasespace] entries
+    and MadNIS switch.
 
     The reference cross-sections were produced with FIXED scales
     (mu = 91.188 GeV) and with the NNPDF23_lo_as_0130_qed PDF set. The
@@ -208,6 +214,15 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
         t, count = re.subn(r'(?m)^cut_decays = \w+',
                            'cut_decays = %s' % str(bool(cut_decays)).lower(), t)
         assert count == 1, 'no cut_decays in %s' % toml_path
+    for key, value in (beam or {}).items():
+        # [beam] is the only section with these keys
+        t, count = re.subn(r'(?m)^%s = .*$' % re.escape(key),
+                           lambda m: '%s = %s' % (key, json.dumps(value)), t)
+        assert count == 1, 'no [beam] %s in %s' % (key, toml_path)
+    for key, value in (phasespace or {}).items():
+        # e.g. the CKKW-L merging cut ktdurham / ptlund
+        t, count = re.subn(r'(?m)^%s = [^#\n]*' % key, '%s = %r ' % (key, value), t)
+        assert count == 1, 'no %s in %s' % (key, toml_path)
     if madnis is not None:
         # the first `enable` after the [madnis] header ([vegas] and
         # [systematics] have one too)
@@ -325,7 +340,8 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
                        entry.get('cuts'), entry.get('cut_decays'),
-                       entry.get('madnis'))
+                       entry.get('madnis'), entry.get('beam'),
+                       entry.get('phasespace'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:
@@ -367,7 +383,17 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         allowed = _TOLERANCE + (_NSIGMA * sigma / abs(ref_x) if ref_x else 0.0)
         xsec_ok = reldiff <= allowed
         overweight_ok = overweight is None or overweight <= overweight_max
+        # the MC error of the run, relative to the reference: a run whose
+        # error bar is far wider than the reference value is not converging,
+        # even when that error bar makes it 'compatible' with the reference
+        rel_error = err / abs(ref_x) if ref_x else 0.0
         problems = []
+        if not rel_error <= _MAX_REL_ERROR:
+            problems.append(
+                '%s (%s): mg7 xsec %.6g +- %.3g pb has an MC error of %.3g%% '
+                'of the reference %.6g pb (> %.3g%%): the integral is not '
+                'converging' % (entry['id'], entry['process'], got, err,
+                                100 * rel_error, ref_x, 100 * _MAX_REL_ERROR))
         if not xsec_ok:
             # A cross-section was successfully obtained here, just outside
             # tolerance -- no need for the (noisy) log tail, the deviation

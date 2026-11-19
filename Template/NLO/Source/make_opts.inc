@@ -53,8 +53,7 @@ endif
 
 # Increase the number of allowed characters in a Fortran line
 FFLAGS+= -ffixed-line-length-132
-# ensure that no-automatic is done
-FFLAGS+= -fno-automatic
+# Persistent local state must be declared with SAVE in the source.
 
 # Set FC unless it's defined by an environment variable
 ifeq ($(origin FC),default)
@@ -116,7 +115,7 @@ else ifneq ($(epdf),)
 # option eMELA/ePDF
 EPDFLIBS=$(shell $(epdf) --ldflags)
 alfas_functions=alfas_functions
-CXX=$(DEFAULT_CPP_COMPILER) -std=c++11
+CXX=$(DEFAULT_CPP_COMPILER) -std=c++20
 llhapdf = $(shell $(epdf) --ldflags)
 # Add also LHAPDF to the libraries to be linked
 llhapdf+= -lLHAPDF
@@ -128,7 +127,7 @@ endif
 
 # Set CXX unless it's defined by an environment variable
 ifeq ($(origin CXX),default)
-   CXX=$(DEFAULT_CPP_COMPILER) -std=c++11
+   CXX=$(DEFAULT_CPP_COMPILER) -std=c++20
 endif
 
 

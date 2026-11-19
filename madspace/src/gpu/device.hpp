@@ -61,6 +61,7 @@ public:
         double bias_corr2_sqrt,
         double weight_decay
     ) const override;
+    std::unique_ptr<GzipCompressor> gzip_compressor(int algorithm) const override;
 
     GpuDevice(const GpuDevice&) = delete;
     GpuDevice& operator=(GpuDevice&) = delete;

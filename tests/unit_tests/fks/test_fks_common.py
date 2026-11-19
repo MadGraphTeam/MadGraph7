@@ -2695,6 +2695,44 @@ class TestFKSCommon(unittest.TestCase):
             self.assertAlmostEqual(tot, -4. / 3. * born, delta=1e-12 * born)
 
 
+    def test_colour_density_insertions(self):
+        """Exact insertions agree with the independent linked-basis expansion.
+
+        Include gluon insertions, crossed quarks, and massive self links (with
+        their factor of one half), using a basis with off-diagonal entries.
+        """
+        for ids in ((2, -2, 21, 21), (21, 21, 2, -2)):
+            legs = MG.LegList([MG.Leg(dict(id=pdg, number=i, state=i > 2))
+                               for i, pdg in enumerate(ids, 1)])
+            process = MG.Process(dict(legs=legs, model=self.model,
+                                      orders={'QCD': 2, 'QED': 0}))
+            born = helas_objects.HelasMatrixElement(diagram_generation.Amplitude(process))
+            basis = born['color_basis']
+            fkslegs = fks_common.to_fks_legs(legs, self.model)
+            if ids[0] == 21:
+                for leg in fkslegs[2:]:
+                    leg['massless'] = False
+            insertions = fks_common.find_color_links(fkslegs, symm=True)
+            unit_diagrams = []
+            for structure in sorted(basis):
+                string = color.ColorString()
+                string.from_immutable(structure)
+                unit_diagrams.append({(): string})
+            expanded = fks_common.insert_color_links(basis, unit_diagrams, insertions)
+            for insertion, legacy in zip(insertions, expanded):
+                with self.subTest(ids=ids, legs=legacy['link']):
+                    matrix = fks_common.born_color_insertion(basis, insertion)
+                    expected = {(i, j): [fractions.Fraction(0), fractions.Fraction(0)]
+                                for i in range(len(basis)) for j in range(len(basis))}
+                    for k, structure in enumerate(sorted(legacy['link_basis'])):
+                        for j, _, coefficient, imaginary, power, _ in legacy['link_basis'][structure]:
+                            coefficient *= fractions.Fraction(3)**power
+                            for i in range(len(basis)):
+                                real, imag = legacy['link_matrix'].col_matrix_fixed_Nc[i, k]
+                                expected[i, j][0] += coefficient*(imag if imaginary else real)
+                                expected[i, j][1] += coefficient*(-real if imaginary else imag)
+                    self.assertEqual(matrix, {key: tuple(value) for key, value in expected.items()})
+
     def test_legs_to_color_link_string(self):
         """tests if, given two fks legs, the color link between them is correctly 
         computed, i.e. if string and replacements are what they are expected to be"""
@@ -3816,3 +3854,120 @@ class TestMeFrameCharacteristics(unittest.TestCase):
                                                         (self.partons, [])],
                                                nlo_mode='LOonly')),
                          ([1, 2], [], [3]))
+
+
+def _low_mem_square(x):
+    return x * x, os.getpid()
+
+
+def _low_mem_fail(x):
+    if x == 3:
+        raise fks_common.FKSProcessError('no correction for %d' % x)
+    return x
+
+
+class TestLowMemMap(unittest.TestCase):
+    """fks_common.low_mem_map, the processes of the
+    low_mem_multicore_nlo_generation mode: one process forked for each task,
+    the results in the order of the tasks, and an error (or the death of a
+    process) raised here, without waiting for ever"""
+
+    def setUp(self):
+        # a test which would wait for ever fails instead
+        import signal
+        def timeout(signum, frame):
+            raise AssertionError('low_mem_map did not return')
+        self.previous_alarm = signal.signal(signal.SIGALRM, timeout)
+        signal.alarm(120)
+
+    def tearDown(self):
+        import signal
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, self.previous_alarm)
+
+    def raised(self, error_type, *args):
+        """The error of type error_type which low_mem_map(*args) raises"""
+        try:
+            fks_common.low_mem_map(*args)
+        except error_type as error:
+            return error
+        self.fail('no %s raised' % error_type.__name__)
+
+    def test_results_in_order(self):
+        results = fks_common.low_mem_map(_low_mem_square, range(10), 3)
+        self.assertEqual([r[0] for r in results], [x * x for x in range(10)])
+        # each task in a process of its own (which exits after it)
+        pids = [r[1] for r in results]
+        self.assertEqual(len(set(pids)), 10)
+        self.assertNotIn(os.getpid(), pids)
+        self.assertEqual(fks_common.low_mem_map(_low_mem_square, [], -1), [])
+
+    def test_arguments_not_pickled(self):
+        # the function and its argument come with the fork: a lambda and an
+        # object which cannot be pickled
+        import threading
+        lock = threading.Lock()
+        self.assertEqual(fks_common.low_mem_map(
+                lambda arg: arg[1] * 2, [(lock, 1), (lock, 2)], 2), [2, 4])
+
+    def test_error(self):
+        error = self.raised(fks_common.FKSProcessError, _low_mem_fail, range(6), 2)
+        self.assertIn('no correction for 3', str(error))
+        # with the traceback of the process
+        self.assertIsInstance(error.__cause__, fks_common.RemoteTraceback)
+        self.assertIn('_low_mem_fail', str(error.__cause__))
+
+    def test_errors_which_cannot_be_returned(self):
+        # a result which cannot be pickled, and a SystemExit (which must not
+        # stop this process)
+        self.assertIn('pickle', str(self.raised(fks_common.FKSProcessError,
+                                                lambda x: (lambda: x), [1], 1)))
+        def exit(x):
+            sys.exit(x)
+        self.assertIn('SystemExit', str(self.raised(fks_common.FKSProcessError,
+                                                    exit, [5], 1)))
+
+    def test_dead_process(self):
+        # e.g. killed when out of memory: an error, at once
+        import signal
+        def die(x):
+            if x == 2:
+                os.kill(os.getpid(), signal.SIGKILL)
+            return x
+        self.assertIn('out of memory', str(self.raised(fks_common.FKSProcessError,
+                                                       die, range(4), 2)))
+
+    def test_ctrl_c(self):
+        # the processes ignore it (the KeyboardInterrupt of this one stops
+        # them), and so does this one while it forks them, then not anymore,
+        # also when the fork fails
+        import signal
+        import multiprocessing.context
+        from unittest import mock
+        handler = signal.getsignal(signal.SIGINT)
+        self.assertEqual(fks_common.low_mem_map(
+                lambda x: signal.getsignal(signal.SIGINT) == signal.SIG_IGN,
+                [1, 2], 2), [True, True])
+        self.assertIs(signal.getsignal(signal.SIGINT), handler)
+        with mock.patch.object(multiprocessing.context.ForkProcess, 'start',
+                               side_effect=OSError(11, 'Resource temporarily unavailable')):
+            self.assertRaises(OSError, fks_common.low_mem_map, abs, [1], 1)
+        self.assertIs(signal.getsignal(signal.SIGINT), handler)
+
+    def test_failed_fork_closes_the_pipe(self):
+        """both ends of the pipe of a process which could not be forked are
+        closed"""
+        import multiprocessing.context
+        from unittest import mock
+        pipes = []
+        pipe = multiprocessing.context.BaseContext.Pipe
+        def recorded_pipe(context, *args, **opts):
+            pipes.append(pipe(context, *args, **opts))
+            return pipes[-1]
+        with mock.patch.object(multiprocessing.context.BaseContext, 'Pipe',
+                               recorded_pipe), \
+             mock.patch.object(multiprocessing.context.ForkProcess, 'start',
+                               side_effect=OSError(11, 'Resource temporarily unavailable')):
+            self.assertRaises(OSError, fks_common.low_mem_map, abs, [1, 2], 2)
+        self.assertEqual(len(pipes), 1)
+        self.assertTrue(all(end.closed for end in pipes[0]))

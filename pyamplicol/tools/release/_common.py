@@ -19,6 +19,9 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[2]
 DIST = ROOT / "dist"
 CANDIDATE_ARTIFACTS = ROOT / ".artifacts" / "candidate"
+# Wheels built for distribution: a repaired manylinux wheel on Linux, deflate
+# level 9 and the C SDK archive xz-compressed (build_backend).
+DISTRIBUTION_WHEEL_SETTINGS = ("--config-setting", "pyamplicol.distribution-wheel=true")
 DEPLOYMENT_ROOT = ROOT / "PYPI_DEPLOYMENT_TEST"
 DEPENDENCY_WHEELHOUSE = ROOT / "dependencies" / "wheelhouse"
 DEPENDENCY_GATE = ROOT / "tools" / "release" / "check_dependencies.py"
@@ -120,6 +123,15 @@ def clean_environment(
     return environment
 
 
+# The base utilities a runtime check's commands call (the UMAMI provider
+# Makefiles' ``mkdir`` and ``uname``): found in /usr/bin or /bin on the
+# release runners; elsewhere (e.g. NixOS, whose /usr/bin and /bin hold only
+# ``env`` and ``sh``) the directory the caller's PATH resolves them to.
+BASE_UTILITIES = ("mkdir", "uname")
+# A directory holding one of these is never added (no Rust toolchain).
+RUST_TOOLCHAIN = ("cargo", "rustc", "rustup")
+
+
 def runtime_environment(virtual_env: Path) -> dict[str, str]:
     """Create a runtime environment that cannot discover a Rust toolchain."""
 
@@ -130,12 +142,34 @@ def runtime_environment(virtual_env: Path) -> dict[str, str]:
         if os.name == "nt"
         else [Path("/usr/bin"), Path("/bin")]
     )
+    if os.name != "nt":
+        system_paths += _base_utility_paths(system_paths)
     environment["PATH"] = os.pathsep.join(
         str(path) for path in (binary, *system_paths) if path.is_dir()
     )
     environment.pop("CARGO_HOME", None)
     environment.pop("RUSTUP_HOME", None)
     return environment
+
+
+def _base_utility_paths(system_paths: Sequence[Path]) -> list[Path]:
+    """The directories of the base utilities the system paths lack, from
+    the caller's PATH, none that holds a Rust toolchain."""
+
+    found: list[Path] = []
+    for name in BASE_UTILITIES:
+        if any((path / name).is_file() for path in system_paths):
+            continue
+        located = shutil.which(name)
+        if located is None:
+            continue
+        directory = Path(located).parent
+        if directory in found or any(
+            (directory / tool).exists() for tool in RUST_TOOLCHAIN
+        ):
+            continue
+        found.append(directory)
+    return found
 
 
 def run(
@@ -330,6 +364,7 @@ __all__ = [
     "DEPENDENCY_WHEELHOUSE",
     "DEPLOYMENT_ROOT",
     "DIST",
+    "DISTRIBUTION_WHEEL_SETTINGS",
     "ROOT",
     "ReleaseError",
     "build_mode",

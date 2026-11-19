@@ -1,0 +1,120 @@
+{
+  "openloops": "OpenLoops 2.1.5 (git 8238fa2), workspace/reference/sources/OpenLoops-2.1.5, default generic/Born -O2, loop_optimisation -O0",
+  "versions_db": "https://www.physik.uzh.ch/data/openloops/repositories/public/processes/2/versions.db (hash/date/git_revision copied into process_src/<lib>/version.info by the downloader)",
+  "libraries": {
+    "ppjjjj": {
+      "loops": "lt",
+      "git_revision": "d3d5302",
+      "process_api_version": "2",
+      "date": "2022-06-29-10-34-49",
+      "hash": "133a4991b6c4ad66c6e46cc9dfbdb8cb",
+      "library_bytes": 1557085112
+    },
+    "ppttjj": {
+      "loops": "lt",
+      "git_revision": "4d8743c",
+      "process_api_version": "2",
+      "date": "2019-08-14-22-59-33",
+      "hash": "1b50838e9d8eec22ad3604765358207a",
+      "library_bytes": 122600904
+    },
+    "pplljjj": {
+      "loops": "lt",
+      "git_revision": "4d8743c",
+      "process_api_version": "2",
+      "date": "2019-08-12-20-40-07",
+      "hash": "69ae4ed08289a4109b50a1b0cd9ae08c",
+      "library_bytes": 294690368
+    },
+    "ppllttj": {
+      "loops": "lt",
+      "git_revision": "7b9475e",
+      "process_api_version": "2",
+      "date": "2020-06-29-14-59-34",
+      "hash": "efa9dc35ffad66d2acdaec9c0234b286",
+      "library_bytes": 164349720
+    },
+    "ppllttj_ew": {
+      "loops": "lt",
+      "git_revision": "f0b309b",
+      "process_api_version": "2",
+      "date": "2019-10-22-17-56-29",
+      "hash": "0f2cc769cbe6ba88cc2251396aa4be24",
+      "library_bytes": 645159992
+    },
+    "pptt_ew": {
+      "loops": "lt",
+      "git_revision": "4d8743c",
+      "process_api_version": "2",
+      "date": "2019-08-14-22-59-03",
+      "hash": "fca60f7389cee8f8c572539bed13e30b",
+      "library_bytes": 16118592
+    },
+    "ppllj_ew": {
+      "loops": "lt",
+      "git_revision": "4d20a80d",
+      "process_api_version": "2",
+      "date": "2025-07-23-14-27-46",
+      "hash": "b3b1b569afad0a9dedda3b0f968a3380",
+      "library_bytes": 97920336
+    },
+    "pplltt_ew": {
+      "loops": "lt",
+      "process_api_version": "2",
+      "git_revision": "9e3f426",
+      "hash": "e17ac7067bde7d0028f159d3cf86bdd6",
+      "date": "2019-10-22-17-56-58",
+      "library_bytes": 433426520
+    },
+    "ppjj": {
+      "loops": "lt",
+      "process_api_version": "2",
+      "git_revision": "d3d5302",
+      "hash": "4e2280ff973291d963990d9eae3a65a9",
+      "date": "2022-07-01-15-15-46",
+      "library_bytes": 15971400
+    },
+    "ppjjj": {
+      "loops": "lt",
+      "process_api_version": "2",
+      "git_revision": "93a6e3f7",
+      "hash": "4f2fd35f656ba2a8bcf54477db676218",
+      "date": "2023-06-13-16-39-10",
+      "library_bytes": 129845976
+    },
+    "pptt": {
+      "loops": "lt",
+      "git_revision": "e4668fa",
+      "process_api_version": "2",
+      "date": "2020-06-23-11-06-20",
+      "hash": "d9873cc352c1c03cfc0a11c4d6bcf251",
+      "library_bytes": 1208912
+    }
+  },
+  "installations": [
+    {
+      "command": "./openloops libinstall ppjjjj ppttjj pplljjj ppllttj ppllttj_ew num_jobs=32",
+      "date": "2026-10-20",
+      "wall_seconds": 370.8,
+      "cpu_user_seconds": 7496.0,
+      "log": "workspace/reference/runs/required/openloops-libinstall.log",
+      "note": "download plus compilation of all five libraries together; per-library split not recorded"
+    },
+    {
+      "command": "./openloops libinstall pptt_ew ppllj_ew num_jobs=32",
+      "date": "2026-10-20",
+      "wall_seconds": 53.8,
+      "cpu_user_seconds": 364.5,
+      "log": "workspace/reference/runs/required/openloops-libinstall-ew-diagnostics.log",
+      "note": "EW sanity channels"
+    },
+    {
+      "command": "./openloops libinstall pplltt_ew num_jobs=32",
+      "date": "2026-10-20",
+      "wall_seconds": 67.9,
+      "cpu_user_seconds": 1038.7,
+      "log": "workspace/reference/runs/required/openloops-libinstall-ew-diagnostics.log",
+      "note": "six-leg EW diagnostic channel"
+    }
+  ]
+}

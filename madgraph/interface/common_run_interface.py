@@ -26,6 +26,7 @@ import contextlib
 import logging
 import math
 import copy
+import filecmp
 import os
 import re
 import shutil
@@ -69,6 +70,7 @@ except ImportError:
     import internal.save_load_object as save_load_object
     import internal.gen_crossxhtml as gen_crossxhtml
     import internal.lhe_parser as lhe_parser
+    import internal.py8_bstrahl as py8_bstrahl
     import internal.FO_analyse_card as FO_analyse_card 
     import internal.sum_html as sum_html
     from internal import InvalidCmd, MadGraph5Error
@@ -87,6 +89,7 @@ else:
     import madgraph.iolibs.files as files
     import madgraph.various.cluster as cluster
     import madgraph.various.lhe_parser as lhe_parser
+    import madgraph.various.py8_bstrahl as py8_bstrahl
     import madgraph.various.FO_analyse_card as FO_analyse_card 
     import madgraph.iolibs.save_load_object as save_load_object
     import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
@@ -108,6 +111,29 @@ def render_HwU_plot(path, stdout=None, stderr=None):
         import madgraph.various.histograms as histograms
     return histograms.render_histogram_output(path, stdout=stdout,
                                                stderr=stderr)
+
+
+def fxfx_sudakov_reweight_options(run_card, reweight_card_path):
+    """Extra keyword arguments of the reweight interface for its input events.
+
+    FxFx (ickkw=3) EW Sudakov reweighting clusters decayed events back to the
+    hard process, so MadSpin-decayed input is allowed when the reweight card
+    runs 'change include_sudakov True' (the only value that do_change
+    accepts). Comments and ';' are treated as in Cmd.precmd.
+    """
+    try:
+        if int(run_card['ickkw']) != 3:
+            return {}
+    except (KeyError, TypeError, ValueError):
+        return {}
+    if not os.path.exists(reweight_card_path):
+        return {}
+    with open(reweight_card_path) as fsock:
+        for line in fsock:
+            for command in line.split('#')[0].split(';'):
+                if command.split()[:3] == ['change', 'include_sudakov', 'True']:
+                    return {'allow_madspin': True}
+    return {}
 
 
 #===============================================================================
@@ -148,7 +174,7 @@ class HelpToCmd(object):
         logger.info("              We then either stop at the N-body decay or when the estimated error is lower than M.")
         logger.info("        default: 4.0025")
         logger.info("  --min_br=X: All channel which are estimated below this value will not be integrated numerically.")
-        logger.info("        default: precision (decimal part of the body_decay options) divided by four")
+        logger.info("        default: precision (decimal part of the body_decay options) divided by five")
         logger.info("  --precision_channel=X: requested numerical precision for each channel")
         logger.info("        default: 0.01")
         logger.info("  --path=X: path for param_card")
@@ -227,6 +253,16 @@ class CheckValidForCmd(object):
         if cmd.is_removed_option(args[0]):
             # handled (and reported) by do_set: never an error
             return
+
+        # the MG5 'set' history a launch copies in leaves this one out
+        # (extended_cmd.non_runtime_set_options): keep the two in step
+        if args[0] == 'zerowidth_tchannel':
+            raise self.InvalidCmd(
+                "'zerowidth_tchannel' is a generation-time option: the T-channel "
+                "width treatment is now baked into the matrix element (ALOHA) at "
+                "'output' time and cannot be changed at run time. Choose it in MG5 "
+                "before output ('set zerowidth_tchannel True|False') and regenerate "
+                "the process.")
 
         if args[0] not in self._set_options + list(self.options.keys()):
             self.help_set()
@@ -679,7 +715,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     # The three options categories are treated on a different footage when a
     # set/save configuration occur. current value are kept in self.options
     options_configuration = {'pythia8_path': './pythia8',
-                       'hwpp_path': './herwigPP',
+                       'herwig7_path': './herwig7',
                        'thepeg_path': './thepeg',
                        'hepmc_path': './hepmc',
                        'hepmc3_path': None,
@@ -2260,6 +2296,11 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         # load the name of the event file
         args = self.split_arg(line) 
+        fxfx_catalogue_source = None
+        for arg in list(args):
+            if arg.startswith('--fxfx-catalogue-source='):
+                fxfx_catalogue_source = arg.split('=', 1)[1]
+                args.remove(arg)
         if plugin and '--plugin=' not in line:
             args.append('--plugin=%s' % plugin)
         
@@ -2395,6 +2436,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         else:
                             stdout = open(pjoin(self.me_dir,'Events', self.run_name, 'reweight.log'),'w')
                         new_command.append('--multicore=create')
+                        new_command.append('--fxfx-catalogue-source=%s' % os.path.abspath(new_args[0]))
                     else:
                         stdout = devnull
                         stdout = subprocess.DEVNULL
@@ -2429,6 +2471,14 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     for key, value in cross_sections.items():
                         cross_sections[key] = value / (nb_event+1)
                 lhe.remove()
+                if reweight_mode == 'density':
+                    # each job has written the average density matrix of its own
+                    # chunk of events (and named the file after that chunk). Now
+                    # that the chunks are recombined, re-compute the average over
+                    # the full file --each event carries its own <density> tag--
+                    # and clean up the per chunk files.
+                    reweight_interface.combine_density_matrix(new_args[0], all_lhe,
+                        reweight_card=pjoin(self.me_dir, 'Cards', 'reweight_card.dat'))
                 for key in cross_sections:
                     if key == 'orig' or (key.isdigit() and not (key[0] == '2')):
                         continue
@@ -2458,7 +2508,10 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                                         info="Will use re-weighting from plugin %(plug)s")
                 
 
-        reweight_cmd = rwgt_interface(args[0], mother=self)
+        rwgt_options = fxfx_sudakov_reweight_options(
+            getattr(self, 'run_card', None),
+            pjoin(self.me_dir, 'Cards', 'reweight_card.dat'))
+        reweight_cmd = rwgt_interface(args[0], mother=self, **rwgt_options)
         #reweight_cmd.use_rawinput = False
         #reweight_cmd.mother = self
         wgt_names = reweight_cmd.get_weight_names()
@@ -2473,6 +2526,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         reweight_cmd.raw_input=False # probably useless ...
         reweight_cmd.me_dir = self.me_dir
         reweight_cmd.multicore = multicore #allow the directory creation or not
+        reweight_cmd.fxfx_catalogue_source = fxfx_catalogue_source
         reweight_cmd.import_command_file(path)
         reweight_cmd.do_quit('')
 
@@ -2763,9 +2817,57 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     'The corresponding directory cannot be found in \n' + \
                     'Source/PDF/lep_densities')
 
-        # now copy the files
-        for filename in ['eepdf.f', 'gridpdfaux.f']:
-            files.cp(os.path.join(lep_d_path, filename), pdf_path)
+        # now copy the files. bstrahl_pars.inc carries the parameters of this
+        # density's beamstrahlung/ISR splitting, and replaces the
+        # no-beamstrahlung default shipped in Template/Common/Source/PDF; the
+        # splitting code itself, bstrahl.f, is shared by all densities.
+        #
+        # Check each source first. allowed_lep_densities is built by listing
+        # this directory, so a set added by hand is selectable without
+        # necessarily carrying all three files, and files.cp only logs a
+        # warning when the source is missing. For bstrahl_pars.inc that would
+        # leave the default in place, i.e. a run that quietly writes no
+        # beamstrahlung fractions and is then showered with undegraded beams
+        # -- the exact failure the fractions exist to prevent.
+        #
+        # Source/makefile builds libpdf.a from the PDF *directory*, whose mtime
+        # does not move when an existing file is overwritten, so a new density
+        # would never be compiled: the previous one stayed linked (a 240 GeV
+        # FCC-ee density used for a 365 GeV run). Hence remove the stale
+        # objects and the library whenever the density actually changes, and
+        # leave everything alone when it does not.
+        # file of the density -> the object compiled from it
+        objects = {'eepdf.f': 'eepdf.o',
+                   'gridpdfaux.f': 'gridpdfaux.o',
+                   'bstrahl_pars.inc': 'bstrahl.o'}
+        for filename in objects:
+            source = os.path.join(lep_d_path, filename)
+            if not os.path.exists(source):
+                raise madgraph.aMCatNLOError(
+                    ('The dressed-lepton density %s is incomplete: %s is '
+                     'missing.\n' % (name, source)) +
+                    'Every density directory must provide eepdf.f, '
+                    'gridpdfaux.f and bstrahl_pars.inc;\nbstrahl_pars.inc '
+                    'declares whether the density folds beamstrahlung into '
+                    'its\ngrid and, if it does, the parameters needed to split '
+                    'x into its\nbeamstrahlung and ISR parts. See '
+                    'vendor/eepdfgrid/readme for how to generate it.')
+        # all present: only now touch Source/PDF, so that an incomplete set
+        # leaves the previous density whole
+        changed = False
+        for filename, objname in objects.items():
+            source = os.path.join(lep_d_path, filename)
+            old = os.path.join(pdf_path, filename)
+            if os.path.exists(old) and filecmp.cmp(source, old, shallow=False):
+                continue
+            files.cp(source, pdf_path)
+            changed = True
+            obj = os.path.join(pdf_path, objname)
+            if os.path.exists(obj):
+                os.remove(obj)
+        libpdf = os.path.join(sourcedir, os.pardir, 'lib', 'libpdf.a')
+        if changed and os.path.exists(libpdf):
+            os.remove(libpdf)
 
     ############################################################################
     # Start of MadAnalysis5 related function
@@ -3182,6 +3284,16 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
         #2 Prepare Rivet setup environments
         rivet_path = self.options['rivet_path']
         yoda_path = self.options['yoda_path']
+        # Rivet links against rivet, yoda and a full fastjet installation
+        # (fjcore, the fallback without fastjet-config, is not enough)
+        for key, what in [('rivet_path', 'rivet'), ('yoda_path', 'yoda'),
+                          ('fastjet', 'fastjet-config')]:
+            value = self.options[key]
+            if not value or value in ['None', 'NA'] or \
+                         (key == 'fastjet' and not misc.which(value)):
+                raise self.InvalidCmd('Rivet requires %s, but option %s is "%s":'
+                    ' install it (install rivet) or set %s in '
+                    'mg5_configuration.txt.' % (what, key, value, key))
         fastjet_path = subprocess.Popen([self.options['fastjet'], '--prefix'],
                          stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
 
@@ -3688,17 +3800,33 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     ############################################################################
     def get_pid_final_initial_states(self):
         """Find the pid of all particles in the final and initial states"""
+        import json
+
         pids = set()
         subproc = [l.strip() for l in open(pjoin(self.me_dir,'SubProcesses',
                                                                  'subproc.mg'))]
-        nb_init = self.ninitial
-        pat = re.compile(r'''DATA \(IDUP\(ILH|I,\d+\),ILH|I=1,\d+\)/([\+\-\d,\s]*)/''', re.I)
+        pat = re.compile(r'DATA\s*\(IDUP\((?:ILH|I),\d+\),'
+                         r'\s*(?:ILH|I)=1,\d+\)\s*/([+\-\d,\s]*)/', re.I)
         for Pdir in subproc:
-            text = open(pjoin(self.me_dir, 'SubProcesses', Pdir, 'born_leshouche.inc')).read()
+            directory = pjoin(self.me_dir, 'SubProcesses', Pdir)
+            metadata_path = pjoin(directory, 'born_support.json')
+            source = pjoin(directory, 'born_leshouche.inc')
+            if os.path.isfile(metadata_path):
+                with open(metadata_path) as stream:
+                    metadata = json.load(stream)
+                if 'born_pdgs' in metadata:
+                    pids.update(str(pdg) for process in metadata['born_pdgs']
+                                for pdg in process)
+                    continue
+                # Earlier shared-provider outputs keep the immutable IDUP
+                # table in the context metadata rather than in this include.
+                source = pjoin(self.me_dir, 'Source', 'BornSupport',
+                               'c%d' % metadata['context'], 'metadata.f')
+            with open(source) as stream:
+                text = stream.read()
             group = pat.findall(text)
             for particles in group:
-                particles = particles.split(',')
-                pids.update(set(particles))
+                pids.update(str(int(pdg)) for pdg in particles.split(','))
 
         return pids
 
@@ -4798,6 +4926,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 self.make_opts_var['GLOBAL_FLAG'] = run_card['global_flag']     
             self.make_opts_var['ALOHA_FLAG'] = run_card['aloha_flag']     
             self.make_opts_var['MATRIX_FLAG'] = run_card['matrix_flag']
+            self.make_opts_var['AMP_FLAG'] = run_card['amp_flag']
 
         return self.update_make_opts_full(make_opts, self.make_opts_var)
 
@@ -7418,7 +7547,43 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if 'dressed_ee' in  proc_charac['limitations']:
                 if self.run_card['lpp1'] not in [0,1,-1] or self.run_card['lpp1'] not in [0,1,-1]:
                     raise InvalidCmd("dressed lepton mode is not available for this process (see warning associated to the code generation to understand why)")
-            # 
+
+            if 'crossing' in proc_charac['limitations']:
+                # Crossing reuses one matrix element across crossed initial
+                # states. A per-beam property is only ambiguous for a beam whose
+                # incoming leg a crossing moves to another slot of the shared
+                # matrix element (the POL weight reads the base slot's helicity);
+                # an output from before the per-beam tags ('crossing_beams')
+                # counts every beam as moved.
+                lim = proc_charac['limitations']
+                moved = [b for b in (1, 2)
+                         if 'crossing_beams' not in lim or
+                         'crossing_moves_beam%d' % b in lim]
+                pol = [b for b in moved if self.run_card['polbeam%d' % b]]
+                if pol:
+                    raise InvalidCmd(
+                        "Beam polarisation is not compatible with crossing symmetry:\n"
+                        "this process reuses a matrix element across crossed initial\n"
+                        "states that move the leg of beam %s, for which a per-beam\n"
+                        "polarisation is ill-defined. Regenerate the process with\n"
+                        "crossing disabled, e.g.\n"
+                        "  generate <process> --use_crossing=False\n"
+                        "and 'output' again, to run polarised beams."
+                        % ' and '.join(map(str, pol)))
+                eva = [b for b in moved if 'eva' in (self.run_card['pdlabel'],
+                                                     self.run_card['pdlabel%d' % b])]
+                if eva:
+                    raise InvalidCmd(
+                        "The EVA luminosity is not compatible with crossing symmetry:\n"
+                        "this process reuses a matrix element across crossed initial\n"
+                        "states that move the leg of beam %s, for which the per-beam\n"
+                        "EVA density is ill-defined. EVA needs a process generated\n"
+                        "with\n"
+                        "  set group_subprocesses False\n"
+                        "(the ungrouped output shares no matrix element across\n"
+                        "crossings) before 'generate' and 'output'."
+                        % ' and '.join(map(str, eva)))
+            #
             if 'fix_scale' in proc_charac['limitations']:
                 if not self.run_card['fixed_fac_scale'] or not self.run_card['fixed_ren_scale']:
                     raise InvalidCmd("Your model is identified as having not SM running of the strong coupling.\n"+\
@@ -7464,7 +7629,16 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                         logger.info('Remember that Parton-Shower are not yet ready for such proton component definition (HW implementation in progress).', '$MG:BOLD' )
                 elif (abs(self.run_card['lpp1'])==3 and abs(self.run_card['lpp2'])==3):
                     if 'pythia8_card.dat' in self.cards:
-                        if self.run_card['pdlabel'] == 'isronlyll':
+                        # A density that folds beamstrahlung into the PDF can be
+                        # showered too: the beamstrahlung part of x is written
+                        # per event and consumed by the dedicated Pythia8 main,
+                        # which degrades the beams so that only the ISR part is
+                        # backward-evolved. Either way the QED shower has to be
+                        # on, since that is what reconstructs the ISR.
+                        has_bstrahl = py8_bstrahl.density_has_bstrahl(
+                            self.run_card['pdlabel'],
+                            pjoin(self.me_dir, 'Source'))
+                        if self.run_card['pdlabel'] == 'isronlyll' or has_bstrahl:
                            if 'partonshower' not in self.run_card['bypass_check']:
                                 # force that QED shower is on?
                                 for param in ['TimeShower:QEDshowerByQ', 'TimeShower:QEDshowerByL', 'TimeShower:QEDshowerByGamma', 'SpaceShower:QEDshowerByQ', 'SpaceShower:QEDshowerByL']:
@@ -7494,14 +7668,12 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if proc_charac and 'MLM' in proc_charac['limitations']:
                 if self.run_card['ickkw']:
                     raise Exception( "Your model is identified as not fully supported within MadGraph7.\n" +\
-                      "You can NOT run with FxFx/UnLOPS matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
+                      "You can NOT run with FxFx matching/merging. Please check if merging outside MadGraph7 are suitable or refrain to use merging with this model")
             
-            # ensure that for fixed order ICKKW model are not set to FxFx and/or UNLOPS
+            # FxFx requires shower matching, so it cannot be used at fixed order.
             if 'shower_cards' not in self.cards and self.opt['switch']['fixed_order'] == 'ON':
-                if self.run_card['ickkw'] in [3,4]:
-                    # 3 is FxFx and 4 is UNLOPS
-                    mergemode = {3:'FxFx', 4:'UNLOPS'}
-                    raise Exception("You are running in fixed order mode but ICKKW is set to %s (%s). This does not make sense. Please fix and retry" %(self.run_card['ickkw'], mergemode[self.run_card['ickkw']]))
+                if self.run_card['ickkw'] == 3:
+                    raise Exception("You are running in fixed order mode but ICKKW is set to 3 (FxFx). This does not make sense. Please fix and retry")
 
 
             if 'fix_scale' in proc_charac['limitations']:
@@ -7576,7 +7748,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             extralibs = self.shower_card['extralibs'].split()
             extrapaths = self.shower_card['extrapaths'].split()
             # remove default stdhep/Fmcfio for recent shower
-            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIGPP', 'HW7']:
+            if self.run_card['parton_shower'] in ['PYTHIA8', 'HERWIG7', 'HW7']:
                 if 'stdhep' in self.shower_card['extralibs']:
                     extralibs.remove('stdhep')
                     modify_extralibs = True
@@ -9233,5 +9405,4 @@ class AskforEditCardWithSwitch(object):
         if spec is not None:
             self._sync_switch_from_card(spec['key'])
         return out
-
 

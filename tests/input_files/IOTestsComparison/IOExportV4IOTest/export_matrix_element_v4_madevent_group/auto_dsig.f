@@ -467,6 +467,13 @@ C      orientation)
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
       COMMON/VEC_IGRAPH/IGRAPH
+C     1-x of each beam: OMX_EE is what PDG2PDF reads for a
+C      dressed-lepton
+C     density, ALL_OMX_EE its value per lane (filled in dsample.f)
+      DOUBLE PRECISION OMX_EE(2)
+      COMMON /TO_EE_OMX1/ OMX_EE
+      DOUBLE PRECISION ALL_OMX_EE(2, VECSIZE_MEMMAX)
+      COMMON /TO_EE_OMX_VEC/ ALL_OMX_EE
 C     
 C     DATA
 C     
@@ -504,6 +511,8 @@ C     Continue only if IMODE is 0, 4 or 5
         ENDIF
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+C         the dressed-lepton densities read 1-x from OMX_EE, not from x
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
           IF (ABS(LPP(IB(1))).GE.1) THEN
 C           LP=SIGN(1,LPP(IB(1)))
             U1(IVEC)=PDG2PDF(LPP(IB(1)),2, IB(1),ALL_XBK(IB(1),IVEC)
@@ -564,6 +573,7 @@ C         Do not need those three here. do I?
           XBK(:) = ALL_XBK(:,IVEC)
 C         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
 
 C         Select a flavor combination (need to do here for right sign)
@@ -643,6 +653,8 @@ C       set minimum ipsel for this IFLAV
           XBK(:) = ALL_XBK(:,IVEC)
 C         CM_RAP = ALL_CM_RAP(IVEC)
           Q2FACT(:) = ALL_Q2FACT(:, IVEC)
+C         UNWGT samples the beamstrahlung split from it
+          OMX_EE(:) = ALL_OMX_EE(:,IVEC)
 
           IF(FRAME_ID.NE.6)THEN
             CALL BOOST_TO_FRAME(ALL_PP(0,1,IVEC), FRAME_ID, P1)
@@ -719,11 +731,11 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER VECSIZE_USED
 
       INTEGER IVEC
+
       INTEGER          IPSEL
       COMMON /SUBPROC/ IPSEL
       INTEGER IMIRROR, IPROC
       COMMON/TO_MIRROR/ IMIRROR, IPROC
-
 
 
 
@@ -750,38 +762,39 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       END
 
       INTEGER FUNCTION GET_NHEL1(HEL, IPART)
-C     if hel>0 return the helicity of particule ipart for the selected
-C      helicity configuration
-C     if hel=0 return the number of helicity state possible for that
-C      particle 
+C     if hel>0 return the helicity of particule ipart for the
+C     selected helicity configuration
+C     if hel=0 return the number of helicity state possible for
+C     that particle
       IMPLICIT NONE
-      INTEGER HEL,I, IPART
+      INTEGER HEL, I, IPART
       INCLUDE 'nexternal.inc'
-      INTEGER ONE_NHEL(NEXTERNAL)
-      INTEGER                 NCOMB
-      PARAMETER (             NCOMB=16)
-      INTEGER NHEL(NEXTERNAL,0:NCOMB)
-      DATA (NHEL(I,0),I=1,4) / 2, 2, 2, 2/
-      DATA (NHEL(I,   1),I=1,4) / 1,-1,-1, 1/
-      DATA (NHEL(I,   2),I=1,4) / 1,-1,-1,-1/
-      DATA (NHEL(I,   3),I=1,4) / 1,-1, 1, 1/
-      DATA (NHEL(I,   4),I=1,4) / 1,-1, 1,-1/
-      DATA (NHEL(I,   5),I=1,4) / 1, 1,-1, 1/
-      DATA (NHEL(I,   6),I=1,4) / 1, 1,-1,-1/
-      DATA (NHEL(I,   7),I=1,4) / 1, 1, 1, 1/
-      DATA (NHEL(I,   8),I=1,4) / 1, 1, 1,-1/
-      DATA (NHEL(I,   9),I=1,4) /-1,-1,-1, 1/
-      DATA (NHEL(I,  10),I=1,4) /-1,-1,-1,-1/
-      DATA (NHEL(I,  11),I=1,4) /-1,-1, 1, 1/
-      DATA (NHEL(I,  12),I=1,4) /-1,-1, 1,-1/
-      DATA (NHEL(I,  13),I=1,4) /-1, 1,-1, 1/
-      DATA (NHEL(I,  14),I=1,4) /-1, 1,-1,-1/
-      DATA (NHEL(I,  15),I=1,4) /-1, 1, 1, 1/
-      DATA (NHEL(I,  16),I=1,4) /-1, 1, 1,-1/
-
-      GET_NHEL1 = NHEL(IPART, IABS(HEL))
+      INTEGER    MAXHEL
+      PARAMETER (MAXHEL=2)
+      INTEGER NHSTATE(NEXTERNAL), STATES(MAXHEL,NEXTERNAL)
+      DATA NHSTATE /2,2,2,2/
+      DATA (STATES(I,1),I=1,2) /1,-1/
+      DATA (STATES(I,2),I=1,2) /-1,1/
+      DATA (STATES(I,3),I=1,2) /-1,1/
+      DATA (STATES(I,4),I=1,2) /1,-1/
+      INTEGER XGW, XGD, XGK
+      IF (HEL.EQ.0) THEN
+C       Number of helicity states for particle ipart.
+        GET_NHEL1 = NHSTATE(IPART)
+      ELSE
+C       Decode the canonical mixed-radix helicity code into
+C       particle ipart's helicity value (last external leg =
+C       least-significant digit).
+        XGW = 1
+        DO XGK = IPART+1, NEXTERNAL
+          XGW = XGW * NHSTATE(XGK)
+        ENDDO
+        XGD = MOD((IABS(HEL)-1)/XGW, NHSTATE(IPART))
+        GET_NHEL1 = STATES(XGD+1, IPART)
+      ENDIF
       RETURN
       END
+
 
 
 

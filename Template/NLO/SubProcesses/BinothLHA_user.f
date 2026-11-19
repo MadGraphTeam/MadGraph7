@@ -108,14 +108,13 @@ c======================================================================
       end
 
       subroutine BinothLHAInit(filename)
+      use fks_phase_space_data, only: p_born
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
       integer status,procnum
       double precision s,mu,sumdot
       external sumdot
-      double precision p_born(0:3,nexternal-1)
-      common/pborn/p_born
       character*13 filename
       common /LH_procnum /procnum
 
@@ -157,9 +156,10 @@ c      include "fks.inc"
       include "coupl.inc"
 
 c Particle types (=color) of i_fks, j_fks and fks_mother
-      integer i_type,j_type,m_type
-      double precision ch_i,ch_j,ch_m
-      common/cparticle_types/i_type,j_type,m_type,ch_i,ch_j,ch_m
+      double precision       ch_i,ch_j,ch_m
+      integer                i_type,j_type,m_type,j_pdg
+      common/cparticle_types/ch_i,ch_j,ch_m,
+     &                       i_type,j_type,m_type,j_pdg
 
       double precision pmass(nexternal),zero
       parameter (zero=0d0)

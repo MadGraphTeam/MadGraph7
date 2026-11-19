@@ -9,6 +9,7 @@ from typing import Any
 from ..base import Model, Vertex
 from ..expressions import (
     _expr_minkowski_dot,
+    _imaginary_unit_for,
     _index_particle_id,
 )
 
@@ -18,6 +19,25 @@ def _exact_imaginary_inverse_sqrt_two() -> Any:
     from symbolica import E
 
     return E("1i/sqrt(2)")
+
+
+@cache
+def _exact_u1_subtraction_weight() -> Any:
+    from symbolica import E
+
+    return E("1/3")
+
+
+def u1_subtraction_weight(*values: Any) -> Any:
+    """The weight 1/N_c (N_c = 3) of the U(1)-subtraction current, the
+    singlet term of T^a_ij T^a_kl = T_F (delta_il delta_kj - delta_ij delta_kl
+    / N_c) (its sign is a colour weight): an exact rational in symbolic
+    vertices, so evaluations beyond double precision do not meet a binary64
+    1/3; binary64 in direct numeric evaluation."""
+
+    if all(isinstance(value, Number) for value in values):
+        return 1.0 / 3.0
+    return _exact_u1_subtraction_weight()
 
 
 def _imaginary_inverse_sqrt_two(*values: Any) -> Any:
@@ -350,6 +370,9 @@ def _expr_fermion_antifermion_to_vector_weyl(
     antifermion_chirality: int,
 ) -> tuple[Any, ...]:
     prefactor = _imaginary_inverse_sqrt_two(*fermion, *antifermion, *coupling)
+    # Exact in symbolic vertices: 1j times the exact U(1)-subtraction
+    # weight would be rounded to binary64.
+    unit = _imaginary_unit_for((*fermion, *antifermion, *coupling))
     left, right = coupling
     f1, f2 = fermion
     a1, a2 = antifermion
@@ -358,7 +381,7 @@ def _expr_fermion_antifermion_to_vector_weyl(
         return (
             factor * (f1 * a1 + f2 * a2),
             -factor * (f2 * a1 + f1 * a2),
-            1j * factor * (-f2 * a1 + f1 * a2),
+            unit * factor * (-f2 * a1 + f1 * a2),
             factor * (-f1 * a1 + f2 * a2),
         )
     if fermion_chirality == 1 and antifermion_chirality == -1:
@@ -366,7 +389,7 @@ def _expr_fermion_antifermion_to_vector_weyl(
         return (
             factor * (f1 * a1 + f2 * a2),
             factor * (f1 * a2 + f2 * a1),
-            1j * factor * (-f1 * a2 + f2 * a1),
+            unit * factor * (-f1 * a2 + f2 * a1),
             factor * (f1 * a1 - f2 * a2),
         )
     return (0j, 0j, 0j, 0j)
@@ -383,19 +406,22 @@ def _expr_fermion_antifermion_to_vector_dirac(
             "Dirac fermion-antifermion vector current expects dimensions 4 and 4"
         )
     prefactor = _imaginary_inverse_sqrt_two(*fermion, *antifermion, *coupling)
+    # Exact in symbolic vertices: 1j times the exact U(1)-subtraction
+    # weight would be rounded to binary64.
+    unit = _imaginary_unit_for((*fermion, *antifermion, *coupling))
     left_coupling, right_coupling = coupling
     f1, f2, f3, f4 = fermion
     a1, a2, a3, a4 = antifermion
     left = (
         f3 * a1 + f4 * a2,
         -(f4 * a1 + f3 * a2),
-        1j * (-f4 * a1 + f3 * a2),
+        unit * (-f4 * a1 + f3 * a2),
         -f3 * a1 + f4 * a2,
     )
     right = (
         f1 * a3 + f2 * a4,
         f1 * a4 + f2 * a3,
-        1j * (-f1 * a4 + f2 * a3),
+        unit * (-f1 * a4 + f2 * a3),
         f1 * a3 - f2 * a4,
     )
     return tuple(

@@ -16,6 +16,7 @@
 #include <thrust/iterator/constant_iterator.h>
 #include <thrust/iterator/zip_iterator.h>
 #include <thrust/sequence.h>
+#include <thrust/tuple.h> // CUDA 13 (CCCL 3): no longer included by zip_iterator.h
 #include <thrust/sort.h>
 
 #include "../kernels/kernels.hpp"

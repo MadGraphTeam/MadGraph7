@@ -81,6 +81,19 @@ class AmplicolProcessTest(unittest.TestCase):
         self.cmd.exec_cmd('generate p p > e+ e-', printcmd=False, precmd=True)
         self.assertEqual(len(self.cmd._curr_amplicol_defs), 0)
 
+    def test_display_processes(self):
+        """display processes lists the [amplicol] processes, also when they
+        are the only ones; they have no diagrams to display"""
+        import contextlib, io
+        self.cmd.exec_cmd('generate g g > g g [amplicol]', printcmd=False,
+                          precmd=True)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.cmd.do_display('processes')
+        self.assertIn('g g > g g @1 [amplicol]', out.getvalue())
+        self.assertRaisesRegex(InvalidCmd, 'amplicol', self.cmd.do_display,
+                               'diagrams_text')
+
     def test_unsupported_options_are_refused(self):
         for line in ['p p > j j QED=0 [amplicol]',
                      'p p > z > e+ e- [amplicol]',
@@ -158,6 +171,22 @@ class AmplicolExportTest(unittest.TestCase):
         histograms = list(run_card.dynamic_sections['histograms'])
         self.assertIn('jet_2-pt', histograms)
         self.assertFalse([name for name in histograms if name.startswith('g_')])
+
+    def test_extra_jets_turn_mlm_on(self):
+        """[amplicol] p p > j j and p p > j j j are an MLM merged sample, as
+        their madmatrix counterparts."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        import madgraph.various.banner as banner_mod
+        self.cmd.exec_cmd('generate p p > j j [amplicol]', printcmd=False,
+                          precmd=True)
+        self.cmd.exec_cmd('add process p p > j j j [amplicol]', printcmd=False,
+                          precmd=True)
+        processes = export_amplicol.representative_processes(
+            self.cmd._curr_amplicol_defs, self.cmd._curr_model)
+        run_card = banner_mod.RunCardMG7()
+        run_card.create_default_for_process(
+            {'ninitial': 2, 'nexternal': 5}, '', [[proc] for proc in processes])
+        self.assertTrue(run_card.is_mlm_merged())
 
     def test_mirrored_beams(self):
         """pyamplicol keeps one process per unordered initial state; the other

@@ -13,8 +13,10 @@
 #include "mgOnGpuConfig.h"
 #include "mgOnGpuCxtypes.h" // for cxtype, fptype_amp_sv
 #include "GpuAbstraction.h"
+#include "ProcessData.h"
 #include "ProcessParameters.h"
 
+#include <cstddef>
 #include <type_traits>
 
 // A kernel argument that the kernel reads in place, without a copy per thread: from
@@ -28,6 +30,23 @@
 
 namespace madmatrix
 {
+  // Multichannel numerators: AoSoA [npagN][ndiagrams][neppN], one page per warp. A warp's
+  // per-diagram atomics coalesce and each diagram's offset is a compile-time constant.
+  constexpr int neppN = 32;
+
+  __host__ __device__ constexpr std::size_t
+  numeratorsIndex( const std::size_t ievt, const int idiag )
+  {
+    return ievt / neppN * ProcessData::ndiagrams * neppN + idiag * neppN + ievt % neppN;
+  }
+
+  // Whole pages: nevt need not be a multiple of neppN.
+  constexpr std::size_t
+  numeratorsBufferSize( const std::size_t nevt )
+  {
+    return ( nevt + neppN - 1 ) / neppN * neppN * ProcessData::ndiagrams;
+  }
+
   // The parameters of the process as the kernels take them: by value, which puts them
   // in the constant bank (as fast as __constant__ memory, and private to each launch,
   // hence to each instance and device), unless they do not fit in the kernel arguments
@@ -67,7 +86,11 @@ namespace madmatrix
                              const fptype* allgs,                                 // input: Gs[nevt]
                              fptype* allcouplings );                              // output: couplings[nevt*ndcoup*2]
 
-  void
+  // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
+  // (choose_good_helicities): one constant, so that the two never disagree
+  constexpr int goodHelScanEvents = 16;
+
+  int // output: the number of events it looked at, the first ones
   sigmaKin_getGoodHel( const ProcessParametersArg params,  // input: parameters of the process
                        const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -82,6 +105,11 @@ namespace madmatrix
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( ProcessParameters& params, // output: the good helicities of the process
                        const bool* isGoodHel );  // input: isGoodHel[ncomb] - host array
+
+  // A crossing-table row with no phase space at its own masses (a crossed
+  // decay lighter than its products, see scan_points in umami.cc): set before
+  // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
+  void sigmaKin_setNoPhaseSpace( const int cross );
 
   void
   sigmaKin( const ProcessParameters& params,     // input: parameters of the process (host)

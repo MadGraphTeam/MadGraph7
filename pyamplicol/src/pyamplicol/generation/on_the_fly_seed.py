@@ -20,6 +20,7 @@ from ..color import GenericColorPlan, build_color_plan
 from ..models.base import Model
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
+from .born_orders import process_born_amplitude_orders
 from .recurrence_columnar import (
     ExactComplexRationalV1,
     RecurrenceCouplingLimitV1,
@@ -216,6 +217,12 @@ def project_on_the_fly_process_seed_v1(
     normalization, runtime_normalization = build_recurrence_normalization(
         process,
         model,
+        lambda: process_born_amplitude_orders(
+            process,
+            model=model,
+            max_coupling_orders=coupling_order_limits,
+            minimal=coupling_order_policy == "minimal",
+        ),
     )
     color_plan = None
     if process.color_accuracy in {"nlc", "full"}:

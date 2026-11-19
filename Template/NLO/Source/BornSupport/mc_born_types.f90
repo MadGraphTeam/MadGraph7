@@ -1,0 +1,154 @@
+! Runtime-sized results never alias a subprocess's fixed Born COMMON blocks.
+module mc_born_types
+  implicit none
+  private :: born_is_finite_standard
+  integer, parameter :: BORN_OK=0, BORN_UNKNOWN_CONTEXT=1, BORN_BAD_SECTOR=2
+  integer, parameter :: BORN_INVALID_REQUEST=3, BORN_MISSING_CORRELATION=4
+  integer, parameter :: BORN_INCOMPLETE_HISTORY=5
+  integer, parameter :: BORN_INVALID_CONFIGURATION=6
+  ! Provider model COMMONs share one installation inside the Born library.
+  integer, save :: born_installed_provider=0
+  integer(8), save :: born_active_configuration_epoch=0
+  ! Scoped caller basis for the learned zero mask; numerical cache keys keep
+  ! their exact momentum/model semantics. Raw callers retain the zero key.
+  integer, save :: born_active_helicity_frame(2)=0
+  ! A configured fixed snapshot is immutable; configure again after editing.
+  type BornModelConfiguration
+    real(8), allocatable :: real_values(:)
+    complex(8), allocatable :: complex_values(:)
+    integer(8) :: epoch=0
+  end type
+  type BornModelState
+    real(8), allocatable :: real_values(:)
+    complex(8), allocatable :: complex_values(:)
+    integer(8) :: configuration_epoch=0
+  end type
+  type BornHistory
+    integer :: owner_sector=0, provider=0, context=0, sector=0, i=0, j=0, extra=0
+    integer, allocatable :: permutation(:), flavours(:), orders(:), amplitudes(:)
+  end type
+  type BornMetadata
+    integer :: provider=0, context=0, nexternal=0, nincoming=0, nprocesses=0
+    integer :: ngraphs=0, ncolor=0, nhelicity=0, namps=0, nsqamps=0
+    integer :: nsectors=0, nsplitorders=0, namplitudes=0, extra=0
+    logical :: supports_correlations=.false.
+    integer, allocatable :: fks(:,:)
+    integer, allocatable :: frame_map(:)
+    integer, allocatable :: born_ids(:,:), born_mothers(:,:,:), born_colours(:,:,:)
+    integer, allocatable :: configurations(:), tree(:,:,:), sprop(:,:), tprid(:,:)
+    logical, allocatable :: force_bw(:,:)
+    logical, allocatable :: colour_amplitudes(:,:,:)
+    integer, allocatable :: amplitude_orders(:,:)
+    character(64), allocatable :: order_names(:)
+    real(8) :: identical_factor=1d0
+    logical, allocatable :: complete_histories(:)
+    type(BornHistory), allocatable :: histories(:)
+  end type
+  type BornRequest
+    integer :: sector=1, m=0, n=0, extra=0
+    integer :: helicity_frame(2)=0
+    integer :: single_helicity=0
+    integer, allocatable :: helicity(:)
+    logical :: helicities=.false., colour=.false., charge=.false.
+    real(8), allocatable :: charges(:)
+  end type
+  type BornResult
+    real(8) :: born=0d0, correlation=0d0
+    real(8) :: single_helicity=0d0
+    ! Storage can survive a request; these flags describe the current result.
+    logical :: has_helicities=.false., has_soft=.false.
+    logical :: has_extra=.false., has_single_helicity=.false.
+    complex(8), allocatable :: ewsudakov(:), ewsudakov_lo2(:)
+    real(8), allocatable :: amplitudes(:), diagrams(:), flows(:), flow_orders(:,:)
+    real(8), allocatable :: helicities(:), helicity_orders(:,:), soft(:)
+    complex(8), allocatable :: counterterms(:,:), split_counterterms(:,:,:), extra(:,:)
+  end type
+contains
+  elemental logical function born_is_finite(x) result(finite)
+    use, intrinsic :: iso_fortran_env, only: int64
+    real(8), intent(in) :: x
+    integer(int64), parameter :: exponent_mask=int(z'7ff0000000000000',int64)
+    ! Check the representation at compile time, including mixed-endian
+    ! layouts. Integer classification leaves exception flags untouched and
+    ! avoids saving/restoring the FPU state around every provider request.
+    logical, parameter :: binary64=storage_size(0d0).eq.64.and. &
+         radix(0d0).eq.2.and.digits(0d0).eq.53.and. &
+         transfer(1d0,0_int64).eq.int(z'3ff0000000000000',int64).and. &
+         transfer(-1d0,0_int64).eq.int(z'bff0000000000000',int64).and. &
+         transfer(huge(0d0),0_int64).eq.int(z'7fefffffffffffff',int64)
+    if (binary64) then
+      finite=iand(transfer(x,0_int64),exponent_mask).ne.exponent_mask
+    else
+      finite=born_is_finite_standard(x)
+    endif
+  end function
+
+  elemental logical function born_is_finite_standard(x) result(finite)
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    real(8), intent(in) :: x
+    finite=ieee_is_finite(x)
+  end function
+
+  logical function born_model_state_equal(a,b)
+    type(BornModelState),intent(in) :: a,b
+    born_model_state_equal=.false.
+    if (a%configuration_epoch.ne.b%configuration_epoch) return
+    if (.not.allocated(a%real_values).or..not.allocated(b%real_values)) return
+    if (.not.allocated(a%complex_values).or..not.allocated(b%complex_values)) return
+    if (size(a%real_values).ne.size(b%real_values)) return
+    if (size(a%complex_values).ne.size(b%complex_values)) return
+    born_model_state_equal=all(a%real_values.eq.b%real_values).and. &
+                          all(a%complex_values.eq.b%complex_values)
+  end function
+
+  logical function born_helicity_state_equal(a,b,model_changed)
+    type(BornModelState),intent(in) :: a,b
+    logical,intent(in),optional :: model_changed
+    ! Finalization replaces this conservative default only after proving
+    ! homogeneous G scaling in every used tree squared-order component.
+    ! Providers can supply their preceding exact model comparison.
+    if(present(model_changed))then
+      born_helicity_state_equal=.not.model_changed
+    else
+      born_helicity_state_equal=born_model_state_equal(a,b)
+    endif
+  end function
+
+  logical function born_amplitude_state_equal(a,b)
+    type(BornModelState),intent(in) :: a,b
+    ! Only certified exports may omit model entries unused by tree amplitudes.
+    ! Unlike the helicity-mask key, this key never permits coupling rescaling.
+    born_amplitude_state_equal=born_model_state_equal(a,b)
+  end function
+
+  subroutine born_resize_model_state(state,nreal,ncomplex)
+    type(BornModelState),intent(inout) :: state
+    integer,intent(in) :: nreal,ncomplex
+    if (allocated(state%real_values)) then
+      if (size(state%real_values).ne.nreal) deallocate(state%real_values)
+    endif
+    if (allocated(state%complex_values)) then
+      if (size(state%complex_values).ne.ncomplex) deallocate(state%complex_values)
+    endif
+    if (.not.allocated(state%real_values)) allocate(state%real_values(nreal))
+    if (.not.allocated(state%complex_values)) allocate(state%complex_values(ncomplex))
+  end subroutine
+
+  subroutine born_reset_result(result)
+    type(BornResult),intent(inout) :: result
+    result%born=0d0
+    result%correlation=0d0
+    result%single_helicity=0d0
+    result%has_helicities=.false.
+    result%has_soft=.false.
+    result%has_extra=.false.
+    result%has_single_helicity=.false.
+    ! Leave buffers allocated, but never expose stale optional values.
+    if (allocated(result%helicities)) result%helicities=0d0
+    if (allocated(result%helicity_orders)) result%helicity_orders=0d0
+    if (allocated(result%soft)) result%soft=0d0
+    if (allocated(result%extra)) result%extra=(0d0,0d0)
+    if (allocated(result%ewsudakov)) result%ewsudakov=(0d0,0d0)
+    if (allocated(result%ewsudakov_lo2)) result%ewsudakov_lo2=(0d0,0d0)
+  end subroutine
+end module

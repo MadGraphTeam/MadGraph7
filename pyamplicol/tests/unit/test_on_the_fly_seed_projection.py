@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 
@@ -470,6 +470,67 @@ def test_builtin_incoming_fermions_keep_crossed_execution_contract() -> None:
             )
             assert row["momentum_sign"] == -1
             assert row["crossing_phase"] == crossing["phase"]
+
+
+@pytest.fixture(scope="module")
+def builtin_catalog() -> tuple[BuiltinSMModel, RecurrenceTemplateCatalog]:
+    model = BuiltinSMModel()
+    return model, build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest="a" * 64,
+        prepared_kernel_pack_digest="b" * 64,
+    )
+
+
+@pytest.mark.parametrize(
+    ("process", "policy", "limits", "powers"),
+    (
+        ("u u~ > d d~ g", "minimal", {}, (3, 0)),
+        ("u u~ > d d~ g", "explicit", {"QCD": 1, "QED": 2}, (1, 2)),
+        ("e+ e- > a a", "minimal", {}, (0, 2)),
+    ),
+)
+def test_builtin_lc_projection_takes_born_orders_without_a_color_plan(
+    monkeypatch: pytest.MonkeyPatch,
+    builtin_catalog: tuple[BuiltinSMModel, RecurrenceTemplateCatalog],
+    process: str,
+    policy: Literal["minimal", "explicit"],
+    limits: dict[str, int],
+    powers: tuple[int, int],
+) -> None:
+    """The LC seed's coupling powers come from a colour-blind Born-order sweep:
+    no LC colour plan (whose (n-1)! orderings the lane exists to avoid) is
+    built at generation."""
+
+    import sys
+
+    from pyamplicol.color import plan_build
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("an LC colour plan was built")
+
+    model, catalog = builtin_catalog
+    process_ir = build_process_ir(process, color_accuracy="lc")
+    real = plan_build.build_color_plan
+    for module in tuple(sys.modules.values()):
+        if getattr(module, "__name__", "").startswith("pyamplicol") and (
+            getattr(module, "build_color_plan", None) is real
+        ):
+            monkeypatch.setattr(module, "build_color_plan", forbidden)
+    projected = project_on_the_fly_process_seed_v1(
+        process_ir,
+        catalog,
+        model,
+        coupling_order_policy=policy,
+        coupling_order_limits=limits,
+    )
+    assert projected.color_plan is None
+    normalization = projected.runtime_normalization
+    assert (
+        normalization["qcd_coupling_power"],
+        normalization["electroweak_coupling_power"],
+    ) == powers
 
 
 def test_compact_pairing_roots_do_not_enumerate_or_cap_runtime_pairings() -> None:
