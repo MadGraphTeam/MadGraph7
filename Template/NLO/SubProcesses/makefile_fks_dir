@@ -341,3 +341,9 @@ native_real_me_chooser.o: mc_native_context.o nFKSconfigs.inc fks_info.inc order
 setscales.o: couplmod
 
 -include nlo_real_offload.mk
+# The fragment extends FILES/FKSSA after make has expanded the prerequisites
+# above. The wrapper depends on the bridge and the selected MadMatrix libraries.
+ifneq ($(NLO_REAL_LINKLIBS),)
+gensym test_soft_col_limits check_poles check_fks check_sudakov check_sudakov_angle2 \
+    madevent_mintFO madevent_mintMC reweight_xsec_events ewsudakov_sa libsudpy: nlo_real_offload.o
+endif
