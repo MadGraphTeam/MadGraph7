@@ -6328,7 +6328,13 @@ RESTART = %(mint_mode)s
         first_cmd = cmd_switch.get_cardcmd()
                 
         if not options['force'] and not self.force:
-            self.ask_edit_cards(cards, first_cmd=first_cmd, switch=switch)
+            # A parton-level-only run (-p) never showers, so do not offer the
+            # shower_card for editing: its consistency check requires a
+            # configured shower (e.g. pythia8_path) that this run does not use.
+            # The card stays in place and in the banner for a later 'shower'.
+            edit_cards = [c for c in cards
+                          if not (options['parton'] and c == 'shower_card.dat')]
+            self.ask_edit_cards(edit_cards, first_cmd=first_cmd, switch=switch)
 
         self.banner = banner_mod.Banner()
 
