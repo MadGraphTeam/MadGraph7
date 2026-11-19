@@ -5612,7 +5612,11 @@ class GenerationBackend:
         process_name = expanded.request.name
         profile_started = time.perf_counter()
         profile: dict[str, float] = {}
-        selector_plan_enabled = self._recurrence_helicity_selector_plan_enabled()
+        # Members cannot use a template's companion: it sums every pattern.
+        selector_plan_enabled = (
+            self._recurrence_helicity_selector_plan_enabled()
+            and not expanded.flavour_union_template
+        )
         with phase.child(
             process_name,
             f"{process_name}: compact recurrence construction",
@@ -6455,11 +6459,17 @@ class GenerationBackend:
             schedule_digest=schedule_digest,
         )
         color_contraction_started = time.perf_counter()
+        # A contracted flavour-union template contracts its pattern sums.
+        color_destinations = (
+            _pattern_group_destinations(amplitude_destinations)
+            if expanded.flavour_union_template
+            else amplitude_destinations
+        )
         color_contraction = build_recurrence_color_contraction(
             logical,
             prepared.complete_color_plan,
             resolved_helicities,
-            amplitude_destinations,
+            color_destinations,
             certified_structural_zero_sector_ids,
             contraction=run.color.contraction.value,
         )
@@ -6482,7 +6492,7 @@ class GenerationBackend:
             contraction_destinations = recurrence_color_contraction_destinations(
                 logical,
                 resolved_helicities,
-                amplitude_destinations,
+                color_destinations,
             )
             destination_count = len(contraction_destinations)
             if destination_count < group_count:
@@ -9173,6 +9183,26 @@ def _collapse_flavor_blind_classes(
         for entry in entries
         if entry.request.name not in grouped
     ]
+
+
+def _pattern_group_destinations(
+    destinations: Sequence[tuple[int, int | None]],
+) -> tuple[tuple[int, int | None], ...]:
+    """The consecutive (sector, helicity) groups of a pattern-resolved schedule."""
+
+    groups: list[tuple[int, int | None]] = []
+    seen: set[tuple[int, int | None]] = set()
+    for destination in destinations:
+        if groups and groups[-1] == destination:
+            continue
+        if destination in seen:
+            raise GenerationError(
+                "pattern-resolved destinations of one sector and helicity are "
+                "not consecutive"
+            )
+        seen.add(destination)
+        groups.append(destination)
+    return tuple(groups)
 
 
 def _apply_flavour_unions(

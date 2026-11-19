@@ -82,9 +82,8 @@ flavor_blind = false
 flavor_blind_strict = false
 # process.flavor_unions: With flavor_blind_strict, join flavour classes that
 # differ only in massless quark flavours into flavour unions evaluated by one
-# pattern-resolved program (in development). Requires LC colour, the
-# recurrence execution mode with topology replay, and emit_api_bundle = false
-# (UMAMI does not support union members yet). Default false.
+# pattern-resolved program (in development). Requires LC or full colour, the
+# recurrence execution mode and, for LC, topology replay. Default false.
 flavor_unions = false
 # process.consider_charge_conjugation: Also relate processes by charge
 # conjugation for flavor_blind and numerical grouping. Default true.

@@ -143,7 +143,8 @@ def project_recurrence_process_v1(
 
     ``pattern_resolved`` marks a flavour-union template: Rust keeps one
     amplitude per fermion pairing rule; a replay that moves fermion slots
-    relabels the patterns of its flow.
+    relabels the patterns of its flow. Contracted (full) colour sums the
+    patterns before the colour contraction and must not replay.
     """
 
     _validate_projection_roots(
@@ -157,11 +158,13 @@ def project_recurrence_process_v1(
         raise TypeError("recurrence projection requires exact normalization v1")
     if type(pattern_resolved) is not bool:
         raise TypeError("pattern-resolved projection opt-in must be boolean")
-    if pattern_resolved and (
-        layout != "topology-replay" or process.color_accuracy != "lc"
-    ):
+    if pattern_resolved and (layout, process.color_accuracy) not in {
+        ("topology-replay", "lc"),
+        ("contracted-color-union", "full"),
+    }:
         raise RecurrenceProjectionError(
-            "pattern-resolved flavour-union templates require LC topology replay"
+            "pattern-resolved flavour-union templates require LC topology replay "
+            "or full contracted colour"
         )
     if (
         isinstance(process_support_mask, bool)
@@ -222,6 +225,10 @@ def project_recurrence_process_v1(
         layout,
         pattern_resolved=pattern_resolved,
     )
+    if pattern_resolved and layout == "contracted-color-union" and replay_partitions:
+        raise RecurrenceProjectionError(
+            "pattern-resolved contracted-colour templates cannot replay"
+        )
     if prefer_symmetric_group_closure_anchor:
         physical_sectors = _project_cyclic_trace_closure_anchors(
             physical_sectors,

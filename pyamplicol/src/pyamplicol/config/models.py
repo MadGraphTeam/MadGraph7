@@ -2320,15 +2320,17 @@ class RunConfig:
         if self.color.nc_graded:
             self._validate_nc_expansion(virtual=virtual)
         if self.process.flavor_unions and (
-            self.color.accuracy is not ColorAccuracy.LC
+            self.color.accuracy not in (ColorAccuracy.LC, ColorAccuracy.FULL)
             or self.resolved_execution_mode is not EvaluatorExecutionMode.RECURRENCE
         ):
             raise ConfigurationError(
-                "process.flavor_unions requires color.accuracy='lc' and "
+                "process.flavor_unions requires color.accuracy='lc' or 'full' and "
                 "evaluator.execution_mode='recurrence'"
             )
-        if self.process.flavor_unions and (
-            self.color.lc_flow_layout is not LCFlowLayout.TOPOLOGY_REPLAY
+        if (
+            self.process.flavor_unions
+            and self.color.accuracy is ColorAccuracy.LC
+            and self.color.lc_flow_layout is not LCFlowLayout.TOPOLOGY_REPLAY
         ):
             raise ConfigurationError(
                 "process.flavor_unions requires color.lc_flow_layout='topology-replay'"

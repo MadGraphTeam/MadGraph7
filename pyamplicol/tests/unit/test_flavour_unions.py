@@ -566,7 +566,7 @@ def test_external_state_normalization_is_the_runtime_normalization(
         ) == (payload["average_factor"], payload["identical_factor"])
 
 
-def test_flavour_unions_config_requires_strict_lc_recurrence() -> None:
+def test_flavour_unions_config_requires_strict_recurrence() -> None:
     with pytest.raises(ConfigurationError, match="flavor_blind_strict"):
         ProcessConfig(flavor_unions=True)
     process = ProcessConfig(flavor_blind_strict=True, flavor_unions=True)
@@ -580,9 +580,16 @@ def test_flavour_unions_config_requires_strict_lc_recurrence() -> None:
     )
     # UMAMI providers evaluate union members as template assignments.
     RunConfig(action=Action.GENERATE, process=process, evaluator=recurrence)
+    # Full colour sums the patterns before the contraction.
+    RunConfig(
+        action=Action.GENERATE,
+        process=process,
+        evaluator=recurrence,
+        color=ColorConfig(accuracy="full"),
+    )
     for evaluator, color, generation in (
         (EvaluatorConfig(execution_mode="compiled"), ColorConfig(), no_bundle),
-        (recurrence, ColorConfig(accuracy="full"), no_bundle),
+        (recurrence, ColorConfig(accuracy="nlc"), no_bundle),
         (recurrence, ColorConfig(lc_flow_layout="all-flow-union"), no_bundle),
     ):
         with pytest.raises(ConfigurationError, match="flavor_unions"):
