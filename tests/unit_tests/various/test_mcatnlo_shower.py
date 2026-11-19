@@ -178,6 +178,32 @@ class TestMatchingContract(unittest.TestCase):
         self.assertTrue(contract['fks_params_md5'])
         self.assertEqual(contract['max_n_matched_jets'], 2)
 
+    def test_contract_records_local_recoil_choices(self):
+        card = pjoin(self.root, 'FKS_params.dat')
+
+        def contract(text):
+            with open(card, 'w') as stream:
+                stream.write(text)
+            return mcatnlo_shower.contract_from_generation(
+                self.root, {'parton_shower': 'PYTHIA8'}, {}, fks_params=card)
+
+        local = contract('#FKSPythiaLocalRecoil\n1\n'
+                         '#PythiaLocalCollinearPatch\n.true.\n'
+                         '#PythiaLocalSoftPatch\nF\n')
+        self.assertTrue(local['pythia8_local_recoil'])
+        self.assertTrue(local['pythia8_local_collinear_patch'])
+        self.assertFalse(local['pythia8_local_soft_patch'])
+        self.assertIn('local recoil', local.summary())
+        self.assertEqual(
+            mcatnlo_shower.MatchingContract.from_text(local.to_text()), local)
+        # Older contracts default to global recoil.
+        self.assertFalse(mcatnlo_shower.MatchingContract.from_text(
+            'parton_shower = PYTHIA8\n')['pythia8_local_recoil'])
+        for text in ('#FKSPythiaLocalRecoil\n2\n', '#FKSPythiaLocalRecoil\n',
+                     '#PythiaLocalSoftPatch\nmaybe\n'):
+            with self.assertRaises(mcatnlo_shower.ShowerInterfaceError):
+                contract(text)
+
 
 class FakePythia8(object):
     """Stands for a Pythia8 installation knowing the given settings."""
@@ -431,35 +457,23 @@ class TestPythia8Settings(unittest.TestCase):
         self.assertIsNone(s.get('Check:epTolErr'))
         self.assertTrue(any('Check:epTolErr' in n for n in s.notes))
 
-
-class TestPythia8LocalRecoil(unittest.TestCase):
-    """Single-top local recoil (#FKSPythiaLocalRecoil in FKS_params.dat) and
-    its opt-in IF kernel patches."""
-
+    # --- single-top local recoil (#FKSPythiaLocalRecoil) -----------------
     PATCHES = ('SpaceShower:IFquarkCollinearCorrection',
                'SpaceShower:IFtopSoftCorrection')
 
-    def settings(self, available=(), **contract):
-        from madgraph.various.shower_card import ShowerCard
+    def local_settings(self, available=(), card=None, **contract):
+        """Settings of a local-recoil contract, for a Pythia8 build with the
+        `available` IF kernel patches."""
         values = dict(parton_shower='PYTHIA8', born_coloured_partons=2,
                       pythia8_local_recoil=True)
         values.update(contract)
-        run = {'nevents': 100, 'nevents_total': 200, 'event_norm': 'average',
-               'mc_masses': {1: 0.33, 2: 0.33, 3: 0.5, 4: 1.5, 5: 4.8},
-               'pdf': ('internal', None, False), 'seed': 7}
         missing = [key for key in self.PATCHES if key not in available]
-        return mcatnlo_shower.pythia8_settings(
-            mcatnlo_shower.MatchingContract(**values), ShowerCard(), run,
-            FakePythia8(missing=missing))
+        return self.settings(mcatnlo_shower.MatchingContract(**values),
+                             FakePythia8(missing=missing), **(card or {}))
 
-    def assertRefused(self, message, **options):
-        with self.assertRaises(mcatnlo_shower.ShowerInterfaceError) as error:
-            self.settings(**options)
-        self.assertIn(message, str(error.exception))
-
-    def test_local_settings_are_locked(self):
-        s = self.settings()
-        locked = dict((x.key, x.value) for x in s.locked())
+    def test_local_recoil_settings_are_locked(self):
+        s = self.local_settings()
+        locked = self.locked(s)
         for key, value in [('SpaceShower:dipoleRecoil', 'on'),
                            ('TimeShower:globalRecoil', 'off'),
                            ('TimeShower:allowBeamRecoil', 'on'),
@@ -488,85 +502,61 @@ class TestPythia8LocalRecoil(unittest.TestCase):
         for pdg, mass in [('1', '0.33'), ('4', '1.5'), ('5', '4.8')]:
             self.assertEqual(locked['%s:m0' % pdg], mass)
         # A user may not change them without the unsafe opt-in.
-        from madgraph.various.shower_card import ShowerCard
-        card = ShowerCard()
-        card.set_param('pythia8_options', "{'TimeShower:globalRecoil': 'on'}")
-        with self.assertRaises(mcatnlo_shower.ShowerInterfaceError):
-            mcatnlo_shower.pythia8_settings(
-                mcatnlo_shower.MatchingContract(parton_shower='PYTHIA8',
-                                                pythia8_local_recoil=True),
-                card, {'nevents': 1, 'nevents_total': 1,
-                       'event_norm': 'average', 'mc_masses': {},
-                       'pdf': ('internal', None, False), 'seed': 1},
-                FakePythia8(missing=self.PATCHES))
+        with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                    'TimeShower:globalRecoil'):
+            self.local_settings(card={
+                'pythia8_options': "{'TimeShower:globalRecoil': 'on'}"})
 
-    def test_global_recoil_is_unchanged(self):
-        s = self.settings(pythia8_local_recoil=False)
+    def test_local_recoil_off_keeps_global_recoil(self):
+        s = self.local_settings(pythia8_local_recoil=False)
         self.assertEqual(s.get('SpaceShower:dipoleRecoil').value, 'off')
         self.assertEqual(s.get('TimeShower:globalRecoil').value, 'on')
         self.assertIsNone(s.get('SpaceShower:pT0Ref'))
         self.assertIsNone(s.get('6:mayDecay'))
 
-    def test_unsupported_matching_modes(self):
-        self.assertRefused('requires mcatnlo_delta = False', mcatnlo_delta=True)
-        self.assertRefused('requires ickkw = 0', ickkw=3)
-        self.assertRefused('QCD-only matching', qed_matching=True)
+    def test_local_recoil_refuses_unsupported_matching(self):
+        for message, contract in [('requires mcatnlo_delta = False',
+                                   {'mcatnlo_delta': True}),
+                                  ('requires ickkw = 0', {'ickkw': 3}),
+                                  ('QCD-only matching', {'qed_matching': True})]:
+            with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                        message):
+                self.local_settings(**contract)
 
     def test_collinear_patch_is_paired_with_the_counterterm(self):
-        s = self.settings(available=self.PATCHES[:1],
-                          pythia8_local_collinear_patch=True)
+        s = self.local_settings(available=self.PATCHES[:1],
+                                pythia8_local_collinear_patch=True)
         self.assertIn('SpaceShower:IFquarkCollinearCorrection = on',
                       s.render_locked())
         # A patched build reproduces the stock shower unless both are patched.
-        for local in (True, False):
-            s = self.settings(available=self.PATCHES,
-                              pythia8_local_recoil=local)
+        for recoil in (True, False):
+            s = self.local_settings(available=self.PATCHES,
+                                    pythia8_local_recoil=recoil)
             for key in self.PATCHES:
                 self.assertIn('%s = off' % key, s.render_locked())
-        self.assertRefused('lacks the IF quark collinear patch',
-                           pythia8_local_collinear_patch=True)
-        self.assertRefused('requires FKSPythiaLocalRecoil = 1',
-                           available=self.PATCHES, pythia8_local_recoil=False,
-                           pythia8_local_collinear_patch=True)
+        with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                    'lacks the IF quark collinear patch'):
+            self.local_settings(pythia8_local_collinear_patch=True)
+        with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                    'requires FKSPythiaLocalRecoil = 1'):
+            self.local_settings(available=self.PATCHES,
+                                pythia8_local_recoil=False,
+                                pythia8_local_collinear_patch=True)
 
     def test_top_soft_patch_requires_the_collinear_patch(self):
-        s = self.settings(available=self.PATCHES,
-                          pythia8_local_collinear_patch=True,
-                          pythia8_local_soft_patch=True)
+        s = self.local_settings(available=self.PATCHES,
+                                pythia8_local_collinear_patch=True,
+                                pythia8_local_soft_patch=True)
         self.assertIn('SpaceShower:IFtopSoftCorrection = on', s.render_locked())
-        self.assertRefused('requires PythiaLocalCollinearPatch',
-                           available=self.PATCHES, pythia8_local_soft_patch=True)
-        self.assertRefused('lacks the IF top soft patch',
-                           available=self.PATCHES[:1],
-                           pythia8_local_collinear_patch=True,
-                           pythia8_local_soft_patch=True)
-
-    def test_card_choices_are_recorded_in_the_contract(self):
-        with tempfile.TemporaryDirectory(prefix='mg7_local_recoil_') as tmp:
-            card = pjoin(tmp, 'FKS_params.dat')
-            with open(card, 'w') as stream:
-                stream.write('#FKSPythiaLocalRecoil\n1\n'
-                             '#PythiaLocalCollinearPatch\n.true.\n'
-                             '#PythiaLocalSoftPatch\nF\n')
-            contract = mcatnlo_shower.contract_from_generation(
-                tmp, {'parton_shower': 'PYTHIA8'}, {}, fks_params=card)
-            self.assertTrue(contract['pythia8_local_recoil'])
-            self.assertTrue(contract['pythia8_local_collinear_patch'])
-            self.assertFalse(contract['pythia8_local_soft_patch'])
-            self.assertIn('local recoil', contract.summary())
-            self.assertEqual(mcatnlo_shower.MatchingContract.from_text(
-                contract.to_text()), contract)
-            # Older contracts default to global recoil.
-            self.assertFalse(mcatnlo_shower.MatchingContract.from_text(
-                'parton_shower = PYTHIA8\n')['pythia8_local_recoil'])
-            for text in ('#FKSPythiaLocalRecoil\n2\n',
-                         '#FKSPythiaLocalRecoil\n',
-                         '#PythiaLocalSoftPatch\nmaybe\n'):
-                with open(card, 'w') as stream:
-                    stream.write(text)
-                with self.assertRaises(mcatnlo_shower.ShowerInterfaceError):
-                    mcatnlo_shower.contract_from_generation(
-                        tmp, {'parton_shower': 'PYTHIA8'}, {}, fks_params=card)
+        with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                    'requires PythiaLocalCollinearPatch'):
+            self.local_settings(available=self.PATCHES,
+                                pythia8_local_soft_patch=True)
+        with self.assertRaisesRegex(mcatnlo_shower.ShowerInterfaceError,
+                                    'lacks the IF top soft patch'):
+            self.local_settings(available=self.PATCHES[:1],
+                                pythia8_local_collinear_patch=True,
+                                pythia8_local_soft_patch=True)
 
 
 @unittest.skipUnless(sys.platform.startswith('linux') and shutil.which('g++')

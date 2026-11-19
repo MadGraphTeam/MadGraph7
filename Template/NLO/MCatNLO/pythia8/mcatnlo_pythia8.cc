@@ -176,6 +176,12 @@ static bool asFlag(const std::string& value, bool& result) {
   return true;
 }
 
+static bool sameFlag(bool got, const std::string& value, std::string& actual) {
+  bool want;
+  actual = got ? "on" : "off";
+  return asFlag(value, want) && want == got;
+}
+
 // Compare one locked entry; on failure describe the actual value.
 static bool checkSetting(Pythia& pythia, const std::string& key,
   const std::string& value, std::string& actual) {
@@ -186,11 +192,8 @@ static bool checkSetting(Pythia& pythia, const std::string& key,
       && k.find_first_not_of("-0123456789") == colon) {
     int id = std::atoi(k.substr(0, colon).c_str());
     std::string prop = k.substr(colon + 1);
-    if (prop == "maydecay") {
-      bool want, got = pythia.particleData.mayDecay(id);
-      actual = got ? "on" : "off";
-      return asFlag(value, want) && want == got;
-    }
+    if (prop == "maydecay")
+      return sameFlag(pythia.particleData.mayDecay(id), value, actual);
     double got;
     if (prop == "m0") got = pythia.particleData.m0(id);
     else if (prop == "mwidth") got = pythia.particleData.mWidth(id);
@@ -199,11 +202,7 @@ static bool checkSetting(Pythia& pythia, const std::string& key,
     return sameNumber(got, std::atof(value.c_str()));
   }
   Settings& s = pythia.settings;
-  if (s.isFlag(key)) {
-    bool want, got = s.flag(key);
-    actual = got ? "on" : "off";
-    return asFlag(value, want) && want == got;
-  }
+  if (s.isFlag(key)) return sameFlag(s.flag(key), value, actual);
   if (s.isMode(key)) {
     int got = s.mode(key);
     std::ostringstream os; os << got; actual = os.str();

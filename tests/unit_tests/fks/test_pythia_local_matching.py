@@ -7,17 +7,12 @@ import subprocess
 import sys
 import unittest
 
-try:
-    import numpy as np
-except ImportError:  # test discovery must not require numpy
-    np = None
-
 from tests.unit_tests.fks.test_momentum_maps import (
     ROOT, TEMPLATE, fortran_routine, mc_counterterm_test_module,
 )
 from tests.unit_tests.fks import test_pythia_local_recoil as recoil_tests
 
-boost, dot = recoil_tests.boost, recoil_tests.dot
+np, boost, dot = recoil_tests.np, recoil_tests.boost, recoil_tests.dot
 
 
 @unittest.skipIf(np is None, "requires numpy")

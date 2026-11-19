@@ -7,8 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-
-ROOT = Path(__file__).resolve().parents[3]
+from tests.unit_tests.fks.test_momentum_maps import TEMPLATE, fortran_routine
 
 
 @unittest.skipUnless(shutil.which("gfortran"), "gfortran is required")
@@ -17,18 +16,13 @@ class TestGeometryStability(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="fks_geometry_")
         cls.work = Path(cls.temporary.name)
-        helpers = (ROOT / "Template/NLO/SubProcesses/genps_fks_helpers.f").read_text()
-        start = helpers.index("      subroutine getangles(")
-        stop = helpers.index("      end subroutine getangles", start)
-        angles = helpers[start:stop] + "      end subroutine getangles\n"
+        angles = fortran_routine(TEMPLATE / "genps_fks_helpers.f", "getangles")
         # The exact dot of the production helpers module.
-        start = helpers.index("      double precision function dot(")
-        stop = helpers.index("      end function dot", start)
         (cls.work / "helpers.f").write_text(
             "      module fks_phase_space_helpers\n      contains\n" +
-            helpers[start:stop] + "      end function dot\n"
-            "      end module fks_phase_space_helpers\n")
-        sij = (ROOT / "Template/NLO/SubProcesses/fks_Sij.f").read_text()
+            fortran_routine(TEMPLATE / "genps_fks_helpers.f", "dot") +
+            "      end module\n")
+        sij = (TEMPLATE / "fks_Sij.f").read_text()
         start = sij.index("      double precision function get_cms_energy(")
         stop = sij.index("      double precision function costh_fks", start)
         (cls.work / "kernels.f").write_text(angles + "\n" + sij[start:stop])

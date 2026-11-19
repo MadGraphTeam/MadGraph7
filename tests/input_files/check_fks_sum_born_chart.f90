@@ -150,6 +150,5 @@ subroutine mc_select_pythia_pair(pair)
   ! Linked by select_native_recoil; only reached with FKSPythiaLocalRecoil=1.
   implicit none
   integer :: pair(2)
-  pair=0
   error stop 'unexpected local PYTHIA recoil pair selection'
 end subroutine

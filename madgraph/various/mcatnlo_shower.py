@@ -75,8 +75,9 @@ def _fortran_float(text):
     return float(str(text).strip().lower().replace('d', 'e'))
 
 
-def read_fks_param(path, name, default=None):
-    """Value following the line '#name' in an FKS_params.dat card."""
+def read_fks_param(path, name, default=None, required_value=False):
+    """Value following the line '#name' in an FKS_params.dat card. With
+    required_value, a '#name' line without a value is an error."""
     if not path or not os.path.isfile(path):
         return default
     want = False
@@ -87,22 +88,20 @@ def read_fks_param(path, name, default=None):
                 continue
             if want:
                 if stripped.startswith(('!', '#')):
-                    return default
+                    break
                 return stripped.split()[0]
             if stripped.split()[0] == '#' + name:
                 want = True
+    if want and required_value:
+        raise ShowerInterfaceError('#%s has no value in %s' % (name, path))
     return default
 
 
 def pythia8_mmaxgamma(fks_params):
     """#Pythia8MMaxGamma of an FKS_params.dat card (10 GeV if absent), with
     the validation of FKSParams.f90: a number in [0.001, 5000] GeV."""
-    text = read_fks_param(fks_params, 'Pythia8MMaxGamma', None)
+    text = read_fks_param(fks_params, 'Pythia8MMaxGamma', required_value=True)
     if text is None:
-        if fks_params and os.path.isfile(fks_params) and \
-                any(l.split()[:1] == ['#Pythia8MMaxGamma'] for l in open(fks_params)):
-            raise ShowerInterfaceError('#Pythia8MMaxGamma has no value in %s'
-                                       % fks_params)
         return 10.
     try:
         value = _fortran_float(text)
@@ -120,16 +119,8 @@ def pythia8_local_recoil(fks_params):
     #PythiaLocalSoftPatch) of an FKS_params.dat card, as booleans. Absent
     entries take the card defaults (0, .false., .false.). The values are read
     as in FKSParams.f90; their pairing is checked with the shower settings."""
-    def text(name, default):
-        value = read_fks_param(fks_params, name, None)
-        if value is None:
-            if fks_params and os.path.isfile(fks_params) and \
-                    any(l.split()[:1] == ['#' + name] for l in open(fks_params)):
-                raise ShowerInterfaceError('#%s has no value in %s'
-                                           % (name, fks_params))
-            return default
-        return value
-    value = text('FKSPythiaLocalRecoil', '0')
+    value = read_fks_param(fks_params, 'FKSPythiaLocalRecoil', '0',
+                           required_value=True)
     try:
         local = int(value)
     except ValueError:
@@ -137,17 +128,16 @@ def pythia8_local_recoil(fks_params):
     if local not in (0, 1):
         raise ShowerInterfaceError('Invalid #FKSPythiaLocalRecoil in %s: %s '
                                    '(must be 0 or 1)' % (fks_params, value))
-    patches = []
-    for name in ('PythiaLocalCollinearPatch', 'PythiaLocalSoftPatch'):
-        value = text(name, '.false.').lower()
-        if value in ('.true.', 'true', 't'):
-            patches.append(True)
-        elif value in ('.false.', 'false', 'f'):
-            patches.append(False)
-        else:
+
+    def flag(name):
+        value = read_fks_param(fks_params, name, '.false.', required_value=True)
+        try:
+            return _as_bool(value)
+        except ValueError:
             raise ShowerInterfaceError('Invalid #%s in %s: %s'
                                        % (name, fks_params, value))
-    return bool(local), patches[0], patches[1]
+    return (local == 1, flag('PythiaLocalCollinearPatch'),
+            flag('PythiaLocalSoftPatch'))
 
 
 def file_md5(path):
@@ -937,6 +927,12 @@ def pythia8_settings(contract, card, run, installation):
 
     # --- matching: scales and recoil -------------------------------------
     why = 'assumed by the PYTHIA8 MC counterterms'
+    # Single-top local recoil (FKSPythiaLocalRecoil = 1): the counterterms
+    # assume the dipole recoil of SimpleSpaceShower and local FSR recoil,
+    # without ISR screening or MECs, for stable tops and QCD showers only.
+    why_local = 'assumed by the local-recoil PYTHIA8 MC counterterms'
+    why_mode = ('the local-recoil matching is for stable-top production '
+                'with QCD showers only')
     if has('PartonShowers:model'):
         s.lock('matching', 'PartonShowers:model', 1,
                'the simple Pythia8 shower', reason=why)
@@ -944,7 +940,8 @@ def pythia8_settings(contract, card, run, installation):
         s.lock('matching', '%s:pTmaxMatch' % shower, 1,
                'start the shower at SCALUP', reason=why)
         s.lock('matching', '%s:pTmaxFudge' % shower, 1.0, reason=why)
-    s.lock('matching', 'TimeShower:globalRecoil', True, reason=why)
+    s.lock('matching', 'TimeShower:globalRecoil', not local,
+           reason=why_local if local else why)
     s.lock('matching', 'TimeShower:nMaxGlobalRecoil', 1, reason=why)
     s.lock('matching', 'TimeShower:globalRecoilMode', 2,
            'global recoil only for the first FSR emission of S events', reason=why)
@@ -960,7 +957,20 @@ def pythia8_settings(contract, card, run, installation):
     s.lock('matching', 'TimeShower:recoilDeadCone', True,
            'gluon recoil weight included in the MC counterterms', reason=why)
     s.lock('matching', 'SpaceShower:rapidityOrder', False, reason=why)
-    s.lock('matching', 'SpaceShower:dipoleRecoil', False, reason=why)
+    s.lock('matching', 'SpaceShower:dipoleRecoil', local,
+           reason=why_local if local else why)
+    if local:
+        s.lock('matching', 'TimeShower:allowBeamRecoil', True, reason=why_local)
+        s.lock('matching', 'SpaceShower:pTdampMatch', 0, reason=why_local)
+        s.lock('matching', 'SpaceShower:samePTasMPI', False, reason=why_local)
+        s.lock('matching', 'SpaceShower:pT0parametrization', 0,
+               reason=why_local)
+        s.lock('matching', 'SpaceShower:pT0Ref', 0., 'no ISR screening',
+               reason=why_local, force=True)
+        # A shower that this version does not have is off already.
+        for key in ('TimeShower:weakShower', 'SpaceShower:weakShower'):
+            if has(key):
+                s.lock('matching', key, False, reason=why_mode)
     if contract['mcatnlo_delta']:
         why_delta = 'MC@NLO-Delta reads the dipole starting scales from the LHE file'
         s.lock('matching', 'Beams:setProductionScalesFromLHEF', True, reason=why_delta)
@@ -984,12 +994,17 @@ def pythia8_settings(contract, card, run, installation):
             notes.append('Matrix-element corrections in resonance decays are '
                          'switched off: the decays of %s are part of the NLO '
                          'calculation.' % ', '.join(str(d) for d in decays))
+    elif local:
+        s.lock('mec', 'TimeShower:MEcorrections', False, reason=why_local)
     else:
         s.free('mec', 'TimeShower:MEcorrections',
                bool(card['time_shower_me_corrections']),
                'MECs in resonance decays only (MEextended = off)')
-    s.free('mec', 'TimeShower:MEafterFirst',
-           bool(card['time_shower_me_after_first']))
+    if local:
+        s.lock('mec', 'TimeShower:MEafterFirst', False, reason=why_local)
+    else:
+        s.free('mec', 'TimeShower:MEafterFirst',
+               bool(card['time_shower_me_after_first']))
 
     # --- QED -------------------------------------------------------------
     qed = bool(card['qed_shower'])
@@ -1009,7 +1024,10 @@ def pythia8_settings(contract, card, run, installation):
         for key in ('TimeShower:QEDshowerByQ', 'TimeShower:QEDshowerByL',
                     'TimeShower:QEDshowerByOther', 'TimeShower:QEDshowerByGamma',
                     'SpaceShower:QEDshowerByQ', 'SpaceShower:QEDshowerByL'):
-            s.free('qed', key, qed, 'qed_shower in the shower card')
+            if not local:
+                s.free('qed', key, qed, 'qed_shower in the shower card')
+            elif has(key):
+                s.lock('qed', key, False, reason=why_mode)
         s.free('qed', 'TimeShower:mMaxGamma', contract['pythia8_mmaxgamma'],
                'as in the MC subtraction (FKS_params.dat)')
 
@@ -1040,40 +1058,10 @@ def pythia8_settings(contract, card, run, installation):
     else:
         s.lock('merging', 'JetMatching:doFxFx', False, reason='no FxFx merging')
 
-    # --- single-top local recoil (FKSPythiaLocalRecoil = 1) ---------------
-    # The local counterterms assume the dipole recoil of SimpleSpaceShower and
-    # local FSR recoil, without ISR screening or MECs. The supported mode is
-    # stable-top production with QCD showers only.
-    if local:
-        why_local = 'assumed by the local-recoil PYTHIA8 MC counterterms'
-        s.lock('matching', 'SpaceShower:dipoleRecoil', True,
-               'local initial-final recoil', reason=why_local)
-        s.lock('matching', 'TimeShower:globalRecoil', False,
-               'local final-state recoil', reason=why_local)
-        s.lock('matching', 'TimeShower:allowBeamRecoil', True, reason=why_local)
-        s.lock('matching', 'SpaceShower:pTdampMatch', 0, reason=why_local)
-        s.lock('matching', 'SpaceShower:samePTasMPI', False, reason=why_local)
-        s.lock('matching', 'SpaceShower:pT0parametrization', 0,
-               reason=why_local)
-        s.lock('matching', 'SpaceShower:pT0Ref', 0., 'no ISR screening',
-               reason=why_local, force=True)
-        s.lock('mec', 'TimeShower:MEcorrections', False, reason=why_local)
-        s.lock('mec', 'TimeShower:MEafterFirst', False, reason=why_local)
-        why_mode = ('the local-recoil matching is for stable-top production '
-                    'with QCD showers only')
-        # A shower that this version does not have is off already.
-        for key in ('TimeShower:QEDshowerByQ', 'TimeShower:QEDshowerByL',
-                    'TimeShower:QEDshowerByGamma', 'TimeShower:QEDshowerByOther',
-                    'SpaceShower:QEDshowerByQ', 'SpaceShower:QEDshowerByL'):
-            if has(key):
-                s.lock('qed', key, False, reason=why_mode)
-        for key in ('TimeShower:weakShower', 'SpaceShower:weakShower'):
-            if has(key):
-                s.lock('matching', key, False, reason=why_mode)
-        s.lock('decays', '6:mayDecay', False, 'stable top', reason=why_mode)
-    # Opt-in IF kernel patches (pythia8/patches): the shower must use the
-    # kernel of the MC counterterms. A patched build is pinned to the recorded
-    # choice, so that it reproduces the stock shower unless both are patched.
+    # --- opt-in IF kernel patches (pythia8/patches) ---------------------
+    # The shower must use the kernel of the MC counterterms. A patched build
+    # is pinned to the recorded choice, so that it reproduces the stock
+    # shower unless both are patched.
     for field, key, name in (
             ('pythia8_local_collinear_patch',
              'SpaceShower:IFquarkCollinearCorrection', 'IF quark collinear patch'),
@@ -1146,6 +1134,8 @@ def pythia8_settings(contract, card, run, installation):
                 if pdg not in done:
                     done.add(pdg)
                     s.free('decays', '%d:mayDecay' % pdg, False, name)
+    if local:
+        s.lock('decays', '6:mayDecay', False, 'stable top', reason=why_mode)
     for i in range(1, 100):
         line = card['dm_%d' % i]
         if line:

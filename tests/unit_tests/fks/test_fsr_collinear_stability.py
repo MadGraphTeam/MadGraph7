@@ -112,12 +112,6 @@ end subroutine
 subroutine getaziangles()
   stop 99
 end subroutine
-subroutine IXXXSO()
-  stop 99
-end subroutine
-subroutine OXXXSO()
-  stop 99
-end subroutine
 subroutine IXXXXX()
   stop 99
 end subroutine
