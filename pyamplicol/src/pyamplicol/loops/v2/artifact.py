@@ -1648,6 +1648,12 @@ class V2VirtualRuntime:
             stability, arithmetic=arithmetic, precision=precision
         )
         self._default_r2 = v2_r2_strategy(r2_strategy)
+        # The load's own request (a process member is loaded with it) and the
+        # digits that select the load-time arithmetic for a call naming none:
+        # the load's digits, else binary64's 16 (the convention before the
+        # default arbitrary digits; ``_carrier``).
+        self._load_request = (_arithmetic(arithmetic), precision)
+        self._carrier_digits = 16 if precision is None else _digits(precision)
         if precision is None and _arithmetic(arithmetic) == "arbitrary":
             # Arbitrary precision without digits: the default arbitrary-
             # precision digits (500, USER 2026-11-18); binary64's 16 else.
@@ -1991,8 +1997,8 @@ class V2VirtualRuntime:
                     found,
                     member=self._member,
                     mapping=self._mapping,
-                    arithmetic=self.default_arithmetic,
-                    precision=self.default_precision,
+                    arithmetic=self._load_request[0] or self.default_arithmetic,
+                    precision=self._load_request[1],
                 )
                 runtime.set_model_parameters(self._parameters)
                 # The kinematics improvement's targets: the masses this
@@ -2215,14 +2221,15 @@ class V2VirtualRuntime:
         self, arithmetic: str | None, precision: int | None
     ) -> tuple[str, Any]:
         """(public arithmetic, v2 ``Precision``) of one call: an explicit
-        arithmetic, else the load-time default at the default precision, else
+        arithmetic, else the load-time default at the digits that select it
+        (the load's, 16 when it named none: ``_carrier_digits``), else
         binary64 at 16 digits and arbitrary precision otherwise."""
 
         from .assemble import Precision
 
         digits = self.default_precision if precision is None else _digits(precision)
         carrier = _arithmetic(arithmetic) or (
-            self.default_arithmetic if digits == self.default_precision else None
+            self.default_arithmetic if digits == self._carrier_digits else None
         )
         carrier = carrier or ("double" if digits == 16 else "arbitrary")
         if carrier == "double":

@@ -619,6 +619,9 @@ class V2ObservablesRuntime:
                 _parameters(model_parameters) or {}
             ).items()
         }
+        # The digits that select the load-time arithmetic for a call naming
+        # none: the load's digits, else binary64's 16 (``_precision``).
+        self._carrier_digits = 16 if precision is None else precision
         if precision is None and arithmetic == "arbitrary":
             # Arbitrary precision without digits: the default arbitrary-
             # precision digits (500, USER 2026-11-18); binary64's 16 else.
@@ -954,7 +957,7 @@ class V2ObservablesRuntime:
 
         precision = self.default_precision if precision is None else precision
         arithmetic = arithmetic or (
-            self.default_arithmetic if precision == self.default_precision else None
+            self.default_arithmetic if precision == self._carrier_digits else None
         )
         arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
         if arithmetic == "double":

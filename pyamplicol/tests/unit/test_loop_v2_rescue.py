@@ -704,6 +704,12 @@ def test_an_arbitrary_call_without_digits_runs_at_the_default_digits(artifact):
     loaded = _load(artifact, "gg", arithmetic="arbitrary")
     assert loaded._backend.default_precision == default_arbitrary_digits()
     assert loaded._call_precision(None, None) == default_arbitrary_digits()
+    # A load naming arbitrary precision keeps it for a call naming digits
+    # only, 16 included (the summed evaluation on the artifact runtime, the
+    # resolved one on its observables runtime), as before the default.
+    for call in (loaded.evaluate, loaded.evaluate_resolved):
+        found = call(points, mu_r2=scales, precision=16).diagnostics[0]
+        assert (found.arithmetic, found.precision_bits) == ("arbitrary", 54), call
     kept = _load(artifact, "gg", arithmetic="arbitrary", precision=40)
     assert kept._call_precision(None, "arbitrary") == 40
     assert kept.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 133
