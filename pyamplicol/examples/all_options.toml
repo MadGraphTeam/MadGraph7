@@ -533,13 +533,17 @@ stability_points = 1000
 # benchmark.n_core: Positive count of worker processes of the stability
 # statistics (`--n_core`; at most the usable cores; 1 runs in-process; the
 # result does not depend on it; the runtime timing always runs on one core).
-# Default 10.
+# Default 10, lowered to what three quarters of the memory available hold at
+# one worker's measured size; a value set here (as below) is given: honoured,
+# with a warning when its workers do not fit.
 n_core = 10
 # benchmark.ground_truth: Loop artifacts: the reference precision of the
 # profile (`--ground-truth`): the stability run's true values and the
 # reference time multipliers of both tables. "double-double" ("dd") or
 # arbitrary precision, "arbitrary" ("arb", at the built-in rescue's 57
-# digits) or "arbitrary:DIGITS". Default "double-double".
+# digits) or "arbitrary:DIGITS". Default "double-double". A value set here (as
+# below, even the default) is given: the runtime timing then times its
+# multiplier even when its minimal counts exceed the budget.
 ground_truth = "double-double"
 # benchmark.checked: Loop artifacts: time the checked mode (`--checked`): the
 # backends' own acceptance checks, a refused point served best-effort, the
@@ -553,6 +557,11 @@ checked = false
 # backend and five stability points. Default null: the counts given, else
 # the time budgets (10 s for the runtime, one minute per stability worker).
 completion_time = "10m"
+# benchmark.all_backends: Loop artifacts: time every reduction backend
+# whatever the budget (`--all-backends`), or false the default backend only
+# (`--no-all-backends`). Default null: every backend unless the default
+# backend alone exceeds the budget at its minimal counts.
+all_backends = true
 # benchmark.samples_output: Loop artifacts: the file the stability run writes
 # every sample's record to (`--samples-output`; one columnar JSON document:
 # the points' inputs, per backend each point's values, estimates, reference,
