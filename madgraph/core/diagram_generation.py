@@ -1531,11 +1531,15 @@ class Amplitude(base_objects.PhysicsObject):
             return diag_list
         all_numbers = frozenset(leg.get('number') for leg in process.get('legs'))
         rest = all_numbers - gpd_numbers
+        quark_pair = abs(model.get_particle([leg for leg in process.get('legs')
+                             if leg.get('gpd')][0].get('id')).get('color')) == 3
         kept = base_objects.DiagramList()
         removed = 0
+        zero_colour = 0
         for diagram in diag_list:
             content = dict((n, frozenset([n])) for n in all_numbers)
             bad = False
+            gluons_on_line = 0
             vertices = diagram.get('vertices')
             for ivert, vertex in enumerate(vertices):
                 legs = vertex.get('legs')
@@ -1547,23 +1551,40 @@ class Amplitude(base_objects.PhysicsObject):
                         if cset in (gpd_numbers, rest) and len(cset) > 1 and \
                            model.get_particle(leg.get('id')).get('mass').lower() == 'zero':
                             bad = True
+                else:
+                    inputs = legs[:-1]
+                    out = legs[-1]
+                    cset = frozenset().union(*[content[l.get('number')] for l in inputs])
+                    content[out.get('number')] = cset
+                    if cset in (gpd_numbers, rest) and \
+                       model.get_particle(out.get('id')).get('mass').lower() == 'zero':
+                        bad = True
+                    sets = [content[leg.get('number')] for leg in legs]
+                # the line of the GPD pair: legs carrying exactly one of the two
+                # GPD legs; count the gluons attached to it
+                on_line = [len(cset & gpd_numbers) == 1 for cset in sets]
+                if sum(on_line) >= 2:
+                    for leg, line in zip(legs, on_line):
+                        if not line and abs(model.get_particle(leg.get('id')).get('color')) == 8:
+                            gluons_on_line += 1
+                if bad:
                     break
-                inputs = legs[:-1]
-                out = legs[-1]
-                cset = frozenset().union(*[content[l.get('number')] for l in inputs])
-                content[out.get('number')] = cset
-                if cset in (gpd_numbers, rest) and \
-                   model.get_particle(out.get('id')).get('mass').lower() == 'zero':
-                    bad = True
-                    break
+            if not bad and quark_pair and gluons_on_line == 1:
+                # one gluon on the line of a colour-singlet quark pair: Tr T^a = 0
+                bad = True
+                zero_colour += 1
             if bad:
                 removed += 1
             else:
                 kept.append(diagram)
-        if removed:
+        if removed - zero_colour:
             logger.info("GPD: removed %d diagram(s) where the GPD pair meets at "
                         "one vertex (light-like 2 xi P exchange: Bethe-Heitler "
-                        "or zero by colour)" % removed)
+                        "or zero by colour)" % (removed - zero_colour))
+        if zero_colour:
+            logger.info("GPD: removed %d diagram(s) with a single gluon on the "
+                        "line of the quark pair (zero by the colour-singlet "
+                        "projector)" % zero_colour)
         return kept
 
     def apply_user_filter(self, diag_list, diagram_filter=True):
@@ -3081,9 +3102,13 @@ class MultiProcess(base_objects.PhysicsObject):
             # based on crossing symmetry
             failed_procs = []
             # Generate all combinations for the initial state        
+            # the GPD legs keep their property (their diagrams are filtered)
+            isdefs = [leg for leg in process_definition['legs'] if leg['state'] == False]
+            fsdefs = [leg for leg in process_definition['legs'] if leg['state'] == True]
             for prod in itertools.product(*isids):
-                islegs = [ base_objects.Leg({'id':id, 'state': False}) \
-                        for id in prod]
+                islegs = [ base_objects.Leg({'id':id, 'state': False,
+                                             'gpd': isdef.get('gpd')}) \
+                        for id, isdef in zip(prod, isdefs)]
 
                 # Generate all combinations for the final state, and make
                 # sure to remove double counting
@@ -3099,18 +3124,22 @@ class MultiProcess(base_objects.PhysicsObject):
                     red_fsidlist.append(tuple(sorted(prod)));
 
                     # Remove gluons from final state if QCD is among
-                    # the highest coupling hierarchy
+                    # the highest coupling hierarchy (not the gluon returning
+                    # to the proton of a GPD pair)
                     nglue = 0
+                    gpds = [fsdef.get('gpd') for fsdef in fsdefs]
                     if 21 in particles[0]:
-                        nglue = len([id for id in prod if id == 21])
-                        prod = [id for id in prod if id != 21]
+                        nglue = len([id for id, g in zip(prod, gpds) if id == 21 and not g])
+                        kept = [(id, g) for id, g in zip(prod, gpds) if id != 21 or g]
+                    else:
+                        kept = list(zip(prod, gpds))
 
                     # Generate leg list for process
                     leg_list = [copy.copy(leg) for leg in islegs]
 
                     leg_list.extend([\
-                            base_objects.Leg({'id':id, 'state': True}) \
-                            for id in prod])
+                            base_objects.Leg({'id':id, 'state': True, 'gpd': g}) \
+                            for id, g in kept])
 
                     legs = base_objects.LegList(leg_list)
 
