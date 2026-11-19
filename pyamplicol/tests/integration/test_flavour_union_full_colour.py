@@ -178,6 +178,16 @@ def _to_template(point: Point, permutation: Sequence[int]) -> Point:
     return tuple(point[index] for index in permutation)
 
 
+def _member_helicity(helicity: str, permutation: Sequence[int]) -> str:
+    """A template helicity id in the member's legs (slot r is leg permutation[r])."""
+
+    values = helicity.removeprefix("h:").split(",")
+    own = [""] * len(values)
+    for slot, leg in enumerate(permutation):
+        own[leg] = values[slot]
+    return "h:" + ",".join(own)
+
+
 def _real(values: Sequence[object]) -> list[float]:
     return [complex(value).real for value in values]  # type: ignore[arg-type]
 
@@ -266,14 +276,15 @@ def test_assignments_equal_member_loads_and_own_programs(
             _assert_close(
                 [row[0] for row in routed], _real(reference.evaluate(points)), expression
             )
-            # Per helicity: the member's helicity labels are the template's.
+            # Per helicity: template slot r is the member's leg permutation[r].
             per_helicity = template.evaluate_assignments(
                 template_points[:1], [[index]], output="helicity"
             )[0][0]
             own = _helicity_values(member, points[0])
-            assert dict(zip(helicity_ids, per_helicity, strict=True)) == pytest.approx(
-                own, rel=1.0e-12, abs=1.0e-12 * max(own.values())
-            )
+            assert {
+                _member_helicity(helicity, permutation): value
+                for helicity, value in zip(helicity_ids, per_helicity, strict=True)
+            } == pytest.approx(own, rel=1.0e-12, abs=1.0e-12 * max(own.values()))
 
 
 def test_per_point_helicities_and_mixed_requests(
