@@ -809,7 +809,16 @@ result, rounded to binary64, takes its place in the point's binary64 sum;
 every other lane, and every point without a refused lane, is bitwise as
 before. The same holds in double-double (a refused lane is reduced again
 in arbitrary precision), for the rotated evaluations of the stability
-checks and for the per-point fallback's evaluations.
+checks and for the per-point fallback's evaluations. A lane counts as
+refused when the backend refuses it in the direct reduction OR in the
+reduction-direction check's re-test frame, and a rescued lane is served in
+both frames: with a reduction-direction check in the call's checks (also the
+default set on TIRust's points), a lane accepted directly but refused in the
+re-test frame is rescued, so the point's VALUE can differ, at the rescued
+lane's rounding (3e-15 relative on one 2 -> 6 gluon point; no case on 282
+flat g g > g g g points), from the same point evaluated with checks without
+a reduction check. It never differs from a release without the lane rescue,
+which failed such points.
 
 The reduction is linear in the coefficients and the tensor integrals they
 multiply are smooth where a Gram determinant is small: the amplification
