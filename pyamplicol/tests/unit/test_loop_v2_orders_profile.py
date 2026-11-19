@@ -1823,9 +1823,15 @@ def test_the_stability_workers_fit_the_memory(uux_ddx, monkeypatch, caplog, n_co
     monkeypatch.setattr(lp, "_own_peak_bytes", lambda: 1e9)
     monkeypatch.setattr(lp, "_available_memory", lambda: 3e9)
     probe = n_core == "probe"
+    probed: list = []
     if probe:
-        # The first worker's own peak after its first task: 2 GB.
-        monkeypatch.setattr(lp, "_process_peak_bytes", lambda pid: 2e9)
+        # The first worker's own peak after its first task: 2 GB; the pool
+        # holds that one worker alone then (ptimereview4 m-1).
+        def peak(pid):
+            probed.append(pid)
+            return 2e9
+
+        monkeypatch.setattr(lp, "_process_peak_bytes", peak)
         n_core = None
     config = resolve_config(
         {
@@ -1848,7 +1854,8 @@ def test_the_stability_workers_fit_the_memory(uux_ddx, monkeypatch, caplog, n_co
     if probe:
         # Tasks of several points: the first worker's peak sets the workers.
         assert memory["probed_bytes"] == 2e9 and memory["workers"] == 1
-        assert "stability on 1 workers (memory: 1.9 GiB each, 3/4 of 2.8 GiB" in text
+        assert len(set(probed)) == 1
+        assert "stability on 1 worker (memory: 1.9 GiB each, 3/4 of 2.8 GiB" in text
         assert any("keeps 1 of its 2 workers" in r.message for r in caplog.records)
     elif n_core is None:
         assert "stability on 2 workers (memory: " in text
@@ -1923,9 +1930,12 @@ def test_the_reference_keeps_its_warm_up_after_the_binary64_entry(uux_ddx):
 
 
 def test_a_target_runtime_alone_is_a_budget_the_counts_follow(uux_ddx):
-    """A --target-runtime given alone is the runtime timing's budget per
-    backend: the counts follow it (time budgets), not the default counts
-    (128 points x 7 calls) as if given; the counts row names it."""
+    """A --target-runtime given alone keeps origin/main's meaning, each
+    backend's timed binary64 budget (start-up and warm-up outside it, the
+    reference's budget on top), but its counts are chosen from it
+    (``profile_plan.target_counts``: one warm-up, the minimum calls, more
+    while the target affords them), not the default counts as if given
+    (ptimereview4 B-2); the counts row names it."""
 
     from pyamplicol.config import resolve_config
     from pyamplicol.loop_profile import profile_loop
@@ -1945,7 +1955,8 @@ def test_a_target_runtime_alone_is_a_budget_the_counts_follow(uux_ddx):
     for row in report.runtime or ():
         counts = plan["runtime"][row.backend]
         assert counts["minimum"] == 1 and counts["warmup"] == 1
-        assert counts["budget_seconds"] < 0.5
+        assert counts["budget_seconds"] == 0.5
+        assert counts["reference_budget_seconds"] == 0.5
     assert "--target-runtime 1s per backend" in (_counts_cell(report, False) or "")
 
 
@@ -1959,13 +1970,7 @@ def test_a_backend_profiled_alone_keeps_its_share(uux_ddx, monkeypatch):
     from pyamplicol.config import resolve_config
     from pyamplicol.profile_plan import DEFAULT_RUNTIME_SECONDS
 
-    scope = plan_module.timing_scope
-
-    def omit(costs, default, bound, **options):
-        timed, _ = scope(costs, default, bound, **options)
-        return timed, tuple(b for b in costs if b != default)
-
-    monkeypatch.setattr(plan_module, "timing_scope", omit)
+    monkeypatch.setattr(plan_module, "rule_a_drops", lambda *a, **k: True)
     config = resolve_config(
         {
             "action": "benchmark",
@@ -1978,3 +1983,129 @@ def test_a_backend_profiled_alone_keeps_its_share(uux_ddx, monkeypatch):
     assert report.plan["runtime"]["ninjars"]["budget_seconds"] < (
         DEFAULT_RUNTIME_SECONDS / 2
     )
+
+
+def _in_process(monkeypatch, *, slow_reference=0.0, slow_chunk=0.0, entry=False):
+    """Run each backend's runtime timing in this process (the spawned worker
+    would not see the stubs), with double-double calls slowed by
+    ``slow_reference`` seconds and binary64 calls of several points by
+    ``slow_chunk``; ``entry``: a stub warm entry. Returns the calls seen."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+
+    evaluate = Runtime.evaluate
+    load = Runtime.load.__func__
+    calls: list = []
+
+    def slow(self, batch, *args, **kwargs):
+        calls.append((len(batch), kwargs.get("arithmetic"), kwargs.get("reduction")))
+        if kwargs.get("arithmetic") == "double-double":
+            time.sleep(slow_reference)
+        elif len(batch) > 1:
+            time.sleep(slow_chunk)
+        return evaluate(self, batch, *args, **kwargs)
+
+    def loaded(cls, *args, **kwargs):
+        runtime = load(cls, *args, **kwargs)
+        if entry:
+            runtime._backend.prepare = lambda **options: None
+        return runtime
+
+    def in_process(
+        artifact,
+        process,
+        options,
+        config,
+        points,
+        request,
+        run,
+        *,
+        reference=None,
+        one_thread=None,
+        warm_entry=False,
+    ):
+        runtime = Runtime.load(artifact, process=process, **options)
+        return profile_virtual(
+            runtime,
+            config,
+            points=points,
+            artifact=artifact,
+            reduction=request,
+            reference=reference,
+            optimistic=True,
+            warm_entry=warm_entry,
+        )
+
+    monkeypatch.setattr(Runtime, "evaluate", slow)
+    monkeypatch.setattr(Runtime, "load", classmethod(loaded))
+    monkeypatch.setattr(lp, "_isolated_profile", in_process)
+    return calls
+
+
+@pytest.mark.parametrize("measured", [False, True])
+def test_a_dear_reference_is_left_out_on_every_path(uux_ddx, monkeypatch, measured):
+    """Rule B on what each path measures (ptimereview4 B-1): double-double
+    calls slowed by 5 s against a 3 s runtime budget (bound 4.5 s). Without a
+    measurement phase the decider (NinjaRS) runs its binary64 call, its
+    untimed reference point (a measured cold 5 s point: the bound is
+    exceeded) and no timed one; with the measurement the parent's measured
+    point decides it before. Either way: no reference for any backend (all
+    or none), both backends kept (rule A never counts that reference), the
+    record names what was left out."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 3.0)
+    monkeypatch.setattr(
+        plan_module, "measurement_affects_counts", lambda *a, **k: measured
+    )
+    calls = _in_process(monkeypatch, slow_reference=5.0)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    assert all(p.reference is None for p in rows.values())
+    assert report.plan["omitted_backends"] == []
+    assert report.plan["omitted_reference"] == "dd"
+    # One dd point in all: the parent's measured one, or the decider's
+    # untimed one (then no timed one, and none for TIRust: all or none).
+    dd = [c for c in calls if c[1] == "double-double"]
+    assert len(dd) == 1 and dd[0][2] == "ninjars"
+    if rows["ninjars"].reference_skipped:
+        assert rows["ninjars"].reference_point_seconds >= 5.0
+    else:
+        assert measured
+    assert not rows["tirust"].reference_skipped
+
+
+def test_rule_a_is_decided_again_on_the_default_backends_row(uux_ddx, monkeypatch):
+    """A cheap one-point call keeps both backends before the runtime timing,
+    the default backend's measured chunk (slowed to 16 s) then leaves the
+    other out (ptimereview4 m-7: the row decision on the measured path)."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    _in_process(monkeypatch, slow_chunk=16.0)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert {row.backend for row in report.runtime or ()} == {"ninjars"}
+    assert report.plan["omitted_backends"] == ["tirust"]

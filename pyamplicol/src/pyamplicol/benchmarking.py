@@ -2820,9 +2820,13 @@ class VirtualProfileResult:
     # The seconds of the binary64 warm entry when it replaced the untimed
     # warm-up point (``_prepared``; None: none ran).
     prepared_seconds: float | None = None
-    # The reference pass was asked for but not run: its minimum exceeded
-    # ``reference["unless_over"]`` (``profile_virtual``).
+    # The reference pass was asked for but left out (its timed calls, or
+    # all of it): rule B on this backend's measured numbers
+    # (``reference["scope"]``, ``_scope_drops``).
     reference_skipped: bool = False
+    # The untimed reference point's seconds when one ran (a measured cold
+    # point: what rule B learns from it).
+    reference_point_seconds: float | None = None
     # With N > 1 native threads (``profile --runtime-threads``): the time per
     # point of the same calls' points on one thread (a short timing of its
     # own, ``one_thread_profile``) and its timed calls; None: not measured.
@@ -2849,6 +2853,8 @@ class VirtualProfileResult:
             }
         if not self.reference_skipped:
             out.pop("reference_skipped")
+        if self.reference_point_seconds is None:
+            out.pop("reference_point_seconds")
         return out
 
 
@@ -3167,12 +3173,18 @@ def profile_virtual(
     if monitor is not None:
         monitor("binary64-result", {"profile": profile})
     timing = None
-    skipped = reference is not None and _reference_over(
-        profile, reference, bench.batch_size
-    )
+    scope = None if reference is None else reference.get("scope")
+
+    def drops(reference_point: float | None = None) -> bool:
+        return scope is not None and _scope_drops(
+            profile, scope, bench.batch_size, reference_point
+        )
+
+    skipped = reference is not None and drops()
+    point_seconds = None
     if reference is not None and not skipped:
         with peak_memory() as reference_peak:
-            timing = _reference_timing(
+            timing, point_seconds = _reference_pass(
                 runtime,
                 batches,
                 bench,
@@ -3181,29 +3193,46 @@ def profile_virtual(
                 reference,
                 binary64=profile.seconds_per_point,
                 monitor=monitor,
+                stop=drops if scope is not None else None,
             )
-        timing = replace(timing, peak_memory=reference_peak.result)
-    return replace(profile, reference=timing, reference_skipped=skipped)
+        if timing is None:
+            skipped = True
+        else:
+            timing = replace(timing, peak_memory=reference_peak.result)
+    return replace(
+        profile,
+        reference=timing,
+        reference_skipped=skipped,
+        reference_point_seconds=point_seconds,
+    )
 
 
-def _reference_over(
-    profile: VirtualProfileResult, reference: Mapping[str, Any], batch: int
+def _scope_drops(
+    profile: VirtualProfileResult,
+    scope: Mapping[str, Any],
+    batch: int,
+    reference_point: float | None = None,
 ) -> bool:
-    """Whether the reference pass is left out (``reference["unless_over"]``,
-    ``loop_profile``'s rule B on the runtime timing's own costs): a true
-    lower bound of this backend's runtime minimum, its timed call of one
-    chunk at the measured binary64 cost and the reference's untimed and
-    timed point at least that binary64 pass each (a pass in a wider carrier
-    costs at least the binary64 one), exceeds it."""
+    """Rule B re-called by the decider's runtime timing on its own measured
+    numbers (``profile_plan.rule_b_drops``): this backend's ``Known`` from the
+    parent's (``scope["known"]``) with its measured binary64 chunk, its warm
+    entry and, after its untimed reference point, that point's seconds."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.profile_plan import Known, lower_bound
 
-    bound = reference.get("unless_over")
-    per_point = profile.seconds_per_point
-    if bound is None or per_point is None:
-        return False
-    call = min(DEFAULT_LANES, max(batch, 1)) * per_point
-    return call + 2.0 * per_point > float(bound)
+    given = dict(scope.get("known") or {})
+    known = Known(
+        point=given.get("point"),
+        chunk=profile.seconds_per_point,
+        warm=profile.prepared_seconds,
+        reference=reference_point
+        if reference_point is not None
+        else given.get("reference"),
+        start=float(given.get("start") or 0.0),
+    )
+    total = lower_bound(known, lanes=min(DEFAULT_LANES, max(batch, 1)), reference=True)
+    return total > float(scope["bound"])
 
 
 def one_thread_profile(
@@ -3325,6 +3354,8 @@ def _reference_calls(
     call: Callable[[int, int], float],
     progress: Callable[[int, int, float | None, Sequence[float]], None] | None,
     prior: float | None,
+    *,
+    stop: Callable[[float], bool] | None = None,
 ) -> tuple[list[float], int]:
     """The reference pass's protocol (``_reference_timing``): one untimed
     call of one point (``warmup``: the carrier's first call builds what it
@@ -3365,6 +3396,9 @@ def _reference_calls(
         # call's fixed cost counted in full).
         per_point = call(0, 1)
         done = 1
+        if stop is not None and stop(per_point):
+            # The untimed point says the budget is exceeded: no timed call.
+            return [], 0
         chunk = fitted(per_point)
         estimate = per_point * chunk
         total = 1 + planned((), estimate)
@@ -3404,6 +3438,34 @@ def _reference_timing(
     binary64: float | None = None,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> PrecisionTiming:
+    """``_reference_pass`` without a scope: its timing."""
+
+    timing, _ = _reference_pass(
+        runtime,
+        batches,
+        bench,
+        reduction,
+        scales,
+        reference,
+        binary64=binary64,
+        monitor=monitor,
+    )
+    assert timing is not None
+    return timing
+
+
+def _reference_pass(
+    runtime: Any,
+    batches: _PointBatches,
+    bench: BenchmarkConfig,
+    reduction: str | None,
+    scales: Callable[[Momenta], Any],
+    reference: Mapping[str, Any],
+    *,
+    binary64: float | None = None,
+    monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+    stop: Callable[[float], bool] | None = None,
+) -> tuple[PrecisionTiming | None, float | None]:
     """The reference carrier's time per point (``PrecisionTiming``): one
     fully optimistic pass per point, the unchecked reduction of the
     profiled backend alone (``reduction``, "auto" resolved to the runtime's
@@ -3432,8 +3494,7 @@ def _reference_timing(
         **{
             k: v
             for k, v in reference.items()
-            if k
-            not in ("points", "budget", "seconds_per_point", "unless_over", "entry")
+            if k not in ("points", "budget", "seconds_per_point", "scope", "entry")
         },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
@@ -3491,13 +3552,28 @@ def _reference_timing(
             )
 
     prepared = None
-    if warm and reference.get("entry"):
+    scope = reference.get("scope")
+    # With rule B open and this reference's cost unknown, its untimed point
+    # (not the entry) measures it (``stop``).
+    unknown = scope is not None and (scope.get("known") or {}).get("reference") is None
+    if warm and reference.get("entry") and not unknown:
         # The warm entry instead of the untimed point (the caller's
         # ``profile_plan.takes_entry``).
         report(0, 1, prior, ())
         prepared = _prepared(runtime, options, backend)
         warm = prepared is None
-    walls, size = _reference_calls(budget, warm, size, call, report, prior)
+    first: list[float] = []
+
+    def stopped(per_point: float) -> bool:
+        first.append(per_point)
+        return stop is not None and stop(per_point)
+
+    walls, size = _reference_calls(
+        budget, warm, size, call, report, prior, stop=stopped if warm else None
+    )
+    point = first[0] if first else None
+    if not walls:
+        return None, point
     return PrecisionTiming(
         arithmetic,
         size,
@@ -3511,7 +3587,7 @@ def _reference_timing(
         tuple(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))),
         digits=cast("int | None", options.get("precision")),
         prepared_seconds=prepared,
-    )
+    ), point
 
 
 def _prepared(

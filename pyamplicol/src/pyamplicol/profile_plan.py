@@ -353,105 +353,145 @@ def reference_affects_counts(
     return left > warm
 
 
-def scope_minimum(
-    costs: Costs,
+@dataclass(frozen=True, slots=True)
+class Known:
+    """What a profile has measured of one backend so far, the only input of
+    the scope rules (``rule_b_drops``, ``rule_a_drops``); every field a
+    number this run measured (None: not yet): ``point`` one binary64
+    one-point call; ``chunk`` binary64 per point of a timed call of whole
+    chunks (the runtime timing's row); ``warm`` the seconds of the binary64
+    warm entry where the stream takes it (0: taken, cost unknown; None: an
+    untimed warm-up point); ``reference`` one reference point measured cold
+    (the measurement's, or the runtime timing's untimed point) and
+    ``reference_timed`` its timed warm point (the row's); ``start`` the
+    start-up of a process that loads the artifact."""
+
+    point: float | None = None
+    chunk: float | None = None
+    warm: float | None = None
+    reference: float | None = None
+    reference_timed: float | None = None
+    start: float = 0.0
+
+
+def lower_bound(
+    known: Known,
     *,
     lanes: int,
     reference: bool,
+    stability_workers: int | None = None,
     start: bool = False,
-    lower: bool = False,
 ) -> float:
-    """A backend's runtime minimum for the scope rules (``timing_scope``):
-    its binary64 warming (``binary64_warmup``) and one timed call of one
-    chunk of ``lanes``, with ``reference`` the reference's warming and timed
-    point, with ``start`` its start-up (``runtime_minimum`` with these
-    parts). ``costs.binary64`` is then a chunk's cost per point (a timed
-    call's). ``lower``: a true lower bound from the measurement's one-point
-    costs instead (``costs.binary64`` one one-point call): the chunk call at
-    one point's cost (a call of a chunk costs at least a call of one of its
-    points), the warming at the entry's cost or that point's, the reference
-    at its measured point or, estimated, at the binary64 point (a pass in a
-    wider carrier costs at least the binary64 pass)."""
+    """A true lower bound of a backend's minimal profile from what is known
+    (``Known``; nothing known: 0), growing only as numbers arrive: the
+    binary64 timed call of one chunk (``lanes`` x the chunk cost, else one
+    point's: a chunk's call costs at least one of its points'), its warming
+    (the entry's seconds, else one point: the warm-up is a one-point call);
+    with ``reference`` its untimed point (measured cold, else one binary64
+    point) and its timed point (the row's, else one binary64 point: a pass
+    in a wider carrier costs at least the binary64 one); with
+    ``stability_workers`` the stability run's ``STABILITY_MINIMUM`` points
+    on them (a checked point at least one binary64 point; a reference point
+    at least the cold one where the workers leave a dear stream cold, above
+    ``MEASURE_REPEAT_SECONDS``, else one binary64 point); with ``start`` the
+    start-up. A binary64 point is the cheaper of the known point and chunk
+    costs."""
 
-    if lower:
-        point = costs.binary64
-        seconds = point + (
-            costs.binary64_warm if costs.binary64_warm is not None else point
+    points = [x for x in (known.chunk, known.point) if x is not None]
+    point = min(points) if points else 0.0
+    call = lanes * known.chunk if known.chunk is not None else point
+    seconds = call + (known.warm if known.warm is not None else point)
+    if reference:
+        seconds += (known.reference if known.reference is not None else point) + (
+            known.reference_timed if known.reference_timed is not None else point
         )
-        if reference and costs.reference is not None:
-            timed = point if costs.reference_estimated else costs.reference
-            seconds += timed + (
-                costs.reference_warm if costs.reference_warm is not None else timed
-            )
-        return seconds + (costs.start if start else 0.0)
-    call = lanes * costs.binary64
-    seconds = call + binary64_warmup(costs, call)
-    if reference and costs.reference is not None:
-        seconds += reference_warmup(costs) + costs.reference
-    return seconds + (costs.start if start else 0.0)
+    if stability_workers is not None:
+        cold = known.reference
+        stream = cold if cold is not None and cold > MEASURE_REPEAT_SECONDS else point
+        seconds += stability_wall(
+            [Costs(point, None, point, stream, 0.0)],
+            STABILITY_MINIMUM,
+            max(stability_workers, 1),
+        )
+    return seconds + (known.start if start else 0.0)
 
 
-def timing_scope(
-    costs: Mapping[str, Costs],
+def rule_b_drops(
+    decider: Known,
+    backends: int,
+    bound: Callable[[int], float],
+    *,
+    lanes: int,
+    start: bool = False,
+) -> bool:
+    """Rule B (USER 2026-11-19), the runtime timing alone: its reference is
+    left out, for every backend (all multipliers or none), when a lower
+    bound of the ``decider``'s minimum with its reference points (the
+    default backend, profiled first: on every path its numbers are the ones
+    measured when its reference is about to run) exceeds ``bound`` of the
+    ``backends`` that can serve. Invariant (i): dropped only on a lower
+    bound of the minimum of all of them (one backend's is one); the bound
+    only grows, so a drop is final; (iii) every path decides on the same
+    backend's numbers."""
+
+    return lower_bound(decider, lanes=lanes, reference=True, start=start) > bound(
+        backends
+    )
+
+
+def rule_a_drops(
+    known: Mapping[str, Known],
     default: str | None,
     bound: Callable[[int], float],
     *,
     lanes: int,
     reference: bool,
-    force_reference: bool,
-    asked_backends: bool,
-    runtime: bool = True,
-    reference_rule: bool = True,
+    stability_workers: int | None = None,
     start: bool = False,
-    extra: Mapping[str, float] | None = None,
-    lower: bool = False,
-) -> tuple[bool, tuple[str, ...]]:
-    """What a profile whose minimums exceed its budget runs (USER
-    2026-11-19), from the backends' ``costs`` (those that can serve) and
-    ``bound(n)``, the seconds the minimums of n backends may take before the
-    budget counts as exceeded. First the reference of the runtime timing
-    (rule B, ``reference_rule``: the runtime timing alone): none when the
-    runtime minimums of every backend with their reference points
-    (``scope_minimum``) exceed ``bound`` of them, unless ``force_reference``.
-    Then the backends (rule A): the ``default`` alone when its minimum for
-    everything asked (its runtime minimum when ``runtime``, with the
-    reference as just decided, and ``extra[default]``: the stability run's
-    minimum) exceeds ``bound(1)``, unless ``asked_backends``. ``lower``:
-    judged on true lower bounds (``scope_minimum``; ``extra`` then too),
-    so that before the runtime timing nothing is left out on an
-    over-estimate. The reference's decision (True: timed) and the backends
-    left out."""
+) -> bool:
+    """Rule A (USER 2026-11-19): the other backends of ``known`` are left out
+    when a lower bound of the ``default`` backend's minimum for everything
+    asked exceeds ``bound(1)``. ``reference``: its reference counted, only
+    where rule B cannot leave it out (invariant ii: a cost rule B would drop
+    never counts against another backend); ``stability_workers``: the
+    stability run's minimum with them. Invariant (i) as ``rule_b_drops``."""
 
-    names = list(costs)
-    extra = extra or {}
-    timed = reference
-    if (
-        reference_rule
-        and runtime
-        and timed
-        and not force_reference
-        and names
-        and sum(
-            scope_minimum(
-                costs[b], lanes=lanes, reference=True, start=start, lower=lower
-            )
-            for b in names
-        )
-        > bound(len(names))
-    ):
-        timed = False
-    omitted: tuple[str, ...] = ()
-    if not asked_backends and default in costs and len(names) > 1:
-        alone = extra.get(default, 0.0) + (
-            scope_minimum(
-                costs[default], lanes=lanes, reference=timed, start=start, lower=lower
-            )
-            if runtime
-            else 0.0
-        )
-        if alone > bound(1):
-            omitted = tuple(b for b in names if b != default)
-    return timed, omitted
+    if default not in known or len(known) < 2:
+        return False
+    alone = lower_bound(
+        known[default],
+        lanes=lanes,
+        reference=reference,
+        stability_workers=stability_workers,
+        start=start,
+    )
+    return alone > bound(1)
+
+
+def target_counts(
+    costs: Costs, target: float, *, lanes: int, batch_max: int
+) -> RuntimeCounts:
+    """A backend's runtime counts for a given --target-runtime (origin/main's
+    meaning, ``benchmark.target_runtime``): ``target`` seconds of timed
+    binary64 calls, start-up and warm-up outside it, the reference pass's
+    budget ``target`` on top: the largest batch of whole chunks (at most
+    ``batch_max``) whose ``STABLE_CALLS`` calls fit the target, at least one
+    chunk; one warm-up; timed while the calls fit it, at least
+    ``RUNTIME_MINIMUM_CALLS`` (the minimum counts on a process where one call
+    exceeds it, never the default counts as if given)."""
+
+    lanes = max(lanes, 1)
+    chunks_max = max(batch_max // lanes, 1)
+    per_chunk = lanes * costs.binary64
+    chunks = int(target // (STABLE_CALLS * per_chunk)) if per_chunk > 0 else chunks_max
+    chunks = min(max(chunks, 1), chunks_max)
+    batch = chunks * lanes
+    call = batch * costs.binary64
+    warm = binary64_warmup(costs, call)
+    expected = costs.start + warm + max(target, RUNTIME_MINIMUM_CALLS * call)
+    if costs.reference is not None:
+        expected += reference_warmup(costs) + max(target, costs.reference)
+    return RuntimeCounts(batch, 1, RUNTIME_MINIMUM_CALLS, target, target, expected)
 
 
 def runtime_minimum(costs: Costs, *, lanes: int) -> float:
@@ -531,7 +571,7 @@ def plan(
     stability_points_given: int | None = None,
     tail_seconds_per_point: float = 0.0,
     runtime_target: float = DEFAULT_RUNTIME_SECONDS,
-    runtime_budget: float | None = None,
+    target: float | None = None,
 ) -> Plan:
     """The counts of a profile (module docstring) from the backends'
     ``costs``: the phases asked for (``runtime``, ``stability``), the
@@ -542,10 +582,9 @@ def plan(
     ``runtime_counts_given`` / ``stability_points_given``: the counts given
     (honoured without ``completion``); ``tail_seconds_per_point``: the
     serial seconds per stability point after the run (statistics, records),
-    part of the completion time; ``runtime_budget``: the runtime timing's
-    budget of all backends under the time budgets (a given --target-runtime
-    per backend; None: ``DEFAULT_RUNTIME_SECONDS``); ``runtime_target``: the
-    runtime counts'
+    part of the completion time; ``target``: a --target-runtime given
+    alone (no counts): each backend's timed binary64 budget, its counts
+    from it (``target_counts``); ``runtime_target``: the runtime counts'
     time budget per backend when they are given (``--target-runtime``)."""
 
     backends = list(costs)
@@ -627,10 +666,15 @@ def plan(
     )
     counts = {}
     runtime_seconds = 0.0
-    if runtime_budget is None:
-        runtime_budget = DEFAULT_RUNTIME_SECONDS
     if runtime and not runtime_counts_given:
-        counts = _split_runtime(costs, runtime_budget, lanes, batch_max)
+        counts = (
+            _split_runtime(costs, DEFAULT_RUNTIME_SECONDS, lanes, batch_max)
+            if target is None
+            else {
+                name: target_counts(c, target, lanes=lanes, batch_max=batch_max)
+                for name, c in costs.items()
+            }
+        )
         runtime_seconds = sum(c.expected for c in counts.values())
     points = None
     wall = 0.0
@@ -654,7 +698,11 @@ def plan(
     unmet = []
     if runtime:
         budget = (
-            runtime_budget if not runtime_counts_given else runtime_target * len(values)
+            runtime_target * len(values)
+            if runtime_counts_given
+            else DEFAULT_RUNTIME_SECONDS
+            if target is None
+            else target * len(values)
         )
         if minimum_runtime - sum(c.start for c in values) > BUDGET_TOLERANCE * budget:
             unmet.append("runtime")
@@ -783,23 +831,26 @@ __all__ = [
     "TASK_SECONDS",
     "WARMUP_CALL_SECONDS",
     "Costs",
+    "Known",
     "Plan",
     "RuntimeCounts",
     "admit_chunk",
     "affordable_chunk",
     "binary64_warmup",
+    "lower_bound",
     "measurement_affects_counts",
     "memory_workers",
     "minimum_counts",
     "plan",
     "reference_affects_counts",
     "reference_warmup",
+    "rule_a_drops",
+    "rule_b_drops",
     "runtime_counts",
-    "scope_minimum",
     "stability_points",
     "stability_wall",
     "takes_entry",
+    "target_counts",
     "task_points",
-    "timing_scope",
     "warmup_seconds",
 ]

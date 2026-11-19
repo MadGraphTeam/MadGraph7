@@ -210,7 +210,8 @@ def _workers_text(report: Any, color: bool) -> str:
     held = float(memory.get("available_bytes") or 0.0) / 2**30
     if workers < asked:
         text = (
-            f"; stability on {workers} workers (memory: {each:.1f} GiB each, "
+            f"; stability on {workers} worker{'s' if workers != 1 else ''} "
+            f"(memory: {each:.1f} GiB each, "
             f"3/4 of {held:.1f} GiB available)"
         )
     elif memory.get("n_core_given") and memory.get("fits", asked) < asked:
