@@ -611,7 +611,16 @@ def test_crossing_bijection_refuses_the_pure_massless_adjoint_proof() -> None:
         )
         is None
     )
-    # Companion schedules (side-dependent DAG pruning) are never shared.
+    # A proof on one side only is refused as well (the role sets differ).
+    for one_sided in ((with_proof(root), target), (root, with_proof(target))):
+        assert (
+            exact_recurrence_process_bijection(
+                *one_sided, direct_executor_count=4, parameter_slot_count=1
+            )
+            is None
+        )
+    # Regression check of the pre-existing layout guard: companion schedules
+    # (all-flow-union, side-dependent DAG pruning) are never shared at all.
     companion = replace(with_proof(root), layout="all-flow-union")
     assert (
         exact_recurrence_process_bijection(
