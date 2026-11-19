@@ -629,6 +629,27 @@ jobs:
         uses: ./.github/actions/clean_tmp
 
 
+  unittest_gpd:
+    # exclusive processes with GPDs: generation, export, event record, GPD library
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
+
+      - name: test GPD generation, export, event record and GPD library
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gpd_generation test_gpd_export test_gpd_lhe test_gpd_library -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
+
   unittest_real_channels:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
