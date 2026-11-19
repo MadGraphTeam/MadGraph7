@@ -252,13 +252,22 @@ minimal coupling-order envelope. The check works as follows:
   projectors changes it, or when it contains `gamma5`. A built-in electroweak
   current is chiral when its left- and right-handed couplings differ.
 - The conjugated relation keeps momenta and helicities, so it needs charge
-  conjugation (C), not CP: every allowed vertex needs an allowed vertex on its
-  antiparticles with the identical structure and coupling (the coupling
-  only, for the built-in SM's oriented vertex kinds). A complex off-diagonal
-  vector coupling (`d~ s Z'` with `g_ds != g_sd`) breaks it, while vertices
-  whose particles are their own conjugates, such as `[d~ d g]`, pass. A
-  vertex of such self-conjugate particles with a Levi-Civita (`Epsilon`)
-  Lorentz structure is refused, since its C parity is not checked.
+  conjugation (C), not CP: C must map the allowed vertices onto themselves.
+  For compiled models every allowed vertex, including one of self-conjugate
+  particles such as `[d~ d g]`, is transformed explicitly: particles become
+  antiparticles, a fermion pair's chain is transposed (`Gamma` and `Sigma`
+  change sign, projectors and `Identity` do not), each colour `f` changes
+  sign, and each self-conjugate field carries a fixed C parity (vectors and
+  ghosts -1, scalars +1). The image must be an allowed vertex with the same
+  Lorentz, colour and coupling sum. A complex off-diagonal vector coupling
+  (`d~ s Z'` with `g_ds != g_sd`) breaks it, and so does a `Z'` coupled both
+  to the vector current and to the derivative of the scalar density.
+  Structures the transform does not cover (Levi-Civita `Epsilon`, four-fermion
+  or spin-3/2 and spin-2 vertices, Majorana fermions) are refused, so the
+  check may warn about a model that is C symmetric with other parities. For
+  the built-in SM, a conjugate pair of vertices needs identical couplings, and
+  self-conjugate vertices pass by kind (its vector-like gauge, gluon and
+  scalar couplings).
 
 A member that fails the check gets a warning, stored as its `warning` field in
 `process-groups.json`. The warnings are also logged once on the
