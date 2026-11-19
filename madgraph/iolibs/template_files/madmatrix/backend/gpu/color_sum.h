@@ -28,7 +28,7 @@ namespace madmatrix
   // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
   // precision mode only, one more for the jamps converted from double to float plus one
   // fptype2[nhel*nevt] buffer for the MEs, which are fptype elsewhere. This is the one place
-  // the size is defined: both the allocation (MatrixElementKernels.cc) and the reset
+  // the size is defined: both the allocation and the reset
   // (color_sum_gpu) come here.
   constexpr std::size_t
   blasColorSumTmpSize( const int nhel, const int nevt )

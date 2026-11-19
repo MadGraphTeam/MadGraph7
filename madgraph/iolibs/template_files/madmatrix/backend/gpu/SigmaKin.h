@@ -4,8 +4,8 @@
 //
 // Backend-owned driver: sigmaKin and everything it calls (calculate_jamps,
 // good-helicity filtering, color/channel selection). Declared here so that
-// umami.cc/MatrixElementKernels.cc can call them. They all take the parameters
-// of the process they evaluate (ProcessParameters.h) as an argument.
+// umami.cc can call them. They all take the parameters of the process they
+// evaluate (ProcessParameters.h) as an argument.
 
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1

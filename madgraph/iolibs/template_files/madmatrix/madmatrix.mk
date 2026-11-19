@@ -740,12 +740,6 @@ GPUFLAGS += $(XCOMPILERFLAG) -fPIC
 
 #-------------------------------------------------------------------------------
 
-#=== Configure channelid debugging
-ifneq ($(MADMATRIX_CHANNELID_DEBUG),)
-  CXXFLAGS += -DMGONGPU_CHANNELID_DEBUG
-  GPUFLAGS += -DMGONGPU_CHANNELID_DEBUG
-endif
-
 #=== Configure profiling/debug symbols
 ifneq ($(filter 1,$(PROFILE) $(DEBUG)),)
   CXXFLAGS += -g -fno-omit-frame-pointer
@@ -829,7 +823,7 @@ processid_short=$(shell basename $(CURDIR))
 # other one too, rather than the one it already has under the same name.
 -include HelRecyclingTag.mk
 MADMATRIX_LIB = madmatrix$(LIBTAG)_%(model)s_$(processid_short)$(HRTAG)_$(BACKEND)_$(FPTYPE)
-objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
+objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
 # The spin-density matrices for MadSpin (backend/common/Density.h): C++ backends,
 # and only in the builds madmatrix/density.py asks for (DENSITY=1, the scalar
 # libraries MadSpin loads), not in every library of every output
@@ -903,15 +897,6 @@ $(BUILDDIR)/.build.$(TAG):
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	@if [ "$(oldtagsb)" != "" ]; then echo "Cannot build for tag=$(TAG) as old builds exist for other tags:"; echo "  $(oldtagsb)"; echo "Please run 'make clean' first"; echo "If 'make clean' is not enough: run 'make clean USEBUILDDIR=1 BACKEND=$(BACKEND) FPTYPE=$(FPTYPE)' or 'make cleanall'"; exit 1; fi
 	@touch $(BUILDDIR)/.build.$(TAG)
-
-# Apply special build flags only to CrossSectionKernels.o (no fast math, see #117 and #516)
-ifeq ($(shell $(CXX) --version | grep ^nvc++),)
-$(BUILDDIR)/CrossSectionKernels.o: CXXFLAGS := $(filter-out -ffast-math,$(CXXFLAGS))
-$(BUILDDIR)/CrossSectionKernels.o: CXXFLAGS += -fno-fast-math
-# the precompiled header was made with -ffast-math: clang refuses it otherwise
-$(BUILDDIR)/CrossSectionKernels.o: PCHFLAGS :=
-$(BUILDDIR)/CrossSectionKernels.o: GPUFLAGS += $(XCOMPILERFLAG) -fno-fast-math
-endif
 
 # Avoid "warning: builtin __has_trivial_... is deprecated; use __is_trivially_... instead" in GPUCC with icx2023 (#592)
 ifneq ($(shell $(CXX) --version | egrep '^(Intel)'),)

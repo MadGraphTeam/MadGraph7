@@ -101,12 +101,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # the generated output is byte-identical to before.
     supports_crossing = True
 
-    # Information to find the template file that we want to include from madgraph
-    # you can include additional file from the plugin directory as well
-    # AV - use template files from PLUGINDIR instead of MG5DIR and add gpu/mgOnGpuVectors.h
-    # [NB: mgOnGpuConfig.h, check_sa.cc and fcheck_sa.f are handled through dedicated methods]
-    ###s = MG5DIR + '/madgraph/iolibs/template_files/'
-
+    # Information to find the template files to include from madgraph
     templates_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
     mg7_templates = pjoin(templates_path, 'mg7')
     madmatrix_templates = pjoin(templates_path, 'madmatrix')
@@ -168,8 +163,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         rambo_template_dir, template_sources(rambo_template_dir))
 
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
-    # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
-    # etc.) are NOT linked into P* at all: they are read straight from the
+    # MemoryAccess*.h family, umami.cc, etc.) are NOT linked into P* at all: they are read straight from the
     # top-level backend/<variant>/ and backend/common/ dirs via the Makefile's
     # INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). They are still compiled
     # once per P* directory, into its own build.<BACKEND>/, and have to be:
@@ -304,7 +298,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         and wants the QCD-EW cross term alone, which no amount of dropping
         diagrams at generation can produce.
 
-        The BLAS color sums (CPU: compile time, GPU: CUDACPP_RUNTIME_BLASCOLORSUM)
+        The BLAS color sums (CPU: compile time, GPU: per run)
         cannot pair split orders and are not used for such a process.
         """
 

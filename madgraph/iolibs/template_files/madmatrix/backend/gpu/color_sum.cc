@@ -221,7 +221,7 @@ namespace madmatrix
 
     // The scratch buffer holds the BLAS intermediate results and, in mixed precision mode,
     // the converted jamps and the fptype2 MEs: see the layout in blasColorSumTmpSize, which
-    // is what MatrixElementKernels.cc allocates.
+    // is what the caller allocates.
     const size_t planeSize = static_cast<size_t>( ncolor ) * nhel * nevt; // one real or imag plane
     fptype2* ghelAllZtempBoth = ghelAllBlasTmp;                                        // start of the fptype2[ncolor*2*nhel*nevt] buffer
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
@@ -328,7 +328,7 @@ namespace madmatrix
     // CASE 1: KERNEL
     if( !pBlasHandle )
     {
-      assert( ghelAllBlasTmp == nullptr );  // sanity check for HASBLAS=hasNoBlas or CUDACPP_RUNTIME_BLASCOLORSUM not set
+      assert( ghelAllBlasTmp == nullptr );  // sanity check for HASBLAS=hasNoBlas or no BLAS handle
       if (processAllHelicities) {
         gpuLaunchKernel2D( color_sum_kernel, gpublocks, nGoodHel, gputhreads, ghelStreams[0], ghelAllMEs, ghelAllJamps, nGoodHel, nevt );
       } else {
@@ -348,14 +348,14 @@ namespace madmatrix
 #ifdef MGONGPU_HAS_NO_BLAS
       assert( false ); // sanity check: no path to this statement for HASBLAS=hasNoBlas
 #else
-      // sanity check: MatrixElementKernelDevice never enables BLAS for split amplitude
-      // orders, whose jamps the BLAS color sum cannot pair
+      // sanity check: BLAS is never enabled for split amplitude orders, whose jamps
+      // the BLAS color sum cannot pair
       assert( nampso == 1 );
       if (processAllHelicities) {
         assert( false ); // BLAS in async mode not supported for now
       } else {
         checkGpu( gpuDeviceSynchronize() ); // do not start the BLAS color sum for all helicities until the loop over helicities has completed
-        // Reset the tmp buffer (same size as the one MatrixElementKernelDevice allocated)
+        // Reset the tmp buffer (same size as the one the caller allocated)
         gpuMemset( ghelAllBlasTmp, 0, blasColorSumTmpSize( nGoodHel, nevt ) * sizeof( fptype_colour ) );
         // Delegate the color sum to BLAS for 
         color_sum_blas( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nGoodHel, gpublocks, gputhreads );
