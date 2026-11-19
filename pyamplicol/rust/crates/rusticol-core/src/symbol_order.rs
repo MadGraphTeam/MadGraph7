@@ -53,7 +53,7 @@ pub(crate) fn reserved() {
 
 /// `text` parsed in `namespace` after [`reserve`]: every expression this
 /// library parses goes through here.
-pub fn parse(text: &str, namespace: &str) -> Result<Atom, String> {
+pub fn parse(text: &str, namespace: &'static str) -> Result<Atom, String> {
     reserve()?;
     Atom::parse(text, namespace, ParseSettings::default()).map_err(|error| error.to_string())
 }
