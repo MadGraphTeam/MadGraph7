@@ -23,8 +23,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "ac66cf6c551465f6c63490e112bb41596c2fd821",
-      "note": "ac66cf6c (branch symbolica-community-2 = main be6d3e04 + the d0424f9e re-pin, MadLoop bridge interface included) = main b51b7465's crate sources (per-row evaluation without the fork-only batch evaluator, merge of no-batch-evaluator) with its pins moved to Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f; no source change"
+      "revision": "fafa46e1ae81916cd8ba0c64903a3dd8af918bbe",
+      "note": "fafa46e1 = PR #20 head (feat/reserve-symbols): main 3116e5e6 (PR #16 box-Gram conditioning bound) + ninjars_symbolica::reserve (positional slot pool checked, master-integral symbols registered without compiling); pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f; moves to the merge commit at integration"
     },
     {
       "name": "oneloopmaster",

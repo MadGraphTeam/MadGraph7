@@ -302,6 +302,16 @@ fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64
     fallback_estimate(&outputs, roundoff)
 }
 
+/// The slot regime of NinjaRS's positional pool after the symbol reservation
+/// (`rusticol_core::symbol_order`): `"variables"`; an error when NinjaRS could
+/// not get two-byte variable slots. Reserves (Symbolica state) on first use;
+/// for the process-history tests.
+#[pyfunction]
+fn symbol_regime() -> PyResult<&'static str> {
+    let _unlock = pyamplicol::unlock();
+    rusticol_core::symbol_order::regime().map_err(pyo3::exceptions::PyRuntimeError::new_err)
+}
+
 /// Whether the per-point fallback's guard runs in the carrier `carrier`
 /// (`reduction_policy::fallback_guarded`: the extended carriers only; m-lit
 /// lit-fallback-guard, USER 2026-11-09 ~11:53).
@@ -341,6 +351,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_accepted, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_guarded, module)?)?;
+    module.add_function(wrap_pyfunction!(symbol_regime, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_estimate, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::kinematics_policy, module)?)?;

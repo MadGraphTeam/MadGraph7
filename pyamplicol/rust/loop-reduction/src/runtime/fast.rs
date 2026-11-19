@@ -5,7 +5,6 @@ use crate::{
     C64, FastInput, FastPolynomialReducer, FastProfile, FastStatus, FastTensorPolynomialReducer,
 };
 use crate::{FourMomentum, Lane, Laurent};
-use symbolica::atom::Atom;
 
 enum FastPolynomial {
     Callback(FastPolynomialReducer),
@@ -66,7 +65,7 @@ impl FastReductions {
         // before parsing (the extension's import no longer does).
         super::register_scalar_primitives();
         let parse =
-            |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
+            |text: &str| rusticol_core::symbol_order::parse(text, "pyamplicol_loop").map_err(error);
         let variables = [
             parse("q0")?,
             parse("q1")?,
