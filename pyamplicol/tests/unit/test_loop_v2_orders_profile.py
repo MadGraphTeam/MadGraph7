@@ -1728,6 +1728,45 @@ def test_the_measurement_stops_after_a_decisive_default_backend(
     }
 
 
+@pytest.mark.parametrize("given", [{}, {"target_runtime": 1e-6}])
+def test_rule_b_is_judged_on_the_backends_rule_a_keeps(uux_ddx, monkeypatch, given):
+    """Once rule A has left the other backends out (the measurement's early
+    stop, or the decision before the runtime timing), rule B and its
+    decider's bound (``rule_b_drops``, ``rule_b_bound``) are judged on the
+    backends that still run: under a given --target-runtime T its bound is
+    1.5 T per running backend, not per serving one (integration of
+    work/profile-time, coordinator 2026-11-19)."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-6)
+    monkeypatch.setattr(plan_module, "measurement_affects_counts", lambda *a, **k: True)
+    judged: list[set[str]] = []
+    for name in ("rule_b_drops", "rule_b_bound"):
+        original = getattr(plan_module, name)
+
+        def recorded(known, *args, _original=original, **kwargs):
+            judged.append(set(known))
+            return _original(known, *args, **kwargs)
+
+        monkeypatch.setattr(plan_module, name, recorded)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1, **given},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert report.plan["omitted_backends"] == ["tirust"]
+    assert judged and judged[-1] == {"ninjars"}
+    # Nothing after the first judgement without TIRust counts it again.
+    first = judged.index({"ninjars"})
+    assert all(found == {"ninjars"} for found in judged[first:]), judged
+
+
 def test_the_plan_counts_the_warm_entry_not_a_point(uux_ddx, monkeypatch):
     """With a warm entry (a stub ``prepare``) and a dear reference point
     (every double-double call slowed by 3 s), the reference streams warm

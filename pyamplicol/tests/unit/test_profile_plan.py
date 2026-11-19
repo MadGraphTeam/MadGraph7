@@ -954,7 +954,9 @@ def _scope_path(path, mode, backends):
     known = {name: Known() for name in names}
 
     def b_drops():
-        return mode["rule_b"] and rule_b_drops(known, bound, lanes=LANES)
+        # Judged on the backends rule A has not left out.
+        running = {n: k for n, k in known.items() if n not in omitted}
+        return mode["rule_b"] and rule_b_drops(running, bound, lanes=LANES)
 
     def a_drops():
         return (
@@ -981,9 +983,9 @@ def _scope_path(path, mode, backends):
             if position == 0 and a_drops():
                 omitted = tuple(names[1:])
                 break
-    timed = mode["truth"] and not b_drops()
     if not omitted and a_drops():
         omitted = tuple(names[1:])
+    timed = mode["truth"] and not b_drops()
     if not mode["runtime"]:
         return timed, omitted, known
     # The runtime timing: the default backend first.
@@ -1187,13 +1189,15 @@ def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
     # points and references): it drops whenever the blind path does, and
     # may drop where the blind path cannot see it (ptimereview5 B-1).
     assert blind or not measured, case
+    # Rule B is judged on the backends rule A keeps.
+    running = [n for n in names if n not in measured_omitted]
     for timed in (measured, blind):
         if mode["truth"] and not timed:
-            # (i): the minimums of all backends with their reference.
+            # (i): the minimums of the running backends with their reference.
             assert sum(
-                _true_minimum(costs, reference=True, workers=None)
-                for costs in backends.values()
-            ) > bound(len(names)), case
+                _true_minimum(backends[n], reference=True, workers=None)
+                for n in running
+            ) > bound(len(running)), case
     if mode["rule_b"] and measured:
         # B-1: what the measured path measured (every binary64 point and
         # reference) summed never exceeds the bound with the references kept.
@@ -1203,8 +1207,8 @@ def test_the_scope_verdicts_do_not_depend_on_the_path(case, mode, backends):
                 lanes=LANES,
                 reference=True,
             )
-            for costs in backends.values()
-        ) <= bound(len(names)), case
+            for costs in (backends[n] for n in running)
+        ) <= bound(len(running)), case
     if measured_omitted:
         assert _true_minimum(
             default,

@@ -1087,6 +1087,9 @@ def profile_loop(
     asked_backends = evaluation.reduction is not None or bench.all_backends is not None
     serving = [b for b in _serving(runtime, backends) if b in backends]
     early: list[str] = []
+    # The backends rule A (or --no-all-backends) leaves out of the runtime
+    # timing: set below, read by ``running``.
+    omitted: list[str] = []
     # The scope rules (USER 2026-11-19; ``profile_plan.rule_b_drops`` and
     # ``rule_a_drops``), one decision for every path: each takes ``known``,
     # what this run has measured of every serving backend so far, and is
@@ -1126,12 +1129,18 @@ def profile_loop(
         stability_budget = DEFAULT_STABILITY_SECONDS_PER_CORE if want_stability else 0.0
         return BUDGET_TOLERANCE * (runtime_budget + stability_budget)
 
+    def running() -> dict[str, Known]:
+        """``known`` of the backends that still run: rule A's left-out ones
+        (``early``, ``omitted``) are not judged by rule B."""
+
+        return {b: k for b, k in known.items() if b not in early and b not in omitted}
+
     def b_drops() -> bool:
-        """Rule B on what is known now: every serving backend's lower bound
-        (one not measured yet: 0) summed."""
+        """Rule B on what is known now: every running serving backend's
+        lower bound (one not measured yet: 0) summed."""
 
         return rule_b and rule_b_drops(
-            known, budget_bound, lanes=DEFAULT_LANES, start=completion is not None
+            running(), budget_bound, lanes=DEFAULT_LANES, start=completion is not None
         )
 
     def a_drops() -> bool:
@@ -1327,12 +1336,12 @@ def profile_loop(
     for backend, cost in costs.items():
         if cost.binary64_warm is not None:
             learn(backend, warm=cost.binary64_warm)
-    timed_reference = truth.present and not b_drops()
-    omitted: list[str] = (
+    omitted = (
         [b for b in backends if b != default]
         if (bench.all_backends is False and default in backends) or early or a_drops()
         else []
     )
+    timed_reference = truth.present and not b_drops()
     # The backend whose runtime timing decides rule B on its own measured
     # numbers when it is still open (all multipliers or none).
     reference_decider = next(
@@ -1592,7 +1601,7 @@ def profile_loop(
                             "scope": {
                                 # The bound less the others' known minimums.
                                 "bound": rule_b_bound(
-                                    known,
+                                    running(),
                                     backend,
                                     budget_bound,
                                     lanes=DEFAULT_LANES,
