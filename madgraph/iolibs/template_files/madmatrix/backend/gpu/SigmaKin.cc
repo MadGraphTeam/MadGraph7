@@ -429,9 +429,9 @@ namespace madmatrix
 
 #ifdef __CUDA_ARCH__
   // Every amplitude: without it the compiler keeps the shared values in registers as well.
-#define MG_SHWF_RELOAD() asm volatile( "" ::: "memory" )
+#define SHWF_RELOAD() asm volatile( "" ::: "memory" )
 #else
-#define MG_SHWF_RELOAD()
+#define SHWF_RELOAD()
 #endif
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
@@ -630,7 +630,7 @@ namespace madmatrix
 
 #undef NUM_ATOMIC_ADD
 #undef MG_HR_PROBE_AMP
-#undef MG_SHWF_RELOAD
+#undef SHWF_RELOAD
 
   //--------------------------------------------------------------------------
 

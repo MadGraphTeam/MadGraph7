@@ -4459,7 +4459,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     continue
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
-                amp_block.append('MG_SHWF_RELOAD();')
+                amp_block.append('SHWF_RELOAD();')
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472
