@@ -561,6 +561,8 @@ namespace madmatrix
   // event page is processed serially within the helicity loop, so a plain
   // sum suffices (CUDA needs atomicAdd instead: see backend/gpu/SigmaKin.cc).
 #define NUM_ATOMIC_ADD( DST, VAL ) ( DST ) += ( VAL )
+// Shared-memory wavefunctions are GPU only (backend/gpu/SigmaKin.cc).
+#define MG_SHWF_RELOAD()
 
   // --hel_recycling warm-up probe (madmatrix/output.py). The recycled build drops
   // the amplitudes that vanish at a given helicity, and it has to be told which
@@ -820,6 +822,7 @@ namespace madmatrix
 
 #undef NUM_ATOMIC_ADD
 #undef MG_HR_PROBE_AMP
+#undef MG_SHWF_RELOAD
 
   //--------------------------------------------------------------------------
 

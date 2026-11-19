@@ -2925,7 +2925,23 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
         ff.write('\n'.join(helas_calls))
         ff.close()
+        self.edit_sharedwavefunctions()
         return ''
+
+    def edit_sharedwavefunctions(self):
+        """Generate SharedWavefunctions.inc: the wavefunction slots of EvaluateDiagrams.inc in the
+        order the GPU calculate_jamps moves them to shared memory, as many as fit (see
+        backend/gpu/SigmaKin.cc)."""
+        order = self.helas_call_writer.shared_wf_order()
+        lines = ['// Wavefunction slots, most worth keeping out of registers first (generated).',
+                 '// #included by backend/gpu/SigmaKin.cc: the first nSharedWf live in shared memory.',
+                 '  constexpr int nSharedWfSlots = %d; // the slots EvaluateDiagrams.inc writes' % len(order),
+                 '  __device__ constexpr int sharedWfSlots[nSharedWfSlots > 0 ? nSharedWfSlots : 1] = { %s };'
+                 % ', '.join(map(str, order or [0])),
+                 '']
+        ff = open(pjoin(self.path, 'SharedWavefunctions.inc'), 'w')
+        ff.write('\n'.join(lines))
+        ff.close()
 
     # AV - modify export_cpp.OneProcessExporterCPP method (replace '# Process' by '// Process')
     def get_process_info_lines(self, matrix_element):
@@ -4249,6 +4265,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                '%s not valid argument for get_matrix_element_calls' % \
                type(matrix_element)
         self.nb_tmp_jamp = 0
+        # (line, slots read, slot written or None) of every call, in order: see shared_wf_order
+        self.wf_events = []
         # Do not reuse the wavefunctions for loop matrix elements
         if isinstance(matrix_element, loop_helas_objects.LoopHelasMatrixElement):
             return self.get_loop_matrix_element_calls(matrix_element)
@@ -4384,6 +4402,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     res.append('}')
                 else:
                     res.append(call)
+                self.wf_events.append((len(res), [m.get('me_id') - 1 for m in wf.get('mothers')], wf.get('me_id') - 1))
                 for isum in sum_after.get(wf.get('number'), []):
                     # a wavefunction number can be listed by more than one
                     # diagram here, and the sum must only be written once
@@ -4397,6 +4416,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                                   cubic.get('me_id') - 1,
                                   quartic.get('me_id') - 1,
                                   sum_slots[isum] - 1))
+                    self.wf_events.append((len(res), [cubic.get('me_id') - 1, quartic.get('me_id') - 1], sum_slots[isum] - 1))
             if len(diagram.get('wavefunctions')) == 0 : res.append('// (none)') # AV
             res.append('\n      // Amplitude(s) for diagram number %d' % diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
@@ -4415,6 +4435,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     sum_original.append((mother, mother.get('me_id')))
                     mother.set('me_id', sum_slots[isum])
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
+                self.wf_events.append((len(res), [m.get('me_id') - 1 for m in amplitude.get('mothers')], None))
                 for mother, me_id in sum_original:
                     mother.set('me_id', me_id)
                 # the flavours this amplitude contributes to (None: all of them)
@@ -4438,6 +4459,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     continue
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
+                amp_block.append('MG_SHWF_RELOAD();')
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472
@@ -4755,6 +4777,30 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             if gm != full:
                 wf_group_mask[id(wf)] = gm
         return diag_group_mask, wf_group_mask
+
+    def shared_wf_order(self):
+        """The wavefunction slots of the last get_matrix_element_calls, by the sum over the values
+        each one holds of reads x lines from the write to the last read, largest first: on GPUs
+        the first slots of this list are kept in shared memory (SharedWavefunctions.inc), out of
+        the registers that spill most."""
+        score = defaultdict(int)
+        live = {} # slot: (line written, last line read, reads)
+        def close(slot):
+            if slot in live:
+                start, last, reads = live.pop(slot)
+                score[slot] += reads * (last - start)
+        for line, reads, write in self.wf_events:
+            for slot in reads:
+                if slot in live:  # a priority only: a slot read before any write here just scores 0
+                    start, _, nreads = live[slot]
+                    live[slot] = (start, line, nreads + 1)
+            if write is not None:
+                close(write)
+                live[write] = (line, line, 0)
+        for slot in list(live):
+            close(slot)
+        slots = sorted({write for _, _, write in self.wf_events if write is not None})
+        return sorted(slots, key=lambda slot: -score[slot])
 
     # AV - overload helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     def get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):

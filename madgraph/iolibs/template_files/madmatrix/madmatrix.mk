@@ -31,6 +31,11 @@ ifeq ($(FASTMATH),)
   override FASTMATH = 1
 endif
 
+# Set the default SHAREDWF choice (wavefunctions in GPU shared memory, auto: only where calculate_jamps spills; BACKEND=cuda only)
+ifeq ($(SHAREDWF),)
+  override SHAREDWF = auto
+endif
+
 # default USEBUILDDIR = 1
 ifeq ($(USEBUILDDIR),)
   override USEBUILDDIR = 1
@@ -68,6 +73,11 @@ ifneq ($(words $(filter $(FASTMATH), $(SUPPORTED_FASTMATHS))),1)
 endif
 ifeq ($(FASTMATH)$(filter-out cuda,$(BACKEND)),auto$(BACKEND))
   $(error FASTMATH='auto' is implemented for BACKEND=cuda only)
+endif
+
+override SUPPORTED_SHAREDWFS = 0 1 auto
+ifneq ($(words $(filter $(SHAREDWF), $(SUPPORTED_SHAREDWFS))),1)
+  $(error Invalid sharedwf SHAREDWF='$(SHAREDWF)': supported sharedwfs are $(foreach sharedwf,$(SUPPORTED_SHAREDWFS),'$(sharedwf)'))
 endif
 
 # Stop immediately if BACKEND=cuda but nvcc is missing
@@ -315,6 +325,10 @@ ifeq ($(BACKEND),cuda)
     GPUFLAGS += -fmad=true
   else
     GPUFLAGS += -use_fast_math
+  endif
+
+  ifeq ($(SHAREDWF),0)
+    GPUFLAGS += -DMGONGPU_NO_SHARED_WF
   endif
 
   # Extra build warnings
@@ -788,7 +802,7 @@ endif
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...)
-override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_fm$(FASTMATH)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_fm$(FASTMATH)$(if $(filter cuda,$(BACKEND)),_sw$(SHAREDWF))
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
@@ -965,17 +979,43 @@ endif
 # FASTMATH=auto: SigmaKin.o is built with -fmad and with -use_fast_math. The approximate div/sqrt of
 # the latter make calculate_jamps spill more, which costs more than they save once its stack grows by
 # more than FASTMATH_STACK_GROWTH bytes (fast-math benchmarks on L40S and H100): then -fmad is kept.
-ifeq ($(FASTMATH),auto)
+# SHAREDWF=auto: SigmaKin.o is built without (sw0) and with (sw1) wavefunctions in shared memory, each
+# side picking its fast-math mode as above. Shared memory pays only where calculate_jamps spills without
+# it, so it is kept once that stack exceeds SHAREDWF_STACK bytes (pp > tt~/l+l- + 0-3 jets on L40S and
+# H100: up to 1.7x faster above 168 B, up to 15% slower below 104 B).
+ifeq ($(BACKEND),cuda)
+ifneq ($(filter auto,$(FASTMATH) $(SHAREDWF)),)
 FASTMATH_STACK_GROWTH ?= 128
-override JAMPS_STACK = $(CUDA_HOME)/bin/cuobjdump -res-usage $(1) | awk '/Function .*calculate_jamps/ { getline; sub(/.*STACK:/, ""); if ($$1 + 0 > max) max = $$1 + 0 } END { print max + 0 }'
+SHAREDWF_STACK ?= 128
+override JAMPS_STACK = $(CUDA_HOME)/bin/cuobjdump -res-usage $(1) | awk '/Function .*calculate_jamps/ { found = 1; getline; sub(/.*STACK:/, ""); if ($$1 + 0 > max) max = $$1 + 0 } END { if (!found) exit 1; print max + 0 }'
+override AUTO_SHAREDWFS = $(if $(filter auto,$(SHAREDWF)),sw0 sw1,sw$(SHAREDWF))
+override AUTO_FASTMATHS = $(if $(filter auto,$(FASTMATH)),mad fm1,fm$(FASTMATH))
 $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
-	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -c -x $(GPULANGUAGE) $< -o $(@:.o=.mad.o) & mad=$$!; \
-	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -use_fast_math -c -x $(GPULANGUAGE) $< -o $(@:.o=.fm1.o) && wait $$mad
-	@growth=$$(( $$($(call JAMPS_STACK,$(@:.o=.fm1.o))) - $$($(call JAMPS_STACK,$(@:.o=.mad.o))) )); \
-	if [ $$growth -le $(FASTMATH_STACK_GROWTH) ]; then pick=fm1; else pick=mad; fi; \
-	cp $(@:.o=.$$pick.o) $@; \
-	echo "FASTMATH=auto $(processid_short): calculate_jamps stack +$$growth B with -use_fast_math, keeping $$pick" | tee $(@:.o=.fastmath)
+	@pids=; for variant in $(foreach sw,$(AUTO_SHAREDWFS),$(foreach fm,$(AUTO_FASTMATHS),$(sw).$(fm))); do \
+	  flags=; \
+	  case $(SHAREDWF).$$variant in auto.sw0.*) flags=-DMGONGPU_NO_SHARED_WF;; esac; \
+	  case $(FASTMATH).$$variant in auto.*.fm1) flags="$$flags -use_fast_math";; esac; \
+	  echo "$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o)"; \
+	  $(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o) & pids="$$pids $$!"; \
+	done; \
+	status=0; for pid in $$pids; do wait $$pid || status=1; done; exit $$status
+	@stack() { stack=$$($(call JAMPS_STACK,$(@:.o=.$$1.o))) || { echo "ERROR! no calculate_jamps stack in $(@:.o=.$$1.o)"; exit 1; }; }; \
+	fastmath() { \
+	  if [ $(FASTMATH) != auto ]; then pick=$$1.fm$(FASTMATH); stack $$pick; return; fi; \
+	  stack $$1.mad; mad=$$stack; stack $$1.fm1; growth=$$((stack - mad)); \
+	  if [ $$growth -le $(FASTMATH_STACK_GROWTH) ]; then pick=$$1.fm1; else pick=$$1.mad; stack=$$mad; fi; \
+	  echo "FASTMATH=auto $(processid_short) $$1: calculate_jamps stack +$$growth B with -use_fast_math, keeping $$pick" | tee -a $(@:.o=.fastmath); \
+	}; \
+	: > $(@:.o=.fastmath); \
+	if [ $(SHAREDWF) != auto ]; then fastmath sw$(SHAREDWF); \
+	else \
+	  fastmath sw0; without=$$stack; \
+	  if [ $$without -gt $(SHAREDWF_STACK) ]; then fastmath sw1; fi; \
+	  echo "SHAREDWF=auto $(processid_short): calculate_jamps stack $$without B without shared memory, keeping $$pick" | tee $(@:.o=.sharedwf); \
+	fi; \
+	cp $(@:.o=.$$pick.o) $@
+endif
 endif
 
 #-------------------------------------------------------------------------------
