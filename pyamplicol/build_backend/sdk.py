@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import filecmp
 import hashlib
 import json
 import lzma
@@ -591,6 +592,45 @@ def _ensure_sdk_workspace_member(root: Path) -> None:
     )
 
 
+def _update_staging(fresh: Path, staging: Path) -> None:
+    """Make ``staging`` hold exactly the files of ``fresh`` and remove ``fresh``.
+
+    The Python extension's build script copies the staging into Cargo's
+    OUT_DIR and reruns when a staged file is newer than its last run
+    (``rerun-if-changed``). Files whose bytes did not change therefore keep
+    their modification time, so an unchanged rebuild does not rerun the script
+    and relink the extension; changed and new files are moved in with the
+    fresh modification time they were written with.
+    """
+
+    if staging.exists() and any(
+        path.is_symlink() or not (path.is_dir() or path.is_file())
+        for path in staging.rglob("*")
+    ):
+        shutil.rmtree(staging)
+    if not staging.exists():
+        fresh.rename(staging)
+        return
+    for current in sorted(staging.rglob("*"), reverse=True):
+        replacement = fresh / current.relative_to(staging)
+        kept = replacement.is_dir() if current.is_dir() else replacement.is_file()
+        if kept:
+            continue
+        if current.is_dir():
+            shutil.rmtree(current)
+        else:
+            current.unlink()
+    for path in sorted(fresh.rglob("*")):
+        destination = staging / path.relative_to(fresh)
+        if path.is_dir():
+            destination.mkdir(exist_ok=True)
+        elif not (
+            destination.is_file() and filecmp.cmp(path, destination, shallow=False)
+        ):
+            os.replace(path, destination)
+    shutil.rmtree(fresh)
+
+
 def build_sdk(
     root: Path,
     target_dir: Path,
@@ -665,8 +705,12 @@ def build_sdk(
     staging = target_dir.parent / "wheel-data" / "_sdk"
     if staging.is_symlink() or (staging.exists() and not staging.is_dir()):
         raise RuntimeError(f"Rusticol SDK staging path is unsafe: {staging}")
-    if staging.exists():
-        shutil.rmtree(staging)
+    # Written beside the staging, then moved in file by file (_update_staging).
+    fresh = staging.with_name("_sdk.next")
+    if fresh.is_symlink() or (fresh.exists() and not fresh.is_dir()):
+        raise RuntimeError(f"Rusticol SDK staging path is unsafe: {fresh}")
+    if fresh.exists():
+        shutil.rmtree(fresh)
     rust_source = root / RUST_SDK_SOURCE
     if not rust_source.is_file():
         raise RuntimeError(f"missing Rusticol SDK source: {rust_source}")
@@ -674,22 +718,22 @@ def build_sdk(
         source = root / source_name
         if not source.is_file():
             raise RuntimeError(f"missing Rusticol SDK source: {source}")
-        destination = staging / destination_name
+        destination = fresh / destination_name
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        shutil.copy(source, destination)
 
     archive_name = (
         "rusticol_capi.lib" if archive.suffix == ".lib" else "librusticol_capi.a"
     )
-    library = staging / "lib" / archive_name
+    library = fresh / "lib" / archive_name
     library.parent.mkdir(parents=True, exist_ok=True)
     compression: dict[str, Any] | None = None
     if compress_archive:
         library = library.with_name(f"{archive_name}.{ARCHIVE_COMPRESSION}")
         compression = _compressed_archive(archive, library)
     else:
-        shutil.copy2(archive, library)
-    (staging / "link.json").write_text(
+        shutil.copy(archive, library)
+    (fresh / "link.json").write_text(
         json.dumps(link, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -703,8 +747,9 @@ def build_sdk(
     }
     if compression is not None:
         metadata["archive_compression"] = compression
-    (staging / "metadata.json").write_text(
+    (fresh / "metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    _update_staging(fresh, staging)
     return staging

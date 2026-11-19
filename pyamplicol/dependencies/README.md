@@ -40,8 +40,10 @@ publishable until this revision is in a Symbolica release.
 
 TIRust ([huashengshao/TIRust](https://github.com/huashengshao/TIRust), crates
 `iregi-rust` and `iregi-masters`, pinned to a commit of its main after its one
-history rewrite, currently `2b9ba961` (branch `symbolica-community-2`: main
-`a5d4afbf`, PR #35 and the move to Symbolica community, re-pinned on `d0424f9e`) with per-row evaluation instead of the batch evaluator) is one more git source, linked by the cargo feature `tir`, a
+history rewrite, currently `1c130a81` (main `a8dba684` = `2b9ba961`,
+the move to Symbolica community `d0424f9e` with per-row evaluation instead of the
+batch evaluator, + PRs #41 and #42; + PR #43, MPFR rounded at the working
+precision in the direct engine) is one more git source, linked by the cargo feature `tir`, a
 default feature of every crate that links it (`--no-default-features` builds
 without it). Its crates require `symbolica = "3.0"` and the oneloop revision
 and features pinned here, so the root `[patch]` and oneloop pin serve them

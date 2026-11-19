@@ -177,7 +177,21 @@ def _profile(report: Any) -> list[Block]:
                     "the reference precision of both tables (--ground-truth): "
                     "the stability run's true values and the reference time "
                     "multipliers; 'none (estimates only)': no reference pass, "
-                    "the stability tables show the estimates alone",
+                    "the stability tables show the estimates alone. With an "
+                    "arbitrary-precision ground truth a reference that agrees "
+                    "with another backend's to 2^-106 relative (binary64's "
+                    "unit roundoff squared, the double-double truth's "
+                    "accuracy) is trusted; any other valued one, or the only "
+                    "one, is evaluated again with the recommended stability "
+                    "checks and is 'no reference' when that estimate exceeds "
+                    "binary64's unit roundoff (2^-53, what a reference must "
+                    "resolve), or when two such checked references still "
+                    "differ by more than it (--json samples: "
+                    "reference_certified). With one backend profiled (or the "
+                    "other refused) every reference is evaluated once, with "
+                    "the checks. The runtime table's multipliers stay one "
+                    "optimistic pass; the stability table's reference time "
+                    "includes the checked evaluations",
                 ),
                 ("backends", "the reduction backends compared. " + _DEFAULT_MARK),
             ],
@@ -386,7 +400,12 @@ def _profile(report: Any) -> list[Block]:
                         "(each on one core, one thread per pool), "
                         "after each worker's untimed start-up (loading, first "
                         f"calls); '({label} xN)': its {name} reference calls "
-                        "(one evaluation per point) took N times as long in "
+                        "(one evaluation per point; with an arbitrary-precision "
+                        "ground truth, plus the checked re-runs of the "
+                        "references the cross-check did not certify, or with "
+                        "one backend one checked evaluation per point; each "
+                        "worker's first checked call untimed) took N times as "
+                        "long in "
                         "total, so N is not the cost ratio of one evaluation "
                         f"(the runtime table's '({label} xN)'); under the time "
                         "when "
