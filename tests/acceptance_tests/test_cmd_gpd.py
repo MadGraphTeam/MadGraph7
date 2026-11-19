@@ -157,9 +157,11 @@ class TestCmdGPD(unittest.TestCase):
 
     def test_gpd_madevent(self):
         """pp -> p J/psi p at 13.6 TeV (toy2, exp(2.25 t) per amplitude, both
-        photon emitters): madevent against the gamma-UPC EDFF flux convolved
-        with the closed form (805.43 pb, benchmark row M1), and the event
-        record gamma p -> J/psi p with exact momentum conservation."""
+        photon emitters, gap survival of 2207.03012 eq. (10) by default):
+        madevent against the gamma-UPC EDFF flux with the survival convolved
+        with the closed form (751.35 pb, benchmark row M8; 805.43 pb without
+        the survival, row M1), and the event record gamma p -> J/psi p with
+        exact momentum conservation."""
         cmd = self.new_cmd()
         cmd.exec_cmd('generate a gpd_g > Jpsi(1|3S11)')
         cmd.exec_cmd('output madevent %s -f' % self.out_dir)
@@ -178,7 +180,7 @@ class TestCmdGPD(unittest.TestCase):
         me.exec_cmd('generate_events -f')
         val = me.results.current['cross']
         err = me.results.current['error']
-        target = 805.43
+        target = 751.35
         self.assertLess(abs(val - target) / err, 4., "%s +- %s against %s pb" % (val, err, target))
         lhe = glob.glob(pjoin(self.out_dir, 'Events', '*', 'unweighted_events.lhe.gz'))[0]
         nev = 0

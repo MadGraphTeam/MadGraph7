@@ -332,3 +332,116 @@ c     other proton is probed by its GPDs (Source/PDF/pdg2pdf.f, lpp = 5).
       endif
       return
       end
+
+
+      double precision function gammaupc_single_flux_pp(x, ebeam,
+     &     ichff, sqrts)
+c     The single-photon number density dN/dx of an elastic proton of
+c     energy ebeam that leaves the other proton of a pp collision at
+c     sqrts intact: the photon density N(E,b) at distance b from its
+c     emitter times the probability of no inelastic pp interaction of
+c     arXiv:2207.03012, eq. (10) (as in PhotonPhotonFlux_pp),
+c       P(b) = |1 - Gamma(s,b)|^2,  Gamma = exp(-b^2/(2 b0)),
+c       b0 = 9.81 + 0.211 ln s + 0.0185 ln^2 s  GeV^-2 (s in GeV^2),
+c     with b the pp impact parameter: the photon is absorbed at the
+c     centre of the other proton (GPD processes, lpp = 5; the size of
+c     the gamma p interaction region changes it by less than 1%).
+c     EDFF (ichff = 0, b > R_p) or ChFF (ichff = 1, dipole, b > 0).
+c     Computed as the flux without survival, gammaupc_single_flux,
+c     minus alpha/x int d^2b N(E,b) (2 Gamma - Gamma^2).
+      use ElasticPhotonPhotonFlux
+      implicit none
+      double precision x, ebeam, sqrts
+      integer ichff
+      double precision mproton, gevm1fm, rproton, pi, hpan
+      parameter (mproton=0.938272081d0, gevm1fm=0.1973d0)
+      parameter (rproton=0.877d0, pi=3.14159265358979323846d0)
+      parameter (hpan=0.5d0)
+      integer ngl
+      parameter (ngl=10)
+      double precision xg(ngl), wg(ngl)
+      logical init
+      data init/.true./
+      save init, xg, wg
+      integer npan, ipan, k
+      double precision gamma, ega, alpha, lns, b0, ulo, uhi, h, u, b
+      double precision gam, dens, deficit
+      double precision gammaupc_single_flux
+      external gammaupc_single_flux
+      if (init) then
+         call gammaupc_gauleg(ngl, xg, wg)
+         init = .false.
+      endif
+      gammaupc_single_flux_pp = gammaupc_single_flux(x, ebeam, ichff)
+      if (x.le.0d0 .or. x.ge.1d0 .or. sqrts.le.0d0) return
+      gamma = ebeam/mproton
+      ega = x*ebeam
+      if (alphaem_elasticphoton.lt.0d0) then
+         alpha = 0.0072992701d0
+      else
+         alpha = alphaem_elasticphoton
+      endif
+      lns = dlog(sqrts**2)
+      b0 = 9.81d0 + 0.211d0*lns + 0.0185d0*lns**2
+c     Gamma < 1e-17 beyond b^2 = 80 b0
+      uhi = 0.5d0*dlog(80d0*b0)
+      if (ichff.eq.1) then
+         ulo = dlog(1d-6)
+      else
+         ulo = dlog(rproton/gevm1fm)
+      endif
+      if (ulo.ge.uhi) return
+      npan = max(1, int((uhi - ulo)/hpan) + 1)
+      h = (uhi - ulo)/npan
+      deficit = 0d0
+      do ipan = 1, npan
+         do k = 1, ngl
+            u = ulo + h*(ipan - 0.5d0 + 0.5d0*xg(k))
+            b = dexp(u)
+            gam = dexp(-b*b/(2d0*b0))
+            if (ichff.eq.1) then
+               dens = PhotonNumberDensity_ChargeFormFactor_proton(b,
+     &              ega, gamma)
+            else
+               dens = PhotonNumberDensity(b, ega, gamma)
+            endif
+            deficit = deficit + 0.5d0*h*wg(k)*2d0*pi*b*b*dens
+     &           *(2d0*gam - gam*gam)
+         enddo
+      enddo
+      gammaupc_single_flux_pp = max(0d0,
+     &     gammaupc_single_flux_pp - alpha/x*deficit)
+      return
+      end
+
+
+      subroutine gammaupc_gauleg(n, xg, wg)
+c     Gauss-Legendre nodes and weights on [-1, 1]
+      implicit none
+      integer n
+      double precision xg(n), wg(n)
+      integer i, j, m
+      double precision z, z1, p1, p2, p3, pp, pi
+      parameter (pi=3.14159265358979323846d0)
+      m = (n + 1)/2
+      do i = 1, m
+         z = dcos(pi*(i - 0.25d0)/(n + 0.5d0))
+ 10      continue
+         p1 = 1d0
+         p2 = 0d0
+         do j = 1, n
+            p3 = p2
+            p2 = p1
+            p1 = ((2d0*j - 1d0)*z*p2 - (j - 1d0)*p3)/j
+         enddo
+         pp = n*(z*p1 - p2)/(z*z - 1d0)
+         z1 = z
+         z = z1 - p1/pp
+         if (dabs(z - z1).gt.1d-15) goto 10
+         xg(i) = -z
+         xg(n + 1 - i) = z
+         wg(i) = 2d0/((1d0 - z*z)*pp*pp)
+         wg(n + 1 - i) = wg(i)
+      enddo
+      return
+      end

@@ -150,6 +150,10 @@ c     The photon of a GPD process (lpp = 5): the single-photon flux of an
 c     elastic proton, chosen by 'gpd_flux' of Cards/gpd_card.dat: edff
 c     (gamma-UPC EDFF, default), chff (gamma-UPC ChFF) or iww (EPA). The
 c     pdlabel of an lpp = 5 beam names the proton PDFs of its GPDs.
+c     'gpd_gap' = pp (default) folds the edff/chff photon density in b
+c     with the probability that the two protons do not interact
+c     inelastically, eq. (10) of arXiv:2207.03012 (gamma-UPC); none
+c     keeps the flux without it.
       implicit none
       double precision x, xmu
       integer beamid
@@ -157,14 +161,16 @@ c     pdlabel of an lpp = 5 beam names the proton PDFs of its GPDs.
       double precision ebeam(2),xbk(2),q2fact(2)
       common/to_collider/ebeam,xbk,q2fact,lpp
       double precision gammaupc_single_flux, epa_proton
+      double precision gammaupc_single_flux_pp, sqrts
       external gammaupc_single_flux, epa_proton
-      integer iflux, ios, ieq, k
+      external gammaupc_single_flux_pp
+      integer iflux, igap, ios, ieq, k
       logical init, ex
       character*256 line, fname(3)
-      data init/.true./, iflux/0/
+      data init/.true./, iflux/0/, igap/1/
       data fname/'../../../Cards/gpd_card.dat', '../../Cards/gpd_card.dat',
      &     'gpd_card.dat'/
-      save init, iflux
+      save init, iflux, igap
       if (init) then
          init = .false.
          do k = 1, 3
@@ -180,18 +186,34 @@ c     pdlabel of an lpp = 5 beam names the proton PDFs of its GPDs.
                if (index(line,'!').gt.0) line = line(1:index(line,'!')-1)
                ieq = index(line, '=')
                if (ieq.eq.0) cycle
+               if (adjustl(line(ieq+1:)).eq.'gpd_gap') then
+                  if (index(line(1:ieq), 'none').gt.0) igap = 0
+                  cycle
+               endif
                if (adjustl(line(ieq+1:)).ne.'gpd_flux') cycle
                if (index(line(1:ieq), 'chff').gt.0) iflux = 1
                if (index(line(1:ieq), 'iww').gt.0) iflux = 2
             enddo
             close(88)
          endif
+         if (iflux.eq.2 .and. igap.eq.1) then
+            write(*,*) 'GPD: no gap survival with the iww photon flux'
+            igap = 0
+         endif
+         if (igap.eq.1) then
+            write(*,*) 'GPD: photon flux with the pp gap survival of',
+     &           ' arXiv:2207.03012, eq. (10)'
+         else
+            write(*,*) 'GPD: photon flux without gap survival'
+         endif
       endif
-      if (iflux.eq.1) then
-         gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid), 1)
-      elseif (iflux.eq.2) then
+      sqrts = 2d0*dsqrt(ebeam(1)*ebeam(2))
+      if (iflux.eq.2) then
          gpd_photon_flux = epa_proton(x, xmu*xmu, beamid)
+      elseif (igap.eq.1) then
+         gpd_photon_flux = gammaupc_single_flux_pp(x, ebeam(beamid),
+     &        iflux, sqrts)
       else
-         gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid), 0)
+         gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid), iflux)
       endif
       end

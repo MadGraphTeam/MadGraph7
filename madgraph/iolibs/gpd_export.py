@@ -900,13 +900,18 @@ GPD_CARD = """#*****************************************************************
   0.0      = gpd_tslope_q        ! B of quarks (GeV^-2), amplitude level
   0.0      = gpd_alphap_g        ! alpha' of gluons (GeV^-2)
   0.0      = gpd_alphap_q        ! alpha' of quarks (GeV^-2)
+  2.0      = gpd_b_g             ! dd: profile power b of gluons
+  2.0      = gpd_b_sea           ! dd: profile power b of sea quarks
+  1.0      = gpd_b_val           ! dd: profile power b of valence quarks
   quadrature = gpd_x_integration ! quadrature | mc
   1e-8     = gpd_xtol            ! relative tolerance of the x quadrature
   0.05     = gpd_epsres          ! residue step (fraction of the pole spacing)
   1e-3     = gpd_dptol           ! tolerance of the double-pole detector
   2.0      = gpd_t_range         ! madevent: |t| up to |t_min| + this (GeV^2)
   4.0      = gpd_t_bmap          ! madevent: importance map exp(-B|t|) of the t integral
-  1.0      = gpd_survival        ! constant gap-survival factor (gamma-UPC _nob fluxes)
+  pp       = gpd_gap             ! madevent: pp (no inelastic pp interaction, eq. (10) of
+                                 !   arXiv:2207.03012, in the edff/chff flux) | none
+  1.0      = gpd_survival        ! extra constant factor on the cross section
   edff     = gpd_flux            ! madevent photon flux of an lpp = 5 proton: edff | chff (gamma-UPC) | iww (EPA)
 """
 
