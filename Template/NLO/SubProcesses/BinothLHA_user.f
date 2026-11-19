@@ -84,7 +84,7 @@ c======================================================================
 c======================================================================
 c example for checking the cancellation of the poles
 c      if (firsttime) then
-c          call getpoles(p,QES2,madfks_double,madfks_single,fksprefact,born_amp_split_cnt)
+c          call getpoles(p,QES2,madfks_double,madfks_single,fksprefact)
 c          if (dabs(single - madfks_single).lt.tolerance .and.
 c     &        dabs(double - madfks_double).lt.tolerance) then
 c              write(*,*) "---- POLES CANCELLED ----"

@@ -93,7 +93,7 @@ c======================================================================
 c example for checking the cancellation of the poles
       if (firsttime_pole) then
          tolerance=IRPoleCheckThreshold  ! set in FKS_params.dat
-         call getpoles(pin,QES2,madfks_double,madfks_single,fksprefact,born_amp_split_cnt)
+         call getpoles(pin,QES2,madfks_double,madfks_single,fksprefact)
          if ( dabs(single - madfks_single).lt.tolerance .and.
      &        dabs(double - madfks_double).lt.tolerance) then
             write(*,*) "---- POLES CANCELLED ----"
@@ -221,7 +221,7 @@ c======================================================================
 c example for checking the cancelation of the poles
       if (firsttime_pole) then
          tolerance=IRPoleCheckThreshold  ! set in FKS_params.dat
-         call getpoles_vec(pin,QES2,madfks_double,madfks_single,fksprefact,born_amp_split_cnt)
+         call getpoles(pin,QES2,madfks_double,madfks_single,fksprefact)
          if ( dabs(single - madfks_single).lt.tolerance .and.
      &        dabs(double - madfks_double).lt.tolerance) then
             write(*,*) "---- POLES CANCELLED ----"

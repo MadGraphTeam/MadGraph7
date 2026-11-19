@@ -347,7 +347,7 @@ c MadLoop initialization PS points.
       if ((firsttime .or. mc_hel_flavor(virtual_flavor).eq.0) .and.
      $     mod(ret_code,100)/10.ne.3
      $     .and. mod(ret_code,100)/10.ne.4) then
-         call getpoles(p,QES2,madfks_double,madfks_single,fksprefact,born_amp_split_cnt)
+         call getpoles(p,QES2,madfks_double,madfks_single,fksprefact)
          polecheck_passed = .true.
          ! loop over the full result and each of the amp_split
          ! contribution
@@ -952,8 +952,7 @@ c MadLoop initialization PS points.
       ret_code_common=ret_code
       if ((firsttime .or. mc_hel.eq.0) .and. mod(ret_code,100)/10.ne.3
      $     .and. mod(ret_code,100)/10.ne.4) then
-         call getpoles_vec(p,QES2,madfks_double,madfks_single
-     $                    ,fksprefact,born_amp_split_cnt)
+         call getpoles(p,QES2,madfks_double,madfks_single,fksprefact)
          polecheck_passed = .true.
          ! loop over the full result and each of the amp_split
          ! contribution
