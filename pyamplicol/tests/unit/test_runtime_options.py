@@ -682,7 +682,17 @@ else:
         artifact.encode(), b"ggtt", None, None, toml, ctypes.byref(handle)) == 0
     _evaluate(sdk, handle, [point] * 8, [1e6] * 8)
     effective = None
-print(json.dumps([before, threads(), effective, len(os.sched_getaffinity(0))]))
+# Threads alive once the call's transient ones have exited (the threads of
+# a decode pool the load replaced exit asynchronously, docs "Threads"): a
+# pool, of the bound or of RAYON_NUM_THREADS, never exits.
+import time
+after, since, deadline = threads(), time.monotonic(), time.monotonic() + 2.0
+while time.monotonic() < deadline and time.monotonic() - since < 0.3:
+    time.sleep(0.05)
+    now = threads()
+    if now != after:
+        after, since = now, time.monotonic()
+print(json.dumps([before, after, effective, len(os.sched_getaffinity(0))]))
 """
 
 
