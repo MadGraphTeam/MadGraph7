@@ -131,8 +131,26 @@ def _canonical_legs(pdgs: Sequence[int], legs: Sequence[int], incoming: int) -> 
     return tuple(legs)
 
 
-def _is_parton(pdg: int) -> bool:
+def _is_qcd_parton(pdg: int) -> bool:
     return pdg == 21 or 0 < abs(pdg) <= 6
+
+
+def _jet_partons(reference: Mapping[str, Any]) -> frozenset[int]:
+    """The gluons and quarks of a provider's rows in massless slots: the partons
+    the flavour switch may exchange (never a top, a b only when massless)."""
+    masses = reference["provider"].get("masses")
+    if masses is None:
+        raise ValueError("the flavour switch needs the leg masses of the provider")
+    massless, massive = set(), set()
+    for row in reference["pdg_ids"]:
+        for slot, pdg in enumerate(row):
+            if _is_qcd_parton(pdg):
+                (massless if float(masses[slot]) == 0.0 else massive).add(pdg)
+    if massless & massive:
+        raise ValueError(
+            f"the partons {sorted(massless & massive)} have massless and massive slots"
+        )
+    return frozenset(massless)
 
 
 def _pdf_column(pdg: int) -> int:
@@ -150,9 +168,9 @@ def switch_catalogue(
     initial_legs: Sequence[Sequence[int]] | None = None,
 ) -> dict[str, Any]:
     """The flavours of a leading-colour provider in event slot order, both beam
-    orientations and every distinct ordering of the outgoing partons over the
-    parton slots, see ``write_reweight_provider``. The other outgoing legs keep
-    the slots the events have them in."""
+    orientations and every distinct ordering of the outgoing massless gluons and
+    quarks over their slots, see ``write_reweight_provider``. The other outgoing
+    legs (massive quarks too) keep their slots, in each arrangement of the rows."""
     incoming = _integer(reference["provider"]["incoming_count"])
     if incoming != 2:
         raise ValueError("the flavour switch needs two incoming partons")
@@ -228,15 +246,20 @@ def switch_catalogue(
     evaluations: dict[tuple, int] = {}
     described: list[tuple] = []
     orderings, targets, target_pdgs, seen = [], [], [], set()
-    # the outgoing non-partons of every row, in the same slots in every row;
-    # their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
-    row_fixed = {}
+    # the outgoing non-partons (massive quarks too) of every row, in the same slots
+    # in every row; their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
+    jet = _jet_partons(reference)
+    # per set of non-partons, their arrangements over these slots in the rows (t t~
+    # and t~ t of conjugated flavours): the events have each, the switch sums them
+    row_fixed: dict[tuple, list[dict[int, int]]] = {}
     for row in reference["pdg_ids"]:
-        fixed = {s: p for s, p in enumerate(row) if s >= incoming and not _is_parton(p)}
-        row_fixed.setdefault(tuple(sorted(fixed.values())), fixed)
-    if len({tuple(fixed) for fixed in row_fixed.values()}) > 1:
+        fixed = {s: p for s, p in enumerate(row) if s >= incoming and p not in jet}
+        arrangements = row_fixed.setdefault(tuple(sorted(fixed.values())), [])
+        if fixed not in arrangements:
+            arrangements.append(fixed)
+    if len({tuple(f) for fixed in row_fixed.values() for f in fixed}) > 1:
         raise ValueError("the flavour switch needs the non-partons in fixed slots")
-    fixed_slots = next(iter(row_fixed.values()))
+    fixed_slots = next(iter(row_fixed.values()))[0]
     parton_slots = [
         slot for slot in range(incoming, len(reference["pdg_ids"][0]))
         if slot not in fixed_slots
@@ -265,14 +288,20 @@ def switch_catalogue(
             seen.add(key)
             lines = quark_lines(pdgs)
             final = pdgs[incoming:]
-            partons = [p for p in final if _is_parton(p)]
-            fixed = row_fixed.get(tuple(sorted(p for p in final if not _is_parton(p))))
-            if fixed is None:
+            partons = [p for p in final if p in jet]
+            arrangements = row_fixed.get(
+                tuple(sorted(p for p in final if p not in jet))
+            )
+            if arrangements is None:
                 raise ValueError(f"flavour {pdgs} has other non-partons than the events")
             weight = factor * math.prod(
                 math.factorial(partons.count(p)) for p in set(partons)
             ) / n_partons
-            for parton_order in sorted(set(itertools.permutations(partons))):
+            if len(arrangements) > 1:
+                weight /= len(arrangements)
+            for fixed, parton_order in itertools.product(
+                arrangements, sorted(set(itertools.permutations(partons)))
+            ):
                 order_slots = dict(fixed)
                 order_slots.update(zip(parton_slots, parton_order))
                 order = tuple(order_slots[s] for s in range(incoming, len(pdgs)))

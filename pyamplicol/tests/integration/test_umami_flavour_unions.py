@@ -754,3 +754,190 @@ def test_relabelled_switch_calls_equal_their_evaluations(built):
             assert [row[entry] for row in values] == pytest.approx(
                 [row[0] for row in expected], rel=1e-12
             )
+
+
+# t t~ j: the switch exchanges the massless partons only, the tops keep their slots
+TT_EXPRESSIONS = (
+    "g g > t t~ g",
+    "u u~ > t t~ g",
+    "u~ u > t t~ g",
+    "d d~ > t t~ g",
+    "d~ d > t t~ g",
+    "g u > t t~ u",
+    "u g > t t~ u",
+    "g d > t t~ d",
+    "d g > t t~ d",
+    "g u~ > t t~ u~",
+    "u~ g > t t~ u~",
+)
+TT_SWITCH_LINES = 2
+
+
+@pytest.fixture(scope="module")
+def massive(tmp_path_factory):
+    config_executable = _config_executable()
+    if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
+        _unavailable("UMAMI integration requires make and a C compiler")
+    root = tmp_path_factory.mktemp("umami-unions-tt")
+    artifacts = {kind: root / kind for kind in ("union", "flavour", "full")}
+    names = tuple(f"t{index}" for index in range(len(TT_EXPRESSIONS)))
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+        for kind, path in artifacts.items():
+            Generator(
+                _config("full" if kind == "full" else "lc", kind == "union")
+            ).generate(
+                ProcessSet.from_expressions(TT_EXPRESSIONS, names=names),
+                path,
+                model=ModelSource.from_path(prepared_model),
+            )
+    result = {"artifacts": artifacts, "umami": {}, "reweight": {}}
+    for kind in ("union", "flavour"):
+        build = root / f"build-{kind}"
+        _make(artifacts[kind] / "API/umami", config_executable, f"BUILD_DIR={build}")
+        result["umami"][kind] = [
+            (data, _library(build / data["provider"]["library"]))
+            for data in load_umami_metadata(artifacts[kind])
+        ]
+        output = root / f"reweight-{kind}"
+        (identifier,) = write_reweight_provider(
+            artifacts[kind], artifacts["full"], output, switch_lines=TT_SWITCH_LINES
+        )
+        _make(output, config_executable)
+        result["reweight"][kind] = (
+            output,
+            json.loads((output / f"flavor_switch_{identifier}.json").read_text()),
+            _library(output / f"build/libreweight_{identifier}.so"),
+        )
+    yield result
+
+
+def _massive_points(count: int):
+    """On-shell g g > t t~ g points (the physical leg order of every flavour)."""
+
+    from pyamplicol.generation.phase_space import massive_rambo_final_state
+
+    mt = 173.0
+    final = massive_rambo_final_state(3, sqrt_s=1000.0, masses=(mt, mt, 0.0), seed=7)
+    base = [(500.0, 0.0, 0.0, 500.0), (500.0, 0.0, 0.0, -500.0)]
+    base += [tuple(map(float, p)) for p in final]
+    points = []
+    for index in range(count):
+        angle = 0.7 + 1.3 * index
+        cos, sin = math.cos(angle), math.sin(angle)
+        points.append(
+            tuple((e, cos * x - sin * y, sin * x + cos * y, z) for e, x, y, z in base)
+        )
+    return points
+
+
+def test_switch_keeps_massive_quarks_in_their_slots(massive):
+    from pyamplicol.artifacts.umami_reweight import switch_catalogue
+
+    for kind in ("union", "flavour"):
+        ((data, _),) = massive["umami"][kind]
+        groups = json.loads(
+            (massive["artifacts"][kind] / "process-groups.json").read_text()
+        )
+        catalogue = switch_catalogue(data, groups, TT_SWITCH_LINES)
+        massive_slots = [m > 0 for m in data["provider"]["masses"]]
+        assert massive_slots == [False, False, True, True, False]
+        assert catalogue["target_pdgs"]
+        for pdgs in catalogue["target_pdgs"]:
+            assert [abs(p) == 6 for p in pdgs] == massive_slots, pdgs
+        for evaluation in catalogue["evaluations"]:
+            pdgs = data["runtime_processes"][evaluation["process"]]["pdgs"]
+            for leg, slot in enumerate(evaluation["legs"]):
+                assert (abs(pdgs[leg]) == 6) == massive_slots[slot], evaluation
+        # the sidecar lists the same targets
+        assert massive["reweight"][kind][1]["targets"] == catalogue["target_pdgs"]
+
+
+def test_massive_switch_ratios_equal_with_and_without_unions(massive):
+    unions, flavours = massive["umami"]["union"], massive["umami"]["flavour"]
+    union_dir, union_sidecar, union_library = massive["reweight"]["union"]
+    flavour_dir, _, flavour_library = massive["reweight"]["flavour"]
+    union_handle = _handle(union_library, union_dir)
+    flavour_handle = _handle(flavour_library, flavour_dir)
+    lc_library = unions[0][1]
+    lc_handle = _handle(lc_library, massive["artifacts"]["union"])
+    try:
+        densities = _densities()
+        for point in _massive_points(2):
+            ours = _flavour_events(unions, 0, point)
+            theirs = dict(_flavour_events(flavours, 0, point))
+            events = [event for _, event in ours]
+            other = [theirs[key] for key, _ in ours]
+            lc = np.array(
+                _call(
+                    lc_library,
+                    lc_handle,
+                    [event[:3] for event in events],
+                    helicity=[event[3] for event in events],
+                )[0]
+            )
+            kept = (lc == 0.0) | (lc > 1e-20 * lc.max())
+            for switch in (False, True):
+                a = _ratio_call(
+                    union_library, union_handle, events, densities, switch=switch
+                )
+                b = _ratio_call(
+                    flavour_library, flavour_handle, other, densities, switch=switch
+                )
+                assert (a[1] == -1).all() and (b[1] == -1).all()
+                assert a[0][kept] == pytest.approx(b[0][kept], rel=1e-12, abs=0.0)
+                assert (a[0] > 0).any()
+        # switched events of a g g event: the target's full colour over its LC
+        point = _massive_points(1)[0]
+        event = next(
+            e for (process, _), e in _flavour_events(unions, 0, point)
+            if process == "t0"
+        )
+        base, stay = (
+            _ratio_call(union_library, union_handle, [event], densities, switch=s)[0][0]
+            for s in (False, True)
+        )
+        enhancement = stay / base
+        assert enhancement > 1.0
+        count = 400
+        grid = (np.arange(count) + 0.5) / count
+        random_flavor = list(1 / enhancement + grid * (1 - 1 / enhancement))
+        random_helicity = list(np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0])
+        ratio, target, helicity, _ = _ratio_call(
+            union_library,
+            union_handle,
+            [event] * count,
+            densities,
+            switch=True,
+            random_flavor=random_flavor,
+            random_helicity=random_helicity,
+        )
+        assert (target >= 0).all()
+        lc_runtimes, full_runtimes = {}, {}
+        names = {**NAMES_OF, 6: "t"}
+        data = unions[0][0]
+        for value, k, label in zip(ratio, target, helicity, strict=True):
+            pdgs = tuple(union_sidecar["targets"][k])
+            assert [abs(p) == 6 for p in pdgs] == [False, False, True, True, False]
+            if pdgs not in lc_runtimes:
+                text = [names[abs(p)] + ("~" if p < 0 else "") for p in pdgs]
+                process = " ".join(text[:2]) + " > " + " ".join(text[2:])
+                lc_runtimes[pdgs] = Runtime.load(
+                    massive["artifacts"]["flavour"], process=process
+                )
+                full_runtimes[pdgs] = Runtime.load(
+                    massive["artifacts"]["full"], process=process
+                )
+            identifier = "h:" + ",".join(f"{v:+d}" for v in data["helicities"][label])
+            # the target's legs are the event slots
+            resolved = lc_runtimes[pdgs].evaluate_resolved((event[0],))
+            index = list(lc_runtimes[pdgs].physics.helicity_ids).index(identifier)
+            row = float(np.array(resolved.values)[0].real[index].sum())
+            fc = complex(
+                full_runtimes[pdgs].evaluate((event[0],), helicities=[identifier])[0]
+            ).real
+            assert value == pytest.approx(enhancement * fc / row, rel=1e-12), pdgs
+        assert len({tuple(union_sidecar["targets"][k]) for k in target}) > 1
+    finally:
+        assert union_library.umami_free(union_handle) == 0
+        assert flavour_library.umami_free(flavour_handle) == 0
+        assert lc_library.umami_free(lc_handle) == 0
