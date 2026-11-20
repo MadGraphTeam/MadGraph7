@@ -3087,7 +3087,9 @@ C         Stable with CutTools in double precision.
 C     U == 2
 C         Stable with NinjaRS. T records whether quadruple precision was used.
 C     U == 3
-C         Stable with IREGI (H=2), or TIRust in quadruple precision (H=3).
+C         Stable with IREGI or TIRust (MLReductionLib=3 or 9).
+C         ML_GET_RET_CODE_LIBRARY() tells them apart. T records whether
+C         quadruple precision was used.
 C     U == 4
 C         Stable with Golem95
 C     U == 5
@@ -3099,7 +3101,7 @@ C         Stable with COLLIER.
 C     U == 8
 C         Stable with Ninja in quadruple precision.
 C     U == 9
-C         Stable with CutTools in quadruple precision (H=3), or TIRust in double precision (H=2).
+C         Stable with CutTools in quadruple precision.         
 C
       IMPLICIT NONE
 C  

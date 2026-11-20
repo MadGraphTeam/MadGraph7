@@ -48,7 +48,6 @@ C     Restrict this source to the qualified GNU IEEE formats.
       CALL TIRUST_SET_CACHE_BUDGET(INT(TIRustCacheMaxBytes,C_INT64_T),STATUS)
       IF(STATUS.NE.TIRUST_SUCCESS) RETURN
       PDEN_DUMMY=0
-      MASSES=CMPLX(M2L,KIND=KI_TIR)
       CALL %(proc_prefix)sSWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN_DUMMY,M2L)
       MASSES=M2L
 C     Preserve the summation and threshold conventions of the Ninja adapter.
