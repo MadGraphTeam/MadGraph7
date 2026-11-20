@@ -410,8 +410,8 @@ def _switch_tables(
     lines: list[str],
 ) -> str:
     """C tables of the flavour switch; target_route maps a target to its target
-    process index, its legs in event slots (None: the evaluation's), factor and
-    flavour-union assignment (-1: none)."""
+    process index, its legs in event slots (None: the evaluation's), factor,
+    flavour-union assignment (-1: none) and that assignment's process id."""
     for i, evaluation in enumerate(catalogue["evaluations"]):
         lines.append(_int_array(f"reweight_switch_e{i}", "size_t", evaluation["legs"]))
     lines.append("static const ReweightSwitchEvaluation reweight_switch_evaluations[] = {")
@@ -464,7 +464,7 @@ def _switch_tables(
     rows = []
     for i, target in enumerate(catalogue["targets"]):
         lines.append(_int_array(f"reweight_switch_t{i}", "int", target["colors"]))
-        index, legs, factor, assignment = target_route(
+        index, legs, factor, assignment, key = target_route(
             target, catalogue["target_pdgs"][i]
         )
         name = f"reweight_switch_e{target['evaluation']}"
@@ -473,7 +473,7 @@ def _switch_tables(
             lines.append(_int_array(name, "size_t", legs))
         rows.append(
             f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, {name}, "
-            f"{float(factor)!r}, {assignment}}},"
+            f"{float(factor)!r}, {assignment}, {_string(key)}}},"
         )
     lines.append("static const ReweightSwitchTarget reweight_switch_targets[] = {")
     lines.extend(rows)
@@ -507,10 +507,12 @@ def _switch_tables(
 
 def _target_routes(
     targets: Sequence[Mapping[str, Any]],
-) -> list[tuple[tuple[int, ...], Mapping[str, Any], Any, list[int], float, int]]:
+) -> list[
+    tuple[tuple[int, ...], Mapping[str, Any], Any, list[int], float, int, str | None]
+]:
     """Every physical flavour of the target artifact: (its pdgs, its runtime
     process, artifact id, runtime slot -> own leg, factor, flavour-union
-    assignment or -1), from the members of its UMAMI entries."""
+    assignment or -1, its process id), from the members of its UMAMI entries."""
     routes, seen = [], set()
     for document in targets:
         processes = document["runtime_processes"]
@@ -522,13 +524,21 @@ def _target_routes(
                         continue
                     seen.add(pdgs)
                     runtime = member["runtime"]
+                    assignment = _integer(runtime.get("assignment", -1))
+                    key = runtime.get("assignment_key")
+                    if assignment >= 0 and not isinstance(key, str):
+                        raise ValueError(
+                            f"target member {member.get('process_id')!r} has a "
+                            "flavour-union assignment without its process id"
+                        )
                     routes.append((
                         pdgs,
                         processes[_integer(runtime["process_index"])],
                         document["provider"]["artifact_id"],
                         [int(v) for v in runtime["permutation"]],
                         float(runtime["factor"]),
-                        _integer(runtime.get("assignment", -1)),
+                        assignment,
+                        key,
                     ))
     return routes
 
@@ -557,8 +567,8 @@ def _route_index(routes, incoming: int) -> dict:
 
 def _route(index, event_pdgs: Sequence[int], incoming: int):
     """The target route of a flavour given in event slots: (process, artifact
-    id, runtime slot -> event slot, factor, assignment). Identical outgoing
-    particles and, for two beams, the beam order are interchangeable."""
+    id, runtime slot -> event slot, factor, assignment, assignment key). Identical
+    outgoing particles and, for two beams, the beam order are interchangeable."""
     incoming = _integer(incoming)
     event_pdgs = [int(p) for p in event_pdgs]
     final = tuple(sorted(event_pdgs[incoming:]))
@@ -567,13 +577,13 @@ def _route(index, event_pdgs: Sequence[int], incoming: int):
         route = index.get((initial[::-1] if swapped else initial, final))
         if route is None:
             continue
-        pdgs, process, artifact_id, permutation, factor, assignment = route
+        pdgs, process, artifact_id, permutation, factor, assignment, key = route
         to_event = [1 - leg if swapped else leg for leg in range(incoming)]
         to_event += [
             incoming + j for j in _first_unused(event_pdgs[incoming:], pdgs[incoming:])
         ]
         legs = [to_event[leg] for leg in permutation]
-        return process, artifact_id, legs, factor, assignment
+        return process, artifact_id, legs, factor, assignment, key
     raise ValueError(f"no process of the target artifact has the flavour {event_pdgs}")
 
 
@@ -671,7 +681,7 @@ def reweight_header(
                 _int_array(f"{prefix}_permutation", "size_t", runtime["permutation"])
             )
             target_permutation, target_factor = f"{prefix}_permutation", 1.0
-            target_assignment = -1
+            target_assignment, target_key = -1, None
             match = target_lookup.get(tuple(process["pdgs"]))
             if assignment is None and (match is not None or not union_targets):
                 if match is None:
@@ -679,7 +689,8 @@ def reweight_header(
                         f"no process of the target artifact matches {process['id']!r}"
                     )
                 target, target_id = match
-                target_assignment = 0 if target["id"] in templates else -1
+                if target["id"] in templates:
+                    target_assignment, target_key = 0, target["id"]
                 target_helicities = helicity_positions(target)
                 for runtime_index, exported in enumerate(runtime["helicity_export"]):
                     identifier = process["helicity_ids"][runtime_index]
@@ -688,9 +699,9 @@ def reweight_header(
             else:
                 # A flavour-union member or target: its own route, legs and factor.
                 pdgs = reference["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
-                target, target_id, legs, target_factor, target_assignment = _route(
-                    route_index(), pdgs, incoming
-                )
+                route = _route(route_index(), pdgs, incoming)
+                target, target_id, legs, target_factor = route[:4]
+                target_assignment, target_key = route[4:]
                 target_permutation = f"{prefix}_target_permutation"
                 lines.append(_int_array(target_permutation, "size_t", legs))
                 values = {
@@ -710,7 +721,8 @@ def reweight_header(
                 f"{prefix}_permutation, {prefix}_reference, {prefix}_target, "
                 f"{-1 if assignment is None else _integer(assignment)}, "
                 f"{_string(runtime.get('assignment_key'))}, "
-                f"{target_permutation}, {target_factor!r}, {target_assignment}}},"
+                f"{target_permutation}, {target_factor!r}, {target_assignment}, "
+                f"{_string(target_key)}}},"
             )
         lines.extend(
             [
@@ -732,11 +744,13 @@ def reweight_header(
                 raise ValueError(
                     f"no process of the target artifact matches {process['id']!r}"
                 )
-            return target_index(*match), None, 1.0, (0 if match[0]["id"] in templates else -1)
-        process, target_id, legs, factor, assignment = _route(
+            if match[0]["id"] in templates:
+                return target_index(*match), None, 1.0, 0, match[0]["id"]
+            return target_index(*match), None, 1.0, -1, None
+        process, target_id, legs, factor, assignment, key = _route(
             route_index(), pdgs, incoming
         )
-        return target_index(process, target_id), legs, factor, assignment
+        return target_index(process, target_id), legs, factor, assignment, key
 
     switch = (
         "NULL"

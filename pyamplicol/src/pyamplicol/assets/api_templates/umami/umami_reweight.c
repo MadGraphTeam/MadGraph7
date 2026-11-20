@@ -150,27 +150,43 @@ static UmamiStatus load(char const *base, char const *relative, char const *iden
     return UMAMI_SUCCESS;
 }
 
-/* Whether the flavour-union assignments a reference process is used with are those
- * of its runtime. */
-static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t process) {
+/* Whether flavour-union assignment `assignment` of a runtime has the process id `key`. */
+static bool assignment_matches(RusticolRuntimeHandle *runtime, int assignment,
+                               char const *key) {
     char name[1024];
     size_t required = 0;
+    return key != NULL &&
+        rusticol_runtime_assignment_process_id(runtime, (size_t)assignment, name,
+            sizeof(name), &required) == RUSTICOL_STATUS_OK &&
+        strcmp(name, key) == 0;
+}
+
+/* Whether the flavour-union assignments a reference (side 0) or target process is
+ * used with are those of its runtime. */
+static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t process,
+                                   int side) {
     for (size_t c = 0; c < reweight_provider.channel_count; ++c)
         for (size_t f = 0; f < reweight_provider.channels[c].flavour_count; ++f) {
             ReweightFlavour const *entry = &reweight_provider.channels[c].flavours[f];
-            if (entry->reference_process != process || entry->reference_assignment < 0)
-                continue;
-            if (rusticol_runtime_assignment_process_id(runtime, (size_t)entry->reference_assignment,
-                    name, sizeof(name), &required) != RUSTICOL_STATUS_OK ||
-                strcmp(name, entry->assignment_key) != 0) return false;
+            size_t index = side == 0 ? entry->reference_process : entry->target_process;
+            int assignment =
+                side == 0 ? entry->reference_assignment : entry->target_assignment;
+            if (index != process || assignment < 0) continue;
+            if (!assignment_matches(runtime, assignment, side == 0
+                    ? entry->assignment_key : entry->target_assignment_key)) return false;
         }
     ReweightSwitch const *sw = reweight_provider.flavor_switch;
-    for (size_t e = 0; sw != NULL && e < sw->evaluation_count; ++e) {
+    for (size_t e = 0; sw != NULL && side == 0 && e < sw->evaluation_count; ++e) {
         ReweightSwitchEvaluation const *evaluation = &sw->evaluations[e];
         if (evaluation->process != process || evaluation->assignment < 0) continue;
-        if (rusticol_runtime_assignment_process_id(runtime, (size_t)evaluation->assignment,
-                name, sizeof(name), &required) != RUSTICOL_STATUS_OK ||
-            strcmp(name, evaluation->assignment_key) != 0) return false;
+        if (!assignment_matches(runtime, evaluation->assignment,
+                evaluation->assignment_key)) return false;
+    }
+    for (size_t t = 0; sw != NULL && side == 1 && t < sw->target_count; ++t) {
+        ReweightSwitchTarget const *target = &sw->targets[t];
+        if (target->target_process != process || target->assignment < 0) continue;
+        if (!assignment_matches(runtime, target->assignment, target->assignment_key))
+            return false;
     }
     return true;
 }
@@ -189,10 +205,11 @@ static UmamiStatus ensure_loaded(Instance *instance, int side, size_t index) {
                reweight_provider.target_artifact_id,
                &reweight_provider.target_processes[index], &runtime);
     if (status != UMAMI_SUCCESS) return status;
-    if (side == 0 && !assignments_compatible(runtime, index)) {
+    if (!assignments_compatible(runtime, index, side)) {
         (void)rusticol_runtime_free(runtime);
         fprintf(stderr, "umami: flavour-union assignments of reweight provider %s do not "
-                "match the reference artifact\n", reweight_provider.id);
+                "match the %s artifact\n", reweight_provider.id,
+                side == 0 ? "reference" : "target");
         return UMAMI_ERROR;
     }
     ReweightSwitch const *sw = side == 0 ? reweight_provider.flavor_switch : NULL;
