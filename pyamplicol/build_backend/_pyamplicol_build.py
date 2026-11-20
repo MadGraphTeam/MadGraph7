@@ -1672,6 +1672,16 @@ def _clean_environment(
     return environment
 
 
+def _fast_build_profile() -> dict[str, str]:
+    """install.py --fast (local only): quicker release and sdk profile rebuilds."""
+    settings = {"CODEGEN_UNITS": "16", "LTO": "off", "INCREMENTAL": "true"}
+    return {
+        f"CARGO_PROFILE_{profile}_{key}": value
+        for profile in ("RELEASE", "SDK")
+        for key, value in settings.items()
+    }
+
+
 def _macos_native_build_updates() -> dict[str, str]:
     """Select Apple's system compilers for authenticated macOS builds.
 
@@ -1898,6 +1908,8 @@ def _from_overlay(
             jobs = os.environ.get("PYAMPLICOL_BUILD_JOBS")
             if jobs:
                 environment["CARGO_BUILD_JOBS"] = jobs
+            if os.environ.get("PYAMPLICOL_FAST_BUILD") == "1":
+                environment.update(_fast_build_profile())
             if (
                 existing_community_wheel(ROOT) is not None
                 and "CARGO_HOME" in os.environ
