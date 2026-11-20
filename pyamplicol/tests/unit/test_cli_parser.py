@@ -888,6 +888,36 @@ def test_profile_takes_the_loop_settings() -> None:
         assert off.evaluation.lane_rescue is False
 
 
+def test_evaluate_takes_the_thread_bound_and_a_runtime_options_card(tmp_path) -> None:
+    """``evaluate --threads N`` (``evaluation.threads``; default None: rayon's
+    rule) and a runtime-options file as the run card (only ``[evaluation]``):
+    a flag overrides the card's key."""
+
+    default = parse_cli(("evaluate", "artifact")).resolve().effective
+    assert default.evaluation.threads is None
+    given = parse_cli(("evaluate", "artifact", "--threads", "3")).resolve().effective
+    assert given.evaluation.threads == 3
+    with pytest.raises(
+        ConfigurationError, match="evaluation.threads must be an integer"
+    ):
+        parse_cli(("evaluate", "artifact", "--threads", "0")).resolve()
+    card = tmp_path / "options.toml"
+    card.write_text(
+        "[evaluation]\nthreads = 2\nreduction = 'ninjars'\npoles = 'none'\n"
+        "[evaluation.stability_checks]\nrotation_count = 1\n"
+    )
+    read = parse_cli(("evaluate", "artifact", "--card", str(card))).resolve().effective
+    assert read.evaluation.threads == 2
+    assert read.evaluation.reduction == "ninjars"
+    assert read.evaluation.stability_checks.rotation_count == 1
+    flag = (
+        parse_cli(("evaluate", "artifact", "--card", str(card), "--threads", "5"))
+        .resolve()
+        .effective
+    )
+    assert flag.evaluation.threads == 5
+
+
 def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:
     """m-lit lit-psimprove: the two runtime settings on the CLI of
     ``evaluate``, ``profile`` and ``check`` (its rungs, (G5)), parsed into

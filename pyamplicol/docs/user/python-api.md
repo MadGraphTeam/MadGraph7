@@ -264,6 +264,49 @@ colour-flow selection of such a mapped process is refused; select on the
 stored process (see
 [Process grouping](process-grouping.md#one-loop-virtual-artifacts)).
 
+### Runtime options and threads of a one-loop runtime
+
+A one-loop runtime takes its settings as keywords (`Runtime.load(...,
+reduction=, reduction_target=, reduction_unchecked=, lane_rescue=,
+arithmetic=, precision=, kinematics_improvement=,
+kinematics_improvement_binary64=, threads=)`, and per call `evaluate(...,
+poles=, on_failure=, stability_checks=, ...)`) or together from a
+runtime-options TOML, the run card's `[evaluation]` table, read the same way
+as the CLI and the native SDKs read it
+([Configuration](configuration.md#runtime-options)):
+
+```python
+runtime = Runtime.load(
+    "artifacts/gg_zz",
+    options="examples/data/runtime_options.toml",  # a path, a TOML text or a mapping
+    lane_rescue=False,                             # a keyword overrides the TOML
+)
+print(runtime.inspect()["runtime_options"])        # every setting, read back
+```
+
+The TOML's load-time keys apply where the keyword is not given; its `poles`,
+`on_failure` and `[evaluation.stability_checks]` are the defaults of every
+call that names none (a call's keyword overrides them; the checks apply to a
+call that names no `stability=` policy, and are refused together with a
+load-time `stability=` policy). The run card's other `[evaluation]` keys
+(`momenta`, `mu_r2`, `model_parameters`, ...) are not read: the model
+parameters keep `model_parameters=` and `set_model_parameters`, the scale is
+each call's `mu_r2`. `inspect()["runtime_options"]` lists every setting in
+effect by its run-card name, as plain data (the stability checks as
+`{"rotations": [exact matrices], "reduction_direction", "rescaled",
+"cross_backend"}` or None, as the SDKs' `options_json`); `threads` is the
+effective count and `threads_requested` the requested one when it was
+clamped. A tree runtime refuses, at load, every virtual option the TOML
+names. A one-line `options` string without `=` is a path (a mistyped path
+says that no such file exists).
+
+`threads=N` bounds every native thread pool of the runtime, its load and
+every evaluation in every carrier, to `N` workers (clamped to the cores the
+process may use: [Configuration](configuration.md#threads)); unset, rayon's rule
+applies as before (`RAYON_NUM_THREADS`, else every core). The values do not
+depend on it, and each runtime keeps its own count. A tree runtime takes
+neither `threads` nor the virtual options (`CompatibilityError`).
+
 ## Export recurrence programs
 
 `Runtime.export_recurrence()` returns a versioned, JSON-serializable dictionary

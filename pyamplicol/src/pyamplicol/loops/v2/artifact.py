@@ -1332,7 +1332,9 @@ def _not_storable(request: Any, what: str, error: Exception) -> Exception:
 # --------------------------------------------------------------------- runtime
 
 
-def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
+def admit(
+    native: Any, root: Path, process_id: str, threads: int | None = None
+) -> dict[str, Any]:
     """Admit one plan v4 process through the native artifact loader.
 
     ``rusticol_core::loop_artifact::load_loop_v2_artifact`` checks the
@@ -1340,19 +1342,23 @@ def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
     digest, and validates the program, whose families, reduction buckets,
     legs, helicity rows and sectors must equal the declarations. Returns its
     description (identity, plan digest and size, buckets, program shape,
-    metadata and request).
+    metadata and request). ``threads`` bounds the load's threads (None:
+    rayon's rule).
     """
 
     try:
         return cast(
-            dict[str, Any], json.loads(native.admit_v2_artifact(str(root), process_id))
+            dict[str, Any],
+            json.loads(
+                native.admit_v2_artifact(str(root), process_id, threads=threads)
+            ),
         )
     except ValueError as error:
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
 
 
 def admit_programs(
-    native: Any, root: Path, process_id: str
+    native: Any, root: Path, process_id: str, threads: int | None = None
 ) -> tuple[dict[str, Any], Any, Any]:
     """``admit``, also returning the programs the admission loaded (the
     plan's and its certified-scaleless companion's, or None): native
@@ -1362,7 +1368,7 @@ def admit_programs(
 
     try:
         described, plan, scaleless = native.admit_v2_artifact_program(
-            str(root), process_id
+            str(root), process_id, threads=threads
         )
     except ValueError as error:
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
@@ -1656,6 +1662,7 @@ class V2VirtualRuntime:
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
         lane_rescue: bool | None = None,
+        threads: int | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
         from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
@@ -1699,13 +1706,28 @@ class V2VirtualRuntime:
         selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
         native = load_loop_native()
+        # The native threads of the load and of every evaluation (None:
+        # rayon's rule, RAYON_NUM_THREADS else every core): the admission's
+        # decode and every executor's pool (``evaluation.threads``).
+        # A requested count is clamped to the threads the process may use
+        # (the native rule, ``effective_threads``: the affinity mask and the
+        # cgroup quota); ``_threads`` is the effective count.
+        self._threads_requested = None if threads is None else _threads(threads)
+        self._threads = (
+            None
+            if self._threads_requested is None
+            # (a count beyond the native integer is clamped anyway)
+            else int(native.effective_threads(min(self._threads_requested, 2**64 - 1)))
+        )
         # The admitted plan program is kept for the executors, which take it
         # instead of loading the plan member again (one load per process).
         # The certified-scaleless companion's is not: only the "uv" and "ir"
         # pole selections run it, and its executor loads it on their first
         # call, as before (it would stay resident otherwise: 7 gluons
         # +0.18 GiB after a poles="all" point).
-        admission, plan, _companion = admit_programs(native, root, process_id)
+        admission, plan, _companion = admit_programs(
+            native, root, process_id, self._threads
+        )
         del _companion
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
@@ -1797,7 +1819,7 @@ class V2VirtualRuntime:
         self._prepared_fixed = frozenset(record.get("preparation_fixed_parameters", ()))
         self._scale_parameter = record["scale_parameter"]
         self._executor = self._native_process.executor(
-            native, externals=self._externals
+            native, externals=self._externals, **self._thread_options()
         )
         self._parameters = self._checked_parameters(model_parameters)
         self._load_seconds = time.perf_counter() - started
@@ -1883,6 +1905,49 @@ class V2VirtualRuntime:
             )
             for item in self._metadata["sectors"]
         )
+
+    def _runtime_options(self) -> dict[str, object]:
+        """The load-time runtime options in effect (``inspect``)."""
+
+        from pyamplicol import kinematics
+
+        from .reduction import default_lane_rescue, default_target, default_unchecked
+
+        def given(value: object, default: object) -> object:
+            return default if value is None else value
+
+        return {
+            "arithmetic": self.default_arithmetic,
+            "precision": (
+                self.default_precision
+                if self.default_arithmetic == "arbitrary"
+                else None
+            ),
+            "reduction": self._reduction_request,
+            "reduction_target": given(self._reduction_target, default_target()),
+            "reduction_unchecked": given(
+                self._reduction_unchecked, default_unchecked()
+            ),
+            "lane_rescue": given(self._lane_rescue, default_lane_rescue()),
+            "kinematics_improvement": given(
+                self._kinematics_setting, kinematics.default_setting()
+            ),
+            "kinematics_improvement_binary64": given(
+                self._kinematics_binary64, kinematics.default_binary64()
+            ),
+            "threads": self._threads,
+            # The requested count when it was clamped (None otherwise).
+            "threads_requested": (
+                None
+                if self._threads_requested == self._threads
+                else self._threads_requested
+            ),
+        }
+
+    def _thread_options(self) -> dict[str, int]:
+        """The executors' thread bound (``threads=``; none: rayon's rule)."""
+
+        return {} if self._threads is None else {"threads": self._threads}
 
     def _kinematics(self, setting: str | None, binary64: bool | None) -> Any:
         """A call's kinematics improvement settings (``pyamplicol.
@@ -2037,6 +2102,7 @@ class V2VirtualRuntime:
                     mapping=self._mapping,
                     arithmetic=self._load_request[0] or self.default_arithmetic,
                     precision=self._load_request[1],
+                    **self._thread_options(),
                 )
                 runtime.set_model_parameters(self._parameters)
                 # The kinematics improvement's targets: the masses this
@@ -2230,6 +2296,10 @@ class V2VirtualRuntime:
                     # default, the per-type default of "auto" and what the
                     # native extension serves (backend -> carriers).
                     "reduction": self._reduction_summary(),
+                    # The load-time runtime options in effect (their
+                    # defaults where none was given; ``threads`` None:
+                    # rayon's rule); ``Runtime.inspect`` adds the call options.
+                    "runtime_options": self._runtime_options(),
                     **({} if self._colour_zero is None else self._colour_zero),
                     "parameter_overrides": dict(self._parameters),
                     "scale_input": "explicit positive mu_r2, scalar or per point",
@@ -3270,7 +3340,7 @@ class V2VirtualRuntime:
             if self._native_process.admitted is not None:
                 self._native_process.admitted.release()
             self._executor = self._native_process.executor(
-                self._native, externals=self._externals
+                self._native, externals=self._externals, **self._thread_options()
             )
             if self._observables is not None:
                 self._observables.clear()
@@ -3317,6 +3387,12 @@ def _stored_member(group_member: Any, representative: str) -> Any:
 
 def _zero(carrier: str) -> Any:
     return 0.0 if carrier == "double" else Decimal(0)
+
+
+def _threads(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("threads must be a positive integer")
+    return value
 
 
 def _digits(value: int) -> int:

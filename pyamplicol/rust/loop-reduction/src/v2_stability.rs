@@ -391,7 +391,7 @@ pub fn limit_denominator(value: &Rational, max_denominator: u64) -> Rational {
 /// (`_` between digits), with an optional `/denominator`, or a decimal with an
 /// optional fractional part and exponent; surrounding whitespace allowed.
 pub fn parse_fraction(text: &str) -> RusticolResult<Rational> {
-    let refused = || invalid(format!("Invalid literal for Fraction: {text:?}"));
+    let refused = || invalid(format!("Invalid literal for Fraction: {}", py_repr(text)));
     let body = text.trim();
     let (negative, body) = match body.as_bytes().first() {
         Some(b'-') => (true, &body[1..]),
@@ -478,7 +478,8 @@ fn parse_float(text: &str) -> RusticolResult<f64> {
     match (underscores_ok, cleaned.parse::<f64>()) {
         (true, Ok(value)) => Ok(value),
         _ => Err(invalid(format!(
-            "could not convert string to float: {text:?}"
+            "could not convert string to float: {}",
+            py_repr(text)
         ))),
     }
 }

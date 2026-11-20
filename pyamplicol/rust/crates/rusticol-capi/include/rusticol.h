@@ -495,6 +495,19 @@ int rusticol_runtime_set_kinematics_improvement_binary64(
     RusticolRuntimeHandle *handle,
     int binary64
 );
+/* Runtime options of a TOML text (its [evaluation] table, the loop SDK's
+ * reader, rusticol_virtual_set_options; its other tables and the run card's
+ * non-runtime [evaluation] keys are not read): a tree runtime takes
+ * kinematics_improvement and kinematics_improvement_binary64, and REFUSES
+ * every runtime option of virtual runtimes it names (reduction, arithmetic,
+ * poles, threads, [evaluation.stability_checks], ...) with
+ * RUSTICOL_STATUS_INVALID_ARGUMENT naming them, as an unknown key or a bad
+ * value is: a virtual run card is not accepted here. Checked first; on an
+ * error nothing changes (additive, ABI version 1 kept). */
+int rusticol_runtime_set_options(
+    RusticolRuntimeHandle *handle,
+    const char *options_toml
+);
 
 int rusticol_runtime_mute_warnings(
     RusticolRuntimeHandle *handle,

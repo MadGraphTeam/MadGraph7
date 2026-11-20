@@ -302,6 +302,65 @@ int rusticol_virtual_set_kinematics_improvement_binary64(
 int rusticol_virtual_set_stability_checks(rusticol_virtual_handle *handle,
   uint64_t rotation_count, const char *rotations, uint32_t reduction_direction,
   uint32_t rescaled, uint32_t cross_backend);
+/* Native threads of later evaluations (the run card's evaluation.threads,
+ * the Python API's Runtime.load(threads=); additive, ABI version 2 kept):
+ * every executor of the handle runs on at most `threads` workers, clamped to
+ * the threads the process may use (std::thread::available_parallelism: the
+ * affinity mask and the cgroup quota; RAYON_NUM_THREADS is not read for the
+ * clamp), so a count above them gives the usable cores, never a refusal; 0,
+ * the default, is rayon's rule (RAYON_NUM_THREADS, else every core). The
+ * values do not depend on the count. Two handles keep their own counts.
+ * Every new pool is built first: if the system refuses a thread
+ * (RUSTICOL_VIRTUAL_RUNTIME_ERROR), nothing changes. To bound the load too,
+ * give the count at open (rusticol_virtual_open_with_options). */
+int rusticol_virtual_set_threads(rusticol_virtual_handle *handle,
+  uint32_t threads);
+/* Runtime options of later evaluations from a TOML text (additive, ABI
+ * version 2 kept): its [evaluation] table (a full run card is accepted: its
+ * other tables are not read). The keys read, with the run card's values:
+ * arithmetic and precision (rusticol_virtual_set_arithmetic; the Python
+ * API's carrier rule: an arithmetic given is that carrier, "arbitrary" at
+ * the digits given else 500; without one, 16 digits are binary64 and others
+ * arbitrary precision), poles, on_failure, reduction, reduction_target,
+ * reduction_unchecked, lane_rescue, kinematics_improvement,
+ * kinematics_improvement_binary64, threads (clamped as rusticol_virtual_set_threads),
+ * and the table
+ * [evaluation.stability_checks] (rotations, rotation_count,
+ * reduction_direction, rescaled; given, it replaces the checks as a whole,
+ * rusticol_virtual_set_stability_checks without the cross-backend check).
+ * The run card's other [evaluation] keys (artifact, process, mu_r2,
+ * mu_r2_file, model_parameters, momenta, resolved, orders,
+ * correlated_requests, helicity_ids, color_flow_ids, [evaluation.stability],
+ * [evaluation.phase_space]) are accepted and not read; any other key is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT naming it. Every option is checked
+ * first, as its setter checks it (a bad value: INVALID_ARGUMENT with the
+ * run card's text; a setting this process or library does not serve: the
+ * setter's error), then all are applied; on any error nothing changes. A key
+ * absent keeps its setting; a setter called afterwards overrides the key it
+ * sets. */
+int rusticol_virtual_set_options(rusticol_virtual_handle *handle,
+  const char *options_toml);
+/* rusticol_virtual_open, then rusticol_virtual_set_options with
+ * options_toml (NULL: none), its threads bounding the load too (clamped as
+ * rusticol_virtual_set_threads; without it, RAYON_NUM_THREADS else every
+ * core): the load starts only the threads its work uses, up to that count,
+ * at most that many working at once (about twice it may be alive for a
+ * moment while its decode pool grows); options are checked before anything
+ * is loaded and a refused option opens nothing (additive, ABI version 2
+ * kept). */
+int rusticol_virtual_open_with_options(const char *path, const char *process,
+  const char *parameters_json, const char *r2_strategy,
+  const char *options_toml, rusticol_virtual_handle **output);
+/* The handle's settings as JSON (size query as metadata_json): "arithmetic",
+ * "precision" (digits, null outside arbitrary precision), "poles",
+ * "on_failure", "reduction", "reduction_target", "reduction_unchecked",
+ * "lane_rescue", "kinematics_improvement", "kinematics_improvement_binary64",
+ * "stability_checks" {"rotations" (exact matrices, rows of rational texts),
+ * "reduction_direction", "rescaled", "cross_backend"}, "threads" (the
+ * effective count; null: rayon's rule) and "threads_requested" (the count
+ * asked for when the clamp lowered it, else null). */
+int rusticol_virtual_options_json(const rusticol_virtual_handle *handle,
+  char *output, size_t capacity, size_t *needed);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.

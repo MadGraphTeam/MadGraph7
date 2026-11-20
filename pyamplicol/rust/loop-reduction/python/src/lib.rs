@@ -138,6 +138,61 @@ fn tirust_capabilities(bits: u32) -> Option<String> {
     })
 }
 
+/// The runtime options of a TOML text (`rusticol_loop_reduction::
+/// runtime_options`, the native SDKs' reader) as JSON: every option of
+/// `KEYS` by its run-card name, null where the TOML does not give it, and
+/// the carrier it selects (`"carrier": [name, digits]` or null); a refusal
+/// raises `ValueError` with the reader's text. With `keys=True`: the
+/// reader's keys instead, `{"runtime": [...], "other": [...]}`.
+#[pyfunction]
+#[pyo3(signature = (text, keys=false))]
+fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
+    use rusticol_loop_reduction::runtime_options::{RuntimeOptions, known_keys, runtime_keys};
+    if keys {
+        let runtime = runtime_keys();
+        let other: Vec<String> = known_keys()
+            .into_iter()
+            .filter(|key| !runtime.contains(key))
+            .collect();
+        return Ok(serde_json::json!({"runtime": runtime, "other": other}).to_string());
+    }
+    let options =
+        RuntimeOptions::from_toml(text).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let checks = options.stability_checks.as_ref().map(|checks| {
+        serde_json::json!({
+            "rotations": checks.rotations,
+            "rotation_count": checks.rotation_count,
+            "reduction_direction": checks.reduction_direction,
+            "rescaled": checks.rescaled,
+        })
+    });
+    Ok(serde_json::json!({
+        "arithmetic": options.arithmetic,
+        "precision": options.precision,
+        "poles": options.poles,
+        "on_failure": options.on_failure,
+        "reduction": options.reduction,
+        "reduction_target": options.reduction_target,
+        "reduction_unchecked": options.reduction_unchecked,
+        "lane_rescue": options.lane_rescue,
+        "kinematics_improvement": options.kinematics_improvement,
+        "kinematics_improvement_binary64": options.kinematics_improvement_binary64,
+        "stability_checks": checks,
+        "threads": options.threads,
+        "carrier": options.carrier(),
+    })
+    .to_string())
+}
+
+/// The effective thread bound of a requested count
+/// (`rusticol_core::loop_artifact::effective_threads`: clamped to the threads
+/// this process may use, the affinity mask and the cgroup quota): the one
+/// rule the Python runtime, the native SDKs and the pools share.
+#[pyfunction]
+fn effective_threads(requested: usize) -> usize {
+    rusticol_core::loop_artifact::effective_threads(requested)
+}
+
 /// The reduction-backend policy, the one definition of `"auto"` (m-lit
 /// DECISIONS 2026-11-07 21:50 R7; `rusticol_loop_reduction::reduction_policy`)
 /// as JSON: `{"backends", "carriers", "defaults": {kind: backend}, "routes":
@@ -365,6 +420,8 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_backends, module)?)?;
     module.add_function(wrap_pyfunction!(tirust_capabilities, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_policy, module)?)?;
+    module.add_function(wrap_pyfunction!(runtime_options, module)?)?;
+    module.add_function(wrap_pyfunction!(effective_threads, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;

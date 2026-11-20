@@ -333,8 +333,27 @@ pub fn load_loop_v2_artifact_threads(
     })
 }
 
+/// The threads this process may use: `std::thread::available_parallelism`
+/// (the affinity mask and the cgroup quota; `RAYON_NUM_THREADS` is not
+/// read), at least 1. What an unset thread bound uses on this machine when
+/// `RAYON_NUM_THREADS` is not set.
+pub fn available_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
+
+/// THE THREAD RULE of a runtime's bound (`evaluation.threads`, every
+/// interface's): a requested count is clamped to the threads the process
+/// may use, `min(requested, available_threads())`, at least 1, so that a run
+/// card written on a large machine works on a small one and no pool exceeds
+/// the cores the process may use. The executors' pools and the loads take
+/// it; the read-backs show this effective count.
+pub fn effective_threads(requested: usize) -> usize {
+    requested.clamp(1, available_threads())
+}
+
 /// `run` (plan loads) on the calling thread with at most `threads` threads
-/// (None: rayon's default rule, [`default_load_threads`]), started only as
+/// (clamped to the threads the process may use, [`effective_threads`];
+/// None: rayon's default rule, [`default_load_threads`]), started only as
 /// the loads' work uses them (`loop_v2::plan::with_load_threads`: a cheap
 /// plan loads on the calling thread alone), each holding pyAmpliCol's
 /// Symbolica key as an executor's threads do; a thread that cannot start
@@ -345,7 +364,7 @@ pub fn load_loop_v2_artifact_threads(
 /// `threads`); no production caller loads from inside a pool.
 #[cfg(feature = "loop-v2")]
 pub fn on_load_threads<R: Send>(threads: Option<usize>, run: impl FnOnce() -> R + Send) -> R {
-    let threads = threads.map_or_else(default_load_threads, |threads| threads.max(1));
+    let threads = threads.map_or_else(default_load_threads, effective_threads);
     crate::loop_v2::plan::with_load_threads(threads, run)
 }
 

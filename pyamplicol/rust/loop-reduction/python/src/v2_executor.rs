@@ -2466,11 +2466,21 @@ impl V2Executor {
 /// the declared metadata, the generation request and the companion plan of
 /// certified-scaleless families (digest and families, or null).
 #[pyfunction]
-#[pyo3(signature = (path, process=None))]
-fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
+#[pyo3(signature = (path, process=None, threads=None))]
+fn admit_v2_artifact(
+    py: Python<'_>,
+    path: &str,
+    process: Option<&str>,
+    threads: Option<usize>,
+) -> PyResult<String> {
     let _unlock = pyamplicol::unlock();
+    // `threads` bounds the load's threads (None: rayon's default rule,
+    // `loop_artifact::on_load_threads`).
     let loaded = py
-        .detach(|| rusticol_core::loop_artifact::open_loop_v2_artifact(path, process))
+        .detach(|| {
+            let artifact = rusticol_core::VerifiedArtifact::open(path)?;
+            rusticol_core::loop_artifact::load_loop_v2_artifact_threads(&artifact, process, threads)
+        })
         .map_err(error)?;
     describe_admitted(&loaded)
 }

@@ -691,6 +691,15 @@ evaluation use this option; resolved axes follow the artifact's retained
 layout. It requires virtual evaluation and is rejected on other commands,
 including `profile`; configuration inspection can still display it.
 
+`--threads N` sets the native threads of the artifact's load and of every
+evaluation (`evaluation.threads`; default: `RAYON_NUM_THREADS`, else every
+core; precedence `--threads` > `RAYON_NUM_THREADS` > every core); the values
+do not depend on it. Every runtime option of this section can also come from
+a runtime-options file, a run card with only an `[evaluation]` table
+(`--card examples/data/runtime_options.toml`; a flag overrides the card's
+key; the keys and their flags:
+[Configuration](configuration.md#runtime-options)).
+
 Only strategies and observables present in the artifact may be selected.
 
 ### Correlated requests
@@ -1031,7 +1040,9 @@ its initial state).
 **More threads per call.** `--runtime-threads N` (`benchmark.runtime_threads`,
 default 1) times each backend's calls with N native threads working inside
 each call: its process's thread pools at N threads (the binary64 calls and
-the reference pass), the calls still one at a time, never several batches in
+the reference pass; the timed runtime is loaded with `threads=N`, the
+mechanism of `evaluate --threads`, so its load runs on N threads too;
+`evaluation.threads` of a run card does not change a profile), the calls still one at a time, never several batches in
 parallel; N is at most the usable cores (a plain line says so when it is
 reduced). The time per point is then the wall time of a call with N threads
 working over its points: **it is not the cost of one core**, and a Monte

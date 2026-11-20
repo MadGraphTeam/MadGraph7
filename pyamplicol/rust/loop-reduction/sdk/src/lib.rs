@@ -17,6 +17,7 @@ use rusticol_loop_reduction::reduction_policy::{self, Choice, Refusal};
 use rusticol_loop_reduction::runtime::Reduction;
 #[cfg(test)]
 use rusticol_loop_reduction::runtime::{Batch, Data};
+pub use rusticol_loop_reduction::runtime_options::RuntimeOptions;
 use rusticol_loop_reduction::v2_runtime::induced_outputs::{
     AMPLITUDE_BASIS, CONTRACTED, InducedCall, Resolution, anchor_id,
 };
@@ -422,6 +423,10 @@ pub struct Runtime {
     /// The stability checks of later binary64 evaluations (none by default:
     /// no estimate, no extra cost; [`Runtime::set_stability_checks`]).
     checks: StabilityChecks,
+    /// The thread bound requested last ([`Runtime::set_threads`], the
+    /// options' `threads`; None: rayon's rule); the effective one is the
+    /// native runtime's (clamped to the threads the process may use).
+    threads_requested: Option<usize>,
     /// The kinematics improvement of later evaluations (m-lit
     /// lit-psimprove; [`Runtime::set_kinematics_improvement`]): the variant
     /// (None: "off"), MadLoop's default until set.
@@ -456,8 +461,25 @@ impl Runtime {
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
     ) -> RusticolResult<Self> {
+        Self::open_with_options(path, process, parameters, r2_strategy, None)
+    }
+    /// [`Runtime::open`], then the runtime options `options` applied
+    /// ([`Runtime::set_options`]); their `threads` bound the load too (a
+    /// refused option opens nothing).
+    pub fn open_with_options(
+        path: impl AsRef<Path>,
+        process: Option<&str>,
+        parameters: Option<&SourceOverrides>,
+        r2_strategy: &str,
+        options: Option<&RuntimeOptions>,
+    ) -> RusticolResult<Self> {
         if is_v2_artifact(path.as_ref())? {
-            return Self::open_v4(path, process, parameters, r2_strategy);
+            let threads = options.and_then(|options| options.threads);
+            let mut runtime = Self::open_v4(path, process, parameters, r2_strategy, threads)?;
+            if let Some(options) = options {
+                runtime.set_options(options)?;
+            }
+            return Ok(runtime);
         }
         let verified = rusticol_core::VerifiedArtifact::open(path.as_ref())?;
         let capabilities = &verified.manifest().runtime.required_runtime_capabilities;
@@ -480,9 +502,10 @@ impl Runtime {
         process: Option<&str>,
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
+        threads: Option<usize>,
     ) -> RusticolResult<Self> {
         v4_r2_strategy(r2_strategy)?;
-        let mut native = V2Runtime::open(path, process, None)?;
+        let mut native = V2Runtime::open(path, process, threads)?;
         if let Some(values) = parameters {
             native.set_parameters(real_overrides(values)?)?;
         }
@@ -547,6 +570,7 @@ impl Runtime {
             checks: StabilityChecks::default(),
             kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
             kinematics_binary64: kinematics_improvement::DEFAULT_BINARY64,
+            threads_requested: threads,
             history_ids,
             spin_classes,
             observables,
@@ -573,6 +597,13 @@ impl Runtime {
     /// Python API's `ReductionUnavailable`), one that cannot serve a later
     /// call's carrier by that call; nothing changes on a refusal.
     pub fn set_reduction(&mut self, reduction: &str) -> RusticolResult<()> {
+        self.check_reduction(reduction, self.arithmetic)?;
+        self.reduction = reduction.to_owned();
+        Ok(())
+    }
+    /// Whether this library serves the reduction request `reduction` (the
+    /// refusals of [`Runtime::set_reduction`], stated at `arithmetic`).
+    fn check_reduction(&self, reduction: &str, arithmetic: Arithmetic) -> RusticolResult<()> {
         let served = reduction_policy::served();
         let backend = reduction_policy::BACKENDS.contains(&reduction);
         match reduction {
@@ -581,7 +612,7 @@ impl Runtime {
             _ if backend => {
                 let route =
                     reduction_policy::route(reduction_policy::SUMMED).expect("the summed route");
-                let carrier = self.arithmetic.name();
+                let carrier = arithmetic.name();
                 return match reduction_policy::resolve(
                     reduction,
                     self.contribution(),
@@ -609,8 +640,149 @@ impl Runtime {
                 )));
             }
         }
-        self.reduction = reduction.to_owned();
         Ok(())
+    }
+    /// The native threads of the later evaluations (the run card's
+    /// `evaluation.threads`): every executor of the runtime runs on a pool
+    /// of at most `threads` workers, clamped to the threads the process may
+    /// use (`loop_artifact::effective_threads`: the affinity mask and the
+    /// cgroup quota); None (the default) is rayon's rule,
+    /// `RAYON_NUM_THREADS` else every core. The values do not depend on it.
+    /// Every pool is built first: on an error nothing changes.
+    pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        let Engine::V4(native) = &mut self.engine;
+        native.set_threads(threads)?;
+        self.threads_requested = threads;
+        Ok(())
+    }
+    /// The requested thread bound when it was clamped (None otherwise).
+    pub fn threads_requested(&self) -> Option<usize> {
+        self.threads_requested
+            .filter(|requested| Some(*requested) != self.threads())
+    }
+    /// The effective thread bound of later evaluations (None: rayon's rule).
+    pub fn threads(&self) -> Option<usize> {
+        let Engine::V4(native) = &self.engine;
+        native.threads()
+    }
+    /// The runtime options `options` (`rusticol_loop_reduction::
+    /// runtime_options`, read from a runtime-options TOML): every option
+    /// given is checked first, as its setter checks it, and then all are
+    /// applied together; on a refusal nothing changes. An option the TOML
+    /// does not give keeps the runtime's setting; a setter called later
+    /// overrides the option it sets. `[evaluation.stability_checks]` given
+    /// replaces the checks as a whole.
+    pub fn set_options(&mut self, options: &RuntimeOptions) -> RusticolResult<()> {
+        let arithmetic = match options.carrier() {
+            Some((name, digits)) => Arithmetic::parse(name, digits)?,
+            None => self.arithmetic,
+        };
+        let poles = options.poles.as_deref().map(Poles::parse).transpose()?;
+        if let Some(poles) = poles {
+            let Engine::V4(native) = &self.engine;
+            native.check_poles(poles.v2())?;
+        }
+        if let Some(reduction) = &options.reduction {
+            self.check_reduction(reduction, arithmetic)?;
+        }
+        let target = options
+            .reduction_target
+            .map(|target| {
+                reduction_policy::target(target).map_err(|refusal| match refusal {
+                    Refusal::Invalid(message) | Refusal::Unavailable(message) => invalid(message),
+                })
+            })
+            .transpose()?;
+        let on_failure = options
+            .on_failure
+            .as_deref()
+            .map(OnFailure::parse)
+            .transpose()?;
+        let kinematics = options
+            .kinematics_improvement
+            .as_deref()
+            .map(kinematics_improvement::setting)
+            .transpose()
+            .map_err(invalid)?;
+        let checks = options
+            .stability_checks
+            .as_ref()
+            .map(|checks| checks.checks())
+            .transpose()?;
+        // Everything is checked: the thread bound first (its pools are the
+        // one step that can fail), then the settings.
+        if options.threads.is_some() {
+            self.set_threads(options.threads)?;
+        }
+        self.arithmetic = arithmetic;
+        if let Some(poles) = poles {
+            self.poles = poles;
+        }
+        if let Some(reduction) = &options.reduction {
+            self.reduction = reduction.clone();
+        }
+        if let Some(target) = target {
+            self.target = target;
+        }
+        if let Some(unchecked) = options.reduction_unchecked {
+            self.unchecked = unchecked;
+        }
+        if let Some(on) = options.lane_rescue {
+            self.lane_rescue = on;
+        }
+        if let Some(policy) = on_failure {
+            self.on_failure = policy;
+        }
+        if let Some(variant) = kinematics {
+            self.kinematics = variant;
+        }
+        if let Some(binary64) = options.kinematics_improvement_binary64 {
+            self.kinematics_binary64 = binary64;
+        }
+        if let Some(checks) = checks {
+            self.checks = checks;
+        }
+        Ok(())
+    }
+    /// The runtime's settings, as a runtime-options record (every option of
+    /// `runtime_options::KEYS` by its run-card name; `threads` null: rayon's
+    /// rule), the JSON of `rusticol_virtual_options_json`.
+    pub fn options_json(&self) -> RusticolResult<String> {
+        let digits = self.arithmetic.digits();
+        // Each rotation by its exact matrix, row by row.
+        let rotations: Vec<Vec<Vec<String>>> = self
+            .checks
+            .rotations()
+            .iter()
+            .map(|rotation| {
+                rotation
+                    .matrix()
+                    .iter()
+                    .map(|row| row.iter().map(ToString::to_string).collect())
+                    .collect()
+            })
+            .collect();
+        serde_json::to_string(&serde_json::json!({
+            "arithmetic": self.arithmetic.name(),
+            "precision": digits,
+            "poles": self.poles.name(),
+            "on_failure": self.on_failure.name(),
+            "reduction": self.reduction,
+            "reduction_target": self.target,
+            "reduction_unchecked": self.unchecked,
+            "lane_rescue": self.lane_rescue,
+            "kinematics_improvement": self.kinematics_improvement(),
+            "kinematics_improvement_binary64": self.kinematics_binary64,
+            "stability_checks": {
+                "rotations": rotations,
+                "reduction_direction": self.checks.reduction_direction(),
+                "rescaled": self.checks.rescaled(),
+                "cross_backend": self.checks.cross_backend(),
+            },
+            "threads": self.threads(),
+            "threads_requested": self.threads_requested(),
+        }))
+        .map_err(|error| invalid(error.to_string()))
     }
     /// The requested reduction backend of later evaluations.
     pub fn reduction(&self) -> &str {

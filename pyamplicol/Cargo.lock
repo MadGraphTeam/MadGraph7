@@ -2428,6 +2428,7 @@ dependencies = [
  "serde",
  "serde_json",
  "symbolica",
+ "toml",
 ]
 
 [[package]]

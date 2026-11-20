@@ -699,6 +699,37 @@ impl Runner {
         })
     }
 
+    /// The pools the runner's executors need for `threads` threads, built
+    /// and not installed (`V2Runtime::set_threads`: every pool is built
+    /// first, so that a failure changes nothing).
+    pub(crate) fn prepare_threads(
+        &self,
+        threads: Option<usize>,
+    ) -> RusticolResult<Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>> {
+        let mut pools = Vec::new();
+        for (lanes, executor) in &self.executors {
+            if let Some(pool) = executor.pool_for(threads)? {
+                pools.push((*lanes, pool));
+            }
+        }
+        Ok(pools)
+    }
+
+    /// Install the pools of [`Self::prepare_threads`] and the bound of the
+    /// executors formed later.
+    pub(crate) fn commit_threads(
+        &mut self,
+        threads: Option<usize>,
+        pools: Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>,
+    ) {
+        self.threads = threads;
+        for (lanes, pool) in pools {
+            if let Some(executor) = self.executors.get_mut(&lanes) {
+                executor.set_pool(pool);
+            }
+        }
+    }
+
     fn executor(&mut self, lanes: usize) -> RusticolResult<&V2Executor> {
         if !self.executors.contains_key(&lanes) {
             let executor = with_fourier(
@@ -1228,13 +1259,26 @@ pub fn is_v2_artifact(path: impl AsRef<Path>) -> RusticolResult<bool> {
 impl V2Runtime {
     /// Open one process (`process`: its id or expression; none: the only
     /// one) of a plan v4 artifact with native point inputs. `threads` bounds
-    /// the executor's threads (none: every core).
+    /// the threads of the load and of every later evaluation (none: rayon's
+    /// default, `RAYON_NUM_THREADS` else every core; [`Self::set_threads`]).
     pub fn open(
         path: impl AsRef<Path>,
         process: Option<&str>,
         threads: Option<usize>,
     ) -> RusticolResult<Self> {
         let path = path.as_ref().to_path_buf();
+        // The effective bound (clamped to the threads the process may use).
+        let threads = threads.map(rusticol_core::loop_artifact::effective_threads);
+        rusticol_core::loop_artifact::on_load_threads(threads, || {
+            Self::open_bounded(path, process, threads)
+        })
+    }
+
+    fn open_bounded(
+        path: std::path::PathBuf,
+        process: Option<&str>,
+        threads: Option<usize>,
+    ) -> RusticolResult<Self> {
         let verified = VerifiedArtifact::open(&path)?;
         // The load on the runtime's thread bound (the program is the same
         // for any count: `load_loop_v2_artifact_threads`).
@@ -1951,6 +1995,46 @@ impl V2Runtime {
             self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
+    }
+
+    /// Bound the threads of the following evaluations to `threads` (None:
+    /// rayon's default, `RAYON_NUM_THREADS` else every core): the pools of
+    /// every executor of the runtime (the process's, its companion's, the
+    /// observable column sets') are built again at that size, the ones
+    /// formed later take it. The values do not depend on the count.
+    ///
+    /// A requested count is clamped to the threads the process may use
+    /// (`loop_artifact::effective_threads`); [`Self::threads`] is the
+    /// effective count. Every new pool is built before any is installed: on
+    /// an error (the system refusing threads) nothing changes.
+    pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        let threads = threads.map(rusticol_core::loop_artifact::effective_threads);
+        let process = self.process.prepare_threads(threads)?;
+        let scaleless = self
+            .scaleless
+            .as_ref()
+            .map(|runner| runner.prepare_threads(threads))
+            .transpose()?;
+        let observables = self
+            .observables
+            .as_ref()
+            .map(|observables| observables.prepare_threads(threads))
+            .transpose()?;
+        self.threads = threads;
+        self.process.commit_threads(threads, process);
+        if let (Some(runner), Some(pools)) = (&mut self.scaleless, scaleless) {
+            runner.commit_threads(threads, pools);
+        }
+        if let (Some(stored), Some(pools)) = (&mut self.observables, observables) {
+            stored.commit_threads(threads, pools);
+        }
+        Ok(())
+    }
+
+    /// The effective thread bound of the following evaluations (None:
+    /// rayon's default).
+    pub fn threads(&self) -> Option<usize> {
+        self.threads
     }
 
     /// The reduction backend of the following evaluations: NinjaRS (the
