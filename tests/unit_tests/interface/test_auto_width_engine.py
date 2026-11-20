@@ -476,6 +476,8 @@ class LeptonicAlphaSTest(unittest.TestCase):
         process.is_decay = False
         process.custom_functions = {}
         process.contexts = []
+        # _massive_beams reads the incoming masses of the subprocesses
+        process.subprocess_data = []
         # leptonic beams must not even look for the PDF set
         process.ensure_pdf_set = mock.Mock(
             side_effect=AssertionError('PDF set resolved for leptonic beams'))
