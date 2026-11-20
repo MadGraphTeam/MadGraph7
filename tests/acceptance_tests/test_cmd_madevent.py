@@ -2846,6 +2846,50 @@ class TestMECmdShell(unittest.TestCase):
         self.do('generate_events -f')
         self.assertGreater(self.cmd_line.results.current['cross'], 0)
 
+    def test_onia_vanishing_diagram_channels(self):
+        """A diagram that vanishes once projected onto the bound state, here
+        u u~ > g* > n g with n = 3P0[8] or 1S0[8], which a single gluon cannot
+        produce by parity, keeps rounding noise in the single-diagram weight.
+        With initial-state reshuffling (mom_resh_type 0) the channel of
+        such a diagram was zero but at a few points (1e-90 pb): its grid of
+        grouped processes stayed empty and madevent stopped in the
+        DiscreteSampler (IEEE_INVALID_FLAG, "no point could be picked").
+        Every channel is now either exactly zero or a genuine share."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate u u~ > Jpsi(1|3P08) g')
+        mg_cmd.exec_cmd('add process u u~ > Jpsi(1|1S08) g')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        text = open(run_card).read()
+        for key, value in (('nevents', '1000'), ('pdlabel', 'nn23lo1'), ('ptj', '10.0'),
+                           ('mom_resh_type', '0')):
+            text, n = re.subn(r'(?m)^\s*\S+\s*=\s*%s\b' % key, ' %s = %s' % (value, key), text)
+            if not n:
+                text += ' %s = %s\n' % (value, key)
+        open(run_card, 'w').write(text)
+        self.do('generate_events -f')
+        self.assertGreater(self.cmd_line.results.current['cross'], 0)
+        import glob
+        pdirs = glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*'))
+        self.assertEqual(len([p for p in pdirs if os.path.isdir(p)]), 2)
+        for pdir in pdirs:
+            if not os.path.isdir(pdir):
+                continue
+            xsecs = [float(open(results).read().split()[0]) for results in
+                     glob.glob(pjoin(pdir, 'G*', 'results.dat'))
+                     if re.match(r'G\d+$', os.path.basename(os.path.dirname(results)))]
+            self.assertGreater(max(xsecs), 0)
+            # the channels of the vanishing diagrams are zero, not noise
+            self.assertIn(0.0, xsecs)
+            for xsec in xsecs:
+                self.assertTrue(xsec == 0 or xsec > 1e-6 * max(xsecs), (pdir, xsecs))
+
     def test_onium_production_in_decay(self):
         """Onia produced in a decay: Gamma(Z -> eta_c gamma) through the vector
         coupling of the Z, (2/3) M Gamma(eta_c -> gamma gamma) (v_c/(e_c s_W

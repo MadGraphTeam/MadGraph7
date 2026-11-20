@@ -107,6 +107,15 @@ ANNOUNCEMENT:
          bound states now gets a warning, which lists the entries of the block, and carries
          on; it stopped with "invalid set command" since invalid set commands are errors in
          scripted runs. A wrong block name, PDG code or value is still an error.
+       - Bug fix: a diagram that vanishes once projected onto the bound state (e.g. q q~ >
+         g* > n g for a P-wave or 1S0 colour octet n, which a single gluon cannot produce by
+         parity) left rounding noise in its single-diagram-enhancement weight, so that its
+         integration channel was not zero. With "mom_resh_type 0" such a channel could be
+         zero but at a few points (1e-90 pb): its grid of grouped subprocesses stayed empty
+         and madevent stopped in the DiscreteSampler (IEEE_INVALID_FLAG, "no point could be
+         picked"), e.g. "generate p p > psi(2S) j". A channel whose diagram carries less
+         than 1e-20 of the summed weights is now zero at that point
+         (test_onia_vanishing_diagram_channels).
        - Bug fix: the madevent output of a decaying bound state named its P directory
          after the constituents, so that the Fock states of a hadron ("generate Jpsi >
          mu+ mu-" decays six) all wrote to one directory, P1_ccx_ll, which kept the last

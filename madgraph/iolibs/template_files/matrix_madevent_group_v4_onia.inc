@@ -258,7 +258,16 @@ c         Set right sign for ANS, based on sign of chosen helicity
             endif	
         ENDDO
         IF (XTOT.NE.0D0) THEN
-		ANS=ANS*AMP2(channel)/XTOT
+C         A diagram that vanishes once projected onto the bound state
+C         (e.g. a P-wave or 1S0 colour octet from a single gluon, by
+C         parity) leaves rounding noise in AMP2: its channel is zero.
+C         Kept, its integrand is zero but at a few points (1e-90), and
+C         madevent stops on the empty grid of its grouped processes.
+          IF (AMP2(CHANNEL).LT.1D-20*XTOT) THEN
+            ANS=0D0
+          ELSE
+            ANS=ANS*AMP2(CHANNEL)/XTOT
+          ENDIF
         ELSE IF(ANS.ne.0d0) THEN
 	     IF(NB_FAIL.ge.10)then
 			write(*,*) "Problem in the multi-channeling. All amp2 are zero but not the total matrix-element"
