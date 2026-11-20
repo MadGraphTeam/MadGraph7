@@ -294,6 +294,69 @@ def test_union_artifacts_route_members_as_assignments(built):
     assert any(runtime.get("assignment", 0) > 0 for runtime in runtimes)
 
 
+def _partition(documents):
+    """Per provider channel, the physical flavours of each entry."""
+
+    return [
+        sorted(
+            sorted(
+                tuple(data["pdg_ids"][term["pdg_ids"]])
+                for term in entry["matrix_elements"]
+            )
+            for entry in channel["processes"]
+        )
+        for data, _ in documents
+        for channel in data["channels"]
+    ]
+
+
+def test_union_partition_equals_per_flavour(built):
+    # a template's own flavour shares its entry with all-pattern members
+    assert _partition(built["umami"]["union"]) == _partition(built["umami"]["flavour"])
+
+
+# g q > q Q Q~: the shape of every partition split left at pp > 3j, 4j and 5j
+GQ_EXPRESSIONS = (
+    "g u > d u d~",
+    "g u > u s s~",
+    "g u > u c c~",
+    "g u > u u u~",
+    "g d > d u u~",
+    "g d > d s s~",
+    "g d > d c c~",
+    "g d > d d d~",
+)
+
+
+@pytest.fixture(scope="module")
+def gq_partitions(tmp_path_factory):
+    root = tmp_path_factory.mktemp("umami-unions-gq")
+    result = {}
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+        for kind, unions in (("union", True), ("flavour", False)):
+            Generator(_config("lc", unions)).generate(
+                ProcessSet.from_expressions(
+                    GQ_EXPRESSIONS,
+                    names=tuple(f"q{index}" for index in range(len(GQ_EXPRESSIONS))),
+                ),
+                root / kind,
+                model=ModelSource.from_path(prepared_model),
+            )
+            result[kind] = _partition(
+                [(data, None) for data in load_umami_metadata(root / kind)]
+            )
+    return result
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="union members of one g q > q Q Q~ class route through different "
+    "permutations and colour flows, so g u > d u d~ leaves the per-flavour entry",
+)
+def test_union_partition_equals_per_flavour_gq_qqbar(gq_partitions):
+    assert gq_partitions["union"] == gq_partitions["flavour"]
+
+
 def test_union_matrix_elements_equal_per_flavour_artifacts(built):
     unions, flavours = built["umami"]["union"], built["umami"]["flavour"]
     expected = _members(flavours)

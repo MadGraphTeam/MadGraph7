@@ -916,6 +916,13 @@ def _write_umami_bundle(
                     if not member.generated
                 )
             ),
+            union_pattern_count=(
+                None
+                if process_groups is None
+                or identifier not in process_groups.groups
+                or process_groups.groups[identifier].pattern_pairs is None
+                else len(process_groups.groups[identifier].pattern_pairs)
+            ),
         )
         if physics.get("kind") == ON_THE_FLY_PUBLIC_METADATA_KIND:
             # Appended processes retain compact runtime physics. Their previous

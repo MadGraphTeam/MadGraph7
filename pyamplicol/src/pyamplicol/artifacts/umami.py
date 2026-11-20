@@ -20,6 +20,7 @@ import math
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import combinations_with_replacement, islice, permutations
 from operator import itemgetter
 from typing import TYPE_CHECKING, Any
@@ -55,6 +56,8 @@ class UmamiProcessInput:
     # Ungenerated group members evaluated through this process's runtime:
     # ME_member(p) = factor * ME_this(q) with q[r] = p[permutation[r]].
     group_members: tuple[GroupMember, ...] = ()
+    # Pattern count of a flavour-union template (its pattern table), if known.
+    union_pattern_count: int | None = None
 
 
 def _records(value: Any) -> list[Mapping[str, Any]]:
@@ -1117,7 +1120,15 @@ def _build_provider(
         assignment = None
         if union_ids:
             if group_member is None:
-                assignment = (0, process.process_id, ("template",))
+                # all patterns, as an all-same-flavour member: both merge into one entry
+                rules = process.union_pattern_count
+                assignment = (
+                    0,
+                    process.process_id,
+                    ("template",)
+                    if rules is None
+                    else (tuple(range(rules)), (1,) * rules, Fraction(1), False),
+                )
             elif group_member.patterns is None:
                 raise ValueError(
                     f"UMAMI flavour-union template {process.process_id!r} has the "
