@@ -195,22 +195,6 @@ def write_pool(gdir, sources, max_wgt):
     return nb_evt
 
 
-def pool_channel(gdir, sources, n_budget, trunc):
-    """Pool event samples of one channel and unweight them against the
-    overweight budget of the channel (enforce_overweight_limit, channel mode).
-    sources: list of (events.lhe path, scale); the scaled weights of all the
-    sources estimate the channel cross-section together (e.g. 1/njobs each).
-    The maximum weight is the budget one, but at least the largest unweighting
-    maximum of the sources (their events lighter than it were already thinned).
-    Writes gdir/events.lhe; returns (number of events, maximum weight)."""
-
-    weights, min_wgt = pool_weights(sources)
-    if not weights:
-        return 0, 0.
-    max_wgt = overweight_max_weight(weights, n_budget, trunc, min_wgt)
-    return write_pool(gdir, sources, max_wgt), max_wgt
-
-
 class ProcessBudget(object):
     """Overweight budget shared by all the channels of the process
     (enforce_overweight_limit, process mode): sum over the channels of the weight

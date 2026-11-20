@@ -58,6 +58,18 @@ else:
 logger = logging.getLogger('madgraph.madevent.gen_ximprove')
 pjoin = os.path.join
 
+OW_MARKER = 'ow_enforced.dat'
+
+def ow_marker_path(me_dir, readonly=False):
+    """marker that enforce_overweight_limit ran on the current events: the event
+    combination keeps the maximum weight only then"""
+    return pjoin('.' if readonly else pjoin(me_dir, 'SubProcesses'), OW_MARKER)
+
+def ow_clear_marker(me_dir, readonly=False):
+    path = ow_marker_path(me_dir, readonly)
+    if os.path.exists(path):
+        os.remove(path)
+
 class gensym(object):
     """a class to call the fortran gensym executable and handle it's output
     in order to create the various job that are needed for the survey"""
@@ -1558,7 +1570,7 @@ class gen_ximprove_v4(gen_ximprove):
         return {'G': C.name, 'P': info['P_dir'], 'pdir': pdir, 'gdir': pjoin(pdir, C.name),
                 'info': info, 'split': nb_split, 'njobs': nb_split,
                 'next_offset': nb_split + 1, 'needed': needed_event,
-                'axsec0': C.get('axsec')}
+                'axsec0': abs(C.get('axsec'))}
 
     def ow_collect_channels(self):
         """channels the budget applies to: the refined ones, and the others that
@@ -1567,7 +1579,7 @@ class gen_ximprove_v4(gen_ximprove):
         for P in self.results:
             for C in P:
                 key = (C.parent_name, C.name)
-                if key in channels or C.get('axsec') <= 0:
+                if key in channels or C.get('axsec') == 0:
                     continue
                 info, nb_split, needed = self.channel_job_info(C, self.goal_lum)
                 entry = self.ow_channel_entry(C, info, 1, needed)
@@ -1603,9 +1615,16 @@ class gen_ximprove_v4(gen_ximprove):
             return
         # the factor the requested events were multiplied with
         security = getattr(self, 'err_goal_security', self.gen_events_security)
+        negative = [e for e in channels if e['axsec0'] <= 0]
+        if negative:
+            logger.warning('enforce_overweight_limit: %i channel(s) without a positive absolute '
+                           'cross-section are left as they are', len(negative))
+            channels = [e for e in channels if e['axsec0'] > 0]
+            if not channels:
+                return
         floor = self.run_card['overweight_limit_min_events']
         if floor < 0:
-            floor = sum(e['needed'] for e in channels) / security / len(channels)
+            floor = sum(abs(e['needed']) for e in channels) / security / len(channels)
         axsec0 = sum(e['axsec0'] for e in channels)
         for e in channels:
             e['new_jobs'] = []
@@ -1621,10 +1640,10 @@ class gen_ximprove_v4(gen_ximprove):
             for e in active:
                 self.ow_gather(e)
             # shares at the current cross-sections (the requested ones are the survey's)
-            axsec = sum(e['result'].axsec for e in channels)
+            axsec = sum(abs(e['result'].axsec) for e in channels)
             for e in channels:
-                e['share'] = e['needed'] / security * \
-                    (e['result'].axsec / e['axsec0']) / (axsec / axsec0)
+                e['share'] = abs(e['needed']) / security * \
+                    (abs(e['result'].axsec) / e['axsec0']) / (axsec / axsec0)
                 e['n_budget'] = max(e['share'], floor)
             if mode == 'process':
                 budget = combine_runs.ProcessBudget(trunc)
@@ -1668,6 +1687,7 @@ class gen_ximprove_v4(gen_ximprove):
                     misc.format_time(time.time() - start))
         for e in channels:
             shutil.rmtree(pjoin(e['gdir'], 'ow_grid'), ignore_errors=True)
+        open(ow_marker_path(self.me_dir, getattr(self, 'readonly', False)), 'w').close()
         if still:
             logger.warning('enforce_overweight_limit: %i channel(s) still below their share of '
                            'events after %i rounds (%s): fewer events than requested may be '
@@ -1709,6 +1729,9 @@ class gen_ximprove_v4(gen_ximprove):
             # pool's maximum, which scales by points/p_tot
             unit = e['m'] * points / size / self.ow_unit_margin
         else:
+            if not os.path.exists(grid):
+                logger.warning('enforce_overweight_limit: no grid for %s/%s, its top-up uses '
+                               'full refine jobs', e['P'], e['G'])
             nb = max(1, min(int(math.ceil(e['njobs'] * new_points / max(points, 1))),
                             self.ow_max_job_factor * e['njobs']))
         jobs = []
@@ -1790,11 +1813,12 @@ class gen_ximprove_v4(gen_ximprove):
             shutil.rmtree(pjoin(e['pdir'], d), ignore_errors=True)
         e['new_jobs'] = []
         e['nunwgt'], e['maxwgt'] = nunwgt, m
-        # raise of the maximum over the natural unit, accumulated over the rounds
-        # (a pool's floor is the maximum it was unweighted at before)
-        if e['min_wgt'] > 0:
-            e['raise'] = e.get('raise', 1.) * m / e['min_wgt']
-        e['raised'] = e.get('raise', 1.) > 1 + 1e-6
+        # raise over the natural unit, fixed at the first application: unit * points
+        # is invariant under pooling (weights scale as 1/points)
+        if 'unit0' not in e and e['min_wgt'] > 0:
+            e['unit0'] = e['min_wgt'] * result.nevents
+        e['raise'] = m * result.nevents / e['unit0'] if e.get('unit0') else 1.
+        e['raised'] = e['raise'] > 1 + 1e-6
         e['ow'] = sum(w for w in e['weights'] if w > m)
 
     def run_ow_jobs(self, jobs):

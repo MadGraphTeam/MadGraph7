@@ -13,7 +13,7 @@
 #
 ################################################################################
 """Tests of enforce_overweight_limit: the per-channel overweight budget
-(combine_runs.overweight_max_weight / pool_channel) and the top-up refine jobs
+(combine_runs.overweight_max_weight / pool_weights / write_pool) and the top-up refine jobs
 (gen_ximprove_v4.enforce_overweight_limit)."""
 from __future__ import absolute_import
 import os
@@ -99,7 +99,7 @@ class TestPoolChannel(unittest.TestCase):
         # job a: unit 1, one event of 20 units; job b: unit 1.2
         write_events(a, [1.] * 500 + [20.])
         write_events(b, [1.2] * 400)
-        n, m = combine_runs.pool_channel(self.dir, [(a, .5), (b, .5)], 450, 0.001)
+        n, m = pool_channel(self.dir, [(a, .5), (b, .5)], 450, 0.001)
         # the budget (0.45 units) cannot hold the 10-unit pooled event: m = 10
         self.assertAlmostEqual(m, 10.)
         w = combine_runs.read_abs_weights(os.path.join(self.dir, 'events.lhe'))
@@ -113,8 +113,15 @@ class TestPoolChannel(unittest.TestCase):
         write_events(a, [1.] * 100)
         write_events(b, [3.] * 100)
         # the events of b were unweighted at 3*0.5: m cannot go below
-        n, m = combine_runs.pool_channel(self.dir, [(a, .5), (b, .5)], 1e6, 0.5)
+        n, m = pool_channel(self.dir, [(a, .5), (b, .5)], 1e6, 0.5)
         self.assertAlmostEqual(m, 1.5)
+
+
+def pool_channel(gdir, sources, n_budget, trunc):
+    """pool the sources and unweight them at the channel's budget maximum"""
+    weights, min_wgt = combine_runs.pool_weights(sources)
+    m = combine_runs.overweight_max_weight(weights, n_budget, trunc, min_wgt)
+    return combine_runs.write_pool(gdir, sources, m), m
 
 
 class TestProcessBudget(unittest.TestCase):
@@ -266,6 +273,8 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         above = sum(x for x in w if x > m * (1 + 1e-6))
         self.assertLessEqual(above, 0.001 * 500 * m * (1 + 1e-6))
         self.assertAlmostEqual(max(w) * r.nevents / 6600 * 689, 30., 3)
+        # the event combination keeps the maximum weight
+        self.assertTrue(os.path.exists(gen_ximprove.ow_marker_path(self.me_dir)))
         # the job directories are removed
         self.assertFalse([d for d in os.listdir(self.pdir) if '_ow' in d])
         # the raise is kept over the rounds (G2 by its 30-unit event, G1 not)
@@ -296,6 +305,7 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         del x.ow_channels
         x.enforce_overweight_limit()
         self.assertEqual(self.jobs, [])
+        self.assertFalse(os.path.exists(gen_ximprove.ow_marker_path(self.me_dir)))
 
     def test_requires_truncation(self):
         x = self.make_ximprove({'max_overweight_truncation': -1,
@@ -303,6 +313,19 @@ class TestEnforceOverweightLimit(unittest.TestCase):
                                 'overweight_limit_mode': 'channel'})
         x.enforce_overweight_limit()
         self.assertEqual(self.jobs, [])
+
+    def test_raise_stable_when_reapplied(self):
+        # process mode re-applies every channel each round: the raise must not drift
+        x = self.make_ximprove({'max_overweight_truncation': 0.001,
+                                'overweight_limit_min_events': -1,
+                                'overweight_limit_mode': 'process'})
+        x.enforce_overweight_limit()
+        e = dict((k[1], e) for k, e in x.ow_channels.items())['G2']
+        raise0 = e['raise']
+        for i in range(3):
+            x.ow_gather(e)
+            x.ow_apply(e)
+        self.assertAlmostEqual(e['raise'] / raise0, 1., 6)
 
 
 if __name__ == '__main__':

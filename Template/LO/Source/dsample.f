@@ -1824,7 +1824,7 @@ c        fixed unweighting threshold of an enforce_overweight_limit top-up job
          ow_kn = 0d0
          ow_nz = 0d0
          open(unit=93, file='ow_threshold.dat', status='old', err=9302)
-         read(93, *, err=9301) ow_fix
+         read(93, *, err=9301, end=9301) ow_fix
  9301    close(93)
  9302    continue
          last_on = use_cut .ne. -2 .and. (use_cut .ne. 0 .or.
@@ -2404,8 +2404,8 @@ c     when that one contains a large weight)
                if (last_it) last_xnorm = xmean(cur_it-1)
                if (use_cut.eq.-2) then
                   call store_events(force_max_wgt, .False.)
-               elseif (itm .eq. 1 .and. use_cut .eq. 0) then
-c                 single iteration on a fixed grid (overweight-limit top-up job):
+               elseif (ow_fix .gt. 0d0) then
+c                 overweight-limit top-up job (ow_threshold.dat):
 c                 the finest consistent maximum, gen_ximprove unweights the pool
                   call store_events(0d0, .True.)
                else
@@ -2521,8 +2521,8 @@ c 129              close(22)
             if (cur_it .gt. itm) then               
                if (use_cut.eq.-2)then
                   call store_events(force_max_wgt, .False.)
-               elseif (itm .eq. 1 .and. use_cut .eq. 0) then
-c                 single iteration on a fixed grid (overweight-limit top-up job):
+               elseif (ow_fix .gt. 0d0) then
+c                 overweight-limit top-up job (ow_threshold.dat):
 c                 the finest consistent maximum, gen_ximprove unweights the pool
                   call store_events(0d0, .True.)
                else

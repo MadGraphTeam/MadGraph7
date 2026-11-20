@@ -3680,6 +3680,7 @@ Beware that this can be dangerous for local multicore runs.""")
         args = self.split_arg(line)
         # Check argument's validity
         self.check_survey(args)
+        gen_ximprove.ow_clear_marker(self.me_dir)
         # initialize / remove lhapdf mode
 
         if os.path.exists(pjoin(self.me_dir,'error')):
@@ -3816,7 +3817,8 @@ Beware that this can be dangerous for local multicore runs.""")
                     break
         # Check argument's validity
         self.check_refine(args)
-        
+        gen_ximprove.ow_clear_marker(self.me_dir)
+
         refine_opt = {'err_goal': args[0], 'split_channels': True}   
         precision = args[0]
         if len(args) == 2:
@@ -4227,10 +4229,11 @@ Beware that this can be dangerous for local multicore runs.""")
     def overweight_limit_fraction(self):
         """overweight fraction below which the event combination keeps the
         maximum weight (enforce_overweight_limit), 0 otherwise"""
-        # not for the refine modes that do not enforce it (loop-induced, job_strategy=2)
+        # only when the refine of these events enforced it (not loop-induced/job_strategy=2)
         if self.run_card['enforce_overweight_limit'] and \
                 self.run_card['max_overweight_truncation'] > 0 and \
-                getattr(self, 'refine_mode', 'old') != 'new':
+                os.path.exists(gen_ximprove.ow_marker_path(self.me_dir,
+                                                           getattr(self, 'readonly', False))):
             return self.run_card['max_overweight_truncation']
         return 0
 
@@ -7809,6 +7812,7 @@ class GridPackCmd(MadEventCmd):
         refine_opt = {'err_goal': nb_event, 'split_channels': True,
                       'ngran':self.granularity, 'readonly': self.readonly,
                       'nprocs': self.nprocs, 'maxevts': self.maxevts}
+        gen_ximprove.ow_clear_marker(self.me_dir, self.readonly)
         x_improve = gen_ximprove.gen_ximprove_gridpack(self, refine_opt)
         x_improve.launch() # create the ajob for the refinement and run those!
         self.gscalefact = x_improve.gscalefact #store jacobian associate to the gridpack 
