@@ -47,7 +47,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -237,7 +237,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -253,7 +253,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -377,7 +377,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -392,7 +392,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -458,7 +458,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -473,7 +473,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -530,7 +530,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -545,7 +545,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -582,7 +582,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -596,7 +596,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -640,7 +640,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -660,7 +660,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -728,7 +728,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -742,7 +742,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     permissions:
       contents: read
 
@@ -788,7 +788,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -798,7 +798,7 @@ jobs:
 
   unittest_real_channels:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -816,7 +816,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -829,7 +829,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -851,7 +851,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -862,7 +862,7 @@ jobs:
 
   unittest_native_born:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -883,7 +883,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -895,7 +895,7 @@ jobs:
     # unit tests that were not listed in any workflow (CI coverage audit).
     # test_fks_ppzz_in_RS is left out: the RS UFO model is still python2 only.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -928,7 +928,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true

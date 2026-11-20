@@ -42,7 +42,7 @@ jobs:
   # composite action so it stays in sync with check_xsec_processes_mg7.yml.
   build_madspace:
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build_madspace
@@ -63,7 +63,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -76,7 +76,7 @@ jobs:
     # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     needs: build_madspace
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -132,7 +132,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -149,7 +149,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -302,7 +302,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -321,7 +321,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -523,7 +523,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -539,7 +539,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -636,7 +636,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -651,7 +651,7 @@ jobs:
     # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     needs: build_madspace
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -732,7 +732,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -748,7 +748,7 @@ jobs:
     # readers, in-place weights) and test_reweight_backends (classic module and
     # MadtRex reweight the same events and agree event by event; needs f2py).
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -798,7 +798,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -815,7 +815,7 @@ jobs:
     # Each step runs even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -856,7 +856,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true

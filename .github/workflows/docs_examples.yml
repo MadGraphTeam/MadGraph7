@@ -40,7 +40,7 @@ jobs:
   # madspace source hash (same composite action the mg7 workflow uses).
   build_madspace:
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build_madspace
@@ -52,7 +52,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -62,7 +62,7 @@ jobs:
   docs_examples:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -85,7 +85,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true

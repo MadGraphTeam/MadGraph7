@@ -44,7 +44,7 @@ jobs:
     #   acceptancetest_emela3
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -80,7 +80,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -94,7 +94,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -222,7 +222,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -235,7 +235,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -463,7 +463,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -475,7 +475,7 @@ jobs:
     #   acceptancetest_ewsudakov acceptancetest_density_LI_convolution
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -515,7 +515,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -527,7 +527,7 @@ jobs:
     #   acceptancetest_95
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -570,7 +570,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -580,7 +580,7 @@ jobs:
   acceptancetest_72:
     # The type of runner that the job will run on
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
@@ -607,7 +607,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -621,7 +621,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -710,7 +710,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -722,7 +722,7 @@ jobs:
     #   acceptancetest_96
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -763,7 +763,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -775,7 +775,7 @@ jobs:
     #   acceptancetest_emela2 acceptancetest_88
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -815,7 +815,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -827,7 +827,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -886,7 +886,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -899,7 +899,7 @@ jobs:
     #   acceptancetest_polarised_rotation_at_rest
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -951,7 +951,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -963,7 +963,7 @@ jobs:
     #   acceptancetest_improve_ps_at_rest
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -999,7 +999,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1011,7 +1011,7 @@ jobs:
     # (needs no HEPTools); fork PRs stay on ubuntu-24.04 so outside code never
     # runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1040,7 +1040,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1052,7 +1052,7 @@ jobs:
     # hardcoded-value regression, consistency vs a plain aMC@NLO output, and
     # the '--limits' soft/collinear limit test.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -1077,7 +1077,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1087,7 +1087,7 @@ jobs:
   acceptancetest_107:
     # The type of runner that the job will run on
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1117,7 +1117,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1127,7 +1127,7 @@ jobs:
   acceptancetest_wj_ms_decay:
     # wj production with madspin decay (CI coverage audit)
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -1145,7 +1145,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1155,7 +1155,7 @@ jobs:
   acceptancetest_madspin_tree:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       - uses: actions/checkout@v4
@@ -1175,7 +1175,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1185,7 +1185,7 @@ jobs:
   acceptancetest_madspin_LI:
     # The type of runner that the job will run on
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -1211,7 +1211,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1227,7 +1227,7 @@ jobs:
     # tests self-skip without gfortran / f2py / g++: restore-pip-cache (meson,
     # ninja, f2py_compiler) is what keeps these steps green.
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -1285,7 +1285,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1299,7 +1299,7 @@ jobs:
     # (disabled in acceptancetest_madevent.yml), test_madspace_example_gpu (GPU).
     # Each step runs even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/clean_tmp
@@ -1342,7 +1342,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
@@ -1351,7 +1351,7 @@ jobs:
 
   acceptancetest_82_helicities:
     runs-on: ubuntu-24.04
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -1367,7 +1367,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
             --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
           while read -r id; do
             [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
