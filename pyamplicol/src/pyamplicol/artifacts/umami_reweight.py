@@ -131,6 +131,15 @@ def _canonical_legs(pdgs: Sequence[int], legs: Sequence[int], incoming: int) -> 
     return tuple(legs)
 
 
+def _canonical_tags(flow: Sequence[Sequence[int]]) -> tuple:
+    # colour tags renumbered by first appearance: equal for the same physical flow
+    names: dict[int, int] = {}
+    return tuple(
+        tuple(names.setdefault(tag, len(names) + 1) if tag else 0 for tag in pair)
+        for pair in flow
+    )
+
+
 def _is_qcd_parton(pdg: int) -> bool:
     return pdg == 21 or 0 < abs(pdg) <= 6
 
@@ -254,8 +263,11 @@ def switch_catalogue(
     # a row's arrangement: where its non-partons sit relative to the first row with
     # them (t~ t of conjugated flavours); its events keep it in every flavour summed
     arrangements: list[tuple] = []
-    row_arrangements = []
-    for row in reference["pdg_ids"]:
+    rows = reference["pdg_ids"]
+    row_arrangements = [0] * len(rows)
+    # rows in physical order: the numbering does not depend on the table order
+    for index in sorted(range(len(rows)), key=lambda i: tuple(rows[i])):
+        row = rows[index]
         fixed = {s: p for s, p in enumerate(row) if s >= incoming and p not in jet}
         first = canonical.setdefault(tuple(sorted(fixed.values())), fixed)
         if list(fixed) != list(next(iter(canonical.values()))):
@@ -268,7 +280,9 @@ def switch_catalogue(
         )
         if sigma not in arrangements:
             arrangements.append(sigma)
-        row_arrangements.append(arrangements.index(sigma))
+        row_arrangements[index] = arrangements.index(sigma)
+    # physical order: orderings and targets do not depend on the grouping
+    members.sort(key=lambda m: tuple(m[1]))
     fixed_slots = next(iter(canonical.values()))
     parton_slots = [
         slot for slot in range(incoming, len(reference["pdg_ids"][0]))
@@ -328,19 +342,28 @@ def switch_catalogue(
                     target = len(targets)
                     colors = target_colors.get((rep, legs, conjugated))
                     if colors is None:
-                        colors = target_colors[rep, legs, conjugated] = []
-                        for flow_id in flow_ids[rep]:
+                        found = []
+                        for slot_index, flow_id in enumerate(flow_ids[rep]):
                             tags = color_flows[flows[rep][flow_id]]
                             slot_tags = [[0, 0] for _ in legs]
                             for j, slot in enumerate(legs):
                                 pair = list(tags[j])
                                 slot_tags[slot] = pair[::-1] if conjugated else pair
+                            found.append((_canonical_tags(slot_tags), slot_index, slot_tags))
+                        # the flows in physical order, the order of the colour draw
+                        colors = target_colors[rep, legs, conjugated] = ([], [])
+                        for _, slot_index, slot_tags in sorted(found):
                             key = tuple(map(tuple, slot_tags))
                             if key not in color_index:
                                 color_index[key] = len(color_flows)
                                 color_flows.append(slot_tags)
-                            colors.append(color_index[key])
-                    targets.append({"evaluation": evaluation, "colors": list(colors)})
+                            colors[0].append(color_index[key])
+                            colors[1].append(slot_index)
+                    targets.append({
+                        "evaluation": evaluation,
+                        "colors": list(colors[0]),
+                        "flows": list(colors[1]),
+                    })
                     target_pdgs.append([*initial, *order])
                 orderings.append({
                     "evaluation": evaluation,
@@ -500,6 +523,8 @@ def _switch_tables(
     rows = []
     for i, target in enumerate(catalogue["targets"]):
         lines.append(_int_array(f"reweight_switch_t{i}", "int", target["colors"]))
+        order = target.get("flows", range(len(target["colors"])))
+        lines.append(_int_array(f"reweight_switch_o{i}", "int", list(order)))
         index, legs, factor, assignment = target_route(
             target, catalogue["target_pdgs"][i]
         )
@@ -508,7 +533,8 @@ def _switch_tables(
             name = f"reweight_switch_l{i}"
             lines.append(_int_array(name, "size_t", legs))
         rows.append(
-            f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, {name}, "
+            f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, "
+            f"reweight_switch_o{i}, {name}, "
             f"{float(factor)!r}, {assignment}}},"
         )
     lines.append("static const ReweightSwitchTarget reweight_switch_targets[] = {")

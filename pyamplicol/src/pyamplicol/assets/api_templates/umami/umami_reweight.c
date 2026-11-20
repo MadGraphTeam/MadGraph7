@@ -38,10 +38,11 @@ typedef struct {
     double enhancement, row, value;
 } SwitchedEvent;
 
-/* Helicity vectors and, for reference processes, the switch flow of each colour. */
+/* Helicity vectors and, for reference processes, the switch flow of each colour
+ * and the colour of each switch flow (-1: none). */
 typedef struct {
     size_t helicity_count, color_count;
-    int *helicities, *flow_slots;
+    int *helicities, *flow_slots, *slot_colors;
 } RuntimeTables;
 
 typedef struct {
@@ -82,6 +83,8 @@ typedef struct {
     double *call_values;
     size_t call_values_capacity;
     int *slot_helicities;
+    /* per switch evaluation: its runtime helicities in physical order (lazy) */
+    uint32_t **helicity_orders;
 } Instance;
 
 static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -330,7 +333,11 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
     size_t switch_calls = reweight_provider.flavor_switch == NULL
         ? 0 : reweight_provider.flavor_switch->call_count;
     instance->relabelled = calloc(switch_calls + 1, sizeof(uint32_t *));
-    if (instance->relabelled == NULL || instance->offsets == NULL || instance->assignments == NULL ||
+    instance->helicity_orders = calloc(
+        (reweight_provider.flavor_switch == NULL
+             ? 0 : reweight_provider.flavor_switch->evaluation_count) + 1,
+        sizeof(uint32_t *));
+    if (instance->relabelled == NULL || instance->helicity_orders == NULL || instance->offsets == NULL || instance->assignments == NULL ||
         instance->slot_helicities == NULL || instance->reference == NULL || instance->target == NULL ||
         instance->reference_tables == NULL || instance->target_tables == NULL ||
         instance->base == NULL || reweight_provider.reference_process_count == 0 ||
@@ -433,6 +440,8 @@ static UmamiStatus helicity_table(RusticolRuntimeHandle *runtime, RuntimeTables 
 static UmamiStatus reset_reference_tables(RuntimeTables *tables, UmamiStatus status) {
     free(tables->flow_slots);
     tables->flow_slots = NULL;
+    free(tables->slot_colors);
+    tables->slot_colors = NULL;
     free(tables->helicities);
     tables->helicities = NULL;
     return status;
@@ -466,6 +475,12 @@ static UmamiStatus reference_tables(Instance *instance, size_t index, RuntimeTab
         for (size_t f = 0; f < flows->flow_count; ++f)
             if (strcmp(flows->flow_ids[f], name) == 0) tables->flow_slots[c] = (int)f;
     }
+    free(tables->slot_colors);
+    tables->slot_colors = malloc((flows->flow_count + 1) * sizeof(int));
+    if (tables->slot_colors == NULL) return reset_reference_tables(tables, UMAMI_ERROR);
+    for (size_t f = 0; f < flows->flow_count; ++f) tables->slot_colors[f] = -1;
+    for (size_t c = 0; c < tables->color_count; ++c)
+        if (tables->flow_slots[c] >= 0) tables->slot_colors[tables->flow_slots[c]] = (int)c;
     status = helicity_table(runtime, tables);
     if (status != UMAMI_SUCCESS) return reset_reference_tables(tables, status);
     if (helicities != tables->helicity_count || colors != tables->color_count) {
@@ -591,35 +606,99 @@ static void gather_switched(Instance *instance, double const *momenta, size_t st
     }
 }
 
+typedef struct {
+    int const *vector;
+    size_t n;
+    uint32_t index;
+} HelicityKey;
+
+static int compare_helicity_keys(void const *a, void const *b) {
+    HelicityKey const *x = a, *y = b;
+    for (size_t j = 0; j < x->n; ++j)
+        if (x->vector[j] != y->vector[j]) return x->vector[j] < y->vector[j] ? -1 : 1;
+    return 0;
+}
+
+/* The runtime helicities of a switch evaluation ordered by their values in event
+ * slots: the same physical order for every runtime that evaluates the flavour. */
+static uint32_t const *helicity_order(Instance *instance, size_t e, RuntimeTables const *lc) {
+    if (instance->helicity_orders[e] != NULL) return instance->helicity_orders[e];
+    size_t n = reweight_provider.particle_count, count = lc->helicity_count;
+    size_t const *legs = reweight_provider.flavor_switch->evaluations[e].legs;
+    int *vectors = malloc((count * n + 1) * sizeof(int));
+    HelicityKey *keys = malloc((count + 1) * sizeof(*keys));
+    uint32_t *order = malloc((count + 1) * sizeof(uint32_t));
+    if (vectors == NULL || keys == NULL || order == NULL) {
+        free(vectors); free(keys); free(order);
+        return NULL;
+    }
+    for (size_t h = 0; h < count; ++h) {
+        for (size_t j = 0; j < n; ++j) vectors[h * n + legs[j]] = lc->helicities[h * n + j];
+        keys[h] = (HelicityKey){&vectors[h * n], n, (uint32_t)h};
+    }
+    qsort(keys, count, sizeof(*keys), compare_helicity_keys);
+    for (size_t h = 0; h < count; ++h) order[h] = keys[h].index;
+    free(vectors); free(keys);
+    instance->helicity_orders[e] = order;
+    return order;
+}
+
+/* The leading colour of a target's flows in physical order, then of the colours
+ * without a switch flow (unmatched) in runtime order. */
+static double switch_row(RuntimeTables const *lc, ReweightSwitchFlows const *flows,
+                         ReweightSwitchTarget const *target, double const *values,
+                         double *unmatched) {
+    double row = 0.0, rest = 0.0;
+    for (size_t k = 0; k < flows->flow_count; ++k) {
+        int c = lc->slot_colors[target->flows[k]];
+        if (c >= 0) row += values[c];
+    }
+    for (size_t c = 0; c < lc->color_count; ++c)
+        if (lc->flow_slots[c] < 0) rest += values[c];
+    if (unmatched != NULL) *unmatched = rest;
+    return row + rest;
+}
+
 /* The helicity in proportion to the flows it sums, then a flow at it, from the
- * leading colour resolved at the event. */
+ * leading colour resolved at the event; both drawn in physical order. */
 static UmamiStatus draw_switched(Instance *instance, SwitchedEvent *s, RuntimeTables const *lc,
                                  double const *resolved, double random_helicity,
                                  double random_color) {
     ReweightSwitch const *sw = reweight_provider.flavor_switch;
     ReweightSwitchTarget const *target = &sw->targets[s->target];
     ReweightSwitchEvaluation const *evaluation = &sw->evaluations[target->evaluation];
-    size_t n = reweight_provider.particle_count;
+    ReweightSwitchFlows const *flows = &sw->flows[evaluation->process];
+    size_t n = reweight_provider.particle_count, colors = lc->color_count;
     RuntimeTables *fc = NULL;
     UmamiStatus status = target_tables(instance, target->target_process, &fc);
     if (status != UMAMI_SUCCESS) return status;
+    uint32_t const *order = helicity_order(instance, target->evaluation, lc);
+    if (order == NULL) return UMAMI_ERROR;
     double total = 0.0;
-    for (size_t i = 0; i < lc->helicity_count * lc->color_count; ++i) total += resolved[i];
+    for (size_t k = 0; k < lc->helicity_count; ++k)
+        total += switch_row(lc, flows, target, &resolved[order[k] * colors], NULL);
     if (!(total > 0.0)) return UMAMI_ERROR;
-    size_t h = 0, c = 0;
-    double row = 0.0, threshold = random_helicity * total;
-    for (h = 0; h < lc->helicity_count; ++h) {
-        row = 0.0;
-        for (c = 0; c < lc->color_count; ++c) row += resolved[h * lc->color_count + c];
-        if (threshold < row || h + 1 == lc->helicity_count) break;
+    size_t h = 0;
+    double row = 0.0, unmatched = 0.0, threshold = random_helicity * total;
+    for (size_t k = 0; k < lc->helicity_count; ++k) {
+        h = order[k];
+        row = switch_row(lc, flows, target, &resolved[h * colors], &unmatched);
+        if (threshold < row || k + 1 == lc->helicity_count) break;
         threshold -= row;
     }
+    double const *values = &resolved[h * colors];
     threshold = random_color * row;
-    for (c = 0; c < lc->color_count; ++c) {
-        double value = resolved[h * lc->color_count + c];
-        if (threshold < value || c + 1 == lc->color_count) break;
-        threshold -= value;
+    int chosen = -1;
+    bool drawn = false;
+    for (size_t k = 0; !drawn && k < flows->flow_count; ++k) {
+        int c = lc->slot_colors[target->flows[k]];
+        if (c < 0) continue;
+        chosen = (int)k;
+        drawn = threshold < values[c];
+        threshold -= values[c];
     }
+    /* past the flows: a colour without a switch flow (or rounding at the end) */
+    if (!drawn && unmatched > 0.0) chosen = -1;
     int const *vector = &lc->helicities[h * n];
     int exported = -1, fc_helicity = -1;
     for (size_t e = 0; exported < 0 && e < reweight_provider.exported_helicity_count; ++e) {
@@ -636,15 +715,14 @@ static UmamiStatus draw_switched(Instance *instance, SwitchedEvent *s, RuntimeTa
             equal = fc->helicities[f * n + j] == instance->slot_helicities[target->legs[j]];
         if (equal) fc_helicity = (int)f;
     }
-    int slot = lc->flow_slots[c];
-    if (exported < 0 || slot < 0) {
+    if (exported < 0 || chosen < 0) {
         fprintf(stderr, "umami: switch target without exported helicity or flow\n");
         return UMAMI_ERROR;
     }
     s->row = row;
     s->exported_helicity = exported;
     s->fc_helicity = fc_helicity;
-    s->color = target->colors[slot];
+    s->color = target->colors[chosen];
     return UMAMI_SUCCESS;
 }
 
@@ -1058,7 +1136,13 @@ UmamiStatus umami_free(UmamiHandle handle) {
                        i < reweight_provider.reference_process_count; ++i) {
         free(instance->reference_tables[i].helicities);
         free(instance->reference_tables[i].flow_slots);
+        free(instance->reference_tables[i].slot_colors);
     }
+    for (size_t e = 0; instance->helicity_orders != NULL &&
+                       reweight_provider.flavor_switch != NULL &&
+                       e < reweight_provider.flavor_switch->evaluation_count; ++e)
+        free(instance->helicity_orders[e]);
+    free(instance->helicity_orders);
     for (size_t i = 0; instance->target_tables != NULL &&
                        i < reweight_provider.target_process_count; ++i)
         free(instance->target_tables[i].helicities);

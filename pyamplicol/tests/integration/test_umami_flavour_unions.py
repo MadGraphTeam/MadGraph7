@@ -465,6 +465,7 @@ def _ratio_call(
     switch,
     random_flavor=None,
     random_helicity=None,
+    random_color=None,
 ):
     """Events are (input momenta, channel, flavour, helicity label)."""
 
@@ -490,6 +491,7 @@ def _ratio_call(
     )
     random_flavor = [0.0] * count if random_flavor is None else random_flavor
     random_helicity = [0.5] * count if random_helicity is None else random_helicity
+    random_color = [0.5] * count if random_color is None else random_color
     inputs = {
         IN["UMAMI_IN_MOMENTA"]: momenta,
         IN["UMAMI_IN_FLAVOR_INDEX"]: (ct.c_int * count)(*(e[2] for e in events)),
@@ -498,7 +500,7 @@ def _ratio_call(
         IN["UMAMI_IN_PARTON_DENSITIES"]: pdfs,
         IN["UMAMI_IN_RANDOM_FLAVOR"]: (ct.c_double * count)(*random_flavor),
         IN["UMAMI_IN_RANDOM_HELICITY"]: (ct.c_double * count)(*random_helicity),
-        IN["UMAMI_IN_RANDOM_COLOR"]: (ct.c_double * count)(*[0.5] * count),
+        IN["UMAMI_IN_RANDOM_COLOR"]: (ct.c_double * count)(*random_color),
     }
     names = [
         "UMAMI_OUT_MATRIX_ELEMENT_RATIO",
@@ -692,6 +694,87 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
         assert union_library.umami_free(union_handle) == 0
         assert flavour_library.umami_free(flavour_handle) == 0
         assert lc_library.umami_free(lc_handle) == 0
+
+
+def _assert_switched_draws_equal(union, flavour, umami, point):
+    """union and flavour are (directory, sidecar, library) of reweight providers
+    over the LC UMAMI documents umami["union"] and umami["flavour"]."""
+
+    (union_dir, union_sidecar, union_library) = union
+    (flavour_dir, flavour_sidecar, flavour_library) = flavour
+    union_handle = _handle(union_library, union_dir)
+    flavour_handle = _handle(flavour_library, flavour_dir)
+    try:
+        densities = _densities()
+        theirs = dict(_flavour_events(umami["flavour"], 0, point))
+        checked = 0
+        for key, event in _flavour_events(umami["union"], 0, point):
+            other = theirs[key]
+            if not all(
+                np.array_equal(a, b) and np.array_equal(a, c)
+                for a, b, c in zip(event[0], other[0], point, strict=True)
+            ):
+                continue
+            base, stay = (
+                _ratio_call(union_library, union_handle, [event], densities, switch=s)[
+                    0
+                ][0]
+                for s in (False, True)
+            )
+            if not (base > 0.0 and stay > base * (1 + 1e-9)):
+                continue
+            enhancement = stay / base
+            count = 300
+            grid = (np.arange(count) + 0.5) / count
+            randoms = dict(
+                random_flavor=list(1 / enhancement + grid * (1 - 1 / enhancement)),
+                random_helicity=list(
+                    np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
+                ),
+                random_color=list(np.modf(np.arange(count) * math.sqrt(2))[0]),
+            )
+            draws = []
+            for library, handle, sidecar, documents, ev in (
+                (union_library, union_handle, union_sidecar, umami["union"], event),
+                (flavour_library, flavour_handle, flavour_sidecar, umami["flavour"], other),
+            ):
+                data = documents[0][0]
+                ratio, target, helicity, color = _ratio_call(
+                    library, handle, [ev] * count, densities, switch=True, **randoms
+                )
+                assert (target >= 0).all()
+                assert len(data["color_flows"]) == sidecar["color_flow_offset"]
+                flows = data["color_flows"] + sidecar["color_flows"]
+                draws.append((
+                    ratio,
+                    [
+                        (
+                            tuple(sidecar["targets"][k]),
+                            tuple(data["helicities"][h]),
+                            _canonical_tags(flows[c]),
+                        )
+                        for k, h, c in zip(target, helicity, color, strict=True)
+                    ],
+                ))
+            assert draws[0][1] == draws[1][1]
+            assert draws[0][0] == pytest.approx(draws[1][0], rel=1e-12, abs=0.0)
+            checked += 1
+            if checked == 3:
+                break
+        assert checked
+    finally:
+        assert union_library.umami_free(union_handle) == 0
+        assert flavour_library.umami_free(flavour_handle) == 0
+
+
+@pytest.mark.parametrize("kind", ["union", "union-full"])
+def test_switched_draws_equal_per_flavour_artifacts(built, kind):
+    """The same random numbers switch an event to the same target, helicity and
+    colour flow with the same ratio, with unions and per flavour."""
+
+    ((union),) = built["reweight"][kind].values()
+    ((flavour),) = built["reweight"]["flavour"].values()
+    _assert_switched_draws_equal(union, flavour, built["umami"], _points(1)[0])
 
 
 def test_switch_shares_cover_every_flavour_once(built):
@@ -917,19 +1000,22 @@ def test_massive_switch_ratios_equal_with_and_without_unions(massive):
         for _, event in _flavour_events(unions, 0, point):
             entry = data["channels"][event[1]]["processes"][event[2]]
             row = data["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
-            by_order.setdefault(tuple(row[2:4]), (event, row))
-        assert set(by_order) == {(6, -6), (-6, 6)}
-        lc_runtimes, full_runtimes = {}, {}
-        names = {**NAMES_OF, 6: "t"}
-        drawn = set()
-        for event, row in by_order.values():
+            if tuple(row[2:4]) in by_order:
+                continue
             base, stay = (
                 _ratio_call(union_library, union_handle, [event], densities, switch=s)[
                     0
                 ][0]
                 for s in (False, True)
             )
-            enhancement = stay / base
+            # the first event of each order with a ratio of its own
+            if base > 0.0:
+                by_order[tuple(row[2:4])] = (event, row, stay / base)
+        assert set(by_order) == {(6, -6), (-6, 6)}
+        lc_runtimes, full_runtimes = {}, {}
+        names = {**NAMES_OF, 6: "t"}
+        drawn = set()
+        for event, row, enhancement in by_order.values():
             assert enhancement > 1.0
             count = 400
             grid = (np.arange(count) + 0.5) / count
@@ -974,3 +1060,12 @@ def test_massive_switch_ratios_equal_with_and_without_unions(massive):
         assert union_library.umami_free(union_handle) == 0
         assert flavour_library.umami_free(flavour_handle) == 0
         assert lc_library.umami_free(lc_handle) == 0
+
+
+def test_massive_switched_draws_equal_with_and_without_unions(massive):
+    _assert_switched_draws_equal(
+        massive["reweight"]["union"],
+        massive["reweight"]["flavour"],
+        massive["umami"],
+        _massive_points(1)[0],
+    )

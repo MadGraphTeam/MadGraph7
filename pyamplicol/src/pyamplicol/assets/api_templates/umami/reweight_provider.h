@@ -76,8 +76,10 @@ typedef struct {
 
 typedef struct {
     size_t evaluation, target_process;
-    /* colour index of each flow of the reference process, see ReweightSwitchFlows */
+    /* colour index of each flow of the reference process, in physical order (the
+     * order of the colour draw), and the flow (ReweightSwitchFlows) of each */
     const int *colors;
+    const int *flows;
     /* target runtime[j] = input[legs[j]], times factor */
     const size_t *legs;
     double factor;
