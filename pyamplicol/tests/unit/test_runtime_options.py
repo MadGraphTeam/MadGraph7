@@ -702,13 +702,17 @@ def _affinity_run(tmp_path, ggtt, mode, count, cores=None):  # noqa: F811
     command = [sys.executable, str(script), str(ggtt), mode, str(count)]
     if cores is not None:
         command = ["taskset", "-c", cores, *command]
+    root = Path(__file__).resolve().parents[2]
+    # The script imports the test helpers (``tests.unit``): the checkout on
+    # the child's path (CI's PYTHONPATH holds src/ only).
+    path = os.pathsep.join(filter(None, (str(root), os.environ.get("PYTHONPATH"))))
     run = subprocess.run(
         command,
         capture_output=True,
         text=True,
         timeout=900,
-        env={**os.environ, "RAYON_NUM_THREADS": "16"},
-        cwd=Path(__file__).resolve().parents[2],
+        env={**os.environ, "RAYON_NUM_THREADS": "16", "PYTHONPATH": path},
+        cwd=root,
         check=False,
     )
     assert run.returncode == 0, run.stderr[-4000:]

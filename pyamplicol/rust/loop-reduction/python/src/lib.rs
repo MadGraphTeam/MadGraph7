@@ -147,6 +147,7 @@ fn tirust_capabilities(bits: u32) -> Option<String> {
 #[pyfunction]
 #[pyo3(signature = (text, keys=false))]
 fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::runtime_options::{RuntimeOptions, known_keys, runtime_keys};
     if keys {
         let runtime = runtime_keys();
@@ -190,6 +191,7 @@ fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
 /// rule the Python runtime, the native SDKs and the pools share.
 #[pyfunction]
 fn effective_threads(requested: usize) -> usize {
+    let _unlock = pyamplicol::unlock();
     rusticol_core::loop_artifact::effective_threads(requested)
 }
 
@@ -386,10 +388,6 @@ fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64
     fallback_estimate(&outputs, roundoff)
 }
 
-/// The slot regime of NinjaRS's positional pool after the symbol reservation
-/// (`rusticol_core::symbol_order`): `"variables"`; an error when NinjaRS could
-/// not get two-byte variable slots. Reserves (Symbolica state) on first use;
-/// for the process-history tests.
 /// The registration ID of NinjaRS's first positional slot symbol, or None
 /// before the reservation (registers nothing): the same in every process
 /// exactly when the reservation was the first registration
@@ -400,6 +398,10 @@ fn symbol_first_slot_id() -> Option<u32> {
     rusticol_core::symbol_order::first_slot_id()
 }
 
+/// The slot regime of NinjaRS's positional pool after the symbol reservation
+/// (`rusticol_core::symbol_order`): `"variables"`; an error when NinjaRS could
+/// not get two-byte variable slots. Reserves (Symbolica state) on first use;
+/// for the process-history tests.
 #[pyfunction]
 fn symbol_regime() -> PyResult<&'static str> {
     let _unlock = pyamplicol::unlock();

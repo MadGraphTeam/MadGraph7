@@ -399,6 +399,7 @@ impl V2TirReducer {
     }
     /// None (`tracked_precision`).
     fn tracked_refusal(&self, direct: Vec<PyRef<'_, ReductionBatch>>) -> Option<String> {
+        let _unlock = pyamplicol::unlock();
         let _ = direct;
         None
     }
