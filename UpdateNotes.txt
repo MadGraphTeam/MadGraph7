@@ -116,6 +116,20 @@ ANNOUNCEMENT:
          picked"), e.g. "generate p p > psi(2S) j". A channel whose diagram carries less
          than 1e-20 of the summed weights is now zero at that point
          (test_onia_vanishing_diagram_channels).
+       - Bug fix: a subprocess that the bound state forbids as a whole, e.g. "u u~ >
+         Jpsi(1|3S11) g" (C parity) or "g g > Jpsi(1|3P18)" at onium_mass = 2 m_c
+         (Landau-Yang), left rounding noise in its colour amplitudes: it gave a cross section
+         of 1e-32 pb and events, or stopped madevent's DiscreteSampler. A helicity whose
+         colour amplitudes are below 1e-28 of the summed squares of the terms that make them
+         (rounding noise is ~1e-32, genuine amplitudes stay above 1e-23) is now zero, so that
+         such a subprocess is exactly zero (test_onia_vanishing_subprocess).
+       - Bug fix (DiscreteSampler, all processes): a grid of grouped subprocesses whose bins
+         were all filtered out as zero at the end of an iteration counted as initialized,
+         and madevent picked a point from the empty grid (IEEE_INVALID_FLAG, "no point could
+         be picked"), e.g. for a channel that is zero at almost every point, as a channel of
+         "e+ e- > Ps(1|3S1) a a" at 1 TeV whose diagram is below 1e-20 of the others. Such a
+         grid is now uninitialized, and the subprocess is picked from the PDFs as at the
+         start of a run.
        - Bug fix: the madevent output of a decaying bound state named its P directory
          after the constituents, so that the Fock states of a hadron ("generate Jpsi >
          mu+ mu-" decays six) all wrote to one directory, P1_ccx_ll, which kept the last

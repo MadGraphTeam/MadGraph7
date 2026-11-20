@@ -2890,6 +2890,61 @@ class TestMECmdShell(unittest.TestCase):
             for xsec in xsecs:
                 self.assertTrue(xsec == 0 or xsec > 1e-6 * max(xsecs), (pdir, xsecs))
 
+    def test_onia_vanishing_subprocess(self):
+        """A subprocess that the bound state forbids as a whole, u u~ > 3S1[1] g
+        (C parity) and g g > 3P1[8] (Landau-Yang, at onium_mass = 2 m_c, i.e.
+        without reshuffling), leaves only rounding noise in its colour
+        amplitudes: it gave a cross section of 1e-32 pb and events, or
+        stopped madevent's DiscreteSampler ("no point could be picked"). It
+        is now exactly zero, next to an allowed subprocess."""
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('import model sm_onia-c_mass')
+        mg_cmd.exec_cmd('generate u u~ > Jpsi(1|3S11) g')
+        mg_cmd.exec_cmd('add process g g > Jpsi(1|3P18)')
+        mg_cmd.exec_cmd('add process u u~ > Jpsi(1|3S18) g')
+        mg_cmd.exec_cmd('output madevent %s/' % self.run_dir)
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        run_card = pjoin(self.run_dir, 'Cards', 'run_card.dat')
+        text = open(run_card).read()
+        for key, value in (('nevents', '1000'), ('pdlabel', 'nn23lo1'), ('ptj', '10.0')):
+            text = re.sub(r'(?m)^\s*\S+\s*=\s*%s\b' % key, ' %s = %s' % (value, key), text)
+        open(run_card, 'w').write(text)
+        # g g > Jpsi(1|3P18) at 2 m_c: the momenta are not reshuffled
+        card = pjoin(self.run_dir, 'Cards', 'onia_card.dat')
+        pdg = [l.split()[0] for l in open(card) if 'mass for Jpsi(1|3P18)' in l][0]
+        text = open(card).read()
+        open(card, 'w').write(re.sub(r'(?m)^(\s*%s\s+)[0-9.Ee+-]+(\s+# mass)' % pdg,
+                                     r'\g<1>3.1\2', text))
+        self.do('generate_events -f')
+        self.assertGreater(self.cmd_line.results.current['cross'], 0)
+        import glob
+        xsecs = {}
+        for results in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*', 'G*', 'results.dat')):
+            if not re.match(r'G\d+$', os.path.basename(os.path.dirname(results))):
+                continue
+            pdir = os.path.basename(os.path.dirname(os.path.dirname(results)))
+            xsecs.setdefault(pdir, []).append(float(open(results).read().split()[0]))
+        self.assertEqual(len(xsecs), 3)
+        for pdir, values in xsecs.items():
+            if '3S18' in pdir:
+                self.assertGreater(sum(values), 0)
+            else:
+                self.assertEqual(values, [0.0] * len(values), pdir)
+        lhe = pjoin(self.run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        import gzip
+        events = re.findall(r'<event[^>]*>(.*?)</event>', gzip.open(lhe, 'rt').read(), re.S)
+        self.assertEqual(len(events), 1000)
+        # every event is u u~ > Jpsi(1|3S18) g, none of the forbidden subprocesses
+        for event in events:
+            pdgs = set(int(line.split()[0]) for line in event.strip().splitlines()[1:]
+                       if line.strip() and not line.lstrip().startswith(('<', '#')))
+            self.assertNotIn(int(pdg), pdgs)
+            self.assertIn(21, pdgs)
+
     def test_onium_production_in_decay(self):
         """Onia produced in a decay: Gamma(Z -> eta_c gamma) through the vector
         coupling of the Z, (2/3) M Gamma(eta_c -> gamma gamma) (v_c/(e_c s_W

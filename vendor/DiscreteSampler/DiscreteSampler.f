@@ -755,6 +755,14 @@
             DS_get_dim_status = -1
             return
           endif
+!         A reference grid whose bins were all filtered out as zero
+!         (DS_update_grid with filterZeros) has nothing to sample from:
+!         consider it uninitialized, so that the caller keeps probing
+!         instead of picking a point from an empty grid
+          if (size(ref_grid(ref_grid_index)%bins).eq.0) then
+            DS_get_dim_status = 0
+            return
+          endif
           if (ref_grid(ref_grid_index)%n_tot_entries.ne.0) then
             DS_get_dim_status = 1
             return
