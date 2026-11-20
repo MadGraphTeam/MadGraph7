@@ -69,6 +69,26 @@ class TestFullInterference(unittest.TestCase):
         for scale in (1., 1e-40, 1e-120):
             self.assertAlmostEqual(self.weight(scale*amplitude, scale*correction, decay, np.eye(1)), 1.2)
 
+    def test_contraction_cancelling_within_rounding_gives_unit_weight(self):
+        # sum_h M_h D_h = 2 eps, so <B,C> = 4 eps^2 while its terms are of
+        # size 1, and <dB,C> = 0.4 eps (1 + eps). A small contraction keeps its
+        # large factor, at any normalisation; one at rounding level gives 1.
+        amplitude = np.array([[[1], [1], [0]]], complex)
+        correction = np.array([[[.1], [0], [0]]], complex)
+        fx.fks_reset_accounting()
+        self.addCleanup(fx.fks_reset_accounting)
+        with mock.patch.object(fx, 'CURRENT_EVENT_ID', 1):
+            for scale in (1., 1e-100):
+                eps = 1e-3
+                weight = self.weight(scale*amplitude, scale*correction,
+                                     np.array([1 + eps, -1 + eps, 0]), np.eye(1))
+                self.assertAlmostEqual(weight / (1 + .1*(1 + eps)/eps), 1., places=6)
+            self.assertNotIn('events_density_vanishing_contraction', fx.FKS_QUALITY_COUNTS)
+            eps = 1e-6
+            self.assertEqual(self.weight(amplitude, correction,
+                                         np.array([1 + eps, -1 + eps, 0]), np.eye(1)), 1.)
+        self.assertEqual(fx.FKS_QUALITY_COUNTS['events_density_vanishing_contraction'], 1)
+
 
 @unittest.skipIf(np is None, "NumPy is required for the generated Sudakov dispatcher")
 class TestFullDispatcher(unittest.TestCase):

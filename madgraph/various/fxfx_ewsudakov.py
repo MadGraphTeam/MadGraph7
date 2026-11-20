@@ -78,6 +78,10 @@ _DIM_OVERFLOW_WARNED = False
 MAX_DENSITY_DIM = 36
 MAX_DENSITY_RESONANCES = 10
 
+# The contraction <B,C> sums D^2 complex terms. When it cancels to below this
+# fraction of the sum of their magnitudes, it is zero within rounding.
+DENSITY_CONTRACTION_CUTOFF = 1e-10
+
 # Interface version of the density kernel: the generated dispatcher's
 # DENSITY_VERSION, its results, and the LHE weight group.
 DENSITY_KERNEL_VERSION = 4
@@ -1839,6 +1843,9 @@ def compute_density_interference_weight(B, C, correction):
 
     No amplitude ratio is taken here. This retains contributions from Born
     zeros and colour components orthogonal to the Born of the same helicity.
+    A contraction <B,C> that cancels to within rounding of its terms gives the
+    unit weight. The test is relative, so the weight does not depend on the
+    normalisation of the amplitudes.
     """
     correction = np.asarray(correction, dtype=complex)
     if correction.shape != B.matrix.shape:
@@ -1846,7 +1853,8 @@ def compute_density_interference_weight(B, C, correction):
     if not np.isfinite(correction).all():
         raise FloatingPointError('Non-finite density interference')
     denominator = B.contract(C)
-    if denominator == 0:
+    if abs(denominator) <= DENSITY_CONTRACTION_CUTOFF * np.abs(B.matrix * C.matrix).sum():
+        _count_fks_event("events_density_vanishing_contraction")
         return 1.0
     result = 1.0 + np.sum(correction * C.matrix).real / denominator
     if not np.isfinite(result):

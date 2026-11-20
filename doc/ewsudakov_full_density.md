@@ -18,8 +18,10 @@ metrics connect it to the physical Born. Complex parameter derivatives are
 taken before interference. Colour components orthogonal to the same-helicity
 Born, imaginary terms, and interference involving a zero Born helicity are
 therefore retained. The weight is linear in the correction, with no squared
-one-loop term. Only an exactly zero contracted Born gives the unit fallback;
-there is no absolute cutoff on a small, nonzero Born amplitude.
+one-loop term. Only a contracted Born that vanishes within rounding,
+`|<B,C>| <= 1e-10 sum|B*C|` (counted as `events_density_vanishing_contraction`),
+gives the unit fallback; there is no absolute cutoff on a small, nonzero Born
+amplitude.
 
 ## Longitudinal vectors
 
