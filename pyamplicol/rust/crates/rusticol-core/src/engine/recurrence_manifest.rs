@@ -2835,7 +2835,15 @@ impl RecurrenceColorContractionReference {
             &self.semantic_digest,
             "recurrence color-contraction semantic payload",
         )?;
-        let expected_destination_count = if inspection.schedule.replay_target_count != 0 {
+        // A contracted flavour-union template contracts fewer (sector, helicity)
+        // pattern sums than it materializes; its lane checks the grouping at load.
+        let pattern_groups = inspection.schedule.replay_target_count == 0
+            && self.materialized_destination_count
+                == Some(inspection.schedule.amplitude_destination_count)
+            && self.destination_count < inspection.schedule.amplitude_destination_count;
+        let expected_destination_count = if pattern_groups {
+            self.destination_count
+        } else if inspection.schedule.replay_target_count != 0 {
             inspection
                 .sector_count
                 .checked_mul(inspection.schedule.resolved_helicity_count)
@@ -2854,7 +2862,7 @@ impl RecurrenceColorContractionReference {
             || self.destination_count != expected_destination_count
             || self.materialized_destination_count.is_some_and(|count| {
                 count != inspection.schedule.amplitude_destination_count
-                    || count > self.destination_count
+                    || (count > self.destination_count && !pattern_groups)
             })
             || self.active_sector_count == 0
             || self.active_sector_count > self.sector_count

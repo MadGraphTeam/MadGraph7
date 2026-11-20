@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import math
-from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
@@ -665,13 +664,8 @@ class BuiltinSMModel(BuiltinSMLoweringMixin, BuiltinSMDefinitionMixin, BuiltinMo
 
         initial = tuple(int(pdg) for pdg in request.process.initial_pdgs)
         final = tuple(int(pdg) for pdg in request.process.final_pdgs)
-        average_factor = 1
-        for pdg in initial:
-            average_factor *= len(self.source_spin_states(pdg)) * max(
-                1, abs(self.color_rep(pdg))
-            )
-        identical_factor = math.prod(
-            math.factorial(count) for count in Counter(final).values()
+        average_factor, identical_factor = self.external_state_normalization(
+            initial, final
         )
         qcd_power, electroweak_power = _born_coupling_powers(request)
         return {

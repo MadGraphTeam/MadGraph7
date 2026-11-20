@@ -99,7 +99,38 @@ def _program_reference(program: Mapping[str, object]) -> tuple[str, str] | None:
     return representative, str(program["representative_colour_id"])
 
 
-def _member_reference(program: Mapping[str, object]) -> dict[str, object]:
+def flavour_union_process_ids(artifact: Path) -> frozenset[str]:
+    """Flavour-union members and their templates: no plain program describes them."""
+
+    from pyamplicol.artifacts.process_groups import read_process_groups
+
+    try:
+        groups = read_process_groups(artifact)
+    except ArtifactError:
+        # The native export refuses pattern-resolved processes on its own.
+        return frozenset()
+    if groups is None:
+        return frozenset()
+    return frozenset(
+        member.process_id
+        for group in getattr(groups, "groups", {}).values()
+        if any(getattr(entry, "patterns", None) is not None for entry in group.members)
+        for member in group.members
+    )
+
+
+def _member_reference(
+    program: Mapping[str, object], union_ids: frozenset[str] = frozenset()
+) -> dict[str, object]:
+    # A union member sums template patterns before squaring; a plain program
+    # reference would square each pattern on its own.
+    if {str(program["process_key"]), str(program["representative_process_key"])} & (
+        union_ids
+    ):
+        raise ConfigurationError(
+            f"recurrence export does not support flavour-union process "
+            f"{program['process_key']!r}"
+        )
     target = _program_reference(program)
     if target is None:
         return dict(program)
@@ -227,6 +258,13 @@ class RecurrenceExportInvocation:
         )
         if len(set(processes)) != len(processes):
             raise ConfigurationError("--process IDs must be unique")
+        union_ids = flavour_union_process_ids(Path(self.artifact))
+        union_requests = sorted(set(processes) & union_ids)
+        if union_requests:
+            raise ConfigurationError(
+                "recurrence export does not support flavour-union templates or "
+                f"members: {', '.join(union_requests[:5])}"
+            )
         combined: dict[str, object] | None = None
         programs: dict[tuple[str, str], Mapping[str, object]] = {}
         owners: dict[tuple[str, str], str] = {}
@@ -341,7 +379,7 @@ class RecurrenceExportInvocation:
             resolved_parameters[name] for name in sorted(resolved_parameters)
         ]
         combined["programs"] = [
-            _member_reference(program) for program in programs.values()
+            _member_reference(program, union_ids) for program in programs.values()
         ]
         combined["kernels"] = list(kernels.values())
         with reporter.phase("write", f"Writing {self.output}") as phase:

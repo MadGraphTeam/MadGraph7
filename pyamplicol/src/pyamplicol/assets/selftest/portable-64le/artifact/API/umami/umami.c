@@ -13,7 +13,11 @@
 #ifndef UMAMI_PROVIDER_HEADER
 #define UMAMI_PROVIDER_HEADER "provider_p0.h"
 #endif
+/* Contributions outside flavour unions omit the trailing (zero) assignment fields. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include UMAMI_PROVIDER_HEADER
+#pragma GCC diagnostic pop
 
 /* Events are evaluated in batches of at most this many points per native call. */
 #define UMAMI_CHUNK 512
@@ -46,6 +50,9 @@ typedef struct {
     size_t *events, *positions;
     UmamiContribution const **entries;
     uint32_t *helicities;
+    /* Per chunk: one-assignment requests and colour indices of flavour-union calls. */
+    size_t *offsets;
+    uint32_t *assignments, *colors;
 } Instance;
 
 static bool const supported_inputs[UMAMI_INPUT_KEY_COUNT] = {
@@ -79,6 +86,34 @@ static UmamiParameter const *parameter(size_t process, char const *name) {
     for (size_t i = 0; i < entry->parameter_count; ++i)
         if (strcmp(entry->parameters[i].name, name) == 0) return &entry->parameters[i];
     return NULL;
+}
+
+/* Whether the flavour-union contributions of a process name the assignments and
+ * colour flows of its runtime. */
+static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t process) {
+    char name[1024];
+    size_t required = 0, count = 0;
+    bool counted = false;
+    for (size_t c = 0; c < umami_provider.channel_count; ++c)
+        for (size_t f = 0; f < umami_provider.channels[c].flavour_count; ++f) {
+            UmamiFlavour const *flavour = &umami_provider.channels[c].flavours[f];
+            for (size_t j = 0; j < flavour->contribution_count; ++j) {
+                UmamiContribution const *entry = &flavour->contributions[j];
+                if (entry->process_index != process || entry->assignment_key == NULL) continue;
+                if (!counted && rusticol_runtime_assignment_count(runtime, &count) !=
+                    RUSTICOL_STATUS_OK) return false;
+                counted = true;
+                if (entry->assignment >= count ||
+                    rusticol_runtime_assignment_process_id(runtime, entry->assignment, name,
+                        sizeof(name), &required) != RUSTICOL_STATUS_OK ||
+                    strcmp(name, entry->assignment_key) != 0) return false;
+                if (entry->color_id != NULL &&
+                    (rusticol_runtime_color_id(runtime, entry->color_axis, name, sizeof(name),
+                        &required) != RUSTICOL_STATUS_OK ||
+                     strcmp(name, entry->color_id) != 0)) return false;
+            }
+        }
+    return true;
 }
 
 static UmamiStatus load_process(Instance *instance, size_t process) {
@@ -123,6 +158,7 @@ static UmamiStatus load_process(Instance *instance, size_t process) {
         compatible = status == RUSTICOL_STATUS_OK && strcmp(identifier, entry->helicity_ids[j]) == 0;
         free(identifier);
     }
+    if (compatible) compatible = assignments_compatible(runtime, process);
     if (!compatible) {
         (void)rusticol_runtime_free(runtime);
         fprintf(stderr, "umami: artifact is incompatible with provider %s, process %s\n",
@@ -199,6 +235,10 @@ UmamiStatus umami_supported_outputs(bool const **supported, int *count) {
 static int same_runtime(UmamiContribution const *a, UmamiContribution const *b) {
     if (a->process_index != b->process_index)
         return a->process_index < b->process_index ? -1 : 1;
+    if ((a->assignment_key != NULL) != (b->assignment_key != NULL))
+        return (a->assignment_key != NULL) - (b->assignment_key != NULL);
+    /* Flavour-union assignments share one call: flows are selected per point. */
+    if (a->assignment_key != NULL) return 0;
     if (a->color_id == NULL || b->color_id == NULL)
         return (a->color_id != NULL) - (b->color_id != NULL);
     return strcmp(a->color_id, b->color_id);
@@ -215,7 +255,8 @@ static int compare_ranked(void const *a, void const *b) {
     return order != 0 ? order : (left->index > right->index) - (left->index < right->index);
 }
 
-/* Groups the contributions that share their runtime process and colour flow. */
+/* Groups the contributions that share their runtime process and colour flow (or that
+ * are assignments of one flavour-union template). */
 static UmamiStatus assign_groups(Instance *instance) {
     size_t total = 0, s = 0;
     for (size_t c = 0; c < umami_provider.channel_count; ++c)
@@ -279,9 +320,13 @@ UmamiStatus umami_initialize(UmamiHandle *handle, char const *param_card_path) {
     instance->positions = calloc(chunk, sizeof(size_t));
     instance->entries = calloc(chunk, sizeof(*instance->entries));
     instance->helicities = calloc(chunk, sizeof(uint32_t));
+    instance->offsets = calloc(chunk + 1, sizeof(size_t));
+    instance->assignments = calloc(chunk, sizeof(uint32_t));
+    instance->colors = calloc(chunk, sizeof(uint32_t));
     if (instance->starts == NULL || instance->cursor == NULL || instance->batch == NULL ||
         instance->values == NULL || instance->events == NULL || instance->positions == NULL ||
-        instance->entries == NULL || instance->helicities == NULL) {
+        instance->entries == NULL || instance->helicities == NULL || instance->offsets == NULL ||
+        instance->assignments == NULL || instance->colors == NULL) {
         umami_free(instance); return UMAMI_ERROR;
     }
     memcpy(instance->artifact, param_card_path, length);
@@ -417,7 +462,20 @@ static UmamiStatus evaluate_points(Instance *instance, UmamiContribution const *
     char const *const *color = first->color_id == NULL ? NULL : &first->color_id;
     size_t color_count = first->color_id == NULL ? 0 : 1;
     int native_status;
-    if (resolved) {
+    if (first->assignment_key != NULL) {
+        /* One assignment per point; colour flows, if any, selected per point. */
+        for (size_t i = 0; i < count; ++i) {
+            instance->offsets[i] = i;
+            instance->assignments[i] = (uint32_t)entries[i]->assignment;
+            instance->colors[i] = (uint32_t)entries[i]->color_axis;
+        }
+        instance->offsets[count] = count;
+        native_status = rusticol_runtime_evaluate_assignments_f64(
+            runtime, batch, 4*n*count, count, instance->offsets, count + 1,
+            instance->assignments, count, helicities, helicities == NULL ? 0 : count,
+            color == NULL ? NULL : instance->colors, color == NULL ? 0 : count,
+            resolved ? 1 : 0, values, resolved ? count * description->helicity_count : count);
+    } else if (resolved) {
         size_t helicity_count = 0, resolved_colors = 0;
         native_status = rusticol_runtime_evaluate_resolved_f64(
             runtime, batch, 4*n*count, count, NULL, 0, color, color_count,
@@ -656,7 +714,8 @@ UmamiStatus umami_free(UmamiHandle handle) {
     free(instance->sorted); free(instance->pair_entries); free(instance->totals);
     free(instance->starts); free(instance->cursor); free(instance->batch); free(instance->values);
     free(instance->events); free(instance->positions); free(instance->entries);
-    free(instance->helicities);
+    free(instance->helicities); free(instance->offsets); free(instance->assignments);
+    free(instance->colors);
     free(instance->artifact); free(instance);
     return UMAMI_SUCCESS;
 }

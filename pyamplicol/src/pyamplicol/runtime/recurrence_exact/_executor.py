@@ -9,12 +9,13 @@ from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
 from typing import Any, cast
 
-from pyamplicol.api.errors import ArtifactError, EvaluationError
+from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.api.protocols import Momenta
 from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
 from pyamplicol.runtime._native_selection import (
+    exact_runtime_state_payload,
     native_physics_axes,
     native_process_selection,
     representative_vector_to_public,
@@ -151,6 +152,13 @@ class RecurrenceExactExecutor:
         self._native_runtime = native_runtime
         manifest = load_manifest(self._artifact)
         exact_payloads = ExactEvaluatorPayloadResolver(manifest)
+        if exact_runtime_state_payload(native_runtime).get(
+            "flavour_union_pattern_resolved"
+        ):
+            raise CompatibilityError(
+                "high-precision evaluation does not support pattern-resolved "
+                "flavour-union templates"
+            )
         selection = native_process_selection(native_runtime, manifest.processes)
         process = selection.process
         permutation = selection.external_permutation

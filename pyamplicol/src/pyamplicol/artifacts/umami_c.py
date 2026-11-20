@@ -124,21 +124,23 @@ def provider_header(data: Mapping[str, Any]) -> str:
             lines.append(
                 f"static const UmamiContribution {prefix}_contributions[] = {{"
             )
-            lines.append(
-                "    {"
-                + ", ".join(
-                    (
-                        str(runtime["process_index"]),
-                        _string(runtime["color_id"]),
-                        str(runtime["color_index"]),
-                        f"{prefix}_permutation",
-                        _number(runtime["factor"]),
-                        f"{prefix}_helicity_runtime",
-                        f"{prefix}_helicity_export",
-                    )
-                )
-                + "},"
-            )
+            fields = [
+                str(runtime["process_index"]),
+                _string(runtime["color_id"]),
+                str(runtime["color_index"]),
+                f"{prefix}_permutation",
+                _number(runtime["factor"]),
+                f"{prefix}_helicity_runtime",
+                f"{prefix}_helicity_export",
+            ]
+            if "assignment" in runtime:
+                # Flavour-union assignment; omitted fields stay zero (NULL key).
+                fields += [
+                    _string(runtime["assignment_key"]),
+                    str(int(runtime["assignment"])),
+                    str(int(runtime["color_axis"])),
+                ]
+            lines.append("    {" + ", ".join(fields) + "},")
             lines.append("};")
             flavour_rows.append(f"    {{1, {prefix}_contributions}},")
         lines.extend(

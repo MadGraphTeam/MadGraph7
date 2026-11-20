@@ -990,10 +990,123 @@ class RusticolRuntimeBackend:
             raise ArtifactError("native runtime external permutation is invalid")
         return permutation
 
+    def _refuse_flavour_union_relation(self) -> None:
+        if self._native_metadata.get("flavour_union_member") is True:
+            raise CompatibilityError(
+                "flavour-union members have no matrix-element relation to their "
+                "template; load the member or use evaluate_assignments"
+            )
+
+    @property
+    def flavour_union_assignments(self) -> tuple[Mapping[str, object], ...]:
+        """Assignments of a pattern-resolved template (template first), or ()."""
+
+        method = getattr(self._runtime, "flavour_union_assignments_json", None)
+        if not callable(method):
+            return ()
+        payload = json.loads(str(method()))
+        if not isinstance(payload, list):
+            raise ArtifactError("native flavour-union assignments are invalid")
+        return tuple(dict(entry) for entry in payload)
+
+    @property
+    def flavour_union_pattern_pairs(
+        self,
+    ) -> tuple[tuple[tuple[int, int], ...], ...] | None:
+        method = getattr(self._runtime, "flavour_union_pattern_pairs", None)
+        value = method() if callable(method) else None
+        if value is None:
+            return None
+        return tuple(tuple((int(f), int(a)) for f, a in pattern) for pattern in value)
+
+    def relabel_assignment(self, assignment: int, permutation: Sequence[int]) -> int:
+        method = getattr(self._runtime, "relabel_assignment", None)
+        if not callable(method):
+            raise CompatibilityError(
+                "this runtime cannot relabel flavour-union assignments"
+            )
+        return int(
+            _invoke(
+                self._native_module,
+                method,
+                int(assignment),
+                [int(slot) for slot in permutation],
+            )
+        )
+
+    def evaluate_assignments(
+        self,
+        momenta: Momenta,
+        assignments: Sequence[Sequence[int]],
+        *,
+        helicity_by_point: Sequence[str] | None = None,
+        color_flow_by_point: Sequence[str] | None = None,
+        output: str = "total",
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
+    ) -> tuple[tuple[object, ...], ...]:
+        # The same binary64 improvement as evaluate and the C ABI.
+        momenta = self._improved(
+            momenta, 16, kinematics_improvement, kinematics_improvement_binary64
+        )
+        offsets = [0]
+        ids: list[int] = []
+        for requested in assignments:
+            ids.extend(int(value) for value in requested)
+            offsets.append(len(ids))
+        selector_arguments: dict[str, object] = {}
+        helicity_by_point = _normalized_selectors(helicity_by_point)
+        color_flow_by_point = self._resolve_color_flows(
+            _normalized_selectors(color_flow_by_point)
+        )
+        if helicity_by_point is not None:
+            selector_arguments["helicity_by_point"] = self._point_selector_indices(
+                helicity_by_point, "helicity_by_point"
+            )
+        if color_flow_by_point is not None:
+            selector_arguments["color_flow_by_point"] = self._point_selector_indices(
+                color_flow_by_point, "color_flow_by_point"
+            )
+        values = _invoke(
+            self._native_module,
+            self._runtime.evaluate_assignments,
+            momenta,
+            offsets,
+            ids,
+            mode=output,
+            **selector_arguments,
+        )
+        helicity_count = len(self.physics.helicities)
+        color_count = len(self.physics.color_ids)
+        width = {
+            "total": 1,
+            "helicity": helicity_count,
+            "helicity-flow": helicity_count * color_count,
+        }[output]
+
+        def row(index: int) -> object:
+            block = [
+                float(value) for value in values[index * width : (index + 1) * width]
+            ]
+            if output == "total":
+                return block[0]
+            if output == "helicity":
+                return tuple(block)
+            return tuple(
+                tuple(block[h * color_count : (h + 1) * color_count])
+                for h in range(helicity_count)
+            )
+
+        return tuple(
+            tuple(row(index) for index in range(offsets[point], offsets[point + 1]))
+            for point in range(len(offsets) - 1)
+        )
+
     @property
     def process_group_factor(self) -> Fraction:
         """Exact factor relating the selected process to its representative."""
 
+        self._refuse_flavour_union_relation()
         raw = self._native_metadata.get("process_group_factor")
         if raw is None:
             return Fraction(1)
@@ -1013,6 +1126,7 @@ class RusticolRuntimeBackend:
     def charge_conjugated(self) -> bool:
         """Whether the selected process is its representative's conjugate."""
 
+        self._refuse_flavour_union_relation()
         return self._native_metadata.get("charge_conjugated") is True
 
     @property

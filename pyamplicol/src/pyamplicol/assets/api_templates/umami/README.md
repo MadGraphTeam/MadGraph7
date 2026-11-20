@@ -68,7 +68,10 @@ not equal default parameters or Standard Model-specific particle rules.
 Unproved relations remain separate. The one exception is generation with
 `--flavor-blind`: its ungenerated flavour-class members are evaluated through
 their representative's runtime, and each provider exporting them records that
-assumption in `grouping.assumptions`.
+assumption in `grouping.assumptions`. With `process.flavor_unions`, every
+flavour of a union is an assignment of its template's runtime (its own pairing
+patterns, exact, no assumption beyond strict flavour blindness); the events of
+all flavours and colour flows of one template share native calls.
 
 Integration multiplicities require cuts invariant under the recorded particle
 permutations; they are not factors for pointwise sums. Metadata retains physical

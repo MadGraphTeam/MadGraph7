@@ -14,7 +14,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Final
+from typing import Any, Final
 
 from ..color.plan import (
     ColorTopologyReplayCertificate,
@@ -78,6 +78,9 @@ _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
     "helicity-support:pure-massless-adjoint-tree-v1"
 )
 _GLOBAL_HELICITY_FLIP_EQUIVALENCE_ROLE: Final = "helicity-equivalence:global-flip-v1"
+FERMION_PAIRING_PATTERN_RESOLVED_ROLE: Final = "fermion-pairing:pattern-resolved-v1"
+# Replay of pattern-resolved templates may move fermion slots (Rust maps the patterns).
+_PATTERN_RESOLVED_FERMION_REPLAY = True
 
 
 class RecurrenceProjectionError(ValueError):
@@ -130,12 +133,18 @@ def project_recurrence_process_v1(
     model: Model | None = None,
     prefer_symmetric_group_closure_anchor: bool = False,
     contracted_physical_color_union: bool = False,
+    pattern_resolved: bool = False,
 ) -> RecurrenceBuilderLogicalInputV1:
     """Return deterministic recurrence-builder records for one LC process.
 
     Normalization is supplied as an exact, model-owned contract because it is
     process dependent and intentionally absent from the process-independent
     recurrence template catalog.
+
+    ``pattern_resolved`` marks a flavour-union template: Rust keeps one
+    amplitude per fermion pairing rule; a replay that moves fermion slots
+    relabels the patterns of its flow. Contracted (full) colour sums the
+    patterns before the colour contraction and must not replay.
     """
 
     _validate_projection_roots(
@@ -147,6 +156,16 @@ def project_recurrence_process_v1(
     )
     if not isinstance(normalization, RecurrenceNormalizationV1):
         raise TypeError("recurrence projection requires exact normalization v1")
+    if type(pattern_resolved) is not bool:
+        raise TypeError("pattern-resolved projection opt-in must be boolean")
+    if pattern_resolved and (layout, process.color_accuracy) not in {
+        ("topology-replay", "lc"),
+        ("contracted-color-union", "full"),
+    }:
+        raise RecurrenceProjectionError(
+            "pattern-resolved flavour-union templates require LC topology replay "
+            "or full contracted colour"
+        )
     if (
         isinstance(process_support_mask, bool)
         or not isinstance(process_support_mask, int)
@@ -204,7 +223,12 @@ def project_recurrence_process_v1(
         external_legs,
         topology_replay,
         layout,
+        pattern_resolved=pattern_resolved,
     )
+    if pattern_resolved and layout == "contracted-color-union" and replay_partitions:
+        raise RecurrenceProjectionError(
+            "pattern-resolved contracted-colour templates cannot replay"
+        )
     if prefer_symmetric_group_closure_anchor:
         physical_sectors = _project_cyclic_trace_closure_anchors(
             physical_sectors,
@@ -217,6 +241,23 @@ def project_recurrence_process_v1(
         template_catalog.current_states,
         quantum_flows=template_catalog.quantum_flows,
     )
+    pattern_resolution = None
+    if pattern_resolved:
+        if not fermion_pairing.rules:
+            raise RecurrenceProjectionError(
+                "pattern-resolved flavour-union templates require fermion pairing rules"
+            )
+        # Process-specific so that schedule sharing never joins two templates.
+        pattern_resolution = RecurrenceSemanticDigestV1(
+            FERMION_PAIRING_PATTERN_RESOLVED_ROLE,
+            _digest(
+                {
+                    "algorithm": FERMION_PAIRING_PATTERN_RESOLVED_ROLE,
+                    "fermion_pairing_semantic_digest": fermion_pairing.semantic_digest,
+                    "process_digest": _digest(process.to_json_dict()),
+                }
+            ),
+        )
     closure_reconstruction_digest = _project_closure_obligation_roots_digest(
         process,
         projected_color_plan,
@@ -266,6 +307,7 @@ def project_recurrence_process_v1(
             ),
             *(() if helicity_support is None else (helicity_support,)),
             *(() if global_helicity_flip is None else (global_helicity_flip,)),
+            *(() if pattern_resolution is None else (pattern_resolution,)),
         ),
         external_legs=external_legs,
         physical_sectors=physical_sectors,
@@ -645,7 +687,25 @@ def _physical_color_owner_plan(color_plan: GenericColorPlan) -> GenericColorPlan
     return replace(color_plan, sectors=tuple(owners))
 
 
+# Per-catalog results of _project_template_references (model-wide, read-only).
+_TEMPLATE_REFERENCES: list[tuple[RecurrenceTemplateCatalog, Any]] = []
+
+
 def _project_template_references(
+    catalog: RecurrenceTemplateCatalog,
+) -> tuple[
+    dict[tuple[str, str], int],
+    tuple[RecurrenceSemanticTemplateReferenceV1, ...],
+]:
+    for cached, result in tuple(_TEMPLATE_REFERENCES):
+        if cached is catalog:
+            return result
+    result = _project_template_references_uncached(catalog)
+    _TEMPLATE_REFERENCES[:] = [*_TEMPLATE_REFERENCES[-1:], (catalog, result)]
+    return result
+
+
+def _project_template_references_uncached(
     catalog: RecurrenceTemplateCatalog,
 ) -> tuple[
     dict[tuple[str, str], int],
@@ -1377,6 +1437,8 @@ def _project_replay_partitions(
     external_legs: tuple[RecurrenceExternalLegV1, ...],
     replay: LCColorTopologyReplayPlan | ColorTopologyReplayCertificate | None,
     layout: RecurrenceLCFlowLayout,
+    *,
+    pattern_resolved: bool = False,
 ) -> tuple[RecurrenceReplayPartitionV1, ...]:
     if layout not in {"topology-replay", "contracted-color-union"}:
         return ()
@@ -1497,7 +1559,18 @@ def _project_replay_partitions(
                 fermion_sign=int(sign),
             )
             target_anchor = target_sector.closure_source_slot
-            anchor_compatible = permutation[representative_anchor] == target_anchor
+            # Without fermion replay, pattern-resolved replay keeps every fermion slot.
+            anchor_compatible = permutation[
+                representative_anchor
+            ] == target_anchor and (
+                not pattern_resolved
+                or _PATTERN_RESOLVED_FERMION_REPLAY
+                or all(
+                    permutation[leg.source_slot] == leg.source_slot
+                    for leg in external_legs
+                    if leg.is_fermionic
+                )
+            )
             source_replay = {
                 "fermion_sign": int(sign),
                 "partition_proof_algorithm": partition.proof_algorithm,

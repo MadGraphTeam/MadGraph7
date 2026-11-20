@@ -21,8 +21,10 @@ from pyamplicol.api.errors import ArtifactError
 from pyamplicol.generation.process_grouping import (
     PROCESS_GROUPS_PATH,
     PROCESS_GROUPS_ROLE,
+    GroupingBasis,
     GroupingProcess,
     GroupMember,
+    PatternPairs,
     ProcessGroupMap,
 )
 
@@ -56,11 +58,13 @@ def grouping_process(
 def initial_process_groups(
     processes: Iterable[tuple[str, str, Sequence[int]]],
     members: Mapping[str, Sequence[GroupMember]] | None = None,
+    pattern_pairs: Mapping[str, PatternPairs] | None = None,
 ) -> ProcessGroupMap:
     """Group each generated ``(id, expression, pdgs)`` with its known members.
 
     ``members`` holds, per representative ID, the relations recorded before
     generation (flavour-blind members); every other process maps to itself.
+    ``pattern_pairs`` holds the pattern tables of flavour-union templates.
     """
 
     result = ProcessGroupMap()
@@ -68,7 +72,10 @@ def initial_process_groups(
         representative = GroupMember.identity(
             grouping_process(process_id, expression, external_pdgs)
         )
-        result.add_group([representative, *(members or {}).get(process_id, ())])
+        result.add_group(
+            [representative, *(members or {}).get(process_id, ())],
+            (pattern_pairs or {}).get(process_id),
+        )
     return result
 
 
@@ -83,7 +90,8 @@ def validate_process_groups(
     """Require exactly the artifact's processes to be generated members.
 
     Members that were not generated are evaluated through their representative,
-    so, as the runtime requires, their factor must be positive.
+    so, as the runtime requires, their factor must be positive. Flavour-union
+    members are routed permutations of their (template) representative.
     """
 
     generated = [
@@ -102,6 +110,64 @@ def validate_process_groups(
                 f"process-group member {member.process_id!r} is not generated, so "
                 f"its factor {member.factor} must be positive"
             )
+        if (member.patterns is None) != (member.pattern_signs is None) or (
+            member.patterns is not None
+            and (
+                member.generated
+                or not member.patterns
+                or len(member.patterns) != len(member.pattern_signs or ())
+                or len(set(member.patterns)) != len(member.patterns)
+                or any(pattern < 0 for pattern in member.patterns)
+                or any(sign not in {-1, 1} for sign in member.pattern_signs or ())
+            )
+        ):
+            raise ArtifactError(
+                f"process-group member {member.process_id!r} has invalid "
+                "flavour-union patterns"
+            )
+    for group in group_map.groups.values():
+        representative = group.representative
+        if group.pattern_pairs is not None and not (
+            group.pattern_pairs
+            and any(member.patterns is not None for member in group.members)
+            and all(
+                pattern
+                and len({slot for pair in pattern for slot in pair}) == 2 * len(pattern)
+                and all(
+                    0 <= slot < len(representative.pdgs)
+                    for pair in pattern
+                    for slot in pair
+                )
+                for pattern in group.pattern_pairs
+            )
+        ):
+            raise ArtifactError(
+                f"process group {representative.process_id!r} has invalid "
+                "flavour-union pattern pairs"
+            )
+        if representative.patterns is not None:
+            raise ArtifactError(
+                f"process-group representative {representative.process_id!r} "
+                "cannot be a flavour-union member"
+            )
+        for member in group.members[1:]:
+            union = member.basis is GroupingBasis.FLAVOUR_UNION
+            if union != (member.patterns is not None):
+                raise ArtifactError(
+                    f"process-group member {member.process_id!r} must carry "
+                    "flavour-union patterns exactly when its basis is "
+                    f"{str(GroupingBasis.FLAVOUR_UNION)!r}"
+                )
+            if union and (
+                member.generated
+                or sorted(member.permutation) != list(range(len(member.pdgs)))
+                or len(member.pdgs) != len(representative.pdgs)
+            ):
+                raise ArtifactError(
+                    f"flavour-union member {member.process_id!r} must be a "
+                    "routed leg permutation of its template "
+                    f"{representative.process_id!r}"
+                )
 
 
 @contextmanager

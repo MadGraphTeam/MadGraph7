@@ -72,6 +72,12 @@ def test_only_automatic_contraction_falls_back_on_unsupported_fft(lane, monkeypa
     monkeypatch.setattr(
         physics, "build_symmetric_group_color_contraction_plan", unsupported
     )
+    # The recurrence array fast path defers to the descriptor path it mirrors.
+    monkeypatch.setattr(
+        physics,
+        "build_rectangular_symmetric_group_contraction_plan",
+        lambda *_args, **_kwargs: None,
+    )
     direct = _contract(lane, "direct")
     assert not calls  # The explicit opt-out does not even probe FFT support.
     assert _contract(lane, "auto") == direct
@@ -95,5 +101,8 @@ def test_automatic_contraction_does_not_hide_unrelated_failures(lane, monkeypatc
         raise RuntimeError("unexpected FFT construction failure")
 
     monkeypatch.setattr(physics, "build_symmetric_group_color_contraction_plan", broken)
+    monkeypatch.setattr(
+        physics, "build_rectangular_symmetric_group_contraction_plan", broken
+    )
     with pytest.raises(RuntimeError, match="unexpected FFT construction failure"):
         _contract(lane, "auto")

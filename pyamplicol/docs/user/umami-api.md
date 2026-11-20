@@ -233,6 +233,11 @@ A provider's metadata contains:
 - `pdg_ids`, `color_orders`, `color_flows` and `helicities`: shared physical
   configuration tables. Indices are zero-based and colour-flow references can
   be absent for contracted colour.
+- `helicity_groups` and `helicity_mappings`: the helicity groups (lists of
+  `helicities` indices) and helicity mapping lists (`helicity`,
+  `representative_id`, `coefficient`, `structural_zero` per helicity) of the
+  `processes` entries, whose `helicities` and `helicity_mappings` are indices
+  into them (schema 4).
 - `runtime` and `members`: the representative evaluator, certified momentum
   permutations and covered physical contributions.
 - `grouping` and `runtime_processes`: the assumptions and available coverage

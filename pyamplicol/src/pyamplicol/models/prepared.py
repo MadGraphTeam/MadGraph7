@@ -73,7 +73,39 @@ class PreparedModelBundleError(ValueError):
     """Raised when a prepared-model bundle violates its container contract."""
 
 
+class _UncommonJson(Exception):
+    """Internal: the fast freeze met a value the checked path must handle."""
+
+
+def _freeze_plain(value: object) -> object:
+    kind = type(value)
+    if kind is str or kind is int or kind is bool or value is None:
+        return value
+    if kind is float:
+        if not math.isfinite(value):
+            raise _UncommonJson
+        return value
+    if kind is dict or kind is MappingProxyType:
+        frozen: dict[str, object] = {}
+        for key, item in value.items():
+            if type(key) is not str:
+                raise _UncommonJson
+            frozen[key] = _freeze_plain(item)
+        return MappingProxyType(frozen)
+    if kind is list or kind is tuple:
+        return tuple([_freeze_plain(item) for item in value])
+    raise _UncommonJson
+
+
 def _freeze_json(value: object, context: str) -> object:
+    # Exact-type fast path; anything else (and every error) takes the checked path.
+    try:
+        return _freeze_plain(value)
+    except _UncommonJson:
+        return _freeze_json_checked(value, context)
+
+
+def _freeze_json_checked(value: object, context: str) -> object:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
@@ -87,11 +119,11 @@ def _freeze_json(value: object, context: str) -> object:
         for key, item in value.items():
             if not isinstance(key, str):
                 raise PreparedModelBundleError(f"{context} keys must be strings")
-            frozen[key] = _freeze_json(item, f"{context}.{key}")
+            frozen[key] = _freeze_json_checked(item, f"{context}.{key}")
         return MappingProxyType(frozen)
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return tuple(
-            _freeze_json(item, f"{context}[{index}]")
+            _freeze_json_checked(item, f"{context}[{index}]")
             for index, item in enumerate(value)
         )
     raise PreparedModelBundleError(
@@ -107,6 +139,13 @@ def _freeze_mapping(value: Mapping[str, object], context: str) -> Mapping[str, o
 
 
 def _thaw_json(value: object) -> object:
+    kind = type(value)
+    if kind is MappingProxyType or kind is dict:
+        return {str(key): _thaw_json(item) for key, item in value.items()}
+    if kind is tuple:
+        return [_thaw_json(item) for item in value]
+    if kind is str or kind is int or kind is float or kind is bool or value is None:
+        return value
     if isinstance(value, Mapping):
         return {str(key): _thaw_json(item) for key, item in value.items()}
     if isinstance(value, tuple):
@@ -1327,6 +1366,7 @@ class PreparedKernelPack:
                     "kernel_pack.recurrence_template",
                 ),
             )
+            object.__setattr__(self, "_recurrence_template_catalog", catalog)
         recurrence_direct_template = self.recurrence_direct_template
         if recurrence_direct_template is not None:
             if self.recurrence_template is None:
@@ -1762,16 +1802,22 @@ class PreparedModelBundle:
             raise PreparedModelBundleError("compiled model root must be an object")
         return payload
 
-    def read_payload(self, member_path: str) -> bytes:
-        """Read and revalidate one kernel payload from the archive."""
+    def read_payload(
+        self, member_path: str, *, archive: zipfile.ZipFile | None = None
+    ) -> bytes:
+        """Read and revalidate one kernel payload from the archive (*archive*: this
+        bundle's archive already open, to read many payloads without reopening it)."""
         normalized = _normalized_member_path(member_path, "member_path")
         if normalized not in self._referenced_payload_path_set:
             raise PreparedModelBundleError(
                 f"{normalized!r} is not referenced by the prepared kernel pack"
             )
         try:
-            with zipfile.ZipFile(self.path, "r") as archive:
+            if archive is not None:
                 data = archive.read(normalized)
+            else:
+                with zipfile.ZipFile(self.path, "r") as opened:
+                    data = opened.read(normalized)
         except (OSError, KeyError, zipfile.BadZipFile) as error:
             raise PreparedModelBundleError(
                 f"could not read prepared payload {normalized!r}: {error}"

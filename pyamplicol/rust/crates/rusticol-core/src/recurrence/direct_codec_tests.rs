@@ -123,9 +123,48 @@ fn direct_codec_detects_a_valid_field_mutation_through_layout_digest() {
 #[test]
 fn direct_codec_rejects_nonzero_reserved_fields() {
     let mut bytes = encode_recurrence_direct_plan_v2(&valid_plan()).unwrap();
-    bytes[12..16].copy_from_slice(&1_u32.to_le_bytes());
+    bytes[12..16].copy_from_slice(&2_u32.to_le_bytes());
     let error = decode_recurrence_direct_plan_v2(&bytes).unwrap_err();
     assert!(error.to_string().contains("header flags"));
+}
+
+#[test]
+fn direct_codec_round_trips_flavour_union_destination_patterns() {
+    let plan = valid_plan();
+    let normal = encode_recurrence_direct_plan_v2(&plan).unwrap();
+    assert_eq!(&normal[12..16], &0_u32.to_le_bytes());
+    let mut parts = plan.clone().into_parts();
+    parts.destination_patterns = DirectDestinationPatterns {
+        pattern_count: 2,
+        destination_patterns: vec![1; parts.amplitude_destinations.len()],
+        replay_pattern_maps: Vec::new(),
+    };
+    let patterned = DirectRecurrencePlan::new(parts.clone()).unwrap();
+    assert_ne!(
+        patterned.runtime_layout_digest(),
+        plan.runtime_layout_digest()
+    );
+    let bytes = encode_recurrence_direct_plan_v2(&patterned).unwrap();
+    assert_eq!(&bytes[12..16], &1_u32.to_le_bytes());
+    assert_eq!(decode_recurrence_direct_plan_v2(&bytes).unwrap(), patterned);
+
+    if !parts.replay_targets.is_empty() {
+        let mut mapped = parts.clone();
+        mapped.destination_patterns.replay_pattern_maps =
+            [1, 0].repeat(mapped.replay_targets.len());
+        let mapped = DirectRecurrencePlan::new(mapped).unwrap();
+        assert_ne!(mapped.runtime_layout_digest(), patterned.runtime_layout_digest());
+        let bytes = encode_recurrence_direct_plan_v2(&mapped).unwrap();
+        assert_eq!(&bytes[12..16], &3_u32.to_le_bytes());
+        assert_eq!(decode_recurrence_direct_plan_v2(&bytes).unwrap(), mapped);
+        let mut repeated = parts.clone();
+        repeated.destination_patterns.replay_pattern_maps =
+            [1, 1].repeat(repeated.replay_targets.len());
+        assert!(DirectRecurrencePlan::new(repeated).is_err());
+    }
+
+    parts.destination_patterns.destination_patterns[0] = 2;
+    assert!(DirectRecurrencePlan::new(parts).is_err());
 }
 
 #[test]

@@ -162,13 +162,16 @@ from .on_the_fly_seed import (
 )
 from .physics_metadata import build_resolved_physics_from_dag, public_color_accuracy
 from .process_grouping import (
+    FlavourUnion,
     GroupingBasis,
     GroupingParticle,
     GroupingProcess,
     GroupMember,
     LegMapping,
+    PatternPairs,
     flavor_blind_classes,
     flavor_blind_mapping,
+    flavour_unions,
     particle_table,
     profile_mappings,
 )
@@ -177,6 +180,7 @@ from .recurrence_color import (
     RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
     encode_recurrence_color_contraction,
     recurrence_color_contraction_digest,
+    sorted_unique,
 )
 from .recurrence_columnar import (
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -2105,15 +2109,16 @@ def _validate_rust_recurrence_lowering_result(
     ):
         raise GenerationError("Rust recurrence amplitude destinations must be a list")
     amplitude_destinations = []
+    destination_keys: list[tuple[int, ...]] = []
     for destination_id, raw_row in enumerate(raw_destinations):
         if (
             isinstance(raw_row, str | bytes)
             or not isinstance(raw_row, Sequence)
-            or len(raw_row) != 2
+            or len(raw_row) not in {2, 3}
         ):
             raise GenerationError(
                 "Rust recurrence amplitude destination rows must be "
-                "[sector_id, helicity_id-or-null]"
+                "[sector_id, helicity_id-or-null(, pattern_id)]"
             )
         sector_id = _result_integer(
             raw_row[0],
@@ -2131,7 +2136,26 @@ def _validate_rust_recurrence_lowering_result(
             )
         )
         amplitude_destinations.append((sector_id, helicity_id))
-    if len(set(amplitude_destinations)) != len(amplitude_destinations):
+        # Pattern-resolved templates keep one destination per pairing rule.
+        destination_keys.append(
+            (
+                sector_id,
+                helicity_id,
+                *(
+                    ()
+                    if len(raw_row) == 2
+                    else (
+                        _result_integer(
+                            raw_row[2],
+                            f"Rust recurrence amplitude destination {destination_id} "
+                            "pattern ID",
+                            minimum=0,
+                        ),
+                    )
+                ),
+            )
+        )
+    if len(set(destination_keys)) != len(destination_keys):
         raise GenerationError(
             "Rust recurrence amplitude destinations repeat a sector/helicity pair"
         )
@@ -2671,6 +2695,10 @@ class _ExpandedProcess:
     source_request: ProcessRequest | None = None
     # Flavour-blind members represented by this process, never generated.
     group_members: tuple[GroupMember, ...] = ()
+    # Pattern-resolved flavour-union template: members select pairing patterns.
+    flavour_union_template: bool = False
+    # Its pattern table (endpoint pairs per pattern), stored in process-groups.json.
+    flavour_union_pattern_pairs: PatternPairs | None = None
 
 
 class _NoModelSupportedAmplitudes(GenerationError):
@@ -3310,6 +3338,7 @@ def _initial_process_groups(
 ) -> ProcessGroupMap:
     """Each written process with the members recorded at expansion."""
 
+    expanded = tuple(expanded)
     members = {entry.request.name: entry.group_members for entry in expanded}
     return initial_process_groups(
         (
@@ -3317,6 +3346,11 @@ def _initial_process_groups(
             for process in artifact_processes
         ),
         members,
+        pattern_pairs={
+            entry.request.name: entry.flavour_union_pattern_pairs
+            for entry in expanded
+            if entry.flavour_union_pattern_pairs is not None
+        },
     )
 
 
@@ -4603,6 +4637,8 @@ class GenerationBackend:
                 relation_warning=self._flavor_blind_relation_warning(resolved, table),
                 strict=self._flavor_blind_strict,
             )
+            if self._flavor_unions:
+                result = self._flavour_union_entries(result, resolved, table)
         return tuple(result)
 
     def _grouping_particle_table(
@@ -4617,12 +4653,18 @@ class GenerationBackend:
             {parameter.name: parameter for parameter in model.parameters},
         )
 
-    def _flavor_blind_relation_warning(
+    def _grouping_symmetry(
         self,
         resolved: _ResolvedModel,
-        table: Mapping[int, GroupingParticle],
-    ) -> _RelationWarning:
-        """Check relations against the vertices each representative is built from."""
+    ) -> tuple[
+        Any,
+        Callable[
+            [str, CanonicalProcessIR | Callable[[], CanonicalProcessIR]],
+            Mapping[str, int],
+        ],
+    ]:
+        """Vertex symmetry table and the coupling-order limits of a process,
+        as generation applies them (cached per process ID)."""
 
         from .process_grouping_symmetry import VertexSymmetryTable
 
@@ -4636,16 +4678,15 @@ class GenerationBackend:
         explicit = self._coupling_order_limits
         run = self._run_config
         minimal = run is not None and run.process.coupling_order_policy == "minimal"
-        limits_by_representative: dict[str, Mapping[str, int]] = {}
+        limits_by_process: dict[str, Mapping[str, int]] = {}
 
-        def warning(
-            member: GroupingProcess,
-            representative: GroupingProcess,
-            mapping: LegMapping,
-            representative_ir: CanonicalProcessIR,
-        ) -> str | None:
+        def limits_for(
+            process_id: str,
+            ir: CanonicalProcessIR | Callable[[], CanonicalProcessIR],
+        ) -> Mapping[str, int]:
+            # ``ir`` may be a thunk: only the minimal policy needs the process IR.
             nonlocal model
-            limits = limits_by_representative.get(representative.process_id)
+            limits = limits_by_process.get(process_id)
             if limits is None:
                 limits = explicit
                 if minimal:
@@ -4655,18 +4696,130 @@ class GenerationBackend:
                         model = CompiledUFOModel(cast(_CompiledModelPayload, compiled))
                     limits = (
                         infer_minimal_coupling_order_limits(
-                            representative_ir,
+                            ir() if callable(ir) else ir,
                             model=model,
                             max_coupling_orders=explicit or None,
                         )
                         or explicit
                     )
-                limits_by_representative[representative.process_id] = limits
+                limits_by_process[process_id] = limits
+            return limits
+
+        return symmetry, limits_for
+
+    def _flavor_blind_relation_warning(
+        self,
+        resolved: _ResolvedModel,
+        table: Mapping[int, GroupingParticle],
+    ) -> _RelationWarning:
+        """Check relations against the vertices each representative is built from."""
+
+        symmetry, limits_for = self._grouping_symmetry(resolved)
+
+        def warning(
+            member: GroupingProcess,
+            representative: GroupingProcess,
+            mapping: LegMapping,
+            representative_ir: CanonicalProcessIR,
+        ) -> str | None:
+            limits = limits_for(representative.process_id, representative_ir)
             return symmetry.relation_warning(
                 member, representative, mapping, table, limits=limits
             )
 
         return warning
+
+    def _flavour_union_entries(
+        self,
+        entries: list[_ExpandedProcess],
+        resolved: _ResolvedModel,
+        table: Mapping[int, GroupingParticle],
+    ) -> list[_ExpandedProcess]:
+        """Merge flavour classes that differ only in union-quark flavours into
+        pattern-resolved templates whose members select pairing patterns."""
+
+        from .recurrence_fermion_pairing import (
+            build_recurrence_fermion_pairing_catalog_v1,
+        )
+
+        model = resolved.model
+        if model is None:
+            if resolved.compiled is None:
+                raise GenerationError(
+                    "flavour unions require a resolved generation model"
+                )
+            from ..models.external import CompiledUFOModel
+
+            model = CompiledUFOModel(cast(_CompiledModelPayload, resolved.compiled))
+        catalog = self._recurrence_model_inputs(resolved).catalog
+        symmetry, limits_for = self._grouping_symmetry(resolved)
+        by_name = {entry.request.name: entry for entry in entries}
+        irs: dict[str, CanonicalProcessIR] = {}
+
+        def process_ir(template: GroupingProcess) -> CanonicalProcessIR:
+            ir = irs.get(template.process_id)
+            if ir is None:
+                entry = by_name.get(template.process_id)
+                if entry is not None and _grouping_process(entry).pdgs == template.pdgs:
+                    ir = entry.process_ir
+                else:
+                    expanded = self._expand_request(
+                        ProcessRequest.parse(
+                            template.expression, name=template.process_id
+                        ),
+                        resolved,
+                    )
+                    if len(expanded) != 1 or tuple(
+                        leg.pdg for leg in expanded[0].legs
+                    ) != tuple(template.pdgs):
+                        raise GenerationError(
+                            f"flavour-union process {template.expression!r} does "
+                            "not expand to its own legs"
+                        )
+                    ir = expanded[0]
+                irs[template.process_id] = ir
+            return ir
+
+        template_ir = process_ir
+
+        def pairing_rules(template: GroupingProcess) -> Sequence[Any]:
+            return build_recurrence_fermion_pairing_catalog_v1(
+                template_ir(template),
+                catalog.current_states,
+                quantum_flows=catalog.quantum_flows,
+            ).rules
+
+        def union_warning(
+            template: GroupingProcess, flavours: frozenset[int], conjugated: bool
+        ) -> str | None:
+            limits = limits_for(template.process_id, template_ir(template))
+            return symmetry.flavour_union_warning(
+                template, flavours, table, limits=limits, conjugated=conjugated
+            )
+
+        def same_orders(template: GroupingProcess, process: GroupingProcess) -> bool:
+            # A member needs the template's coupling orders (e.g. no EW-only flows).
+            return limits_for(
+                process.process_id, lambda: process_ir(process)
+            ) == limits_for(template.process_id, lambda: template_ir(template))
+
+        # Alias classes are discovered too; _apply_flavour_unions rejects them.
+        unions = flavour_unions(
+            [_grouping_process(entry) for entry in entries]
+            + [member.process for entry in entries for member in entry.group_members],
+            table,
+            pairing_rules=pairing_rules,
+            normalization=model.external_state_normalization,
+            union_warning=union_warning,
+            consider_charge_conjugation=self._consider_charge_conjugation,
+            member_filter=same_orders,
+            classes={
+                member.process_id: (entry.request.name, member)
+                for entry in entries
+                for member in entry.group_members
+            },
+        )
+        return _apply_flavour_unions(entries, unions, template_ir)
 
     def _compile_for_generation(
         self,
@@ -5465,7 +5618,11 @@ class GenerationBackend:
         process_name = expanded.request.name
         profile_started = time.perf_counter()
         profile: dict[str, float] = {}
-        selector_plan_enabled = self._recurrence_helicity_selector_plan_enabled()
+        # Members cannot use a template's companion: it sums every pattern.
+        selector_plan_enabled = (
+            self._recurrence_helicity_selector_plan_enabled()
+            and not expanded.flavour_union_template
+        )
         with phase.child(
             process_name,
             f"{process_name}: compact recurrence construction",
@@ -5556,6 +5713,7 @@ class GenerationBackend:
                     and self._run_config.color.contraction.value
                     in {"auto", "symmetric-group-fft"}
                 ),
+                pattern_resolved=expanded.flavour_union_template,
             )
             if selection.selected_color_sector_ids is not None:
                 selected_public_flow_ids = tuple(
@@ -6307,11 +6465,17 @@ class GenerationBackend:
             schedule_digest=schedule_digest,
         )
         color_contraction_started = time.perf_counter()
+        # A contracted flavour-union template contracts its pattern sums.
+        color_destinations = (
+            _pattern_group_destinations(amplitude_destinations)
+            if expanded.flavour_union_template
+            else amplitude_destinations
+        )
         color_contraction = build_recurrence_color_contraction(
             logical,
             prepared.complete_color_plan,
             resolved_helicities,
-            amplitude_destinations,
+            color_destinations,
             certified_structural_zero_sector_ids,
             contraction=run.color.contraction.value,
         )
@@ -6334,7 +6498,7 @@ class GenerationBackend:
             contraction_destinations = recurrence_color_contraction_destinations(
                 logical,
                 resolved_helicities,
-                amplitude_destinations,
+                color_destinations,
             )
             destination_count = len(contraction_destinations)
             if destination_count < group_count:
@@ -6347,33 +6511,39 @@ class GenerationBackend:
                     "contracted recurrence exposes a destination without a "
                     "resolved helicity"
                 )
-            destination_by_group = (
-                tuple(range(group_count))
+            from itertools import chain
+
+            import numpy as np
+
+            destination_by_group = np.asarray(
+                range(group_count)
                 if color_contraction.destination_by_group is None
-                else color_contraction.destination_by_group
+                else color_contraction.destination_by_group,
+                dtype=np.int64,
             )
             if (
                 len(destination_by_group) != group_count
-                or len(set(destination_by_group)) != group_count
-                or any(
-                    destination_id < 0 or destination_id >= destination_count
-                    for destination_id in destination_by_group
+                or len(sorted_unique(destination_by_group)) != group_count
+                or (
+                    group_count > 0
+                    and (
+                        destination_by_group.min() < 0
+                        or destination_by_group.max() >= destination_count
+                    )
                 )
             ):
                 raise GenerationError(
                     "contracted recurrence color plan has an invalid destination "
                     "projection"
                 )
-            normalized_destinations = tuple(
-                contraction_destinations[destination_id]
-                for destination_id in destination_by_group
-            )
-            group_sector_ids = tuple(
-                sector_id for sector_id, _ in normalized_destinations
-            )
-            group_component_ids = tuple(
-                cast(int, helicity_id) for _, helicity_id in normalized_destinations
-            )
+            # (sector, helicity) of every group, as arrays for the codec.
+            group_coordinates = np.fromiter(
+                chain.from_iterable(contraction_destinations),
+                np.int64,
+                2 * destination_count,
+            ).reshape(destination_count, 2)[destination_by_group]
+            group_sector_ids = group_coordinates[:, 0]
+            group_component_ids = group_coordinates[:, 1]
             repeated = color_contraction.repeated_block
             symmetric_group = color_contraction.symmetric_group_block
             ordered_group_ids = (
@@ -6394,13 +6564,13 @@ class GenerationBackend:
                 group_component_ids=group_component_ids,
                 sector_owner_ids=recurrence_color_sector_owner_map(
                     logical,
-                    set(group_sector_ids),
+                    set(sorted_unique(group_sector_ids).tolist()),
                     set(certified_structural_zero_sector_ids),
                 ),
                 exact_coefficients=recurrence_exact_color_coefficients(
                     prepared.complete_color_plan,
                     color_contraction,
-                    group_sector_ids,
+                    group_sector_ids.tolist(),
                 ),
             )
             color_digest = recurrence_color_contraction_digest(
@@ -6419,7 +6589,7 @@ class GenerationBackend:
                 "includes_color_factor": color_contraction.includes_color_factor,
                 "group_count": group_count,
                 "sector_count": sector_count,
-                "active_sector_count": len(set(group_sector_ids)),
+                "active_sector_count": len(sorted_unique(group_sector_ids)),
                 "component_count": component_count,
                 "destination_count": destination_count,
                 "materialized_destination_count": schedule_destination_count,
@@ -7730,6 +7900,11 @@ class GenerationBackend:
         )
 
     @property
+    def _flavor_unions(self) -> bool:
+        run = self._run_config
+        return run is not None and run.process.flavor_unions
+
+    @property
     def _flavor_blind_strict(self) -> bool:
         run = self._run_config
         return run is not None and run.process.flavor_blind_strict
@@ -9020,6 +9195,99 @@ def _collapse_flavor_blind_classes(
         for entry in entries
         if entry.request.name not in grouped
     ]
+
+
+def _pattern_group_destinations(
+    destinations: Sequence[tuple[int, int | None]],
+) -> tuple[tuple[int, int | None], ...]:
+    """The consecutive (sector, helicity) groups of a pattern-resolved schedule."""
+
+    groups: list[tuple[int, int | None]] = []
+    seen: set[tuple[int, int | None]] = set()
+    for destination in destinations:
+        if groups and groups[-1] == destination:
+            continue
+        if destination in seen:
+            raise GenerationError(
+                "pattern-resolved destinations of one sector and helicity are "
+                "not consecutive"
+            )
+        seen.add(destination)
+        groups.append(destination)
+    return tuple(groups)
+
+
+def _apply_flavour_unions(
+    entries: Sequence[_ExpandedProcess],
+    unions: Sequence[FlavourUnion],
+    template_ir: Callable[[GroupingProcess], CanonicalProcessIR],
+) -> list[_ExpandedProcess]:
+    """Replace the entries a union absorbs by its pattern-resolved template.
+
+    A union is skipped when an entry's own ID and member IDs straddle its
+    boundary or it would absorb an alias-carrying entry.
+    """
+
+    union_of: dict[str, int] = {}
+    for index, union in enumerate(unions):
+        for member in union.group():
+            union_of[member.process_id] = index
+    rejected: set[int] = set()
+    for entry in entries:
+        ids = [entry.request.name, *(m.process_id for m in entry.group_members)]
+        touched = {union_of.get(process_id) for process_id in ids}
+        if len(touched) > 1 or (entry.aliases and touched != {None}):
+            rejected.update(index for index in touched if index is not None)
+    accepted = {
+        index: union for index, union in enumerate(unions) if index not in rejected
+    }
+    by_name = {entry.request.name: entry for entry in entries}
+    result: list[_ExpandedProcess] = []
+    placed: set[int] = set()
+    for entry in entries:
+        index = union_of.get(entry.request.name)
+        if index is None or index not in accepted:
+            result.append(entry)
+            continue
+        if index in placed:
+            continue
+        placed.add(index)
+        union = accepted[index]
+        template = union.template
+        base = by_name.get(template.process_id)
+        if base is not None and tuple(leg.pdg for leg in base.process_ir.legs) != tuple(
+            template.pdgs
+        ):
+            raise GenerationError(
+                f"flavour-union template ID {template.process_id!r} names "
+                "another process"
+            )
+        if base is None:
+            base = replace(
+                entry,
+                request=ProcessRequest.parse(
+                    template.expression, name=template.process_id
+                ),
+                process_ir=template_ir(template),
+                aliases=(),
+            )
+        result.append(
+            replace(
+                base,
+                group_members=tuple(union.group()[1:]),
+                flavour_union_template=True,
+                flavour_union_pattern_pairs=union.pattern_pairs,
+            )
+        )
+    if accepted:
+        _LOGGER.debug(
+            "Flavour unions: %d template%s for %d subprocesses (%d skipped)",
+            len(accepted),
+            "" if len(accepted) == 1 else "s",
+            sum(len(union.group()) for union in accepted.values()),
+            len(rejected),
+        )
+    return result
 
 
 def _permuted_process_identity(

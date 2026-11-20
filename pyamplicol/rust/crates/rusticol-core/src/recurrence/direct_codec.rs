@@ -4,13 +4,13 @@
 
 use super::direct_plan::{
     DirectAmplitudeDestinationDescriptor, DirectAmplitudeOrders, DirectClosureRow,
-    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole,
-    DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind,
-    DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
-    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
-    DirectSelectorDomainDescriptor, DirectSourceDispatchVariantDescriptor,
-    DirectSourceEmbeddingRow, DirectSourceProjectionRow, DirectSourceRow,
-    DirectSourceStateAssignment,
+    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation,
+    DirectDestinationPatterns, DirectExecutorRole, DirectFinalizationRow,
+    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
+    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
+    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
+    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
+    DirectSourceRow, DirectSourceStateAssignment,
 };
 use super::{
     CheckedTableRange, ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2,
@@ -24,6 +24,12 @@ use std::io::Write;
 const MAGIC: &[u8; 8] = b"PACRDAP2";
 const VERSION: u32 = 3;
 const MAX_ROWS: u64 = u32::MAX as u64;
+// Header flag: a pattern-resolved destination table trails the payload.
+const HEADER_FLAG_DESTINATION_PATTERNS: u32 = 1;
+// With it: replay pattern maps follow the destination table.
+const HEADER_FLAG_REPLAY_PATTERN_MAPS: u32 = 2;
+const HEADER_FLAGS_REPLAYED_PATTERNS: u32 =
+    HEADER_FLAG_DESTINATION_PATTERNS | HEADER_FLAG_REPLAY_PATTERN_MAPS;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence direct-plan codec: {}", message.into()))
@@ -281,7 +287,15 @@ pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
     let mut writer = Writer::new(destination);
     writer.raw(MAGIC)?;
     writer.u32(VERSION)?;
-    writer.u32(0)?;
+    let patterns = plan.destination_patterns();
+    writer.u32(match (
+        patterns.is_pattern_resolved(),
+        patterns.replay_pattern_maps.is_empty(),
+    ) {
+        (false, _) => 0,
+        (true, true) => HEADER_FLAG_DESTINATION_PATTERNS,
+        (true, false) => HEADER_FLAGS_REPLAYED_PATTERNS,
+    })?;
     writer.u32(plan.strategy().as_u32())?;
     writer.u32(plan.point_tile_size())?;
     writer.u32(plan.workspace_mib())?;
@@ -655,6 +669,13 @@ pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
         writer.u32(row.pairing_rule_id())?;
         writer.digest(row.proof_digest())?;
     }
+    if patterns.is_pattern_resolved() {
+        writer.u32(patterns.pattern_count)?;
+        writer.u32_slice("destination patterns", &patterns.destination_patterns)?;
+        if !patterns.replay_pattern_maps.is_empty() {
+            writer.u32_slice("replay pattern maps", &patterns.replay_pattern_maps)?;
+        }
+    }
     Ok(writer.bytes_written)
 }
 
@@ -677,7 +698,11 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
             "unsupported recurrence version; regenerate with direct-plan v2",
         ));
     }
-    if reader.u32("header flags")? != 0 {
+    let header_flags = reader.u32("header flags")?;
+    if !matches!(
+        header_flags,
+        0 | HEADER_FLAG_DESTINATION_PATTERNS | HEADER_FLAGS_REPLAYED_PATTERNS
+    ) {
         return Err(invalid("unsupported nonzero header flags"));
     }
     let strategy = RecurrenceStrategy::try_from(reader.u32("strategy")?)
@@ -1114,6 +1139,29 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
             reader.digest("three-line traversal proof digest")?,
         )?);
     }
+    let destination_patterns = if header_flags & HEADER_FLAG_DESTINATION_PATTERNS != 0 {
+        let pattern_count = reader.u32("destination pattern count")?;
+        if pattern_count == 0 {
+            return Err(invalid("flagged destination-pattern table is empty"));
+        }
+        let destination_patterns = reader.u32_vec("destination patterns")?;
+        let replay_pattern_maps = if header_flags & HEADER_FLAG_REPLAY_PATTERN_MAPS != 0 {
+            let maps = reader.u32_vec("replay pattern maps")?;
+            if maps.is_empty() {
+                return Err(invalid("flagged replay pattern maps are empty"));
+            }
+            maps
+        } else {
+            Vec::new()
+        };
+        DirectDestinationPatterns {
+            pattern_count,
+            destination_patterns,
+            replay_pattern_maps,
+        }
+    } else {
+        DirectDestinationPatterns::default()
+    };
     reader.finish()?;
     let closure_proofs =
         ClosureProofMetadataV2::new_with_three_line_certificates_candidate_domain_and_expected_digest(
@@ -1169,6 +1217,7 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
         exact_factors,
         closure_proofs,
         amplitude_orders,
+        destination_patterns,
     })?;
     if plan.runtime_layout_digest() != expected_runtime_layout_digest {
         return Err(invalid("runtime-layout digest mismatch"));

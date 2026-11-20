@@ -1,0 +1,826 @@
+# SPDX-License-Identifier: 0BSD
+"""Flavour-union discovery: templates, member slots, pairing patterns, factors."""
+
+from __future__ import annotations
+
+import math
+from collections import Counter
+from collections.abc import Callable, Sequence
+from dataclasses import fields
+from fractions import Fraction
+from typing import Any
+
+import pytest
+
+import pyamplicol.generation.service as generation_service
+import pyamplicol.licensing as licensing
+from pyamplicol import ProcessSet
+from pyamplicol.api.errors import ArtifactError, ConfigurationError
+from pyamplicol.artifacts.process_groups import validate_process_groups
+from pyamplicol.color.plan import build_color_plan, build_lc_topology_replay_plan
+from pyamplicol.config import (
+    Action,
+    ColorConfig,
+    EvaluatorConfig,
+    GenerationConfig,
+    ProcessConfig,
+    RunConfig,
+)
+from pyamplicol.generation.born_orders import RuntimeNormalizationRequest
+from pyamplicol.generation.dag_algorithms import infer_minimal_coupling_order_limits
+from pyamplicol.generation.process_grouping import (
+    FlavourUnion,
+    GroupingBasis,
+    GroupingProcess,
+    GroupMember,
+    ParticleTable,
+    ProcessGroupMap,
+    flavor_class_key,
+    flavour_unions,
+    is_union_quark_type,
+)
+from pyamplicol.generation.process_grouping_symmetry import VertexSymmetryTable
+from pyamplicol.generation.progress import PhaseHandle
+from pyamplicol.generation.recurrence_columnar import (
+    ExactComplexRationalV1,
+    RecurrenceNormalizationV1,
+)
+from pyamplicol.generation.recurrence_fermion_pairing import (
+    build_recurrence_fermion_pairing_catalog_v1,
+)
+from pyamplicol.generation.recurrence_projection import project_recurrence_process_v1
+from pyamplicol.licensing import SymbolicaLicenseState
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
+from pyamplicol.models.recurrence_catalog_builder import (
+    build_recurrence_template_catalog,
+)
+
+QCD_ONLY = {"QED": 0}
+
+
+def _restricted_license(**_kwargs: object) -> SymbolicaLicenseState:
+    return SymbolicaLicenseState(licensed=False, restricted=True)
+
+
+@pytest.fixture(scope="module")
+def model() -> BuiltinSMModel:
+    return BuiltinSMModel()
+
+
+@pytest.fixture(scope="module")
+def template_catalog(model: BuiltinSMModel) -> Any:
+    return build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest="a" * 64,
+        prepared_kernel_pack_digest="b" * 64,
+    )
+
+
+@pytest.fixture(scope="module")
+def pairing_rules(template_catalog: Any) -> Callable[[GroupingProcess], Any]:
+    # The call recurrence_projection.project_recurrence_process_v1 makes.
+    def rules(template: GroupingProcess) -> Any:
+        process = build_process_ir(template.expression, color_accuracy="lc")
+        assert tuple(leg.pdg for leg in process.legs) == template.pdgs
+        return build_recurrence_fermion_pairing_catalog_v1(
+            process,
+            template_catalog.current_states,
+            quantum_flows=template_catalog.quantum_flows,
+        ).rules
+
+    return rules
+
+
+@pytest.fixture(scope="module")
+def symmetry(model: BuiltinSMModel) -> VertexSymmetryTable:
+    return VertexSymmetryTable.from_builtin_model(model)
+
+
+_EXPANSIONS: dict[
+    tuple[str, int], tuple[list[GroupingProcess], int, ParticleTable]
+] = {}
+
+
+def _expansion(
+    expression: str, flavor_scheme: int
+) -> tuple[list[GroupingProcess], int, ParticleTable]:
+    """Every concrete subprocess of a strict flavour-blind expansion, the
+    number of flavour classes (generated entries) and the particle table."""
+
+    key = (expression, flavor_scheme)
+    if key not in _EXPANSIONS:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+            backend = generation_service.GenerationBackend(
+                RunConfig(
+                    action=Action.GENERATE,
+                    process=ProcessConfig(
+                        flavor_blind_strict=True, flavor_scheme=flavor_scheme
+                    ),
+                    evaluator=EvaluatorConfig(execution_mode="compiled"),
+                ),
+                None,
+            )
+            resolved = backend._resolve_model_for_plan(
+                backend._configured_model_source()
+            )
+            entries = backend._expand_process_set(
+                ProcessSet.from_expressions((expression,)),
+                resolved,
+                PhaseHandle("test", None, 1),
+            )
+            table = backend._grouping_particle_table(resolved)
+        processes = [generation_service._grouping_process(entry) for entry in entries]
+        processes += [
+            member.process for entry in entries for member in entry.group_members
+        ]
+        _EXPANSIONS[key] = (processes, len(entries), table)
+        _CLASSES[key] = {
+            member.process_id: (entry.request.name, member)
+            for entry in entries
+            for member in entry.group_members
+        }
+    return _EXPANSIONS[key]
+
+
+# process ID -> (flavour-class representative ID, relation), as the generator passes
+_CLASSES: dict[tuple[str, int], dict[str, tuple[str, GroupMember]]] = {}
+
+
+def _unions(
+    processes: Sequence[GroupingProcess],
+    table: ParticleTable,
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+    *,
+    limits: dict[str, int] = QCD_ONLY,
+    **options: Any,
+) -> list[FlavourUnion]:
+    return flavour_unions(
+        processes,
+        table,
+        pairing_rules=pairing_rules,
+        normalization=model.external_state_normalization,
+        union_warning=lambda template, flavours, conjugated: (
+            symmetry.flavour_union_warning(
+                template, flavours, table, limits=limits, conjugated=conjugated
+            )
+        ),
+        **options,
+    )
+
+
+def _by_expression(union: FlavourUnion) -> dict[str, GroupMember]:
+    return {member.expression: member for member in union.members}
+
+
+# pp > n jets with QED=0: (unions, flavour classes, classes joined by unions)
+_STATISTICS = {
+    ("p p > j j", 4): (2, 9, 5),
+    ("p p > j j", 5): (2, 9, 5),
+    ("p p > j j j", 4): (3, 11, 7),
+    ("p p > j j j", 5): (3, 11, 7),
+    ("p p > j j j j", 4): (6, 23, 19),
+    ("p p > j j j j", 5): (6, 23, 19),
+}
+
+
+@pytest.mark.parametrize(("expression", "flavor_scheme"), sorted(_STATISTICS))
+def test_jet_unions_join_the_quark_flavour_classes(
+    expression: str,
+    flavor_scheme: int,
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, class_count, table = _expansion(expression, flavor_scheme)
+    classes = _CLASSES[(expression, flavor_scheme)]
+    unions = _unions(
+        processes, table, model, pairing_rules, symmetry, classes=classes
+    )
+    by_id = {process.process_id: process for process in processes}
+
+    members = [member for union in unions for member in union.members]
+    assert len({member.process_id for member in members}) == len(members)
+    joined = {
+        flavor_class_key(
+            by_id[member.process_id], table, consider_charge_conjugation=True
+        )
+        for member in members
+    }
+    assert (len(unions), class_count, len(joined)) == _STATISTICS[
+        (expression, flavor_scheme)
+    ]
+    for union in unions:
+        _check_union(union, by_id, table, model)
+
+
+def _check_union(
+    union: FlavourUnion,
+    by_id: dict[str, GroupingProcess],
+    table: ParticleTable,
+    model: BuiltinSMModel,
+) -> None:
+    template = union.template
+    count = template.initial_count
+    union_slots = [is_union_quark_type(table[pdg].type) for pdg in template.pdgs]
+    flavours = {
+        abs(pdg) for pdg, union in zip(template.pdgs, union_slots, strict=True) if union
+    }
+    assert len(flavours) == 1, "the template carries one union flavour"
+    assert template.process_id in by_id
+    assert by_id[template.process_id].pdgs == template.pdgs
+    classes = {
+        flavor_class_key(
+            by_id[member.process_id], table, consider_charge_conjugation=True
+        )
+        for member in union.members
+    }
+    assert len(classes) >= 2
+    template_norm = math.prod(
+        model.external_state_normalization(template.pdgs[:count], template.pdgs[count:])
+    )
+    for member in union.members:
+        assert member.basis is GroupingBasis.FLAVOUR_UNION
+        assert not member.generated
+        source = by_id[member.process_id]
+        assert (member.expression, member.pdgs) == (source.expression, source.pdgs)
+        assert sorted(member.permutation) == list(range(len(template.pdgs)))
+        # Slot r of the template takes member leg permutation[r].
+        for slot, leg in enumerate(member.permutation):
+            pdg = member.pdgs[leg]
+            if member.conjugated and not table[pdg].type.self_conjugate:
+                pdg = -pdg
+            assert (slot < count) == (leg < member.initial_count)
+            assert table[pdg].type == table[template.pdgs[slot]].type
+            if union_slots[slot]:
+                assert (pdg > 0) == (template.pdgs[slot] > 0)
+            else:
+                assert pdg == template.pdgs[slot]
+        # Flavour-respecting pairings: prod_f n_f! of them.
+        flavour = [abs(member.pdgs[leg]) for leg in member.permutation]
+        fundamental = Counter(
+            flavour[slot]
+            for slot, pdg in enumerate(template.pdgs)
+            if union_slots[slot] and (pdg > 0) != (slot < count)
+        )
+        assert member.patterns is not None and member.pattern_signs is not None
+        assert len(member.patterns) == math.prod(
+            math.factorial(n) for n in fundamental.values()
+        )
+        assert member.pattern_signs == (1,) * len(member.patterns)
+        assert all(0 <= pattern < union.pattern_count for pattern in member.patterns)
+        expected = Fraction(
+            template_norm,
+            math.prod(
+                model.external_state_normalization(
+                    member.pdgs[:count], member.pdgs[count:]
+                )
+            ),
+        )
+        assert member.factor == expected
+        if member.process_id == template.process_id:
+            assert member.patterns == tuple(range(union.pattern_count))
+            assert member.permutation == tuple(range(len(template.pdgs)))
+            assert member.factor == 1 and not member.conjugated
+
+
+@pytest.mark.parametrize("expression", ["p p > j j j", "p p > j j j j"])
+def test_flavour_class_members_share_their_union_route(
+    expression: str,
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion(expression, 4)
+    classes = _CLASSES[(expression, 4)]
+    unions = _unions(
+        processes, table, model, pairing_rules, symmetry, classes=classes
+    )
+    routed = 0
+    for union in unions:
+        members = {member.process_id: member for member in union.members}
+        for process_id, (home, relation) in classes.items():
+            if process_id not in members or home not in members:
+                continue
+            member, anchor = members[process_id], members[home]
+            # the member's relation to its representative, then that one's route
+            assert member.permutation == tuple(
+                relation.permutation[leg] for leg in anchor.permutation
+            )
+            assert member.patterns == anchor.patterns
+            assert member.conjugated == (anchor.conjugated != relation.conjugated)
+            routed += 1
+    assert routed > 0
+    if expression == "p p > j j j":
+        # one class: routed on its own, u g > d u d~ would pair the other way round
+        union = next(u for u in unions if u.template.expression == "d g > d d d~")
+        members = _by_expression(union)
+        assert members["u g > d u d~"].patterns == (0,)
+        assert members["u g > u s s~"].patterns == (0,)
+
+
+def test_dijet_member_patterns(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j", 4)
+    unions = {
+        union.template.expression: union
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+    }
+    assert set(unions) == {"d d > d d", "d d~ > d d~"}
+
+    # Template rules: 0 = (2,0)(3,1), 1 = (2,1)(3,0).
+    same = _by_expression(unions["d d > d d"])
+    assert unions["d d > d d"].pattern_count == 2
+    assert same["u u > u u"].patterns == (0, 1)
+    assert same["u u > u u"].factor == 1
+    assert same["d u > d u"].patterns == (0,)
+    assert same["d u > d u"].factor == 2  # 2! identical d in the template
+    assert same["d~ u~ > d~ u~"].conjugated
+    assert same["d~ u~ > d~ u~"].patterns == (0,)
+    assert len(same) == 20
+
+    # Template rules: 0 = (1,0)(2,3) annihilation, 1 = (1,3)(2,0) scattering.
+    mixed = _by_expression(unions["d d~ > d d~"])
+    assert mixed["d d~ > d d~"].patterns == (0, 1)
+    assert mixed["u u~ > s s~"].patterns == (0,)
+    assert mixed["d u~ > d u~"].patterns == (1,)
+    assert mixed["u d~ > u d~"].patterns == (1,)
+    assert not any(member.conjugated for member in mixed.values())
+    assert all(member.factor == 1 for member in mixed.values())
+
+
+def test_three_line_member_patterns(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j j j", 4)
+    union = next(
+        union
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+        if union.template.expression == "d d~ > d d d~ d~"
+    )
+    members = _by_expression(union)
+    assert union.pattern_count == 6
+    # Rule 0 = (1,0)(2,4)(3,5); 4 = (1,5)(2,0)(3,4); 5 = (1,5)(2,4)(3,0).
+    assert members["d d~ > u s u~ s~"].patterns == (0,)
+    assert members["d d~ > u s u~ s~"].factor == 4
+    assert members["d u~ > d d d~ u~"].patterns == (4, 5)
+    assert members["d u~ > d d d~ u~"].factor == 2
+    assert members["u u~ > u u u~ u~"].patterns == tuple(range(6))
+    assert members["u u~ > u u u~ u~"].factor == 1
+    # The pattern table: endpoint pairs (fundamental, antifundamental) per rule.
+    assert union.pattern_pairs[0] == ((1, 0), (2, 4), (3, 5))
+    assert union.pattern_pairs[4] == ((1, 5), (2, 0), (3, 4))
+    assert len(union.pattern_pairs) == union.pattern_count
+
+
+def test_member_slots_follow_the_template_orientation(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    _, _, table = _expansion("p p > j j", 4)
+    processes = [
+        GroupingProcess("dd", "d d~ > d d~", (1, -1, 1, -1), 2),
+        GroupingProcess("uu", "u~ u > d d~", (-2, 2, 1, -1), 2),
+        GroupingProcess("ud", "u d > d u", (2, 1, 1, 2), 2),
+        GroupingProcess("dd2", "d d > d d", (1, 1, 1, 1), 2),
+    ]
+    unions = {
+        union.template.process_id: _by_expression(union)
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+    }
+    assert set(unions) == {"dd", "dd2"}
+    swapped = unions["dd"]["u~ u > d d~"]
+    assert swapped.permutation == (1, 0, 2, 3)
+    assert swapped.patterns == (0,)
+    # A side permutation of "d u > d u" pairs the other way round.
+    assert unions["dd2"]["u d > d u"].permutation == (0, 1, 2, 3)
+    assert unions["dd2"]["u d > d u"].patterns == (1,)
+
+
+def test_template_rule_ids_match_the_recurrence_projection(
+    model: BuiltinSMModel,
+    template_catalog: Any,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j j j", 4)
+    unions = _unions(processes, table, model, pairing_rules, symmetry)
+    assert len(unions) == 6
+    for union in unions:
+        process = build_process_ir(union.template.expression, color_accuracy="lc")
+        plan = build_color_plan(
+            process,
+            color_accuracy="lc",
+            fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(
+                process
+            ),
+        )
+        logical = project_recurrence_process_v1(
+            process,
+            plan,
+            template_catalog,
+            layout="topology-replay",
+            topology_replay=build_lc_topology_replay_plan(plan, model),
+            normalization=RecurrenceNormalizationV1(
+                ExactComplexRationalV1(1), "test-v1", "4" * 64
+            ),
+            coupling_order_limits=infer_minimal_coupling_order_limits(
+                process, model=model
+            ),
+            model=model,
+        )
+        projected = [
+            (rule.rule_id, rule.endpoint_pairings)
+            for rule in logical.fermion_pairing_catalog.rules
+        ]
+        used = [
+            (rule.rule_id, rule.endpoint_pairings)
+            for rule in pairing_rules(union.template)
+        ]
+        assert projected == used
+        assert len(projected) == union.pattern_count
+
+
+@pytest.mark.parametrize("limits", [{}, {"QED": 2}])
+def test_electroweak_couplings_prevent_unions(
+    limits: dict[str, int],
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j", 4)
+    assert not _unions(processes, table, model, pairing_rules, symmetry, limits=limits)
+    template = GroupingProcess("t", "d d > d d", (1, 1, 1, 1), 2)
+    warning = symmetry.flavour_union_warning(
+        template, frozenset({1, 2}), table, limits=limits
+    )
+    assert warning is not None
+    assert "changes a union quark flavour" in warning  # the W vertex
+    assert "relabelling" in warning  # photon and Z couplings
+    assert (
+        symmetry.flavour_union_warning(
+            template, frozenset({1, 2, 3, 4}), table, limits=QCD_ONLY, conjugated=True
+        )
+        is None
+    )
+
+
+def test_refused_conjugation_splits_a_union_by_orientation(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+) -> None:
+    processes, _, table = _expansion("p p > j j", 4)
+    unions = flavour_unions(
+        processes,
+        table,
+        pairing_rules=pairing_rules,
+        normalization=model.external_state_normalization,
+        union_warning=lambda _t, _f, conjugated: "no C" if conjugated else None,
+    )
+    templates = sorted(union.template.expression for union in unions)
+    assert templates == ["d d > d d", "d d~ > d d~", "d~ d~ > d~ d~"]
+    assert not any(member.conjugated for union in unions for member in union.members)
+
+
+def test_without_conjugation_antiquark_unions_stand_alone(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j", 4)
+    unions = _unions(
+        processes,
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+        consider_charge_conjugation=False,
+    )
+    templates = sorted(union.template.expression for union in unions)
+    assert templates == ["d d > d d", "d d~ > d d~", "d~ d~ > d~ d~"]
+
+
+def test_union_members_round_trip_through_process_groups(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j", 4)
+    union = next(
+        union
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+        if union.template.expression == "d d > d d"
+    )
+    group = union.group()
+    assert group[0] == GroupMember.identity(union.template)
+    assert group[0].patterns is None and group[0].generated
+    assert len(group) == len(union.members)  # the template replaces its member
+
+    group_map = ProcessGroupMap()
+    group_map.add_group(group, union.pattern_pairs)
+    restored = ProcessGroupMap.from_json(group_map.to_json())
+    assert list(restored.members()) == group
+    assert restored.groups[union.template.process_id].pattern_pairs == (
+        union.pattern_pairs
+    )
+    validate_process_groups(restored, [union.template.process_id])
+    # A group without a table keeps its exact record.
+    plain_map = ProcessGroupMap()
+    plain_map.add_group(group)
+    assert "flavour_union_pattern_pairs" not in plain_map.to_json()
+    for bad in (((),), (((0, 0),),), (((0, 99),),)):
+        broken = ProcessGroupMap()
+        broken.add_group(group, bad)
+        with pytest.raises(ArtifactError, match="pattern pairs"):
+            validate_process_groups(broken, [union.template.process_id])
+
+    member = group[1]
+    record = member.as_dict()
+    assert record["flavour_union_patterns"] == list(member.patterns or ())
+    assert record["flavour_union_pattern_signs"] == [1] * len(member.patterns or ())
+    assert GroupMember.from_dict(record) == member
+    # Plain members keep their exact records.
+    plain = GroupMember.identity(union.template).as_dict()
+    assert "flavour_union_patterns" not in plain
+    assert "flavour_union_pattern_signs" not in plain
+
+
+def test_invalid_union_members_are_rejected(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion("p p > j j", 4)
+    union = next(
+        union
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+        if union.template.expression == "d d > d d"
+    )
+    template, member = union.group()[:2]
+    with pytest.raises(ValueError, match="one sign"):
+        GroupMember(**{**_fields(member), "pattern_signs": (1, 1, 1)})
+    with pytest.raises(ValueError, match="given together"):
+        GroupMember(**{**_fields(member), "pattern_signs": None})
+    with pytest.raises(ValueError, match="other than"):
+        GroupMember(**{**_fields(member), "pattern_signs": (2,)})
+    with pytest.raises(ValueError, match="do not compose"):
+        member.through(template)
+    with pytest.raises(ValueError, match="not invertible"):
+        member.inverted_to(template)
+
+    wrong_basis = GroupMember(
+        **{**_fields(member), "basis": GroupingBasis.FLAVOR_BLIND}
+    )
+    for bad in (wrong_basis, GroupMember(**{**_fields(member), "generated": True})):
+        group_map = ProcessGroupMap()
+        group_map.add_group([template, bad])
+        with pytest.raises(ArtifactError):
+            validate_process_groups(
+                group_map,
+                [template.process_id] + ([bad.process_id] if bad.generated else []),
+            )
+
+
+def _fields(member: GroupMember) -> dict[str, Any]:
+    return {field.name: getattr(member, field.name) for field in fields(member)}
+
+
+def test_external_state_normalization_is_the_runtime_normalization(
+    model: BuiltinSMModel,
+) -> None:
+    for expression, orders in (
+        ("d d > d d", 2),
+        ("u d~ > u u d~ u~", 4),
+        ("g g > d d d~ d~", 4),
+    ):
+        process = build_process_ir(expression, color_accuracy="lc")
+        payload = model.runtime_normalization_payload(
+            RuntimeNormalizationRequest(process, lambda o=orders: [(("QCD", o),)])
+        )
+        assert model.external_state_normalization(
+            process.initial_pdgs, process.final_pdgs
+        ) == (payload["average_factor"], payload["identical_factor"])
+
+
+def test_flavour_unions_config_requires_strict_recurrence() -> None:
+    with pytest.raises(ConfigurationError, match="flavor_blind_strict"):
+        ProcessConfig(flavor_unions=True)
+    process = ProcessConfig(flavor_blind_strict=True, flavor_unions=True)
+    no_bundle = GenerationConfig(emit_api_bundle=False)
+    recurrence = EvaluatorConfig(execution_mode="recurrence")
+    RunConfig(
+        action=Action.GENERATE,
+        process=process,
+        evaluator=recurrence,
+        generation=no_bundle,
+    )
+    # UMAMI providers evaluate union members as template assignments.
+    RunConfig(action=Action.GENERATE, process=process, evaluator=recurrence)
+    # Full colour sums the patterns before the contraction.
+    RunConfig(
+        action=Action.GENERATE,
+        process=process,
+        evaluator=recurrence,
+        color=ColorConfig(accuracy="full"),
+    )
+    for evaluator, color, generation in (
+        (EvaluatorConfig(execution_mode="compiled"), ColorConfig(), no_bundle),
+        (recurrence, ColorConfig(accuracy="nlc"), no_bundle),
+        (recurrence, ColorConfig(lc_flow_layout="all-flow-union"), no_bundle),
+    ):
+        with pytest.raises(ConfigurationError, match="flavor_unions"):
+            RunConfig(
+                action=Action.GENERATE,
+                process=process,
+                evaluator=evaluator,
+                color=color,
+                generation=generation,
+            )
+
+
+def _entry(name: str, pdgs, members=(), aliases=()):
+    from types import SimpleNamespace
+
+    from pyamplicol.api.requests import ProcessRequest
+    from pyamplicol.generation.service import _ExpandedProcess
+
+    return _ExpandedProcess(
+        request=ProcessRequest.parse("d d~ > g g", name=name),
+        process_ir=SimpleNamespace(legs=[SimpleNamespace(pdg=pdg) for pdg in pdgs]),
+        aliases=aliases,
+        group_members=tuple(members),
+    )
+
+
+def _member(process_id: str, pdgs, *, union: bool) -> GroupMember:
+    return GroupMember(
+        process_id=process_id,
+        expression="d d~ > g g",
+        pdgs=pdgs,
+        initial_count=2,
+        permutation=(0, 1, 2, 3),
+        basis=GroupingBasis.FLAVOUR_UNION if union else GroupingBasis.FLAVOR_BLIND,
+        generated=False,
+        patterns=(0,) if union else None,
+        pattern_signs=(1,) if union else None,
+    )
+
+
+def test_applied_unions_replace_entries_and_skip_straddling_or_aliased_ones() -> None:
+    from pyamplicol.generation.process_grouping import GroupingProcess
+    from pyamplicol.generation.service import _apply_flavour_unions
+
+    pdgs = (1, -1, 21, 21)
+
+    def union(template: str, *members: str) -> FlavourUnion:
+        return FlavourUnion(
+            GroupingProcess(template, "d d~ > g g", pdgs, 2),
+            tuple(_member(member, pdgs, union=True) for member in members),
+            1,
+        )
+
+    entries = [
+        _entry("a", pdgs, [_member("b", pdgs, union=False)]),
+        _entry("c", pdgs),
+        _entry(
+            "e",
+            pdgs,
+            [_member("f", pdgs, union=False), _member("g", pdgs, union=False)],
+        ),
+        _entry("h", pdgs, aliases=({"id": "alias"},)),
+        _entry("i", pdgs),
+    ]
+    unions = [union("a", "b", "c"), union("e", "f"), union("i", "h")]
+    result = _apply_flavour_unions(entries, unions, lambda template: None)
+    assert [entry.request.name for entry in result] == ["a", "e", "h", "i"]
+    template = result[0]
+    assert template.flavour_union_template
+    assert [member.process_id for member in template.group_members] == ["b", "c"]
+    # f and g share an entry but only f joins the union; h carries an alias.
+    assert result[1] == entries[2]
+    assert result[2] == entries[3] and result[3] == entries[4]
+
+
+def _processes(*expressions: str) -> list[GroupingProcess]:
+    from pyamplicol.models.builtin.validation import generic_validation_point
+
+    return [
+        GroupingProcess(
+            f"p{index}",
+            expression,
+            tuple(int(leg.pdg) for leg in generic_validation_point(expression)),
+            len(expression.split(">")[0].split()),
+        )
+        for index, expression in enumerate(expressions)
+    ]
+
+
+def test_unpaired_or_filtered_members_keep_their_own_routing(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    _, _, table = _expansion("p p > j j", 4)
+    processes = _processes(
+        "d d~ > d d~", "d d~ > u u~", "d u~ > d u~", "u d~ > c s~", "d s~ > d s~"
+    )
+    (union,) = _unions(processes, table, model, pairing_rules, symmetry)
+    # 'u d~ > c s~' has the union signature but no QCD pairing (W only).
+    assert set(_by_expression(union)) == {
+        "d d~ > d d~",
+        "d d~ > u u~",
+        "d u~ > d u~",
+        "d s~ > d s~",
+    }
+    (union,) = _unions(
+        processes,
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+        member_filter=lambda template, process: process.expression != "d u~ > d u~",
+    )
+    assert "d u~ > d u~" not in _by_expression(union)
+    # Filtering down to one flavour class drops the union.
+    assert not _unions(
+        processes,
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+        member_filter=lambda template, process: process.expression == "d d~ > d d~",
+    )
+
+
+def test_union_templates_are_requested_single_flavour_processes(
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    _, _, table = _expansion("p p > j j", 4)
+    (union,) = _unions(
+        _processes("u u~ > d d~", "u u~ > u u~", "u u~ > s s~"),
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+    )
+    assert union.template.expression == "u u~ > u u~"
+    assert union.template.process_id == "p1"
+    # Without a single-flavour process no template is synthesized.
+    assert not _unions(
+        _processes("d d~ > u u~", "d u~ > d u~"),
+        table,
+        model,
+        pairing_rules,
+        symmetry,
+    )
+
+
+def test_append_regenerating_every_union_member_drops_the_pattern_table(
+    tmp_path: Path,
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    from pyamplicol.generation.artifact_writer import _write_process_groups
+
+    processes, _, table = _expansion("p p > j j", 4)
+    union = next(
+        union
+        for union in _unions(processes, table, model, pairing_rules, symmetry)
+        if union.template.expression == "d d > d d"
+    )
+    stored = ProcessGroupMap()
+    stored.add_group(union.group(), union.pattern_pairs)
+    (tmp_path / "process-groups.json").write_text(stored.to_json(), encoding="utf-8")
+
+    class _Builder:  # the two builder calls _write_process_groups makes
+        payload = b""
+
+        def staged_path(self, _path: object) -> Path:
+            return tmp_path / "process-groups.json"
+
+        def add_bytes(self, _path: object, data: bytes, **_: object) -> None:
+            self.payload = data
+
+    # The append generates every union member explicitly.
+    records = [
+        {"id": member.process_id, "expression": member.expression, "external_pdgs": member.pdgs}
+        for member in union.group()
+    ]
+    group_map = _write_process_groups(_Builder(), process_groups=None, process_records=records)
+    template = group_map.groups[union.template.process_id]
+    assert template.pattern_pairs is None
+    assert all(member.patterns is None for member in group_map.members())

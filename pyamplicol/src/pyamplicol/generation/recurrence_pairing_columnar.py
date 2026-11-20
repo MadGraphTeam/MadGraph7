@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 """Private fixed-width encoder for external-fermion pairing catalogs.
 
-This module is an intentionally unintegrated staging contract for a future
-Rust recurrence-builder ABI.  It turns :class:`FermionPairingCatalogV1` into
-owned, immutable NumPy structure-of-arrays tables without object dtypes.
+It turns :class:`FermionPairingCatalogV1` into the optional fermion-pairing
+table group of the recurrence builder input (``recurrence_columnar.py``),
+decoded by ``decode_fermion_pairing_input`` in ``rusticol-python``.  The tables
+are owned, immutable NumPy structure-of-arrays tables without object dtypes.
 Variable-length records use contiguous ``u64`` ranges, exact integers use
 signed-magnitude little-endian ``u64`` limbs, and textual model contracts use
 a deterministic UTF-8 catalog.
 
-The leading underscore on the encoder and payload is deliberate.  Consumers
-must not depend on this ABI until a matching Rust decoder is frozen.
+The leading underscore on the encoder and payload is deliberate: only the
+builder input may use them.
 """
 
 from __future__ import annotations

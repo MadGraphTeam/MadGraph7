@@ -799,7 +799,12 @@ class ArtifactManifest:
         return result
 
 
+_PLAIN_LEAVES = frozenset((str, int, float, bool, type(None)))
+
+
 def _plain(value: object) -> Any:
+    if type(value) in _PLAIN_LEAVES:
+        return value
     if isinstance(value, Mapping):
         return {str(key): _plain(item) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):

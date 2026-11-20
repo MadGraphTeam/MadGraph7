@@ -1709,6 +1709,10 @@ impl NativeRuntime {
         let process = selection.public_expression.clone();
         let process_key = selection.requested_id.clone();
         let representative_process_id = selection.process.id.clone();
+        let flavour_union_patterns = selection
+            .process_group
+            .as_ref()
+            .and_then(|group| group.flavour_union_patterns.clone());
         let public_remap = selection.remaps_public_process();
         let nonidentity_permutation = selection
             .external_permutation
@@ -1830,7 +1834,22 @@ impl NativeRuntime {
             point_selector_scratch: PointSelectorExecutionScratch::default(),
             selector_simd_lane_width,
             correlated: None,
+            flavour_union_assignments: None,
+            flavour_union_relabelling: None,
         };
+        if let Some(union) = flavour_union_patterns {
+            match &mut loaded.execution_lane {
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::Recurrence(runtime) => {
+                    runtime.select_flavour_union_patterns(&union.patterns, &union.signs)?;
+                }
+                _ => {
+                    return Err(RusticolError::compatibility(
+                        "flavour-union members require a recurrence-lane template",
+                    ));
+                }
+            }
+        }
         if let Some(path) = model_parameters_path {
             loaded.set_model_parameters_json(path)?;
         }
@@ -1881,7 +1900,7 @@ impl NativeRuntime {
             &physics_v1,
             &evaluator_payload_container,
         )?;
-        Self::finish_dense_load(
+        let mut runtime = Self::finish_dense_load(
             artifact.root().to_path_buf(),
             artifact.manifest().artifact_id.clone(),
             selection,
@@ -1890,7 +1909,9 @@ impl NativeRuntime {
             loaded.common,
             NativeExecutionLane::Recurrence(Box::new(loaded.lane)),
             model_parameters_path,
-        )
+        )?;
+        runtime.attach_flavour_union_assignments(&artifact)?;
+        Ok(runtime)
     }
 
     #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
@@ -1966,6 +1987,15 @@ impl NativeRuntime {
                     .copied()
                     .enumerate()
                     .all(|(index, public_index)| index == public_index);
+            if selection
+                .process_group
+                .as_ref()
+                .is_some_and(|group| group.flavour_union_patterns.is_some())
+            {
+                return Err(RusticolError::compatibility(
+                    "flavour-union members require a recurrence-lane template",
+                ));
+            }
             let loaded = super::on_the_fly_load::load_on_the_fly_native_runtime(
                 &artifact,
                 &evaluator_root,
@@ -2025,6 +2055,8 @@ impl NativeRuntime {
                 point_selector_scratch: PointSelectorExecutionScratch::default(),
                 selector_simd_lane_width: 1,
                 correlated: None,
+                flavour_union_assignments: None,
+                flavour_union_relabelling: None,
             };
             if let Some(path) = model_parameters_path {
                 runtime.set_model_parameters_json(path)?;
@@ -2112,7 +2144,7 @@ impl NativeRuntime {
                 unreachable!("on-the-fly manifests are dispatched before dense physics loading")
             }
         };
-        Self::finish_dense_load(
+        let mut runtime = Self::finish_dense_load(
             artifact.root().to_path_buf(),
             artifact_id,
             selection,
@@ -2121,7 +2153,9 @@ impl NativeRuntime {
             runtime,
             execution_lane,
             model_parameters_path,
-        )
+        )?;
+        runtime.attach_flavour_union_assignments(&artifact)?;
+        Ok(runtime)
     }
 
     pub fn metadata(&self) -> NativeRuntimeMetadata {
@@ -2217,6 +2251,11 @@ impl NativeRuntime {
                 .map(|group| group.representative_process_key.clone()),
             process_group_factor: self.process_group_factor(),
             charge_conjugated: self.charge_conjugated(),
+            flavour_union_member: self.flavour_union_member(),
+            flavour_union_assignment_count: self
+                .flavour_union_assignments
+                .as_ref()
+                .map_or(0, |assignments| assignments.len()),
             color_accuracy: self.runtime.color_accuracy.clone(),
             external_pdg_order: self.runtime.external_pdg_order.clone(),
             external_count: self.runtime.external_count,
@@ -2251,6 +2290,476 @@ impl NativeRuntime {
     /// derived-parameter refresh logic. They are intentionally exposed only as
     /// an internal bridge; f64 evaluation continues to execute entirely in the
     /// Python-independent core.
+    /// Read the template's flavour-union members once a pattern-resolved
+    /// recurrence lane is loaded (template first, then process-groups order).
+    fn attach_flavour_union_assignments(
+        &mut self,
+        artifact: &VerifiedArtifact,
+    ) -> RusticolResult<()> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            let NativeExecutionLane::Recurrence(lane) = &self.execution_lane else {
+                return Ok(());
+            };
+            let Some(pattern_count) = lane.pattern_count() else {
+                return Ok(());
+            };
+            let template = artifact
+                .manifest()
+                .processes
+                .iter()
+                .find(|process| process.id == self.representative_process_id)
+                .ok_or_else(|| {
+                    RusticolError::integrity("flavour-union template left the manifest")
+                })?;
+            let count = template.external_pdgs.len();
+            let initial_count = template
+                .expression
+                .split_once('>')
+                .map(|(initial, _)| initial.split_whitespace().count())
+                .ok_or_else(|| RusticolError::artifact("template expression lacks '>'"))?;
+            let relabelling = NativeUnionRelabelling::new(
+                template.external_pdgs.clone(),
+                initial_count,
+                artifact.flavour_union_pattern_pairs(&template.id)?,
+                pattern_count,
+            )?;
+            let all = (0..pattern_count)
+                .map(|pattern| {
+                    u32::try_from(pattern)
+                        .map_err(|_| RusticolError::artifact("pattern count exceeds u32"))
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let mut assignments = vec![NativeUnionAssignment::new(
+                template.id.clone(),
+                template.expression.clone(),
+                template.external_pdgs.clone(),
+                (0..count).collect(),
+                NativeRationalFactor {
+                    numerator: 1,
+                    denominator: 1,
+                },
+                false,
+                vec![1; all.len()],
+                all,
+                pattern_count,
+            )?];
+            for member in artifact.flavour_union_members(&template.id)? {
+                assignments.push(NativeUnionAssignment::new(
+                    member.process_id,
+                    member.expression,
+                    member.pdgs,
+                    member.permutation,
+                    NativeRationalFactor {
+                        numerator: member.factor_numerator,
+                        denominator: member.factor_denominator,
+                    },
+                    member.conjugated,
+                    member.patterns.signs,
+                    member.patterns.patterns,
+                    pattern_count,
+                )?);
+            }
+            self.flavour_union_assignments = Some(assignments.into());
+            self.flavour_union_relabelling = Some(Box::new(relabelling));
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        let _ = artifact;
+        Ok(())
+    }
+
+    /// Number of cached restricted replay programs (pattern mask, helicity subset).
+    #[doc(hidden)]
+    pub fn restricted_program_cache_len(&self) -> usize {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => runtime.selected_replay_cache_len(),
+            _ => 0,
+        }
+    }
+
+    /// Restricted replay plans built since loading (cache misses).
+    #[doc(hidden)]
+    pub fn restricted_program_builds(&self) -> usize {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => runtime.selected_replay_builds(),
+            _ => 0,
+        }
+    }
+
+    /// Assignments of a loaded pattern-resolved template or member: the
+    /// template (all patterns) first, then its union members.
+    pub fn flavour_union_assignments(&self) -> Option<&[NativeUnionAssignment]> {
+        self.flavour_union_assignments.as_deref()
+    }
+
+    /// Endpoint pairs `[fundamental, antifundamental]` (template slots) per pattern of a
+    /// loaded template, or `None` (not a template, or an artifact without the table).
+    pub fn flavour_union_pattern_pairs(&self) -> Option<&[Vec<[u32; 2]>]> {
+        self.flavour_union_relabelling
+            .as_ref()
+            .and_then(|relabelling| relabelling.pattern_pairs())
+    }
+
+    /// The assignment `assignment` relabelled by a template slot symmetry: the returned
+    /// id evaluated at `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals;
+    /// helicity and flow axes are relabelled accordingly). Patterns map as
+    /// `(f, a) -> (permutation[f], permutation[a])`; factor, signs and conjugation are kept.
+    /// Ids are interned per (assignment, derived patterns) and stay valid; at most
+    /// [`MAX_RELABELLED_ASSIGNMENTS`] are derived per runtime.
+    pub fn relabel_assignment(
+        &mut self,
+        assignment: u32,
+        permutation: &[usize],
+    ) -> RusticolResult<u32> {
+        let (Some(assignments), Some(relabelling)) = (
+            self.flavour_union_assignments.as_ref(),
+            self.flavour_union_relabelling.as_mut(),
+        ) else {
+            return Err(RusticolError::compatibility(
+                "relabelled assignments require a pattern-resolved flavour-union template",
+            ));
+        };
+        let base = assignments.get(assignment as usize).ok_or_else(|| {
+            RusticolError::selector(format!(
+                "unknown flavour-union assignment {assignment} (the template has {})",
+                assignments.len()
+            ))
+        })?;
+        relabelling.validate_symmetry(permutation)?;
+        let derived = base
+            .patterns
+            .iter()
+            .zip(&base.pattern_signs)
+            .map(|(pattern, sign)| Ok((relabelling.map_pattern(*pattern, permutation)?, *sign)))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut own = base
+            .patterns
+            .iter()
+            .copied()
+            .zip(base.pattern_signs.iter().copied())
+            .collect::<Vec<_>>();
+        own.sort_unstable();
+        let mut key = derived.clone();
+        key.sort_unstable();
+        if key == own {
+            return Ok(assignment);
+        }
+        if let Some(id) = relabelling.derived.get(&(assignment, key.clone())) {
+            return Ok(*id);
+        }
+        if relabelling.derived.len() >= MAX_RELABELLED_ASSIGNMENTS {
+            return Err(RusticolError::invalid_argument(format!(
+                "at most {MAX_RELABELLED_ASSIGNMENTS} relabelled assignments per runtime"
+            )));
+        }
+        let id = u32::try_from(assignments.len())
+            .map_err(|_| RusticolError::internal("assignment id exceeds u32"))?;
+        // Member leg perm[r] now reads template slot permutation[r].
+        let mut member_permutation = vec![0; permutation.len()];
+        for (slot, image) in permutation.iter().enumerate() {
+            member_permutation[*image] = base.permutation[slot];
+        }
+        let (patterns, signs): (Vec<u32>, Vec<i32>) = derived.into_iter().unzip();
+        let mut relabelled = NativeUnionAssignment::new(
+            base.process_id.clone(),
+            base.expression.clone(),
+            base.pdgs.clone(),
+            member_permutation,
+            base.factor,
+            base.conjugated,
+            signs,
+            patterns,
+            base.signs.len(),
+        )?;
+        relabelled.relabelled = Some(NativeAssignmentRelabelling {
+            assignment,
+            permutation: permutation.to_vec(),
+        });
+        let mut grown = assignments.to_vec();
+        grown.push(relabelled);
+        relabelling.derived.insert((assignment, key), id);
+        self.flavour_union_assignments = Some(grown.into());
+        Ok(id)
+    }
+
+    pub fn flavour_union_assignments_json(&self) -> RusticolResult<String> {
+        serde_json::to_string(&self.flavour_union_assignments().unwrap_or_default()).map_err(
+            |error| {
+                RusticolError::serialization(format!(
+                    "could not serialize flavour-union assignments: {error}"
+                ))
+            },
+        )
+    }
+
+    /// Evaluate flavour assignments of a pattern-resolved template.
+    ///
+    /// `momenta` are point-major in TEMPLATE slot order. Point `p` requests
+    /// `assignment_ids[request_offsets[p]..request_offsets[p + 1]]` (non-empty,
+    /// duplicates repeat a row); `output` holds one row per request entry in
+    /// order, of width 1, the helicity count, or helicities times flows.
+    /// Per-point selectors and per-flow rows index the loaded runtime's physical
+    /// axes (the template's execution flows); a row of an assignment whose
+    /// `conjugated` differs from the loaded process's holds the charge-conjugate
+    /// physical flow, which callers relabel as a member load does. Points
+    /// are grouped by (pattern mask, selectors); a single-assignment request
+    /// equals loading that member bitwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_assignments_f64_into(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        request_offsets: &[usize],
+        assignment_ids: &[u32],
+        helicity_by_point: Option<&[u32]>,
+        color_by_point: Option<&[u32]>,
+        mode: AssignmentOutputMode,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let assignments = self.flavour_union_assignments.clone().ok_or_else(|| {
+            RusticolError::compatibility(
+                "evaluate_assignments requires a pattern-resolved flavour-union template",
+            )
+        })?;
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        if request_offsets.len() != point_count + 1
+            || request_offsets.first() != Some(&0)
+            || request_offsets.last() != Some(&assignment_ids.len())
+        {
+            return Err(RusticolError::invalid_argument(
+                "assignment request offsets must have point_count + 1 entries from 0 to the id count",
+            ));
+        }
+        if request_offsets.windows(2).any(|pair| pair[1] <= pair[0]) {
+            return Err(RusticolError::invalid_argument(
+                "every point must request at least one assignment",
+            ));
+        }
+        if let Some(id) = assignment_ids
+            .iter()
+            .find(|id| **id as usize >= assignments.len())
+        {
+            return Err(RusticolError::selector(format!(
+                "unknown flavour-union assignment {id} (the template has {})",
+                assignments.len()
+            )));
+        }
+        let physics = self.runtime.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        let helicity_count = physics.manifest.helicities.len();
+        let color_count = physics.manifest.color_components.len();
+        for (values, axis, label) in [
+            (helicity_by_point, helicity_count, "helicity"),
+            (color_by_point, color_count, "color flow"),
+        ] {
+            if let Some(values) = values {
+                if values.len() != point_count {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "{label} selectors must have one entry per point"
+                    )));
+                }
+                if values.iter().any(|value| *value as usize >= axis) {
+                    return Err(RusticolError::selector(format!(
+                        "{label} selector is outside the physical axis"
+                    )));
+                }
+            }
+        }
+        let width = match mode {
+            AssignmentOutputMode::Total => 1,
+            AssignmentOutputMode::PerHelicity => helicity_count,
+            AssignmentOutputMode::PerHelicityFlow => helicity_count * color_count,
+        };
+        if output.len() != assignment_ids.len() * width {
+            return Err(RusticolError::invalid_argument(format!(
+                "assignment output has length {}, expected {}",
+                output.len(),
+                assignment_ids.len() * width
+            )));
+        }
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            let NativeExecutionLane::Recurrence(lane) = &mut self.execution_lane else {
+                return Err(RusticolError::compatibility(
+                    "evaluate_assignments requires a recurrence lane",
+                ));
+            };
+            // Contracted colour runs the whole template per tile: no helicity split.
+            let contracted = lane.is_contracted();
+            if contracted && color_by_point.is_some() {
+                return Err(RusticolError::selector(
+                    "contracted-colour assignments have no colour-flow selector",
+                ));
+            }
+            // Exact request partition: points sharing the program mask and selectors.
+            let mut partitions =
+                BTreeMap::<(Option<u64>, Option<u32>, Option<u32>), Vec<usize>>::new();
+            for point in 0..point_count {
+                let mut mask = Some(0_u64);
+                for id in &assignment_ids[request_offsets[point]..request_offsets[point + 1]] {
+                    mask = match (mask, assignments[*id as usize].mask) {
+                        (Some(left), Some(right)) => Some(left | right),
+                        _ => None,
+                    };
+                }
+                partitions
+                    .entry((
+                        mask.filter(|_| !contracted),
+                        helicity_by_point
+                            .filter(|_| !contracted)
+                            .map(|values| values[point]),
+                        color_by_point.map(|values| values[point]),
+                    ))
+                    .or_default()
+                    .push(point);
+            }
+            let external_values = self.runtime.external_count * 4;
+            let resolved = mode != AssignmentOutputMode::Total;
+            let block = if resolved {
+                helicity_count * color_count
+            } else {
+                1
+            };
+            for ((mask, helicity, color), mut points) in partitions {
+                if contracted {
+                    // Equal requests share tiles: each tile contracts few assignments.
+                    let request = |point: &usize| {
+                        &assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
+                    };
+                    points.sort_by(|left, right| request(left).cmp(request(right)));
+                }
+                let mut requested = points
+                    .iter()
+                    .flat_map(|point| {
+                        assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
+                            .iter()
+                            .copied()
+                    })
+                    .collect::<Vec<_>>();
+                requested.sort_unstable();
+                requested.dedup();
+                let mut gathered = Vec::with_capacity(points.len() * external_values);
+                for point in &points {
+                    gathered.extend_from_slice(
+                        &momenta[point * external_values..(point + 1) * external_values],
+                    );
+                }
+                let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                    &gathered,
+                    points.len(),
+                    self.runtime.external_count,
+                    None,
+                )?;
+                let selected_helicities = helicity.map(|index| {
+                    BTreeSet::from([physics.manifest.helicities[index as usize].id.clone()])
+                });
+                let selected_colors = color.map(|index| {
+                    BTreeSet::from([physics.manifest.color_components[index as usize]
+                        .id()
+                        .to_string()])
+                });
+                let signs = requested
+                    .iter()
+                    .map(|id| &*assignments[*id as usize].signs)
+                    .collect::<Vec<_>>();
+                let mut values = vec![vec![0.0; points.len() * block]; requested.len()];
+                if contracted {
+                    let helicities = helicity_by_point.map(|values| {
+                        points
+                            .iter()
+                            .map(|point| values[*point])
+                            .collect::<Vec<_>>()
+                    });
+                    // Per point its slots in `requested`.
+                    let mut slot_offsets = Vec::with_capacity(points.len() + 1);
+                    let mut slots = Vec::new();
+                    slot_offsets.push(0);
+                    for point in &points {
+                        for id in
+                            &assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
+                        {
+                            slots.push(requested.binary_search(id).expect("requested assignment"));
+                        }
+                        slot_offsets.push(slots.len());
+                    }
+                    let mut outputs = values.iter_mut().map(Vec::as_mut_slice).collect::<Vec<_>>();
+                    lane.run_contracted_pattern_assignments_into(
+                        &mut self.runtime,
+                        batch,
+                        helicities.as_deref(),
+                        Some((slot_offsets.as_slice(), slots.as_slice())),
+                        &signs,
+                        resolved,
+                        &mut outputs,
+                    )?;
+                } else {
+                    let mut outputs = values.iter_mut().map(Vec::as_mut_slice).collect::<Vec<_>>();
+                    lane.run_pattern_assignments_into(
+                        &mut self.runtime,
+                        batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                        mask,
+                        &signs,
+                        resolved,
+                        &mut outputs,
+                    )?;
+                }
+                for (slot, id) in requested.iter().enumerate() {
+                    apply_rational_factor(&mut values[slot], assignments[*id as usize].factor);
+                }
+                for (local, point) in points.iter().enumerate() {
+                    for row in request_offsets[*point]..request_offsets[*point + 1] {
+                        let slot = requested
+                            .binary_search(&assignment_ids[row])
+                            .expect("requested assignment");
+                        let source = &values[slot][local * block..(local + 1) * block];
+                        let target = &mut output[row * width..(row + 1) * width];
+                        match mode {
+                            AssignmentOutputMode::Total | AssignmentOutputMode::PerHelicityFlow => {
+                                target.copy_from_slice(source);
+                            }
+                            AssignmentOutputMode::PerHelicity => {
+                                for (helicity, value) in target.iter_mut().enumerate() {
+                                    *value = source
+                                        [helicity * color_count..(helicity + 1) * color_count]
+                                        .iter()
+                                        .sum();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            let _ = (assignments, physics, width, mode);
+            Err(RusticolError::compatibility(
+                "evaluate_assignments requires a recurrence lane",
+            ))
+        }
+    }
+
+    /// Whether the selection is a flavour-union member: no factor relates it to
+    /// its template's matrix element.
+    pub fn flavour_union_member(&self) -> bool {
+        self.process_group.is_some() && self.flavour_union_pattern_resolved()
+    }
+
+    /// Whether execution sums pairing-rule amplitudes of a flavour-union template.
+    pub fn flavour_union_pattern_resolved(&self) -> bool {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => runtime.is_pattern_resolved(),
+            _ => false,
+        }
+    }
+
     pub fn exact_runtime_state_json(&self) -> Result<String, RusticolError> {
         serde_json::to_string(&serde_json::json!({
             "model_parameter_values": self.runtime.model_parameter_values_f64,
@@ -2264,6 +2773,7 @@ impl NativeRuntime {
                 .map(|group| group.representative_process_key.as_str()),
             "process_group_factor": self.process_group_factor(),
             "charge_conjugated": self.charge_conjugated(),
+            "flavour_union_pattern_resolved": self.flavour_union_pattern_resolved(),
         }))
         .map_err(|error| {
             RusticolError::serialization(format!(

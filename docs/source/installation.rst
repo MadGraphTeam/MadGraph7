@@ -17,6 +17,11 @@ run ``install madspace`` from the MadGraph7 prompt, or see the
 The ``pyamplicol`` package, used by the ``[amplicol]`` matrix-element backend, is
 installed in the same way with ``install pyamplicol``; see the
 :doc:`pyAmpliCol installation instructions <pyamplicol/user/installation>`.
+The model compiled for pyAmpliCol is shared by all outputs through a cache, by
+default ``mg7_models`` in the pyAmpliCol cache directory (``$PYAMPLICOL_CACHE_DIR``,
+otherwise ``~/.cache/pyamplicol`` on Linux and ``~/Library/Caches/pyamplicol`` on
+macOS); set ``MG7_AMPLICOL_MODEL_CACHE`` to another directory, or to ``off`` to
+compile the model in every output.
 
 NinjaRS for MadLoop
 ------------------

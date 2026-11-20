@@ -11,7 +11,11 @@
 #ifndef UMAMI_PROVIDER_HEADER
 #define UMAMI_PROVIDER_HEADER "provider_p0.h"
 #endif
+/* Contributions outside flavour unions omit the trailing (zero) assignment fields. */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include UMAMI_PROVIDER_HEADER
+#pragma GCC diagnostic pop
 
 static void check(UmamiStatus status, char const *operation) {
     if (status != UMAMI_SUCCESS) {

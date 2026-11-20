@@ -6,8 +6,10 @@ Other equivalences require generation certificates or exact structural keys;
 equal masses or parameter defaults are not a proof. The exception is the
 explicit ``--flavor-blind`` assumption: its ungenerated group members are
 exported through their representative's runtime and recorded in
-``grouping.assumptions``. Integration multiplicities live in the JSON, not in
-the C provider.
+``grouping.assumptions``. Flavour-union members are evaluated through their
+template's runtime as assignments (``Runtime.evaluate_assignments``), which
+sum only their own pairing patterns. Integration multiplicities live in the
+JSON, not in the C provider.
 """
 
 from __future__ import annotations
@@ -18,7 +20,9 @@ import math
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from fractions import Fraction
 from itertools import combinations_with_replacement, islice, permutations
+from operator import itemgetter
 from typing import TYPE_CHECKING, Any
 
 from .api_bundle import ApiBundlePayload
@@ -52,6 +56,8 @@ class UmamiProcessInput:
     # Ungenerated group members evaluated through this process's runtime:
     # ME_member(p) = factor * ME_this(q) with q[r] = p[permutation[r]].
     group_members: tuple[GroupMember, ...] = ()
+    # Pattern count of a flavour-union template (its pattern table), if known.
+    union_pattern_count: int | None = None
 
 
 def _records(value: Any) -> list[Mapping[str, Any]]:
@@ -270,6 +276,14 @@ def _color_flow(
     return result
 
 
+def _picker(indices):
+    """The tuple of the values at ``indices`` of a sequence (an itemgetter)."""
+    if len(indices) == 1:
+        index = indices[0]
+        return lambda values: (values[index],)
+    return itemgetter(*indices)
+
+
 def _safe_replay(process: UmamiProcessInput) -> dict[str, tuple[str, tuple[int, ...]]]:
     """Convert certified label maps; weights may fold reflection, not one flow."""
     physics = process.physics
@@ -316,7 +330,7 @@ def _safe_replay(process: UmamiProcessInput) -> dict[str, tuple[str, tuple[int, 
                 perm[i] != i for i, p in enumerate(external) if p["role"] == "initial"
             ):
                 continue
-            if {tuple(h[i] for i in perm) for h in helicities} != helicities:
+            if set(map(_picker(perm), helicities)) != helicities:
                 continue
             word = _word(sector)
             target_ids = [_flow_id(word)]
@@ -580,7 +594,36 @@ def _intern(table: _InternTable, value: Any) -> int:
     return index
 
 
-def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
+def _intern_vector(table: _InternTable, values: list) -> int:
+    """_intern of a flat list (its key is the tuple, as _frozen gives it)."""
+    key = tuple(values)
+    index = table.positions.get(key)
+    if index is None:
+        index = table.positions[key] = len(table)
+        table.append(values)
+    return index
+
+
+def _intern_mappings(data, mappings, helicities) -> int:
+    """The index in ``data["helicity_mappings"]`` of ``mappings`` with their
+    helicities replaced by ``helicities`` (built only when new)."""
+    table = data["helicity_mappings"]
+    key = tuple(
+        (h, m["representative_id"], m["coefficient"], m["structural_zero"])
+        for m, h in zip(mappings, helicities, strict=True)
+    )
+    index = table.positions.get(key)
+    if index is None:
+        index = table.positions[key] = len(table)
+        table.append(
+            [{**m, "helicity": h} for m, h in zip(mappings, helicities, strict=True)]
+        )
+    return index
+
+
+def _identical_orbit(
+    order, flow, pdgs, incoming, helicities, word_size, domains=None
+):
     """An oriented physical colour tensor modulo identical outgoing labels.
 
     Equal keys induce the explicit bijection between the two complete orders.
@@ -605,9 +648,10 @@ def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
         )
 
     def helicity_domain(candidate):
-        return tuple(
-            sorted(tuple(h["values"][slot] for slot in candidate) for h in helicities)
-        )
+        values = _picker(candidate)
+        domain = tuple(sorted(values(h["values"]) for h in helicities))
+        # one object per distinct domain (orbit keys are held to the end)
+        return domain if domains is None else domains.setdefault(domain, domain)
 
     starts = [0]
     if flow is not None and word_size:
@@ -652,10 +696,55 @@ def _add_terms(entry, terms):
             existing["factor"] += term["factor"]
 
 
-def _exported_entry(data, relabel, member, contribution, helicity_groups, mappings):
+def _exported_helicities(data, relabel, helicity_groups, mappings, cache):
+    """The indices of the relabelled helicity groups and mappings of a source,
+    once per relabelling in ``cache``."""
+    if None not in cache:
+        # the distinct helicities of the source, and the groups and mappings by them
+        positions: dict[tuple, int] = {}
+        for group in helicity_groups.values():
+            for values in group:
+                positions.setdefault(tuple(values), len(positions))
+        for mapping in mappings:
+            positions.setdefault(tuple(mapping["helicity"]), len(positions))
+        cache[None] = (
+            list(positions),
+            [[positions[tuple(v)] for v in g] for g in helicity_groups.values()],
+            [positions[tuple(m["helicity"])] for m in mappings],
+        )
+    key = tuple(relabel)
+    if key not in cache:
+        vectors, group_positions, mapping_positions = cache[None]
+        table = data["helicities"]
+        inverse = [0] * len(relabel)
+        for slot, target in enumerate(relabel):
+            inverse[target] = slot
+        # interned in the order of the groups, then of the mappings
+        indices = []
+        for vector in map(_picker(inverse), vectors):
+            index = table.positions.get(vector)
+            if index is None:
+                index = table.positions[vector] = len(table)
+                table.append(list(vector))
+            indices.append(index)
+        groups = [[indices[k] for k in group] for group in group_positions]
+        cache[key] = (
+            _intern(data["helicity_groups"], groups),
+            _intern_mappings(data, mappings, [indices[k] for k in mapping_positions]),
+        )
+    return cache[key]
+
+
+def _exported_entry(
+    data, relabel, member, contribution, helicity_groups, mappings, cache
+):
     """An exported contribution with its final-state legs relabelled; its
-    ``multichannels`` are filled in by _group_phasespace_channels."""
+    ``multichannels`` are filled in by _group_phasespace_channels. ``cache``
+    holds the helicities of the source per relabelling."""
     pdgs, order, flow, runtime = contribution
+    helicities, mappings_index = _exported_helicities(
+        data, relabel, helicity_groups, mappings, cache
+    )
     color_index = (
         None if flow is None else _intern(data["color_flows"], _relabelled(flow, relabel))
     )
@@ -665,25 +754,18 @@ def _exported_entry(data, relabel, member, contribution, helicity_groups, mappin
     return {
         "matrix_elements": [
             {
-                "pdg_ids": _intern(data["pdg_ids"], _relabelled(list(pdgs), relabel)),
+                "pdg_ids": _intern_vector(
+                    data["pdg_ids"], _relabelled(list(pdgs), relabel)
+                ),
                 "factor": 1.0,
             }
         ],
-        "color_order": _intern(data["color_orders"], [relabel[slot] for slot in order]),
+        "color_order": _intern_vector(
+            data["color_orders"], [relabel[slot] for slot in order]
+        ),
         "color_flows": color_index,
-        "helicities": [
-            [_intern(data["helicities"], _relabelled(v, relabel)) for v in group]
-            for group in helicity_groups.values()
-        ],
-        "helicity_mappings": [
-            {
-                **mapping,
-                "helicity": _intern(
-                    data["helicities"], _relabelled(mapping["helicity"], relabel)
-                ),
-            }
-            for mapping in mappings
-        ],
+        "helicities": helicities,
+        "helicity_mappings": mappings_index,
         "runtime": entry_runtime,
         "members": [] if member is None else [member],
         "multichannels": [],
@@ -775,6 +857,7 @@ def _merge_flavour_orbits(data):
                 runtime["color_index"],
                 tuple(runtime["permutation"]),
                 runtime["factor"],
+                runtime.get("_assignment_class"),
                 tuple(data["pdg_ids"][next(iter(pdgs))][:incoming]),
                 tuple(entry["multichannels"]),
             )
@@ -796,20 +879,46 @@ def _merge_flavour_orbits(data):
     data["channels"] = [c for c in data["channels"] if c["processes"]]
 
 
+def _canonical_order(data):
+    """Order entries, their terms and members by physical content, so that the
+    exported order does not depend on how sources were grouped or unions formed."""
+    pdgs = data["pdg_ids"]
+
+    def flow(index):
+        return () if index is None else _frozen(data["color_flows"][index])
+
+    for channel in data["channels"]:
+        for entry in channel["processes"]:
+            entry["matrix_elements"].sort(key=lambda t: tuple(pdgs[t["pdg_ids"]]))
+            entry["members"].sort(
+                key=lambda m: (tuple(m["pdgs"]), flow(m["color_flows"]))
+            )
+        channel["processes"].sort(
+            key=lambda e: (
+                tuple(pdgs[e["matrix_elements"][0]["pdg_ids"]]),
+                flow(e["color_flows"]),
+            )
+        )
+
+
 def _export_helicities(data, runtime_helicities):
     """Map runtime helicities to exported ones, given in the input leg order."""
     entries = [e for c in data["channels"] for e in c["processes"]]
+    # the export of a (runtime process, permutation), shared by its runtimes
+    cache: dict[tuple, list[int]] = {}
     for runtime in [e["runtime"] for e in entries] + [
         m["runtime"] for e in entries for m in e["members"]
     ]:
         permutation = runtime["permutation"]
-        exported = []
-        for values in runtime_helicities[runtime["process_index"]]:
-            ordered = [0] * len(values)
-            for runtime_leg, input_leg in enumerate(permutation):
-                ordered[input_leg] = values[runtime_leg]
-            exported.append(_intern(data["helicities"], ordered))
-        runtime["helicity_export"] = exported
+        key = (runtime["process_index"], tuple(permutation))
+        if key not in cache:
+            exported = cache[key] = []
+            for values in runtime_helicities[runtime["process_index"]]:
+                ordered = [0] * len(values)
+                for runtime_leg, input_leg in enumerate(permutation):
+                    ordered[input_leg] = values[runtime_leg]
+                exported.append(_intern_vector(data["helicities"], ordered))
+        runtime["helicity_export"] = cache[key]  # shared, never modified
 
 
 def build_umami_metadata(
@@ -944,7 +1053,7 @@ def _build_provider(
         assumptions.append(FLAVOR_BLIND_ASSUMPTION)
     data: dict[str, Any] = {
         "kind": "pyamplicol-umami-metadata",
-        "schema_version": 3,
+        "schema_version": 4,
         "provider": {
             "id": provider_id,
             "library": "libumami.so" if single else f"libumami_{provider_id}.so",
@@ -960,6 +1069,9 @@ def _build_provider(
         "color_orders": _InternTable(),
         "color_flows": _InternTable(),
         "helicities": _InternTable(),
+        # the helicity groups and mappings of the process entries, by index
+        "helicity_groups": _InternTable(),
+        "helicity_mappings": _InternTable(),
         "runtime_processes": [],
         "aliases": [],
         "xml_header": (
@@ -967,6 +1079,7 @@ def _build_provider(
         ),
     }
     structural_representatives: dict[str, dict] = {}
+    helicity_domains: dict[tuple, tuple] = {}
     orbit_entries: dict[tuple, tuple[list[tuple[dict, list[int]]], list[int], dict]] = {}
     channel_patterns: dict[tuple, list[int]] = {}
     leg_masses = data["provider"]["masses"]
@@ -1018,6 +1131,50 @@ def _build_provider(
         process_index = runtime_indices[process.process_id]
         source_id, pdgs = process.process_id, process.external_pdgs
         relation = None
+        # Flavour-union templates evaluate every source as an assignment: the
+        # template is 0, its union members follow in process-groups order.
+        union_ids = {
+            m.process_id: index
+            for index, m in enumerate(
+                (m for m in process.group_members if m.patterns is not None), 1
+            )
+        }
+        assignment = None
+        if union_ids:
+            if group_member is None:
+                # all patterns, as an all-same-flavour member: both merge into one entry
+                rules = process.union_pattern_count
+                assignment = (
+                    0,
+                    process.process_id,
+                    ("template",)
+                    if rules is None
+                    else (tuple(range(rules)), (1,) * rules, Fraction(1), False),
+                )
+            elif group_member.patterns is None:
+                raise ValueError(
+                    f"UMAMI flavour-union template {process.process_id!r} has the "
+                    f"non-union member {group_member.process_id!r}"
+                )
+            else:
+                assignment = (
+                    union_ids[group_member.process_id],
+                    group_member.process_id,
+                    (
+                        tuple(group_member.patterns),
+                        tuple(group_member.pattern_signs or ()),
+                        group_member.factor,
+                        group_member.conjugated,
+                    ),
+                )
+        color_axis = {
+            str(c["id"]): i
+            for i, c in enumerate(_records(physics.get("color_components")))
+        }
+        # the source's flavours in runtime slots
+        slot_pdgs = list(process.external_pdgs)
+        if group_member is not None:
+            slot_pdgs = [int(group_member.pdgs[p]) for p in group_member.permutation]
         if group_member is not None:
             # Representative leg r is the member's leg relation[r]: helicity
             # values and colour tags move with it, momenta through the runtime.
@@ -1030,6 +1187,7 @@ def _build_provider(
         # once its final-state legs are relabelled to the channel.
         helicity_groups: dict[str, list[list[int]]] = {}
         helicity_mappings = []
+        helicity_cache: dict[tuple, tuple] = {}
         for h in helicities:
             key = str(h.get("representative_id", h["id"]))
             helicity_groups.setdefault(key, []).append(list(h["values"]))
@@ -1122,6 +1280,17 @@ def _build_provider(
                 blocks = _line_blocks(coloured_slots, roles) if coloured_slots else None
                 line_legs.update(frozenset(block) for block in blocks or ())
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
+            if assignment is not None and any(
+                slot_pdgs[perm[slot]] != slot_pdgs[slot] for slot in identity
+            ):
+                # A replay exchanging slots of different member flavours is no
+                # symmetry of the member: its own flow, computed by union templates.
+                if color.get("computed") is False:
+                    raise ValueError(
+                        f"UMAMI flavour-union member {source_id!r} needs the "
+                        f"uncomputed flow {color_id!r} of its template"
+                    )
+                rep_color, perm = color_id, tuple(identity)
             runtime = {
                 "process_index": process_index,
                 "process_id": process.process_id,
@@ -1130,8 +1299,16 @@ def _build_provider(
                 "permutation": list(perm),
                 "factor": 1.0,
             }
+            if assignment is not None:
+                # The runtime applies the member factor; flows are selected per point.
+                runtime.update(
+                    assignment=assignment[0],
+                    assignment_key=assignment[1],
+                    color_axis=0 if contracted else color_axis[rep_color],
+                    _assignment_class=assignment[2],
+                )
             semantic_key = (process.structural_keys or {}).get(color_id)
-            if semantic_key:
+            if semantic_key and assignment is None:
                 if semantic_key in structural_representatives:
                     runtime = dict(structural_representatives[semantic_key])
                 else:
@@ -1142,7 +1319,8 @@ def _build_provider(
                 runtime = {
                     **runtime,
                     "permutation": [relation[slot] for slot in runtime["permutation"]],
-                    "factor": runtime["factor"] * float(group_member.factor),
+                    "factor": runtime["factor"]
+                    * (1.0 if assignment is not None else float(group_member.factor)),
                 }
             member = {
                 "process_id": source_id,
@@ -1159,6 +1337,7 @@ def _build_provider(
                 incoming,
                 helicities,
                 len(word),
+                helicity_domains,
             )
 
             orbit = (source_id, orbit_key)
@@ -1227,6 +1406,7 @@ def _build_provider(
                     (pdgs, order, flow, runtime),
                     helicity_groups,
                     helicity_mappings,
+                    helicity_cache,
                 )
                 # Its own channel first: the copy is weighted by its density
                 # over those of all its partners, in the copy's legs.
@@ -1282,6 +1462,10 @@ def _build_provider(
             )
     _group_phasespace_channels(data, selectors, phasespace_channels)
     _merge_flavour_orbits(data)
+    _canonical_order(data)
+    for entry in (e for c in data["channels"] for e in c["processes"]):
+        for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
+            runtime.pop("_assignment_class", None)
     _export_helicities(data, runtime_helicities)
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
@@ -1298,7 +1482,14 @@ def _build_provider(
     )
 
     # Convert to plain lists; the interning indices are only needed while building.
-    for name in ("pdg_ids", "color_orders", "color_flows", "helicities"):
+    for name in (
+        "pdg_ids",
+        "color_orders",
+        "color_flows",
+        "helicities",
+        "helicity_groups",
+        "helicity_mappings",
+    ):
         data[name] = list(data[name])
     return data
 
@@ -1306,7 +1497,10 @@ def _build_provider(
 def _json_payload(path: str, value: Any) -> ApiBundlePayload:
     return ApiBundlePayload(
         path,
-        (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n").encode(),
+        (
+            json.dumps(value, separators=(",", ":"), sort_keys=True, allow_nan=False)
+            + "\n"
+        ).encode(),
         "sdk-metadata",
         "application/json",
     )

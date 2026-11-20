@@ -629,8 +629,14 @@ def analyse_process_groups(
 
     root = Path(artifact).expanduser().resolve(strict=True)
     model = _artifact_model(root)
+    # Union pattern ids belong to their template, so union groups never merge.
     processes = sorted(
-        (member.process for member in group_map.representatives if member.generated),
+        (
+            group.representative.process
+            for group in group_map.groups.values()
+            if group.representative.generated
+            and all(member.patterns is None for member in group.members)
+        ),
         key=lambda process: representative_key(process, model.table),
     )
     from .progress import step

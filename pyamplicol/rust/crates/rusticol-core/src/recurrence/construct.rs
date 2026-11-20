@@ -472,7 +472,7 @@ struct PendingCurrent {
 /// Canonical order is owned exclusively by the `currents` vector and ordered
 /// contribution maps. This index is only cloned, queried, inserted into, and
 /// pruned; its randomized iteration order is never observed.
-type TransientCurrentIdIndex = HashMap<CurrentCoreKey, u32>;
+type TransientCurrentIdIndex = HashMap<CurrentCoreKey, u32, crate::fx_hash::FxBuildHasher>;
 
 /// Exact runtime-value identity after erasing only dynamic LC colour.
 ///
@@ -517,6 +517,7 @@ struct PendingProjectedContribution {
 struct ProjectedClosureIdentity {
     target_sector_id: u32,
     complete_source_states: Box<[SourceStateAssignment]>,
+    pattern_id: Option<u32>,
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_projection_ids: Box<[u32]>,
@@ -1114,6 +1115,8 @@ enum GlobalHelicityFlipRule {
 struct PendingClosureKey {
     target_sector_id: u32,
     complete_source_states: Box<[SourceStateAssignment]>,
+    /// Pairing rule of a pattern-resolved (flavour-union) closure.
+    pattern_id: Option<u32>,
     closure_template_id: u32,
     quantum_flow_template_id: Option<u32>,
     parent_current_ids: Box<[u32]>,
@@ -2787,12 +2790,25 @@ impl SectorPosting {
     }
 }
 
+/// Colour contraction template, witness index, parent colour states and reversal mask.
+type ColorCompositionKey = (u32, usize, [DynamicLCColorStateId; 2], u8);
+
+/// Memoised witness application and target acceptance of one parent colour pair.
+#[derive(Clone, Copy, Debug)]
+enum ColorComposition {
+    NoResult,
+    Pruned,
+    Accepted(DynamicLCColorStateId),
+}
+
 #[derive(Debug)]
 struct MaterializedColorTargets {
     collect_telemetry: bool,
     non_trace_fragment_sectors: HashMap<Box<[u32]>, SectorPosting>,
     trace_component_sectors: HashMap<Box<[u32]>, SectorPosting>,
     accepted_component_forests: RefCell<HashSet<Box<[LCColorComponent]>>>,
+    compositions:
+        RefCell<HashMap<ColorCompositionKey, ColorComposition, crate::fx_hash::FxBuildHasher>>,
     acceptance_cache_hit_count: Cell<usize>,
     acceptance_cache_miss_count: Cell<usize>,
     acceptance_accept_count: Cell<usize>,
@@ -2965,12 +2981,21 @@ impl MaterializedColorTargets {
                 sector_count,
             ),
             accepted_component_forests: RefCell::new(HashSet::new()),
+            compositions: RefCell::default(),
             acceptance_cache_hit_count: Cell::new(0),
             acceptance_cache_miss_count: Cell::new(0),
             acceptance_accept_count: Cell::new(0),
             acceptance_reject_count: Cell::new(0),
             fragment_hash_lookup_count: Cell::new(0),
         })
+    }
+
+    fn composition(&self, key: &ColorCompositionKey) -> Option<ColorComposition> {
+        self.compositions.borrow().get(key).copied()
+    }
+
+    fn remember_composition(&self, key: ColorCompositionKey, composition: ColorComposition) {
+        self.compositions.borrow_mut().insert(key, composition);
     }
 
     fn accepts(&self, state: &DynamicLCColorState) -> bool {
@@ -5133,10 +5158,11 @@ fn build_recurrence_program_impl(
     let propagators = propagator_by_state(template_input)?;
     let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
+    let pattern_count = pattern_resolution(strategy, pairing_catalog, &replay_targets)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
-    let mut current_ids = TransientCurrentIdIndex::new();
+    let mut current_ids = TransientCurrentIdIndex::default();
     let mut currents_by_size = vec![Vec::<u32>::new(); process_input.external_legs.len()];
     let mut reflection_certificates = Vec::<PendingReflectionCertificate>::new();
 
@@ -5511,6 +5537,7 @@ fn build_recurrence_program_impl(
             global_helicity_flip_rule
         },
         reflection_certificates,
+        pattern_count,
     )?;
     add_optional_elapsed_nanoseconds(
         &mut telemetry.canonical_emission_nanoseconds,
@@ -6966,8 +6993,17 @@ fn add_transition_contributions(
         None
     };
     let mut result_core_fields = None;
+    let mut realized_pairing_rules: Option<BTreeSet<u32>> = None;
 
-    for prepared_witness in prepared.witnesses.iter() {
+    let parent_color_ids = [
+        currents[parent_ids[0] as usize]
+            .key
+            .dynamic_lc_color_state_id(),
+        currents[parent_ids[1] as usize]
+            .key
+            .dynamic_lc_color_state_id(),
+    ];
+    for (witness_index, prepared_witness) in prepared.witnesses.iter().enumerate() {
         let witness_row = prepared_witness.row;
         if witness_row.left_shape_string_id != parent_colors[0].output_color_shape_id()
             || witness_row.right_shape_string_id != parent_colors[1].output_color_shape_id()
@@ -6981,43 +7017,71 @@ fn add_transition_contributions(
         )?;
         let witness = &prepared_witness.witness;
         for reversal_mask in reversal_masks.iter().copied() {
-            let mut variant_colors = parent_colors.clone();
             let mut reversal_factor = ExactComplexRational::ONE;
             for index in 0..2 {
                 if reversal_mask & (1 << index) == 0 {
                     continue;
                 }
-                variant_colors[index] = variant_colors[index].reversed()?;
                 reversal_factor = reversal_factor.checked_mul(
                     parent_reflections[index]
                         .phase()
                         .expect("reversal mask requires a proven parent phase"),
                 )?;
             }
-            let Some(result_color) = witness.apply(&variant_colors[0], &variant_colors[1])? else {
-                continue;
+            // Composition and target acceptance depend only on this key: memoised per lane.
+            let composition_key = (
+                transition.color_contraction_template_id,
+                witness_index,
+                parent_color_ids,
+                reversal_mask,
+            );
+            let composition = if let Some(composition) = color_targets.composition(&composition_key)
+            {
+                composition
+            } else {
+                let mut variant_colors = parent_colors.clone();
+                for index in 0..2 {
+                    if reversal_mask & (1 << index) != 0 {
+                        variant_colors[index] = variant_colors[index].reversed()?;
+                    }
+                }
+                let composition = match witness.apply(&variant_colors[0], &variant_colors[1])? {
+                    None => ColorComposition::NoResult,
+                    Some(result_color)
+                        if color_targets.accepts_up_to_reflection(&result_color)? =>
+                    {
+                        ColorComposition::Accepted(color_states.intern(result_color)?)
+                    }
+                    Some(_) => ColorComposition::Pruned,
+                };
+                color_targets.remember_composition(composition_key, composition);
+                composition
             };
+            if matches!(composition, ColorComposition::NoResult) {
+                continue;
+            }
             checked_diagnostic_add(
                 &mut diagnostics.color_result_count,
                 1,
                 "recurrence color-result count",
             )?;
-            if !color_targets.accepts_up_to_reflection(&result_color)? {
+            let ColorComposition::Accepted(result_color_id) = composition else {
                 checked_diagnostic_add(
                     &mut diagnostics.color_target_prune_count,
                     1,
                     "recurrence color-target prune count",
                 )?;
                 continue;
-            }
+            };
             let result_reflection = current_reflection_candidate(
-                &result_color,
+                color_states
+                    .get(result_color_id)
+                    .ok_or_else(|| invalid("interned result color state disappeared"))?,
                 &parent_reflections,
                 local_reflection_proof,
             )?;
             #[cfg(feature = "on-the-fly-test-support")]
             let diagnostic_result_reflection = result_reflection.clone();
-            let result_color_id = color_states.intern(result_color)?;
             if merged_support_source_slots.is_none() {
                 *merged_support_source_slots = Some(merged_disjoint_support(
                     currents[parent_ids[0] as usize].key.support_source_slots(),
@@ -7060,18 +7124,30 @@ fn add_transition_contributions(
                 CurrentSourceBinding::None,
                 propagator_template_id,
             )?;
-            let realized_pairing_rule_ids = realized_pairing_rules_for_transition(
-                compatible_pairing_rules_for_current(
-                    pairing_catalog,
-                    template,
-                    transition.result_state_template_id,
-                    key.support_source_slots(),
-                )?,
-                [
-                    &currents[parent_ids[0] as usize].realized_pairing_rule_ids,
-                    &currents[parent_ids[1] as usize].realized_pairing_rule_ids,
-                ],
-            );
+            // Constant per call (result state, merged support, parents): computed once.
+            if realized_pairing_rules.is_none() {
+                realized_pairing_rules = Some(realized_pairing_rules_for_transition(
+                    compatible_pairing_rules_for_current(
+                        pairing_catalog,
+                        template,
+                        transition.result_state_template_id,
+                        key.support_source_slots(),
+                    )?,
+                    [
+                        &currents[parent_ids[0] as usize].realized_pairing_rule_ids,
+                        &currents[parent_ids[1] as usize].realized_pairing_rule_ids,
+                    ],
+                ));
+            }
+            let realized_pairing_rule_ids = realized_pairing_rules
+                .clone()
+                .expect("pairing rules were initialized above");
+            // Pattern-resolved templates never merge currents of different pairing rules.
+            let key = if pairing_catalog.is_some_and(|catalog| catalog.pattern_resolved()) {
+                key.with_pattern_mask(Some(realized_pairing_rule_ids.iter().copied().collect()))
+            } else {
+                key
+            };
             let result_id = if let Some(id) = current_ids.get(&key).copied() {
                 debug_assert_eq!(
                     current_support_keys
@@ -7247,6 +7323,7 @@ pub(super) fn current_key_with_dynamic_color(
         key.source_binding().clone(),
         key.propagator_template_id(),
     )
+    .map(|result| result.with_pattern_mask(key.pattern_mask().map(Box::from)))
 }
 
 pub(super) fn reciprocal_reflection_proof(
@@ -7742,6 +7819,30 @@ fn closure_pairing_certificate_ids(
         }))?
         .map(|rule_id| vec![rule_id])
         .ok_or_else(|| invalid("closure parent lineage realizes no fermion pairing rule")),
+    }
+}
+
+/// Pattern of a pattern-resolved closure: its parents must realize exactly one rule.
+fn closure_pattern_id(
+    currents: &[PendingCurrent],
+    parent_ids: [u32; 2],
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+) -> RusticolResult<Option<u32>> {
+    if !pairing_catalog.is_some_and(|catalog| catalog.pattern_resolved()) {
+        return Ok(None);
+    }
+    let [left, right] = parent_ids.map(|id| &currents[id as usize].realized_pairing_rule_ids);
+    let mut realized = left.intersection(right).copied();
+    match (realized.next(), realized.next()) {
+        (Some(rule_id), None) => Ok(Some(rule_id)),
+        (first, _) => Err(invalid(format!(
+            "pattern-resolved closure realizes {} fermion pairing rules, expected exactly one",
+            if first.is_none() {
+                0
+            } else {
+                left.intersection(right).count()
+            }
+        ))),
     }
 }
 
@@ -8308,6 +8409,7 @@ fn build_bulk_color_union_closures(
                         closure_pairing_certificate_ids(currents, parent_ids, pairing_catalog)?;
                     let pairing_rule =
                         pairing_rule_for_certificate(&pairing_certificate_ids, pairing_catalog)?;
+                    let pattern_id = closure_pattern_id(currents, parent_ids, pairing_catalog)?;
                     for quantum in closure
                         .quantum_flows
                         .iter()
@@ -8410,6 +8512,7 @@ fn build_bulk_color_union_closures(
                                         parents,
                                         process.external_legs.len(),
                                     )?,
+                                    pattern_id,
                                     closure_template_id: closure.row.id,
                                     quantum_flow_template_id: quantum.template_id(),
                                     parent_current_ids: evaluator_parent_ids
@@ -8874,6 +8977,142 @@ fn validate_pending_closure_obligations(
     let Some(pairing_catalog) = pairing_catalog else {
         return Ok(());
     };
+    let rule_ids = pairing_catalog
+        .rules()
+        .iter()
+        .map(|rule| rule.rule_id)
+        .collect::<BTreeSet<_>>();
+    let result = validate_closure_obligations_with_rules(closures, &rule_ids, prepared_sectors);
+    #[cfg(test)]
+    assert_eq!(
+        result.as_ref().map_err(ToString::to_string),
+        validate_pending_closure_obligations_reference(
+            closures,
+            &rule_ids.iter().copied().collect::<Vec<_>>(),
+            prepared_sectors,
+        )
+        .as_ref()
+        .map_err(ToString::to_string),
+    );
+    result
+}
+
+/// One pass over the closure map: keys of one destination (sector, complete
+/// source states) are contiguous and ascending, as in the former per-destination scan.
+fn validate_closure_obligations_with_rules(
+    closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    rule_ids: &BTreeSet<u32>,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+) -> RusticolResult<()> {
+    let mut rows = Vec::<&PendingClosureProofContribution>::new();
+    let mut entries = closures.iter().peekable();
+    while let Some((key, group)) = entries.next() {
+        rows.clear();
+        rows.extend(group.contributions.iter());
+        while let Some(&(next, next_group)) = entries.peek() {
+            if next.target_sector_id != key.target_sector_id
+                || next.complete_source_states != key.complete_source_states
+            {
+                break;
+            }
+            rows.extend(next_group.contributions.iter());
+            entries.next();
+        }
+        validate_closure_destination(key.target_sector_id, &rows, rule_ids, prepared_sectors)?;
+    }
+    Ok(())
+}
+
+fn validate_closure_destination(
+    sector_id: u32,
+    rows: &[&PendingClosureProofContribution],
+    rule_ids: &BTreeSet<u32>,
+    prepared_sectors: &PreparedClosureSectorCatalog,
+) -> RusticolResult<()> {
+    let prepared_sector = prepared_sectors.get(sector_id)?;
+    let sector = prepared_sector.row;
+    let realized_pairings = rows
+        .iter()
+        .flat_map(|row| row.pairing_certificate_ids.iter().copied())
+        .collect::<BTreeSet<_>>();
+    if realized_pairings.is_empty() {
+        return Err(invalid(format!(
+            "closure destination for sector {sector_id} realizes no fermion pairing rule"
+        )));
+    }
+    for pairing_id in &realized_pairings {
+        if !rule_ids.contains(pairing_id) {
+            return Err(invalid(format!(
+                "closure destination for sector {sector_id} references absent pairing rule {pairing_id}"
+            )));
+        }
+    }
+    if sector.kind()? == ProcessLCSectorKind::OpenLines && sector.open_string_range.count == 3 {
+        for pairing_id in realized_pairings.iter().copied() {
+            let matching_rows = rows
+                .iter()
+                .filter(|row| row.pairing_certificate_ids.contains(&pairing_id))
+                .collect::<Vec<_>>();
+            if matching_rows
+                .iter()
+                .any(|row| row.three_line_certificate.is_none())
+            {
+                return Err(invalid(format!(
+                    "three-line closure sector {sector_id} pairing {pairing_id} has an uncertified traversal"
+                )));
+            }
+            let traversal_kinds = matching_rows
+                .into_iter()
+                .map(|row| {
+                    let certificate = row
+                        .three_line_certificate
+                        .as_ref()
+                        .expect("presence checked above");
+                    if certificate.sector_id != sector_id
+                        || certificate.pairing_rule_id != pairing_id
+                    {
+                        return Err(invalid(format!(
+                            "three-line closure sector {sector_id} pairing {pairing_id} \
+                             has a traversal certificate for sector {} pairing {}",
+                            certificate.sector_id, certificate.pairing_rule_id,
+                        )));
+                    }
+                    match u32::from(certificate.kind) {
+                        THREE_LINE_DIRECT_CERTIFICATE_ID | THREE_LINE_PARTNER_CERTIFICATE_ID => {
+                            Ok(u32::from(certificate.kind))
+                        }
+                        kind => Err(invalid(format!(
+                            "three-line closure sector {sector_id} pairing {pairing_id} \
+                             has invalid traversal kind {kind}"
+                        ))),
+                    }
+                })
+                .collect::<RusticolResult<BTreeSet<_>>>()?;
+            if traversal_kinds.is_empty() {
+                return Err(invalid(format!(
+                    "three-line closure sector {sector_id} pairing {pairing_id} \
+                     realizes no certified traversal"
+                )));
+            }
+        }
+    }
+    if prepared_sector.expected_components.len() != sector.open_string_range.count as usize
+        && sector.kind()? == ProcessLCSectorKind::OpenLines
+    {
+        return Err(invalid(
+            "closure obligation open-line component count is inconsistent",
+        ));
+    }
+    Ok(())
+}
+
+/// Former quadratic validator, kept to check the linear pass in tests.
+#[cfg(test)]
+fn validate_pending_closure_obligations_reference(
+    closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    rule_ids: &[u32],
+    prepared_sectors: &PreparedClosureSectorCatalog,
+) -> RusticolResult<()> {
     let destinations = closures
         .keys()
         .map(|key| (key.target_sector_id, key.complete_source_states.clone()))
@@ -8898,11 +9137,7 @@ fn validate_pending_closure_obligations(
             )));
         }
         for pairing_id in &realized_pairings {
-            if pairing_catalog
-                .rules()
-                .iter()
-                .all(|rule| rule.rule_id != *pairing_id)
-            {
+            if rule_ids.iter().all(|rule_id| rule_id != pairing_id) {
                 return Err(invalid(format!(
                     "closure destination for sector {sector_id} references absent pairing rule {pairing_id}"
                 )));
@@ -8995,6 +9230,7 @@ fn add_closure_terms(
     let pairing_certificate_ids =
         closure_pairing_certificate_ids(currents, parent_ids, pairing_catalog)?;
     let pairing_rule = pairing_rule_for_certificate(&pairing_certificate_ids, pairing_catalog)?;
+    let pattern_id = closure_pattern_id(currents, parent_ids, pairing_catalog)?;
     for quantum in closure
         .quantum_flows
         .iter()
@@ -9076,6 +9312,7 @@ fn add_closure_terms(
                     parents,
                     process.external_legs.len(),
                 )?,
+                pattern_id,
                 closure_template_id: closure.row.id,
                 quantum_flow_template_id: quantum.template_id(),
                 parent_current_ids: evaluator_parent_ids.into(),
@@ -9448,6 +9685,7 @@ fn plan_topology_replay_color_projection(
         let identity = ProjectedClosureIdentity {
             target_sector_id: key.target_sector_id,
             complete_source_states: key.complete_source_states.clone(),
+            pattern_id: key.pattern_id,
             closure_template_id: key.closure_template_id,
             quantum_flow_template_id: key.quantum_flow_template_id,
             parent_projection_ids: parent_projection_ids.into_boxed_slice(),
@@ -9641,6 +9879,13 @@ fn projected_current_identity_digest(
             .unwrap_or(MISSING_U32)
             .to_le_bytes(),
     );
+    if let Some(pattern_mask) = key.pattern_mask() {
+        hash_u32_sequence(
+            &mut hash,
+            pattern_mask,
+            "projection-certificate pattern mask",
+        )?;
+    }
     hash_u32_sequence(
         &mut hash,
         &identity.selector_sector_ids,
@@ -9702,6 +9947,10 @@ fn projected_closure_identity_digest(
     for assignment in &identity.complete_source_states {
         hash.update(assignment.source_slot().to_le_bytes());
         hash.update(assignment.state_index().to_le_bytes());
+    }
+    if let Some(pattern_id) = identity.pattern_id {
+        hash.update(b"pattern\0");
+        hash.update(pattern_id.to_le_bytes());
     }
     hash.update(identity.closure_template_id.to_le_bytes());
     hash.update(
@@ -10102,23 +10351,51 @@ fn observe_established_selected_transition_slice(
     Ok(Some((materialized_sector_id, source_states)))
 }
 
+#[cfg(test)]
 fn consume_ordered_closure_destination<I, Row, Destination, Emit>(
     rows: &mut Peekable<I>,
     sector_id: u32,
     source_states: &[SourceStateAssignment],
     destination: Destination,
-    mut emit: Emit,
+    emit: Emit,
 ) -> RusticolResult<()>
 where
     I: Iterator<Item = Row>,
     Destination: for<'row> Fn(&'row Row) -> (u32, &'row [SourceStateAssignment]),
     Emit: FnMut(Row) -> RusticolResult<()>,
 {
+    consume_ordered_pattern_closure_destination(
+        rows,
+        sector_id,
+        source_states,
+        None,
+        |row| {
+            let (sector_id, source_states) = destination(row);
+            (sector_id, source_states, None)
+        },
+        emit,
+    )
+}
+
+fn consume_ordered_pattern_closure_destination<I, Row, Destination, Emit>(
+    rows: &mut Peekable<I>,
+    sector_id: u32,
+    source_states: &[SourceStateAssignment],
+    pattern_id: Option<u32>,
+    destination: Destination,
+    mut emit: Emit,
+) -> RusticolResult<()>
+where
+    I: Iterator<Item = Row>,
+    Destination: for<'row> Fn(&'row Row) -> (u32, &'row [SourceStateAssignment], Option<u32>),
+    Emit: FnMut(Row) -> RusticolResult<()>,
+{
     while let Some(row) = rows.peek() {
-        let (row_sector_id, row_source_states) = destination(row);
+        let (row_sector_id, row_source_states, row_pattern_id) = destination(row);
         let ordering = row_sector_id
             .cmp(&sector_id)
-            .then_with(|| row_source_states.cmp(source_states));
+            .then_with(|| row_source_states.cmp(source_states))
+            .then_with(|| row_pattern_id.cmp(&pattern_id));
         match ordering {
             std::cmp::Ordering::Less => {
                 return Err(invalid(
@@ -10548,6 +10825,7 @@ fn finish_program(
     helicity_support_rule: HelicitySupportRule,
     global_helicity_flip_rule: GlobalHelicityFlipRule,
     reflection_certificates: Vec<PendingReflectionCertificate>,
+    pattern_count: Option<(u32, Option<Box<[u32]>>)>,
 ) -> RusticolResult<RecurrenceProgram> {
     validate_pending_reflection_certificates(&reflection_certificates)?;
 
@@ -10651,7 +10929,13 @@ fn finish_program(
     let destination_keys = pending_closures
         .iter()
         .filter(|(_, group)| !group.exact_factor.is_zero())
-        .map(|(key, _)| (key.target_sector_id, key.complete_source_states.clone()))
+        .map(|(key, _)| {
+            (
+                key.target_sector_id,
+                key.complete_source_states.clone(),
+                key.pattern_id,
+            )
+        })
         .collect::<BTreeSet<_>>();
     let mut closure_terms = Vec::new();
     let mut closure_proof_contributions = Vec::new();
@@ -10766,10 +11050,15 @@ fn finish_program(
         .map(|projection| projection.closures.values().peekable());
     let mut amplitude_destinations = Vec::with_capacity(destination_keys.len());
     let mut destination_ids = BTreeMap::new();
-    for (destination_id, (sector_id, source_states)) in destination_keys.into_iter().enumerate() {
+    for (destination_id, (sector_id, source_states, pattern_id)) in
+        destination_keys.into_iter().enumerate()
+    {
         let destination_id = u32::try_from(destination_id)
             .map_err(|_| invalid("closure destination ID exceeds u32"))?;
-        destination_ids.insert((sector_id, source_states.clone()), destination_id);
+        destination_ids.insert(
+            (sector_id, source_states.clone(), pattern_id),
+            destination_id,
+        );
         let start = closure_terms.len() as u64;
         let target_helicity_id = if source_states.is_empty() {
             None
@@ -10781,14 +11070,16 @@ fn finish_program(
             )
         };
         if let Some(rows) = projected_closure_rows.as_mut() {
-            consume_ordered_closure_destination(
+            consume_ordered_pattern_closure_destination(
                 rows,
                 sector_id,
                 &source_states,
+                pattern_id,
                 |projected| {
                     (
                         projected.identity.target_sector_id,
                         projected.identity.complete_source_states.as_ref(),
+                        projected.identity.pattern_id,
                     )
                 },
                 |projected| {
@@ -10821,11 +11112,18 @@ fn finish_program(
                 },
             )?;
         } else {
-            consume_ordered_closure_destination(
+            consume_ordered_pattern_closure_destination(
                 &mut pending_closure_rows,
                 sector_id,
                 &source_states,
-                |(key, _)| (key.target_sector_id, key.complete_source_states.as_ref()),
+                pattern_id,
+                |(key, _)| {
+                    (
+                        key.target_sector_id,
+                        key.complete_source_states.as_ref(),
+                        key.pattern_id,
+                    )
+                },
                 |(key, group)| {
                     let parents = key
                         .parent_current_ids
@@ -10864,12 +11162,15 @@ fn finish_program(
                 },
             )?;
         }
-        amplitude_destinations.push(RecurrenceAmplitudeDestination::new(
-            destination_id,
-            sector_id,
-            target_helicity_id,
-            CheckedTableRange::new(start, closure_terms.len() as u64 - start),
-        )?);
+        amplitude_destinations.push(
+            RecurrenceAmplitudeDestination::new(
+                destination_id,
+                sector_id,
+                target_helicity_id,
+                CheckedTableRange::new(start, closure_terms.len() as u64 - start),
+            )?
+            .with_pattern_id(pattern_id),
+        );
     }
     if let Some(rows) = projected_closure_rows.as_mut() {
         require_ordered_closure_destinations_exhausted(rows)?;
@@ -10881,7 +11182,11 @@ fn finish_program(
         .filter(|(_, group)| group.exact_factor.is_zero())
     {
         let target_destination_id = destination_ids
-            .get(&(key.target_sector_id, key.complete_source_states.clone()))
+            .get(&(
+                key.target_sector_id,
+                key.complete_source_states.clone(),
+                key.pattern_id,
+            ))
             .copied();
         let target_helicity_id = if key.complete_source_states.is_empty() {
             None
@@ -10927,6 +11232,9 @@ fn finish_program(
     if let Some(certificate) = closure_target_domain_certificate {
         program = program.with_closure_target_domain_certificate(certificate)?;
     }
+    if let Some((pattern_count, replay_maps)) = pattern_count {
+        program = program.with_pattern_count(pattern_count, replay_maps)?;
+    }
     if let Some(projection) = color_projection.as_ref() {
         let body = encode_color_projection_certificate_body(
             &pending,
@@ -10938,6 +11246,86 @@ fn finish_program(
     } else {
         Ok(program)
     }
+}
+
+/// Rule count of a pattern-resolved template and, when replay moves fermion slots, the
+/// rule each replay target maps every representative rule to (target-major).
+fn pattern_resolution(
+    strategy: RecurrenceStrategy,
+    pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
+    replay_targets: &[RecurrenceReplayTarget],
+) -> RusticolResult<Option<(u32, Option<Box<[u32]>>)>> {
+    let Some(catalog) = pairing_catalog.filter(|catalog| catalog.pattern_resolved()) else {
+        return Ok(None);
+    };
+    // Contracted colour combines patterns before contraction; it has no replay here.
+    let contracted =
+        strategy == RecurrenceStrategy::ContractedColorUnion && replay_targets.is_empty();
+    if strategy != RecurrenceStrategy::TopologyReplay && !contracted {
+        return Err(invalid(
+            "pattern-resolved recurrence requires LC topology replay or unreplayed contracted colour",
+        ));
+    }
+    let rule_count = catalog.summary().rule_count();
+    if rule_count == 0 || catalog.rules().len() != rule_count as usize {
+        return Err(invalid(
+            "pattern-resolved recurrence requires a nonempty fermion pairing catalog",
+        ));
+    }
+    let mut rule_pairs = Vec::with_capacity(catalog.rules().len());
+    let mut rule_by_pairs = BTreeMap::new();
+    for (index, rule) in catalog.rules().iter().enumerate() {
+        let mut pairs = catalog
+            .endpoint_pairings(*rule)?
+            .iter()
+            .map(|pair| {
+                (
+                    pair.fundamental_source_slot,
+                    pair.antifundamental_source_slot,
+                )
+            })
+            .collect::<Vec<_>>();
+        pairs.sort_unstable();
+        if rule.rule_id as usize != index
+            || rule_by_pairs.insert(pairs.clone(), rule.rule_id).is_some()
+        {
+            return Err(invalid(
+                "pattern-resolved pairing rules must be numbered in order with distinct pairings",
+            ));
+        }
+        rule_pairs.push(pairs);
+    }
+    // A replay route evaluates the representative at permuted sources, so its rule
+    // (f, a) lands on the target rule (perm[f], perm[a]).
+    let mut maps = Vec::with_capacity(replay_targets.len() * rule_pairs.len());
+    for target in replay_targets {
+        let permutation = target.source_slot_permutation();
+        for pairs in &rule_pairs {
+            let mut mapped = pairs
+                .iter()
+                .map(|(fundamental, antifundamental)| {
+                    Some((
+                        *permutation.get(*fundamental as usize)?,
+                        *permutation.get(*antifundamental as usize)?,
+                    ))
+                })
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| invalid("replay permutation does not cover a pairing endpoint"))?;
+            mapped.sort_unstable();
+            maps.push(*rule_by_pairs.get(&mapped).ok_or_else(|| {
+                invalid("topology replay maps a fermion pairing rule outside the catalog")
+            })?);
+        }
+    }
+    let identity = maps.chunks(rule_pairs.len()).all(|map| {
+        map.iter()
+            .enumerate()
+            .all(|(rule, image)| *image as usize == rule)
+    });
+    Ok(Some((
+        rule_count,
+        (!identity).then(|| maps.into_boxed_slice()),
+    )))
 }
 
 fn helicity_support_rule(
@@ -12761,7 +13149,7 @@ mod tests {
             if reverse_index_insertion {
                 insertion_order.reverse();
             }
-            let mut current_ids = TransientCurrentIdIndex::new();
+            let mut current_ids = TransientCurrentIdIndex::default();
             for current_id in insertion_order {
                 assert!(
                     current_ids
@@ -12804,6 +13192,7 @@ mod tests {
         let key = PendingClosureKey {
             target_sector_id: 119,
             complete_source_states: Vec::new().into_boxed_slice(),
+            pattern_id: None,
             closure_template_id: 3,
             quantum_flow_template_id: Some(5),
             parent_current_ids: vec![7, 9].into_boxed_slice(),
@@ -14794,7 +15183,7 @@ mod tests {
             .intern(DynamicLCColorState::new(0, None, vec![]).unwrap())
             .unwrap();
         let mut currents = Vec::new();
-        let mut current_ids = TransientCurrentIdIndex::new();
+        let mut current_ids = TransientCurrentIdIndex::default();
         let mut currents_by_size = vec![Vec::new(); external_count];
         for slot in 0..external_count as u32 {
             let key = CurrentCoreKey::new(
@@ -14915,6 +15304,7 @@ mod tests {
             HelicitySupportRule::None,
             GlobalHelicityFlipRule::None,
             reflection_certificates,
+            None,
         )
         .unwrap();
         (
@@ -15485,6 +15875,92 @@ mod tests {
         assert_eq!(telemetry.closure_color_attempt_count, 1);
         assert_eq!(telemetry.closure_group_count, 1);
         assert_eq!(telemetry.closure_proof_contribution_count, 1);
+    }
+
+    #[test]
+    fn linear_closure_obligation_validation_matches_reference() {
+        let mut process = scalar_reference_process(2);
+        process
+            .physical_lc_sectors
+            .push(ProcessPhysicalLCSectorRow {
+                sector_id: 1,
+                ..process.physical_lc_sectors[0]
+            });
+        let process_catalog = ProcessCatalog::new(&process).unwrap();
+        let prepared_sectors = PreparedClosureSectorCatalog::new(
+            RecurrenceStrategy::ContractedColorUnion,
+            &process,
+            &process_catalog,
+            &BTreeSet::from([0, 1]),
+        )
+        .unwrap();
+        let rule_ids = BTreeSet::from([1_u32, 2]);
+        let mut seed = 0x9e37_79b9_u64;
+        let mut next = |bound: u32| {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((seed >> 33) % u64::from(bound)) as u32
+        };
+        let mut outcomes = BTreeSet::new();
+        for _ in 0..2000 {
+            let mut closures = BTreeMap::<PendingClosureKey, PendingClosureGroup>::new();
+            for _ in 0..next(10) {
+                let key = PendingClosureKey {
+                    target_sector_id: if next(25) == 0 { 2 } else { next(2) },
+                    complete_source_states: (0..next(2))
+                        .map(|slot| SourceStateAssignment::new(slot, next(2)))
+                        .collect(),
+                    pattern_id: [None, Some(0), Some(1)][next(3) as usize],
+                    closure_template_id: next(3),
+                    quantum_flow_template_id: None,
+                    parent_current_ids: vec![next(3), next(3)].into_boxed_slice(),
+                };
+                let pairing_certificate_ids = match next(40) {
+                    0 => Vec::new(),
+                    1 => vec![3],
+                    _ => vec![1 + next(2)],
+                };
+                closures
+                    .entry(key)
+                    .or_insert_with(|| PendingClosureGroup {
+                        contributions: Vec::new(),
+                        exact_factor: ExactComplexRational::ONE,
+                    })
+                    .contributions
+                    .push(PendingClosureProofContribution {
+                        construction_parent_ids: [0, 1],
+                        construction_parent_permutation: [0, 1],
+                        reconstruction_parent_permutation: [0, 1],
+                        evaluator_parent_permutation: [0, 1],
+                        closure_template_semantic_digest: digest(1),
+                        color_witness_term_id: 0,
+                        color_witness_proof_digest: digest(2),
+                        three_line_certificate: None,
+                        pairing_certificate_ids: pairing_certificate_ids.into_boxed_slice(),
+                        reflection_certificate_id: None,
+                        exact_factor: ExactComplexRational::ONE,
+                    });
+            }
+            let linear =
+                validate_closure_obligations_with_rules(&closures, &rule_ids, &prepared_sectors)
+                    .map_err(|error| error.to_string());
+            let reference = validate_pending_closure_obligations_reference(
+                &closures,
+                &[1, 2],
+                &prepared_sectors,
+            )
+            .map_err(|error| error.to_string());
+            assert_eq!(linear, reference);
+            outcomes.insert(match linear {
+                Ok(()) => "ok",
+                Err(message) if message.contains("absent pairing rule") => "absent rule",
+                Err(message) if message.contains("realizes no fermion pairing") => "no pairing",
+                Err(message) if message.contains("closure sector is absent") => "absent sector",
+                Err(message) => panic!("unexpected validation error {message}"),
+            });
+        }
+        assert_eq!(outcomes.len(), 4, "{outcomes:?}");
     }
 
     #[test]
@@ -16794,6 +17270,7 @@ mod tests {
                 PendingClosureKey {
                     target_sector_id: 0,
                     complete_source_states: Box::new([]),
+                    pattern_id: None,
                     closure_template_id: 0,
                     quantum_flow_template_id: None,
                     parent_current_ids: vec![parent, 0].into_boxed_slice(),
@@ -17083,6 +17560,7 @@ mod tests {
                 PendingClosureKey {
                     target_sector_id: 0,
                     complete_source_states: Box::new([]),
+                    pattern_id: None,
                     closure_template_id: 1,
                     quantum_flow_template_id: None,
                     parent_current_ids: vec![parent, 0].into_boxed_slice(),

@@ -292,7 +292,8 @@ def test_orders_differing_by_equal_mass_final_labels_share_a_channel():
     (data,) = export(process(pdgs=(990, 990, 994, 990), words=words),
                      compiled_model=extended)
     assert len(data["channels"]) == 1
-    first, second = entries(data)
+    # entries in their physical order: the relabelled one first
+    second, first = entries(data)
     pdgs = [data["pdg_ids"][e["matrix_elements"][0]["pdg_ids"]] for e in (first, second)]
     assert pdgs == [[990, 990, 994, 990], [990, 990, 990, 994]]
     assert second["runtime"]["permutation"] == [0, 1, 3, 2]
@@ -424,7 +425,8 @@ def test_identical_open_chains_allow_cyclic_block_rotation():
     assert len(row["members"]) == 2
     # The two outgoing quarks exchange; each directed chain and both beams
     # remain intact, while the complete chain blocks rotate cyclically.
-    assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2, 4]
+    permutations = [m["runtime"]["permutation"] for m in row["members"]]
+    assert permutations == [[0, 1, 3, 2, 4], [0, 1, 2, 3, 4]]
 
 
 @pytest.mark.parametrize("pdgs", [(990,) * 5, (995, 995, 990, 990, 990)])
@@ -673,10 +675,11 @@ def test_only_certified_helicity_equivalences_are_reused(representative):
     h.update(id="h:all-minus", values=[-1] * 4, representative_id=representative)
     p.physics["helicities"].append(h)
     (data,) = export(p)
-    assert entries(data)[0]["helicities"] == (
+    assert data["helicity_groups"][entries(data)[0]["helicities"]] == (
         [[0, 1]] if representative == "h:all-plus" else [[0], [1]]
     )
-    assert entries(data)[0]["helicity_mappings"] == [
+    mappings = data["helicity_mappings"][entries(data)[0]["helicity_mappings"]]
+    assert mappings == [
         {
             "helicity": index,
             "representative_id": "h:all-plus" if index == 0 else representative,

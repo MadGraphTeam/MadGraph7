@@ -19,13 +19,13 @@ use super::direct_helicity_dispatch::{
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
     DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectAmplitudeOrders, DirectClosureRow,
-    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole,
-    DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind,
-    DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
-    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
-    DirectSelectorDomainDescriptor, DirectSourceDispatchVariantDescriptor,
-    DirectSourceEmbeddingRow, DirectSourceProjectionRow, DirectSourceRow,
-    DirectSourceStateAssignment,
+    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation,
+    DirectDestinationPatterns, DirectExecutorRole, DirectFinalizationRow,
+    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
+    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
+    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
+    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
+    DirectSourceRow, DirectSourceStateAssignment,
 };
 use super::helicity_support::{
     AllFlowHelicityMask, AllFlowHelicitySupportProjection, project_all_flow_helicity_support,
@@ -1806,6 +1806,7 @@ fn build_direct_parts(
             &closure_term_orders,
             &closure_drafts,
         )?,
+        destination_patterns: lower_destination_patterns(program)?,
     };
     Ok((parts, relation_report, lowered_helicity_support))
 }
@@ -3522,6 +3523,37 @@ fn intern_closure_factor_block(
     let block = (start, count);
     blocks.insert(coefficients.to_vec(), block);
     Ok(block)
+}
+
+fn lower_destination_patterns(
+    program: &RecurrenceProgram,
+) -> RusticolResult<DirectDestinationPatterns> {
+    let destinations = program.amplitude_destinations();
+    let Some(pattern_count) = program.pattern_count() else {
+        if destinations
+            .iter()
+            .any(|destination| destination.pattern_id().is_some())
+        {
+            return Err(invalid(
+                "pattern-resolved destinations require a program pattern count",
+            ));
+        }
+        return Ok(DirectDestinationPatterns::default());
+    };
+    Ok(DirectDestinationPatterns {
+        pattern_count,
+        replay_pattern_maps: program
+            .replay_pattern_maps()
+            .map_or_else(Vec::new, <[u32]>::to_vec),
+        destination_patterns: destinations
+            .iter()
+            .map(|destination| {
+                destination
+                    .pattern_id()
+                    .ok_or_else(|| invalid("pattern-resolved destination lacks its pattern"))
+            })
+            .collect::<RusticolResult<_>>()?,
+    })
 }
 
 fn lower_amplitude_destinations(

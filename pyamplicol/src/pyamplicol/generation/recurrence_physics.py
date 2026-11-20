@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from itertools import product
+from itertools import chain, product
 from types import SimpleNamespace
 from typing import Any
 
@@ -30,6 +30,7 @@ from ..color import (
     exact_color_contraction_factor,
 )
 from ..color.plan_types import _canonical_open_string_product_key
+from ..color.symmetric_group import build_rectangular_symmetric_group_contraction_plan
 from ..models.base import CouplingOrders, Model, _runtime_particle_parameter_name
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
@@ -702,6 +703,17 @@ def build_recurrence_color_contraction(
     labels_by_slot = {
         leg.source_slot: leg.public_label for leg in logical.external_legs
     }
+    if contraction in {"auto", "symmetric-group-fft"}:
+        fast_plan = _rectangular_recurrence_color_contraction(
+            logical,
+            color_plan,
+            resolved_helicities,
+            contraction_destinations,
+            certified_structural_zero_sector_ids,
+            labels_by_slot,
+        )
+        if fast_plan is not None:
+            return fast_plan
     sectors_by_id = {sector.sector_id: sector for sector in logical.physical_sectors}
     descriptors = []
     for group_id, (sector_id, helicity_id) in enumerate(contraction_destinations):
@@ -768,6 +780,65 @@ def build_recurrence_color_contraction(
             f"could not build recurrence color contraction: {reason or 'unsupported'}"
         )
     return contraction_plan
+
+
+def _rectangular_recurrence_color_contraction(
+    logical: RecurrenceBuilderLogicalInputV1,
+    color_plan: GenericColorPlan,
+    resolved_helicities: Sequence[Sequence[int]],
+    destinations: Sequence[tuple[int, int | None]],
+    certified_structural_zero_sector_ids: Sequence[int],
+    labels_by_slot: Mapping[int, object],
+) -> ColorContractionPlan | None:
+    """Array fast path of the symmetric-group contraction without descriptors.
+
+    ``None`` whenever a check fails: the descriptor path then raises or falls
+    back exactly as before.
+    """
+
+    import numpy as np
+
+    count = len(destinations)
+    sector_count = len(logical.physical_sectors)
+    if count == 0 or sum(map(len, destinations)) != 2 * count:
+        return None
+    try:
+        flat = np.fromiter(chain.from_iterable(destinations), np.int64, 2 * count)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    sectors, helicities = flat[0::2], flat[1::2]
+    if (
+        sectors.min() < 0
+        or sectors.max() >= sector_count
+        or helicities.min() < 0
+        or helicities.max() >= len(resolved_helicities)
+        or any(
+            slot not in labels_by_slot
+            for sector in logical.physical_sectors
+            for slot in sector.word_source_slots
+        )
+    ):
+        return None
+    # Components are grouped by helicity key: the used keys must be distinct.
+    used_helicities = np.flatnonzero(np.bincount(helicities)).tolist()
+    if len(
+        {tuple(int(value) for value in resolved_helicities[h]) for h in used_helicities}
+    ) != len(used_helicities):
+        return None
+    try:
+        owners = recurrence_color_sector_owner_map(
+            logical,
+            set(np.flatnonzero(np.bincount(sectors)).tolist()),
+            set(certified_structural_zero_sector_ids),
+        )
+    except ValueError:
+        return None
+    return build_rectangular_symmetric_group_contraction_plan(
+        color_plan,
+        sectors,
+        helicities,
+        sector_owner_ids=owners,
+    )
 
 
 def build_on_the_fly_color_contraction(

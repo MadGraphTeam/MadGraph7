@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import weakref
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -311,9 +312,7 @@ def build_color_topology_replay_certificate(
         return None
     physical_sector_ids = tuple(sorted(int(sector.id) for sector in color_plan.sectors))
     try:
-        model_contract_digest = _canonical_contract_digest(
-            _canonical_model_replay_contract(model)
-        )
+        model_contract_digest = _model_replay_contract_digest(model)
     except Exception:
         return None
     residual: set[int] = set(physical_sector_ids)
@@ -384,9 +383,7 @@ def build_lc_topology_replay_plan(
         return None
     physical_sector_ids = tuple(sorted(int(sector.id) for sector in color_plan.sectors))
     try:
-        model_contract_digest = _canonical_contract_digest(
-            _canonical_model_replay_contract(model)
-        )
+        model_contract_digest = _model_replay_contract_digest(model)
     except Exception:
         return None
     residual: set[int] = set(physical_sector_ids)
@@ -569,6 +566,26 @@ def _canonical_source_contract(model: Model, leg: object) -> dict[str, object]:
         "role": "initial" if bool(getattr(leg, "is_initial", False)) else "final",
         "source": source.to_json_dict(),
     }
+
+
+_MODEL_CONTRACT_DIGESTS: dict[int, tuple[weakref.ref[Model], str]] = {}
+
+
+def _model_replay_contract_digest(model: Model) -> str:
+    """The model's replay contract digest, computed once per (immutable) model."""
+
+    cached = _MODEL_CONTRACT_DIGESTS.get(id(model))
+    if cached is not None and cached[0]() is model:
+        return cached[1]
+    digest = _canonical_contract_digest(_canonical_model_replay_contract(model))
+    try:
+        reference = weakref.ref(model)
+    except TypeError:
+        return digest
+    if len(_MODEL_CONTRACT_DIGESTS) >= 8:
+        _MODEL_CONTRACT_DIGESTS.clear()
+    _MODEL_CONTRACT_DIGESTS[id(model)] = (reference, digest)
+    return digest
 
 
 def _canonical_model_replay_contract(model: Model) -> dict[str, object]:

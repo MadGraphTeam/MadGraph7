@@ -29,6 +29,9 @@ SEMANTIC_MAP_DOMAINS = {
 }
 # Compiler executables record provenance; they are not members of the artifact payload.
 _DIAGNOSTIC_PATH_FIELDS = frozenset({"compiler_path"})
+# Exact scalar types the traversals below visit without effect (strings excluded).
+_LEAF_TYPES = frozenset((int, float, bool, type(None)))
+_INERT_TYPES = _LEAF_TYPES | {str}
 
 
 @dataclass
@@ -108,6 +111,8 @@ def semantic_map_witnesses(execution: Mapping[str, object]) -> dict[str, object]
         rows: list[dict[str, object]] = []
 
         def visit(value: object, path: str) -> None:
+            if type(value) in _INERT_TYPES:
+                return
             if isinstance(value, Mapping):
                 for raw_key in sorted(value, key=str):
                     key = str(raw_key)
@@ -142,6 +147,8 @@ def _payload_paths(value: object) -> tuple[str, ...]:
     paths: set[str] = set()
 
     def visit(item: object, field: str | None = None) -> None:
+        if type(item) in _LEAF_TYPES:
+            return
         if isinstance(item, Mapping):
             for key, child in item.items():
                 visit(child, str(key))
@@ -170,6 +177,8 @@ def _structural_metrics(value: object) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
 
     def visit(item: object, path: str) -> None:
+        if type(item) in _INERT_TYPES:
+            return
         if isinstance(item, Mapping):
             for raw_key in sorted(item, key=str):
                 key = str(raw_key)

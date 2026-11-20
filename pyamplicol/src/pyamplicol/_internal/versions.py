@@ -68,6 +68,12 @@ SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY = (
     "rusticol.color-contraction.symmetric-group-fft.v1"
 )
 COMPILED_RUNTIME_SELECTORS_CAPABILITY = "rusticol.compiled.runtime-selectors.v1"
+# Runtime feature, not an artifact requirement (Runtime.evaluate_assignments).
+FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY = "rusticol.flavour-union-assignments.v1"
+# Runtime feature: Runtime.relabel_assignment and flavour-union pattern tables.
+FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY = "rusticol.flavour-union-relabelling.v1"
+# Runtime feature: flavour-union templates of contracted (full) colour.
+FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY = "rusticol.flavour-union-contracted-colour.v1"
 COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY = "compiled-plane-arena-v1"
 COMPILED_HELICITY_DUAL_LANE_CAPABILITY = "rusticol.compiled.helicity-dual-lane.v1"
 COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY = (

@@ -1898,6 +1898,96 @@ class Runtime:
         return permutation
 
     @property
+    def flavour_union_assignments(self) -> tuple[Mapping[str, object], ...]:
+        """Flavour assignments of a pattern-resolved union template.
+
+        Assignment 0 is the template (all pairing patterns); the others are its
+        union members with ``process_id``, ``pdgs`` (own leg order),
+        ``permutation`` (template slot -> member leg), ``factor``,
+        ``conjugated``, ``patterns`` and ``pattern_signs``. Empty for other
+        processes.
+        """
+
+        value = getattr(self._backend, "flavour_union_assignments", ())
+        return tuple(value)
+
+    @property
+    def flavour_union_pattern_pairs(
+        self,
+    ) -> tuple[tuple[tuple[int, int], ...], ...] | None:
+        """Per pairing pattern of a union template, its ``(fundamental,
+        antifundamental)`` slot pairs in template slot order; ``None`` for other
+        processes and for artifacts without the table."""
+
+        return getattr(self._backend, "flavour_union_pattern_pairs", None)
+
+    def relabel_assignment(self, assignment: int, permutation: Sequence[int]) -> int:
+        """Id of ``assignment`` relabelled by a template slot symmetry.
+
+        ``permutation`` maps template slots to template slots of the same side
+        and particle. The returned assignment evaluated at momenta ``q`` equals
+        ``assignment`` at ``q'[r] = q[permutation[r]]`` (totals; helicity and flow
+        axes are relabelled). Ids are interned and stay valid for this runtime.
+        """
+
+        relabel = getattr(self._backend, "relabel_assignment", None)
+        if not callable(relabel):
+            raise CompatibilityError(
+                "this runtime cannot relabel flavour-union assignments"
+            )
+        return int(relabel(assignment, permutation))
+
+    def evaluate_assignments(
+        self,
+        momenta: Momenta,
+        assignments: Sequence[Sequence[int]],
+        *,
+        helicity_by_point: Sequence[str | HelicityConfiguration] | None = None,
+        color_flow_by_point: Sequence[str | ColorFlow] | None = None,
+        output: Literal["total", "helicity", "helicity-flow"] = "total",
+        kinematics_improvement: str | None = None,
+        kinematics_improvement_binary64: bool | None = None,
+    ) -> tuple[tuple[object, ...], ...]:
+        """Evaluate flavour assignments of a union template on each point.
+
+        ``momenta`` are in the TEMPLATE's leg order; ``assignments[p]`` lists
+        the assignment ids (see :attr:`flavour_union_assignments`) wanted at
+        point ``p``. Returns per point one entry per requested id: a total,
+        per-helicity values, or ``[helicity][color flow]`` values. A single
+        requested member equals loading that member (bitwise); several share
+        one template evaluation per point. Helicity and flow axes are the
+        loaded runtime's; a row of an assignment conjugated relative to the
+        loaded process holds the charge-conjugate physical flow. The
+        kinematics improvement options are those of :meth:`evaluate`.
+        """
+
+        evaluate = getattr(self._backend, "evaluate_assignments", None)
+        if not callable(evaluate):
+            raise CompatibilityError(
+                "this runtime does not support flavour-union assignments"
+            )
+        return cast(
+            tuple[tuple[object, ...], ...],
+            evaluate(
+                momenta,
+                assignments,
+                helicity_by_point=_point_selector_ids(
+                    helicity_by_point,
+                    expected_type=HelicityConfiguration,
+                    name="helicity_by_point",
+                ),
+                color_flow_by_point=_point_selector_ids(
+                    color_flow_by_point,
+                    expected_type=ColorFlow,
+                    name="color_flow_by_point",
+                ),
+                output=output,
+                kinematics_improvement=kinematics_improvement,
+                kinematics_improvement_binary64=kinematics_improvement_binary64,
+            ),
+        )
+
+    @property
     def process_group_factor(self) -> Fraction:
         """Exact factor relating the selected process to its representative.
 

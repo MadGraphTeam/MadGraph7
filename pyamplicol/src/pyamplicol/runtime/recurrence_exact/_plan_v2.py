@@ -819,9 +819,19 @@ def _validate_contracted_sections(sections: _RecurrenceExactSectionsV1) -> None:
                 f"contracted resolved helicity {index} source rows are not ordered"
             )
 
+    # A flavour-union template repeats a (sector, helicity) consecutively per pattern.
     actual = [
-        (row.target_sector_id, row.target_helicity_id)
-        for row in sections.amplitude_destinations
+        key
+        for index, key in enumerate(
+            (row.target_sector_id, row.target_helicity_id)
+            for row in sections.amplitude_destinations
+        )
+        if index == 0
+        or key
+        != (
+            sections.amplitude_destinations[index - 1].target_sector_id,
+            sections.amplitude_destinations[index - 1].target_helicity_id,
+        )
     ]
     if (
         len(set(actual)) != len(actual)
