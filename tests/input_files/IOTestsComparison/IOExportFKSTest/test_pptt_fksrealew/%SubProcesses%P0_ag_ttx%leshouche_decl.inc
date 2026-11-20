@@ -1,7 +1,1 @@
-      INTEGER MAXPROC_USED, MAXFLOW_USED
-      PARAMETER (MAXPROC_USED=2)
-      PARAMETER (MAXFLOW_USED=4)
-      INTEGER IDUP_D(11,5,MAXPROC_USED)
-      INTEGER MOTHUP_D(11,2,5,MAXPROC_USED)
-      INTEGER ICOLUP_D(11,2,5,MAXFLOW_USED)
-      INTEGER NIPROCS_D(11)
+../../_shared/IOExportFKSTest%test_pptt_fksrealew%%SubProcesses%P0_ag_ttx%leshouche_decl.inc

@@ -60,7 +60,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py testIO_IOTestWrappedWithSetUP testIO_MyHandwrittenIOTest testIO_MyCustomNameIOTestWithPathRegExpr testIO_MyCustomNameIOTestWrapped testIO_MyCustomNameIOTestWrappedWithReturnPath testIO_MySimpleIOTestWrapped -t0
+            ./tests/test_manager.py testIO_IOTestWrappedWithSetUP testIO_MyHandwrittenIOTest testIO_MyCustomNameIOTestWithPathRegExpr testIO_MyCustomNameIOTestWrapped testIO_MyCustomNameIOTestWrappedWithReturnPath testIO_MySimpleIOTestWrapped test_iotest_fortran_comments_are_ignored test_iotest_once_rule_keeps_first_file_of_each_name test_iotest_identical_references_are_shared -t0
 
       # ---- IOtest_fks ----
       # FKS exporter IOTests (from unittest_18_1 and unittest_18_2)
@@ -148,13 +148,13 @@ jobs:
       # ---------------------------------------------------------------------------
       # IOTests from acceptance tests (HEP tools cache required)
       # ---------------------------------------------------------------------------
-      # Acceptance and unit proc output IOTests (from acceptancetest_0)
+      # Acceptance proc output IOTests (from acceptancetest_0). The unit ones
+      # (testIO_UnitProcOutputIOTests) run in IOtest_bundle_1.
       - name: "IOtest_acceptance_proc: test acceptance proc output IO tests"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py testIO_AcceptanceProcOutputIOTests -pA -t0 -l INFO
-            ./tests/test_manager.py testIO_UnitProcOutputIOTests -pA -t0 -l INFO
 
       # ---- IOtest_matchbox ----
       # MatchBox output IOTest (from acceptancetest_77)

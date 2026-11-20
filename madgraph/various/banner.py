@@ -1726,8 +1726,18 @@ class ConfigFile(dict):
         
         return dict.__getitem__(self, name.lower())
 
-    
-    get = __getitem__
+    _no_default = object()
+
+    def get(self, name, default=_no_default):
+        """card[name]. With a default, return it when the card has no such
+        parameter; without one, a missing name raises KeyError (unlike
+        dict.get, which would return None)."""
+        try:
+            return self[name]
+        except KeyError:
+            if default is ConfigFile._no_default:
+                raise
+            return default
 
     def set(self, name, value, changeifuserset=True, user=False, raiseerror=False):
         """convenient way to change attribute.
@@ -8015,8 +8025,6 @@ class RunCardMG7(RunCard):
             raise KeyError("beam.pdf is ambiguous: the beams use different PDF "
                            "sets (%s, %s), read beam.pdf1 / beam.pdf2" % (pdf1, pdf2))
         return pdf1
-
-    get = __getitem__
 
     def __setitem__(self, name, value, *args, **opts):
         """Refuse an unsupported (madspace_)cpu_mode instead of silently falling back.
