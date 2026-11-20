@@ -322,6 +322,8 @@ pub struct FlavourUnionMemberRecord {
     pub factor_denominator: u64,
     pub conjugated: bool,
     pub patterns: FlavourUnionPatterns,
+    /// Crossed member (schema 2): momentum signs sigma and helicity signs rho per template slot.
+    pub crossing: Option<(Vec<i8>, Vec<i8>)>,
 }
 
 /// Selected pairing rules of a pattern-resolved template and their signs.
@@ -2502,6 +2504,8 @@ fn normalize_process_expression(expression: &str) -> String {
 
 const PROCESS_GROUPS_KIND: &str = "pyamplicol-process-groups";
 const PROCESS_GROUPS_SCHEMA_VERSION: u64 = 1;
+/// Written only when a flavour-union member is crossed (carries crossing signs).
+const PROCESS_GROUPS_CROSSING_SCHEMA_VERSION: u64 = 2;
 
 // Unknown keys (`analyses`, `basis`, `warning`, ...) are ignored on purpose.
 #[derive(Deserialize)]
@@ -2538,6 +2542,10 @@ struct ProcessGroupMemberRecord {
     flavour_union_patterns: Option<Vec<u32>>,
     #[serde(default)]
     flavour_union_pattern_signs: Option<Vec<i32>>,
+    #[serde(default)]
+    crossing_momentum_signs: Option<Vec<i32>>,
+    #[serde(default)]
+    crossing_helicity_signs: Option<Vec<i32>>,
 }
 
 #[derive(Deserialize)]
@@ -2569,6 +2577,8 @@ struct ProcessGroupMember {
     factor_denominator: u64,
     conjugated: bool,
     flavour_union_patterns: Option<FlavourUnionPatterns>,
+    /// Crossed flavour-union member: (sigma, rho) per representative slot.
+    crossing: Option<(Vec<i8>, Vec<i8>)>,
 }
 
 impl ProcessGroups {
@@ -2579,7 +2589,10 @@ impl ProcessGroups {
             ))
         })?;
         if document.kind != PROCESS_GROUPS_KIND
-            || document.schema_version != PROCESS_GROUPS_SCHEMA_VERSION
+            || !matches!(
+                document.schema_version,
+                PROCESS_GROUPS_SCHEMA_VERSION | PROCESS_GROUPS_CROSSING_SCHEMA_VERSION
+            )
         {
             return Err(RusticolError::compatibility(format!(
                 "unsupported process-groups payload kind {:?} schema {}",
@@ -2675,6 +2688,13 @@ impl ProcessGroups {
                     }
                 };
                 if member.generated {
+                    if member.crossing_momentum_signs.is_some()
+                        || member.crossing_helicity_signs.is_some()
+                    {
+                        return Err(RusticolError::artifact(format!(
+                            "generated process-group member {id:?} cannot be crossed"
+                        )));
+                    }
                     if !manifest.processes.iter().any(|process| process.id == id) {
                         return Err(RusticolError::artifact(format!(
                             "generated process-group member {id:?} is not a stored process"
@@ -2708,7 +2728,19 @@ impl ProcessGroups {
                     count,
                     &format!("process-group member {id:?}"),
                 )?;
-                if !permutation_preserves_process_sides(&member.permutation, initial_count) {
+                let crossing = member_crossing(
+                    &id,
+                    document.schema_version,
+                    &member.permutation,
+                    initial_count,
+                    member.conjugated,
+                    flavour_union_patterns.is_some(),
+                    member.crossing_momentum_signs,
+                    member.crossing_helicity_signs,
+                )?;
+                if crossing.is_none()
+                    && !permutation_preserves_process_sides(&member.permutation, initial_count)
+                {
                     return Err(RusticolError::artifact(format!(
                         "process-group member {id:?} permutation moves a particle across the '>' boundary"
                     )));
@@ -2740,6 +2772,7 @@ impl ProcessGroups {
                     factor_denominator,
                     conjugated: member.conjugated,
                     flavour_union_patterns,
+                    crossing,
                 });
             }
         }
@@ -2763,6 +2796,7 @@ impl ProcessGroups {
                     factor_denominator: member.factor_denominator,
                     conjugated: member.conjugated,
                     patterns: member.flavour_union_patterns.clone()?,
+                    crossing: member.crossing.clone(),
                 })
             })
             .collect()
@@ -2835,6 +2869,13 @@ impl ProcessGroupMember {
         manifest: &ArtifactManifest,
         public: Option<(&[usize], &str)>,
     ) -> RusticolResult<ArtifactSelection> {
+        if self.crossing.is_some() {
+            return Err(RusticolError::compatibility(format!(
+                "process-group member {:?} is a crossed flavour-union member: evaluate it \
+                 through the assignments of its template {:?}",
+                self.id, self.representative_id
+            )));
+        }
         let process = manifest
             .processes
             .iter()
@@ -3890,6 +3931,82 @@ fn validate_permutation(values: &[usize], size: usize, owner: &str) -> RusticolR
         )));
     }
     Ok(())
+}
+
+/// The crossing signs of a process-group member, admitted only under schema 2 for
+/// an unconjugated flavour-union member whose sigma matches its permutation and
+/// sides, with rho = +1 wherever sigma = +1; `None` for an uncrossed member.
+#[allow(clippy::too_many_arguments)]
+fn member_crossing(
+    id: &str,
+    schema_version: u64,
+    permutation: &[usize],
+    initial_count: usize,
+    conjugated: bool,
+    flavour_union: bool,
+    momentum_signs: Option<Vec<i32>>,
+    helicity_signs: Option<Vec<i32>>,
+) -> RusticolResult<Option<(Vec<i8>, Vec<i8>)>> {
+    let invalid = |reason: &str| {
+        Err(RusticolError::artifact(format!(
+            "process-group member {id:?} {reason}"
+        )))
+    };
+    let (momentum_signs, helicity_signs) = match (momentum_signs, helicity_signs) {
+        (None, None) => return Ok(None),
+        (Some(momentum), Some(helicity)) => (momentum, helicity),
+        _ => return invalid("needs both crossing sign vectors or neither"),
+    };
+    if schema_version != PROCESS_GROUPS_CROSSING_SCHEMA_VERSION {
+        return invalid("carries crossing signs under process-groups schema 1");
+    }
+    if !flavour_union {
+        return invalid("is crossed but not a flavour-union member");
+    }
+    if conjugated {
+        return invalid("cannot be both crossed and conjugated");
+    }
+    let count = permutation.len();
+    if momentum_signs.len() != count
+        || helicity_signs.len() != count
+        || momentum_signs
+            .iter()
+            .chain(&helicity_signs)
+            .any(|sign| !matches!(sign, -1 | 1))
+    {
+        return invalid("needs one crossing sign of +1 or -1 per leg");
+    }
+    let derived = permutation
+        .iter()
+        .enumerate()
+        .map(|(slot, leg)| {
+            if (slot < initial_count) == (*leg < initial_count) {
+                1
+            } else {
+                -1
+            }
+        })
+        .collect::<Vec<i32>>();
+    if momentum_signs != derived {
+        return invalid("has crossing momentum signs that disagree with its permutation and sides");
+    }
+    if !momentum_signs.contains(&-1) {
+        return invalid("carries crossing signs but is not crossed");
+    }
+    if momentum_signs
+        .iter()
+        .zip(&helicity_signs)
+        .any(|(sigma, rho)| *sigma == 1 && *rho != 1)
+    {
+        return invalid("flips a helicity on an uncrossed slot");
+    }
+    let narrow = |signs: Vec<i32>| {
+        signs
+            .into_iter()
+            .map(|sign| if sign < 0 { -1 } else { 1 })
+            .collect()
+    };
+    Ok(Some((narrow(momentum_signs), narrow(helicity_signs))))
 }
 
 fn permutation_preserves_process_sides(values: &[usize], initial_count: usize) -> bool {

@@ -226,6 +226,11 @@ def test_relabelled_assignments_equal_member_loads(artifact: Path) -> None:
                 if derived != index:
                     # interned: the first symmetry giving these patterns
                     assert entry["relabelled"]["assignment"] == index
+                if int(entry.get("crossing", 0)):
+                    # No member load; test_flavour_union_crossing.py is the oracle.
+                    with pytest.raises(Exception, match="crossed flavour-union"):
+                        Runtime.load(artifact, process=str(entry["process_id"]))
+                    continue
                 member = Runtime.load(artifact, process=str(entry["process_id"]))
                 member_expression = str(entry["expression"])
                 points = [_point(member_expression, a) for a in (0.2, 1.4)]

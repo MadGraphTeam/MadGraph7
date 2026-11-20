@@ -1534,9 +1534,14 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_selected_f64(
 /// follow [`rusticol_runtime_evaluate_selected_f64`]; colour indices and flow columns are the
 /// loaded runtime's (the template's execution flows), so the physical flow of a row whose
 /// assignment conjugation differs from the loaded process's is the charge conjugate (see
-/// [`rusticol_runtime_assignment_conjugated`]). A single-assignment request equals
-/// loading that member bitwise. Requires the `rusticol.flavour-union-assignments.v1`
-/// runtime capability.
+/// [`rusticol_runtime_assignment_conjugated`]). A crossed assignment takes
+/// `q[r] = sigma_r * p_member[pi_r]` ([`rusticol_runtime_assignment_momentum_signs`]):
+/// energies are checked to be negative exactly where sigma_r = -1, one point requests one
+/// crossing, and helicity indices stay template axes
+/// ([`rusticol_runtime_assignment_helicity_vector`]). A single-assignment request equals
+/// the template evaluated at `sigma * p` and, for an uncrossed member, loading that member
+/// bitwise. The binary64 kinematics improvement refuses crossed assignments. Requires the
+/// `rusticol.flavour-union-assignments.v1` runtime capability (crossing: `.v2`).
 ///
 /// # Safety
 ///
@@ -1616,6 +1621,15 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_assignments_f64(
         validate_f64_output(output, output_capacity, required, "assignment output")?;
         // SAFETY: Non-null with at least `required` writable values.
         let output = unsafe { slice::from_raw_parts_mut(output, required) };
+        // The improvement works in the template's physical frame: never at signed momenta.
+        if kinematics_improvement::applies(handle.kinematics, handle.kinematics_binary64, true)
+            .is_some()
+            && handle.runtime.flavour_union_assignments_crossed(ids)
+        {
+            return Err(invalid(
+                "the binary64 kinematics improvement does not support crossed flavour-union assignments",
+            ));
+        }
         let momenta = handle.improved(momenta, point_count)?;
         handle
             .runtime
@@ -1773,6 +1787,162 @@ pub unsafe extern "C" fn rusticol_runtime_assignment_permutation(
         // SAFETY: Capacity was checked and usize matches C size_t.
         unsafe { ptr::copy_nonoverlapping(permutation.as_ptr(), output, permutation.len()) };
         Ok(())
+    })
+}
+
+/// Writes the interned crossing id of one flavour assignment (0: uncrossed; requires
+/// `rusticol.flavour-union-assignments.v2`).
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live. `crossing` must be writable for one `uint32_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_crossing(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    crossing: *mut u32,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let value = union_assignment(handle, index)?.crossing;
+        if crossing.is_null() {
+            return Err(invalid("assignment crossing is null"));
+        }
+        // SAFETY: Checked non-null.
+        unsafe { *crossing = value };
+        Ok(())
+    })
+}
+
+/// Copies `values` to a caller buffer as `int32_t`, `required` receiving the count.
+unsafe fn write_sign_vector(
+    values: &[i32],
+    output: *mut i32,
+    capacity: size_t,
+    required: *mut size_t,
+    name: &str,
+) -> AbiResult<()> {
+    unsafe { write_size(values.len(), required, name)? };
+    if output.is_null() {
+        return if capacity == 0 {
+            Ok(())
+        } else {
+            Err(invalid(format!("{name} output is null")))
+        };
+    }
+    if capacity < values.len() {
+        return Err(buffer_too_small(format!("{name} capacity is too small")));
+    }
+    // SAFETY: Capacity was checked.
+    unsafe { ptr::copy_nonoverlapping(values.as_ptr(), output, values.len()) };
+    Ok(())
+}
+
+fn assignment_crossing(
+    handle: &RusticolRuntimeHandle,
+    index: size_t,
+) -> AbiResult<&rusticol_core::NativeUnionCrossing> {
+    union_assignment(handle, index)?;
+    handle
+        .runtime
+        .flavour_union_crossing(index)
+        .ok_or_else(|| invalid(format!("flavour-union assignment {index} has no crossing")))
+}
+
+/// Copies the momentum signs sigma of one flavour assignment in template slot order
+/// (`q[r] = sigma_r * p_member[permutation[r]]`; all +1 when uncrossed; requires
+/// `rusticol.flavour-union-assignments.v2`).
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_assignment_pdgs`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_momentum_signs(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    output: *mut i32,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let signs = assignment_crossing(handle, index)?
+            .momentum_signs
+            .iter()
+            .map(|sign| i32::from(*sign))
+            .collect::<Vec<_>>();
+        unsafe {
+            write_sign_vector(
+                &signs,
+                output,
+                capacity,
+                required,
+                "assignment momentum sign",
+            )
+        }
+    })
+}
+
+/// Copies the helicity signs rho of one flavour assignment in template slot order
+/// (member helicity `lambda[permutation[r]] = rho_r * lambda_template[r]`; requires
+/// `rusticol.flavour-union-assignments.v2`).
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_assignment_pdgs`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_helicity_signs(
+    handle: *const RusticolRuntimeHandle,
+    index: size_t,
+    output: *mut i32,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let signs = assignment_crossing(handle, index)?
+            .helicity_signs
+            .iter()
+            .map(|sign| i32::from(*sign))
+            .collect::<Vec<_>>();
+        unsafe {
+            write_sign_vector(
+                &signs,
+                output,
+                capacity,
+                required,
+                "assignment helicity sign",
+            )
+        }
+    })
+}
+
+/// Copies helicity `helicity_index` of the loaded runtime's axis in the assignment's own
+/// leg order: `output[permutation[r]] = rho_r * values[r]` (requires
+/// `rusticol.flavour-union-assignments.v2`).
+///
+/// # Safety
+///
+/// As [`rusticol_runtime_assignment_pdgs`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_assignment_helicity_vector(
+    handle: *const RusticolRuntimeHandle,
+    assignment: size_t,
+    helicity_index: size_t,
+    output: *mut i32,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let values = handle
+            .runtime
+            .flavour_union_assignment_helicity(assignment, helicity_index)?;
+        unsafe { write_sign_vector(&values, output, capacity, required, "assignment helicity") }
     })
 }
 

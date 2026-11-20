@@ -420,11 +420,15 @@ int rusticol_runtime_evaluate_selected_f64(
  * axes, labelled by rusticol_runtime_helicity_id/color_id in the loaded
  * process's legs; colour j is the template's execution flow j, so a row whose
  * assignment is conjugated relative to the loaded process holds the charge
- * conjugate physical flow. A single-assignment request equals loading that
- * member bitwise. Energies are finite and nonzero, negative exactly on the
- * template slots that the requested assignment's permutation moves across the
- * initial/final split (none in generated artifacts, so all positive there);
- * all assignments requested at one point must share that crossing.
+ * conjugate physical flow. Momenta of a crossed assignment are
+ * q[r] = sigma_r * p_member[permutation[r]] (sigma from
+ * rusticol_runtime_assignment_momentum_signs): energies are finite and nonzero,
+ * negative exactly where sigma_r = -1, and all assignments requested at one
+ * point must share that crossing. Helicity and colour indices stay template
+ * axes; rusticol_runtime_assignment_helicity_vector gives a helicity in the
+ * member's legs (rho applied). A single-assignment request equals the template
+ * evaluated at sigma * p and, for an uncrossed member, loading that member
+ * bitwise. The binary64 kinematics improvement refuses crossed assignments.
  */
 int rusticol_runtime_evaluate_assignments_f64(
     RusticolRuntimeHandle *handle,
@@ -479,6 +483,47 @@ int rusticol_runtime_assignment_permutation(
     const RusticolRuntimeHandle *handle,
     size_t index,
     size_t *output,
+    size_t capacity,
+    size_t *required
+);
+
+/*
+ * Crossing (runtime capability "rusticol.flavour-union-assignments.v2").
+ * crossing is the interned crossing id (0: uncrossed). momentum_signs copies
+ * sigma and helicity_signs rho, one per template slot: the member is the
+ * template at q[r] = sigma_r * p_member[permutation[r]] with member helicity
+ * lambda[permutation[r]] = rho_r * lambda_template[r] (both all +1 when
+ * uncrossed). helicity_vector copies helicity helicity_index of the loaded
+ * runtime's axis in the assignment's own legs: out[permutation[r]] =
+ * rho_r * values[r].
+ */
+int rusticol_runtime_assignment_crossing(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    uint32_t *crossing
+);
+
+int rusticol_runtime_assignment_momentum_signs(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    int32_t *output,
+    size_t capacity,
+    size_t *required
+);
+
+int rusticol_runtime_assignment_helicity_signs(
+    const RusticolRuntimeHandle *handle,
+    size_t index,
+    int32_t *output,
+    size_t capacity,
+    size_t *required
+);
+
+int rusticol_runtime_assignment_helicity_vector(
+    const RusticolRuntimeHandle *handle,
+    size_t assignment,
+    size_t helicity_index,
+    int32_t *output,
     size_t capacity,
     size_t *required
 );

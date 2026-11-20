@@ -262,6 +262,11 @@ def test_assignments_equal_member_loads_and_own_programs(
         template = Runtime.load(artifacts["union"], process=template_id)
         helicity_ids = list(template.physics.helicity_ids)
         for index, entry in enumerate(template.flavour_union_assignments):
+            if int(entry.get("crossing", 0)):
+                # No member load; test_flavour_union_crossing.py is the oracle.
+                with pytest.raises(Exception, match="crossed flavour-union"):
+                    Runtime.load(artifacts["union"], process=str(entry["process_id"]))
+                continue
             expression = str(entry["expression"])
             points = [_point(expression, angle) for angle in (0.0, 0.7, 2.1)]
             permutation = [int(value) for value in entry["permutation"]]

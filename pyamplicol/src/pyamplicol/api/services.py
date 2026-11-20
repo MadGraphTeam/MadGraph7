@@ -1904,8 +1904,9 @@ class Runtime:
         Assignment 0 is the template (all pairing patterns); the others are its
         union members with ``process_id``, ``pdgs`` (own leg order),
         ``permutation`` (template slot -> member leg), ``factor``,
-        ``conjugated``, ``patterns`` and ``pattern_signs``. Empty for other
-        processes.
+        ``conjugated``, ``patterns``, ``pattern_signs``, ``crossing`` (interned
+        id, 0 when uncrossed), ``momentum_signs`` (sigma) and ``helicity_signs``
+        (rho) per template slot. Empty for other processes.
         """
 
         value = getattr(self._backend, "flavour_union_assignments", ())
@@ -1953,12 +1954,16 @@ class Runtime:
         ``momenta`` are in the TEMPLATE's leg order; ``assignments[p]`` lists
         the assignment ids (see :attr:`flavour_union_assignments`) wanted at
         point ``p``. Returns per point one entry per requested id: a total,
-        per-helicity values, or ``[helicity][color flow]`` values. A single
-        requested member equals loading that member (bitwise); several share
-        one template evaluation per point. Helicity and flow axes are the
-        loaded runtime's; a row of an assignment conjugated relative to the
-        loaded process holds the charge-conjugate physical flow. The
-        kinematics improvement options are those of :meth:`evaluate`.
+        per-helicity values, or ``[helicity][color flow]`` values. A crossed
+        assignment takes ``q[r] = momentum_signs[r] * p_member[permutation[r]]``
+        (energies negative exactly there; one crossing per point). A single
+        requested assignment equals the template evaluated at those momenta
+        and, for an uncrossed member, loading that member (bitwise); several
+        share one template evaluation per point. Helicity and flow axes are the
+        loaded runtime's (member helicities via ``helicity_signs``); a row of an
+        assignment conjugated relative to the loaded process holds the
+        charge-conjugate physical flow. The kinematics improvement options are
+        those of :meth:`evaluate` and refuse crossed assignments.
         """
 
         evaluate = getattr(self._backend, "evaluate_assignments", None)

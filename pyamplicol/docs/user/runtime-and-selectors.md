@@ -169,8 +169,12 @@ with an energy that is not finite and positive: a massless quark source
 fed a negated momentum is the crossed state rather than zero. For
 `evaluate_assignments`, energies are negative exactly on the template
 slots that the requested assignment moves across the initial/final split
-(none for generated artifacts), and one point may not request
-assignments of different crossings.
+(its `momentum_signs`, -1 there), and one point may not request
+assignments of different crossings. A crossed assignment takes
+`q[r] = momentum_signs[r] * p_member[permutation[r]]`; its helicity
+axis stays the template's, and the member's helicity on leg
+`permutation[r]` is `helicity_signs[r]` times the template's on slot `r`.
+The binary64 kinematics improvement refuses crossed assignments.
 
 The CLI reads the same shape from JSON:
 

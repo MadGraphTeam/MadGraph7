@@ -3074,6 +3074,182 @@ fn invalid_process_group_maps_are_rejected() {
     );
 }
 
+/// A flavour-union member of `d d~ > a g` crossed to `d a > d g` (schema 2).
+fn crossed_union_member() -> Value {
+    let mut member = process_group_member(
+        "d_a_crossed",
+        "d a > d g",
+        json!([1, 22, 1, 21]),
+        json!([0, 2, 1, 3]),
+        (3, 8),
+        false,
+    );
+    member["basis"] = json!("flavour-union");
+    member["flavour_union_patterns"] = json!([0]);
+    member["flavour_union_pattern_signs"] = json!([1]);
+    member["crossing_momentum_signs"] = json!([1, -1, -1, 1]);
+    member["crossing_helicity_signs"] = json!([1, -1, 1, 1]);
+    member
+}
+
+fn crossing_document(member: Value, schema: u64) -> Value {
+    let mut document = process_groups_document(vec![member]);
+    document["schema_version"] = json!(schema);
+    document
+}
+
+#[test]
+fn crossed_union_members_load_under_schema_2_and_refuse_selection() {
+    let artifact = process_group_artifact(&crossing_document(crossed_union_member(), 2));
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    let members = verified.flavour_union_members("p0").unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].permutation, [0, 2, 1, 3]);
+    assert_eq!(
+        members[0].crossing,
+        Some((vec![1, -1, -1, 1], vec![1, -1, 1, 1]))
+    );
+    // Reachable only as a template assignment: by id, expression and side permutation.
+    for selector in ["d_a_crossed", "d a > d g", "a d > g d"] {
+        let error = verified.select_process(Some(selector)).unwrap_err();
+        assert_eq!(
+            error.kind(),
+            crate::RusticolErrorKind::Compatibility,
+            "{selector}: {error}"
+        );
+        assert!(error.to_string().contains("crossed flavour-union member"));
+    }
+    // The template itself and the crossing-only refusal of stored processes stay.
+    assert_eq!(verified.select_process(Some("p0")).unwrap().requested_id, "p0");
+    let crossing = verified.select_process(Some("d~ a > d~ g")).unwrap_err();
+    assert_eq!(crossing.kind(), crate::RusticolErrorKind::Selector);
+
+    // Schema 2 without any crossed member is accepted as well.
+    let mut plain = crossed_union_member();
+    plain["process"] = json!("d d~ > a g");
+    plain["pdgs"] = json!([1, -1, 22, 21]);
+    plain["permutation"] = json!([0, 1, 2, 3]);
+    plain["process_id"] = json!("plain_member");
+    let object = plain.as_object_mut().unwrap();
+    object.remove("crossing_momentum_signs");
+    object.remove("crossing_helicity_signs");
+    let artifact = process_group_artifact(&crossing_document(plain, 2));
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    assert_eq!(verified.flavour_union_members("p0").unwrap()[0].crossing, None);
+}
+
+#[test]
+fn inconsistent_crossed_members_are_rejected() {
+    let with = |edit: &dyn Fn(&mut Value)| {
+        let mut member = crossed_union_member();
+        edit(&mut member);
+        member
+    };
+    let cases = [
+        (
+            crossing_document(crossed_union_member(), 1),
+            "schema 1",
+        ),
+        (
+            crossing_document(crossed_union_member(), 3),
+            "unsupported process-groups payload",
+        ),
+        (
+            crossing_document(
+                with(&|m| {
+                    m.as_object_mut().unwrap().remove("crossing_helicity_signs");
+                }),
+                2,
+            ),
+            "both crossing sign vectors",
+        ),
+        (
+            crossing_document(
+                with(&|m| {
+                    let object = m.as_object_mut().unwrap();
+                    object.remove("crossing_momentum_signs");
+                    object.remove("crossing_helicity_signs");
+                }),
+                2,
+            ),
+            "'>' boundary",
+        ),
+        (
+            crossing_document(
+                with(&|m| m["crossing_momentum_signs"] = json!([1, 1, -1, -1])),
+                2,
+            ),
+            "disagree with its permutation",
+        ),
+        (
+            crossing_document(
+                with(&|m| m["crossing_helicity_signs"] = json!([-1, -1, 1, 1])),
+                2,
+            ),
+            "uncrossed slot",
+        ),
+        (
+            crossing_document(
+                with(&|m| m["crossing_helicity_signs"] = json!([1, 2, 1, 1])),
+                2,
+            ),
+            "+1 or -1",
+        ),
+        (
+            crossing_document(
+                with(&|m| m["crossing_momentum_signs"] = json!([1, -1, -1])),
+                2,
+            ),
+            "+1 or -1",
+        ),
+        (
+            crossing_document(with(&|m| m["conjugated"] = json!(true)), 2),
+            "crossed and conjugated",
+        ),
+        (
+            crossing_document(
+                with(&|m| {
+                    let object = m.as_object_mut().unwrap();
+                    object.remove("flavour_union_patterns");
+                    object.remove("flavour_union_pattern_signs");
+                    object.insert("basis".into(), json!("flavor-blind"));
+                }),
+                2,
+            ),
+            "not a flavour-union member",
+        ),
+        (
+            crossing_document(
+                with(&|m| {
+                    m["permutation"] = json!([0, 1, 2, 3]);
+                    m["process"] = json!("d d~ > a g");
+                    m["pdgs"] = json!([1, -1, 22, 21]);
+                    m["crossing_momentum_signs"] = json!([1, 1, 1, 1]);
+                    m["crossing_helicity_signs"] = json!([1, 1, 1, 1]);
+                }),
+                2,
+            ),
+            "not crossed",
+        ),
+    ];
+    for (document, expected) in cases {
+        let artifact = process_group_artifact(&document);
+        let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+        let error = verified.select_process(Some("d_a_crossed")).unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "{expected:?} not in {error}"
+        );
+    }
+    // The representative itself cannot carry crossing signs.
+    let mut document = crossing_document(crossed_union_member(), 2);
+    document["groups"][0]["members"][0]["crossing_momentum_signs"] = json!([1, 1, 1, 1]);
+    let artifact = process_group_artifact(&document);
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    let error = verified.select_process(Some("d_a_crossed")).unwrap_err();
+    assert!(error.to_string().contains("cannot be crossed"), "{error}");
+}
+
 #[test]
 fn ambiguous_process_group_member_expressions_list_member_ids() {
     let document = process_groups_document(vec![

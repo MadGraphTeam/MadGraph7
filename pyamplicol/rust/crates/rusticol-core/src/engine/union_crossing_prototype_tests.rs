@@ -23,7 +23,13 @@ fn push_test_assignment(
         .as_ref()
         .expect("a pattern-resolved template");
     let pattern_count = assignments[0].signs.len();
-    let assignment = NativeUnionAssignment::new(
+    let crossing = runtime
+        .flavour_union_relabelling
+        .as_mut()
+        .expect("template crossing table")
+        .intern_crossing("crossing-prototype", &permutation, false, None)
+        .expect("prototype crossing");
+    let mut assignment = NativeUnionAssignment::new(
         "crossing-prototype".to_owned(),
         "crossing prototype".to_owned(),
         pdgs,
@@ -38,6 +44,7 @@ fn push_test_assignment(
         pattern_count,
     )
     .expect("prototype assignment");
+    assignment.crossing = crossing;
     let mut grown = assignments.to_vec();
     grown.push(assignment);
     let id = u32::try_from(grown.len() - 1).unwrap();

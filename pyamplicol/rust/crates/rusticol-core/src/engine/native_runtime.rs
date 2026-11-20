@@ -2318,11 +2318,12 @@ impl NativeRuntime {
                 .split_once('>')
                 .map(|(initial, _)| initial.split_whitespace().count())
                 .ok_or_else(|| RusticolError::artifact("template expression lacks '>'"))?;
-            let relabelling = NativeUnionRelabelling::new(
+            let mut relabelling = NativeUnionRelabelling::new(
                 template.external_pdgs.clone(),
                 initial_count,
                 artifact.flavour_union_pattern_pairs(&template.id)?,
                 pattern_count,
+                lane.external_slot_crossings().into(),
             )?;
             let all = (0..pattern_count)
                 .map(|pattern| {
@@ -2345,7 +2346,17 @@ impl NativeRuntime {
                 pattern_count,
             )?];
             for member in artifact.flavour_union_members(&template.id)? {
-                assignments.push(NativeUnionAssignment::new(
+                // sigma and rho are re-derived from the sides and the slot families.
+                let crossing = relabelling.intern_crossing(
+                    &member.process_id,
+                    &member.permutation,
+                    member.conjugated,
+                    member
+                        .crossing
+                        .as_ref()
+                        .map(|(sigma, rho)| (sigma.as_slice(), rho.as_slice())),
+                )?;
+                let mut assignment = NativeUnionAssignment::new(
                     member.process_id,
                     member.expression,
                     member.pdgs,
@@ -2358,7 +2369,9 @@ impl NativeRuntime {
                     member.patterns.signs,
                     member.patterns.patterns,
                     pattern_count,
-                )?);
+                )?;
+                assignment.crossing = crossing;
+                assignments.push(assignment);
             }
             self.flavour_union_assignments = Some(assignments.into());
             self.flavour_union_relabelling = Some(Box::new(relabelling));
@@ -2402,11 +2415,68 @@ impl NativeRuntime {
             .and_then(|relabelling| relabelling.pattern_pairs())
     }
 
+    /// The crossing of assignment `assignment`: momentum signs sigma and helicity signs
+    /// rho per template slot (all +1 for uncrossed assignments), or `None` for an
+    /// unknown id or a runtime that is not a template.
+    pub fn flavour_union_crossing(&self, assignment: usize) -> Option<&NativeUnionCrossing> {
+        let id = self.flavour_union_assignments()?.get(assignment)?.crossing;
+        self.flavour_union_relabelling.as_ref()?.crossing(id)
+    }
+
+    /// Whether any of `assignment_ids` is crossed (unknown ids count as not crossed).
+    pub fn flavour_union_assignments_crossed(&self, assignment_ids: &[u32]) -> bool {
+        self.flavour_union_assignments().is_some_and(|assignments| {
+            assignment_ids.iter().any(|id| {
+                assignments
+                    .get(*id as usize)
+                    .is_some_and(|assignment| assignment.crossing != 0)
+            })
+        })
+    }
+
+    /// Helicity `helicity_index` of the loaded runtime's axis in assignment
+    /// `assignment`'s own leg order: `out[pi_r] = rho_r * values[r]`, `values` in
+    /// template slot order (read through the loaded process's leg permutation).
+    pub fn flavour_union_assignment_helicity(
+        &self,
+        assignment: usize,
+        helicity_index: usize,
+    ) -> RusticolResult<Vec<i32>> {
+        let entry = self
+            .flavour_union_assignments()
+            .and_then(|assignments| assignments.get(assignment))
+            .ok_or_else(|| {
+                RusticolError::selector(format!("unknown flavour-union assignment {assignment}"))
+            })?;
+        let crossing = self
+            .flavour_union_crossing(assignment)
+            .ok_or_else(|| RusticolError::internal("assignment crossing left the table"))?;
+        let physics = self.physics_v1.get()?;
+        let helicity = physics.helicities.get(helicity_index).ok_or_else(|| {
+            RusticolError::selector(format!(
+                "helicity index {helicity_index} is outside the physical axis"
+            ))
+        })?;
+        let count = entry.permutation.len();
+        if helicity.values.len() != count || self.external_permutation.len() != count {
+            return Err(RusticolError::integrity(
+                "helicity vector length differs from the assignment's legs",
+            ));
+        }
+        let mut values = vec![0; count];
+        for (slot, leg) in entry.permutation.iter().enumerate() {
+            let label = helicity.values[self.external_permutation[slot]];
+            values[*leg] = i32::from(crossing.helicity_signs[slot]) * label;
+        }
+        Ok(values)
+    }
+
     /// The assignment `assignment` relabelled by a template slot symmetry: the returned
     /// id evaluated at `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals;
     /// helicity and flow axes are relabelled accordingly). Patterns map as
-    /// `(f, a) -> (permutation[f], permutation[a])`; factor, signs and conjugation are kept.
-    /// Ids are interned per (assignment, derived patterns) and stay valid; at most
+    /// `(f, a) -> (permutation[f], permutation[a])`; factor, signs and conjugation are kept;
+    /// the crossing is recomputed from the relabelled permutation. Ids are interned per
+    /// (assignment, crossing, derived patterns) and stay valid; at most
     /// [`MAX_RELABELLED_ASSIGNMENTS`] are derived per runtime.
     pub fn relabel_assignment(
         &mut self,
@@ -2434,6 +2504,19 @@ impl NativeRuntime {
             .zip(&base.pattern_signs)
             .map(|(pattern, sign)| Ok((relabelling.map_pattern(*pattern, permutation)?, *sign)))
             .collect::<RusticolResult<Vec<_>>>()?;
+        // Member leg perm[r] now reads template slot permutation[r].
+        let mut member_permutation = vec![0; permutation.len()];
+        for (slot, image) in permutation.iter().enumerate() {
+            member_permutation[*image] = base.permutation[slot];
+        }
+        // sigma is recomputed from the derived permutation: a same-side symmetry
+        // can move it across slots without changing any pattern.
+        let crossing = relabelling.intern_crossing(
+            &base.process_id,
+            &member_permutation,
+            base.conjugated,
+            None,
+        )?;
         let mut own = base
             .patterns
             .iter()
@@ -2443,10 +2526,13 @@ impl NativeRuntime {
         own.sort_unstable();
         let mut key = derived.clone();
         key.sort_unstable();
-        if key == own {
+        if key == own && crossing == base.crossing {
             return Ok(assignment);
         }
-        if let Some(id) = relabelling.derived.get(&(assignment, key.clone())) {
+        if let Some(id) = relabelling
+            .derived
+            .get(&(assignment, crossing, key.clone()))
+        {
             return Ok(*id);
         }
         if relabelling.derived.len() >= MAX_RELABELLED_ASSIGNMENTS {
@@ -2456,11 +2542,6 @@ impl NativeRuntime {
         }
         let id = u32::try_from(assignments.len())
             .map_err(|_| RusticolError::internal("assignment id exceeds u32"))?;
-        // Member leg perm[r] now reads template slot permutation[r].
-        let mut member_permutation = vec![0; permutation.len()];
-        for (slot, image) in permutation.iter().enumerate() {
-            member_permutation[*image] = base.permutation[slot];
-        }
         let (patterns, signs): (Vec<u32>, Vec<i32>) = derived.into_iter().unzip();
         let mut relabelled = NativeUnionAssignment::new(
             base.process_id.clone(),
@@ -2473,25 +2554,37 @@ impl NativeRuntime {
             patterns,
             base.signs.len(),
         )?;
+        relabelled.crossing = crossing;
         relabelled.relabelled = Some(NativeAssignmentRelabelling {
             assignment,
             permutation: permutation.to_vec(),
         });
         let mut grown = assignments.to_vec();
         grown.push(relabelled);
-        relabelling.derived.insert((assignment, key), id);
+        relabelling.derived.insert((assignment, crossing, key), id);
         self.flavour_union_assignments = Some(grown.into());
         Ok(id)
     }
 
+    /// The assignments with their crossing signs (`momentum_signs`, `helicity_signs`).
     pub fn flavour_union_assignments_json(&self) -> RusticolResult<String> {
-        serde_json::to_string(&self.flavour_union_assignments().unwrap_or_default()).map_err(
-            |error| {
-                RusticolError::serialization(format!(
-                    "could not serialize flavour-union assignments: {error}"
-                ))
-            },
-        )
+        let serialization = |error: serde_json::Error| {
+            RusticolError::serialization(format!(
+                "could not serialize flavour-union assignments: {error}"
+            ))
+        };
+        let assignments = self.flavour_union_assignments().unwrap_or_default();
+        let mut entries = Vec::with_capacity(assignments.len());
+        for (index, assignment) in assignments.iter().enumerate() {
+            let mut entry = serde_json::to_value(assignment).map_err(serialization)?;
+            let crossing = self
+                .flavour_union_crossing(index)
+                .ok_or_else(|| RusticolError::internal("assignment crossing left the table"))?;
+            entry["momentum_signs"] = serde_json::json!(crossing.momentum_signs);
+            entry["helicity_signs"] = serde_json::json!(crossing.helicity_signs);
+            entries.push(entry);
+        }
+        serde_json::to_string(&entries).map_err(serialization)
     }
 
     /// Evaluate flavour assignments of a pattern-resolved template.
@@ -2503,9 +2596,13 @@ impl NativeRuntime {
     /// Per-point selectors and per-flow rows index the loaded runtime's physical
     /// axes (the template's execution flows); a row of an assignment whose
     /// `conjugated` differs from the loaded process's holds the charge-conjugate
-    /// physical flow, which callers relabel as a member load does. Points
-    /// are grouped by (pattern mask, selectors); a single-assignment request
-    /// equals loading that member bitwise.
+    /// physical flow, which callers relabel as a member load does. A crossed
+    /// assignment takes `q[r] = sigma_r * p_member[pi_r]`; energies must be finite,
+    /// nonzero and negative exactly where sigma_r = -1, and one point requests one
+    /// crossing. Helicity indices stay template axes (member labels via rho, see
+    /// [`Self::flavour_union_assignment_helicity`]). Points are grouped by (pattern
+    /// mask, selectors); a single-assignment request equals the template evaluated
+    /// at `sigma * p` and, for an uncrossed member, loading that member bitwise.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_assignments_f64_into(
         &mut self,
@@ -2581,29 +2678,31 @@ impl NativeRuntime {
             )));
         }
         // Energy signs before any lane: crossed slots (sigma = -1) carry negated momenta.
-        let initial_count = self
-            .flavour_union_relabelling
-            .as_ref()
-            .map(|relabelling| relabelling.initial_count)
-            .ok_or_else(|| {
-                RusticolError::integrity("flavour-union template lost its side split")
-            })?;
-        let negative = assignments
-            .iter()
-            .map(|assignment| crossing_negative_mask(&assignment.permutation, initial_count))
-            .collect::<RusticolResult<Vec<_>>>()?;
+        let relabelling = self.flavour_union_relabelling.as_ref().ok_or_else(|| {
+            RusticolError::integrity("flavour-union template lost its crossing table")
+        })?;
+        let negative = |id: u32| {
+            relabelling
+                .crossing(assignments[id as usize].crossing)
+                .map(NativeUnionCrossing::negative_mask)
+                .ok_or_else(|| RusticolError::internal("assignment crossing left the table"))
+        };
         for point in 0..point_count {
             let requested = &assignment_ids[request_offsets[point]..request_offsets[point + 1]];
-            let first = negative[requested[0] as usize];
-            if requested.iter().any(|id| negative[*id as usize] != first) {
+            let first = assignments[requested[0] as usize].crossing;
+            if requested
+                .iter()
+                .any(|id| assignments[*id as usize].crossing != first)
+            {
                 return Err(RusticolError::invalid_argument(format!(
                     "point {point} requests assignments of different crossings; repeat the point per crossing"
                 )));
             }
         }
-        validate_energy_signs(momenta, self.runtime.external_count, |point| {
-            negative[assignment_ids[request_offsets[point]] as usize]
-        })?;
+        let masks = (0..point_count)
+            .map(|point| negative(assignment_ids[request_offsets[point]]))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        validate_energy_signs(momenta, self.runtime.external_count, |point| masks[point])?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
             let NativeExecutionLane::Recurrence(lane) = &mut self.execution_lane else {

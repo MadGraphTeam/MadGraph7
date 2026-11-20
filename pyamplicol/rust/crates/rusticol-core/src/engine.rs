@@ -197,6 +197,9 @@ pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runti
 /// of flavour-union templates.
 pub const FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY: &str =
     "rusticol.flavour-union-assignments.v1";
+/// Runtime feature: assignments may be crossed (signed momenta, checked per point);
+/// the crossing, momentum-sign and helicity-sign getters exist on every assignment lane.
+pub const FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY: &str = "rusticol.flavour-union-assignments.v2";
 /// Runtime feature: pattern tables and assignments relabelled by template slot symmetries.
 pub const FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY: &str =
     "rusticol.flavour-union-relabelling.v1";
@@ -357,6 +360,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY,
@@ -421,6 +426,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
         | EAGER_RUNTIME_LAYOUT_CAPABILITY
         | FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY
+        | FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY
         | FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY
         | FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY
         | RECURRENCE_RUNTIME_CAPABILITY
@@ -4604,8 +4610,48 @@ pub(crate) struct NativeUnionRelabelling {
     /// Endpoint pairs per pattern, sorted; `None` for artifacts without the table.
     pattern_pairs: Option<Vec<Vec<[u32; 2]>>>,
     pattern_by_pairs: BTreeMap<Vec<[u32; 2]>, u32>,
-    /// (base assignment, derived signed patterns) -> derived assignment id.
-    derived: BTreeMap<(u32, Vec<(u32, i32)>), u32>,
+    /// (base assignment, derived crossing, derived signed patterns) -> derived assignment id.
+    derived: BTreeMap<(u32, u32, Vec<(u32, i32)>), u32>,
+    /// Per template slot, whether it may cross (from the lane's external sources).
+    slot_crossings: Box<[NativeSlotCrossing]>,
+    /// Interned crossings of the assignments; id 0 is the identity.
+    crossings: Vec<NativeUnionCrossing>,
+}
+
+/// Crossing admission of one template slot, from its external source family
+/// (stage 1: massless Weyl fermions and massless vectors with a unit crossing phase).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NativeSlotCrossing {
+    Refused,
+    /// Crossed helicity labels flip: rho = -1.
+    WeylFermion,
+    /// rho = +1.
+    MasslessVector,
+}
+
+/// Momentum and helicity signs of a crossed assignment, in template slot order:
+/// the member is the template at `q[r] = sigma_r * p_member[pi_r]` with member
+/// helicity `lambda_M[pi_r] = rho_r * lambda_T[r]`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeUnionCrossing {
+    pub momentum_signs: Box<[i8]>,
+    pub helicity_signs: Box<[i8]>,
+    /// Bit r set iff sigma_r = -1.
+    negative_mask: u64,
+}
+
+impl NativeUnionCrossing {
+    fn identity(count: usize) -> Self {
+        Self {
+            momentum_signs: vec![1; count].into(),
+            helicity_signs: vec![1; count].into(),
+            negative_mask: 0,
+        }
+    }
+
+    pub(crate) const fn negative_mask(&self) -> u64 {
+        self.negative_mask
+    }
 }
 
 /// Bound on relabelled assignments per loaded runtime (ids are never evicted).
@@ -4632,6 +4678,8 @@ pub struct NativeUnionAssignment {
     pub conjugated: bool,
     pub patterns: Vec<u32>,
     pub pattern_signs: Vec<i32>,
+    /// Interned crossing (0: none), see [`NativeRuntime::flavour_union_crossing`].
+    pub crossing: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relabelled: Option<NativeAssignmentRelabelling>,
     #[serde(skip)]
@@ -4698,6 +4746,7 @@ impl NativeUnionAssignment {
             conjugated,
             patterns,
             pattern_signs,
+            crossing: 0,
             relabelled: None,
             signs: signs.into_boxed_slice(),
             mask,
@@ -4711,6 +4760,7 @@ impl NativeUnionRelabelling {
         initial_count: usize,
         pattern_pairs: Option<Vec<Vec<[u32; 2]>>>,
         pattern_count: usize,
+        slot_crossings: Box<[NativeSlotCrossing]>,
     ) -> RusticolResult<Self> {
         let pattern_pairs = pattern_pairs.map(|pairs| {
             pairs
@@ -4747,13 +4797,110 @@ impl NativeUnionRelabelling {
                 }
             }
         }
+        let crossings = vec![NativeUnionCrossing::identity(template_pdgs.len())];
         Ok(Self {
             template_pdgs,
             initial_count,
             pattern_pairs,
             pattern_by_pairs,
             derived: BTreeMap::new(),
+            slot_crossings,
+            crossings,
         })
+    }
+
+    pub(crate) fn crossing(&self, id: u32) -> Option<&NativeUnionCrossing> {
+        self.crossings.get(id as usize)
+    }
+
+    /// Intern the crossing of an assignment with `permutation` (template slot to
+    /// member leg; members share the template's initial count). sigma and rho are
+    /// derived here; a stored `record` (sigma, rho) must agree with them.
+    pub(crate) fn intern_crossing(
+        &mut self,
+        process_id: &str,
+        permutation: &[usize],
+        conjugated: bool,
+        record: Option<(&[i8], &[i8])>,
+    ) -> RusticolResult<u32> {
+        let count = self.template_pdgs.len();
+        if permutation.len() != count {
+            return Err(RusticolError::integrity(format!(
+                "flavour-union assignment {process_id:?} permutation has {} slots, the template {count}",
+                permutation.len()
+            )));
+        }
+        let refuse = |reason: String| {
+            Err(RusticolError::compatibility(format!(
+                "flavour-union assignment {process_id:?} {reason}"
+            )))
+        };
+        let initial = self.initial_count;
+        if permutation
+            .iter()
+            .enumerate()
+            .all(|(slot, leg)| (slot < initial) == (*leg < initial))
+        {
+            if record.is_some() {
+                return refuse("carries crossing signs but crosses no slot".to_owned());
+            }
+            return Ok(0);
+        }
+        let mask = native_runtime::crossing_negative_mask(permutation, initial)?;
+        if conjugated {
+            return refuse("is both crossed and conjugated".to_owned());
+        }
+        // Runtime layer of the WP-D guard: a pure-vector template may carry the
+        // side-dependent pure-massless-adjoint helicity proof.
+        if self
+            .slot_crossings
+            .iter()
+            .all(|slot| *slot == NativeSlotCrossing::MasslessVector)
+        {
+            return refuse("crosses a pure-vector template".to_owned());
+        }
+        let mut momentum_signs = vec![1_i8; count];
+        let mut helicity_signs = vec![1_i8; count];
+        for slot in 0..count {
+            if mask >> slot & 1 == 0 {
+                continue;
+            }
+            momentum_signs[slot] = -1;
+            helicity_signs[slot] = match self.slot_crossings.get(slot) {
+                Some(NativeSlotCrossing::WeylFermion) => -1,
+                Some(NativeSlotCrossing::MasslessVector) => 1,
+                _ => {
+                    return refuse(format!(
+                        "crosses template slot {slot}, which is not a massless Weyl fermion or \
+                         massless vector with a unit crossing phase"
+                    ));
+                }
+            };
+        }
+        if let Some((sigma, rho)) = record
+            && (sigma != momentum_signs.as_slice() || rho != helicity_signs.as_slice())
+        {
+            return Err(RusticolError::integrity(format!(
+                "flavour-union assignment {process_id:?} stores crossing signs {sigma:?}/{rho:?}, \
+                 derived {momentum_signs:?}/{helicity_signs:?}"
+            )));
+        }
+        if let Some(id) = self
+            .crossings
+            .iter()
+            .position(|crossing| *crossing.momentum_signs == *momentum_signs)
+        {
+            return u32::try_from(id)
+                .map_err(|_| RusticolError::internal("crossing id exceeds u32"));
+        }
+        let id = u32::try_from(self.crossings.len())
+            .map_err(|_| RusticolError::internal("crossing id exceeds u32"))?;
+        self.crossings.push(NativeUnionCrossing {
+            momentum_signs: momentum_signs.into(),
+            helicity_signs: helicity_signs.into(),
+            negative_mask: mask,
+        });
+        Ok(id)
     }
 
     pub(crate) fn pattern_pairs(&self) -> Option<&[Vec<[u32; 2]>]> {

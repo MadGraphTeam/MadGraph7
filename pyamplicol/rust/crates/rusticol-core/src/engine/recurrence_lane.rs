@@ -67,6 +67,8 @@ pub(super) struct RecurrenceNativeRuntime {
     order_catalog: AmplitudeOrderCatalog,
     order_state: Option<RecurrenceOrderState>,
     pattern_selection: Option<PatternSelection>,
+    /// Per external slot, whether a flavour-union crossing may negate it (set at load).
+    pub(super) external_slot_crossings: Box<[super::NativeSlotCrossing]>,
 }
 
 /// Signed pattern subset of a pattern-resolved (flavour-union) template.
@@ -1151,7 +1153,12 @@ impl RecurrenceNativeRuntime {
             order_catalog,
             order_state: None,
             pattern_selection,
+            external_slot_crossings: Box::default(),
         })
+    }
+
+    pub(super) fn external_slot_crossings(&self) -> &[super::NativeSlotCrossing] {
+        &self.external_slot_crossings
     }
 
     pub(super) const fn is_pattern_resolved(&self) -> bool {

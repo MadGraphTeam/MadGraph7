@@ -777,6 +777,23 @@ class RusticolRuntimeBackend:
         self._note_kinematics(records, carrier, precision)
         return improved
 
+    def _binary64_improvement_applies(
+        self, setting: str | None, binary64: bool | None
+    ) -> bool:
+        """Whether ``_improved`` changes binary64 points (its double branch)."""
+
+        if binary64 is None and self._kinematics_binary64 is None:
+            return False
+        from pyamplicol import kinematics
+
+        settings = kinematics.resolve(
+            setting,
+            binary64,
+            default_setting_=self._kinematics_setting,
+            default_binary64_=self._kinematics_binary64,
+        )
+        return settings.variant("double") is not None
+
     def _tree_kinematics_masses(
         self, point: Sequence[Sequence[str]], precision: int
     ) -> tuple[list[Fraction | None], int]:
@@ -1045,6 +1062,21 @@ class RusticolRuntimeBackend:
         kinematics_improvement: str | None = None,
         kinematics_improvement_binary64: bool | None = None,
     ) -> tuple[tuple[object, ...], ...]:
+        # The improvement works in the template's physical frame, not at signed momenta.
+        if momenta and self._binary64_improvement_applies(
+            kinematics_improvement, kinematics_improvement_binary64
+        ):
+            table = self.flavour_union_assignments
+            if any(
+                0 <= int(value) < len(table)
+                and int(table[int(value)].get("crossing", 0))
+                for requested in assignments
+                for value in requested
+            ):
+                raise CompatibilityError(
+                    "the binary64 kinematics improvement does not support crossed "
+                    "flavour-union assignments"
+                )
         # The same binary64 improvement as evaluate and the C ABI.
         momenta = self._improved(
             momenta, 16, kinematics_improvement, kinematics_improvement_binary64

@@ -135,6 +135,10 @@ pub(super) fn load_recurrence_native_runtime(
     } else {
         None
     };
+    let metadata = &manifest.runtime_metadata;
+    let slot_crossings = external_slot_crossings(&plan, &source_domains, |slot| {
+        unit_crossing_phase(metadata, slot)
+    });
     let loaded_backend = NativeRecurrenceDirectExecutorBackend::load_from_process_pack(
         &loaded_plan.process_executors,
         &kernel_payloads,
@@ -156,6 +160,8 @@ pub(super) fn load_recurrence_native_runtime(
         color_contraction,
         helicity_selector_companion,
     )?;
+    let mut lane = lane;
+    lane.external_slot_crossings = slot_crossings;
     Ok(LoadedRecurrenceRuntime { common, lane })
 }
 
@@ -283,6 +289,8 @@ pub(super) fn load_recurrence_ready_runtime(
             ));
         }
     };
+    // The process-ready image keeps no CrossingIR phase; the source factors are checked.
+    let slot_crossings = external_slot_crossings(&plan, &source_domains, |_| true);
     let loaded_backend = NativeRecurrenceDirectExecutorBackend::load_from_process_pack(
         &loaded_primary.process_executors,
         &kernel_payloads,
@@ -320,7 +328,89 @@ pub(super) fn load_recurrence_ready_runtime(
         color_contraction,
         helicity_selector_companion,
     )?;
+    let mut lane = lane;
+    lane.external_slot_crossings = slot_crossings;
     Ok(LoadedRecurrenceRuntime { common, lane })
+}
+
+/// Per external slot, whether a flavour-union crossing may negate its momentum
+/// (stage 1): every source variant is a Weyl fermion, or a vector without a mass
+/// parameter, and every source row of the slot has the exact factor 1 (the
+/// template's crossing phase) with `unit_phase(slot)` (the particle's CrossingIR).
+fn external_slot_crossings(
+    plan: &DirectRecurrencePlan,
+    domains: &[DirectSourceDispatchDomainSpec],
+    unit_phase: impl Fn(usize) -> bool,
+) -> Box<[NativeSlotCrossing]> {
+    let count = plan.external_source_count() as usize;
+    let mut verdicts = vec![None::<NativeSlotCrossing>; count];
+    let mut refused = vec![false; count];
+    for (row_id, row) in plan.sources().iter().enumerate() {
+        let slot = row.source_slot as usize;
+        if slot >= count {
+            continue;
+        }
+        let factor = plan.exact_factors().get(row.exact_factor_id as usize);
+        let variants = domains
+            .get(row.source_template_or_dispatch_domain as usize)
+            .map(|domain| domain.variants.as_slice())
+            .unwrap_or_default();
+        let mut row_variants = variants
+            .iter()
+            .filter(|variant| match variant.key {
+                DirectSourceDispatchKey::SpinStateClass(_) => true,
+                DirectSourceDispatchKey::RuntimeVariant { source_row_id, .. } => {
+                    source_row_id as usize == row_id
+                }
+            })
+            .peekable();
+        if factor != Some(&crate::recurrence::ExactComplexRational::ONE)
+            || row_variants.peek().is_none()
+        {
+            refused[slot] = true;
+        }
+        for variant in row_variants {
+            let verdict = match (
+                variant.template.family,
+                variant.template.mass_parameter_index,
+            ) {
+                (DirectSourceWavefunctionFamily::WeylFermion, _) => NativeSlotCrossing::WeylFermion,
+                (DirectSourceWavefunctionFamily::Vector, None) => {
+                    NativeSlotCrossing::MasslessVector
+                }
+                _ => NativeSlotCrossing::Refused,
+            };
+            match verdicts[slot] {
+                Some(previous) if previous != verdict => refused[slot] = true,
+                _ => verdicts[slot] = Some(verdict),
+            }
+        }
+    }
+    (0..count)
+        .map(|slot| match verdicts[slot] {
+            Some(verdict) if !refused[slot] && unit_phase(slot) => verdict,
+            _ => NativeSlotCrossing::Refused,
+        })
+        .collect()
+}
+
+/// Whether every SourceIR template of the particle at `slot` has a unit crossing phase.
+fn unit_crossing_phase(metadata: &RecurrenceRuntimeMetadata, slot: usize) -> bool {
+    let Some(leg) = metadata
+        .external_legs
+        .iter()
+        .find(|leg| leg.source_slot as usize == slot)
+    else {
+        return false;
+    };
+    metadata
+        .source_templates
+        .iter()
+        .filter(|source| {
+            let identity = &source.source_ir.identity;
+            identity.pdg_label == leg.outgoing_pdg || identity.anti_pdg_label == leg.outgoing_pdg
+        })
+        .all(|source| source.crossing.phase == [1.0, 0.0])
 }
 
 fn process_pack_requires_evaluator_payloads(pack: &ProcessDirectExecutorPack) -> bool {

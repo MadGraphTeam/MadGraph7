@@ -6529,10 +6529,61 @@ fn assignment_sign_checks_refuse_before_any_lane_and_leave_the_output_untouched(
         .unwrap()
     };
     // Assignment 1 sends initial template slot 0 to final leg 2 (and back).
-    let assignments = vec![
-        assignment("template", vec![0, 1, 2, 3, 4]),
-        assignment("crossed", vec![2, 1, 0, 3, 4]),
-    ];
+    let mut relabelling = NativeUnionRelabelling::new(
+        pdgs.clone(),
+        2,
+        None,
+        1,
+        vec![
+            NativeSlotCrossing::WeylFermion,
+            NativeSlotCrossing::WeylFermion,
+            NativeSlotCrossing::Refused,
+            NativeSlotCrossing::Refused,
+            NativeSlotCrossing::MasslessVector,
+        ]
+        .into(),
+    )
+    .unwrap();
+    let mut crossed = assignment("crossed", vec![2, 1, 0, 3, 4]);
+    // Slot 2 (the photon) cannot cross; slot 4 (the gluon) can.
+    let refused = relabelling
+        .intern_crossing("crossed", &crossed.permutation, false, None)
+        .expect_err("photon slot");
+    assert!(refused.to_string().contains("slot 2"), "{refused}");
+    relabelling.slot_crossings[2] = NativeSlotCrossing::MasslessVector;
+    crossed.crossing = relabelling
+        .intern_crossing("crossed", &crossed.permutation, false, None)
+        .unwrap();
+    assert_eq!(crossed.crossing, 1);
+    let table = relabelling.crossing(1).unwrap();
+    assert_eq!(&*table.momentum_signs, &[-1, 1, -1, 1, 1]);
+    assert_eq!(&*table.helicity_signs, &[-1, 1, 1, 1, 1]);
+    // A stored record must agree; crossed plus conjugated is refused.
+    let error = relabelling
+        .intern_crossing(
+            "crossed",
+            &crossed.permutation,
+            false,
+            Some((&[-1, 1, -1, 1, 1], &[1, 1, 1, 1, 1])),
+        )
+        .expect_err("wrong rho");
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+    assert!(
+        relabelling
+            .intern_crossing("crossed", &crossed.permutation, true, None)
+            .is_err()
+    );
+    assert!(
+        relabelling
+            .intern_crossing(
+                "plain",
+                &[0, 1, 2, 3, 4],
+                false,
+                Some((&[1, 1, 1, 1, 1], &[1, 1, 1, 1, 1]))
+            )
+            .is_err()
+    );
+    let assignments = vec![assignment("template", vec![0, 1, 2, 3, 4]), crossed];
     let mut runtime = NativeRuntime {
         root: PathBuf::new(),
         artifact_id: "0".repeat(64),
@@ -6553,13 +6604,7 @@ fn assignment_sign_checks_refuse_before_any_lane_and_leave_the_output_untouched(
         selector_simd_lane_width: 1,
         correlated: None,
         flavour_union_assignments: Some(assignments.into()),
-        flavour_union_relabelling: Some(Box::new(NativeUnionRelabelling {
-            template_pdgs: pdgs.clone(),
-            initial_count: 2,
-            pattern_pairs: None,
-            pattern_by_pairs: BTreeMap::new(),
-            derived: BTreeMap::new(),
-        })),
+        flavour_union_relabelling: Some(Box::new(relabelling)),
         process_group: None,
     };
     let physical = (0..5)
@@ -6602,6 +6647,13 @@ fn assignment_sign_checks_refuse_before_any_lane_and_leave_the_output_untouched(
         negated.contains("leg 0") && negated.contains("positive"),
         "{negated}"
     );
+    // A crossed slot at E = 0 or NaN is refused as well.
+    for energy in [0.0, -0.0, f64::NAN] {
+        let mut degenerate = crossed.clone();
+        degenerate[4 * 2] = energy;
+        let error = evaluate(&degenerate, &[0, 1], &[1]);
+        assert!(error.contains("leg 2"), "{error}");
+    }
     // Per-point crossings: both points pass the sign check and reach the lane.
     let both = [physical.clone(), crossed.clone()].concat();
     let lane = evaluate(&both, &[0, 1, 2], &[0, 1]);
@@ -6611,4 +6663,111 @@ fn assignment_sign_checks_refuse_before_any_lane_and_leave_the_output_untouched(
     );
     let swapped = evaluate(&both, &[0, 1, 2], &[1, 0]);
     assert!(swapped.contains("point 0"), "{swapped}");
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn crossing_capability_is_advertised_next_to_assignments_v1() {
+    let supported = supported_runtime_capabilities();
+    assert!(supported.contains(&FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY));
+    assert!(supported.contains(&FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY));
+    assert!(runtime_capability_is_supported(
+        FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY
+    ));
+}
+
+#[test]
+fn relabelling_a_crossed_assignment_recomputes_its_crossing() {
+    // Template u g > u g g g; member g g > u u~ g g crosses slots 0 (u) and 3 (g).
+    let pdgs = vec![2, 21, 2, 21, 21, 21];
+    let mut relabelling = NativeUnionRelabelling::new(
+        pdgs.clone(),
+        2,
+        Some(vec![vec![[2, 0]]]),
+        1,
+        vec![
+            NativeSlotCrossing::WeylFermion,
+            NativeSlotCrossing::MasslessVector,
+            NativeSlotCrossing::WeylFermion,
+            NativeSlotCrossing::MasslessVector,
+            NativeSlotCrossing::MasslessVector,
+            NativeSlotCrossing::MasslessVector,
+        ]
+        .into(),
+    )
+    .unwrap();
+    let assignment = |id: &str, member_pdgs: Vec<i32>, permutation: Vec<usize>| {
+        NativeUnionAssignment::new(
+            id.to_owned(),
+            id.to_owned(),
+            member_pdgs,
+            permutation,
+            NativeRationalFactor {
+                numerator: 1,
+                denominator: 1,
+            },
+            false,
+            vec![1],
+            vec![0],
+            1,
+        )
+        .unwrap()
+    };
+    let member_pdgs = vec![21, 21, 2, -2, 21, 21];
+    let mut crossed = assignment("crossed", member_pdgs, vec![3, 0, 2, 1, 4, 5]);
+    crossed.crossing = relabelling
+        .intern_crossing("crossed", &crossed.permutation, false, None)
+        .unwrap();
+    assert_eq!(crossed.crossing, 1);
+    assert_eq!(
+        &*relabelling.crossing(1).unwrap().helicity_signs,
+        &[-1, 1, 1, 1, 1, 1]
+    );
+    let mut runtime = NativeRuntime {
+        root: PathBuf::new(),
+        artifact_id: "0".repeat(64),
+        runtime: empty_generic_runtime(),
+        execution_lane: NativeExecutionLane::Compiled,
+        process: "u g > u g g g".to_string(),
+        process_key: "p0".to_string(),
+        representative_process_id: "p0".to_string(),
+        external_permutation: (0..6).collect(),
+        input_crossing_map: None,
+        permutation_alias_of: None,
+        final_state_permutation_alias_of: None,
+        physics_v1: native_runtime::LazyProcessPhysicsV1::loaded(alias_test_physics("lc")),
+        warnings_muted: false,
+        warned_kinds: BTreeSet::new(),
+        pending_warnings: Vec::new(),
+        point_selector_scratch: PointSelectorExecutionScratch::default(),
+        selector_simd_lane_width: 1,
+        correlated: None,
+        flavour_union_assignments: Some(
+            vec![assignment("template", pdgs, (0..6).collect()), crossed].into(),
+        ),
+        flavour_union_relabelling: Some(Box::new(relabelling)),
+        process_group: None,
+    };
+    // Swapping two final template gluons keeps the pattern; for the crossed member
+    // it moves the crossed gluon from slot 3 to slot 4: a new id with the new sigma.
+    let swapped = runtime.relabel_assignment(1, &[0, 1, 2, 4, 3, 5]).unwrap();
+    assert_eq!(swapped, 2);
+    let entry = &runtime.flavour_union_assignments().unwrap()[2];
+    assert_eq!(entry.permutation, [3, 0, 2, 4, 1, 5]);
+    assert_eq!(entry.patterns, [0]);
+    let crossing = runtime.flavour_union_crossing(2).unwrap();
+    assert_eq!(&*crossing.momentum_signs, &[-1, 1, 1, 1, -1, 1]);
+    assert_eq!(&*crossing.helicity_signs, &[-1, 1, 1, 1, 1, 1]);
+    assert_eq!(runtime.relabel_assignment(1, &[0, 1, 2, 4, 3, 5]).unwrap(), 2);
+    // A swap of the uncrossed final gluons keeps sigma and the patterns: the base id.
+    assert_eq!(runtime.relabel_assignment(1, &[0, 1, 2, 3, 5, 4]).unwrap(), 1);
+    // The template keeps its identity crossing under every symmetry.
+    assert_eq!(runtime.relabel_assignment(0, &[0, 1, 2, 4, 3, 5]).unwrap(), 0);
+    assert!(runtime.flavour_union_assignments_crossed(&[0, 2]));
+    assert!(!runtime.flavour_union_assignments_crossed(&[0]));
+    let json: Value =
+        serde_json::from_str(&runtime.flavour_union_assignments_json().unwrap()).unwrap();
+    assert_eq!(json[2]["crossing"], 2);
+    assert_eq!(json[2]["momentum_signs"], json!([-1, 1, 1, 1, -1, 1]));
+    assert_eq!(json[0]["helicity_signs"], json!([1, 1, 1, 1, 1, 1]));
 }
