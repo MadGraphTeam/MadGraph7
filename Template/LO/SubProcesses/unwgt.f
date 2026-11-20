@@ -130,6 +130,9 @@ C
       double precision twgt, maxwgt,swgt(maxevents)
       integer                             lun, nw, itmin
       common/to_unwgt/twgt, maxwgt, swgt, lun, nw, itmin
+c     largest primary-unweighting threshold of the stored events (stored units)
+      double precision ow_thr
+      common/to_unwgt_thr/ow_thr
 
 c-----
 c  Begin Code
@@ -139,6 +142,7 @@ c      write(*,*) 'storing Events'
       rewind(lun)
       nw = 0
       maxwgt = 0d0
+      ow_thr = 0d0
       end
 C**************************************************************************
 C      HELPING ROUTINE FOR PERFORMING THE Z BOOST OF THE EVENTS
@@ -213,6 +217,8 @@ C
 
       double precision twgt_it, local_twgt
       common/to_unwgt_it/twgt_it
+      double precision ow_thr
+      common/to_unwgt_thr/ow_thr
       
       double precision    matrix
       common/to_maxmatrix/matrix
@@ -261,7 +267,10 @@ c      write(*,*) "twgt", twgt, twgt_it, local_twgt
             uwgt = max(xwgt,local_twgt*fudge)
 c           Set sign of uwgt to sign of wgt
             uwgt = dsign(uwgt,wgt)
-            if (local_twgt .gt. 0) uwgt=uwgt/twgt/fudge
+            if (local_twgt .gt. 0) then
+               uwgt=uwgt/twgt/fudge
+               ow_thr = max(ow_thr, local_twgt/twgt)
+            endif
 c            call write_event(p,uwgt)
 c            write(29,'(2e15.5)') matrix,wgt
 c $B$ S-COMMENT_C $B$
@@ -345,6 +354,8 @@ c     events this unweighting would give at last_uref (dsample, run.inc)
       double precision max_overweight_truncation
       common/to_overweight/max_overweight_truncation
       double precision xow
+      double precision ow_thr
+      common/to_unwgt_thr/ow_thr
 
 c
 c     external
@@ -416,6 +427,12 @@ c        the refine last iteration is unweighted against the maximum weight its
 c        stop was counted with: a large weight it contains stays an overweight
 c        event and does not set the maximum for all the other events of the job
          if (last_it .and. last_ufix .gt. 0d0) target_wgt = last_ufix/10d0
+      else if (force_max_wgt .eq. 0d0 .and. scale_to_xsec) then
+c        no secondary unweighting: the final threshold of the primary one (unwgt,
+c        in the units of the stored weights), the smallest maximum for which the
+c        events stored under its lower earlier thresholds are consistent
+         target_wgt = ow_thr
+         if (target_wgt .le. 0d0) target_wgt = dabs(swgt(nw))
       else if (.not.scale_to_xsec) then
          target_wgt = force_max_wgt / xscale
       else

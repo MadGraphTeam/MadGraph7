@@ -179,7 +179,7 @@ class TestEnforceOverweightLimit(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.me_dir)
 
-    def make_ximprove(self, run_card):
+    def make_ximprove(self, run_card, grid=True):
         x = object.__new__(gen_ximprove.gen_ximprove_v4)
         x.me_dir = self.me_dir
         x.run_card = run_card
@@ -190,23 +190,28 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         channels = [FakeChannel('P1_qq_ll', 'G1', 1.), FakeChannel('P1_qq_ll', 'G2', 1.)]
         for C in channels:
             info = {'P_dir': C.parent_name, 'directory': C.name, 'base_directory': '',
-                    'offset': 1}
+                    'offset': 1, 'nevents': 1000, 'maxiter': 9, 'miniter': 3}
             x.ow_channels[(C.parent_name, C.name)] = x.ow_channel_entry(C, info, 1, 600.)
-        # G1: clean, 660 unit events; G2: 660 events, one of them 30 units
+            if grid:
+                open(os.path.join(self.pdir, C.name, 'ftn26'), 'w').close()
+        # 10 points per event. G1: clean, 660 unit events; G2: 660 events, one of 30 units
         write_events(os.path.join(self.pdir, 'G1', 'events.lhe'), [1. / 660] * 660)
-        write_results(os.path.join(self.pdir, 'G1', 'results.dat'), 1., 660)
+        write_results(os.path.join(self.pdir, 'G1', 'results.dat'), 1., 660, nevents=6600)
         write_events(os.path.join(self.pdir, 'G2', 'events.lhe'), [1. / 689] * 659 + [30. / 689])
-        write_results(os.path.join(self.pdir, 'G2', 'results.dat'), 1., 660)
+        write_results(os.path.join(self.pdir, 'G2', 'results.dat'), 1., 660, nevents=6600)
         self.jobs = []
 
         def run_ow_jobs(jobs):
-            # each top-up job: 660 clean unit events, sigma = 1
+            # a top-up job: sigma = 1, one clean unit event per 10 points
+            # (a multi-iteration job: 660 events of 6600 points)
             self.jobs += jobs
             for j in jobs:
                 d = os.path.join(self.pdir, j['directory'])
                 os.makedirs(d)
-                write_events(os.path.join(d, 'events.lhe'), [1. / 660] * 660)
-                write_results(os.path.join(d, 'results.dat'), 1., 660)
+                points = j['nevents'] if j['maxiter'] == 1 else 6600
+                n = points // 10
+                write_events(os.path.join(d, 'events.lhe'), [1. / n] * n)
+                write_results(os.path.join(d, 'results.dat'), 1., n, nevents=points)
         x.run_ow_jobs = run_ow_jobs
         return x
 
@@ -216,21 +221,29 @@ class TestEnforceOverweightLimit(unittest.TestCase):
     def test_top_up_process(self):
         self.check_top_up('process')
 
-    def check_top_up(self, mode):
+    def test_top_up_without_grid(self):
+        self.check_top_up('channel', grid=False)
+
+    def check_top_up(self, mode, grid=True):
         x = self.make_ximprove({'max_overweight_truncation': 0.001,
                                 'overweight_limit_min_events': -1,
-                                'overweight_limit_mode': mode})
+                                'overweight_limit_mode': mode}, grid)
         x.enforce_overweight_limit()
         # G1 is within its budget (500 events, floor 500): untouched
         self.assertFalse([j for j in self.jobs if j['directory'].startswith('G1')])
         g2 = [j for j in self.jobs if j['directory'].startswith('G2')]
         self.assertTrue(g2)
-        # new offsets (seeds), and the unsplit channel's grid
+        # new offsets (seeds), on the channel's grid; single iterations if it has one
         self.assertEqual(sorted(j['offset'] for j in g2), list(range(2, 2 + len(g2))))
         self.assertTrue(all(j['base_directory'] == 'G2' for j in g2))
+        if grid:
+            self.assertTrue(all(j['maxiter'] == 1 and j['miniter'] == 1 for j in g2))
+            self.assertTrue(all(j['nevents'] <= x.ow_max_job_points for j in g2))
+        else:
+            self.assertTrue(all(j['maxiter'] == 9 for j in g2))
         r = sum_html.OneResult('G2')
         r.read_results(os.path.join(self.pdir, 'G2', 'results.dat'))
-        # every job counts once: (1 + n)/ (1 + n) pb
+        # points-weighted average of estimates of 1 pb
         self.assertAlmostEqual(r.axsec, 1., 5)
         self.assertGreaterEqual(r.nunwgt, 500)
         w = combine_runs.read_abs_weights(os.path.join(self.pdir, 'G2', 'events.lhe'))
@@ -239,7 +252,7 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         # the 30-unit event is still there (never discarded for its weight) and in budget
         above = sum(x for x in w if x > m * (1 + 1e-6))
         self.assertLessEqual(above, 0.001 * 500 * m * (1 + 1e-6))
-        self.assertAlmostEqual(max(w) * (1 + len(g2)) * 689, 30., 3)
+        self.assertAlmostEqual(max(w) * r.nevents / 6600 * 689, 30., 3)
         # the job directories are removed
         self.assertFalse([d for d in os.listdir(self.pdir) if '_ow' in d])
 

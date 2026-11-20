@@ -1804,6 +1804,8 @@ c     max_overweight_truncation (set in run.inc, see store_events in unwgt.f)
       common /to_refine_lastn/ last_nref
       double precision max_overweight_truncation
       common/to_overweight/max_overweight_truncation
+      double precision ow_thr
+      common/to_unwgt_thr/ow_thr
 
       data prb/maxprb*1d0/
       data fprb/maxfprb*1d0/
@@ -1816,6 +1818,7 @@ c-----
       if (first_time) then
          first_time = .false.
          last_it = .false.
+         ow_thr = 0d0
          last_on = use_cut .ne. -2 .and. (use_cut .ne. 0 .or.
      &        max_overweight_truncation .gt. 0d0)
          last_ufix = 0d0
@@ -2391,6 +2394,10 @@ c     when that one contains a large weight)
                if (last_it) last_xnorm = xmean(cur_it-1)
                if (use_cut.eq.-2) then
                   call store_events(force_max_wgt, .False.)
+               elseif (itm .eq. 1 .and. use_cut .eq. 0) then
+c                 single iteration on a fixed grid (overweight-limit top-up job):
+c                 the finest consistent maximum, gen_ximprove unweights the pool
+                  call store_events(0d0, .True.)
                else
                   call store_events(-1d0, .True.)
                endif
@@ -2504,12 +2511,16 @@ c 129              close(22)
             if (cur_it .gt. itm) then               
                if (use_cut.eq.-2)then
                   call store_events(force_max_wgt, .False.)
+               elseif (itm .eq. 1 .and. use_cut .eq. 0) then
+c                 single iteration on a fixed grid (overweight-limit top-up job):
+c                 the finest consistent maximum, gen_ximprove unweights the pool
+                  call store_events(0d0, .True.)
                else
                   call store_events(-1d0, .True.)
                endif
                tmean = tmean / tsigma
                trmean = trmean / tsigma
-               chi2 = dabs(chi2 / tmean / tmean - tsigma) / dble(itm - 1)
+               chi2 = dabs(chi2 / tmean / tmean - tsigma) / dble(max(itm - 1, 1))
                tsigma = tmean / sqrt(tsigma)
                write(*, 80) real(tmean), real(tsigma), real(trmean), real(chi2)
  80            format(/1X,79(1H-)/1X,23HAccumulated results:   ,

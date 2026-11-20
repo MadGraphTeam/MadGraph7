@@ -63,6 +63,8 @@ c     c
       double precision twgt, maxwgt,swgt(maxevents)
       integer                             lun, nw
       common/to_unwgt/twgt, maxwgt, swgt, lun, nw, itmin
+      integer           use_cut
+      common /to_weight/use_cut
 
 c--masses
       double precision pmass(nexternal)
@@ -202,7 +204,9 @@ c         (e.g. the Z at rest of q q~ > z).
          endif
       enddo
 c      ncall =  ncall * max(1., min(3., (nb_tchannel+1.)/2.))
-      if (nb_tchannel.gt.1) then
+c     (a single iteration on a fixed grid, the overweight-limit top-up jobs of
+c     gen_ximprove, has no grid to adapt: it keeps its single iteration)
+      if (nb_tchannel.gt.1 .and. .not.(itmax.eq.1 .and. use_cut.eq.0)) then
 c         itmin = itmin + 1
          itmax = itmax + 2
       endif

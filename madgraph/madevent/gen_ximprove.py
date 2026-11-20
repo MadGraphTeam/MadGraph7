@@ -1526,7 +1526,8 @@ class gen_ximprove_v4(gen_ximprove):
     # enforce_overweight_limit: per-channel overweight budget, with top-up jobs
     ############################################################################
     ow_max_rounds = 4       # top-up rounds
-    ow_max_job_factor = 10  # a round adds at most this many times the channel's jobs
+    ow_max_job_factor = 10  # a round adds at most this many times the channel's points
+    ow_max_job_points = 200000 # points (non-zero weights) per single-iteration top-up job
     ow_target_margin = 1.1  # a top-up aims at this many times the channel's share
     # a channel needs this many times its share: one left below it has a larger unit
     # than the others, and the event combination would raise the common maximum
@@ -1622,23 +1623,7 @@ class gen_ximprove_v4(gen_ximprove):
                 break
             jobs = []
             for e in short:
-                n_old = e['njobs']
-                if e['nunwgt'] > 0:
-                    n_new = int(math.ceil(n_old * (self.ow_target_margin * e['share'] / e['nunwgt'] - 1)))
-                else:
-                    n_new = n_old * self.ow_max_job_factor
-                n_new = max(1, min(n_new, self.ow_max_job_factor * n_old))
-                for i in range(n_new):
-                    info = dict(e['info'])
-                    info['offset'] = e['next_offset']
-                    e['next_offset'] += 1
-                    info['directory'] = '%s_ow%i_%i' % (e['G'], round + 1, i)
-                    if e['split'] == 1 and info['base_directory'] in ('', './'):
-                        # the unsplit job ran in the channel directory, on its grid
-                        info['base_directory'] = e['G']
-                    info['packet'] = None
-                    jobs.append(info)
-                    e['new_jobs'].append(info['directory'])
+                jobs += self.ow_topup_jobs(e, round + 1)
             nb_jobs += len(jobs)
             active = short
             logger.info('enforce_overweight_limit (%s): %i channel(s) below their share of events, '
@@ -1663,6 +1648,47 @@ class gen_ximprove_v4(gen_ximprove):
                            ', '.join('%s/%s %i/%i' % (e['P'], e['G'], e['nunwgt'], e['share'])
                                      for e in still[:5]))
 
+    def ow_topup_jobs(self, e, round):
+        """refine jobs adding points to channel e, for about
+        ow_target_margin*share events at its current maximum weight.
+        On the channel's stored grid (G/ftn26), a top-up job is a single
+        iteration of a given number of points: there is no maximum weight to
+        decide (the pool's applies) nor a grid to adapt, so no iteration is
+        discarded. Without a stored grid it is the channel's refine job."""
+
+        points = e['result'].nevents # non-zero points of the pool
+        want = self.ow_target_margin * e['share']
+        if e['nunwgt'] > 0 and points > 0:
+            new_points = points * (want / e['nunwgt'] - 1)
+        else:
+            new_points = points * self.ow_max_job_factor
+        new_points = min(new_points, self.ow_max_job_factor * points)
+
+        grid = pjoin(e['gdir'], 'ftn26')
+        if e['info']['base_directory'] not in ('', './'):
+            grid = pjoin(e['info']['base_directory'], 'ftn26') # read-only gridpack
+        single = points > 0 and os.path.exists(grid)
+        if single:
+            nb = max(1, int(math.ceil(new_points / self.ow_max_job_points)))
+            size = max(self.min_event_in_iter, int(math.ceil(new_points / nb)))
+        else:
+            nb = max(1, min(int(math.ceil(e['njobs'] * new_points / max(points, 1))),
+                            self.ow_max_job_factor * e['njobs']))
+        jobs = []
+        for i in range(nb):
+            info = dict(e['info'])
+            info['offset'] = e['next_offset']
+            e['next_offset'] += 1
+            info['directory'] = '%s_ow%i_%i' % (e['G'], round, i)
+            if info['base_directory'] in ('', './'):
+                info['base_directory'] = e['G'] # the channel's grid
+            if single:
+                info.update(nevents=size, maxiter=1, miniter=1, grid_refinment=0)
+            info['packet'] = None
+            jobs.append(info)
+            e['new_jobs'].append(info['directory'])
+        return jobs
+
     def ow_gather(self, e):
         """read the channel's events and results, and those of its new jobs
         (e['new_jobs']): the sources of its pool, their weights, the pooled result"""
@@ -1683,23 +1709,26 @@ class gen_ximprove_v4(gen_ximprove):
                                e['P'], d, str(error).split('\n')[0])
                 continue
             new.append((path, r))
-        n_old = e['njobs']
-        n_tot = n_old + len(new)
-        sources = [(pjoin(gdir, 'events.lhe'), n_old / n_tot)] + \
-                  [(pjoin(path, 'events.lhe'), 1. / n_tot) for path, r in new]
-        weights, min_wgt = combine_runs.pool_weights(sources)
-
-        # every job counts once (as in combine_runs), the channel's earlier result n_old times
-        if new:
-            rs = [r for path, r in new]
-            result.axsec = (n_old * result.axsec + sum(r.axsec for r in rs)) / n_tot
-            result.xsec = (n_old * result.xsec + sum(r.xsec for r in rs)) / n_tot
-            result.xerru = math.sqrt((n_old * result.xerru)**2 + sum(r.xerru**2 for r in rs)) / n_tot
-            result.xerrc = (n_old * result.xerrc + sum(r.xerrc for r in rs)) / n_tot
-            result.nevents += sum(r.nevents for r in rs)
+        # the pool's estimate is the points-weighted average of its sources (one
+        # sample of all their points); the events of a source sum to its estimate
+        p_old = result.nevents
+        rs = [r for path, r in new]
+        p_tot = p_old + sum(r.nevents for r in rs)
+        if not new or p_tot <= 0:
+            sources = [(pjoin(gdir, 'events.lhe'), 1.)]
+        else:
+            sources = [(pjoin(gdir, 'events.lhe'), p_old / p_tot)] + \
+                      [(pjoin(path, 'events.lhe'), r.nevents / p_tot) for path, r in new]
+            for key in ('axsec', 'xsec', 'xerrc'):
+                setattr(result, key, (p_old * getattr(result, key) +
+                                      sum(r.nevents * getattr(r, key) for r in rs)) / p_tot)
+            result.xerru = math.sqrt((p_old * result.xerru)**2 +
+                                     sum((r.nevents * r.xerru)**2 for r in rs)) / p_tot
+            result.nevents = p_tot
             result.timing += sum(r.timing for r in rs)
-        e.update(result=result, sources=sources, weights=weights, min_wgt=min_wgt, njobs=n_tot,
-                 sigma=sum(weights))
+        weights, min_wgt = combine_runs.pool_weights(sources)
+        e.update(result=result, sources=sources, weights=weights, min_wgt=min_wgt,
+                 njobs=e['njobs'] + len(new), sigma=sum(weights))
         e.setdefault('unit', min_wgt)
 
     def ow_apply(self, e):
