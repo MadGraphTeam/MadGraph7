@@ -3141,14 +3141,17 @@ impl LoopProgramV4 {
     /// run: the first family is derived and merged by the caller, timing
     /// both, and as many workers derive at once as the derivation takes
     /// replays (the running means' ratio, at least one, at most the window's
-    /// workers and the families left). A worker is started only when that
+    /// workers and the families left), the pipeline running only when the
+    /// bound allows two workers or more (one worker never pays: the caller
+    /// would only replay). A worker is started only when that
     /// count grows (a load starts no thread its families do not use), as a
     /// job on the pool the load's decode started, else on a thread of its
     /// own; one that is no longer allowed waits on a condition, asleep. When a
-    /// family derives faster than it replays, or no worker thread can start,
-    /// the rest load sequentially. The first error in family order is the one
-    /// returned, and a later family's panic is raised only if the merge
-    /// reaches it (as sequentially). Returns the largest loop order + 1.
+    /// family derives faster than it replays, the bound allows fewer than two
+    /// workers, or no worker thread can start, the rest load sequentially. The
+    /// first error in family order is the one returned, and a later family's
+    /// panic is raised only if the merge reaches it (as sequentially). Returns
+    /// the largest loop order + 1.
     fn pipeline(
         files: Vec<FamilyFile>,
         window: usize,
@@ -3185,7 +3188,13 @@ impl LoopProgramV4 {
             }
             ((derive / replay).floor() as usize).clamp(1, workers_most)
         };
-        if derive < replay && !forced {
+        // One worker never pays: the caller then only replays, so a family
+        // takes at least its derivation (with its recording) either way, plus
+        // the replay and the hand-off (g g > 7g at bound 2: 5.7 s against
+        // 4.8 s sequentially). A bound that allows fewer than two workers
+        // (two threads) loads sequentially; above it the running means decide
+        // (the first family's ratio understates the later ones').
+        if !forced && (workers_most < 2 || derive < replay) {
             for f in files {
                 order_count = order_count.max(orders(&f));
                 families.push(Self::family(&f, shared, ids)?);
