@@ -877,22 +877,35 @@ TT_EXPRESSIONS = (
     "u~ g > t t~ u~",
 )
 TT_SWITCH_LINES = 2
+# t t~ with up to two light-quark lines: the targets have two light lines
+TT_LINES_EXPRESSIONS = (
+    "g g > t t~ g g",
+    "u u~ > t t~ g g",
+    "u~ u > t t~ g g",
+    "d d~ > t t~ g g",
+    "d~ d > t t~ g g",
+    *(
+        f"{a} {a}~ > t t~ {b} {b}~" if beams else f"{a}~ {a} > t t~ {b} {b}~"
+        for a in ("u", "d", "s")
+        for b in ("u", "d", "s")
+        for beams in (True, False)
+    ),
+)
 
 
-@pytest.fixture(scope="module")
-def massive(tmp_path_factory):
+def _massive_providers(tmp_path_factory, name, expressions, switch_lines):
     config_executable = _config_executable()
     if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
         _unavailable("UMAMI integration requires make and a C compiler")
-    root = tmp_path_factory.mktemp("umami-unions-tt")
+    root = tmp_path_factory.mktemp(name)
     artifacts = {kind: root / kind for kind in ("union", "flavour", "full")}
-    names = tuple(f"t{index}" for index in range(len(TT_EXPRESSIONS)))
+    names = tuple(f"t{index}" for index in range(len(expressions)))
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         for kind, path in artifacts.items():
             Generator(
                 _config("full" if kind == "full" else "lc", kind == "union")
             ).generate(
-                ProcessSet.from_expressions(TT_EXPRESSIONS, names=names),
+                ProcessSet.from_expressions(expressions, names=names),
                 path,
                 model=ModelSource.from_path(prepared_model),
             )
@@ -906,7 +919,7 @@ def massive(tmp_path_factory):
         ]
         output = root / f"reweight-{kind}"
         (identifier,) = write_reweight_provider(
-            artifacts[kind], artifacts["full"], output, switch_lines=TT_SWITCH_LINES
+            artifacts[kind], artifacts["full"], output, switch_lines=switch_lines
         )
         _make(output, config_executable)
         result["reweight"][kind] = (
@@ -914,7 +927,21 @@ def massive(tmp_path_factory):
             json.loads((output / f"flavor_switch_{identifier}.json").read_text()),
             _library(output / f"build/libreweight_{identifier}.so"),
         )
-    yield result
+    return result
+
+
+@pytest.fixture(scope="module")
+def massive(tmp_path_factory):
+    return _massive_providers(
+        tmp_path_factory, "umami-unions-tt", TT_EXPRESSIONS, TT_SWITCH_LINES
+    )
+
+
+@pytest.fixture(scope="module")
+def massive_lines(tmp_path_factory):
+    return _massive_providers(
+        tmp_path_factory, "umami-unions-ttqq", TT_LINES_EXPRESSIONS, 3
+    )
 
 
 def _massive_points(count: int):
@@ -1062,10 +1089,17 @@ def test_massive_switch_ratios_equal_with_and_without_unions(massive):
         assert lc_library.umami_free(lc_handle) == 0
 
 
-def test_massive_switched_draws_equal_with_and_without_unions(massive):
+def test_massive_switched_draws_equal_with_and_without_unions(massive_lines):
+    """t t~ events switched to targets with two light-quark lines and the t line."""
+    from pyamplicol.generation.phase_space import massive_rambo_final_state
+
+    mt = 173.0
+    final = massive_rambo_final_state(4, sqrt_s=1000.0, masses=(mt, mt, 0.0, 0.0), seed=7)
+    point = ((500.0, 0.0, 0.0, 500.0), (500.0, 0.0, 0.0, -500.0))
+    point += tuple(tuple(map(float, p)) for p in final)
     _assert_switched_draws_equal(
-        massive["reweight"]["union"],
-        massive["reweight"]["flavour"],
-        massive["umami"],
-        _massive_points(1)[0],
+        massive_lines["reweight"]["union"],
+        massive_lines["reweight"]["flavour"],
+        massive_lines["umami"],
+        point,
     )
