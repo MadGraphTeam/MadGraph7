@@ -7,7 +7,7 @@ c and shower invariants stay local.
       implicit none
       private
       public :: set_QCD_flows,compute_MCsubtraction_kl,compute_delta,
-     $     bogus_probne_fun
+     $     bogus_probne_fun,delta_H_min_probability
       public :: prepare_mc_kinematics,fill_father_and_ileg,get_qMC,
      $     mc_shower_scale_mass,fksfather,gfactsf,gfactcl,gfactazi
 
@@ -1370,6 +1370,126 @@ c
 
       return
       end subroutine compute_delta
+
+      subroutine delta_H_min_probability(p,ifks,ifold,qmin,probability)
+c     FxFx-Delta H event showered from the scalar qmin, the smallest of
+c     its directed starting scales (FxFxDeltaHMinScale). Separate
+c     directed starts t_ab would let each H-event colour line radiate
+c     between t_ab and qmin; the scalar start removes that radiation.
+c     Include its absence as the no-emission probability of every line
+c     from t_ab down to qmin, with Delta's tables and line formula
+c     (eqs.3.31/3.34) and the H-event flavours, dipole masses and Bjorken
+c     x. The caller restores the outer event's colours and scales first.
+      use FKSParams, only: delta_backward_isr
+      use fks_phase_space_data, only: xbjrk_ev
+      use scale_module, only: emsca_H
+      implicit none
+      include 'nFKSconfigs.inc'
+      include 'run.inc'
+      include 'genps.inc'
+      double precision, intent(in) :: p(0:3,nexternal),qmin
+      integer, intent(in) :: ifks,ifold
+      double precision, intent(out) :: probability
+      integer icolup_s(2,nexternal-1),icolup_h(2,nexternal)
+      common/colour_connections/icolup_s,icolup_h
+      include 'leshouche_decl.inc'
+      save idup_d,mothup_d,icolup_d,niprocs_d
+      logical firsttime
+      save firsttime
+      data firsttime/.true./
+      double precision cstlow,cstupp,cxmlow,cxmupp
+      common/cstxmbds/cstlow,cstupp,cxmlow,cxmupp
+      double precision smallptupp
+      parameter (smallptupp=1.01d0)
+      type(delta_connections) line
+      integer a,b,c,other,slot,partners,pdg,nflav
+      double precision mcmass(21),start,stop,qdip(0:3),mass,deltanum,
+     $     leg_probability,backward_lambda(3:5)
+      integer backward_order
+
+      probability=1d0
+      if (.not.(qmin.gt.0d0)) return
+      mcmass=0d0
+      include 'MCmasses_PYTHIA8.inc'
+      if (firsttime) then
+         firsttime=.false.
+         call read_leshouche_info(idup_d,mothup_d,icolup_d,niprocs_d)
+c     The first Sudakov call initializes the fitted table bounds.
+         deltanum=pysudakov_safe(1.d2,2.d2,1,1,mcmass)
+      endif
+      nflav=niprocs_d(ifks)
+      do a=1,nexternal
+         if (all(icolup_h(:,a).eq.0)) cycle
+         line=delta_connections()
+c     One colour line per nonzero colour slot. As in the Delta scale
+c     reconstruction, a line joins colour to anticolour on the same side
+c     of the collision and equal slots across it.
+         do c=1,2
+            if (icolup_h(c,a).eq.0) cycle
+            partners=0
+            do b=1,nexternal
+               if (b.eq.a) cycle
+               other=c
+               if ((a.le.nincoming).eqv.(b.le.nincoming)) other=3-c
+               if (icolup_h(other,b).ne.icolup_h(c,a)) cycle
+               partners=partners+1
+               start=emsca_H(ifks,ifold,a,b)
+c     PYTHIA's ISR recoils against the other beam; FSR against its
+c     colour partner, with an incoming partner taken with a minus sign.
+               if (a.le.nincoming) then
+                  qdip=p(:,1)+p(:,2)
+               elseif (b.le.nincoming) then
+                  qdip=p(:,a)-p(:,b)
+               else
+                  qdip=p(:,a)+p(:,b)
+               endif
+               mass=min(sqrt(abs(qdip(0)**2-qdip(1)**2-qdip(2)**2
+     $              -qdip(3)**2)),cxmupp)
+c     Bound the scales as for Delta's live connections (eq.3.33).
+               start=max(min(start,cstupp),smallptupp)
+               stop=min(qmin,cstupp)
+               if (emsca_H(ifks,ifold,a,b).le.0d0.or.stop.ge.start.or.
+     $              mass.le.0d0) cycle
+               slot=line%count+1
+               line%count=slot
+               line%partner(slot)=b
+               line%start(slot)=start
+               line%stop(slot)=stop
+               line%mass(slot)=mass
+               line%sudakov_type(slot)=setSudType(a,b)
+            enddo
+            if (partners.ne.1) then
+               write(*,*) 'Invalid H-event colour line for the '/
+     $              /'FxFx-Delta minimal scale',a,c,partners
+               stop 1
+            endif
+         enddo
+         if (line%count.eq.0) cycle
+         pdg=idup_d(ifks,a,1)
+         leg_probability=-1d0
+         if (a.le.nincoming) then
+            if (delta_backward_isr) then
+               call delta_backward_parameters(backward_lambda,
+     $              backward_order)
+               leg_probability=delta_backward_leg(pdg,
+     $              idup_d(ifks,a,1:nflav),lpp(a),xbjrk_ev(a),line,
+     $              backward_lambda,backward_order)
+            endif
+            if (leg_probability.lt.0d0) leg_probability=
+     $           delta_leg_probability(a,pdg,idup_d(ifks,a,1:nflav),
+     $           lpp(a),xbjrk_ev(a),line,mcmass)
+         else
+            leg_probability=delta_leg_probability(a,pdg,
+     $           idup_d(ifks,a,1:nflav),0,0d0,line,mcmass)
+         endif
+         probability=probability*leg_probability
+      enddo
+      if (.not.(probability.ge.0d0.and.probability.le.1d0)) then
+         write(*,*) 'Invalid FxFx-Delta minimal-scale probability',
+     $        probability
+         stop 1
+      endif
+      end subroutine delta_H_min_probability
 
       subroutine get_delta_stopping_scales(p,idup_h,icolup_s,
      $     Sevent_starting_scales,mass_upper,Sevent_stopping_scales,

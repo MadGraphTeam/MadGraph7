@@ -53,7 +53,7 @@ program check_fxfx_delta_event_scales
   emsca_H=-1d0
   if(delta)emsca_H(2,2,:,:)=original
   emsca_H_hard=53d0
-  call set_FxFx_delta_H_scale(2,2)
+  call set_FxFx_delta_H_scale(2,2,.false.)
   expected=53d0
   if(delta)expected=12d0
   call require(abs(emsca_H_hard(2,2)-expected).lt.1d-12, &
@@ -68,14 +68,26 @@ program check_fxfx_delta_event_scales
     emsca_H(1,1,2,1)=1d200
     emsca_H(1,1,2,5)=1d-200
     emsca_H(1,1,5,2)=1d-200
-    call set_FxFx_delta_H_scale(1,1)
+    call set_FxFx_delta_H_scale(1,1,.false.)
     call require(abs(emsca_H_hard(1,1)-1d0).lt.1d-12,'stable mean over widely separated scales')
-    call set_FxFx_delta_H_scale(1,2)
+    call set_FxFx_delta_H_scale(1,1,.true.)
+    call require(emsca_H_hard(1,1).eq.1d-200,'minimal scale over widely separated scales')
+    emsca_H_hard(1,1)=53d0
+    call set_FxFx_delta_H_scale(1,2,.false.)
     call require(emsca_H_hard(1,2).eq.53d0,'empty stopping-scale set keeps fallback')
+    call set_FxFx_delta_H_scale(1,2,.true.)
+    call require(emsca_H_hard(1,2).eq.53d0,'empty set keeps fallback with the minimal scale')
     ickkw_mod=0
-    call set_FxFx_delta_H_scale(2,1)
+    call set_FxFx_delta_H_scale(2,1,.false.)
     call require(emsca_H_hard(2,1).eq.53d0,'standalone Delta scalar is unchanged')
+    call set_FxFx_delta_H_scale(2,1,.true.)
+    call require(emsca_H_hard(2,1).eq.53d0,'standalone Delta ignores the minimal scale')
     ickkw_mod=3
+    emsca_H(2,1,:,:)=original
+    call set_FxFx_delta_H_scale(2,1,.true.)
+    call require(emsca_H_hard(2,1).eq.4d0, &
+         'minimal scale excludes diagonal and nonpositive entries')
+    emsca_H_hard(2,1)=53d0
   endif
   do iSorH_lhe=1,2
     next=3+iSorH_lhe

@@ -136,6 +136,11 @@ ANNOUNCEMENT:
        or unsupported provider metadata stops the run. Final-state legs,
        scales below 1.01 GeV and unsupported flavours keep the table. Changing
        it requires a new integration.
+   RF: Add FxFxDeltaHMinScale (FKS_params.dat, default off) for FxFx-Delta:
+       H events start the shower at the smallest of their directed starting
+       scales instead of the geometric mean, and all H contributions are
+       multiplied by the no-emission probability of every H-event colour
+       line from its own directed start down to that scale.
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix

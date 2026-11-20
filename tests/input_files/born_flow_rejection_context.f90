@@ -106,6 +106,11 @@ contains
   double precision function mc_shower_scale_mass()
     mc_shower_scale_mass=0d0
   end function
+  subroutine delta_H_min_probability(p,ifks,ifold,qmin,probability)
+    double precision :: p(0:3,*),qmin,probability
+    integer :: ifks,ifold
+    probability=1d0
+  end subroutine
 end module
 
 module process_module

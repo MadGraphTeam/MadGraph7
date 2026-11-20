@@ -200,16 +200,19 @@ contains
     endwhere
   end subroutine set_FxFx_shower_scale_nbody
 
-  subroutine set_FxFx_delta_H_scale(ifks,ifold)
-    ! Reduce the selected event's mapped stopping scales to one FxFx scale.
-    ! Each positive directed entry counts once; absent entries are negative.
+  subroutine set_FxFx_delta_H_scale(ifks,ifold,use_min)
+    ! Reduce the selected event's mapped stopping scales to one FxFx scale:
+    ! their geometric mean, or with use_min their smallest value. Each
+    ! positive directed entry counts once; absent entries are negative.
     ! Sum logarithms so the product cannot overflow or underflow.
     use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     integer, intent(in) :: ifks,ifold
+    logical, intent(in) :: use_min
     integer :: i,j,nscales
-    double precision :: scale,logsum
+    double precision :: scale,logsum,smallest
     if (.not.mcatnlo_delta_mod.or.ickkw_mod.ne.3) return
     logsum=0d0
+    smallest=huge(1d0)
     nscales=0
     do j=1,ndelH
        do i=1,ndelH
@@ -221,11 +224,17 @@ contains
           endif
           if (scale.le.0d0) cycle
           logsum=logsum+log(scale)
+          smallest=min(smallest,scale)
           nscales=nscales+1
        enddo
     enddo
     ! Keep the ordinary FxFx fallback if no active stopping scale exists.
-    if (nscales.gt.0) emsca_H_hard(ifks,ifold)=exp(logsum/dble(nscales))
+    if (nscales.eq.0) return
+    if (use_min) then
+       emsca_H_hard(ifks,ifold)=smallest
+    else
+       emsca_H_hard(ifks,ifold)=exp(logsum/dble(nscales))
+    endif
   end subroutine set_FxFx_delta_H_scale
 
   subroutine save_shower_scale_nbody(ifks,ifold,father,partner)

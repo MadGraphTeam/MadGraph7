@@ -94,7 +94,8 @@ class TestMCatNLODeltaMatching(unittest.TestCase):
         (work / 'delta_matching.f').write_text(mc_counterterm_test_module(
                         ('compute_delta', 'get_delta_stopping_scales',
                          'get_delta_connections', 'delta_leg_probability',
-                         'delta_backward_parameters', 'setSudType') + BACKWARD_ROUTINES,
+                         'delta_backward_parameters', 'setSudType',
+                         'delta_H_min_probability') + BACKWARD_ROUTINES,
                         external_functions=(('double precision', 'pysudakov_safe'),)))
         cls.executable = work / 'check_delta_matching'
         result = subprocess.run([
@@ -165,6 +166,14 @@ class TestMCatNLODeltaMatching(unittest.TestCase):
                                         capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn(message, result.stdout + result.stderr)
+    def test_minimal_H_scale_probability(self):
+        for mode, label in (('hmin_fsr', 'final-state'), ('hmin_isr', 'initial-state')):
+            with self.subTest(mode=mode):
+                result = subprocess.run([str(self.executable), mode],
+                                        capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('PASS %s minimal-scale H probability' % label, result.stdout)
+
     def test_cross_connection_intervals_and_line_orderings(self):
         result = subprocess.run([str(self.executable), 'cross'],
                                 capture_output=True, text=True, timeout=15)

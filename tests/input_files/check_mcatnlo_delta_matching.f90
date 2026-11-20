@@ -3,7 +3,7 @@
 program check_mcatnlo_delta_matching
   use mc_counterterms, only: compute_delta,isspecial,delta_connections, &
        delta_leg_probability,get_delta_connections,delta_backward_leg, &
-       delta_alphas_lambdas
+       delta_alphas_lambdas,delta_H_min_probability
   use FKSParams, only: delta_backward_isr
   use fks_phase_space_data, only: xbjrk_cnt
   use process_module
@@ -43,6 +43,10 @@ program check_mcatnlo_delta_matching
   unit_table=.false.
   if(mode.eq.'cross'.or.mode.eq.'zero')then
     call check_connection_probabilities(mode)
+    stop
+  endif
+  if(mode.eq.'hmin_fsr'.or.mode.eq.'hmin_isr')then
+    call check_H_min_probability(mode)
     stop
   endif
   born_flow_picked=1
@@ -131,9 +135,12 @@ program check_mcatnlo_delta_matching
   ! The FxFx scalar must follow the reconstructed scales, not the Born scale.
   ickkw_mod=3
   emsca_H_hard=500d0
-  call set_FxFx_delta_H_scale(1,1)
+  call set_FxFx_delta_H_scale(1,1,.false.)
   call require(abs(emsca_H_hard(1,1)-sqrt(t34*t43)).lt.1d-12, &
        'FxFx H scalar follows native stopping scales')
+  call set_FxFx_delta_H_scale(1,1,.true.)
+  call require(emsca_H_hard(1,1).eq.min(t34,t43), &
+       'minimal FxFx H scalar is the smallest native stopping scale')
   ickkw_mod=0
 
   ! Lowering the starting scale vetoes both dipoles before the Sudakov calls.
@@ -301,6 +308,77 @@ contains
       print *, 'PASS zero connection weights'
     endif
   end subroutine check_connection_probabilities
+
+  subroutine check_H_min_probability(mode)
+    ! H-event lines from their directed starts down to the smallest one.
+    ! With table_mode=2 a line from t down to q gives (q/t)**(m+0.1*kind),
+    ! m the (capped) H-event dipole mass. Both PDF stubs are scale-free.
+    use fks_phase_space_data, only: xbjrk_ev
+    character(len=*),intent(in) :: mode
+    integer :: icolup_s(2,4),icolup_h(2,5)
+    common/colour_connections/icolup_s,icolup_h
+    double precision :: cstlow,cstupp,cxmlow,cxmupp
+    common/cstxmbds/cstlow,cstupp,cxmlow,cxmupp
+    double precision :: ph(0:3,5),q,answer,reference,m35,m45
+    cstlow=1d0
+    cstupp=1000d0
+    cxmlow=1d0
+    cxmupp=50d0
+    table_mode=2
+    emsca_H=-1d0
+    icolup_h=0
+    ph(:,1)=(/500d0,0d0,0d0,500d0/)
+    ph(:,2)=(/500d0,0d0,0d0,-500d0/)
+    ph(:,3)=(/40d0,40d0,0d0,0d0/)
+    ph(:,4)=(/30d0,-30d0,0d0,0d0/)
+    ph(:,5)=(/30d0,0d0,30d0,0d0/)
+    q=36d0
+    if(mode.eq.'hmin_fsr')then
+      ! e+ e- > d d~ g: d-g and d~-g lines, two gluon lines.
+      fixture_kind=0
+      icolup_h(1,3)=501
+      icolup_h(2,4)=502
+      icolup_h(1,5)=502
+      icolup_h(2,5)=501
+      emsca_H(1,1,3,5)=40d0
+      emsca_H(1,1,5,3)=38d0
+      emsca_H(1,1,4,5)=45d0
+      emsca_H(1,1,5,4)=42d0
+      m35=sqrt(2400d0)
+      m45=sqrt(1800d0)
+      reference=(q/40d0)**(m35+.2d0)*(q/45d0)**(m45+.2d0)* &
+           (q/42d0)**(m45+.2d0)*(q/38d0)**(m35+.2d0)
+      call delta_H_min_probability(ph,1,1,q,answer)
+      call require(abs(answer/reference-1d0)<1d-12,'final-state H lines to the minimal scale')
+      ! A line already starting at the minimum does not evolve.
+      emsca_H(1,1,3,5)=q
+      reference=(q/45d0)**(m45+.2d0)*(q/42d0)**(m45+.2d0)*(q/38d0)**(m35+.2d0)
+      call delta_H_min_probability(ph,1,1,q,answer)
+      call require(abs(answer/reference-1d0)<1d-12,'minimal line has unit probability')
+      call delta_H_min_probability(ph,1,1,-1d0,answer)
+      call require(answer.eq.1d0,'no minimal scale, no probability')
+      print *, 'PASS final-state minimal-scale H probability'
+    else
+      ! u u~ > h h g: ISR lines use the capped beam-pair mass and type 1,
+      ! the gluon's FSR lines to incoming partners type 4.
+      fixture_kind=1
+      lpp=1
+      xbjrk_ev=0.01d0
+      icolup_h(1,1)=501
+      icolup_h(2,2)=502
+      icolup_h(1,5)=501
+      icolup_h(2,5)=502
+      emsca_H(1,1,1,5)=40d0
+      emsca_H(1,1,2,5)=45d0
+      emsca_H(1,1,5,1)=38d0
+      emsca_H(1,1,5,2)=42d0
+      reference=(q/40d0)**50.1d0*(q/45d0)**50.1d0* &
+           (q/38d0)**50.4d0*(q/42d0)**50.4d0
+      call delta_H_min_probability(ph,1,1,q,answer)
+      call require(abs(answer/reference-1d0)<1d-12,'initial-state H lines to the minimal scale')
+      print *, 'PASS initial-state minimal-scale H probability'
+    endif
+  end subroutine check_H_min_probability
 
   subroutine require(condition,label)
     logical, intent(in) :: condition

@@ -293,6 +293,18 @@
 ! Default :: .false.
 !
 ! ==========================================================================
+! FxFx-Delta H-event shower scale (ickkw=3 with mcatnlo_delta only).
+! .false. starts the shower of an H event at the geometric mean of its
+! directed Delta starting scales. .true. starts it at the smallest of them,
+! Q_min, and multiplies all H contributions by the no-emission probability
+! of every H-event colour line from its own directed starting scale down
+! to Q_min (same Sudakov tables as Delta). S events are unchanged. Rerun
+! the integration after changing this setting.
+#FxFxDeltaHMinScale
+.false.
+! Default :: .false.
+!
+! ==========================================================================
 ! FxFx analytic Sudakov finite terms (ickkw=3 only).
 ! Always enabled for FxFx with PYTHIA8 matching, regardless of this flag.
 ! Other modes default to .false.; fixed-order runs do not enable them

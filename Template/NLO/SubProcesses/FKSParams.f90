@@ -26,6 +26,7 @@ module FKSParams
   ! Default-off incoming-parton Delta prototype. Its coupling/running
   ! always come from the active Sudakov-table provider, without overrides.
   logical :: delta_backward_isr=.false.
+  logical :: fxfx_delta_H_min_scale=.false.
   logical, private :: FxFxPythia8Matching=.false.
   integer :: FKSFinalRecoil=0
   integer :: FKSISRMapping=0
@@ -118,6 +119,8 @@ contains
              read(68,*,end=999) FxFxPythia8FiniteTerms
           else if (buff .eq. '#DeltaBackwardISR') then
              read(68,*,end=999) delta_backward_isr
+          else if (buff .eq. '#FxFxDeltaHMinScale') then
+             read(68,*,end=999) fxfx_delta_H_min_scale
           else if (buff .eq. '#FKSExplicitSum') then
              read(68,*,end=999) FKSExplicitSum
           else if (buff .eq. '#UsePolyVirtual') then
@@ -263,6 +266,7 @@ contains
        write(*,*) ' > FKSExplicitSum            = ',FKSExplicitSum
        write(*,*) ' > FxFxPythia8FiniteTerms     = ',FxFxPythia8FiniteTerms
        write(*,*) ' > DeltaBackwardISR          = ',delta_backward_isr
+       write(*,*) ' > FxFxDeltaHMinScale        = ',fxfx_delta_H_min_scale
        write(*,*) &
             '==============================================================='
        paramPrinted=.TRUE.
@@ -295,6 +299,7 @@ contains
     FKSExplicitSum=.true.
     FxFxPythia8FiniteTerms=.false.
     delta_backward_isr=.false.
+    fxfx_delta_H_min_scale=.false.
     IncludeBornContributions=.true.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0

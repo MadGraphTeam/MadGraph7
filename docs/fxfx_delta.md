@@ -90,6 +90,58 @@ others. This affects higher-order shower terms. The previous hard
 scalar, however, allowed radiation far above the reconstructed stopping
 scales.
 
+### Alternative: the smallest scale with Sudakov factors
+
+Set `#FxFxDeltaHMinScale` to `.true.` in `Cards/FKS_params.dat` to use
+the smallest positive directed starting scale `Q_min` as `SCALUP`
+instead. It is off by default and only affects FxFx-Delta H events with
+a Delta reconstruction. The fallback, the S events and standalone
+MC@NLO-Delta are unchanged.
+
+With separate directed starts, each H-event colour line `(a,b)` would
+radiate between its own start `t_ab` and `Q_min`. The scalar start
+removes that radiation, so every H contribution of the event is
+multiplied by the probability that none of it happens:
+
+```
+P_H = prod_a P_a(t_ab -> Q_min)
+```
+
+Each leg `a` of the H event contributes its colour lines with Delta's
+line formula (eqs. 3.31 and 3.34) and Sudakov tables. The H-event
+flavours, Bjorken x and dipole masses are used. ISR lines use the
+beam-pair mass and FSR lines the mass of the line, capped as in Delta.
+Incoming legs include their PDF ratio, and `DeltaBackwardISR` also
+applies to them. A line that starts at `Q_min` does not contribute.
+
+`P_H` is computed once per physical H event, for the outer history and
+colour flow that also own `SCALUP` (`delta_H_min_probability` in
+`montecarlocounter.f`). It multiplies all H records of that event,
+including the inner-history H sum of `MCExplicitKLSum`
+(`scale_H_records` in `driver_mintMC.f`). The real emission in S events,
+`(1 - Delta_b) R_b`, is not multiplied, so the H events lose a
+second-order amount of cross section. Unlike the geometric mean, this
+prescription never lets the shower radiate above any directed limit.
+Changing the switch changes the event weights, so a new integration is
+needed.
+
+Validation with `p p > w+ z [QCD] @0` plus `p p > w+ z j [QCD] @1` (13 TeV,
+FxFx, Pythia8, 10^6 events each) compared against the geometric mean
+with all other cards equal:
+
+| | Geometric mean | Smallest scale |
+| --- | ---: | ---: |
+| Merged rate (pb) | 30.938 ± 0.054 | 31.106 ± 0.053 |
+| @0 / @1 (pb) | 20.930 / 10.008 | 20.859 / 10.248 |
+| Signed integral (pb) | 49.47 ± 0.11 | 49.24 ± 0.07 |
+| Negative fraction, LHE / merged | 17.6% / 9.0% | 16.9% / 8.1% |
+| @1 H events | 85,359 | 66,365 |
+| @1 H `SCALUP` p01 / median (GeV) | 0.88 / 14.4 | 2.25 / 15.4 |
+
+The merged pT(WZ) integrals agree within about 1%. The sub-GeV tail of
+H-event starting scales is removed by the Sudakov factor, and the number
+of @1 H events drops by about 22%.
+
 ## Event format and shower interface
 
 FxFx-Delta events use the ordinary FxFx format:
@@ -251,8 +303,12 @@ CI job:
   probabilities, merging factors, cut outcomes and H/S evaluation modes,
   plus reuse of the native H cache.
 - `test_fxfx_delta_event_scales` checks the physical S dipole limits, the
-  H-event geometric mean, sentinel exclusion, sector and fold ownership,
-  and the ordinary-mode controls.
+  H-event geometric mean and minimum, sentinel exclusion, sector and fold
+  ownership, and the ordinary-mode controls.
+- `test_mcatnlo_delta_scales` also checks the minimal-scale H probability
+  against closed forms for final- and initial-state lines, and
+  `test_fxfx_delta_weights` checks that only the event's H records are
+  multiplied.
 - `test_fxfx_delta_lhe` round-trips ordinary FxFx, FxFx-Delta and
   standalone Delta events through both Fortran readers and the Python
   parser.

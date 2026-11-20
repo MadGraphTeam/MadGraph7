@@ -650,11 +650,12 @@ c
       use fks_phase_space, only: fks_phase_space_point,
      $     generate_born_contribution,generate_real_phase_space
       use mc_native_context, only: mc_begin_real_point,mc_end_real_point
-      use FKSParams, only: MCSubtractionAtFixedFlow
+      use FKSParams, only: MCSubtractionAtFixedFlow,
+     $     fxfx_delta_H_min_scale
       use weight_lines
       use mint_module
       use mc_counterterms, only: fksfather,gfactsf,gfactcl,
-     $     mc_shower_scale_mass
+     $     mc_shower_scale_mass,delta_H_min_probability
       use process_module
       use scale_module
       implicit none
@@ -675,7 +676,8 @@ c
      $     partner_picked(fks_configs),first_native_H
       save partner_picked
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3,nexternal),rwgt,x_local(99),vol1,probne,sigintF,
-     $     n1body_wgt,p_lab(0:3,nexternal),p_cms(0:3,nexternal),jacPS
+     $     n1body_wgt,p_lab(0:3,nexternal),p_cms(0:3,nexternal),jacPS,
+     $     prob_H_min
       save vol1,proc_map,sum
       integer             ini_fin_fks
       common/fks_channels/ini_fin_fks
@@ -1061,9 +1063,17 @@ c check if event or counter-event passes cuts
 ! The flow dispatcher has restored the outer event's stopping scales.
 ! Bit 3 records an actual Delta calculation; otherwise keep the fallback.
 ! Set the scalar before inner histories can change the active scale matrix.
+! With FxFxDeltaHMinScale the scalar is the smallest directed start,
+! and every H-event line keeps its no-emission probability down to it.
+            prob_H_min=1d0
             if (mcatnlo_delta.and.ickkw.eq.3.and.
-     $           btest(MCcntcalled,3))
-     $           call set_FxFx_delta_H_scale(iFKS,ifold_counter)
+     $           btest(MCcntcalled,3)) then
+               call set_FxFx_delta_H_scale(iFKS,ifold_counter,
+     $              fxfx_delta_H_min_scale)
+               if (fxfx_delta_H_min_scale)
+     $              call delta_H_min_probability(p,iFKS,ifold_counter,
+     $              emsca_H_hard(iFKS,ifold_counter),prob_H_min)
+            endif
             if (MCExplicitKLSum.and..not.calibrating_spread.and.
      $           abrv.ne.'real') then
                call repartition_MC_H(first_native_H,p,p_lab,
@@ -1074,6 +1084,10 @@ c check if event or counter-event passes cuts
                   goto 900
                endif
             endif
+! The outer event owns the scalar H scale for all its H records,
+! including the complete inner-history sum. S records are unchanged.
+            if (prob_H_min.ne.1d0)
+     $           call scale_H_records(first_native_H,prob_H_min)
             call mc_end_real_point()
          enddo
          call apply_born_spread_weight(ifold_counter)
@@ -2245,4 +2259,17 @@ c which passed the coupling-order selection of add_wgt.
          call add_wgt(2,orders,1d-199,0d0,0d0)
       endif
       return
+      end
+
+
+      subroutine scale_H_records(first,factor)
+! Multiply the H records from first on by factor; S records keep their
+! weights. Used for the FxFx-Delta minimal-scale H probability.
+      use weight_lines, only: icontr,H_event,wgt
+      implicit none
+      integer first,ict
+      double precision factor
+      do ict=first,icontr
+         if (H_event(ict)) wgt(:,ict)=wgt(:,ict)*factor
+      enddo
       end
