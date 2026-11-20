@@ -902,8 +902,14 @@ def profile_loop(
     want_runtime = bench.runtime or not want_stability
     workers = max(1, min(bench.n_core, usable_cores()))
     # The runtime timing's native threads (--runtime-threads), at most the
-    # usable cores (said once when reduced); the stability workers keep one.
-    threads = min(int(bench.runtime_threads), usable_cores())
+    # usable cores (said once when reduced): the affinity mask and the CPU
+    # quota, the runtime's own clamp (``effective_threads``, evaluation.
+    # threads' rule); the stability workers keep one.
+    threads = min(
+        int(bench.runtime_threads),
+        usable_cores(),
+        _effective_threads(int(bench.runtime_threads)),
+    )
     if threads < bench.runtime_threads:
         _notice(
             f"--runtime-threads {bench.runtime_threads} reduced to {threads}, "
@@ -3709,6 +3715,15 @@ def _exact_text(row: Any) -> str:
     for sector in row:
         total = exact.add(total, Decimal(sector[0]))
     return str(total)
+
+
+def _effective_threads(requested: int) -> int:
+    """The thread count a runtime loaded with ``threads=requested`` uses
+    (the native rule: clamped to the affinity mask and the CPU quota)."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return int(load_loop_native().effective_threads(min(max(requested, 1), 2**64 - 1)))
 
 
 def usable_cores() -> int:

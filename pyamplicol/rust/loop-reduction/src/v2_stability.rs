@@ -478,7 +478,8 @@ fn parse_float(text: &str) -> RusticolResult<f64> {
     match (underscores_ok, cleaned.parse::<f64>()) {
         (true, Ok(value)) => Ok(value),
         _ => Err(invalid(format!(
-            "could not convert string to float: {text:?}"
+            "could not convert string to float: {}",
+            py_repr(text)
         ))),
     }
 }

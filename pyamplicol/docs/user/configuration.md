@@ -953,7 +953,10 @@ Rules, the same in every interface:
   (`rusticol_loop_reduction::runtime_options`) are held equal key by key
   (`tests/unit/test_runtime_options.py`): the same keys, the same accepted
   values and defaults, and the same texts for an unknown key and for a bad
-  value of a listed key. They are two TOML parsers: a TOML syntax error is
+  value of a listed key. Both read TOML integers as signed 64-bit (an
+  integer beyond that range, e.g. `threads = 1000000000000000000000`, is
+  invalid TOML in both; a count within it but above the usable cores is
+  clamped, below). They are two TOML parsers: a TOML syntax error is
   worded by each parser (Python's `tomllib`, the `toml` crate), a file with
   several errors lists them in file order in Python and in key order in the
   SDK, and the parsers' own limits differ (a UTF-8 byte-order mark is read by
@@ -996,8 +999,10 @@ one-loop runtime uses: every native pool of the runtime (the load's parallel
 plan decode and every executor of its evaluations, in every carrier, the
 lane rescue's and the extended carriers' reductions included) runs on at most
 `N` workers. Unset (the default), nothing changes from before the option:
-rayon's rule, `RAYON_NUM_THREADS` when set, else every core of the process's
-affinity mask. Precedence: `threads` > `RAYON_NUM_THREADS` > every core.
+rayon's rule, `RAYON_NUM_THREADS` when set, else every core the process may
+use (its affinity mask and its cgroup CPU quota,
+`std::thread::available_parallelism`). Precedence: `threads` >
+`RAYON_NUM_THREADS` > every usable core.
 
 - A count above the cores the process may use is **clamped**, never
   refused: the effective count is `min(threads, available)`, where
@@ -1032,10 +1037,15 @@ affinity mask. Precedence: `threads` > `RAYON_NUM_THREADS` > every core.
   The loaded program is the same for every count.
   `rusticol_virtual_set_threads` and
   `rusticol_virtual_set_options` on an open handle bound its later
-  evaluations (its pools are rebuilt at the new size); `0` restores the
-  default.
+  evaluations (its pools are rebuilt at the new size). Back to the default
+  (unset): the C, C++ and Fortran `set_threads(0)`, the Rust wrapper's
+  `set_threads(None)`; a runtime-options TOML cannot express it (a TOML
+  without `threads` keeps the handle's count, and TOML has no null). In
+  Python the bound is the runtime's from its load: load it again without
+  `threads` (or with `threads=None`); on the CLI, leave out `--threads`.
 - `profile`: `--runtime-threads N` is this bound of the timed runtimes (their
-  load and every timed call; default 1), `--n_core` the number of worker
+  load and every timed call; default 1; above the usable cores, the affinity
+  mask or the CPU quota, it is reduced with a notice), `--n_core` the number of worker
   processes of a stability run; `evaluation.threads` of a run card does not
   change a profile.
 

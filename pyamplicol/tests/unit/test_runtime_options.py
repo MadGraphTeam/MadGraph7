@@ -802,6 +802,36 @@ def test_a_mistyped_options_path_says_no_such_file(tmp_path):
     with pytest.raises(ConfigurationError, match="No such file"):
         read_runtime_options(str(tmp_path / "no" / "opts.toml"))
     assert read_runtime_options("[evaluation]\nthreads = 2") == {"threads": 2}
+    # A one-line string is a path when it names a file (an "=" in the name
+    # included) or has no "="; else TOML, and a refusal names both readings.
+    named = tmp_path / "a=b.toml"
+    named.write_text("[evaluation]\nthreads = 3\n")
+    assert read_runtime_options(str(named)) == {"threads": 3}
+    with pytest.raises(
+        ConfigurationError, match="not an existing file and not valid TOML"
+    ):
+        read_runtime_options(str(tmp_path / "no" / "x=y.toml"))
+    assert read_runtime_options("threads = 2") == {}
+
+
+def test_an_integer_beyond_64_bits_is_invalid_toml_in_both_readers():
+    """TOML integers are signed 64-bit: the native reader (the toml crate)
+    refuses a larger one as TOML, and so does Python's reader (tomllib reads
+    it); within the range, a count above the usable cores is clamped."""
+
+    from pyamplicol.config import ConfigurationError
+    from pyamplicol.config.runtime_options import read_runtime_options
+
+    text = "[evaluation]\nthreads = 1000000000000000000000\n"
+    with pytest.raises(ValueError, match="invalid TOML"):
+        _native().runtime_options(text)
+    with pytest.raises(
+        ConfigurationError, match=r"invalid TOML: the integer .* at evaluation\.threads"
+    ):
+        read_runtime_options(text)
+    assert read_runtime_options(f"[evaluation]\nthreads = {2**63 - 1}\n") == {
+        "threads": 2**63 - 1
+    }
 
 
 def test_inspect_gives_the_stability_checks_as_plain_data(ggtt):  # noqa: F811

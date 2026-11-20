@@ -77,33 +77,72 @@ def read_runtime_options(source: RuntimeOptionsSource) -> dict[str, Any]:
 
 
 def _document(source: RuntimeOptionsSource) -> Mapping[str, object]:
-    if isinstance(source, Mapping):
-        return source
-    # A path: a PathLike, or one line without "=" that is not a table header
-    # (a TOML text with a setting has one; a mistyped path then says "no such
-    # file" instead of failing as TOML).
-    if isinstance(source, os.PathLike) or (
-        isinstance(source, str)
-        and source.strip()
-        and "\n" not in source
-        and "=" not in source
-        and not source.lstrip().startswith("[")
-    ):
-        path = Path(os.fspath(source)).expanduser()
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError as error:
-            raise ConfigurationError(
-                f"cannot read runtime options {path}: {error}"
-            ) from error
-    elif isinstance(source, str):
-        text = source
-    else:
+    document = source if isinstance(source, Mapping) else _parse(source)
+    _check_integers(document, "")
+    return document
+
+
+def _parse(source: os.PathLike[str] | str) -> Mapping[str, object]:
+    """The TOML of ``source``: a PathLike is a path; a one-line string is a
+    path when it names an existing file or has no "=" (a mistyped path then
+    says "no such file"), else a TOML text; a one-line string with "=" that
+    is neither an existing file nor valid TOML is refused naming both
+    readings."""
+
+    if isinstance(source, os.PathLike):
+        return _read(Path(os.fspath(source)))
+    if not isinstance(source, str):
         raise TypeError("options takes a TOML path, a TOML text or a mapping")
+    one_line = bool(source.strip()) and "\n" not in source
+    if one_line and (Path(source).expanduser().is_file() or "=" not in source):
+        return _read(Path(source))
+    try:
+        return tomllib.loads(source)
+    except tomllib.TOMLDecodeError as error:
+        if one_line:
+            raise ConfigurationError(
+                f"runtime options {source!r} are not an existing file and not "
+                f"valid TOML: {error}"
+            ) from error
+        raise ConfigurationError(f"invalid TOML: {error}") from error
+
+
+def _read(path: Path) -> Mapping[str, object]:
+    path = path.expanduser()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise ConfigurationError(
+            f"cannot read runtime options {path}: {error}"
+        ) from error
     try:
         return tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:
         raise ConfigurationError(f"invalid TOML: {error}") from error
+
+
+# TOML integers are signed 64-bit (TOML 1.0: a value that cannot be represented
+# losslessly is an error); Python's tomllib reads larger ones, the native
+# reader (the toml crate) refuses them: refused here too, so that both read the
+# same documents.
+_INT64 = (-(2**63), 2**63 - 1)
+
+
+def _check_integers(value: object, path: str) -> None:
+    if isinstance(value, bool):
+        return
+    if isinstance(value, int):
+        if not _INT64[0] <= value <= _INT64[1]:
+            raise ConfigurationError(
+                f"invalid TOML: the integer {value} at {path or 'the top level'} is "
+                "outside the signed 64-bit range of TOML integers"
+            )
+    elif isinstance(value, Mapping):
+        for key, entry in value.items():
+            _check_integers(entry, f"{path}.{key}" if path else str(key))
+    elif isinstance(value, (list, tuple)):
+        for index, entry in enumerate(value):
+            _check_integers(entry, f"{path}[{index}]")
 
 
 __all__ = [

@@ -592,6 +592,15 @@ mod tests {
             refusal("[evaluation]\npoles = 1\nthreads = 'x'")
                 .starts_with("2 configuration errors:\n- ")
         );
+        // Python's quoting (`float("q")`, `Fraction("a")`).
+        assert_eq!(
+            refusal("[evaluation.stability_checks]\nrotations = ['1,0,0:q']"),
+            "evaluation.stability_checks: could not convert string to float: 'q'"
+        );
+        assert_eq!(
+            refusal("[evaluation.stability_checks]\nrotations = ['x:a:b']"),
+            "evaluation.stability_checks: Invalid literal for Fraction: 'a'"
+        );
     }
 
     #[test]
