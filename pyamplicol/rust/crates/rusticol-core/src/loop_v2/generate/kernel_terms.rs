@@ -30,7 +30,6 @@ use symbolica::atom::{Atom, AtomCore, AtomView, Symbol};
 use symbolica::coefficient::Coefficient;
 use symbolica::domains::integer::Integer;
 use symbolica::domains::rational::Rational;
-use symbolica::parser::ParseSettings;
 
 use crate::{RusticolError, RusticolResult};
 
@@ -79,7 +78,7 @@ pub type KernelTermsResult = Result<Vec<Vec<TermReading>>, String>;
 fn parse(text: &str) -> RusticolResult<Atom> {
     // Canonical strings name every symbol with its namespace; the default
     // namespace is the Python wheel's (`E`).
-    Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {
+    crate::symbol_order::parse(text, "python").map_err(|error| {
         RusticolError::invalid_argument(format!(
             "kernel terms: cannot parse a canonical expression: {error}"
         ))

@@ -2649,6 +2649,7 @@ fn load_evaluator_state_bytes(
     // attributes. A symbol that conflicts again under that name is refused.
     let _unlock = crate::licence::unlock();
     let state_map = if envelope.has_state {
+        crate::symbol_order::reserve().map_err(RusticolError::internal)?;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             symbolica::state::State::import(
                 &mut payload,

@@ -31,7 +31,9 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `f7f5e165e0b0d1e57b4d1d4c0ba09d539666e63f` (PR #19:
+- NinjaRS `a2546170c400956d9aaffd3151e6b0d6c7edf475` (main after PR #20:
+  `f7f5e165` + `ninjars_symbolica::reserve`, the history-independent exact
+  evaluators, called by `rusticol_core::symbol_order`; `f7f5e165` = PR #19:
   main `3116e5e6` = `ac66cf6c` + PR #16, the box-Gram
   conditioning bound of the generic engine, + the records of why a lane is
   refused, shown in the lane status texts; `ac66cf6c` = branch

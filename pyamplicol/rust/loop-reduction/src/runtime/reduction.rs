@@ -11,7 +11,7 @@ use crate::{
     AmplitudeInput, EvaluationStatus, FourMomentum, Lane, Laurent, PolynomialReducer,
     SamplingScaleProvider, SamplingScaleSource, SamplingScaleStatus, SymbolicaSamplingScales,
 };
-use symbolica::{atom::Atom, domains::float::Real, evaluate::EvaluationDomain};
+use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
 pub type DecimalMomentum = [DecimalComplex; 4];
 pub type RawLane = (u64, String, Option<[DecimalComplex; 3]>);
 
@@ -43,7 +43,7 @@ where
         // before parsing (the extension's import no longer does).
         super::register_scalar_primitives();
         let parse =
-            |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
+            |text: &str| rusticol_core::symbol_order::parse(text, "pyamplicol_loop").map_err(error);
         let variables = [
             parse("q0")?,
             parse("q1")?,
