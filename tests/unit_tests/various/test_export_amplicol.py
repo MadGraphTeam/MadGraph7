@@ -147,6 +147,20 @@ class TestConcurrentArtifacts(unittest.TestCase):
                 'model': '/m', 'workers': 2, 'flavor_unions': True})
         self.assertEqual(calls, [{'workers': 2, 'flavor_unions': True}])
 
+    def test_flavor_unions_default_on_without_the_argument(self):
+        from madgraph.iolibs import amplicol_generation
+        configs, jobs = [], []
+        config_module = mock.Mock(resolve_config=lambda value: configs.append(value) or value)
+        process = {'multiparticles': {}, 'orders': {'QED': 0}, 'expression': 'p p > j j'}
+        with mock.patch.dict(sys.modules, {'pyamplicol': mock.Mock(),
+                                           'pyamplicol.config': config_module}):
+            amplicol_generation.generate_artifact(mock.Mock(), '/tmp/a', 'lc', process, None)
+        with mock.patch('subprocess.Popen',
+                        lambda args, **kwargs: jobs.append(json.loads(args[-1]))):
+            amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 1).log.close()
+        self.assertTrue(configs[0]['process']['flavor_unions'])
+        self.assertTrue(jobs[0]['flavor_unions'])
+
     def test_a_failing_child_raises_with_its_output(self):
         from madgraph.iolibs import amplicol_generation
         with mock.patch.object(amplicol_generation, '_CHILD',

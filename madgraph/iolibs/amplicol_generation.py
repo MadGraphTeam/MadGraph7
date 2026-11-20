@@ -138,7 +138,7 @@ def _remove(path):
 
 
 def generate_artifact(pyamplicol, artifact, accuracy, process, model,
-                      flavor_unions=False, workers=None):
+                      flavor_unions=True, workers=None):
     from pyamplicol.config import resolve_config
     # workers and cores are left to pyamplicol, which clamps them without a
     # license, unless ``workers`` splits the CPUs between concurrent artifacts
@@ -190,7 +190,7 @@ class ArtifactProcess(object):
     work does not share the GIL of this one."""
 
     def __init__(self, artifact, accuracy, process, model_path, workers,
-                 flavor_unions=False):
+                 flavor_unions=True):
         import subprocess
         import sys
         import tempfile
