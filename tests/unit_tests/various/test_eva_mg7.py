@@ -320,12 +320,57 @@ class TestEvaRunCard(unittest.TestCase):
                             ('polbeam1', '120'), ('eva_xcut', 'x')):
             with self.assertRaises(banner_mod.InvalidRunCard):
                 card.set_lo_beam_param(name, value)
-        # another label switches EVA off
+        # another label switches EVA off, with its polarisations
         card.set_lo_beam_param('pdlabel', 'none')
         self.assertIs(card['beam']['eva'], False)
-        # and a polarisation without EVA is refused
+        self.assertEqual(card['beam']['polarization1'], 0.)
+        self.assertEqual(card['beam']['polarization2'], 0.)
+        card.check_validity()
+        # a polarisation without EVA is refused, until EVA is set (in either
+        # order: the card is checked once the settings are done)
+        card.set_lo_beam_param('polbeam1', '-80')
         with self.assertRaises(banner_mod.InvalidRunCard):
             card.check_validity()
+        card.set_lo_beam_param('pdlabel', 'eva')
+        card.check_validity()
+
+    def test_settings_that_switch_eva_off(self):
+        """pdlabel lhapdf / none / a PDF label, lpp 0 / 1 switch EVA off and
+        say so; the card stays valid; lpp 3/4 and lhaid keep EVA."""
+        def eva_card():
+            card = banner_mod.RunCardMG7()
+            card.set_lo_beam_param('lpp1', '-3')
+            card.set_lo_beam_param('lpp2', '3')
+            card.set_lo_beam_param('pdlabel', 'eva')
+            card.set_lo_beam_param('polbeam1', '-80')
+            return card
+
+        for name, value, leptonic in (
+                ('pdlabel', 'lhapdf', True), ('pdlabel', 'none', True),
+                ('pdlabel', 'nn23lo1', True), ('lpp', '0', True),
+                ('lpp', '1', False)):
+            card = eva_card()
+            with self.assertLogs('madevent.cards', level='INFO') as logs:
+                done = card.set_lo_beam_param(name, value)
+            self.assertIn('beam.eva = False', done, (name, value))
+            self.assertIn('beam.polarization1 = 0', done, (name, value))
+            self.assertNotIn('unchanged', done)
+            self.assertIs(card['beam']['eva'], False, (name, value))
+            self.assertIs(card['beam']['leptonic'], leptonic, (name, value))
+            self.assertEqual(card['beam']['polarization1'], 0.)
+            # still-leptonic beams are no longer EVA: said as a warning
+            warned = any(r.levelname == 'WARNING' and 'monochromatic' in r.getMessage()
+                         for r in logs.records)
+            self.assertIs(warned, leptonic, (name, value))
+            card.check_validity()
+        for name, value in (('lpp1', '-4'), ('lpp', '3')):
+            card = eva_card()
+            card.set_lo_beam_param(name, value)
+            self.assertIs(card['beam']['eva'], True, (name, value))
+            self.assertEqual(card['beam']['polarization1'], -80.)
+        # without EVA, pdlabel lhapdf still changes nothing
+        card = banner_mod.RunCardMG7()
+        self.assertIn('unchanged', card.set_lo_beam_param('pdlabel', 'lhapdf'))
 
     def test_invalid_eva_cards(self):
         card = banner_mod.RunCardMG7()

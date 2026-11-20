@@ -8971,7 +8971,8 @@ class RunCardMG7(RunCard):
           0 (no PDF) and +-3/+-4 (e/mu), false for +-1. +-3/+-4 also sets the
           lepton of the beam (beam.lepton1/2), which EVA uses.
         * pdlabel eva: beam.eva, on both beams (mg7 has no EVA on one beam
-          only); any other label switches it off.
+          only); any other label, and lpp 0 or +-1, switches it off, with
+          the beam polarisations (_switch_eva_off).
         * polbeam1/2, ievo_eva, evaorder, eva_xcut: the EVA settings
           beam.polarization1/2, eva_evolution, eva_order, eva_xcut.
 
@@ -8990,9 +8991,10 @@ class RunCardMG7(RunCard):
                 if not -100. <= number <= 100.:
                     raise InvalidRunCard('%s = %s: not in [-100, 100]' % (name, value))
                 self.set('beam.polarization' + beams[0], number, user=True)
-                if not self['beam']['eva']:
-                    logger.info('%s: mg7 polarises the lepton beams of an EVA '
-                                'run only (beam.eva)', name)
+                if number != 0. and not self['beam']['eva']:
+                    logger.warning('%s: mg7 polarises the lepton beams of an EVA '
+                                   'run only: the card is invalid until '
+                                   'pdlabel eva (beam.eva) is set', name)
                 return 'beam.polarization%s = %s' % (beams[0], number)
             if number != int(number):
                 raise InvalidRunCard('%s = %s: not an integer' % (name, value))
@@ -9049,10 +9051,10 @@ class RunCardMG7(RunCard):
                     self.set('beam.lepton' + beam, lepton, user=True)
                 return 'beam.leptonic = True, beam.lepton%s = %s' % (
                     '/'.join(beams), lepton)
-            if abs(lpp) == 1 and self['beam']['eva']:
-                self.set('beam.eva', False, user=True)
-                logger.info('%s = %s: beam.eva switched off', name, lpp)
-            return 'beam.leptonic = %s' % leptonic
+            # proton beams, or fixed-energy beams of the incoming particles
+            # (lpp = 0, madevent ignores pdlabel then): no EVA
+            eva_off = self._switch_eva_off('%s = %s' % (name, lpp))
+            return ', '.join(filter(None, [eva_off, 'beam.leptonic = %s' % leptonic]))
 
         if name == 'lhaid':
             label, lhaid = 'lhapdf', value.split()[0] if value else value
@@ -9070,10 +9072,11 @@ class RunCardMG7(RunCard):
                 self.set('beam.leptonic', True, user=True)
                 return 'beam.eva = True (both beams, leptons %s, %s)' % (
                     self['beam']['lepton1'], self['beam']['lepton2'])
-            if self['beam']['eva']:
-                self.set('beam.eva', False, user=True)
-                logger.info('%s = %s: beam.eva switched off', name, value)
             if label.lower() == 'lhapdf':
+                eva_off = self._switch_eva_off('%s = %s' % (name, value))
+                if eva_off:
+                    return eva_off + ' (the PDF set is chosen with lhaid or ' \
+                        'beam.pdf1/pdf2)'
                 return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
                         'with lhaid or beam.pdf1/pdf2')
             if label.lower() in ('none', 'no'):
@@ -9081,14 +9084,42 @@ class RunCardMG7(RunCard):
                     raise InvalidRunCard('%s = none: only a lepton collider has '
                                          'no PDF in mg7, on both beams' % name)
                 self.set('beam.leptonic', True, user=True)
-                return 'beam.leptonic = True'
+                eva_off = self._switch_eva_off('%s = %s' % (name, value))
+                return ', '.join(filter(None, [eva_off, 'beam.leptonic = True']))
         pdf = self._resolve_pdf_label(label, lhaid, [], data_paths)
         if pdf is None:
             raise UnknownPDFSet('%s = %s: unknown %s' % (
                 name, value, 'LHAPDF id' if name == 'lhaid' else 'PDF label'))
         for beam in beams:
             self.set('beam.pdf' + beam, pdf, user=True)
-        return 'PDF of %s: %s' % (which, pdf)
+        # a PDF label (not an lhaid, which only picks the set) is no EVA
+        eva_off = '' if name == 'lhaid' else \
+            self._switch_eva_off('%s = %s' % (name, value))
+        return ', '.join(filter(None, [eva_off, 'PDF of %s: %s' % (which, pdf)]))
+
+    def _switch_eva_off(self, setting):
+        """Switch beam.eva off, as the madevent setting `setting` asks, and
+        return what changed ('' if EVA was off). The beam polarisations,
+        which only an EVA run has (check_eva_validity), go back to 0. A card
+        still leptonic then has monochromatic beams of the incoming particles
+        themselves (W beams for w+ w- > X), which is said as a warning."""
+        if not self['beam']['eva']:
+            return ''
+        self.set('beam.eva', False, user=True)
+        changes = ['beam.eva = False']
+        for i in (1, 2):
+            key = 'polarization%d' % i
+            if float(self['beam'][key]) != 0.:
+                self.set('beam.' + key, 0.0, user=True)
+                changes.append('beam.%s = 0' % key)
+        if self['beam']['leptonic']:
+            logger.warning(
+                '%s: EVA switched off, so the beams are now monochromatic beams '
+                'of the incoming particles (beam.leptonic = true); set lpp 1 for '
+                'proton beams, or pdlabel eva to go back to EVA', setting)
+        else:
+            logger.info('%s: EVA switched off', setting)
+        return ', '.join(changes)
 
     def set_fixed_scale(self, value, masses=None):
         """``set fixed_scale X``: switch to fixed scales and set them all to X
