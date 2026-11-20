@@ -6,7 +6,9 @@ name: MadSpin parallel factory
 
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    paths-ignore:
+      - 'docs/**'
   push:
     branches:
       - main
@@ -43,7 +45,7 @@ concurrency:
 
 jobs:
   madspin_factory:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

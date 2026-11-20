@@ -4,7 +4,7 @@ name: pyAmpliCol
 # release-artifacts.yml). Every job runs inside pyamplicol/.
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     # main only: other branches run through workflow_dispatch
     branches:
@@ -41,7 +41,7 @@ jobs:
   # Skips the heavy jobs unless pyamplicol changed; a job, not `paths:`, so every
   # commit still gets a (green) run for release.yml's CI gate.
   changes:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     outputs:
       pyamplicol: ${{ steps.diff.outputs.pyamplicol }}
@@ -88,7 +88,7 @@ jobs:
   python-compatibility:
     name: Python ${{ matrix.python-version }} lightweight API
     needs: changes
-    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -124,7 +124,7 @@ jobs:
   source-contracts:
     name: Python 3.11 source and release contracts
     needs: changes
-    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -163,7 +163,7 @@ jobs:
   installer:
     name: MadGraph installer and Symbolica library key
     needs: changes
-    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -213,7 +213,7 @@ jobs:
   release-runtime:
     name: Published-dependency generation, runtime, and native SDK
     needs: [changes, python-compatibility, source-contracts]
-    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true' && github.event_name != 'push')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true' && github.event_name != 'push')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
@@ -488,7 +488,7 @@ jobs:
 
   prepared-models:
     name: Release prepared-model archive
-    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -506,7 +506,7 @@ jobs:
           if-no-files-found: error
 
   release-source-preflight:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Focused release source preflight
     needs: prepared-models
     runs-on: ubuntu-24.04
@@ -546,7 +546,7 @@ jobs:
 
   independent-physics-oracle:
     name: Independent Fortran physics oracle
-    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -568,7 +568,7 @@ jobs:
             --jobs 2 >/dev/null
 
   retained-sdist:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Build retained source distribution
     needs: [release-source-preflight, independent-physics-oracle]
     runs-on: ubuntu-24.04
@@ -600,7 +600,7 @@ jobs:
           if-no-files-found: error
 
   macos-wheels:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: macOS release wheel and native deployment (${{ matrix.target }})
     needs: retained-sdist
     strategy:
@@ -688,7 +688,7 @@ jobs:
           if-no-files-found: error
 
   manylinux-wheel:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: manylinux release wheel and native deployment
     needs: retained-sdist
     runs-on: ubuntu-24.04
@@ -743,7 +743,7 @@ jobs:
           if-no-files-found: error
 
   validated-artifacts:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Collect validated release artifacts
     needs: [retained-sdist, macos-wheels, manylinux-wheel]
     runs-on: ubuntu-24.04

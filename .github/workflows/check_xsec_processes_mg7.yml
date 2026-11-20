@@ -19,7 +19,7 @@ name: systematic cross-section tests (mg7)
 
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   push:
     # main only: other branches run through workflow_dispatch
     branches:
@@ -60,7 +60,7 @@ jobs:
   # The build logic lives in the build_madspace composite action so it stays in
   # sync with acceptancetest_mg7.yml.
   build_madspace:
-    if: ${{ (github.event_name != 'pull_request' && ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true) && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true) && (github.event_name != 'pull_request' || !github.event.pull_request.draft))) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +68,7 @@ jobs:
 
   check_xsec_processes:
     needs: build_madspace
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -107,7 +107,7 @@ jobs:
 
   xsec_summary:
     needs: check_xsec_processes
-    if: ${{ (github.event_name != 'pull_request' && (always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true))) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true))) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

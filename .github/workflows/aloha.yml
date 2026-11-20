@@ -5,7 +5,7 @@ name: running test for aloha
 #    branches: [ main LTS ]
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
     # main only: other branches run through workflow_dispatch
@@ -40,7 +40,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -66,7 +66,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:

@@ -5,7 +5,34 @@ name: pyAmpliCol eager JIT pack architecture transfer
 
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    paths:
+      - .github/workflows/pyamplicol-eager-portability.yml
+      - pyamplicol/Cargo.lock
+      - pyamplicol/Cargo.toml
+      - pyamplicol/build_backend/prepared_models.py
+      - pyamplicol/dependencies/release-lock.toml
+      - pyamplicol/pyproject.toml
+      - pyamplicol/rust/crates/rusticol-core/src/eager_runtime/**
+      - pyamplicol/rust/crates/rusticol-core/src/eager_runtime.rs
+      - pyamplicol/rust/crates/rusticol-core/src/eager_tables.rs
+      - pyamplicol/rust/crates/rusticol-core/src/engine/**
+      - pyamplicol/rust/crates/rusticol-core/src/engine.rs
+      - pyamplicol/rust/crates/rusticol-core/src/evaluator/symjit.rs
+      - pyamplicol/rust/crates/rusticol-core/src/evaluator/symjit_plane.rs
+      - pyamplicol/rust/crates/rusticol-core/src/evaluator/symjit_direct.rs
+      - pyamplicol/rust/crates/rusticol-core/src/evaluator/symjit_eager_direct.rs
+      - pyamplicol/rust/crates/rusticol-core/src/evaluator/symjit_compiled_direct.rs
+      - pyamplicol/rust/crates/rusticol-core/src/lib.rs
+      - pyamplicol/rust/crates/rusticol-python/src/lib.rs
+      - pyamplicol/src/pyamplicol/_internal/physics/symbols.py
+      - pyamplicol/src/pyamplicol/_internal/versions.py
+      - pyamplicol/src/pyamplicol/config/**
+      - pyamplicol/src/pyamplicol/evaluators/symbolica*.py
+      - pyamplicol/src/pyamplicol/generation/**
+      - pyamplicol/src/pyamplicol/models/prepared*.py
+      - pyamplicol/src/pyamplicol/runtime/eager_exact/**
+      - pyamplicol/tools/ci/eager_portability*.py
   push:
     branches: [main]
     paths:
@@ -50,7 +77,7 @@ concurrency:
 
 jobs:
   produce-architecture-packs:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Produce prepared JIT pack (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     # The macOS arm64 pack builds the release extension with the default tir
@@ -124,7 +151,7 @@ jobs:
           retention-days: 14
 
   consume-matching-architecture-pack:
-    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Consume portable pack (${{ matrix.target }})
     needs: produce-architecture-packs
     runs-on: ${{ matrix.runner }}

@@ -2,7 +2,7 @@ name: MadSpace
 
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
   push:
     # main only: other branches run through workflow_dispatch
@@ -24,7 +24,7 @@ on:
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
-    if: ${{ (github.event_name != 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
