@@ -336,6 +336,37 @@ def _lanes(row: Any) -> dict[str, int]:
     return dict(profile.reduction.get("lanes") or {}) if profile is not None else {}
 
 
+def _runtime_suffix(report: Any) -> str:
+    """ ", <precision>" after a runtime table's title for a measured precision
+    other than binary64 (its view, ``_measured_runtime_tables``); binary64's
+    titles as they were."""
+
+    precision = getattr(report, "runtime_precision", None)
+    return "" if precision is None else f", {precision}"
+
+
+def _measured_runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
+    """The runtime tables of every measured precision in the order given:
+    binary64's as they are, then every other one's (``runtime_measured``)
+    from its own rows in a view of the report."""
+
+    from types import SimpleNamespace
+
+    blocks = _runtime_tables(report, prettytable, color)
+    for entry in getattr(report, "runtime_measured", ()) or ():
+        view = SimpleNamespace(
+            **{
+                name: getattr(report, name)
+                for name in report.__dataclass_fields__
+                if name != "runtime"
+            },
+            runtime=tuple(entry["runtime"]),
+            runtime_precision=entry["precision"]["precision"],
+        )
+        blocks += _runtime_tables(view, prettytable, color)
+    return blocks
+
+
 def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     from .virtual import _STAGE_COLOURS
 
@@ -352,7 +383,10 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     fields += ["lanes"] if show_lanes else []
     fields += ["failed"] if show_failed else []
     summary = palette.table(
-        prettytable, tuple(fields), "Runtime per reduction backend", color=color
+        prettytable,
+        tuple(fields),
+        "Runtime per reduction backend" + _runtime_suffix(report),
+        color=color,
     )
     entries: list[list[Cell]] = []
     for row in rows:
@@ -494,7 +528,7 @@ def _runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     stages = palette.table(
         prettytable,
         tuple(fields),
-        "Time per point and stage",
+        "Time per point and stage" + _runtime_suffix(report),
         color=color,
     )
     totals = [sum(row.profile.stages.values()) or 1.0 for row in served]
@@ -1252,7 +1286,7 @@ def loop_profile_summary(report: Any, *, prettytable: Any, color: bool) -> str:
 
     blocks = [_header(report, prettytable, color)]
     if report.runtime is not None:
-        blocks += _runtime_tables(report, prettytable, color)
+        blocks += _measured_runtime_tables(report, prettytable, color)
     if report.interrupted and report.stability is None:
         blocks.append(
             palette.paint(

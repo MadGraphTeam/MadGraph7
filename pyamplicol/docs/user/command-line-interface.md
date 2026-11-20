@@ -1180,7 +1180,23 @@ honoured; the stability plan and its ETA count each extra stream at a lower
 bound of its point (a checked binary64 point below the ground truth, the
 plain reference point for the ground truth's own) until the run measures it,
 and the default budget's deadline admits points at the measured costs of
-every stream. The runtime timing is not changed by the option. In `--json`
+every stream. With `--runtime`, every entry other than binary64 also gets
+its own "Runtime per reduction backend, <precision>" and "Time per point and
+stage, <precision>" tables after binary64's, in the order given (the
+ground truth's own precision too: timing needs no truth): per backend the
+same optimistic pass as binary64's in that arithmetic, in a process of its
+own (one core, or `--runtime-threads`), its stage groups from the native
+stage reports of those calls and its peak RAM. It starts from binary64's
+counts and budget for that backend (`--target-runtime` is each backend's
+timed budget per measured precision); its one-point warm-up call (untimed)
+measures its cost, and its batch falls to the largest power of two that
+its calls fit in that budget, down to one point, warmed by one untimed call
+at that batch (none at one point; a carrier builds lazily per batch size;
+a `--batch-size` given is honoured). Its time carries the ground truth's multiplier against it,
+`(arb(60) x1.1)` (the binary64 row's reference timing), none on the ground
+truth's own table. In `--json` its rows are `runtime_measured` (each its
+`precision` record and `runtime` rows as `runtime`), absent by default. In
+`--json`
 the other precisions' rows are under `stability_setup.measured_precisions`
 (each entry its precision, `estimates_only`, `digits_cap`,
 `capped_by_truth` and `stability`, the same rows as `stability`; binary64's

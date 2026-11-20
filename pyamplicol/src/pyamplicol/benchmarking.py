@@ -3047,6 +3047,7 @@ def profile_virtual(
     optimistic: bool = False,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
     warm_entry: bool = False,
+    precision: Mapping[str, Any] | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -3130,6 +3131,13 @@ def profile_virtual(
     )
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
     options = {"poles": "none", "on_failure": on_failure}
+    # A measured precision other than binary64 (``loop_profile.
+    # MeasuredPrecision.options``): the same calls in its arithmetic, its
+    # batch fitted to its cost (``_fitted_calls``) unless ``fit`` is false
+    # (a --batch-size given).
+    carrier = dict(precision or {})
+    fit = bool(carrier.pop("fit", True)) and bool(carrier)
+    options.update(carrier)
     if reduction is not None:
         options["reduction"] = reduction
     if optimistic:
@@ -3186,6 +3194,9 @@ def profile_virtual(
             if prepared is None
             else replace(bench, warmup_runs=bench.warmup_runs - 1)
         )
+        if fit:
+            calls = _fitted_calls(runtime, batches, calls, options, scales)
+            size = calls.batch_size
         profile = _profile_virtual_calls(
             runtime, batches, calls, options, scales, report
         )
@@ -3228,6 +3239,35 @@ def profile_virtual(
         reference_skipped=skipped,
         reference_point_seconds=point_seconds,
     )
+
+
+def _fitted_calls(
+    runtime: Any,
+    batches: Any,
+    bench: BenchmarkConfig,
+    options: Mapping[str, Any],
+    scales: Callable[[Momenta], Any],
+) -> BenchmarkConfig:
+    """A measured precision's calls (``profile_virtual(precision=)``): its
+    one-point warm-up call measures its cost per point (untimed; after the
+    warm entry the same call, a first measured point), and the batch falls
+    to what ``target_runtime`` affords for ``minimum_samples`` calls, a
+    power of two of at most ``batch_size`` points, at least one; then one
+    untimed call at that batch (a carrier builds lazily per batch size: its
+    first call at a new size is no timing), none at one point (the
+    measuring call was it). A cheap precision keeps the batch given."""
+
+    batch = batches(0, 1)
+    begin = time.perf_counter()
+    runtime.evaluate(batch, mu_r2=scales(batch), **options)
+    per_point = time.perf_counter() - begin
+    calls = max(int(bench.minimum_samples), 1)
+    affordable = float(bench.target_runtime) / max(calls * per_point, 1e-12)
+    size = 1
+    while size * 2 <= min(int(bench.batch_size), affordable):
+        size *= 2
+    size = max(min(size, int(bench.batch_size)), 1)
+    return replace(bench, batch_size=size, warmup_runs=0 if size == 1 else 1)
 
 
 def _scope_drops(

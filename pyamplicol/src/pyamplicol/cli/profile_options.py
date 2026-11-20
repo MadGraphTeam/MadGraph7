@@ -101,7 +101,8 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
             "tables in the order given: binary64 (double, b64; the default), "
             "double-double (dd), arbitrary (arb) or arbitrary:DIGITS, at most "
             "the --ground-truth precision (that one: its estimates only, with "
-            "the default checks); space- or comma-separated"
+            "the default checks); with --runtime each also its own runtime "
+            "tables (--target-runtime per precision); space- or comma-separated"
         ),
     )
     parser.add_argument(

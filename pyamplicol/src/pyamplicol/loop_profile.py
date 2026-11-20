@@ -730,6 +730,21 @@ class LoopProfileReport:
     # profile's wall seconds.
     plan: Mapping[str, object] | None = None
     seconds: float | None = None
+    # Every other measured precision's runtime rows (``--measured-
+    # precisions`` with --runtime): {"precision": record, "runtime": rows};
+    # left out of the JSON when empty (``cli_json``).
+    runtime_measured: tuple[Mapping[str, Any], ...] = ()
+
+    def cli_json(self) -> dict[str, object]:
+        """The JSON form (``cli.main``): every field, ``runtime_measured``
+        only when a precision other than binary64 was timed."""
+
+        from dataclasses import fields
+
+        out = {item.name: getattr(self, item.name) for item in fields(self)}
+        if not self.runtime_measured:
+            out.pop("runtime_measured")
+        return out
 
     def json_notice(self) -> str | None:
         """The line ``--json`` prints on stderr before a large dump (its
@@ -1685,11 +1700,16 @@ def profile_loop(
     monitor.remaining = remaining
 
     runtime_rows = None
+    # Every other measured precision's runtime rows (``--measured-precisions``).
+    runtime_measured: list[dict[str, Any]] = []
     if want_runtime:
         # The caller's points, cycled; else the worker draws distinct flat
         # points as its calls need them (the same per call on every backend).
         timed = list(points) if points else None
         rows = []
+        # Each backend's binary64 calls (its counts and budget): a measured
+        # precision's calls start from them (``_measured_runtime``).
+        benches: dict[str, Any] = {}
         default = DEFAULTS.get(contribution)
         for position, backend in enumerate(backends):
             if backend in omitted:
@@ -1742,6 +1762,7 @@ def profile_loop(
                         float(backend_bench.target_runtime) - one_thread, 1e-9
                     ),
                 )
+            benches[backend] = backend_bench
             future.pop(f"runtime:{backend}", None)
             # The planned seconds of this backend's phases after its
             # start-up: the root ETA counts them until they run.
@@ -1960,6 +1981,49 @@ def profile_loop(
             )
             for row in rows
         )
+        # Every other measured precision's runtime timing, after binary64's
+        # (``--measured-precisions``): the same optimistic pass per backend
+        # in its arithmetic, on binary64's counts and budget (its batch
+        # fitted to its cost, ``benchmarking._fitted_calls``, unless a
+        # --batch-size is given), the ground truth's multiplier against it
+        # (none for the ground truth's own precision).
+        if not interrupted:
+            for measured in extra_precisions:
+                measured_rows = _measured_runtime(
+                    measured,
+                    [b for b in backends if b not in omitted and b in benches],
+                    benches,
+                    {
+                        row.backend: row.profile.reference
+                        for row in runtime_rows
+                        if row.profile is not None
+                    },
+                    truth,
+                    lambda backend, bench_p, precision: _isolated_profile(
+                        path,
+                        evaluation.process,
+                        options,
+                        replace(config, benchmark=bench_p),
+                        timed,
+                        backend,
+                        _BackendRun(
+                            monitor,
+                            backend,
+                            truth,
+                            None if backend not in costs else costs[backend].start,
+                            None,
+                            bench_p.batch_size,
+                            {},
+                            threads,
+                        ),
+                        precision=precision,
+                        warm_entry=warms_through_entry(backend, "binary64", None),
+                    ),
+                    fit=is_default(bench.batch_size),
+                )
+                runtime_measured.append(
+                    {"precision": measured.record(), "runtime": measured_rows}
+                )
         # A reference cost the measurement left estimated: the runtime
         # timing's measured one from now on (the stability run's priors and
         # plan, the history).
@@ -2229,6 +2293,7 @@ def profile_loop(
             },
         },
         monitor.elapsed(),
+        tuple(runtime_measured),
     )
 
 
@@ -3328,6 +3393,7 @@ def _isolated_profile(
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
     warm_entry: bool = False,
+    precision: Mapping[str, Any] | None = None,
 ) -> VirtualProfileResult:
     """``benchmarking.profile_virtual`` of one backend (``request``) on
     ``points`` (None: the artifact's distinct flat points) in a fresh
@@ -3367,6 +3433,7 @@ def _isolated_profile(
             None if reference is None else dict(reference),
             one_thread,
             warm_entry,
+            None if precision is None else dict(precision),
         ),
         name="pyamplicol-loop-runtime-profile",
         daemon=True,
@@ -3430,6 +3497,7 @@ def _runtime_worker(
     reference: Mapping[str, Any] | None = None,
     one_thread: float | None = None,
     warm_entry: bool = False,
+    precision: Mapping[str, Any] | None = None,
 ) -> None:
     """The worker process of ``_isolated_profile``: Ctrl-C left to the
     parent, every thread pool at ``benchmark.runtime_threads`` threads
@@ -3480,6 +3548,7 @@ def _runtime_worker(
             optimistic=not benchmark.checked,
             monitor=lambda kind, payload: sender.send(("monitor", kind, payload)),
             warm_entry=warm_entry,
+            precision=precision,
         )
         if threads > 1 and one_thread is not None:
             # The gain: the same calls on one thread, after the N-thread
@@ -5173,15 +5242,15 @@ def _measured_rows(
                 **common,
             )
         else:
-            truth = references[backend]
+            known = references[backend]
             row = _backend_statistics(
                 backend,
                 [own[i][1] for i in chosen],
                 [own[i][2] for i in chosen],
-                [truth[i][1] if i in truth else None for i in chosen],
+                [known[i][1] if i in known else None for i in chosen],
                 target,
                 seconds[backend],
-                reference_reasons=[truth[i][2] if i in truth else None for i in chosen],
+                reference_reasons=[known[i][2] if i in known else None for i in chosen],
                 uncertainties=[own[i][5] for i in chosen],
                 **common,
             )
@@ -5220,6 +5289,62 @@ def _measured_rows(
             )
         )
     return tuple(rows)
+
+
+def _measured_runtime(
+    precision: MeasuredPrecision,
+    backends: Sequence[str],
+    benches: Mapping[str, Any],
+    references: Mapping[str, Any],
+    truth: GroundTruth,
+    profile: Callable[[str, Any, Mapping[str, Any]], Any],
+    *,
+    fit: bool,
+) -> tuple[BackendRuntime, ...]:
+    """A measured precision's runtime rows (``profile_loop``): per backend
+    ``profile(backend, bench, precision options)`` on that backend's
+    binary64 bench (``benches``); the ground truth's timing of its binary64
+    row (``references``) attached as the row's reference (its multiplier
+    against this precision), none for the ground truth's own precision; a
+    refusal a row of its own; the ratio to the fastest."""
+
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    own = truth.present and (precision.arithmetic, precision.digits) == (
+        truth.arithmetic,
+        truth.digits,
+    )
+    rows: list[BackendRuntime] = []
+    for backend in backends:
+        try:
+            result = profile(
+                backend, benches[backend], {**precision.options, "fit": fit}
+            )
+        except ReductionUnavailable as error:
+            rows.append(BackendRuntime(backend, None, str(error), requested=backend))
+            continue
+        rows.append(
+            BackendRuntime(
+                backend,
+                replace(result, reference=None if own else references.get(backend)),
+                requested=backend,
+            )
+        )
+    served = [
+        row.profile.seconds_per_point
+        for row in rows
+        if row.profile and _served_points(row.profile)
+    ]
+    fastest = min(served) if served else None
+    return tuple(
+        replace(
+            row,
+            ratio=None
+            if row.profile is None or not fastest or not _served_points(row.profile)
+            else row.profile.seconds_per_point / fastest,
+        )
+        for row in rows
+    )
 
 
 def _write_samples(

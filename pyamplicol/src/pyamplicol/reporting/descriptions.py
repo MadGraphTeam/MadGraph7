@@ -492,6 +492,25 @@ def _profile(report: Any) -> list[Block]:
                 ],
             )
         )
+    if getattr(report, "runtime_measured", ()):
+        blocks.append(
+            (
+                "Runtime per reduction backend / Time per point and stage, "
+                "<precision> (--measured-precisions)",
+                [
+                    (
+                        None,
+                        "binary64's tables for another measured precision: the "
+                        "same optimistic pass in that arithmetic, from binary64's "
+                        "counts and budget (--target-runtime per precision), its "
+                        "batch fitted to its measured cost (down to one point; a "
+                        "--batch-size given honoured); its time carries the "
+                        "ground truth's multiplier against it, none on the "
+                        "ground truth's own table.",
+                    ),
+                ],
+            )
+        )
     blocks.append(
         (
             "Failure causes (under a table, after ---)",

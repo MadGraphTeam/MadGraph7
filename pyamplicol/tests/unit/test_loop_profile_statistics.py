@@ -1433,3 +1433,114 @@ def test_every_measured_precision_has_its_tables_and_json():
     assert (
         "measured_precisions" not in json.loads(default.getvalue())["stability_setup"]
     )
+
+
+def test_a_dear_measured_precision_times_what_its_budget_affords():
+    """``benchmarking._fitted_calls``: the one-point warm-up call measures
+    the precision's cost; the batch falls to the largest power of two of at
+    most the batch given that ``minimum_samples`` calls fit in
+    ``target_runtime``, down to one point; one warm-up call at that batch
+    (a carrier builds lazily per batch size), none at one point."""
+
+    from pyamplicol.benchmarking import _fitted_calls
+    from pyamplicol.config import BenchmarkConfig
+
+    class _Runtime:
+        def __init__(self, seconds):
+            self.seconds = seconds
+
+        def evaluate(self, batch, **options):
+            import time
+
+            time.sleep(self.seconds * len(batch))
+
+    bench = BenchmarkConfig(batch_size=64, minimum_samples=2, target_runtime=0.2)
+
+    def batches(k, n):
+        return [None] * n
+
+    def scales(batch):
+        return 1.0
+
+    cheap = _fitted_calls(_Runtime(1e-4), batches, bench, {}, scales)
+    assert cheap.batch_size == 64 and cheap.warmup_runs == 1
+    dear = _fitted_calls(_Runtime(0.02), batches, bench, {}, scales)
+    assert dear.batch_size in (2, 4)
+    dearest = _fitted_calls(_Runtime(0.3), batches, bench, {}, scales)
+    assert dearest.batch_size == 1 and dearest.warmup_runs == 0
+
+
+def test_a_measured_precision_has_its_runtime_rows():
+    """``_measured_runtime``: per backend the profile of that precision on
+    the backend's binary64 bench, the ground truth's timing attached (its
+    multiplier) unless it is the ground truth's own precision, a refusal a
+    row, the ratio to the fastest; the report's JSON holds them only when
+    timed (``runtime_measured``)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.loop_profile import (
+        GroundTruth,
+        _measured_runtime,
+        measured_precisions,
+    )
+
+    truth = GroundTruth("arbitrary", 60)
+    dd, arb = measured_precisions(("double-double", "arbitrary:60"), truth)
+    seen = []
+
+    def profile(backend, bench, precision):
+        seen.append((backend, bench, precision))
+        if backend == "ninjars" and precision["arithmetic"] == "arbitrary":
+            raise ReductionUnavailable("no NinjaRS here")
+        return SimpleNamespace(
+            seconds_per_point={"tirust": 2.0, "ninjars": 6.0}[backend],
+            batch=1,
+            samples=1,
+            failed_points=0,
+            reference="own",
+            replace=None,
+        )
+
+    import dataclasses
+
+    @dataclasses.dataclass(frozen=True)
+    class _Profile:
+        seconds_per_point: float
+        batch: int = 1
+        samples: int = 1
+        failed_points: int = 0
+        reference: object = None
+
+    def typed(backend, bench, precision):
+        return _Profile(profile(backend, bench, precision).seconds_per_point)
+
+    benches = {"tirust": "b-tirust", "ninjars": "b-ninjars"}
+    rows = _measured_runtime(
+        dd,
+        ["tirust", "ninjars"],
+        benches,
+        {"tirust": "T", "ninjars": "N"},
+        truth,
+        typed,
+        fit=True,
+    )
+    assert [row.profile.reference for row in rows] == ["T", "N"]
+    assert [row.ratio for row in rows] == [1.0, 3.0]
+    assert seen[0] == (
+        "tirust",
+        "b-tirust",
+        {"arithmetic": "double-double", "fit": True},
+    )
+    own = _measured_runtime(
+        arb, ["tirust", "ninjars"], benches, {"tirust": "T"}, truth, typed, fit=False
+    )
+    assert own[0].profile.reference is None and own[1].refusal == "no NinjaRS here"
+    assert seen[-1][2] == {"arithmetic": "arbitrary", "precision": 60, "fit": False}
+    report = _report(())
+    assert "runtime_measured" not in report.cli_json()
+    timed = dataclasses.replace(
+        report, runtime_measured=({"precision": dd.record(), "runtime": rows},)
+    )
+    assert timed.cli_json()["runtime_measured"][0]["precision"]["label"] == "dd"

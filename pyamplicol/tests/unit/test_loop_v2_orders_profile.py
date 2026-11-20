@@ -380,11 +380,14 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             assert first["failed_binary64"] == sum(
                 p["status"] == "binary64-failed" for p in per_point
             )
-            assert len(first["percentiles"]) == 4
+            # 1 per mil, 1 %, 10 %, 50 % and 100 % (the best point).
+            assert len(first["percentiles"]) == 5
+            assert first["percentiles"][-1]["rank"] == first["points"]
             assert all(0.0 <= d <= 16.0 for d in first["true_digits"])
         else:
             text = stdout.getvalue()
             assert "true digits" in text and "NinjaRS" in text and "50 %" in text
+            assert "100 %" in text and "| class" not in text
             assert max(len(line) for line in text.splitlines()) <= 100
     from pyamplicol.api import BenchmarkRunner
     from pyamplicol.config import BenchmarkConfig
