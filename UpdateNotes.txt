@@ -6,11 +6,15 @@ ANNOUNCEMENT:
 
 0.4.0 (XX/XX/XX):
    RF: madevent rejected every phase-space point with a dynamical factorisation scale below
-       2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs. It now
-       applies to |lpp|=1 beams only. The gamma-UPC fluxes (|lpp|=2, ed*/ch*) do not depend
-       on the scale, and the EPA (iww), EVA and dressed-lepton densities are valid well below
-       it: the floor silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at
-       5.52 TeV without cuts (846 instead of 1163 mub).
+       2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
+       silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV
+       without cuts (846 instead of 1163 mub). Each beam now has the lower limit of its own
+       density: 2 GeV for hadron PDFs (|lpp|=1), 1 GeV for the tabulated dressed-lepton
+       densities (the lower edge of their grids), none for the gamma-UPC fluxes, which do not
+       depend on the scale, the analytic isrbet* sets, the EPA (iww) and EVA, which handle low
+       scales themselves. A dynamical renormalisation scale is now raised to at least 2 GeV,
+       as at NLO, so that alpha_s is not evaluated at its Landau pole (it gave alpha_s = 9e98
+       for e.g. a a > mu+ mu- without cuts once the factorisation-scale cut was removed).
    RF: "set low_mem_multicore_nlo_generation True" (NLO generation and output on nb_core cores,
        the matrix elements kept in temporary files) gives again the output of the serial mode.
        It differed for instance in the virtuals (nlo_mixed_expansion False, explicit orders,
