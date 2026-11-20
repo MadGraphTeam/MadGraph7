@@ -2290,8 +2290,13 @@ c beam-collinear light Born partner and spoil a native soft-jet inverse.
       opy=1d0+y
       if(abs(icountevts).ne.1.and.abs(icountevts).ne.2.and.
      $     .not.colltest)then
-         omy=2d0*(ctiny+(1d0-ctiny)*x(2)**2)
+c Build the momenta from the 1-y of the stored y. The FKS prefactors and
+c the MC term use 1-y_ij_fks; without cutoffs its rounding is a relative
+c error eps/(1-y) that does not cancel between them near y=1. 1-y is
+c exact for y>1/2. A real point with y rounded to one is rejected.
+         omy=1d0-y
          opy=2d0*(1d0-ctiny)*(1d0-x(2))*(1d0+x(2))
+         if(omy.le.0d0)goto 900
       endif
       if(.not.colltest)xjac=xjac*4d0*x(2)*(1d0-ctiny)
       xiimax=1d0-xborn(j_fks)

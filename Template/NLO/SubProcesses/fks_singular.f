@@ -4472,7 +4472,8 @@ c
       end
 
       subroutine sreal(pp,xi_i_fks,y_ij_fks,wgt)
-      use fks_phase_space_data, only: shat
+      use fks_phase_space_data, only: shat,pythia_recoil_pair,
+     $     pythia_isr_coordinate
 c Wrapper for the n+1 contribution. Returns the n+1 matrix element
 c squared reduced by the FKS damping factor xi**2*(1-y).
 c Close to the soft or collinear limits it calls the corresponding
@@ -4499,6 +4500,7 @@ c Born and multiplies with the AP splitting function or eikonal factors.
 
       double precision zero,tiny
       parameter (zero=0d0)
+      logical local_isr_soft
       logical need_color_links, need_charge_links
       common /c_need_links/need_color_links, need_charge_links
       
@@ -4532,9 +4534,28 @@ c entering this function
         stop
       endif
 
-      if (1d0-y_ij_fks.lt.tiny)then
+c Local ISR chart (w,y,phi): its soft counterterm takes the exact eikonal
+c also close to y=1. Like the real emission and the MC term it has the
+c azimuthal factor 2f-/t0=1+O(sqrt(1-y)) of the partner, absent from the
+c collinear limit at y=1: that would leave (2f-/t0-1)/(w(1-y)) in S.
+      local_isr_soft=xi_i_fks.eq.0d0.and.y_ij_fks.lt.1d0.and.
+     $     j_fks.le.nincoming.and.pythia_recoil_pair(2).gt.0
+      if (1d0-y_ij_fks.lt.tiny.and..not.local_isr_soft)then
          if (pmass(j_fks).eq.zero.and.j_fks.le.nincoming)then
-            call sborncol_isr(pp,xi_i_fks,y_ij_fks,wgt)
+            if (xi_i_fks.gt.0d0.and.y_ij_fks.lt.1d0.and.
+     $           pythia_isr_coordinate.gt.0d0.and.
+     $           pythia_recoil_pair(2).gt.0)then
+c Real point of the local ISR chart. Its collinear counterterm and MC term
+c sit at fixed w, z=1-w. The limit of xi**2*(1-y)*ME at fixed w is xi/w
+c times the one at xi=w. The limit at fixed xi (z=1-xi) differs from both
+c by xi/w=1+O(sqrt(1-y)), a large weight near y=1.
+               call sborncol_isr(pp,pythia_isr_coordinate,y_ij_fks,wgt)
+               wgt=wgt*xi_i_fks/pythia_isr_coordinate
+               amp_split(1:amp_split_size)=amp_split(1:amp_split_size)
+     $              *xi_i_fks/pythia_isr_coordinate
+            else
+               call sborncol_isr(pp,xi_i_fks,y_ij_fks,wgt)
+            endif
          elseif (pmass(j_fks).eq.zero.and.j_fks.ge.nincoming+1)then
             call sborncol_fsr(pp,xi_i_fks,y_ij_fks,wgt)
          else
@@ -5661,7 +5682,8 @@ c Factor two to fix the limits.
 ! legs can give smaller, well-resolved products: retain them in both
 ! the numerator and denominators instead of introducing a zero pole.
       use fks_phase_space_helpers, only: dot
-      use fks_phase_space_data,only: resonance_momentum,resonance_recoil,p_i_fks_cnt,sqrtshat
+      use fks_phase_space_data,only: resonance_momentum,resonance_recoil,p_i_fks_cnt,sqrtshat,
+     $     pythia_recoil_pair
 c     Returns the eikonal factor
       implicit none
 
@@ -5682,6 +5704,9 @@ c     Returns the eikonal factor
 c Define the reduced momentum for i_fks
       softcol=0
       if (1d0-y_ij_fks.lt.tiny)softcol=2
+c The local ISR chart keeps the counterevent direction until y=1: see sreal.
+      if (pythia_recoil_pair(2).gt.0.and.j_fks.le.nincoming.and.
+     $     y_ij_fks.lt.1d0)softcol=0
 
       if(p_i_fks_cnt(0,softcol).lt.0d0)then
          if(xi_i_fks.eq.0.d0)then
