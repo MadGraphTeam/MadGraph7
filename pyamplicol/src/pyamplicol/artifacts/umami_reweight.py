@@ -29,6 +29,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from ..generation.process_grouping import ProcessGroupMap
 from .umami_c import _boolean, _power, _string
 
 _TEMPLATES = {
@@ -188,6 +189,11 @@ def switch_catalogue(
                 )
             assignment = 0
             for member in group["members"]:
+                if "crossing_momentum_signs" in member:
+                    raise ValueError(
+                        f"the flavour switch cannot use the crossed member "
+                        f"{member['process_id']!r} yet"
+                    )
                 if union and member["process_id"] != template:
                     if "flavour_union_patterns" not in member:
                         raise ValueError(
@@ -808,6 +814,9 @@ def write_reweight_provider(
         if switch_lines is not None and groups_path.is_file()
         else None
     )
+    if groups is not None:
+        # kind and schema check; switch_catalogue reads the raw records
+        ProcessGroupMap.from_document(groups)
     ids = []
     for reference in references:
         identifier = _identifier(reference["provider"]["id"])

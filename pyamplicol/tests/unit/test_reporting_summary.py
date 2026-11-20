@@ -1401,6 +1401,79 @@ def test_large_process_group_map_lists_members_compactly() -> None:
     assert "compact view" not in selected
 
 
+def test_crossed_union_members_show_their_crossing_signs() -> None:
+    crossed = replace(
+        _member(
+            "gg_uubar", "g g > u u~", permutation=(3, 0, 2, 1), basis="flavour-union"
+        ),
+        crossing_momentum_signs=(-1, 1, 1, -1),
+        crossing_helicity_signs=(-1, 1, 1, 1),
+    )
+    uncrossed = _member("dg_dg", "d g > d g", basis="flavour-union")
+    groups = ArtifactProcessGroupsInspection(
+        stored=True, groups=(_group("ug_ug", "u g > u g", crossed, uncrossed),)
+    )
+    rendered = render_summary(
+        replace(_artifact_inspection(), process_groups=groups), color=False
+    )
+    assert rendered is not None
+    section = rendered[rendered.index("Process groups") : rendered.index("Execution")]
+    lines = section.splitlines()
+    assert " crossed " in lines[3].split("|")
+    assert "| gg_uubar | g g > u u~ | routed         | X [- + + -] | [3 0 2 1]" in (
+        section.replace("|- ", "").replace("`- ", "")
+    )
+    assert "X [s]: crossed union member" in section
+
+    members = [
+        replace(crossed, id=f"m{index}") if index % 2 else uncrossed
+        for index in range(90)
+    ]
+    compact = render_summary(
+        replace(
+            _artifact_inspection(),
+            process_groups=ArtifactProcessGroupsInspection(
+                stored=True,
+                groups=(
+                    _group("ug_ug", "u g > u g", *members),
+                    _group("gg_gg", "g g > g g"),
+                ),
+            ),
+        ),
+        color=False,
+    )
+    assert compact is not None
+    assert "| 45 routed   X  g g > u u~" in compact
+    assert "| 45 routed      d g > d g" in compact
+
+    selection = ArtifactProcessGroupSelection(
+        process_id="gg_uubar",
+        role="routed member",
+        representative_id="ug_ug",
+        representative="u g > u g",
+        factor="1",
+        permutation=(3, 0, 2, 1),
+        conjugated=False,
+        basis="flavour-union",
+        warning=None,
+        group_size=3,
+        routed_count=2,
+        conjugated_count=0,
+        crossed=True,
+        crossing_momentum_signs=(-1, 1, 1, -1),
+    )
+    physics = {"process_id": "gg_uubar", "process": "g g > u u~"}
+    block = render_summary({**physics, "process_group": selection}, color=False)
+    assert block is not None
+    assert "| crossing       | X [- + + -]: representative leg r takes s[r] x the " in (
+        block
+    )
+    plain = render_summary(
+        {**physics, "process_group": replace(selection, crossed=False)}, color=False
+    )
+    assert plain is not None and "crossing" not in plain
+
+
 def test_grouped_full_physics_renders_the_process_group_block() -> None:
     selection = ArtifactProcessGroupSelection(
         process_id="dbar_d_zg",
@@ -1490,4 +1563,6 @@ def test_process_groups_json_is_complete_and_uncolored() -> None:
         "permutation": [1, 0, 2, 3],
         "process": "d~ d > z g",
         "warning": None,
+        "crossing_momentum_signs": None,
+        "crossing_helicity_signs": None,
     }

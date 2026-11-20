@@ -26,6 +26,7 @@ from pyamplicol.generation.process_grouping import (
     GroupMember,
     PatternPairs,
     ProcessGroupMap,
+    crossing_signs,
 )
 
 from .manifest import (
@@ -91,7 +92,8 @@ def validate_process_groups(
 
     Members that were not generated are evaluated through their representative,
     so, as the runtime requires, their factor must be positive. Flavour-union
-    members are routed permutations of their (template) representative.
+    members are routed permutations of their (template) representative; only
+    they may cross legs between the sides, with matching crossing signs.
     """
 
     generated = [
@@ -168,6 +170,31 @@ def validate_process_groups(
                     "routed leg permutation of its template "
                     f"{representative.process_id!r}"
                 )
+            _check_sides(member, representative, union=union)
+
+
+def _check_sides(
+    member: GroupMember, representative: GroupMember, *, union: bool
+) -> None:
+    """Only a flavour-union member with matching crossing signs may move legs
+    across the ``>``."""
+
+    if sorted(member.permutation) != list(range(len(representative.pdgs))):
+        raise ArtifactError(
+            f"process-group member {member.process_id!r} permutation is not a leg "
+            f"permutation of {representative.process_id!r}"
+        )
+    signs = crossing_signs(
+        member.permutation, representative.initial_count, member.initial_count
+    )
+    if -1 not in signs and not member.crossed:
+        return
+    if not union or member.crossing_momentum_signs != signs:
+        raise ArtifactError(
+            f"process-group member {member.process_id!r} permutation moves a "
+            "particle across the '>' boundary; only a flavour-union member with "
+            "matching crossing signs may"
+        )
 
 
 @contextmanager

@@ -358,6 +358,14 @@ def _select_compact_process_inspection(
                 ),
                 None,
             )
+            if member is not None and member.crossing_momentum_signs is not None:
+                raise ConfigurationError(
+                    f"inspect process {member.id} ({member.process}) is a crossed "
+                    f"flavour-union member of process group {group.representative_id} "
+                    f"({group.representative}); it is evaluated only through the "
+                    "template's assignments at sign-flipped momenta, and "
+                    f"--process {group.representative_id} lists the group"
+                )
             if member is not None:
                 raise ConfigurationError(
                     f"inspect process {member.id} ({member.process}) is a routed "

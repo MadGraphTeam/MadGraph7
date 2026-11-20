@@ -35,6 +35,9 @@ PROCESS_GROUPS_PATH = "process-groups.json"
 PROCESS_GROUPS_ROLE = "process-groups"
 PROCESS_GROUPS_KIND = "pyamplicol-process-groups"
 PROCESS_GROUPS_SCHEMA_VERSION = 1
+# Written only when a flavour-union member is crossed (carries crossing signs).
+PROCESS_GROUPS_CROSSING_SCHEMA_VERSION = 2
+_CROSSING_KEYS = ("crossing_momentum_signs", "crossing_helicity_signs")
 
 _ZERO_EXPRESSIONS = frozenset({"0", "0.0", "-0", "-0.0", "zero"})
 
@@ -507,6 +510,20 @@ def compose_permutations(
     return tuple(member_to_middle[index] for index in middle_to_representative)
 
 
+def crossing_signs(
+    permutation: Sequence[int],
+    template_initial_count: int,
+    member_initial_count: int,
+) -> tuple[int, ...]:
+    """Momentum sign per template slot: -1 where slot ``r`` and member leg
+    ``permutation[r]`` lie on different sides of the ``>``."""
+
+    return tuple(
+        -1 if (slot < template_initial_count) != (leg < member_initial_count) else 1
+        for slot, leg in enumerate(permutation)
+    )
+
+
 def invert_permutation(permutation: Sequence[int]) -> tuple[int, ...]:
     inverse = [0] * len(permutation)
     for representative_index, member_index in enumerate(permutation):
@@ -529,10 +546,15 @@ class GroupMember:
     # Flavour-union member: template pairing-rule ids summed before squaring.
     patterns: tuple[int, ...] | None = None
     pattern_signs: tuple[int, ...] | None = None
+    # Crossed union member, per template slot: momentum signs (sigma, derived
+    # from the sides) and helicity signs (rho), lambda_M[pi_r] = rho_r lambda_T[r].
+    crossing_momentum_signs: tuple[int, ...] | None = None
+    crossing_helicity_signs: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         if (self.patterns is None) != (self.pattern_signs is None):
             raise ValueError("patterns and pattern_signs must be given together")
+        self._check_crossing()
         if self.patterns is not None and self.pattern_signs is not None:
             if not self.patterns or len(self.patterns) != len(self.pattern_signs):
                 raise ValueError(
@@ -549,6 +571,32 @@ class GroupMember:
                     f"process-group member {self.process_id!r} has flavour-union "
                     "pattern signs other than +1 and -1"
                 )
+
+    def _check_crossing(self) -> None:
+        momentum, helicity = self.crossing_momentum_signs, self.crossing_helicity_signs
+        if momentum is None and helicity is None:
+            return
+        name = f"process-group member {self.process_id!r}"
+        if momentum is None or helicity is None:
+            raise ValueError(f"{name} needs both crossing sign vectors or neither")
+        if self.patterns is None:
+            raise ValueError(f"{name} is crossed but not a flavour-union member")
+        if len(momentum) != len(self.pdgs) or len(helicity) != len(self.pdgs):
+            raise ValueError(f"{name} needs one crossing sign per leg")
+        if any(sign not in (-1, 1) for sign in (*momentum, *helicity)):
+            raise ValueError(f"{name} has crossing signs other than +1 and -1")
+        if -1 not in momentum:
+            raise ValueError(f"{name} carries crossing signs but is not crossed")
+        if self.conjugated:
+            raise ValueError(f"{name} cannot be both crossed and conjugated")
+        if any(r != 1 for s, r in zip(momentum, helicity, strict=True) if s == 1):
+            raise ValueError(f"{name} flips a helicity on an uncrossed slot")
+
+    @property
+    def crossed(self) -> bool:
+        """Whether the template evaluates this member at sign-flipped momenta."""
+
+        return self.crossing_momentum_signs is not None
 
     @classmethod
     def identity(cls, process: GroupingProcess) -> GroupMember:
@@ -640,6 +688,9 @@ class GroupMember:
         if self.patterns is not None and self.pattern_signs is not None:
             record["flavour_union_patterns"] = list(self.patterns)
             record["flavour_union_pattern_signs"] = list(self.pattern_signs)
+        if self.crossing_momentum_signs is not None:
+            record["crossing_momentum_signs"] = list(self.crossing_momentum_signs)
+            record["crossing_helicity_signs"] = list(self.crossing_helicity_signs or ())
         return record
 
     @classmethod
@@ -663,6 +714,12 @@ class GroupMember:
             warning=(str(value["warning"]) if value.get("warning") else None),
             patterns=_optional_int_tuple(value.get("flavour_union_patterns")),
             pattern_signs=_optional_int_tuple(value.get("flavour_union_pattern_signs")),
+            crossing_momentum_signs=_optional_int_tuple(
+                value.get("crossing_momentum_signs")
+            ),
+            crossing_helicity_signs=_optional_int_tuple(
+                value.get("crossing_helicity_signs")
+            ),
         )
 
 
@@ -703,6 +760,17 @@ class ProcessGroup:
 
     members: list[GroupMember]
     pattern_pairs: PatternPairs | None = None
+
+    def __post_init__(self) -> None:
+        representative = self.members[0]
+        for member in self.members:
+            if member.crossed and member.crossing_momentum_signs != crossing_signs(
+                member.permutation, representative.initial_count, member.initial_count
+            ):
+                raise ValueError(
+                    f"process-group member {member.process_id!r} has crossing "
+                    "momentum signs that disagree with its permutation and sides"
+                )
 
     @property
     def representative(self) -> GroupMember:
@@ -802,9 +870,12 @@ class ProcessGroupMap:
         groups = sorted(
             self.groups.values(), key=lambda group: group.representative.process_id
         )
+        crossed = any(member.crossed for member in self.members())
         return {
             "kind": PROCESS_GROUPS_KIND,
-            "schema_version": PROCESS_GROUPS_SCHEMA_VERSION,
+            "schema_version": PROCESS_GROUPS_CROSSING_SCHEMA_VERSION
+            if crossed
+            else PROCESS_GROUPS_SCHEMA_VERSION,
             "analyses": list(self.analyses),
             "groups": [group.as_dict() for group in groups],
         }
@@ -816,10 +887,20 @@ class ProcessGroupMap:
     def from_document(cls, document: Mapping[str, object]) -> ProcessGroupMap:
         if document.get("kind") != PROCESS_GROUPS_KIND:
             raise ValueError("document is not a pyAmpliCol process-group map")
-        if document.get("schema_version") != PROCESS_GROUPS_SCHEMA_VERSION:
+        schema = document.get("schema_version")
+        if isinstance(schema, bool) or schema not in (
+            PROCESS_GROUPS_SCHEMA_VERSION,
+            PROCESS_GROUPS_CROSSING_SCHEMA_VERSION,
+        ):
             raise ValueError("unsupported process-group map schema version")
         result = cls(analyses=[dict(entry) for entry in document.get("analyses", [])])  # type: ignore[attr-defined]
         for group in document.get("groups", []):  # type: ignore[attr-defined]
+            if schema == PROCESS_GROUPS_SCHEMA_VERSION and any(
+                key in member for member in group["members"] for key in _CROSSING_KEYS
+            ):
+                raise ValueError(
+                    "process-group map schema version 1 cannot carry crossing signs"
+                )
             members = [GroupMember.from_dict(member) for member in group["members"]]
             result.add_group(
                 members, _pattern_pairs(group.get("flavour_union_pattern_pairs"))
@@ -1169,6 +1250,7 @@ def rational_factor(value: float, *, tolerance: float) -> Fraction | None:
 
 
 __all__ = [
+    "PROCESS_GROUPS_CROSSING_SCHEMA_VERSION",
     "PROCESS_GROUPS_KIND",
     "PROCESS_GROUPS_PATH",
     "PROCESS_GROUPS_ROLE",
@@ -1188,6 +1270,7 @@ __all__ = [
     "candidate_mappings",
     "coarse_key",
     "compose_permutations",
+    "crossing_signs",
     "flavor_blind_classes",
     "flavor_blind_mapping",
     "flavor_class_key",

@@ -252,6 +252,8 @@ class ArtifactProcessGroupMemberInspection:
 
     ``ME(p) = factor * ME_representative(q)`` with ``q[r] = p[permutation[r]]``;
     ``factor`` is the reduced fraction text, such as ``"1"`` or ``"16/9"``.
+    A crossed flavour-union member has ``q[r] = sigma[r] * p[permutation[r]]``
+    with ``sigma`` = ``crossing_momentum_signs`` and helicity signs ``rho``.
     """
 
     id: str
@@ -264,6 +266,8 @@ class ArtifactProcessGroupMemberInspection:
     basis: str
     generated: bool
     warning: str | None = None
+    crossing_momentum_signs: tuple[int, ...] | None = None
+    crossing_helicity_signs: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +300,7 @@ class ArtifactProcessGroupSelection:
     through the representative) or ``generated member`` (related numerically,
     evaluated by its own runtime process). ``permutation`` relates the
     representative's legs to the selected leg order, as in a group member.
+    ``crossed`` members take the momenta signed by ``crossing_momentum_signs``.
     """
 
     process_id: str
@@ -310,6 +315,8 @@ class ArtifactProcessGroupSelection:
     group_size: int
     routed_count: int
     conjugated_count: int
+    crossed: bool = False
+    crossing_momentum_signs: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3308,6 +3315,8 @@ def _group_member_inspection(
         basis=str(member.basis),
         generated=member.generated,
         warning=member.warning,
+        crossing_momentum_signs=member.crossing_momentum_signs,
+        crossing_helicity_signs=member.crossing_helicity_signs,
     )
 
 
@@ -3428,6 +3437,8 @@ def process_group_selection(
         group_size=len(group.members),
         routed_count=sum(not item.generated for item in group.members),
         conjugated_count=sum(item.conjugated for item in group.members),
+        crossed=member.crossed,
+        crossing_momentum_signs=member.crossing_momentum_signs,
     )
 
 

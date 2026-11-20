@@ -1872,11 +1872,12 @@ _PROCESS_GROUP_WIDTH = 120
 _GENERATED_COLOR = "GREEN"
 _ROUTED_COLOR = "CYAN"
 _CONJUGATED_COLOR = "MAGENTA"
+_CROSSED_COLOR = "LIGHTMAGENTA_EX"
 _ATTENTION_COLOR = "YELLOW"  # factors other than 1, warnings
 _BASIS_COLORS = {"flavor-blind": "LIGHTBLUE_EX", "numerical": "GREEN"}
 _Member = Mapping[str, object]
-# (routed, conjugated, factor, basis) of a member's relation
-_Relation = tuple[bool, bool, Fraction, str]
+# (routed, conjugated, factor, basis, crossed) of a member's relation
+_Relation = tuple[bool, bool, Fraction, str, bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1890,6 +1891,7 @@ class _GroupCounts:
     non_unit: int
     warnings: int
     bases: tuple[tuple[str, int], ...]
+    crossed: int = 0
 
     @property
     def routed(self) -> int:
@@ -1943,7 +1945,21 @@ def _group_counts(groups: Sequence[Mapping[str, object]]) -> _GroupCounts:
         non_unit=sum(str(member["factor"]) != "1" for member in members),
         warnings=sum(bool(member.get("warning")) for member in members),
         bases=tuple(sorted(bases.items())),
+        crossed=sum(_is_crossed(member) for member in members),
     )
+
+
+def _is_crossed(member: Mapping[str, object]) -> bool:
+    return member.get("crossing_momentum_signs") is not None
+
+
+def _signs_text(signs: object) -> str:
+    values = cast(Sequence[int], signs)
+    return "[" + " ".join("-" if int(sign) < 0 else "+" for sign in values) + "]"
+
+
+def _crossing_mark(*, color: bool) -> str:
+    return _paint("X", _CROSSED_COLOR, enabled=color, bold=True)
 
 
 def _ordered_group_members(
@@ -2100,6 +2116,10 @@ def _process_grouping_text(
                     enabled=color,
                 )
             )
+        if counts.crossed:
+            details.append(
+                _paint(f"{counts.crossed} crossed", _CROSSED_COLOR, enabled=color)
+            )
         if counts.non_unit:
             details.append(
                 _paint(
@@ -2166,6 +2186,7 @@ def _process_groups_overview(
             "generated",
             "routed",
             "conjugated",
+            *(("crossed",) if counts.crossed else ()),
             "factor != 1",
             "bases",
             "analyses",
@@ -2188,6 +2209,11 @@ def _process_groups_overview(
                 str(counts.conjugated),
                 _CONJUGATED_COLOR,
                 enabled=color and counts.conjugated > 0,
+            ),
+            *(
+                (_paint(str(counts.crossed), _CROSSED_COLOR, enabled=color),)
+                if counts.crossed
+                else ()
             ),
             _paint(
                 str(counts.non_unit),
@@ -2220,6 +2246,7 @@ def _process_group_detail_table(
     members = [member for group in groups for member in _group_members(group)]
     show_factor = any(str(member["factor"]) != "1" for member in members)
     show_conjugated = any(bool(member["conjugated"]) for member in members)
+    show_crossed = any(_is_crossed(member) for member in members)
     show_permutation = not all(
         _is_identity_permutation(member["permutation"]) for member in members
     )
@@ -2228,6 +2255,8 @@ def _process_group_detail_table(
         headers.append("factor")
     if show_conjugated:
         headers.append("C")
+    if show_crossed:
+        headers.append("crossing")
     if show_permutation:
         headers.append("permutation")
     headers.append("basis")
@@ -2265,6 +2294,14 @@ def _process_group_detail_table(
             if show_conjugated:
                 row.append(
                     _conjugation_mark(color=color) if bool(member["conjugated"]) else ""
+                )
+            if show_crossed:
+                row.append(
+                    _crossing_mark(color=color)
+                    + " "
+                    + _signs_text(member["crossing_momentum_signs"])
+                    if _is_crossed(member)
+                    else ""
                 )
             if show_permutation:
                 row.append(_permutation_text(member["permutation"]))
@@ -2326,6 +2363,7 @@ def _process_group_compact_table(
                 bool(member["conjugated"]),
                 Fraction(str(member["factor"])),
                 str(member["basis"]),
+                _is_crossed(member),
             )
             by_relation.setdefault(key, []).append(member)
         classes.append(sorted(by_relation.items(), key=lambda item: item[0]))
@@ -2337,18 +2375,20 @@ def _process_group_compact_table(
     )
     show_factor = any(key[2] != 1 for key, _count in relations)
     show_basis = len({key[3] for key, _count in relations}) > 1
+    show_crossed = any(key[4] for key, _count in relations)
     factor_width = max((len(f"x{key[2]}") for key, _count in relations), default=0)
     basis_width = max((len(key[3]) for key, _count in relations), default=0)
     label_width = (
         count_width
         + role_width
         + 3
+        + (2 if show_crossed else 0)
         + (factor_width + 1 if show_factor else 0)
         + (basis_width + 1 if show_basis else 0)
     )
 
     def label(key: _Relation, count: int) -> str:
-        routed, conjugated, factor, basis = key
+        routed, conjugated, factor, basis, crossed = key
         role = "routed" if routed else "generated"
         parts = [
             f"{count:>{count_width}}",
@@ -2363,6 +2403,8 @@ def _process_group_compact_table(
             ),
             _conjugation_mark(color=color) if conjugated else " ",
         ]
+        if show_crossed:
+            parts.append(_crossing_mark(color=color) if crossed else " ")
         if show_factor:
             parts.append(
                 _padded(
@@ -2487,6 +2529,11 @@ def _process_groups_summary(
         legend.append(f"{routed}: not generated, evaluated through its representative")
     if counts.conjugated:
         legend.append(f"{_conjugation_mark(color=color)}: charge-conjugated relation")
+    if counts.crossed:
+        legend.append(
+            f"{_crossing_mark(color=color)} [s]: crossed union member, representative "
+            "leg r takes s[r] x the momentum of member leg p[r]"
+        )
     if counts.non_unit:
         legend.append("factor F: ME = F x ME(representative)")
     if not detailed:
@@ -2587,6 +2634,20 @@ def _process_group_selection_summary(
                 else "no",
             ),
             ("permutation", permutation_text),
+            *(
+                (
+                    (
+                        "crossing",
+                        _crossing_mark(color=color)
+                        + " "
+                        + _signs_text(record["crossing_momentum_signs"])
+                        + ": representative leg r takes s[r] x the momentum of "
+                        "leg p[r]",
+                    ),
+                )
+                if record.get("crossed")
+                else ()
+            ),
             ("basis", _basis_text(record["basis"], color=color)),
             ("group", group_text),
         ]

@@ -643,7 +643,7 @@ Reading it:
 
 | Field | Meaning |
 | --- | --- |
-| `kind`, `schema_version` | `pyamplicol-process-groups`, version 1 |
+| `kind`, `schema_version` | `pyamplicol-process-groups`, version 1, or 2 when a member is crossed (see below) |
 | `analyses` | one entry per distinct numerical-analysis setting applied |
 | `groups` | sorted by representative process ID |
 | `representative` | process ID and expression of the group's generated representative |
@@ -655,9 +655,27 @@ Reading it:
 | `basis` | `identity`, `flavor-blind` (assumed) or `numerical` (tested) |
 | `generated` | whether the member has its own runtime process in the artifact |
 | `warning` | present only for a flavour-blind relation that may not be a model symmetry |
+| `flavour_union_patterns`, `flavour_union_pattern_signs` | flavour-union members only: the template pairing patterns summed before squaring, and their signs |
+| `flavour_union_pattern_pairs` | on a flavour-union group: the (fundamental, antifundamental) template slots of each pattern |
+| `crossing_momentum_signs`, `crossing_helicity_signs` | crossed flavour-union members only (schema 2): the signs `s[r]` and `h[r]` per representative leg |
 
 Every subprocess of the artifact appears exactly once as a generated member,
 and a representative is always generated.
+
+A flavour-union member is *crossed* when its permutation moves a leg across
+the `>`: the template then takes `q[r] = s[r] * p[permutation[r]]`, and the
+member's helicity on leg `permutation[r]` is `h[r]` times the template's on
+leg `r`. `s[r]` is -1 exactly where representative leg `r` and member leg
+`permutation[r]` lie on different sides, so every reader derives it from the
+permutation and both `initial_count`s and refuses a mismatch. `h[r]` is +1
+wherever `s[r]` is. A crossed member is never conjugated, and only flavour-union
+members may cross; every other permutation stays within each side.
+`schema_version` is 2 only when the map has a crossed member, so maps without
+one are unchanged; a reader accepts versions 1 and 2 and refuses crossing
+signs under version 1. A crossed member has no process of its own: it cannot
+be loaded by ID or expression (`Runtime.load(..., process=...)`, the
+standalone check's `--process`, the `inspect` process selector) and is
+evaluated only through its template's flavour-union assignments.
 
 `pyamplicol inspect` shows the map in its `Process groups` section (colours
 omitted here). For the five subprocesses above:
@@ -689,8 +707,8 @@ numerical analysis: 3 points, tolerance 1e-09
 
 A `generated` member has its own runtime process, and a `routed` member is
 evaluated through its representative. The permutation column is empty for the
-identity. The factor, `C` and permutation columns appear only when some member
-needs them, and a `note` column with `[n]` references to the warnings printed
+identity. The factor, `C`, crossing (`X` and the signs `s`) and permutation
+columns appear only when some member needs them, and a `note` column with `[n]` references to the warnings printed
 below the table appears when a member has a warning. Maps with more than 80
 subprocesses list each group's members as a grid of process strings instead;
 see [Inspect and select a process](command-line-interface.md#inspect-and-select-a-process).
