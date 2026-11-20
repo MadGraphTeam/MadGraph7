@@ -337,16 +337,31 @@ def _processes(*expressions: str) -> list[GroupingProcess]:
 
 
 def _relation(catalog: Any) -> Callable[..., Any]:
-    """The crossing relation of same-flavour processes (no substitution)."""
+    """The crossing relation, as generation builds it: a single-flavour
+    template against the member with the template's quark flavour."""
+
+    quarks = {"d", "u", "s", "c", "b"}
 
     def relation(
         template: GroupingProcess, member: GroupingProcess, permutation: Any
     ) -> Any:
+        flavours = {
+            t.rstrip("~")
+            for t in template.expression.split()
+            if t.rstrip("~") in quarks
+        }
+        expression = member.expression
+        if len(flavours) == 1:
+            (flavour,) = flavours
+            expression = " ".join(
+                flavour + "~" * t.endswith("~") if t.rstrip("~") in quarks else t
+                for t in expression.split()
+            )
         legs = [
             project_external_source_legs(
-                build_process_ir(process.expression, color_accuracy="lc"), catalog
+                build_process_ir(text, color_accuracy="lc"), catalog
             )
-            for process in (template, member)
+            for text in (template.expression, expression)
         ]
         return external_crossing_relation(*legs, permutation)
 
@@ -401,28 +416,42 @@ def test_conjugation_is_preferred_and_crossing_replaces_a_refused_one(
     assert gluons.crossing_helicity_signs == (-1, 1, 1, 1)
 
 
-def test_a_refused_crossing_relation_keeps_the_member_routing(
+def test_a_refused_crossing_falls_back_to_the_side_aware_unions(
     model: BuiltinSMModel, template_catalog: Any
 ) -> None:
     _, table, _ = _entries(("p p > j j",))
-    processes = _processes("u g > u g", "u~ g > u~ g", "g g > u u~", "u u~ > g g")
+    processes = _processes(
+        "d d~ > d d~", "d d~ > u u~", "u d~ > u d~", "d d > d d", "u d > u d"
+    )
     relation = _relation(template_catalog)
-    unions = flavour_unions(
+    kwargs: dict[str, Any] = {
+        "pairing_rules": _pairing_rules(template_catalog),
+        "normalization": model.external_state_normalization,
+    }
+    (union,) = flavour_unions(
+        processes, table, crossing=True, crossing_relation=relation, **kwargs
+    )
+    assert union.template.expression == "d d~ > d d~"
+    assert {m.expression for m in union.members if m.crossed} == {
+        "d d > d d",
+        "u d > u d",
+    }
+    # one refused member: the content keeps the unions it has without crossing
+    refused = flavour_unions(
         processes,
         table,
-        pairing_rules=_pairing_rules(template_catalog),
-        normalization=model.external_state_normalization,
         crossing=True,
         crossing_relation=lambda t, m, p: (
-            None if m.expression == "g g > u u~" else relation(t, m, p)
+            None if m.expression == "u d > u d" else relation(t, m, p)
         ),
+        **kwargs,
     )
-    (union,) = unions
-    assert {m.expression for m in union.members} == {
-        "u g > u g",
-        "u~ g > u~ g",
-        "u u~ > g g",
-    }
+    side_aware = flavour_unions(processes, table, **kwargs)
+    assert refused == side_aware
+    assert sorted(u.template.expression for u in side_aware) == [
+        "d d > d d",
+        "d d~ > d d~",
+    ]
     with pytest.raises(ValueError, match="momentum signs"):
         flavour_unions(
             processes,
@@ -635,3 +664,24 @@ def test_crossed_unions_that_absorb_an_aliased_entry_are_skipped() -> None:
     assert applied.group_members[0].crossed
     aliased = [entry("ug", "u g > u g"), entry("gg", "g g > u u~", ({"id": "a"},))]
     assert _apply_flavour_unions(aliased, [union], lambda t: None) == aliased
+
+
+def test_minimal_coupling_orders_need_no_explicit_qed_limit() -> None:
+    """Resonances are checked within the generated (minimal) orders, so a
+    model with Z and W still crosses the QCD content of p p > j j j."""
+
+    config = _run_config(crossing=True)
+    process = replace(config.process, max_coupling_orders={})
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+        backend = generation_service.GenerationBackend(
+            replace(config, process=process), None
+        )
+        resolved = backend._resolve_model_for_plan(backend._configured_model_source())
+        entries = backend._expand_process_set(
+            ProcessSet.from_expressions(("p p > j j j",)),
+            resolved,
+            PhaseHandle("test", None, 1),
+        )
+    assert len(entries) == 3
+    assert sum(m.crossed for e in entries for m in e.group_members) == 56

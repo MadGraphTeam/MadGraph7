@@ -688,11 +688,12 @@ member is routed uncrossed where it can be, directly or else conjugated, and
 crossed otherwise. Its permutation pairs legs on the same side first and then
 across, so a member that needs no crossing keeps the route it has without the
 flag. `h` comes from matching the source states of the template and of the
-member with the template's flavours: -1 on crossed quarks, +1 on gluons. A
-member whose source states do not match, whose crossed quark is not chiral, or
-whose template or member has an s-channel resonance keeps its own routing.
-When strict mode refuses a conjugation, those members are crossed instead and
-the union is not split.
+member with the template's flavours: -1 on crossed quarks, +1 on gluons. If a
+member cannot be crossed (its source states do not match, its crossed quark
+is not chiral, or it or the template has an s-channel resonance within the
+generated coupling orders), that content keeps the unions it has without the
+flag. When strict mode refuses a conjugation, those members are crossed
+instead and the union is not split.
 
 `pyamplicol inspect` shows the map in its `Process groups` section (colours
 omitted here). For the five subprocesses above:

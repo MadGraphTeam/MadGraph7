@@ -4813,7 +4813,9 @@ class GenerationBackend:
         ]
         crossing = self._flavor_union_crossing
         crossing_relation = (
-            self._union_crossing_relation(model, catalog, table, processes, process_ir)
+            self._union_crossing_relation(
+                model, catalog, table, processes, process_ir, limits_for
+            )
             if crossing
             else None
         )
@@ -4837,7 +4839,8 @@ class GenerationBackend:
         if crossing_relation is not None:
             refused = getattr(crossing_relation, "refused", 0)
             _LOGGER.debug(
-                "Flavour-union crossing: %d crossed member%s, %d kept their routing",
+                "Flavour-union crossing: %d crossed member%s, %d refused "
+                "(their content keeps side-aware unions)",
                 sum(member.crossed for union in unions for member in union.members),
                 "" if refused == 1 else "s",
                 refused,
@@ -4851,13 +4854,14 @@ class GenerationBackend:
         table: Mapping[int, GroupingParticle],
         processes: Sequence[GroupingProcess],
         process_ir: Callable[[GroupingProcess], CanonicalProcessIR],
+        limits_for: Callable[..., Mapping[str, int]],
     ) -> UnionCrossingRelation:
         """Signs of a crossed union member from its source states: per slot,
         the member with the template's union flavours must have the template's
         all-outgoing source states (as exact schedule sharing matches them).
 
-        Stage 1 refuses (``None``, the member keeps its routing) crossed quark
-        slots outside the Weyl family and any s-channel resonance."""
+        Stage 1 refuses (``None``) crossed quark slots outside the Weyl family
+        and s-channel resonances within the coupling orders generated."""
 
         selection = self._process_selection
         if (
@@ -4872,7 +4876,6 @@ class GenerationBackend:
         known = {
             (process.pdgs, process.initial_count): process for process in processes
         }
-        limits = self._coupling_order_limits or None
         legs: dict[tuple[tuple[int, ...], int], Any] = {}
 
         def external(pdgs: tuple[int, ...], initial_count: int) -> Any:
@@ -4892,6 +4895,7 @@ class GenerationBackend:
                     )
                 ir = process_ir(process)
                 # resonances are not recomputed per crossing (stage 1)
+                limits = limits_for(process.process_id, ir) or None
                 legs[key] = (
                     None
                     if s_channel_resonances(ir, model, limits)

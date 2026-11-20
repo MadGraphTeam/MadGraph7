@@ -1053,6 +1053,7 @@ class FlavourUnion:
 
 
 _CONJUGATION_REFUSED = object()
+_CROSSING_REFUSED = object()
 
 
 def _union_permutation(
@@ -1304,7 +1305,7 @@ def _flavour_union(
                 else crossing_relation(template, process, permutation)
             )
             if relation is None:
-                continue  # it keeps its routing
+                return _CROSSING_REFUSED
             if tuple(relation[0]) != sigma:
                 raise ValueError(
                     f"crossing of {process.expression!r} into "
@@ -1400,8 +1401,9 @@ def flavour_unions(
     With ``crossing``, crossing-eligible processes (union quarks and gluons
     only) are keyed by all-outgoing content: a member that matches the template
     neither directly nor conjugated is crossed, with the signs that
-    ``crossing_relation`` returns (``None`` keeps its own routing). A refused
-    conjugation then crosses the members instead of splitting the union.
+    ``crossing_relation`` returns. If it returns ``None`` for any member, that
+    content falls back to its side-aware unions. A refused conjugation crosses
+    the members instead of splitting the union.
     """
 
     if crossing and crossing_relation is None:
@@ -1424,6 +1426,16 @@ def flavour_unions(
         "crossing_relation": crossing_relation,
     }
     result: list[FlavourUnion] = []
+
+    def side_aware(group: Sequence[GroupingProcess]) -> list[FlavourUnion]:
+        # a refused crossing: this content keeps the unions it has without crossing
+        return flavour_unions(
+            group,
+            table,
+            consider_charge_conjugation=consider_charge_conjugation,
+            **{**options, "crossing_relation": None},  # type: ignore[arg-type]
+        )
+
     for key, group in groups.items():
         crossed = crossing and key[0] == "all-outgoing"
         union = _flavour_union(
@@ -1433,7 +1445,9 @@ def flavour_unions(
             crossing=crossed,
             **options,  # type: ignore[arg-type]
         )
-        if union is _CONJUGATION_REFUSED:
+        if union is _CROSSING_REFUSED:
+            result.extend(side_aware(group))
+        elif union is _CONJUGATION_REFUSED:
             parts: dict[tuple[Any, ...], list[GroupingProcess]] = {}
             for process in group:
                 parts.setdefault(
@@ -1447,7 +1461,9 @@ def flavour_unions(
                     crossing=crossed,
                     **options,  # type: ignore[arg-type]
                 )
-                if isinstance(union, FlavourUnion):
+                if union is _CROSSING_REFUSED:
+                    result.extend(side_aware(part))
+                elif isinstance(union, FlavourUnion):
                     result.append(union)
         elif isinstance(union, FlavourUnion):
             result.append(union)
