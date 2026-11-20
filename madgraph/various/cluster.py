@@ -17,6 +17,7 @@ import logging
 import os
 import time
 import re
+import shlex
 import glob
 import inspect
 import sys
@@ -96,6 +97,8 @@ class Cluster(object):
     name = 'mother class'
     identifier_length = 14
     badstatus = ''
+    # when set, the name of every job, instead of one derived from its path
+    jobs_identifier = None
 
     def __init__(self,*args, **opts):
         """Init the cluster"""
@@ -133,6 +136,22 @@ class Cluster(object):
         # controlling jobs in controlled type submission
         self.packet = {}
         self.id_to_packet = {}
+
+    def extra_submit_args(self):
+        """The arguments of the cluster_extra_args option for the submit
+        command (sbatch, qsub, bsub), e.g. "--gres=gpu:1" to ask for a GPU."""
+        extra = self.options.get('cluster_extra_args')
+        if not extra or extra == 'None':
+            return []
+        return shlex.split(extra)
+
+    def extra_submit_lines(self):
+        """The cluster_extra_args option as lines of a condor submit file,
+        given as "request_gpus = 1; request_memory = 8GB"."""
+        extra = self.options.get('cluster_extra_args')
+        if not extra or extra == 'None':
+            return ''
+        return '\n'.join(line.strip() for line in extra.split(';') if line.strip())
 
     def submit(self, prog, argument=[], cwd=None, stdout=None, stderr=None, 
                log=None, required_output=[], nb_submit=0):
@@ -267,7 +286,9 @@ class Cluster(object):
     def get_jobs_identifier(self, path, second_path=None):
         """get a unique run_name for all the jobs helps to identify the runs 
         in the controller for some cluster."""
-        
+
+        if self.jobs_identifier:
+            return self.jobs_identifier
         if second_path:
             path = os.path.realpath(pjoin(path, second_path))
         elif not os.path.exists(path):
@@ -1077,6 +1098,7 @@ class CondorCluster(Cluster):
             requirement = 'Requirements = ' + ' && '.join(requirement)
         else:
             requirement = ''
+        requirement += '\n' + self.extra_submit_lines()
 
         if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
               and self.options['cluster_walltime'] != 'None':
@@ -1104,7 +1126,8 @@ class CondorCluster(Cluster):
 
         dico = {'prog': prog, 'cwd': cwd, 'stdout': stdout, 
                 'stderr': stderr,'log': log,'argument': argument,
-                'requirement': requirement, 'walltime': walltime, 'vacatetime': ''}
+                'requirement': requirement, 'walltime': walltime, 'vacatetime': '',
+                'dmtcp_path': ''}
 
         if self.checkpointing:
 
@@ -1224,6 +1247,7 @@ class CondorCluster(Cluster):
             requirement = 'Requirements = ' + ' && '.join(requirement)
         else:
             requirement = ''
+        requirement += '\n' + self.extra_submit_lines()
 
         if 'cluster_walltime' in self.options and self.options['cluster_walltime']\
               and self.options['cluster_walltime'] != 'None':
@@ -1470,6 +1494,7 @@ class PBSCluster(Cluster):
 
         if self.cluster_queue and self.cluster_queue != 'None':
             command.extend(['-q', self.cluster_queue])
+        command.extend(self.extra_submit_args())
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,
@@ -1635,6 +1660,7 @@ class SGECluster(Cluster):
 
         if self.cluster_queue and self.cluster_queue != 'None':
             command.extend(['-q', self.cluster_queue])
+        command.extend(self.extra_submit_args())
 
         a = misc.Popen(command, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT,
@@ -1754,6 +1780,7 @@ class LSFCluster(Cluster):
         
         if self.cluster_queue and self.cluster_queue != 'None':
             command.extend(['-q', self.cluster_queue])
+        command.extend(self.extra_submit_args())
 
         a = misc.Popen(command, stdout=subprocess.PIPE, 
                                       stderr=subprocess.STDOUT,
@@ -1885,7 +1912,7 @@ class GECluster(Cluster):
         a = misc.Popen(['qsub','-o', stdout,
                                      '-e', stderr,
                                      '-V', # export the submission environment (incl. MG5_CITATION_DIR)
-                                     tmp_submit],
+                                     ] + self.extra_submit_args() + [tmp_submit],
                                      stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT,
                                      stdin=subprocess.PIPE, cwd=cwd)
@@ -2071,6 +2098,7 @@ class SLURMCluster(Cluster):
         # export the full submission environment to the job (incl.
         # MG5_CITATION_DIR) regardless of the site default for SBATCH_EXPORT
         command.insert(1, '--export=ALL')
+        command[1:1] = self.extra_submit_args()
 
 
         jobenv = os.environ.copy()

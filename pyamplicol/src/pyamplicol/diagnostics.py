@@ -9,13 +9,16 @@ import json
 import math
 import shutil
 import sys
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from . import __version__
 from ._internal.versions import verify_native_module
+from .api.errors import NativePlatformError
 
 CheckStatus = Literal["pass", "warning", "fail"]
 
@@ -31,6 +34,8 @@ class DiagnosticCheck:
 class DiagnosticReport:
     package_version: str
     checks: tuple[DiagnosticCheck, ...]
+    # Ctrl-C stopped the self-test: the remaining checks are "not run".
+    interrupted: bool = False
 
     @property
     def ok(self) -> bool:
@@ -70,7 +75,14 @@ def _native_check(*, required: bool) -> DiagnosticCheck:
         verify_native_module(native)
         abi_version = int(native.abi_version())
         native_version = str(native.package_version())
-    except (ImportError, AttributeError, TypeError, ValueError, RuntimeError) as exc:
+    except (
+        ImportError,
+        NativePlatformError,
+        AttributeError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
         return DiagnosticCheck(
             "rusticol-python",
             "fail" if required else "warning",
@@ -101,7 +113,7 @@ def _sdk_check(*, required: bool) -> DiagnosticCheck:
     return DiagnosticCheck(
         "native-sdk",
         "pass",
-        f"{info.target}; ABI {info.abi_version}; {info.library.name}",
+        f"{info.target}; ABI {info.abi_version}; {info.library_name}",
     )
 
 
@@ -204,6 +216,102 @@ def _physics_check() -> DiagnosticCheck:
     )
 
 
+def _virtual_check() -> DiagnosticCheck:
+    """A one-loop virtual on the shipped loop_sm against MadLoop
+    (``_internal.selftest_virtual``); the Symbolica licence state is always
+    named, so a licence failure is never silent. Generating the virtual
+    needs Symbolica: an evaluation-only installation without it (the f64
+    deployment gate) reports a warning naming why the check did not run."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual",
+            "warning",
+            "not run: generating the one-loop self-test virtual needs Symbolica "
+            f"({exc})",
+        )
+    try:
+        from .licensing import detect_symbolica_license
+
+        state = detect_symbolica_license(suggest=False, json_mode=True)
+        mode = "licensed" if state.licensed else "restricted single-core"
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual", "fail", f"Symbolica unavailable: {exc}"
+        )
+    try:
+        from ._internal.selftest_virtual import run_virtual_self_test
+
+        summary, _worst = run_virtual_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual",
+            "fail",
+            f"{type(exc).__name__}: {exc} (Symbolica {mode})",
+        )
+    return DiagnosticCheck("physics-virtual", "pass", f"{summary}; Symbolica {mode}")
+
+
+def _prepared_virtual_check() -> DiagnosticCheck:
+    """An electroweak one-loop virtual from the shipped prepared artifact
+    (``_internal.selftest_virtual_ew``: loaded and evaluated, never
+    generated) against MadLoop. Loading a v2 virtual artifact reads its
+    compiled model with Symbolica (no licence needed): an evaluation-only
+    installation without it (the f64 deployment gate) reports a warning
+    naming why the check did not run."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual-prepared",
+            "warning",
+            "not run: loading the prepared one-loop virtual reads its compiled "
+            f"model with Symbolica ({exc})",
+        )
+    try:
+        from ._internal.selftest_virtual_ew import run_prepared_virtual_self_test
+
+        summary, _worst = run_prepared_virtual_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual-prepared", "fail", f"{type(exc).__name__}: {exc}"
+        )
+    return DiagnosticCheck("physics-virtual-prepared", "pass", summary)
+
+
+def _prepared_loop_induced_check() -> DiagnosticCheck:
+    """A loop-induced one-loop virtual (|A_loop|^2 of g g > h) from the
+    shipped prepared artifact (``_internal.selftest_virtual_li``: loaded and
+    evaluated, never generated) against MadLoop, with its poles vanishing.
+    Its binary64 evaluation touches no Symbolica state (no licence needed);
+    loading reads the compiled model with Symbolica, so an evaluation-only
+    installation without it reports a warning naming why."""
+
+    try:
+        import symbolica  # noqa: F401
+    except ImportError as exc:
+        return DiagnosticCheck(
+            "physics-virtual-loop-induced",
+            "warning",
+            "not run: loading the prepared loop-induced virtual reads its "
+            f"compiled model with Symbolica ({exc})",
+        )
+    try:
+        from ._internal.selftest_virtual_li import (
+            run_prepared_loop_induced_self_test,
+        )
+
+        summary, _worst = run_prepared_loop_induced_self_test()
+    except Exception as exc:
+        return DiagnosticCheck(
+            "physics-virtual-loop-induced", "fail", f"{type(exc).__name__}: {exc}"
+        )
+    return DiagnosticCheck("physics-virtual-loop-induced", "pass", summary)
+
+
 def _symbolica_check() -> DiagnosticCheck:
     try:
         from .licensing import detect_symbolica_license
@@ -242,17 +350,57 @@ def run_doctor() -> DiagnosticReport:
     return DiagnosticReport(__version__, checks)
 
 
-def run_self_test() -> DiagnosticReport:
-    """Run the fast checks required of an installed binary distribution."""
+def run_self_test(progress: Any = None) -> DiagnosticReport:
+    """Run the fast checks required of an installed binary distribution;
+    ``progress`` (a ``reporting.ProgressSink``) receives one task per check.
+    Ctrl-C returns the checks run so far, the others marked "not run"."""
 
-    checks = (
-        _python_check(),
-        _asset_check(),
-        _native_check(required=True),
-        _sdk_check(required=True),
-        _physics_check(),
+    steps: tuple[tuple[str, str, Callable[[], DiagnosticCheck]], ...] = (
+        ("python", "Python", _python_check),
+        ("model-assets", "model assets", _asset_check),
+        ("rusticol-python", "native extension", lambda: _native_check(required=True)),
+        ("native-sdk", "native SDK", lambda: _sdk_check(required=True)),
+        ("physics-f64", "tree physics", _physics_check),
+        ("physics-virtual", "one-loop virtual, generated", _virtual_check),
+        (
+            "physics-virtual-prepared",
+            "one-loop virtual, prepared",
+            _prepared_virtual_check,
+        ),
+        (
+            "physics-virtual-loop-induced",
+            "loop-induced, prepared",
+            _prepared_loop_induced_check,
+        ),
     )
-    return DiagnosticReport(__version__, checks)
+    checks: list[DiagnosticCheck] = []
+    interrupted = False
+    for index, (_name, label, step) in enumerate(steps):
+        task = f"self-test-{index}"
+        begin = time.perf_counter()
+        if progress is not None:
+            from pyamplicol.reporting.progress import ProgressStart
+
+            progress.emit(
+                ProgressStart(task, f"Self-test {index + 1}/{len(steps)}: {label}")
+            )
+        try:
+            checks.append(step())
+        except KeyboardInterrupt:
+            checks += [
+                DiagnosticCheck(name, "fail", "not run (Ctrl-C)")
+                for name, _label, _step in steps[index:]
+            ]
+            interrupted = True
+            break
+        finally:
+            if progress is not None:
+                from pyamplicol.reporting.progress import ProgressEnd
+
+                progress.emit(
+                    ProgressEnd(task, elapsed_seconds=time.perf_counter() - begin)
+                )
+    return DiagnosticReport(__version__, tuple(checks), interrupted=interrupted)
 
 
 __all__ = [

@@ -13,6 +13,8 @@ import pytest
 
 import madspace as ms
 
+# docstrings only, nothing runs on a device
+pytestmark = pytest.mark.cpu_only
 # u u~ > e- e+ g, with the gluon i forming FKS pairs with both quarks
 FKS_CONFIGURATION = dict(
     i_fks=4,
@@ -50,6 +52,17 @@ CASES = {
         sampling_power=0.975,
         reduced_density=False,
         s_hat_min_condition=False,
+    ),
+    "LeptonLuminosityInvariant": dict(
+        s_lab=1.0e6,
+        s_hat_min=1.0e4,
+        s_hat_max=1.0e6,
+        sampling_power=0.975,
+        mass=91.0,
+        width=2.5,
+        invariant_power=1.0,
+        reduced_density=False,
+        s_hat_min_condition=True,
     ),
     "TwoBodyDecay": dict(com=True),
     "TwoToTwoParticleScattering": dict(

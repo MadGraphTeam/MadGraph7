@@ -61,10 +61,14 @@ impl SymjitApplicationEvaluator {
         metadata: SymjitApplicationMetadata<'_>,
     ) -> RusticolResult<Self> {
         validate_manifest_metadata(&metadata)?;
+        super::symjit_plane::require_symjit_host_cpu(&display_path)?;
 
         // This is the same trusted-input path used by Symbolica's
-        // JITCompiledEvaluator::load.
-        let mut loader_config = Config::default();
+        // JITCompiledEvaluator::load. The loader configuration only supplies
+        // the function table (the stored application carries its options);
+        // it is explicit because `Config::default()` reads `./symjit.toml` or
+        // `$SYMJIT_TOML` and panics on an unreadable or malformed file.
+        let mut loader_config = super::symjit_plane::explicit_loader_config()?;
         loader_config.set_defuns(Defuns::new());
         let mut input = bytes;
         let application = guard_symjit_panic(

@@ -11066,6 +11066,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     if key in self.options_madgraph:
                         self.history.append('set %s %s' % (key, self.options[key]))
 
+        # Check for the minimal required compiler version (C++20 with
+        # std::format, needed by madspace): gcc 13, LLVM clang 17,
+        # Apple clang 15
+        for warnings in [misc.check_gcc_version('13'),
+                         misc.check_clang_version('17', '15')]:
+            if warnings:
+                logger.warning(warnings)
+
         # Configure the way to open a file:
         launch_ext.open_file.configure(self.options)
         # Configure the way to compress a file:
@@ -15458,10 +15466,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self._export_format == 'NLO':
             pairs.append(('Frederix:2009yq',
                            'FKS subtraction (MadFKS)'))
-            try:
-                has_virt = bool(self._fks_multi_proc.get_virt_amplitudes())
-            except Exception:
-                has_virt = False
+            # (the virtual amplitudes are not kept by
+            # low_mem_multicore_nlo_generation, has_loops in both modes)
+            has_virt = 'has_loops' in self._curr_matrix_elements and \
+                       self._curr_matrix_elements['has_loops']
             if has_virt and self.options.get('OLP', 'MadLoop') == 'MadLoop':
                 pairs.append(('Hirschi:2011pa',
                                'one-loop matrix elements (MadLoop)'))

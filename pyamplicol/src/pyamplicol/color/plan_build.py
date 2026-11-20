@@ -149,8 +149,6 @@ def _build_adjoint_color_plan(
     their single-trace *ordering* shape, leaving the ordered-current grammar intact.
     """
 
-    from .adjoint_kernel import MAX_ADJOINT_GLUONS
-
     labels = tuple(sorted(process.adjoint_labels))
     if (
         len(labels) < 2
@@ -160,11 +158,6 @@ def _build_adjoint_color_plan(
     ):
         raise ValueError(
             "DDM colour basis requires external adjoints and optional singlets"
-        )
-    if len(labels) > MAX_ADJOINT_GLUONS:
-        raise ValueError(
-            f"adjoint colour basis supports at most {MAX_ADJOINT_GLUONS} "
-            "external gluons"
         )
     if process.color_accuracy not in {"nlc", "full"}:
         raise ValueError("adjoint colour basis requires NLC or full colour")

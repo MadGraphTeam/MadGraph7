@@ -146,7 +146,6 @@ class TestRunningHelasParameters(unittest.TestCase):
         self.assertIn('out.HP_mdl_running_complex = mdl_running_complex;',
                       definitions['dcoupsetdcoup'])
         self.assertNotIn('HP_(cxtype)', definitions['dcoupsetdcoup'])
-        self.assertIn('constexpr cxsmpl<fptype>', definitions['hardcoded_independent_couplings'])
 
 
 class TestMadMatrixProcessData(unittest.TestCase):
@@ -633,3 +632,46 @@ class TestPropagatorDenominators(unittest.TestCase):
         for tag in ('P1G', 'P1H', 'P1Q', 'P1W'):
             self.assertRaises(aloha.ALOHAERROR,
                               lambda: self.routines([(('FFV2',), [tag], 3)], gauge=3))
+
+class TestCustomPropagatorParameters(unittest.TestCase):
+    """A custom propagator reads its extra model parameters as routine
+    arguments, so they are runtime parameters like masses and widths."""
+
+    def test_parameters_by_propagator(self):
+        from types import SimpleNamespace
+        from madmatrix.model_handling import custom_propagator_parameters
+        denominator = "(P('mu', id) * P('mu', id) - Mass(id) * Mass(id) + complex(0,1) * Mass(id) * Width(id))**2"
+        model = SimpleNamespace(
+            all_parameters=[SimpleNamespace(name=name) for name in ('MZ', 'WZ', 'dWZ', 'dWW', 'cHl3')],
+            all_propagators=[
+                SimpleNamespace(name='V1', numerator='- Metric(1, 2)', denominator=denominator),
+                SimpleNamespace(name='Z1', numerator='- Metric(1, 2) * complex(0,1) * Mass(id) * dWZ',
+                                denominator=denominator),
+                SimpleNamespace(name='X1', numerator='dWW * cHl3 * Identity(1, 2)', denominator=denominator)])
+        self.assertEqual(custom_propagator_parameters(model), {'Z1': ['dWZ'], 'X1': ['cHl3', 'dWW']})
+
+    def test_model_without_propagators(self):
+        from types import SimpleNamespace
+        from madmatrix.model_handling import custom_propagator_parameters
+        model = SimpleNamespace(all_parameters=[SimpleNamespace(name='MZ')])
+        self.assertEqual(custom_propagator_parameters(model), {})
+
+
+class TestNoHardcodedParameters(unittest.TestCase):
+    """Model parameters are always read at runtime (#226): no template brings
+    back the hardcoded-parameter build or its device-side parameter pointer."""
+
+    def test_templates(self):
+        import os
+        from madgraph import MG5DIR
+        removed = ('MGONGPU_HARDCODE_PARAM', 'HRDCOD', 'Parameters::current', '%(hardcoded')
+        for root in ('madgraph/iolibs/template_files/madmatrix', 'aloha/template_files/madmatrix'):
+            for dirpath, _, filenames in os.walk(os.path.join(MG5DIR, root)):
+                for filename in filenames:
+                    path = os.path.join(dirpath, filename)
+                    with open(path, errors='replace') as template:
+                        text = template.read()
+                    for token in removed:
+                        if token == 'HRDCOD' and filename == 'madmatrix.mk':
+                            continue # Rejects HRDCOD=1 with an actionable error.
+                        self.assertNotIn(token, text, path)

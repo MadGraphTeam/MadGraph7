@@ -3,14 +3,14 @@
 schema_version = 1
 
 [abis]
-symbolica_serialization = "symbolica-bincode2-v1"
+symbolica_serialization = "symbolica-bincode2-v2"
 symjit_application = "symjit-application-storage-v4"
 symjit_plane_application = "pyamplicol-symjit-plane-application-v2"
 
 [symbolica]
 source_url = "https://github.com/symbolica-dev/symbolica.git"
-candidate_version = "3.0.2"
-candidate_revision = "afbf7aa4ae13d330aab95cad0b04ebf5889165fd"
+candidate_version = "3.0.0"
+candidate_revision = "7b31114c7a77571aabacf96a311f27ef0f44d007"
 community_url = "https://github.com/symbolica-dev/symbolica-community.git"
 community_revision = "98740d198fb6667c63c0de7cffd4328b5dca57b0"
 release_status = "merged-main-candidate"
@@ -43,10 +43,10 @@ license = "MIT"
 
 [ufo_model_loader]
 source_url = "https://github.com/alphal00p/ufo_model_loader.git"
-candidate_revision = "70ddee6b416f8c8b340e0d087646d77095c5d24b"
-latest_verified_published_version = "0.1.8"
-published_revision = "f5a9f8d2eaff76b99629fc3143952ca4f2425d55"
-wheel_sha256 = "b253942f0a356eacd5fd68b104cacf11039c2391a9ee963107f674fad54f01ef"
+candidate_revision = "61e733c77acd7787a402eae43c3c219caca623c0"
+latest_verified_published_version = "1.0.1"
+published_revision = "61e733c77acd7787a402eae43c3c219caca623c0"
+wheel_sha256 = "379a2ed96e2c4db9a753b7f7e5e9801c7837059479e7135b78cc35da5f747dea"
 release_status = "verified"
 license = "MIT"
 

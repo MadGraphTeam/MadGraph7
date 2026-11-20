@@ -273,3 +273,138 @@ class TestNoFileOutsideOutputDir(unittest.TestCase):
         interface.change_principal_cmd('MadGraph')
 
         self.assertEqual(os.listdir(self.startdir), [])
+
+
+class TestGenerateInfoWithoutModel(unittest.TestCase):
+    """The line of the first generate (_generate_info) goes in
+    SubProcesses/procdef_mg5.dat at the output, from which gen_cardhtml-pl
+    makes index.html. It must survive the import of the Standard Model which
+    the generate does when no model is active yet: in a script or a Python
+    session (the prompt imports sm when it starts)."""
+
+    @staticmethod
+    def run_cmd(interface, line):
+        interface.exec_cmd(line, errorhandling=False, printcmd=False,
+                           precmd=True, postcmd=True)
+
+    def test_generate_info_kept_through_model_import(self):
+        for process in ['p p > e+ e-', 'p p > e+ e- [QCD]']:
+            with self.subTest(process=process):
+                interface = master_cmd.MasterCmd()
+                interface.no_notification()
+                self.assertFalse(interface._curr_model)
+                self.run_cmd(interface, 'generate %s' % process)
+                self.assertEqual(interface._generate_info, process)
+
+    def test_nlo_output_without_model_import(self):
+        tmpdir = tempfile.mkdtemp('', 'TMPProcdefTest', None)
+        self.addCleanup(shutil.rmtree, tmpdir, True)
+        interface = master_cmd.MasterCmd()
+        interface.no_notification()
+        self.assertFalse(interface._curr_model)
+        for line in ['set automatic_html_opening False --no_save',
+                     'generate p p > e+ e- [QCD]',
+                     'output %s -nojpeg' % pjoin(tmpdir, 'DY')]:
+            self.run_cmd(interface, line)
+        with open(pjoin(tmpdir, 'DY', 'SubProcesses', 'procdef_mg5.dat')) as stream:
+            self.assertIn('p p > e+ e- [QCD]', stream.read())
+        # the page of the process, not the one of the template
+        with open(pjoin(tmpdir, 'DY', 'index.html')) as stream:
+            self.assertIn('Process Information', stream.read())
+
+
+class TestLowMemModeOfAddProcess(unittest.TestCase):
+    """The serial mode generates the real and virtual amplitudes of a process
+    with its borns, the low_mem_multicore_nlo_generation one at the output,
+    for all the processes: 'add process' must keep the mode of the processes
+    generated before it (a generate starts again)."""
+
+    run_cmd = staticmethod(TestGenerateInfoWithoutModel.run_cmd)
+
+    def test_add_process_in_other_mode(self):
+        for low_mem in [False, True]:
+            with self.subTest(low_mem=low_mem):
+                interface = master_cmd.MasterCmd()
+                interface.no_notification()
+                set_mode = 'set low_mem_multicore_nlo_generation %s --no_save'
+                for line in ['import model sm', set_mode % low_mem,
+                             'generate e+ e- > u u~ [real=QCD]',
+                             set_mode % (not low_mem)]:
+                    self.run_cmd(interface, line)
+                self.assertRaises(madgraph.InvalidCmd, self.run_cmd, interface,
+                                  'add process e+ e- > d d~ [real=QCD]')
+                # nothing was added
+                self.assertEqual(len(interface._curr_proc_defs), 1)
+                self.assertEqual(
+                    len(interface._fks_multi_proc['process_definitions']), 1)
+
+                for line in [set_mode % low_mem,
+                             'add process e+ e- > d d~ [real=QCD]']:
+                    self.run_cmd(interface, line)
+                self.assertEqual(
+                    len(interface._fks_multi_proc['process_definitions']), 2)
+
+                for line in [set_mode % (not low_mem),
+                             'generate e+ e- > d d~ [real=QCD]',
+                             'add process e+ e- > s s~ [real=QCD]']:
+                    self.run_cmd(interface, line)
+                self.assertEqual(
+                    len(interface._fks_multi_proc['process_definitions']), 2)
+                self.assertEqual(
+                    bool(interface._fks_multi_proc['ncores_for_proc_gen']),
+                    not low_mem)
+
+
+    def test_add_process_without_correction(self):
+        """a process without any correction up to NLO is refused by 'add
+        process', in both modes (the low_mem_multicore_nlo_generation one
+        generates its amplitudes at the output: it checks it in a process of
+        its own), so that the next output is not refused"""
+        import madgraph.fks.fks_common as fks_common
+        for low_mem in [False, True]:
+            with self.subTest(low_mem=low_mem):
+                interface = master_cmd.MasterCmd()
+                interface.no_notification()
+                for line in ['import model sm',
+                             'set low_mem_multicore_nlo_generation %s --no_save' % low_mem,
+                             'generate u u~ > e+ e- [real=QCD]']:
+                    self.run_cmd(interface, line)
+                self.assertRaises(fks_common.FKSProcessError, self.run_cmd,
+                                  interface, 'add process e+ e- > mu+ mu- [real=QCD]')
+                self.assertEqual(
+                    len(interface._fks_multi_proc['process_definitions']), 1)
+                self.run_cmd(interface,
+                             'set low_mem_multicore_nlo_generation False --no_save')
+
+
+class TestMergeProcCharacteristics(unittest.TestCase):
+    """What the low_mem_multicore_nlo_generation mode merges of the
+    proc_characteristic of the processes which write the directories (each
+    from the state of the parent), as the serial mode accumulates it while it
+    writes them, in their order"""
+
+    def test_merge(self):
+        import madgraph.various.banner as banner_mod
+        proc_charac = banner_mod.ProcCharacteristic()
+        proc_charac['splitting_types'] = []
+        workers = []
+        for nexternal, single_color, limitations in [
+                (5, True, []), (6, False, ['MLM']), (4, True, ['fix_scale', 'MLM'])]:
+            charac = dict(proc_charac)
+            charac.update(nexternal=nexternal, ninitial=2, single_color=single_color,
+                          limitations=limitations, max_n_matched_jets=nexternal - 4)
+            workers.append(charac)
+        mecmd.merge_proc_characteristics(proc_charac, workers,
+                                         [['QCD'], ['QCD', 'QED'], []])
+        self.assertEqual(proc_charac['nexternal'], 6)
+        self.assertEqual(proc_charac['max_n_matched_jets'], 2)
+        self.assertEqual(proc_charac['ninitial'], 2)
+        self.assertEqual(proc_charac['single_color'], False)
+        self.assertEqual(proc_charac['limitations'], ['MLM', 'fix_scale'])
+        self.assertEqual(sorted(proc_charac['splitting_types']), ['QCD', 'QED'])
+        # any other value must be the same in all of them (the serial mode
+        # keeps that of the last directory: a merge rule is needed)
+        workers[1]['ninitial'] = 1
+        self.assertRaises(madgraph.MadGraph5Error,
+                          mecmd.merge_proc_characteristics, proc_charac, workers,
+                          [[], [], []])

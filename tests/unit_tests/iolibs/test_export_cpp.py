@@ -88,7 +88,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MGONGPUCPP_GPUIMPL
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -198,7 +198,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MGONGPUCPP_GPUIMPL
     , m_pars( 0 )
 #endif
     , m_masses()

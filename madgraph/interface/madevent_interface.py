@@ -4707,14 +4707,28 @@ already exists and is not a fifo file."""%fifo_path)
             ' the run_card parameter (=%f)\n'%self.run_card['xqcut']+
             'It would be better/safer to use a larger qCut or a smaller xqcut.')
                 
-            # Specific MLM settings
-            PY8_Card.MadGraphSet('JetMatching:merge',True)
-            PY8_Card.MadGraphSet('JetMatching:scheme',1)
+            # Specific MLM settings. A value the pythia8 card sets is kept
+            # (MadGraphSet would refuse to change it and stop the shower),
+            # with a warning when it is not the one the events need.
+            def set_mlm_matching(name, value, why):
+                if name.lower() not in PY8_Card.user_set:
+                    PY8_Card.MadGraphSet(name, value)
+                elif PY8_Card[name] != value:
+                    logger.warning('%s = %s in the pythia8 card differs from %s, '
+                                   '%s.' % (name, PY8_Card[name], value, why))
+            set_mlm_matching('JetMatching:merge', True,
+                             'needed for the MLM matching of this sample')
+            set_mlm_matching('JetMatching:scheme', 1,
+                             'the MadGraph matching scheme of this sample')
             # Use the parameter maxjetflavor for JetMatching:nQmatch which specifies
             # up to which parton must be matched.Merging:nQuarksMerge
-            PY8_Card.MadGraphSet('JetMatching:nQmatch',self.run_card['maxjetflavor'])
-            # For MLM, a cone radius of 1.0 is to be preferred.
-            PY8_Card.MadGraphSet('JetMatching:coneRadius',1.0)
+            set_mlm_matching('JetMatching:nQmatch', self.run_card['maxjetflavor'],
+                             'the heaviest quark the events were clustered as a jet')
+            # The matching clusters the showered event with the D the events
+            # were clustered with at generation (the hidden run_card d of
+            # madevent, beam.jet_radius of mg7; 1.0 by default in both)
+            set_mlm_matching('JetMatching:coneRadius', float(self.run_card['d']),
+                             'the jet radius D the events were clustered with')
             # And the value of etaj_max is already infinity by default.
             # PY8_Card.MadGraphSet('JetMatching:etaJetMax',1000.0)
             if not hasattr(self,'proc_characteristic'):

@@ -244,14 +244,14 @@ pub(crate) struct PersistedHelicityAmplitudeTileV1<'a> {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct PersistedHelicityFamilyExecutionReportV1 {
     pub(crate) cache_hit: bool,
-    pub(crate) source_calls: u32,
-    pub(crate) source_rows: u32,
-    pub(crate) contribution_calls: u32,
-    pub(crate) contribution_rows: u32,
-    pub(crate) finalization_calls: u32,
-    pub(crate) finalization_rows: u32,
-    pub(crate) closure_calls: u32,
-    pub(crate) closure_rows: u32,
+    pub(crate) source_calls: u64,
+    pub(crate) source_rows: u64,
+    pub(crate) contribution_calls: u64,
+    pub(crate) contribution_rows: u64,
+    pub(crate) finalization_calls: u64,
+    pub(crate) finalization_rows: u64,
+    pub(crate) closure_calls: u64,
+    pub(crate) closure_rows: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -560,12 +560,18 @@ impl PersistedHelicityWorkspaceV1 {
         let parameters = DirectParameterView {
             values_re: self.parameters_re.as_ptr(),
             values_im: self.parameters_im.as_ptr(),
-            value_count: self.parameters_re.len() as u32,
+            value_count: crate::narrow::checked::<u32>(
+                self.parameters_re.len(),
+                "direct parameter count",
+            )?,
         };
         let factors = DirectFactorView {
             values_re: self.factors_re.as_ptr(),
             values_im: self.factors_im.as_ptr(),
-            value_count: self.factors_re.len() as u32,
+            value_count: crate::narrow::checked::<u32>(
+                self.factors_re.len(),
+                "direct factor count",
+            )?,
         };
         validate_direct_views(arena, momenta, parameters, factors)?;
         Ok((arena, momenta, parameters, factors))
@@ -578,6 +584,7 @@ impl PersistedHelicityWorkspaceV1 {
             amplitude_re: self.amplitude_re.as_mut_slice(),
             amplitude_im: self.amplitude_im.as_mut_slice(),
             momenta: self.momenta.as_slice(),
+            // Checked to fit u32 when the workspace is bound.
             momentum_form_count: layout.momentum_forms.len() as u32,
             lorentz_component_count: layout.lorentz_component_count,
             parameters_re: self.parameters_re.as_slice(),
@@ -1080,10 +1087,11 @@ fn bind_programs(
     Ok((interaction, fanout))
 }
 
-fn increment(value: &mut u32, by: u32, label: &str) -> RusticolResult<()> {
+/// A diagnostic row/call counter increment (u64 accumulators).
+fn increment(value: &mut u64, by: u32, label: &str) -> RusticolResult<()> {
     *value = value
-        .checked_add(by)
-        .ok_or_else(|| integrity(format!("persisted helicity {label} exceeds u32")))?;
+        .checked_add(u64::from(by))
+        .ok_or_else(|| integrity(format!("persisted helicity {label} exceeds u64")))?;
     Ok(())
 }
 
@@ -1364,7 +1372,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> PersistedHelicityFamilyExecutorV1<R> {
         cached.last_execution_report?;
         let mut report = PersistedHelicityFamilyExecutionReportV1 {
             source_calls: 1,
-            source_rows: u32::try_from(cached.family.source_selections.len()).ok()?,
+            source_rows: u64::try_from(cached.family.source_selections.len()).ok()?,
             ..PersistedHelicityFamilyExecutionReportV1::default()
         };
         let mut executor_ids = BTreeSet::<u32>::new();
@@ -1412,15 +1420,17 @@ impl<R: OnTheFlyPreparedExecutorResolver> PersistedHelicityFamilyExecutorV1<R> {
             query_count: layout.amplitude_destination_count,
             union_unique_current_count: cached.family.unique_current_count,
             union_unique_current_component_count: cached.family.unique_current_component_count,
-            union_source_rows: report.source_rows,
-            union_contribution_rows: report.contribution_rows,
-            union_finalization_rows: report.finalization_rows,
-            union_closure_rows: report.closure_rows,
+            union_source_rows: u32::try_from(report.source_rows).ok()?,
+            union_contribution_rows: u32::try_from(report.contribution_rows).ok()?,
+            union_finalization_rows: u32::try_from(report.finalization_rows).ok()?,
+            union_closure_rows: u32::try_from(report.closure_rows).ok()?,
             union_amplitude_destination_count: layout.amplitude_destination_count,
-            union_source_executor_call_groups: report.source_calls,
-            union_contribution_executor_call_groups: report.contribution_calls,
-            union_finalization_executor_call_groups: report.finalization_calls,
-            union_closure_executor_call_groups: report.closure_calls,
+            union_source_executor_call_groups: u32::try_from(report.source_calls).ok()?,
+            union_contribution_executor_call_groups: u32::try_from(report.contribution_calls)
+                .ok()?,
+            union_finalization_executor_call_groups: u32::try_from(report.finalization_calls)
+                .ok()?,
+            union_closure_executor_call_groups: u32::try_from(report.closure_calls).ok()?,
             semantic_executor_binding_count,
         })
     }

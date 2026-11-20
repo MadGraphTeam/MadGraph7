@@ -8,7 +8,7 @@ RUSTICOL_CONFIG_PATH := $(shell \
 		while [ "$$directory" != / ]; do \
 			candidate="$$directory/.venv/bin/rusticol-config"; \
 			if [ -x "$$candidate" ]; then printf '%s\n' "$$candidate"; break; fi; \
-			directory=$$(dirname "$$directory"); \
+			directory=$${directory%/*}; [ -n "$$directory" ] || directory=/; \
 		done; \
 	fi)
 ifeq ($(strip $(RUSTICOL_CONFIG_PATH)),)

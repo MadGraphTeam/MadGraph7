@@ -1,0 +1,6 @@
+{
+  "color_correlations": [
+    {"id": "T12", "bra": [{"kind": "emit-gluon", "emitter": 1, "emitted": -1}], "ket": [{"kind": "emit-gluon", "emitter": 2, "emitted": -1}]}
+  ],
+  "spin_correlations": [[1]]
+}

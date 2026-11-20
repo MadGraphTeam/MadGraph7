@@ -198,6 +198,11 @@ impl OnTheFlyPublicMetadataV1 {
                         },
                     )
                 }
+                ColorAccuracy::StrictLc | ColorAccuracy::StrictNlc => {
+                    return Err(RusticolError::compatibility(
+                        "on-the-fly artifacts do not implement strict colour",
+                    ));
+                }
                 ColorAccuracy::Nlc | ColorAccuracy::Full => (
                     vec![ColorComponent::ContractedColor(ContractedColor {
                         id: "color:contracted".to_string(),
@@ -205,6 +210,7 @@ impl OnTheFlyPublicMetadataV1 {
                         description:
                             "coherent sparse contraction of the complete ordered color basis"
                                 .to_string(),
+                        nc_degree: None,
                     })],
                     "contracted".to_string(),
                     "contracted-color".to_string(),

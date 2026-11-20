@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -128,3 +129,47 @@ def test_external_normalization_is_symbolic_and_counted_once(
     assert numeric_coupling * weight == pytest.approx(
         0.5 * phase * 2.0 ** (-0.5 * power), rel=2e-15, abs=0
     )
+
+
+_BINARY64_LITERAL = re.compile(r"\d\.\d|\de-?\d")
+
+
+@pytest.mark.parametrize("chiralities", ((-1, 1), (1, -1), (0, 0)))
+def test_u1_subtraction_current_keeps_its_exact_weight(chiralities) -> None:
+    """The quark pair -> U(1)-subtraction auxiliary vertex (kind 8) and the
+    propagator of the auxiliary keep the weight 1/3 exact in symbolic
+    currents: a Python complex unit next to it would round it to binary64."""
+
+    compiler_symbolica._ensure_symbolica()
+    model = BuiltinSMModel()
+    left_chirality, right_chirality = chiralities
+    dimension = 4 if left_chirality == 0 else 2
+    left = tuple(S(f"u1_left_{index}") for index in range(dimension))
+    right = tuple(S(f"u1_right_{index}") for index in range(dimension))
+    momentum = tuple(S(f"u1_momentum_{index}") for index in range(4))
+    current = model.vertex_component_expression(
+        8,
+        left,
+        right,
+        result_particle_id=99,
+        result_chirality=0,
+        left_chirality=left_chirality,
+        right_chirality=right_chirality,
+        coupling=(1.0 / 3.0, 0.0),
+    )
+    propagated = model.propagator_component_expression(99, current, momentum)
+    assert len(propagated) == 4
+    for component in (*current, *propagated):
+        assert not _BINARY64_LITERAL.search(component.to_canonical_string())
+    # Against the gluon current (kind 9, unit coupling) of the same pair.
+    gluon = model.vertex_component_expression(
+        9,
+        right,
+        left,
+        result_particle_id=21,
+        result_chirality=0,
+        left_chirality=right_chirality,
+        right_chirality=left_chirality,
+    )
+    for u1, octet in zip(current, gluon, strict=True):
+        assert (3 * u1 - octet).expand().to_canonical_string() == "0"

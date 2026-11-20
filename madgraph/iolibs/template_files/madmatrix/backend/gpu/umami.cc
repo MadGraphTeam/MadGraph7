@@ -7,6 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ColorData.h" // diagram-to-color configuration map
 #include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
@@ -78,6 +79,12 @@ namespace
   }
 
 
+  __device__ bool selectable_diagram( const int diagram )
+  {
+    return diagram >= 0 && static_cast<unsigned int>( diagram ) < mgOnGpu::nchannels &&
+      mgOnGpu::channel2iconfig[diagram] > 0;
+  }
+
   __global__ void copy_inputs(
     const double* momenta_in,
     const double* helicity_random_in,
@@ -86,6 +93,7 @@ namespace
     const double* alpha_s_in,
     const unsigned int* flavor_indices_in,
     const int* helicity_in,
+    const int* diagram_in,
     fptype_momenta* momenta,
     fptype* helicity_random,
     fptype* color_random,
@@ -93,6 +101,8 @@ namespace
     fptype* g_s,
     unsigned int* flavor_indices,
     int* helicity_given,
+    unsigned int* diagram_given,
+    int* invalid_diagram,
     std::size_t count,
     std::size_t stride,
     std::size_t offset )
@@ -114,6 +124,13 @@ namespace
     // table) is evaluated as that crossing by sigmaKin; one past the table gets a
     // zero |M|^2, as on cpu.
     flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_in + offset] : 0;
+    if( diagram_in )
+    {
+      const int diagram = diagram_in[i_in + offset];
+      // Report a batch error on the host before evaluating or writing outputs.
+      if( diagram != -1 && !selectable_diagram( diagram ) ) atomicExch( invalid_diagram, 1 );
+      diagram_given[i_event] = ( selectable_diagram( diagram ) ? diagram + 1 : 0 );
+    }
     if( helicity_in )
     {
       // an index out of [0,ncomb) cannot be reported from here (umami_matrix_element returns
@@ -159,9 +176,9 @@ namespace
     if( amp2_out )
     {
       double denominator = denominators[i_event];
-      for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
+      for( int i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * ProcessData::ndiagrams + i_diag], denominator );
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[numeratorsIndex( i_event, i_diag )], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -564,7 +581,7 @@ extern "C"
     UmamiHandle handle,
     char const* name,
     double parameter_real,
-    [[maybe_unused]] double parameter_imag )
+    double parameter_imag )
   {
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     DeviceGuard guard( instance->device );
@@ -586,10 +603,6 @@ extern "C"
       return UMAMI_SUCCESS;
     }
     // The model parameters are the instance's own (those of its CPPProcess)
-#ifdef MGONGPU_HARDCODE_PARAM
-    // Hardcoded parameters are compile-time constants: there is nothing to set.
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !instance->process.modelParameters().setParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     // sigmaKin() and friends read copies of the independent parameters/couplings
@@ -602,22 +615,17 @@ extern "C"
     // A helicity may vanish with some parameters and not with others: choose again
     reset_good_helicities( instance );
     return UMAMI_SUCCESS;
-#endif
   }
 
   UmamiStatus umami_get_parameter(
-    [[maybe_unused]] UmamiHandle handle,
-    [[maybe_unused]] char const* name,
-    [[maybe_unused]] double* parameter_real,
-    [[maybe_unused]] double* parameter_imag )
+    UmamiHandle handle,
+    char const* name,
+    double* parameter_real,
+    double* parameter_imag )
   {
-#ifdef MGONGPU_HARDCODE_PARAM
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !static_cast<InterfaceInstance*>( handle )->process.modelParameters().getParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     return UMAMI_SUCCESS;
-#endif
   }
 
   // Numbering of the outputs of a crossed call (crossing on, flavor index
@@ -657,7 +665,7 @@ extern "C"
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
     const int* helicity_in = nullptr;
-    [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
+    const int* diagram_in = nullptr;
 
     for( std::size_t i = 0; i < input_count; ++i )
     {
@@ -746,11 +754,11 @@ extern "C"
     fptype *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
     fptype *matrix_elements, *ghel_matrix_elements;
     fptype_amp *color_jamps, *ghel_jamps;
-    int *helicity_index, *color_index, *helicity_given;
-    unsigned int *flavor_indices, *diagram_index;
+    int *helicity_index, *color_index, *helicity_given, *invalid_diagram;
+    unsigned int *flavor_indices, *diagram_index, *diagram_given;
 
     std::size_t n_coup = madmatrix::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 17> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 19> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -760,12 +768,14 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&diagram_given), rounded_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&invalid_diagram), sizeof( int )},
         // The color flow is picked among ncolor_flow structures, which is more than
         // ncolor when the color sum runs on the DDM basis
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
         // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
         // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
-        {reinterpret_cast<void**>(&numerators), rounded_count * ProcessData::ndiagrams * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&numerators), numeratorsBufferSize( rounded_count ) * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
@@ -775,9 +785,9 @@ extern "C"
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
+    constexpr std::size_t ALIGNMENT = std::max( { sizeof( double ), sizeof( fptype ), sizeof( fptype_momenta ), sizeof( int ) } );
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
+        std::size_t aligned_size = (size + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
         total_size += aligned_size;
     }
     uint8_t* buffer;
@@ -785,11 +795,12 @@ extern "C"
     gpuMallocAsync( &buffer, total_size, gpu_stream );
     std::size_t buf_offset = 0;
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + 7) / 8 * 8;
+        std::size_t aligned_size = (size + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
         *ptr = buffer + buf_offset;
         buf_offset += aligned_size;
     }
 
+    if( diagram_in ) gpuMemsetAsync( invalid_diagram, 0, sizeof( int ), gpu_stream );
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,
       random_helicity_in,
@@ -798,6 +809,7 @@ extern "C"
       alpha_s_in,
       flavor_indices_in,
       helicity_in,
+      diagram_in,
       momenta,
       helicity_random,
       color_random,
@@ -805,9 +817,22 @@ extern "C"
       g_s,
       flavor_indices,
       helicity_given,
+      diagram_given,
+      invalid_diagram,
       count,
       stride,
       offset );
+    if( diagram_in )
+    {
+      int invalid = 0;
+      gpuStreamSynchronize( gpu_stream );
+      gpuMemcpy( &invalid, invalid_diagram, sizeof( int ), gpuMemcpyDeviceToHost );
+      if( invalid )
+      {
+        gpuFreeAsync( buffer, gpu_stream );
+        return UMAMI_ERROR;
+      }
+    }
     computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( instance->deviceParams.arg( params ), g_s, couplings );
     checkGpu( gpuPeekAtLastError() );
 
@@ -842,7 +867,7 @@ extern "C"
       flavor_indices,
       helicity_random,
       color_random,
-      nullptr,
+      diagram_in ? diagram_given : nullptr,
       diagram_random,
       matrix_elements,
       helicity_index,

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -219,18 +220,26 @@ def _logical_model_parameter_symbols(
                 )
         else:
             logical_symbols[slot_name] = symbol
+    from symbolica import E
+
+    # Symbolica's exact imaginary unit: a binary64 1j would turn every exact
+    # rational it multiplies (e.g. a colour weight 1/N_c) into a binary64
+    # float, which caps arbitrary-precision evaluations at ~1e-17.
+    imaginary_unit = E("1i")
     for runtime_name, components in complex_components.items():
         domain = complex_domains[runtime_name]
         if "real" not in components and domain == "imaginary":
-            components["real"] = 0.0
+            components["real"] = 0
         if "imag" not in components and domain == "real":
-            components["imag"] = 0.0
+            components["imag"] = 0
         if set(components) != {"real", "imag"}:
             raise ValueError(
                 f"runtime model parameter {runtime_name!r} is missing a real "
                 "or imaginary slot"
             )
-        logical_symbols[runtime_name] = components["real"] + 1j * components["imag"]
+        logical_symbols[runtime_name] = (
+            components["real"] + imaginary_unit * components["imag"]
+        )
     return logical_symbols
 
 
@@ -458,12 +467,24 @@ def _specialize_stage_symbolica_functions(
 
     from symbolica import Replacement
 
-    replacements: list[Any] = []
+    function_names = {function for function, _arguments, _body in function_definitions}
+    # Replacements per inlined function, and the functions its body calls: an
+    # expression is rewritten with the replacements of the functions it can
+    # reach only, which gives the same result as all of them (a pattern
+    # matches calls of its own function) at a cost independent of the size of
+    # the model's kernel catalogue.
+    replacements: dict[Any, list[Any]] = defaultdict(list)
+    calls: dict[Any, set[Any]] = defaultdict(set)
     for definition_index, (function, arguments, body) in enumerate(
         function_definitions
     ):
         if int(body.get_byte_size()) > _MODEL_FUNCTION_INLINE_MAX_BYTES:
             continue
+        calls[function] |= {
+            symbol
+            for symbol in _expression_symbols(body, enter_functions=True)
+            if symbol in function_names
+        }
         wildcards = tuple(
             symbols.inline_function_wildcard(
                 definition_index,
@@ -479,7 +500,7 @@ def _specialize_stage_symbolica_functions(
                 wildcard,
                 allow_new_wildcards_on_rhs=True,
             )
-        replacements.append(
+        replacements[function].append(
             Replacement(
                 pattern,
                 replacement,
@@ -487,12 +508,34 @@ def _specialize_stage_symbolica_functions(
             )
         )
 
-    rewritten = tuple(
-        expression.replace_multiple(replacements, repeat=True)
-        for expression in output_expressions
-    )
+    selected: dict[frozenset[Any], list[Any]] = {}
 
-    function_names = {function for function, _arguments, _body in function_definitions}
+    def specialize(expression: Any) -> Any:
+        reached = {
+            symbol
+            for symbol in _expression_symbols(expression, enter_functions=True)
+            if symbol in replacements
+        }
+        pending = list(reached)
+        while pending:
+            for callee in calls[pending.pop()]:
+                if callee in replacements and callee not in reached:
+                    reached.add(callee)
+                    pending.append(callee)
+        if not reached:
+            return expression
+        key = frozenset(reached)
+        if key not in selected:
+            selected[key] = [
+                item
+                for function in replacements
+                if function in reached
+                for item in replacements[function]
+            ]
+        return expression.replace_multiple(selected[key], repeat=True)
+
+    rewritten = tuple(specialize(expression) for expression in output_expressions)
+
     required = {
         symbol
         for expression in rewritten

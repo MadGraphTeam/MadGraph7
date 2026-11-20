@@ -5,9 +5,13 @@ p)), with x_min = tau_min for the first beam and tau_min / x1 for the second.
 With a reduced density the Jacobian leaves the factors (1 - x)^p to the
 density, without it the Jacobian is the full one, so that its mean over the
 random numbers is the area x1 x2 >= tau_min of the unit square. The lower
-bound on s_hat can come per event from a condition. x is x_min to the last
-digit at the end point of the sampling, also for a small x_min, an empty
-range of x has a zero Jacobian, and 1 - x is kept a normal double.
+bound on s_hat can come per event from a condition, clipped to [0, s_lab],
+and gives the mapping of a fixed bound to the last digit. x is x_min to the
+last digit at the end point of the sampling, also for a small x_min, the
+inverse holds as x1 approaches tau_min, an empty range of x has a zero
+Jacobian, a point outside the range has a zero Jacobian of the inverse, and
+1 - x is kept a normal double.
+LeptonLuminosityInvariant takes the same options.
 """
 
 import math
@@ -86,19 +90,58 @@ def test_full_jacobian_integrates_the_area():
 
 
 def test_s_hat_min_condition():
-    """The lower bound per event gives the mapping with that bound."""
+    """The lower bound per event gives the mapping with that bound, to the
+    last digit, also the inverse. Both run on the same batch, so that every
+    event lands in the same SIMD lane, or in the scalar tail of the batch, in
+    both."""
     r1, r2 = random_numbers(1000, 3)
     tau = np.where(np.arange(1000) % 2 == 0, 0.01, 0.25)
     per_event = ms.LeptonLuminosity(
         S_LAB, 0.0, POWER, reduced_density=False, s_hat_min_condition=True
     )
     outputs = forward(per_event, r1, r2, tau * S_LAB)
+    back = inverse(per_event, outputs[:-1], tau * S_LAB)
     for value in (0.01, 0.25):
         rows = tau == value
         fixed = ms.LeptonLuminosity(S_LAB, value * S_LAB, POWER, reduced_density=False)
-        expected = forward(fixed, r1[rows], r2[rows])
+        expected = forward(fixed, r1, r2)
         for got, want in zip(outputs, expected):
-            np.testing.assert_allclose(got[rows], want, rtol=1e-15)
+            np.testing.assert_array_equal(got[rows], want[rows])
+        expected = inverse(fixed, outputs[:-1])
+        for got, want in zip(back, expected):
+            np.testing.assert_array_equal(got[rows], want[rows])
+
+
+def test_s_hat_min_condition_out_of_range():
+    """A bound below 0 is none, a bound above s_lab leaves no range: x1 = x2 =
+    1, s_hat = s_lab and a zero Jacobian, all finite."""
+    r1, r2 = random_numbers(100, 5)
+    mapping = ms.LeptonLuminosity(
+        S_LAB, 0.0, POWER, reduced_density=False, s_hat_min_condition=True
+    )
+    below = forward(mapping, r1, r2, np.full(100, -0.3 * S_LAB))
+    zero = forward(mapping, r1, r2, np.zeros(100))
+    for got, want in zip(below, zero):
+        np.testing.assert_array_equal(got, want)
+    x1, omx1, x2, omx2, s_hat, det = forward(mapping, r1, r2, np.full(100, 2 * S_LAB))
+    assert np.all(x1 == 1.0) and np.all(x2 == 1.0) and np.all(s_hat == S_LAB)
+    assert np.all(omx1 > 0.0) and np.all(omx2 > 0.0)
+    assert np.all(det == 0.0)
+
+
+def test_round_trip_close_to_tau_min():
+    """As x1 approaches tau_min the second beam has a narrow range, whose
+    width the forward and the inverse map build from x1 in the same way, so
+    that the inverse still gives back r2 and the reciprocal Jacobian."""
+    tau_min = 0.04
+    mapping = ms.LeptonLuminosity(S_LAB, tau_min * S_LAB, POWER, reduced_density=False)
+    r1 = 1.0 - np.array([1e-6, 1e-9, 1e-12, 1e-14])
+    r2 = np.array([0.1, 0.5, 0.9, 0.5])
+    *outputs, det = forward(mapping, r1, r2)
+    assert np.all(det > 0.0)
+    r1_back, r2_back, det_back = inverse(mapping, outputs)
+    np.testing.assert_allclose(r2_back, r2, rtol=1e-14)
+    np.testing.assert_allclose(det * det_back, 1.0, rtol=1e-14)
 
 
 @pytest.mark.parametrize("reduced", [True, False])
@@ -153,6 +196,29 @@ def test_empty_range(reduced):
     assert np.all(det_inverse == 0.0)
 
 
+@pytest.mark.parametrize("reduced", [True, False])
+def test_inverse_outside_the_range(reduced):
+    """A point with x1 < tau_min, from another channel, leaves x2 no range:
+    r2 = 0 and a zero Jacobian, not NaN. The same for x1 = 0 at tau_min = 0,
+    where the width of the second beam is 0 / 0."""
+    tau_min = 0.04
+    mapping = ms.LeptonLuminosity(
+        S_LAB, tau_min * S_LAB, POWER, reduced_density=reduced
+    )
+    x1 = np.array([0.01, 0.03, tau_min * (1 - 1e-15)])
+    x2 = np.full(3, 0.5)
+    outputs = [x1, 1 - x1, x2, 1 - x2, x1 * x2 * S_LAB]
+    r1, r2, det = inverse(mapping, outputs)
+    assert np.all(np.isfinite(r1))
+    assert np.all(r2 == 0.0)
+    assert np.all(det == 0.0)
+    mapping = ms.LeptonLuminosity(S_LAB, 0.0, POWER, reduced_density=reduced)
+    outputs = [np.zeros(2), np.ones(2), np.full(2, 0.5), np.full(2, 0.5), np.zeros(2)]
+    r1, r2, det = inverse(mapping, outputs)
+    assert np.all(r2 == 0.0)
+    assert np.all(det == 0.0)
+
+
 def test_one_minus_x_stays_normal():
     """1 - x is at least the smallest normal double, also where r^a
     underflows."""
@@ -186,3 +252,53 @@ def test_accessors():
     assert not mapping.reduced_density()
     assert mapping.s_hat_min_condition()
     assert ms.LeptonLuminosity(S_LAB, 0.0).reduced_density()
+
+
+def invariant_forward(mapping, n, seed, s_hat_min=None):
+    rng = np.random.default_rng(seed)
+    r = [torch.as_tensor(rng.random(n)) for _ in range(3)]
+    conditions = [] if s_hat_min is None else [torch.as_tensor(s_hat_min)]
+    return [to_numpy(out) for out in mapping.map_forward(r, conditions)]
+
+
+@pytest.mark.parametrize("invariant_power", [0.0, 1.0])
+def test_invariant_full_density(invariant_power):
+    """LeptonLuminosityInvariant without a reduced density: the full Jacobian
+    is the reduced one times (1 - x1)^p (1 - x2)^p, as for LeptonLuminosity,
+    so that the two channels can be mixed for a full density."""
+    args = (S_LAB, 0.01 * S_LAB, S_LAB, POWER, 0.0, 0.0, invariant_power)
+    reduced = invariant_forward(ms.LeptonLuminosityInvariant(*args), 1000, 6)
+    full = invariant_forward(
+        ms.LeptonLuminosityInvariant(*args, reduced_density=False), 1000, 6
+    )
+    for got, want in zip(full[:-1], reduced[:-1]):
+        np.testing.assert_array_equal(got, want)
+    _, omx1, _, omx2, _, det = reduced
+    np.testing.assert_allclose(full[-1], det * (omx1 * omx2) ** POWER, rtol=1e-13)
+
+
+def test_invariant_s_hat_min_condition():
+    """The lower bound per event gives the mapping with that bound, to the
+    last digit."""
+    tau = np.where(np.arange(1000) % 2 == 0, 0.01, 0.25)
+    per_event = ms.LeptonLuminosityInvariant(
+        S_LAB, 0.0, reduced_density=False, s_hat_min_condition=True
+    )
+    outputs = invariant_forward(per_event, 1000, 7, tau * S_LAB)
+    for value in (0.01, 0.25):
+        rows = tau == value
+        fixed = ms.LeptonLuminosityInvariant(
+            S_LAB, value * S_LAB, reduced_density=False
+        )
+        expected = invariant_forward(fixed, 1000, 7)
+        for got, want in zip(outputs, expected):
+            np.testing.assert_array_equal(got[rows], want[rows])
+
+
+def test_invariant_accessors():
+    mapping = ms.LeptonLuminosityInvariant(
+        S_LAB, 100.0, reduced_density=False, s_hat_min_condition=True
+    )
+    assert not mapping.reduced_density()
+    assert mapping.s_hat_min_condition()
+    assert ms.LeptonLuminosityInvariant(S_LAB, 0.0).reduced_density()

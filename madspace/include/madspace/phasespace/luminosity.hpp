@@ -107,7 +107,9 @@ private:
  * \hat s_\mathrm{min} / s_\mathrm{lab}@f$ for the first beam and
  * @f$\tau_\mathrm{min} / x_1@f$ for the second. @f$x@f$ is computed as
  * @f$x_\mathrm{min} + (1 - x_\mathrm{min})(1 - r^{1/(1-p)})@f$, which keeps
- * its precision also close to a small @f$x_\mathrm{min}@f$.
+ * its precision also close to a small @f$x_\mathrm{min}@f$. A range that is
+ * empty gives @f$x = 1@f$ and a zero Jacobian, and the inverse gives a zero
+ * Jacobian for a point outside the range, @f$x_1 < \tau_\mathrm{min}@f$.
  *
  * The Jacobian of each beam is
  * @f$(1-x_\mathrm{min})^{1-p} (1-x)^{p} / (1-p)@f$. With @p reduced_density
@@ -135,8 +137,8 @@ private:
  *
  * **Conditions**
  * - `s_hat_min` – `float`, shape `(batch,)` – @f$\hat s_\mathrm{min}@f$ of
- *   each event, in place of that of the constructor. Present only with
- *   @p s_hat_min_condition.
+ *   each event, in place of that of the constructor, clipped to
+ *   @f$[0, s_\mathrm{lab}]@f$. Present only with @p s_hat_min_condition.
  *
  * **Outputs**
  * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions.
@@ -199,8 +201,9 @@ private:
         const NamedVector<Value>& inputs,
         const NamedVector<Value>& conditions
     ) const override;
-    // tau_min of the event
-    Value tau_min(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
+    // tau_min of the event and 1 - tau_min
+    std::pair<Value, Value>
+    tau_min(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
 
     double _s_lab, _s_hat_min, _power;
     bool _reduced_density, _s_hat_min_condition;
@@ -284,7 +287,13 @@ struct LeptonSplitResult {
  * @param r_x      Random number for the drawn fraction.
  * @param r_swap   Random number deciding which beam carries it.
  * @param s_lab    Squared collider energy.
- * @param power    @f$p@f$; must match the density's reduction exponent.
+ * @param power    @f$p@f$ of the sampling. With a reduced density it must
+ *                 match the density's reduction exponent.
+ * @param jacobian_power The power of @f$1-x@f$ of each beam in the Jacobian
+ *                 beyond the reduced one, 0 for a reduced density and
+ *                 @f$p@f$ for a full one. The drawn fraction is sampled as
+ *                 @ref LeptonLuminosity samples a beam, and the derived one
+ *                 gets @f$(1-x)^{\mathrm{jacobian\_power} - p}@f$.
  *
  * The returned Jacobian is that of @f$(\hat s, r) \to (x_1, x_2)@f$, the same
  * convention `r_to_x1x2` uses, so it already carries the
@@ -297,7 +306,8 @@ LeptonSplitResult lepton_split(
     Value r_x,
     Value r_swap,
     double s_lab,
-    double power
+    double power,
+    double jacobian_power = 0.
 );
 
 /**
@@ -315,11 +325,15 @@ LeptonSplitResult lepton_split(
  * @f$[\sqrt\tau, 1]@f$; the other follows as @f$\tau/x@f$. Which beam gets
  * which is decided per event, so both orderings are covered.
  *
- * **The derived fraction needs its @f$(1-x)^{-p}@f$ put back.** The density is
- * stored reduced by @f$p@f$ and the drawn fraction's Jacobian omits that
- * factor to cancel it (see @ref LeptonLuminosity); the derived one never went
- * through that transformation, so nothing cancels it there and the Jacobian
- * has to supply it. `genps.f` makes the same correction, in the same place.
+ * **With a reduced density the derived fraction needs its @f$(1-x)^{-p}@f$
+ * put back.** The density is stored reduced by @f$p@f$ and the drawn
+ * fraction's Jacobian omits that factor to cancel it (see
+ * @ref LeptonLuminosity); the derived one never went through that
+ * transformation, so nothing cancels it there and the Jacobian has to supply
+ * it. `genps.f` makes the same correction, in the same place. Without
+ * @p reduced_density the Jacobian is the full one, as for
+ * @ref LeptonLuminosity, so that both channels can be mixed for a full
+ * density too.
  *
  * `batch` is the leading batch dimension.
  *
@@ -330,7 +344,10 @@ LeptonSplitResult lepton_split(
  *   carries the drawn fraction.
  *
  * **Conditions**
- * - None.
+ * - `s_hat_min` – `float`, shape `(batch,)` – @f$\hat s_\mathrm{min}@f$ of
+ *   each event, in place of that of the constructor, clipped to
+ *   @f$[0, \hat s_\mathrm{max}]@f$. Present only with
+ *   @p s_hat_min_condition.
  *
  * **Outputs**
  * - `x1`, `x2`, `omx1`, `omx2`, `s_hat` – as in @ref LeptonLuminosity.
@@ -347,6 +364,10 @@ public:
      * @param width          Resonance width; nonzero selects Breit-Wigner
      *                       sampling. See @ref Invariant.
      * @param invariant_power Exponent of the @f$1/\hat s^{\,n}@f$ sampling.
+     * @param reduced_density Leave the factors @f$(1-x)^{p}@f$ to the density,
+     *                       as for @ref LeptonLuminosity.
+     * @param s_hat_min_condition Take the lower bound on @f$\hat s@f$ of each
+     *                       event from the `s_hat_min` condition.
      */
     LeptonLuminosityInvariant(
         double s_lab,
@@ -355,8 +376,14 @@ public:
         double sampling_power = 0.96,
         double mass = 0.,
         double width = 0.,
-        double invariant_power = 1.
+        double invariant_power = 1.,
+        bool reduced_density = true,
+        bool s_hat_min_condition = false
     );
+    /// Whether the Jacobian leaves the factors @f$(1-x)^{p}@f$ to the density.
+    bool reduced_density() const { return _reduced_density; }
+    /// Whether the mapping takes the `s_hat_min` condition.
+    bool s_hat_min_condition() const { return _s_hat_min_condition; }
 
 private:
     Result build_forward_impl(
@@ -371,6 +398,7 @@ private:
     ) const override;
 
     double _s_lab, _s_hat_min, _s_hat_max, _power;
+    bool _reduced_density, _s_hat_min_condition;
     Invariant _invariant;
 };
 
