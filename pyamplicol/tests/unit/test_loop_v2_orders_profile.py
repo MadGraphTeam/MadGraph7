@@ -20,6 +20,7 @@ public loop profiling route (m-lit lit-examples G4, G5).
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import math
@@ -1622,7 +1623,13 @@ def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
     has_entry = callable(getattr(Runtime.load(uux_ddx)._backend, "prepare", None))
     for profile in rows.values():
         document = profile.cli_json()
-        for level in (document, document["reference"]):
+        # The reference is a dict without its entry's seconds and the
+        # timing record itself when its warm entry ran (``cli_json``): read
+        # either form (whether it ran depends on the measured plan).
+        reference = document["reference"]
+        if dataclasses.is_dataclass(reference):
+            reference = dataclasses.asdict(reference)
+        for level in (document, reference):
             assert ("prepared_seconds" in level) <= has_entry
             assert level.get("prepared_seconds", 1.0) is not None
 
