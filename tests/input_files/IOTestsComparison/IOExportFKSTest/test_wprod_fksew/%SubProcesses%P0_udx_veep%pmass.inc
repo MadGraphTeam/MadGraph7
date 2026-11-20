@@ -1,1 +1,1 @@
-      CALL MC_NATIVE_MASSES(PMASS)
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%pmass.inc
