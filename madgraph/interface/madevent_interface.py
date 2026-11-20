@@ -3917,8 +3917,14 @@ Beware that this can be dangerous for local multicore runs.""")
             # for split runs. (and partly in store_events).
             combine_runs.CombineRuns(self.me_dir)
             self.refine_mode = "old"
+            if self.run_card['enforce_overweight_limit']:
+                self.update_status("Enforcing the overweight limit", level='parton')
+                x_improve.enforce_overweight_limit()
         else:
             self.refine_mode = "new"
+            if self.run_card['enforce_overweight_limit']:
+                logger.warning('enforce_overweight_limit is not supported with this refine '
+                               'mode (loop-induced or job_strategy=2): not applied')
             
         cross, error, across = self.make_make_all_html_results(get_attr=('xsec','xerru','axsec'))
         
@@ -4147,7 +4153,8 @@ Beware that this can be dangerous for local multicore runs.""")
                           proc_charac=self.proc_characteristic,
                           keep_overshoot=self.run_card['allow_overshoot_events'],
                           nb_output=self.run_card['nb_unweight_output'],
-                          keep_overweight_weight=True)
+                          keep_overweight_weight=True,
+                          max_overweight_fraction=self.overweight_limit_fraction())
             self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                              "unweighted_events.lhe"), start)
 
@@ -4191,7 +4198,8 @@ Beware that this can be dangerous for local multicore runs.""")
                                 proc_charac=self.proc_characteristic,
                                 keep_overshoot=self.run_card['allow_overshoot_events'],
                                 nb_output=self.run_card['nb_unweight_output'],
-                                keep_overweight_weight=True)
+                                keep_overweight_weight=True,
+                                max_overweight_fraction=self.overweight_limit_fraction())
                 self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                                  "unweighted_events.lhe"), start)
 
@@ -4215,6 +4223,14 @@ Beware that this can be dangerous for local multicore runs.""")
         logger.info("combination of events done in %s s ", time.time()-start)
         
         self.to_store.append('event')
+
+    def overweight_limit_fraction(self):
+        """overweight fraction below which the event combination keeps the
+        maximum weight (enforce_overweight_limit), 0 otherwise"""
+        if self.run_card['enforce_overweight_limit'] and \
+                self.run_card['max_overweight_truncation'] > 0:
+            return self.run_card['max_overweight_truncation']
+        return 0
 
     ############################################################################ 
     def do_combine_events_partial(self, line, preprocess_only=False):
@@ -4267,7 +4283,8 @@ Beware that this can be dangerous for local multicore runs.""")
         get_wgt = lambda event: event.wgt   
         AllEvent.unweight(output,
                           get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event,
-                          keep_overweight_weight=True)  
+                          keep_overweight_weight=True,
+                          max_overweight_fraction=self.overweight_limit_fraction())  
         return output, sum_xsec, math.sqrt(sum(x**2 for x in sum_xerru)), sum_axsec
 
     ############################################################################ 
@@ -7938,7 +7955,8 @@ class GridPackCmd(MadEventCmd):
                     AllEvent.unweight(pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
                           get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event, 
                           keep_overshoot=self.run_card['allow_overshoot_events'],
-                          keep_overweight_weight=keep_ow)
+                          keep_overweight_weight=keep_ow,
+                          max_overweight_fraction=self.overweight_limit_fraction())
                     AllEvent = lhe_parser.MultiEventFile()
                     AllEvent.banner = self.banner
                     partials_info.append((pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
@@ -7961,7 +7979,8 @@ class GridPackCmd(MadEventCmd):
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic,
                           keep_overshoot=self.run_card['allow_overshoot_events'],
-                          keep_overweight_weight=keep_ow)
+                          keep_overweight_weight=keep_ow,
+                          max_overweight_fraction=self.overweight_limit_fraction())
         
         
         if partials:

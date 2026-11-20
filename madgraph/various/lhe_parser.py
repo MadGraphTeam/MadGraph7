@@ -958,7 +958,8 @@ class EventFile(object):
 
     def unweight(self, outputpath, get_wgt=None, max_wgt=0, trunc_error=0,
                  event_target=0, log_level=logging.INFO, normalization='average',
-                 keep_overshoot=False, nb_output=1, keep_overweight_weight=False):
+                 keep_overshoot=False, nb_output=1, keep_overweight_weight=False,
+                 max_overweight_fraction=0):
         """unweight the current file according to wgt information wgt.
         which can either be a fct of the event or a tag in the rwgt list.
         max_wgt allow to do partial unweighting. 
@@ -974,6 +975,10 @@ class EventFile(object):
         of being truncated to one unit, and all weights are scaled so that their
         mean stays the cross-section. Nothing is truncated, so the maximum weight
         is chosen only to reach event_target (trunc_error is not a floor then).
+        max_overweight_fraction: with keep_overweight_weight, the maximum weight
+        is at least the one above which the events carry this fraction of the
+        cross-section (enforce_overweight_limit): fewer events than event_target
+        are written rather than exceeding it.
         """
         self.parsing = 'wgt_only'
         nb_output = max(1, int(nb_output))
@@ -1021,6 +1026,19 @@ class EventFile(object):
 
             return max_wgt
         # end of the function
+
+        def max_wgt_for_overweight(fraction):
+            """smallest weight of all_wgt (the largest weights) above which the
+            events carry at most fraction of the cross-section"""
+            above = 0
+            for i in range(len(all_wgt) - 1, 0, -1):
+                above += all_wgt[i]
+                if above > fraction * cross['abs']:
+                    return all_wgt[i]
+            return all_wgt[0]
+        ow_min_wgt = 0
+        if keep_overweight_weight and max_overweight_fraction > 0 and all_wgt:
+            ow_min_wgt = max_wgt_for_overweight(max_overweight_fraction)
                 
         # choose the max_weight
         if not max_wgt:
@@ -1105,7 +1123,8 @@ class EventFile(object):
                     
                     min_max_wgt = max_wgt_for_trunc(trunc_error)
                     if keep_overweight_weight:
-                        min_max_wgt = 0 # no truncation happens: no floor needed
+                        # no truncation happens: only the overweight floor
+                        min_max_wgt = ow_min_wgt
                     max_wgt = max(min_max_wgt, needed_max_wgt)
                     max_wgt = min(max_wgt, all_wgt[-1])
                     if max_wgt == last_max_wgt:
