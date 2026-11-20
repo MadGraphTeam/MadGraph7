@@ -15,7 +15,7 @@ import tomllib
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -2840,28 +2840,40 @@ class VirtualProfileResult:
     one_thread_calls: int = 0
 
     def cli_json(self) -> dict[str, object]:
-        """The JSON form (``cli.main``): every field, the one-thread timing's
-        only when it ran (one thread: the document as before it existed)."""
+        """The JSON form (``cli.main``), plain JSON values at every level
+        (``_plain``): every field, the one-thread timing's only when it ran
+        (one thread: the document as before it existed); at each precision
+        level, binary64 and the reference, ``prepared_seconds`` only where
+        its warm entry ran."""
 
-        out = {item.name: getattr(self, item.name) for item in fields(self)}
+        out = cast("dict[str, Any]", _plain(self))
         if self.one_thread_seconds_per_point is None:
             out.pop("one_thread_seconds_per_point")
             out.pop("one_thread_calls")
         if self.prepared_seconds is None:
             # No warm entry ran: the document as before it existed.
             out.pop("prepared_seconds")
-        reference = self.reference
-        if reference is not None and reference.prepared_seconds is None:
-            out["reference"] = {
-                item.name: getattr(reference, item.name)
-                for item in fields(reference)
-                if item.name != "prepared_seconds"
-            }
+        if self.reference is not None and self.reference.prepared_seconds is None:
+            out["reference"].pop("prepared_seconds")
         if not self.reference_skipped:
             out.pop("reference_skipped")
         if self.reference_point_seconds is None:
             out.pop("reference_point_seconds")
         return out
+
+
+def _plain(value: object) -> object:
+    """``value`` as plain JSON values (``VirtualProfileResult.cli_json``): a
+    dataclass as its fields, a sequence as a list, a mapping with string
+    keys; leaves as they are."""
+
+    if is_dataclass(value) and not isinstance(value, type):
+        return {item.name: _plain(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [_plain(entry) for entry in value]
+    if isinstance(value, Mapping):
+        return {str(key): _plain(entry) for key, entry in value.items()}
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -3183,9 +3195,9 @@ def profile_virtual(
     timing = None
     scope = None if reference is None else reference.get("scope")
 
-    def drops(reference_point: float | None = None) -> bool:
+    def drops(reference_point: float | None = None, entry: float | None = None) -> bool:
         return scope is not None and _scope_drops(
-            profile, scope, bench.batch_size, reference_point
+            profile, scope, bench.batch_size, reference_point, entry
         )
 
     skipped = reference is not None and drops()
@@ -3202,6 +3214,9 @@ def profile_virtual(
                 binary64=profile.seconds_per_point,
                 monitor=monitor,
                 stop=drops if scope is not None else None,
+                entry_stop=(lambda seconds: drops(entry=seconds))
+                if scope is not None
+                else None,
             )
         if timing is None:
             skipped = True
@@ -3220,11 +3235,15 @@ def _scope_drops(
     scope: Mapping[str, Any],
     batch: int,
     reference_point: float | None = None,
+    entry: float | None = None,
 ) -> bool:
     """Rule B re-called by the decider's runtime timing on its own measured
     numbers (``profile_plan.rule_b_drops``): this backend's ``Known`` from the
     parent's (``scope["known"]``) with its measured binary64 chunk, its warm
-    entry and, after its untimed reference point, that point's seconds."""
+    entry and, after its untimed reference point, that point's seconds; a
+    reference that warms through the entry (``reference_entry``, no untimed
+    point) counts the entry's measured seconds (``entry``, none before),
+    never the cold point (m-4)."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
     from pyamplicol.profile_plan import Known, lower_bound
@@ -3238,6 +3257,9 @@ def _scope_drops(
         if reference_point is not None
         else given.get("reference"),
         start=float(given.get("start") or 0.0),
+        warm_entry=profile.prepared_seconds is not None,
+        reference_entry=bool(given.get("reference_entry")) and reference_point is None,
+        reference_warm=entry,
     )
     total = lower_bound(known, lanes=min(DEFAULT_LANES, max(batch, 1)), reference=True)
     return total > float(scope["bound"])
@@ -3473,6 +3495,7 @@ def _reference_pass(
     binary64: float | None = None,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
     stop: Callable[[float], bool] | None = None,
+    entry_stop: Callable[[float], bool] | None = None,
 ) -> tuple[PrecisionTiming | None, float | None]:
     """The reference carrier's time per point (``PrecisionTiming``): one
     fully optimistic pass per point, the unchecked reduction of the
@@ -3489,7 +3512,9 @@ def _reference_pass(
     carrier. Call k takes the first points of the binary64 timing's batch
     k. ``binary64``: the binary64 seconds per point (the ETA prior before a
     reference call is back, with ``REFERENCE_PRIOR``); ``monitor("reference",
-    ...)`` after each call."""
+    ...)`` after each call; ``stop`` after the untimed point and
+    ``entry_stop`` after the warm entry (their seconds; True: no timed
+    call)."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
 
@@ -3570,6 +3595,9 @@ def _reference_pass(
         report(0, 1, prior, ())
         prepared = _prepared(runtime, options, backend)
         warm = prepared is None
+        # Rule B re-called with the entry's measured seconds (m-4).
+        if prepared is not None and entry_stop is not None and entry_stop(prepared):
+            return None, None
     first: list[float] = []
 
     def stopped(per_point: float) -> bool:

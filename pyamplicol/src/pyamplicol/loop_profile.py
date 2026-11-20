@@ -1032,9 +1032,14 @@ def profile_loop(
         """Whether this stream warms through the entry: the runtime offers
         it, the binary64 stream only in the optimistic pass, and
         ``takes_entry`` from the point's cost (None: unknown), the entry's
-        remembered cost and the measured first-call excess."""
+        remembered cost and the measured first-call excess. With rule B
+        open no reference warms through it: its untimed point, which the
+        measurement's cold point bounds, lets rule B drop the multiplier
+        before it runs."""
 
         if not has_entry or (precision == "binary64" and checked):
+            return False
+        if precision == "reference" and rule_b:
             return False
         return takes_entry(
             point,
@@ -1161,11 +1166,28 @@ def profile_loop(
             )
         )
 
-    def learn(backend: str, **numbers: float | None) -> None:
+    def learn(backend: str, **numbers: float | bool | None) -> None:
         """A measured number of ``backend`` arrives (``Known``'s fields)."""
 
         if backend in known:
             known[backend] = replace(known[backend], **numbers)
+
+    def entries(
+        backend: str, binary64: float, reference: float | None
+    ) -> dict[str, bool]:
+        """Whether ``backend``'s streams warm through the entry, as its
+        runtime timing will decide (``warms_through_entry``): their untimed
+        points then never run, the scope rules count the entry's measured
+        seconds instead (m-4)."""
+
+        return {
+            "warm_entry": warms_through_entry(
+                backend,
+                "binary64",
+                warmup_seconds(DEFAULT_LANES * binary64, binary64),
+            ),
+            "reference_entry": warms_through_entry(backend, "reference", reference),
+        }
 
     def enough(found: Mapping[str, Any]) -> bool:
         """After each backend of the measurement (the default first): what
@@ -1179,6 +1201,7 @@ def profile_loop(
                 reference=None
                 if cost.reference is None or cost.reference_estimated
                 else cost.reference,
+                **entries(backend, cost.binary64, cost.reference),
             )
         if set(found) == {default} and a_drops():
             early.extend(b for b in backends if b != default)
@@ -1206,7 +1229,7 @@ def profile_loop(
         rule B, on what is known with this binary64 point, has not left it
         out (m-3: the backends measured before count)."""
 
-        learn(backend, point=binary64)
+        learn(backend, point=binary64, **entries(backend, binary64, None))
         if b_drops():
             return False
         if target_given:
@@ -1332,10 +1355,10 @@ def profile_loop(
     else:
         planned, stability_start = planning(costs, measured_at)
     # The scope rules before the runtime timing, on what the measurement
-    # measured (nothing without a measurement phase).
+    # measured (nothing without a measurement phase); a stream's entry
+    # cost is a previous profile's, not a bound: its row measures it (m-4).
     for backend, cost in costs.items():
-        if cost.binary64_warm is not None:
-            learn(backend, warm=cost.binary64_warm)
+        learn(backend, **entries(backend, cost.binary64, cost.reference))
     omitted = (
         [b for b in backends if b != default]
         if (bench.all_backends is False and default in backends) or early or a_drops()
@@ -1609,7 +1632,12 @@ def profile_loop(
                                 ),
                                 "known": {
                                     name: getattr(known[backend], name)
-                                    for name in ("point", "reference", "start")
+                                    for name in (
+                                        "point",
+                                        "reference",
+                                        "start",
+                                        "reference_entry",
+                                    )
                                 },
                             }
                         }
@@ -1682,16 +1710,30 @@ def profile_loop(
             rows.append(BackendRuntime(backend, result, requested=request))
             # What this row measured is known (``Known``).
             reference = result.reference
+            # The streams' warming as it ran: the entry's seconds, or the
+            # untimed reference point (m-4).
+            warmed = (
+                {"reference_entry": False}
+                if result.reference_point_seconds is not None
+                else {
+                    "reference_entry": True,
+                    "reference_warm": reference.prepared_seconds,
+                }
+                if reference is not None and reference.prepared_seconds is not None
+                else {}
+            )
             learn(
                 backend,
                 chunk=result.seconds_per_point if _served_points(result) else None,
                 warm=result.prepared_seconds,
+                warm_entry=result.prepared_seconds is not None,
                 reference=result.reference_point_seconds
                 if result.reference_point_seconds is not None
                 else known.get(backend, Known()).reference,
                 reference_timed=None
                 if reference is None
                 else reference.seconds_per_point,
+                **warmed,
             )
             if backend == reference_decider and result.reference_skipped:
                 from pyamplicol.loops.v2.reduction import NAMES
