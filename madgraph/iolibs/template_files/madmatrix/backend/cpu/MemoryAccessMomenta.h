@@ -40,7 +40,6 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>;
-    friend class KernelAccessHelper<MemoryAccessMomentaBase, true, fptype_momenta>;
     friend class KernelAccessHelper<MemoryAccessMomentaBase, false, fptype_momenta>;
 
     // The number of components of a 4-momentum
@@ -199,7 +198,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessMomenta<false> HostAccessMomenta;
-  typedef KernelAccessMomenta<true> DeviceAccessMomenta;
 
   //----------------------------------------------------------------------------
 

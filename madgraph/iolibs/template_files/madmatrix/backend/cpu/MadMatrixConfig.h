@@ -144,8 +144,8 @@ using madmatrix::fptype_colour;
 #ifdef MADMATRIX_NOARMNEON
 #undef __ARM_NEON
 #endif
+// Never SIMD here: shared files test it
 #undef MADMATRIX_SIMD
-
 
 // No-op debug macros (nsight-based debugging is CUDA-only, unused here)
 #define mgDebugDeclare() /*noop*/

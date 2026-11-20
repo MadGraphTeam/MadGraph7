@@ -873,7 +873,7 @@ namespace madmatrix
 
   //==========================================================================
 
-  // Scalar-or-vector types: scalar in CUDA, vector or scalar in C++.
+  // Scalar-or-vector types: vector in this backend.
   // 3 mixed-precision stages: _amp (== fptype), _momenta (== _denom), _colour (== fptype2).
   typedef bool_v bool_sv;
   typedef fptype_v fptype_sv;
@@ -911,7 +911,7 @@ namespace madmatrix
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
-  // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
+  // Scalar-or-vector zeros: vector in this backend.
   // Template version for multi-precision (explicit template parameter required)
   inline cxtype_v cxzero_sv() { return cxtype_v(); } // RRRR=0000 IIII=0000
   template<typename CX>

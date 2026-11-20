@@ -66,7 +66,6 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessCouplingsBase>;
-    friend class KernelAccessHelper<MemoryAccessCouplingsBase, true>;
     friend class KernelAccessHelper<MemoryAccessCouplingsBase, false>;
 
     // The number of couplings that dependent on the running alphas QCD in this specific process
@@ -230,7 +229,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessCouplings<false> HostAccessCouplings;
-  typedef KernelAccessCouplings<true> DeviceAccessCouplings;
 
   //----------------------------------------------------------------------------
 

@@ -25,7 +25,6 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessMatrixElementsBase>;
-    friend class KernelAccessHelper<MemoryAccessMatrixElementsBase, true>;
     friend class KernelAccessHelper<MemoryAccessMatrixElementsBase, false>;
 
     //--------------------------------------------------------------------------
@@ -106,7 +105,7 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const, SCALAR) ===> fptype& kernelAccess_s( fptype* buffer ) <===]
     static constexpr auto kernelAccess_s =
-      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessField<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessField<>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (non const, SCALAR OR VECTOR) ===> fptype_sv& kernelAccess( const fptype* buffer ) <===]
@@ -123,13 +122,12 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const) ===> const fptype& kernelAccessConst( const fptype* buffer ) <===]
     static constexpr auto kernelAccessConst =
-      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessFieldConst<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessFieldConst<>;
   };
 
   //----------------------------------------------------------------------------
 
   typedef KernelAccessMatrixElements<false> HostAccessMatrixElements;
-  typedef KernelAccessMatrixElements<true> DeviceAccessMatrixElements;
 
   //----------------------------------------------------------------------------
 

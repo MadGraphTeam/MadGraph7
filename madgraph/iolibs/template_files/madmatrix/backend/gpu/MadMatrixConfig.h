@@ -257,7 +257,7 @@ using madmatrix::fptype_denom;
 using madmatrix::fptype_amp;
 using madmatrix::fptype_colour;
 
-// C++ SIMD vectorization width (this will be used to set neppV)
+// Never SIMD here: shared files test it
 #undef MADMATRIX_SIMD
 
 // No-op debug macros (the nsight-based variant is no longer supported)

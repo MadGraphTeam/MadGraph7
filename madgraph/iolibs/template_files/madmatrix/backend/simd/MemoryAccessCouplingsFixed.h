@@ -75,7 +75,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessCouplingsFixed<false> HostAccessCouplingsFixed;
-  typedef KernelAccessCouplingsFixed<true> DeviceAccessCouplingsFixed;
 
   //----------------------------------------------------------------------------
 
