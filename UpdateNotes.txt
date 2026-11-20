@@ -9,6 +9,10 @@ ANNOUNCEMENT:
        thickness of beam B (TAhat_WoodsSaxon with IMETH=2) was interpolated on the grid of beam
        A, which made the probability of no hadronic interaction, and so the photon-photon
        luminosity, wrong (EDFF and ChFF alike). Identical beams (PbPb, OO, ...) are not affected.
+   HS+OM: Bug fix (gamma-UPC): in pA collisions with the ChFF flux and the nucleus as beam 1
+       (e.g. Pb+p), the photon number densities of the proton and of the nucleus were evaluated
+       with the kinematics of each other, so the photon-photon luminosity of A+p differed from
+       the one of p+A. p+A and the EDFF flux are not affected.
    RF: "set low_mem_multicore_nlo_generation True" (NLO generation and output on nb_core cores,
        the matrix elements kept in temporary files) gives again the output of the serial mode.
        It differed for instance in the virtuals (nlo_mixed_expansion False, explicit orders,
