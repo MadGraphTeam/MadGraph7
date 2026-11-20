@@ -3301,6 +3301,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             "active_channel_count",
             &MadnisTraining::active_channel_count,
             pydoc::doc("MadnisTraining::active_channel_count")
+        )
+        .def_property_readonly(
+            "config", &MadnisTraining::config, pydoc::doc("MadnisTraining::config")
         );
 
     py::classh<StatusFile>(m, "StatusFile", pydoc::doc("StatusFile"))

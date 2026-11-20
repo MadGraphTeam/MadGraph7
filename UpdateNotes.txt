@@ -175,6 +175,12 @@ ANNOUNCEMENT:
        with weights that stay within a few per cent of one. lc_flavors = two_lines keeps
        neglecting them, lc_flavors = all samples every flavour at leading colour; the
        proof-of-concept initial_sum is removed. Needs a regenerated [amplicol] output.
+   TH: [madnis] buffered_steps_fraction = auto (the new default): no buffered training
+       for [amplicol] subprocesses, whose leading-colour matrix element is cheap,
+       0.8 otherwise. A fraction of 0 now allocates no replay buffer at all.
+   TH: cuts and histograms of a flavour-merged subprocess select its particles by
+       their flavours (a b quark merged with the light quarks is a bottom); a cut
+       whose groups split the merged flavours stops the launch.
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix
        element left out the flavour masks of a flavour-merged subprocess, on the assumption
        that an amplitude masked for a flavour vanishes there anyway. It does not always (a

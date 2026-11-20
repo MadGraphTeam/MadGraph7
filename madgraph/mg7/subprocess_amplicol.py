@@ -469,6 +469,11 @@ class AmplicolSubprocess(MadgraphSubprocess):
             )
         self.check_flavor_blind_cuts()
 
+    def auto_buffered_steps_fraction(self) -> float:
+        """No buffered training: the leading-colour matrix element is cheap
+        enough to sample every batch afresh."""
+        return 0.0
+
     def check_flavor_blind_cuts(self):
         """AmpliCol groups the flavours and identical-particle orderings that
         share a matrix element into one channel, so its cuts, built for the

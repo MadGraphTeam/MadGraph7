@@ -7937,8 +7937,9 @@ class RunCardMG7(RunCard):
             comment="replay buffer size per channel; 0 disables buffering")
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000,
             comment="buffered samples needed before training on the buffer starts")
-        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8,
-            comment="fraction of training steps done on buffered samples")
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8, auto=True,
+            comment="fraction of training steps done on buffered samples; 0 "
+                    "allocates no buffer; auto: 0 for [amplicol], 0.8 otherwise")
         self.add_toml_param('madnis', 'buffer_skip_batches', 1000,
             comment="initial batches that are not stored in the buffer")
         self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95,
