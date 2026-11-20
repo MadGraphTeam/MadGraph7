@@ -17,12 +17,13 @@ RAMBO events at several energies in the beam frame and, rotated and boosted
 off the beam axis, so crossed quarks reach both Weyl kernel branches.
 
 What it tests: squares per (helicity, LC flow) or per helicity at full colour.
-At LC the fermion-exchange patterns of a same-flavour member feed different
-flows and never interfere, so only the full-colour two-pattern cases test the
-relative pattern signs under crossing (``--flip-signs`` gives the template
-assignment the sign -1 on its second pattern: those cases must fail, the LC
-ones still pass). Amplitude-level phases (T3) are not tested here and stay a
-separate gate before an amplitude-level consumer uses crossed members.
+Only the two-pattern cases (same-flavour members) can see the relative pattern
+signs under crossing; ``--flip-signs`` gives the template assignment -1 on its
+second pattern, and every two-pattern case, LC and full colour, must then
+fail (LC flows of the two fermion-exchange patterns do overlap), while the
+one-pattern cases still pass. Amplitude-level phases (T3) are not tested here
+and stay a separate gate before an amplitude-level consumer uses crossed
+members.
 Negative controls: ``--control norho`` drops the helicity relabelling and
 ``--control nofactor`` the normalization factor; both must fail.
 """
