@@ -4041,6 +4041,10 @@ class RunCard(ConfigFile):
         for incname in self.includepath:
             self.write_one_include_file(output_dir, incname, output_file)
  
+        # directory of the include files, for the fct_mod functions
+        # (keep their signature: plugins can overwrite them)
+        self.include_output_dir = output_dir
+        self.simd_reset_done = False
         for name,value in value_in_old_include.items():
             if value != self[name]:
                 self.fct_mod[name][0](value, self[name], name, *self.fct_mod[name][1],**self.fct_mod[name][2])
@@ -4610,6 +4614,12 @@ class PDLabelBlock(RunBlock):
     def post_set(card, value, change_userdefine, raiseerror, name="unknown", **opt):
         """call when change to pdlabel1 or pdlabel2 --do not know which one """
 
+        # only a user-defined pdlabel1/2 supersedes pdlabel. Internal
+        # assignments (e.g. get_default filling a hidden pdlabel1/2 while
+        # writing run_card.inc) must not drop pdlabel from user_set, otherwise
+        # the next write takes pdlabel from run_card_default.dat (issue 481)
+        if name not in card.user_set:
+            return
         if 'pdlabel' in card.user_set:
             card.user_set.remove('pdlabel')
 
@@ -5411,6 +5421,30 @@ class RunCardLO(RunCard):
                     cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph7')
         except Exception:
             pass
+
+    def reset_simd(self, old_value, new_value, name, *args, **opts):
+        """vector_size/nb_warp changed: VECSIZE_MEMMAX (vector.inc) sets the
+        size of arrays/common blocks shared by the code of Source and of
+        SubProcesses, while the makefiles do not track that dependency.
+        Keeping old object files gives a code mixing both sizes (wrong or zero
+        cross-section) -> clean the compiled code of Source and of all P*."""
+
+        if getattr(self, 'simd_reset_done', False):
+            return
+        source_dir = getattr(self, 'include_output_dir', None)
+        if not source_dir or not os.path.exists(pjoin(source_dir, 'makefile')):
+            return
+        if 'MAKELEVEL' in os.environ:
+            # called by make (run_card.inc rule): cleaning would remove the
+            # object files of the running make
+            logger.warning('%s changed from %s to %s: run "make clean" in %s '
+                           'before compiling again', name, old_value, new_value,
+                           source_dir)
+            return
+        logger.info('%s changed from %s to %s: removing the compiled code',
+                    name, old_value, new_value)
+        misc.compile(['clean'], cwd=source_dir)
+        self.simd_reset_done = True
 
     def update_system_parameter_for_include(self):
         """system parameter need to be setupe"""

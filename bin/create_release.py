@@ -47,6 +47,7 @@ import glob
 import os
 import os.path as path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -257,8 +258,16 @@ def make_tarball(workdir, filepath, output_dir, version):
 
     os.makedirs(output_dir, exist_ok=True)
     tarname = pjoin(output_dir, f"MG7_v{version}.tar.gz")
-    subprocess.run(['tar', 'czf', tarname, '-C', workdir, path.basename(filepath)],
-                    check=True)
+    # Do not ship macOS metadata (xattrs such as com.apple.provenance, ACLs,
+    # AppleDouble ._ files, generated or already on disk): GNU tar on linux
+    # warns about every such entry.
+    tar_env = dict(os.environ, COPYFILE_DISABLE='1')
+    tar_options = ['--no-xattrs', '--no-acls', '--exclude=._*']
+    if b'bsdtar' in subprocess.check_output(['tar', '--version']):
+        tar_options += ['--no-mac-metadata', '--no-fflags']
+    subprocess.run(['tar'] + tar_options +
+                   ['-czf', tarname, '-C', workdir, path.basename(filepath)],
+                   check=True, env=tar_env)
     return tarname
 
 
