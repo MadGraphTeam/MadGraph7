@@ -339,9 +339,9 @@ def test_the_sdk_applies_every_key_of_a_toml_and_reads_it_back(ggtt):  # noqa: F
         assert _state(sdk, handle) == state
         # A setter after the TOML overrides its key; the others stay.
         assert sdk.rusticol_virtual_set_reduction(handle, b"auto") == 0
-        assert sdk.rusticol_virtual_set_threads(handle, 3) == 0
+        assert sdk.rusticol_virtual_set_threads(handle, 1) == 0
         after = _state(sdk, handle)
-        assert after == {**state, "reduction": "auto", "threads": 3}
+        assert after == {**state, "reduction": "auto", "threads": 1}
         # A TOML key absent keeps the setting.
         assert (
             sdk.rusticol_virtual_set_options(handle, b"[evaluation]\nprecision = 30\n")
@@ -408,7 +408,9 @@ def test_the_sdk_sets_every_key_on_its_own(ggtt):  # noqa: F811
                 (1,),
                 {"kinematics_improvement_binary64": True},
             ),
-            (sdk.rusticol_virtual_set_threads, (5,), {"threads": 5}),
+            # A count every host has: above the usable cores the read-back is
+            # the reduced count (``threads_requested`` holds the request).
+            (sdk.rusticol_virtual_set_threads, (2,), {"threads": 2}),
         ]
         expected = _state(sdk, handle)
         for setter, arguments, changed in calls:
@@ -473,7 +475,7 @@ def test_python_takes_every_key_as_a_keyword_and_reads_it_back(ggtt):  # noqa: F
         precision=40,
         kinematics_improvement="rescaling",
         kinematics_improvement_binary64=True,
-        threads=3,
+        threads=2,
     )
     assert runtime.inspect()["runtime_options"] == {
         "arithmetic": "arbitrary",
@@ -484,7 +486,7 @@ def test_python_takes_every_key_as_a_keyword_and_reads_it_back(ggtt):  # noqa: F
         "lane_rescue": False,
         "kinematics_improvement": "rescaling",
         "kinematics_improvement_binary64": True,
-        "threads": 3,
+        "threads": 2,
         "threads_requested": None,
         "poles": "all",
         "on_failure": "best-effort",
