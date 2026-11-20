@@ -1,6 +1,7 @@
 """Host colour-sum defaults and incompatible-build protection."""
 from pathlib import Path
 import os
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -85,6 +86,79 @@ class TestHostBlasBuild(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0,
                                     'Changing the colour implementation reused old objects')
                 self.assertIn('old builds exist', result.stdout + result.stderr)
+
+    def test_nlo_dispatch_uses_strict_flags_without_changing_lo(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            process = root/'SubProcesses/PMM_B1_R1'
+            process.mkdir(parents=True)
+            for relative in ('backend/cpu', 'backend/common', 'src/rambo', 'src'):
+                folder = root/relative
+                folder.mkdir(parents=True, exist_ok=True)
+                (folder/'fixture.h').write_text('// Dependency fixture\n')
+            for name in ('CPPProcess.cc', 'CPPProcess.h'):
+                (process/name).write_text('// Compile-command fixture\n')
+            (root/'src/fixture.cc').write_text('// Shared model fixture\n')
+            source_template = (Path(__file__).resolve().parents[3] /
+                'madgraph/iolibs/template_files/madmatrix/madmatrix_src.mk').read_text()
+            (root/'src/makefile').write_text(source_template % {'model': 'test'})
+            makefile = self.makefile(process)
+            with makefile.open('a') as stream:
+                stream.write('\n.DEFAULT_GOAL := compile_probe\n'
+                             '.PHONY: compile_probe\n'
+                             'compile_probe: $(BUILDDIR)/CPPProcess.o\n'
+                             '\t$(MAKE) -C ../../src $(MADMATRIX_BUILDDIR)/fixture.o\n')
+            command = ['make', '--no-print-directory', '-n', 'BACKEND=scalar',
+                       'FPTYPE=d', 'HELINL=0', 'HRDCOD=0', 'USEBUILDDIR=1',
+                       'CXX=true']
+            lo = subprocess.run(command, cwd=process, capture_output=True,
+                                text=True, timeout=30)
+            self.assertEqual(lo.returncode, 0, lo.stderr)
+
+            native = root/'SubProcesses/P0_test'
+            native.mkdir()
+            exporter = object.__new__(output.ProcessExporterMadMatrixNLOReal)
+            exporter._write_bridge_config({
+                'library_model': 'test', 'nexternal': 2,
+                'split_order_names': ['QCD'],
+                'real_matrix_elements': [{
+                    'library_process_id': process.name,
+                    'process_fingerprint': 'fixture',
+                    'local_squared_orders': [[2]], 'local_flavours': [[2, -2]],
+                    'backend_capabilities': {'cuda': True},
+                }],
+            }, str(native))
+            nlo = subprocess.run(command + ['-f', 'nlo_real.mk', 'libraries'],
+                                 cwd=native, capture_output=True,
+                                 text=True, timeout=30)
+            self.assertEqual(nlo.returncode, 0, nlo.stderr)
+            for result, strict in ((lo, False), (nlo, True)):
+                compile_lines = [shlex.split(line) for line in result.stdout.splitlines()
+                                 if any(' -c '+name+' ' in line for name in
+                                        ('CPPProcess.cc', 'fixture.cc'))]
+                self.assertEqual(len(compile_lines), 2, result.stdout)
+                for flags in compile_lines:
+                    self.assertEqual('-fno-fast-math' in flags, strict)
+                    self.assertEqual('-ffast-math' in flags, not strict)
+                    self.assertIn('-DMGONGPU_FPTYPE_DOUBLE', flags)
+                if strict:
+                    self.assertIn('_strict1', result.stdout)
+                else:
+                    self.assertNotIn('_strict1', result.stdout)
+
+            # Reusing fast-math objects must fail instead of silently relinking.
+            probe = self.make(process)
+            tag = probe.stdout.strip().splitlines()[-1].split('|')[1]
+            build = process/'build.scalar'
+            build.mkdir()
+            (build/('.build.'+tag)).touch()
+            stale = subprocess.run(command[0:2] + ['-s', 'BACKEND=scalar',
+                'FPTYPE=d', 'HELINL=0', 'HRDCOD=0', 'USEBUILDDIR=1',
+                'CXX=true', 'NLO_REAL_STRICT=1',
+                'build.scalar/.build.'+tag+'_strict1'], cwd=process,
+                capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(stale.returncode, 0)
+            self.assertIn('old builds exist', stale.stdout + stale.stderr)
 
     def test_arithmetic_header_change_invalidates_process_object(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -729,7 +729,8 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             'libraries:',
             '\t@set -e; for directory in $(NLO_REAL_BUILD_DIRS); do \\',
             '\t  $(MAKE) -C ../$$directory USEBUILDDIR=1 BACKEND=$(BACKEND) '
-            'FPTYPE=$(FPTYPE) LIBTAG=$(LIBTAG) HELINL=$(HELINL) HRDCOD=$(HRDCOD); \\',
+            'FPTYPE=$(FPTYPE) LIBTAG=$(LIBTAG) HELINL=$(HELINL) HRDCOD=$(HRDCOD) '
+            'NLO_REAL_STRICT=1; \\',
             '\tdone',
             '',
             'bridge: $(NLO_REAL_BRIDGE)',
@@ -759,7 +760,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         definitions = [
             '#define MG7_NLO_REAL_FPTYPE "'+fptype+'"',
             '#define MG7_NLO_REAL_LIBTAG "'+libtag+'"',
-            '// backend='+backend+' CPPBLAS=$(CPPBLAS) HELINL=$(HELINL) HRDCOD=$(HRDCOD)']
+            '// backend='+backend+' CPPBLAS=$(CPPBLAS) HELINL=$(HELINL) HRDCOD=$(HRDCOD) NLO_REAL_STRICT=1']
         quoted = ' '.join("'"+line+"'" for line in definitions)
         return ['.PHONY: nlo_real_identity_force',
                 'nlo_real_build_identity.h: nlo_real_identity_force',

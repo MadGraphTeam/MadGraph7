@@ -2,6 +2,25 @@
 
 The subprocess-local `madevent_mintMC` executable owns each process's sampling, physical FKS histories and event output. A proof of real batching must observe multiple independent MINT draw IDs and different momenta in the same real provider call. SIMD padding and a group of calls with one physical point each do not satisfy that requirement.
 
+Generated NLO real dispatchers select `NLO_REAL_STRICT=1` when building MadMatrix.
+For GNU-compatible CPU compilers this uses `-O3 -fno-fast-math` for scalar and
+SIMD code, including the shared model library. Ordinary LO output keeps its
+existing fast-math default; GPU device flags are unchanged. The strict profile
+has a separate build tag, so existing fast-math objects must be cleaned before
+rebuilding that output. Use the generated `nlo_real.mk` dispatcher: building an
+individual MadMatrix directory without its NLO settings, overriding `CXXFLAGS`
+or adding `-Ofast`/`-ffast-math` can invalidate numerical qualification.
+
+A bounded scalar-double smoke of `u u~ > e+ e- [real=QCD]`, with built-in CTEQ6L1
+PDFs, 650 GeV proton beams, seed 314159 and integration/generation capacities of
+three, generated 12 events and passed the ownership trace gate in all three MINT
+modes. At the component tolerance stated below, sampled native comparisons gave
+111 failures among 12,671 checks with the former fast-math build. Rebuilding all
+scalar/common C++ code with `-fno-fast-math` gave 12,679 passing checks and no
+failures. These used the same cards and seed, with adaptive trajectories allowed
+to differ. This establishes one real-only correctness smoke, not general NLO
+numerical coverage or a performance result.
+
 Set `MG7_MC_BATCH_TRACE=1` in the environment of a generated native launch to write a separate `mc_batch_<pid>.trace` file in each job directory. An explicit path is also accepted for a single native job. The writer requires a new file for each stream. The following command checks the generated jobs and their total written event count.
 
 ```bash

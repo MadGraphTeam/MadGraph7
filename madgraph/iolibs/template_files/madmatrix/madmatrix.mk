@@ -164,7 +164,12 @@ endif
 
 CXXFLAGS = $(OPTFLAGS) -std=c++20 -Wall -Wshadow -Wextra
 ifeq ($(shell $(CXX) --version | grep ^nvc++),)
-  CXXFLAGS += -ffast-math # see issue #117
+  ifeq ($(NLO_REAL_STRICT),1)
+    # Native FKS components need the strict arithmetic checked by their oracle.
+    CXXFLAGS += -fno-fast-math
+  else
+    CXXFLAGS += -ffast-math # see issue #117
+  endif
 endif
 ###CXXFLAGS+= -Ofast # performance is not different from --fast-math
 ###CXXFLAGS+= -g # FOR DEBUGGING ONLY
@@ -763,7 +768,7 @@ endif
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...)
-override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_cpp$(CPPBLAS)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_cpp$(CPPBLAS)$(if $(filter 1,$(NLO_REAL_STRICT)),_strict1,)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
