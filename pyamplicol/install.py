@@ -10,6 +10,7 @@ Non-interactive examples:
   python install.py --bin
   python install.py --source -j 8
   python install.py --source --clean          # rebuild from scratch
+  python install.py --source --fast           # quicker local rebuilds
 
 By default everything goes into install/ next to this script, so the active
 Python environment is left untouched. The source build needs a Rust
@@ -18,11 +19,14 @@ when available, otherwise a project-local rustup is installed into build/.
 
 Rebuilds reuse the Cargo build tree in build/ and are therefore incremental.
 --clean deletes build/ and install/ first; the saved settings survive it.
+--fast compiles the native code with parallel codegen, no LTO and Cargo's
+incremental cache: same results, slower runtime; not for benchmarks or releases.
 
 The prepared-model packs shipped in the package are taken from the archive
 attached to the MadGraph release (the matching one, else the latest). When
 they are stale for this source tree, or cannot be downloaded, they are
-regenerated locally (one extra build).
+regenerated locally (one extra build). Packs already in the source tree that
+are current for it are kept.
 """
 
 import argparse
@@ -244,8 +248,11 @@ def install_build_deps(env: dict, system: bool) -> dict:
     return env
 
 
-def build_environment(jobs: int | None) -> dict:
+def build_environment(jobs: int | None, fast: bool = False) -> dict:
     env = os.environ.copy()
+    if fast:
+        env["PYAMPLICOL_FAST_BUILD"] = "1"
+        print("Fast build: parallel codegen, no LTO, incremental (not for benchmarks).")
     env["PYAMPLICOL_LOCAL_BUILD"] = "1"
     env["PYAMPLICOL_BUILD_MODE"] = "release"
     env["PYAMPLICOL_BUILD_CACHE_ROOT"] = str(CACHE_DIR)
@@ -273,6 +280,14 @@ def _prepared_models_stale(env: dict) -> str | None:
         return None
     lines = (result.stderr or result.stdout).strip().splitlines()
     return lines[-1] if lines else "validation failed"
+
+
+def local_prepared_models_current(env: dict) -> bool:
+    """True if the packs already in the source tree are valid for it."""
+    if _prepared_models_stale(env) is not None:
+        return False
+    print("The prepared models in the source tree are current; not downloading.")
+    return True
 
 
 def fetch_prepared_models(env: dict) -> bool:
@@ -395,6 +410,12 @@ def build_parser() -> argparse.ArgumentParser:
         "The saved settings are kept.",
     )
     parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Quicker local rebuilds: parallel codegen, no LTO, incremental "
+        "Cargo cache. Same results, slower runtime; not for benchmarks.",
+    )
+    parser.add_argument(
         "--build-models",
         action="store_true",
         help="Regenerate the prepared models locally instead of downloading them.",
@@ -450,10 +471,12 @@ def main(argv: list[str] | None = None) -> None:
         run(cmd)
         save_settings({"mode": "bin"})
     else:
-        env = build_environment(args.jobs)
+        env = build_environment(args.jobs, args.fast)
         env = setup_rust(env)
         env = install_build_deps(env, args.system)
-        if args.build_models or not fetch_prepared_models(env):
+        if args.build_models or not (
+            local_prepared_models_current(env) or fetch_prepared_models(env)
+        ):
             regenerate_prepared_models(env)
         cmd = [
             sys.executable,
