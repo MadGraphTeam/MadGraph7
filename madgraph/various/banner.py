@@ -1726,8 +1726,18 @@ class ConfigFile(dict):
         
         return dict.__getitem__(self, name.lower())
 
-    
-    get = __getitem__
+    _no_default = object()
+
+    def get(self, name, default=_no_default):
+        """card[name]. With a default, return it when the card has no such
+        parameter; without one, a missing name raises KeyError (unlike
+        dict.get, which would return None)."""
+        try:
+            return self[name]
+        except KeyError:
+            if default is ConfigFile._no_default:
+                raise
+            return default
 
     def set(self, name, value, changeifuserset=True, user=False, raiseerror=False):
         """convenient way to change attribute.
@@ -7344,6 +7354,21 @@ class RunCardMG7(RunCard):
             comment="the precision check evaluates at most this many events")
         self.add_toml_param('run', 'precision_check_threshold', 1e-3, hidden=True,
             comment="relative deviation from all64 above which the precision check warns")
+        # after the generation, MadtRex reweights the events to the matrix
+        # elements compiled at this FPTYPE and reports how many significant
+        # digits they share with the generated weights (madtrex_driver.
+        # run_precision_validation()); no weights are written. An FPTYPE the
+        # matrix element build accepts (madmatrix.mk SUPPORTED_FPTYPES), or a
+        # precision name; "" (or "none") is off. Not a gridpack parameter:
+        # gridpack runs do not validate.
+        self.add_toml_param('run', 'validation', "",
+            allowed=['', 'none', 'all64', 'all32', 'color32', 'denom64',
+                     'd', 'f', 'm', 'e', 'v'],
+            comment="FPTYPE to validate the generated weights against (d/all64 suggested); \"\" for none")
+        # how many events the validation reweights, evenly spaced through a
+        # larger sample (madtrex_driver._subsample_events()); 0: all of them
+        self.add_toml_param('run', 'validation_events', 0,
+            comment="events the precision validation checks, evenly spaced through the sample; 0 for all")
         # --hel_recycling outputs (madmatrix, cpu only): the size of the recycled
         # tables per SIMD page above which the build takes the plain matrix
         # element (HRMAXMB of madmatrix.mk; -1: the build's default, 0: no
@@ -8023,8 +8048,6 @@ class RunCardMG7(RunCard):
             raise KeyError("beam.pdf is ambiguous: the beams use different PDF "
                            "sets (%s, %s), read beam.pdf1 / beam.pdf2" % (pdf1, pdf2))
         return pdf1
-
-    get = __getitem__
 
     def __setitem__(self, name, value, *args, **opts):
         """Refuse an unsupported (madspace_)cpu_mode instead of silently falling back.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Set keys of an mg7 run_card.toml in place, each within its own table:
 
-    set_run_card.py Cards/run_card.toml run.device='["hip"]' generation.events=10000
+    set_run_card.py Cards/run_card.toml run.device='["hip"]' generation.events=1000
 
 The value is written as given (TOML syntax: quote strings). Only the key of the
 named table changes: `[systematics] enable` and `[vegas] enable` are different

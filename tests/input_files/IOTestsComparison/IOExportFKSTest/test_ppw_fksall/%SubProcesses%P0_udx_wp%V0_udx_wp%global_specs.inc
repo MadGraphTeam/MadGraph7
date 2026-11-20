@@ -1,6 +1,1 @@
-      integer MAXNEXTERNAL
-      parameter(MAXNEXTERNAL=3)
-      integer OVERALLMAXRANK
-      parameter(OVERALLMAXRANK=2)
-      integer NPROCS
-      parameter(NPROCS=1)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%V0_dxu_wp%global_specs.inc

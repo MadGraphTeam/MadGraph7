@@ -1,2 +1,1 @@
-      INTEGER LMAXCONFIGS
-      PARAMETER(LMAXCONFIGS=4)
+../../_shared/IOExportFKSTest%test_tdecay_fksreal%%SubProcesses%P0_t_budx%maxconfigs.inc
