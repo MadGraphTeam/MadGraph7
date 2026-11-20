@@ -200,10 +200,15 @@ def compile_dir(*arguments):
                 test_exe=test
             misc.compile([test_exe], cwd = this_dir, job_specs = False)
             input = pjoin(me_dir, '%s_input.txt' % test)
-            #this can be improved/better written to handle the output
-            misc.call(['./%s' % (test_exe)], cwd=this_dir, 
-                    stdin = open(input), stdout=open(pjoin(this_dir, '%s.log' % test), 'w'),
-                    close_fds=True)
+            log = pjoin(this_dir, '%s.log' % test)
+            with open(input) as stdin, open(log, 'w') as stdout:
+                status = misc.call(['./%s' % (test_exe)], cwd=this_dir,
+                                   stdin=stdin, stdout=stdout, close_fds=True)
+            # The log parsers only look for failed checks: a test that stops
+            # early (e.g. on an ERROR STOP) must not be reported as passed.
+            if status:
+                raise aMCatNLOError('%s stopped with exit status %s in %s; see %s'
+                                    % (test, status, p_dir, log))
             if test == 'check_poles' and os.path.exists(pjoin(this_dir,'MadLoop5_resources')) :
                 tf=tarfile.open(pjoin(this_dir,'MadLoop5_resources.tar.gz'),'w:gz',
                                                                  dereference=True)
