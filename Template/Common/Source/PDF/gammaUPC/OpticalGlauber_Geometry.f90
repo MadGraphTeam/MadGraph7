@@ -1302,7 +1302,9 @@ CONTAINS
        IF(ss.GT.10d0*RR)THEN
           TAhat_WoodsSaxon=0d0
        ELSE
-          CALL SPLINE_INTERPOLATE(XA,YA,NA,ss,TAhat_WoodsSaxon)
+          ! the B grid of the second nucleus (the A grid was used here, which
+          ! gave the second nucleus the profile of the first in A+B collisions)
+          CALL SPLINE_INTERPOLATE(XB,YB,NB,ss,TAhat_WoodsSaxon)
           !CALL POLYNOMINAL_INTERPOLATE(XB,YB,NB,ss,TAhat_WoodsSaxon,error)
        ENDIF
     ENDIF
