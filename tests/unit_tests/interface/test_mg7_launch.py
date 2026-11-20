@@ -2190,6 +2190,18 @@ class MG7ObservablePidsTest(unittest.TestCase):
         self.assertEqual(self.launch.observable_pids(meta, bottom, strict=True),
                          [1, 1, 11, 12, 5, 5])
 
+    def test_a_merged_subprocess_takes_the_flavours_of_its_members(self):
+        member = self.meta([-82, 82, 81, -81], [[2, -2, -11, 11, 1, -1],
+                                                 [2, -2, -13, 13, 3, -3]])
+        merged = {'incoming': [81, -81], 'outgoing': [-82, 82, 81, -81],
+                  'subprocesses': [0],
+                  'flavors': [{'subprocess': 0, 'flavor': 0},
+                              {'subprocess': 0, 'flavor': 1}]}
+        jets = self.kwargs('pt', ([1, -1, 3, -3, 21],))
+        self.assertEqual(
+            self.launch.observable_pids(merged, jets, [member], strict=True),
+            [1, 1, 11, 11, 1, 1])
+
     def test_flavours_in_different_groups_refuse_a_cut_only(self):
         meta = self.meta([-82, 82, 21], [[2, -2, -11, 11, 21],
                                          [2, -2, -13, 13, 21]])
