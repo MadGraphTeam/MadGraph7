@@ -848,18 +848,23 @@ UPC_NEUTRON_TAGGING_NUCLEI = {(82, 126): 4,   # Pb208
                               (79, 118): 4,   # Au197
                               (8, 8): 2}      # O16
 
-def check_upc_neutron_tagging(card, label):
+def check_upc_neutron_tagging(card, label, ions=None):
     """Raise InvalidRunCard if the gamma-UPC pdlabel asks for a neutron tag
-    that gamma-UPC does not provide for the ion of that beam."""
+    that gamma-UPC does not provide for the ion of that beam.
+
+    ions: ((Z1, N1), (Z2, N2)) of the beams (the mg7 card); read from the
+    madevent card, when both beams are |lpp| = 2, if not given."""
 
     if not is_upc_label(label) or label[3] == 'f':
         return
-    if not abs(card['lpp1']) == 2 == abs(card['lpp2']):
-        return
-    for beam, tag in ((1, label[3:5]), (2, label[5:7])):
+    if ions is None:
+        if not abs(card['lpp1']) == 2 == abs(card['lpp2']):
+            return
+        ions = [(card['nb_proton%i' % beam], card['nb_neutron%i' % beam])
+                for beam in (1, 2)]
+    for beam, ((Z, N), tag) in enumerate(zip(ions, (label[3:5], label[5:7])), 1):
         if tag == 'in':
             continue
-        Z, N = card['nb_proton%i' % beam], card['nb_neutron%i' % beam]
         if (Z, N) == (1, 0):
             continue
         nmax = UPC_NEUTRON_TAGGING_NUCLEI.get((Z, N))
@@ -867,7 +872,7 @@ def check_upc_neutron_tagging(card, label):
             raise InvalidRunCard("pdlabel '%s': forward neutron tagging ('%s') is not available "
                                  "for beam %i (Z=%s, N=%s). Only Pb208, Au197 and O16 are supported "
                                  "(use pdlabel '%sf' for no tagging)."
-                                 % (label, tag, beam, Z, N, label[:2]))
+                                 % (label, tag, beam, Z, N, label[:3]))
         if tag[0].isdigit() and int(tag[0]) > nmax:
             raise InvalidRunCard("pdlabel '%s': neutron tag '%s' is not available for beam %i "
                                  "(Z=%s, N=%s), which has at most %in."
@@ -8177,6 +8182,15 @@ class RunCardMG7(RunCard):
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
+        upc_flux = str(beam['upc_flux'])
+        if upc_flux:
+            # gamma-UPC: madevent's lpp = 2 with the gamma-UPC pdlabel and ions
+            if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
+                return upc_flux
+            if key in ('lpp1', 'lpp2'):
+                return 2
+            if key in ('nb_proton1', 'nb_proton2', 'nb_neutron1', 'nb_neutron2'):
+                return int(beam[key])
         if key == 'nevents':
             return self['generation']['events']
         if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
@@ -8994,18 +9008,25 @@ class RunCardMG7(RunCard):
             except ValueError:
                 raise InvalidRunCard('%s = %s: not an integer' % (name, value))
             if abs(lpp) == 2:
-                # an elastic photon: mg7 has it only from gamma-UPC
+                # an elastic photon: mg7 has it only from gamma-UPC, not the
+                # EPA (iww) madevent takes with any other pdlabel. Without a
+                # gamma-UPC label yet, start from ChFF (the pdlabel usually
+                # follows), never from the proton PDFs of beam.leptonic = False.
                 if not self['beam']['upc_flux']:
-                    # the pdlabel may well follow: a hint, not a warning
+                    self.set('beam.upc_flux', self.default_upc_flux, user=True)
                     logger.info(
                         '%s = %s: mg7 has elastic-photon beams only through '
-                        'gamma-UPC: also set pdlabel to a gamma-UPC label '
-                        '(e.g. chff), i.e. beam.upc_flux' % (name, lpp))
+                        'gamma-UPC (no EPA/iww): beam.upc_flux = %s until a '
+                        'gamma-UPC pdlabel chooses another flux',
+                        name, lpp, self.default_upc_flux)
                 self.set('beam.leptonic', False, user=True)
-                return 'beam.leptonic = False (elastic photons: beam.upc_flux)'
+                return ('beam.leptonic = False, beam.upc_flux = %s (elastic '
+                        'photons from gamma-UPC)' % self['beam']['upc_flux'])
             if abs(lpp) not in (0, 1, 3, 4):
                 raise InvalidRunCard('%s = %s: beam type not representable in mg7'
                                      % (name, lpp))
+            if self['beam']['upc_flux']:
+                self.clear_upc(name, lpp)
             leptonic = abs(lpp) != 1
             beam_types = getattr(self, '_lo_beam_leptonic', {})
             beam_types.update((beam, leptonic) for beam in beams)
@@ -9032,10 +9053,15 @@ class RunCardMG7(RunCard):
                 # one label for both beams (PDLabelBlock does the same)
                 self.set('beam.upc_flux', label.lower(), user=True)
                 return 'beam.upc_flux = %s (gamma-UPC, both beams)' % label.lower()
-            if self['beam']['upc_flux']:
-                self.set('beam.upc_flux', '', user=True)
-                logger.info('%s = %s: beam.upc_flux (gamma-UPC) switched off',
-                            name, value)
+        if self['beam']['upc_flux']:
+            # lpp = 2: in madevent another pdlabel is the EPA (iww) photon,
+            # which mg7 does not have; leaving gamma-UPC goes through lpp
+            raise InvalidRunCard(
+                "%s = %s with beam.upc_flux = %s (lpp = 2): mg7 has elastic "
+                "photons only from gamma-UPC, so this needs a gamma-UPC label "
+                "(e.g. chff); set lpp to 1, 0, 3 or 4 first to leave gamma-UPC"
+                % (name, value, self['beam']['upc_flux']))
+        if name != 'lhaid':
             if label.lower() == 'lhapdf':
                 return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
                         'with lhaid or beam.pdf1/pdf2')
@@ -9125,6 +9151,20 @@ class RunCardMG7(RunCard):
         card.check_devices(card['run']['device'], '[%s] run.device' % section)
         return card
 
+    # beam.upc_flux of 'set lpp 2' before any gamma-UPC pdlabel
+    default_upc_flux = 'chff'
+
+    def clear_upc(self, name, value):
+        """Leave gamma-UPC (``set <name> <value>``, an lpp of another beam
+        type): beam.upc_flux off and the ions back to protons, which without
+        upc_flux check_upc_validity refuses."""
+        self.set('beam.upc_flux', '', user=True)
+        for i in (1, 2):
+            self.set('beam.nb_proton%d' % i, 1, user=True)
+            self.set('beam.nb_neutron%d' % i, 0, user=True)
+        logger.info('%s = %s: beam.upc_flux (gamma-UPC) switched off, '
+                    'beams back to protons', name, value)
+
     def upc_ions(self):
         """((Z1, N1), (Z2, N2)) of the beams of a gamma-UPC run."""
         beam = self['beam']
@@ -9159,23 +9199,7 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard(
                     "beam %d of a gamma-UPC run must be charged (nb_proton%d >= 1, "
                     "nb_neutron%d >= 0)" % (i, i, i))
-        if label[3] == 'f':
-            return
-        for i, ((Z, N), tag) in enumerate(zip(ions, (label[3:5], label[5:7])), 1):
-            if tag == 'in' or (Z, N) == (1, 0):
-                continue
-            nmax = UPC_NEUTRON_TAGGING_NUCLEI.get((Z, N))
-            if nmax is None:
-                raise InvalidRunCard(
-                    "beam.upc_flux = '%s': forward neutron tagging ('%s') is not "
-                    "available for beam %d (Z=%s, N=%s). Only Pb208, Au197 and O16 "
-                    "are supported (use '%sf' for no tagging)."
-                    % (label, tag, i, Z, N, label[:3]))
-            if tag[0].isdigit() and int(tag[0]) > nmax:
-                raise InvalidRunCard(
-                    "beam.upc_flux = '%s': neutron tag '%s' is not available for "
-                    "beam %d (Z=%s, N=%s), which has at most %dn."
-                    % (label, tag, i, Z, N, nmax))
+        check_upc_neutron_tagging(None, label, ions)
 
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""

@@ -456,7 +456,9 @@ class MadgraphProcess:
             self.decaying_mass = None
             single = [meta["outgoing"] for meta in self.subprocess_data
                       if len(clean_pids(meta["outgoing"])) == 1]
-            if single and self.run_card["beam"]["leptonic"]:
+            # a gamma-UPC luminosity samples s_hat whatever beam.leptonic says
+            if single and self.run_card["beam"]["leptonic"] \
+                    and not self.run_card["beam"]["upc_flux"]:
                 raise ValueError(
                     f"2 -> 1 processes ({single[0]} ...) need beams with a PDF "
                     "(leptonic = false in [beam]): with fixed beam energies the "
@@ -1044,7 +1046,7 @@ class MadgraphProcess:
         # Built lazily, from the subprocesses' lowest partonic energy.
         self.upc_flux = "" if self.is_decay else str(beam_args.get("upc_flux", ""))
         self.upc_ions = self.run_card.upc_ions()
-        self._upc_luminosities = {}
+        self._upc_luminosity = None
         if self.upc_flux:
             e1, e2 = upc_luminosity_module.nucleon_energies(
                 self.beam_energies, self.upc_ions)
@@ -2688,24 +2690,37 @@ class MadgraphProcess:
                     raise ValueError(error)
         return self._lepton_density
 
-    def upc_luminosity(self, tau_min):
-        """The gamma-UPC luminosity (upc_luminosity.UPCLuminosity) of a
-        subprocess whose s_hat / s_NN is at least ``tau_min``, or None without
-        beam.upc_flux. Subprocesses reaching the same decade share a table."""
+    def upc_luminosity(self):
+        """The gamma-UPC luminosity (upc_luminosity.UPCLuminosity) of the run,
+        or None without beam.upc_flux: one table, down to the lowest
+        s_hat / s_NN any subprocess reaches, since each costs minutes for ions.
+
+        gamma-UPC beams only give photons (madevent gives any other parton no
+        flux), so a subprocess with another incoming parton is refused."""
         if not self.upc_flux:
             return None
-        xmin = upc_luminosity_module.table_xmin(tau_min)
-        if xmin not in self._upc_luminosities:
+        if self._upc_luminosity is None:
+            for subproc in self.subprocesses:
+                others = subproc.non_photon_incoming()
+                if others:
+                    raise ValueError(
+                        "beam.upc_flux = %s: subprocess %s > %s has incoming %s, "
+                        "but gamma-UPC beams only give photons; generate the "
+                        "photon-photon processes alone (e.g. a a > ...)"
+                        % (self.upc_flux, subproc.meta["incoming"],
+                           subproc.meta["outgoing"], others))
+            tau_min = min(subproc.upc_tau_min() for subproc in self.subprocesses)
             gamma_dir = os.path.abspath(os.path.join("Source", "PDF", "gammaUPC"))
             if not os.path.isdir(gamma_dir):
                 raise RuntimeError(
                     "beam.upc_flux needs the gamma-UPC sources in %s, which an "
                     "output ships for photon-photon processes only" % gamma_dir)
             mg5_options = options.load_mg5_options(with_cluster=True)
-            self._upc_luminosities[xmin] = upc_luminosity_module.UPCLuminosity(
+            self._upc_luminosity = upc_luminosity_module.UPCLuminosity(
                 ms, self.contexts, gamma_dir, self.upc_flux, self.upc_ions,
-                self.beam_energies, xmin, mg5_options.get("fortran_compiler"))
-        return self._upc_luminosities[xmin]
+                self.beam_energies, upc_luminosity_module.table_xmin(tau_min),
+                mg5_options.get("fortran_compiler"))
+        return self._upc_luminosity
 
     @property
     def fixed_fact_scale(self):

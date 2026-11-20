@@ -304,7 +304,8 @@ Integrand::Integrand(
     _custom_bias(custom_bias) {
     _mlm_history_qcd_power = mlm_history_qcd_power;
     if (tabulated_luminosity &&
-        (!std::holds_alternative<std::monostate>(pdf_grid) || lepton_luminosity)) {
+        (!std::holds_alternative<std::monostate>(pdf_grid) || pdf_grid2 ||
+         lepton_luminosity)) {
         throw std::invalid_argument(
             "a tabulated luminosity replaces both parton densities: it cannot be "
             "combined with a PDF or a dressed-lepton luminosity"

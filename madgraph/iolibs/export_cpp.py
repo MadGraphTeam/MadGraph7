@@ -3486,7 +3486,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
         try:
             os.makedirs(os.path.dirname(target), exist_ok=True)
             shutil.copytree(source, target, ignore=shutil.ignore_patterns(
-                '*.o', '*.mod', '*.a', 'test', 'upc_luminosity_table', 'tables'))
+                '*.o', '*.mod', '*.a', 'test', 'upc_luminosity_table',
+                'upc_luminosity_table.compiler', 'tables'))
             shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(self.dir_path, 'Source', 'PDF'))
         except Exception as error:
             logger.warning('could not ship the gamma-UPC sources: %s', error)

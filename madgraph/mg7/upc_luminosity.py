@@ -16,6 +16,8 @@ Momentum fractions are per nucleon: an ion of energy E and mass number A is a
 beam of nucleons of energy E/A, so e_cm is sqrt(s_NN) and x = A x_madevent.
 """
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import logging
@@ -23,6 +25,7 @@ import math
 import os
 import shutil
 import subprocess
+import tempfile
 
 logger = logging.getLogger('madevent.upc_luminosity')
 
@@ -77,18 +80,46 @@ def table_xmin(tau_min):
     return min(DEFAULT_XMIN, 10. ** math.floor(math.log10(tau_min)))
 
 
+def _dependencies(gamma_dir):
+    """Every file the tabulation executable is built from: the gamma-UPC
+    sources, the driver, and the pdf.inc whose commons the driver fills."""
+    return ([os.path.join(gamma_dir, name) for name in _SOURCES]
+            + [os.path.join(os.path.dirname(gamma_dir), 'pdf.inc')])
+
+
+@contextlib.contextmanager
+def _locked(gamma_dir):
+    """Hold the lock of this gamma-UPC directory: runs or cluster jobs
+    starting together compile its objects and write its tables one at a
+    time (the second then finds the first's table)."""
+    os.makedirs(os.path.join(gamma_dir, 'tables'), exist_ok=True)
+    with open(os.path.join(gamma_dir, 'tables', '.lock'), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def _compile(gamma_dir, fortran_compiler):
+    """The tabulation executable, (re)built if a dependency or the compiler
+    changed. Call it with the directory locked."""
     exe = os.path.join(gamma_dir, _EXECUTABLE)
-    sources = [os.path.join(gamma_dir, name) for name in _SOURCES]
-    if os.path.exists(exe) and all(
-            os.path.getmtime(exe) >= os.path.getmtime(src) for src in sources):
-        return exe
     compiler = shutil.which(fortran_compiler or 'gfortran')
     if compiler is None:
         raise RuntimeError(
             'beam.upc_flux needs a Fortran compiler to tabulate the gamma-UPC '
             'luminosity once: %s was not found (fortran_compiler in '
             'input/mg5_configuration.txt)' % (fortran_compiler or 'gfortran'))
+    stamp = exe + '.compiler'
+    built_with = None
+    if os.path.exists(stamp):
+        with open(stamp) as fsock:
+            built_with = fsock.read().strip()
+    if os.path.exists(exe) and built_with == compiler and all(
+            os.path.getmtime(exe) >= os.path.getmtime(dep)
+            for dep in _dependencies(gamma_dir)):
+        return exe
     logger.info('compiling the gamma-UPC luminosity tabulation (%s)', compiler)
     objects = []
     for name in _SOURCES:
@@ -104,6 +135,8 @@ def _compile(gamma_dir, fortran_compiler):
                             capture_output=True, text=True)
     if result.returncode:
         raise RuntimeError('linking %s failed:\n%s' % (_EXECUTABLE, result.stderr))
+    with open(stamp, 'w') as fsock:
+        fsock.write(compiler + '\n')
     return exe
 
 
@@ -121,8 +154,8 @@ def table_path(gamma_dir, label, ions, beam_energies, xmin,
 def _driver_hash(gamma_dir):
     """The sources: a new gamma-UPC version gives new tables."""
     sha = hashlib.sha1()
-    for name in _SOURCES:
-        with open(os.path.join(gamma_dir, name), 'rb') as fsock:
+    for path in _dependencies(gamma_dir):
+        with open(path, 'rb') as fsock:
             sha.update(fsock.read())
     return sha.hexdigest()[:16]
 
@@ -133,23 +166,32 @@ def tabulate(gamma_dir, label, ions, beam_energies, xmin, fortran_compiler=None,
     path = table_path(gamma_dir, label, ions, beam_energies, xmin, knots)
     if os.path.exists(path):
         return path
-    exe = _compile(gamma_dir, fortran_compiler)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + '.tmp'
-    stdin = '%s\n%d %d %d %d\n%.17g %.17g\n%.17g %d\n%s\n' % (
-        label, ions[0][0], ions[0][1], ions[1][0], ions[1][1],
-        float(beam_energies[0]), float(beam_energies[1]), xmin, knots, tmp)
-    logger.info(
-        'tabulating the gamma-UPC %s luminosity (Z,N = %s, %s) down to x = %g; '
-        'with ions this takes a few minutes, once', label, ions[0], ions[1], xmin)
-    log_path = path + '.log'
-    with open(log_path, 'w') as log:
-        result = subprocess.run([exe], input=stdin, text=True, cwd=gamma_dir,
-                                stdout=log, stderr=subprocess.STDOUT)
-    if result.returncode or not os.path.exists(tmp):
-        raise RuntimeError('the gamma-UPC luminosity tabulation failed (exit %s), '
-                           'see %s' % (result.returncode, log_path))
-    os.replace(tmp, path)
+    with _locked(gamma_dir):
+        # another job may have written it while this one waited
+        if os.path.exists(path):
+            return path
+        exe = _compile(gamma_dir, fortran_compiler)
+        fd, tmp = tempfile.mkstemp(prefix=os.path.basename(path) + '.',
+                                   suffix='.tmp', dir=os.path.dirname(path))
+        os.close(fd)
+        stdin = '%s\n%d %d %d %d\n%.17g %.17g\n%.17g %d\n%s\n' % (
+            label, ions[0][0], ions[0][1], ions[1][0], ions[1][1],
+            float(beam_energies[0]), float(beam_energies[1]), xmin, knots, tmp)
+        logger.info(
+            'tabulating the gamma-UPC %s luminosity (Z,N = %s, %s) down to x = %g; '
+            'with ions this takes a few minutes, once', label, ions[0], ions[1], xmin)
+        log_path = path + '.log'
+        try:
+            with open(log_path, 'w') as log:
+                result = subprocess.run([exe], input=stdin, text=True, cwd=gamma_dir,
+                                        stdout=log, stderr=subprocess.STDOUT)
+            if result.returncode or not os.path.getsize(tmp):
+                raise RuntimeError('the gamma-UPC luminosity tabulation failed '
+                                   '(exit %s), see %s' % (result.returncode, log_path))
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
     return path
 
 
@@ -163,7 +205,7 @@ class UPCLuminosity:
         self.xmin = xmin
         self.path = tabulate(gamma_dir, label, self.ions, beam_energies, xmin,
                              fortran_compiler)
-        # one prefix per table: a later subprocess may need a lower xmin
+        # the globals of the table, named by its range
         self.prefix = 'upc%d_' % round(-math.log10(xmin))
         self.grid = madspace.PdfGrid(self.path)
         for context in contexts:

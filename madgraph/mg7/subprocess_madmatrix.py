@@ -1386,6 +1386,13 @@ class MadgraphSubprocess:
             sqrt_s = max(sqrt_s, self.cuts.sqrt_s_min())
         return sqrt_s ** 2 / self.process.e_cm ** 2
 
+    def non_photon_incoming(self) -> list[int]:
+        """The incoming partons of this subprocess, over all its flavours, that
+        are not photons (which a gamma-UPC luminosity gives no flux)."""
+        n_in = len(clean_pids(self.meta["incoming"]))
+        return sorted({pid for option in _flavor_options(self.meta, self.unmerged_meta)
+                       for pid in option[:n_in] if pid != 22})
+
     @property
     def lepton_sampling_power(self) -> float:
         """Nonzero switches the beam split to the dressed-lepton one.
@@ -1522,7 +1529,7 @@ class MadgraphSubprocess:
 
         cross_sections = []
         dressed = self.process.lepton_density
-        upc = self.process.upc_luminosity(self.upc_tau_min())
+        upc = self.process.upc_luminosity()
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()

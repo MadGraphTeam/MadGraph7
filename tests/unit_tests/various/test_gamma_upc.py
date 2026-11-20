@@ -593,8 +593,32 @@ class TestGammaUPCMG7RunCard(unittest.TestCase):
             self.assertEqual(again.upc_ions(), (PB208, PB208))
         finally:
             shutil.rmtree(tmpdir)
-        card.set_lo_beam_param('pdlabel', 'nn23lo1')
+        # madevent's view of the run (legacy keys)
+        self.assertEqual(card['lpp1'], 2)
+        self.assertEqual(card['pdlabel'], 'chf0n0n')
+        self.assertEqual((card['nb_proton2'], card['nb_neutron2']), PB208)
+
+    def test_set_leave_upc(self):
+        """lpp 2 alone is gamma-UPC (ChFF), never the proton PDFs; another
+        pdlabel or an lhaid (madevent's EPA photon) is refused while lpp = 2;
+        another lpp leaves gamma-UPC and resets the ions"""
+        card = bannermod.RunCardMG7()
+        card.set_lo_beam_param('lpp', '2')
+        self.assertEqual(card['beam']['upc_flux'], 'chff')
+        self.assertFalse(card['beam']['leptonic'])
+        card = self.ion_card('chf0n0n')
+        for name, value in (('pdlabel', 'nn23lo1'), ('lhaid', '331700'),
+                            ('pdlabel', 'none')):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                card.set_lo_beam_param(name, value)
+            self.assertEqual(card['beam']['upc_flux'], 'chf0n0n')
+        card.set_lo_beam_param('lpp', '1')
         self.assertEqual(card['beam']['upc_flux'], '')
+        self.assertEqual(card.upc_ions(), (PROTON, PROTON))
+        self.assertFalse(card['beam']['leptonic'])
+        self.assertEqual(card['lpp1'], 1)
+        card.check_validity()
+        card.set_lo_beam_param('pdlabel', 'nn23lo1')
 
     def test_validity(self):
         """invalid labels, unavailable neutron tags, ions without upc_flux and
@@ -685,3 +709,63 @@ class TestGammaUPCMG7Luminosity(unittest.TestCase):
             self.assertEqual(os.path.getmtime(path), mtime)
         finally:
             shutil.rmtree(tmpdir)
+
+    def test_parallel_tabulation(self):
+        """jobs tabulating the same table at once wait for each other: one
+        compilation, one table, no temporary file left behind"""
+        if not misc.which('gfortran'):
+            raise unittest.SkipTest('gfortran not available')
+        import threading
+        from madgraph.mg7 import upc_luminosity as upc
+        tmpdir = tempfile.mkdtemp(prefix='upc_table')
+        try:
+            pdf_dir = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF')
+            gamma_dir = pjoin(tmpdir, 'PDF', 'gammaUPC')
+            shutil.copytree(pjoin(pdf_dir, 'gammaUPC'), gamma_dir)
+            shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(tmpdir, 'PDF'))
+            args = (gamma_dir, 'chff', (PROTON, PROTON), (6500., 6500.), 1e-2)
+            paths, errors = [], []
+
+            def job():
+                try:
+                    paths.append(upc.tabulate(*args, knots=2))
+                except Exception as error:  # reported by the main thread
+                    errors.append(error)
+            threads = [threading.Thread(target=job) for _ in range(3)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            self.assertEqual(errors, [])
+            self.assertEqual(len(set(paths)), 1)
+            tables = os.listdir(pjoin(gamma_dir, 'tables'))
+            self.assertEqual([t for t in tables if t.endswith('.tmp')], [])
+            self.assertEqual(len([t for t in tables if t.endswith('.dat')]), 1)
+            # a changed pdf.inc makes another table (and rebuilds the driver)
+            with open(pjoin(tmpdir, 'PDF', 'pdf.inc'), 'a') as fsock:
+                fsock.write('c touched\n')
+            self.assertNotEqual(upc.table_path(*args, knots=2), paths[0])
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+class TestGammaUPCMG7Subprocess(unittest.TestCase):
+    """a gamma-UPC run refuses the subprocesses with another incoming parton"""
+
+    def test_non_photon_incoming(self):
+        try:
+            from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess
+        except ImportError as error:
+            raise unittest.SkipTest('mg7 not importable: %s' % error)
+        import types
+        photons = types.SimpleNamespace(
+            meta={'incoming': [22, 22], 'outgoing': [15, -15],
+                  'flavors': [{'options': [[22, 22, 15, -15]]}]},
+            unmerged_meta=None)
+        self.assertEqual(MadgraphSubprocess.non_photon_incoming(photons), [])
+        quarks = types.SimpleNamespace(
+            meta={'incoming': [2, -2], 'outgoing': [13, -13],
+                  'flavors': [{'options': [[2, -2, 13, -13], [-2, 2, 13, -13],
+                                           [22, 22, 13, -13]]}]},
+            unmerged_meta=None)
+        self.assertEqual(MadgraphSubprocess.non_photon_incoming(quarks), [-2, 2])

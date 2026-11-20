@@ -195,7 +195,7 @@ public:
      *                                          two-photon luminosity),
      *                                          replacing both parton
      *                                          densities. Not together with
-     *                                          @p pdf_grid or
+     *                                          @p pdf_grid, @p pdf_grid2 or
      *                                          @p lepton_luminosity.
      */
     Integrand(
