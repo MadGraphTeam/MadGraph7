@@ -478,6 +478,8 @@ c**************************************************************************
       double precision local_born,amp2(ngraphs),jamp2(0:ncolor)
       double precision ret_amp_split(amp_split_size)
       double precision amp_split_finite_ML(amp_split_size)
+c bornsoftvirtual reads the per-order finite part from this common.
+      common /to_amp_split_finite/amp_split_finite_ML
       double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
       double complex ans_cnt(2,nsplitorders)
       double complex ret_saveamp(ngraphs,max_bhel)
