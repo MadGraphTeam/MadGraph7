@@ -15,7 +15,7 @@ import tomllib
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -2840,28 +2840,40 @@ class VirtualProfileResult:
     one_thread_calls: int = 0
 
     def cli_json(self) -> dict[str, object]:
-        """The JSON form (``cli.main``): every field, the one-thread timing's
-        only when it ran (one thread: the document as before it existed)."""
+        """The JSON form (``cli.main``), plain JSON values at every level
+        (``_plain``): every field, the one-thread timing's only when it ran
+        (one thread: the document as before it existed); at each precision
+        level, binary64 and the reference, ``prepared_seconds`` only where
+        its warm entry ran."""
 
-        out = {item.name: getattr(self, item.name) for item in fields(self)}
+        out = cast("dict[str, Any]", _plain(self))
         if self.one_thread_seconds_per_point is None:
             out.pop("one_thread_seconds_per_point")
             out.pop("one_thread_calls")
         if self.prepared_seconds is None:
             # No warm entry ran: the document as before it existed.
             out.pop("prepared_seconds")
-        reference = self.reference
-        if reference is not None and reference.prepared_seconds is None:
-            out["reference"] = {
-                item.name: getattr(reference, item.name)
-                for item in fields(reference)
-                if item.name != "prepared_seconds"
-            }
+        if self.reference is not None and self.reference.prepared_seconds is None:
+            out["reference"].pop("prepared_seconds")
         if not self.reference_skipped:
             out.pop("reference_skipped")
         if self.reference_point_seconds is None:
             out.pop("reference_point_seconds")
         return out
+
+
+def _plain(value: object) -> object:
+    """``value`` as plain JSON values (``VirtualProfileResult.cli_json``): a
+    dataclass as its fields, a sequence as a list, a mapping with string
+    keys; leaves as they are."""
+
+    if is_dataclass(value) and not isinstance(value, type):
+        return {item.name: _plain(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [_plain(entry) for entry in value]
+    if isinstance(value, Mapping):
+        return {str(key): _plain(entry) for key, entry in value.items()}
+    return value
 
 
 @dataclass(frozen=True, slots=True)
