@@ -60,12 +60,12 @@ def test_percentile_classes_and_values_on_a_thousand_points():
     true_in = [true[k] for k in order]
     est_in = [t + (3.0 if t < 0.1 else 1.0) for t in true_in]
     rows = percentile_table(true_in, est_in)
-    assert [row.percentile for row in rows] == [0.001, 0.01, 0.1, 0.5]
-    assert [row.rank for row in rows] == [1, 10, 100, 500]
-    assert [row.count for row in rows] == [1, 9, 90, 400]
+    assert [row.percentile for row in rows] == [0.001, 0.01, 0.1, 0.5, 1.0]
+    assert [row.rank for row in rows] == [1, 10, 100, 500, 1000]
+    assert [row.count for row in rows] == [1, 9, 90, 400, 500]
     # The value at percentile p is the true digits of the point of rank
-    # floor(p N) of the sorted list (worst first).
-    assert [row.digits for row in rows] == [0.0, 0.09, 0.99, 4.99]
+    # floor(p N) of the sorted list (worst first); 100 %: the best point.
+    assert [row.digits for row in rows] == [0.0, 0.09, 0.99, 4.99, 9.99]
     assert rows[0].deviation_min == rows[0].deviation_max == pytest.approx(3.0)
     assert rows[1].deviation_median == pytest.approx(3.0)
     assert rows[1].signed_median == pytest.approx(3.0)
@@ -76,21 +76,44 @@ def test_percentile_classes_and_values_on_a_thousand_points():
 
 def test_small_samples_leave_classes_empty_and_name_the_needed_count():
     rows = percentile_table([5.0, 1.0, 3.0, 9.0], [5.0, 0.5, 4.0, 9.0])
-    assert [row.rank for row in rows] == [0, 0, 0, 2]
-    assert [row.count for row in rows] == [0, 0, 0, 2]
-    assert [row.digits for row in rows] == [None, None, None, 3.0]
+    assert [row.rank for row in rows] == [0, 0, 0, 2, 4]
+    assert [row.count for row in rows] == [0, 0, 0, 2, 2]
+    assert [row.digits for row in rows] == [None, None, None, 3.0, 9.0]
     assert rows[0].deviation_median is None and rows[0].signed_median is None
     # The median class: the two worst points (1.0 -> 0.5, 3.0 -> 4.0).
     assert rows[3].deviation_min == 0.5 and rows[3].deviation_max == 1.0
     assert rows[3].signed_median == pytest.approx(0.25)
-    assert [row.needed_points for row in rows] == [1000, 100, 10, 2]
+    assert [row.needed_points for row in rows] == [1000, 100, 10, 2, 1]
     assert needed_points(0) == 1000
-    # One point: only the median rank floor(N/2) = 0 is unresolved as well.
+    # One point: the median rank floor(N/2) = 0 is unresolved as well; the
+    # 100 % row holds it.
     single = percentile_table([7.0], [8.0])
-    assert all(row.count == 0 and row.digits is None for row in single)
+    assert all(row.count == 0 and row.digits is None for row in single[:-1])
+    assert (single[-1].rank, single[-1].count, single[-1].digits) == (1, 1, 7.0)
     assert percentile_table([], []) == tuple(percentile_table([], [], PERCENTILES))
     with pytest.raises(ValueError, match="aligned"):
         percentile_table([1.0], [])
+
+
+@pytest.mark.parametrize("n", [1, 2, 10, 52, 1000])
+def test_the_classes_add_up_to_every_point_with_the_best_last(n):
+    """The 100 % row: the point of rank N (the best), its class the ranks
+    floor(N / 2) < rank <= N; every class floor(p N) - floor(p' N), all of
+    them N; failed points (no estimate) counted in their class."""
+
+    true = [((7 * k) % n) / 10 for k in range(n)]
+    estimated = [None if k % 5 == 0 else t + 1.0 for k, t in enumerate(true)]
+    rows = percentile_table(true, estimated)
+    assert len(rows) == len(PERCENTILES) and rows[-1].percentile == 1.0
+    ranks = [math.floor(p * n) for p in PERCENTILES]
+    assert [row.rank for row in rows] == ranks
+    assert [row.count for row in rows] == [
+        rank - previous for rank, previous in zip(ranks, [0, *ranks[:-1]], strict=True)
+    ]
+    assert sum(row.count for row in rows) == n
+    assert rows[-1].digits == max(true)
+    assert rows[-1].count == n - n // 2
+    assert sum(row.failed for row in rows) == sum(e is None for e in estimated)
 
 
 def test_needed_points_for_other_percentiles():
@@ -184,9 +207,11 @@ def test_failed_points_rank_worst_and_classes_skip_their_estimates():
     true = [0.0, 0.0, 12.0, 13.0, 14.0, 15.0]
     estimated = [None, None, 10.0, 12.0, 11.0, 15.0]
     rows = percentile_table(true, estimated)
-    # N = 6: only the 50 % class (ranks 1..3) is populated: both failures
-    # and the 12-digit point, whose deviation is the class's only one.
-    assert [row.rank for row in rows] == [0, 0, 0, 3]
+    # N = 6: below 50 % only the 50 % class (ranks 1..3) is populated: both
+    # failures and the 12-digit point, whose deviation is the class's only
+    # one; the 100 % class holds the other three.
+    assert [row.rank for row in rows] == [0, 0, 0, 3, 6]
+    assert (rows[4].digits, rows[4].count, rows[4].failed) == (15.0, 3, 0)
     assert (rows[3].digits, rows[3].count, rows[3].failed) == (12.0, 3, 2)
     assert rows[3].deviation_min == rows[3].deviation_max == pytest.approx(2.0)
     assert rows[3].signed_median == pytest.approx(-2.0)
@@ -1293,3 +1318,118 @@ def test_the_tracker_counts_checked_reruns_as_reference_time_and_eta():
     )
     binary64 = 10 * tracker.stream_cost(("ninjars", "binary64"))
     assert eta == pytest.approx(others + binary64 + 10 * 1.4 + 4.0)
+
+
+def test_the_measured_precisions_and_their_refusals():
+    """``measured_precisions``: below the ground truth against it (digits
+    capped to the precision's range and what the truth certifies), the
+    ground truth's own estimates only, everything estimates only without a
+    truth; above it or twice: refused, naming the option and the truth."""
+
+    from pyamplicol.config.errors import ConfigurationError
+    from pyamplicol.loop_profile import GroundTruth, measured_precisions
+
+    arb60 = GroundTruth("arbitrary", 60)
+    found = measured_precisions(("binary64", "double-double", "arbitrary:60"), arb60)
+    assert [m.label for m in found] == ["b64", "dd", "arb(60)"]
+    assert [m.estimates_only for m in found] == [False, False, True]
+    assert found[0].cap == BINARY64_DIGITS
+    assert found[1].cap == pytest.approx(2 * BINARY64_DIGITS)
+    assert found[2].cap == 60.0 and not found[2].capped_by_truth
+    # arb(60) against arb(140): true digits, capped at what the truth's
+    # cross-check certifies (2^-106), below arb(60)'s own range.
+    below = measured_precisions(("arbitrary:60",), GroundTruth("arbitrary", 140))
+    assert not below[0].estimates_only and below[0].capped_by_truth
+    assert below[0].cap == pytest.approx(2 * BINARY64_DIGITS)
+    dd = measured_precisions(
+        ("binary64", "double-double"), GroundTruth("double-double")
+    )
+    assert [m.estimates_only for m in dd] == [False, True]
+    none = measured_precisions(("binary64", "double-double"), GroundTruth("none"))
+    assert all(m.estimates_only for m in none)
+    with pytest.raises(ConfigurationError, match="--measured-precisions arbitrary:60"):
+        measured_precisions(("arbitrary:60",), GroundTruth("double-double"))
+    with pytest.raises(ConfigurationError, match="--ground-truth double-double"):
+        measured_precisions(
+            ("double-double", "arbitrary:40"), GroundTruth("double-double")
+        )
+    with pytest.raises(ConfigurationError, match="twice"):
+        measured_precisions(
+            ("arbitrary", "arbitrary:500"), GroundTruth("arbitrary", 600)
+        )
+
+
+def test_every_measured_precision_has_its_tables_and_json():
+    """Synthetic rows: binary64's tables as they are (with the 100 % row and
+    no class column), then double-double's against the truth and the truth's
+    own estimates-only pair, titled with their precision, in the order
+    given; the JSON keeps today's keys and adds the entries under
+    ``stability_setup.measured_precisions``."""
+
+    from pyamplicol.cli.main import write_result
+    from pyamplicol.loop_profile import GroundTruth, measured_precisions
+
+    def row(digits, estimated, estimate_only=False):
+        return BackendStability(
+            "tirust",
+            points=len(digits),
+            true_digits=() if estimate_only else digits,
+            estimated_digits=estimated,
+            percentiles=percentile_table(
+                estimated if estimate_only else digits,
+                [None] * len(digits) if estimate_only else estimated,
+            ),
+            seconds=1.0,
+            estimate_only=estimate_only,
+        )
+
+    b64 = row((1.0, 3.0, 5.0, 9.0), (2.0, 3.0, 4.0, 9.0))
+    dd = row((20.0, 25.0, 28.0, 31.0), (18.0, 22.0, 25.0, 27.0))
+    own = row((24.0, 26.0, 28.0, 30.0), (24.0, 26.0, 28.0, 30.0), True)
+    truth = GroundTruth("arbitrary", 60)
+    entries = [
+        {**m.record(), "stability": None if m.label == "b64" else rows}
+        for m, rows in zip(
+            measured_precisions(("binary64", "double-double", "arbitrary:60"), truth),
+            (None, (dd,), (own,)),
+            strict=True,
+        )
+    ]
+    report = _report((b64,), truth=truth.record())
+    report = replace(
+        report,
+        stability_setup={
+            **report.stability_setup,
+            "ground_truth": truth.record(),
+            "measured_precisions": entries,
+        },
+    )
+    plain, machine = io.StringIO(), io.StringIO()
+    write_result(report, format="human", stream=plain, color=False)
+    write_result(report, format="json", stream=machine, color=False)
+    text = plain.getvalue()
+    titles = [
+        "Stable digits of binary64 vs arb(60)",
+        "Stable digits of double-double vs arb(60)",
+        "Default checks against the truth, double-double",
+        "Estimated digits of arb(60) (the ground truth)",
+        "Default checks, estimates only, arb(60)",
+    ]
+    assert all(title in text for title in titles)
+    assert [text.index(title) for title in titles] == sorted(
+        text.index(title) for title in titles
+    )
+    assert "100 %" in text and "| class" not in text and "31.00" in text
+    payload = json.loads(machine.getvalue())
+    assert len(payload["stability"][0]["percentiles"]) == 5
+    listed = payload["stability_setup"]["measured_precisions"]
+    assert [entry["label"] for entry in listed] == ["b64", "dd", "arb(60)"]
+    assert listed[0]["stability"] is None
+    assert listed[1]["stability"][0]["percentiles"][4]["digits"] == 31.0
+    assert listed[2]["estimates_only"] is True
+    # The default: no such key.
+    default = io.StringIO()
+    write_result(_report((b64,)), format="json", stream=default, color=False)
+    assert (
+        "measured_precisions" not in json.loads(default.getvalue())["stability_setup"]
+    )

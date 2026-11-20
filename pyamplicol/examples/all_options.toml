@@ -568,6 +568,14 @@ n_core = 10
 # the runtime timing then times its multiplier even when its minimal counts
 # exceed the budget.
 ground_truth = "double-double"
+# benchmark.measured_precisions: Loop artifacts: the precisions whose
+# stability the stability run measures (`--measured-precisions`), each its
+# own pair of tables in this order: "binary64" ("double", "b64"; the default
+# ["binary64"]), "double-double" ("dd"), "arbitrary[:DIGITS]" ("arb"), each
+# strictly below ground_truth (true digits against it) or ground_truth itself
+# (its estimates only, with the default checks); with ground_truth "none"
+# every entry is estimates only.
+measured_precisions = ["binary64"]
 # benchmark.checked: Loop artifacts: time the checked mode (`--checked`): the
 # backends' own acceptance checks, a refused point served best-effort, the
 # default backend as auto. Default false: one fully optimistic binary64 pass

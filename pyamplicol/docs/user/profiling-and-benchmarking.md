@@ -247,7 +247,9 @@ group) with the ratio between the backends (the faster highlighted), and the
 stable digits of pure binary64
 against a re-run in the reference precision (`--ground-truth`: double-double
 by default, or arbitrary precision) over flat points at the percentiles 1 per mil,
-1 %, 10 % and 50 % (a point a backend refuses in binary64 measured with its
+1 %, 10 %, 50 % and 100 % (other precisions too with `--measured-precisions`,
+each its own tables, e.g. `--measured-precisions double dd --ground-truth
+arb:60`; a point a backend refuses in binary64 measured with its
 best-effort value at its true digits; only a point with no binary64 value
 ranked at 0 digits), with the accuracy of the default estimate against
 that truth (one default rotation on NinjaRS's points; one default rotation and

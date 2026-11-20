@@ -332,7 +332,9 @@ def _profile(report: Any) -> list[Block]:
                     (
                         "percentile",
                         "the points sorted by their estimated digits from worst "
-                        "to best: the row 1 % is the point below which 1 % lie",
+                        "to best: the row 1 % is the point below which 1 % lie, "
+                        "100 % the best point (the row p holds the points "
+                        "between floor(p' N) and floor(p N), p' the row above)",
                     ),
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
@@ -340,7 +342,6 @@ def _profile(report: Any) -> list[Block]:
                         "the estimated stable digits of the point at that "
                         "percentile; '- (N >= n)' when n points are needed",
                     ),
-                    ("class", "the number of points between this and the previous row"),
                 ],
             ),
             (
@@ -384,15 +385,18 @@ def _profile(report: Any) -> list[Block]:
                     (
                         "percentile",
                         "the points sorted from worst to best: the row 1 % is the "
-                        "point below which 1 % of the points lie",
+                        "point below which 1 % of the points lie, 100 % the best "
+                        "point (the row p holds the points between floor(p' N) "
+                        "and floor(p N), p' the row above)",
                     ),
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
                         "true digits",
                         "the stable digits of the point at that percentile; "
-                        "'- (N >= n)' when n points are needed to fill it",
+                        "'- (N >= n)' when n points are needed to fill it; "
+                        "'(k failed)': k points of the row's class have no "
+                        "value (read at 0 digits)",
                     ),
-                    ("class", "the number of points between this and the previous row"),
                     (
                         "|est-true|",
                         "how far the binary64 estimate of the digits ("
@@ -462,6 +466,32 @@ def _profile(report: Any) -> list[Block]:
                 ],
             ),
         ]
+    entries = (report.stability_setup or {}).get("measured_precisions") or []
+    if any(entry.get("stability") is not None for entry in entries):
+        blocks.append(
+            (
+                "Stable / estimated digits of <precision> (--measured-precisions)",
+                [
+                    (
+                        None,
+                        "Each --measured-precisions entry other than binary64 is "
+                        "its own pair of tables, read as binary64's: its points "
+                        "evaluated in that precision with the default checks "
+                        "(best-effort values, lane rescue as that arithmetic "
+                        "has it). Below the ground truth: true digits against "
+                        "it, capped to the precision's own range (double-double "
+                        "-log10(2^-106) = 31.92, arbitrary precision its "
+                        "digits) and to what the ground truth certifies (the "
+                        "title says 'capped at the ground truth's D digits' "
+                        "when that is the lower). The ground truth's own "
+                        "precision: its estimated digits only. The per-sample "
+                        "records (--json, --samples-output) hold every value "
+                        "as the exact decimal text of its carrier and the "
+                        "digits uncapped too.",
+                    ),
+                ],
+            )
+        )
     blocks.append(
         (
             "Failure causes (under a table, after ---)",

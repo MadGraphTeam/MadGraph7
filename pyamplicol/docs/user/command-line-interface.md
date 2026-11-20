@@ -1149,6 +1149,47 @@ best-effort counts with the binary64 time, without the truth-based columns;
 the header says `none (estimates only)` and the JSON's `ground_truth`
 `{"arithmetic": "none", "label": "none"}`.
 
+**Measured precisions.** `--measured-precisions` (`benchmark.measured_precisions`,
+a list; on the command line space- or comma-separated,
+`--measured-precisions double dd arb:60`) names the precisions whose
+stability the stability run measures, each its own pair of tables in the
+order given; the default is `binary64` alone (today's tables). An entry is
+`binary64` (`double`, `b64`) or what `--ground-truth` accepts
+(`double-double`/`dd`, `arbitrary`/`arb`, `arbitrary:DIGITS`/`arb:DIGITS`).
+Each entry's points are evaluated as binary64's are, in its arithmetic: the
+default checks (one default rotation; on TIRust's points also the rescaled
+reduction-direction check), a refused point served best-effort, lane rescue
+as that arithmetic has it (`--no-lane-rescue` turns it off). An entry below
+the ground truth is read against it ("Stable digits of double-double vs
+arb(60)"): its true and estimated digits capped to its own range
+(double-double -log10(2^-106) = 31.92, arbitrary precision its digits) and
+to what the ground truth certifies (its range; an arbitrary-precision truth
+at most its cross-check's 2^-106), the title adding "capped at the ground
+truth's D digits" when that is the lower. The ground truth's own precision
+has its estimates-only tables ("Estimated digits of arb(60) (the ground
+truth)" and "Default checks, estimates only, arb(60)"): its points are
+evaluated in it with the default checks, a stream of its own beside the
+reference's evaluations. A ground truth not listed gets no table and no
+checks beyond its certification above (with an arbitrary-precision truth
+the cross-check between the backends and the checked re-run of a reference
+it does not certify; with one backend one checked evaluation per point). An
+entry above the ground truth (or listed twice) is refused before any work;
+with `--ground-truth none` every entry is estimates-only. binary64's stream
+always runs (its tables only when listed). The precisions given are
+honoured; the stability plan and its ETA count each extra stream at a lower
+bound of its point (a checked binary64 point below the ground truth, the
+plain reference point for the ground truth's own) until the run measures it,
+and the default budget's deadline admits points at the measured costs of
+every stream. The runtime timing is not changed by the option. In `--json`
+the other precisions' rows are under `stability_setup.measured_precisions`
+(each entry its precision, `estimates_only`, `digits_cap`,
+`capped_by_truth` and `stability`, the same rows as `stability`; binary64's
+entry `stability: null`, its rows where they always are); the key is absent
+with the default. The per-sample records (`--json`, `--samples-output`: its
+`measured_precisions`) of a wider precision hold its value and sectors as
+the exact decimal text of its carrier's value; every precision's records
+also carry `estimate_digits_uncapped` and `true_digits_uncapped`.
+
 **Stability.** Over N flat points (`benchmark.stability_points` /
 `--stability-points`; by default as many as one minute per worker affords,
 at least five; with `--completion-time` what is left of it; drawn with
@@ -1201,15 +1242,19 @@ reference failed has an unknown truth and is left out (shown as
 "no ref."). The measured points (N in what follows) are all others.
 
 The measured points are sorted by true digits from worst to best. At the
-percentiles 1 per mil, 1 %, 10 % and 50 % the table shows the true digits of
-the point of rank floor(p N) (1-based; the 50 % row is the median, the lower
-middle point for an even N), and over the class of points of rank
-floor(p' N) < rank <= floor(p N) (p' the previous percentile, 0 for the
-first) the point count (with its failed points), the min, median and max of
-|estimated - true| and the median of estimated - true (positive: the
-estimate is optimistic), both over the class's points with an estimate. At
+percentiles 1 per mil, 1 %, 10 %, 50 % and 100 % the table shows the true
+digits of the point of rank floor(p N) (1-based; the 50 % row is the median,
+the lower middle point for an even N; the 100 % row the best point), and
+over the class of points of rank floor(p' N) < rank <= floor(p N) (p' the
+previous percentile, 0 for the first; the classes add up to N) the min,
+median and max of |estimated - true| and the median of estimated - true
+(positive: the estimate is optimistic), both over the class's points with
+an estimate. A class holds floor(p N) - floor(p' N) points, so the table
+shows no count (`--json` keeps each class's `count` and `failed`); a class
+with points without a value says so after its digits, `0.00 (2 failed)`. At
 small N a class can be empty (`-`; the table prints the N a populated class
-needs: 1000 measured points for the 1 per mil class, 2 for the median).
+needs: 1000 measured points for the 1 per mil class, 2 for the median, 1
+for the 100 % row).
 
 A second table compares the default checks with the truth, per backend: the
 measured points, those served best-effort / without a value in binary64, the points flagged unstable

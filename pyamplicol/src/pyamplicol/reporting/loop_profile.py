@@ -746,16 +746,20 @@ def _stability_time(row: Any, report: Any, color: bool) -> tuple[str, ...]:
     return text, _reference_ratio(float(reference) / float(binary64), label, color)
 
 
-def _digits_colour(digits: float, target_digits: float) -> str:
+def _digits_colour(
+    digits: float, target_digits: float, cap: float | None = None
+) -> str:
     """Red below the target's digits, yellow below the target's digits plus
-    half of binary64's remaining ones (a display convention: less than half
-    of the margin above the target is left), green above."""
+    half of the precision's remaining ones (``cap``, default binary64's; a
+    display convention: less than half of the margin above the target is
+    left), green above."""
 
     from pyamplicol.loop_profile import BINARY64_DIGITS
 
+    top = BINARY64_DIGITS if cap is None else cap
     if digits < target_digits:
         return palette.BAD
-    if digits < (target_digits + BINARY64_DIGITS) / 2:
+    if digits < (target_digits + top) / 2:
         return palette.RECOVERED
     return palette.GOOD
 
@@ -780,7 +784,17 @@ def _percent_parts(part: int, whole: int) -> tuple[str, ...]:
     return (str(part), f"({100 * part / whole:.1f} %)") if whole else (str(part),)
 
 
-_LABELS = {0.001: "1 per mil", 0.01: "1 %", 0.1: "10 %", 0.5: "50 %"}
+_LABELS = {0.001: "1 per mil", 0.01: "1 %", 0.1: "10 %", 0.5: "50 %", 1.0: "100 %"}
+
+
+def _with_failed(digits: str, failed: int, color: bool) -> Cell:
+    """A percentile row's digits cell, with its class's points without a
+    value (``StabilityPercentile.failed``, read at 0 digits) named after it:
+    the class sizes follow from the percentiles and N, those do not."""
+
+    if not failed:
+        return digits
+    return (digits, palette.paint(f"({failed} failed)", palette.BAD, color=color))
 
 
 def interrupted_line(setup: Any, color: bool) -> str | None:
@@ -827,8 +841,10 @@ def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     )
     table = palette.table(
         prettytable,
-        ("percentile", "backend", "est. digits", "class"),
-        f"Estimated digits of binary64 (no ground truth), {points} flat points "
+        ("percentile", "backend", "est. digits"),
+        f"Estimated digits of {_measured_name(setup)} ("
+        + ("the ground truth" if _truth_present(setup) else "no ground truth")
+        + f"), {points} flat points "
         f"(sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})",
         color=color,
     )
@@ -838,7 +854,11 @@ def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         for position, row in enumerate(served):
             item = row.percentiles[index]
             digits = (
-                _number(item.digits, color, _digits_colour(item.digits, target_digits))
+                _number(
+                    item.digits,
+                    color,
+                    _digits_colour(item.digits, target_digits, _cap(setup)),
+                )
                 if item.digits is not None
                 else palette.paint(
                     f"- (N >= {item.needed_points})", palette.MUTED, color=color
@@ -852,7 +872,6 @@ def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                         else "",
                         _backend_label(row.backend, report.default_backend, color),
                         digits,
-                        str(item.count),
                     ),
                     position == len(served) - 1 and index < count - 1,
                 )
@@ -861,8 +880,8 @@ def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     verdicts = palette.table(
         prettytable,
         ("backend", "evaluated", "best-eff./none", "flagged", "time"),
-        f"Default checks, estimates only (target {target:g} = "
-        f"{target_digits:.2f} digits)",
+        f"Default checks, estimates only{_measured_suffix(setup)} (target "
+        f"{target:g} = {target_digits:.2f} digits)",
         color=color,
     )
     entries: list[tuple[Sequence[Cell], bool]] = []
@@ -927,6 +946,60 @@ def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     return blocks
 
 
+def _measured_name(setup: Any) -> str:
+    """The precision a stability table pair reads: binary64, or the measured
+    precision of its view (``_measured_tables``)."""
+
+    return str((setup.get("measured_precision") or {}).get("precision") or "binary64")
+
+
+def _measured_suffix(setup: Any) -> str:
+    """ ", <precision>" after a checks table's title for a measured precision
+    other than binary64 (binary64's titles as they were)."""
+
+    measured = setup.get("measured_precision")
+    return "" if not measured else f", {measured['precision']}"
+
+
+def _cap(setup: Any) -> float | None:
+    """The digits cap of the view's measured precision (None: binary64's)."""
+
+    measured = setup.get("measured_precision")
+    return None if not measured else float(measured["digits_cap"])
+
+
+def _truth_present(setup: Any) -> bool:
+    truth = setup.get("ground_truth") or {}
+    return truth.get("arithmetic", "none") != "none"
+
+
+def _measured_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
+    """The stability tables of every measured precision in the order given
+    (``stability_setup["measured_precisions"]``, present only when not the
+    default): binary64's as they are, every other one's from its own rows
+    in a view of the report (the failure causes stay under binary64's)."""
+
+    from dataclasses import replace
+
+    setup = report.stability_setup or {}
+    entries = setup.get("measured_precisions")
+    if not entries:
+        return _stability_tables(report, prettytable, color)
+    blocks: list[str] = []
+    for entry in entries:
+        if entry.get("stability") is None:
+            blocks += _stability_tables(report, prettytable, color)
+            continue
+        view = replace(
+            report,
+            stability=tuple(entry["stability"]),
+            stability_setup={**setup, "measured_precision": entry},
+            failure_causes=(),
+        )
+        blocks += _stability_tables(view, prettytable, color)
+    return blocks
+
+
 def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     if any(getattr(row, "estimate_only", False) for row in report.stability or ()):
         return _estimate_tables(report, prettytable, color)
@@ -940,9 +1013,16 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         if setup.get("interrupted")
         else str(setup["points"])
     )
+    measured = setup.get("measured_precision") or {}
     title = (
-        f"Stable digits of binary64 vs {_truth(report)[1]}, {points} flat "
-        f"points (sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})"
+        f"Stable digits of {_measured_name(setup)} vs {_truth(report)[1]}, "
+        f"{points} flat points (sqrt(s) = {setup['sqrt_s']:g}, seed "
+        f"{setup['seed']})"
+        + (
+            f", capped at the ground truth's {float(measured['digits_cap']):.2f} digits"
+            if measured.get("capped_by_truth")
+            else ""
+        )
     )
     table = palette.table(
         prettytable,
@@ -950,7 +1030,6 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             "percentile",
             "backend",
             "true digits",
-            "class",
             "|est-true| min/med/max",
             "est-true med",
         ),
@@ -963,7 +1042,11 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         for position, row in enumerate(served):
             item = row.percentiles[index]
             digits = (
-                _number(item.digits, color, _digits_colour(item.digits, target_digits))
+                _number(
+                    item.digits,
+                    color,
+                    _digits_colour(item.digits, target_digits, _cap(setup)),
+                )
                 if item.digits is not None
                 else palette.paint(
                     f"- (N >= {item.needed_points})", palette.MUTED, color=color
@@ -981,11 +1064,6 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                     )
                 )
             )
-            counted: Cell = (str(item.count),) + (
-                (palette.paint(f"({item.failed} failed)", palette.BAD, color=color),)
-                if item.failed
-                else ()
-            )
             percentile_rows.append(
                 (
                     (
@@ -993,8 +1071,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
                         if position == 0
                         else "",
                         _backend_label(row.backend, report.default_backend, color),
-                        digits,
-                        counted,
+                        _with_failed(digits, item.failed, color),
                         spread,
                         _signed(item.signed_median, color),
                     ),
@@ -1013,8 +1090,8 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             "missed",
             "time",
         ),
-        f"Default checks against the truth (target {target:g} = "
-        f"{target_digits:.2f} digits)",
+        f"Default checks against the truth{_measured_suffix(setup)} (target "
+        f"{target:g} = {target_digits:.2f} digits)",
         color=color,
     )
     entries: list[Sequence[Cell]] = []
@@ -1186,7 +1263,7 @@ def loop_profile_summary(report: Any, *, prettytable: Any, color: bool) -> str:
             )
         )
     if report.stability is not None:
-        blocks += _stability_tables(report, prettytable, color)
+        blocks += _measured_tables(report, prettytable, color)
     return "\n\n".join(blocks)
 
 
