@@ -38,6 +38,14 @@ of check_sa.exe, so only the check it belongs to.
    comparison as the helicity sum and with one signed helicity per event (--rnd-hel,
    negative |M|^2 and helicities of both signs included), on the events above the
    rounding residue of the interferences that vanish (colour, flavour).
+   Only with --only (not in the GPU CI, to fit its time limit; the CPU acceptance test
+   test_gpu_backend_host_emulation runs the axial one on host-emulated HIP):
+   mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocesses that fold crossings
+   (P1_gQ_gogoQ...), with running flavour couplings: the same comparison as above.
+   axial_crossed_gpu_vs_cpu: SM ``p p > z j --axial_gauge=True``, the subprocess that
+   folds crossings (P1_gQ_zQ): the gluon wavefunction is vxxxxxr in the axial gauge of
+   another external leg, whose momentum a crossed event reads from its own input slot
+   (xperm of the reference leg): the same comparison as above.
 4. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
    non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
    synchronise with the default stream) gives the same |M|^2 and helicities as on the
@@ -73,9 +81,11 @@ import time
 
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
+# the checks run by default (the GPU CI); OPTIONAL_CHECKS only with --only
 CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel',
           'crossed_massive_gpu_vs_cpu', 'signed_crossed_gpu_vs_cpu',
           'nonblocking_stream', 'helicity_index')
+OPTIONAL_CHECKS = ('mssm_crossed_gpu_vs_cpu', 'axial_crossed_gpu_vs_cpu')
 
 results = {}
 
@@ -516,6 +526,25 @@ def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
                        own_points=True)
 
 
+def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
+    name = 'mssm_gogoj'
+    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
+    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1)
+    crossed_gpu_vs_cpu('mssm_crossed_gpu_vs_cpu', backend, name, proc_dirs, 3000, 17, nevt)
+
+
+def check_axial_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('p p > z j --axial_gauge=True, crossed axial-gauge gluon: %s against %s'
+            % (backend, CPU_BACKEND))
+    name = 'axial_zj'
+    # g q > z q also serves q q~ > z g: the gluon polarisation is vxxxxxr in the axial
+    # gauge of another leg, whose momentum a crossed event reads from its own slot
+    proc_dirs = output(repo, name, 'sm', 'p p > z j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1, options='--axial_gauge=True')
+    crossed_gpu_vs_cpu('axial_crossed_gpu_vs_cpu', backend, name, proc_dirs, 1000, 31, nevt)
+
 
 def check_signed_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
     section('p p > j j and p p > t t~ j QED^2==2, crossed interference |M|^2 (signed helicities): '
@@ -641,7 +670,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--repo', required=True)
     parser.add_argument('--backend', required=True)
-    parser.add_argument('--only', choices=CHECKS, action='append',
+    parser.add_argument('--only', choices=CHECKS + OPTIONAL_CHECKS, action='append',
                         help='run this check only (repeatable)')
     args = parser.parse_args()
     if args.backend == CPU_BACKEND:
