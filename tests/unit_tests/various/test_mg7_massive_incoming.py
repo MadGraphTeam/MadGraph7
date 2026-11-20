@@ -24,7 +24,6 @@ Without this, w+ w- > t t~ with 2 x 500 GeV W beams was 10% low.
 import math
 import os
 import sys
-import types
 import unittest
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
@@ -105,11 +104,9 @@ class TestIncomingOnShell(unittest.TestCase):
         massless pair goes on shell into exactly the beam momenta."""
         from madgraph.mg7.madgraph_process import MadgraphProcess
         mw = 80.419
-        process = types.SimpleNamespace(
-            subprocess_data=[{'incoming': [24, -24], 'outgoing': [6, -6]}],
-            get_mass=lambda pid: mw, beam_energies=(400., 600.),
-            e_cm=0., beam_rapidity=0.)
-        MadgraphProcess._massive_beams(process)
+        process = self.process([{'incoming': [24, -24], 'outgoing': [6, -6]}],
+                               lambda pid: mw)
+        process._massive_beams()
         p1, p2 = math.sqrt(400. ** 2 - mw ** 2), math.sqrt(600. ** 2 - mw ** 2)
         self.assertAlmostEqual(process.e_cm ** 2,
                                2 * mw ** 2 + 2 * (400. * 600. + p1 * p2), delta=1e-6)
@@ -126,8 +123,53 @@ class TestIncomingOnShell(unittest.TestCase):
         # massless beams keep s = 4 E1 E2
         process.get_mass = lambda pid: 0.
         process.e_cm = 1.
-        MadgraphProcess._massive_beams(process)
+        process._massive_beams()
         self.assertEqual(process.e_cm, 1.)
+
+    @staticmethod
+    def process(subprocess_data, get_mass, energies=(400., 600.)):
+        """A MadgraphProcess with only what _massive_beams reads, as init_beam
+        leaves it for monochromatic beams."""
+        from madgraph.mg7.madgraph_process import MadgraphProcess
+        process = object.__new__(MadgraphProcess)
+        process.subprocess_data = subprocess_data
+        process.get_mass = get_mass
+        process.beam_energies = energies
+        process.e_cm = 2. * math.sqrt(energies[0] * energies[1])
+        process.beam_rapidity = 0.5 * math.log(energies[0] / energies[1])
+        process.massive_beams = True
+        return process
+
+    def test_each_subprocess_has_the_s_of_its_incoming_masses(self):
+        """Different incoming masses in different subprocesses (madevent: one
+        stot per P directory): each subprocess gets the s and rapidity of its
+        own massive beams, the process keeps 4 E1 E2."""
+        mmu = 0.10566
+        masses = {13: mmu, -13: mmu, 22: 0., 24: 80.419, -24: 80.419}
+        process = self.process(
+            [{'incoming': [-13, 13], 'outgoing': [6, -6]},
+             {'incoming': [22, 22], 'outgoing': [6, -6]},
+             {'incoming': [24, -24], 'outgoing': [6, -6]}],
+            lambda pid: masses[pid])
+        e_cm, y = process.e_cm, process.beam_rapidity
+        process._massive_beams()
+        self.assertEqual((process.e_cm, process.beam_rapidity), (e_cm, y))
+        for m in (0., mmu, 80.419):
+            s, rapidity = process.beam_kinematics([m, m])
+            p1 = math.sqrt(400. ** 2 - m ** 2)
+            p2 = math.sqrt(600. ** 2 - m ** 2)
+            self.assertAlmostEqual(s ** 2, 2 * m ** 2 + 2 * (400. * 600. + p1 * p2),
+                                   delta=1e-6)
+            self.assertAlmostEqual(rapidity, 0.5 * math.log((1000. + p1 - p2)
+                                                            / (1000. - p1 + p2)))
+        self.assertEqual(process.beam_kinematics([0., 0.]), (e_cm, y))
+        # a subprocess whose masses are above the beam energies is refused
+        masses[24] = masses[-24] = 500.
+        with self.assertRaises(ValueError):
+            process._massive_beams()
+        # other beams: the process' s for every subprocess
+        process.massive_beams = False
+        self.assertEqual(process.beam_kinematics([500., 500.]), (e_cm, y))
 
 
 if __name__ == '__main__':

@@ -502,14 +502,14 @@ class AmplicolSubprocess(MadgraphSubprocess):
         for topology, color_order, _ in channel_topologies(self.meta, self.process):
             mappings.append(ms.PhaseSpaceMapping(
                 topology,
-                self.process.e_cm,
+                self.e_cm,
                 leptonic=self.process.leptonic,
                 invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                 t_channel_mode=ms.PhaseSpaceMapping.color_ordered,
                 cuts=self.cuts,
                 permutations=[list(range(particle_count))],
                 color_ordered=ms.ColorOrderedMapping.Options(color_order),
-                beam_rapidity=self.process.beam_rapidity,
+                beam_rapidity=self.beam_rapidity,
                 mirror_beams=self.mirror_beams,
             ))
         if any(flavor["channels"][0] != 0 for flavor in flavors):

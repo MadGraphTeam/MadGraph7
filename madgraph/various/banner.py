@@ -10225,10 +10225,9 @@ class RunCardMG7(RunCard):
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
-        # EVA: pdlabel eva on two e/mu beams (madevent's pdlabel1/2 follow
-        # pdlabel; one EVA beam only has no mg7 equivalent)
-        # (pdlabel eva is both beams; pdlabel1/2 only follow pdlabel once the
-        # LO card is checked)
+        # EVA: pdlabel eva, or pdlabel1/2 eva, on two e/mu beams (pdlabel1/2
+        # follow pdlabel only once the LO card is checked, so both are read);
+        # one EVA beam only has no mg7 equivalent
         eva_labels = [
             (str(lo['pdlabel']).lower() if 'pdlabel' in lo else '') == 'eva'
             or (str(lo['pdlabel%d' % i]).lower()

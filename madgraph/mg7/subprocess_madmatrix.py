@@ -330,6 +330,10 @@ class MadgraphSubprocess:
             self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
         ]
         self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
+        # s and the boost of the beams: per subprocess for monochromatic beams
+        # of massive particles, see MadgraphProcess.beam_kinematics
+        self.e_cm, self.beam_rapidity = self.process.beam_kinematics(
+            self.incoming_masses)
         # MadEvent's cut_decays = F: the decay products of on-shell propagators
         # are left out of every cut selection (a pair cut then needs both
         # members to be cut), while the histograms still see them
@@ -432,7 +436,7 @@ class MadgraphSubprocess:
         ckkwl = getattr(self.process, "ckkwl_scale", False)
         beam = self.process.run_card["beam"]
         options = dict(
-            cm_energy=self.process.e_cm,
+            cm_energy=self.e_cm,
             jet_scale_scheme=getattr(
                 ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
             scale_scheme=getattr(
@@ -646,14 +650,14 @@ class MadgraphSubprocess:
                 )
                 mapping = ms.PhaseSpaceMapping(
                     topo,
-                    self.process.e_cm,
+                    self.e_cm,
                     t_channel_mode=t_channel_mode,
                     cuts=self.cuts,
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.ps_leptonic,
                     lepton_sampling_power=self.lepton_sampling_power,
-                    beam_rapidity=self.process.beam_rapidity,
+                    beam_rapidity=self.beam_rapidity,
                     mirror_beams=self.mirror_beams,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -723,12 +727,12 @@ class MadgraphSubprocess:
     def build_flat_phasespace(self) -> PhaseSpace:
         mapping = ms.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
-            self.process.e_cm,
+            self.e_cm,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.ps_leptonic,
             lepton_sampling_power=self.lepton_sampling_power,
-            beam_rapidity=self.process.beam_rapidity,
+            beam_rapidity=self.beam_rapidity,
             mirror_beams=self.mirror_beams,
         )
         prefix = f"subproc{self.subproc_id}.flat"
@@ -1025,7 +1029,7 @@ class MadgraphSubprocess:
         empty = [
             ms.PhaseSpaceMapping(
                 chan_topologies[0],
-                self.process.e_cm,
+                self.e_cm,
                 t_channel_mode=t_channel_mode,
                 cuts=self.cuts,
                 invariant_power=self.process.run_card["phasespace"]["invariant_power"],
@@ -1384,16 +1388,6 @@ class MadgraphSubprocess:
         sum of an interference)."""
         incoming = clean_pids(self.meta["incoming"])
         if not getattr(self.process, "eva", False):
-            if (self.ps_leptonic and not self.process.is_decay
-                    and any(abs(pid) in (23, 24) for pid in incoming)
-                    and not getattr(self.process, "_warned_monochromatic_v", False)):
-                # a legitimate setup, but rarely the one meant
-                self.process._warned_monochromatic_v = True
-                logger.warning(
-                    "%s > %s runs with monochromatic W/Z beams of %g and %g "
-                    "GeV: for W/Z from lepton beams (madevent's pdlabel = eva) "
-                    "set beam.eva = true", self.meta["incoming"],
-                    self.meta["outgoing"], *self.process.beam_energies)
             return None
         options = [flav["options"][0] for flav in self.meta["flavors"]]
         if self.unmerged_meta is not None:
@@ -1611,7 +1605,7 @@ class MadgraphSubprocess:
                     # For a decay this is the decaying particle's mass, and the
                     # flux becomes 1/(2M): the result is a partial width in
                     # GeV, not a cross section in pb.
-                    cm_energy=self.process.e_cm,
+                    cm_energy=self.e_cm,
                     running_coupling=None,
                     energy_scale=ms.CachedScale(),
                     # EVA reads the incoming vector bosons of each flavour

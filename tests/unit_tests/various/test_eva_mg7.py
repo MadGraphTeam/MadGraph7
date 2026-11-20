@@ -417,5 +417,58 @@ class TestEvaRunCard(unittest.TestCase):
         self.assertTrue(any('EVA' in d for d in dropped), dropped)
 
 
+
+class TestEvaElectroweakInputs(unittest.TestCase):
+    """MadgraphProcess._eva_ew_inputs: M_W, M_Z and e^2 from the library,
+    else from the param card; only a missing name or entry falls back."""
+
+    unknown = 'Error in call to matrix element API x.so: ' \
+              'unknown or non-settable parameter'
+
+    class Api:
+        def __init__(self, values, error):
+            self.values, self.error = values, error
+
+        def supports_get_parameter(self):
+            return True
+
+        def get_parameter(self, name):
+            if name in self.values:
+                return self.values[name], 0.
+            raise RuntimeError(self.error)
+
+    class Card:
+        def __init__(self, values):
+            self.values = values
+
+        def get_value(self, block, pid):
+            # as ParamCard.get_value without a default
+            return self.values[(block, pid)]
+
+    def ew_inputs(self, api, card):
+        from madgraph.mg7.madgraph_process import MadgraphProcess
+        process = object.__new__(MadgraphProcess)
+        process.param_card = self.Card(card)
+        return process._eva_ew_inputs(api)
+
+    def test_library_then_param_card(self):
+        card = {('mass', 24): 80.0, ('mass', 23): 91.0, ('sminputs', 1): 128.0}
+        # the library has M_W only: M_Z and alpha from the card
+        mw, mz, e2 = self.ew_inputs(
+            self.Api({'mdl_MW': 79.5}, self.unknown), card)
+        self.assertEqual((mw, mz), (79.5, 91.0))
+        self.assertAlmostEqual(e2, 4 * math.pi / 128.0)
+        # no library: the card
+        self.assertEqual(self.ew_inputs(None, card)[:2], (80.0, 91.0))
+
+    def test_real_errors_are_not_hidden(self):
+        card = {('mass', 24): 80.0, ('mass', 23): 91.0, ('sminputs', 1): 128.0}
+        with self.assertRaisesRegex(RuntimeError, 'unspecified error'):
+            self.ew_inputs(self.Api({}, 'unspecified error'), card)
+        # a param card without the W mass
+        with self.assertRaisesRegex(RuntimeError, 'EVA needs M_W and M_Z'):
+            self.ew_inputs(None, {('mass', 23): 91.0})
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -287,6 +287,10 @@ class MadgraphProcess:
     # reweighting with instead of evaluating it again; set before survey()
     store_matrix_elements = False
 
+    # monochromatic beams of massive incoming particles: s per subprocess,
+    # see beam_kinematics; set by init_beam
+    massive_beams = False
+
     # set by a cluster job, which only writes the data/ of a gridpack: the rest
     # is the same for all of them, and written once for the merged gridpack
     gridpack_data_only = False
@@ -1058,11 +1062,12 @@ class MadgraphProcess:
         # Monochromatic beams of massive particles (W/Z without EVA, muons of
         # a model with a muon mass): s and the rapidity of the beams are those
         # of the massive beam momenta, as madevent's stot (genps.f, lpp = 0),
-        # not 4 E1 E2. The incoming momenta are then put on their mass shell
-        # by the Integrand. Only for one set of incoming masses: different
-        # beam particles in different subprocesses are not one collider.
-        if self.leptonic and not self.is_decay and not self.eva and \
-                not beam_args.get("lepton_density", ""):
+        # not 4 E1 E2, for each subprocess (beam_kinematics). The incoming
+        # momenta are then put on their mass shell by the Integrand.
+        self.massive_beams = (
+            self.leptonic and not self.is_decay and not self.eva
+            and not beam_args.get("lepton_density", ""))
+        if self.massive_beams:
             self._massive_beams()
 
         # A dressed-lepton density is not the same thing as beam.leptonic:
@@ -2699,22 +2704,53 @@ class MadgraphProcess:
         return self._lepton_density
 
     def _massive_beams(self) -> None:
-        """e_cm and beam_rapidity of monochromatic beams of massive incoming
-        particles, see init_beam."""
+        """e_cm and beam_rapidity of the process for monochromatic beams of
+        massive incoming particles, see init_beam. With different incoming
+        masses in different subprocesses (madevent: one stot per P directory)
+        each subprocess has its own, see beam_kinematics, and the process
+        keeps s = 4 E1 E2 for what is not per subprocess (logs, helicity
+        choice)."""
         masses = {tuple(abs(self.get_mass(pid))
                         for pid in clean_pids(meta["incoming"]))
                   for meta in self.subprocess_data}
-        if len(masses) != 1:
-            if any(any(m > 0. for m in pair) for pair in masses):
-                logger.warning(
-                    "monochromatic beams with different incoming masses in "
-                    "different subprocesses %s: s = 4 E1 E2 is kept",
-                    sorted(masses))
-            return
-        m1, m2 = masses.pop()
-        if m1 == 0. and m2 == 0.:
-            return
+        vector_beams = [meta for meta in self.subprocess_data
+                        if any(abs(pid) in (23, 24)
+                               for pid in clean_pids(meta["incoming"]))]
+        if vector_beams:
+            # a legitimate setup, but rarely the one meant
+            logger.warning(
+                "%s > %s runs with monochromatic W/Z beams of %g and %g GeV: "
+                "for W/Z from lepton beams (madevent's pdlabel = eva) set "
+                "beam.eva = true", vector_beams[0]["incoming"],
+                vector_beams[0]["outgoing"], *self.beam_energies)
+        for pair in masses:
+            # raises for beam energies below the masses
+            self.beam_kinematics(pair)
+        if len(masses) == 1:
+            pair = masses.pop()
+            if any(pair):
+                self.e_cm, self.beam_rapidity = self.beam_kinematics(pair)
+                logger.info("massive beams (%g, %g GeV): sqrt(s) = %.10g GeV",
+                            *pair, self.e_cm)
+        elif any(any(pair) for pair in masses):
+            logger.info("massive beams: sqrt(s) %s GeV for the incoming "
+                        "masses %s of the subprocesses",
+                        ", ".join("%.10g" % self.beam_kinematics(pair)[0]
+                                  for pair in sorted(masses)),
+                        ", ".join("(%g, %g)" % pair for pair in sorted(masses)))
+
+    def beam_kinematics(self, incoming_masses) -> tuple[float, float]:
+        """(e_cm, beam_rapidity) of a subprocess with these incoming masses.
+
+        Those of the process, except for monochromatic beams of massive
+        particles: s = m1^2 + m2^2 + 2 (E1 E2 + p1 p2) and the rapidity of the
+        massive beam momenta, as madevent's stot (genps.f, lpp = 0)."""
+        if not self.massive_beams or len(incoming_masses) != 2:
+            return self.e_cm, self.beam_rapidity
+        m1, m2 = (abs(float(m)) for m in incoming_masses)
         e1, e2 = self.beam_energies
+        if m1 == 0. and m2 == 0.:
+            return 2.0 * math.sqrt(e1 * e2), 0.5 * math.log(e1 / e2)
         if e1 < m1 or e2 < m2:
             raise ValueError(
                 "beam energies %g, %g GeV below the masses %g, %g GeV of the "
@@ -2722,10 +2758,8 @@ class MadgraphProcess:
         p1 = math.sqrt(e1 * e1 - m1 * m1)
         p2 = math.sqrt(e2 * e2 - m2 * m2)
         e_tot, p_tot = e1 + e2, p1 - p2
-        self.e_cm = math.sqrt(m1 * m1 + m2 * m2 + 2. * (e1 * e2 + p1 * p2))
-        self.beam_rapidity = 0.5 * math.log((e_tot + p_tot) / (e_tot - p_tot))
-        logger.info("massive beams (%g, %g GeV): sqrt(s) = %.10g GeV",
-                    m1, m2, self.e_cm)
+        e_cm = math.sqrt(m1 * m1 + m2 * m2 + 2. * (e1 * e2 + p1 * p2))
+        return e_cm, 0.5 * math.log((e_tot + p_tot) / (e_tot - p_tot))
 
     def eva_flux(self, api=None):
         """The ms.EvaFlux of an EVA run (beam.eva), None otherwise. Its
@@ -2760,14 +2794,18 @@ class MadgraphProcess:
             for name in names:
                 try:
                     return float(api.get_parameter(name)[0])
-                except Exception:
-                    continue
+                except RuntimeError as error:
+                    # a model without this parameter name: try the next one;
+                    # any other error of the library is a real one
+                    if "unknown or non-settable parameter" not in str(error):
+                        raise
             return None
 
         def from_card(block, pid):
             try:
                 return float(self.param_card.get_value(block, pid))
-            except Exception:
+            except KeyError:
+                # no such block or entry in the param card
                 return None
 
         mw = from_api("mdl_MW", "MW") or from_card("mass", 24)
