@@ -146,11 +146,14 @@ def _corrupted(provider, block: str) -> Path:
 
 
 def _status(directory: Path, lc: Path, *, switch: bool) -> int:
-    """Status of one ratio call with an event of every flavour of the provider."""
+    """Status of one ratio call with an event of every flavour of the provider,
+    or of umami_initialize if that fails (it validates the first target)."""
 
     library = _library(directory / "build/libreweight_p0.so")
     handle = ct.c_void_p()
-    assert library.umami_initialize(ct.byref(handle), os.fsencode(directory)) == 0
+    status = library.umami_initialize(ct.byref(handle), os.fsencode(directory))
+    if status != 0:
+        return int(status)
     try:
         (data,) = load_umami_metadata(lc)
         point = [
