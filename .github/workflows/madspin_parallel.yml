@@ -5,12 +5,11 @@ name: MadSpin parallel factory
 # push) this one is intentionally restricted because the matrix is heavy.
 
 on:
+  pull_request:
+    types: [labeled]
   push:
     branches:
-      - '3.x'
-    paths-ignore:
-      - 'docs/**'
-  pull_request:
+      - main
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:
@@ -44,6 +43,7 @@ concurrency:
 
 jobs:
   madspin_factory:
+    if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

@@ -6,9 +6,11 @@ name: MadSpace docs examples
 # examples, so editing docs/source/madspace/examples/*.rst (or the event
 # streaming example in docs/source/event_stream.rst) is actually tested.
 on:
+  pull_request:
+    types: [labeled]
   push:
     branches:
-      - '**'
+      - main
     paths:
       - 'docs/source/madspace/examples/**'
       - 'docs/source/event_stream.rst'
@@ -18,16 +20,6 @@ on:
       - 'tests/acceptance_tests/test_madspace_examples.py'
       - '.github/workflows/docs_examples.yml'
 
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'docs/source/madspace/examples/**'
-      - 'docs/source/event_stream.rst'
-      - 'madgraph/iolibs/template_files/mg7/**'
-      - 'madgraph/mg7/**'
-      - 'madspace/**'
-      - 'tests/acceptance_tests/test_madspace_examples.py'
-      - '.github/workflows/docs_examples.yml'
 
   workflow_dispatch:
 
@@ -40,7 +32,7 @@ jobs:
   # madspace source hash (same composite action the mg7 workflow uses).
   build_madspace:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build_madspace
@@ -48,7 +40,7 @@ jobs:
   docs_examples:
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5

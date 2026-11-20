@@ -4,20 +4,17 @@ name: running parralel test
 # Controls when the workflow will run
 #    branches: [ main LTS ]
 on:
+  pull_request:
+    types: [labeled]
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
-    # All branches, no tags: a release tag points at a commit that already
-    # ran this suite when it was pushed to main, and release.yml gates on
-    # that main run rather than re-testing the same tree. '**' is needed
-    # over '*' so branch names containing a slash still match.
+    # main only: other branches run through workflow_dispatch
     branches:
-      - '**'
+      - main
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
 
-  pull_request:
-    types: [opened, synchronize, reopened]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -43,7 +40,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -201,7 +198,7 @@ jobs:
   test_short_ppgogo_amcatnlo_nlo:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -222,7 +219,7 @@ jobs:
     #   test_short_gauge_loop test_short_cross_sm2
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -265,7 +262,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -354,7 +351,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -432,7 +429,7 @@ jobs:
     #   test_short_ML5_sm_vs_stored_ML4 test_decay_comparator_heft
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -473,7 +470,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed; one
     # job restores the caches once instead of once per former job.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -540,7 +537,7 @@ jobs:
   test_decay_comparator_mssm:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -562,7 +559,7 @@ jobs:
   test_decay_comparator_nmssm1:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
 
     steps:
       - uses: actions/checkout@v5

@@ -4,20 +4,17 @@ name: running unittest
 # Controls when the workflow will run
 # branches: [ main LTS ]
 on:
+  pull_request:
+    types: [labeled]
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
-    # All branches, no tags: a release tag points at a commit that already
-    # ran this suite when it was pushed to main, and release.yml gates on
-    # that main run rather than re-testing the same tree. '**' is needed
-    # over '*' so branch names containing a slash still match.
+    # main only: other branches run through workflow_dispatch
     branches:
-      - '**'
+      - main
     paths-ignore:
       - 'docs/**'
 # - '.github/**'
 
-  pull_request:
-    types: [opened, synchronize, reopened]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -50,7 +47,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -242,7 +239,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -367,7 +364,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -434,7 +431,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -492,7 +489,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -529,7 +526,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -579,7 +576,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -647,7 +644,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     permissions:
       contents: read
 
@@ -689,7 +686,7 @@ jobs:
 
   unittest_real_channels:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -706,7 +703,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
 
     steps:
       - uses: actions/checkout@v5
@@ -725,7 +722,7 @@ jobs:
 
   unittest_native_born:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -744,7 +741,7 @@ jobs:
     # unit tests that were not listed in any workflow (CI coverage audit).
     # test_fks_ppzz_in_RS is left out: the RS UFO model is still python2 only.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci')) }}
 
     steps:
       - uses: actions/checkout@v5
