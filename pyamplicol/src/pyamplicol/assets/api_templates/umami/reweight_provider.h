@@ -28,6 +28,8 @@ typedef struct {
     double target_factor;
     /* Flavour-union assignment of the target runtime (-1: none). */
     int target_assignment;
+    /* Arrangement of the switch's non-partons in the entry (0 if it has one). */
+    int switch_arrangement;
 } ReweightFlavour;
 
 typedef struct {
@@ -68,6 +70,8 @@ typedef struct {
     double weight;
     /* switch target index, -1 for a flavour events are generated for */
     int target;
+    /* summed for the events with this arrangement of the non-partons only */
+    int arrangement;
 } ReweightSwitchOrdering;
 
 typedef struct {

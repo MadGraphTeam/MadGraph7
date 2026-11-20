@@ -17,7 +17,11 @@
 #ifndef UMAMI_REWEIGHT_HEADER
 #define UMAMI_REWEIGHT_HEADER "reweight_p0.h"
 #endif
+/* the trailing switch arrangements are left out (zero) with one arrangement */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include UMAMI_REWEIGHT_HEADER
+#pragma GCC diagnostic pop
 
 /* Events are evaluated in batches of at most this many points per native call. */
 #define UMAMI_CHUNK 512
@@ -941,8 +945,19 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
         if (switching) {
             ReweightSwitch const *sw = reweight_provider.flavor_switch;
             size_t index = event - offset;
+            /* the event's non-partons keep their slots in every flavour summed */
+            size_t channel = in[UMAMI_IN_CHANNEL_INDEX] ?
+                ((unsigned int const *)in[UMAMI_IN_CHANNEL_INDEX])[event] : 0;
+            int flavour = in[UMAMI_IN_FLAVOR_INDEX] ?
+                ((int const *)in[UMAMI_IN_FLAVOR_INDEX])[event] : 0;
+            if (channel >= reweight_provider.channel_count || flavour < 0 ||
+                (size_t)flavour >= reweight_provider.channels[channel].flavour_count)
+                return UMAMI_ERROR;
+            int arrangement =
+                reweight_provider.channels[channel].flavours[flavour].switch_arrangement;
             double generated = 0.0, dropped = 0.0;
             for (size_t o = 0; o < sw->ordering_count; ++o) {
+                if (sw->orderings[o].arrangement != arrangement) continue;
                 double share = switch_share(instance, &sw->orderings[o], densities, event,
                                             index, count, stride);
                 if (sw->orderings[o].target < 0) generated += share;
@@ -957,7 +972,8 @@ UmamiStatus umami_matrix_element(UmamiHandle handle, size_t count, size_t stride
                 double threshold = (u - 1.0) * generated;
                 int target = -1;
                 for (size_t o = 0; o < sw->ordering_count; ++o) {
-                    if (sw->orderings[o].target < 0) continue;
+                    if (sw->orderings[o].target < 0 ||
+                        sw->orderings[o].arrangement != arrangement) continue;
                     target = sw->orderings[o].target;
                     threshold -= switch_share(instance, &sw->orderings[o], densities, event,
                                               index, count, stride);

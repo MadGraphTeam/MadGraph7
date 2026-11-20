@@ -886,57 +886,67 @@ def test_massive_switch_ratios_equal_with_and_without_unions(massive):
                 assert (a[1] == -1).all() and (b[1] == -1).all()
                 assert a[0][kept] == pytest.approx(b[0][kept], rel=1e-12, abs=0.0)
                 assert (a[0] > 0).any()
-        # switched events of a g g event: the target's full colour over its LC
+        # switched events, t t~ and t~ t in the event's slots: the target's full
+        # colour over its LC, with the event's t momentum a t in every target
         point = _massive_points(1)[0]
-        event = next(
-            e for (process, _), e in _flavour_events(unions, 0, point)
-            if process == "t0"
-        )
-        base, stay = (
-            _ratio_call(union_library, union_handle, [event], densities, switch=s)[0][0]
-            for s in (False, True)
-        )
-        enhancement = stay / base
-        assert enhancement > 1.0
-        count = 400
-        grid = (np.arange(count) + 0.5) / count
-        random_flavor = list(1 / enhancement + grid * (1 - 1 / enhancement))
-        random_helicity = list(np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0])
-        ratio, target, helicity, _ = _ratio_call(
-            union_library,
-            union_handle,
-            [event] * count,
-            densities,
-            switch=True,
-            random_flavor=random_flavor,
-            random_helicity=random_helicity,
-        )
-        assert (target >= 0).all()
+        data = unions[0][0]
+        by_order = {}
+        for _, event in _flavour_events(unions, 0, point):
+            entry = data["channels"][event[1]]["processes"][event[2]]
+            row = data["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
+            by_order.setdefault(tuple(row[2:4]), (event, row))
+        assert set(by_order) == {(6, -6), (-6, 6)}
         lc_runtimes, full_runtimes = {}, {}
         names = {**NAMES_OF, 6: "t"}
-        data = unions[0][0]
-        for value, k, label in zip(ratio, target, helicity, strict=True):
-            pdgs = tuple(union_sidecar["targets"][k])
-            assert [abs(p) == 6 for p in pdgs] == [False, False, True, True, False]
-            if pdgs not in lc_runtimes:
-                text = [names[abs(p)] + ("~" if p < 0 else "") for p in pdgs]
-                process = " ".join(text[:2]) + " > " + " ".join(text[2:])
-                lc_runtimes[pdgs] = Runtime.load(
-                    massive["artifacts"]["flavour"], process=process
-                )
-                full_runtimes[pdgs] = Runtime.load(
-                    massive["artifacts"]["full"], process=process
-                )
-            identifier = "h:" + ",".join(f"{v:+d}" for v in data["helicities"][label])
-            # the target's legs are the event slots
-            resolved = lc_runtimes[pdgs].evaluate_resolved((event[0],))
-            index = list(lc_runtimes[pdgs].physics.helicity_ids).index(identifier)
-            row = float(np.array(resolved.values)[0].real[index].sum())
-            fc = complex(
-                full_runtimes[pdgs].evaluate((event[0],), helicities=[identifier])[0]
-            ).real
-            assert value == pytest.approx(enhancement * fc / row, rel=1e-12), pdgs
-        assert len({tuple(union_sidecar["targets"][k]) for k in target}) > 1
+        drawn = set()
+        for event, row in by_order.values():
+            base, stay = (
+                _ratio_call(union_library, union_handle, [event], densities, switch=s)[
+                    0
+                ][0]
+                for s in (False, True)
+            )
+            enhancement = stay / base
+            assert enhancement > 1.0
+            count = 400
+            grid = (np.arange(count) + 0.5) / count
+            random_flavor = list(1 / enhancement + grid * (1 - 1 / enhancement))
+            random_helicity = list(
+                np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
+            )
+            ratio, target, helicity, _ = _ratio_call(
+                union_library,
+                union_handle,
+                [event] * count,
+                densities,
+                switch=True,
+                random_flavor=random_flavor,
+                random_helicity=random_helicity,
+            )
+            assert (target >= 0).all()
+            for value, k, label in zip(ratio, target, helicity, strict=True):
+                pdgs = tuple(union_sidecar["targets"][k])
+                drawn.add(pdgs)
+                assert pdgs[2:4] == tuple(row[2:4]), (row, pdgs)
+                if pdgs not in lc_runtimes:
+                    text = [names[abs(p)] + ("~" if p < 0 else "") for p in pdgs]
+                    process = " ".join(text[:2]) + " > " + " ".join(text[2:])
+                    lc_runtimes[pdgs] = Runtime.load(
+                        massive["artifacts"]["flavour"], process=process
+                    )
+                    full_runtimes[pdgs] = Runtime.load(
+                        massive["artifacts"]["full"], process=process
+                    )
+                vector = data["helicities"][label]
+                identifier = "h:" + ",".join(f"{v:+d}" for v in vector)
+                # the target's legs are the event slots
+                resolved = lc_runtimes[pdgs].evaluate_resolved((event[0],))
+                index = list(lc_runtimes[pdgs].physics.helicity_ids).index(identifier)
+                lc_value = float(np.array(resolved.values)[0].real[index].sum())
+                fc = full_runtimes[pdgs].evaluate((event[0],), helicities=[identifier])
+                fc = complex(fc[0]).real
+                assert value == pytest.approx(enhancement * fc / lc_value, rel=1e-12)
+        assert len(drawn) > 2
     finally:
         assert union_library.umami_free(union_handle) == 0
         assert flavour_library.umami_free(flavour_handle) == 0
