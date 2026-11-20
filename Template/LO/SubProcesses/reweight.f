@@ -1300,9 +1300,15 @@ c     Use the minimum scale found for fact scale in ME
      $        q2fact(2)=scalefact**2*min(pt2ijcl(jfirst(2)),q2fact(2))
       endif
 
-c     Check that factorization scale is >= 2 GeV
-      if(lpp(1).ne.0.and.(q2fact(1).lt.4d0.and..not.fixed_fac_scale1).or.
-     $   lpp(2).ne.0.and.(q2fact(2).lt.4d0.and..not.fixed_fac_scale2))then
+c     Check that factorization scale is >= 2 GeV, for hadron PDFs only
+c     (|lpp|=1, also nuclei): they are not defined below their starting
+c     scale. The other beams are fine at any scale: the gamma-UPC fluxes
+c     (|lpp|=2, ed*/ch*) do not depend on it, while the EPA (|lpp|=2,3,4
+c     with iww/none), EVA and dressed-lepton densities are analytic in it
+c     down to the lepton/proton mass. Vetoing them cut away the threshold
+c     region (e.g. 27% of PbPb > a a > ta+ ta-).
+      if(abs(lpp(1)).eq.1.and.(q2fact(1).lt.4d0.and..not.fixed_fac_scale1).or.
+     $   abs(lpp(2)).eq.1.and.(q2fact(2).lt.4d0.and..not.fixed_fac_scale2))then
          if(nwarning.le.10) then
              nwarning=nwarning+1
              write(*,*) 'Warning: Too low fact scales: ',

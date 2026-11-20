@@ -5,6 +5,12 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   RF: madevent rejected every phase-space point with a dynamical factorisation scale below
+       2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs. It now
+       applies to |lpp|=1 beams only. The gamma-UPC fluxes (|lpp|=2, ed*/ch*) do not depend
+       on the scale, and the EPA (iww), EVA and dressed-lepton densities are valid well below
+       it: the floor silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at
+       5.52 TeV without cuts (846 instead of 1163 mub).
    RF: "set low_mem_multicore_nlo_generation True" (NLO generation and output on nb_core cores,
        the matrix elements kept in temporary files) gives again the output of the serial mode.
        It differed for instance in the virtuals (nlo_mixed_expansion False, explicit orders,
