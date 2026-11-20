@@ -7931,7 +7931,7 @@ class RunCardMG7(RunCard):
             comment="Adam numerical stability constant")
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4,
             comment="Adam weight decay")
-        self.add_toml_param('madnis', 'grad_clip_threshold', 0.003,
+        self.add_toml_param('madnis', 'grad_clip_threshold', 0.03,
             comment="maximum gradient norm; 0 disables clipping")
         self.add_toml_param('madnis', 'buffer_capacity', 60000,
             comment="replay buffer size per channel; 0 disables buffering")
