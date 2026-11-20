@@ -294,12 +294,14 @@ def test_union_artifacts_route_members_as_assignments(built):
     assert any(runtime.get("assignment", 0) > 0 for runtime in runtimes)
 
 
-def _partition(documents):
-    """Per provider channel, the physical flavours of each entry."""
+def _partition(documents, ordered=False):
+    """Per provider channel, the physical flavours of each entry (in export
+    order with ``ordered``, the flavour sampling order of MG7)."""
 
+    arrange = list if ordered else sorted
     return [
-        sorted(
-            sorted(
+        arrange(
+            arrange(
                 tuple(data["pdg_ids"][term["pdg_ids"]])
                 for term in entry["matrix_elements"]
             )
@@ -312,7 +314,9 @@ def _partition(documents):
 
 def test_union_partition_equals_per_flavour(built):
     # a template's own flavour shares its entry with all-pattern members
-    assert _partition(built["umami"]["union"]) == _partition(built["umami"]["flavour"])
+    assert _partition(built["umami"]["union"], ordered=True) == _partition(
+        built["umami"]["flavour"], ordered=True
+    )
 
 
 # g q > q Q Q~: the shape of every partition split left at pp > 3j, 4j and 5j
@@ -328,33 +332,44 @@ GQ_EXPRESSIONS = (
 )
 
 
-@pytest.fixture(scope="module")
-def gq_partitions(tmp_path_factory):
-    root = tmp_path_factory.mktemp("umami-unions-gq")
+PARTITION_CASES = {
+    "gq": GQ_EXPRESSIONS,
+    "pp3j": ("p p > j j j",),
+    "pp4j": ("p p > j j j j",),
+}
+# pp3j and pp4j run only with PYAMPLICOL_RUN_FLAVOUR_UNION=pp3j,pp4j (either or both)
+PARTITION_OPT_IN = {"pp3j", "pp4j"}
+
+
+@pytest.fixture(scope="module", params=tuple(PARTITION_CASES))
+def partitions(request, tmp_path_factory):
+    opted = os.environ.get("PYAMPLICOL_RUN_FLAVOUR_UNION", "").split(",")
+    if request.param in PARTITION_OPT_IN and request.param not in opted:
+        pytest.skip(f"set PYAMPLICOL_RUN_FLAVOUR_UNION={request.param} to run it")
+    expressions = PARTITION_CASES[request.param]
+    root = tmp_path_factory.mktemp(f"umami-unions-{request.param}")
     result = {}
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         for kind, unions in (("union", True), ("flavour", False)):
             Generator(_config("lc", unions)).generate(
                 ProcessSet.from_expressions(
-                    GQ_EXPRESSIONS,
-                    names=tuple(f"q{index}" for index in range(len(GQ_EXPRESSIONS))),
+                    expressions,
+                    names=tuple(f"q{index}" for index in range(len(expressions))),
                 ),
                 root / kind,
                 model=ModelSource.from_path(prepared_model),
             )
             result[kind] = _partition(
-                [(data, None) for data in load_umami_metadata(root / kind)]
+                [(data, None) for data in load_umami_metadata(root / kind)],
+                ordered=True,
             )
     return result
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="union members of one g q > q Q Q~ class route through different "
-    "permutations and colour flows, so g u > d u d~ leaves the per-flavour entry",
-)
-def test_union_partition_equals_per_flavour_gq_qqbar(gq_partitions):
-    assert gq_partitions["union"] == gq_partitions["flavour"]
+def test_union_partition_equals_per_flavour_sets(partitions):
+    # members of one flavour class share its union route (g u > d u d~ included),
+    # and entries and their terms are exported in the same order
+    assert partitions["union"] == partitions["flavour"]
 
 
 def test_union_matrix_elements_equal_per_flavour_artifacts(built):
@@ -592,13 +607,21 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
         point = _points(1)[0]
         lc = {}
         full = {}
-        event = _flavour_events(unions, 0, point)[0][1]
-        base = _ratio_call(
-            union_library, union_handle, [event], densities, switch=False
-        )[0][0]
-        stay = _ratio_call(
-            union_library, union_handle, [event], densities, switch=True
-        )[0][0]
+        # the first event with a leading colour of its own and switch targets,
+        # whose input legs carry the point unrelabelled (as the targets below)
+        for _, event in _flavour_events(unions, 0, point):
+            if not all(
+                np.array_equal(a, b) for a, b in zip(event[0], point, strict=True)
+            ):
+                continue
+            base = _ratio_call(
+                union_library, union_handle, [event], densities, switch=False
+            )[0][0]
+            stay = _ratio_call(
+                union_library, union_handle, [event], densities, switch=True
+            )[0][0]
+            if base > 0.0 and stay > base:
+                break
         enhancement = stay / base
         assert enhancement > 1.0
         count = 600

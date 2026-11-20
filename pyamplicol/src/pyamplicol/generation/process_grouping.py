@@ -854,6 +854,8 @@ UnionMemberFilter = Callable[[GroupingProcess, GroupingProcess], bool]
 """Whether a process may join the union of a template (e.g. equal coupling orders)."""
 """Why merging ``flavours`` in the template (and conjugating, if set) may not be
 a symmetry of the allowed vertices, or ``None``."""
+UnionClasses = Mapping[str, tuple[str, GroupMember]]
+"""Flavour classes: process ID -> (representative ID, process -> representative)."""
 
 
 def is_union_quark_type(particle_type: ParticleType) -> bool:
@@ -951,6 +953,71 @@ def _union_permutation(
     return tuple(permutation)
 
 
+def _class_union_permutations(
+    ordered: Sequence[GroupingProcess],
+    template: GroupingProcess,
+    template_legs: Sequence[_Leg],
+    conjugated: Mapping[str, bool],
+    table: ParticleTable,
+    classes: UnionClasses,
+    allow_conjugation: bool,
+) -> dict[str, tuple[tuple[int, ...], bool]]:
+    """Union routes ``(permutation, conjugated)`` that follow the flavour classes.
+
+    Each class has one anchor (the template, else its representative, else
+    its first process) routed by ``_union_permutation``. Every other process
+    composes its relation to the anchor with that route, so its members keep
+    the class's relative permutations, conjugations, patterns and colour orders.
+    """
+
+    by_class: dict[str, list[GroupingProcess]] = {}
+    for process in ordered:
+        home = classes.get(process.process_id, (process.process_id, None))[0]
+        by_class.setdefault(home, []).append(process)
+    identity = identity_permutation(len(template_legs))
+
+    def to_representative(process: GroupingProcess) -> tuple[tuple[int, ...], bool]:
+        relation = classes.get(process.process_id, (None, None))[1]
+        if relation is None:
+            return identity, False
+        return tuple(relation.permutation), relation.conjugated
+
+    result: dict[str, tuple[tuple[int, ...], bool]] = {}
+    for home, processes in by_class.items():
+        anchor = next(
+            (p for p in processes if p.process_id == template.process_id),
+            next((p for p in processes if p.process_id == home), processes[0]),
+        )
+        route = _union_permutation(
+            _legs(anchor, table, conjugate=conjugated[anchor.process_id]),
+            template_legs,
+        )
+        anchor_permutation, anchor_conjugated = to_representative(anchor)
+        from_representative = invert_permutation(anchor_permutation)
+        for process in processes:
+            permutation, conjugate = to_representative(process)
+            # template slot -> anchor leg -> representative leg -> process leg
+            composed = tuple(permutation[from_representative[leg]] for leg in route)
+            conjugate = (conjugate != anchor_conjugated) != conjugated[
+                anchor.process_id
+            ]
+            legs = _legs(process, table, conjugate=conjugate)
+            # a self-conjugate slot shape may take its class's conjugation
+            if (
+                conjugate != conjugated[process.process_id] and not allow_conjugation
+            ) or any(
+                _union_slot(legs[leg]) != _union_slot(slot)
+                for leg, slot in zip(composed, template_legs, strict=True)
+            ):
+                # no consistent class route: the process is routed on its own
+                conjugate = conjugated[process.process_id]
+                composed = _union_permutation(
+                    _legs(process, table, conjugate=conjugate), template_legs
+                )
+            result[process.process_id] = (composed, conjugate)
+    return result
+
+
 def _union_rules(
     template: GroupingProcess,
     legs: Sequence[_Leg],
@@ -993,6 +1060,7 @@ def _flavour_union(
     union_warning: UnionWarning | None,
     consider_charge_conjugation: bool,
     member_filter: UnionMemberFilter | None = None,
+    classes: UnionClasses | None = None,
 ) -> FlavourUnion | object | None:
     def class_count(processes: Iterable[GroupingProcess]) -> int:
         return len(
@@ -1034,21 +1102,30 @@ def _flavour_union(
         for leg in _legs(process, table)
         if is_union_quark_type(leg.type)
     )
-    if union_warning is not None:
-        if union_warning(template, flavours, False) is not None:
-            return None
-        if any(conjugated.values()) and union_warning(template, flavours, True):
-            return _CONJUGATION_REFUSED
+    if union_warning is not None and union_warning(template, flavours, False):
+        return None
     template_legs = _legs(template, table)
+    routes = _class_union_permutations(
+        ordered,
+        template,
+        template_legs,
+        conjugated,
+        table,
+        classes or {},
+        consider_charge_conjugation,
+    )
+    if (
+        union_warning is not None
+        and any(conjugate for _, conjugate in routes.values())
+        and union_warning(template, flavours, True)
+    ):
+        return _CONJUGATION_REFUSED
     rules = _union_rules(template, template_legs, pairing_rules)
     union_slots = tuple(is_union_quark_type(leg.type) for leg in template_legs)
     template_norm = math.prod(normalization(pdgs[:count], pdgs[count:]))
     members = []
     for process in ordered:
-        conjugate = conjugated[process.process_id]
-        permutation = _union_permutation(
-            _legs(process, table, conjugate=conjugate), template_legs
-        )
+        permutation, conjugate = routes[process.process_id]
         flavour = tuple(abs(process.pdgs[leg]) for leg in permutation)
         patterns = tuple(
             int(rule.rule_id)
@@ -1107,6 +1184,7 @@ def flavour_unions(
     union_warning: UnionWarning | None = None,
     consider_charge_conjugation: bool = True,
     member_filter: UnionMemberFilter | None = None,
+    classes: UnionClasses | None = None,
 ) -> list[FlavourUnion]:
     """Join ``processes`` that differ only in union-quark flavours.
 
@@ -1115,6 +1193,7 @@ def flavour_unions(
     flavour classes; other processes keep their flavour-class routing. With
     ``union_warning`` (strict mode) a union whose flavour merge is no symmetry
     is dropped, and one whose conjugation is none splits by orientation.
+    With ``classes``, the members of one flavour class share its routing.
     """
 
     groups: dict[tuple[Any, ...], list[GroupingProcess]] = {}
@@ -1128,6 +1207,7 @@ def flavour_unions(
         "normalization": normalization,
         "union_warning": union_warning,
         "member_filter": member_filter,
+        "classes": classes,
     }
     result: list[FlavourUnion] = []
     for group in groups.values():
