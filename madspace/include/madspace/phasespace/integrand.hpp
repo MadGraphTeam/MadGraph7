@@ -75,8 +75,10 @@ public:
     /// The optional adaptive sampler for a set of discrete choices.
     using AdaptiveDiscrete =
         std::variant<std::monostate, DiscreteSampler, DiscreteFlow>;
-    /// The optional parton density: an LHAPDF grid or a user-supplied library.
-    using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf>;
+    /// The optional parton density: an LHAPDF grid, a user-supplied library or
+    /// effective vector bosons (@ref EvaFlux; the differential cross sections
+    /// must then be built with the same flux).
+    using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf, EvaFlux>;
 
     /// The @ref MatrixElement inputs an `Integrand` supplies.
     inline static const std::vector<MatrixElement::MatrixElementInput>
@@ -328,6 +330,10 @@ private:
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::optional<EELuminosity> _lepton_luminosity;
+    // effective vector bosons: the beam densities are the helicity sums, and
+    // the differential cross sections take the helicity of the event (they need
+    // the factorisation scales and the orientation of the event)
+    bool _eva = false;
     // with different PDFs per beam: each leg's density from the other beam,
     // for the events whose orientation is mirrored
     std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;

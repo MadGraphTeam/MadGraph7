@@ -17,7 +17,8 @@ and ``use_syst``. The shortcuts ``set lhc``, ``set lep``, ``set fixed_scale``,
 ``set no_parton_cut`` and ``set dynamical_scale_choice HT/n`` work as before, and so does
 ``set iseed``. The beam settings ``ebeam``, ``ebeam1``, ``ebeam2``, ``lpp``, ``lpp1``,
 ``lpp2``, ``pdlabel``, ``pdlabel1``, ``pdlabel2`` and ``lhaid`` are translated as in the
-table below. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
+table below, and so are the EVA settings ``polbeam1``, ``polbeam2``, ``ievo_eva``,
+``evaorder`` and ``eva_xcut``. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
 ``seed = -1`` and treats ``0`` as an ordinary fixed seed, so ``set iseed 0`` is translated.
 
 The cut names of the `Cuts`_ table are translated as well, so ``set mmll 200`` sets
@@ -62,6 +63,24 @@ Beams and PDFs
       - ``beam.pdf1``, ``beam.pdf2``
       - One set per beam. A beam without PDF exists only for a lepton collider, as
         ``beam.leptonic``.
+    * - ``pdlabel = eva``, ``lpp1``, ``lpp2`` = ±3, ±4
+      - ``beam.eva``, ``beam.lepton1``, ``beam.lepton2``
+      - The W, Z and photons of two electron or muon beams (Effective Vector boson
+        Approximation), on both beams only. ``beam.leptonic`` stays ``true`` (no PDF set,
+        :math:`\alpha_s` from the param card), but the momentum fractions are sampled. The
+        density of each incoming vector boson is taken for the helicity its matrix element
+        picks, and the W and Z are put on their mass shell, as MadEvent does. A process
+        with a W or Z on both beams, such as ``w+ w- > t t~``, gets these beams by default:
+        e+ e- at 2 × 15 TeV with a fixed factorization scale.
+    * - ``polbeam1``, ``polbeam2``
+      - ``beam.polarization1``, ``beam.polarization2``
+      - The polarization of the beam leptons of an EVA run, from -100 (left-handed) to 100
+        (right-handed). MG7 has no other beam polarization.
+    * - ``evaorder``, ``ievo_eva``, ``eva_xcut``
+      - ``beam.eva_order``, ``beam.eva_evolution``, ``beam.eva_xcut``
+      - The EVA densities at leading log (0), leading power (1) or next-to-leading power
+        (2); evolved in ``"q2"`` or ``"pt"`` (``ievo_eva = 1``); with or without the
+        :math:`x > M_V / E_\text{beam}` restriction.
 
 Scales
 ------
@@ -456,9 +475,9 @@ The following MadEvent features have no MG7 equivalent. Settings for them are ig
   ``pdgs_for_merging_cut``): ``highestmult``, ``ktscheme``, ``alpsfact``, ``chcluster``,
   ``pdfwgt``, ``asrwgtflavor``, ``clusinfo``.
 * Biasing: ``bias_module`` and ``bias_parameters``.
-* Beam polarization and heavy-ion or equivalent-photon beams: ``polbeam1``, ``polbeam2``,
-  ``nb_proton1``, ``nb_proton2``, ``nb_neutron1``, ``nb_neutron2``, ``mass_ion1``,
-  ``mass_ion2``, ``ievo_eva``, ``evaorder``, ``eva_xcut``.
+* Beam polarization other than that of EVA beams (``polbeam1``, ``polbeam2``), EVA on one
+  beam only, and heavy-ion or equivalent-photon beams: ``nb_proton1``, ``nb_proton2``,
+  ``nb_neutron1``, ``nb_neutron2``, ``mass_ion1``, ``mass_ion2``.
 * Fixed factorization scales for the two beams, and the scale parameters
   ``mue_over_ref``, ``mue_ref_fixed`` and ``fixed_extra_scale``.
 * Cuts that are not a bound on a single observable: ``cutuse = 1``, which accepts an event if

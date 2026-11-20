@@ -287,6 +287,10 @@ class MadgraphProcess:
     # reweighting with instead of evaluating it again; set before survey()
     store_matrix_elements = False
 
+    # monochromatic beams of massive incoming particles: s per subprocess,
+    # see beam_kinematics; set by init_beam
+    massive_beams = False
+
     # set by a cluster job, which only writes the data/ of a gridpack: the rest
     # is the same for all of them, and written once for the merged gridpack
     gridpack_data_only = False
@@ -455,11 +459,14 @@ class MadgraphProcess:
             self.decaying_mass = None
             single = [meta["outgoing"] for meta in self.subprocess_data
                       if len(clean_pids(meta["outgoing"])) == 1]
-            if single and self.run_card["beam"]["leptonic"]:
+            # EVA beams are leptonic but sample x, as a PDF does
+            if (single and self.run_card["beam"]["leptonic"]
+                    and not self.run_card["beam"].get("eva", False)):
                 raise ValueError(
                     f"2 -> 1 processes ({single[0]} ...) need beams with a PDF "
-                    "(leptonic = false in [beam]): with fixed beam energies the "
-                    "one-particle phase space is a delta function in s_hat"
+                    "(leptonic = false in [beam], or beam.eva): with fixed beam "
+                    "energies the one-particle phase space is a delta function "
+                    "in s_hat"
                 )
             return
 
@@ -650,7 +657,8 @@ class MadgraphProcess:
         if path_format not in self.helicity_choices:
             backend, fptype = self.helicity_choice_build
             spread = not self.is_decay and (
-                not self.leptonic or bool(self._lepton_density_name))
+                not self.leptonic or bool(self._lepton_density_name)
+                or getattr(self, "eva", False))
             choice = helicity_choice_module.choose(
                 path_format.format(device=backend, fptype=fptype), param_card,
                 parameters, self.e_cm, self.beam_rapidity, spread)
@@ -1033,6 +1041,34 @@ class MadgraphProcess:
             self.e_cm = 2.0 * math.sqrt(ebeam1 * ebeam2)
             self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
+
+        # EVA (beam.eva): the W, Z and photons of two lepton beams. No PDF set
+        # and alpha_s from the param card, so 'leptonic' in that sense, but x
+        # is sampled (MadgraphSubprocess.ps_leptonic) and the densities are
+        # applied per helicity inside the DifferentialCrossSection (eva_flux).
+        self.eva = (not self.is_decay) and bool(beam_args.get("eva", False))
+        self._eva_flux = None
+        if self.eva:
+            self.leptonic = True
+            logger.info(
+                "EVA beams: W/Z/photons from %s (%g GeV) and %s (%g GeV), "
+                "order %s, %s evolution%s", beam_args["lepton1"],
+                self.beam_energies[0], beam_args["lepton2"],
+                self.beam_energies[1],
+                ("LLA", "LP", "NLP")[int(beam_args["eva_order"])],
+                beam_args["eva_evolution"],
+                "" if beam_args["eva_xcut"] else ", no x cut")
+
+        # Monochromatic beams of massive particles (W/Z without EVA, muons of
+        # a model with a muon mass): s and the rapidity of the beams are those
+        # of the massive beam momenta, as madevent's stot (genps.f, lpp = 0),
+        # not 4 E1 E2, for each subprocess (beam_kinematics). The incoming
+        # momenta are then put on their mass shell by the Integrand.
+        self.massive_beams = (
+            self.leptonic and not self.is_decay and not self.eva
+            and not beam_args.get("lepton_density", ""))
+        if self.massive_beams:
+            self._massive_beams()
 
         # A dressed-lepton density is not the same thing as beam.leptonic:
         # 'leptonic' means no parton luminosity at all (monochromatic beams),
@@ -2667,6 +2703,131 @@ class MadgraphProcess:
                     raise ValueError(error)
         return self._lepton_density
 
+    def _massive_beams(self) -> None:
+        """e_cm and beam_rapidity of the process for monochromatic beams of
+        massive incoming particles, see init_beam. With different incoming
+        masses in different subprocesses (madevent: one stot per P directory)
+        each subprocess has its own, see beam_kinematics, and the process
+        keeps s = 4 E1 E2 for what is not per subprocess (logs, helicity
+        choice)."""
+        masses = {tuple(abs(self.get_mass(pid))
+                        for pid in clean_pids(meta["incoming"]))
+                  for meta in self.subprocess_data}
+        vector_beams = [meta for meta in self.subprocess_data
+                        if any(abs(pid) in (23, 24)
+                               for pid in clean_pids(meta["incoming"]))]
+        if vector_beams:
+            # a legitimate setup, but rarely the one meant
+            logger.warning(
+                "%s > %s runs with monochromatic W/Z beams of %g and %g GeV: "
+                "for W/Z from lepton beams (madevent's pdlabel = eva) set "
+                "beam.eva = true", vector_beams[0]["incoming"],
+                vector_beams[0]["outgoing"], *self.beam_energies)
+        for pair in masses:
+            # raises for beam energies below the masses
+            self.beam_kinematics(pair)
+        if len(masses) == 1:
+            pair = masses.pop()
+            if any(pair):
+                self.e_cm, self.beam_rapidity = self.beam_kinematics(pair)
+                logger.info("massive beams (%g, %g GeV): sqrt(s) = %.10g GeV",
+                            *pair, self.e_cm)
+        elif any(any(pair) for pair in masses):
+            logger.info("massive beams: sqrt(s) %s GeV for the incoming "
+                        "masses %s of the subprocesses",
+                        ", ".join("%.10g" % self.beam_kinematics(pair)[0]
+                                  for pair in sorted(masses)),
+                        ", ".join("(%g, %g)" % pair for pair in sorted(masses)))
+
+    def beam_kinematics(self, incoming_masses) -> tuple[float, float]:
+        """(e_cm, beam_rapidity) of a subprocess with these incoming masses.
+
+        Those of the process, except for monochromatic beams of massive
+        particles: s = m1^2 + m2^2 + 2 (E1 E2 + p1 p2) and the rapidity of the
+        massive beam momenta, as madevent's stot (genps.f, lpp = 0)."""
+        if not self.massive_beams or len(incoming_masses) != 2:
+            return self.e_cm, self.beam_rapidity
+        m1, m2 = (abs(float(m)) for m in incoming_masses)
+        e1, e2 = self.beam_energies
+        if m1 == 0. and m2 == 0.:
+            return 2.0 * math.sqrt(e1 * e2), 0.5 * math.log(e1 / e2)
+        if e1 < m1 or e2 < m2:
+            raise ValueError(
+                "beam energies %g, %g GeV below the masses %g, %g GeV of the "
+                "incoming particles" % (e1, e2, m1, m2))
+        p1 = math.sqrt(e1 * e1 - m1 * m1)
+        p2 = math.sqrt(e2 * e2 - m2 * m2)
+        e_tot, p_tot = e1 + e2, p1 - p2
+        e_cm = math.sqrt(m1 * m1 + m2 * m2 + 2. * (e1 * e2 + p1 * p2))
+        return e_cm, 0.5 * math.log((e_tot + p_tot) / (e_tot - p_tot))
+
+    def eva_flux(self, api=None):
+        """The ms.EvaFlux of an EVA run (beam.eva), None otherwise. Its
+        electroweak inputs are those of the matrix element: M_W, M_Z and e^2,
+        read from the loaded library ``api`` (umami_get_parameter) when it has
+        them, else from the param card; e^2 as madevent's gal(1)^2 (4 pi /
+        aEWM1, or the G_mu value without aEWM1)."""
+        if not self.eva:
+            return None
+        if self._eva_flux is None:
+            beam = self.run_card["beam"]
+            mw, mz, e2 = self._eva_ew_inputs(api)
+            self._eva_flux = ms.EvaFlux(
+                [int(beam["lepton1"]), int(beam["lepton2"])],
+                [float(e) for e in self.beam_energies],
+                mw, mz, e2,
+                # madevent's setrun.f: fLpol = 0.5 - polbeam / 200
+                [0.5 - float(beam["polarization%d" % i]) / 200. for i in (1, 2)],
+                int(beam["eva_order"]),
+                beam["eva_evolution"] == "pt",
+                bool(beam["eva_xcut"]),
+            )
+            logger.info("EVA couplings from M_W = %.6g GeV, M_Z = %.6g GeV, "
+                        "1/alpha = %.6g", mw, mz, 4 * math.pi / e2)
+        return self._eva_flux
+
+    def _eva_ew_inputs(self, api):
+        """(M_W, M_Z, e^2) of the model, see eva_flux."""
+        def from_api(*names):
+            if api is None or not api.supports_get_parameter():
+                return None
+            for name in names:
+                try:
+                    return float(api.get_parameter(name)[0])
+                except RuntimeError as error:
+                    # a model without this parameter name: try the next one;
+                    # any other error of the library is a real one
+                    if "unknown or non-settable parameter" not in str(error):
+                        raise
+            return None
+
+        def from_card(block, pid):
+            try:
+                return float(self.param_card.get_value(block, pid))
+            except KeyError:
+                # no such block or entry in the param card
+                return None
+
+        mw = from_api("mdl_MW", "MW") or from_card("mass", 24)
+        mz = from_api("mdl_MZ", "MZ") or from_card("mass", 23)
+        if not mw or not mz:
+            raise RuntimeError("EVA needs M_W and M_Z, found neither in the "
+                               "matrix-element library nor in the param card")
+        aewm1 = from_api("mdl_aEWM1", "aEWM1") or from_card("sminputs", 1)
+        gf = from_api("mdl_Gf", "Gf")
+        if aewm1:
+            e2 = 4 * math.pi / aewm1
+        elif gf:
+            # madevent's gal(1) in the G_mu scheme
+            e2 = 4 * math.sqrt(2.) * mw ** 2 * (1 - mw ** 2 / mz ** 2) * gf
+        else:
+            ee = from_api("mdl_ee", "ee")
+            if not ee:
+                raise RuntimeError("EVA needs alpha_EW: found neither aEWM1, "
+                                   "Gf nor ee")
+            e2 = ee ** 2
+        return mw, mz, e2
+
     @property
     def fixed_fact_scale(self):
         """The factorisation scale as a number, or None if it is dynamical.
@@ -2696,6 +2857,11 @@ class MadgraphProcess:
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
             return [2212, 2212], list(self.beam_energies)
+        if getattr(self, "eva", False):
+            # the leptons radiating the vector bosons
+            beam = self.run_card["beam"]
+            return ([int(beam["lepton1"]), int(beam["lepton2"])],
+                    list(self.beam_energies))
         data = self.subprocess_data[0]
         incoming = data["incoming"]
         flavor0 = data["flavors"][0]["options"][0]

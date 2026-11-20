@@ -8,7 +8,8 @@ from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, TYPE_CHECKING
 
 from madgraph.mg7 import lepton_density as lepton_density_module
-from madgraph.mg7.common import logger, me_parameters, mlm_clustering_history, ms
+from madgraph.mg7.common import (interference_helicities_summed, logger, me_parameters,
+                                 mlm_clustering_history, ms)
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_surrogate
 from madgraph.mg7.observables import _flavor_options, build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
 
@@ -329,6 +330,10 @@ class MadgraphSubprocess:
             self.process.get_mass(pid) for pid in clean_pids(self.meta["outgoing"])
         ]
         self.particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
+        # s and the boost of the beams: per subprocess for monochromatic beams
+        # of massive particles, see MadgraphProcess.beam_kinematics
+        self.e_cm, self.beam_rapidity = self.process.beam_kinematics(
+            self.incoming_masses)
         # MadEvent's cut_decays = F: the decay products of on-shell propagators
         # are left out of every cut selection (a pair cut then needs both
         # members to be cut), while the histograms still see them
@@ -431,7 +436,7 @@ class MadgraphSubprocess:
         ckkwl = getattr(self.process, "ckkwl_scale", False)
         beam = self.process.run_card["beam"]
         options = dict(
-            cm_energy=self.process.e_cm,
+            cm_energy=self.e_cm,
             jet_scale_scheme=getattr(
                 ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
             scale_scheme=getattr(
@@ -645,14 +650,14 @@ class MadgraphSubprocess:
                 )
                 mapping = ms.PhaseSpaceMapping(
                     topo,
-                    self.process.e_cm,
+                    self.e_cm,
                     t_channel_mode=t_channel_mode,
                     cuts=self.cuts,
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.ps_leptonic,
                     lepton_sampling_power=self.lepton_sampling_power,
-                    beam_rapidity=self.process.beam_rapidity,
+                    beam_rapidity=self.beam_rapidity,
                     mirror_beams=self.mirror_beams,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
@@ -722,12 +727,12 @@ class MadgraphSubprocess:
     def build_flat_phasespace(self) -> PhaseSpace:
         mapping = ms.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
-            self.process.e_cm,
+            self.e_cm,
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.ps_leptonic,
             lepton_sampling_power=self.lepton_sampling_power,
-            beam_rapidity=self.process.beam_rapidity,
+            beam_rapidity=self.beam_rapidity,
             mirror_beams=self.mirror_beams,
         )
         prefix = f"subproc{self.subproc_id}.flat"
@@ -1024,7 +1029,7 @@ class MadgraphSubprocess:
         empty = [
             ms.PhaseSpaceMapping(
                 chan_topologies[0],
-                self.process.e_cm,
+                self.e_cm,
                 t_channel_mode=t_channel_mode,
                 cuts=self.cuts,
                 invariant_power=self.process.run_card["phasespace"]["invariant_power"],
@@ -1335,7 +1340,9 @@ class MadgraphSubprocess:
             # both u- and d-type rows
             discrete_flavor = ms.DiscreteSampler(
                 [flavor_count], f"{prefix}.discrete_flavor",
-                [] if self.process.leptonic else [0]
+                # EVA beams have densities, so a prior
+                [] if self.process.leptonic and not getattr(self.process, "eva", False)
+                else [0]
             )
             for context in self.process.contexts:
                 discrete_flavor.initialize_globals(context)
@@ -1370,7 +1377,74 @@ class MadgraphSubprocess:
         hadronic PDF -- but its beams do *not* keep their full energy, so the
         mapping still has to sample x. The two senses of the word part here.
         """
-        return self.process.leptonic and self.process.lepton_density is None
+        return (self.process.leptonic and self.process.lepton_density is None
+                and not getattr(self.process, "eva", False))
+
+    def eva_flux(self):
+        """The EVA beams (ms.EvaFlux) of an EVA run, None otherwise, after
+        checking that this subprocess can have them: two incoming W, Z or
+        photons, a matrix element that picks the helicity of the event (no
+        [surrogate]), and a helicity that means something (not the helicity
+        sum of an interference)."""
+        incoming = clean_pids(self.meta["incoming"])
+        if not getattr(self.process, "eva", False):
+            return None
+        options = [flav["options"][0] for flav in self.meta["flavors"]]
+        if self.unmerged_meta is not None:
+            options = [
+                self.unmerged_meta[self.meta["subprocesses"][flav["subprocess"]]]
+                ["flavors"][flav["flavor"]]["options"][0]
+                for flav in self.meta["flavors"]]
+        if len(incoming) != 2 or any(
+                abs(pid) not in (22, 23, 24) for option in options
+                for pid in option[:2]):
+            raise ValueError(
+                "beam.eva: subprocess %s > %s has an incoming particle that is "
+                "not a W, Z or photon; EVA beams need vector bosons on both "
+                "incoming legs (set beam.eva = false for other processes)"
+                % (self.meta["incoming"], self.meta["outgoing"]))
+        # the incoming W/Z are put on their mass shell (as madevent), which a
+        # single outgoing particle lighter than them cannot reach
+        incoming_mass = sum(self.incoming_masses)
+        if len(self.outgoing_masses) == 1 and \
+                self.outgoing_masses[0] <= incoming_mass:
+            raise ValueError(
+                "beam.eva: %s > %s is below the threshold of its on-shell "
+                "incoming vector bosons (%g <= %g GeV), so it has no phase "
+                "space" % (self.meta["incoming"], self.meta["outgoing"],
+                           self.outgoing_masses[0], incoming_mass))
+        if self.unmerged_meta is not None and len({
+                tuple(self.process.get_mass(pid)
+                      for pid in clean_pids(self.unmerged_meta[index]["incoming"]))
+                for index in self.meta["subprocesses"]}) > 1:
+            # the phase-space channels put one set of masses on shell
+            raise NotImplementedError(
+                "beam.eva with merged subprocesses whose incoming vector bosons "
+                "have different masses: set phasespace.merge_subprocesses = false")
+        if self.process.surrogate is not None:
+            raise NotImplementedError(
+                "beam.eva cannot be combined with a [surrogate]: the EVA "
+                "densities need the helicity the full matrix element picks")
+        members = [self.meta] if self.unmerged_meta is None else [
+            self.unmerged_meta[index] for index in self.meta["subprocesses"]]
+        if interference_helicities_summed(self.process.run_card) and any(
+                meta.get("interference") for meta in members):
+            raise NotImplementedError(
+                "beam.eva with [generation] interference_helicity = \"summed\": "
+                "the EVA densities need the helicity of the event; use \"exact\"")
+        api = next((me for me in self.matrix_elements if me is not None), None)
+        return self.process.eva_flux(api)
+
+    def eva_helicities(self) -> list:
+        """Per flavour of the integrand, the helicity table of its matrix
+        element (the rows its helicity index counts, the incoming legs first)."""
+        tables = []
+        for flav in self.meta["flavors"]:
+            meta = self.meta
+            if self.unmerged_meta is not None:
+                meta = self.unmerged_meta[self.meta["subprocesses"][flav["subprocess"]]]
+            tables.append([[int(h) for h in row] for row in meta["helicities"]])
+        return tables
 
     @property
     def lepton_sampling_power(self) -> float:
@@ -1508,6 +1582,8 @@ class MadgraphSubprocess:
 
         cross_sections = []
         dressed = self.process.lepton_density
+        eva = self.eva_flux()
+        eva_helicities = self.eva_helicities() if eva is not None else []
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
@@ -1517,16 +1593,23 @@ class MadgraphSubprocess:
                 # lepton_density.pdf_factor for why beam 2 stays empty
                 pdf_arg = ms.CachedPdf()
                 pdf_arg2 = None
+            if eva is not None:
+                # the integrand computes the helicity sums of the densities
+                # (flavour prior, pdf1/pdf2), the cross section the densities
+                # of the helicities its matrix element picks
+                pdf_grid = eva
+                pdf_arg = pdf_arg2 = ms.CachedPdf()
             cross_sections.append(
                 ms.DifferentialCrossSection(
                     matrix_element=mat,
                     # For a decay this is the decaying particle's mass, and the
                     # flux becomes 1/(2M): the result is a partial width in
                     # GeV, not a cross section in pb.
-                    cm_energy=self.process.e_cm,
+                    cm_energy=self.e_cm,
                     running_coupling=None,
                     energy_scale=ms.CachedScale(),
-                    pid_options=[],
+                    # EVA reads the incoming vector bosons of each flavour
+                    pid_options=flavors if eva is not None else [],
                     pdf1=pdf_arg,
                     pdf2=pdf_arg2,
                     input_momentum_fraction=True,
@@ -1535,6 +1618,8 @@ class MadgraphSubprocess:
                     return_matrix_element=(
                         self.has_weighting_steps() or self.process.store_matrix_elements
                     ),
+                    eva=eva,
+                    eva_helicities=eva_helicities,
                 )
             )
         partial_weights = self.process.systematics_enabled()

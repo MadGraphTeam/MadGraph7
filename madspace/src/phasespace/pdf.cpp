@@ -408,11 +408,56 @@ PartonDensity::PartonDensity(
     _beam_index(beam_index),
     _dynamic_pid(dynamic_pid) {}
 
+PartonDensity::PartonDensity(
+    const EvaFlux& eva,
+    const std::vector<int>& pids,
+    int beam_index,
+    bool dynamic_pid
+) :
+    FunctionGenerator(
+        "PartonDensity",
+        [&] {
+            NamedVector<Type> arg_types{{"x", batch_float}, {"q", batch_float}};
+            if (dynamic_pid) {
+                arg_types.push_back("flavor_index", batch_int);
+            }
+            return arg_types;
+        }(),
+        {{"pdf", dynamic_pid ? batch_float : batch_float_array(pids.size())}}
+    ),
+    _pids(pids.begin(), pids.end()),
+    _eva(true),
+    _beam_index(beam_index),
+    _dynamic_pid(dynamic_pid) {
+    if (beam_index != 0 && beam_index != 1) {
+        throw std::invalid_argument("EVA: the beam index must be 0 or 1");
+    }
+    for (int pid : pids) {
+        _eva_params.push_back(eva.parameters(pid, beam_index));
+    }
+    if (_eva_params.empty()) {
+        _eva_params.push_back(std::vector<double>(EvaFlux::parameter_count, 0.));
+    }
+}
+
 NamedVector<Value> PartonDensity::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     auto x = args.at(0);
     auto q = args.at(1);
+    if (_eva) {
+        auto batch_size = fb.batch_size({x});
+        auto helicity = fb.full({static_cast<me_int_t>(EvaFlux::helicity_sum), batch_size});
+        if (_dynamic_pid) {
+            return {{"pdf", fb.eva_density(x, q, helicity, args.at(2), _eva_params)}};
+        }
+        ValueVec pdfs;
+        for (std::size_t i = 0; i < _pids.size(); ++i) {
+            auto config = fb.full({static_cast<me_int_t>(i), batch_size});
+            pdfs.push_back(fb.eva_density(x, q, helicity, config, _eva_params));
+        }
+        return {{"pdf", fb.stack(pdfs)}};
+    }
     if (_custom_pdf) {
         MatrixElement function(
             _custom_pdf->function_index,

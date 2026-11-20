@@ -3,6 +3,7 @@
 #include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/custom_function.hpp"
+#include "madspace/phasespace/eva.hpp"
 
 namespace madspace {
 
@@ -66,7 +67,8 @@ struct PdfGrid {
  * last q knot, and below the first q knot with the anomalous dimension at that
  * knot, going over into x f vanishing like q^2. Above the last x knot, where
  * LHAPDF stops with an error, they are zero. With a @ref CustomPdf,
- * the user-supplied library is called for each requested flavour instead.
+ * the user-supplied library is called for each requested flavour instead, and
+ * with an @ref EvaFlux the helicity-summed EVA densities are returned.
  *
  * `batch` is the leading batch dimension.
  *
@@ -114,6 +116,21 @@ public:
         int beam_index,
         bool dynamic_pid = false
     );
+    /**
+     * @param eva           The effective-vector-boson beams.
+     * @param pids          PDG ids of the vector bosons to return; the density
+     *                      is the sum over their helicities, @f$x \sum_\lambda
+     *                      f_\lambda(x, q)@f$.
+     * @param beam_index    Index of the beam (0 or 1).
+     * @param dynamic_pid   If true, the single flavour of @p pids selected per
+     *                      event by `flavor_index` is returned.
+     */
+    PartonDensity(
+        const EvaFlux& eva,
+        const std::vector<int>& pids,
+        int beam_index,
+        bool dynamic_pid = false
+    );
 
 private:
     NamedVector<Value> build_function_impl(
@@ -123,6 +140,9 @@ private:
     std::vector<me_int_t> _pid_indices;
     std::vector<me_int_t> _pids;
     std::optional<CustomPdf> _custom_pdf;
+    // EVA: one parameter row per pid (EvaFlux::parameters)
+    nested_vector2<double> _eva_params;
+    bool _eva = false;
     me_int_t _beam_index = 0;
     bool _dynamic_pid;
     std::string _prefix;

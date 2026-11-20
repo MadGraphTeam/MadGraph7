@@ -489,20 +489,27 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 "dressed-lepton beams (beam.lepton_density) are not supported "
                 "with the AmpliCol output; use the madmatrix one"
             )
+        if getattr(self.process, "eva", False):
+            # the same for the effective vector bosons, whose densities need
+            # the helicity the matrix element picks
+            raise NotImplementedError(
+                "EVA beams (beam.eva) are not supported with the AmpliCol "
+                "output; use the madmatrix one"
+            )
         flavors = self.meta["flavors"]
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         mappings = []
         for topology, color_order, _ in channel_topologies(self.meta, self.process):
             mappings.append(ms.PhaseSpaceMapping(
                 topology,
-                self.process.e_cm,
+                self.e_cm,
                 leptonic=self.process.leptonic,
                 invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                 t_channel_mode=ms.PhaseSpaceMapping.color_ordered,
                 cuts=self.cuts,
                 permutations=[list(range(particle_count))],
                 color_ordered=ms.ColorOrderedMapping.Options(color_order),
-                beam_rapidity=self.process.beam_rapidity,
+                beam_rapidity=self.beam_rapidity,
                 mirror_beams=self.mirror_beams,
             ))
         if any(flavor["channels"][0] != 0 for flavor in flavors):
