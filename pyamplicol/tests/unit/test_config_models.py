@@ -83,9 +83,11 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # benchmark.runtime_threads (`profile --runtime-threads`); 157:
     # evaluation.lane_rescue (`--lane-rescue`, USER 2026-11-18); 158:
     # evaluation.threads (`--threads`, USER 2026-11-19); 159:
-    # benchmark.all_backends (`profile --all-backends`). MadGraph7 adds
-    # process.flavor_blind_strict and generation.pack_payloads.
-    assert len(FIELD_REGISTRY) == 161
+    # benchmark.all_backends (`profile --all-backends`); 160:
+    # benchmark.measured_precisions (`profile --measured-precisions`).
+    # MadGraph7 adds process.flavor_blind_strict and generation.pack_payloads.
+    assert len(FIELD_REGISTRY) == 162
+    assert FIELD_REGISTRY["benchmark.measured_precisions"].default == ("binary64",)
     assert FIELD_REGISTRY["evaluation.threads"].default is None
     assert FIELD_REGISTRY["evaluation.threads"].nullable
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
