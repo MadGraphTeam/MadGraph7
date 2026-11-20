@@ -1627,6 +1627,55 @@ def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
             assert level.get("prepared_seconds", 1.0) is not None
 
 
+@pytest.mark.parametrize("given", [False, True])
+def test_the_profile_document_is_plain_json(uux_ddx, monkeypatch, given):
+    """``cli_json`` is plain JSON at every level on both paths of the
+    reference's warming, the entry taken wherever it is allowed
+    (``takes_entry``): through its untimed point (the default ground truth:
+    rule B open) and through the warm entry the runtime offers (an explicit
+    --ground-truth); both precision levels carry the same keys,
+    ``prepared_seconds`` only where its entry ran, never null."""
+
+    import json
+    from dataclasses import fields
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import PrecisionTiming
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    has_entry = callable(getattr(Runtime.load(uux_ddx)._backend, "prepare", None))
+    monkeypatch.setattr(plan_module, "takes_entry", lambda *args, **kwargs: True)
+    bench = {"runtime": True, "n_core": 1}
+    if given:
+        bench["ground_truth"] = "double-double"
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": bench,
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    timing = {item.name for item in fields(PrecisionTiming)} - {"prepared_seconds"}
+    for profile in rows.values():
+        document = profile.cli_json()
+        assert json.loads(json.dumps(document, allow_nan=False)) == document
+        reference = document["reference"]
+        assert isinstance(reference, dict)
+        entry = profile.reference.prepared_seconds is not None
+        assert set(reference) == timing | ({"prepared_seconds"} if entry else set())
+        # Through the entry with rule B closed (the ground truth given),
+        # where the runtime offers it; the warm-up call it replaces is gone.
+        assert entry == (given and has_entry)
+        assert reference["warmup"] == (0 if entry else 1)
+        for level in (document, reference):
+            assert level.get("prepared_seconds", 1.0) is not None
+
+
 @pytest.mark.parametrize(
     "given",
     [{}, {"all_backends": True}, {"reduction": "tirust"}, {"runtime": True}],
@@ -1835,11 +1884,18 @@ def test_the_plan_counts_the_warm_entry_not_a_point(uux_ddx, monkeypatch):
     monkeypatch.setattr(Runtime, "evaluate", slow)
     monkeypatch.setattr(Runtime, "load", classmethod(with_entry))
     monkeypatch.setattr(lp, "_isolated_profile", in_process)
+    # The ground truth given: rule B closed, the references take the entry
+    # (with rule B open they warm by their untimed point, which the
+    # measurement's cold point bounds).
     config = resolve_config(
         {
             "action": "benchmark",
             "evaluation": {"artifact": str(uux_ddx)},
-            "benchmark": {"runtime": True, "n_core": 1},
+            "benchmark": {
+                "runtime": True,
+                "n_core": 1,
+                "ground_truth": "double-double",
+            },
         }
     ).effective
     report = lp.profile_loop(uux_ddx, config)
