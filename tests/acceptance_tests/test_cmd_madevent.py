@@ -2532,7 +2532,7 @@ class TestMECmdShell(unittest.TestCase):
         """mg7 equivalent of test_e_p_collision for e- p > e- j.
 
         The madevent test pins the cross-section (3933 pb) via a full
-        generate_events run. The mg7 (madmatrix/cudacpp) integrator is far too
+        generate_events run. The mg7 (madmatrix) integrator is far too
         slow for a CI cross-section run on this process, so this equivalent
         validates the mg7 *output* path instead: that `output mg7` generates the
         e- p > e- j subprocess directories and that they compile (scalar

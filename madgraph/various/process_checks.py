@@ -4510,7 +4510,7 @@ def _crossing_run_driver(pdir, request, env):
 
 # The three standalone backends that decode an extended (crossing-carrying)
 # flavor index. 'standalone_fortran' is the fortran default (f2py); 'standalone' is the madmatrix one (names as of PR #64; 'standalone_cpp' is gone) --
-# the C++ / cudacpp-CPU-SIMD standalones.
+# the C++ / madmatrix CPU-SIMD standalones.
 CROSSING_EXPORTERS = ('standalone_fortran', 'standalone')
 
 # Vectorisation (SIMD) choices for the standalone (madmatrix) backend; each
@@ -4564,7 +4564,7 @@ class _FortranCrossingBackend(object):
         return answer['values'] if answer else [None] * len(items)
 
 
-# ── cudacpp CPU-SIMD standalone (madmatrix) ─────────────────────────────
+# ── madmatrix CPU-SIMD standalone ─────────────────────────────
 # check_sa.exe generates its own RAMBO momenta, so to evaluate at a prescribed
 # phase-space point the shipped check_sa.cc is patched (as the acceptance test
 # TestStandaloneMg7CrossSymmetry does): when MG_MOMFILE is set, the momenta
@@ -4654,7 +4654,7 @@ def _mg7_crossing_entries(matrix_element, rows, identity_only=False,
 
 
 class _Mg7CrossingBackend(object):
-    """The cudacpp CPU-SIMD standalone (madmatrix) crossing backend.
+    """The madmatrix CPU-SIMD standalone crossing backend.
 
     The vectorisation width is selectable via options['simd'] (see
     MG7_SIMD_CHOICES): it is passed to the madmatrix build as

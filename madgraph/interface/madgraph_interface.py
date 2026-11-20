@@ -4198,7 +4198,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
                               'hepmc','ninja','oneloop','MadAnalysis5',
                               'yoda', 'rivet', 'fastjet', 'fjcontrib', 'contur', 'cmake', 'eMELA',
-                              'cudacpp', 'hepmc3', 'pythia8_hepmc3', 'DMTCP']
+                              'hepmc3', 'pythia8_hepmc3', 'DMTCP']
 
     _install_opts.extend(_advanced_install_opts)
 
@@ -10008,7 +10008,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
          # Return true for successful installation
         return True
 
-    install_plugin = ['maddm', 'maddump', 'MadSTR', 'cudacpp']
+    install_plugin = ['maddm', 'maddump', 'MadSTR']
     install_ad = {'pythia-pgs':['arXiv:0603175'],
                           'Delphes':['arXiv:1307.6346'],
                           'Delphes2':['arXiv:0903.2225'],
@@ -14468,7 +14468,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         (fill_crossing_replace_dict_so), so the carve-out is gone and the
         answer is the format again. The other two folding formats never needed
         it: standalone_rw writes the same fortran template, and the
-        mg7/cudacpp exporter has no split-orders variant at all.
+        mg7/madmatrix exporter has no split-orders variant at all.
         """
         crossed = [amp for amp in amps if 'crossed_processes' in amp
                    and amp.get('crossed_processes')]
