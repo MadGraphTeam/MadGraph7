@@ -147,6 +147,7 @@ fn tirust_capabilities(bits: u32) -> Option<String> {
 #[pyfunction]
 #[pyo3(signature = (text, keys=false))]
 fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
     use rusticol_loop_reduction::runtime_options::{RuntimeOptions, known_keys, runtime_keys};
     if keys {
         let runtime = runtime_keys();
@@ -190,6 +191,7 @@ fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
 /// rule the Python runtime, the native SDKs and the pools share.
 #[pyfunction]
 fn effective_threads(requested: usize) -> usize {
+    let _unlock = pyamplicol::unlock();
     rusticol_core::loop_artifact::effective_threads(requested)
 }
 
