@@ -53,20 +53,32 @@ c     collider configuration
       common/to_collider/ebeam,xbk,q2fact,lpp
       double precision gpd_photon_flux
       external gpd_photon_flux
+      double precision gpd_pair_norm
+      external gpd_pair_norm
 
 c     GPD beam (lpp = 5, madgraph/iolibs/gpd_madevent.py): the GPD pair (the
 c     shadow Z, pdg 23) carries the light-cone fraction x with the factor
-c     x/(16 pi^2) of the phase space of the outgoing proton; a photon comes
+c     x/(16 pi^2) of the phase space of the outgoing proton, times the
+c     scale gpd_pair_norm of |M|^2 that MATRIX divides out (it steers the
+c     choice of the beam orientation, PhotonFlux.f); a photon comes
 c     from the elastic flux of the proton (gpd_photon_flux, PhotonFlux.f):
 c     gamma-UPC EDFF by default, ChFF or the EPA on request.
       if (iabs(ih).eq.5) then
          if (ipdg.eq.23) then
             pdg2pdf = x/(16d0*3.14159265358979323846d0**2)
+     &           *gpd_pair_norm(x, iabs(beamid))
          elseif (ipdg.eq.7 .or. ipdg.eq.22) then
             pdg2pdf = gpd_photon_flux(x, xmu, iabs(beamid))
          else
             pdg2pdf = 0d0
          endif
+         return
+      endif
+c     a GPD pair asked of a lepton beam (the mirror orientation of an
+c     eA collision with the EPA photon of the lepton): none, unless EVA
+      if ((iabs(ih).eq.3 .or. iabs(ih).eq.4) .and. iabs(ipdg).eq.23
+     &    .and. pdsublabel(iabs(beamid)).ne.'eva') then
+         pdg2pdf = 0d0
          return
       endif
 

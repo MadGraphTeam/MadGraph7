@@ -236,6 +236,37 @@ class GPDExportTextTest(unittest.TestCase):
         self.assertIn('gpd_gap', keys)
         self.assertIn('gpd_flux', keys)
 
+    def test_reset_fixed_beam_pdfs(self):
+        """The densities of an lpp = 0 beam are reset to 1 in both the scalar
+        (with its nested scale IF) and the vector PDF lines, and nothing else
+        changes."""
+        text = "\n".join([
+            "      IF (ABS(LPP(IB(1))).GE.1) THEN",
+            "C       LP=SIGN(1,LPP(IB(1)))",
+            "        IF (DSQRT(Q2FACT(IB(1))).EQ.0D0) THEN",
+            "          QSCALE=0D0",
+            "        ENDIF",
+            "        EM1=PDG2PDF(LPP(IB(1)),11, IB(1),XBK(IB(1)), QSCALE)",
+            "      ENDIF",
+            "          IF (ABS(LPP(IB(2))).GE.1) THEN",
+            "            Z2(IVEC)=PDG2PDF(LPP(IB(2)),23, IB(2),ALL_XBK(IB(2),IVEC)",
+            "     $       ,DSQRT(ALL_Q2FACT(2, IVEC)))",
+            "          ENDIF",
+            "      PD(1)=EM1*Z2"])
+        with tempfile.NamedTemporaryFile('w', suffix='.f', delete=False) as f:
+            f.write(text)
+        try:
+            gpd_madevent.reset_fixed_beam_pdfs(f.name)
+            out = open(f.name).read().split("\n")
+        finally:
+            os.remove(f.name)
+        lines = text.split("\n")
+        self.assertEqual(out[:6], lines[:6])
+        self.assertEqual(out[6:9], ["      ELSE", "        EM1=1D0", "      ENDIF"])
+        self.assertEqual(out[9:12], lines[7:10])
+        self.assertEqual(out[12:15], ["          ELSE", "            Z2(IVEC)=1D0", "          ENDIF"])
+        self.assertEqual(out[15:], lines[11:])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -225,7 +225,8 @@ C     writes it as a '#gpd' line, madgraph/various/gpd_lhe.py adds the protons)
       COMMON/GPD_EVENT/GPD_EVT_T, GPD_EVT_SET
       DOUBLE PRECISION ZETA, XI, T, MU, TMIN, DELTA, U, R, WT, ANS, DSUM(0:3)
       DOUBLE PRECISION SHAT, MT, ZT, XIK, BMAP, FA, ANSN, R2, PEXP
-      DOUBLE PRECISION GPD_FORMFACTOR, GPD_WS_R2
+      DOUBLE PRECISION GPD_FORMFACTOR, GPD_WS_R2, GPD_PAIR_NORM
+      EXTERNAL GPD_PAIR_NORM
       INTEGER NA, NZ
       DOUBLE PRECISION PMASS(NEXTERNAL), ZERO
       LOGICAL OFFSH
@@ -360,6 +361,10 @@ C       incoherent: (1 - F_A^2) A^2 (Z |M_p|^2 + N |M_n|^2)
         CALL GPD%(n)d_ME(P, XIK, T, MU, ANS)
       ENDIF
       USEMC = 0
+C     pdg2pdf multiplied the pair density by GPD_PAIR_NORM (PhotonFlux.f),
+C     the expected scale of |M|^2 that steers madevent's choice of the
+C     beam orientation: divided out here
+      ANS = ANS/GPD_PAIR_NORM(ZETA, IB(2))
       MATRIX%(n)d = ANS*WT*GPD_SURVIVAL*%(iden)dD0
       END
 """
@@ -464,6 +469,58 @@ def finish_group(exporter, pdir, subproc_group, fortran_model):
     for f in os.listdir(tmp):
         os.remove(pjoin(tmp, f))
     os.rmdir(tmp)
+    for name in os.listdir(pdir):
+        if re.match(r'auto_dsig\d+\.f$', name):
+            reset_fixed_beam_pdfs(pjoin(pdir, name))
+
+
+LPP_IF = re.compile(r'^(\s*)IF \(ABS\(LPP\(IB\(\d\)\)\)\.GE\.1\) THEN\s*$', re.I)
+PDF_SET = re.compile(r'^\s+(\w+(?:\(IVEC\))?)\s*=\s*PDG2PDF\(', re.I)
+
+
+def reset_fixed_beam_pdfs(path):
+    """madevent computes the parton densities of a beam only when its lpp is
+    not 0 and otherwise keeps the last value of the variable (DATA 1D0). The
+    shadow of a GPD process has a mirror orientation (the photon from either
+    beam), whose densities of an lpp = 0 beam would then be those of the
+    other orientation (zero for the electron of electroproduction asked of
+    the lpp = 5 beam, for instance): reset them to 1 for lpp = 0."""
+    lines = open(path).read().split('\n')
+    out, i = [], 0
+    while i < len(lines):
+        m = LPP_IF.match(lines[i])
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+        indent, depth, names, j = m.group(1), 0, [], i
+        while j < len(lines):
+            line = lines[j]
+            code = line.strip().upper() if line[:1] not in ('C', 'c', '!') else ''
+            if code.startswith('IF') and code.endswith('THEN'):
+                depth += 1
+            elif code in ('ENDIF', 'END IF'):
+                depth -= 1
+                if depth == 0:
+                    break
+            elif depth == 1 and code == 'ELSE':
+                names = []
+                break
+            pm = PDF_SET.match(line)
+            if pm and depth == 1:
+                names.append(pm.group(1))
+            j += 1
+        if j >= len(lines) or not names or depth != 0:
+            out.append(lines[i])
+            i += 1
+            continue
+        out.extend(lines[i:j])
+        out.append(indent + 'ELSE')
+        out.extend(indent + '  ' + name + '=1D0' for name in names)
+        out.append(lines[j])
+        i = j + 1
+    with open(path, 'w') as fsock:
+        fsock.write('\n'.join(out))
 
 
 GPD_RUN_DEFAULTS = [(r'^(\s*)\S+(\s*=\s*lpp1\b)', r'\g<1>5\2'),

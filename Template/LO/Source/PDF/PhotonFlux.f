@@ -262,6 +262,63 @@ c     pp (forward-neutron classes do not apply)
       end
 
 
+      double precision function gpd_pair_norm(x, beamid)
+c     The scale c/x^2 of |M|^2 for a GPD pair of momentum fraction x on
+c     the beam beamid (lpp = 5). pdg2pdf multiplies it into the pair
+c     density x/(16 pi^2) and MATRIX divides it out again, so that the
+c     events are unchanged but madevent picks the orientation of the
+c     beams (the mirror) in proportion to the cross section rather than
+c     to the bare pair density: this matters for asymmetric beams (pA,
+c     where the coherent nucleus carries A^4). At fixed shat,
+c     |M|^2 ~ sigma(W) (W^2 - M_T^2)^2 ~ 1/x^2; c estimates sigma of the
+c     target per nucleon pair: 1 for a proton, A^(4/3) for a coherent
+c     nucleus (A^2 at t = 0 over the width <r^2>_A/<r^2>_p ~ A^(2/3) of
+c     F_A^2) and A for an incoherent one (gpd_nuclear of gpd_card.dat).
+      implicit none
+      double precision x
+      integer beamid
+      integer nb_proton(2), nb_neutron(2)
+      common/to_heavyion_pdg/ nb_proton, nb_neutron
+      integer na, ios, ieq, k, incoh
+      logical init, ex
+      character*256 line, fname(3), val
+      data init/.true./, incoh/0/
+      data fname/'../../../Cards/gpd_card.dat', '../../Cards/gpd_card.dat',
+     &     'gpd_card.dat'/
+      save init, incoh
+      if (init) then
+         init = .false.
+         do k = 1, 3
+            inquire(file=fname(k), exist=ex)
+            if (ex) exit
+         enddo
+         if (ex) then
+            open(88, file=fname(k), status='old')
+            do
+               read(88, '(a)', iostat=ios) line
+               if (ios.ne.0) exit
+               if (index(line,'#').gt.0) line = line(1:index(line,'#')-1)
+               if (index(line,'!').gt.0) line = line(1:index(line,'!')-1)
+               ieq = index(line, '=')
+               if (ieq.eq.0) cycle
+               val = adjustl(line(1:ieq-1))
+               if (adjustl(line(ieq+1:)).ne.'gpd_nuclear') cycle
+               if (index(val, 'incoherent').gt.0) incoh = 1
+            enddo
+            close(88)
+         endif
+      endif
+      na = nb_proton(beamid) + nb_neutron(beamid)
+      if (na.le.1) then
+         gpd_pair_norm = 1d0/(x*x)
+      elseif (incoh.eq.1) then
+         gpd_pair_norm = dble(na)/(x*x)
+      else
+         gpd_pair_norm = dble(na)**(4d0/3d0)/(x*x)
+      endif
+      end
+
+
       integer function gpd_ntag_code(c)
 c     gpd_ntag letter -> gamma-UPC neutron class (-2 any, -1 Xn, 0..4)
       implicit none
