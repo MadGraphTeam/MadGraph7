@@ -76,9 +76,9 @@ class ProcessGroupAnalysis(StrEnum):
 
 class LoopInducedPolicy(StrEnum):
     """How a one-loop request serves processes without a Born amplitude
-    within their coupling-order limits (loop-induced, |A_loop|^2; m-lit
-    PLAN Q2 (b)): ``auto`` (the default) serves a request none of whose
-    concrete processes has a Born loop-induced and skips the Born-less
+    within their coupling-order limits (loop-induced, |A_loop|^2): ``auto``
+    (the default) serves a request none of whose concrete processes has a
+    Born loop-induced and skips the Born-less
     members of a mixed multiparticle request with a typed record; ``skip``
     serves nothing loop-induced (a purely loop-induced request is refused);
     ``only`` serves only the members without a Born (the others are skipped
@@ -164,9 +164,9 @@ class R2Strategy(StrEnum):
 
 
 class ReductionBackend(StrEnum):
-    """The reduction backend of a v2 one-loop evaluation (m-lit PLAN §2.b.4,
-    RULED Q17 / Q18, F3): ``auto`` (the default) takes the per-type default,
-    TIRust (tensor-integral reduction) for a loop-induced process and
+    """The reduction backend of a v2 one-loop evaluation: ``auto`` (the
+    default) takes the per-type default, TIRust (tensor-integral reduction)
+    for a loop-induced process and
     NinjaRS (integrand reduction) for a Born-interfered one, and falls back
     to NinjaRS with a recorded reason where TIRust cannot serve the call; on
     TIRust a point it refuses or fails is evaluated again on NinjaRS (the
@@ -204,7 +204,7 @@ def reduction_request(value: object) -> Literal["auto", "ninjars", "tirust"]:
 def reduction_target(value: object) -> float:
     """The value of a target accuracy (``evaluation.reduction_target``, the
     CLI's ``--reduction-target``, ``Runtime.load`` / ``evaluate(...,
-    reduction_target=)``; m-lit F3 (a)): the relative accuracy of each
+    reduction_target=)``): the relative accuracy of each
     point's result. The validator of every Python surface: a Python number
     (a bool or another type is refused), checked by the native policy's one
     rule (``reduction_policy::target``: finite and positive, the SDKs'
@@ -247,9 +247,9 @@ DEFAULT_ON_FAILURE = "best-effort"
 def reduction_unchecked(value: object) -> bool:
     """The value of the unchecked reduction setting (``evaluation.
     reduction_unchecked``, the CLI's ``--reduction-unchecked``,
-    ``Runtime.load`` / ``evaluate(..., reduction_unchecked=)``; m-lit
-    lit-unchecked): True reduces without the reduction backends' own
-    acceptance and refusal checks, False (the default) with them. The
+    ``Runtime.load`` / ``evaluate(..., reduction_unchecked=)``): True
+    reduces without the reduction backends' own acceptance and refusal
+    checks, False (the default) with them. The
     validator of every Python surface: a Python bool (any other type, 0 and
     1 included, is refused) with the native policy's one refusal text
     (``reduction_policy::UNCHECKED_REFUSAL``; the SDKs' C ABI takes 1 or 0,
@@ -265,7 +265,7 @@ def reduction_unchecked(value: object) -> bool:
 def lane_rescue(value: object) -> bool:
     """The value of the lane rescue setting (``evaluation.lane_rescue``, the
     CLI's ``--lane-rescue`` / ``--no-lane-rescue``, ``Runtime.load`` /
-    ``evaluate(..., lane_rescue=)``; USER 2026-11-18): True (the default)
+    ``evaluate(..., lane_rescue=)``): True (the default)
     reduces a reduction lane the backend refuses again in a higher carrier,
     in the checked and the unchecked mode; False leaves a refused lane to
     fail its point (a pure binary64 evaluation, e.g. for timing). A Python
@@ -449,8 +449,8 @@ def _enum(value: object, enum_type: type[_EnumT], name: str) -> _EnumT:
 
 def _integer(value: int, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        qualifier = "positive" if minimum == 1 else f">= {minimum}"
-        raise ConfigurationError(f"{name} must be an integer {qualifier}")
+        kind = "a positive integer" if minimum == 1 else f"an integer >= {minimum}"
+        raise ConfigurationError(f"{name} must be {kind}")
     return value
 
 

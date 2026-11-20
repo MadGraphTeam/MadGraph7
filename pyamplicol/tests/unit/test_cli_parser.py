@@ -898,7 +898,7 @@ def test_evaluate_takes_the_thread_bound_and_a_runtime_options_card(tmp_path) ->
     given = parse_cli(("evaluate", "artifact", "--threads", "3")).resolve().effective
     assert given.evaluation.threads == 3
     with pytest.raises(
-        ConfigurationError, match="evaluation.threads must be an integer"
+        ConfigurationError, match=r"evaluation\.threads must be a positive integer"
     ):
         parse_cli(("evaluate", "artifact", "--threads", "0")).resolve()
     card = tmp_path / "options.toml"

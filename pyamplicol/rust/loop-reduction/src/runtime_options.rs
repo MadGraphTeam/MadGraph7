@@ -400,7 +400,7 @@ fn positive(path: &str, value: &toml::Value, largest: u64) -> Result<u64, String
     match u64::try_from(*value) {
         Ok(value @ 1..) if value <= largest => Ok(value),
         Ok(value @ 1..) => Err(format!("{path} must be at most {largest}; got {value}")),
-        _ => Err(format!("{path} must be an integer positive")),
+        _ => Err(format!("{path} must be a positive integer")),
     }
 }
 
@@ -582,7 +582,7 @@ mod tests {
         );
         assert_eq!(
             refusal("[evaluation]\nthreads = 0"),
-            "evaluation.threads must be an integer positive"
+            "evaluation.threads must be a positive integer"
         );
         assert_eq!(
             refusal("[evaluation.stability_checks]\nrescaled = true"),
