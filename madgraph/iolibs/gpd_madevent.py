@@ -239,6 +239,16 @@ C     writes it as a '#gpd' line, madgraph/various/gpd_lhe.py adds the protons)
       IF (IHEL.NE.1) RETURN
 C     the pair comes from the beam IB(2) of this orientation, a GPD beam
       IF (ABS(LPP(IB(2))).NE.5) RETURN
+C     with a fixed beam (lpp = 0), madevent keeps the sampled momentum
+C     fractions with the legs of the process, not with the beams: in the
+C     mirror orientation the pair would get the fraction 1 of the fixed
+C     beam. The fixed beam must carry the first leg, i.e. be beam 1.
+      IF (IB(1).EQ.2 .AND. LPP(2).EQ.0) THEN
+        WRITE(*,*) 'GPD: a fixed beam (lpp = 0) must be beam 1, with ',
+     &    'the GPD target on beam 2 (e.g. lpp1 = 0, lpp2 = 5 for ',
+     &    'e- gpd > e- X)'
+        STOP 1
+      ENDIF
 C     multichannel and colour weights: one channel per shadow diagram, flat
       DO I = 1, %(ngraphs)d
         AMP2(I) = AMP2(I) + 1D0
