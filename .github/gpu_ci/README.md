@@ -51,8 +51,10 @@ new job makes every run longer.
 **Tiers (manneback).** The CI is mostly CPU-bound (single-core python and the mg7 launches),
 so its length follows the cores of the GPU node more than its GPU. Instead of one allocation,
 manneback asks for three at once (input `tiers` of `gpu_runner_ci.yml`, `--tier` of
-`ceci-gate start-runner`), by node feature: 30 minutes on H200 and L40s nodes, 45 on A100
-nodes (two runs there needed about 34) and 60 on the other GPUs. One runner job is submitted
+`ceci-gate start-runner`), by node feature: 30 minutes on H200 nodes, 45 on A100 and L40s
+nodes (two A100 runs needed about 34; an L40s run timed out at 30, about 29 with a warm
+madspace cache) and 60 on the other GPUs. The first run on a new GPU architecture also
+builds madspace for it (about 4 more minutes). One runner job is submitted
 per tier, `mg7-gh-runner-<label>`, `...-2` and `...-3`; the first that starts runs the CI:
 before it starts the runner, `runner_batch.sh` scancels the other tiers of its run (if two
 start together, the lower job id wins). Giving a `time_limit` or `extra_sbatch` from the
