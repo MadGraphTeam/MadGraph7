@@ -8,7 +8,8 @@ ANNOUNCEMENT:
    TH: [amplicol] flavour unions are on by default (MG option amplicol_flavor_unions):
        the flavours that differ only in massless quark flavours are evaluated by one
        template program. The events are statistically equivalent to those of one program
-       per flavour class, and with VEGAS and the same seed the same up to rounding.
+       per flavour class; for unmerged VEGAS runs with the same seed they are the same
+       up to rounding.
        'set amplicol_flavor_unions False' before 'output' turns them off.
    OM: color_basis ddm (and auto, for the outputs where auto picks it): the (n-2)!
        Del Duca-Dixon-Maltoni colour basis is now also used when the gluons come with

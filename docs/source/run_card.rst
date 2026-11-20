@@ -489,10 +489,10 @@ for an output that has them.
 The AmpliCol programs of an output evaluate the flavours that differ only in massless
 quark flavours through one flavour-union template (the MG option
 ``amplicol_flavor_unions``, on by default). ``set amplicol_flavor_unions False`` before
-``output`` generates one program per flavour class instead. With VEGAS and the same seed,
-both give the same events up to rounding. With MadNIS the matrix elements still agree to
-about 1e-13, but the training amplifies that, so the events are only statistically
-equivalent.
+``output`` generates one program per flavour class instead. The matrix elements of the
+two agree to about 1e-13. For an unmerged run with VEGAS and the same seed, both give the
+same events up to rounding. With MLM merging or MadNIS, these rounding differences change
+the sequence of events, so the events are only statistically equivalent.
 
 ``color_accuracy`` (``"full"``)
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the

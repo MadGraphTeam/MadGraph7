@@ -13801,8 +13801,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         """Set whether the leading- and full-colour [amplicol] artifacts evaluate
         the flavours of a quark-flavour union through one template (pyamplicol
         process.flavor_unions). Default: True; set it to False for one program
-        per flavour class (statistically equivalent events; with VEGAS and the
-        same seed, the same events up to rounding).
+        per flavour class (statistically equivalent events; for unmerged VEGAS
+        runs with the same seed, the same events up to rounding).
         """
         args = ['amplicol_flavor_unions'] + args
         self.check_set(args)
