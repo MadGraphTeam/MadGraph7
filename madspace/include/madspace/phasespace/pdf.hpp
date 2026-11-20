@@ -295,6 +295,13 @@ private:
  * smallest fraction the phase space reaches; below its first q knot the
  * continuation of @ref PartonDensity, made for a scale, would apply.
  *
+ * The interpolation is only as good as the knots: with 20 knots per decade
+ * the gamma-UPC luminosity of protons is reproduced to a few 1e-6, that of
+ * lead to ~1e-5 up to W_gamma-gamma ~ 100 GeV, 0.1-1% for 200-500 GeV and
+ * a few % above, where the form-factor dips of the flux are not resolved
+ * (and the luminosity is negligible). Values below zero, which the bicubic
+ * interpolation can give there, are set to zero.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**

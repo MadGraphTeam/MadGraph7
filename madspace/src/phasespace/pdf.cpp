@@ -679,7 +679,10 @@ NamedVector<Value> TabulatedLuminosity::build_function_impl(
     auto flavor = fb.full({static_cast<me_int_t>(0), fb.batch_size({x1})});
     // the table's q axis is x2
     auto lum = _density.build_function(fb, ValueVec{x1, x2, flavor}).at(0);
-    return {{"luminosity", lum}};
+    // a luminosity is never negative, but the bicubic interpolation can
+    // undershoot between knots where it falls steeply (the form-factor dips
+    // of an ion's photon flux at large x): never a negative weight
+    return {{"luminosity", fb.max(lum, Value(0.))}};
 }
 
 AlphaSGrid::AlphaSGrid(const std::string& file) {

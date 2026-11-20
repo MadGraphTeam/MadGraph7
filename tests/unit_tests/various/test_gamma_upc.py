@@ -118,7 +118,7 @@ class TestGammaUPCRunCard(unittest.TestCase):
         self.assertEqual(card['pdlabel2'], 'chp0nxn')
 
     def test_upc_pdlabel_lpp_compat(self):
-        """gamma-UPC labels need lpp=2; lpp=2 falls back to edff"""
+        """gamma-UPC labels need lpp=2; lpp=2 falls back to chff (as mg7)"""
 
         card = upc_card(bannermod.RunCardLO, 'edfinin', beam1=PROTON, beam2=PROTON, lpp=1)
         with self.assertRaises(bannermod.InvalidRunCard):
@@ -127,8 +127,8 @@ class TestGammaUPCRunCard(unittest.TestCase):
         card = upc_card(bannermod.RunCardLO, 'nn23lo1', beam1=PROTON, beam2=PROTON)
         with misc.MuteLogger(['madevent.cards'], [50]):
             card.check_validity()
-        self.assertEqual(card['pdlabel1'], 'edff')
-        self.assertEqual(card['pdlabel2'], 'edff')
+        self.assertEqual(card['pdlabel1'], 'chff')
+        self.assertEqual(card['pdlabel2'], 'chff')
 
     def test_upc_neutron_tagging_nuclei(self):
         """the nucleus x neutron-tag matrix, at LO (card check and helper)"""

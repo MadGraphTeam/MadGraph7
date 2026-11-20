@@ -32,8 +32,13 @@ logger = logging.getLogger('madevent.upc_luminosity')
 # gamma-UPC's own internal grid starts at x = 1e-8 (ElasticPhotonPhotonFlux.f90,
 # extended by decades on demand); the table never starts above it.
 DEFAULT_XMIN = 1e-8
-# knots per decade of each momentum fraction: twice gamma-UPC's nseg = 10,
-# which the bicubic interpolation of madspace then follows to ~1e-6
+# knots per decade of each momentum fraction: twice gamma-UPC's nseg = 10.
+# The bicubic interpolation of madspace then follows the luminosity to a few
+# 1e-6 for protons. For ions it is ~1e-5 up to W_gamma-gamma ~ 100 GeV, but
+# 0.1-1% for 200-500 GeV and a few % above (PbPb at 5 TeV), where the dips
+# of the nuclear form factor at x > ~0.1 per nucleon are not resolved; there
+# the luminosity is below 1e-8 of its total, and doubling the knots only
+# halves the error.
 KNOTS_PER_DECADE = 20
 
 # compiled in this order: each module before its users
@@ -188,6 +193,8 @@ def tabulate(gamma_dir, label, ions, beam_energies, xmin, fortran_compiler=None,
             if result.returncode or not os.path.getsize(tmp):
                 raise RuntimeError('the gamma-UPC luminosity tabulation failed '
                                    '(exit %s), see %s' % (result.returncode, log_path))
+            # mkstemp makes it private: a table is shared like the sources
+            os.chmod(tmp, 0o644)
             os.replace(tmp, path)
         finally:
             if os.path.exists(tmp):

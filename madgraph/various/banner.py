@@ -5289,8 +5289,9 @@ class RunCardLO(RunCard):
                     mod = True
             elif abs(self[lpp]) == 2:
                 if self[pdlabelX] not in ['none','iww'] and not is_upc_label(self[pdlabelX]):
-                    logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to edff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
-                    self.set(pdlabelX, 'edff')
+                    # ChFF, as for 'set lpp 2' in mg7
+                    logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to chff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
+                    self.set(pdlabelX, 'chff')
                     mod = True
 
         if mod:
@@ -9008,10 +9009,11 @@ class RunCardMG7(RunCard):
             except ValueError:
                 raise InvalidRunCard('%s = %s: not an integer' % (name, value))
             if abs(lpp) == 2:
-                # an elastic photon: mg7 has it only from gamma-UPC, not the
-                # EPA (iww) madevent takes with any other pdlabel. Without a
-                # gamma-UPC label yet, start from ChFF (the pdlabel usually
-                # follows), never from the proton PDFs of beam.leptonic = False.
+                # an elastic photon: mg7 has it only from gamma-UPC (madevent
+                # also has the EPA, pdlabel iww). Without a gamma-UPC label
+                # yet, start from ChFF, madevent's fallback for lpp = 2 too
+                # (the pdlabel usually follows), never from the proton PDFs
+                # of beam.leptonic = False.
                 if not self['beam']['upc_flux']:
                     self.set('beam.upc_flux', self.default_upc_flux, user=True)
                     logger.info(
@@ -9054,8 +9056,9 @@ class RunCardMG7(RunCard):
                 self.set('beam.upc_flux', label.lower(), user=True)
                 return 'beam.upc_flux = %s (gamma-UPC, both beams)' % label.lower()
         if self['beam']['upc_flux']:
-            # lpp = 2: in madevent another pdlabel is the EPA (iww) photon,
-            # which mg7 does not have; leaving gamma-UPC goes through lpp
+            # lpp = 2: madevent also has the EPA (iww) and replaces any other
+            # pdlabel by chff; mg7 refuses it rather than guess, and leaving
+            # gamma-UPC goes through lpp
             raise InvalidRunCard(
                 "%s = %s with beam.upc_flux = %s (lpp = 2): mg7 has elastic "
                 "photons only from gamma-UPC, so this needs a gamma-UPC label "
