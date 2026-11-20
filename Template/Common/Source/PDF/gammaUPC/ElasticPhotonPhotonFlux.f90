@@ -11545,7 +11545,11 @@ CONTAINS
     REAL(KIND(1d0))::Gp,G4,ad,Dsum,hh,cc,b12,sn,pp,s1,s2,arg,pd1,y,cn,sum1,sum2,u,wv,php
     REAL(KIND(1d0)),DIMENSION(8)::wt
     LOGICAL::longtail
-    IF(.NOT.ALLOCATED(ph))ALLOCATE(ph(5000))
+    ! phi breakpoints: at most one per kernel breakpoint plus the two ends
+    IF(ALLOCATED(ph))THEN
+       IF(SIZE(ph).LT.ffe_nbeta+16)DEALLOCATE(ph)
+    ENDIF
+    IF(.NOT.ALLOCATED(ph))ALLOCATE(ph(MAX(5000,ffe_nbeta+16)))
     phi=0d0
     Gp=b1*b2
     G4=4d0*Gp
@@ -11710,10 +11714,16 @@ CONTAINS
          0.2d0,0.3d0,0.5d0,1d0/)
     REAL(KIND(1d0)),DIMENSION(8)::x8,w8
     REAL(KIND(1d0)),DIMENSION(5)::x5,w5
-    INTEGER::nb,k,i,np,ns,j,g,nj
+    INTEGER::nb,k,i,np,ns,j,g,nj,nbmax
     REAL(KIND(1d0))::V1lo,V1hi,V2lo,V2hi,tlo,thi,es,x,len,h,a,ht,u,tj(4),ta,tb
     LOGICAL::lsing,rsing
-    IF(.NOT.ALLOCATED(br))ALLOCATE(br(40000))
+    ! t breakpoints: 1 + 20 graded lines + segment boundaries + 4 per kernel breakpoint
+    ! + 80 around t = 0 + 4 jump lines, and the two ends added by ffe_breaks
+    nbmax=27+ffe_vg(1)%nseg+ffe_vg(2)%nseg+4*ffe_nbeta+80
+    IF(ALLOCATED(br))THEN
+       IF(SIZE(br).LT.nbmax)DEALLOCATE(br)
+    ENDIF
+    IF(.NOT.ALLOCATED(br))ALLOCATE(br(MAX(40000,nbmax)))
     V1lo=ffe_vg(1)%v(1)
     V1hi=ffe_vg(1)%v(ffe_vg(1)%n)
     V2lo=ffe_vg(2)%v(1)
@@ -11784,6 +11794,12 @@ CONTAINS
     CALL ffe_gauleg(8,x8,w8)
     CALL ffe_gauleg(5,x5,w5)
     ht=0.25d0/MAX(FFE_NodeScale,1d-3)
+    ! the panels below add at most 24 nodes each plus 8 per length ht
+    IF(24*(np-1)+8*CEILING((thi-tlo)/ht)+8.GT.SIZE(tt))THEN
+       WRITE(*,*)"ERROR: ffe_tnodes: up to",24*(np-1)+8*CEILING((thi-tlo)/ht)+8,&
+            " t nodes for a work array of",SIZE(tt)
+       STOP 1
+    ENDIF
     DO i=1,np-1
        len=br(i+1)-br(i)
        ns=MAX(1,CEILING(len/ht-1d-9))
@@ -12340,6 +12356,7 @@ CONTAINS
     sig(18)=DBLE(sigmaNN_inelastic_eval)
     sig(19)=ffe_xmin
     sig(20)=MERGE(1d0,0d0,proton_FF_correction)
+    sig(21)=MERGE(1d0,0d0,FFE_Tag_Legacy)
     IF(ffe_ready.AND.ALL(sig.EQ.ffe_sig))RETURN
     CALL CPU_TIME(tt0)
     t0=tt0
@@ -12860,11 +12877,14 @@ CONTAINS
     ffe_xmin=1d-8
   END SUBROUTINE FFE_Reset
 
-  SUBROUTINE FFE_Info(times,nodes,nv1,nv2)
-    ! CPU times (setup, P, W, K, grid) and sizes of the last build
+  SUBROUTINE FFE_Info(times,nodes,nv1,nv2,nguard)
+    ! CPU times (setup, P, W, K, grid) and sizes of the last build; nguard: number of grid
+    ! values replaced by the PNOHAD=1 flux by the last-resort guard since the start of the run
     IMPLICIT NONE
     REAL(KIND(1d0)),DIMENSION(5),INTENT(OUT)::times
     INTEGER,INTENT(OUT)::nodes,nv1,nv2
+    INTEGER,INTENT(OUT),OPTIONAL::nguard
+    IF(PRESENT(nguard))nguard=ffe_nguard
     times=ffe_time(1:5)
     nodes=ffe_nodes
     nv1=ffe_vg(1)%n
@@ -12944,8 +12964,12 @@ CONTAINS
           v=ffe_flux(icoll,x1,x2,1,0)
           p1=ffe_flux(icoll,x1,x2,1,2)
           IF(v.NE.v.OR.v.LT.0d0.OR.v.GT.1d2*p1)THEN
-             ! last-resort guard, as in the legacy code (counted in FFE_Info)
+             ! last-resort guard, as in the legacy code: warned (first 5 times) and counted
+             ! (FFE_Info, argument nguard)
              ffe_nguard=ffe_nguard+1
+             IF(ffe_nguard.LE.5)WRITE(*,*)"WARNING: photon-photon flux grid unusable at (x1,x2) =",&
+                  x1,x2,"; the PNOHAD=1 flux is used instead"
+             IF(ffe_nguard.EQ.5)WRITE(*,*)"WARNING: further warnings of this kind are suppressed"
              v=p1
           ENDIF
           ffe_api=v
