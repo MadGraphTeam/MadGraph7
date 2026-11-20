@@ -1162,10 +1162,11 @@ reduction-direction check), a refused point served best-effort, lane rescue
 as that arithmetic has it (`--no-lane-rescue` turns it off). An entry below
 the ground truth is read against it ("Stable digits of double-double vs
 arb(60)"): its true and estimated digits capped to its own range
-(double-double -log10(2^-106) = 31.92, arbitrary precision its digits) and
+(double-double -log10(2^-106) = 31.91, arbitrary precision its digits) and
 to what the ground truth certifies (its range; an arbitrary-precision truth
-at most its cross-check's 2^-106), the title adding "capped at the ground
-truth's D digits" when that is the lower. The ground truth's own precision
+its cross-check's 2^-106, or on a point where the backends' references agree
+closer the agreement they reach), the title adding "capped at what the ground
+truth certifies (at least D digits)" when that is the lower. The ground truth's own precision
 has its estimates-only tables ("Estimated digits of arb(60) (the ground
 truth)" and "Default checks, estimates only, arb(60)"): its points are
 evaluated in it once, with the default checks, and that evaluation is also
@@ -1195,7 +1196,12 @@ every stream. The scope rules (A and B above) count them by lower bounds
 too: binary64's calls only when listed, every other precision's stream at
 least two binary64 points in the runtime timing (its measuring call and
 one timed call) and one binary64 point per stability point, a listed
-ground truth as the reference it is; the whole command's ETA counts each
+ground truth as the reference it is (in the runtime timing its stream runs
+after binary64's rows, so until then rule A sees it at one binary64 point
+per call and rarely leaves a backend out for it, more output than asked,
+never less); the stability plan prices a listed ground truth's stream at
+its checks' evaluations per point (the point and each rotation of a plain
+reference point); the whole command's ETA counts each
 precision's runtime calls (its measuring point and its budget) until they
 run, and `--completion-time` keeps their estimates out of binary64's share
 and gives each the time left when it starts. With `--runtime`, every entry other than binary64 also gets
@@ -1219,8 +1225,7 @@ own table. When the ground truth is listed its stream is timed once: it is
 the multiplier of binary64's table and of the others (no separate
 multiplier pass), and rule B leaves it in (a precision given). In `--json` its rows are `runtime_measured` (each its
 `precision` record and `runtime` rows as `runtime`), absent by default. In
-`--json`
-the other precisions' rows are under `stability_setup.measured_precisions`
+`--json` the other precisions' rows are under `stability_setup.measured_precisions`
 (each entry its precision, `estimates_only`, `digits_cap`,
 `capped_by_truth` and `stability`, the same rows as `stability`; binary64's
 entry `stability: null`, its rows where they always are); the key is absent

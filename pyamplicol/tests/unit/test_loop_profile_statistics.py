@@ -1220,9 +1220,10 @@ def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_referen
         )
         assert (options["arithmetic"], options["precision"]) == ("arbitrary", 57)
         # The trusted point is the reference, summed exactly.
-        assert records[0] == (29, [[Fraction(7, 4)]], None, "1.75")
+        # A checked reference carries its own estimate (what it certifies).
+        assert records[0] == (29, [[Fraction(7, 4)]], None, "1.75", 1e-40)
         # The other one has no reference, as a failed reference point has.
-        index, value, reason, text = records[1]
+        index, value, reason, text, _ = records[1]
         assert (index, value, text) == (30, None, None)
         assert reason == (
             "failed: stability checks: estimate >1 above binary64's unit "
@@ -1574,3 +1575,40 @@ def test_the_ground_truths_own_stream_is_its_reference():
     assert [
         _stream_label(s, "dd") for s in ("binary64", "reference", "measured:arb(60)")
     ] == ["b64", "dd", "arb(60)"]
+
+
+def test_a_wider_measured_precision_is_read_to_the_reference_agreement():
+    """arb(60) against arb(140): a point whose backends' references agree
+    closer than the cross-check's 2^-106 is read to that agreement, one
+    certified by its checks to that check's estimate (at most arb(60)'s
+    range), the others at the 2^-106 cap; a precision the truth does not cap
+    (double-double) keeps its own cap (a59b688ba read every arb(60) point at
+    2^-106: no ``_point_caps``)."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loop_profile import (
+        GroundTruth,
+        _point_caps,
+        measured_precisions,
+    )
+
+    arb140 = GroundTruth("arbitrary", 140)
+    (arb60,) = measured_precisions(("arbitrary:60",), arb140)
+    caps = _point_caps(
+        arb60,
+        arb140,
+        [0, 1, 2, 3],
+        {0: Fraction(1, 10**135), 1: Fraction(0), 2: Fraction(1, 10**40)},
+    )
+    assert caps[0] == 60.0 and caps[1] == 60.0
+    assert caps[2] == pytest.approx(40.0)
+    assert caps[3] == pytest.approx(2 * BINARY64_DIGITS)
+    # One backend (or a checked re-run): no second reference, the point is
+    # read to what its reference's own checked estimate certifies, which
+    # may be less than the cross-check's 2^-106.
+    checked = _point_caps(arb60, arb140, [0, 1, 2], {}, {0: 1e-130, 1: 1e-20, 2: 0.0})
+    assert checked[0] == 60.0 and checked[2] == 60.0
+    assert checked[1] == pytest.approx(20.0)
+    (dd,) = measured_precisions(("double-double",), arb140)
+    assert _point_caps(dd, arb140, [0], {0: Fraction(0)}, {0: 1e-20}) == {0: dd.cap}

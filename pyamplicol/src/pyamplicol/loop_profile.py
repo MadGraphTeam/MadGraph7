@@ -1039,13 +1039,21 @@ def profile_loop(
 
         if not extra_precisions:
             return cost
+        evaluations = checked_evaluations(evaluation.stability_checks.to_checks())
         return replace(
             cost,
             stability=(cost.stability if binary64_listed else 0.0)
             + sum(
-                measured_prior(cost, m)
+                measured_prior(cost, m, evaluations)
                 for m in extra_precisions
                 if m is not truth_listed
+            )
+            # A listed truth's stream is its reference (``stability_reference``,
+            # one plain point): its checks' further evaluations on top.
+            + (
+                (evaluations - 1) * (cost.stability_reference or 0.0)
+                if truth_listed is not None
+                else 0.0
             ),
         )
 
@@ -2103,37 +2111,46 @@ def profile_loop(
             for measured in sorted(
                 extra_precisions, key=lambda m: m is not truth_listed
             ):
+
+                def timed_profile(
+                    backend: str,
+                    bench_p: Any,
+                    precision: Mapping[str, Any],
+                    measured: MeasuredPrecision = measured,
+                ) -> Any:
+                    label, name = measured.label, measured.name
+                    return _isolated_profile(
+                        path,
+                        evaluation.process,
+                        options,
+                        replace(
+                            config,
+                            benchmark=measured_bench(backend, bench_p, label),
+                        ),
+                        timed,
+                        backend,
+                        _BackendRun(
+                            monitor,
+                            backend,
+                            truth,
+                            None if backend not in costs else costs[backend].start,
+                            None,
+                            bench_p.batch_size,
+                            {},
+                            threads,
+                            precision=name,
+                        ),
+                        precision=precision,
+                        warm_entry=warms_through_entry(backend, "binary64", None),
+                    )
+
                 measured_rows = _measured_runtime(
                     measured,
                     [b for b in backends if b not in omitted and b in benches],
                     benches,
                     truths,
                     truth,
-                    lambda backend, bench_p, precision, label=measured.label: (
-                        _isolated_profile(
-                            path,
-                            evaluation.process,
-                            options,
-                            replace(
-                                config,
-                                benchmark=measured_bench(backend, bench_p, label),
-                            ),
-                            timed,
-                            backend,
-                            _BackendRun(
-                                monitor,
-                                backend,
-                                truth,
-                                None if backend not in costs else costs[backend].start,
-                                None,
-                                bench_p.batch_size,
-                                {},
-                                threads,
-                            ),
-                            precision=precision,
-                            warm_entry=warms_through_entry(backend, "binary64", None),
-                        )
-                    ),
+                    timed_profile,
                     fit=is_default(bench.batch_size),
                 )
                 timed_rows[measured.stream] = measured_rows
@@ -2762,10 +2779,13 @@ class _BackendRun:
         batch: int = 1,
         later: Mapping[str, float] | None = None,
         threads: int = 1,
+        precision: str = "binary64",
     ) -> None:
         from pyamplicol.loops.v2.reduction import NAMES
 
         self.monitor = monitor
+        # The precision of its timed calls (a measured precision's name).
+        self.precision = precision
         # The native threads of the timed calls (``--runtime-threads``) and
         # the one-thread timing's time per point (None: not measured).
         self.threads = threads
@@ -2916,7 +2936,7 @@ class _BackendRun:
                 )
             self.phase.end(summary)
         label = {
-            "binary64": "binary64 calls",
+            "binary64": f"{self.precision} calls",
             "one-thread": "one-thread calls (the gain)",
         }.get(kind, f"{self.truth.name} reference calls")
         self.kind = kind
@@ -4033,6 +4053,9 @@ def _stability_records(
                     None if exact is None else [[exact]],
                     reason,
                     None if value is None else _exact_text(value),
+                    # A checked reference's own estimate (what it certifies:
+                    # ``_point_caps``).
+                    *(() if estimate is None else (float(estimate.relative),)),
                 )
             )
     return records
@@ -4714,7 +4737,9 @@ def _stability(
             if cost.stability_reference is not None:
                 priors[(backend, "reference")] = cost.stability_reference
             for m in extras:
-                priors[(backend, m.stream)] = measured_prior(cost, m)
+                priors[(backend, m.stream)] = measured_prior(
+                    cost, m, checked_evaluations(configured)
+                )
     # The streams whose point is dear enough that the workers skip their
     # warm-up (``_warm_up``).
     cold = tuple(
@@ -4760,6 +4785,13 @@ def _stability(
     checking: list[tuple[str, int]] = []
     rerun: dict[int, set[str]] = {}
     rechecked: dict[int, dict[str, tuple[Any, ...]]] = {}
+    # Per point certified by the cross-check, the agreement its references
+    # reached (their largest relative difference): a measured precision
+    # wider than the cross-check's tolerance is read to it (``_measured_rows``).
+    agreed: dict[int, Fraction] = {}
+    # Per backend and point certified by its checks (one backend, or the
+    # checked re-run), that reference's own estimate: what it certifies.
+    certified: dict[str, dict[int, float]] = {b: {} for b in backends}
     # Per backend the reference tasks (plain or checked) submitted and not
     # harvested: a point may still need its checked re-run.
     flight = dict.fromkeys(backends, 0)
@@ -4781,6 +4813,17 @@ def _stability(
             return
         found = {b: plain[b].pop(index) for b in alive}
         valued = [b for b in alive if found[b][1] is not None]
+        totals = [found[b][1][0][0] for b in valued]
+        if len(totals) > 1 and all(
+            _references_agree(a, b)
+            for k, a in enumerate(totals)
+            for b in totals[k + 1 :]
+        ):
+            agreed[index] = max(
+                abs(a - b) / max(abs(a), abs(b)) if a or b else Fraction(0)
+                for k, a in enumerate(totals)
+                for b in totals[k + 1 :]
+            )
         for backend in alive:
             record = found[backend]
             if record[1] is None:
@@ -4821,7 +4864,7 @@ def _stability(
         for backend in alive:
             record = found[backend]
             if record[1] is None:
-                dd[backend][index] = (*record, None)
+                dd[backend][index] = (*record[:4], None)
             elif spread is not None:
                 from pyamplicol.loops.v2.stability import relative_text
 
@@ -4835,7 +4878,9 @@ def _stability(
                     None,
                 )
             else:
-                dd[backend][index] = (*record, "checks")
+                dd[backend][index] = (*record[:4], "checks")
+                if len(record) > 4:
+                    certified[backend][index] = record[4]
 
     def stream_rate(key: tuple[str, str]) -> float:
         rate = tracker.stream_cost(key)
@@ -5022,9 +5067,11 @@ def _stability(
             # One live backend: the reference itself ran checked.
             for record in records:
                 dd[backend][record[0]] = (
-                    *record,
+                    *record[:4],
                     None if record[1] is None else "checks",
                 )
+                if record[1] is not None and len(record) > 4:
+                    certified[backend][record[0]] = record[4]
         else:
             for record in records:
                 plain[backend][record[0]] = record
@@ -5271,6 +5318,8 @@ def _stability(
             truth=truth,
             tasks=tasks_of,
             records_wanted=records,
+            agreed=agreed,
+            certified=certified,
         )
         for m in extras
     }
@@ -5402,15 +5451,28 @@ def _reference_of(record: tuple[Any, ...]) -> tuple[Any, ...]:
     return (index, value if accepted else None, reason, text if accepted else None)
 
 
-def measured_prior(cost: Any, precision: MeasuredPrecision) -> float:
+def measured_prior(
+    cost: Any, precision: MeasuredPrecision, evaluations: int = 2
+) -> float:
     """A lower bound of a measured precision's stability point before its
-    stream is measured (``profile_plan.Costs``): the ground truth's own a
-    plain reference point (its checks cost more), one below it a checked
-    binary64 point (a wider carrier costs at least the binary64 pass)."""
+    stream is measured (``profile_plan.Costs``): the ground truth's own its
+    checks' ``evaluations`` per point (``checked_evaluations``) of a plain
+    reference point, one below it a checked binary64 point (a wider carrier
+    costs at least the binary64 pass)."""
 
     if precision.estimates_only and cost.stability_reference is not None:
-        return float(cost.stability_reference)
+        return evaluations * float(cost.stability_reference)
     return float(cost.stability)
+
+
+def checked_evaluations(checks: Any) -> int:
+    """The evaluations per point of the stability checks ``checks``
+    (``VirtualStabilityChecks``; None: the default set, one rotation): the
+    point and each rotation (the other checks cost more, not counted: a
+    lower bound)."""
+
+    rotations = 1 if checks is None else int(getattr(checks, "rotations", 1) or 0)
+    return 1 + rotations
 
 
 def _measured_rows(
@@ -5427,6 +5489,8 @@ def _measured_rows(
     truth: GroundTruth,
     tasks: Mapping[str, Mapping[tuple[str, int], tuple[float, int]]],
     records_wanted: bool,
+    agreed: Mapping[int, Fraction] | None = None,
+    certified: Mapping[str, Mapping[int, float]] | None = None,
 ) -> tuple[BackendStability, ...]:
     """The stability rows of a measured precision other than binary64
     (``MeasuredPrecision``), per backend over the points binary64's rows
@@ -5441,12 +5505,21 @@ def _measured_rows(
             continue
         own = records[backend]
         chosen = [i for i in indices.get(backend, ()) if i in own]
+        caps = _point_caps(
+            precision,
+            truth,
+            chosen,
+            agreed or {},
+            (certified or {}).get(backend, {}),
+        )
         common: dict[str, Any] = {
             "reasons": [own[i][3] for i in chosen],
             "statuses": [own[i][4] for i in chosen],
             "indices": chosen,
             "rescues": [_rescue_of(own[i]) for i in chosen],
-            "cap": precision.cap,
+            "cap": [caps[i] for i in chosen]
+            if not precision.estimates_only
+            else precision.cap,
         }
         if precision.estimates_only:
             row = _estimate_statistics(
@@ -5481,7 +5554,7 @@ def _measured_rows(
                 tasks[backend],
                 GroundTruth("none") if precision.estimates_only else truth,
                 stream=precision.stream,
-                cap=precision.cap,
+                cap=caps if not precision.estimates_only else precision.cap,
             )
             if records_wanted
             else None
@@ -5505,6 +5578,43 @@ def _measured_rows(
             )
         )
     return tuple(rows)
+
+
+def _point_caps(
+    precision: MeasuredPrecision,
+    truth: GroundTruth,
+    indices: Sequence[int],
+    agreed: Mapping[int, Fraction],
+    certified: Mapping[int, float] | None = None,
+) -> dict[int, float]:
+    """Each point's digits cap of a measured precision read against the
+    truth: ``precision.cap``, and where that is what the truth certifies
+    (``capped_by_truth``: wider than the cross-check's 2^-106) what this
+    point's reference certifies, at most the precision's own range and the
+    truth's: the agreement the backends' references reached on it, or (one
+    backend, or the checked re-run) that reference's own checked estimate
+    (``certified``), which may certify less than 2^-106. An arbitrary
+    precision measured against a wider one is read to what its reference is
+    known to."""
+
+    caps = dict.fromkeys(indices, precision.cap)
+    if not precision.capped_by_truth:
+        return caps
+    top = min(
+        precision_digits(precision.arithmetic, precision.digits),
+        precision_digits(truth.arithmetic, truth.digits),
+    )
+    checked = certified or {}
+    for index in indices:
+        if index in agreed:
+            spread = float(agreed[index])
+        elif index in checked:
+            spread = checked[index]
+        else:
+            continue
+        reached = top if spread <= 0.0 else -math.log10(spread)
+        caps[index] = min(top, reached)
+    return caps
 
 
 def _runtime_causes(
@@ -6029,7 +6139,7 @@ def _sample_records(
     progress: Callable[[int], None] | None = None,
     *,
     stream: str = "binary64",
-    cap: float = BINARY64_DIGITS,
+    cap: float | Mapping[int, float] = BINARY64_DIGITS,
 ) -> dict[str, object]:
     """Every sample's complete record of one backend, columnar (the JSON
     dump of ``--stability --json``; its point's inputs are in the setup's
@@ -6079,6 +6189,7 @@ def _sample_records(
             record = b64.get(index)
             if record is None:
                 continue
+            point_cap = cap if isinstance(cap, (int, float)) else cap[index]
             padded: tuple[Any, ...] = (*record, *(None,) * (9 - len(record)))
             _, value, summary, reason, status, uncertainty, sectors, rescue = padded[:8]
             text = padded[8]
@@ -6092,7 +6203,7 @@ def _sample_records(
                 estimate = [
                     _significant(summary.relative),
                     _significant(finite),
-                    _rounded(stable_digits(finite, cap), 3),
+                    _rounded(stable_digits(finite, point_cap), 3),
                     _significant(summary.scale),
                     {name: _significant(budget) for name, budget in summary.checks},
                     dict(summary.not_run),
@@ -6114,7 +6225,7 @@ def _sample_records(
                     if ref[1] is not None and exact_total is not None:
                         exact = relative_error(exact_total, _total_finite(ref[1]))
                         error = _significant(exact)
-                        digits = _rounded(stable_digits(exact, cap), 3)
+                        digits = _rounded(stable_digits(exact, point_cap), 3)
                         uncapped_true = _rounded(_uncapped_digits(exact), 3)
             yield [
                 index,
@@ -6177,7 +6288,7 @@ def _backend_statistics(
     uncertainties: Sequence[float | None] | None = None,
     indices: Sequence[int] | None = None,
     rescues: Sequence[str | None] | None = None,
-    cap: float = BINARY64_DIGITS,
+    cap: float | Sequence[float] = BINARY64_DIGITS,
 ) -> BackendStability:
     true_digits: list[float] = []
     estimated_digits: list[float | None] = []
@@ -6216,6 +6327,7 @@ def _backend_statistics(
         # The flat point's index (``indices``: the evaluated points of an
         # interrupted run).
         index = position if indices is None else indices[position]
+        point_cap = cap if isinstance(cap, (int, float)) else cap[position]
         served = status == "best-effort"
         if value is None or (estimate is None and not served):
             # Refused or failed in binary64: no value (0 true digits, the
@@ -6255,11 +6367,11 @@ def _backend_statistics(
         exact_total = _total_finite(value)
         total = float(exact_total)
         true_relative = relative_error(exact_total, _total_finite(exact))
-        digits = stable_digits(true_relative, cap)
+        digits = stable_digits(true_relative, point_cap)
         estimated = (
             None
             if estimate is None
-            else stable_digits(_estimated_relative(estimate, total), cap)
+            else stable_digits(_estimated_relative(estimate, total), point_cap)
         )
         true_digits.append(digits)
         estimated_digits.append(estimated)
@@ -6274,7 +6386,7 @@ def _backend_statistics(
                 reason if served else None,
                 None
                 if not served or uncertainty is None
-                else stable_digits(uncertainty, cap),
+                else stable_digits(uncertainty, point_cap),
                 rescue,
             )
         )

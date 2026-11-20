@@ -1013,7 +1013,7 @@ def _cap(setup: Any) -> float | None:
 
 def _truth_present(setup: Any) -> bool:
     truth = setup.get("ground_truth") or {}
-    return truth.get("arithmetic", "none") != "none"
+    return bool(truth.get("arithmetic", "none") != "none")
 
 
 def _measured_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
@@ -1056,14 +1056,15 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         if setup.get("interrupted")
         else str(setup["points"])
     )
-    measured = setup.get("measured_precision") or {}
+    precision_record = setup.get("measured_precision") or {}
     title = (
         f"Stable digits of {_measured_name(setup)} vs {_truth(report)[1]}, "
         f"{points} flat points (sqrt(s) = {setup['sqrt_s']:g}, seed "
         f"{setup['seed']})"
         + (
-            f", capped at the ground truth's {float(measured['digits_cap']):.2f} digits"
-            if measured.get("capped_by_truth")
+            ", each point capped at what its reference certifies (the "
+            "backends' agreement or its checked estimate)"
+            if precision_record.get("capped_by_truth")
             else ""
         )
     )
