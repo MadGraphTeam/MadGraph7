@@ -138,7 +138,16 @@ def _expansion(
             member.process for entry in entries for member in entry.group_members
         ]
         _EXPANSIONS[key] = (processes, len(entries), table)
+        _CLASSES[key] = {
+            member.process_id: (entry.request.name, member)
+            for entry in entries
+            for member in entry.group_members
+        }
     return _EXPANSIONS[key]
+
+
+# process ID -> (flavour-class representative ID, relation), as the generator passes
+_CLASSES: dict[tuple[str, int], dict[str, tuple[str, GroupMember]]] = {}
 
 
 def _unions(
@@ -189,7 +198,10 @@ def test_jet_unions_join_the_quark_flavour_classes(
     symmetry: VertexSymmetryTable,
 ) -> None:
     processes, class_count, table = _expansion(expression, flavor_scheme)
-    unions = _unions(processes, table, model, pairing_rules, symmetry)
+    classes = _CLASSES[(expression, flavor_scheme)]
+    unions = _unions(
+        processes, table, model, pairing_rules, symmetry, classes=classes
+    )
     by_id = {process.process_id: process for process in processes}
 
     members = [member for union in unions for member in union.members]
@@ -275,6 +287,41 @@ def _check_union(
             assert member.patterns == tuple(range(union.pattern_count))
             assert member.permutation == tuple(range(len(template.pdgs)))
             assert member.factor == 1 and not member.conjugated
+
+
+@pytest.mark.parametrize("expression", ["p p > j j j", "p p > j j j j"])
+def test_flavour_class_members_share_their_union_route(
+    expression: str,
+    model: BuiltinSMModel,
+    pairing_rules: Callable[[GroupingProcess], Any],
+    symmetry: VertexSymmetryTable,
+) -> None:
+    processes, _, table = _expansion(expression, 4)
+    classes = _CLASSES[(expression, 4)]
+    unions = _unions(
+        processes, table, model, pairing_rules, symmetry, classes=classes
+    )
+    routed = 0
+    for union in unions:
+        members = {member.process_id: member for member in union.members}
+        for process_id, (home, relation) in classes.items():
+            if process_id not in members or home not in members:
+                continue
+            member, anchor = members[process_id], members[home]
+            # the member's relation to its representative, then that one's route
+            assert member.permutation == tuple(
+                relation.permutation[leg] for leg in anchor.permutation
+            )
+            assert member.patterns == anchor.patterns
+            assert member.conjugated == (anchor.conjugated != relation.conjugated)
+            routed += 1
+    assert routed > 0
+    if expression == "p p > j j j":
+        # one class: routed on its own, u g > d u d~ would pair the other way round
+        union = next(u for u in unions if u.template.expression == "d g > d d d~")
+        members = _by_expression(union)
+        assert members["u g > d u d~"].patterns == (0,)
+        assert members["u g > u s s~"].patterns == (0,)
 
 
 def test_dijet_member_patterns(

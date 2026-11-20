@@ -328,16 +328,29 @@ GQ_EXPRESSIONS = (
 )
 
 
-@pytest.fixture(scope="module")
-def gq_partitions(tmp_path_factory):
-    root = tmp_path_factory.mktemp("umami-unions-gq")
+PARTITION_CASES = {
+    "gq": GQ_EXPRESSIONS,
+    "pp3j": ("p p > j j j",),
+    "pp4j": ("p p > j j j j",),
+}
+# pp3j and pp4j run only with PYAMPLICOL_RUN_FLAVOUR_UNION=pp3j,pp4j (either or both)
+PARTITION_OPT_IN = {"pp3j", "pp4j"}
+
+
+@pytest.fixture(scope="module", params=tuple(PARTITION_CASES))
+def partitions(request, tmp_path_factory):
+    opted = os.environ.get("PYAMPLICOL_RUN_FLAVOUR_UNION", "").split(",")
+    if request.param in PARTITION_OPT_IN and request.param not in opted:
+        pytest.skip(f"set PYAMPLICOL_RUN_FLAVOUR_UNION={request.param} to run it")
+    expressions = PARTITION_CASES[request.param]
+    root = tmp_path_factory.mktemp(f"umami-unions-{request.param}")
     result = {}
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         for kind, unions in (("union", True), ("flavour", False)):
             Generator(_config("lc", unions)).generate(
                 ProcessSet.from_expressions(
-                    GQ_EXPRESSIONS,
-                    names=tuple(f"q{index}" for index in range(len(GQ_EXPRESSIONS))),
+                    expressions,
+                    names=tuple(f"q{index}" for index in range(len(expressions))),
                 ),
                 root / kind,
                 model=ModelSource.from_path(prepared_model),
@@ -348,13 +361,9 @@ def gq_partitions(tmp_path_factory):
     return result
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="union members of one g q > q Q Q~ class route through different "
-    "permutations and colour flows, so g u > d u d~ leaves the per-flavour entry",
-)
-def test_union_partition_equals_per_flavour_gq_qqbar(gq_partitions):
-    assert gq_partitions["union"] == gq_partitions["flavour"]
+def test_union_partition_equals_per_flavour_sets(partitions):
+    # members of one flavour class share its union route (g u > d u d~ included)
+    assert partitions["union"] == partitions["flavour"]
 
 
 def test_union_matrix_elements_equal_per_flavour_artifacts(built):

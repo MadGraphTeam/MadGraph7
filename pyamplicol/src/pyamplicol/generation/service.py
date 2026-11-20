@@ -4812,6 +4812,11 @@ class GenerationBackend:
             union_warning=union_warning,
             consider_charge_conjugation=self._consider_charge_conjugation,
             member_filter=same_orders,
+            classes={
+                member.process_id: (entry.request.name, member)
+                for entry in entries
+                for member in entry.group_members
+            },
         )
         return _apply_flavour_unions(entries, unions, template_ir)
 
