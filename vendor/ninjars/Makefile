@@ -51,7 +51,8 @@ install: libninjars.a
 
 check: libninjars.a
 	$(CARGO) test --locked --features fenv-test-support -- --test-threads=1
-	$(FC) $(FFLAGS) smoke.f90 -I. "$$($(FC) -print-file-name=libgcc.a)" -lgcc_s -L. -lninjars $$(cat ninjars-native-libs.txt) -o smoke
+	eval "set -- $$(cat ninjars-link-before.txt)"; \
+	  $(FC) $(FFLAGS) smoke.f90 -I. "$$@" -L. -lninjars $$(cat ninjars-native-libs.txt) -o smoke
 	./smoke
 
 check-oem: libninjars.a
