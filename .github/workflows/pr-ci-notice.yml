@@ -13,6 +13,8 @@ permissions:
 jobs:
   notice:
     runs-on: ubuntu-24.04
+    # Fork PRs get a read-only token, so the comment cannot be posted there.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     steps:
       - name: Post the CI notice
         env:
