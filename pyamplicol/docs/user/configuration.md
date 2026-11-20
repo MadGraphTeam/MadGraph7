@@ -1031,7 +1031,8 @@ use (its affinity mask and its cgroup CPU quota,
   else every core). A load starts only the threads its work uses, up to that
   count: a small plan loads on the calling thread alone, a large one derives
   its families and decodes its lists in parallel, starting workers as the
-  work asks for them. At most the count work at once; while the load's
+  work asks for them (with a count of 2 its families load on the calling
+  thread, only the decode may use the second). At most the count work at once; while the load's
   decode pool grows, the threads of the pool it replaces exit
   asynchronously, so up to about twice the count may be alive for a moment.
   The loaded program is the same for every count.
