@@ -2583,7 +2583,8 @@ This will take effect only in a NEW terminal
                                           'include_lepton_initiated_processes',\
                                           'low_mem_multicore_nlo_generation',\
                                           'merge_same_topologies',\
-                                          'amplicol_flavor_unions']:
+                                          'amplicol_flavor_unions',\
+                                          'amplicol_flavor_union_crossing']:
             args.append('True')
 
         if len(args) > 2 and '=' == args[1]:
@@ -4248,7 +4249,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'color_basis',
                     'merge_same_topologies',
                     'merge_quartic_vertices',
-                    'amplicol_flavor_unions'
+                    'amplicol_flavor_unions',
+                    'amplicol_flavor_union_crossing'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
@@ -4339,7 +4341,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'color_basis': 'auto',
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False,
-                          'amplicol_flavor_unions': True
+                          'amplicol_flavor_unions': True,
+                          'amplicol_flavor_union_crossing': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -13808,6 +13811,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.check_set(args)
         self.options['amplicol_flavor_unions'] = banner_module.ConfigFile.format_variable(
             args[1], bool, 'amplicol_flavor_unions')
+
+    def set2_amplicol_flavor_union_crossing(self, args, log=True):
+        """Set whether the flavour unions of the leading-colour [amplicol] artifact
+        also join flavours that agree once all legs are outgoing, e.g. q g > q g with
+        g g > q q~ (pyamplicol process.flavor_union_crossing). This gives fewer
+        leading-colour programs; the full-colour artifact keeps its side-aware unions.
+        It requires amplicol_flavor_unions. Default: False.
+        """
+        args = ['amplicol_flavor_union_crossing'] + args
+        self.check_set(args)
+        self.options['amplicol_flavor_union_crossing'] = \
+            banner_module.ConfigFile.format_variable(
+                args[1], bool, 'amplicol_flavor_union_crossing')
 
 
 

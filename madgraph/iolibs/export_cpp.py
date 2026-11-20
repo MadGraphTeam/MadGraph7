@@ -3316,6 +3316,9 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # flavour-union templates (default on)
         self.amplicol_flavor_unions = bool(
             getattr(cmd, 'options', {}).get('amplicol_flavor_unions', True))
+        # crossed unions in the leading-colour artifact (default off)
+        self.amplicol_flavor_union_crossing = bool(
+            getattr(cmd, 'options', {}).get('amplicol_flavor_union_crossing', False))
 
     def amplicol_processes(self):
         """MG processes standing for the [amplicol] processes (built once: for
@@ -3339,6 +3342,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 self.dir_path, self.amplicol_defs, self.amplicol_model,
                 self.amplicol_multiparticles,
                 flavor_unions=getattr(self, 'amplicol_flavor_unions', True),
+                flavor_union_crossing=getattr(
+                    self, 'amplicol_flavor_union_crossing', False),
                 **getattr(self, 'amplicol_install', {})):
             # never merged with another subprocess
             self.merged_subprocesses[('amplicol', len(self.process_info))].append(

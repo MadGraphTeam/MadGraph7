@@ -302,6 +302,7 @@ class TestCmdShell1(unittest.TestCase):
                     'merge_same_topologies': True,
                     'merge_quartic_vertices': False,
                     'amplicol_flavor_unions': True,
+                    'amplicol_flavor_union_crossing': False,
                     'nb_core_pythia8': None,
                     'nb_core_delphes': None,
                         }

@@ -51,7 +51,9 @@ overrides in order, then recorded license/resource clamping.
   sectors; in development). Unions of quark and gluon
   processes are keyed by all-outgoing content, so one template serves every
   crossing (process-groups schema 2). At its default the key is omitted from
-  serialized configs, so existing config TOML bytes are unchanged.
+  serialized configs, so existing config TOML bytes are unchanged. MadGraph7
+  turns it on for its leading-colour artifact with the option
+  `amplicol_flavor_union_crossing` (off by default).
 - `consider_charge_conjugation: bool = true`
 - `only_unit_multiplier: bool = false`
 - `analyze_process_groups: none | numerical = none`

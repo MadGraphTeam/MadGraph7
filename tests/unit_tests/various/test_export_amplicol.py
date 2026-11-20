@@ -53,6 +53,34 @@ class TestGenerationInProcess(unittest.TestCase):
         self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False)
         self.assertFalse(jobs[0]['flavor_unions'])
 
+    def test_flavor_union_crossing_is_in_the_job_only_when_set(self):
+        jobs = []
+        self.run_export(lambda job: jobs.append(job) or [], flavor_union_crossing=True)
+        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': True,
+                                 'flavor_union_crossing': True}])
+
+    def test_flavor_union_crossing_requires_unions(self):
+        jobs = []
+        with self.assertRaisesRegex(madgraph.InvalidCmd, 'requires amplicol_flavor_unions'):
+            self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
+                            flavor_union_crossing=True)
+        self.assertEqual(jobs, [])
+
+    def test_flavor_union_crossing_sets_the_process_option(self):
+        from madgraph.iolibs import amplicol_generation
+        configs = []
+        config_module = mock.Mock(resolve_config=lambda value: configs.append(value) or value)
+        pyamplicol = mock.Mock()
+        process = {'multiparticles': {}, 'orders': {'QED': 0}, 'expression': 'p p > j j'}
+        with mock.patch.dict(sys.modules, {'pyamplicol': pyamplicol,
+                                           'pyamplicol.config': config_module}):
+            amplicol_generation.generate_artifact(pyamplicol, '/tmp/a', 'lc', process, None)
+            amplicol_generation.generate_artifact(pyamplicol, '/tmp/a', 'lc', process, None,
+                                                  flavor_union_crossing=True)
+        self.assertNotIn('flavor_union_crossing', configs[0]['process'])
+        self.assertTrue(configs[1]['process']['flavor_union_crossing'])
+        self.assertTrue(configs[1]['process']['flavor_unions'])
+
     def test_flavor_unions_apply_to_both_colour_artifacts(self):
         from madgraph.iolibs import amplicol_generation
         configs = []
@@ -89,7 +117,7 @@ class TestConcurrentArtifacts(unittest.TestCase):
     """With a license the full-colour artifact is generated in a child process
     while this one generates the leading-colour one."""
 
-    def run_generate(self, licensed, unions=True):
+    def run_generate(self, licensed, unions=True, crossing=None):
         from madgraph.iolibs import amplicol_generation
         calls = []
         licensing = mock.Mock(_cpu_budget=lambda: 5)
@@ -102,9 +130,10 @@ class TestConcurrentArtifacts(unittest.TestCase):
 
         class Child(object):
             def __init__(self, artifact, accuracy, process, model, workers,
-                         flavor_unions=False):
+                         flavor_unions=False, flavor_union_crossing=None):
                 children.append(self)
-                calls.append(('child', os.path.basename(artifact), workers, flavor_unions))
+                calls.append(('child', os.path.basename(artifact), workers, flavor_unions,
+                              flavor_union_crossing))
 
             def wait(self):
                 calls.append(('wait',))
@@ -114,27 +143,42 @@ class TestConcurrentArtifacts(unittest.TestCase):
                    'pyamplicol.artifacts.umami_reweight': reweight}
         job = {'model': {'cache': '/m'}, 'processes': [{'path': '/a'}],
                'flavor_unions': unions}
+        if crossing is not None:
+            job['flavor_union_crossing'] = crossing
         with mock.patch.dict(sys.modules, modules), \
                 mock.patch.object(amplicol_generation, 'model_source'), \
                 mock.patch.object(amplicol_generation, 'ArtifactProcess', Child), \
                 mock.patch.object(amplicol_generation, 'generate_artifact',
                                   lambda p, artifact, accuracy, *args, **kwargs: calls.append(
                                       (os.path.basename(artifact), kwargs.get('workers'),
-                                       kwargs.get('flavor_unions')))):
+                                       kwargs.get('flavor_unions'),
+                                       kwargs.get('flavor_union_crossing')))):
             self.assertEqual(amplicol_generation.generate(job), [['p0']])
         return calls
 
     def test_full_colour_in_a_child_process(self):
         self.assertEqual(self.run_generate(True), [
-            ('child', 'full', 2, True), ('lc', 3, True), ('wait',), ('reweight',)])
+            ('child', 'full', 2, True, False), ('lc', 3, True, False), ('wait',),
+            ('reweight',)])
 
     def test_restricted_mode_generates_one_artifact_at_a_time(self):
         self.assertEqual(self.run_generate(False),
-                         [('lc', None, True), ('full', None, True), ('reweight',)])
+                         [('lc', None, True, False), ('full', None, True, False),
+                          ('reweight',)])
 
     def test_unions_off_reach_both_artifacts(self):
         self.assertEqual(self.run_generate(True, unions=False), [
-            ('child', 'full', 2, False), ('lc', 3, False), ('wait',), ('reweight',)])
+            ('child', 'full', 2, False, False), ('lc', 3, False, False), ('wait',),
+            ('reweight',)])
+
+    def test_crossing_reaches_only_the_leading_colour_artifact(self):
+        # full colour keeps its side-aware unions on both paths
+        self.assertEqual(self.run_generate(True, crossing=True), [
+            ('child', 'full', 2, True, False), ('lc', 3, True, True), ('wait',),
+            ('reweight',)])
+        self.assertEqual(self.run_generate(False, crossing=True),
+                         [('lc', None, True, True), ('full', None, True, False),
+                          ('reweight',)])
 
     def test_generate_child_passes_flavor_unions(self):
         from madgraph.iolibs import amplicol_generation
@@ -145,7 +189,23 @@ class TestConcurrentArtifacts(unittest.TestCase):
             amplicol_generation.generate_child({
                 'artifact': '/a/full', 'accuracy': 'full', 'process': {},
                 'model': '/m', 'workers': 2, 'flavor_unions': True})
-        self.assertEqual(calls, [{'workers': 2, 'flavor_unions': True}])
+        self.assertEqual(calls, [{'workers': 2, 'flavor_unions': True,
+                                  'flavor_union_crossing': False}])
+
+    def test_generate_child_passes_flavor_union_crossing(self):
+        from madgraph.iolibs import amplicol_generation
+        calls, jobs = [], []
+        with mock.patch('subprocess.Popen',
+                        lambda args, **kwargs: jobs.append(json.loads(args[-1]))):
+            amplicol_generation.ArtifactProcess('/a/lc', 'lc', {}, '/m', 2,
+                                                flavor_union_crossing=True).log.close()
+        self.assertTrue(jobs[0]['flavor_union_crossing'])
+        with mock.patch.dict(sys.modules, {'pyamplicol': mock.Mock()}), \
+                mock.patch.object(amplicol_generation, 'generate_artifact',
+                                  lambda *args, **kwargs: calls.append(kwargs)):
+            amplicol_generation.generate_child(jobs[0])
+        self.assertEqual(calls, [{'workers': 2, 'flavor_unions': True,
+                                  'flavor_union_crossing': True}])
 
     def test_flavor_unions_default_on_without_the_argument(self):
         from madgraph.iolibs import amplicol_generation
@@ -159,7 +219,9 @@ class TestConcurrentArtifacts(unittest.TestCase):
                         lambda args, **kwargs: jobs.append(json.loads(args[-1]))):
             amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 1).log.close()
         self.assertTrue(configs[0]['process']['flavor_unions'])
+        self.assertNotIn('flavor_union_crossing', configs[0]['process'])
         self.assertTrue(jobs[0]['flavor_unions'])
+        self.assertFalse(jobs[0]['flavor_union_crossing'])
 
     def test_a_failing_child_raises_with_its_output(self):
         from madgraph.iolibs import amplicol_generation

@@ -581,11 +581,16 @@ def export_amplicol_processes(*args, **kwargs):
 
 
 def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
-                               interactive=None, jobs=None, flavor_unions=True):
+                               interactive=None, jobs=None, flavor_unions=True,
+                               flavor_union_crossing=False):
     """The body of export_amplicol_processes. ``interactive`` and ``jobs`` are
     those of the pyamplicol installation, see bootstrap.ensure_pyamplicol;
     ``flavor_unions`` generates the LC and full-colour artifacts with flavour-union
-    templates (option amplicol_flavor_unions)."""
+    templates (option amplicol_flavor_unions); ``flavor_union_crossing`` also joins
+    crossed flavours in the LC artifact (option amplicol_flavor_union_crossing)."""
+    if flavor_union_crossing and not flavor_unions:
+        raise madgraph.InvalidCmd('amplicol_flavor_union_crossing requires '
+                                  'amplicol_flavor_unions')
     pyamplicol = check_pyamplicol(interactive, jobs)
     subproc_dir = pjoin(dir_path, 'SubProcesses')
     write_rusticol_config(subproc_dir, pyamplicol)
@@ -605,11 +610,14 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
                               sorted(leg_pdgs(leg, model))
                               for leg in procdef.get('legs') if not leg.get('state')]})
     from madgraph.iolibs import amplicol_generation
+    job = {'model': model_job(model, pjoin(subproc_dir, MODEL_FILE), pyamplicol),
+           'processes': processes,
+           'flavor_unions': bool(flavor_unions)}
+    # only when set, so that jobs without crossing keep their keys
+    if flavor_union_crossing:
+        job['flavor_union_crossing'] = True
     try:
-        providers = amplicol_generation.generate({
-            'model': model_job(model, pjoin(subproc_dir, MODEL_FILE), pyamplicol),
-            'processes': processes,
-            'flavor_unions': bool(flavor_unions)})
+        providers = amplicol_generation.generate(job)
     except Exception as error:
         logger.error('pyamplicol failed to generate the [amplicol] matrix elements')
         raise madgraph.InvalidCmd('pyamplicol failed to generate the [amplicol] '
