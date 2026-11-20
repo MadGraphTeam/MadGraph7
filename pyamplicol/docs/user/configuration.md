@@ -906,7 +906,7 @@ rescaled = true
 | Interface | The TOML | One setting |
 | --- | --- | --- |
 | CLI | `pyamplicol evaluate ARTIFACT --card options.toml` (the run card) | its flag (table below) |
-| Python | `Runtime.load(artifact, options=...)`: a path, a TOML text or a parsed mapping | its keyword |
+| Python | `Runtime.load(artifact, options=...)`: a path, a TOML text or a parsed mapping (a one-line string is a path when it names an existing file, else TOML; neither: refused naming both) | its keyword |
 | C SDK | `rusticol_virtual_set_options(handle, toml_text)`; `rusticol_virtual_open_with_options(path, process, parameters_json, r2_strategy, toml_text, &handle)` | its setter |
 | C++ / Fortran / Rust SDK | `VirtualRuntime::set_options` / `set_options_file` / `with_options`; `runtime%set_options`, `runtime%load(..., options_toml=)`; `Runtime::set_options` / `set_options_file` / `open_with_options` | its setter |
 
