@@ -46,12 +46,12 @@ class TestGenerationInProcess(unittest.TestCase):
         jobs = []
         entries = self.run_export(lambda job: jobs.append(job) or [])
         self.assertEqual(entries, [])
-        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': False}])
+        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': True}])
 
-    def test_flavor_unions_are_opt_in(self):
+    def test_flavor_unions_can_be_turned_off(self):
         jobs = []
-        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=True)
-        self.assertTrue(jobs[0]['flavor_unions'])
+        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False)
+        self.assertFalse(jobs[0]['flavor_unions'])
 
     def test_flavor_unions_apply_to_both_colour_artifacts(self):
         from madgraph.iolibs import amplicol_generation
@@ -146,6 +146,20 @@ class TestConcurrentArtifacts(unittest.TestCase):
                 'artifact': '/a/full', 'accuracy': 'full', 'process': {},
                 'model': '/m', 'workers': 2, 'flavor_unions': True})
         self.assertEqual(calls, [{'workers': 2, 'flavor_unions': True}])
+
+    def test_flavor_unions_default_on_without_the_argument(self):
+        from madgraph.iolibs import amplicol_generation
+        configs, jobs = [], []
+        config_module = mock.Mock(resolve_config=lambda value: configs.append(value) or value)
+        process = {'multiparticles': {}, 'orders': {'QED': 0}, 'expression': 'p p > j j'}
+        with mock.patch.dict(sys.modules, {'pyamplicol': mock.Mock(),
+                                           'pyamplicol.config': config_module}):
+            amplicol_generation.generate_artifact(mock.Mock(), '/tmp/a', 'lc', process, None)
+        with mock.patch('subprocess.Popen',
+                        lambda args, **kwargs: jobs.append(json.loads(args[-1]))):
+            amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 1).log.close()
+        self.assertTrue(configs[0]['process']['flavor_unions'])
+        self.assertTrue(jobs[0]['flavor_unions'])
 
     def test_a_failing_child_raises_with_its_output(self):
         from madgraph.iolibs import amplicol_generation

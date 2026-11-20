@@ -879,6 +879,28 @@ def _merge_flavour_orbits(data):
     data["channels"] = [c for c in data["channels"] if c["processes"]]
 
 
+def _canonical_order(data):
+    """Order entries, their terms and members by physical content, so that the
+    exported order does not depend on how sources were grouped or unions formed."""
+    pdgs = data["pdg_ids"]
+
+    def flow(index):
+        return () if index is None else _frozen(data["color_flows"][index])
+
+    for channel in data["channels"]:
+        for entry in channel["processes"]:
+            entry["matrix_elements"].sort(key=lambda t: tuple(pdgs[t["pdg_ids"]]))
+            entry["members"].sort(
+                key=lambda m: (tuple(m["pdgs"]), flow(m["color_flows"]))
+            )
+        channel["processes"].sort(
+            key=lambda e: (
+                tuple(pdgs[e["matrix_elements"][0]["pdg_ids"]]),
+                flow(e["color_flows"]),
+            )
+        )
+
+
 def _export_helicities(data, runtime_helicities):
     """Map runtime helicities to exported ones, given in the input leg order."""
     entries = [e for c in data["channels"] for e in c["processes"]]
@@ -1440,6 +1462,7 @@ def _build_provider(
             )
     _group_phasespace_channels(data, selectors, phasespace_channels)
     _merge_flavour_orbits(data)
+    _canonical_order(data)
     for entry in (e for c in data["channels"] for e in c["processes"]):
         for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
             runtime.pop("_assignment_class", None)

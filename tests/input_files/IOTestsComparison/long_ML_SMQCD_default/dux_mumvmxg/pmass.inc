@@ -1,5 +1,1 @@
-      PMASS(1)=ZERO
-      PMASS(2)=ZERO
-      PMASS(3)=ZERO
-      PMASS(4)=ZERO
-      PMASS(5)=ZERO
+../../_shared/long_ML_SMQCD_default%dux_mumvmxg%pmass.inc

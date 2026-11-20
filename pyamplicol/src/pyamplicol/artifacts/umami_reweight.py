@@ -132,8 +132,35 @@ def _canonical_legs(pdgs: Sequence[int], legs: Sequence[int], incoming: int) -> 
     return tuple(legs)
 
 
-def _is_parton(pdg: int) -> bool:
+def _canonical_tags(flow: Sequence[Sequence[int]]) -> tuple:
+    # colour tags renumbered by first appearance: equal for the same physical flow
+    names: dict[int, int] = {}
+    return tuple(
+        tuple(names.setdefault(tag, len(names) + 1) if tag else 0 for tag in pair)
+        for pair in flow
+    )
+
+
+def _is_qcd_parton(pdg: int) -> bool:
     return pdg == 21 or 0 < abs(pdg) <= 6
+
+
+def _jet_partons(reference: Mapping[str, Any]) -> frozenset[int]:
+    """The gluons and quarks of a provider's rows in massless slots: the partons
+    the flavour switch may exchange (never a top, a b only when massless)."""
+    masses = reference["provider"].get("masses")
+    if masses is None:
+        raise ValueError("the flavour switch needs the leg masses of the provider")
+    massless, massive = set(), set()
+    for row in reference["pdg_ids"]:
+        for slot, pdg in enumerate(row):
+            if _is_qcd_parton(pdg):
+                (massless if float(masses[slot]) == 0.0 else massive).add(pdg)
+    if massless & massive:
+        raise ValueError(
+            f"the partons {sorted(massless & massive)} have massless and massive slots"
+        )
+    return frozenset(massless)
 
 
 def _pdf_column(pdg: int) -> int:
@@ -151,9 +178,10 @@ def switch_catalogue(
     initial_legs: Sequence[Sequence[int]] | None = None,
 ) -> dict[str, Any]:
     """The flavours of a leading-colour provider in event slot order, both beam
-    orientations and every distinct ordering of the outgoing partons over the
-    parton slots, see ``write_reweight_provider``. The other outgoing legs keep
-    the slots the events have them in."""
+    orientations and every distinct ordering of the outgoing massless gluons and
+    quarks over their slots, see ``write_reweight_provider``. The other outgoing
+    legs (massive quarks too) keep the slots the event's row has them in: one
+    set of orderings per arrangement of them in the rows."""
     incoming = _integer(reference["provider"]["incoming_count"])
     if incoming != 2:
         raise ValueError("the flavour switch needs two incoming partons")
@@ -234,21 +262,42 @@ def switch_catalogue(
     evaluations: dict[tuple, int] = {}
     described: list[tuple] = []
     orderings, targets, target_pdgs, seen = [], [], [], set()
-    # the outgoing non-partons of every row, in the same slots in every row;
-    # their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
-    row_fixed = {}
-    for row in reference["pdg_ids"]:
-        fixed = {s: p for s, p in enumerate(row) if s >= incoming and not _is_parton(p)}
-        row_fixed.setdefault(tuple(sorted(fixed.values())), fixed)
-    if len({tuple(fixed) for fixed in row_fixed.values()}) > 1:
-        raise ValueError("the flavour switch needs the non-partons in fixed slots")
-    fixed_slots = next(iter(row_fixed.values()))
+    # the outgoing non-partons (massive quarks too) of every row, in the same slots
+    # in every row; their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
+    jet = _jet_partons(reference)
+    canonical: dict[tuple, dict[int, int]] = {}
+    # a row's arrangement: where its non-partons sit relative to the first row with
+    # them (t~ t of conjugated flavours); its events keep it in every flavour summed
+    arrangements: list[tuple] = []
+    rows = reference["pdg_ids"]
+    row_arrangements = [0] * len(rows)
+    # rows in physical order: the numbering does not depend on the table order
+    for index in sorted(range(len(rows)), key=lambda i: tuple(rows[i])):
+        row = rows[index]
+        fixed = {s: p for s, p in enumerate(row) if s >= incoming and p not in jet}
+        first = canonical.setdefault(tuple(sorted(fixed.values())), fixed)
+        if list(fixed) != list(next(iter(canonical.values()))):
+            raise ValueError("the flavour switch needs the non-partons in fixed slots")
+        slots = list(fixed)
+        moved = _first_unused(list(fixed.values()), list(first.values()))
+        # sigma: slot of a non-parton in the first row -> its slot in this row
+        sigma = tuple(
+            (s, slots[k]) for s, k in zip(first, moved, strict=True) if s != slots[k]
+        )
+        if sigma not in arrangements:
+            arrangements.append(sigma)
+        row_arrangements[index] = arrangements.index(sigma)
+    # physical order: orderings and targets do not depend on the grouping
+    members.sort(key=lambda m: tuple(m[1]))
+    fixed_slots = next(iter(canonical.values()))
     parton_slots = [
         slot for slot in range(incoming, len(reference["pdg_ids"][0]))
         if slot not in fixed_slots
     ]
     n_partons = math.factorial(len(parton_slots))
-    for rep, pdgs, permutation, conjugated, factor, assignment in members:
+    for (arrangement, sigma), (
+        rep, pdgs, permutation, conjugated, factor, assignment
+    ) in itertools.product(enumerate(arrangements), members):
         rep_pdgs = processes[rep]["pdgs"]
         # the member process id names a flavour-union assignment (checked at load)
         assignment_key, value_class = member_ids.get((rep, assignment), (None, None))
@@ -265,16 +314,18 @@ def switch_catalogue(
                 initial[0] in initial_legs[0] and initial[1] in initial_legs[1]
             ):
                 continue
-            key = (initial, tuple(sorted(pdgs[incoming:])))
+            key = (arrangement, initial, tuple(sorted(pdgs[incoming:])))
             if key in seen:
                 continue
             seen.add(key)
             lines = quark_lines(pdgs)
             final = pdgs[incoming:]
-            partons = [p for p in final if _is_parton(p)]
-            fixed = row_fixed.get(tuple(sorted(p for p in final if not _is_parton(p))))
-            if fixed is None:
+            partons = [p for p in final if p in jet]
+            first = canonical.get(tuple(sorted(p for p in final if p not in jet)))
+            if first is None:
                 raise ValueError(f"flavour {pdgs} has other non-partons than the events")
+            moves = dict(sigma)
+            fixed = {moves.get(slot, slot): pdg for slot, pdg in first.items()}
             weight = factor * math.prod(
                 math.factorial(partons.count(p)) for p in set(partons)
             ) / n_partons
@@ -297,25 +348,35 @@ def switch_catalogue(
                     target = len(targets)
                     colors = target_colors.get((rep, legs, conjugated))
                     if colors is None:
-                        colors = target_colors[rep, legs, conjugated] = []
-                        for flow_id in flow_ids[rep]:
+                        found = []
+                        for slot_index, flow_id in enumerate(flow_ids[rep]):
                             tags = color_flows[flows[rep][flow_id]]
                             slot_tags = [[0, 0] for _ in legs]
                             for j, slot in enumerate(legs):
                                 pair = list(tags[j])
                                 slot_tags[slot] = pair[::-1] if conjugated else pair
+                            found.append((_canonical_tags(slot_tags), slot_index, slot_tags))
+                        # the flows in physical order, the order of the colour draw
+                        colors = target_colors[rep, legs, conjugated] = ([], [])
+                        for _, slot_index, slot_tags in sorted(found):
                             key = tuple(map(tuple, slot_tags))
                             if key not in color_index:
                                 color_index[key] = len(color_flows)
                                 color_flows.append(slot_tags)
-                            colors.append(color_index[key])
-                    targets.append({"evaluation": evaluation, "colors": list(colors)})
+                            colors[0].append(color_index[key])
+                            colors[1].append(slot_index)
+                    targets.append({
+                        "evaluation": evaluation,
+                        "colors": list(colors[0]),
+                        "flows": list(colors[1]),
+                    })
                     target_pdgs.append([*initial, *order])
                 orderings.append({
                     "evaluation": evaluation,
                     "pdf": [_pdf_column(initial[0]), _pdf_column(initial[1])],
                     "weight": weight,
                     "target": target,
+                    "arrangement": arrangement,
                 })
     # One native call per (runtime, legs): the assignments of a template share it.
     # With a pattern table, one per (template, leg types): an evaluation at legs l
@@ -395,6 +456,8 @@ def switch_catalogue(
         "flow_ids": flow_ids,
         "color_flows": color_flows[len(reference["color_flows"]):],
         "switch_lines": switch_lines,
+        "arrangement_count": len(arrangements),
+        "row_arrangements": row_arrangements,
     }
 
 
@@ -454,9 +517,11 @@ def _switch_tables(
     lines.extend(_pad_empty(calls))
     lines.append("};")
     lines.append("static const ReweightSwitchOrdering reweight_switch_orderings[] = {")
+    arranged = catalogue.get("arrangement_count", 1) > 1
     lines.extend(
         f"    {{{o['evaluation']}, {{{o['pdf'][0]}, {o['pdf'][1]}}}, "
-        f"{float(o['weight'])!r}, {o['target']}}},"
+        f"{float(o['weight'])!r}, {o['target']}"
+        + (f", {o['arrangement']}}}," if arranged else "},")
         for o in catalogue["orderings"]
     )
     lines.extend(_pad_empty(catalogue["orderings"]))
@@ -464,6 +529,8 @@ def _switch_tables(
     rows = []
     for i, target in enumerate(catalogue["targets"]):
         lines.append(_int_array(f"reweight_switch_t{i}", "int", target["colors"]))
+        order = target.get("flows", range(len(target["colors"])))
+        lines.append(_int_array(f"reweight_switch_o{i}", "int", list(order)))
         index, legs, factor, assignment, key = target_route(
             target, catalogue["target_pdgs"][i]
         )
@@ -472,7 +539,8 @@ def _switch_tables(
             name = f"reweight_switch_l{i}"
             lines.append(_int_array(name, "size_t", legs))
         rows.append(
-            f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, {name}, "
+            f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, "
+            f"reweight_switch_o{i}, {name}, "
             f"{float(factor)!r}, {assignment}, {_string(key)}}},"
         )
     lines.append("static const ReweightSwitchTarget reweight_switch_targets[] = {")
@@ -662,6 +730,8 @@ def reweight_header(
         return positions[id(target)]
 
     exported_count = len(reference["helicities"])
+    # several arrangements of the switch's non-partons: each entry names its own
+    arranged = catalogue is not None and catalogue.get("arrangement_count", 1) > 1
     channel_rows = []
     for c, channel in enumerate(reference["channels"]):
         flavour_rows = []
@@ -716,13 +786,23 @@ def reweight_header(
             index = target_index(target, target_id)
             lines.append(_int_array(f"{prefix}_reference", "int", reference_helicity))
             lines.append(_int_array(f"{prefix}_target", "int", target_helicity))
+            switch_arrangement = ""
+            if arranged:
+                # the arrangement of the non-partons in the entry's rows
+                found = {
+                    catalogue["row_arrangements"][_integer(term["pdg_ids"])]
+                    for term in entry["matrix_elements"]
+                }
+                if len(found) != 1:
+                    raise ValueError(f"flavour {f} of channel {c} mixes arrangements")
+                switch_arrangement = f", {found.pop()}"
             flavour_rows.append(
                 f"    {{{process_index}, {index}, "
                 f"{prefix}_permutation, {prefix}_reference, {prefix}_target, "
                 f"{-1 if assignment is None else _integer(assignment)}, "
                 f"{_string(runtime.get('assignment_key'))}, "
                 f"{target_permutation}, {target_factor!r}, {target_assignment}, "
-                f"{_string(target_key)}}},"
+                f"{_string(target_key)}{switch_arrangement}}},"
             )
         lines.extend(
             [

@@ -180,7 +180,7 @@ def madspace_values(path):
         alpha_s = ms.RunningCoupling(alpha_s_grid, PREFIX)(
             torch.tensor(ALPHA_S_QS, dtype=torch.float64)
         )
-        return np.asarray(densities), np.asarray(alpha_s)
+        return densities.cpu().numpy(), alpha_s.cpu().numpy()
     finally:
         for name in names:
             if context.global_exists(name):
@@ -245,7 +245,7 @@ def test_above_the_last_x_knot(test_set):
         x = torch.tensor([1.5, 1.5, 1.5], dtype=torch.float64)
         q = torch.tensor([0.5, 10.0, 1e6], dtype=torch.float64)
         result = ms.PartonDensity(grid, PIDS, False, PREFIX)(x, q)
-        assert np.all(np.asarray(result) == 0.0)
+        assert np.all(result.cpu().numpy() == 0.0)
     finally:
         for name in ("pdf_logx", "pdf_logq2", "pdf_coefficients"):
             if context.global_exists(f"{PREFIX}.{name}"):

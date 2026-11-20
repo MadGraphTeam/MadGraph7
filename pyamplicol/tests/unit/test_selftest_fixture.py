@@ -26,6 +26,11 @@ SELFTEST_API_DRIVERS = (
     Path("cpp/check_standalone.cpp"),
     Path("fortran/check_standalone.f90"),
     Path("rust/check_standalone.rs"),
+    # The UMAMI bundle is copied verbatim from the templates as well.
+    Path("umami/umami.c"),
+    Path("umami/umami.h"),
+    Path("umami/umami_provider.h"),
+    Path("umami/umami_driver.c"),
 )
 
 

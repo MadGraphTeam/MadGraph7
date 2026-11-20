@@ -203,8 +203,8 @@ C
 C     
 C     ARGUMENT
 C     
-      REAL*8 P(0:3, *)
-      REAL*8 PROT(0:3, *)
+      DOUBLE PRECISION P(0:3, *)
+      DOUBLE PRECISION PROT(0:3, *)
       DOUBLE PRECISION THETA, PHI
       INTEGER I, NEXTERNAL
 
@@ -249,7 +249,7 @@ C
 C     
 C     ARGUMENT
 C     
-      REAL*8 PREF(0:3)
+      DOUBLE PRECISION PREF(0:3)
       DOUBLE PRECISION THETA, PHI
 
 C     The angles phi and theta are calculated such that after rotation, 

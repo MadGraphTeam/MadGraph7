@@ -469,6 +469,11 @@ class AmplicolSubprocess(MadgraphSubprocess):
             )
         self.check_flavor_blind_cuts()
 
+    def auto_buffered_steps_fraction(self) -> float:
+        """No buffered training: the leading-colour matrix element is cheap
+        enough to sample every batch afresh."""
+        return 0.0
+
     def check_flavor_blind_cuts(self):
         """AmpliCol groups the flavours and identical-particle orderings that
         share a matrix element into one channel, so its cuts, built for the
@@ -619,7 +624,10 @@ class AmplicolSubprocess(MadgraphSubprocess):
         # loaded once for all channels; each load reads the whole pyamplicol artifact
         apis = self.process.amplicol_apis
         if path not in apis:
-            apis[path] = self.process.load_matrix_element(path, artifact, parameters)
+            positions = self.process.amplicol_positions
+            apis[path] = self.process.load_matrix_element(
+                path, artifact, parameters,
+                position=None if positions is None else positions[path])
         return apis[path]
 
     def build_multi_channel_data(self):

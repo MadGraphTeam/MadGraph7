@@ -3,7 +3,7 @@
 #include "umami_provider.h"
 #define UMAMI_HAS_ALPHA_S 0
 #define UMAMI_HAS_COLOR_FLOW 1
-#define UMAMI_ARTIFACT_ID "1df7647b7a4ba3cdac14a773ebb4d9b4f054e478160fc3604e5cba3183976b1b"
+#define UMAMI_ARTIFACT_ID "6d269acc329901cd249bdc740b6c916e7cd7fc88470adbddbe1e94a570f1da45"
 static const double umami_masses[] = {0, 0, 91.188000000000002};
 static const int umami_p0_pdgs[] = {1, -1, 23};
 static const char *const umami_p0_helicities[] = {"h:-1,-1,-1", "h:-1,-1,+0", "h:-1,-1,+1", "h:-1,+1,-1", "h:-1,+1,+0", "h:-1,+1,+1", "h:+1,-1,-1", "h:+1,-1,+0", "h:+1,-1,+1", "h:+1,+1,-1", "h:+1,+1,+0", "h:+1,+1,+1"};
@@ -22,7 +22,7 @@ static const UmamiParameter umami_p0_parameters[] = {
     {"coupling.10.1_23_1.component_1", 0.17818666745287456, 0, true, true},
 };
 static const UmamiProcess umami_processes[] = {
-    {"d_dbar_to_z", umami_p0_pdgs, NULL, "lc", 12, umami_p0_helicities, 12, umami_p0_parameters},
+    {"d_dbar_to_z", umami_p0_pdgs, NULL, -1, "lc", 12, umami_p0_helicities, 12, umami_p0_parameters},
 };
 static const size_t umami_c0_f0_permutation[] = {0, 1, 2};
 static const int umami_c0_f0_helicity_runtime[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};

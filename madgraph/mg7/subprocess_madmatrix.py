@@ -296,7 +296,8 @@ class MadgraphSubprocess:
         process: MadgraphProcess,
         meta: dict,
         subproc_id: int,
-        unmerged_meta: dict | None = None
+        unmerged_meta: dict | None = None,
+        me_index: int | None = None,
     ):
         self.process = process
         self.meta = meta
@@ -422,6 +423,7 @@ class MadgraphSubprocess:
             )
 
         # the libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        self.me_index = me_index
         self.load_matrix_elements(api_path_formats, member_metas)
 
     def build_mlm_scale(self, min_scale: float, max_scale: float):
@@ -490,9 +492,10 @@ class MadgraphSubprocess:
                 self.process.load_matrix_element(
                     path_format, self.process.param_card_path, parameters,
                     self.process.helicity_choice(
-                        path_format, self.process.param_card_path, parameters)
+                        path_format, self.process.param_card_path, parameters),
+                    None if self.me_index is None else self.me_index + position,
                 )
-                for path_format in api_path_formats
+                for position, path_format in enumerate(api_path_formats)
             ]
         self.surrogates = []
         if self.process.surrogate is not None:
@@ -1167,6 +1170,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
+    def auto_buffered_steps_fraction(self) -> float:
+        """The auto buffered_steps_fraction: buffered training saves matrix
+        element evaluations."""
+        return 0.8
+
     def set_madnis_auto_settings(self, rsd: float, random_dim: int):
         """Choose the MadNIS settings of this subprocess from the relative
         spread rsd of the survey. random_dim is the smallest number of random
@@ -1199,6 +1207,7 @@ class MadgraphSubprocess:
             "lr": lr,
             "fixed_cwnet_fraction": fixed_cwnet_fraction,
             "batch_size_per_channel": batch_size_per_channel,
+            "buffered_steps_fraction": self.auto_buffered_steps_fraction(),
         }
         for key, value in self.madnis_settings.items():
             run_card_value = madnis_args[key]

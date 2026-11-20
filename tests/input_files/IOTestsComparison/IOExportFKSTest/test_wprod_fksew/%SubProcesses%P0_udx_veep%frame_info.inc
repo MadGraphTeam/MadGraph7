@@ -1,2 +1,1 @@
-      INTEGER FRAME_MAP_BORN(NEXTERNAL-1)
-      DATA FRAME_MAP_BORN /1,2,4,3/
+../../_shared/IOExportFKSTest%test_wprod_fksew%%SubProcesses%P0_dxu_veep%frame_info.inc

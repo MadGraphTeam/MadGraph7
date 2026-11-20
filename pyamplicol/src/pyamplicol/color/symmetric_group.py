@@ -426,12 +426,128 @@ def build_symmetric_group_color_contraction_plan(
             )
         return replace(direct, destination_by_group=destination_by_group)
 
-    local_sector_ids = partition.ordered_sector_ids
     _, destination_by_group = _normalized_descriptors(
         components,
-        local_sector_ids,
+        partition.ordered_sector_ids,
     )
-    component_group_ids = tuple(range(len(local_sector_ids) * len(components)))
+    return _symmetric_group_plan_from_partition(
+        color_plan,
+        partition,
+        component_count=len(components),
+        destination_by_group=destination_by_group,
+        helicity_weight=helicity_weight,
+    )
+
+
+def build_rectangular_symmetric_group_contraction_plan(
+    color_plan: GenericColorPlan,
+    destination_sector_ids: Sequence[int],
+    destination_component_ids: Sequence[int],
+    *,
+    sector_owner_ids: Sequence[int],
+) -> ColorContractionPlan | None:
+    """Array form of :func:`build_symmetric_group_color_contraction_plan`.
+
+    Destination ``i`` is the unit-weight group ``i``; equal component labels
+    stand for equal helicity keys.  Returns ``None`` (use the descriptor path,
+    which then gives the plan or its exact failure) unless certified orbits
+    cover a rectangular owner-by-component domain.
+    """
+
+    import numpy as np
+
+    accuracy = color_plan.color_accuracy
+    sectors = np.asarray(destination_sector_ids, dtype=np.int64)
+    labels = np.asarray(destination_component_ids, dtype=np.int64)
+    count = len(sectors)
+    if (
+        accuracy not in {"nlc", "full"}
+        or color_plan.truncated
+        or not color_plan.sectors
+        or count == 0
+        or sectors.shape != (count,)
+        or labels.shape != (count,)
+    ):
+        return None
+    try:
+        owners = _validated_sector_owner_map(color_plan, sector_owner_ids)
+        _validate_owner_structures(color_plan, owners)
+    except ValueError:
+        return None
+    if sectors.min() < 0 or sectors.max() >= len(owners):
+        return None
+    group_owners = np.asarray(owners, dtype=np.int64)[sectors]
+    if (group_owners == _ZERO_SECTOR_OWNER).any():
+        return None
+    # Components in the order of their first group, like ``_rectangular_components``.
+    unique_labels, first_index, inverse = np.unique(
+        labels, return_index=True, return_inverse=True
+    )
+    component_count = len(unique_labels)
+    rank = np.empty(component_count, dtype=np.int64)
+    rank[np.argsort(first_index, kind="stable")] = np.arange(component_count)
+    components = rank[inverse.reshape(-1)]
+    coordinates = np.sort(components * len(owners) + sectors)
+    if (coordinates[1:] == coordinates[:-1]).any():
+        return None
+    # Per (component, owner): the owner sector itself, else its alias of lowest group.
+    order = np.lexsort(
+        (np.arange(count), sectors != group_owners, group_owners, components)
+    )
+    sorted_components = components[order]
+    sorted_owners = group_owners[order]
+    first = np.ones(count, dtype=bool)
+    first[1:] = (sorted_components[1:] != sorted_components[:-1]) | (
+        sorted_owners[1:] != sorted_owners[:-1]
+    )
+    representatives = order[first]
+    owner_counts = np.bincount(sorted_components[first], minlength=component_count)
+    owner_count = int(owner_counts[0])
+    if (owner_counts != owner_count).any():
+        return None
+    owner_rows = sorted_owners[first].reshape(component_count, owner_count)
+    if not (owner_rows == owner_rows[0]).all():
+        return None
+    try:
+        partition = certify_symmetric_group_orbits(
+            color_plan,
+            tuple(owner_rows[0].tolist()),
+            sector_owner_ids=owners,
+        )
+    except ValueError:
+        return None
+    if not partition.orbits:
+        return None
+    positions = np.searchsorted(
+        owner_rows[0], np.asarray(partition.ordered_sector_ids, dtype=np.int64)
+    )
+    destination_by_group = (
+        representatives.reshape(component_count, owner_count)[:, positions]
+        .T.reshape(-1)
+        .tolist()
+    )
+    return _symmetric_group_plan_from_partition(
+        color_plan,
+        partition,
+        component_count=component_count,
+        destination_by_group=tuple(destination_by_group),
+        helicity_weight=1.0,
+    )
+
+
+def _symmetric_group_plan_from_partition(
+    color_plan: GenericColorPlan,
+    partition: SymmetricGroupOrbitPartition,
+    *,
+    component_count: int,
+    destination_by_group: tuple[int, ...],
+    helicity_weight: float,
+) -> ColorContractionPlan:
+    """Exact kernels, residual metric and certificates of an orbit partition."""
+
+    accuracy = color_plan.color_accuracy
+    local_sector_ids = partition.ordered_sector_ids
+    component_group_ids = tuple(range(len(local_sector_ids) * component_count))
     group_order = _symmetric_group_order(partition.degree)
     channel_cosets = tuple(
         tuple(
@@ -562,7 +678,7 @@ def build_symmetric_group_color_contraction_plan(
 
     block = SymmetricGroupColorContractionBlock(
         degree=partition.degree,
-        component_count=len(components),
+        component_count=component_count,
         component_group_ids=component_group_ids,
         local_sector_ids=local_sector_ids,
         channel_cosets=channel_cosets,

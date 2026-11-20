@@ -157,7 +157,7 @@ def _summed(lc, data, point, densities):
 
 
 def _call(library, handle, point, densities, random_flavor, random_helicity, channel,
-          flavour, helicity, switch_on=True):
+          flavour, helicity, switch_on=True, random_color=None):
     count = len(random_flavor)
     n = len(point)
     assert library.umami_set_parameter(handle, b"flavor_switch", float(switch_on), 0.0) == 0
@@ -176,7 +176,9 @@ def _call(library, handle, point, densities, random_flavor, random_helicity, cha
         IN["UMAMI_IN_PARTON_DENSITIES"]: pdfs,
         IN["UMAMI_IN_RANDOM_FLAVOR"]: (ct.c_double * count)(*random_flavor),
         IN["UMAMI_IN_RANDOM_HELICITY"]: (ct.c_double * count)(*random_helicity),
-        IN["UMAMI_IN_RANDOM_COLOR"]: (ct.c_double * count)(*[0.5] * count),
+        IN["UMAMI_IN_RANDOM_COLOR"]: (ct.c_double * count)(
+            *([0.5] * count if random_color is None else random_color)
+        ),
     }
     names = [
         "UMAMI_OUT_MATRIX_ELEMENT_RATIO", "UMAMI_OUT_FLAVOR_INDEX",
@@ -274,3 +276,80 @@ def test_switched_targets_and_helicities_follow_the_leading_colour(switch):
                     assert colour and not anticolour
                 elif pdg < 0:
                     assert anticolour and not colour
+
+
+def _flow_strings(pdgs, flow):
+    """Open colour strings of LHE tags (fundamental first), as in a runtime flow id."""
+    # all outgoing: incoming legs swap colour and anticolour
+    pairs = [(a, c) if leg < 2 else (c, a) for leg, (c, a) in enumerate(flow)]
+    strings = []
+    for leg, (colour, anticolour) in enumerate(pairs):
+        if not colour or anticolour:
+            continue
+        string, tag = [leg + 1], colour
+        while tag:
+            following = next(k for k, (_, a) in enumerate(pairs) if a == tag)
+            string.append(following + 1)
+            tag = pairs[following][0]
+        strings.append(tuple(string))
+    return tuple(sorted(strings))
+
+
+def _id_strings(pdgs, color_id):
+    fundamental = {
+        leg + 1 for leg, pdg in enumerate(pdgs) if pdg != 21 and (pdg > 0) == (leg >= 2)
+    }
+    strings = []
+    for label in map(int, color_id.removeprefix("flow:").split(",")):
+        if label in fundamental or not strings:
+            strings.append([])
+        strings[-1].append(label)
+    return tuple(sorted(map(tuple, strings)))
+
+
+def test_switched_colours_follow_the_leading_colour_flows(switch):
+    """For a fixed target and helicity, a grid of random colours draws each colour
+    flow in proportion to its leading-colour value at that helicity."""
+    lc, _, data, sidecar, library, handle = switch
+    point, densities = _point(lc), _densities()
+    channel, flavour, entry = _entry(data)
+    generated, dropped = _summed(lc, data, point, densities)
+    enhancement = 1 + dropped / generated
+    flows = data["color_flows"] + sidecar["color_flows"]
+    count, cases, multi = 2000, set(), 0
+    grid = list((np.arange(count) + 0.5) / count)
+    for u in np.linspace(0.02, 0.98, 25):
+        for random_helicity in (0.1, 0.45, 0.8):
+            fixed = 1 / enhancement + u * (1 - 1 / enhancement)
+            ratio, target, helicity, color = _call(
+                library, handle, point, densities, [fixed] * count,
+                [random_helicity] * count, channel, flavour,
+                entry["runtime"]["helicity_export"][0], random_color=grid,
+            )
+            assert len(set(target)) == 1 and len(set(helicity)) == 1
+            k, e = int(target[0]), int(helicity[0])
+            if (k, e) in cases:
+                continue
+            cases.add((k, e))
+            pdgs = sidecar["targets"][k]
+            runtime = Runtime.load(lc, process=_process(pdgs))
+            resolved = runtime.evaluate_resolved((point,))
+            vector = data["helicities"][e]
+            identifier = "h:" + ",".join(f"{v:+d}" if v else "0" for v in vector)
+            values = np.array(resolved.values)[0].real[
+                list(resolved.helicity_ids).index(identifier)
+            ]
+            expected = {
+                _id_strings(pdgs, c): value
+                for c, value in zip(resolved.color_ids, values, strict=True)
+            }
+            drawn = {}
+            for c in color:
+                key = _flow_strings(pdgs, flows[c])
+                drawn[key] = drawn.get(key, 0) + 1
+            assert set(drawn) <= {key for key, value in expected.items() if value > 0}
+            total = sum(expected.values())
+            for key, value in expected.items():
+                assert abs(drawn.get(key, 0) - count * value / total) <= 2, (pdgs, key)
+            multi += sum(value > 0 for value in expected.values()) > 1
+    assert multi

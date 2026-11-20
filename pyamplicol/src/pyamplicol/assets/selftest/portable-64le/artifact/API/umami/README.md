@@ -27,13 +27,19 @@ when compiling the provider.
 Unlike the standard parameter-card convention, `umami_initialize` requires the
 absolute artifact directory in `param_card_path`. Saved defaults initialize each
 independent handle; `umami_set_parameter` updates mutable model parameters through
-Rusticol. Optional per-event alpha_s is temporary and restored before returning.
+Rusticol. Optional per-event alpha_s rescales the matrix element by
+`(alpha_s / alpha_s_0)^k` when generation proved that every amplitude has one degree
+in alpha_s (`alpha_s_power` in metadata); otherwise it is set temporarily for each
+run of equal values and restored before returning.
 The interface reports unsupported alpha_s when the model has no explicit mapping.
 `UMAMI_META_MASSES` describes the saved default masses, not later handle-local
 parameter changes.
 
 Momenta use `input[event + stride*(particle + particle_count*component)]`, with
-components `(E,px,py,pz)`. Channel and flavour indices are zero-based. The returned
+components `(E,px,py,pz)`. Channel and flavour indices are zero-based. The events
+of a call are grouped by the runtime process and colour flow they evaluate, across
+channels and flavours, and evaluated in native batches of up to 512 points; invalid
+inputs are rejected before any evaluation. The returned
 matrix element includes the native incoming averaging and identical-particle
 normalization. It sums the artifact's available helicities. A random helicity
 input produces only an informational label; it does not sample the matrix element.
@@ -62,7 +68,10 @@ not equal default parameters or Standard Model-specific particle rules.
 Unproved relations remain separate. The one exception is generation with
 `--flavor-blind`: its ungenerated flavour-class members are evaluated through
 their representative's runtime, and each provider exporting them records that
-assumption in `grouping.assumptions`.
+assumption in `grouping.assumptions`. With `process.flavor_unions`, every
+flavour of a union is an assignment of its template's runtime (its own pairing
+patterns, exact, no assumption beyond strict flavour blindness); the events of
+all flavours and colour flows of one template share native calls.
 
 Integration multiplicities require cuts invariant under the recorded particle
 permutations; they are not factors for pointwise sums. Metadata retains physical

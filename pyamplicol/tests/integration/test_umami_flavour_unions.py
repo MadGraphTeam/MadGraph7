@@ -294,12 +294,14 @@ def test_union_artifacts_route_members_as_assignments(built):
     assert any(runtime.get("assignment", 0) > 0 for runtime in runtimes)
 
 
-def _partition(documents):
-    """Per provider channel, the physical flavours of each entry."""
+def _partition(documents, ordered=False):
+    """Per provider channel, the physical flavours of each entry (in export
+    order with ``ordered``, the flavour sampling order of MG7)."""
 
+    arrange = list if ordered else sorted
     return [
-        sorted(
-            sorted(
+        arrange(
+            arrange(
                 tuple(data["pdg_ids"][term["pdg_ids"]])
                 for term in entry["matrix_elements"]
             )
@@ -312,7 +314,9 @@ def _partition(documents):
 
 def test_union_partition_equals_per_flavour(built):
     # a template's own flavour shares its entry with all-pattern members
-    assert _partition(built["umami"]["union"]) == _partition(built["umami"]["flavour"])
+    assert _partition(built["umami"]["union"], ordered=True) == _partition(
+        built["umami"]["flavour"], ordered=True
+    )
 
 
 # g q > q Q Q~: the shape of every partition split left at pp > 3j, 4j and 5j
@@ -328,33 +332,44 @@ GQ_EXPRESSIONS = (
 )
 
 
-@pytest.fixture(scope="module")
-def gq_partitions(tmp_path_factory):
-    root = tmp_path_factory.mktemp("umami-unions-gq")
+PARTITION_CASES = {
+    "gq": GQ_EXPRESSIONS,
+    "pp3j": ("p p > j j j",),
+    "pp4j": ("p p > j j j j",),
+}
+# pp3j and pp4j run only with PYAMPLICOL_RUN_FLAVOUR_UNION=pp3j,pp4j (either or both)
+PARTITION_OPT_IN = {"pp3j", "pp4j"}
+
+
+@pytest.fixture(scope="module", params=tuple(PARTITION_CASES))
+def partitions(request, tmp_path_factory):
+    opted = os.environ.get("PYAMPLICOL_RUN_FLAVOUR_UNION", "").split(",")
+    if request.param in PARTITION_OPT_IN and request.param not in opted:
+        pytest.skip(f"set PYAMPLICOL_RUN_FLAVOUR_UNION={request.param} to run it")
+    expressions = PARTITION_CASES[request.param]
+    root = tmp_path_factory.mktemp(f"umami-unions-{request.param}")
     result = {}
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         for kind, unions in (("union", True), ("flavour", False)):
             Generator(_config("lc", unions)).generate(
                 ProcessSet.from_expressions(
-                    GQ_EXPRESSIONS,
-                    names=tuple(f"q{index}" for index in range(len(GQ_EXPRESSIONS))),
+                    expressions,
+                    names=tuple(f"q{index}" for index in range(len(expressions))),
                 ),
                 root / kind,
                 model=ModelSource.from_path(prepared_model),
             )
             result[kind] = _partition(
-                [(data, None) for data in load_umami_metadata(root / kind)]
+                [(data, None) for data in load_umami_metadata(root / kind)],
+                ordered=True,
             )
     return result
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="union members of one g q > q Q Q~ class route through different "
-    "permutations and colour flows, so g u > d u d~ leaves the per-flavour entry",
-)
-def test_union_partition_equals_per_flavour_gq_qqbar(gq_partitions):
-    assert gq_partitions["union"] == gq_partitions["flavour"]
+def test_union_partition_equals_per_flavour_sets(partitions):
+    # members of one flavour class share its union route (g u > d u d~ included),
+    # and entries and their terms are exported in the same order
+    assert partitions["union"] == partitions["flavour"]
 
 
 def test_union_matrix_elements_equal_per_flavour_artifacts(built):
@@ -450,6 +465,7 @@ def _ratio_call(
     switch,
     random_flavor=None,
     random_helicity=None,
+    random_color=None,
 ):
     """Events are (input momenta, channel, flavour, helicity label)."""
 
@@ -475,6 +491,7 @@ def _ratio_call(
     )
     random_flavor = [0.0] * count if random_flavor is None else random_flavor
     random_helicity = [0.5] * count if random_helicity is None else random_helicity
+    random_color = [0.5] * count if random_color is None else random_color
     inputs = {
         IN["UMAMI_IN_MOMENTA"]: momenta,
         IN["UMAMI_IN_FLAVOR_INDEX"]: (ct.c_int * count)(*(e[2] for e in events)),
@@ -483,7 +500,7 @@ def _ratio_call(
         IN["UMAMI_IN_PARTON_DENSITIES"]: pdfs,
         IN["UMAMI_IN_RANDOM_FLAVOR"]: (ct.c_double * count)(*random_flavor),
         IN["UMAMI_IN_RANDOM_HELICITY"]: (ct.c_double * count)(*random_helicity),
-        IN["UMAMI_IN_RANDOM_COLOR"]: (ct.c_double * count)(*[0.5] * count),
+        IN["UMAMI_IN_RANDOM_COLOR"]: (ct.c_double * count)(*random_color),
     }
     names = [
         "UMAMI_OUT_MATRIX_ELEMENT_RATIO",
@@ -592,13 +609,21 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
         point = _points(1)[0]
         lc = {}
         full = {}
-        event = _flavour_events(unions, 0, point)[0][1]
-        base = _ratio_call(
-            union_library, union_handle, [event], densities, switch=False
-        )[0][0]
-        stay = _ratio_call(
-            union_library, union_handle, [event], densities, switch=True
-        )[0][0]
+        # the first event with a leading colour of its own and switch targets,
+        # whose input legs carry the point unrelabelled (as the targets below)
+        for _, event in _flavour_events(unions, 0, point):
+            if not all(
+                np.array_equal(a, b) for a, b in zip(event[0], point, strict=True)
+            ):
+                continue
+            base = _ratio_call(
+                union_library, union_handle, [event], densities, switch=False
+            )[0][0]
+            stay = _ratio_call(
+                union_library, union_handle, [event], densities, switch=True
+            )[0][0]
+            if base > 0.0 and stay > base:
+                break
         enhancement = stay / base
         assert enhancement > 1.0
         count = 600
@@ -669,6 +694,87 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
         assert union_library.umami_free(union_handle) == 0
         assert flavour_library.umami_free(flavour_handle) == 0
         assert lc_library.umami_free(lc_handle) == 0
+
+
+def _assert_switched_draws_equal(union, flavour, umami, point):
+    """union and flavour are (directory, sidecar, library) of reweight providers
+    over the LC UMAMI documents umami["union"] and umami["flavour"]."""
+
+    (union_dir, union_sidecar, union_library) = union
+    (flavour_dir, flavour_sidecar, flavour_library) = flavour
+    union_handle = _handle(union_library, union_dir)
+    flavour_handle = _handle(flavour_library, flavour_dir)
+    try:
+        densities = _densities()
+        theirs = dict(_flavour_events(umami["flavour"], 0, point))
+        checked = 0
+        for key, event in _flavour_events(umami["union"], 0, point):
+            other = theirs[key]
+            if not all(
+                np.array_equal(a, b) and np.array_equal(a, c)
+                for a, b, c in zip(event[0], other[0], point, strict=True)
+            ):
+                continue
+            base, stay = (
+                _ratio_call(union_library, union_handle, [event], densities, switch=s)[
+                    0
+                ][0]
+                for s in (False, True)
+            )
+            if not (base > 0.0 and stay > base * (1 + 1e-9)):
+                continue
+            enhancement = stay / base
+            count = 300
+            grid = (np.arange(count) + 0.5) / count
+            randoms = dict(
+                random_flavor=list(1 / enhancement + grid * (1 - 1 / enhancement)),
+                random_helicity=list(
+                    np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
+                ),
+                random_color=list(np.modf(np.arange(count) * math.sqrt(2))[0]),
+            )
+            draws = []
+            for library, handle, sidecar, documents, ev in (
+                (union_library, union_handle, union_sidecar, umami["union"], event),
+                (flavour_library, flavour_handle, flavour_sidecar, umami["flavour"], other),
+            ):
+                data = documents[0][0]
+                ratio, target, helicity, color = _ratio_call(
+                    library, handle, [ev] * count, densities, switch=True, **randoms
+                )
+                assert (target >= 0).all()
+                assert len(data["color_flows"]) == sidecar["color_flow_offset"]
+                flows = data["color_flows"] + sidecar["color_flows"]
+                draws.append((
+                    ratio,
+                    [
+                        (
+                            tuple(sidecar["targets"][k]),
+                            tuple(data["helicities"][h]),
+                            _canonical_tags(flows[c]),
+                        )
+                        for k, h, c in zip(target, helicity, color, strict=True)
+                    ],
+                ))
+            assert draws[0][1] == draws[1][1]
+            assert draws[0][0] == pytest.approx(draws[1][0], rel=1e-12, abs=0.0)
+            checked += 1
+            if checked == 3:
+                break
+        assert checked
+    finally:
+        assert union_library.umami_free(union_handle) == 0
+        assert flavour_library.umami_free(flavour_handle) == 0
+
+
+@pytest.mark.parametrize("kind", ["union", "union-full"])
+def test_switched_draws_equal_per_flavour_artifacts(built, kind):
+    """The same random numbers switch an event to the same target, helicity and
+    colour flow with the same ratio, with unions and per flavour."""
+
+    ((union),) = built["reweight"][kind].values()
+    ((flavour),) = built["reweight"]["flavour"].values()
+    _assert_switched_draws_equal(union, flavour, built["umami"], _points(1)[0])
 
 
 def test_switch_shares_cover_every_flavour_once(built):
@@ -754,3 +860,246 @@ def test_relabelled_switch_calls_equal_their_evaluations(built):
             assert [row[entry] for row in values] == pytest.approx(
                 [row[0] for row in expected], rel=1e-12
             )
+
+
+# t t~ j: the switch exchanges the massless partons only, the tops keep their slots
+TT_EXPRESSIONS = (
+    "g g > t t~ g",
+    "u u~ > t t~ g",
+    "u~ u > t t~ g",
+    "d d~ > t t~ g",
+    "d~ d > t t~ g",
+    "g u > t t~ u",
+    "u g > t t~ u",
+    "g d > t t~ d",
+    "d g > t t~ d",
+    "g u~ > t t~ u~",
+    "u~ g > t t~ u~",
+)
+TT_SWITCH_LINES = 2
+# t t~ with up to two light-quark lines: the targets have two light lines
+TT_LINES_EXPRESSIONS = (
+    "g g > t t~ g g",
+    "u u~ > t t~ g g",
+    "u~ u > t t~ g g",
+    "d d~ > t t~ g g",
+    "d~ d > t t~ g g",
+    *(
+        f"{a} {a}~ > t t~ {b} {b}~" if beams else f"{a}~ {a} > t t~ {b} {b}~"
+        for a in ("u", "d", "s")
+        for b in ("u", "d", "s")
+        for beams in (True, False)
+    ),
+)
+
+
+def _massive_providers(tmp_path_factory, name, expressions, switch_lines):
+    config_executable = _config_executable()
+    if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
+        _unavailable("UMAMI integration requires make and a C compiler")
+    root = tmp_path_factory.mktemp(name)
+    artifacts = {kind: root / kind for kind in ("union", "flavour", "full")}
+    names = tuple(f"t{index}" for index in range(len(expressions)))
+    with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
+        for kind, path in artifacts.items():
+            Generator(
+                _config("full" if kind == "full" else "lc", kind == "union")
+            ).generate(
+                ProcessSet.from_expressions(expressions, names=names),
+                path,
+                model=ModelSource.from_path(prepared_model),
+            )
+    result = {"artifacts": artifacts, "umami": {}, "reweight": {}}
+    for kind in ("union", "flavour"):
+        build = root / f"build-{kind}"
+        _make(artifacts[kind] / "API/umami", config_executable, f"BUILD_DIR={build}")
+        result["umami"][kind] = [
+            (data, _library(build / data["provider"]["library"]))
+            for data in load_umami_metadata(artifacts[kind])
+        ]
+        output = root / f"reweight-{kind}"
+        (identifier,) = write_reweight_provider(
+            artifacts[kind], artifacts["full"], output, switch_lines=switch_lines
+        )
+        _make(output, config_executable)
+        result["reweight"][kind] = (
+            output,
+            json.loads((output / f"flavor_switch_{identifier}.json").read_text()),
+            _library(output / f"build/libreweight_{identifier}.so"),
+        )
+    return result
+
+
+@pytest.fixture(scope="module")
+def massive(tmp_path_factory):
+    return _massive_providers(
+        tmp_path_factory, "umami-unions-tt", TT_EXPRESSIONS, TT_SWITCH_LINES
+    )
+
+
+@pytest.fixture(scope="module")
+def massive_lines(tmp_path_factory):
+    return _massive_providers(
+        tmp_path_factory, "umami-unions-ttqq", TT_LINES_EXPRESSIONS, 3
+    )
+
+
+def _massive_points(count: int):
+    """On-shell g g > t t~ g points (the physical leg order of every flavour)."""
+
+    from pyamplicol.generation.phase_space import massive_rambo_final_state
+
+    mt = 173.0
+    final = massive_rambo_final_state(3, sqrt_s=1000.0, masses=(mt, mt, 0.0), seed=7)
+    base = [(500.0, 0.0, 0.0, 500.0), (500.0, 0.0, 0.0, -500.0)]
+    base += [tuple(map(float, p)) for p in final]
+    points = []
+    for index in range(count):
+        angle = 0.7 + 1.3 * index
+        cos, sin = math.cos(angle), math.sin(angle)
+        points.append(
+            tuple((e, cos * x - sin * y, sin * x + cos * y, z) for e, x, y, z in base)
+        )
+    return points
+
+
+def test_switch_keeps_massive_quarks_in_their_slots(massive):
+    from pyamplicol.artifacts.umami_reweight import switch_catalogue
+
+    for kind in ("union", "flavour"):
+        ((data, _),) = massive["umami"][kind]
+        groups = json.loads(
+            (massive["artifacts"][kind] / "process-groups.json").read_text()
+        )
+        catalogue = switch_catalogue(data, groups, TT_SWITCH_LINES)
+        massive_slots = [m > 0 for m in data["provider"]["masses"]]
+        assert massive_slots == [False, False, True, True, False]
+        assert catalogue["target_pdgs"]
+        for pdgs in catalogue["target_pdgs"]:
+            assert [abs(p) == 6 for p in pdgs] == massive_slots, pdgs
+        for evaluation in catalogue["evaluations"]:
+            pdgs = data["runtime_processes"][evaluation["process"]]["pdgs"]
+            for leg, slot in enumerate(evaluation["legs"]):
+                assert (abs(pdgs[leg]) == 6) == massive_slots[slot], evaluation
+        # the sidecar lists the same targets
+        assert massive["reweight"][kind][1]["targets"] == catalogue["target_pdgs"]
+
+
+def test_massive_switch_ratios_equal_with_and_without_unions(massive):
+    unions, flavours = massive["umami"]["union"], massive["umami"]["flavour"]
+    union_dir, union_sidecar, union_library = massive["reweight"]["union"]
+    flavour_dir, _, flavour_library = massive["reweight"]["flavour"]
+    union_handle = _handle(union_library, union_dir)
+    flavour_handle = _handle(flavour_library, flavour_dir)
+    lc_library = unions[0][1]
+    lc_handle = _handle(lc_library, massive["artifacts"]["union"])
+    try:
+        densities = _densities()
+        for point in _massive_points(2):
+            ours = _flavour_events(unions, 0, point)
+            theirs = dict(_flavour_events(flavours, 0, point))
+            events = [event for _, event in ours]
+            other = [theirs[key] for key, _ in ours]
+            lc = np.array(
+                _call(
+                    lc_library,
+                    lc_handle,
+                    [event[:3] for event in events],
+                    helicity=[event[3] for event in events],
+                )[0]
+            )
+            kept = (lc == 0.0) | (lc > 1e-20 * lc.max())
+            for switch in (False, True):
+                a = _ratio_call(
+                    union_library, union_handle, events, densities, switch=switch
+                )
+                b = _ratio_call(
+                    flavour_library, flavour_handle, other, densities, switch=switch
+                )
+                assert (a[1] == -1).all() and (b[1] == -1).all()
+                assert a[0][kept] == pytest.approx(b[0][kept], rel=1e-12, abs=0.0)
+                assert (a[0] > 0).any()
+        # switched events, t t~ and t~ t in the event's slots: the target's full
+        # colour over its LC, with the event's t momentum a t in every target
+        point = _massive_points(1)[0]
+        data = unions[0][0]
+        by_order = {}
+        for _, event in _flavour_events(unions, 0, point):
+            entry = data["channels"][event[1]]["processes"][event[2]]
+            row = data["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
+            if tuple(row[2:4]) in by_order:
+                continue
+            base, stay = (
+                _ratio_call(union_library, union_handle, [event], densities, switch=s)[
+                    0
+                ][0]
+                for s in (False, True)
+            )
+            # the first event of each order with a ratio of its own
+            if base > 0.0:
+                by_order[tuple(row[2:4])] = (event, row, stay / base)
+        assert set(by_order) == {(6, -6), (-6, 6)}
+        lc_runtimes, full_runtimes = {}, {}
+        names = {**NAMES_OF, 6: "t"}
+        drawn = set()
+        for event, row, enhancement in by_order.values():
+            assert enhancement > 1.0
+            count = 400
+            grid = (np.arange(count) + 0.5) / count
+            random_flavor = list(1 / enhancement + grid * (1 - 1 / enhancement))
+            random_helicity = list(
+                np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
+            )
+            ratio, target, helicity, _ = _ratio_call(
+                union_library,
+                union_handle,
+                [event] * count,
+                densities,
+                switch=True,
+                random_flavor=random_flavor,
+                random_helicity=random_helicity,
+            )
+            assert (target >= 0).all()
+            for value, k, label in zip(ratio, target, helicity, strict=True):
+                pdgs = tuple(union_sidecar["targets"][k])
+                drawn.add(pdgs)
+                assert pdgs[2:4] == tuple(row[2:4]), (row, pdgs)
+                if pdgs not in lc_runtimes:
+                    text = [names[abs(p)] + ("~" if p < 0 else "") for p in pdgs]
+                    process = " ".join(text[:2]) + " > " + " ".join(text[2:])
+                    lc_runtimes[pdgs] = Runtime.load(
+                        massive["artifacts"]["flavour"], process=process
+                    )
+                    full_runtimes[pdgs] = Runtime.load(
+                        massive["artifacts"]["full"], process=process
+                    )
+                vector = data["helicities"][label]
+                identifier = "h:" + ",".join(f"{v:+d}" for v in vector)
+                # the target's legs are the event slots
+                resolved = lc_runtimes[pdgs].evaluate_resolved((event[0],))
+                index = list(lc_runtimes[pdgs].physics.helicity_ids).index(identifier)
+                lc_value = float(np.array(resolved.values)[0].real[index].sum())
+                fc = full_runtimes[pdgs].evaluate((event[0],), helicities=[identifier])
+                fc = complex(fc[0]).real
+                assert value == pytest.approx(enhancement * fc / lc_value, rel=1e-12)
+        assert len(drawn) > 2
+    finally:
+        assert union_library.umami_free(union_handle) == 0
+        assert flavour_library.umami_free(flavour_handle) == 0
+        assert lc_library.umami_free(lc_handle) == 0
+
+
+def test_massive_switched_draws_equal_with_and_without_unions(massive_lines):
+    """t t~ events switched to targets with two light-quark lines and the t line."""
+    from pyamplicol.generation.phase_space import massive_rambo_final_state
+
+    mt = 173.0
+    final = massive_rambo_final_state(4, sqrt_s=1000.0, masses=(mt, mt, 0.0, 0.0), seed=7)
+    point = ((500.0, 0.0, 0.0, 500.0), (500.0, 0.0, 0.0, -500.0))
+    point += tuple(tuple(map(float, p)) for p in final)
+    _assert_switched_draws_equal(
+        massive_lines["reweight"]["union"],
+        massive_lines["reweight"]["flavour"],
+        massive_lines["umami"],
+        point,
+    )

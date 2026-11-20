@@ -4339,7 +4339,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'color_basis': 'auto',
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False,
-                          'amplicol_flavor_unions': False
+                          'amplicol_flavor_unions': True
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -13800,7 +13800,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def set2_amplicol_flavor_unions(self, args, log=True):
         """Set whether the leading- and full-colour [amplicol] artifacts evaluate
         the flavours of a quark-flavour union through one template (pyamplicol
-        process.flavor_unions, experimental). Default: False
+        process.flavor_unions). Default: True; set it to False for one program
+        per flavour class (statistically equivalent events; for unmerged VEGAS
+        runs with the same seed, the same events up to rounding).
         """
         args = ['amplicol_flavor_unions'] + args
         self.check_set(args)
@@ -15479,10 +15481,10 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         if self._export_format == 'NLO':
             pairs.append(('Frederix:2009yq',
                            'FKS subtraction (MadFKS)'))
-            try:
-                has_virt = bool(self._fks_multi_proc.get_virt_amplitudes())
-            except Exception:
-                has_virt = False
+            # (the virtual amplitudes are not kept by
+            # low_mem_multicore_nlo_generation, has_loops in both modes)
+            has_virt = 'has_loops' in self._curr_matrix_elements and \
+                       self._curr_matrix_elements['has_loops']
             if has_virt and self.options.get('OLP', 'MadLoop') == 'MadLoop':
                 pairs.append(('Hirschi:2011pa',
                                'one-loop matrix elements (MadLoop)'))
