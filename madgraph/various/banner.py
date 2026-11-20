@@ -4139,10 +4139,9 @@ class RunCard(ConfigFile):
 
     def get_idbmup(self, lpp, beam=1):
         """return the particle colliding pdg code"""
-        if lpp == 5:
-             # the proton of a GPD process (it radiates a photon or is probed)
-             return 2212
-        if lpp in (1,2, -1,-2):
+        if lpp in (1,2, -1,-2, 5):
+             # lpp = 5: the proton or nucleus of a GPD process (it radiates a
+             # photon or is probed)
              target = 2212
              if 'nb_proton1' in self:
                  nbp = self['nb_proton%s' % beam]
@@ -5186,13 +5185,14 @@ class RunCardLO(RunCard):
             #force rerun of consistency of lhapdf block
             super(RunCardLO, self).check_validity()
 
-        # if heavy ion mode use for one beam, forbid lpp!=1
-        if self['lpp1'] not in [1,2]:
+        # if heavy ion mode use for one beam, forbid lpp!=1 (lpp = 5: the
+        # proton or nucleus of a GPD process)
+        if self['lpp1'] not in [1,2,5]:
             if self['nb_proton1'] !=1 or self['nb_neutron1'] !=0:
-                raise InvalidRunCard( "Heavy ion mode is only supported for lpp1=1/2")
-        if self['lpp2'] not in [1,2]:
+                raise InvalidRunCard( "Heavy ion mode is only supported for lpp1=1/2/5")
+        if self['lpp2'] not in [1,2,5]:
             if self['nb_proton2'] !=1 or self['nb_neutron2'] !=0:
-                raise InvalidRunCard( "Heavy ion mode is only supported for lpp2=1/2")   
+                raise InvalidRunCard( "Heavy ion mode is only supported for lpp2=1/2/5")   
 
 
         # check that fixed_fac_scale(1/2) is setting as expected
@@ -5250,7 +5250,7 @@ class RunCardLO(RunCard):
 
         # check that ebeam is bigger than the associated mass.
         for i in [1,2]:
-            if self['lpp%s' % i ] not in [1,2]:
+            if self['lpp%s' % i ] not in [1,2,5]:
                 continue
             if self['mass_ion%i' % i] == -1:
                 if self['ebeam%i' % i] < 0.938:

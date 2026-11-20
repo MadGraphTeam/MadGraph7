@@ -38,3 +38,22 @@ C     process (gpd_driver.f): coincident poles with opposite i0 signs (e.g.
 C     gamma q -> gamma gamma q) have separate residues.
       INTEGER GPD_NMASK, GPD_MASKIDS(400)
       COMMON/GPD_MASK/GPD_NMASK, GPD_MASKIDS
+C     The probed target (formalism.typ, Heavy ions). GPD_NUCL: 0 a proton
+C     (or a free nucleon), 1 a nucleus probed coherently (spin 0, per-nucleon
+C     GPDs at x_N, xi_N times F_A(t), |M|^2 times A^4), 2 a nucleon of a
+C     nucleus (incoherent: isospin GPD_ISO = +1 proton, -1 neutron, 0 the
+C     average). GPD_TA, GPD_TZ: A, Z of the nucleus; GPD_WSR, GPD_WSAA,
+C     GPD_WSW: its Woods-Saxon (3pF) radius, diffuseness (fm) and w.
+C     GPD_INCOH: 1 for incoherent production (gpd_nuclear = incoherent).
+C     GPD_TRANGEA, GPD_BMAPA: the t range and map of coherent nuclei
+C     (GPD_BMAPA < 0: <r^2>/3). GPD_NPDF: the LHAPDF set of the per-nucleon
+C     nuclear PDFs of the dd model, %A and %Z replaced ('' : the beam PDFs
+C     with isospin). GPD_TNAME: the standalone target (gpd_target).
+      INTEGER GPD_NUCL, GPD_TA, GPD_TZ, GPD_ISO, GPD_INCOH
+      DOUBLE PRECISION GPD_WSR, GPD_WSAA, GPD_WSW, GPD_TRANGEA
+      DOUBLE PRECISION GPD_BMAPA
+      CHARACTER*256 GPD_NPDF
+      CHARACTER*16 GPD_TNAME
+      COMMON/GPD_TARGET/GPD_WSR, GPD_WSAA, GPD_WSW, GPD_TRANGEA,
+     &     GPD_BMAPA, GPD_NUCL, GPD_TA, GPD_TZ, GPD_ISO, GPD_INCOH,
+     &     GPD_NPDF, GPD_TNAME

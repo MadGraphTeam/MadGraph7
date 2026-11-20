@@ -147,30 +147,43 @@ C     set correct PDF normalisation
 
       double precision function gpd_photon_flux(x, xmu, beamid)
 c     The photon of a GPD process (lpp = 5): the single-photon flux of an
-c     elastic proton, chosen by 'gpd_flux' of Cards/gpd_card.dat: edff
-c     (gamma-UPC EDFF, default), chff (gamma-UPC ChFF) or iww (EPA). The
-c     pdlabel of an lpp = 5 beam names the proton PDFs of its GPDs.
-c     'gpd_gap' = pp (default) folds the edff/chff photon density in b
-c     with the probability that the two protons do not interact
-c     inelastically, eq. (10) of arXiv:2207.03012 (gamma-UPC); none
-c     keeps the flux without it.
+c     elastic proton or nucleus (nb_proton, nb_neutron of the beam),
+c     chosen by 'gpd_flux' of Cards/gpd_card.dat: edff (gamma-UPC EDFF,
+c     default), chff (gamma-UPC ChFF) or iww (EPA, protons only). The
+c     pdlabel of an lpp = 5 beam names the PDFs of its GPDs.
+c     'gpd_gap' (default on; pp is the same) folds the edff/chff photon
+c     density in b with gamma-UPC's probability that the two beams do
+c     not interact inelastically: eq. (10) of arXiv:2207.03012 in pp,
+c     the Woods-Saxon Glauber forms in pA and AB; none keeps the flux
+c     without it. 'gpd_ntag' (default inin) selects a forward-neutron
+c     class of beams 1 and 2, <c1>n<c2>n with c = i (any), x (Xn), 0..4,
+c     and a final + to add the conjugate class (gamma-UPC Pbreak).
+c     For an ion, x is the fraction of the ion energy (MadGraph7), and
+c     dN/dx = A f(A x) with f per nucleon.
       implicit none
       double precision x, xmu
       integer beamid
       integer lpp(2)
       double precision ebeam(2),xbk(2),q2fact(2)
       common/to_collider/ebeam,xbk,q2fact,lpp
+      integer nb_proton(2), nb_neutron(2)
+      common/to_heavyion_pdg/ nb_proton, nb_neutron
       double precision gammaupc_single_flux, epa_proton
       double precision gammaupc_single_flux_pp, sqrts
+      double precision gammaupc_single_flux_ion
       external gammaupc_single_flux, epa_proton
-      external gammaupc_single_flux_pp
-      integer iflux, igap, ios, ieq, k
+      external gammaupc_single_flux_pp, gammaupc_single_flux_ion
+      integer iflux, igap, ios, ieq, k, itag(2), iconj, na, nother
+      integer gpd_ntag_code
+      external gpd_ntag_code
       logical init, ex
-      character*256 line, fname(3)
-      data init/.true./, iflux/0/, igap/1/
+      character*256 line, fname(3), val
+      data init/.true./, iflux/0/, igap/1/, itag/-2,-2/, iconj/0/
       data fname/'../../../Cards/gpd_card.dat', '../../Cards/gpd_card.dat',
      &     'gpd_card.dat'/
-      save init, iflux, igap
+      save init, iflux, igap, itag, iconj
+      na = nb_proton(beamid) + nb_neutron(beamid)
+      nother = nb_proton(3-beamid) + nb_neutron(3-beamid)
       if (init) then
          init = .false.
          do k = 1, 3
@@ -186,13 +199,26 @@ c     keeps the flux without it.
                if (index(line,'!').gt.0) line = line(1:index(line,'!')-1)
                ieq = index(line, '=')
                if (ieq.eq.0) cycle
+               val = adjustl(line(1:ieq-1))
                if (adjustl(line(ieq+1:)).eq.'gpd_gap') then
-                  if (index(line(1:ieq), 'none').gt.0) igap = 0
+                  if (index(val, 'none').gt.0) igap = 0
+                  cycle
+               endif
+               if (adjustl(line(ieq+1:)).eq.'gpd_ntag') then
+                  if (val(1:1).eq."'") val = adjustl(val(2:))
+                  if (val(2:2).ne.'n' .or. val(4:4).ne.'n') then
+                     write(*,*) 'GPD: gpd_ntag must read <c1>n<c2>n',
+     &                    ' (c = i, x, 0, 1, 2, 3, 4), not ', trim(val)
+                     stop 1
+                  endif
+                  itag(1) = gpd_ntag_code(val(1:1))
+                  itag(2) = gpd_ntag_code(val(3:3))
+                  if (val(5:5).eq.'+') iconj = 1
                   cycle
                endif
                if (adjustl(line(ieq+1:)).ne.'gpd_flux') cycle
-               if (index(line(1:ieq), 'chff').gt.0) iflux = 1
-               if (index(line(1:ieq), 'iww').gt.0) iflux = 2
+               if (index(val, 'chff').gt.0) iflux = 1
+               if (index(val, 'iww').gt.0) iflux = 2
             enddo
             close(88)
          endif
@@ -201,19 +227,53 @@ c     keeps the flux without it.
             igap = 0
          endif
          if (igap.eq.1) then
-            write(*,*) 'GPD: photon flux with the pp gap survival of',
-     &           ' arXiv:2207.03012, eq. (10)'
+            write(*,*) 'GPD: photon flux with the gap survival of',
+     &           ' gamma-UPC (arXiv:2207.03012)'
          else
             write(*,*) 'GPD: photon flux without gap survival'
+         endif
+         if (itag(1).ne.-2 .or. itag(2).ne.-2) then
+            write(*,*) 'GPD: forward-neutron class', itag,
+     &           ' (beams 1, 2; -2 any, -1 Xn), conjugate added:',
+     &           iconj.eq.1
          endif
       endif
       sqrts = 2d0*dsqrt(ebeam(1)*ebeam(2))
       if (iflux.eq.2) then
+         if (na.gt.1) then
+            write(*,*) 'GPD: the iww photon flux is for protons;',
+     &           ' use gpd_flux = edff or chff for ions'
+            stop 1
+         endif
          gpd_photon_flux = epa_proton(x, xmu*xmu, beamid)
-      elseif (igap.eq.1) then
-         gpd_photon_flux = gammaupc_single_flux_pp(x, ebeam(beamid),
-     &        iflux, sqrts)
+      elseif (na.eq.1 .and. nother.eq.1) then
+c     pp (forward-neutron classes do not apply)
+         if (igap.eq.1) then
+            gpd_photon_flux = gammaupc_single_flux_pp(x, ebeam(beamid),
+     &           iflux, sqrts)
+         else
+            gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid),
+     &           iflux)
+         endif
       else
-         gpd_photon_flux = gammaupc_single_flux(x, ebeam(beamid), iflux)
+         gpd_photon_flux = na*gammaupc_single_flux_ion(na*x, beamid,
+     &        iflux, igap, itag(1), itag(2), iconj)
+      endif
+      end
+
+
+      integer function gpd_ntag_code(c)
+c     gpd_ntag letter -> gamma-UPC neutron class (-2 any, -1 Xn, 0..4)
+      implicit none
+      character*1 c
+      if (c.eq.'i' .or. c.eq.'I') then
+         gpd_ntag_code = -2
+      elseif (c.eq.'x' .or. c.eq.'X') then
+         gpd_ntag_code = -1
+      elseif (c.ge.'0' .and. c.le.'4') then
+         gpd_ntag_code = ichar(c) - ichar('0')
+      else
+         write(*,*) 'GPD: unknown neutron class in gpd_ntag: ', c
+         stop 1
       endif
       end

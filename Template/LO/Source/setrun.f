@@ -162,7 +162,7 @@ c         endif
 
 C       Fill common block for Les Houches init info
       do i=1,2
-        if(lpp(i).eq.1.or.lpp(i).eq.2) then
+        if(lpp(i).eq.1.or.lpp(i).eq.2.or.lpp(i).eq.5) then
           if (nb_proton(i).eq.1.and.nb_neutron(i).eq.0) then
               idbmup(i)=2212
           elseif (nb_proton(i).eq.0.and.nb_neutron(i).eq.1) then

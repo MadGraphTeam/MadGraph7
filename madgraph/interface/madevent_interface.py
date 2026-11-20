@@ -4230,11 +4230,28 @@ Beware that this can be dangerous for local multicore runs.""")
             import internal.gpd_lhe as gpd_lhe
         else:
             import madgraph.various.gpd_lhe as gpd_lhe
+        # the beams: protons or nuclei (nb_proton, nb_neutron, mass_ion)
+        beams = []
+        for i in (1, 2):
+            nbp, nbn = self.run_card['nb_proton%d' % i], self.run_card['nb_neutron%d' % i]
+            if abs(self.run_card['lpp%d' % i]) == 5 and (nbp, nbn) != (1, 0):
+                beams.append(dict(pdg=gpd_lhe.ion_pdg(nbp, nbn), mass=self.run_card['mass_ion%d' % i],
+                                  A=nbp + nbn, Z=nbp))
+            else:
+                beams.append(dict(pdg=2212, mass=gpd_lhe.MPROTON, A=1, Z=1))
+        incoherent = False
+        card = pjoin(self.me_dir, 'Cards', 'gpd_card.dat')
+        if os.path.exists(card):
+            for line in open(card):
+                w = line.split('!')[0].split('#')[0].split('=')
+                if len(w) == 2 and w[1].strip() == 'gpd_nuclear':
+                    incoherent = 'incoh' in w[0]
         for name in ['unweighted_events.lhe.gz', 'unweighted_events.lhe']:
             path = pjoin(self.me_dir, 'Events', self.run_name, name)
             if os.path.exists(path):
                 gpd_lhe.add_protons(path, [self.run_card['ebeam1'], self.run_card['ebeam2']],
-                                    seed=self.run_card['iseed'], logger=logger)
+                                    seed=self.run_card['iseed'], logger=logger, beams=beams,
+                                    incoherent=incoherent)
                 break
 
     def do_combine_events_partial(self, line, preprocess_only=False):

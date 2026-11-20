@@ -40,3 +40,15 @@
        stop 3
        return
        end
+
+
+       double precision function gammaupc_single_flux_ion(xn, ie,
+     &      ichff, igap, itag1, itag2, iconj)
+       implicit none
+       double precision xn
+       integer ie, ichff, igap, itag1, itag2, iconj
+       write(*,*) "WRONG gamma UPC linked (pdlabel edff or chff needed)"
+       gammaupc_single_flux_ion = 0d0
+       stop 3
+       return
+       end

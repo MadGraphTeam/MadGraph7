@@ -53,21 +53,21 @@ C       forward limit
 
       SUBROUTINE GPD_DD_F(IPART, KIND, BETA, MU, F)
 C     The forward function of the DD at BETA (kind 0: total, 1 valence,
-C     2 sea), from PDG2PDF of a proton.
+C     2 sea), from the PDFs of the target nucleon (GPD_PDF).
       IMPLICIT NONE
       INCLUDE 'gpd.inc'
       INTEGER IPART, KIND
-      DOUBLE PRECISION BETA, MU, F, AB, Q, QB, PDG2PDF
-      EXTERNAL PDG2PDF
+      DOUBLE PRECISION BETA, MU, F, AB, Q, QB, GPD_PDF
+      EXTERNAL GPD_PDF
       AB = ABS(BETA)
       F = 0D0
       IF (AB.LE.0D0 .OR. AB.GE.1D0) RETURN
       IF (IPART.EQ.21) THEN
-        F = AB*PDG2PDF(1, 21, GPD_BEAM, AB, MU)
+        F = AB*GPD_PDF(21, AB, MU)
         RETURN
       ENDIF
-      Q = PDG2PDF(1, IPART, GPD_BEAM, AB, MU)
-      QB = PDG2PDF(1, -IPART, GPD_BEAM, AB, MU)
+      Q = GPD_PDF(IPART, AB, MU)
+      QB = GPD_PDF(-IPART, AB, MU)
       IF (KIND.EQ.1) THEN
         IF (BETA.GT.0D0) F = Q - QB
       ELSE IF (KIND.EQ.2) THEN
@@ -204,4 +204,52 @@ C     Gauss-Legendre nodes and weights on (-1,1).
         W(I) = 2D0/((1D0-Z*Z)*PP*PP)
         W(N+1-I) = W(I)
       ENDDO
+      END
+
+
+      DOUBLE PRECISION FUNCTION GPD_PDF(IPDG, X, MU)
+C     The PDF f(x) of parton IPDG of the target nucleon at the scale MU:
+C     the proton of the GPD beam (PDG2PDF), or for a nucleus (GPD_NUCL > 0)
+C     a nucleon of it: the per-nucleon nuclear PDF set GPD_NPDF (LHAPDF,
+C     %A and %Z replaced; already isospin-averaged), or the PDFs of a free
+C     proton of the beam's PDF set with isospin, (Z f_p + N f_n)/A for the
+C     average (GPD_ISO = 0), f_p (+1) or f_n (-1), f_n from f_p by u <-> d.
+      IMPLICIT NONE
+      INCLUDE 'gpd.inc'
+      INTEGER IPDG, ISW, NBP, NBN
+      DOUBLE PRECISION X, MU, PDG2PDF, FP, FN, WP, XF
+      EXTERNAL PDG2PDF
+      INTEGER NB_PROTON(2), NB_NEUTRON(2)
+      COMMON/TO_HEAVYION_PDG/ NB_PROTON, NB_NEUTRON
+      IF (GPD_NUCL.EQ.0 .OR. GPD_TA.LE.1) THEN
+        GPD_PDF = PDG2PDF(1, IPDG, GPD_BEAM, X, MU)
+        RETURN
+      ENDIF
+      IF (LEN_TRIM(GPD_NPDF).GT.0) THEN
+        CALL GPD_NPDF_XF(GPD_NPDF, GPD_TA, GPD_TZ, IPDG, X, MU, XF)
+        GPD_PDF = XF/X
+        RETURN
+      ENDIF
+C     a free proton of the beam's PDF set: the beam is an ion in the run
+C     card, so PDG2PDF is called as for a proton beam
+      NBP = NB_PROTON(GPD_BEAM)
+      NBN = NB_NEUTRON(GPD_BEAM)
+      NB_PROTON(GPD_BEAM) = 1
+      NB_NEUTRON(GPD_BEAM) = 0
+      FP = PDG2PDF(1, IPDG, GPD_BEAM, X, MU)
+      ISW = IPDG
+      IF (ABS(IPDG).EQ.1 .OR. ABS(IPDG).EQ.2) ISW = SIGN(3 - ABS(IPDG),
+     &    IPDG)
+      FN = FP
+      IF (ISW.NE.IPDG) FN = PDG2PDF(1, ISW, GPD_BEAM, X, MU)
+      NB_PROTON(GPD_BEAM) = NBP
+      NB_NEUTRON(GPD_BEAM) = NBN
+      IF (GPD_ISO.EQ.1) THEN
+        WP = 1D0
+      ELSE IF (GPD_ISO.EQ.-1) THEN
+        WP = 0D0
+      ELSE
+        WP = DBLE(GPD_TZ)/GPD_TA
+      ENDIF
+      GPD_PDF = WP*FP + (1D0 - WP)*FN
       END

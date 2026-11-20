@@ -191,6 +191,38 @@ class GPDEventRecordTest(unittest.TestCase):
         finally:
             shutil.rmtree(tmp)
 
+    def test_rewrite_event_ions(self):
+        """Nuclei (heavy-ion GPD processes): coherent, the ion recoils as a
+        whole; incoherent, a nucleon of momentum p_A/A recoils and the
+        remnant (A - 1) is written; momentum conserved exactly."""
+        eb = (522080.0, 522080.0)
+        pb = dict(pdg=gpd_lhe.ion_pdg(82, 126), mass=193.729, A=208, Z=82)
+        self.assertEqual(pb['pdg'], 1000822080)
+        lines = make_event(eg=50.0, epair=3e-3)
+        new, tused, moved = gpd_lhe.rewrite_event(lines, eb, random.Random(5), beams=[pb, pb])
+        parts = self.check_event(new, eb[0])
+        self.assertEqual([(int(w[0]), int(w[1])) for w in parts],
+                         [(22, -1), (1000822080, -1), (-13, 1), (13, 1), (1000822080, 1)])
+        for w in parts[-1:]:
+            self.close(float(w[10]), 193.729, 1e-9)
+        info = [l for l in new if l.startswith('#gpd')][0]
+        self.assertIn('A= 208 nucl= coherent', info)
+        self.assertTrue(abs(tused + 0.3) < 1e-6, tused)
+        new, tused, moved = gpd_lhe.rewrite_event(lines, eb, random.Random(5), beams=[pb, pb],
+                                                  incoherent=True)
+        parts = self.check_event(new, eb[0])
+        pdgs = [(int(w[0]), int(w[1])) for w in parts]
+        self.assertEqual(pdgs[:4], [(22, -1), (1000822080, -1), (-13, 1), (13, 1)])
+        self.assertIn(pdgs[4], [(2212, 1), (2112, 1)])
+        self.assertEqual(pdgs[5], (1000812070 if pdgs[4][0] == 2212 else 1000822070, 1))
+        self.assertEqual(int(new[0].split()[0]), 6)
+        self.assertIn('nucl= incoherent', [l for l in new if l.startswith('#gpd')][0])
+        # the remnant carries (A - 1)/A of the ion
+        self.close(float(parts[5][9]), eb[1] * 207 / 208, 1e-9)
+
+    def close(self, a, b, tol):
+        self.assertTrue(abs(a - b) <= tol * max(1.0, abs(b)), "%r != %r" % (a, b))
+
 
 class GPDRunCardTest(unittest.TestCase):
 
@@ -202,6 +234,19 @@ class GPDRunCardTest(unittest.TestCase):
         self.assertEqual(card['lpp2'], 5)
         self.assertEqual(card.get_idbmup(5), 2212)
         self.assertEqual(card.get_idbmup(5, beam=2), 2212)
+
+    def test_lpp5_ions(self):
+        """Heavy ions on GPD beams (lpp = 5): allowed, with the ion code."""
+        card = banner.RunCardLO()
+        card.set('lpp1', 5)
+        card.set('lpp2', 5)
+        card.set('nb_proton2', 82)
+        card.set('nb_neutron2', 126)
+        card.set('mass_ion2', 193.729)
+        card.set('ebeam2', 522080.0)
+        card.check_validity()
+        self.assertEqual(card.get_idbmup(5, beam=2), 1000822080)
+        self.assertEqual(card.get_idbmup(5, beam=1), 2212)
 
 
 if __name__ == '__main__':

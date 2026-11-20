@@ -445,3 +445,268 @@ c     Gauss-Legendre nodes and weights on [-1, 1]
       enddo
       return
       end
+
+
+      double precision function gammaupc_single_flux_ion(xn, ie,
+     &     ichff, igap, itag1, itag2, iconj)
+c     The single-photon number density dN/dx_N of an elastic photon of
+c     beam ie (a proton or a nucleus, run90.inc) that reaches the other
+c     beam, the target of a GPD process, with both beams intact; x_N is
+c     the fraction of the energy of one nucleon of the emitter (ebeam/A).
+c     The gamma-UPC photon density at distance b from the emitter is
+c     folded in b (the photon is absorbed at the centre of the target)
+c     with, for igap = 1, gamma-UPC's probability of no inelastic
+c     hadronic interaction of the beam system (PNOHAD_pp, eq. (10) of
+c     arXiv:2207.03012; PNOHAD_pA_WoodsSaxon; PNOHAD_AB_WoodsSaxon), and,
+c     for a forward-neutron class (itag1, itag2) of beams 1 and 2 other
+c     than (-2, -2), gamma-UPC's probability of that class (Pbreak_*:
+c     -2 any, -1 Xn, 0 0n, 1..4 1n..4n; iconj = 1 adds the conjugate
+c     class (itag2, itag1)). EDFF (ichff = 0, b > R of the emitter) or
+c     ChFF (ichff = 1). The result is S(x_N) f(x_N): f the gamma-UPC
+c     flux without survival (PhotonFlux_*_nob) and S the ratio of the
+c     folded to the unfolded b integrals, tabulated in ln x_N at the
+c     first call for each emitter.
+      use ElasticPhotonPhotonFlux
+      use OpticalGlauber_Geometry, only: sigma_inelastic
+      implicit none
+      include 'run90.inc'
+      double precision xn
+      integer ie, ichff, igap, itag1, itag2, iconj
+      double precision mproton, mnucl, gevm1fm, rproton, pi
+      parameter (mproton=0.938272081d0, mnucl=0.9315d0)
+      parameter (gevm1fm=0.1973d0, rproton=0.877d0)
+      parameter (pi=3.14159265358979323846d0)
+      integer nx, ngl
+      double precision lxmin, lxmax
+      parameter (nx=181, ngl=8, lxmin=-9d0*2.302585092994046d0,
+     &     lxmax=0d0)
+      double precision stab(nx,2), xg(ngl), wg(ngl)
+      double precision gam(2), en(2), zz(2), rcut(2)
+      double precision av(2), zv(2), rr(2), aa(2), ww(2)
+      integer na(2), nz(2), isys, init(2), iglinit
+      double precision sig, b0, sqrtsnn
+      save stab, xg, wg, gam, en, zz, rcut, av, zv, rr, aa, ww
+      save na, nz, isys, init, iglinit, sig, b0, sqrtsnn
+      data init/0, 0/, iglinit/0/
+      integer k, it, i, j, ireg, npan, ipan, ix
+      double precision lx, x, num, den, ulo, uhi, h, u, b, dens, pw
+      double precision ega, bscale, bmax, wfl, s, t, l0, l1, l2, l3
+      double precision fnob
+      character*7 aname
+      double precision gammaupc_ion_pnohad, gammaupc_ion_ptag
+      external gammaupc_ion_pnohad, gammaupc_ion_ptag
+      gammaupc_single_flux_ion = 0d0
+      if (xn.le.0d0 .or. xn.ge.1d0) return
+      it = 3 - ie
+      if (iglinit.eq.0) then
+         call gammaupc_gauleg(ngl, xg, wg)
+         do k = 1, 2
+            na(k) = nb_proton(k) + nb_neutron(k)
+            nz(k) = nb_proton(k)
+            en(k) = ebeamMG5(k)/na(k)
+            if (na(k).eq.1) then
+               gam(k) = en(k)/mproton
+               zz(k) = 1d0
+               rcut(k) = rproton/gevm1fm
+            else
+               gam(k) = en(k)/mnucl
+               aname = GetASymbol(na(k), nz(k))
+               call GetNuclearInfo(aname, av(k), zv(k), rr(k), aa(k),
+     &              ww(k))
+               zz(k) = zv(k)
+               rcut(k) = rr(k)/gevm1fm
+            endif
+         enddo
+         if (na(1).eq.1 .and. na(2).eq.1) then
+            isys = 0
+         elseif (na(1).eq.1 .or. na(2).eq.1) then
+            isys = 1
+         else
+            isys = 2
+         endif
+         sqrtsnn = 2d0*dsqrt(en(1)*en(2))
+         sig = sigma_inelastic(sqrtsnn)*0.1d0
+         b0 = 9.81d0 + 0.211d0*dlog(sqrtsnn**2)
+     &        + 0.0185d0*dlog(sqrtsnn**2)**2
+         iglinit = 1
+      endif
+c     the flux without survival (gamma-UPC)
+      if (na(ie).eq.1) then
+         if (ichff.eq.1) then
+            fnob = PhotonFlux_proton_ChFF_nob(xn, gam(ie))
+         else
+            fnob = PhotonFlux_proton_EDFF_nob(xn, gam(ie))
+         endif
+      else
+         if (ichff.eq.1) then
+            fnob = PhotonFlux_nucleus_ChFF_nob(ie, xn, gam(ie), zz(ie),
+     &           rr(ie), ww(ie), aa(ie))
+         else
+            fnob = PhotonFlux_nucleus_EDFF_nob(xn, gam(ie), zz(ie),
+     &           rr(ie))
+         endif
+      endif
+      if (igap.eq.0 .and. itag1.eq.-2 .and. itag2.eq.-2) then
+         gammaupc_single_flux_ion = fnob
+         return
+      endif
+      if (init(ie).eq.0) then
+c     the ratio S(x_N) on a grid of nx points in ln x_N
+         bscale = rcut(1) + rcut(2)
+         if (isys.eq.0) bscale = dsqrt(2d0*b0)
+         do ix = 1, nx
+            lx = lxmin + (lxmax - lxmin)*(ix - 1)/dble(nx - 1)
+            x = dexp(lx)
+            if (ix.eq.nx) x = 0.999d0
+            if (na(ie).eq.1) then
+               wfl = x*mproton
+            else
+               wfl = x*mnucl
+            endif
+            ega = x*en(ie)
+            bmax = max(40d0/wfl, 20d0*bscale)
+            num = 0d0
+            den = 0d0
+            do ireg = 1, 2
+               if (ireg.eq.1) then
+                  if (ichff.eq.1) then
+                     ulo = dlog(0.1d0*rcut(ie))
+                  else
+                     ulo = dlog(rcut(ie))
+                  endif
+                  uhi = dlog(max(dexp(ulo)*1.0001d0, 6d0*bscale))
+                  h = 0.02d0
+               else
+                  ulo = uhi
+                  uhi = dlog(max(bmax, dexp(ulo)*1.0001d0))
+                  h = 0.1d0
+               endif
+               npan = max(1, int((uhi - ulo)/h) + 1)
+               h = (uhi - ulo)/npan
+               do ipan = 1, npan
+                  do k = 1, ngl
+                     u = ulo + h*(ipan - 0.5d0 + 0.5d0*xg(k))
+                     b = dexp(u)
+                     if (ichff.eq.1 .and. na(ie).eq.1) then
+                        dens =
+     &                    PhotonNumberDensity_ChargeFormFactor_proton(
+     &                    b, ega, gam(ie))
+                     elseif (ichff.eq.1) then
+                        dens =
+     &                    PhotonNumberDensity_ChargeFormFactor_WS(
+     &                    b, ega, gam(ie), rcut(ie), ww(ie),
+     &                    aa(ie)/gevm1fm, 3d0, 0.7d0, ie)
+                     else
+                        dens = PhotonNumberDensity(b, ega, gam(ie))
+                     endif
+                     pw = 0.5d0*h*wg(k)*2d0*pi*b*b*dens
+                     den = den + pw
+                     s = 1d0
+                     if (igap.eq.1) s = gammaupc_ion_pnohad(b, isys,
+     &                    sig, b0, rr, aa, ww, av, zv, na)
+                     if (s.gt.0d0) s = s*gammaupc_ion_ptag(b, isys,
+     &                    itag1, itag2, iconj, na)
+                     num = num + pw*s
+                  enddo
+               enddo
+            enddo
+            if (den.gt.0d0) then
+               stab(ix, ie) = num/den
+            else
+               stab(ix, ie) = 1d0
+            endif
+         enddo
+         init(ie) = 1
+         write(*,*) 'GPD: photon flux of beam', ie, ' with survival',
+     &        ' (gamma-UPC, system', isys, '), S(x_N) =',
+     &        (stab(ix, ie), ix=1, nx, 30)
+      endif
+c     4-point Lagrange interpolation in ln x_N
+      lx = max(lxmin, min(lxmax, dlog(xn)))
+      t = (lx - lxmin)/(lxmax - lxmin)*(nx - 1) + 1d0
+      i = max(2, min(nx - 2, int(t)))
+      t = t - i
+      l0 = -t*(t - 1d0)*(t - 2d0)/6d0
+      l1 = (t + 1d0)*(t - 1d0)*(t - 2d0)/2d0
+      l2 = -(t + 1d0)*t*(t - 2d0)/2d0
+      l3 = (t + 1d0)*t*(t - 1d0)/6d0
+      s = l0*stab(i-1, ie) + l1*stab(i, ie) + l2*stab(i+1, ie)
+     &     + l3*stab(i+2, ie)
+      s = max(0d0, min(1d0, s))
+      gammaupc_single_flux_ion = s*fnob
+      return
+      end
+
+
+      double precision function gammaupc_ion_pnohad(b, isys, sig, b0,
+     &     rr, aa, ww, av, zv, na)
+c     gamma-UPC's probability of no inelastic hadronic interaction at the
+c     impact parameter b (GeV^-1) of the beams: pp (isys = 0), pA (1),
+c     AB (2); rr, aa (fm), ww, av, zv: Woods-Saxon data of the beams.
+      use ElasticPhotonPhotonFlux
+      implicit none
+      double precision b, sig, b0, rr(2), aa(2), ww(2), av(2), zv(2)
+      integer isys, na(2), k
+      double precision gevm1fm
+      parameter (gevm1fm=0.1973d0)
+      if (isys.eq.0) then
+         gammaupc_ion_pnohad = PNOHAD_pp(b, 0d0, b0)
+      elseif (isys.eq.1) then
+         k = 1
+         if (na(1).eq.1) k = 2
+         gammaupc_ion_pnohad = PNOHAD_pA_WoodsSaxon(b*gevm1fm, 0d0,
+     &        rr(k), ww(k), aa(k), av(k), sig)
+      else
+         gammaupc_ion_pnohad = PNOHAD_AB_WoodsSaxon(b*gevm1fm, 0d0,
+     &        rr, ww, aa, av, zv, sig)
+      endif
+      return
+      end
+
+
+      double precision function gammaupc_ion_ptag(b, isys, itag1,
+     &     itag2, iconj, na)
+c     gamma-UPC's probability of the forward-neutron class (itag1, itag2)
+c     of beams 1 and 2 at the impact parameter b (GeV^-1); 1 for (-2, -2)
+c     and for pp. -2 ("any") on beam 2 is summed as 0n + Xn (Pbreak_*
+c     accept -2 on beam 1 only).
+      use ElasticPhotonPhotonFlux
+      implicit none
+      double precision b
+      integer isys, itag1, itag2, iconj, na(2), in
+      double precision gammaupc_ion_pab
+      external gammaupc_ion_pab
+      gammaupc_ion_ptag = 1d0
+      if (itag1.eq.-2 .and. itag2.eq.-2) return
+      if (isys.eq.0) return
+      if (isys.eq.1) then
+c     the nucleus breaks up, the proton does not
+         in = itag2
+         if (na(2).eq.1) in = itag1
+         if (in.eq.-2) return
+         gammaupc_ion_ptag = Pbreak_pA_WoodsSaxon(in, b)
+         return
+      endif
+      gammaupc_ion_ptag = gammaupc_ion_pab(itag1, itag2, b)
+      if (iconj.eq.1 .and. itag1.ne.itag2)
+     &     gammaupc_ion_ptag = gammaupc_ion_ptag
+     &     + gammaupc_ion_pab(itag2, itag1, b)
+      return
+      end
+
+
+      double precision function gammaupc_ion_pab(i1, i2, b)
+      use ElasticPhotonPhotonFlux
+      implicit none
+      integer i1, i2
+      double precision b
+      if (i1.eq.-2 .and. i2.eq.-2) then
+         gammaupc_ion_pab = 1d0
+      elseif (i2.eq.-2) then
+         gammaupc_ion_pab = Pbreak_AB_WoodsSaxon(i1, 0, b)
+     &        + Pbreak_AB_WoodsSaxon(i1, -1, b)
+      else
+         gammaupc_ion_pab = Pbreak_AB_WoodsSaxon(i1, i2, b)
+      endif
+      return
+      end

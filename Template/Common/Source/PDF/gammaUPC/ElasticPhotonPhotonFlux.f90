@@ -20,6 +20,9 @@ MODULE ElasticPhotonPhotonFlux
   PUBLIC::DeltaB_AB_at_x1x2,PhotonPhotonDeltaB_AB_WoodsSaxon,PhotonPhotonDeltaB_AB_WoodsSaxon_eval
   PUBLIC::Lgammagamma_UPC,dLgammagammadW_UPC,DeltaB_UPC_at_W
   PUBLIC::PhotonNumberDensity ! EDFF
+  ! the probabilities of no inelastic hadronic interaction (used by the single
+  ! photon fluxes of GPD processes, photonpdfsquare.f)
+  PUBLIC::PNOHAD_pp,PNOHAD_pA_WoodsSaxon,PNOHAD_AB_WoodsSaxon
   ! ChFF
   PUBLIC::PhotonNumberDensity_ChargeFormFactor_WS,PhotonNumberDensity_ChargeFormFactor_proton
   ! Forward neutron tagging

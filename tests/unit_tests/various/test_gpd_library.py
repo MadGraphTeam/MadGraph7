@@ -122,6 +122,36 @@ class GPDLibraryTest(unittest.TestCase):
                 right = (h1[4] - h1[3]) / h
                 self.assertGreater(abs(left - right), 1e-3)
 
+    def test_nuclear_target_form_factor(self):
+        """A nucleus probed coherently (gpd_target): per-nucleon GPDs times
+        the Woods-Saxon form factor F_A(t), only H (spin 0). References: the
+        sine transform of the 3pF density in docs/scripts/ion_flux.py."""
+        refs = [('Pb208', -0.01, 0.19758625178176684), ('Pb208', -0.002, 0.7638503453991758),
+                ('O16', -0.05, 0.1765647597695564), ('Au197', -0.005, 0.5181685112085613)]
+        for name, t, ff in refs:
+            x = 0.12
+            vals, out = self.evaluate({'gpd_model': 'toy3', 'gpd_target': name},
+                                      [(21, x, 0.05, t, 3.0), (21, x, 0.05, 0.0, 3.0)])
+            self.assertIn('target %s' % name, out)
+            s = (1 - x * x) ** 2
+            self.close(vals[0][0], s * (1 + 0.5 * x * x) * ff, 1e-9)
+            self.close(vals[1][0], s * (1 + 0.5 * x * x), 1e-14)
+            self.assertEqual(vals[0][1:], [0.0, 0.0, 0.0])
+
+    def test_nuclear_target_isospin(self):
+        """The GPDs of an average nucleon of the nucleus: (Z u_p + N u_n)/A
+        with u_n = d_p (grid model: H^u = 1, H^d = 0 in the proton)."""
+        grid = os.path.join(self.rundir, 'iso.grid')
+        with open(grid, 'w') as f:
+            f.write("3 2\n-0.9 0.0 0.9\n0.01 0.9\n2 H\n1 1 1 1 1 1\n1 H\n0 0 0 0 0 0\n")
+        pts = [(2, 0.3, 0.2, 0.0, 3.0), (1, 0.3, 0.2, 0.0, 3.0)]
+        vals, out = self.evaluate({'gpd_model': 'grid', 'gpd_grid': "'%s'" % grid}, pts)
+        self.close(vals[0][0], 1.0)
+        self.close(vals[1][0], 0.0)
+        vals, out = self.evaluate({'gpd_model': 'grid', 'gpd_grid': "'%s'" % grid, 'gpd_target': 'Pb208'}, pts)
+        self.close(vals[0][0], 82.0 / 208)
+        self.close(vals[1][0], 126.0 / 208)
+
     def test_t_models(self):
         x, xi, t = 0.12, 0.05, -0.4
         card = {'gpd_model': 'toy2', 'gpd_tmodel': 1, 'gpd_tslope_g': 2.25, 'gpd_tslope_q': 1.5}

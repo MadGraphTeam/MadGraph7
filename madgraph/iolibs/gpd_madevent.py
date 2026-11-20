@@ -224,7 +224,9 @@ C     writes it as a '#gpd' line, madgraph/various/gpd_lhe.py adds the protons)
       INTEGER GPD_EVT_SET
       COMMON/GPD_EVENT/GPD_EVT_T, GPD_EVT_SET
       DOUBLE PRECISION ZETA, XI, T, MU, TMIN, DELTA, U, R, WT, ANS, DSUM(0:3)
-      DOUBLE PRECISION SHAT
+      DOUBLE PRECISION SHAT, MT, ZT, XIK, BMAP, FA, ANSN, R2, PEXP
+      DOUBLE PRECISION GPD_FORMFACTOR, GPD_WS_R2
+      INTEGER NA, NZ
       DOUBLE PRECISION PMASS(NEXTERNAL), ZERO
       LOGICAL OFFSH
       PARAMETER (ZERO=0D0)
@@ -267,22 +269,74 @@ C     pair fraction is not fixed by the delta function there): refused
       GIVEC = IVEC
       CALL GPD_INIT()
       ZETA = XBK(IB(2))
-C     the elastic proton: W = sqrt((q + p)^2) above M_X + m_p, with
-C     W^2 = shat/zeta + m_p^2 (massless pair kinematics)
       SHAT = (P(0,1)+P(0,2))**2 - (P(1,1)+P(1,2))**2
      &     - (P(2,1)+P(2,2))**2 - (P(3,1)+P(3,2))**2
-      IF (SHAT/ZETA + MPROT**2 .LT. (SQRT(SHAT) + MPROT)**2) RETURN
-      XI = ZETA/(2D0-ZETA)
       MU = SQRT(Q2FACT(IB(2)))
       GPD_BEAM = IB(2)
-      TMIN = -4D0*XI*XI*MPROT**2/(1D0-XI*XI)
-      DELTA = GPD_TRANGE
+C     the target of the GPDs (formalism.typ, Heavy ions): a proton; a
+C     nucleus probed coherently, with the variables of the nucleus (zeta =
+C     the fraction of the ion, xi_A, M_A) and the nucleon kernels at
+C     xi_N = A xi_A; or a nucleon of the nucleus (incoherent), with the
+C     variables of a nucleon (zeta_N = A zeta, m_N)
+      NA = NB_PROTON(IB(2)) + NB_NEUTRON(IB(2))
+      NZ = NB_PROTON(IB(2))
+      IF (NA.LE.1) THEN
+        GPD_NUCL = 0
+        CALL GPD_SET_TARGET(1, 1)
+        MT = MPROT
+        ZT = ZETA
+        XI = ZT/(2D0-ZT)
+        XIK = XI
+        DELTA = GPD_TRANGE
+        BMAP = GPD_BMAP
+      ELSE
+        CALL GPD_SET_TARGET(NA, NZ)
+        IF (GPD_INCOH.EQ.0) THEN
+          GPD_NUCL = 1
+          GPD_ISO = 0
+          MT = MASS_ION(IB(2))
+          ZT = ZETA
+          XI = ZT/(2D0-ZT)
+          XIK = NA*XI
+          DELTA = GPD_TRANGEA
+          BMAP = GPD_BMAPA
+          IF (BMAP.LE.0D0) BMAP = GPD_WS_R2()/3D0
+        ELSE
+          GPD_NUCL = 2
+          MT = MPROT
+          ZT = NA*ZETA
+          IF (ZT.GE.1D0) RETURN
+          XI = ZT/(2D0-ZT)
+          XIK = XI
+          DELTA = GPD_TRANGE
+          BMAP = GPD_BMAP
+        ENDIF
+        IF (XIK.GE.1D0) RETURN
+      ENDIF
+C     the elastic target: W = sqrt((q + p)^2) above M_X + m_T, with
+C     W^2 = shat/zeta + m_T^2 (massless pair kinematics)
+      IF (SHAT/ZT + MT**2 .LT. (SQRT(SHAT) + MT)**2) RETURN
+      TMIN = -4D0*XI*XI*MT**2/(1D0-XI*XI)
       CALL RANMAR(R)
-      U = -LOG(1D0 - R*(1D0-EXP(-GPD_BMAP*DELTA)))/GPD_BMAP
+      IF (GPD_NUCL.EQ.1) THEN
+C       coherent nuclei: 0.9 of the map exp(-BMAP |t - t_min|) and 0.1
+C       flat, which covers the diffraction maxima of F_A^2 beyond its
+C       first zero (the exponential alone leaves their weights unbounded)
+        CALL RANMAR(R2)
+        IF (R2.LT.0.9D0) THEN
+          U = -LOG(1D0 - R*(1D0-EXP(-BMAP*DELTA)))/BMAP
+        ELSE
+          U = R*DELTA
+        ENDIF
+        PEXP = BMAP*EXP(-BMAP*U)/(1D0-EXP(-BMAP*DELTA))
+        WT = 1D0/(0.9D0*PEXP + 0.1D0/DELTA)
+      ELSE
+        U = -LOG(1D0 - R*(1D0-EXP(-BMAP*DELTA)))/BMAP
+        WT = (1D0-EXP(-BMAP*DELTA))/BMAP*EXP(BMAP*U)
+      ENDIF
       T = TMIN - U
       GPD_EVT_T(IB(2), IVEC) = T
       GPD_EVT_SET = 1
-      WT = (1D0-EXP(-GPD_BMAP*DELTA))/GPD_BMAP*EXP(GPD_BMAP*U)
       IF (GPD_XMODE.EQ.1) THEN
         USEMC = 1
         CALL RANMAR(RMC1)
@@ -290,7 +344,21 @@ C     W^2 = shat/zeta + m_p^2 (massless pair kinematics)
       ELSE
         USEMC = 0
       ENDIF
-      CALL GPD%(n)d_ME(P, XI, T, MU, ANS)
+      IF (GPD_NUCL.EQ.2) THEN
+C       incoherent: (1 - F_A^2) A^2 (Z |M_p|^2 + N |M_n|^2)
+        GPD_ISO = 1
+        CALL GPD%(n)d_ME(P, XIK, T, MU, ANS)
+        ANSN = 0D0
+        IF (NA.GT.NZ) THEN
+          GPD_ISO = -1
+          CALL GPD%(n)d_ME(P, XIK, T, MU, ANSN)
+        ENDIF
+        GPD_ISO = 0
+        FA = GPD_FORMFACTOR(T)
+        ANS = (NZ*ANS + (NA - NZ)*ANSN)*DBLE(NA)**2*(1D0 - FA*FA)
+      ELSE
+        CALL GPD%(n)d_ME(P, XIK, T, MU, ANS)
+      ENDIF
       USEMC = 0
       MATRIX%(n)d = ANS*WT*GPD_SURVIVAL*%(iden)dD0
       END

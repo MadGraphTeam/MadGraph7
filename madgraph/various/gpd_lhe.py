@@ -68,14 +68,17 @@ def _rotate_to(v, n):
             rz[0] * v[0] + rz[1] * v[1] + rz[2] * v[2]]
 
 
-def recoil(q, pin, kx, t, phi, mp=MPROTON):
+def recoil(q, pin, kx, t, phi, mp=MPROTON, mout=None):
     """gamma(q) + p(pin) -> X(kx') + p'(pout) at the mass of kx, with
-    (pin - pout)^2 = t (moved into the physical range) and azimuth phi.
+    (pin - pout)^2 = t (moved into the physical range) and azimuth phi;
+    pout of mass mout (default mp; the mass of pin is that of its momentum).
     Returns (kx', pout, t used)."""
     tot = [q[i] + pin[i] for i in range(4)]
     W2 = _dot(tot, tot)
     W = math.sqrt(W2)
     MX2 = max(_dot(kx, kx), 0.0)
+    min2 = _dot(pin, pin)
+    mp = mp if mout is None else mout
     # madevent keeps W >= M_X + m_p (massless beams): at the threshold the
     # massive beam can leave lam slightly negative
     lam = max((W2 - MX2 - mp * mp) ** 2 - 4 * MX2 * mp * mp, 0.0)
@@ -86,9 +89,9 @@ def recoil(q, pin, kx, t, phi, mp=MPROTON):
     epin = pcm[0]
     pout_abs = math.sqrt(lam) / (2 * W)
     eout = (W2 + mp * mp - MX2) / (2 * W)
-    cth = (t - 2 * mp * mp + 2 * epin * eout) / max(2 * ppin * pout_abs, 1e-300)
+    cth = (t - min2 - mp * mp + 2 * epin * eout) / max(2 * ppin * pout_abs, 1e-300)
     cth = max(-1.0, min(1.0, cth))
-    tused = 2 * mp * mp - 2 * (epin * eout - ppin * pout_abs * cth)
+    tused = min2 + mp * mp - 2 * (epin * eout - ppin * pout_abs * cth)
     sth = math.sqrt(max(0.0, 1 - cth * cth))
     v = _rotate_to([pout_abs * sth * math.cos(phi), pout_abs * sth * math.sin(phi), pout_abs * cth], n)
     pout = _boost([eout] + v, bcm)
@@ -101,9 +104,26 @@ def _fmt(pdg, st, m1, m2, c1, c2, p, m, vt, sp):
         pdg, st, m1, m2, c1, c2, p[1], p[2], p[3], p[0], m, vt, sp)
 
 
-def rewrite_event(lines, ebeam, seed_rng, mp=MPROTON):
+MNEUTRON = 0.93956542052
+
+
+def ion_pdg(nbp, nbn):
+    """PDG code of the nucleus (Z = nbp, A = nbp + nbn): 10LZZZAAAI."""
+    if (nbp, nbn) == (1, 0):
+        return 2212
+    if (nbp, nbn) == (0, 1):
+        return 2112
+    return 1000000000 + 10000 * nbp + 10 * (nbp + nbn)
+
+
+def rewrite_event(lines, ebeam, seed_rng, mp=MPROTON, beams=None, incoherent=False):
     """The lines of one event (between <event> and </event>) rewritten;
-    returns (lines, t used, moved)."""
+    returns (lines, t used, moved). beams: per beam a dict (pdg, mass, A, Z)
+    of the proton or nucleus (default: protons). A nucleus probed coherently
+    recoils as a whole (mass M_A); incoherently (incoherent=True), a nucleon
+    of momentum p_A/A (p with probability Z/A, else n) recoils and the
+    remnant (A - 1 nucleons, 4-momentum (A - 1)/A p_A) is written too, so
+    that momentum is conserved exactly."""
     head = lines[0].split()
     nup = int(head[0])
     parts = [l.split() for l in lines[1:1 + nup]]
@@ -125,23 +145,40 @@ def rewrite_event(lines, ebeam, seed_rng, mp=MPROTON):
     q = mom(parts[iq])
     beam = 1 if pair[3] > 0 else 2
     eb = ebeam[beam - 1]
-    pz = math.sqrt(eb * eb - mp * mp)
-    pin = [eb, 0.0, 0.0, pz if beam == 1 else -pz]
+    info = (beams or [None, None])[beam - 1] or dict(pdg=2212, mass=mp, A=1, Z=1)
+    mbeam = info['mass']
+    pz = math.sqrt(eb * eb - mbeam * mbeam)
+    pbeam = [eb, 0.0, 0.0, pz if beam == 1 else -pz]
     t = tvals[beam - 1]
     fin = [i for i, w in enumerate(parts) if int(w[1]) == 1]
     kx = [sum(mom(parts[i])[k] for i in fin) for k in range(4)]
     phi = 2 * math.pi * seed_rng.random()
-    kx_new, pout, tused = recoil(q, pin, kx, t, phi, mp)
+    A, Z = info['A'], info['Z']
+    incoh = incoherent and A > 1
+    if incoh:
+        # the struck nucleon carries p_A/A
+        proton = seed_rng.random() < Z / A
+        pdg_out, m_out = (2212, MPROTON) if proton else (2112, MNEUTRON)
+        pin = [x / A for x in pbeam]
+        remnant = [pbeam[k] - pin[k] for k in range(4)]
+        pdg_rem = ion_pdg(Z - (1 if proton else 0), A - Z - (0 if proton else 1))
+        kx_new, pout, tused = recoil(q, pin, kx, t, phi, mout=m_out)
+    else:
+        pdg_out, m_out = info['pdg'], mbeam
+        pin = pbeam
+        kx_new, pout, tused = recoil(q, pin, kx, t, phi, mp=mbeam)
     # X boosted as a whole: to its rest frame, then to kx_new
     b_old = _velocity(kx)
     b_new = _velocity(kx_new)
     out = []
     zeta = pair[0] / eb
+    if incoh:
+        zeta *= A
     xi = zeta / (2 - zeta)
     for i, w in enumerate(parts):
         p = mom(w)
         if i == ipair:
-            out.append(_fmt(2212, -1, 0, 0, 0, 0, pin, mp, 0.0, 9.0))
+            out.append(_fmt(info['pdg'], -1, 0, 0, 0, 0, pbeam, mbeam, 0.0, 9.0))
             continue
         if int(w[1]) in (1, 2):
             p = _boost(_boost(p, [-x for x in b_old]), b_new)
@@ -149,16 +186,25 @@ def rewrite_event(lines, ebeam, seed_rng, mp=MPROTON):
                             float(w[10]), float(w[11]), float(w[12])))
         else:
             out.append(lines[1 + i] if lines[1 + i].endswith('\n') else lines[1 + i] + '\n')
-    out.append(_fmt(2212, 1, 1, 2, 0, 0, pout, mp, 0.0, 9.0))
-    head[0] = str(nup + 1)
+    out.append(_fmt(pdg_out, 1, 1, 2, 0, 0, pout, m_out, 0.0, 9.0))
+    nadd = 1
+    if incoh:
+        out.append(_fmt(pdg_rem, 1, 1, 2, 0, 0, remnant, math.sqrt(max(_dot(remnant, remnant), 0.0)),
+                        0.0, 9.0))
+        nadd = 2
+    head[0] = str(nup + nadd)
     newhead = " " + " ".join(head) + "\n"
-    info = "#gpd t= %.10e xi= %.10e beam= %d\n" % (tused, xi, beam)
+    info = "#gpd t= %.10e xi= %.10e beam= %d" % (tused, xi, beam)
+    if A > 1:
+        info += " A= %d nucl= %s" % (A, 'incoherent' if incoh else 'coherent')
+    info += "\n"
     moved = abs(tused - t) > 1e-9 * max(1.0, abs(t))
     return [newhead] + out + [info] + [l if l.endswith('\n') else l + '\n' for l in keep], tused, moved
 
 
-def add_protons(path, ebeam, seed=0, logger=None):
-    """Rewrite the event file path (.lhe or .lhe.gz) in place."""
+def add_protons(path, ebeam, seed=0, logger=None, beams=None, incoherent=False):
+    """Rewrite the event file path (.lhe or .lhe.gz) in place (beams,
+    incoherent: see rewrite_event)."""
     op = gzip.open if path.endswith('.gz') else open
     tmp = path + '.gpdtmp' + ('.gz' if path.endswith('.gz') else '')
     rng = random.Random(seed)
@@ -174,7 +220,7 @@ def add_protons(path, ebeam, seed=0, logger=None):
                     fout.write(line)
                 continue
             if line.lstrip().startswith('</event'):
-                new, tused, moved = rewrite_event(buf, ebeam, rng)
+                new, tused, moved = rewrite_event(buf, ebeam, rng, beams=beams, incoherent=incoherent)
                 if tused is not None:
                     nev += 1
                     nmoved += moved
@@ -185,6 +231,7 @@ def add_protons(path, ebeam, seed=0, logger=None):
             buf.append(line)
     os.replace(tmp, path)
     if logger:
-        logger.info("GPD: elastic protons added to %d events of %s (%d with t moved into the "
-                    "physical range)" % (nev, os.path.basename(path), nmoved))
+        logger.info("GPD: elastic %s added to %d events of %s (%d with t moved into the "
+                    "physical range)" % ('protons' if not beams or all(b['A'] == 1 for b in beams)
+                                         else 'protons and nuclei', nev, os.path.basename(path), nmoved))
     return nev, nmoved

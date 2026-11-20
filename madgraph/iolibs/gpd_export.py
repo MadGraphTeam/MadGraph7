@@ -531,11 +531,14 @@ C     momentum transfer TIN (GeV^2) and scale MUIN (GeV).
 C     Sum over helicities and colours of the proton-spin-summed bilinear
 C     (formalism.typ, proton spin sums) of the CFFs C and C2 (two Monte
 C     Carlo replicas, or the same quadrature), divided by the average.
+C     A nucleus probed coherently (GPD_NUCL = 1, formalism.typ, Heavy
+C     ions) has spin 0: |H|^2 alone with the weight 1, times A^4.
       IMPLICIT NONE
+      INCLUDE 'gpd.inc'
       INTEGER NCOLOR, NHPHYS, NAMP
       PARAMETER (NCOLOR=%(ncolor)d, NHPHYS=%(nhphys)d, NAMP=NCOLOR*NHPHYS)
       COMPLEX*16 C(NAMP,4), C2(NAMP,4)
-      REAL*8 XI, T, MP, TM, W1, W2, W3, W4, IDEN
+      REAL*8 XI, T, MP, TM, W1, W1T, W2, W3, W4, IDEN
       PARAMETER (MP=0.93827208816D0, IDEN=%(iden)d)
       INTEGER CF_INDEX, IH, I, J, OFF
       INTEGER %(prefix)sCF(NCOLOR*(NCOLOR+1)/2)
@@ -546,9 +549,17 @@ C     Carlo replicas, or the same quadrature), divided by the average.
       CALL %(prefix)sINIT_CF()
       TM = T/(4D0*MP*MP)
       W1 = 1D0 - XI*XI
+      W1T = W1
       W2 = -(XI*XI + TM)
       W3 = -XI*XI*TM
       W4 = -XI*XI
+      IF (GPD_NUCL.EQ.1) THEN
+        W1 = 1D0
+        W1T = 0D0
+        W2 = 0D0
+        W3 = 0D0
+        W4 = 0D0
+      ENDIF
       S = (0D0,0D0)
       DO IH = 1, NHPHYS
         OFF = NCOLOR*(IH-1)
@@ -564,12 +575,12 @@ C     Carlo replicas, or the same quadrature), divided by the average.
         DO I = 1, NCOLOR
           DO J = I, NCOLOR
             CF_INDEX = CF_INDEX + 1
-            Z = W1*(H1(J)*DCONJG(H2(I)) + HT1(J)*DCONJG(HT2(I)))
+            Z = W1*H1(J)*DCONJG(H2(I)) + W1T*HT1(J)*DCONJG(HT2(I))
      &        + W2*E1(J)*DCONJG(E2(I)) + W3*ET1(J)*DCONJG(ET2(I))
      &        + W4*(H1(J)*DCONJG(E2(I)) + E1(J)*DCONJG(H2(I))
      &            + HT1(J)*DCONJG(ET2(I)) + ET1(J)*DCONJG(HT2(I)))
             IF (I.NE.J) THEN
-              Z = Z + W1*(H1(I)*DCONJG(H2(J)) + HT1(I)*DCONJG(HT2(J)))
+              Z = Z + W1*H1(I)*DCONJG(H2(J)) + W1T*HT1(I)*DCONJG(HT2(J))
      &          + W2*E1(I)*DCONJG(E2(J)) + W3*ET1(I)*DCONJG(ET2(J))
      &          + W4*(H1(I)*DCONJG(E2(J)) + E1(I)*DCONJG(H2(J))
      &              + HT1(I)*DCONJG(ET2(J)) + ET1(I)*DCONJG(HT2(J)))
@@ -580,6 +591,8 @@ C     Carlo replicas, or the same quadrature), divided by the average.
         ENDDO
       ENDDO
       %(prefix)sGPD_SQUARE = 2D0*DBLE(S)/%(prefix)sDENOM/IDEN
+      IF (GPD_NUCL.EQ.1) %(prefix)sGPD_SQUARE = %(prefix)sGPD_SQUARE
+     &    *DBLE(GPD_TA)**4
       END
 """
 
@@ -928,10 +941,19 @@ GPD_CARD = """#*****************************************************************
   1e-3     = gpd_dptol           ! tolerance of the double-pole detector
   2.0      = gpd_t_range         ! madevent: |t| up to |t_min| + this (GeV^2)
   4.0      = gpd_t_bmap          ! madevent: importance map exp(-B|t|) of the t integral
-  pp       = gpd_gap             ! madevent: pp (no inelastic pp interaction, eq. (10) of
-                                 !   arXiv:2207.03012, in the edff/chff flux) | none
+  on       = gpd_gap             ! madevent: on (no inelastic interaction of the beams, gamma-UPC:
+                                 !   eq. (10) of arXiv:2207.03012 in pp, Glauber in pA, AB) | none
+  inin     = gpd_ntag            ! madevent, ions: forward-neutron class of beams 1, 2, <c1>n<c2>n,
+                                 !   c = i (any) | x (Xn) | 0..4; a final + adds the conjugate class
   1.0      = gpd_survival        ! extra constant factor on the cross section
-  edff     = gpd_flux            ! madevent photon flux of an lpp = 5 proton: edff | chff (gamma-UPC) | iww (EPA)
+  edff     = gpd_flux            ! madevent photon flux of an lpp = 5 beam: edff | chff (gamma-UPC) | iww (EPA, protons)
+# Nuclear targets (madevent: the nb_proton/nb_neutron/mass_ion of the lpp = 5 beams)
+  p        = gpd_target          ! standalone: p, or a nucleus (Pb208, Au197, Xe129, Ca40, O16, ...) probed coherently
+  coherent = gpd_nuclear         ! madevent, nuclei: coherent (nucleus intact) | incoherent (nucleon knocked out)
+  ''       = gpd_npdf            ! dd, nuclei: LHAPDF set of per-nucleon nuclear PDFs, %A %Z replaced
+                                 !   (e.g. nCTEQ15HQ_FullNuc_%A_%Z); '' = the beam PDFs with isospin
+  0.5      = gpd_t_range_A       ! madevent, coherent nuclei: |t| up to |t_min| + this (GeV^2)
+  -1       = gpd_t_bmap_A        ! madevent, coherent nuclei: map exp(-B|t|); < 0: B = <r^2>/3
 """
 
 
