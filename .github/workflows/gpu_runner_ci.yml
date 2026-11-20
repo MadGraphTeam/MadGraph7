@@ -76,6 +76,14 @@ on:
         description: 'Extra sbatch options, space separated, no quotes'
         type: string
         default: ''
+      tiers:
+        description: >-
+          Instead of time_limit and extra_sbatch: several allocations, separated by ";", each
+          "HH:MM:SS [sbatch options]" (e.g. 30 minutes on the fast GPUs; 60 on the others).
+          One runner job is submitted per tier; the first that starts runs the CI and cancels
+          the others (.github/gpu_ci/runner_batch.sh)
+        type: string
+        default: ''
       gpu_arch:
         description: 'CUDA compute capability (e.g. 80) or HIP target (e.g. gfx942); empty = the GPU of the node'
         type: string
@@ -117,6 +125,7 @@ jobs:
       MEM: ${{ inputs.mem }}
       TIME_LIMIT: ${{ inputs.time_limit }}
       EXTRA_SBATCH: ${{ inputs.extra_sbatch }}
+      TIERS: ${{ inputs.tiers }}
     outputs:
       # the attempt that started the runner. A re-run of failed jobs (or of one job) does not
       # re-run this job, and reuses this output: the other jobs compare it with github.run_attempt
@@ -127,9 +136,15 @@ jobs:
       - name: start the runner in a Slurm job and wait until it is online
         id: start
         run: |
+          # one --tier per ";"-separated tier; without tiers, one allocation: time_limit, extra_sbatch
+          ALLOC=()
+          IFS=';' read -r -a TIER_LIST <<< "$TIERS"
+          for TIER in "${TIER_LIST[@]}"; do
+            if [ -n "${TIER// }" ]; then ALLOC+=("--tier=$TIER"); fi
+          done
+          if [ "${#ALLOC[@]}" -eq 0 ]; then ALLOC=(--time="$TIME_LIMIT" --extra="$EXTRA_SBATCH"); fi
           sudo -n -u ceci /usr/local/sbin/ceci-gate start-runner "$CLUSTER" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
-            --partition="$PARTITION" --gres="$GRES" --cpus="$CPUS" --mem="$MEM" --time="$TIME_LIMIT" \
-            --extra="$EXTRA_SBATCH"
+            --partition="$PARTITION" --gres="$GRES" --cpus="$CPUS" --mem="$MEM" "${ALLOC[@]}"
       # The run was cancelled, or this job timed out or failed, before the runner was online:
       # stop_runner will not run, and the runner job could stay queued for hours (the partition
       # is full), holding back every later run of the cluster (--dependency=singleton). Once the
@@ -554,7 +569,7 @@ jobs:
           done
           echo "early=true" >> "$GITHUB_OUTPUT"
           # only this log keeps it: the force-cancel drops the annotations and summaries of the run
-          echo "::error::the Slurm allocation of the runner ended before stop_runner ran ($ENDED): cancelling the run, whose jobs left would wait 24 hours for the runner. If the state is TIMEOUT, raise time_limit."
+          echo "::error::the Slurm allocation of the runner ended before stop_runner ran ($ENDED): cancelling the run, whose jobs left would wait 24 hours for the runner. If the state is TIMEOUT, raise time_limit (or the time of the tier that ran, see start_runner)."
           exit 1
       - name: cancel the run
         if: failure() && steps.watch.outputs.early == 'true'

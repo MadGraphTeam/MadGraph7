@@ -48,10 +48,24 @@ the checkout are sometimes slow there.
 Raise it from the Actions tab for a run that needs more, or in the caller workflow when a
 new job makes every run longer.
 
+**Tiers (manneback).** The CI is mostly CPU-bound (single-core python and the mg7 launches),
+so its length follows the cores of the GPU node more than its GPU. Instead of one allocation,
+manneback asks for three at once (input `tiers` of `gpu_runner_ci.yml`, `--tier` of
+`ceci-gate start-runner`), by node feature: 30 minutes on H200 and L40s nodes, 45 on A100
+nodes (two runs there needed about 34) and 60 on the other GPUs. One runner job is submitted
+per tier, `mg7-gh-runner-<label>`, `...-2` and `...-3`; the first that starts runs the CI:
+before it starts the runner, `runner_batch.sh` scancels the other tiers of its run (if two
+start together, the lower job id wins). Giving a `time_limit` or `extra_sbatch` from the
+Actions tab replaces the tiers by that one allocation.
+
 Other safeguards:
-* **One run at a time per cluster.** The runner jobs of a cluster share the name
-  `mg7-gh-runner-<label>` and use `--dependency=singleton`, so a second runner waits until the
-  first one has stopped. The workflows also use a concurrency group per cluster.
+* **One run at a time per cluster.** The runner jobs of a cluster are called
+  `mg7-gh-runner-<label>` (or `...-<tier>`) and use `--dependency=singleton`, so a second
+  runner of a name waits until the first one has stopped. Not one name for every tier:
+  singleton also waits for a job of that name that is only queued, so the other tiers could
+  never start first. Across the names, a starting runner job waits until the runner jobs of
+  the other names, of older runs, have stopped (`runner_batch.sh`). The workflows also use a
+  concurrency group per cluster.
 * **Cancelled runs.** If a run is cancelled (or `start_runner` times out or fails) before its
   runner is online, the last step of `start_runner` scancels the runner job
   (`ceci-gate cancel-runner`): otherwise it could stay queued for hours when the partition is
@@ -197,7 +211,11 @@ change rulesets.
 * **A run is "canceled forcefully by @github-actions[bot]".** The watchdog found the
   allocation gone before `stop_runner` ran. The last lines of its log give the Slurm job and
   its state, e.g. `ALLOCATION_ENDED 10134442 TIMEOUT 00:04:10 00:04:00`. `TIMEOUT`: the jobs
-  together need more than `time_limit`, raise it. The runner log on the cluster tells the rest.
+  together need more than `time_limit` (or the time of the tier that ran: the log of
+  `start_runner` names it), raise it. The runner log on the cluster tells the rest.
+* **`start_runner` fails with "no tier after --".** The VM has a `remote_start_runner.sh`
+  older than its `ceci-gate` (or the reverse): install both again (step 1), with
+  `runner_batch.sh`, `remote_cancel_runner.sh` and `remote_watch_runner.sh`.
 * **`stop_runner` or `watchdog` fails with "re-runs some jobs only, without start_runner",
   and the cluster jobs are skipped.** The run was re-run with "Re-run failed jobs", or one of
   its jobs alone, which cannot start a runner: re-run it with "Re-run all jobs".
@@ -214,7 +232,8 @@ change rulesets.
 * **`start_runner` fails with "Runner registration has been deleted".** GitHub removes a
   self-hosted runner that has not connected for 14 days. Run the install command of step 2 again.
 * **A runner job is stuck on the cluster.** Look for it with
-  `squeue -u $USER -n mg7-gh-runner-<label>` (in a login shell: `ssh <cluster> 'bash -lc "..."'`).
+  `squeue -u $USER -o '%i %T %k %j' | grep mg7-gh-runner-<label>` (in a login shell:
+  `ssh <cluster> 'bash -lc "..."'`).
   Its comment is the run attempt that submitted it, `mg7-run-<run id>-<attempt>`. The next
   start removes it if that attempt is over; otherwise remove it with `scancel`, but only when
   no run of the cluster is in progress on GitHub.

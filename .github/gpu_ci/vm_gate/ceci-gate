@@ -21,6 +21,10 @@ Every decision is logged in /var/lib/ceci/gate/gate.log. Setup: .github/gpu_ci/R
     ceci-gate ping CLUSTER
     ceci-gate start-runner CLUSTER RUN_ID RUN_ATTEMPT [--partition P] [--gres G] [--cpus N]
                            [--mem M] [--time HH:MM:SS] [--extra 'SBATCH OPTIONS']
+                           [--tier 'HH:MM:SS [SBATCH OPTIONS]']...
+        with --tier (up to MAX_TIERS, instead of --time and --extra): one runner job per tier,
+        e.g. a short one on the fast GPUs and longer ones on the slower GPUs; the first that
+        starts runs the CI and scancels the others (runner_batch.sh)
     ceci-gate modules CLUSTER RUN_ID RUN_ATTEMPT [--pattern REGEXP] [--partition P] [--gres G]
     ceci-gate watch-runner CLUSTER RUN_ID RUN_ATTEMPT
         waits until the Slurm job of the runner started for that run attempt has ended, then
@@ -66,8 +70,10 @@ RUN_TAG = re.compile(r"mg7-run-(\d{1,20})-(\d{1,4})")  # RUN_TAG of gpu_runner_c
 MAX_CPUS = 64
 MAX_MEM_GB = 256
 MAX_MINUTES = 240
+MAX_TIERS = 3       # runner jobs submitted together for one run, see --tier
 IDLE_MINUTES = 10   # the cluster runner stops after that long without a job
-EXTRA_SBATCH = re.compile(r"--(qos|constraint|nodelist|exclude|reservation|account)=[A-Za-z0-9_,.:+\[\]-]{1,100}")
+# '|' for --constraint=A|B: the options reach sbatch quoted (shlex.quote here, "$@" there)
+EXTRA_SBATCH = re.compile(r"--(qos|constraint|nodelist|exclude|reservation|account)=[A-Za-z0-9_,.:+|\[\]-]{1,100}")
 GRES = re.compile(r"gpu(:[A-Za-z0-9_.-]{1,40})?:[1-8]")
 PATTERN = re.compile(r"[A-Za-z0-9_.|()*+?^ \[\]-]{0,200}")  # no $ nor `: nothing to expand
 
@@ -279,15 +285,22 @@ def cmd_start_runner(a):
     check(a.cpus.isdigit() and 1 <= int(a.cpus) <= MAX_CPUS, "--cpus %r not in 1..%d" % (a.cpus, MAX_CPUS))
     m = re.fullmatch(r"(\d{1,4})G", a.mem)
     check(m is not None and 1 <= int(m.group(1)) <= MAX_MEM_GB, "--mem %r not in 1G..%dG" % (a.mem, MAX_MEM_GB))
-    check(1 <= minutes(a.time) <= MAX_MINUTES, "--time %s longer than %d minutes" % (a.time, MAX_MINUTES))
-    extra = a.extra.split()
-    for opt in extra:
-        check(EXTRA_SBATCH.fullmatch(opt) is not None, "extra sbatch option %r not allowed" % opt)
+    # without --tier, one tier: --time and --extra
+    tiers = a.tier or ["%s %s" % (a.time, a.extra)]
+    check(len(tiers) <= MAX_TIERS, "%d tiers, at most %d" % (len(tiers), MAX_TIERS))
+    for tier in tiers:
+        fields = tier.split()
+        check(len(fields) >= 1, "empty --tier")
+        check(1 <= minutes(fields[0]) <= MAX_MINUTES, "--time %s longer than %d minutes" % (fields[0], MAX_MINUTES))
+        for opt in fields[1:]:
+            check(EXTRA_SBATCH.fullmatch(opt) is not None, "extra sbatch option %r not allowed" % opt)
+    # one argument per tier for remote_start_runner.sh, its fields separated by single spaces
+    tiers = [" ".join(tier.split()) for tier in tiers]
 
     who = check_run(a.run_id, a.attempt, c["workflow"], ("push", "workflow_dispatch"), ("start_runner",))
     lock("%s-%s-%s" % (a.cluster, a.run_id, a.attempt))
-    log("ACCEPTED start-runner %s run=%s attempt=%s %s :: %s %s %s %s %s %s" % (
-        a.cluster, a.run_id, a.attempt, who, a.partition, a.gres, a.cpus, a.mem, a.time, " ".join(extra)))
+    log("ACCEPTED start-runner %s run=%s attempt=%s %s :: %s %s %s %s :: %s" % (
+        a.cluster, a.run_id, a.attempt, who, a.partition, a.gres, a.cpus, a.mem, " ; ".join(tiers)))
     print("ceci-gate: run %s attempt %s %s, allowed: starting the runner %s on %s"
           % (a.run_id, a.attempt, who, c["label"], a.cluster))
 
@@ -305,7 +318,7 @@ def cmd_start_runner(a):
     return remote(a.cluster, "remote_start_runner.sh", [
         c["label"], a.run_id, run_tag(a.run_id, a.attempt), str(IDLE_MINUTES),
         "--partition=" + a.partition, "--gres=" + a.gres, "--cpus-per-task=" + a.cpus,
-        "--mem=" + a.mem, "--time=" + a.time] + extra)
+        "--mem=" + a.mem, "--"] + tiers)
 
 
 def cmd_modules(a):
@@ -369,6 +382,7 @@ def main():
             s.add_argument("--mem", default="32G")
             s.add_argument("--time", default="00:20:00")
             s.add_argument("--extra", default="")
+            s.add_argument("--tier", action="append", default=[])
         elif name == "modules":
             s.add_argument("--pattern", default=".")
             s.add_argument("--partition", default="")
