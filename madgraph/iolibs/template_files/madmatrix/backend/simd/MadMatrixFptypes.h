@@ -4,16 +4,15 @@
 // Further modified by: J. Teig, A. Valassi (2022-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUFPTYPES_H
-#define MGONGPUFPTYPES_H 1
+#ifndef MADMATRIXFPTYPES_H
+#define MADMATRIXFPTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //==========================================================================
@@ -62,4 +61,4 @@ namespace madmatrix
 
 } // end namespace madmatrix
 
-#endif // MGONGPUFPTYPES_H
+#endif // MADMATRIXFPTYPES_H

@@ -4,13 +4,14 @@
 // Further modified by: J. Teig, A. Valassi (2022-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUCXTYPES_H
-#define MGONGPUCXTYPES_H 1
+#ifndef MADMATRIXCXTYPES_H
+#define MADMATRIXCXTYPES_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "MadMatrixFptypes.h"
 
+#include <cassert>
 #include <iostream>
 #include <type_traits>
 
@@ -21,18 +22,18 @@
 #include <complex>
 
 // Complex type in c++: std::complex or cxsmpl
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 #include <cmath>
-#elif not defined MGONGPU_CPPCXTYPE_CXSMPL
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL
+#elif not defined MADMATRIX_CPPCXTYPE_CXSMPL
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_CPPCXTYPE_STDCOMPLEX or MADMATRIX_CPPCXTYPE_CXSMPL
 #endif
 
 //==========================================================================
 // COMPLEX TYPES: SIMPLE COMPLEX CLASS (cxsmpl)
 //==========================================================================
 
-// NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
-namespace mgOnGpu /* clang-format off */
+// NB: namespace madmatrix includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
+namespace madmatrix /* clang-format off */
 {
   // The number of floating point types in a complex type (real, imaginary)
   constexpr int nx2 = 2;
@@ -54,7 +55,7 @@ namespace mgOnGpu /* clang-format off */
     __host__ __device__ constexpr const FP& real() const { return m_real; }
     __host__ __device__ constexpr const FP& imag() const { return m_imag; }
     template<typename FP2> __host__ __device__ constexpr operator cxsmpl<FP2>() const { return cxsmpl<FP2>( m_real, m_imag ); }
-#ifdef MGONGPU_CPPCXTYPE_STDCOMPLEX
+#ifdef MADMATRIX_CPPCXTYPE_STDCOMPLEX
     template<typename FP2> __host__ __device__ constexpr operator std::complex<FP2>() const { return std::complex<FP2>( m_real, m_imag ); }
 #endif
   private:
@@ -62,12 +63,16 @@ namespace mgOnGpu /* clang-format off */
   };
 
   template<typename FP>
-  constexpr // (NB: now valid code? in the past this failed as "a constexpr function cannot have a nonliteral return type mgOnGpu::cxsmpl")
+  constexpr // (NB: now valid code? in the past this failed as "a constexpr function cannot have a nonliteral return type madmatrix::cxsmpl")
   inline __host__ __device__ cxsmpl<FP>
   conj( const cxsmpl<FP>& c )
   {
     return cxsmpl<FP>( c.real(), -c.imag() );
   }
+
+  // Keep the scalar ::sqrt and ::pow visible: the overloads below would hide them here.
+  using ::sqrt;
+  using ::pow;
 
   // Square root, on the host only: Parameters.cc computes the complex masses
   // of the complex-mass scheme with it, CMASS = sqrt( M^2 - i M W )
@@ -100,7 +105,7 @@ namespace mgOnGpu /* clang-format off */
 } /* clang-format on */
 
 // Expose the cxsmpl class outside the namespace
-using mgOnGpu::cxsmpl;
+using madmatrix::cxsmpl;
 
 // Printout to stream for user defined types
 namespace madmatrix
@@ -235,17 +240,17 @@ namespace madmatrix
 namespace madmatrix
 {
   // --- Type definitions (complex type: cxtype)
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype> cxtype;
 #else
   typedef cxsmpl<fptype> cxtype;
 #endif
 
   // SANITY CHECK: memory access may be based on casts of fptype[2] to cxtype (e.g. for wavefunctions)
-  static_assert( sizeof( cxtype ) == mgOnGpu::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
+  static_assert( sizeof( cxtype ) == madmatrix::nx2 * sizeof( fptype ), "sizeof(cxtype) is not 2*sizeof(fptype)" );
 
   // --- Multi-precision complex types (same platform logic as cxtype)
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
   typedef std::complex<fptype_momenta> cxtype_momenta;
   typedef cxtype_momenta cxtype_denom;
   typedef std::complex<fptype_amp> cxtype_amp;
@@ -258,14 +263,14 @@ namespace madmatrix
 #endif
 
   // SANITY CHECKS
-  static_assert( sizeof( cxtype_momenta ) == mgOnGpu::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
-  static_assert( sizeof( cxtype_amp ) == mgOnGpu::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
-  static_assert( sizeof( cxtype_colour ) == mgOnGpu::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
+  static_assert( sizeof( cxtype_momenta ) == madmatrix::nx2 * sizeof( fptype_momenta ), "sizeof(cxtype_momenta) is not 2*sizeof(fptype_momenta)" );
+  static_assert( sizeof( cxtype_amp ) == madmatrix::nx2 * sizeof( fptype_amp ), "sizeof(cxtype_amp) is not 2*sizeof(fptype_amp)" );
+  static_assert( sizeof( cxtype_colour ) == madmatrix::nx2 * sizeof( fptype2 ), "sizeof(cxtype_colour) is not 2*sizeof(fptype2)" );
 }
 
 // DANGEROUS! this was mixing different cxtype definitions for CPU and GPU builds (see #318 and #725)
 // DO NOT expose typedefs and operators outside the namespace
-//using mgOnGpu::cxtype;
+//using madmatrix::cxtype;
 
 //==========================================================================
 // COMPLEX TYPES: (PLATFORM-SPECIFIC) FUNCTIONS AND OPERATORS
@@ -273,7 +278,7 @@ namespace madmatrix
 
 namespace madmatrix
 {
-#if defined MGONGPU_CPPCXTYPE_CXSMPL
+#if defined MADMATRIX_CPPCXTYPE_CXSMPL
 
   //------------------------------
   // C++ - using cxsmpl
@@ -337,11 +342,11 @@ namespace madmatrix
   inline __host__ __device__ cxsmpl<FP>
   cxconj( const cxsmpl<FP>& c ) { return conj( c ); }
 
-#endif // #if defined MGONGPU_CPPCXTYPE_CXSMPL
+#endif // #if defined MADMATRIX_CPPCXTYPE_CXSMPL
 
   //==========================================================================
 
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 
   //------------------------------
   // C++ - using std::complex
@@ -377,7 +382,7 @@ namespace madmatrix
     return c;
   }
 
-#if defined MGONGPU_FPTYPE_FLOAT
+#if defined MADMATRIX_FPTYPE_FLOAT
   inline cxtype
   cxmake( const std::complex<double>& c ) // std::complex to std::complex (cast double-to-float)
   {
@@ -401,7 +406,7 @@ namespace madmatrix
   inline std::complex<FP>
   cxconj( const std::complex<FP>& c ) { return conj( c ); }
 
-#endif // #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX
+#endif // #if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX
 
 } // end namespace madmatrix
 
@@ -409,11 +414,10 @@ namespace madmatrix
 // COMPLEX TYPES: WRAPPER OVER RI FLOATING POINT PAIR (cxtype_ref)
 //==========================================================================
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
-  // It used to be included in the code only when MGONGPU_HAS_CPPCXTYPEV_BRK (originally MGONGPU_HAS_CPPCXTYPE_REF) is defined
+  // It used to be included in the code only when MADMATRIX_HAS_CPPCXTYPEV_BRK (originally MADMATRIX_HAS_CPPCXTYPE_REF) is defined
   // It is now always included in the code because it is needed also to access an fptype wavefunction buffer as a cxtype
   class cxtype_ref
   {
@@ -474,8 +478,105 @@ namespace madmatrix
     return out;
   }
 
+  //--------------------------------------------------------------------------
+
+  // all needed from MadMatrixVectors.h for cpu
+  const int neppV = 1;
+
+#ifndef MADMATRIX_CPPCXTYPE_CXSMPL // operator<< for cxsmpl has already been defined!
+  inline std::ostream&
+  operator<<( std::ostream& out, const cxtype& c )
+  {
+    out << "[" << cxreal( c ) << "," << cximag( c ) << "]";
+    return out;
+  }
+#endif
+
+  template<typename FP>
+  inline FP
+  fpternary( const bool& mask, const FP& a, const FP& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  template<typename CX>
+  inline CX
+  cxternary( const bool& mask, const CX& a, const CX& b )
+  {
+    return ( mask ? a : b );
+  }
+
+  inline bool
+  maskand( const bool& mask )
+  {
+    return mask;
+  }
+
+  // Scalar-or-vector types: scalar in this backend.
+  // 3 mixed-precision stages: _amp (== fptype), _momenta (== _denom), _colour (== fptype2).
+  typedef bool bool_sv;
+  typedef fptype fptype_sv;
+  typedef fptype2 fptype2_sv;
+  typedef unsigned int uint_sv;
+  typedef cxtype cxtype_sv;
+  typedef cxtype_ref cxtype_sv_ref;
+  typedef fptype_momenta fptype_momenta_sv;   typedef fptype_momenta fptype_momenta_v;
+  typedef fptype_denom fptype_denom_sv;       typedef fptype_denom fptype_denom_v;
+  typedef fptype_amp fptype_amp_sv;           typedef fptype_amp fptype_amp_v;
+  typedef fptype_colour fptype_colour_sv;     typedef fptype_colour fptype_colour_v;
+  typedef cxtype_momenta cxtype_momenta_sv;   typedef cxtype_momenta cxtype_momenta_v;
+  typedef cxtype_denom cxtype_denom_sv;       typedef cxtype_denom cxtype_denom_v;
+  typedef cxtype_amp cxtype_amp_sv;           typedef cxtype_amp cxtype_amp_v;
+  typedef cxtype_colour cxtype_colour_sv;     typedef cxtype_colour cxtype_colour_v;
+
+  // narrowing/casting operators for unification
+  inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); }
+  inline fptype_denom_sv fpdenom_bcast( fptype_denom s ) { return fptype_denom_sv{} + s; }
+  template<typename T>
+  inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
+
+  // Scalar-or-vector zeros: scalar in this backend.
+  // Template version for multi-precision (explicit template parameter required)
+  template<typename CX = cxtype>
+  inline CX cxzero_sv() { return CX{}; }
+
+  // Functions and operators for cxtype_sv (and multi-precision variant)
+  template<typename CX>
+  inline __host__ __device__ auto
+  cxabs2( const CX& c ) -> decltype( cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c ) )
+  {
+    return cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c );
+  }
+
+  // ALOHA raises the denominator of a custom propagator to an integer power (the
+  // squared Breit-Wigner of the SMEFTsim width corrections, for instance). There
+  // is no std::pow overload for cxtype_v, so expand the power by repeated
+  // multiplication: the exponent comes from the UFO propagator and is a small
+  // positive integer.
+  template<class T>
+  inline __host__ __device__ T
+  cxpow( const T& base, const fptype n )
+  {
+    const int k = (int)n;
+    assert( (fptype)k == n && k >= 1 ); // only positive integer powers are supported
+    T out = base;
+    for( int i = 1; i < k; i++ ) out = out * base;
+    return out;
+  }
+
+  // Heaviside step of the $-excluded propagator (ALOHA 'P1D' tag): valtrue
+  // where cond >= 0 (outside the on-shell window), valfalse inside it. Same
+  // Theta(0) = 1 convention as the Fortran THETA_FUNCTIONR. Only the real part
+  // of cond is physical.
+  template<class CX>
+  inline __host__ __device__ CX
+  theta_functionr( const CX& cond, const fptype valtrue, const fptype valfalse )
+  {
+    return ( cxreal( cond ) >= 0 ) ? CX( valtrue, 0 ) : CX( valfalse, 0 );
+  }
+
 } // end namespace madmatrix
 
 //==========================================================================
 
-#endif // MGONGPUCXTYPES_H
+#endif // MADMATRIXCXTYPES_H
