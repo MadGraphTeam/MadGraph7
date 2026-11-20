@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import copy
@@ -1488,6 +1489,18 @@ C     Initialize the native EW coupling for the caller-side order weights.
             os.rename(relocated, generated_path)
 
     def _check_real_umami_order_blocks(self, output, manifest, references, backend='scalar'):
+        # Generated common libraries have a model/backend SONAME shared across
+        # outputs, but their coupling layouts can differ. A fresh interpreter
+        # prevents ctypes handles from another test binding this output's DSO.
+        subprocess.run([
+            sys.executable, '-c',
+            'import json,sys; from tests.acceptance_tests.test_nlo_real_offload_contract '
+            'import TestNLORealFortranOracle as T; '
+            'T()._check_real_umami_order_blocks_inprocess(*json.load(sys.stdin))'],
+            input=json.dumps([output, manifest, references, backend]).encode(),
+            check=True, cwd=MG5DIR)
+
+    def _check_real_umami_order_blocks_inprocess(self, output, manifest, references, backend):
         """Compare raw strided order blocks at independent couplings to native Fortran."""
         real = manifest['real_matrix_elements'][0]
         library = ctypes.CDLL(self._library_path(output, manifest, real, backend))
@@ -1504,6 +1517,7 @@ C     Initialize the native EW coupling for the caller-side order weights.
         selected = (ctypes.c_bool * orders.value)()
         self.assertEqual(library.umami_get_meta(10, powers), 0)
         self.assertEqual(library.umami_get_meta(17, selected), 0)
+        self.assertTrue(all(selected), 'NLO real providers expose all local orders')
         self.assertEqual(list(zip(powers[:orders.value], powers[orders.value:])),
                          list(map(tuple, real['local_squared_orders'])))
         nlegs = manifest['nexternal']
@@ -1543,8 +1557,31 @@ C     Initialize the native EW coupling for the caller-side order weights.
                 scale = max(map(abs, expected))
                 for order, value in enumerate(expected):
                     self._assert_close(blocks[order * stride + lane], value, scale=scale)
-                self._assert_close(total[lane], sum(value for keep, value in
-                                   zip(selected, expected) if keep), scale=scale)
+                self._assert_close(total[lane], sum(expected), scale=scale)
+            # Installing a cached narrow mask must not narrow a later order
+            # decomposition, even after this instance has already kept all helicities.
+            library.madmatrix_set_helicity_choice.argtypes = [
+                ctypes.c_void_p, ctypes.POINTER(ctypes.c_int), ctypes.c_int]
+            self.assertEqual(library.madmatrix_set_helicity_choice(
+                handle, (ctypes.c_int * 2)(0, 0), 2), 0)
+            saved_blocks, saved_total = list(blocks), list(total)
+            self.assertEqual(library.umami_matrix_element(
+                handle, count, stride, offset, 3, (ctypes.c_int * 3)(0, 15, 16), ins,
+                2, (ctypes.c_int * 2)(0, 13), outs), 0)
+            for actual, expected in zip(blocks, saved_blocks):
+                self._assert_close(actual, expected)
+            for actual, expected in zip(total, saved_total):
+                self._assert_close(actual, expected)
+            # The ordinary total-only path (no G_EW) must agree with the
+            # unscaled full block sum after a component request as well.
+            self.assertEqual(library.umami_matrix_element(
+                handle, count, stride, offset, 2, (ctypes.c_int * 2)(0, 15), ins,
+                1, (ctypes.c_int * 1)(0), outs), 0)
+            for lane, point in enumerate(references, offset):
+                expected = [component['value'] * (gs[lane] / point['g_strong']) ** qs
+                            for component, (qs, _) in zip(
+                                point['local_squared_orders'], real['local_squared_orders'])]
+                self._assert_close(total[lane], sum(expected), scale=max(map(abs, expected)))
             self.assertEqual(list(total)[::3], [-1., -1.])
             for order in range(orders.value):
                 self.assertEqual(blocks[order * stride], -1.)
@@ -1591,6 +1628,13 @@ C     Initialize the native EW coupling for the caller-side order weights.
         row = manifest['fks_rows'][0]
         reference = [r for r in records['fortran'] if r['fks_row'] == row['fks_row']]
         self._check_real_umami_order_blocks(output_path, manifest, reference)
+        for backend, _ in self._host_simd_backends():
+            with self.subTest(backend=backend):
+                subprocess.check_call([
+                    'make', '-f', 'nlo_real.mk', 'BACKEND=%s' % backend,
+                    'FPTYPE=d', '-j2'], cwd=subproc)
+                self._check_real_umami_order_blocks(
+                    output_path, manifest, reference, backend=backend)
         # Include a masked lane: compacted multi-order batches must also filter.
         reference.insert(1, reference[0])
         text = self._compile_batch_wrapper_driver(

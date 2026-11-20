@@ -12,6 +12,34 @@ One proposal for how the NLO integrands get their matrix elements through UMAMI,
 
 It keeps what the integrands need for QCD, EW and mixed QCD-EW corrections, the keys and conventions, what the providers have and the open questions. [What changed from Theo's design](#what-changed-from-theos-design) is listed at the end. A local madspace prototype implements the NLO keys as provisional ([The prototype in madspace](#the-prototype-in-madspace)). Nothing of it is pushed.
 
+## Implemented real-provider scope
+
+The native NLO real-emission path implements the real-library part of these
+conventions through the additive UMAMI 1.4 interface. One library evaluates one
+real matrix element, without FKS-row inputs. It returns every signed local
+squared-order component in batch-contiguous layout. For these NLO libraries,
+`OUT_MATRIX_ELEMENT` is the sum of the complete returned block; the native FKS
+caller applies its own order projection and subtraction factors. Ordinary LO
+libraries retain their process-selected total. The process fingerprint binds
+the NLO full-block convention, so an older selected-total library cannot be
+silently reused.
+
+Unit `IN_G_STRONG` (or `IN_ALPHA_S = 1/(4 pi)`) and `IN_G_EW` give coupling-stripped
+blocks at fixed card masses, widths and mixing. Physical strong/EW powers are
+restored by the caller. CPU and SIMD multi-amplitude-order component requests
+retain all helicities;
+GPU real libraries currently support one amplitude order. Unsupported requests
+and native diagram-weight requirements keep their declared Fortran path. All
+generated providers use the same header and report unsupported capabilities
+explicitly; the Fortran-backed LO provider does not advertise the new blocks.
+
+The dated provider survey and proposed 1.3 numbering below are historical. The
+implemented 1.4 numeric keys are preserved, rather than reordered around an
+unmerged proposal. Born providers and their colour/spin correlations, the
+MadLoop UMAMI shim, colour-flow outputs and further GPU capabilities require
+additional development in a separate branch and PR. The flattened coloured-leg
+pair convention applies to that future Born work, not to the real block here.
+
 ## What the integrands need
 
 FKS, Catani-Seymour and MC@NLO take seven blocks, all at the Born of the event except the real, and all per coupling order except amp2 and the colour flows. The integrands multiply each order by its powers of g\_s and e, g\_s at the scale of its own kinematics.

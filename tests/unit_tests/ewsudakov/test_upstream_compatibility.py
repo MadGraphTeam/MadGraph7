@@ -69,11 +69,14 @@ class TestCollierRuntimePath(unittest.TestCase):
         self.assertTrue(line[0].strip().startswith("libcuttools=-lcts"))
         self.assertIn("-Wl,-rpath,/opt/collier/lib", line[0])
 
-    def test_make_opts_without_collier_has_no_rpath(self):
+    def test_make_opts_without_collier_keeps_ninja_rpath(self):
         text = ProcessExporterFortranFKS.write_make_opts(
             self.exporter, None, ["-L/opt/ninja/lib -lninja"], []
         )
-        self.assertNotIn("-Wl,-rpath", text)
+        self.assertNotIn("/opt/collier/lib", text)
+        line = [row for row in text.splitlines() if "-lninja" in row]
+        self.assertEqual(len(line), 1)
+        self.assertIn("-Wl,-rpath,/opt/ninja/lib", line[0])
 
     def test_loop_makefile_is_not_given_the_rpath(self):
         text = ProcessExporterFortranFKS.write_makefile_TIR(

@@ -123,17 +123,91 @@ class TestNLORealOffloadContract(unittest.TestCase):
                 'umami.h'),
             os.path.join(
                 MG5DIR, 'madspace', 'include', 'madspace', 'umami.h'),
+            os.path.join(
+                MG5DIR, 'madgraph', 'iolibs', 'template_files', 'mg7', 'api.h'),
         ]
 
     def test_generated_and_public_umami_headers_are_synchronized(self):
         """MadSpace and generated process libraries must use one ABI."""
 
-        generated, public = self._umami_headers()
+        generated, public, native = self._umami_headers()
         with open(generated, 'rb') as stream:
             generated_text = stream.read()
         with open(public, 'rb') as stream:
             public_text = stream.read()
         self.assertEqual(generated_text, public_text)
+        with open(native, 'rb') as stream:
+            self.assertEqual(stream.read(), public_text)
+
+    def test_nlo_full_order_tables_leave_lo_selection_unchanged(self):
+        from madmatrix.model_handling import OneProcessExporterMadMatrix
+        table = dict(sqsoindex=[[0, 1], [1, 2]],
+                     names=['QCD=4', 'QCD=2 QED=2', 'QED=4'],
+                     chosen=[False, True, False])
+        lo = object.__new__(OneProcessExporterMadMatrix)
+        nlo = object.__new__(OneProcessExporterMadMatrix)
+        for exporter, full_block in ((lo, False), (nlo, True)):
+            exporter.matrix_elements = [object()]
+            exporter.nlo_real_order_blocks = full_block
+        with patch('madgraph.iolibs.export_v4.split_order_tables', return_value=table):
+            self.assertIn('{ false, true, false }', lo.get_sqso_table_lines())
+            self.assertIn('{ true, true, true }', nlo.get_sqso_table_lines())
+            self.assertEqual(table['chosen'], [False, True, False])
+            self.assertIn('{ false, true, false }', lo.get_sqso_table_lines())
+
+    @unittest.skipUnless(shutil.which('g++'), 'requires a C++ compiler')
+    def test_fortran_provider_reports_real_extensions_unsupported(self):
+        stub = r"""
+#pragma once
+#include <vector>
+struct Parameters {
+  double aS = 0.118;
+  bool setParameterByName(const char*, double, double) { return false; }
+  bool getParameterByName(const char*, double*, double*) { return false; }
+};
+struct CPPProcess {
+  static constexpr int nexternal=2, ndiagrams=1, ncomb=1;
+  Parameters params;
+  std::vector<double*> momenta;
+  std::vector<double> masses{0.,0.};
+  explicit CPPProcess(const char*) {}
+  std::vector<double*>& getMomenta() { return momenta; }
+  const std::vector<double>& getMasses() { return masses; }
+  Parameters& getParameters() { return params; }
+  void refreshMasses() {}
+  double sigmaKin(int) { return 1.; }
+  const double* getAmp2() { static const double a[1]={1.}; return a; }
+};
+"""
+        check = r"""
+#include "api.h"
+int main() {
+  int value=0, count=0;
+  const bool* supported=nullptr;
+  if(umami_get_meta(UMAMI_META_ABI_MAJOR_VERSION,&value)!=UMAMI_SUCCESS || value!=UMAMI_MAJOR_VERSION) return 1;
+  if(umami_get_meta(UMAMI_META_ABI_MINOR_VERSION,&value)!=UMAMI_SUCCESS || value!=UMAMI_MINOR_VERSION) return 2;
+  if(umami_supported_inputs(&supported,&count)!=UMAMI_SUCCESS || count!=UMAMI_INPUT_KEY_COUNT) return 3;
+  if(supported[UMAMI_IN_G_EW] || supported[UMAMI_IN_G_STRONG]) return 4;
+  if(umami_supported_outputs(&supported,&count)!=UMAMI_SUCCESS || count!=UMAMI_OUTPUT_KEY_COUNT || supported[UMAMI_OUT_SQUARED_ORDERS]) return 5;
+  double p[8]={}, output=0.;
+  const void* inputs[]={p}; void* outputs[]={&output};
+  UmamiInputKey input=UMAMI_IN_MOMENTA; UmamiOutputKey key=UMAMI_OUT_SQUARED_ORDERS;
+  if(umami_matrix_element(nullptr,0,0,0,1,&input,inputs,1,&key,outputs)!=UMAMI_ERROR_UNSUPPORTED_OUTPUT) return 6;
+  input=UMAMI_IN_G_EW;
+  if(umami_matrix_element(nullptr,0,0,0,1,&input,inputs,0,nullptr,nullptr)!=UMAMI_ERROR_UNSUPPORTED_INPUT) return 7;
+  return 0;
+}
+"""
+        with tempfile.TemporaryDirectory(prefix='nlo-fortran-abi-') as work:
+            work = Path(work)
+            template = Path(MG5DIR) / 'madgraph/iolibs/template_files/mg7'
+            (work / 'CPPProcess.h').write_text(stub)
+            (work / 'check.cc').write_text(check)
+            shutil.copyfile(template / 'api.h', work / 'api.h')
+            shutil.copyfile(template / 'api.cpp', work / 'api.cpp')
+            subprocess.check_call([shutil.which('g++'), '-std=c++20',
+                str(work / 'api.cpp'), str(work / 'check.cc'), '-o', str(work / 'check')])
+            subprocess.check_call([str(work / 'check')])
 
     def test_lo_and_nlo_real_exporters_are_factory_selected(self):
         """LO and NLO own distinct lifecycles without duplicating selection."""
@@ -204,7 +278,8 @@ _Static_assert(UMAMI_MINOR_VERSION==4,"additive ABI");
         for path in self._umami_headers():
             compiled = subprocess.run(['gcc', '-std=c11', '-x', 'c',
                 '-I'+os.path.dirname(path), '-fsyntax-only', '-'],
-                input=source, text=True, capture_output=True)
+                input=source.replace('"umami.h"', json.dumps(os.path.basename(path))),
+                text=True, capture_output=True)
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
 
     def test_generated_nlo_bridge_has_the_frozen_c_abi(self):

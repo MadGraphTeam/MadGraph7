@@ -2243,6 +2243,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
         physical_flavor_indices = kwargs.pop('physical_flavor_indices', False)
+        self.nlo_real_order_blocks = kwargs.pop('nlo_real_order_blocks', False)
         super().__init__(*args, **kwargs)
         self.physical_flavor_indices = physical_flavor_indices
         if physical_flavor_indices:
@@ -3236,6 +3237,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             'split_orders': list(process.get('split_orders') or []),
             'squared_orders': [list(order) for order in squared_orders],
         }
+        if self.nlo_real_order_blocks:
+            payload['order_block_contract'] = 'nlo-real-all-local-v1'
         encoded = json.dumps(payload, sort_keys=True,
                              separators=(',', ':')).encode('utf-8')
         return hashlib.sha256(encoded).hexdigest()
@@ -3348,6 +3351,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if not hasattr(self, '_split_orders_info'):
             from madgraph.iolibs.export_v4 import split_order_tables
             self._split_orders_info = split_order_tables(self.matrix_elements[0])
+            if self.nlo_real_order_blocks and self._split_orders_info:
+                # NLO libraries supply every local order. Only the FKS caller
+                # selects physical NLO contributions; ordinary LO keeps its mask.
+                self._split_orders_info = dict(self._split_orders_info,
+                    chosen=[True] * len(self._split_orders_info['chosen']))
         return self._split_orders_info
 
     def split_orders_active(self):

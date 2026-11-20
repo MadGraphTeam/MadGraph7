@@ -781,6 +781,18 @@ extern "C"
     ProcessParameters& params = instance->process.parameters();
     computeDependentCouplings( params, g_s.data(), couplings.data(), rounded_count );
 
+    // A selected total can vanish while individual orders remain nonzero.
+    // Component requests (including EW reweighting) need the complete sum.
+    if( capture_squared_orders && count > 0 )
+    {
+      // A recycling table can have omitted amplitudes at helicities that
+      // vanished in its selected total. Component evaluations already use the
+      // plain code; keep it for later total-only requests on this instance too.
+      params.hrStale = true;
+      instance->keep_every_helicity = true;
+      // A cached helicity choice may have been installed since the last call.
+      keep_all_helicities( instance );
+    }
     if( instance->learned < nlearn && count > 0 )
     {
       if( instance->keep_every_helicity )

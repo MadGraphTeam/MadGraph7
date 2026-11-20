@@ -21,9 +21,11 @@ capability functions.
   power of coupling ``j`` in order ``i``.
 * ``UMAMI_OUT_SQUARED_ORDERS`` contains every local component, including signed
   interference terms. Entry ``event + stride*i`` holds order ``i``. The
-  ``UMAMI_META_SQUARED_ORDER_SELECTED`` Boolean mask gives the components whose
-  sum forms the process's ``UMAMI_OUT_MATRIX_ELEMENT``. The NLO caller applies
-  its own order selection to the full block.
+  ``UMAMI_OUT_MATRIX_ELEMENT`` of an NLO real library is the sum of that full
+  block: its ``UMAMI_META_SQUARED_ORDER_SELECTED`` mask is all true. The NLO
+  caller applies its own order selection to the full block. Ordinary LO
+  libraries retain their process-selected mask and total. The library
+  fingerprint distinguishes the NLO full-block contract from older libraries.
 * ``UMAMI_META_CHARGES`` and ``UMAMI_META_COLOR_REPRESENTATIONS`` give the
   physical external-leg charges and signed colour representations in input leg
   order for an ungrouped process. Incoming charges retain their physical signs.
@@ -46,6 +48,10 @@ and a known nonzero card charge for a nonzero QED power.
 
 The scalar and SIMD providers return all generated orders. Multi-order
 reweighting with a new electric coupling supports component and total weights.
+Multi-amplitude-order component requests retain all helicities, including ones
+that cancel in a process-selected total. These requests use the plain amplitude
+code and retain it for subsequent total-only requests on the same instance,
+since a recycling table may have omitted amplitudes needed by individual orders.
 Requests for auxiliary diagram, colour or sampled-helicity decisions with those
 reweighted components return ``UMAMI_ERROR_UNSUPPORTED_OUTPUT``. CUDA and HIP
 support a single squared order. The production bridge requests unit components,

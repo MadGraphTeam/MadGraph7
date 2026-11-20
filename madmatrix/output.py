@@ -531,7 +531,7 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
         return self.oneprocessclass(
             matrix_element, cpp_helas_call_writer,
             merge_same_topologies=self.opt.get('merge_same_topologies', True),
-            physical_flavor_indices=True)
+            physical_flavor_indices=True, nlo_real_order_blocks=True)
 
     def prime_nlo_tree_dependencies(self, fks_matrix_element,
                                     cpp_helas_call_writer):
