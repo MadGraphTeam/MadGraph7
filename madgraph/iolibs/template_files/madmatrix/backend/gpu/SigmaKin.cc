@@ -440,17 +440,14 @@ namespace madmatrix
 
   constexpr size_t sharedWfStrideBytes = nSharedWf > 0 ? sharedWfStride( nSharedWf ) : 0;
 
-  // Slots are reused, so nWfSlots < nwf, but the smaller arrays only measured as a win with shared slots:
-  // without them L40S FP64 g g > t t~ g g g spills 5x more loads and runs 0.89x.
-  constexpr int nWfArray = nSharedWf > 0 ? nWfSlots : nwf;
-
   // Bytes per thread of the cubin the device runs (also PTX compiled for a newer GPU): the host reads it back.
   __device__ const size_t dSharedWfStride = sharedWfStrideBytes;
 
 #ifdef __CUDA_ARCH__
   // Every amplitude: without it the compiler keeps the shared values in registers as well.
-  // Kept without shared slots too: dropping it there costs L40S FP64 g g > t t~ g Q Q~ 1.5%.
-#define SHWF_RELOAD() asm volatile( "" ::: "memory" )
+  // Only with shared slots: 1890 of them make cicc 3x slower on g g > t t~ g g g for nothing.
+#define SHWF_RELOAD() \
+  if constexpr( nSharedWf > 0 ) asm volatile( "" ::: "memory" )
 #else
 #define SHWF_RELOAD()
 #endif
@@ -522,11 +519,12 @@ namespace madmatrix
     // (ievt) [NB these variables are reused several times (and re-initialised each time)
     // within the same event]. Create memory for both momenta and wavefunctions separately,
     // and later wrap them in ALOHAOBJ.
-    fptype_momenta_sv pvec_sv[nWfArray][np4];
-    cxtype_amp_sv w_sv[nWfArray][nw6]; // particle wavefunctions within Feynman diagrams
+    // nWfSlots, not nwf: slots are reused, and unused ones still cost local memory and stores.
+    fptype_momenta_sv pvec_sv[nWfSlots][np4];
+    cxtype_amp_sv w_sv[nWfSlots][nw6]; // particle wavefunctions within Feynman diagrams
     cxtype_amp_sv amp_sv[1];           // invariant amplitude for one given Feynman diagram
-    ALOHAOBJ aloha_obj[nWfArray];
-    for( int iwf = 0; iwf < nWfArray; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
+    ALOHAOBJ aloha_obj[nWfSlots];
+    for( int iwf = 0; iwf < nWfSlots; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
 #ifdef __CUDA_ARCH__
     if constexpr( nSharedWf > 0 )
     {
