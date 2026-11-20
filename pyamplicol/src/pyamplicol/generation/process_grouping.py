@@ -937,6 +937,12 @@ UnionMemberFilter = Callable[[GroupingProcess, GroupingProcess], bool]
 a symmetry of the allowed vertices, or ``None``."""
 UnionClasses = Mapping[str, tuple[str, GroupMember]]
 """Flavour classes: process ID -> (representative ID, process -> representative)."""
+UnionCrossingRelation = Callable[
+    [GroupingProcess, GroupingProcess, tuple[int, ...]],
+    tuple[tuple[int, ...], tuple[int, ...]] | None,
+]
+"""``(sigma, rho)`` per template slot of a crossed member routed by the given
+permutation, or ``None`` when the member cannot be crossed (it keeps its routing)."""
 
 
 def is_union_quark_type(particle_type: ParticleType) -> bool:
@@ -950,8 +956,32 @@ def is_union_quark_type(particle_type: ParticleType) -> bool:
     )
 
 
-def _union_slot(leg: _Leg) -> tuple[Any, ...]:
+def is_union_gluon_type(particle_type: ParticleType) -> bool:
+    """Massless self-conjugate colour octet vectors (gluons)."""
+
+    return (
+        particle_type.spin == 3
+        and particle_type.color == 8
+        and particle_type.self_conjugate
+        and particle_type.mass == "ZERO"
+    )
+
+
+def crossing_eligible(process: GroupingProcess, table: ParticleTable) -> bool:
+    """Stage 1 of crossing: every leg is a union quark or a gluon."""
+
+    types = (_particle(table, pdg).type for pdg in process.pdgs)
+    return all(is_union_quark_type(t) or is_union_gluon_type(t) for t in types)
+
+
+def _outgoing_orientation(leg: _Leg) -> int:
+    return -leg.orientation if leg.initial else leg.orientation
+
+
+def _union_slot(leg: _Leg, crossing: bool = False) -> tuple[Any, ...]:
     flavour = 0 if is_union_quark_type(leg.type) else leg.flavour
+    if crossing:
+        return (leg.type, _outgoing_orientation(leg), flavour)
     return (leg.initial, leg.type, leg.orientation, flavour)
 
 
@@ -960,11 +990,12 @@ def _union_signature(
     table: ParticleTable,
     *,
     conjugate: bool = False,
+    crossing: bool = False,
 ) -> tuple[Any, ...]:
     legs = _legs(process, table, conjugate=conjugate)
     return (
         process.initial_count,
-        tuple(sorted(_union_slot(leg) for leg in legs)),
+        tuple(sorted(_union_slot(leg, crossing) for leg in legs)),
     )
 
 
@@ -973,14 +1004,21 @@ def flavour_union_key(
     table: ParticleTable,
     *,
     consider_charge_conjugation: bool,
+    crossing: bool = False,
 ) -> tuple[Any, ...]:
     """Orientation-aware signature: per leg its side, type and particle or
-    antiparticle orientation, plus the flavour of every non-union leg."""
+    antiparticle orientation, plus the flavour of every non-union leg.
 
-    key = _union_signature(process, table)
+    With ``crossing``, a crossing-eligible process is keyed by its all-outgoing
+    content instead (no sides), so every crossing joins one union."""
+
+    crossed = crossing and crossing_eligible(process, table)
+    key = _union_signature(process, table, crossing=crossed)
     if consider_charge_conjugation:
-        key = min(key, _union_signature(process, table, conjugate=True))
-    return key
+        key = min(
+            key, _union_signature(process, table, conjugate=True, crossing=crossed)
+        )
+    return ("all-outgoing", key) if crossed else key
 
 
 @dataclass(frozen=True, slots=True)
@@ -1020,18 +1058,29 @@ _CONJUGATION_REFUSED = object()
 def _union_permutation(
     member: Sequence[_Leg],
     template: Sequence[_Leg],
+    crossing: bool = False,
 ) -> tuple[int, ...]:
     # Equal slots are paired in leg order, so equal layouts map identically.
-    free: dict[tuple[Any, ...], list[int]] = {}
+    free: dict[tuple[Any, ...], list[_Leg]] = {}
     for leg in member:
-        free.setdefault(_union_slot(leg), []).append(leg.index)
-    permutation = []
-    for leg in template:
-        legs = free.get(_union_slot(leg))
-        if not legs:
-            raise ValueError("member does not have the union's slot shape")
-        permutation.append(legs.pop(0))
-    return tuple(permutation)
+        free.setdefault(_union_slot(leg, crossing), []).append(leg)
+    permutation: list[int | None] = [None] * len(template)
+    # Same side first (an uncrossed member keeps its side-aware route), then across.
+    for same_side in (True, False) if crossing else (False,):
+        for slot, leg in enumerate(template):
+            if permutation[slot] is not None:
+                continue
+            legs = free.get(_union_slot(leg, crossing), [])
+            match = next(
+                (m for m in legs if not same_side or m.initial == leg.initial), None
+            )
+            if match is None:
+                if same_side:
+                    continue
+                raise ValueError("member does not have the union's slot shape")
+            legs.remove(match)
+            permutation[slot] = match.index
+    return tuple(int(leg) for leg in permutation)  # type: ignore[arg-type]
 
 
 def _class_union_permutations(
@@ -1042,6 +1091,7 @@ def _class_union_permutations(
     table: ParticleTable,
     classes: UnionClasses,
     allow_conjugation: bool,
+    crossing: bool = False,
 ) -> dict[str, tuple[tuple[int, ...], bool]]:
     """Union routes ``(permutation, conjugated)`` that follow the flavour classes.
 
@@ -1056,6 +1106,7 @@ def _class_union_permutations(
         home = classes.get(process.process_id, (process.process_id, None))[0]
         by_class.setdefault(home, []).append(process)
     identity = identity_permutation(len(template_legs))
+    template_initial = sum(1 for leg in template_legs if leg.initial)
 
     def to_representative(process: GroupingProcess) -> tuple[tuple[int, ...], bool]:
         relation = classes.get(process.process_id, (None, None))[1]
@@ -1072,6 +1123,7 @@ def _class_union_permutations(
         route = _union_permutation(
             _legs(anchor, table, conjugate=conjugated[anchor.process_id]),
             template_legs,
+            crossing,
         )
         anchor_permutation, anchor_conjugated = to_representative(anchor)
         from_representative = invert_permutation(anchor_permutation)
@@ -1085,15 +1137,22 @@ def _class_union_permutations(
             legs = _legs(process, table, conjugate=conjugate)
             # a self-conjugate slot shape may take its class's conjugation
             if (
-                conjugate != conjugated[process.process_id] and not allow_conjugation
-            ) or any(
-                _union_slot(legs[leg]) != _union_slot(slot)
-                for leg, slot in zip(composed, template_legs, strict=True)
+                (conjugate != conjugated[process.process_id] and not allow_conjugation)
+                or any(
+                    _union_slot(legs[leg], crossing) != _union_slot(slot, crossing)
+                    for leg, slot in zip(composed, template_legs, strict=True)
+                )
+                # a member is never both crossed and conjugated
+                or (
+                    conjugate
+                    and -1
+                    in crossing_signs(composed, template_initial, process.initial_count)
+                )
             ):
                 # no consistent class route: the process is routed on its own
                 conjugate = conjugated[process.process_id]
                 composed = _union_permutation(
-                    _legs(process, table, conjugate=conjugate), template_legs
+                    _legs(process, table, conjugate=conjugate), template_legs, crossing
                 )
             result[process.process_id] = (composed, conjugate)
     return result
@@ -1142,6 +1201,8 @@ def _flavour_union(
     consider_charge_conjugation: bool,
     member_filter: UnionMemberFilter | None = None,
     classes: UnionClasses | None = None,
+    crossing: bool = False,
+    crossing_relation: UnionCrossingRelation | None = None,
 ) -> FlavourUnion | object | None:
     def class_count(processes: Iterable[GroupingProcess]) -> int:
         return len(
@@ -1163,7 +1224,11 @@ def _flavour_union(
     single = [process for process in ordered if _single_union_flavour(process, table)]
     if not single:
         return None
-    anchor = single[0]
+    anchor = (
+        _choose_union_template(single, ordered, table, consider_charge_conjugation)
+        if crossing
+        else single[0]
+    )
     pdgs = anchor.pdgs
     count = anchor.initial_count
     template = GroupingProcess(
@@ -1177,6 +1242,14 @@ def _flavour_union(
         process.process_id: _union_signature(process, table) != signature
         for process in group
     }
+    if crossing:
+        # conjugate only where that makes the member uncrossed; else it crosses
+        conjugated = {
+            process.process_id: consider_charge_conjugation
+            and conjugated[process.process_id]
+            and _union_signature(process, table, conjugate=True) == signature
+            for process in group
+        }
     flavours = frozenset(
         leg.flavour
         for process in group
@@ -1194,6 +1267,7 @@ def _flavour_union(
         table,
         classes or {},
         consider_charge_conjugation,
+        crossing,
     )
     if (
         union_warning is not None
@@ -1221,6 +1295,23 @@ def _flavour_union(
             member_filter is not None and not member_filter(template, process)
         ):
             continue
+        sigma = crossing_signs(permutation, count, process.initial_count)
+        rho: tuple[int, ...] | None = None
+        if -1 in sigma:
+            relation = (
+                None
+                if conjugate or crossing_relation is None
+                else crossing_relation(template, process, permutation)
+            )
+            if relation is None:
+                continue  # it keeps its routing
+            if tuple(relation[0]) != sigma:
+                raise ValueError(
+                    f"crossing of {process.expression!r} into "
+                    f"{template.expression!r} has momentum signs {relation[0]!r}, "
+                    f"its permutation gives {sigma!r}"
+                )
+            rho = tuple(relation[1])
         initial = process.pdgs[: process.initial_count]
         final = process.pdgs[process.initial_count :]
         members.append(
@@ -1238,6 +1329,8 @@ def _flavour_union(
                 generated=False,
                 patterns=patterns,
                 pattern_signs=(1,) * len(patterns),
+                crossing_momentum_signs=None if rho is None else sigma,
+                crossing_helicity_signs=rho,
             )
         )
     if class_count(member.process for member in members) < 2:
@@ -1246,6 +1339,32 @@ def _flavour_union(
         tuple((int(f), int(a)) for f, a in rule.endpoint_pairings) for rule in rules
     )
     return FlavourUnion(template, tuple(members), len(rules), pattern_pairs)
+
+
+def _choose_union_template(
+    single: Sequence[GroupingProcess],
+    group: Sequence[GroupingProcess],
+    table: ParticleTable,
+    consider_charge_conjugation: bool,
+) -> GroupingProcess:
+    """The single-flavour process that leaves the most processes uncrossed
+    (directly or conjugated); ties go to the first in ``single``."""
+
+    plain = [_union_signature(process, table) for process in group]
+    conjugate = [
+        _union_signature(process, table, conjugate=True)
+        if consider_charge_conjugation
+        else None
+        for process in group
+    ]
+
+    def uncrossed(candidate: GroupingProcess) -> int:
+        key = _union_signature(candidate, table)
+        return sum(1 for a, b in zip(plain, conjugate, strict=True) if key in (a, b))
+
+    template = max(single, key=uncrossed)
+    assert any(is_union_quark_type(table[pdg].type) for pdg in template.pdgs)
+    return template
 
 
 def _single_union_flavour(process: GroupingProcess, table: ParticleTable) -> bool:
@@ -1266,6 +1385,8 @@ def flavour_unions(
     consider_charge_conjugation: bool = True,
     member_filter: UnionMemberFilter | None = None,
     classes: UnionClasses | None = None,
+    crossing: bool = False,
+    crossing_relation: UnionCrossingRelation | None = None,
 ) -> list[FlavourUnion]:
     """Join ``processes`` that differ only in union-quark flavours.
 
@@ -1275,12 +1396,23 @@ def flavour_unions(
     ``union_warning`` (strict mode) a union whose flavour merge is no symmetry
     is dropped, and one whose conjugation is none splits by orientation.
     With ``classes``, the members of one flavour class share its routing.
+
+    With ``crossing``, crossing-eligible processes (union quarks and gluons
+    only) are keyed by all-outgoing content: a member that matches the template
+    neither directly nor conjugated is crossed, with the signs that
+    ``crossing_relation`` returns (``None`` keeps its own routing). A refused
+    conjugation then crosses the members instead of splitting the union.
     """
 
+    if crossing and crossing_relation is None:
+        raise ValueError("crossed flavour unions need a crossing relation")
     groups: dict[tuple[Any, ...], list[GroupingProcess]] = {}
     for process in processes:
         key = flavour_union_key(
-            process, table, consider_charge_conjugation=consider_charge_conjugation
+            process,
+            table,
+            consider_charge_conjugation=consider_charge_conjugation,
+            crossing=crossing,
         )
         groups.setdefault(key, []).append(process)
     options = {
@@ -1289,24 +1421,30 @@ def flavour_unions(
         "union_warning": union_warning,
         "member_filter": member_filter,
         "classes": classes,
+        "crossing_relation": crossing_relation,
     }
     result: list[FlavourUnion] = []
-    for group in groups.values():
+    for key, group in groups.items():
+        crossed = crossing and key[0] == "all-outgoing"
         union = _flavour_union(
             group,
             table,
             consider_charge_conjugation=consider_charge_conjugation,
+            crossing=crossed,
             **options,  # type: ignore[arg-type]
         )
         if union is _CONJUGATION_REFUSED:
             parts: dict[tuple[Any, ...], list[GroupingProcess]] = {}
             for process in group:
-                parts.setdefault(_union_signature(process, table), []).append(process)
+                parts.setdefault(
+                    _union_signature(process, table, crossing=crossed), []
+                ).append(process)
             for part in parts.values():
                 union = _flavour_union(
                     part,
                     table,
                     consider_charge_conjugation=False,
+                    crossing=crossed,
                     **options,  # type: ignore[arg-type]
                 )
                 if isinstance(union, FlavourUnion):
@@ -1347,9 +1485,11 @@ __all__ = [
     "PatternPairs",
     "ProcessGroup",
     "ProcessGroupMap",
+    "UnionCrossingRelation",
     "candidate_mappings",
     "coarse_key",
     "compose_permutations",
+    "crossing_eligible",
     "crossing_signs",
     "flavor_blind_classes",
     "flavor_blind_mapping",
@@ -1358,6 +1498,7 @@ __all__ = [
     "flavour_unions",
     "identity_permutation",
     "invert_permutation",
+    "is_union_gluon_type",
     "is_union_quark_type",
     "particle_table",
     "profile_key",

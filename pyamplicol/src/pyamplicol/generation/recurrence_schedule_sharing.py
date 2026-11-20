@@ -1643,10 +1643,34 @@ def _external_leg_orbit_key(leg: RecurrenceExternalLegV1) -> tuple[object, ...]:
     )
 
 
+def external_crossing_relation(
+    root: Sequence[RecurrenceExternalLegV1],
+    target: Sequence[RecurrenceExternalLegV1],
+    source_slots: Sequence[int],
+) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    """Momentum and helicity signs per root slot of the source-state matching
+    root slot ``r`` -> target leg ``source_slots[r]``, as the exact process
+    bijection derives them, or ``None`` when the source states do not match.
+
+    Unlike that bijection, source templates need not map one to one: a
+    crossed program keeps its own sources (e.g. incoming and outgoing gluon
+    polarizations) and is evaluated at the signed momenta instead."""
+
+    relation = _external_source_relation(
+        tuple(root),
+        tuple(target),
+        tuple(int(slot) for slot in source_slots),
+        source_bijection=False,
+    )
+    return None if relation is None else (relation[0], relation[1])
+
+
 def _external_source_relation(
     root: tuple[RecurrenceExternalLegV1, ...],
     target: tuple[RecurrenceExternalLegV1, ...],
     source_slots: tuple[int, ...],
+    *,
+    source_bijection: bool = True,
 ) -> (
     tuple[
         tuple[int, ...],
@@ -1707,7 +1731,7 @@ def _external_source_relation(
             reverse = reverse_source_templates.setdefault(
                 other.source_template_id, state.source_template_id
             )
-            if (
+            if source_bijection and (
                 previous != other.source_template_id
                 or reverse != state.source_template_id
             ):
@@ -2699,6 +2723,7 @@ __all__ = [
     "build_recurrence_process_executor_pack",
     "encode_recurrence_process_binding",
     "exact_recurrence_process_bijection",
+    "external_crossing_relation",
     "intern_recurrence_schedules",
     "recurrence_helicity_selector_schedule_digest",
     "recurrence_native_schedule_semantic_digest",

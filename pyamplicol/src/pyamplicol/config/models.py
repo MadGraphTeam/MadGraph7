@@ -333,13 +333,17 @@ def _setting(
     nullable: bool = False,
     choices: Sequence[object] = (),
     dynamic_kind: str | None = None,
+    omit_default: bool = False,
 ) -> dict[str, object]:
+    # omit_default: left out of serialized configs at its default, so adding the
+    # field keeps existing config TOML (and artifact) bytes
     return {
         "config": {
             "kind": kind,
             "nullable": nullable,
             "choices": tuple(choices),
             "dynamic_kind": dynamic_kind,
+            "omit_default": omit_default,
         }
     }
 
@@ -649,6 +653,9 @@ class ProcessConfig:
     flavor_blind: bool = field(default=False, metadata=_setting("bool"))
     flavor_blind_strict: bool = field(default=False, metadata=_setting("bool"))
     flavor_unions: bool = field(default=False, metadata=_setting("bool"))
+    flavor_union_crossing: bool = field(
+        default=False, metadata=_setting("bool", omit_default=True)
+    )
     consider_charge_conjugation: bool = field(default=True, metadata=_setting("bool"))
     only_unit_multiplier: bool = field(default=False, metadata=_setting("bool"))
     analyze_process_groups: ProcessGroupAnalysis = field(
@@ -767,6 +774,7 @@ class ProcessConfig:
             "flavor_blind",
             "flavor_blind_strict",
             "flavor_unions",
+            "flavor_union_crossing",
             "consider_charge_conjugation",
             "only_unit_multiplier",
         ):
@@ -775,6 +783,19 @@ class ProcessConfig:
         if self.flavor_unions and not self.flavor_blind_strict:
             raise ConfigurationError(
                 "process.flavor_unions requires process.flavor_blind_strict"
+            )
+        if self.flavor_union_crossing and not self.flavor_unions:
+            raise ConfigurationError(
+                "process.flavor_union_crossing requires process.flavor_unions"
+            )
+        if self.flavor_union_crossing and (
+            self.selected_source_helicities
+            or self.selected_color_sector_ids
+            or self.max_color_sectors is not None
+        ):
+            raise ConfigurationError(
+                "process.flavor_union_crossing does not support selected source "
+                "helicities, selected colour sectors or max_color_sectors"
             )
         object.__setattr__(
             self,
@@ -2334,6 +2355,19 @@ class RunConfig:
         ):
             raise ConfigurationError(
                 "process.flavor_unions requires color.lc_flow_layout='topology-replay'"
+            )
+        if self.process.flavor_union_crossing and self.color.accuracy is not (
+            ColorAccuracy.LC
+        ):
+            raise ConfigurationError(
+                "full-colour flavour-union crossing is not supported yet "
+                "(process.flavor_union_crossing requires color.accuracy='lc')"
+            )
+        if self.process.flavor_union_crossing and self.generation.emit_api_bundle:
+            raise ConfigurationError(
+                "process.flavor_union_crossing requires "
+                "generation.emit_api_bundle = false until the UMAMI adapter "
+                "supports crossed members"
             )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT

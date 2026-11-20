@@ -742,6 +742,17 @@ def _project_template_references_uncached(
     return numeric_ids, tuple(references)
 
 
+def project_external_source_legs(
+    process: CanonicalProcessIR,
+    catalog: RecurrenceTemplateCatalog,
+) -> tuple[RecurrenceExternalLegV1, ...]:
+    """The external legs and their source states as the projection builds them
+    (no colour sectors), for relating crossings of one all-outgoing content."""
+
+    template_ids, _references = _project_template_references(catalog)
+    return _project_external_legs(process, catalog, template_ids, None, 1)[0]
+
+
 def _project_external_legs(
     process: CanonicalProcessIR,
     catalog: RecurrenceTemplateCatalog,
@@ -1816,5 +1827,6 @@ def _digest(payload: object) -> str:
 __all__ = [
     "RecurrenceGenerationSliceV1",
     "RecurrenceProjectionError",
+    "project_external_source_legs",
     "project_recurrence_process_v1",
 ]

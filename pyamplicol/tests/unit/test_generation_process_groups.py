@@ -37,9 +37,15 @@ def test_initial_groups_keep_the_members_recorded_at_expansion() -> None:
     )
     expanded = (
         SimpleNamespace(
-            request=SimpleNamespace(name="d_dbar_to_g_g"), group_members=(member,)
+            request=SimpleNamespace(name="d_dbar_to_g_g"),
+            group_members=(member,),
+            flavour_union_pattern_pairs=None,
         ),
-        SimpleNamespace(request=SimpleNamespace(name="g_g_to_g_g"), group_members=()),
+        SimpleNamespace(
+            request=SimpleNamespace(name="g_g_to_g_g"),
+            group_members=(),
+            flavour_union_pattern_pairs=None,
+        ),
     )
 
     group_map = service_module._initial_process_groups(processes, expanded)  # type: ignore[arg-type]

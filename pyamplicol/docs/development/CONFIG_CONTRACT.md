@@ -46,6 +46,12 @@ overrides in order, then recorded license/resource clamping.
   the recurrence execution mode and, for LC, the topology-replay layout; in
   development). MadGraph7 turns it on for its `[amplicol]` outputs (option
   `amplicol_flavor_unions`).
+- `flavor_union_crossing: bool = false` (requires `flavor_unions`, `color.accuracy
+  = "lc"` and `generation.emit_api_bundle = false`, and refuses selected source
+  helicities and colour sectors; in development). Unions of quark and gluon
+  processes are keyed by all-outgoing content, so one template serves every
+  crossing (process-groups schema 2). At its default the key is omitted from
+  serialized configs, so existing config TOML bytes are unchanged.
 - `consider_charge_conjugation: bool = true`
 - `only_unit_multiplier: bool = false`
 - `analyze_process_groups: none | numerical = none`

@@ -301,7 +301,7 @@ def _strings(word: Sequence[int], expression: str) -> frozenset[tuple[int, ...]]
         current.append(label)
         pdg = pdgs[label - 1]
         outgoing = -pdg if label - 1 < n else pdg
-        if outgoing != 21 and outgoing < 0:
+        if pdg != 21 and outgoing < 0:
             out.append(tuple(current))
             current = []
     assert not current, (word, expression)

@@ -169,9 +169,12 @@ from .process_grouping import (
     GroupMember,
     LegMapping,
     PatternPairs,
+    UnionCrossingRelation,
+    crossing_signs,
     flavor_blind_classes,
     flavor_blind_mapping,
     flavour_unions,
+    is_union_quark_type,
     particle_table,
     profile_mappings,
 )
@@ -218,6 +221,7 @@ from .recurrence_physics import (
 )
 from .recurrence_projection import (
     RecurrenceGenerationSliceV1,
+    project_external_source_legs,
     project_recurrence_process_v1,
 )
 from .recurrence_projection import (
@@ -228,6 +232,7 @@ from .recurrence_schedule_sharing import (
     RecurrenceScheduleLoweringCache,
     _recurrence_schedule_semantic_digests,
     build_recurrence_process_executor_pack,
+    external_crossing_relation,
     recurrence_helicity_selector_schedule_digest,
 )
 from .recurrence_template_columnar import (
@@ -4803,10 +4808,18 @@ class GenerationBackend:
                 process.process_id, lambda: process_ir(process)
             ) == limits_for(template.process_id, lambda: template_ir(template))
 
+        processes = [_grouping_process(entry) for entry in entries] + [
+            member.process for entry in entries for member in entry.group_members
+        ]
+        crossing = self._flavor_union_crossing
+        crossing_relation = (
+            self._union_crossing_relation(model, catalog, table, processes, process_ir)
+            if crossing
+            else None
+        )
         # Alias classes are discovered too; _apply_flavour_unions rejects them.
         unions = flavour_unions(
-            [_grouping_process(entry) for entry in entries]
-            + [member.process for entry in entries for member in entry.group_members],
+            processes,
             table,
             pairing_rules=pairing_rules,
             normalization=model.external_state_normalization,
@@ -4818,8 +4831,112 @@ class GenerationBackend:
                 for entry in entries
                 for member in entry.group_members
             },
+            crossing=crossing,
+            crossing_relation=crossing_relation,
         )
+        if crossing_relation is not None:
+            refused = getattr(crossing_relation, "refused", 0)
+            _LOGGER.debug(
+                "Flavour-union crossing: %d crossed member%s, %d kept their routing",
+                sum(member.crossed for union in unions for member in union.members),
+                "" if refused == 1 else "s",
+                refused,
+            )
         return _apply_flavour_unions(entries, unions, template_ir)
+
+    def _union_crossing_relation(
+        self,
+        model: Model,
+        catalog: Any,
+        table: Mapping[int, GroupingParticle],
+        processes: Sequence[GroupingProcess],
+        process_ir: Callable[[GroupingProcess], CanonicalProcessIR],
+    ) -> UnionCrossingRelation:
+        """Signs of a crossed union member from its source states: per slot,
+        the member with the template's union flavours must have the template's
+        all-outgoing source states (as exact schedule sharing matches them).
+
+        Stage 1 refuses (``None``, the member keeps its routing) crossed quark
+        slots outside the Weyl family and any s-channel resonance."""
+
+        selection = self._process_selection
+        if (
+            selection.selected_source_helicities is not None
+            or selection.selected_color_sector_ids is not None
+            or selection.max_color_sectors is not None
+        ):
+            raise GenerationError(
+                "flavour-union crossing does not support generation-selected "
+                "helicities or colour sectors"
+            )
+        known = {
+            (process.pdgs, process.initial_count): process for process in processes
+        }
+        limits = self._coupling_order_limits or None
+        legs: dict[tuple[tuple[int, ...], int], Any] = {}
+
+        def external(pdgs: tuple[int, ...], initial_count: int) -> Any:
+            key = (pdgs, initial_count)
+            if key not in legs:
+                process = known.get(key)
+                if process is None:
+                    names = [table[pdg].name for pdg in pdgs]
+                    process = GroupingProcess(
+                        "crossing_"
+                        + "_".join(str(pdg).replace("-", "m") for pdg in pdgs),
+                        " ".join(names[:initial_count])
+                        + " > "
+                        + " ".join(names[initial_count:]),
+                        pdgs,
+                        initial_count,
+                    )
+                ir = process_ir(process)
+                # resonances are not recomputed per crossing (stage 1)
+                legs[key] = (
+                    None
+                    if s_channel_resonances(ir, model, limits)
+                    else project_external_source_legs(ir, catalog)
+                )
+            return legs[key]
+
+        def relation(
+            template: GroupingProcess,
+            member: GroupingProcess,
+            permutation: tuple[int, ...],
+        ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+            sigma = crossing_signs(
+                permutation, template.initial_count, member.initial_count
+            )
+            flavour = {
+                table[pdg].type: abs(pdg)
+                for pdg in template.pdgs
+                if is_union_quark_type(table[pdg].type)
+            }
+            if any(
+                sign == -1
+                and is_union_quark_type(table[member.pdgs[leg]].type)
+                and not model.is_chiral_eligible(member.pdgs[leg])
+                for sign, leg in zip(sigma, permutation, strict=True)
+            ):
+                result = None
+            else:
+                # the member with the template's flavours, particle/antiparticle kept
+                substituted = tuple(
+                    (1 if pdg > 0 else -1) * flavour[table[pdg].type]
+                    if is_union_quark_type(table[pdg].type)
+                    else pdg
+                    for pdg in member.pdgs
+                )
+                root = external(template.pdgs, template.initial_count)
+                target = external(substituted, member.initial_count)
+                result = (
+                    None
+                    if root is None or target is None
+                    else external_crossing_relation(root, target, permutation)
+                )
+            return result
+
+        return _CountingRelation(relation)
 
     def _compile_for_generation(
         self,
@@ -7905,6 +8022,11 @@ class GenerationBackend:
         return run is not None and run.process.flavor_unions
 
     @property
+    def _flavor_union_crossing(self) -> bool:
+        run = self._run_config
+        return run is not None and run.process.flavor_union_crossing
+
+    @property
     def _flavor_blind_strict(self) -> bool:
         run = self._run_config
         return run is not None and run.process.flavor_blind_strict
@@ -9215,6 +9337,24 @@ def _pattern_group_destinations(
         seen.add(destination)
         groups.append(destination)
     return tuple(groups)
+
+
+class _CountingRelation:
+    """A union crossing relation that counts the members it refuses."""
+
+    def __init__(self, relation: UnionCrossingRelation) -> None:
+        self._relation = relation
+        self.refused = 0
+
+    def __call__(
+        self,
+        template: GroupingProcess,
+        member: GroupingProcess,
+        permutation: tuple[int, ...],
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+        result = self._relation(template, member, permutation)
+        self.refused += result is None
+        return result
 
 
 def _apply_flavour_unions(

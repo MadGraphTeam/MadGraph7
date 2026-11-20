@@ -347,6 +347,17 @@ def _add_process_grouping_options(
                 "development)"
             ),
         )
+        parser.add_argument(
+            "--flavor-union-crossing",
+            dest="process.flavor_union_crossing",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help=(
+                "with --flavor-unions, key unions of quarks and gluons by their "
+                "all-outgoing content so one template serves every crossing "
+                "(leading colour, no API bundle; in development)"
+            ),
+        )
     parser.add_argument(
         "--consider-charge-conjugation",
         dest="process.consider_charge_conjugation",

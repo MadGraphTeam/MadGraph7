@@ -677,6 +677,23 @@ be loaded by ID or expression (`Runtime.load(..., process=...)`, the
 standalone check's `--process`, the `inspect` process selector) and is
 evaluated only through its template's flavour-union assignments.
 
+Generation emits crossed members with `process.flavor_union_crossing = true`
+(`--flavor-union-crossing`, on top of `flavor_unions`; leading colour and
+`generation.emit_api_bundle = false` for now). Processes whose legs are all
+massless quarks and gluons are then joined by their all-outgoing content, so
+`p p > j j` and `p p > j j j` need 3 programs and `p p > j j j j` and
+`p p > j j j j j` 4 (the all-gluon process included). Each union's template is
+the requested single-flavour process that leaves the most members uncrossed. A
+member is routed uncrossed where it can be, directly or else conjugated, and
+crossed otherwise. Its permutation pairs legs on the same side first and then
+across, so a member that needs no crossing keeps the route it has without the
+flag. `h` comes from matching the source states of the template and of the
+member with the template's flavours: -1 on crossed quarks, +1 on gluons. A
+member whose source states do not match, whose crossed quark is not chiral, or
+whose template or member has an s-channel resonance keeps its own routing.
+When strict mode refuses a conjugation, those members are crossed instead and
+the union is not split.
+
 `pyamplicol inspect` shows the map in its `Process groups` section (colours
 omitted here). For the five subprocesses above:
 

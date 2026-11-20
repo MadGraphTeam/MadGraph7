@@ -5,7 +5,7 @@ import difflib
 import os
 import tomllib
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import Field, dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn, TypeVar, cast, get_type_hints
@@ -716,7 +716,9 @@ def resolution_to_dict(resolution: ConfigResolution) -> dict[str, object]:
 def _to_plain(value: object) -> object:
     if is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _to_plain(getattr(value, item.name)) for item in fields(value)
+            item.name: _to_plain(getattr(value, item.name))
+            for item in fields(value)
+            if not _omitted_default(item, getattr(value, item.name))
         }
     if isinstance(value, Path):
         return str(value)
@@ -725,6 +727,15 @@ def _to_plain(value: object) -> object:
     if isinstance(value, tuple):
         return [_to_plain(entry) for entry in value]
     return value
+
+
+def _omitted_default(item: Field[Any], value: object) -> bool:
+    spec = item.metadata.get("config")
+    return (
+        isinstance(spec, Mapping)
+        and bool(spec.get("omit_default"))
+        and value == item.default
+    )
 
 
 def _without_none(value: object) -> object:
