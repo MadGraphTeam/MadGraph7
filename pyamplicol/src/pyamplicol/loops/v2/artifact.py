@@ -2908,7 +2908,11 @@ class V2VirtualRuntime:
 
         with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
-        detail = "accuracy is estimated only by the requested stability checks"
+        detail = (
+            "accuracy is estimated only by the requested stability checks"
+            if checks.enabled
+            else "no stability check was requested, so the accuracy is not estimated"
+        )
         if self._colour_zero is not None and self._colour_zero["exact_colour_zero"]:
             # The colour-zero record (m-lit Q13): exactly 0, not a numerical
             # zero.
