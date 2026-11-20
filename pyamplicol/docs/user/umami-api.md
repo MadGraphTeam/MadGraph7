@@ -239,7 +239,15 @@ A provider's metadata contains:
   `processes` entries, whose `helicities` and `helicity_mappings` are indices
   into them (schema 4).
 - `runtime` and `members`: the representative evaluator, certified momentum
-  permutations and covered physical contributions.
+  permutations and covered physical contributions. A runtime evaluates input
+  leg `permutation[j]` as its leg `j`. A crossed flavour-union member
+  (`process.flavor_union_crossing`) also carries `momentum_signs`: its
+  runtime leg `j` gets `momentum_signs[j]` times that momentum (all four
+  components), -1 where the two legs lie on different sides of the `>`. Its
+  `helicity_export` and helicity tables already give the member's own
+  helicities, and its colour tags are those of the member. Documents with such
+  records have `schema_version` 5; all others stay at 4, and a reader refuses
+  `momentum_signs` under 4.
 - `grouping` and `runtime_processes`: the assumptions and available coverage
   needed to interpret those contributions correctly.
 

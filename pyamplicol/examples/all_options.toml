@@ -89,9 +89,8 @@ flavor_unions = false
 # process.flavor_union_crossing: With flavor_unions, key the unions of quark
 # and gluon processes by their all-outgoing content, so one template serves
 # every crossing (members evaluated at sign-flipped momenta; process-groups
-# schema 2). In development: requires leading colour and
-# generation.emit_api_bundle = false. Default false (not written to
-# serialized configs at its default).
+# schema 2). In development: requires leading colour. Default false (not
+# written to serialized configs at its default).
 flavor_union_crossing = false
 # process.consider_charge_conjugation: Also relate processes by charge
 # conjugation for flavor_blind and numerical grouping. Default true.

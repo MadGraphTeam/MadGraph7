@@ -184,6 +184,7 @@ def _reweight_artifact(path: Path) -> Path:
     root.mkdir(parents=True)
     document = {
         "kind": "pyamplicol-umami-metadata",
+        "schema_version": 4,
         "provider": {"id": "p0", "color_accuracy": "lc", "particle_count": 4},
     }
     (root / "metadata.json").write_text(json.dumps(document), encoding="utf-8")

@@ -678,8 +678,9 @@ standalone check's `--process`, the `inspect` process selector) and is
 evaluated only through its template's flavour-union assignments.
 
 Generation emits crossed members with `process.flavor_union_crossing = true`
-(`--flavor-union-crossing`, on top of `flavor_unions`; leading colour and
-`generation.emit_api_bundle = false` for now). Processes whose legs are all
+(`--flavor-union-crossing`, on top of `flavor_unions`; leading colour for
+now; the UMAMI bundle evaluates crossed members, reweight providers refuse
+them for now). Processes whose legs are all
 massless quarks and gluons are then joined by their all-outgoing content, so
 `p p > j j` and `p p > j j j` need 3 programs and `p p > j j j j` and
 `p p > j j j j j` 4 (the all-gluon process included). Each union's template is

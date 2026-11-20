@@ -2363,12 +2363,6 @@ class RunConfig:
                 "full-colour flavour-union crossing is not supported yet "
                 "(process.flavor_union_crossing requires color.accuracy='lc')"
             )
-        if self.process.flavor_union_crossing and self.generation.emit_api_bundle:
-            raise ConfigurationError(
-                "process.flavor_union_crossing requires "
-                "generation.emit_api_bundle = false until the UMAMI adapter "
-                "supports crossed members"
-            )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
             and self.resolved_execution_mode

@@ -174,19 +174,52 @@ def _permutation(values: Sequence[int], count: int) -> tuple[int, ...]:
     return result
 
 
+def _side_signs(permutation: Sequence[int], incoming: int) -> tuple[int, ...]:
+    """-1 where runtime slot ``r`` and input leg ``permutation[r]`` lie on
+    different sides of the ``>`` (both processes have ``incoming`` initial legs)."""
+    return tuple(
+        -1 if (slot < incoming) != (leg < incoming) else 1
+        for slot, leg in enumerate(permutation)
+    )
+
+
+def _signed(values: Sequence[int], signs: Sequence[int] | None) -> list[int]:
+    if signs is None:
+        return list(values)
+    return [s * v for s, v in zip(signs, values, strict=True)]
+
+
 def _member_permutation(
-    member: GroupMember, count: int, incoming: int
-) -> tuple[int, ...]:
-    """The ``representative leg -> member leg`` map; incoming swaps are allowed."""
+    member: GroupMember, count: int, incoming: int, resonant: bool = False
+) -> tuple[tuple[int, ...], tuple[int, ...] | None, tuple[int, ...] | None]:
+    """The ``representative leg -> member leg`` map, with the momentum and
+    helicity signs (sigma, rho) of a crossed flavour-union member, else None.
+    Incoming swaps are allowed; side changes only for a crossed member."""
     permutation = _permutation(member.permutation, count)
-    if len(member.pdgs) != count or any(
-        (leg < incoming) != (target < incoming)
-        for leg, target in enumerate(permutation)
+    sigma = member.crossing_momentum_signs
+    if len(member.pdgs) != count or (
+        sigma is None
+        and any(
+            (leg < incoming) != (target < incoming)
+            for leg, target in enumerate(permutation)
+        )
     ):
         raise ValueError(
             f"UMAMI group member {member.process_id!r} must keep initial legs initial"
         )
-    return permutation
+    if sigma is None:
+        return permutation, None, None
+    name = f"UMAMI crossed flavour-union member {member.process_id!r}"
+    if member.patterns is None or member.conjugated:
+        raise ValueError(f"{name} must be an unconjugated union member")
+    if member.initial_count != incoming or tuple(sigma) != _side_signs(
+        permutation, incoming
+    ):
+        raise ValueError(f"{name} has momentum signs that disagree with its legs")
+    if resonant:
+        # stage 1: the resonance legs are not relabelled across the sides
+        raise ValueError(f"{name} has a template with s-channel resonances")
+    return permutation, tuple(sigma), tuple(member.crossing_helicity_signs)
 
 
 def _color_flow(
@@ -858,6 +891,7 @@ def _merge_flavour_orbits(data):
                 tuple(runtime["permutation"]),
                 runtime["factor"],
                 runtime.get("_assignment_class"),
+                tuple(runtime.get("momentum_signs", ())),
                 tuple(data["pdg_ids"][next(iter(pdgs))][:incoming]),
                 tuple(entry["multichannels"]),
             )
@@ -902,21 +936,31 @@ def _canonical_order(data):
 
 
 def _export_helicities(data, runtime_helicities):
-    """Map runtime helicities to exported ones, given in the input leg order."""
+    """Map runtime helicities to exported ones, given in the input leg order
+    (a crossed member's flipped by its helicity signs rho)."""
     entries = [e for c in data["channels"] for e in c["processes"]]
-    # the export of a (runtime process, permutation), shared by its runtimes
+    # the export of a (runtime process, permutation, signs), shared by its runtimes
     cache: dict[tuple, list[int]] = {}
     for runtime in [e["runtime"] for e in entries] + [
         m["runtime"] for e in entries for m in e["members"]
     ]:
         permutation = runtime["permutation"]
-        key = (runtime["process_index"], tuple(permutation))
+        signs = runtime.get("_helicity_signs")
+        key = (
+            runtime["process_index"],
+            tuple(permutation),
+            tuple(runtime.get("momentum_signs", ())),
+            signs,
+        )
         if key not in cache:
             exported = cache[key] = []
             for values in runtime_helicities[runtime["process_index"]]:
                 ordered = [0] * len(values)
                 for runtime_leg, input_leg in enumerate(permutation):
                     ordered[input_leg] = values[runtime_leg]
+                if signs is not None:
+                    for runtime_leg, input_leg in enumerate(permutation):
+                        ordered[input_leg] *= signs[runtime_leg]
                 exported.append(_intern_vector(data["helicities"], ordered))
         runtime["helicity_export"] = cache[key]  # shared, never modified
 
@@ -1003,16 +1047,25 @@ def build_umami_metadata(
             helicity_domain,
         )
         home = place(signature, (process, None), masses)
+        resonant = bool(
+            process.physics.get("extensions", {}).get("s_channel_resonances")
+        )
         for member in process.group_members:
             # A member's legs carry its own masses; a member whose relabelling
             # moves unequal masses needs a provider of its own.
-            relation = _member_permutation(member, len(external), incoming)
+            relation, _, rho = _member_permutation(
+                member, len(external), incoming, resonant
+            )
             member_masses = [
                 _mass(particles[int(pdg)], parameters, process_defaults)
                 for pdg in member.pdgs
             ]
+            # a crossed member's own helicities: lambda_M[pi_r] = rho_r lambda_T[r]
             domain = tuple(
-                sorted(tuple(_relabelled(v, relation)) for v in helicity_domain)
+                sorted(
+                    tuple(_relabelled(_signed(v, rho), relation))
+                    for v in helicity_domain
+                )
             )
             place(
                 (*signature[:3], tuple(member_masses), domain),
@@ -1130,7 +1183,7 @@ def _build_provider(
             runtime_helicities.append([list(h["values"]) for h in helicities])
         process_index = runtime_indices[process.process_id]
         source_id, pdgs = process.process_id, process.external_pdgs
-        relation = None
+        relation = sigma = rho = None
         # Flavour-union templates evaluate every source as an assignment: the
         # template is 0, its union members follow in process-groups order.
         union_ids = {
@@ -1178,10 +1231,16 @@ def _build_provider(
         if group_member is not None:
             # Representative leg r is the member's leg relation[r]: helicity
             # values and colour tags move with it, momenta through the runtime.
-            relation = _member_permutation(group_member, count, incoming)
+            relation, sigma, rho = _member_permutation(
+                group_member,
+                count,
+                incoming,
+                bool(physics.get("extensions", {}).get("s_channel_resonances")),
+            )
             source_id, pdgs = group_member.process_id, tuple(group_member.pdgs)
             helicities = [
-                {**h, "values": _relabelled(h["values"], relation)} for h in helicities
+                {**h, "values": _relabelled(_signed(h["values"], rho), relation)}
+                for h in helicities
             ]
         # Helicity values in the input leg order, interned per contribution
         # once its final-state legs are relabelled to the channel.
@@ -1270,6 +1329,13 @@ def _build_provider(
                 if flow is not None:
                     if group_member.conjugated:
                         flow = [pair[::-1] for pair in flow]
+                    if sigma is not None:
+                        # tags reversed at template-initial slots: reverse those
+                        # of the slots that change sides, so member-initial ones
+                        flow = [
+                            pair[::-1] if sign < 0 else pair
+                            for pair, sign in zip(flow, sigma, strict=True)
+                        ]
                     flow = _relabelled(flow, relation)
                     physical_color = _flow_id(
                         [int(external[slot]["label"]) for slot in word_slots]
@@ -1280,11 +1346,19 @@ def _build_provider(
                 blocks = _line_blocks(coloured_slots, roles) if coloured_slots else None
                 line_legs.update(frozenset(block) for block in blocks or ())
             rep_color, perm = replay.get(color_id, (color_id, tuple(identity)))
-            if assignment is not None and any(
-                slot_pdgs[perm[slot]] != slot_pdgs[slot] for slot in identity
+            if assignment is not None and (
+                any(slot_pdgs[perm[slot]] != slot_pdgs[slot] for slot in identity)
+                or (
+                    sigma is not None
+                    and any(
+                        (relation[perm[slot]] < incoming) != (relation[slot] < incoming)
+                        for slot in identity
+                    )
+                )
             ):
-                # A replay exchanging slots of different member flavours is no
-                # symmetry of the member: its own flow, computed by union templates.
+                # A replay exchanging slots of different member flavours, or of
+                # different member sides (crossing), is no symmetry of the member:
+                # its own flow, computed by union templates.
                 if color.get("computed") is False:
                     raise ValueError(
                         f"UMAMI flavour-union member {source_id!r} needs the "
@@ -1322,6 +1396,16 @@ def _build_provider(
                     "factor": runtime["factor"]
                     * (1.0 if assignment is not None else float(group_member.factor)),
                 }
+                if sigma is not None:
+                    # runtime[j] = sigma_j input[permutation[j]]; rho is applied to
+                    # the exported helicities and dropped
+                    if _side_signs(runtime["permutation"], incoming) != sigma:
+                        raise ValueError(
+                            f"UMAMI crossed member {source_id!r}: the gather "
+                            "permutation disagrees with its momentum signs"
+                        )
+                    runtime["momentum_signs"] = list(sigma)
+                    runtime["_helicity_signs"] = rho
             member = {
                 "process_id": source_id,
                 "pdgs": list(pdgs),
@@ -1467,6 +1551,14 @@ def _build_provider(
         for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
             runtime.pop("_assignment_class", None)
     _export_helicities(data, runtime_helicities)
+    crossed = False
+    for entry in (e for c in data["channels"] for e in c["processes"]):
+        for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
+            runtime.pop("_helicity_signs", None)
+            crossed = crossed or "momentum_signs" in runtime
+    if crossed:
+        # schema 5: runtime records may carry momentum_signs
+        data["schema_version"] = 5
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
         next(iter(alpha_names)) if len(alpha_names) == 1 else None

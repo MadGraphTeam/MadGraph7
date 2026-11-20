@@ -60,18 +60,38 @@ def _integer(value: object) -> int:
     return value
 
 
+def _runtime_records(document: Mapping[str, Any]):
+    for channel in document.get("channels", ()):
+        for entry in channel["processes"]:
+            yield entry["runtime"]
+            for member in entry.get("members", ()):
+                yield member["runtime"]
+
+
+def _checked_metadata(document: dict[str, Any]) -> dict[str, Any]:
+    # schema 5 adds momentum_signs (crossed flavour-union members) to schema 4
+    version = document.get("schema_version")
+    if version not in (4, 5):
+        raise ValueError(f"unsupported UMAMI metadata schema version {version!r}")
+    if version == 4 and any(
+        "momentum_signs" in runtime for runtime in _runtime_records(document)
+    ):
+        raise ValueError("UMAMI metadata schema 4 cannot carry momentum signs")
+    return document
+
+
 def load_umami_metadata(artifact: Path) -> list[dict[str, Any]]:
     """The metadata documents of all UMAMI providers of an artifact."""
     root = (Path(artifact) / "API" / "umami").resolve()
     index = json.loads((root / "metadata.json").read_text(encoding="utf-8"))
     if index.get("kind") != "pyamplicol-umami-provider-index":
-        return [index]
+        return [_checked_metadata(index)]
     documents = []
     for entry in index["providers"]:
         path = (root / entry["metadata"]).resolve()
         if not path.is_relative_to(root):
             raise ValueError(f"UMAMI metadata path {entry['metadata']!r} leaves {root}")
-        documents.append(json.loads(path.read_text(encoding="utf-8")))
+        documents.append(_checked_metadata(json.loads(path.read_text(encoding="utf-8"))))
     return documents
 
 
@@ -897,6 +917,15 @@ def write_reweight_provider(
     targets = load_umami_metadata(Path(target_artifact))
     if any(d["provider"]["color_accuracy"] != "lc" for d in references):
         raise ValueError("the reference artifact must have leading-colour accuracy")
+    if any(
+        "momentum_signs" in runtime
+        for document in (*references, *targets)
+        for runtime in _runtime_records(document)
+    ):
+        raise ValueError(
+            "reweight providers do not support crossed flavour-union members yet "
+            "(process.flavor_union_crossing)"
+        )
     reference_path = os.path.relpath(Path(reference_artifact).resolve(), output.resolve())
     target_path = os.path.relpath(Path(target_artifact).resolve(), output.resolve())
     templates = importlib.resources.files("pyamplicol.assets.api_templates") / "umami"

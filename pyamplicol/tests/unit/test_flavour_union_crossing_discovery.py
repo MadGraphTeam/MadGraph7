@@ -562,7 +562,7 @@ def test_leg_mappings_still_refuse_side_changes() -> None:
         _mapping(swapped, legs, conjugated=False, method="x")
 
 
-def test_crossing_config_is_leading_colour_without_api_bundle() -> None:
+def test_crossing_config_is_leading_colour_with_the_api_bundle() -> None:
     bundle_off = GenerationConfig(emit_api_bundle=False)
     recurrence = EvaluatorConfig(execution_mode="recurrence")
     process = ProcessConfig(
@@ -591,8 +591,10 @@ def test_crossing_config_is_leading_colour_without_api_bundle() -> None:
             generation=bundle_off,
             color=ColorConfig(accuracy="full"),
         )
-    with pytest.raises(ConfigurationError, match="emit_api_bundle"):
-        RunConfig(action=Action.GENERATE, process=process, evaluator=recurrence)
+    # the UMAMI bundle evaluates crossed members
+    assert RunConfig(
+        action=Action.GENERATE, process=process, evaluator=recurrence
+    ).generation.emit_api_bundle
     # omitted from serialized configs at its default, written when on
     assert "flavor_union_crossing" not in config_to_toml(
         RunConfig(action=Action.GENERATE)

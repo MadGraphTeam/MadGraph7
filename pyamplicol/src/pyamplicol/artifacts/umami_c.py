@@ -121,6 +121,13 @@ def provider_header(data: Mapping[str, Any]) -> str:
                 + ", ".join(str(v) for v in exported or [0])
                 + "};"
             )
+            signs = runtime.get("momentum_signs")
+            if signs is not None:
+                lines.append(
+                    f"static const signed char {prefix}_momentum_signs[] = {{"
+                    + ", ".join(str(int(v)) for v in signs)
+                    + "};"
+                )
             lines.append(
                 f"static const UmamiContribution {prefix}_contributions[] = {{"
             )
@@ -140,6 +147,10 @@ def provider_header(data: Mapping[str, Any]) -> str:
                     str(int(runtime["assignment"])),
                     str(int(runtime["color_axis"])),
                 ]
+                if signs is not None:
+                    fields.append(f"{prefix}_momentum_signs")
+            elif signs is not None:
+                raise ValueError("a crossed UMAMI contribution must be an assignment")
             lines.append("    {" + ", ".join(fields) + "},")
             lines.append("};")
             flavour_rows.append(f"    {{1, {prefix}_contributions}},")

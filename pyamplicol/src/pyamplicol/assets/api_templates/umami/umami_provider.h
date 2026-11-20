@@ -38,6 +38,9 @@ typedef struct {
      * template runtime, and color_id's index on that runtime's colour axis. */
     const char *assignment_key;
     size_t assignment, color_axis;
+    /* Crossed union member: runtime[j] = momentum_signs[j] * input[permutation[j]]
+     * (NULL: all +1); its helicity_export already carries the helicity signs. */
+    const signed char *momentum_signs;
 } UmamiContribution;
 
 typedef struct {

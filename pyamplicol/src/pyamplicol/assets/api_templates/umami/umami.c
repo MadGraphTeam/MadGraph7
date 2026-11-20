@@ -111,6 +111,14 @@ static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t proces
                     (rusticol_runtime_color_id(runtime, entry->color_axis, name, sizeof(name),
                         &required) != RUSTICOL_STATUS_OK ||
                      strcmp(name, entry->color_id) != 0)) return false;
+                /* the core's crossing of the assignment (NULL signs: uncrossed) */
+                int32_t signs[64];
+                if (rusticol_runtime_assignment_momentum_signs(runtime, entry->assignment,
+                        signs, 64, &required) != RUSTICOL_STATUS_OK ||
+                    required != umami_provider.particle_count) return false;
+                for (size_t leg = 0; leg < required; ++leg)
+                    if (signs[leg] != (entry->momentum_signs == NULL
+                                           ? 1 : entry->momentum_signs[leg])) return false;
             }
         }
     return true;
@@ -440,11 +448,16 @@ static UmamiStatus evaluate_points(Instance *instance, UmamiContribution const *
     RusticolRuntimeHandle *runtime = instance->runtimes[process];
     size_t n = umami_provider.particle_count;
     double *batch = instance->batch;
-    for (size_t i = 0; i < count; ++i)
-        for (size_t j = 0; j < n; ++j)
+    for (size_t i = 0; i < count; ++i) {
+        signed char const *signs = entries[i]->momentum_signs;
+        for (size_t j = 0; j < n; ++j) {
+            /* crossed members read sign-flipped momenta (q = sigma p) */
+            double sign = signs == NULL ? 1.0 : (double)signs[j];
             for (size_t k = 0; k < 4; ++k)
-                batch[4*(n*i + j) + k] =
+                batch[4*(n*i + j) + k] = sign *
                     momenta[events[i] + stride * (n*k + entries[i]->permutation[j])];
+        }
+    }
     double previous_real = 0.0, previous_imaginary = 0.0;
     bool changed = false;
     UmamiStatus status;

@@ -1025,3 +1025,224 @@ def test_writer_exports_only_ungenerated_group_members(tmp_path):
         for m in row["members"]
     }
     assert runtimes == {"a": "a", "b": "b", "m": "a"}
+
+
+# Crossed flavour-union members: g g > u u~ through the template u g > u g.
+def _all_helicities(p, count):
+    template = p.physics["helicities"][0]
+    vectors = [
+        [1 - 2 * ((index >> (count - 1 - leg)) & 1) for leg in range(count)]
+        for index in range(2**count)
+    ]
+    p.physics["helicities"][:] = [
+        {
+            **template,
+            "id": "h:" + ",".join(f"{v:+d}" for v in values),
+            "representative_id": "h:" + ",".join(f"{v:+d}" for v in values),
+            "values": values,
+        }
+        for values in vectors
+    ]
+    return p
+
+
+def crossed_member(identifier, pdgs, permutation, sigma, rho):
+    return GroupMember(
+        process_id=identifier,
+        expression=identifier,
+        pdgs=tuple(pdgs),
+        initial_count=2,
+        permutation=tuple(permutation),
+        basis=GroupingBasis.FLAVOUR_UNION,
+        generated=False,
+        patterns=(0,),
+        pattern_signs=(1,),
+        crossing_momentum_signs=tuple(sigma),
+        crossing_helicity_signs=tuple(rho),
+    )
+
+
+CROSSED_GG = dict(
+    pdgs=(990, 990, 991, -991),
+    permutation=(3, 0, 2, 1),
+    sigma=(-1, 1, 1, -1),
+    rho=(-1, 1, 1, 1),
+)
+
+
+def crossed_template(**member):
+    a = _all_helicities(quark_gluon(), 4)
+    m = crossed_member("m", **{**CROSSED_GG, **member})
+    return replace(a, group_members=(m,), union_pattern_count=1), m
+
+
+def _runtimes(data, process_id):
+    return [
+        m["runtime"]
+        for row in entries(data)
+        for m in row["members"]
+        if m["process_id"] == process_id
+    ]
+
+
+def test_crossed_union_member_carries_momentum_signs_and_its_own_labels():
+    a, m = crossed_template()
+    (data,) = export(a)  # one provider: the template's helicity domain is m's
+    assert data["schema_version"] == 5
+    runtime_values = [h["values"] for h in a.physics["helicities"]]
+    member_runtimes = _runtimes(data, "m")
+    assert len(member_runtimes) == 2
+    for runtime in member_runtimes:
+        assert runtime["momentum_signs"] == [-1, 1, 1, -1]
+        assert runtime["permutation"] == [3, 0, 2, 1]
+        assert runtime["assignment"] == 1 and runtime["assignment_key"] == "m"
+        assert "_helicity_signs" not in runtime
+        # lambda_M[pi_r] = rho_r lambda_T[r]
+        expected = []
+        for values in runtime_values:
+            vector = [0] * 4
+            for slot, leg in enumerate(m.permutation):
+                vector[leg] = m.crossing_helicity_signs[slot] * values[slot]
+            expected.append(vector)
+        assert [data["helicities"][i] for i in runtime["helicity_export"]] == expected
+    for row in entries(data):
+        signs = [row["runtime"].get("momentum_signs")]
+        signs += [x["runtime"].get("momentum_signs") for x in row["members"]]
+        assert len(set(map(str, signs))) == 1  # never merged across crossings
+    assert all(
+        "momentum_signs" not in runtime for runtime in _runtimes(data, "a")
+    )
+    # the member's colour tags are those of g g > u u~ exported on its own
+    reference = _all_helicities(
+        process("m", pdgs=m.pdgs, words=((3, 1, 2, 4), (3, 2, 1, 4))), 4
+    )
+    assert physical_flows(data, "m") == physical_flows(export(reference)[0], "m")
+    header = umami_bundle_payloads(processes=[a], compiled_model=model())
+    text = next(p.content for p in header if p.path.endswith("provider_p0.h")).decode()
+    assert "_momentum_signs[] = {-1, 1, 1, -1};" in text
+    assert text.count("_momentum_signs}") == 2
+
+
+def test_uncrossed_union_metadata_stays_schema_4():
+    a = _all_helicities(quark_gluon(), 4)
+    member = replace(
+        crossed_member("d", (992, 990, 992, 990), (0, 1, 2, 3), (-1,) * 4, (1,) * 4),
+        crossing_momentum_signs=None,
+        crossing_helicity_signs=None,
+    )
+    (data,) = export(replace(a, group_members=(member,), union_pattern_count=1))
+    assert data["schema_version"] == 4
+    assert "momentum_signs" not in json.dumps(data)
+
+
+def test_crossed_member_refusals():
+    with pytest.raises(ValueError, match="disagree with its legs"):
+        export(crossed_template(sigma=(-1, 1, -1, 1), rho=(1, 1, 1, 1))[0])
+    resonant, _ = crossed_template()
+    resonant.physics["extensions"]["s_channel_resonances"] = [
+        {"pdg": 995, "labels": [3, 4], "color": 1}
+    ]
+    with pytest.raises(ValueError, match="s-channel resonances"):
+        export(resonant)
+    a = _all_helicities(quark_gluon(), 4)
+    side_changing = blind_member("x", CROSSED_GG["pdgs"], CROSSED_GG["permutation"])
+    with pytest.raises(ValueError, match="must keep initial legs initial"):
+        export(replace(a, group_members=(side_changing,)))
+
+
+def test_crossed_member_does_not_reuse_a_replay_across_its_sides():
+    # u g > u g g with a proven swap of the final gluons; g g > u u~ g takes
+    # one of them from its initial state, the other from its final state
+    words = ((3, 2, 4, 5, 1), (3, 2, 5, 4, 1))
+    a = _all_helicities(process("a", pdgs=(991, 990, 991, 990, 990), words=words), 5)
+    sectors = tuple(
+        {"id": index, "kind": "single-line", "word_labels": list(word)}
+        for index, word in enumerate(words)
+    )
+    a.physics["extensions"]["lc_topology_replay"] = {
+        "partitions": [
+            {
+                "representative_sector_id": 0,
+                "active_sector_ids": [0, 1],
+                "label_permutations": [
+                    [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]],
+                    [[1, 1], [2, 2], [3, 3], [4, 5], [5, 4]],
+                ],
+                "replay_weights": [1, 1],
+                "proof": {"status": "proven"},
+            }
+        ]
+    }
+    m = crossed_member(
+        "m",
+        (990, 990, 991, -991, 990),
+        (3, 0, 2, 1, 4),
+        (-1, 1, 1, -1, 1),
+        (-1, 1, 1, 1, 1),
+    )
+    a = replace(a, color_sectors=sectors, group_members=(m,), union_pattern_count=1)
+    (data,) = export(a)
+    template = {r["color_id"] for r in _runtimes(data, "a")}
+    assert template == {"flow:3,2,4,5,1"}  # the template replays its swap
+    member = {r["color_id"]: r["permutation"] for r in _runtimes(data, "m")}
+    assert member == {
+        "flow:3,2,4,5,1": [3, 0, 2, 1, 4],
+        "flow:3,2,5,4,1": [3, 0, 2, 1, 4],
+    }
+
+
+def test_otf_restore_and_append_keep_crossed_records(tmp_path):
+    from pyamplicol.generation.artifact_writer import _write_umami_bundle
+
+    a, m = crossed_template()
+    (data,) = export(a)
+    assert export(restore_umami_on_the_fly_input(a, [data])) == (data,)
+    # the writer: a stored process-group map, then an append of compact physics
+    groups = ProcessGroupMap()
+    groups.add_group(
+        [GroupMember.identity(GroupingProcess("a", "a", a.external_pdgs, 2)), m],
+        (((2, 0),),),
+    )
+    stored = ProcessGroupMap.from_json(groups.to_json())
+    path = tmp_path / "processes/a/physics.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(a.physics), encoding="utf-8")
+    record = {
+        "id": "a",
+        "expression": "a",
+        "color_accuracy": "lc",
+        "external_pdgs": list(a.external_pdgs),
+        "physics_path": "processes/a/physics.json",
+    }
+    written = {}
+    builder = SimpleNamespace(
+        staged_path=lambda p: tmp_path / p,
+        read_staged=lambda p: (tmp_path / p).read_bytes(),
+        payload_records=lambda: [],
+        add_bytes=lambda p, content, **kwargs: written.__setitem__(p, content),
+    )
+    calls = []
+    for compact in (False, True):
+        if compact:
+            (tmp_path / "API/umami").mkdir(parents=True)
+            (tmp_path / "API/umami/metadata.json").write_bytes(
+                written["API/umami/metadata.json"]
+            )
+            physics = {
+                k: v
+                for k, v in a.physics.items()
+                if k not in {"helicities", "color_components"}
+            }
+            physics["kind"] = "pyamplicol-on-the-fly-public-metadata"
+            path.write_text(json.dumps(physics), encoding="utf-8")
+        _write_umami_bundle(
+            builder,
+            processes=(),
+            process_records=[record],
+            compiled_model=SimpleNamespace(to_dict=model),
+            process_groups=stored,
+        )
+        calls.append(json.loads(written["API/umami/metadata.json"]))
+    assert calls[0]["schema_version"] == 5
+    assert _runtimes(calls[1], "m") == _runtimes(calls[0], "m")
+    assert calls[1] == calls[0]

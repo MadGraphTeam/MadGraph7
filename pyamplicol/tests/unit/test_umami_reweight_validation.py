@@ -28,6 +28,7 @@ def _process(identifier="proc"):
 def _document(provider_id="p0", permutation=(0, 1, 2, 3), process_index=0):
     return {
         "kind": "pyamplicol-umami-metadata",
+        "schema_version": 4,
         "provider": {
             "id": provider_id,
             "particle_count": 4,
@@ -208,3 +209,39 @@ def test_switch_rejects_partons_with_massless_and_massive_slots():
     )
     with pytest.raises(ValueError, match="massless and massive slots"):
         switch_catalogue(reference, None, 2)
+
+
+@pytest.mark.parametrize(
+    ("version", "signs", "message"),
+    [
+        (3, None, "unsupported UMAMI metadata schema version 3"),
+        (None, None, "unsupported UMAMI metadata schema version None"),
+        (4, [-1, 1, 1, -1], "schema 4 cannot carry momentum signs"),
+        (5, [-1, 1, 1, -1], None),
+        (5, None, None),
+    ],
+)
+def test_metadata_schema_versions(tmp_path, version, signs, message):
+    document = _document()
+    if version is None:
+        del document["schema_version"]
+    else:
+        document["schema_version"] = version
+    if signs is not None:
+        document["channels"][0]["processes"][0]["runtime"]["momentum_signs"] = signs
+    artifact = _write(tmp_path / "a", document)
+    if message is None:
+        assert load_umami_metadata(artifact) == [document]
+    else:
+        with pytest.raises(ValueError, match=message):
+            load_umami_metadata(artifact)
+
+
+def test_reweight_refuses_crossed_members(tmp_path):
+    crossed = _document()
+    crossed["schema_version"] = 5
+    crossed["channels"][0]["processes"][0]["runtime"]["momentum_signs"] = [-1, 1, 1, -1]
+    lc = _write(tmp_path / "lc", crossed)
+    full = _write(tmp_path / "full", _document())
+    with pytest.raises(ValueError, match="do not support crossed flavour-union"):
+        write_reweight_provider(lc, full, tmp_path / "out")
