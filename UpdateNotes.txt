@@ -5,6 +5,11 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   TH: [amplicol] flavour unions are on by default (MG option amplicol_flavor_unions):
+       the flavours that differ only in massless quark flavours are evaluated by one
+       template program, with the same events (up to rounding) as one program per
+       flavour class.
+       'set amplicol_flavor_unions False' before 'output' turns them off.
    OM: color_basis ddm (and auto, for the outputs where auto picks it): the (n-2)!
        Del Duca-Dixon-Maltoni colour basis is now also used when the gluons come with
        colour singlets, e.g. g g > h + n g in the Higgs effective theory (any number of

@@ -46,12 +46,12 @@ class TestGenerationInProcess(unittest.TestCase):
         jobs = []
         entries = self.run_export(lambda job: jobs.append(job) or [])
         self.assertEqual(entries, [])
-        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': False}])
+        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': True}])
 
-    def test_flavor_unions_are_opt_in(self):
+    def test_flavor_unions_can_be_turned_off(self):
         jobs = []
-        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=True)
-        self.assertTrue(jobs[0]['flavor_unions'])
+        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False)
+        self.assertFalse(jobs[0]['flavor_unions'])
 
     def test_flavor_unions_apply_to_both_colour_artifacts(self):
         from madgraph.iolibs import amplicol_generation

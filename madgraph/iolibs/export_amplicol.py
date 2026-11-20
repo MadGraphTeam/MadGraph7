@@ -581,7 +581,7 @@ def export_amplicol_processes(*args, **kwargs):
 
 
 def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
-                               interactive=None, jobs=None, flavor_unions=False):
+                               interactive=None, jobs=None, flavor_unions=True):
     """The body of export_amplicol_processes. ``interactive`` and ``jobs`` are
     those of the pyamplicol installation, see bootstrap.ensure_pyamplicol;
     ``flavor_unions`` generates the LC and full-colour artifacts with flavour-union

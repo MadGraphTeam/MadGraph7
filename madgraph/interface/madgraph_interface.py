@@ -4339,7 +4339,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'color_basis': 'auto',
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False,
-                          'amplicol_flavor_unions': False
+                          'amplicol_flavor_unions': True
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -13800,7 +13800,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     def set2_amplicol_flavor_unions(self, args, log=True):
         """Set whether the leading- and full-colour [amplicol] artifacts evaluate
         the flavours of a quark-flavour union through one template (pyamplicol
-        process.flavor_unions, experimental). Default: False
+        process.flavor_unions). Default: True; set it to False for one program
+        per flavour class (the events are the same either way).
         """
         args = ['amplicol_flavor_unions'] + args
         self.check_set(args)

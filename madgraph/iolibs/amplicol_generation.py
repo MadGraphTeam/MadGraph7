@@ -182,7 +182,7 @@ def generate_child(job):
     generate_artifact(pyamplicol, job['artifact'], job['accuracy'], job['process'],
                       pyamplicol.ModelSource.from_path(job['model']),
                       workers=job['workers'],
-                      flavor_unions=job.get('flavor_unions', False))
+                      flavor_unions=job.get('flavor_unions', True))
 
 
 class ArtifactProcess(object):
@@ -243,7 +243,7 @@ def generate(job):
     providers = []
     for process in job['processes']:
         path = process['path']
-        flavor_unions = job.get('flavor_unions', False)
+        flavor_unions = job.get('flavor_unions', True)
         if concurrent:
             full = ArtifactProcess(os.path.join(path, 'full'), 'full', process,
                                    job['model']['cache'], budget // 2,

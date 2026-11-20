@@ -486,6 +486,12 @@ leading-colour matrix element, summed over the colour orderings, at the helicity
 event. These subprocesses run on CPUs only, and MG7 does not turn MLM merging on by itself
 for an output that has them.
 
+The AmpliCol programs of an output evaluate the flavours that differ only in massless
+quark flavours through one flavour-union template (the MG option
+``amplicol_flavor_unions``, on by default). The events are the same, up to rounding, as
+with one program per flavour class, which ``set amplicol_flavor_unions False`` before
+``output`` generates instead.
+
 ``color_accuracy`` (``"full"``)
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
     leading-colour events and skips the second pass.
