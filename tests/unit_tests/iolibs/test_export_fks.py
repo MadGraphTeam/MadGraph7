@@ -489,10 +489,20 @@ class TestFKSOutput(unittest.TestCase):
 
     def test_w_nlo_gen_qcd(self):
         """check that the new (memory and cpu efficient) and old generation
-        mode at NLO give the same results for p p > e+ ve [QCD]
+        mode at NLO give the same results for p p > e+ ve [QCD], including
+        the private DP terminal updaters of the loop directories, which the
+        processes writing the directories leave for the parent to prove
         """
-        self.assert_same_output(*self.output_both_modes(
-                ['generate p p > e+ ve QED^2=4 QCD^2=0 [QCD]'], 'W'))
+        outputs = self.output_both_modes(
+                ['generate p p > e+ ve QED^2=4 QCD^2=0 [QCD]'], 'W')
+        for output in outputs:
+            batches = glob.glob(os.path.join(output, 'SubProcesses', 'P*', 'V*',
+                                             'coef_construction_*.f'))
+            self.assertTrue(batches)
+            for batch in batches:
+                with open(batch) as stream:
+                    self.assertIn('CALL DP_TERMINAL_WL_1_1(', stream.read(), batch)
+        self.assert_same_output(*outputs)
 
 
 #    @test_manager.bypass_for_py3

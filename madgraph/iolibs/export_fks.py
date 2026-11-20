@@ -1025,6 +1025,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         fcompiler_chosen = self.set_fortran_compiler(compiler_dict)
         ccompiler_chosen = self.set_cpp_compiler(compiler_dict['cpp'])
 
+        # Every source and build recipe of the loop directories now exists:
+        # keep the private DP terminal updaters only where the rendered proof
+        # succeeds (optimized output), before the export is packed below.
+        finalize_dp_terminal = getattr(self, 'finalize_dp_terminal_updates', None)
+        if finalize_dp_terminal:
+            finalize_dp_terminal()
+
         old_pos = os.getcwd()
         os.chdir(os.path.join(self.dir_path, 'SubProcesses'))
         P_dir_list = [proc for proc in os.listdir('.') if os.path.isdir(proc) and \

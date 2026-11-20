@@ -119,15 +119,31 @@ class DPTerminalSelectionTest(unittest.TestCase):
                     with self.subTest(rank=rank, vertex_rank=vertex_rank):
                         self.assertEqual(set(exporter.get_dp_terminal_wavefunctions(matrix)), wanted)
 
-    def test_custom_vector_nlo_and_unknown_shapes_stay_dense(self):
+    def test_mcatnlo_exporter_is_selected(self):
+        from madgraph.iolibs.export_fks import ProcessOptimizedExporterFortranFKS
+        exporter, matrix = self.exporter(ProcessOptimizedExporterFortranFKS)
+        with patch.object(Writer, 'get_terminal_wavefunctions', return_value=dict(EXPECTED)):
+            self.assertEqual(exporter.get_dp_terminal_wavefunctions(matrix), EXPECTED)
+
+    def test_custom_vector_madevent_loopinduced_and_unknown_shapes_stay_dense(self):
+        from madgraph.iolibs import export_fks
+        from madgraph.loop import loop_exporters
         class CustomExporter(Exporter):
             pass
-        for setting in ('subclass', 'vector', 'nlo', 'loopinduced', 'shape', 'identifier'):
+        # Other layouts and recipes: the MC@NLO standalone variants, the
+        # MadEvent loop-induced output (vectorized MadEvent context) and any
+        # subclass the rendered proof does not know.
+        others = {'subclass': CustomExporter,
+                  'fks_standalone': export_fks.ProcessExporterFortranFKS_SA,
+                  'ewsudakov': export_fks.ProcessExporterEWSudakovSA,
+                  'madevent_group': loop_exporters.LoopInducedExporterMEGroup,
+                  'madevent_nogroup': loop_exporters.LoopInducedExporterMENoGroup}
+        for setting in tuple(others) + ('vector', 'madevent', 'loopinduced', 'shape', 'identifier'):
             with self.subTest(setting=setting):
-                exporter, matrix = self.exporter(CustomExporter if setting == 'subclass' else Exporter)
+                exporter, matrix = self.exporter(others.get(setting, Exporter))
                 if setting == 'vector':
                     exporter.opt['vector_size'] = 4
-                elif setting == 'nlo':
+                elif setting == 'madevent':
                     exporter.get_context = lambda matrix: {'MadEventOutput': True}
                 elif setting == 'loopinduced':
                     matrix.get.return_value = [{'has_born': False}]

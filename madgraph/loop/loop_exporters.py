@@ -2435,8 +2435,15 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         return calls
 
     def get_dp_terminal_wavefunctions(self, matrix_element):
-        """Select the qualified standalone DP diagonal rank/shape pairs."""
-        if (type(self) is not LoopProcessOptimizedExporterFortranSA or
+        """Select the qualified DP diagonal rank/shape pairs.
+
+        Only the layouts the rendered proof knows: standalone and MC@NLO
+        output of processes with a Born. Subclasses with other templates or
+        build recipes keep the dense updaters.
+        """
+        from madgraph.iolibs import export_fks
+        if (type(self) not in (LoopProcessOptimizedExporterFortranSA,
+                               export_fks.ProcessOptimizedExporterFortranFKS) or
                 self.opt.get('vector_size') or
                 self.get_context(matrix_element)['MadEventOutput'] or
                 not matrix_element.get('processes')[0].get('has_born') or

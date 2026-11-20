@@ -827,5 +827,199 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
         self.assertFalse(self.validate(fixture))
 
 
+    def test_reducer_include_definitions_only_add_include_directories(self):
+        template = (Path(__file__).resolve().parents[3] /
+            'Template/loop_material/StandAlone/SubProcesses/MadLoop_makefile_definitions.inc').read_text()
+        values = dict(link_tir_libs='-L/opt/lib -lninja', tir_libs='$(LIBDIR)libiregi.$(libext)',
+                      tir_dylibs='', prefix='P', doto='%.o', dotf='%.f', rpaths_libs='')
+        for index, (include, accepted) in enumerate(
+                (('-I /opt/include -I$(LIBDIR)', True), ('', True),
+                 ('-I /opt/include -ffast-math', False), ('-I', False))):
+            with self.subTest(include=include):
+                export = self.work / ('definitions_%d' % index)
+                fixture = self.fixture(directory=export / 'SubProcesses/P0_test')
+                (export / 'Source').mkdir()
+                (export / 'SubProcesses/MadLoop_makefile_definitions').write_text(
+                    template % dict(values, tir_include=include))
+                self.assertEqual(self.validate(fixture), accepted)
+
+    # MC@NLO output: the loop directory SubProcesses/P*/V* of an FKS export.
+
+    def fks_fixture(self):
+        """A minimal MC@NLO export, its recipes rendered as the exporter does."""
+        self.counter += 1
+        export = self.work / ('fks_%d' % self.counter)
+        subprocesses = export / 'SubProcesses'
+        loop = subprocesses / 'P0_test' / 'V0_test'
+        fixture = self.fixture('', directory=loop)
+        repository = Path(__file__).resolve().parents[3]
+        nlo = repository / 'Template/NLO'
+        (subprocesses / 'makefile_fks_dir').write_text(
+            (nlo / 'SubProcesses/makefile_fks_dir').read_text())
+        (subprocesses / 'makefile_loop').write_text(
+            (nlo / 'SubProcesses/makefile_loop.inc').read_text() % dict(
+                link_tir_libs='-L/opt/reducers/lib/ -lninja',
+                tir_libs='$(LIBDIR)libiregi.$(libext)',
+                tir_include='-I /opt/reducers/include', dotf='%.f', doto='%.o'))
+        (subprocesses / 'P0_test/makefile').symlink_to('../makefile_fks_dir')
+        (loop / 'makefile').symlink_to('../../makefile_loop')
+        (subprocesses / 'proc_characteristics').write_text(
+            '#  Information about the process  #\n has_loops = True \n colored_pdgs = [1, 2] \n')
+        (subprocesses / 'BinothLHA.f').write_text(
+            '      SUBROUTINE BINOTH_LHA(P)\n      CALL SLOOPMATRIX_THRES(P)\n      END\n')
+        (subprocesses / 'P0_test/BinothLHA.f').symlink_to('../BinothLHA.f')
+        (subprocesses / 'P0_test/run_card.inc').symlink_to('../../Source/run_card.inc')
+        source = export / 'Source'
+        (source / 'MODEL').mkdir(parents=True)
+        model = (repository / 'madgraph/models/template_files/fortran/makefile_madevent').read_text()
+        (source / 'MODEL/makefile').write_text(
+            model.replace('madevent', 'aMCatNLO').replace('../vector.inc', ''))
+        (source / 'make_opts').write_text(
+            (nlo / 'Source/make_opts.inc').read_text() % dict(link_tir_libs=' -lninja '))
+        (source / 'makefile').write_text((nlo / 'Source/makefile').read_text())
+        return fixture
+
+    def test_mcatnlo_loop_directory_accepted(self):
+        self.assertTrue(self.validate(self.fks_fixture()))
+
+    def test_mcatnlo_other_sources_cannot_name_the_loop_storage(self):
+        mentions = {
+            'common.f': '      SUBROUTINE X()\n      COMMON/WL/A\n      END\n',
+            'blanks.f': '      SUBROUTINE X()\n      COMMON / W L / A\n      END\n',
+            'continued.f': '      SUBROUTINE X()\n      COMMON /W\n     $L/ A\n      END\n',
+            'tabbed.f': '      SUBROUTINE X()\n      COMMON /W\n\t1L/ A\n      END\n',
+            'free.f90': 'subroutine x()\ncommon /w&\n&l/ a\nend subroutine\n',
+            'merge.f': '      SUBROUTINE X()\n      CALL MERGE_WL(A,B,C,D,E)\n      END\n',
+            'private.f': '      SUBROUTINE X()\n      CALL DP_TERMINAL_WL_1_1(A)\n      END\n',
+            'update.f': '      SUBROUTINE UPDATE_WL_1_1(A)\n      END\n',
+            'module.f90': 'subroutine x()\nuse polynomial_constants\nend subroutine\n',
+            'bound.f90': "module m\nreal :: a\ncommon /c/ a\nbind(c, name='wl_') :: /c/\nend module\n",
+            'comment.f': 'C     reads CREATE_LOOP_COEFS\n      SUBROUTINE X()\n      END\n',
+            'symbol.h': 'extern double wl_[];\n',
+            'spliced.h': 'extern double w\\\nl_[];\n',
+        }
+        for name, text in mentions.items():
+            with self.subTest(name=name):
+                fixture = self.fks_fixture()
+                (fixture[0].parent / name).write_text(text)
+                self.assertFalse(self.validate(fixture))
+        for folder in ('Source', 'FixedOrderAnalysis', 'SubProcesses'):
+            with self.subTest(folder=folder):
+                fixture = self.fks_fixture()
+                (fixture[0].parents[2] / folder).mkdir(exist_ok=True)
+                (fixture[0].parents[2] / folder / 'user.f').write_text(mentions['common.f'])
+                self.assertFalse(self.validate(fixture))
+        fixture = self.fks_fixture()
+        (fixture[0].parent / 'binding.f90').write_text(
+            'integer function f() bind(c, name="get_info_len")\nf=1\nend function\n')
+        self.assertTrue(self.validate(fixture))
+
+    def test_mcatnlo_includes_are_followed_into_any_file(self):
+        fixture = self.fks_fixture()
+        process = fixture[0].parent
+        (process / 'hidden.txt').write_text('      COMMON/WL/A\n')
+        (process / 'user.f').write_text("      SUBROUTINE X()\n      INCLUDE 'hidden.txt'\n      END\n")
+        self.assertFalse(self.validate(fixture))
+        for include in ("      INCLUDE 'V0_test/coef_specs.inc'\n",
+                        "      INCLUDE '/etc/hosts'\n", '#include "V0_test/coef_specs.inc"\n'):
+            with self.subTest(include=include):
+                fixture = self.fks_fixture()
+                (fixture[0].parent / 'user.f').write_text('      SUBROUTINE X()\n' + include + '      END\n')
+                self.assertFalse(self.validate(fixture))
+        fixture = self.fks_fixture()
+        (fixture[0].parent / 'user.h').write_text('#include "deep.txt"\n')
+        (fixture[0].parent / 'deep.txt').write_text('double wl_;\n')
+        self.assertFalse(self.validate(fixture))
+
+    def test_mcatnlo_c_units_must_be_generator_templates(self):
+        template = (Path(__file__).resolve().parents[3] /
+                    'Template/NLO/SubProcesses/fastjetfortran_madfks_core.cc')
+        fixture = self.fks_fixture()
+        (fixture[0].parent / template.name).write_bytes(template.read_bytes())
+        self.assertTrue(self.validate(fixture))
+        for name, text in ((template.name, template.read_bytes() + b'\n// local change\n'),
+                           ('user.c', b'int f(void) { return 1; }\n'),
+                           ('user.F90', b'subroutine x()\nend subroutine\n')):
+            with self.subTest(name=name):
+                fixture = self.fks_fixture()
+                (fixture[0].parent / name).write_bytes(text)
+                self.assertFalse(self.validate(fixture))
+
+    def test_mcatnlo_only_the_linked_loop_directory_is_proved(self):
+        fixture = self.fks_fixture()
+        (fixture[0].parent / 'V1_other').mkdir()
+        self.assertFalse(self.validate(fixture))
+        fixture = self.fks_fixture()
+        (fixture[0].parent / 'alias').symlink_to('V0_test')
+        self.assertFalse(self.validate(fixture))
+        # Another process directory's loop library is never linked here.
+        fixture = self.fks_fixture()
+        other = fixture[0].parents[1] / 'P1_other/V1_other'
+        other.mkdir(parents=True)
+        (other / 'coef_construction_1.f').write_text(
+            '      SUBROUTINE X()\n      COMMON/WL/A\n      END\n')
+        self.assertTrue(self.validate(fixture))
+
+    def test_mcatnlo_build_recipes_are_the_generator_templates(self):
+        def edit(path, old, new):
+            text = path.read_text()
+            self.assertIn(old, text)
+            path.write_text(text.replace(old, new, 1))
+        cases = {
+            'loop include flags': ('SubProcesses/makefile_loop', '-I /opt/reducers/include',
+                                   '-I /opt/reducers/include -ffast-math'),
+            'loop recipe': ('SubProcesses/makefile_loop', 'all: cleanlib',
+                            'extra.o: extra.f\nall: cleanlib'),
+            'loop link': ('SubProcesses/makefile_loop', '-lninja', '-lninja $(shell true)'),
+            'process recipe': ('SubProcesses/makefile_fks_dir', 'clean:', 'FFLAGS += -O0\nclean:'),
+            'compiler variable': ('Source/make_opts', '#end_of_make_opts_variables',
+                                  'FFLAGS = -O3\n#end_of_make_opts_variables'),
+            'compiler recipe': ('Source/make_opts', 'FFLAGS = -O', 'FFLAGS = -Ofast'),
+            'reducer link': ('Source/make_opts', ' -lninja ', ' -lninja ../evil.o '),
+            'model recipe': ('Source/MODEL/makefile', 'aMCatNLO', 'madevent'),
+            'characteristics': ('SubProcesses/proc_characteristics', ' has_loops = True ',
+                                ' libmadloop = other.a '),
+        }
+        for name, (path, old, new) in cases.items():
+            with self.subTest(case=name):
+                fixture = self.fks_fixture()
+                edit(fixture[0].parents[2] / path, old, new)
+                self.assertFalse(self.validate(fixture))
+        repository = Path(__file__).resolve().parents[3]
+        fixture = self.fks_fixture()
+        pdf = fixture[0].parents[2] / 'Source/PDF'
+        pdf.mkdir()
+        (pdf / 'makefile').write_text((repository / 'Template/NLO/Source/PDF/makefile').read_text())
+        self.assertTrue(self.validate(fixture))
+        (pdf / 'makefile').write_text('all:\n\t$(FC) -c ../../MCatNLO/evil.f\n')
+        self.assertFalse(self.validate(fixture))
+
+    def test_mcatnlo_born_support_recipe_has_the_generator_grammar(self):
+        rules = ('PROVIDER_OBJECTS = p1/matrix.o c1/metadata.o\n'
+                 'DEPENDENCY_OBJECTS = deps/helas_FFV1_0.o\n'
+                 'deps/helas_FFV1_0.f: refresh_dependency.py ../DHELAS/FFV1_0.f ../DHELAS/coef_specs.inc\n'
+                 '\t$(PYTHON) refresh_dependency.py ../DHELAS/FFV1_0.f $@\n'
+                 'p1/matrix.o: deps/helas_FFV1_0.o\n')
+        for text, accepted in ((rules, True), (rules + 'EXTRA = $(shell true)\n', False),
+                               (rules + '\t$(FC) -c ../../MCatNLO/evil.f\n', False)):
+            with self.subTest(accepted=accepted):
+                fixture = self.fks_fixture()
+                support = fixture[0].parents[2] / 'Source/BornSupport'
+                support.mkdir()
+                (support / 'providers.mk').write_text(text)
+                self.assertEqual(self.validate(fixture), accepted)
+
+    def test_mcatnlo_trusted_and_launch_generated_sources(self):
+        fixture = self.fks_fixture()
+        stdhep = fixture[0].parents[2] / 'Source/StdHEP'
+        stdhep.mkdir()
+        (stdhep / 'shower.f').write_text('      SUBROUTINE X()\n      COMMON/WL/A\n      END\n')
+        self.assertTrue(self.validate(fixture))
+        # run_card.inc is written at launch; any other missing source is not.
+        fixture = self.fks_fixture()
+        (fixture[0].parent / 'cuts.inc').symlink_to('../missing.inc')
+        self.assertFalse(self.validate(fixture))
+
+
 if __name__ == '__main__':
     unittest.main()
