@@ -421,9 +421,8 @@ def contract_from_generation(me_dir, run_card, proc_characteristics,
         mcatnlo_delta=bool(value('mcatnlo_delta', False)),
         ickkw=ickkw,
         ptj=value('ptj', 0.),
-        # ConfigFile.get takes no default
-        max_n_matched_jets=dict.get(proc_characteristics or {},
-                                    'max_n_matched_jets', -1),
+        max_n_matched_jets=(proc_characteristics or {}).get(
+            'max_n_matched_jets', -1),
         shower_scale_factor=value('shower_scale_factor', 1.),
         lpp1=value('lpp1', 1),
         lpp2=value('lpp2', 1),
