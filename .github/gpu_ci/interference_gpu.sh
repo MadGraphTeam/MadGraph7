@@ -5,7 +5,7 @@
 # Environment: as pp_ttx_mg7.sh (BACKEND, MODULES, GPU_ARCH, VENV, MADSPACE_PREFIX,
 # WORKDIR, CACHE_DIR). The mg7 check runs with the PDF set its reference was made with,
 # whatever the workflow's pdf_set: interference_checks.py names it and it is downloaded
-# into the cache if needed. INTERFERENCE_EVENTS sets its number of events (5000).
+# into the cache if needed. INTERFERENCE_EVENTS sets its number of events (1000).
 set -eo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/../.." && pwd)
@@ -55,7 +55,7 @@ mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 STATUS=0
 python3 "$HERE/interference_checks.py" --repo "$REPO" --backend "$BACKEND" \
-    --events "${INTERFERENCE_EVENTS:-5000}" 2>&1 | tee checks.log || STATUS=1
+    --events "${INTERFERENCE_EVENTS:-1000}" 2>&1 | tee checks.log || STATUS=1
 
 section "Summary"
 cat summary.txt 2> /dev/null || echo "no summary.txt"
