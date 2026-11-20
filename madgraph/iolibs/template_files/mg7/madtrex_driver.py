@@ -342,7 +342,7 @@ def default_output_path(events_path: str) -> str:
 # reweighting doesn't need MadGraph's card machinery. MadGraph always writes
 # every entry out, so these only matter for hand-written cards.
 _RUN_CARD_DEFAULTS = {
-    "run": {"device": ["cpu"], "cpu_mode": "auto", "precision": "color32"},
+    "run": {"device": ["cpu"], "cpu_mode": "auto", "precision": "denom64"},
     "beam": {
         "leptonic": False,
         "pdf1": "NNPDF40_lo_as_01180",
@@ -531,7 +531,7 @@ def _generation_param_card(process_directory: str, events_path: str, param_card:
 
 def _check_stored_matrix_elements(events_path: str, init_meta, process_directory: str,
                                   param_card: str, devices: list[str], fptype: str,
-                                  sample: int = 32, rel_tol: float = 1e-6,
+                                  sample: int = 32, rel_tol: float | None = None,
                                   card_label: str = "") -> None:
     """Re-evaluates the original matrix element (helicity-summed, with
     param_card, at fptype) for a sample of the events of events_path whose
@@ -541,8 +541,11 @@ def _check_stored_matrix_elements(events_path: str, init_meta, process_directory
     changing nothing normalised by the stored ones gives the ratio of the
     two as its weight over the event weight. rel_tol leaves room for an MLM
     run's stored matrix elements, which are the first evaluation rescaled to
-    the event's alpha_s rather than evaluated again (about 1e-7 apart at the
-    mixed fptype)."""
+    the event's alpha_s rather than evaluated again: about 1e-7 apart with
+    FP64 amplitudes (fptype d, m, e), a few 1e-6 with FP32 ones (f, v); the
+    default rel_tol is 1e-6, resp. 1e-5."""
+    if rel_tol is None:
+        rel_tol = 1e-5 if fptype in ("f", "v") else 1e-6
     if not events_path.endswith(".npy"):
         return
     import numpy as np  # only here: LHE events need no numpy

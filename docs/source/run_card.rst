@@ -55,11 +55,22 @@ fixed parameters. Their entries are described below.
     ``auto`` picks ``simd_512``, then ``simd_256`` on x86. On ARM it picks ``scalar``,
     because the vectorized mode is currently slower there.
 
-``precision`` (``"color32"``)
+``precision`` (``"denom64"``)
     Floating-point precision of the matrix elements. ``all64`` and ``all32`` use double and
     single precision throughout. ``color32`` evaluates the color algebra in single precision
-    and everything else in double precision. ``denom64`` keeps the momenta and propagator
-    denominators in double precision and uses single precision elsewhere.
+    and everything else in double precision. ``denom64``, the default, keeps the momenta and
+    propagator denominators in double precision and uses single precision elsewhere.
+
+``precision_check`` (``0.01``)
+    Fraction of the events evaluated again with the matrix elements in ``all64``, to check
+    the precision of a run in any other precision. The run then also builds an ``all64``
+    CPU library of each subprocess and, once the events are written, compares the two at
+    the momenta of the first events of the output (at most 1000 of them, hidden entry
+    ``precision_check_max_events``). The mean, ``|M|^2``-weighted and maximal relative
+    deviations are logged and written to ``Events/<run>/precision_check.json``; the run
+    warns when an event deviates by more than ``1e-3`` (hidden entry
+    ``precision_check_threshold``) or is not finite, in which case ``all64`` or ``color32``
+    is the safer choice for that process. ``0`` disables the check, and the extra build.
 
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)

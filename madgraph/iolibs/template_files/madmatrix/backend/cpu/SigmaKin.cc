@@ -1374,7 +1374,17 @@ namespace madmatrix
       // dedup. A row that far below the largest cannot bias the helicity sum
       // whichever way it is paired, while a genuine parity violation shows up
       // at the relative level. One verdict for every crossing.
+      // FP32 amplitudes (FPTYPE=f and the default v) round at ~1e-7 per
+      // operation, so two mirror rows of a long helicity/colour sum differ
+      // by more than 1e-6: an FP64 tolerance there switches the dedup off
+      // (all ncomb rows evaluated, the mirrored half outside the
+      // hel-recycling table: v ran 1.7x slower than d on g g > t t~ g g).
       {
+#if defined MGONGPU_FPTYPE_FLOAT
+        const fptype csymRel = (fptype)1e-4, csymAbs = (fptype)1e-6;
+#else
+        const fptype csymRel = (fptype)1e-6, csymAbs = (fptype)1e-12;
+#endif
         fptype mmax = (fptype)0.;
         for( int h = 0; h < ncomb; h++ )
           for( int ie = 0; ie < neppV; ++ie )
@@ -1394,7 +1404,7 @@ namespace madmatrix
               if( d < (fptype)0. ) d = -d;
               const fptype aa = a < (fptype)0. ? -a : a;
               const fptype bb = b < (fptype)0. ? -b : b;
-              if( d > (fptype)1e-6 * ( aa + bb ) && d > (fptype)1e-12 * mmax )
+              if( d > csymRel * ( aa + bb ) && d > csymAbs * mmax )
                 cCsymBad = true;
             }
           }

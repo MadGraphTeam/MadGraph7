@@ -134,10 +134,10 @@ class CPPRunCard(banner_mod.RunCardLO):
 
     def default_setup(self):
         super().default_setup()
-        self.add_param('floating_type', 'color32', include=False, hidden=True,
+        self.add_param('floating_type', 'denom64', include=False, hidden=True,
                        fct_mod=(self.reset_makeopts,(),{}),
                        allowed=['color32','all64','all32','denom64','m','d','f','v'],
-                       comment='precision: all32, all64, color32 (colour fp32, rest fp64), denom64 (momenta+denom fp64, rest fp32; SIMD falls back to color32)'
+                       comment='precision: all32, all64, color32 (colour fp32, rest fp64), denom64 (momenta+denom fp64, rest fp32; the default)'
                        )
         self.add_param('cudacpp_backend', 'auto', include=False, hidden=False,
                        allowed=CUDACPP_SUPPORTED_BACKENDS)
