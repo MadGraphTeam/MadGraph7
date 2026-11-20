@@ -148,6 +148,14 @@ fn a_load_starts_only_the_threads_its_work_uses() {
         assert_eq!(digest, sequential, "bound {bound}");
         assert_eq!(load_threads_started(), 0, "bound {bound}");
     }
+    // At a bound of two the families load sequentially (one worker never
+    // pays: the caller would only replay): a JSON load (no decode pool)
+    // starts no thread.
+    let json = families_plan(400);
+    let sequential = program_digest(&load(&json).unwrap());
+    let digest = with_load_threads(2, || program_digest(&load(&json).unwrap()));
+    assert_eq!(digest, sequential);
+    assert_eq!(load_threads_started(), 0, "bound 2: no derivation worker");
     // A plan of 2000 families: its family list decodes in parallel chunks
     // and its families derive on workers (all of them, forced), never more
     // threads than the bound's, nor than the chunks' and the window's.
