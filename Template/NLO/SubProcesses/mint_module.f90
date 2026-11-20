@@ -656,12 +656,12 @@ contains
     even_rn=.false.
     write(*,*) 'Training born-spreading table with ', &
          born_spread_train_points,' independent phase-space points'
-    call sample_calibration(born_spread_train_points)
+    call sample_born_calibration(born_spread_train_points,fun,evaluate_cohort,capacity)
     call solve_born_spreading_table
     born_spread_phase=2
     write(*,*) 'Validating born-spreading table with ', &
          born_spread_validation_points,' independent phase-space points'
-    call sample_calibration(born_spread_validation_points)
+    call sample_born_calibration(born_spread_validation_points,fun,evaluate_cohort,capacity)
     born_spread_calibrating=.false.
     even_rn=old_even_rn
     call finish_born_spreading_validation
@@ -671,38 +671,41 @@ contains
     if (allocated(born_spread_jump)) deallocate(born_spread_jump)
     born_spread_nbreak=0
     born_spread_capacity=0
-  contains
-    subroutine sample_calibration(number)
-      integer,intent(in) :: number
-      integer :: ipoint,lane,active,kfold(ndimmax)
-      double precision :: x(ndimmax),vol
-      type(mint_draw),allocatable :: draws(:)
-      if (present(evaluate_cohort)) then
-         allocate(draws(capacity))
-         do ipoint=1,number,capacity
-            active=min(capacity,number-ipoint+1)
-            do lane=1,active
-               call collect_mint_draw(draws(lane),-1)
-            enddo
-            call record_native_cohort(active)
-            call evaluate_cohort(draws(:active))
-            do lane=1,active
-               if (.not.draws(lane)%complete) error stop 'Incomplete native calibration sample'
-               call activate_mint_draw(draws(lane))
-               call trace_mc_draw('COMMIT')
-            enddo
-         enddo
-      else
-         do ipoint=1,number
-            call begin_mc_draw()
-            new_point=.true.
-            call get_random_x(x,vol,kfold)
-            call compute_integrand(fun,x,vol)
-            call trace_mc_draw('COMMIT')
-         enddo
-      endif
-    end subroutine
   end subroutine calibrate_born_spreading
+
+  subroutine sample_born_calibration(number,fun,evaluate_cohort,capacity)
+    double precision, external :: fun
+    procedure(mc_evaluate_cohort), optional :: evaluate_cohort
+    integer,intent(in), optional :: capacity
+    integer,intent(in) :: number
+    integer :: ipoint,lane,active,kfold(ndimmax)
+    double precision :: x(ndimmax),vol
+    type(mint_draw),allocatable :: draws(:)
+    if (present(evaluate_cohort)) then
+       allocate(draws(capacity))
+       do ipoint=1,number,capacity
+          active=min(capacity,number-ipoint+1)
+          do lane=1,active
+             call collect_mint_draw(draws(lane),-1)
+          enddo
+          call record_native_cohort(active)
+          call evaluate_cohort(draws(:active))
+          do lane=1,active
+             if (.not.draws(lane)%complete) error stop 'Incomplete native calibration sample'
+             call activate_mint_draw(draws(lane))
+             call trace_mc_draw('COMMIT')
+          enddo
+       enddo
+    else
+       do ipoint=1,number
+          call begin_mc_draw()
+          new_point=.true.
+          call get_random_x(x,vol,kfold)
+          call compute_integrand(fun,x,vol)
+          call trace_mc_draw('COMMIT')
+       enddo
+    endif
+  end subroutine sample_born_calibration
 
   subroutine solve_born_spreading_table
     implicit none
