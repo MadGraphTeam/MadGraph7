@@ -180,6 +180,7 @@ from .recurrence_color import (
     RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
     encode_recurrence_color_contraction,
     recurrence_color_contraction_digest,
+    sorted_unique,
 )
 from .recurrence_columnar import (
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -6510,33 +6511,39 @@ class GenerationBackend:
                     "contracted recurrence exposes a destination without a "
                     "resolved helicity"
                 )
-            destination_by_group = (
-                tuple(range(group_count))
+            from itertools import chain
+
+            import numpy as np
+
+            destination_by_group = np.asarray(
+                range(group_count)
                 if color_contraction.destination_by_group is None
-                else color_contraction.destination_by_group
+                else color_contraction.destination_by_group,
+                dtype=np.int64,
             )
             if (
                 len(destination_by_group) != group_count
-                or len(set(destination_by_group)) != group_count
-                or any(
-                    destination_id < 0 or destination_id >= destination_count
-                    for destination_id in destination_by_group
+                or len(sorted_unique(destination_by_group)) != group_count
+                or (
+                    group_count > 0
+                    and (
+                        destination_by_group.min() < 0
+                        or destination_by_group.max() >= destination_count
+                    )
                 )
             ):
                 raise GenerationError(
                     "contracted recurrence color plan has an invalid destination "
                     "projection"
                 )
-            normalized_destinations = tuple(
-                contraction_destinations[destination_id]
-                for destination_id in destination_by_group
-            )
-            group_sector_ids = tuple(
-                sector_id for sector_id, _ in normalized_destinations
-            )
-            group_component_ids = tuple(
-                cast(int, helicity_id) for _, helicity_id in normalized_destinations
-            )
+            # (sector, helicity) of every group, as arrays for the codec.
+            group_coordinates = np.fromiter(
+                chain.from_iterable(contraction_destinations),
+                np.int64,
+                2 * destination_count,
+            ).reshape(destination_count, 2)[destination_by_group]
+            group_sector_ids = group_coordinates[:, 0]
+            group_component_ids = group_coordinates[:, 1]
             repeated = color_contraction.repeated_block
             symmetric_group = color_contraction.symmetric_group_block
             ordered_group_ids = (
@@ -6557,13 +6564,13 @@ class GenerationBackend:
                 group_component_ids=group_component_ids,
                 sector_owner_ids=recurrence_color_sector_owner_map(
                     logical,
-                    set(group_sector_ids),
+                    set(sorted_unique(group_sector_ids).tolist()),
                     set(certified_structural_zero_sector_ids),
                 ),
                 exact_coefficients=recurrence_exact_color_coefficients(
                     prepared.complete_color_plan,
                     color_contraction,
-                    group_sector_ids,
+                    group_sector_ids.tolist(),
                 ),
             )
             color_digest = recurrence_color_contraction_digest(
@@ -6582,7 +6589,7 @@ class GenerationBackend:
                 "includes_color_factor": color_contraction.includes_color_factor,
                 "group_count": group_count,
                 "sector_count": sector_count,
-                "active_sector_count": len(set(group_sector_ids)),
+                "active_sector_count": len(sorted_unique(group_sector_ids)),
                 "component_count": component_count,
                 "destination_count": destination_count,
                 "materialized_destination_count": schedule_destination_count,
