@@ -484,11 +484,15 @@ double-double by default), at the percentiles 1 per mil,
 1 %, 10 % and 50 % (a point a backend refuses in binary64 is measured with its
 best-effort value at its true digits; only a point with no binary64 value
 counts 0 digits), and
-how well the default rotation estimate predicts them
+how well the default estimate predicts them (one rotation; on TIRust's
+points also the rescaled reduction-direction check)
 ([the command-line guide](../docs/user/command-line-interface.md#profile)).
-Every card draws 1000 points (the default), evaluated on 10 worker processes
-(`[benchmark] n_core`, `--n_core`); the progress display shows the estimated
-time to completion (`loop_gg_zgg` is the slow one: NinjaRS's double-double
+The cards set no counts: the stability run draws as many points as one
+minute per worker affords, on up to 10 worker processes (`--n_core`, at most
+the usable cores and what the memory holds); on an expensive process the
+profile may time the default backend alone (`--all-backends` keeps both).
+The progress display shows the estimated time to completion
+(`loop_gg_zgg` is the slow one: NinjaRS's double-double
 reference costs about 30 s per point), and Ctrl-C prints the tables of the
 points evaluated so far. `--stability-points` and `--n_core` change both.
 The tables come alone; `--fields-description-help` adds a plain-words

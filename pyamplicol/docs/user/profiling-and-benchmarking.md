@@ -85,7 +85,8 @@ its runtime table and the reference precision's time as a multiplier,
 alias `benchmark`) times on one core: the pools the command starts run one
 thread each, and a loop artifact's runtime timing runs in its own process
 with every pool at one thread, so every time per point it prints is what
-one Monte Carlo worker pays.
+one Monte Carlo worker pays (`--runtime-threads N` times a loop artifact's
+calls with N threads instead).
 
 For compiled Direct-Arena, the row otherwise represented by an orchestration
 counter is labeled **Direct-Arena runtime envelope**. It includes arena setup,
@@ -238,7 +239,8 @@ take their shares of the timed calls' total time and add up to the reported
 (median call) time per point.
 
 `pyamplicol profile` of a loop artifact profiles both reduction backends side
-by side (TIRust and NinjaRS; `--loop-reduction` selects one) and measures the
+by side (TIRust and NinjaRS; `--loop-reduction` selects one; on an expensive
+process the default one alone unless `--all-backends`) and measures the
 runtime (`--runtime`, the default), the stability statistics (`--stability`)
 or both: per backend the time per point and stage (a coloured bar per stage
 group) with the ratio between the backends (the faster highlighted), and the
@@ -252,8 +254,10 @@ that truth (one default rotation on NinjaRS's points; one default rotation and
 the rescaled reduction-direction check on TIRust's points) (the measure of MadLoop, arXiv:1103.0621 sect. 3.4, and
 arXiv:1405.0301). The definitions, flags and JSON are in the
 [command-line guide](command-line-interface.md#profile). The runtime is one
-fully optimistic pass per point (unchecked reduction, no checks); `--checked`
-times the checked mode. The loop
+fully optimistic pass per point (unchecked reduction, no checks, refused
+lanes rescued; `--no-lane-rescue` times pure binary64); `--checked` times the
+checked mode. What each part runs by default and how to switch it off:
+[The stability machinery, end to end](python-api.md#the-stability-machinery-end-to-end). The loop
 examples' profile cards (`examples/loop_*_profile.toml`) set a small point
 count for `--stability`; `examples/python/loop_walkthrough.py` prints the
 stage table for the checked default and the unchecked setting.

@@ -1337,13 +1337,14 @@ Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
 artifact, config)` returns the same report; `BenchmarkRunner` /
 `benchmark()` keep profiling one backend (`VirtualProfileResult`).
 
-Changed in the final 1.0.x round: the runtime timing runs on one core (its
+Changed in the final 1.0.x round: the runtime timing runs on one core by
+default (its
 process's pools at one thread; before, as they came: `RAYON_NUM_THREADS` or
 the usable cores) and its timed calls follow `--target-runtime` (at least
 `--minimum-samples`; before, exactly `--minimum-samples`); the stages add up
-to the time per point; the reference multiplier is always timed, as one
-optimistic pass in 16-point calls, and `--ground-truth` selects its
-precision. `profile --arithmetic` is removed (it timed the same batches in
+to the time per point; the reference multiplier is timed as one
+optimistic pass in 16-point calls (on an expensive process rule B may leave
+it out, above), and `--ground-truth` selects its precision. `profile --arithmetic` is removed (it timed the same batches in
 double-double, checked, only on request) and `profile` no longer reads
 `evaluation.arithmetic`; `--json`'s `double_double` is now `reference`. The
 main time is the optimistic pass by default (before: the checked reduction
