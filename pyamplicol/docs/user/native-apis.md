@@ -834,9 +834,12 @@ SDK has no per-backend default set: the checks a caller sets are run as set
 on every backend (an explicit set is never changed, as in the Python API).
 For TIRust-served evaluations (the loop-induced `"auto"` and `"tirust"`) set
 one rotation with the reduction-direction check and its rescaled variant,
-the recommended checks and the Python API's default set for TIRust
-(USER 2026-11-19: one rotation alone under-states the error of accepted
-TIRust points, on 144 of 200 flat g g > g g g points). With
+the recommended checks and the Python API's default set for TIRust (one
+rotation alone under-states the error of accepted TIRust points, on 144 of
+200 flat g g > g g g points). The SDKs have the reduction-level checks, the
+lane rescue and these point-level checks, not the Python API's rescue stack
+([Python API](python-api.md#the-stability-machinery-end-to-end), "The
+stability machinery, end to end"). With
 checks, every successful point of a binary64 ordinary evaluation carries its
 estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
 to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the

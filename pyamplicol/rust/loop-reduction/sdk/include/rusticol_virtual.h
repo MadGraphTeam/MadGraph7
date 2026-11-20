@@ -155,7 +155,7 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * NinjaRS from its original exact inputs, at the call's own arithmetic, after
  * the TIRust call; a point NinjaRS fails too fails with both reasons. In
  * double-double and arbitrary precision every point the fallback serves is
- * guarded (m-lit lit-fallback-guard): its NinjaRS value runs a rotation
+ * guarded: its NinjaRS value runs a rotation
  * re-test (the point rotated exactly by the recommended checks' rotation and
  * evaluated again) in the call's arithmetic, and a point whose relative
  * estimate of the outputs the
@@ -215,8 +215,8 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
  * "reduction" diagnostics ("lane_rescue"). Any other value is
  * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
 int rusticol_virtual_set_lane_rescue(rusticol_virtual_handle *handle, int on);
-/* Failure policy of later evaluations (the Python API's on_failure=; m-lit
- * ux-besteffort; additive, ABI version 2 kept). "best-effort" (the default,
+/* Failure policy of later evaluations (the Python API's on_failure=;
+ * additive, ABI version 2 kept). "best-effort" (the default,
  * also for NULL): the call returns OK with every point; a point that no
  * configured alternative accepts (the backend's own acceptance checks, the
  * "auto" per-point fallback) is evaluated again from its exact inputs without
@@ -246,7 +246,7 @@ int rusticol_virtual_set_lane_rescue(rusticol_virtual_handle *handle, int on);
 int rusticol_virtual_set_on_failure(rusticol_virtual_handle *handle,
   const char *on_failure);
 /* Kinematics improvement of later evaluations (the Python API's
- * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
+ * kinematics_improvement=; additive, ABI version 2 kept):
  * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1,
  * finished by the projection where MadLoop leaves the point inexact; the
  * default, also for NULL), "rescaling" (ImprovePSPoint 1), "projection" (the

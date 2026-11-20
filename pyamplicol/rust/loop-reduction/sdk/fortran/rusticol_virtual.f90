@@ -18,7 +18,7 @@ module rusticol_virtual
   integer(c_int32_t), parameter, public :: VIRTUAL_SUCCESS=0, VIRTUAL_VERIFIED=1, VIRTUAL_RESCUED=2
   integer(c_int32_t), parameter, public :: VIRTUAL_FAILED=3, VIRTUAL_ACCURACY_NOT_ESTABLISHED=4
   ! A point no configured alternative accepted, returned with the unchecked
-  ! reduction's value (never a success; set_on_failure, m-lit ux-besteffort).
+  ! reduction's value (never a success; set_on_failure).
   integer(c_int32_t), parameter, public :: VIRTUAL_BEST_EFFORT=5
 
   type, bind(C), public :: virtual_shape
