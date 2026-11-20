@@ -1,7 +1,8 @@
-name: Cancel CI of a merged PR
+name: Cancel CI of a closed PR
 
-# When a PR is merged, its pull_request CI runs on the head commit are no longer
-# needed: the merge commit gets its own run on main. Cancel the ones still going.
+# When a PR is merged or closed, its pull_request CI runs on the head commit are
+# no longer needed. A merge gets its own run on main, so nothing is lost. Cancel
+# the ones still going.
 
 on:
   pull_request:
@@ -13,10 +14,9 @@ permissions:
 
 jobs:
   cancel-pr-runs:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-24.04
     steps:
-      - name: Cancel the unfinished pull_request runs of the merged head commit
+      - name: Cancel the unfinished pull_request runs of the closed head commit
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
