@@ -1168,14 +1168,25 @@ at most its cross-check's 2^-106), the title adding "capped at the ground
 truth's D digits" when that is the lower. The ground truth's own precision
 has its estimates-only tables ("Estimated digits of arb(60) (the ground
 truth)" and "Default checks, estimates only, arb(60)"): its points are
-evaluated in it with the default checks, a stream of its own beside the
-reference's evaluations. A ground truth not listed gets no table and no
-checks beyond its certification above (with an arbitrary-precision truth
-the cross-check between the backends and the checked re-run of a reference
-it does not certify; with one backend one checked evaluation per point). An
+evaluated in it once, with the default checks, and that evaluation is also
+the reference of the lower precisions (its unrotated value is the plain
+reference evaluation's bit for bit, verified on g g > g g g in
+double-double and arb(60); a best-effort or failed point has no reference,
+as before; the certification of an arbitrary-precision truth is unchanged;
+with one backend and an arbitrary-precision truth its references stay the
+checked evaluations). A ground truth not listed gets no table and no checks
+beyond its certification above (with an arbitrary-precision truth the
+cross-check between the backends and the checked re-run of a reference it
+does not certify; with one backend one checked evaluation per point). An
 entry above the ground truth (or listed twice) is refused before any work;
-with `--ground-truth none` every entry is estimates-only. binary64's stream
-always runs (its tables only when listed). The precisions given are
+with `--ground-truth none` every entry is estimates-only. A precision not
+listed is not evaluated: without binary64 in the list the stability run has
+no binary64 stream (`stability` is then empty in `--json`) and the runtime
+no binary64 calls, except binary64's runtime worker when another listed
+precision's table shows the ground truth's multiplier and the truth itself
+is not listed (the multiplier pass runs in that worker); binary64's counts
+are still the start of the other precisions' calls. Each precision's
+failure causes are under its own tables. The precisions given are
 honoured; the stability plan and its ETA count each extra stream at a lower
 bound of its point (a checked binary64 point below the ground truth, the
 plain reference point for the ground truth's own) until the run measures it,
@@ -1190,11 +1201,16 @@ stage reports of those calls and its peak RAM. It starts from binary64's
 counts and budget for that backend (`--target-runtime` is each backend's
 timed budget per measured precision); its one-point warm-up call (untimed)
 measures its cost, and its batch falls to the largest power of two that
-its calls fit in that budget, down to one point, warmed by one untimed call
-at that batch (none at one point; a carrier builds lazily per batch size;
-a `--batch-size` given is honoured). Its time carries the ground truth's multiplier against it,
-`(arb(60) x1.1)` (the binary64 row's reference timing), none on the ground
-truth's own table. In `--json` its rows are `runtime_measured` (each its
+its calls fit in that budget, down to one point, that call its warm-up (a
+`--batch-size` given is honoured: every call holds that many points). A
+wider carrier's time per point depends on the points per call
+(double-double on g g > g g g, NinjaRS: 0.69 s at one point, 0.57 s at
+two, 0.45 s at 16), so it compares with the multiplier pass's (one point
+per call where it is dear) at the same batch. Its time carries the ground
+truth's multiplier against it, `(arb(60) x1.1)`, none on the ground truth's
+own table. When the ground truth is listed its stream is timed once: it is
+the multiplier of binary64's table and of the others (no separate
+multiplier pass), and rule B leaves it in (a precision given). In `--json` its rows are `runtime_measured` (each its
 `precision` record and `runtime` rows as `runtime`), absent by default. In
 `--json`
 the other precisions' rows are under `stability_setup.measured_precisions`

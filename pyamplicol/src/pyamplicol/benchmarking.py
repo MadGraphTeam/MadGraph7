@@ -3252,10 +3252,10 @@ def _fitted_calls(
     one-point warm-up call measures its cost per point (untimed; after the
     warm entry the same call, a first measured point), and the batch falls
     to what ``target_runtime`` affords for ``minimum_samples`` calls, a
-    power of two of at most ``batch_size`` points, at least one; then one
-    untimed call at that batch (a carrier builds lazily per batch size: its
-    first call at a new size is no timing), none at one point (the
-    measuring call was it). A cheap precision keeps the batch given."""
+    power of two of at most ``batch_size`` points, at least one; the
+    measuring call is its warm-up (no other: a carrier's first call at a
+    new batch size costs no more than its next, measured on gg_ggg in
+    double-double). A cheap precision keeps the batch given."""
 
     batch = batches(0, 1)
     begin = time.perf_counter()
@@ -3267,7 +3267,7 @@ def _fitted_calls(
     while size * 2 <= min(int(bench.batch_size), affordable):
         size *= 2
     size = max(min(size, int(bench.batch_size)), 1)
-    return replace(bench, batch_size=size, warmup_runs=0 if size == 1 else 1)
+    return replace(bench, batch_size=size, warmup_runs=0)
 
 
 def _scope_drops(
@@ -3767,7 +3767,10 @@ def _profile_virtual_calls(
 
     def call(k: int) -> float:
         nonlocal failed, served, rescued
-        batch = batches(k)
+        # The first ``batch_size`` points of call k's batch: a measured
+        # precision's fitted batch (``_fitted_calls``) is smaller than the
+        # batches' own, which ``batches(k)`` alone would return whole.
+        batch = batches(k, bench.batch_size)
         mu_r2 = scales(batch)
         if k < warmup:
             # One point first: when a full call would cost more than

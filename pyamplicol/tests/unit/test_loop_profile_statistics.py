@@ -1439,8 +1439,8 @@ def test_a_dear_measured_precision_times_what_its_budget_affords():
     """``benchmarking._fitted_calls``: the one-point warm-up call measures
     the precision's cost; the batch falls to the largest power of two of at
     most the batch given that ``minimum_samples`` calls fit in
-    ``target_runtime``, down to one point; one warm-up call at that batch
-    (a carrier builds lazily per batch size), none at one point."""
+    ``target_runtime``, down to one point; the measuring call is the
+    warm-up."""
 
     from pyamplicol.benchmarking import _fitted_calls
     from pyamplicol.config import BenchmarkConfig
@@ -1463,7 +1463,7 @@ def test_a_dear_measured_precision_times_what_its_budget_affords():
         return 1.0
 
     cheap = _fitted_calls(_Runtime(1e-4), batches, bench, {}, scales)
-    assert cheap.batch_size == 64 and cheap.warmup_runs == 1
+    assert cheap.batch_size == 64 and cheap.warmup_runs == 0
     dear = _fitted_calls(_Runtime(0.02), batches, bench, {}, scales)
     assert dear.batch_size in (2, 4)
     dearest = _fitted_calls(_Runtime(0.3), batches, bench, {}, scales)
@@ -1544,3 +1544,33 @@ def test_a_measured_precision_has_its_runtime_rows():
         report, runtime_measured=({"precision": dd.record(), "runtime": rows},)
     )
     assert timed.cli_json()["runtime_measured"][0]["precision"]["label"] == "dd"
+
+
+def test_the_ground_truths_own_stream_is_its_reference():
+    """``_reference_of``: the ground truth's measured record as a reference
+    record, its value and exact text only where it was accepted (a
+    best-effort or failed point has no reference, as the plain evaluation
+    keeps it); ``_stream_label`` names each stream in the progress line."""
+
+    from pyamplicol.loop_profile import _reference_of, _stream_label
+
+    exact = [[Fraction(1, 3)]]
+    accepted = (4, exact, None, None, "success", None, ["0.33"], None, "0.333")
+    assert _reference_of(accepted) == (4, exact, None, "0.333")
+    served = (
+        5,
+        exact,
+        None,
+        "TIRust Unstable",
+        "best-effort",
+        1e-3,
+        ["0.3"],
+        None,
+        "0.3",
+    )
+    assert _reference_of(served) == (5, None, "TIRust Unstable", None)
+    failed = (6, None, None, "no value", "failed", None, None, None, None)
+    assert _reference_of(failed) == (6, None, "no value", None)
+    assert [
+        _stream_label(s, "dd") for s in ("binary64", "reference", "measured:arb(60)")
+    ] == ["b64", "dd", "arb(60)"]

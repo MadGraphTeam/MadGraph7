@@ -346,14 +346,22 @@ def _runtime_suffix(report: Any) -> str:
 
 
 def _measured_runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
-    """The runtime tables of every measured precision in the order given:
-    binary64's as they are, then every other one's (``runtime_measured``)
-    from its own rows in a view of the report."""
+    """The runtime tables of every measured precision in the order given
+    (``runtime_measured``; none: binary64's alone, as they are): binary64's
+    from ``runtime``, every other one's from its own rows in a view of the
+    report."""
 
     from types import SimpleNamespace
 
-    blocks = _runtime_tables(report, prettytable, color)
-    for entry in getattr(report, "runtime_measured", ()) or ():
+    entries = getattr(report, "runtime_measured", ()) or ()
+    if not entries:
+        return _runtime_tables(report, prettytable, color)
+    blocks: list[str] = []
+    for entry in entries:
+        if entry["runtime"] is None:
+            # binary64's, listed here.
+            blocks += _runtime_tables(report, prettytable, color)
+            continue
         view = SimpleNamespace(
             **{
                 name: getattr(report, name)
@@ -363,6 +371,7 @@ def _measured_runtime_tables(report: Any, prettytable: Any, color: bool) -> list
             runtime=tuple(entry["runtime"]),
             runtime_precision=entry["precision"]["precision"],
         )
+        view.failure_causes = tuple(entry.get("failure_causes") or ())
         blocks += _runtime_tables(view, prettytable, color)
     return blocks
 
@@ -1011,7 +1020,7 @@ def _measured_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     """The stability tables of every measured precision in the order given
     (``stability_setup["measured_precisions"]``, present only when not the
     default): binary64's as they are, every other one's from its own rows
-    in a view of the report (the failure causes stay under binary64's)."""
+    in a view of the report, its own failure causes under its tables."""
 
     from dataclasses import replace
 
@@ -1028,7 +1037,7 @@ def _measured_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
             report,
             stability=tuple(entry["stability"]),
             stability_setup={**setup, "measured_precision": entry},
-            failure_causes=(),
+            failure_causes=tuple(entry.get("failure_causes") or ()),
         )
         blocks += _stability_tables(view, prettytable, color)
     return blocks

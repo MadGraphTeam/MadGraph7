@@ -2240,3 +2240,96 @@ def test_counts_row_target_runtime_in_seconds_units(target: float, shown: str) -
     )
     text = _counts_cell(report, False) or ""
     assert f"--target-runtime {shown} per backend for the runtime timing" in text
+
+
+def test_a_fitted_precision_times_calls_of_its_own_batch(uux_ddx):
+    """A measured precision's calls (``profile_virtual(precision=)``, its
+    batch fitted to its cost, ``_fitted_calls``) evaluate the fitted batch:
+    every call holds at most that many points, the time per point divides
+    by it (7572cf781 drew binary64's 16-point batches and divided by the
+    fitted size: gg_ggg NinjaRS double-double at 3.59 s instead of 0.45 s
+    per point); a --batch-size given is evaluated as given."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import BenchmarkConfig
+
+    runtime = Runtime.load(uux_ddx, threads=1)
+    sizes: list[int] = []
+    evaluate = runtime.evaluate
+
+    def counted(batch, *args, **kwargs):
+        sizes.append(len(batch))
+        return evaluate(batch, *args, **kwargs)
+
+    runtime.evaluate = counted
+    bench = BenchmarkConfig(
+        batch_size=16, warmup_runs=1, minimum_samples=2, target_runtime=1e-6
+    )
+    fitted = profile_virtual(
+        runtime,
+        bench,
+        artifact=uux_ddx,
+        reduction="ninjars",
+        optimistic=True,
+        precision={"arithmetic": "double-double", "fit": True},
+    )
+    assert fitted.batch == 1 and fitted.samples >= 2
+    assert max(sizes) == 1
+    sizes.clear()
+    given = profile_virtual(
+        runtime,
+        replace(bench, batch_size=4),
+        artifact=uux_ddx,
+        reduction="ninjars",
+        optimistic=True,
+        precision={"arithmetic": "double-double", "fit": False},
+    )
+    assert given.batch == 4 and max(sizes) == 4
+
+
+@pytest.mark.parametrize(
+    ("listed", "streams", "binary64_rows"),
+    [
+        (("binary64", "double-double"), {"binary64", "measured:dd"}, True),
+        (("double-double",), {"measured:dd"}, False),
+    ],
+)
+def test_a_listed_ground_truth_is_evaluated_once(
+    uux_ddx, monkeypatch, listed, streams, binary64_rows
+):
+    """The ground truth listed in --measured-precisions: its stream (the
+    default checks) is also the reference, no separate reference task; a
+    precision not listed (binary64) is not evaluated, and has no rows."""
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.config import resolve_config
+
+    seen: set[str] = set()
+    records = lp._stability_records
+
+    def spied(backend, precision, *args, **kwargs):
+        seen.add(precision)
+        return records(backend, precision, *args, **kwargs)
+
+    monkeypatch.setattr(lp, "_stability_records", spied)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "stability": True,
+                "stability_points": 5,
+                "n_core": 1,
+                "ground_truth": "double-double",
+                "measured_precisions": list(listed),
+            },
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    assert seen == streams
+    assert bool(report.stability) is binary64_rows
+    entry = report.stability_setup["measured_precisions"][-1]
+    assert entry["estimates_only"] and all(
+        row.points == 5 for row in entry["stability"] if row.refusal is None
+    )
