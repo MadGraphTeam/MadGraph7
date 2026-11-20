@@ -278,6 +278,48 @@ private:
 };
 
 /**
+ * Two-beam luminosity read from a two-dimensional table.
+ *
+ * Some luminosities do not factorize into one density per beam, not even as
+ * a sum of factorized terms as @ref EELuminosity: the two-photon luminosity
+ * of ultra-peripheral collisions (gamma-UPC) carries the probability that the
+ * beams do not interact hadronically, which depends on both photon energies
+ * at once. Such a luminosity is tabulated as a function of both momentum
+ * fractions, @f$x_1 x_2 L(x_1, x_2)@f$ (the @f$x f@f$ convention of the
+ * densities), and interpolated here.
+ *
+ * The table is an LHAPDF-format @ref PdfGrid with a single flavour whose x
+ * axis is @f$x_1@f$ and whose q axis is @f$x_2@f$: the interpolation, bicubic
+ * in @f$\log x@f$ and @f$\log q^2 = 2 \log x_2@f$, is the one of the parton
+ * densities. The grid should cover @f$x_2@f$ up to 1 and down to the
+ * smallest fraction the phase space reaches; below its first q knot the
+ * continuation of @ref PartonDensity, made for a scale, would apply.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions.
+ *
+ * **Returns**
+ * - `luminosity` – `float`, shape `(batch,)` – @f$x_1 x_2 L(x_1, x_2)@f$.
+ */
+class TabulatedLuminosity : public FunctionGenerator {
+public:
+    /**
+     * @param grid    The table, see above.
+     * @param prefix  Prefix for the grid global names.
+     */
+    TabulatedLuminosity(const PdfGrid& grid, const std::string& prefix = "");
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density;
+};
+
+/**
  * A strong-coupling grid in the LHAPDF format, loaded from a file.
  *
  * Holds the @f$\alpha_s(q)@f$ knots of an LHAPDF `.info` set;

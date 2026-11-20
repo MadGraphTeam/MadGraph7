@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   NEW: gamma-UPC photon fluxes (pdlabel ed*/ch* with lpp 2, proton and ion beams, neutron
+       tagging) in mg7/madspace. madevent's own gamma-UPC luminosity is tabulated once on a
+       grid of both photon momentum fractions (it does not factorise) and interpolated by
+       madspace, so it runs on any device and travels with gridpacks. The table is cached in
+       Source/PDF/gammaUPC/tables (about 10 s for protons, 5 min for Pb). Cross sections are
+       per nucleon (sqrt(s_NN)) and the LHE beams are the ions. It reproduces the MG7 paper
+       LO results for PbPb > a a > ta+ ta- in all neutron categories.
    RF: "set low_mem_multicore_nlo_generation True" (NLO generation and output on nb_core cores,
        the matrix elements kept in temporary files) gives again the output of the serial mode.
        It differed for instance in the virtuals (nlo_mixed_expansion False, explicit orders,

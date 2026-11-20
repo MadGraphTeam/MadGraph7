@@ -7496,6 +7496,25 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'lepton_density', "",
             comment="dressed-lepton density (a directory of Source/PDF/lep_densities) "
                     "or \"\" for none: ISR and, for the collider-specific sets, beamstrahlung")
+        # gamma-UPC (madevent: lpp = 2 on both beams with an 'ed*'/'ch*'
+        # pdlabel): the coherent photons of two protons or ions, with the
+        # probability that the beams do not break up. Like a dressed-lepton
+        # density it replaces the PDFs by one two-beam luminosity, tabulated by
+        # the gamma-UPC Fortran (Source/PDF/gammaUPC) the first time it is needed.
+        self.add_toml_param('beam', 'upc_flux', "",
+            comment="gamma-UPC photon flux of two protons/ions (edff, chff, or "
+                    "with neutron tagging, e.g. chf0n0n), \"\" for none; "
+                    "replaces the PDFs, photon-photon processes only",
+            hidden=True)
+        # the beam particles of a gamma-UPC run; ebeam1/ebeam2 are then the
+        # energies of the whole ions, as in madevent
+        for i in (1, 2):
+            self.add_toml_param('beam', 'nb_proton%d' % i, 1,
+                comment="protons in the beam-%d ion (with upc_flux)" % i,
+                hidden=True)
+            self.add_toml_param('beam', 'nb_neutron%d' % i, 0,
+                comment="neutrons in the beam-%d ion (with upc_flux)" % i,
+                hidden=True)
         self.add_toml_param('beam', 'pdf1', "NNPDF40_lo_as_01180",
             comment="LHAPDF set name of beam 1; set beam.pdf X sets both beams")
         self.add_toml_param('beam', 'pdf2', "NNPDF40_lo_as_01180",
@@ -8923,7 +8942,9 @@ class RunCardMG7(RunCard):
 
     # madevent beam settings understood by set_lo_beam_param
     lo_beam_params = ('ebeam', 'ebeam1', 'ebeam2', 'lpp', 'lpp1', 'lpp2',
-                      'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid')
+                      'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid',
+                      'nb_proton', 'nb_proton1', 'nb_proton2',
+                      'nb_neutron', 'nb_neutron1', 'nb_neutron2')
 
     def set_lo_beam_param(self, name, value, masses=None, data_paths=()):
         """``set <name> <value>`` with a madevent beam setting (lo_beam_params);
@@ -8937,7 +8958,11 @@ class RunCardMG7(RunCard):
           'lhapdf' alone changes nothing, since the set comes from lhaid;
           'none' on both beams is a lepton collider.
         * lpp: mg7 has one switch for both beams, beam.leptonic, true for
-          0 (no PDF) and +-3/+-4 (e/mu), false for +-1.
+          0 (no PDF) and +-3/+-4 (e/mu), false for +-1 and +-2 (elastic
+          photons, only through a gamma-UPC pdlabel: beam.upc_flux).
+        * a gamma-UPC pdlabel (edff, chff, ...) sets beam.upc_flux, for both
+          beams; any other pdlabel clears it.
+        * nb_proton / nb_neutron: the ions of a gamma-UPC run.
 
         Raises InvalidRunCard for a value mg7 cannot represent."""
         name = name.lower()
@@ -8953,11 +8978,31 @@ class RunCardMG7(RunCard):
                 self.set('beam.ebeam' + beam, float(energy), user=True)
             return 'beam energy of %s: %s GeV' % (which, float(energy))
 
+        if name.startswith('nb_'):
+            try:
+                count = int(value)
+            except ValueError:
+                raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            key = 'nb_proton' if name.startswith('nb_proton') else 'nb_neutron'
+            for beam in beams:
+                self.set('beam.%s%s' % (key, beam), count, user=True)
+            return '%s of %s: %s' % (key, which, count)
+
         if name.startswith('lpp'):
             try:
                 lpp = int(value)
             except ValueError:
                 raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            if abs(lpp) == 2:
+                # an elastic photon: mg7 has it only from gamma-UPC
+                if not self['beam']['upc_flux']:
+                    # the pdlabel may well follow: a hint, not a warning
+                    logger.info(
+                        '%s = %s: mg7 has elastic-photon beams only through '
+                        'gamma-UPC: also set pdlabel to a gamma-UPC label '
+                        '(e.g. chff), i.e. beam.upc_flux' % (name, lpp))
+                self.set('beam.leptonic', False, user=True)
+                return 'beam.leptonic = False (elastic photons: beam.upc_flux)'
             if abs(lpp) not in (0, 1, 3, 4):
                 raise InvalidRunCard('%s = %s: beam type not representable in mg7'
                                      % (name, lpp))
@@ -8983,6 +9028,14 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard('lhaid = %s: not an integer' % value)
         else:
             label, lhaid = value, None
+            if is_upc_label(label.lower()):
+                # one label for both beams (PDLabelBlock does the same)
+                self.set('beam.upc_flux', label.lower(), user=True)
+                return 'beam.upc_flux = %s (gamma-UPC, both beams)' % label.lower()
+            if self['beam']['upc_flux']:
+                self.set('beam.upc_flux', '', user=True)
+                logger.info('%s = %s: beam.upc_flux (gamma-UPC) switched off',
+                            name, value)
             if label.lower() == 'lhapdf':
                 return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
                         'with lhaid or beam.pdf1/pdf2')
@@ -9072,6 +9125,58 @@ class RunCardMG7(RunCard):
         card.check_devices(card['run']['device'], '[%s] run.device' % section)
         return card
 
+    def upc_ions(self):
+        """((Z1, N1), (Z2, N2)) of the beams of a gamma-UPC run."""
+        beam = self['beam']
+        return tuple((int(beam['nb_proton%d' % i]), int(beam['nb_neutron%d' % i]))
+                     for i in (1, 2))
+
+    def check_upc_validity(self):
+        """beam.upc_flux: a gamma-UPC label, on charged beams, with a neutron
+        tag gamma-UPC provides for those ions (as check_upc_neutron_tagging
+        for the madevent card), and not together with a dressed-lepton
+        density, which is the other luminosity replacing the PDFs."""
+        beam = self['beam']
+        label = str(beam['upc_flux'])
+        ions = self.upc_ions()
+        if not label:
+            if any(ion != (1, 0) for ion in ions):
+                raise InvalidRunCard(
+                    "beam.nb_proton/nb_neutron describe the ions of a gamma-UPC "
+                    "run: set beam.upc_flux too (mg7 has no nuclear PDFs)")
+            return
+        if not is_upc_label(label):
+            raise InvalidRunCard(
+                "beam.upc_flux = '%s' is not a gamma-UPC label: 'ed' (EDFF) or "
+                "'ch' (ChFF), then 'f', 'p' or 'm', then 'f' or a neutron tag "
+                "'<y>n<z>n' (e.g. chff, edff, chf0n0n)" % label)
+        if beam['lepton_density']:
+            raise InvalidRunCard(
+                "beam.upc_flux and beam.lepton_density both replace the PDFs: "
+                "set only one of them")
+        for i, (Z, N) in enumerate(ions, 1):
+            if Z < 1 or N < 0:
+                raise InvalidRunCard(
+                    "beam %d of a gamma-UPC run must be charged (nb_proton%d >= 1, "
+                    "nb_neutron%d >= 0)" % (i, i, i))
+        if label[3] == 'f':
+            return
+        for i, ((Z, N), tag) in enumerate(zip(ions, (label[3:5], label[5:7])), 1):
+            if tag == 'in' or (Z, N) == (1, 0):
+                continue
+            nmax = UPC_NEUTRON_TAGGING_NUCLEI.get((Z, N))
+            if nmax is None:
+                raise InvalidRunCard(
+                    "beam.upc_flux = '%s': forward neutron tagging ('%s') is not "
+                    "available for beam %d (Z=%s, N=%s). Only Pb208, Au197 and O16 "
+                    "are supported (use '%sf' for no tagging)."
+                    % (label, tag, i, Z, N, label[:3]))
+            if tag[0].isdigit() and int(tag[0]) > nmax:
+                raise InvalidRunCard(
+                    "beam.upc_flux = '%s': neutron tag '%s' is not available for "
+                    "beam %d (Z=%s, N=%s), which has at most %dn."
+                    % (label, tag, i, Z, N, nmax))
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
@@ -9084,6 +9189,7 @@ class RunCardMG7(RunCard):
         beam = self['beam']
         if float(beam['scale_factor']) <= 0.:
             raise InvalidRunCard("scale_factor must be strictly positive")
+        self.check_upc_validity()
         self.check_ckkwl_validity()
         if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
                 and beam['fixed_fact_scale']):
@@ -10033,7 +10139,28 @@ class RunCardMG7(RunCard):
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
+        # gamma-UPC: |lpp| = 2 on both beams with a gamma-UPC pdlabel (the
+        # PDLabelBlock makes it the same on both)
+        upc_keys = set()
+        # pdlabel1/2 only follow pdlabel once the LO card is checked
+        upc_label = ''
+        for name in ('pdlabel1', 'pdlabel'):
+            if name in lo and is_upc_label(str(lo[name])):
+                upc_label = str(lo[name])
+                break
+        if all(isinstance(l, int) and abs(l) == 2 for l in lpps) and \
+                is_upc_label(upc_label):
+            mg7.set('beam.upc_flux', upc_label)
+            for i in (1, 2):
+                for name in ('nb_proton%d' % i, 'nb_neutron%d' % i):
+                    if name in lo:
+                        mg7.set('beam.' + name, lo[name])
+                        upc_keys.add(name)
+            # the ion masses only enter madevent's LHE header
+            upc_keys.update(('mass_ion1', 'mass_ion2'))
         for i, lpp in ((1, lpps[0]), (2, lpps[1])):
+            if upc_keys:
+                continue
             if isinstance(lpp, int) and abs(lpp) not in (0, 1, 3, 4):
                 dropped.append('lpp%d=%s (beam type not representable in mg7)' % (i, lpp))
             elif is_lep(lpp):
@@ -10089,7 +10216,7 @@ class RunCardMG7(RunCard):
         # clustering scales are used whatever dynamical_scale_choice said.
         ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
         # unsupported LO names transferred all the same in this context
-        transferred = set()
+        transferred = set(upc_keys)
         if ickkw == 1:
             xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
             if xqcut > 0:
@@ -10162,7 +10289,10 @@ class RunCardMG7(RunCard):
             mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
-        pdf_names = cls._resolve_pdf(lo, dropped, dressed=bool(dressed))
+        # a gamma-UPC label, like a dressed-lepton one, is no PDF set: it was
+        # carried as beam.upc_flux above
+        pdf_names = cls._resolve_pdf(lo, dropped,
+                                     dressed=bool(dressed) or bool(upc_keys))
         for beam, pdf_name in zip((1, 2), pdf_names):
             if pdf_name:
                 mg7.set('beam.pdf%d' % beam, pdf_name)

@@ -562,3 +562,126 @@ end program check_pbreak
                     self.assertAlmostEqual(P(y, I), P(I, y), places=14)  # symmetric beams
                     self.assertGreater(P(y, I), 0.)
                 self.assertLess(sum(P(k, I) for k in range(1, 5)), P(X, I))
+
+
+class TestGammaUPCMG7RunCard(unittest.TestCase):
+    """beam.upc_flux of the mg7 run_card.toml: madevent 'set' translation,
+    checks and the run_card.dat conversion"""
+
+    def ion_card(self, label='chff', ion=PB208):
+        card = bannermod.RunCardMG7()
+        for name, value in (('lpp', '2'), ('pdlabel', label), ('nb_proton', ion[0]),
+                            ('nb_neutron', ion[1]), ('ebeam', '522080')):
+            card.set_lo_beam_param(name, str(value))
+        return card
+
+    def test_set_translation(self):
+        """lpp 2 + a gamma-UPC pdlabel + nb_proton/nb_neutron give upc_flux and
+        the ions, written to (and read back from) the card; any other pdlabel
+        switches gamma-UPC off"""
+        card = self.ion_card('chf0n0n')
+        card.check_validity()
+        self.assertEqual(card['beam']['upc_flux'], 'chf0n0n')
+        self.assertEqual(card.upc_ions(), (PB208, PB208))
+        self.assertFalse(card['beam']['leptonic'])
+        tmpdir = tempfile.mkdtemp(prefix='upc_mg7card')
+        try:
+            path = pjoin(tmpdir, 'run_card.toml')
+            card.write(path)
+            again = bannermod.RunCardMG7(path)
+            self.assertEqual(again['beam']['upc_flux'], 'chf0n0n')
+            self.assertEqual(again.upc_ions(), (PB208, PB208))
+        finally:
+            shutil.rmtree(tmpdir)
+        card.set_lo_beam_param('pdlabel', 'nn23lo1')
+        self.assertEqual(card['beam']['upc_flux'], '')
+
+    def test_validity(self):
+        """invalid labels, unavailable neutron tags, ions without upc_flux and
+        upc_flux with a dressed-lepton density are refused"""
+        card = self.ion_card('chf0n0n', ion=(92, 146))
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        card = self.ion_card('chf4n4n', ion=O16)
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        self.ion_card('chf2n2n', ion=O16).check_validity()
+        card = bannermod.RunCardMG7()
+        card.set('beam.upc_flux', 'chff0n0n', user=True)  # 8 characters
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        card = bannermod.RunCardMG7()
+        card.set('beam.nb_proton1', 82, user=True)
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        card = self.ion_card()
+        card.set('beam.lepton_density', 'isronlyll', user=True)
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+
+    def test_from_LO(self):
+        """a madevent gamma-UPC run_card converts without dropped settings"""
+        lo = upc_card(bannermod.RunCardLO, 'edff', beam1=AU197, beam2=PROTON)
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['upc_flux'], 'edff')
+        self.assertEqual(mg7.upc_ions(), (AU197, PROTON))
+        self.assertEqual(dropped, [])
+
+
+class TestGammaUPCMG7Luminosity(unittest.TestCase):
+    """madgraph/mg7/upc_luminosity.py: beams, table range, and the tabulation
+    by Source/PDF/gammaUPC/upc_luminosity_table.f"""
+
+    def test_beams(self):
+        """per-nucleon energies and madevent's LHE beam ids"""
+        from madgraph.mg7 import upc_luminosity as upc
+        self.assertEqual(upc.nucleon_energies((522080., 4000.), (PB208, PROTON)),
+                         (2510., 4000.))
+        self.assertEqual(upc.lhe_beam_id(PROTON), 2212)
+        self.assertEqual(upc.lhe_beam_id(PB208), 1000822080)
+        self.assertEqual(upc.lhe_beam_id(O16), 1000080160)
+
+    def test_table_xmin(self):
+        """the table starts at gamma-UPC's 1e-8, or the decade below tau_min"""
+        from madgraph.mg7 import upc_luminosity as upc
+        self.assertEqual(upc.table_xmin(1e-4), 1e-8)
+        self.assertAlmostEqual(upc.table_xmin(3e-10) / 1e-10, 1.)
+        self.assertAlmostEqual(upc.table_xmin(0.) / 1e-10, 1.)
+
+    def test_tabulation(self):
+        """a pp table: lhagrid1 layout (x1 knots, x2 knots, pid 22, x2 fastest),
+        symmetric for identical beams, finite and non-negative, and cached"""
+        if not misc.which('gfortran'):
+            raise unittest.SkipTest('gfortran not available')
+        from madgraph.mg7 import upc_luminosity as upc
+        tmpdir = tempfile.mkdtemp(prefix='upc_table')
+        try:
+            pdf_dir = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF')
+            gamma_dir = pjoin(tmpdir, 'PDF', 'gammaUPC')
+            shutil.copytree(pjoin(pdf_dir, 'gammaUPC'), gamma_dir)
+            shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(tmpdir, 'PDF'))
+            args = (gamma_dir, 'chff', (PROTON, PROTON), (6500., 6500.), 1e-2)
+            path = upc.tabulate(*args, knots=4)
+            with open(path) as fsock:
+                lines = [l for l in fsock if not l.startswith(('#', 'PdfType', 'Format'))]
+            self.assertEqual(lines[0].strip(), '---')
+            xs = [float(v) for v in lines[1].split()]
+            self.assertEqual(xs, [float(v) for v in lines[2].split()])
+            self.assertEqual(len(xs), 9)
+            self.assertAlmostEqual(xs[0], 1e-2)
+            self.assertEqual(xs[-1], 1.)
+            self.assertEqual(lines[3].strip(), '22')
+            values = [float(l) for l in lines[4:4 + len(xs) ** 2]]
+            self.assertEqual(lines[4 + len(xs) ** 2].strip(), '---')
+            n = len(xs)
+            for i in range(n):
+                for j in range(n):
+                    v = values[i * n + j]
+                    self.assertTrue(v >= 0. and v == v, v)
+                    self.assertAlmostEqual(v, values[j * n + i], delta=1e-10 * max(v, 1e-30))
+            self.assertGreater(values[0], 0.)
+            mtime = os.path.getmtime(path)
+            self.assertEqual(upc.tabulate(*args, knots=4), path)
+            self.assertEqual(os.path.getmtime(path), mtime)
+        finally:
+            shutil.rmtree(tmpdir)

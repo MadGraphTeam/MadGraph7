@@ -21,6 +21,7 @@ from madgraph.models.model_reader import Alphas_Runner
 from madgraph.mg7 import helicity_choice as helicity_choice_module
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
+from madgraph.mg7 import upc_luminosity as upc_luminosity_module
 import madgraph.various.py8_bstrahl as py8_bstrahl
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7 import options
@@ -650,7 +651,8 @@ class MadgraphProcess:
         if path_format not in self.helicity_choices:
             backend, fptype = self.helicity_choice_build
             spread = not self.is_decay and (
-                not self.leptonic or bool(self._lepton_density_name))
+                not self.leptonic or bool(self._lepton_density_name)
+                or bool(self.upc_flux))
             choice = helicity_choice_module.choose(
                 path_format.format(device=backend, fptype=fptype), param_card,
                 parameters, self.e_cm, self.beam_rapidity, spread)
@@ -1033,6 +1035,25 @@ class MadgraphProcess:
             self.e_cm = 2.0 * math.sqrt(ebeam1 * ebeam2)
             self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
+
+        # gamma-UPC (beam.upc_flux): one tabulated two-photon luminosity
+        # replaces the PDFs, as a dressed-lepton density does, so the run is
+        # 'leptonic' in the sense of "no PDF" (alpha_s from the param card).
+        # ebeam1/ebeam2 are the energies of the whole ions, as in madevent;
+        # the phase space is generated per nucleon (see upc_luminosity.py).
+        # Built lazily, from the subprocesses' lowest partonic energy.
+        self.upc_flux = "" if self.is_decay else str(beam_args.get("upc_flux", ""))
+        self.upc_ions = self.run_card.upc_ions()
+        self._upc_luminosities = {}
+        if self.upc_flux:
+            e1, e2 = upc_luminosity_module.nucleon_energies(
+                self.beam_energies, self.upc_ions)
+            self.e_cm = 2.0 * math.sqrt(e1 * e2)
+            self.beam_rapidity = 0.5 * math.log(e1 / e2)
+            self.leptonic = True
+            logger.info(
+                "gamma-UPC %s photon-photon luminosity: sqrt(s_NN) = %g GeV "
+                "(Z,N = %s, %s)", self.upc_flux, self.e_cm, *self.upc_ions)
 
         # A dressed-lepton density is not the same thing as beam.leptonic:
         # 'leptonic' means no parton luminosity at all (monochromatic beams),
@@ -2667,6 +2688,25 @@ class MadgraphProcess:
                     raise ValueError(error)
         return self._lepton_density
 
+    def upc_luminosity(self, tau_min):
+        """The gamma-UPC luminosity (upc_luminosity.UPCLuminosity) of a
+        subprocess whose s_hat / s_NN is at least ``tau_min``, or None without
+        beam.upc_flux. Subprocesses reaching the same decade share a table."""
+        if not self.upc_flux:
+            return None
+        xmin = upc_luminosity_module.table_xmin(tau_min)
+        if xmin not in self._upc_luminosities:
+            gamma_dir = os.path.abspath(os.path.join("Source", "PDF", "gammaUPC"))
+            if not os.path.isdir(gamma_dir):
+                raise RuntimeError(
+                    "beam.upc_flux needs the gamma-UPC sources in %s, which an "
+                    "output ships for photon-photon processes only" % gamma_dir)
+            mg5_options = options.load_mg5_options(with_cluster=True)
+            self._upc_luminosities[xmin] = upc_luminosity_module.UPCLuminosity(
+                ms, self.contexts, gamma_dir, self.upc_flux, self.upc_ions,
+                self.beam_energies, xmin, mg5_options.get("fortran_compiler"))
+        return self._upc_luminosities[xmin]
+
     @property
     def fixed_fact_scale(self):
         """The factorisation scale as a number, or None if it is dynamical.
@@ -2693,6 +2733,10 @@ class MadgraphProcess:
             data = self.subprocess_data[0]
             pdg = clean_pids(data["incoming"])[0]
             return [pdg, 0], [float(self.e_cm), 0.0]
+        if self.upc_flux:
+            # the protons or ions emitting the photons, at their full energy
+            return ([upc_luminosity_module.lhe_beam_id(ion) for ion in self.upc_ions],
+                    list(self.beam_energies))
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
             return [2212, 2212], list(self.beam_energies)

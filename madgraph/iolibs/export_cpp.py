@@ -3277,6 +3277,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # The dressed-lepton densities beam.lepton_density selects from. Also
         # reads self.proc_characteristic, so it comes after the call above.
         self.copy_lepton_densities()
+        # and the gamma-UPC sources beam.upc_flux tabulates its luminosity with
+        self.copy_gamma_upc()
 
         self.write_me5_configuration()
 
@@ -3457,6 +3459,37 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except Exception as error:
             logger.warning('could not ship the dressed-lepton densities: %s',
                            error)
+
+    def copy_gamma_upc(self):
+        """Ship Source/PDF/gammaUPC (and the pdf.inc it includes), but only
+        when both beams can give a photon.
+
+        A run with beam.upc_flux compiles it the first time it is needed and
+        tabulates the two-photon luminosity with
+        gammaUPC/upc_luminosity_table.f (template_files/mg7 has no Fortran
+        otherwise); the table is cached next to the sources for the next run,
+        and a gridpack carries it in its saved globals, without Source/.
+        """
+        pc = self.proc_characteristic
+        try:
+            if pc['ninitial'] != 2:
+                return
+            if 22 not in pc['pdg_initial1'] or 22 not in pc['pdg_initial2']:
+                return
+        except (KeyError, TypeError):
+            return
+        pdf_dir = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF')
+        source = pjoin(pdf_dir, 'gammaUPC')
+        target = pjoin(self.dir_path, 'Source', 'PDF', 'gammaUPC')
+        if not os.path.isdir(source) or os.path.exists(target):
+            return
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns(
+                '*.o', '*.mod', '*.a', 'test', 'upc_luminosity_table', 'tables'))
+            shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(self.dir_path, 'Source', 'PDF'))
+        except Exception as error:
+            logger.warning('could not ship the gamma-UPC sources: %s', error)
 
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via

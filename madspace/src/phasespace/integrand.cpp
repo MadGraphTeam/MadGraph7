@@ -120,7 +120,8 @@ Integrand::Integrand(
     const std::optional<PdfGrid>& pdf_grid2,
     const std::optional<MappingChannelWeights>& mapping_chan_weights,
     int mlm_history_qcd_power,
-    const std::optional<EELuminosity>& lepton_luminosity
+    const std::optional<EELuminosity>& lepton_luminosity,
+    const std::optional<TabulatedLuminosity>& tabulated_luminosity
 ) :
     FunctionGenerator(
         "Integrand",
@@ -268,6 +269,7 @@ Integrand::Integrand(
     _running_coupling(running_coupling),
     _energy_scale(energy_scale),
     _lepton_luminosity(lepton_luminosity),
+    _tabulated_luminosity(tabulated_luminosity),
     _prop_chan_weights(prop_chan_weights),
     _mapping_chan_weights(mapping_chan_weights),
     _subchan_weights(subchan_weights),
@@ -301,6 +303,13 @@ Integrand::Integrand(
     ),
     _custom_bias(custom_bias) {
     _mlm_history_qcd_power = mlm_history_qcd_power;
+    if (tabulated_luminosity &&
+        (!std::holds_alternative<std::monostate>(pdf_grid) || lepton_luminosity)) {
+        throw std::invalid_argument(
+            "a tabulated luminosity replaces both parton densities: it cannot be "
+            "combined with a PDF or a dressed-lepton luminosity"
+        );
+    }
     if (energy_scale && energy_scale->mlm_flavor_dependent() &&
         pid_options.size() > 1) {
         for (auto& option : pid_options) {
@@ -603,7 +612,8 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     ret.push_back("ren_scale", acc_float);
     // a dressed-lepton run has no PartonDensity at all -- one luminosity
     // replaces both PDFs -- but still returns pdf1/fact_scale1
-    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity) && _energy_scale) {
+    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity || _tabulated_luminosity) &&
+        _energy_scale) {
         auto flav_count = static_cast<int>(_pid_options.size());
         // pdf_prior is built from the per-flavour PartonDensity values, which
         // a dressed-lepton run does not have: build_channel_part only sets it
@@ -1069,6 +1079,13 @@ NamedVector<Value> Integrand::build_channel_part(
         );
         pdf_results.at(0) =
             fb.mul(lum.at(0), fb.mul(x_acc.at(0), x_acc.at(1)));
+    }
+    if (_tabulated_luminosity) {
+        // the same single slot as the dressed-lepton luminosity: the table
+        // already holds x1 x2 L, the x f convention diff_cross_section wants
+        pdf_results.at(0) = _tabulated_luminosity.value()
+                                .build_function(fb, ValueVec{x_acc.at(0), x_acc.at(1)})
+                                .at(0);
     }
     if (_diff_xs.at(0).has_pdf(0)) {
         out.push_back("pdf1", pdf_results.at(0));
