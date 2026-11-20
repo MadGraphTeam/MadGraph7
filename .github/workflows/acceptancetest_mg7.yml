@@ -55,6 +55,20 @@ jobs:
   # dispatch and the alpha_s of a decay) and test_auto_width_nlo.py (the NLO widths
   # with MC@NLO, the options of an 'auto' width, the precompiled headers of the
   # build) are run in the same job: they need the launcher module too.
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
   unittest_mg7_launch:
     # merged jobs, run one after the other: unittest_mg7_launch
     #   acceptancetest_mg7_launcher_cut_names
@@ -110,6 +124,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_every_cut_it_writes_builds_an_observable test_it_tightens_the_jet_pt_and_pair_mass_to_xqcut test_it_drops_the_jet_cone_cuts test_with_the_option_off_it_only_zeroes_cuts_above_xqcut test_it_leaves_an_unmerged_run_alone -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_1:
     # former jobs, run one after the other: acceptancetest_mg7_ufo_aloha
@@ -266,6 +294,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_add_time_of_flight_mg7 -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_2:
     # former jobs, run one after the other: acceptancetest_mg7_fd_gauge
@@ -473,6 +515,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_vegas_simd_consistency_mg7 test_madnis_simd_consistency_mg7 test_madnis_gridpack_simd_consistency_mg7 -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_3:
     # former jobs, run one after the other: acceptancetest_mg7_e_p_collision
@@ -572,6 +628,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_mg7_decays_reproducible_with_seed -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_4:
     # merged jobs, run one after the other: acceptancetest_mg7_bundle_4
@@ -654,6 +724,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madmatrix_mssm_gogo -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_madtrex:
     needs: build_madspace
@@ -706,6 +790,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_reweight_backends -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_uncovered:
     # mg7 acceptance tests that no workflow selected (audit of 2026-10-24).
@@ -750,3 +848,17 @@ jobs:
             # LHAPDF_DATA_PATH (install_lhapdf_pdfset) holds only NNPDF23: unset, these
             # tests find NNPDF40_lo_as_01180 in the heptools data dir via lhapdf-config
             env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_output_mg7_decay_run_card_has_no_cuts test_output_mg7_decay_subprocess_metadata test_color_flow_consistency_mg7 test_systematics_mg7_legacy test_systematics_mixed_order_mg7 test_mg7_reweighting_at_generation test_delphes_mg7 -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true

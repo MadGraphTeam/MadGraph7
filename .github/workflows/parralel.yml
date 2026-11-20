@@ -194,6 +194,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   test_short_ppgogo_amcatnlo_nlo:
     # The type of runner that the job will run on
@@ -213,6 +227,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             ./tests/test_manager.py  test_short_amcatnlo_int_nlo -pP -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   parallel_bundle_3:
     # former jobs, run one after the other: test_short_softcol_nlo
@@ -256,6 +284,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   parallel_bundle_5:
     # merged jobs, run one after the other: parallel_bundle_5 parallel_bundle_7
@@ -345,6 +387,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   parallel_bundle_6:
     # merged jobs, run one after the other: parallel_bundle_6 parallel_bundle_10
@@ -423,6 +479,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   parallel_bundle_8:
     # former jobs, run one after the other: test_short_launch_amcatnlo_name
@@ -464,6 +534,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   parallel_bundle_9:
     # merged jobs, run one after the other: parallel_bundle_9 parallel_bundle_11
@@ -533,6 +617,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   test_decay_comparator_mssm:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
@@ -555,6 +653,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   test_decay_comparator_nmssm1:
     # bin/generate_events with an explicit run name, default HERWIG6 shower.
@@ -577,3 +689,17 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true

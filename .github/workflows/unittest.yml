@@ -229,6 +229,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_2:
@@ -355,6 +369,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_3:
@@ -422,6 +450,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_4:
@@ -480,6 +522,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_5:
@@ -518,6 +574,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_6:
@@ -562,6 +632,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_7:
@@ -636,6 +720,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_new_coverage:
@@ -682,6 +780,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_real_channels:
@@ -696,6 +808,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             gfortran --version
             ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_born_spreading test_fks_explicit_sum test_mc_flow_sum test_born_flow_rejection test_tau_cut_cache test_mint_channels test_mint_uncertainty test_folding_virtual test_virtual_surrogate test_virtual_surrogate_mixed test_nlo_call_arguments test_real_channels_auto -t0
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_write_model:
@@ -717,6 +843,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
 
@@ -735,6 +875,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_uncovered:
@@ -766,3 +920,17 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
