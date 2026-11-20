@@ -211,6 +211,8 @@ def test_both_readers_know_the_same_keys():
     [
         EVERY_KEY,
         "",
+        "[evaluation]",
+        "[evaluation]\n",
         "[evaluation]\nprecision = 30",
         "[evaluation]\narithmetic = 'arbitrary'\nprecision = 40\npoles = 'uv'",
         "[evaluation]\nreduction_target = 1\nkinematics_improvement = 'off'",
@@ -811,22 +813,34 @@ def test_a_tree_runtime_refuses_virtual_options_at_load():
     assert runtime.contribution_kind == "tree"
 
 
-def test_a_mistyped_options_path_says_no_such_file(tmp_path):
+def test_a_one_line_options_string_is_an_existing_file_or_toml(tmp_path, monkeypatch):
+    """A one-line string is a path when it names an existing file (with or
+    without "=" in its name), else a TOML text: ``[evaluation]`` is an empty
+    table in both readers (no option set); a string that is neither (a
+    mistyped path, a bare word) is refused naming both readings. The native
+    readers take TOML texts only (a file through ``set_options_file``): they
+    read the same file's text alike and refuse the bare word as TOML."""
+
     from pyamplicol.config import ConfigurationError
     from pyamplicol.config.runtime_options import read_runtime_options
 
-    with pytest.raises(ConfigurationError, match="No such file"):
-        read_runtime_options(str(tmp_path / "no" / "opts.toml"))
+    monkeypatch.chdir(tmp_path)
+    both = "not an existing file and not valid TOML"
+    for text in ("[evaluation]", "[evaluation]\n"):
+        assert read_runtime_options(text) == {}
+        assert set(_native_options(text).values()) == {None}
+    for text in (str(tmp_path / "no" / "opts.toml"), "opts", "x=y.toml"):
+        with pytest.raises(ConfigurationError, match=both):
+            read_runtime_options(text)
+    with pytest.raises(ValueError, match="invalid TOML"):
+        _native().runtime_options("opts")
+    toml = "[evaluation]\nthreads = 3\n"
+    for name in ("opts", "a=b.toml"):
+        (tmp_path / name).write_text(toml)
+        assert read_runtime_options(name) == {"threads": 3}
+        assert read_runtime_options(str(tmp_path / name)) == {"threads": 3}
+    assert _native_options(toml)["threads"] == 3
     assert read_runtime_options("[evaluation]\nthreads = 2") == {"threads": 2}
-    # A one-line string is a path when it names a file (an "=" in the name
-    # included) or has no "="; else TOML, and a refusal names both readings.
-    named = tmp_path / "a=b.toml"
-    named.write_text("[evaluation]\nthreads = 3\n")
-    assert read_runtime_options(str(named)) == {"threads": 3}
-    with pytest.raises(
-        ConfigurationError, match="not an existing file and not valid TOML"
-    ):
-        read_runtime_options(str(tmp_path / "no" / "x=y.toml"))
     assert read_runtime_options("threads = 2") == {}
 
 

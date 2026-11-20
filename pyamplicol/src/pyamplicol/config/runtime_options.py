@@ -84,9 +84,9 @@ def _document(source: RuntimeOptionsSource) -> Mapping[str, object]:
 
 def _parse(source: os.PathLike[str] | str) -> Mapping[str, object]:
     """The TOML of ``source``: a PathLike is a path; a one-line string is a
-    path when it names an existing file or has no "=" (a mistyped path then
-    says "no such file"), else a TOML text; a one-line string with "=" that
-    is neither an existing file nor valid TOML is refused naming both
+    path when it names an existing file, else a TOML text (``[evaluation]``
+    is an empty table: no option); a one-line string that is neither an
+    existing file nor valid TOML (a mistyped path) is refused naming both
     readings."""
 
     if isinstance(source, os.PathLike):
@@ -94,7 +94,7 @@ def _parse(source: os.PathLike[str] | str) -> Mapping[str, object]:
     if not isinstance(source, str):
         raise TypeError("options takes a TOML path, a TOML text or a mapping")
     one_line = bool(source.strip()) and "\n" not in source
-    if one_line and (Path(source).expanduser().is_file() or "=" not in source):
+    if one_line and Path(source).expanduser().is_file():
         return _read(Path(source))
     try:
         return tomllib.loads(source)
