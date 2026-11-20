@@ -186,7 +186,7 @@ class VirtualStabilityChecks:
     ``VirtualStabilityChecks(1, True, rescaled=True)`` is the recommended
     configuration (``loops.v2.stability.RECOMMENDED_CHECKS``).
 
-    ``cross_backend`` (m-lit PLAN §2.b.6, RULED Q21) evaluates every point a
+    ``cross_backend`` evaluates every point a
     second time on the other reduction backend (NinjaRS for a call reduced
     by TIRust, TIRust for one reduced by NinjaRS) and adds the deviation of
     its reduction lanes to the estimate (``checks`` names it
@@ -294,20 +294,19 @@ class VirtualStabilityEstimate:
     sector and Laurent coefficient (:class:`LaurentCoefficients` of floats,
     poles ``None`` when not computed), ``magnitude[s]`` the scale S of the
     same entries (the absolute sum of the contributions before they cancel;
-    for a loop-induced result the pre-cancellation scale of its amplitudes,
-    m-lit PLAN §2.a.8), and ``scale`` the largest E / S over them: the
+    for a loop-induced result the pre-cancellation scale of its amplitudes),
+    and ``scale`` the largest E / S over them: the
     accuracy against the size of what cancelled (the ``"scale"`` metric of
     a :class:`VirtualRescueLevel`). In arbitrary precision every ratio here
     is formed from exponent-safe sizes and rounded last (below binary64's
     range: 0.0, above it: inf); ``absolute`` and ``magnitude`` themselves are
     binary64 floats, 0.0 where E or S lies below binary64's range (beyond
     about 300 digits). A value with ``|value| <= E`` is zero
-    within the estimate (m-lit Q13: zeros are numerical, never declared by
-    a physics rule). For a loop-induced result
+    within the estimate (zeros are numerical, never declared by a physics
+    rule). For a loop-induced result
     (``contribution="loop-induced"``) the pole estimates ``single_pole`` and
     ``double_pole`` are measured against S as well (max over sectors of E /
-    S): its poles vanish, so their own size is no scale (m-lit PLAN §2.a.7,
-    "Pole shape").
+    S): its poles vanish, so their own size is no scale.
 
     ``not_run`` names each requested check that did not run at this point,
     with its reason (``cross-backend``: the other reduction backend failed
@@ -470,9 +469,9 @@ def best_effort_detail(record: VirtualBestEffort) -> str:
 
 @dataclass(frozen=True, slots=True)
 class VirtualReduction:
-    """The reduction backend of one evaluation (m-lit PLAN §2.b.4, RULED
-    Q17 / Q18, F3): the ``requested`` one (``"auto"``, ``"ninjars"`` or
-    ``"tirust"``), the ``effective`` one, and the ``reason`` of the choice.
+    """The reduction backend of one evaluation: the ``requested`` one
+    (``"auto"``, ``"ninjars"`` or ``"tirust"``), the ``effective`` one, and
+    the ``reason`` of the choice.
     ``"auto"`` takes the per-type default (loop-induced: TIRust;
     Born-interfered: NinjaRS; TIRust on a TIR-only artifact) and falls back
     to NinjaRS for the whole call, with the reason, where TIRust cannot serve
@@ -480,7 +479,7 @@ class VirtualReduction:
     instead. The choice is made once per call and carrier (no silent
     switch).
 
-    ``fallback`` is the call's per-point fallback (m-lit F3 (c)): NinjaRS
+    ``fallback`` is the call's per-point fallback: NinjaRS
     when ``"auto"`` took TIRust and NinjaRS serves the call too, None
     otherwise (an explicit backend has none). A point TIRust refuses or
     fails is evaluated again on it, and that point's lane records a
@@ -489,16 +488,16 @@ class VirtualReduction:
     ``target`` is the call's (or the rescue level's) target accuracy, the
     relative accuracy of each point's result that TIRust's acceptance
     follows (None: the default target, ``loops.v2.reduction.
-    default_target``). ``unchecked`` is the call's unchecked setting (m-lit
-    lit-unchecked; default False): True when the backend (and its per-point
+    default_target``). ``unchecked`` is the call's unchecked setting
+    (default False): True when the backend (and its per-point
     fallback) reduced without its own acceptance and refusal checks (TIRust:
     gates and method choice as method selection, no acceptance pass, plain
     PV at gate 0 as its last resort, so the target drives nothing; NinjaRS:
     zero stability thresholds).
 
     ``guard_estimate`` is set on the record of a point the per-point
-    fallback served in double-double or arbitrary precision (m-lit
-    lit-fallback-guard; USER 2026-11-09 ~11:53: the extended carriers only):
+    fallback served in double-double or arbitrary precision (the extended
+    carriers only):
     the relative estimate (each squared-order sector against its largest
     Laurent coefficient, the metric of ``target``) of the fallback value's
     reduction-direction check (every loop numerator reduced a second time in
@@ -616,13 +615,12 @@ class VirtualRescueLevel:
     Laurent coefficient; ``"finite"``: the finite part against itself;
     ``"scale"``: ``VirtualStabilityEstimate.scale``, E <= target x S against
     the scale S of what cancelled, an opt-in acceptance rule for values that
-    may vanish, such as loop-induced zeros, m-lit PLAN §2.a.8) is at most
+    may vanish, such as loop-induced zeros) is at most
     ``target``. A level without any check accepts no point by its
     estimate; it may only be the last level, which keeps every point it
     evaluates.
 
-    ``reduction`` is the level's reduction backend (m-lit PLAN §2.b.4 and
-    §2.b.6, RULED Q17 / Q22, F3 (b)): ``"auto"`` (the default) takes the
+    ``reduction`` is the level's reduction backend: ``"auto"`` (the default) takes the
     call's request when the call names a backend (``evaluate(...,
     reduction=)``, else ``Runtime.load(..., reduction=)``, else the
     artifact's default), else the per-type default with its fallbacks (on
@@ -712,9 +710,9 @@ class VirtualRescuePolicy:
     only; off unless passed): an ordered stack of :class:`VirtualRescueLevel`
     in non-decreasing precision bits, modelled on gammaloop's stability
     levels (``runtime.stability.levels``), each naming how stability is
-    assessed, its working precision and its reduction backend (m-lit F3 (b),
-    USER 2026-11-08 ~15:40): two levels at the same precision differ in
-    their backend (a same-precision level on the other backend), and a
+    assessed, its working precision and its reduction backend: two levels at
+    the same precision differ in their backend (a same-precision level on the
+    other backend), and a
     repeated (precision bits, reduction) pair is refused.
 
     Level 0 evaluates the whole batch. A point that fails (also in one of its
@@ -773,8 +771,8 @@ class VirtualRescuePolicy:
 
 @dataclass(frozen=True, slots=True)
 class VirtualKinematics:
-    """The kinematics improvement of one point in one carrier (m-lit
-    lit-psimprove; ``pyamplicol.kinematics``): the requested setting
+    """The kinematics improvement of one point in one carrier
+    (``pyamplicol.kinematics``): the requested setting
     (``"z-shift"``, ``"rescaling"``, ``"projection"`` or ``"off"``), what
     became of the point (``status``: ``"improved"`` by the variant
     ``produced``; ``"exact"``, already exactly physical and passed
@@ -1006,8 +1004,8 @@ MOMENTS = "moments:"
 
 @dataclass(frozen=True, slots=True)
 class VirtualLaneRescue:
-    """The lane rescue of one point (USER 2026-11-18; docs/user/
-    python-api.md, "Lane rescue"): reduction lanes (one family's
+    """The lane rescue of one point (docs/user/python-api.md, "Lane
+    rescue of refused reduction lanes"): reduction lanes (one family's
     integrals in one Laurent column) that the backend refused in the
     evaluation's carrier and whose REDUCTION alone was redone in a higher
     carrier, from the same coefficients lifted exactly, the result rounded
@@ -1655,8 +1653,8 @@ class VirtualEvaluation(LaneWarnings):
     that returned it, and ``rescue_counts`` summarises the levels.
 
     ``contribution`` is ``"virtual"`` (the Born-virtual interference) or
-    ``"loop-induced"`` (|A_loop|^2 of a process without a Born amplitude,
-    m-lit Q36): its Born fields are zeroed (``born_orders`` empty, every
+    ``"loop-induced"`` (|A_loop|^2 of a process without a Born amplitude):
+    its Born fields are zeroed (``born_orders`` empty, every
     per-point Born entry of zero length), its sectors pair loop orders (the
     pair's ``born`` slot holds the conjugated loop order) and its computed
     poles vanish up to rounding (a finiteness cross-check).
@@ -1938,7 +1936,7 @@ class ResolvedVirtualEvaluation(LaneWarnings):
     ``contribution`` follows :class:`VirtualEvaluation`: a loop-induced
     result (``"loop-induced"``) has no Born colour axis (``born_color_ids``
     empty, every Born entry of zero length) and its ``virtual_color_ids``
-    resolve the colour-contracted |A_loop|^2 (m-lit Q36).
+    resolve the colour-contracted |A_loop|^2.
     """
 
     born_values: ResolvedCoefficients

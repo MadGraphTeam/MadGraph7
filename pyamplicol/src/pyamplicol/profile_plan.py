@@ -469,7 +469,7 @@ def rule_b_drops(
     lanes: int,
     start: bool = False,
 ) -> bool:
-    """Rule B (USER 2026-11-19), the runtime timing alone: its reference is
+    """Rule B, the runtime timing alone: its reference is
     left out, for every backend (all multipliers or none), when the sum of
     the lower bounds of every serving backend's minimum with its reference
     points (``known``: one not measured yet counts 0) exceeds ``bound`` of
@@ -493,7 +493,7 @@ def rule_a_drops(
     start: bool = False,
     runtime: bool = True,
 ) -> bool:
-    """Rule A (USER 2026-11-19): the other backends of ``known`` are left out
+    """Rule A: the other backends of ``known`` are left out
     when a lower bound of the ``default`` backend's minimum for everything
     asked exceeds ``bound(1)``. ``reference``: its reference counted, only
     where rule B cannot leave it out (invariant ii: a cost rule B would drop

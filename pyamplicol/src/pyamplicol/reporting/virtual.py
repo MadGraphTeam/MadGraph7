@@ -470,7 +470,7 @@ def virtual_evaluation_summary(
 
 def warnings_line(result: Any, color: bool) -> str:
     """The one dim line under a result's tables that names its captured
-    warnings (``result.warnings``, m-lit ux-besteffort), or nothing."""
+    warnings (``result.warnings``), or nothing."""
 
     from pyamplicol.api.result_warnings import summary_line
 

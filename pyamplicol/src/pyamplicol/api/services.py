@@ -432,7 +432,7 @@ class Generator:
         A process string may use MG5_aMC syntax, as in :meth:`plan`. The
         known, benign dependency log events of the generation are returned
         in the result's ``warnings`` instead of being printed
-        (``_internal.symbolica_log``, m-lit ux-besteffort)."""
+        (``_internal.symbolica_log``)."""
 
         from dataclasses import replace
 
@@ -795,7 +795,7 @@ class Runtime:
         Existing injected tree backends may omit this additive capability.
         The loop execution lane always requires virtual result semantics:
         "virtual" (the Born-virtual interference) or "loop-induced"
-        (|A_loop|^2 of a process without a Born, m-lit Q36), both returning
+        (|A_loop|^2 of a process without a Born), both returning
         ``VirtualEvaluation`` results.
         """
         mode = getattr(self._backend, "execution_mode", None)
@@ -2097,7 +2097,7 @@ class Runtime:
     def take_warnings(self) -> tuple[str, ...]:
         """Consume a tree runtime's pending warnings: the native runtime's
         not yet emitted ones and the kinematics improvement's record of the
-        most recent improved call (m-lit lit-psimprove: a summary line, e.g.
+        most recent improved call (a summary line, e.g.
         ``"kinematics-improvement: arbitrary at precision 32 (z-shift):
         z-shift 4"``, and every typed warning, which is also issued as a
         Python warning), the lines the C ABI's
@@ -2219,7 +2219,7 @@ def check(
 ) -> CheckReport:
     """:func:`_check`, the known, benign dependency log events it triggers
     returned in the report's ``warnings`` instead of being printed
-    (``_internal.symbolica_log``, m-lit ux-besteffort)."""
+    (``_internal.symbolica_log``)."""
 
     from dataclasses import replace
 

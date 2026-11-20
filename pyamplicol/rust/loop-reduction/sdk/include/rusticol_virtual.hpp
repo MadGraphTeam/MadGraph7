@@ -118,7 +118,7 @@ public:
 // served by the Python API's color_flows=) and a resolved evaluation's
 // colour resolution of a loop-induced process ("contracted", the default, or
 // "amplitude-basis"). Helicity rows are selected for loop-induced and, at
-// every colour accuracy, Born-interfered processes (lit-fc-hel).
+// every colour accuracy, Born-interfered processes.
 struct VirtualSelection {
     std::vector<std::string> helicity_ids;
     std::vector<std::string> color_ids;
@@ -383,7 +383,7 @@ public:
         return VirtualEvaluation(p);
     }
     // rusticol_virtual_evaluate_selected: the selected helicity rows of a
-    // loop-induced process (resolved = false: their sum per point, RULED Q39;
+    // loop-induced process (resolved = false: their sum per point;
     // resolved = true: per selected row its colour components in the
     // selection's colour resolution). Refusals throw VirtualError.
     VirtualEvaluation evaluate_selected(const std::vector<double> &momenta, std::size_t point_count,

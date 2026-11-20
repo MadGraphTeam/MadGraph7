@@ -494,8 +494,8 @@ pub mod virtual_amplitudes {
         }
         /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
         /// of a loop-induced process or, at every colour accuracy, of a
-        /// Born-interfered one (lit-fc-hel) (`resolved` false: their sum per
-        /// point, RULED Q39; true: per selected row its colour components in
+        /// Born-interfered one (`resolved` false: their sum per
+        /// point; true: per selected row its colour components in
         /// the selection's colour resolution, or the accuracy's resolved
         /// layout); refusals are errors.
         #[allow(clippy::too_many_arguments)]
@@ -2382,8 +2382,8 @@ impl Runtime {
         })
     }
 
-    /// Kinematics improvement of later f64 evaluations (m-lit
-    /// lit-psimprove), the Python API's `kinematics_improvement=`:
+    /// Kinematics improvement of later f64 evaluations, the Python API's
+    /// `kinematics_improvement=`:
     /// `"z-shift"` (MadLoop's default), `"rescaling"`, `"projection"` or
     /// `"off"`. Every evaluation of this runtime is binary64, so the variant
     /// runs only with [`Self::set_kinematics_improvement_binary64`]`(true)`;
