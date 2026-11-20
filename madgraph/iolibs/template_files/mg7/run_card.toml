@@ -15,8 +15,11 @@ precision = %(run.precision)s
 # after the generation, reweight the events to the matrix elements compiled at
 # this FPTYPE and report how many significant digits they share with the
 # generated weights (no weights are written); d (all64) is the suggested
-# validation type; "" for no validation
+# validation type; "" for no validation. Not run for gridpack runs, nor in
+# the cluster mode
 validation = %(run.validation)s
+# events the validation checks, evenly spaced through the sample; 0 for all
+validation_events = %(run.validation_events)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 # cpu gzip of the lhe output: auto uses pigz when installed; false uses gzip

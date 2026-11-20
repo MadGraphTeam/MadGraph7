@@ -186,7 +186,12 @@ def install_runtime_deps(env: dict, system: bool) -> None:
     where MadGraph and everything else it runs see it. When pip refuses to
     install there (an externally managed system Python, PEP 668) and this is
     no --system install, into install/ instead, which MadGraph puts on
-    sys.path before it imports madtrex."""
+    sys.path before it imports madtrex.
+
+    A failed install only warns: madtrex itself is built by then, and only
+    its npy paths (npy events, the run_card [run] validation) need numpy --
+    a gridpack worker without network, say, still gets a working madtrex
+    for LHE events."""
     import re
     missing = [requirement for requirement in runtime_requirements()
                if not is_importable(re.split(r"[\s<>=!~;\[]", requirement, maxsplit=1)[0],
@@ -199,13 +204,16 @@ def install_runtime_deps(env: dict, system: bool) -> None:
     print(f"\n$ {display}\n", flush=True)
     if subprocess.run(cmd, cwd=SCRIPT_DIR, env=env).returncode == 0:
         return
-    if system:
-        print(f"Installing {', '.join(missing)} failed: install it into this Python "
-              "environment yourself, MadtRex needs it.")
-        sys.exit(1)
-    print(f"Installing into the Python environment failed; installing into {INSTALL_DIR} "
-          "instead.")
-    run(cmd + [f"--target={INSTALL_DIR}"], env=env)
+    if not system:
+        print(f"Installing into the Python environment failed; installing into "
+              f"{INSTALL_DIR} instead.")
+        target = cmd + [f"--target={INSTALL_DIR}"]
+        print(f"\n$ {' '.join(target)}\n", flush=True)
+        if subprocess.run(target, cwd=SCRIPT_DIR, env=env).returncode == 0:
+            return
+    print(f"\nWARNING: installing {', '.join(missing)} failed. MadtRex is installed, but "
+          "reading npy events and the run_card [run] validation need it: install it "
+          "into this Python environment yourself.", flush=True)
 
 
 def clean_install_dirs() -> None:

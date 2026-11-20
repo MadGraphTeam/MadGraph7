@@ -387,14 +387,23 @@ def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=N
 
 
 def lhe_via_binary(process, reweight) -> bool:
-    """Whether an output_format = "lhe" run that MadtRex reweights is
-    generated as npy ("lhe_npy") and turned into the LHE file it asked for
-    only after the reweighting (deliver_lhe_from_binary()): MadtRex reads
-    and extends the npy events much faster than an LHE file, which it would
-    decompress, parse and rewrite in full. Not when an LHE-only step runs
-    before the reweighting: the run_card [postprocessing] time_of_flight or
-    legacy systematics (see run_lhe_postprocessing())."""
-    if getattr(reweight, "backend", None) != "madtrex":
+    """Whether an output_format = "lhe" run that MadtRex reads after the
+    generation -- to reweight it, or for the run_card [run] validation of a
+    run that is not reweighted otherwise -- is generated as npy ("lhe_npy")
+    and turned into the LHE file it asked for only after MadtRex is done
+    (deliver_lhe_from_binary()): MadtRex reads and extends the npy events
+    much faster than an LHE file, which it would decompress, parse and
+    rewrite in full. Not when an LHE-only step runs before the reweighting:
+    the run_card [postprocessing] time_of_flight or legacy systematics (see
+    run_lhe_postprocessing()), nor for a validation MadtRex cannot run (see
+    madtrex_unavailable())."""
+    if reweight is None:
+        # validation only: the classic reweighting module reads LHE
+        if process.gridpack_run_mode != "regular" \
+                or validation_fptype(process.run_card) is None \
+                or madtrex_unavailable():
+            return False
+    elif getattr(reweight, "backend", None) != "madtrex":
         return False
     if process.gridpack_run_mode != "regular":
         return False
@@ -451,6 +460,41 @@ def validation_fptype(run_card):
     return fptype_of(str(value).strip())
 
 
+def madtrex_unavailable() -> str:
+    """Why MadtRex cannot run here (not installed, or built against another
+    madspace), or "". Nothing is imported (see reweight_backend)."""
+    from madgraph.various import reweight_backend as rb
+    if not rb.madtrex_is_installed():
+        return ("MadtRex is not installed (python madtrex/install.py, or "
+                "'install madtrex' in MadGraph)")
+    return rb.madtrex_build_problem()
+
+
+def check_precision_validation(cluster=False) -> None:
+    """Before the generation: warns when the run_card [run] validation is set
+    but will not run -- MadtRex is not available (so the user can stop the
+    run, rather than learn it after the generation), or the cluster mode,
+    which does not run it. Reads Cards/run_card.toml as it is (it may hold
+    scan entries), like cluster_enabled()."""
+    import tomllib
+    path = os.path.join("Cards", "run_card.toml")
+    if not os.path.exists(path):
+        return
+    with open(path, "rb") as f:
+        run = tomllib.load(f).get("run", {})
+    fptype = validation_fptype({"run": run})
+    if fptype is None:
+        return
+    log = logging.getLogger("madevent")
+    if cluster:
+        log.warning("run_card [run] validation = %s is ignored: the cluster mode does "
+                    "not run the precision validation", fptype)
+        return
+    problem = madtrex_unavailable()
+    if problem:
+        log.warning("run_card [run] validation = %s will be skipped: %s", fptype, problem)
+
+
 def run_precision_validation(process):
     """run_card [run] validation: MadtRex reweights the events of process to
     the matrix elements compiled at that FPTYPE and logs how many
@@ -468,13 +512,21 @@ def run_precision_validation(process):
             "flavor/helicity information that output_format 'compact_npy' discards "
             "(use 'lhe' or 'lhe_npy')", fptype)
         return None
+    problem = madtrex_unavailable()
+    if problem:
+        # already said before the generation (check_precision_validation())
+        log.warning("run_card [run] validation = %s is skipped: %s", fptype, problem)
+        return None
     try:
         from madgraph.iolibs.template_files.mg7 import madtrex
         return madtrex.run_precision_validation(
-            fptype, events_path=process.events_path, process_directory=os.getcwd())
+            fptype, events_path=process.events_path, process_directory=os.getcwd(),
+            max_events=int(process.run_card["run"].get("validation_events", 0) or 0))
     except Exception as error:
         _report_failure(log, "precision validation", error, process.run_path)
         return None
+
+
 def cluster_enabled() -> bool:
     """Whether the run card asks for the cluster mode. Read from the file as it
     is, so that a card with scan entries can still be refused properly; a card
@@ -518,10 +570,11 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     process.lhe_from_binary = lhe_via_binary(process, reweight)
     if process.lhe_from_binary:
         logging.getLogger("madevent").info(
-            "MadtRex reweights this run: the events are written as npy, and as "
-            "the requested LHE file once reweighted")
+            "MadtRex reads this run: the events are written as npy, and as "
+            "the requested LHE file once MadtRex is done")
     process.generate_events("lhe_npy" if process.lhe_from_binary else None)
     if process.gridpack_run_mode != "regular":
+        # nor the run_card [run] validation, which is not a gridpack parameter
         return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
@@ -630,6 +683,7 @@ def run_generation(switch=None, reweight=None) -> None:
     param_card_path = os.path.join("Cards", "param_card.dat")
     run_iter = detect_run_scan(run_card_path)
     param_iter = detect_param_scan(param_card_path)
+    check_precision_validation(cluster=cluster_enabled())
     if cluster_enabled():
         if run_iter or param_iter:
             raise RuntimeError("cluster mode does not run scans: remove the "

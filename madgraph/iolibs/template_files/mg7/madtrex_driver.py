@@ -543,9 +543,9 @@ def _check_stored_matrix_elements(events_path: str, init_meta, process_directory
     run's stored matrix elements, which are the first evaluation rescaled to
     the event's alpha_s rather than evaluated again (about 1e-7 apart at the
     mixed fptype)."""
-    import numpy as np
     if not events_path.endswith(".npy"):
         return
+    import numpy as np  # only here: LHE events need no numpy
     events = np.load(events_path, mmap_mode="r", max_header_size=1 << 30)
     if STORED_MATRIX_ELEMENT_COLUMN not in (events.dtype.names or ()) or len(events) == 0:
         return
@@ -1597,6 +1597,7 @@ def run_precision_validation(
     process_directory: str = ".",
     helicity_reweighting: bool | None = None,
     csv_path: str | None = None,
+    max_events: int = 0,
 ) -> dict:
     """Checks how well the matrix elements of a sample's generation
     precision agree with those at another one, validation_fptype: compiles
@@ -1629,7 +1630,13 @@ def run_precision_validation(
       "percent": {bin: percentage of the full sample ("events")};
       "original_fptype", "validation_fptype": the two precisions compared;
       "csv": the path of the summary written.
-    helicity_reweighting is as for run_parameter_reweighting()."""
+    helicity_reweighting is as for run_parameter_reweighting().
+
+    max_events > 0 validates only that many events of a larger sample,
+    evenly spaced through it (see _subsample_events()): "events" is then
+    that subsample, and "sampled_from" the size of the full sample (absent
+    when every event is validated). A gzipped LHE file is then read as it
+    is, without the decompressed copy of the full file."""
     _require_madtrex()
     if events_path is None:
         events_path = find_run_events(
@@ -1642,7 +1649,8 @@ def run_precision_validation(
     keep_decompressed = decompressed is None or os.path.isfile(decompressed)
     try:
         summary = _run_precision_validation(source_path, process_directory,
-                                            validation_fptype, helicity_reweighting)
+                                            validation_fptype, helicity_reweighting,
+                                            max_events)
     finally:
         if not keep_decompressed and os.path.isfile(decompressed):
             os.remove(decompressed)
@@ -1655,14 +1663,100 @@ def run_precision_validation(
     return summary
 
 
-def _run_precision_validation(source_path, process_directory, validation_fptype,
-                              helicity_reweighting):
-    """run_precision_validation(), for the events of source_path."""
+def _count_lhe_events(path: str) -> int:
+    """The <event> blocks of the (possibly gzipped) LHE file path, after its
+    </init>: the header can hold cards with any text."""
+    count, in_events = 0, False
+    with (gzip.open(path, "rt") if path.endswith(".gz") else open(path)) as f:
+        for line in f:
+            if not in_events:
+                in_events = line.lstrip().startswith("</init>")
+            elif line.lstrip().startswith("<event"):
+                count += 1
+    return count
+
+
+def _subsample_events(source_path: str, max_events: int, directory: str):
+    """(path, total): max_events of the events of source_path, evenly spaced
+    through its total events (first and last included), written into
+    directory -- an npy file, or an LHE file with source_path's header and
+    <init> -- or None when source_path has no more than max_events events.
+    A gzipped LHE file is read as it is, in two passes, never decompressed
+    to disk in full."""
     import numpy as np
-    events_path = prepare_events(source_path)
-    init_meta = read_init_node(events_path)
-    original_fptype = (_read_run_fptype(process_directory, source_path)
-                       or param_rwgt_card.DEFAULT_FPTYPE)
+
+    def picked(total):
+        return set(np.unique(np.linspace(0, total - 1, max_events).astype(int)).tolist())
+
+    if source_path.endswith(".npy"):
+        events = np.load(source_path, mmap_mode="r", max_header_size=1 << 30)
+        total = len(events)
+        if total <= max_events:
+            return None
+        path = os.path.join(directory, "events.npy")
+        np.save(path, np.ascontiguousarray(events[sorted(picked(total))]))
+        return path, total
+    total = _count_lhe_events(source_path)
+    if total <= max_events:
+        return None
+    keep = picked(total)
+    path = os.path.join(directory, "events.lhe")
+    index, in_events, writing = -1, False, True
+    with (gzip.open(source_path, "rt") if source_path.endswith(".gz")
+          else open(source_path)) as src, open(path, "w") as dst:
+        for line in src:
+            stripped = line.lstrip()
+            if not in_events:
+                in_events = stripped.startswith("</init>")
+                dst.write(line)
+                continue
+            if stripped.startswith("<event"):
+                index += 1
+                writing = index in keep
+            elif stripped.startswith("</LesHouchesEvents>"):
+                writing = True
+            if writing:
+                dst.write(line)
+            if stripped.startswith("</event>"):
+                writing = False
+    return path, total
+
+
+def _run_precision_validation(source_path, process_directory, validation_fptype,
+                              helicity_reweighting, max_events=0):
+    """run_precision_validation(), for the events of source_path."""
+    with tempfile.TemporaryDirectory() as sample_dir:
+        sample = (_subsample_events(source_path, max_events, sample_dir)
+                  if max_events and max_events > 0 else None)
+        if sample is None:
+            summary = _validate_events(prepare_events(source_path), source_path,
+                                       process_directory, validation_fptype,
+                                       helicity_reweighting)
+        else:
+            sample_path, total = sample
+            logger.info("MadtRex: validating %d of the %d events of %s (evenly spaced)",
+                        max_events, total, source_path)
+            summary = _validate_events(sample_path, source_path, process_directory,
+                                       validation_fptype, helicity_reweighting)
+            summary["sampled_from"] = total
+    return summary
+
+
+def _validate_events(events_path, source_path, process_directory, validation_fptype,
+                     helicity_reweighting):
+    """_run_precision_validation() of the events of events_path: source_path's,
+    or a subsample of them (its header.lhe, run card and param_card are
+    source_path's)."""
+    import numpy as np
+    init_meta = read_init_node(source_path)
+    # no fallback to param_rwgt_card.DEFAULT_FPTYPE here: normalised at a
+    # guessed precision, the validation would report a disagreement that
+    # is only the guess's
+    original_fptype = _read_run_fptype(process_directory, source_path)
+    if original_fptype is None:
+        raise RuntimeError(
+            f"cannot tell the precision {source_path} was generated at: neither its "
+            "header nor the process directory has a run card with [run] precision")
     if original_fptype == validation_fptype:
         logger.warning(
             "MadtRex: %s was generated at fptype '%s', the validation fptype itself: "
@@ -1743,7 +1837,9 @@ def _precision_validation_statistics(summary: dict) -> list[tuple[str, str]]:
     return [
         ("original fptype", summary["original_fptype"]),
         ("validation fptype", summary["validation_fptype"]),
-        ("events", str(summary["events"])),
+        ("events", str(summary["events"])
+         + (f" (evenly spaced, of {summary['sampled_from']})"
+            if summary.get("sampled_from") else "")),
         ("events compared (nonzero weight)", str(summary["compared"])),
         ("max relative difference", f"{summary['max_relative_difference']:.6e}"),
         ("median relative difference", f"{summary['median_relative_difference']:.6e}"),
