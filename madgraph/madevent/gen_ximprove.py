@@ -1267,6 +1267,7 @@ class gen_ximprove(object):
                 logger.info("Generating %s unweighted events." % self.err_goal)
                 self.gen_events = True
                 self.err_goal = self.err_goal * self.gen_events_security # security
+                self.err_goal_security = self.gen_events_security
                 
     def handle_seed(self):
         """not needed but for gridpack --which is not handle here for the moment"""
@@ -1508,6 +1509,8 @@ class gen_ximprove_v4(gen_ximprove):
                                     {"subproc": C.name, "nb_split":nb_split})
             self.ow_channels[(C.parent_name, C.name)] = self.ow_channel_entry(
                 C, info, nb_split, needed_event)
+            if self.ow_enabled():
+                self.ow_save_grid(pjoin(self.me_dir, 'SubProcesses', C.parent_name), C.name)
 
             if nb_split == 1:
                 jobs.append(info)
@@ -1528,10 +1531,25 @@ class gen_ximprove_v4(gen_ximprove):
     ow_max_rounds = 4       # top-up rounds
     ow_max_job_factor = 10  # a round adds at most this many times the channel's points
     ow_max_job_points = 200000 # points (non-zero weights) per single-iteration top-up job
+    ow_max_job_events = 100000 # events a top-up job stores (unwgt keeps at most maxevents)
+    ow_unit_margin = 1.1    # a top-up job's unit, below the pool's maximum by this factor
     ow_target_margin = 1.1  # a top-up aims at this many times the channel's share
     # a channel needs this many times its share: one left below it has a larger unit
     # than the others, and the event combination would raise the common maximum
     ow_short_margin = 1.03
+
+    def ow_save_grid(self, pdir, G):
+        """keep the channel's grid for the top-up jobs: a refine job running in the
+        channel directory consumes G/ftn26 (refine.sh removes it)"""
+        grid = pjoin(pdir, G, 'ftn26')
+        if os.path.exists(grid):
+            if not os.path.isdir(pjoin(pdir, G, 'ow_grid')):
+                os.mkdir(pjoin(pdir, G, 'ow_grid'))
+            shutil.copy(grid, pjoin(pdir, G, 'ow_grid', 'ftn26'))
+
+    def ow_enabled(self):
+        return self.run_card['enforce_overweight_limit'] and \
+            self.run_card['max_overweight_truncation'] > 0
 
     def ow_channel_entry(self, C, info, nb_split, needed_event):
         """bookkeeping of a channel for enforce_overweight_limit"""
@@ -1554,6 +1572,7 @@ class gen_ximprove_v4(gen_ximprove):
                 info, nb_split, needed = self.channel_job_info(C, self.goal_lum)
                 entry = self.ow_channel_entry(C, info, 1, needed)
                 entry['next_offset'] = 1000 # its earlier jobs are not known
+                self.ow_save_grid(entry['pdir'], C.name)
                 channels[key] = entry
         return dict((k, e) for k, e in channels.items()
                     if os.path.exists(pjoin(e['gdir'], 'events.lhe')))
@@ -1576,11 +1595,14 @@ class gen_ximprove_v4(gen_ximprove):
         if trunc <= 0:
             logger.warning('enforce_overweight_limit requires max_overweight_truncation > 0: not applied')
             return
+        if not hasattr(self, 'ow_channels'):
+            return # not an event generation (refine for a precision)
         mode = self.run_card['overweight_limit_mode']
         channels = list(self.ow_collect_channels().values())
         if not channels:
             return
-        security = self.gen_events_security
+        # the factor the requested events were multiplied with
+        security = getattr(self, 'err_goal_security', self.gen_events_security)
         floor = self.run_card['overweight_limit_min_events']
         if floor < 0:
             floor = sum(e['needed'] for e in channels) / security / len(channels)
@@ -1618,7 +1640,10 @@ class gen_ximprove_v4(gen_ximprove):
             for e in active:
                 self.ow_apply(e)
 
-            short = [e for e in channels if e['nunwgt'] < self.ow_short_margin * e['share']]
+            # a channel whose maximum was raised needs a margin above its share: below
+            # the others' unit, the event combination would raise the common maximum
+            short = [e for e in channels if e['nunwgt'] <
+                     (self.ow_short_margin if e['raised'] else 1.) * e['share']]
             if not short or round == self.ow_max_rounds:
                 break
             jobs = []
@@ -1631,16 +1656,18 @@ class gen_ximprove_v4(gen_ximprove):
                         len(jobs), round + 1)
             self.run_ow_jobs(jobs)
 
-        raised = [e for e in channels if e['maxwgt'] > e['unit'] * (1 + 1e-6)]
+        raised = [e for e in channels if e['raised']]
         still = [e for e in channels if e['nunwgt'] < e['share']]
         total = sum(e['sigma'] for e in channels)
         ow = sum(e['ow'] for e in channels)
         logger.info('enforce_overweight_limit (%s): maximum weight raised in %i of %i channels '
                     '(largest raise x%.3g), overweight events carry %.3g%% of the cross-section, '
                     '%i additional refine job(s) [%s]', mode, len(raised), len(channels),
-                    max([e['maxwgt'] / e['unit'] for e in raised] or [1]),
+                    max([e['raise'] for e in raised] or [1]),
                     100 * ow / total if total else 0, nb_jobs,
                     misc.format_time(time.time() - start))
+        for e in channels:
+            shutil.rmtree(pjoin(e['gdir'], 'ow_grid'), ignore_errors=True)
         if still:
             logger.warning('enforce_overweight_limit: %i channel(s) still below their share of '
                            'events after %i rounds (%s): fewer events than requested may be '
@@ -1651,10 +1678,11 @@ class gen_ximprove_v4(gen_ximprove):
     def ow_topup_jobs(self, e, round):
         """refine jobs adding points to channel e, for about
         ow_target_margin*share events at its current maximum weight.
-        On the channel's stored grid (G/ftn26), a top-up job is a single
-        iteration of a given number of points: there is no maximum weight to
-        decide (the pool's applies) nor a grid to adapt, so no iteration is
-        discarded. Without a stored grid it is the channel's refine job."""
+        With the channel's grid, a top-up job is a single iteration of a given
+        number of points on it, whose events are unweighted at most at a unit
+        finer than the pool's maximum (ow_threshold.dat): no iteration is
+        discarded and a large weight it meets does not thin its other events.
+        Without a grid it is the channel's refine job."""
 
         points = e['result'].nevents # non-zero points of the pool
         want = self.ow_target_margin * e['share']
@@ -1664,13 +1692,22 @@ class gen_ximprove_v4(gen_ximprove):
             new_points = points * self.ow_max_job_factor
         new_points = min(new_points, self.ow_max_job_factor * points)
 
-        grid = pjoin(e['gdir'], 'ftn26')
+        grid = pjoin(e['gdir'], 'ow_grid', 'ftn26')
+        if not os.path.exists(grid):
+            grid = pjoin(e['gdir'], 'ftn26')
         if e['info']['base_directory'] not in ('', './'):
             grid = pjoin(e['info']['base_directory'], 'ftn26') # read-only gridpack
-        single = points > 0 and os.path.exists(grid)
+        single = points > 0 and e['nunwgt'] > 0 and e['m'] > 0 and os.path.exists(grid)
         if single:
-            nb = max(1, int(math.ceil(new_points / self.ow_max_job_points)))
+            # a job stores about rate*points*ow_unit_margin events at its unit
+            rate = e['nunwgt'] / points
+            max_size = max(self.min_event_in_iter,
+                           self.ow_max_job_events / (self.ow_unit_margin * rate))
+            nb = max(1, int(math.ceil(new_points / min(self.ow_max_job_points, max_size))))
             size = max(self.min_event_in_iter, int(math.ceil(new_points / nb)))
+            # its events, scaled by size/p_tot in the pool, must stay below the
+            # pool's maximum, which scales by points/p_tot
+            unit = e['m'] * points / size / self.ow_unit_margin
         else:
             nb = max(1, min(int(math.ceil(e['njobs'] * new_points / max(points, 1))),
                             self.ow_max_job_factor * e['njobs']))
@@ -1680,11 +1717,20 @@ class gen_ximprove_v4(gen_ximprove):
             info['offset'] = e['next_offset']
             e['next_offset'] += 1
             info['directory'] = '%s_ow%i_%i' % (e['G'], round, i)
-            if info['base_directory'] in ('', './'):
-                info['base_directory'] = e['G'] # the channel's grid
-            if single:
-                info.update(nevents=size, maxiter=1, miniter=1, grid_refinment=0)
             info['packet'] = None
+            if single:
+                # refine.sh leaves an existing job directory (and its ftn25) alone
+                job_dir = pjoin(e['pdir'], info['directory'])
+                if os.path.isdir(job_dir):
+                    shutil.rmtree(job_dir)
+                os.mkdir(job_dir)
+                shutil.copy(grid, pjoin(job_dir, 'ftn25'))
+                with open(pjoin(job_dir, 'ow_threshold.dat'), 'w') as fsock:
+                    fsock.write('%.16e\n' % unit)
+                info.update(nevents=size, maxiter=1, miniter=1, grid_refinment=0)
+            elif info['base_directory'] in ('', './') and \
+                    os.path.exists(pjoin(e['gdir'], 'ow_grid', 'ftn26')):
+                info['base_directory'] = pjoin(e['G'], 'ow_grid') # refine.sh copies its ftn26
             jobs.append(info)
             e['new_jobs'].append(info['directory'])
         return jobs
@@ -1702,13 +1748,12 @@ class gen_ximprove_v4(gen_ximprove):
             r = sum_html.OneResult(d)
             try:
                 r.read_results(pjoin(path, 'results.dat'))
-                if not os.path.exists(pjoin(path, 'events.lhe')):
-                    raise Exception('no events.lhe')
             except Exception as error:
                 logger.warning('enforce_overweight_limit: job %s/%s failed and is ignored: %s',
                                e['P'], d, str(error).split('\n')[0])
                 continue
-            new.append((path, r))
+            # a job that stored no event still counts with its points and estimate
+            new.append((path if os.path.exists(pjoin(path, 'events.lhe')) else None, r))
         # the pool's estimate is the points-weighted average of its sources (one
         # sample of all their points); the events of a source sum to its estimate
         p_old = result.nevents
@@ -1718,7 +1763,8 @@ class gen_ximprove_v4(gen_ximprove):
             sources = [(pjoin(gdir, 'events.lhe'), 1.)]
         else:
             sources = [(pjoin(gdir, 'events.lhe'), p_old / p_tot)] + \
-                      [(pjoin(path, 'events.lhe'), r.nevents / p_tot) for path, r in new]
+                      [(pjoin(path, 'events.lhe'), r.nevents / p_tot) for path, r in new
+                       if path]
             for key in ('axsec', 'xsec', 'xerrc'):
                 setattr(result, key, (p_old * getattr(result, key) +
                                       sum(r.nevents * getattr(r, key) for r in rs)) / p_tot)
@@ -1729,7 +1775,6 @@ class gen_ximprove_v4(gen_ximprove):
         weights, min_wgt = combine_runs.pool_weights(sources)
         e.update(result=result, sources=sources, weights=weights, min_wgt=min_wgt,
                  njobs=e['njobs'] + len(new), sigma=sum(weights))
-        e.setdefault('unit', min_wgt)
 
     def ow_apply(self, e):
         """unweight the channel's pool at e['m']; update results.dat"""
@@ -1745,6 +1790,11 @@ class gen_ximprove_v4(gen_ximprove):
             shutil.rmtree(pjoin(e['pdir'], d), ignore_errors=True)
         e['new_jobs'] = []
         e['nunwgt'], e['maxwgt'] = nunwgt, m
+        # raise of the maximum over the natural unit, accumulated over the rounds
+        # (a pool's floor is the maximum it was unweighted at before)
+        if e['min_wgt'] > 0:
+            e['raise'] = e.get('raise', 1.) * m / e['min_wgt']
+        e['raised'] = e.get('raise', 1.) > 1 + 1e-6
         e['ow'] = sum(w for w in e['weights'] if w > m)
 
     def run_ow_jobs(self, jobs):
@@ -2405,6 +2455,8 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
 
             self.ow_channels[(C.parent_name, C.name)] = self.ow_channel_entry(
                 C, dict(info), nb_split, needed_event)
+            if self.ow_enabled() and not self.readonly:
+                self.ow_save_grid(pjoin(self.me_dir, 'SubProcesses', info['P_dir']), C.name)
             if nb_split == 1:
                 jobs.append(info)
             else:
@@ -2423,7 +2475,7 @@ class gen_ximprove_gridpack(gen_ximprove_v4):
             combine_runs.CombineRuns(self.me_dir, readonly=True)
         else:
             combine_runs.CombineRuns(self.me_dir)
-        if self.run_card['enforce_overweight_limit']:
+        if self.ow_enabled():
             # replaces check_events: the channels short of events get more jobs
             self.enforce_overweight_limit()
         else:

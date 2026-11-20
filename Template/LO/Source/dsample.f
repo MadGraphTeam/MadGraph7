@@ -1804,8 +1804,8 @@ c     max_overweight_truncation (set in run.inc, see store_events in unwgt.f)
       common /to_refine_lastn/ last_nref
       double precision max_overweight_truncation
       common/to_overweight/max_overweight_truncation
-      double precision ow_thr
-      common/to_unwgt_thr/ow_thr
+      double precision ow_thr, ow_fix, ow_kn, ow_nz
+      common/to_unwgt_thr/ow_thr, ow_fix, ow_kn, ow_nz
 
       data prb/maxprb*1d0/
       data fprb/maxfprb*1d0/
@@ -1819,6 +1819,14 @@ c-----
          first_time = .false.
          last_it = .false.
          ow_thr = 0d0
+c        fixed unweighting threshold of an enforce_overweight_limit top-up job
+         ow_fix = 0d0
+         ow_kn = 0d0
+         ow_nz = 0d0
+         open(unit=93, file='ow_threshold.dat', status='old', err=9302)
+         read(93, *, err=9301) ow_fix
+ 9301    close(93)
+ 9302    continue
          last_on = use_cut .ne. -2 .and. (use_cut .ne. 0 .or.
      &        max_overweight_truncation .gt. 0d0)
          last_ufix = 0d0
@@ -1876,6 +1884,7 @@ c        Add the current point to the DiscreteSamplerGrid
          endif
 
          kn = kn + 1
+         ow_kn = kn
          if (.true.) then       !Average points to increase error estimate
             twgt1=twgt1+dabs(wgt)     !This doesn't change anything should remove
             iavg = iavg+1
@@ -1892,6 +1901,7 @@ c        Add the current point to the DiscreteSamplerGrid
                wmax=dabs(wgt)*itm*events
             endif
             non_zero = non_zero + 1
+            ow_nz = non_zero
             mean = mean + dabs(wgt)
             rmean = rmean + wgt
 c           expected number of unweighted events of this point: a large weight

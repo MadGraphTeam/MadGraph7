@@ -3917,7 +3917,7 @@ Beware that this can be dangerous for local multicore runs.""")
             # for split runs. (and partly in store_events).
             combine_runs.CombineRuns(self.me_dir)
             self.refine_mode = "old"
-            if self.run_card['enforce_overweight_limit']:
+            if self.run_card['enforce_overweight_limit'] and x_improve.gen_events:
                 self.update_status("Enforcing the overweight limit", level='parton')
                 x_improve.enforce_overweight_limit()
         else:
@@ -4227,8 +4227,10 @@ Beware that this can be dangerous for local multicore runs.""")
     def overweight_limit_fraction(self):
         """overweight fraction below which the event combination keeps the
         maximum weight (enforce_overweight_limit), 0 otherwise"""
+        # not for the refine modes that do not enforce it (loop-induced, job_strategy=2)
         if self.run_card['enforce_overweight_limit'] and \
-                self.run_card['max_overweight_truncation'] > 0:
+                self.run_card['max_overweight_truncation'] > 0 and \
+                getattr(self, 'refine_mode', 'old') != 'new':
             return self.run_card['max_overweight_truncation']
         return 0
 

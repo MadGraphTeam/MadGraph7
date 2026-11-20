@@ -1027,18 +1027,16 @@ class EventFile(object):
             return max_wgt
         # end of the function
 
-        def max_wgt_for_overweight(fraction):
-            """smallest weight of all_wgt (the largest weights) above which the
-            events carry at most fraction of the cross-section"""
+        def max_wgt_for_overweight(fraction, wgts):
+            """smallest weight of wgts (ascending, the largest weights) above
+            which the events carry at most fraction of the cross-section; None if
+            all of wgts together carry no more than that"""
             above = 0
-            for i in range(len(all_wgt) - 1, 0, -1):
-                above += all_wgt[i]
+            for i in range(len(wgts) - 1, -1, -1):
+                above += wgts[i]
                 if above > fraction * cross['abs']:
-                    return all_wgt[i]
-            return all_wgt[0]
-        ow_min_wgt = 0
-        if keep_overweight_weight and max_overweight_fraction > 0 and all_wgt:
-            ow_min_wgt = max_wgt_for_overweight(max_overweight_fraction)
+                    return wgts[i]
+            return None
                 
         # choose the max_weight
         if not max_wgt:
@@ -1103,6 +1101,15 @@ class EventFile(object):
         nb_keep = 0
         use_fast_second_pass = bool(getattr(self, '_force_fast_unweight_wgt_only', False)
                                     or self._can_use_header_only_initialize(get_wgt))
+        ow_min_wgt = 0
+        if keep_overweight_weight and max_overweight_fraction > 0 and all_wgt:
+            ow_min_wgt = max_wgt_for_overweight(max_overweight_fraction, all_wgt)
+            if ow_min_wgt is None and len(all_wgt) < nb_event:
+                # the largest weights kept by the scan are not enough: all of them
+                ow_min_wgt = max_wgt_for_overweight(
+                    max_overweight_fraction,
+                    self._weights_above(get_wgt, 0, use_fast_second_pass))
+            ow_min_wgt = ow_min_wgt or 0
         for i in range(nb_try):
             self.seek(0)
             if event_target:

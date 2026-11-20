@@ -200,6 +200,8 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         write_events(os.path.join(self.pdir, 'G2', 'events.lhe'), [1. / 689] * 659 + [30. / 689])
         write_results(os.path.join(self.pdir, 'G2', 'results.dat'), 1., 660, nevents=6600)
         self.jobs = []
+        self.units = []
+        self.empty_jobs = False
 
         def run_ow_jobs(jobs):
             # a top-up job: sigma = 1, one clean unit event per 10 points
@@ -207,9 +209,19 @@ class TestEnforceOverweightLimit(unittest.TestCase):
             self.jobs += jobs
             for j in jobs:
                 d = os.path.join(self.pdir, j['directory'])
-                os.makedirs(d)
+                if j['maxiter'] == 1:
+                    # prepared by ow_topup_jobs: the grid and the unit
+                    self.assertTrue(os.path.exists(os.path.join(d, 'ftn25')))
+                    with open(os.path.join(d, 'ow_threshold.dat')) as fsock:
+                        self.units.append(float(fsock.read()))
+                else:
+                    os.makedirs(d)
                 points = j['nevents'] if j['maxiter'] == 1 else 6600
                 n = points // 10
+                if self.empty_jobs and j['directory'].endswith('_0'):
+                    # no event stored: results.dat only (sigma estimate 0.5)
+                    write_results(os.path.join(d, 'results.dat'), .5, 0, nevents=points)
+                    continue
                 write_events(os.path.join(d, 'events.lhe'), [1. / n] * n)
                 write_results(os.path.join(d, 'results.dat'), 1., n, nevents=points)
         x.run_ow_jobs = run_ow_jobs
@@ -235,10 +247,11 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         self.assertTrue(g2)
         # new offsets (seeds), on the channel's grid; single iterations if it has one
         self.assertEqual(sorted(j['offset'] for j in g2), list(range(2, 2 + len(g2))))
-        self.assertTrue(all(j['base_directory'] == 'G2' for j in g2))
         if grid:
             self.assertTrue(all(j['maxiter'] == 1 and j['miniter'] == 1 for j in g2))
             self.assertTrue(all(j['nevents'] <= x.ow_max_job_points for j in g2))
+            # first round: unit = m * points / size / margin, m = 30/689 (G2's large event)
+            self.assertAlmostEqual(self.units[0] / (30. / 689 * 6600 / g2[0]['nevents'] / 1.1), 1., 6)
         else:
             self.assertTrue(all(j['maxiter'] == 9 for j in g2))
         r = sum_html.OneResult('G2')
@@ -255,6 +268,34 @@ class TestEnforceOverweightLimit(unittest.TestCase):
         self.assertAlmostEqual(max(w) * r.nevents / 6600 * 689, 30., 3)
         # the job directories are removed
         self.assertFalse([d for d in os.listdir(self.pdir) if '_ow' in d])
+        # the raise is kept over the rounds (G2 by its 30-unit event, G1 not)
+        entries = dict((k[1], e) for k, e in x.ow_channels.items())
+        self.assertTrue(entries['G2']['raised'])
+        self.assertAlmostEqual(entries['G2']['raise'], 30., 4) # 30/689 over the unit 1/689
+        self.assertFalse(entries['G1']['raised'])
+
+    def test_job_without_events(self):
+        # every round's first job stores no event: its points and its estimate
+        # (0.5 pb) still enter the pooled cross-section
+        x = self.make_ximprove({'max_overweight_truncation': 0.001,
+                                'overweight_limit_min_events': -1,
+                                'overweight_limit_mode': 'channel'})
+        self.empty_jobs = True
+        x.enforce_overweight_limit()
+        r = sum_html.OneResult('G2')
+        r.read_results(os.path.join(self.pdir, 'G2', 'results.dat'))
+        g2 = [j for j in self.jobs if j['directory'].startswith('G2')]
+        empty = sum(j['nevents'] for j in g2 if j['directory'].endswith('_0'))
+        self.assertAlmostEqual(r.axsec, 1. - .5 * empty / r.nevents, 4) # results.dat: 5 digits
+
+    def test_not_event_generation(self):
+        # refine for a precision: no channel bookkeeping, nothing to do
+        x = self.make_ximprove({'max_overweight_truncation': 0.001,
+                                'overweight_limit_min_events': -1,
+                                'overweight_limit_mode': 'channel'})
+        del x.ow_channels
+        x.enforce_overweight_limit()
+        self.assertEqual(self.jobs, [])
 
     def test_requires_truncation(self):
         x = self.make_ximprove({'max_overweight_truncation': -1,

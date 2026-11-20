@@ -130,9 +130,12 @@ C
       double precision twgt, maxwgt,swgt(maxevents)
       integer                             lun, nw, itmin
       common/to_unwgt/twgt, maxwgt, swgt, lun, nw, itmin
-c     largest primary-unweighting threshold of the stored events (stored units)
-      double precision ow_thr
-      common/to_unwgt_thr/ow_thr
+c     largest primary-unweighting threshold of the stored events (stored units);
+c     ow_fix: unit (event weight, cross-section units) a top-up job unweights at
+c     (ow_threshold.dat, read in dsample); ow_kn, ow_nz: points and non-zero
+c     points of the iteration so far (dsample)
+      double precision ow_thr, ow_fix, ow_kn, ow_nz
+      common/to_unwgt_thr/ow_thr, ow_fix, ow_kn, ow_nz
 
 c-----
 c  Begin Code
@@ -217,8 +220,8 @@ C
 
       double precision twgt_it, local_twgt
       common/to_unwgt_it/twgt_it
-      double precision ow_thr
-      common/to_unwgt_thr/ow_thr
+      double precision ow_thr, ow_fix, ow_kn, ow_nz
+      common/to_unwgt_thr/ow_thr, ow_fix, ow_kn, ow_nz
       
       double precision    matrix
       common/to_maxmatrix/matrix
@@ -250,6 +253,11 @@ c     refine last iteration (dsample): a large weight must not coarsen the event
 c     stored after it beyond the maximum weight they are unweighted against
       if (last_it .and. last_ufix .gt. 0d0)
      &     local_twgt = min(local_twgt, twgt*last_ufix/fudge)
+c     a top-up job of enforce_overweight_limit unweights at most at the unit it
+c     was given, so a large weight it meets does not thin its other events. The
+c     iteration's cross-section is sum|wgt|*events/kn, events ~ its non-zero points
+      if (ow_fix .gt. 0d0 .and. ow_nz .gt. 0d0)
+     &     local_twgt = min(local_twgt, ow_fix*ow_kn/ow_nz/fudge)
 c      write(*,*) "twgt", twgt, twgt_it, local_twgt
       if (local_twgt .ge. 0d0) then
          p(:,:) = px(:,:)
@@ -354,8 +362,8 @@ c     events this unweighting would give at last_uref (dsample, run.inc)
       double precision max_overweight_truncation
       common/to_overweight/max_overweight_truncation
       double precision xow
-      double precision ow_thr
-      common/to_unwgt_thr/ow_thr
+      double precision ow_thr, ow_fix, ow_kn, ow_nz
+      common/to_unwgt_thr/ow_thr, ow_fix, ow_kn, ow_nz
 
 c
 c     external
