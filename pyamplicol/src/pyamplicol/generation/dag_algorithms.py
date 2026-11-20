@@ -974,6 +974,16 @@ def _infer_minimal_coupling_order_limits_from_color_plan(
         ignored_particle_ids=ignored_particle_ids,
         ignored_vertex_kinds=ignored_vertex_kinds,
     )
+    return _minimal_coupling_order_limits_from_totals(totals, model=model)
+
+
+def _minimal_coupling_order_limits_from_totals(
+    totals: Sequence[CouplingOrders],
+    *,
+    model: Model,
+) -> dict[str, int]:
+    """The minimal-order envelope of closure totals, by model hierarchy."""
+
     if not totals:
         return {}
     hierarchies = {
@@ -1079,11 +1089,25 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
 
     if not dag.amplitude_roots:
         return dag
+    return prune_dag_to_required_currents(
+        dag,
+        (
+            current_id
+            for root in dag.amplitude_roots
+            for current_id in (root.left_id, root.right_id)
+        ),
+    )
+
+
+def prune_dag_to_required_currents(
+    dag: GenericDAG,
+    required_current_ids: Iterable[int],
+) -> GenericDAG:
+    """Keep the required currents and the sub-DAG feeding them."""
 
     required_currents = bytearray(len(dag.currents))
-    for root in dag.amplitude_roots:
-        for current_id in (root.left_id, root.right_id):
-            required_currents[current_id] = 1
+    for current_id in required_current_ids:
+        required_currents[current_id] = 1
 
     required_interactions = bytearray(len(dag.interactions))
     # Interactions are emitted in increasing result-subset order. Walking that
@@ -1164,6 +1188,7 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
     return GenericDAG(
         process=dag.process,
         color_plan=dag.color_plan,
+        nc_expansion=dag.nc_expansion,
         currents=pruned_currents,
         sources=pruned_sources,
         interactions=pruned_interactions,
@@ -1227,6 +1252,7 @@ def prune_global_helicity_flip_equivalent_roots(
         GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=dag.currents,
             sources=dag.sources,
             interactions=dag.interactions,
@@ -1694,6 +1720,7 @@ def filter_dag_to_color_sectors(
         return GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=(),
             sources=(),
             interactions=(),
@@ -1716,6 +1743,7 @@ def filter_dag_to_color_sectors(
         return GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=(),
             sources=(),
             interactions=(),
@@ -1827,6 +1855,7 @@ def filter_dag_to_color_sectors(
     return GenericDAG(
         process=dag.process,
         color_plan=dag.color_plan,
+        nc_expansion=dag.nc_expansion,
         currents=tuple(currents),
         sources=sources,
         interactions=tuple(interactions),
@@ -1866,6 +1895,7 @@ def filter_dag_to_source_helicities(
         GenericDAG(
             process=dag.process,
             color_plan=dag.color_plan,
+            nc_expansion=dag.nc_expansion,
             currents=dag.currents,
             sources=dag.sources,
             interactions=dag.interactions,

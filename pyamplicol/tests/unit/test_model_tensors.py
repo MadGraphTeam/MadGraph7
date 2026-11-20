@@ -76,13 +76,13 @@ def test_model_tensors_keep_supported_singlet_projection() -> None:
         (
             "UFO::ProjM(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
-            "projp",
+            "projm",
             ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
             "UFO::ProjP(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
-            "projm",
+            "projp",
             ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
@@ -131,6 +131,66 @@ def test_vertex_spinor_slots_follow_the_standard_ufo_fermion_order() -> None:
 
     assert gamma(2, 1) == gamma(1, 2, vertex=False)
     assert gamma(2, 1) != gamma(2, 1, vertex=False)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    (
+        # A pseudoscalar written with projectors or with gamma^5 (UFO FFS2).
+        ("ProjM(2,1)-ProjP(2,1)", "-Gamma5(2,1)"),
+        ("ProjM(2,1)+ProjP(2,1)", "Identity(2,1)"),
+        # gamma^mu gamma^5 (the axial current) both ways: the chain keeps its
+        # order next to a projector difference as next to Gamma5.
+        (
+            "Gamma(3,2,-1)*ProjP(-1,1)-Gamma(3,2,-1)*ProjM(-1,1)",
+            "Gamma(3,2,-1)*Gamma5(-1,1)",
+        ),
+        ("Gamma(3,2,-1)*ProjM(-1,1)", "ProjP(2,-1)*Gamma(3,-1,1)"),
+        # Sigma^{mu nu} as its gamma-matrix commutator.
+        (
+            "Sigma(3,4,2,1)",
+            "1/2*complex(0,1)*(Gamma(3,2,-1)*Gamma(4,-1,1)-Gamma(4,2,-1)*Gamma(3,-1,1))",
+        ),
+    ),
+)
+def test_vertex_spinor_chains_keep_their_order_and_chirality(
+    left: str, right: str
+) -> None:
+    """UFO identities between Lorentz structures hold after lowering: a lone
+    projector keeps its chirality and a product of gamma matrices keeps its
+    order, so pseudoscalar (Goldstone) couplings written with projectors equal
+    their gamma^5 form, and chiral currents their gamma^5 form."""
+
+    from symbolica import E
+    from symbolica.community.tensor import TensorLibrary, TensorNetwork, as_tensor
+    from ufo_model_loader.symbolica_processing import wrap_indices
+
+    from pyamplicol.loops.model_expressions import parse_exact_ufo
+    from pyamplicol.models.compiler_kernels import _ordered_dense_tensor_components
+
+    spins = (2, 2, 3, 3) if "4" in left else (2, 2, 3) if "(3" in left else (2, 2, 1)
+    axes = (
+        "ufo_s_1_1",
+        "ufo_s_1_2",
+        *(f"ufo_l_1_{leg}" for leg, spin in enumerate(spins, 1) if spin == 3),
+    )
+
+    def dense(source: str) -> tuple[object, ...]:
+        wrapped = wrap_indices(parse_exact_ufo(source)).to_canonical_string()
+        expression = E(normalize_lorentz_expression(wrapped, spins).expression)
+        library = TensorLibrary.hep_lib_atom()
+        network = TensorNetwork(as_tensor(expression), library)
+        network.execute(library=library)
+        result = network.result_tensor(library)
+        return tuple(
+            E(str(value)).expand()
+            for value in _ordered_dense_tensor_components(result, axes).values
+        )
+
+    assert all(
+        (mine - theirs).expand() == E("0")
+        for mine, theirs in zip(dense(left), dense(right), strict=True)
+    )
 
 
 def test_lorentz_clifford_contraction_preserves_4d_normalization() -> None:
@@ -253,7 +313,13 @@ def test_trilinear_color_projection_does_not_trust_ufo_source_spelling() -> None
     ) == ("generic-tensor", 1.0 + 0.0j)
 
 
-def test_external_compiler_rejects_unimplemented_symmetric_color_tensor() -> None:
+def test_external_compiler_lowers_the_symmetric_color_tensor_only_projected() -> None:
+    """The d-symbol lowers to both colour orders of its inputs with one sign,
+    unlike f, but only on a vertex whose gluon legs are projected onto SU(N)
+    (the counterterm vertices, ``models.ct_color_flow``): on an ordinary
+    vertex it would read the U(1) part of a fermion line's gluon, so the
+    compiler refuses it there."""
+
     particles = tuple(
         CompiledParticleRecord(
             name=f"adjoint_{index}",
@@ -304,6 +370,16 @@ def test_external_compiler_rejects_unimplemented_symmetric_color_tensor() -> Non
 
     with pytest.raises(ValueError, match="unsupported trilinear color tensor"):
         _annotate_oriented_kernel_color_projections((kernel,), particles, (term,))
+    (annotated,) = _annotate_oriented_kernel_color_projections(
+        (kernel,),
+        particles,
+        (term,),
+        u1_projected_vertices=frozenset({"symmetric-adjoint"}),
+    )
+    assert annotated.color_projection_structure == "adjoint-symmetric-invariant"
+    terms = annotated.lc_color_transition_terms
+    assert sorted(term.input_permutation for term in terms) == [(0, 1), (1, 0)]
+    assert {term.exact_factor_expression for term in terms} == {"1"}
 
 
 def test_oriented_identity_retains_the_exact_vertex_color_proof() -> None:

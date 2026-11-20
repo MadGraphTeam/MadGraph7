@@ -1,0 +1,203 @@
+{
+ "name": "li_stress_gg_hgg_planar",
+ "li_row": "LI-32",
+ "stress": {
+  "base": "li_gg_hgg",
+  "kind": "planar",
+  "values": [
+   "1e-2",
+   "1e-3",
+   "1e-4"
+  ],
+  "energy": "500",
+  "fractions": [
+   "0.3",
+   "0.3",
+   "0.4"
+  ],
+  "transverse": [
+   [
+    "0.5",
+    "0.4"
+   ],
+   [
+    "-0.3",
+    "-0.4"
+   ]
+  ]
+ },
+ "loop_induced": true,
+ "pdgs": [
+  21,
+  21,
+  25,
+  21,
+  21
+ ],
+ "initial": 2,
+ "madloop_process": "g g > h g g [sqrvirt=QCD]",
+ "loop_orders": {
+  "QCD": 4,
+  "QED": 1
+ },
+ "squared_orders": {
+  "QCD": 8,
+  "QED": 2
+ },
+ "correction": "QCD",
+ "scheme": "qcd",
+ "scheme_data": {
+  "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+  "restriction": "no_b_mass",
+  "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+  "parameters": {
+   "aS": "0.118",
+   "aEWM1": "132.507",
+   "Gf": "0.0000116639",
+   "MZ": "91.188",
+   "MH": "125",
+   "MT": "173",
+   "ymt": "173"
+  },
+  "fixed_parameters": {
+   "MB": "0",
+   "ymb": "0",
+   "MTA": "0",
+   "ymtau": "0",
+   "WT": "0",
+   "WW": "0",
+   "WZ": "0",
+   "WH": "0"
+  },
+  "electroweak_inputs": "alpha_fixed",
+  "complex_mass_scheme": false,
+  "active_flavours": 5,
+  "loop_quark_flavours": 6
+ },
+ "normalization": {
+  "initial_average": 256,
+  "final_symmetry": 2,
+  "denominator": 512,
+  "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+ },
+ "carriers": [
+  "double",
+  "double-double",
+  "arbitrary"
+ ],
+ "points": [
+  [
+   [
+    "249.0116119384765625",
+    "0",
+    "0",
+    "249.0116119384765625"
+   ],
+   [
+    "250.9923112157590842158107744027507038765056",
+    "0",
+    "0",
+    "-250.9923112157590842158107744027507038765056"
+   ],
+   [
+    "261.1678337010809468042254895158153632022528",
+    "200.005147804419",
+    "1.600041182435352",
+    "-112.1562217626043843042254895158153632022528"
+   ],
+   [
+    "122.8352657938477037770749138625353406742528",
+    "-120.0030886826514",
+    "-1.600041182435352",
+    "26.1763461446288587229250861374646593257472"
+   ],
+   [
+    "116.0008236593069961345103710244",
+    "-80.0020591217676",
+    "0",
+    "83.9991763406930038654896289756"
+   ]
+  ],
+  [
+   [
+    "249.0116119384765625",
+    "0",
+    "0",
+    "249.0116119384765625"
+   ],
+   [
+    "250.992311215758984525181402592191920593240064",
+    "0",
+    "0",
+    "-250.992311215758984525181402592191920593240064"
+   ],
+   [
+    "261.170827899904711271080811415052270312620032",
+    "200.013714573097",
+    "0.1600109716584776",
+    "-112.159215961428148771080811415052270312620032"
+   ],
+   [
+    "122.830900847399509660918122613539650280620032",
+    "-120.0082287438582",
+    "-0.1600109716584776",
+    "26.180711091077052839081877386460349719379968"
+   ],
+   [
+    "116.0021944069313260931824685636",
+    "-80.0054858292388",
+    "0",
+    "83.9978055930686739068175314364"
+   ]
+  ],
+  [
+   [
+    "249.0116119384765625",
+    "0",
+    "0",
+    "249.0116119384765625"
+   ],
+   [
+    "250.99231121575902955983147390621955261947183104",
+    "0",
+    "0",
+    "-250.99231121575902955983147390621955261947183104"
+   ],
+   [
+    "261.17085784448368253437877898759657208573591552",
+    "200.013800246343",
+    "0.01600110401970744",
+    "-112.15924590600712003437877898759657208573591552"
+   ],
+   [
+    "122.83085719415830987445874545902298053373591552",
+    "-120.0082801478058",
+    "-0.01600110401970744",
+    "26.18075474431825262554125454097701946626408448"
+   ],
+   [
+    "116.0022081155935996509939494596",
+    "-80.0055200985372",
+    "0",
+    "83.9977918844064003490060505404"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000",
+  "1000",
+  "1000"
+ ],
+ "rows": [
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  }
+ ],
+ "source": "PLAN \u00a74.1 stress points (M \u00a74.7; \u00a74.1: planar 2->3 (5-point Gram -> 0): the out-of-plane transverse components scaled by the value): exact decimal points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference in the fixture (the binary64 estimate against double-double and AP, NinjaRS against TIRust, MadLoop QP: stress-madloop)"
+}

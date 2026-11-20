@@ -7199,7 +7199,14 @@ class RunCardMG7(RunCard):
 
     # dynamic (free-form) sections, stored as nested dicts rather than as
     # fixed typed parameters
-    dynamic_section_names = ('multiparticles', 'cuts', 'histograms')
+    dynamic_section_names = ('multiparticles', 'cuts', 'histograms',
+                             'cluster_train', 'cluster_deploy')
+    # the [cluster_<pass>] sections of the run card: run card settings of the
+    # jobs of one pass of the cluster mode, which override the main ones
+    cluster_passes = ('train', 'deploy')
+    # written in place of the cluster sections while they are left out of the card
+    CLUSTER_SECTIONS_HINT = ('# run on a batch system: "set cluster.enable true" '
+                             'adds the [cluster] settings\n')
 
     # energy units, expressed in GeV (the unit everything is stored in); the
     # typed parameters carrying an energy dimension are declared energy=True
@@ -7231,6 +7238,10 @@ class RunCardMG7(RunCard):
         self.section_of = {}
         # set of internal keys (section.key) relevant during gridpack execution
         self.gridpack_params = set()
+        # internal keys of the settings of how a run executes (devices, threads,
+        # batch sizes), which leave its result unchanged: a [cluster_<pass>]
+        # section may override them
+        self.execution_params = set()
         # declared default of each fixed parameter: a hidden one (no line in
         # the template) is only written out once it differs from it
         self.toml_defaults = {}
@@ -7247,11 +7258,16 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # parameter declaration
     # ------------------------------------------------------------------
-    def add_toml_param(self, section, key, value, gridpack=False, auto=False, **opts):
+    def add_toml_param(self, section, key, value, gridpack=False, auto=False,
+                       execution=False, **opts):
         """Declare one fixed (typed) TOML parameter belonging to ``section``.
 
         ``gridpack=True`` marks the parameter as relevant during gridpack
         execution; such params are written to ``grid_run_card.toml``.
+
+        ``execution=True`` marks a setting of how the run executes (devices,
+        threads, batch sizes) that leaves its result unchanged; the passes of
+        the cluster mode may override it in [cluster_train] / [cluster_deploy].
 
         ``auto=True`` declares a numeric parameter whose default is
         determined automatically: ``value`` fixes the accepted type (int/
@@ -7273,6 +7289,8 @@ class RunCardMG7(RunCard):
             self.toml_sections[section].append(key)
         if gridpack:
             self.gridpack_params.add(internal)
+        if execution:
+            self.execution_params.add(internal)
         if auto:
             self.auto_set.add(internal)
 
@@ -7305,12 +7323,15 @@ class RunCardMG7(RunCard):
             comment="random seed; -1 draws a fresh one, which is recorded in the output")
         self.add_toml_param('run', 'device', ["cpu"], typelist=str, gridpack=True,
             allowed=['cpu', 'cuda', 'hip', '*'],
+            execution=True,
             comment="list of devices, each cpu, cuda or hip with an optional index (e.g. \"cuda:1\")")
         self.add_toml_param('run', 'cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'simd_512', 'avx512y'],
+            execution=True,
             comment="SIMD width of the matrix elements on cpu devices; auto picks the widest one the host supports")
         self.add_toml_param('run', 'madspace_cpu_mode', "auto", gridpack=True,
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
+            execution=True,
             comment="SIMD width of the phase-space sampling on cpu devices; simd_128 is ARM only")
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
@@ -7324,19 +7345,25 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'hel_recycling_row_color_sum', False, hidden=True,
             comment="--hel_recycling: make the color sum row by row even where BLAS would be used")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
+            execution=True,
             comment="threads for the cpu devices; -1 chooses automatically")
         self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
             allowed=['auto', True, False],
+            execution=True,
             comment="cpu gzip of the lhe output with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'lhe_compression', 'auto', gridpack=True,
             allowed=['auto', 'cpu'],
+            execution=True,
             comment="where the lhe output is gzipped: auto uses a gpu device when madspace was built with nvCOMP, cpu always uses pigz/gzip")
         self.add_toml_param('run', 'lhe_gzip_algorithm', 5, gridpack=True,
             allowed=[0, 1, 2, 3, 4, 5],
+            execution=True,
             comment="nvCOMP gzip algorithm for gpu compression of the lhe output: 0 fastest to 5 smallest output")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
+            execution=True,
             comment="threads per gpu device")
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,
+            execution=True,
             comment="threads for combining the channel results; -1 chooses automatically")
         self.add_toml_param('run', 'output_format', "lhe_npy", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'],
@@ -7403,6 +7430,56 @@ class RunCardMG7(RunCard):
                     "\"auto\" a new temporary directory")
         self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
             comment="directory for the output files; \"\" creates a new run folder in Events")
+
+        # ---------------------------- [cluster] -----------------------
+        # Cluster mode trains the subprocesses in parallel as batch jobs, then
+        # generates the events with the merged gridpacks, see cluster_run.py.
+        self.add_toml_param('cluster', 'enable', False,
+            comment="run on a batch system: train the subprocesses in parallel, "
+                    "merge the gridpacks and generate the events in parallel jobs")
+        self.add_toml_param('cluster', 'mode', "full",
+            allowed=['full', 'gridpack_only'],
+            comment="full: run both passes and combine the events; gridpack_only: "
+                    "only train, the merged gridpack is the result")
+        # not checked here: a plugin can add a batch system (new_cluster),
+        # which cluster_run.cluster_class finds when the run starts
+        self.add_toml_param('cluster', 'type', "auto",
+            comment="batch system; auto takes cluster_type of the MadGraph configuration, "
+                    "local_parallel runs the jobs on this machine, or the name of a "
+                    "plugin's batch system")
+        self.add_toml_param('cluster', 'parallel_jobs', -1,
+            comment="jobs run at once with type local_parallel; -1 uses every core")
+        self.add_toml_param('cluster', 'train_queue', "",
+            comment="queue of the training jobs; \"\" takes cluster_queue of the configuration")
+        self.add_toml_param('cluster', 'train_walltime', "",
+            comment="walltime of the training jobs in the format of the batch system")
+        self.add_toml_param('cluster', 'train_extra_args', "",
+            comment="further arguments for the submit command of the training jobs, "
+                    "e.g. \"--gres=gpu:1\" for slurm or \"request_gpus = 1\" for condor")
+        self.add_toml_param('cluster', 'subprocesses_per_job', 1,
+            comment="subprocesses (merge groups) trained together in one job")
+        self.add_toml_param('cluster', 'fix_max_weight', True,
+            comment="true: every channel gets the max weight of its training job, the "
+                    "statistically correct choice; false: the generation jobs each "
+                    "estimate it on the fly")
+        self.add_toml_param('cluster', 'deploy_queue', "",
+            comment="queue of the event generation jobs; \"\" takes cluster_queue of the configuration")
+        self.add_toml_param('cluster', 'deploy_walltime', "",
+            comment="walltime of the event generation jobs in the format of the batch system")
+        self.add_toml_param('cluster', 'deploy_extra_args', "",
+            comment="further arguments for the submit command of the event generation jobs")
+        self.add_toml_param('cluster', 'events_per_job', 100000,
+            comment="events of one generation job; there are [generation] events / events_per_job of them")
+        self.add_toml_param('cluster', 'nb_retry', 1, hidden=True,
+            comment="how often a failed job is submitted again")
+        self.add_toml_param('cluster', 'retry_wait', 300.0, hidden=True,
+            comment="seconds a job is given to deliver its output before it is resubmitted")
+        self.add_toml_param('cluster', 'status_update', [600, 30], typelist=int, hidden=True,
+            comment="seconds between status checks of the jobs, long and short")
+        self.add_toml_param('cluster', 'temp_path', "", hidden=True,
+            comment="cluster_temp_path: scratch directory of the nodes, for a cluster without shared disk")
+        self.add_toml_param('cluster', 'keep_job_files', False, hidden=True,
+            comment="keep the gridpacks of the training jobs once merged, and the event files of the generation jobs once combined")
 
         # ----------------------------- [beam] -------------------------
         self.add_toml_param('beam', 'ebeam1', 6500.0,
@@ -7593,8 +7670,10 @@ class RunCardMG7(RunCard):
         self.add_toml_param('generation', 'freeze_max_weight_after', 100000, gridpack=True,
             comment="number of events after which the unweighting maximum is frozen")
         self.add_toml_param('generation', 'cpu_batch_size', 1000, gridpack=True,
+            execution=True,
             comment="events per batch on cpu devices")
         self.add_toml_param('generation', 'gpu_batch_size', 64000, gridpack=True,
+            execution=True,
             comment="events per batch on gpu devices")
         self.add_toml_param('generation', 'survey_min_iters', 3,
             comment="minimum number of survey iterations")
@@ -7668,6 +7747,12 @@ class RunCardMG7(RunCard):
         # -------------------------- [phasespace] ----------------------
         self.add_toml_param('phasespace', 'merge_subprocesses', False,
             comment="merge subprocesses with the same diagram topologies into shared channels")
+        # Only these subprocesses (merge groups under merge_subprocesses) are
+        # surveyed and trained. They keep their global index, so that the
+        # gridpacks of several such runs can be merged; cluster mode sets it.
+        self.add_toml_param('phasespace', 'subprocess_selection', [], typelist=int,
+            comment="indices of the subprocesses (merge groups) to integrate; empty selects all",
+            hidden=True)
         self.add_toml_param('phasespace', 'mode', "multichannel",
             allowed=['auto', 'multichannel', 'flat', 'both'],
             comment="multichannel: channels from the diagrams; flat: a single channel; both: multichannel with the smallest channels replaced by a flat one; auto: both if MadNIS is enabled, else multichannel")
@@ -7803,6 +7888,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'generator_target_size_factor', 32,
             comment="number of training batches buffered per channel by the sample generator")
         self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000,
+            execution=True,
             comment="gpu sample generation batch sizes are rounded to a multiple of this")
         self.add_toml_param('madnis', 'lr', 3e-4, auto=True,
             comment="learning rate")
@@ -7867,6 +7953,39 @@ class RunCardMG7(RunCard):
             ('sqrt_s', {'min': 0.0}),
         ])
         self.dynamic_sections['histograms'] = collections.OrderedDict()
+        for name in self.cluster_passes:
+            self.dynamic_sections['cluster_%s' % name] = collections.OrderedDict()
+        self.apply_site_cluster_defaults()
+
+    @property
+    def cluster_section_names(self):
+        return ['cluster'] + ['cluster_%s' % name for name in self.cluster_passes]
+
+    def apply_site_cluster_defaults(self):
+        """Take the defaults of the cluster sections from the site default
+        card (input/default_run_card_mg7.toml), since the cluster setup is
+        site-specific. A card without these sections gets them at every load,
+        so that they hold when the cluster mode is enabled later."""
+        self.site_cluster_passes = {
+            name: collections.OrderedDict() for name in self.cluster_passes}
+        if not self.default_run_card or not os.path.exists(self.default_run_card):
+            return
+        import tomllib
+        try:
+            with open(self.default_run_card, 'rb') as fsock:
+                data = tomllib.load(fsock)
+            self.read_data({section: content for section, content in data.items()
+                            if section.lower() in self.cluster_section_names})
+        except Exception as error:
+            logger.warning("cluster settings of %s ignored: %s",
+                           self.default_run_card, error)
+            return
+        for key in self.toml_sections['cluster']:
+            internal = 'cluster.%s' % key
+            self.toml_defaults[internal] = copy.deepcopy(self[internal])
+        for name in self.cluster_passes:
+            self.site_cluster_passes[name] = copy.deepcopy(
+                self.dynamic_sections['cluster_%s' % name])
 
     # ------------------------------------------------------------------
     # access: nested section views
@@ -7945,7 +8064,8 @@ class RunCardMG7(RunCard):
         # An MLM run (dynamical_scale_choice = "mlm" with xqcut > 0) reports
         # ickkw = 1 and its xqcut, a CKKW-L run its ktdurham / ptlund cut.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
-        'dparameter', 'pdgs_for_merging_cut', 'lhaid', 'iseed', 'python_seed',
+        'd', 'dparameter', 'pdgs_for_merging_cut', 'lhaid', 'iseed',
+        'python_seed',
         # read by MadSpin (check_launch, do_import) and by Banner.write for
         # the <LesHouchesEvents version=...> of the files it rewrites
         'lhe_version', 'bwcutoff',
@@ -8090,6 +8210,9 @@ class RunCardMG7(RunCard):
             if self.is_mlm_merged() or self.is_ckkwl_merged():
                 return int(beam['max_jet_flavor'])
             return 5
+        if key == 'd':
+            # JetMatching:coneRadius: the D of the clustering's kt measure
+            return float(beam['jet_radius'])
         if key == 'dparameter':
             return float(self['phasespace']['dparameter'])
         if key == 'pdgs_for_merging_cut':
@@ -8531,6 +8654,26 @@ class RunCardMG7(RunCard):
             items.append((key, val))
         return items
 
+    MLM_MODE_HELP = ("the mode is 'madevent' (the MLM clustering as madevent "
+                     "does it) or 'mg7' (mg7's defaults)")
+
+    def set_mlm_mode(self, mode, user=False):
+        """MLM merging (dynamical_scale_choice "mlm") with the clustering
+        options of ``mode``: "madevent" as madevent does it
+        (``_MLM_MADEVENT``), "mg7" back to the card's defaults. The merging
+        cut is left to the caller. Returns the keys set, in order."""
+        if mode == 'madevent':
+            values = self._MLM_MADEVENT
+        elif mode == 'mg7':
+            values = collections.OrderedDict(
+                (key, self.toml_defaults[key]) for key in self._MLM_MODE_KEYS)
+        else:
+            raise InvalidCmd('set mlm %s: %s' % (mode, self.MLM_MODE_HELP))
+        self.set('beam.dynamical_scale_choice', 'mlm', user=user)
+        for key, val in values.items():
+            self.set(key, val, user=user)
+        return ['beam.dynamical_scale_choice'] + list(values)
+
     def set_lo_param(self, name, value, masses=None):
         """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
         not just rename (``_LO_SET_PARAMS``): its value needs translating
@@ -8608,6 +8751,18 @@ class RunCardMG7(RunCard):
             # the MLM clustering's jet flavours, which madevent's maxjetflavor
             # also sets
             put('beam.max_jet_flavor', flavours)
+
+        elif name == 'mlm':
+            # "set mlm madevent": MLM merging with every clustering option
+            # at madevent's choice; "set mlm mg7": with mg7's defaults
+            for key in self.set_mlm_mode(text.lower(), user=True):
+                changes[key] = self[key]
+            # no merging cut, no merged sample: take madevent's default
+            if float(self['phasespace']['xqcut']) <= 0:
+                put('phasespace.xqcut', self.default_mlm_xqcut)
+            if beam['leptonic']:
+                warnings.append('set mlm: the beams are not hadronic, so the '
+                                'events are clustered but not MLM merged')
 
         else:
             # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
@@ -8863,6 +9018,60 @@ class RunCardMG7(RunCard):
     # carry an optional device index, e.g. "cuda:1".
     allowed_device_types = ['cpu', 'cuda', 'hip']
 
+    def check_devices(self, devices, where):
+        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
+        # generic 'allowed' machinery cannot check it on its own.
+        if not devices:
+            raise InvalidRunCard("%s can not be an empty list" % where)
+        for entry in devices:
+            device_type, _, index = str(entry).partition(':')
+            if device_type not in self.allowed_device_types:
+                raise InvalidRunCard(
+                    "Invalid device '%s': each entry of %s must be one of %s, "
+                    "optionally followed by a device index (e.g. \"cuda:1\")"
+                    % (entry, where, ', '.join(self.allowed_device_types)))
+            if index and not index.isdigit():
+                raise InvalidRunCard(
+                    "Invalid device '%s': the device index must be a non-negative integer"
+                    % entry)
+
+    def cluster_overrides(self, name):
+        """The settings of [cluster_<name>] as [(internal key, value)]."""
+        overrides = []
+        section = 'cluster_%s' % name
+        for card_section, content in self.dynamic_sections[section].items():
+            if not isinstance(content, dict):
+                raise InvalidRunCard(
+                    "[%s] %s: give run card settings as <section>.<key>, "
+                    "e.g. run.cpu_thread_pool_size" % (section, card_section))
+            for key, value in content.items():
+                overrides.append(('%s.%s' % (card_section.lower(), key.lower()), value))
+        return overrides
+
+    def cluster_pass_card(self, name):
+        """A copy of the card with the [cluster_<name>] overrides of the pass
+        ``name`` (train or deploy) applied, after checking them."""
+        section = 'cluster_%s' % name
+        card = copy.deepcopy(self)
+        for internal, value in self.cluster_overrides(name):
+            if internal not in self.execution_params:
+                allowed = ', '.join(sorted(
+                    key for key in self.execution_params
+                    if name == 'train' or key in self.gridpack_params))
+                raise InvalidRunCard(
+                    "[%s] can not set %s: only these settings of how the jobs "
+                    "run can differ between the passes: %s" % (section, internal, allowed))
+            if name == 'deploy' and internal not in self.gridpack_params:
+                raise InvalidRunCard(
+                    "[%s] can not set %s: the event generation jobs run the "
+                    "gridpack, which does not use it" % (section, internal))
+            try:
+                card.set(internal, value, user=True)
+            except Exception as error:
+                raise InvalidRunCard("[%s] %s: %s" % (section, internal, error))
+        card.check_devices(card['run']['device'], '[%s] run.device' % section)
+        return card
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
@@ -8882,22 +9091,27 @@ class RunCardMG7(RunCard):
                 "scale_factor = %s is ignored: both mu_R and mu_F are fixed.",
                 beam['scale_factor'])
 
-        # 'device' is list-valued and accepts a "<type>:<index>" syntax, so the
-        # generic 'allowed' machinery cannot check it on its own.
-        devices = self['run']['device']
-        if not devices:
-            raise InvalidRunCard("device can not be an empty list")
-        for entry in devices:
-            device_type, _, index = str(entry).partition(':')
-            if device_type not in self.allowed_device_types:
+        self.check_devices(self['run']['device'], 'device')
+
+        cluster = self['cluster']
+        if cluster['enable']:
+            if self['phasespace']['subprocess_selection']:
                 raise InvalidRunCard(
-                    "Invalid device '%s': each entry of 'device' must be one of %s, "
-                    "optionally followed by a device index (e.g. \"cuda:1\")"
-                    % (entry, ', '.join(self.allowed_device_types)))
-            if index and not index.isdigit():
-                raise InvalidRunCard(
-                    "Invalid device '%s': the device index must be a non-negative integer"
-                    % entry)
+                    "subprocess_selection can not be set in cluster mode, which "
+                    "selects the subprocesses of each job itself")
+            for key in ('subprocesses_per_job', 'events_per_job'):
+                if cluster[key] < 1:
+                    raise InvalidRunCard("cluster.%s must be at least 1" % key)
+            if cluster['nb_retry'] < 0:
+                raise InvalidRunCard("cluster.nb_retry can not be negative")
+        for name in self.cluster_passes:
+            if self.dynamic_sections['cluster_%s' % name]:
+                self.cluster_pass_card(name)
+
+        selection = self['phasespace']['subprocess_selection']
+        if any(index < 0 for index in selection) or len(set(selection)) != len(selection):
+            raise InvalidRunCard(
+                "subprocess_selection must list distinct non-negative subprocess indices")
 
         # me_frame lists external particles by their (one based) position; the
         # number of external particles is only known to the run directory, so
@@ -9005,6 +9219,10 @@ class RunCardMG7(RunCard):
             text = text.replace('$%s' % section,
                                 self.format_dynamic_section(section))
 
+        if not self.show_cluster_sections():
+            text = self.remove_sections(
+                text, self.cluster_section_names, self.CLUSTER_SECTIONS_HINT)
+
         text = text.replace('$custom_function_parameters\n',
                             self.format_custom_parameters() + '\n'
                             if self.custom_function_parameters else '')
@@ -9021,6 +9239,32 @@ class RunCardMG7(RunCard):
                 fsock.write(text)
         else:
             output_file.write(text)
+
+    def show_cluster_sections(self):
+        """Whether the card shows the cluster sections: with the cluster mode
+        enabled, or once one of their settings differs from the site default
+        (see apply_site_cluster_defaults()), so that a rewrite keeps it."""
+        if self['cluster.enable']:
+            return True
+        if any(self.dynamic_sections['cluster_%s' % name] != self.site_cluster_passes[name]
+               for name in self.cluster_passes):
+            return True
+        return any(self['cluster.%s' % key] != self.toml_defaults.get('cluster.%s' % key)
+                   for key in self.toml_sections['cluster'])
+
+    @staticmethod
+    def remove_sections(text, sections, hint=''):
+        """Remove the ``sections`` of a rendered card, each up to the next table
+        header, and put ``hint`` in place of the first one."""
+        for i, section in enumerate(sections):
+            header = re.search(r'^\[%s\][ \t]*\n' % re.escape(section), text, re.M)
+            if not header:
+                continue
+            following = re.search(r'^\[', text[header.end():], re.M)
+            end = header.end() + following.start() if following else len(text)
+            text = text[:header.start()] + (hint + '\n' if i == 0 and hint else '') \
+                + text[end:]
+        return text
 
     def add_hidden_parameters(self, text, in_template):
         """Add to the rendered card the hidden parameters (those with no line
@@ -9547,11 +9791,29 @@ class RunCardMG7(RunCard):
         'bwcutoff': 'phasespace.bw_cutoff',
         'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
+        # D of the MLM clustering's kt measure (hidden in both cards)
+        'd': 'beam.jet_radius',
         # for "set ktdurham ..." (cli.py); from_LO sets both again explicitly
         'ktdurham': 'phasespace.ktdurham',
         'ptlund': 'phasespace.ptlund',
         'dparameter': 'phasespace.dparameter',
     }
+    # The MLM clustering as madevent does it (set_mlm_mode). min_scale is
+    # setclscales' hard-coded 2 GeV floor. jet_radius, max_jet_flavor and
+    # mlm_shower_start are not here: madevent has them as run_card
+    # parameters too (d, maxjetflavor, mlm_shower_start).
+    _MLM_MADEVENT = collections.OrderedDict([
+        ('beam.scale_scheme', 'madevent'),
+        ('beam.clustering_measure', 'madevent'),
+        ('beam.clustering_history', 'madevent'),
+        ('beam.jet_scale_scheme', 'production'),
+        ('beam.parton_line_scheme', 'goodjet'),
+        ('beam.alphas_reweighting', 'per_vertex'),
+        ('beam.pdf_reweighting', True),
+        ('beam.min_scale', 2.0),
+    ])
+    # what set_mlm_mode('mg7') puts back to the card's defaults
+    _MLM_MODE_KEYS = tuple(_MLM_MADEVENT) + ('beam.clustering_mean_pdf_ladder',)
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
                         3: 'half_transverse_mass', 4: 'partonic_energy'}
@@ -9622,9 +9884,11 @@ class RunCardMG7(RunCard):
     }
     # LO parameters that "set" translates with set_lo_param: not a plain
     # rename (_LO_SCALAR_MAP) nor a cut (_LO_CUT_MAP) nor a beam setting
-    # (lo_beam_params). A set literal: set() is the method of this class here.
+    # (lo_beam_params), plus the mg7 shortcut "set mlm madevent|mg7".
+    # A set literal: set() is the method of this class here.
     _LO_SET_PARAMS = {'fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2',
                       'dynamical_scale_choice', 'sde_strategy', 'maxjetflavor',
+                      'mlm',
                       'mxx_min_pdg', 'mxx_only_part_antipart', *_LO_PDG_CUT_MAP}
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
@@ -9824,11 +10088,17 @@ class RunCardMG7(RunCard):
         # "madevent". mg7 has no MLM with a closed-form scale choice: the
         # clustering scales are used whatever dynamical_scale_choice said.
         ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
+        # unsupported LO names transferred all the same in this context
+        transferred = set()
         if ickkw == 1:
             xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
             if xqcut > 0:
-                mg7.set('beam.dynamical_scale_choice', 'mlm')
-                mg7.set('beam.scale_scheme', 'madevent')
+                # the clustering as madevent does it, as "set mlm madevent",
+                # with madevent's switch for the pdf reweighting
+                mg7.set_mlm_mode('madevent')
+                if 'pdfwgt' in lo:
+                    mg7.set('beam.pdf_reweighting', bool(lo['pdfwgt']))
+                    transferred.add('pdfwgt')
                 mg7.set('phasespace.xqcut', xqcut)
                 if 'mlm_shower_start' in lo:
                     mg7.set('beam.mlm_shower_start', lo['mlm_shower_start'])
@@ -9949,7 +10219,7 @@ class RunCardMG7(RunCard):
 
         # --- report the non-default settings we could not transfer ---
         for name in sorted(cls._LO_UNSUPPORTED):
-            if not nondefault(name):
+            if name in transferred or not nondefault(name):
                 continue
             val = lo[name]
             # skip inactive cut sentinels (they impose no real constraint)

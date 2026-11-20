@@ -23,6 +23,8 @@ import madgraph.interface.master_interface as mgcmd
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.amcatnlo_interface as amcatnlocmd
 import os
+import shutil
+import tempfile
 import madgraph.fks.fks_helas_objects as fks_helas
 import copy
 import madgraph.iolibs.save_load_object as save_load_object
@@ -71,6 +73,30 @@ class TestSudakov(unittest.TestCase):
         types = [amp['type'] for amp in fksprocess.sudakov_amps]
         self.assertEqual(types.count('goldstone'), 3) # 3 goldstone amps (gw,wg,ww)
         self.assertEqual(types.count('ipm2'), 26) # 26
+
+
+    def test_output_goldstone_color_data(self):
+        """check that the standalone output of the EW sudakov writes the
+        colour data of the matrix elements with Goldstone bosons without
+        placeholders, and that its driver calls ewsudakov_f77
+        """
+        path = tempfile.mkdtemp(prefix='ewsudsa_')
+        try:
+            for cmd in ['generate u u~ > w+ w- [LOonly=QCD] --ewsudakov',
+                        'output ewsudakovsa %s -f' % path]:
+                self.interface.exec_cmd(cmd, errorhandling=False,
+                                        printcmd=False, precmd=True,
+                                        postcmd=True)
+            pdir = os.path.join(path, 'SubProcesses', 'P0_uux_wpwm')
+            for name in ['ewsudakov_goldstone_me_1.f', 'ewsudakov_me_1.f']:
+                with open(os.path.join(pdir, name)) as f:
+                    text = f.read()
+                self.assertNotIn('%(', text)
+                self.assertRegex(text, r'(?i)DATA\s+DENOM/')
+            with open(os.path.join(pdir, 'sa_ewsudakov.f')) as f:
+                self.assertIn('call ewsudakov_f77(p, gs, res)', f.read())
+        finally:
+            shutil.rmtree(path)
 
 
     def test_generate_ewsud_zz(self):

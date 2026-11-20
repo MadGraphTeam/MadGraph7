@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: 0BSD
 
+use rusticol_core::kinematics_improvement::{self, Variant};
 use rusticol_core::{
     NativeCorrelatedRequest, NativeOnTheFlyWarmUpEvent, NativeOnTheFlyWarmUpEventKind,
     NativeOnTheFlyWarmUpResult, NativeOnTheFlyWarmUpStage, NativeRuntime,
     NativeSpinCorrelationVectors, RusticolError, RusticolErrorKind, supported_runtime_capabilities,
 };
 use std::any::Any;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ffi::{CStr, CString, c_char, c_double, c_int, c_void};
@@ -15,6 +17,9 @@ use std::ptr;
 use std::slice;
 
 mod correlated;
+
+/// Additive virtual Rust API and C symbols share this archive's numerical core.
+pub use rusticol_loop_sdk as virtual_api;
 
 #[allow(non_camel_case_types)]
 type size_t = usize;
@@ -87,6 +92,54 @@ pub type RusticolWarmUpProgressCallback = Option<
 
 pub struct RusticolRuntimeHandle {
     runtime: NativeRuntime,
+    /// The kinematics improvement (m-lit lit-psimprove): the variant setting
+    /// (`None`: "off") and the binary64 switch. The tree C ABI evaluates in
+    /// binary64 only, so a variant runs only with the switch on (off by
+    /// default: the native policy's `DEFAULT_BINARY64`, USER 2026-11-10
+    /// ~01:56).
+    kinematics: Option<Variant>,
+    kinematics_binary64: bool,
+    /// The kinematics record of the most recent improved call (a summary
+    /// line and every typed warning, `kinematics_improvement::notes`): read
+    /// with the warnings ([`rusticol_runtime_take_warnings_json`]) and
+    /// replaced by the next improved call, so it stays bounded.
+    kinematics_notes: Vec<String>,
+}
+
+impl RusticolRuntimeHandle {
+    fn new(runtime: NativeRuntime) -> Self {
+        Self {
+            runtime,
+            kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
+            kinematics_binary64: kinematics_improvement::DEFAULT_BINARY64,
+            kinematics_notes: Vec::new(),
+        }
+    }
+
+    /// The points an f64 entry evaluates: the caller's, borrowed, unless the
+    /// binary64 switch is on (one branch per call); then the caller's points
+    /// improved in binary64 (`NativeRuntime::improve_f64_points`, the one
+    /// implementation), their record the call's kinematics notes (read with
+    /// the warnings, `rusticol_runtime_take_warnings_json`; none while the
+    /// warnings are muted).
+    fn improved<'a>(
+        &mut self,
+        momenta: &'a [f64],
+        point_count: usize,
+    ) -> AbiResult<Cow<'a, [f64]>> {
+        let Some(variant) =
+            kinematics_improvement::applies(self.kinematics, self.kinematics_binary64, true)
+        else {
+            return Ok(Cow::Borrowed(momenta));
+        };
+        let (points, records) = self
+            .runtime
+            .improve_f64_points(momenta, point_count, variant)?;
+        if !self.runtime.warnings_muted() {
+            self.kinematics_notes = kinematics_improvement::notes(&records, "double", 16);
+        }
+        Ok(Cow::Owned(points))
+    }
 }
 
 /// One borrowed literal complex spin-vector batch; see rusticol.h for layout.
@@ -146,7 +199,11 @@ fn set_last_error(message: impl AsRef<str>) {
     LAST_ERROR.with(|slot| *slot.borrow_mut() = sanitize_c_string(message));
 }
 
+/// Runs one ABI call under pyAmpliCol's Symbolica library key on the calling
+/// thread (an unlicensed caller never takes the user's restricted Symbolica
+/// permit), with panics and errors turned into status codes.
 fn guard(operation: impl FnOnce() -> AbiResult<()>) -> c_int {
+    let _unlock = pyamplicol::unlock();
     finish_guard(catch_unwind(AssertUnwindSafe(operation)))
 }
 
@@ -504,7 +561,7 @@ pub unsafe extern "C" fn rusticol_runtime_load(
         let model_parameters = unsafe { optional_c_string(model_parameters_path) }?;
         let runtime =
             NativeRuntime::load(process_dir, process_key, model_parameters.map(Path::new))?;
-        let boxed = Box::new(RusticolRuntimeHandle { runtime });
+        let boxed = Box::new(RusticolRuntimeHandle::new(runtime));
         // SAFETY: output points to writable handle storage supplied by the caller.
         unsafe { *output = Box::into_raw(boxed) };
         Ok(())
@@ -1363,9 +1420,10 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_f64(
         // Restrict the mutable slice to the exact result prefix so excess caller capacity and
         // trailing canaries remain untouched.
         let output = unsafe { slice::from_raw_parts_mut(output, point_count) };
+        let momenta = handle.improved(momenta, point_count)?;
         handle
             .runtime
-            .evaluate_f64_into(momenta, point_count, output)
+            .evaluate_f64_into(&momenta, point_count, output)
             .map_err(AbiError::from)
     })
 }
@@ -1444,10 +1502,11 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_selected_f64(
         // Restrict the mutable slice to the exact result prefix so excess caller capacity and
         // trailing canaries remain untouched.
         let output = unsafe { slice::from_raw_parts_mut(output, point_count) };
+        let momenta = handle.improved(momenta, point_count)?;
         handle
             .runtime
             .evaluate_f64_into_with_selectors(
-                momenta,
+                &momenta,
                 point_count,
                 helicities.as_deref(),
                 colors.as_deref(),
@@ -1508,8 +1567,9 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_resolved_f64(
             .and_then(|value| value.checked_mul(expected_color_count))
             .ok_or_else(|| invalid("resolved output shape overflow"))?;
         validate_f64_output(output, output_capacity, required, "resolved output")?;
+        let momenta = handle.improved(momenta, point_count)?;
         let resolved = handle.runtime.evaluate_resolved_f64(
-            momenta,
+            &momenta,
             point_count,
             helicities.as_deref(),
             colors.as_deref(),
@@ -1530,6 +1590,123 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_resolved_f64(
             write_size(color_count, output_color_count, "resolved color count")?;
             write_f64_slice(&resolved.values, output, output_capacity, "resolved output")
         }
+    })
+}
+
+/// Copies the amplitude and squared coupling-order axes as JSON.
+///
+/// The `rusticol-amplitude-orders-v1` object lists the coupling-order `names`, the amplitude
+/// `components` (powers per name) and the `squared` orders with their ordered component `pairs`.
+/// Partial output columns of [`rusticol_runtime_evaluate_orders_f64`] follow `squared`.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and available for shared access during the call. If
+/// non-null, `required` must be writable for one `size_t`, and `buffer` must be writable for
+/// `capacity` bytes. A null `buffer` is valid only for a zero-capacity query.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_coupling_orders_json(
+    handle: *const RusticolRuntimeHandle,
+    buffer: *mut c_char,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    // SAFETY: The caller upholds this function's pointer contract.
+    unsafe {
+        runtime_string(handle, buffer, capacity, required, |runtime| {
+            Ok(runtime.amplitude_orders_json()?)
+        })
+    }
+}
+
+/// Writes the number of squared coupling orders of a recurrence runtime.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and available for shared access during the call. If
+/// non-null, `output` must be writable for one `size_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_squared_order_count(
+    handle: *const RusticolRuntimeHandle,
+    output: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let count = handle
+            .runtime
+            .amplitude_order_catalog()?
+            .squared_orders()
+            .len();
+        unsafe { write_size(count, output, "squared order count") }
+    })
+}
+
+/// Evaluates totals and squared coupling-order partials with optional global selectors.
+///
+/// `totals` receives one value per point, bitwise equal to the selected total evaluation.
+/// `partials` uses `[point][squared order]` with the order axis of
+/// [`rusticol_runtime_coupling_orders_json`]. Global selector arrays contain physical
+/// helicity/color string IDs; a null pointer with zero length omits that axis.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call. `momenta`
+/// must reference `momentum_count` readable `f64` values, `totals` and `partials` must reference
+/// `totals_capacity` and `partials_capacity` writable `f64` values, and no two of these regions
+/// may overlap. For each nonzero selector count, the corresponding pointer must reference that
+/// many readable NUL-terminated string pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_evaluate_orders_f64(
+    handle: *mut RusticolRuntimeHandle,
+    momenta: *const c_double,
+    momentum_count: size_t,
+    point_count: size_t,
+    helicity_ids: *const *const c_char,
+    helicity_count: size_t,
+    color_ids: *const *const c_char,
+    color_count: size_t,
+    totals: *mut c_double,
+    totals_capacity: size_t,
+    partials: *mut c_double,
+    partials_capacity: size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate all pointers and arrays.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        if point_count == 0 {
+            return Err(invalid("point_count must be positive"));
+        }
+        let momenta = unsafe { read_f64_slice(momenta, momentum_count, "momenta") }?;
+        let helicities =
+            unsafe { read_selector_ids(helicity_ids, helicity_count, "helicity ids") }?;
+        let colors = unsafe { read_selector_ids(color_ids, color_count, "color ids") }?;
+        let squared_count = handle
+            .runtime
+            .amplitude_order_catalog()?
+            .squared_orders()
+            .len();
+        let partial_count = point_count
+            .checked_mul(squared_count)
+            .ok_or_else(|| invalid("squared-order output shape overflow"))?;
+        validate_f64_output(totals, totals_capacity, point_count, "total output")?;
+        validate_f64_output(partials, partials_capacity, partial_count, "partial output")?;
+        // SAFETY: Both outputs are non-null with at least the required writable values; the
+        // slices cover only the result prefixes so excess capacity stays untouched.
+        let totals = unsafe { slice::from_raw_parts_mut(totals, point_count) };
+        let partials = unsafe { slice::from_raw_parts_mut(partials, partial_count) };
+        let momenta = handle.improved(momenta, point_count)?;
+        handle
+            .runtime
+            .evaluate_orders_f64_into_with_selectors(
+                &momenta,
+                point_count,
+                helicities.as_deref(),
+                colors.as_deref(),
+                totals,
+                partials,
+            )
+            .map_err(AbiError::from)
     })
 }
 
@@ -1646,6 +1823,61 @@ pub unsafe extern "C" fn rusticol_runtime_set_model_parameters_json(
     })
 }
 
+/// Sets the kinematics improvement of later f64 evaluations (m-lit
+/// lit-psimprove; the Python API's `kinematics_improvement=`): `"z-shift"`
+/// (MadLoop's `ImprovePSPoint = 2` with MadLoop's fallback to 1, the
+/// default), `"rescaling"` (MadLoop 1), `"projection"` (the frame-independent
+/// minimal-norm projection) or `"off"`. Every entry of this ABI evaluates in
+/// binary64, so the variant runs only with the binary64 switch on
+/// ([`rusticol_runtime_set_kinematics_improvement_binary64`]). Another value
+/// is an invalid argument with the native policy's one refusal text.
+/// Additive; `RUSTICOL_ABI_VERSION` 1 kept.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call; `setting`
+/// must reference a readable NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_set_kinematics_improvement(
+    handle: *mut RusticolRuntimeHandle,
+    setting: *const c_char,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate the handle and the string.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        let setting = unsafe { required_c_string(setting, "kinematics improvement") }?;
+        handle.kinematics = kinematics_improvement::setting(setting).map_err(invalid)?;
+        Ok(())
+    })
+}
+
+/// Switches the binary64 kinematics improvement of later f64 evaluations on
+/// (1) or off (0, the default; the Python API's
+/// `kinematics_improvement_binary64=`): with it on, each point is improved
+/// in binary64 by the selected variant toward the binary64 masses of the
+/// external wavefunctions before it is evaluated, and the records (a
+/// summary line per call and every typed warning) reach
+/// [`rusticol_runtime_take_warnings_json`]. No Symbolica operation and no
+/// licence of any kind is involved. Another value is an invalid argument.
+/// Additive; `RUSTICOL_ABI_VERSION` 1 kept.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_set_kinematics_improvement_binary64(
+    handle: *mut RusticolRuntimeHandle,
+    binary64: c_int,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helper validates the handle.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        handle.kinematics_binary64 =
+            kinematics_improvement::binary64_switch(i64::from(binary64)).map_err(invalid)?;
+        Ok(())
+    })
+}
+
 /// Mutes or unmutes runtime warnings.
 ///
 /// # Safety
@@ -1685,10 +1917,24 @@ pub unsafe extern "C" fn rusticol_runtime_take_warnings_json(
     guard(|| {
         // SAFETY: Helpers validate pointers.
         let handle = unsafe { required_handle_mut(handle) }?;
-        let json = handle.runtime.pending_warnings_json()?;
+        // The runtime's pending warnings, then the kinematics record of the
+        // most recent improved call (m-lit lit-psimprove (G4)).
+        let json = if handle.kinematics_notes.is_empty() {
+            handle.runtime.pending_warnings_json()?
+        } else {
+            let lines: Vec<&String> = handle
+                .runtime
+                .pending_warnings()
+                .iter()
+                .chain(&handle.kinematics_notes)
+                .collect();
+            serde_json::to_string(&lines)
+                .map_err(|error| invalid(format!("could not serialize warnings: {error}")))?
+        };
         unsafe { write_string(&json, buffer, capacity, required)? };
         if !buffer.is_null() {
             handle.runtime.clear_pending_warnings();
+            handle.kinematics_notes.clear();
         }
         Ok(())
     })
@@ -1821,8 +2067,14 @@ mod tests {
         };
         assert_eq!(status, RUSTICOL_STATUS_OK);
         let json = unsafe { CStr::from_ptr(buffer.as_ptr()) }.to_str().unwrap();
+        let mut advertised = serde_json::from_str::<Vec<String>>(json).unwrap();
+        // `cargo test --workspace` unifies features, so another member can switch
+        // on rusticol-core's `symbolica-runtime` in this test build. The static C
+        // API itself is built without it and never advertises the legacy container.
+        advertised
+            .retain(|capability| capability != "symbolica.legacy-jit-container.complex-f64.v1");
         assert_eq!(
-            serde_json::from_str::<Vec<String>>(json).unwrap(),
+            advertised,
             vec![
                 "compiled-plane-arena-v1".to_string(),
                 "eager-direct-arena-v1".to_string(),
