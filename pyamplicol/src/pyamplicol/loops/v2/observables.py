@@ -139,6 +139,7 @@ from .stability import (
     StabilityEstimate,
     differences,
 )
+from .wide import magnitude
 
 # The Python reference observables run no cross-backend check (the native
 # observables do, ``native_observables.NativeObservables.runs``).
@@ -1313,7 +1314,11 @@ class ObservableSlice:
             )
             rotated.append((evaluation, plan.results(evaluation)))
         return plan.checked(
-            results, reference, rotated, precision.unit_roundoff, stability.reduction
+            results,
+            reference,
+            rotated,
+            precision.estimate_roundoff,
+            stability.reduction,
         )
 
     def _evaluated(
@@ -1588,13 +1593,14 @@ class ColumnPlan:
         return out
 
     def _budget(
-        self, key, lanes, width: int, local=(), average=None
+        self, key, lanes, width: int, local=(), average=None, wide=False
     ) -> dict[Orders, Budget]:
         """Per sector sum_lanes m |delta Omega| / (16 pi^2 average) plus the
         absolute local components (``assemble._PointEvaluation._lane_budget``
         for observable columns). Differences arrive in the carrier and are
         rounded to binary64 only as magnitudes, so deviations below one
-        binary64 unit of the values survive outside binary64."""
+        binary64 unit of the values survive outside binary64; ``wide``
+        (arbitrary precision) keeps them exponent-safe (``loops.v2.wide``)."""
 
         # ``average``: the point's (``_PointEvaluation.average``, which takes
         # the alpha(0) of external photons, WP3.2 EWI-6b).
@@ -1608,11 +1614,11 @@ class ColumnPlan:
                 continue
             sector, multiplicity = found
             for k, error in enumerate(errors):
-                budget[sector][k] += multiplicity * factor * float(abs(error))
+                budget[sector][k] += multiplicity * factor * magnitude(error, wide)
         for components in local:
             for sector, laurent in components.items():
                 for k, value in enumerate(laurent.coefficients):
-                    budget[sector][k] += float(abs(value))
+                    budget[sector][k] += magnitude(value, wide)
         return {sector: Budget(tuple(values)) for sector, values in budget.items()}
 
     def checked(
@@ -1668,12 +1674,14 @@ class ColumnPlan:
         width = 3 if reference.poles else 1
         local = [result.components[name] for name in LOCAL_COMPONENTS]
         average = reference.average
+        wide = reference.numbers.wide
         scale = self._budget(
             key,
             {lane: value.coefficients for lane, value in reference.families.items()},
             width,
             local,
             average,
+            wide,
         )
         budgets = {}
         zero = Laurent(*[reference.numbers.zero] * width)
@@ -1704,7 +1712,7 @@ class ColumnPlan:
                 differences(result.components[name], other.components[name])
                 for name in LOCAL_COMPONENTS
             ]
-            budgets[name] = self._budget(key, lanes, width, changes, average)
+            budgets[name] = self._budget(key, lanes, width, changes, average, wide)
         deviations = None
         if reduction is not None:
             if reference.retest_families is None:
@@ -1722,9 +1730,9 @@ class ColumnPlan:
                 for lane, value in reference.families.items()
                 if lane[2] in mine
             }
-            budgets[reduction] = self._budget(key, deviations, width, (), average)
+            budgets[reduction] = self._budget(key, deviations, width, (), average, wide)
         magnitudes = {
-            sector: Laurent(*[float(abs(x)) for x in laurent.coefficients])
+            sector: Laurent(*[magnitude(x, wide) for x in laurent.coefficients])
             for sector, laurent in result.components["virtual"].items()
         }
         return StabilityEstimate.from_checks(
@@ -2191,7 +2199,7 @@ class NativeObservables:
                     result,
                     reference,
                     [(run[index], self.plan.results(run[index])) for run in runs],
-                    batch.precision.unit_roundoff,
+                    batch.precision.estimate_roundoff,
                     stability.reduction,
                 )
             if member is not None:

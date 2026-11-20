@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: 0BSD
+# A runtime-options file: the runtime settings of a loaded loop runtime, read
+# the same way by every interface (docs/user/configuration.md, "Runtime
+# options"): the CLI (`pyamplicol evaluate ARTIFACT --card runtime_options.toml`),
+# Python (`Runtime.load(artifact, options="runtime_options.toml")`) and the
+# native SDKs (`rusticol_virtual_set_options`, `rusticol_virtual_open_with_options`).
+# Only [evaluation] is read; a full run card works too. Every key is optional:
+# an absent key keeps its default (or the setting already made).
+[evaluation]
+reduction = "auto"                 # "auto", "ninjars" or "tirust"
+reduction_target = 1e-5            # TIRust's target accuracy, relative per point
+lane_rescue = true                 # reduce a refused lane again in a higher carrier
+arithmetic = "double"              # "double", "double-double" or "arbitrary" (with precision)
+poles = "all"                      # "all", "none", "uv" or "ir"
+on_failure = "best-effort"         # "best-effort", "return" or "raise"
+threads = 4                        # native threads of the load and of every evaluation
+
+# The recommended stability checks (one default rotation and the rescaled
+# reduction-direction check); without this table no check runs.
+[evaluation.stability_checks]
+rotation_count = 1
+reduction_direction = true
+rescaled = true

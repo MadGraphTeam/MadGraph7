@@ -134,11 +134,40 @@ checks, the cross-backend check) are available in the Python API and every
 native SDK (`rusticol_virtual_set_stability_checks`), off by default; the
 recommended checks are one rotation with the reduction-direction and
 rescaled checks. The Python API's stability rescue is a stack of
-(precision, backend) levels; for loop-induced processes its default runs
-TIRust then NinjaRS in binary64 before double-double and arbitrary precision.
+(precision, backend) levels: by default binary64, double-double, 57 digits
+and 500 digits (for loop-induced processes TIRust then NinjaRS in binary64
+first); a point whose estimate grows from one level to the next (a
+numerical zero) is not escalated further. An explicit
+`arithmetic="arbitrary"` without digits runs at 500 digits. Where
+pyAmpliCol chooses the checks (the rescue levels, `profile --stability`),
+TIRust's points also get the rescaled reduction-direction check.
+
+A reduction lane that a backend refuses is rescued: only that lane is
+reduced again in double-double, then at 500 digits, with its kinematics
+rebuilt in that precision. The lane rescue is on by default, in the checked
+and the unchecked mode (`evaluation.lane_rescue`, CLI `--no-lane-rescue`,
+Python `lane_rescue=False`, SDK `rusticol_virtual_set_lane_rescue`).
+Refusal texts name their cause (for example "box mu-expansion conditioning:
+predicted error ..., allowed <= ..."). In arbitrary precision a NinjaRS
+point whose lanes kept too few tracked bits fails. How these safeguards fit
+together: [Python API](python-api.md#the-stability-machinery-end-to-end).
+Evaluations no longer depend on what the process did before: after an
+in-process generation or a state import they equal a fresh process bit for
+bit. Large artifacts load much faster: the 8-gluon g g > g g g g g g loads
+in 1.5 to 3 minutes and 10 to 15 GiB, against about 20 minutes and 23 GiB
+before.
 Full-colour and next-to-leading-colour Born-interfered virtuals take a
 run-time helicity selection (`helicities=`) in the Python API and the native
 SDKs.
+
+The runtime settings of a one-loop runtime are supplied the same way in
+every interface: one by one (keywords, flags, SDK setters) or together in a
+runtime-options TOML, the run card's `[evaluation]` table (`evaluate
+--card`, `Runtime.load(..., options=)`, `rusticol_virtual_set_options`;
+a full run card is accepted). `evaluation.threads` (`--threads`,
+`Runtime.load(threads=)`, `rusticol_virtual_set_threads`) bounds the native
+threads of a runtime's load and evaluations; unset, `RAYON_NUM_THREADS` or
+every core as before. See [Configuration](configuration.md#runtime-options).
 
 `pyamplicol check` runs the pole (Catani; finiteness for loop-induced
 processes), Ward and Goldstone checks of a one-loop run card or artifact,

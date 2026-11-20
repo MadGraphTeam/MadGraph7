@@ -189,7 +189,8 @@ def test_the_rescue_stack_takes_precision_and_backend_levels():
             (VirtualRescueLevel("double-double"), VirtualRescueLevel("double"))
         )
     # The loop-induced default stack: TIRust b64 -> NinjaRS b64 -> the default
-    # ladder's double-double and 57-digit levels ("auto"), every target 1e-5.
+    # ladder's double-double, 57- and 500-digit levels ("auto"), every target
+    # 1e-5.
     default = VirtualRescuePolicy()
     found = loop_induced_stack()
     assert [
@@ -199,6 +200,7 @@ def test_the_rescue_stack_takes_precision_and_backend_levels():
         ("double", None, "ninjars"),
         ("double-double", None, "auto"),
         ("arbitrary", 57, "auto"),
+        ("arbitrary", 500, "auto"),
     ]
     assert found.levels[0] == default.levels[0].__class__(
         **{**_fields(default.levels[0]), "reduction": "tirust"}
