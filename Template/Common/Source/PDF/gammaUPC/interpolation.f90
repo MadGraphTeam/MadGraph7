@@ -7,6 +7,9 @@ MODULE interpolation
   PUBLIC::lagrange_interp_2d,pwl_interp_2d
   ! ND
   PUBLIC::lagrange_interp_nd_value,lagrange_interp_nd_value2
+  ! Lagrange interpolation on uniform (or piecewise-uniform) grids with
+  ! precomputed weights: O(p) per 1D and O(px*py) per 2D lookup
+  PUBLIC::lagr_uniform_weights,lagr_uniform_eval1d,lagr_uniform_eval2d
 CONTAINS
   ! interpolation with polynominals
   SUBROUTINE POLYNOMINAL_INTERPOLATE(XA,YA,N,X,Y,DY)
@@ -1508,4 +1511,116 @@ CONTAINS
 
     return
   end subroutine i4_fake_use
+
+  ! ===========================================================================
+  ! Lagrange interpolation on uniform grids
+  ! ===========================================================================
+  SUBROUTINE lagr_uniform_weights(u,u0,h,n,p,i0,w,jlo,jhi)
+    ! Grid u_j = u0+(j-1)*h, j=1..n (h may be negative). Returns the first index
+    ! i0 and the weights w(1:p) of the p-point Lagrange interpolant at u, so that
+    ! f(u) ~ sum_k w(k)*f(u_{i0+k-1}). The stencil is the one nearest-centred on
+    ! u (p even: u between its two middle nodes; p odd: u nearest its middle
+    ! node), shifted to lie inside [jlo,jhi] (default [1,n]); outside the range
+    ! the end stencil extrapolates. Optional jlo,jhi keep the stencil inside one
+    ! segment of a piecewise-uniform grid: the caller passes that segment's u0
+    ! and h, i.e. u_j = u0+(j-1)*h holds for jlo<=j<=jhi (global indices).
+    ! Barycentric form with the equispaced weights (-1)^k C(p-1,k); the weights
+    ! sum to 1 and reproduce polynomials of degree <= p-1. If u is a node (up
+    ! to the rounding of u0+(j-1)*h) w is exactly the unit vector.
+    IMPLICIT NONE
+    REAL(KIND(1d0)),INTENT(IN)::u,u0,h
+    INTEGER,INTENT(IN)::n,p
+    INTEGER,INTENT(OUT)::i0
+    REAL(KIND(1d0)),DIMENSION(p),INTENT(OUT)::w
+    INTEGER,INTENT(IN),OPTIONAL::jlo,jhi
+    INTEGER::lo,hi,k
+    REAL(KIND(1d0))::t,s,lam,sw,tol
+    lo=1
+    hi=n
+    IF(PRESENT(jlo))lo=MAX(jlo,1)
+    IF(PRESENT(jhi))hi=MIN(jhi,n)
+    IF(p.LT.1.OR.hi-lo+1.LT.p)THEN
+       WRITE(*,*)"ERROR: lagr_uniform_weights: p=",p," but the grid segment has ",&
+            hi-lo+1," nodes"
+       STOP 1
+    ENDIF
+    ! fractional (global) index of u, clamped before the integer conversion
+    t=(u-u0)/h+1d0
+    t=MIN(MAX(t,DBLE(lo)-1d0),DBLE(hi)+1d0)
+    IF(MOD(p,2).EQ.0)THEN
+       i0=FLOOR(t)-p/2+1
+    ELSE
+       i0=NINT(t)-(p-1)/2
+    ENDIF
+    i0=MAX(lo,MIN(i0,hi-p+1))
+    ! local coordinate: the stencil nodes are at s=0,1,...,p-1
+    s=(u-(u0+DBLE(i0-1)*h))/h
+    ! u on a node (within the rounding of the node positions)
+    tol=2d0*EPSILON(1d0)*((ABS(u)+ABS(u0))/ABS(h)+DBLE(p))
+    DO k=0,p-1
+       IF(ABS(s-DBLE(k)).LE.tol)THEN
+          w(1:p)=0d0
+          w(k+1)=1d0
+          RETURN
+       ENDIF
+    ENDDO
+    lam=1d0
+    sw=0d0
+    DO k=0,p-1
+       IF(k.GT.0)lam=-lam*DBLE(p-k)/DBLE(k)
+       w(k+1)=lam/(s-DBLE(k))
+       sw=sw+w(k+1)
+    ENDDO
+    w(1:p)=w(1:p)/sw
+    RETURN
+  END SUBROUTINE lagr_uniform_weights
+
+  FUNCTION lagr_uniform_eval1d(u,u0,h,n,p,y,jlo,jhi) RESULT(val)
+    ! p-point Lagrange interpolation of y(1:n), given on u_j = u0+(j-1)*h, at u
+    ! (stencil choice and optional segment bounds as in lagr_uniform_weights)
+    IMPLICIT NONE
+    REAL(KIND(1d0)),INTENT(IN)::u,u0,h
+    INTEGER,INTENT(IN)::n,p
+    REAL(KIND(1d0)),DIMENSION(n),INTENT(IN)::y
+    INTEGER,INTENT(IN),OPTIONAL::jlo,jhi
+    REAL(KIND(1d0))::val
+    REAL(KIND(1d0)),DIMENSION(p)::w
+    INTEGER::i0,k
+    CALL lagr_uniform_weights(u,u0,h,n,p,i0,w,jlo,jhi)
+    val=0d0
+    DO k=1,p
+       val=val+w(k)*y(i0+k-1)
+    ENDDO
+    RETURN
+  END FUNCTION lagr_uniform_eval1d
+
+  FUNCTION lagr_uniform_eval2d(ux,uy,u0x,hx,nx,u0y,hy,ny,px,py,z,&
+       jlox,jhix,jloy,jhiy) RESULT(val)
+    ! Tensor-product (px x py)-point Lagrange interpolation of z(1:nx,1:ny),
+    ! given on ux_i = u0x+(i-1)*hx, uy_j = u0y+(j-1)*hy, at (ux,uy); O(px*py)
+    ! work. Optional jlox,jhix (jloy,jhiy) restrict the x (y) stencil to one
+    ! segment as in lagr_uniform_weights.
+    IMPLICIT NONE
+    REAL(KIND(1d0)),INTENT(IN)::ux,uy,u0x,hx,u0y,hy
+    INTEGER,INTENT(IN)::nx,ny,px,py
+    REAL(KIND(1d0)),DIMENSION(nx,ny),INTENT(IN)::z
+    INTEGER,INTENT(IN),OPTIONAL::jlox,jhix,jloy,jhiy
+    REAL(KIND(1d0))::val
+    REAL(KIND(1d0)),DIMENSION(px)::wx
+    REAL(KIND(1d0)),DIMENSION(py)::wy
+    REAL(KIND(1d0))::col
+    INTEGER::i0x,i0y,k,l,jj
+    CALL lagr_uniform_weights(ux,u0x,hx,nx,px,i0x,wx,jlox,jhix)
+    CALL lagr_uniform_weights(uy,u0y,hy,ny,py,i0y,wy,jloy,jhiy)
+    val=0d0
+    DO l=1,py
+       jj=i0y+l-1
+       col=0d0
+       DO k=1,px
+          col=col+wx(k)*z(i0x+k-1,jj)
+       ENDDO
+       val=val+wy(l)*col
+    ENDDO
+    RETURN
+  END FUNCTION lagr_uniform_eval2d
 END MODULE interpolation
