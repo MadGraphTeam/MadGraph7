@@ -93,9 +93,27 @@ def default_reduction_library(has_born, libdir):
     return [8] if has_born and is_available(libdir) else [6]
 
 
-def pre_link_flags(libdir):
-    """Resolve the Fortran compiler runtime before Rust's builtin symbols."""
-    return read_config(libdir)['link_before']
+def pre_link_flags(libdir, fortran_compiler=None):
+    """Resolve the Fortran compiler runtime before Rust's builtin symbols.
+
+    The static runtime belongs to the compiler NinjaRS was installed with; warn
+    when the process will be linked by a compiler with a different libgcc.a.
+    """
+    flags = read_config(libdir)['link_before']
+    recorded = {os.path.realpath(flag) for flag in flags if os.path.isabs(flag)}
+    if fortran_compiler and recorded:
+        try:
+            active = subprocess.run(
+                [fortran_compiler, '-print-file-name=libgcc.a'], capture_output=True,
+                text=True, check=True, timeout=60).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            active = ''
+        if os.path.isabs(active) and os.path.realpath(active) not in recorded:
+            logger.warning(
+                "NinjaRS in %s was installed with another compiler runtime (%s) than "
+                "%s uses (%s). Run 'install ninjars --update' with this compiler.",
+                libdir, ', '.join(sorted(recorded)), fortran_compiler, active)
+    return flags
 
 
 def native_link_flags(libdir):

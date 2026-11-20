@@ -135,6 +135,16 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertEqual(len(run.call_args_list), 3)
             # A removed compiler runtime makes the install unavailable, not a link error.
             self.assertEqual(ninjars_install.pre_link_flags(libdir)[0], str(self.runtime))
+            # Linking with another compiler would put its libgcc.a after a foreign one.
+            with mock.patch.object(ninjars_install.subprocess, 'run', return_value=mock.Mock(
+                    stdout=str(self.runtime) + '\n')), self.assertNoLogs(
+                    'madgraph.ninjars_install', 'WARNING'):
+                ninjars_install.pre_link_flags(libdir, 'gfortran')
+            with mock.patch.object(ninjars_install.subprocess, 'run', return_value=mock.Mock(
+                    stdout='/other gcc/libgcc.a\n')), self.assertLogs(
+                    'madgraph.ninjars_install', 'WARNING') as logs:
+                ninjars_install.pre_link_flags(libdir, 'gfortran-14')
+            self.assertIn('/other gcc/libgcc.a', logs.output[0])
             self.runtime.unlink()
             with self.assertRaisesRegex(MadGraph5Error, 'no longer exists'):
                 ninjars_install.pre_link_flags(libdir)

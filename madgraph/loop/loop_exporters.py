@@ -2027,7 +2027,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                     # It is cleaner to use the original location of the libraries
                     copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
                     if tir == 'ninjars':
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                        link_tir_libs.extend(ninjars_install.pre_link_flags(
+                            libpath, self.fortran_compiler))
                     if copied_ninjars:
                         link_tir_libs.append('-L$(LIBDIR) -lninjars')
                         tir_libs.append('$(LIBDIR)libninjars.a')

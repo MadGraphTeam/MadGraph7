@@ -5524,7 +5524,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                     copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                        link_tir_libs.extend(ninjars_install.pre_link_flags(
+                            libpath, getattr(self, 'fortran_compiler', None)))
                     if copied_ninjars:
                         link_tir_libs.append('-L$(LIBDIR) -lninjars')
                         tir_libs.append('$(LIBDIR)libninjars.a')
