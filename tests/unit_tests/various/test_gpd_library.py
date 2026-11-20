@@ -198,5 +198,52 @@ class GPDLibraryTest(unittest.TestCase):
         self.close(vals[0][0], 0.91)
 
 
+
+TAB_DRIVER = """program ttab
+  use OpticalGlauber_Geometry
+  implicit none
+  double precision rr(2), ww(2), aa(2), av(2), zv(2), b, t
+  integer i
+  call GetNuclearInfo('Pb208  ', av(1), zv(1), rr(1), aa(1), ww(1))
+  call GetNuclearInfo('O16    ', av(2), zv(2), rr(2), aa(2), ww(2))
+  do i = 0, 4
+     b = 3d0*i
+     t = TABhat_WoodsSaxon_grid(b, 0d0, rr, ww, aa, av)*av(1)*av(2)
+     write(*,'(A,F6.1,ES24.15)') 'TAB', b, t
+  enddo
+end program
+"""
+
+
+@std_unittest.skipIf(shutil.which('gfortran') is None, 'gfortran is needed')
+class GammaUPCThicknessTest(unittest.TestCase):
+    """The nuclear overlap T_AB(b) of gamma-UPC for an asymmetric pair (it
+    sets the survival of the photon fluxes of A+B collisions)."""
+
+    def test_asymmetric_overlap(self):
+        src = os.path.join(madgraph.MG5DIR, 'Template', 'Common', 'Source', 'PDF', 'gammaUPC')
+        tmp = tempfile.mkdtemp()
+        try:
+            for f in ('tbessk', 'nielsen_generalized_polylog', 'interpolation', 'nintlib', 'OpticalGlauber_Geometry'):
+                shutil.copy(os.path.join(src, f + '.f90'), tmp)
+                subprocess.check_call(['gfortran', '-c', '-O', '-w', f + '.f90'], cwd=tmp)
+            with open(os.path.join(tmp, 'ttab.f90'), 'w') as f:
+                f.write(TAB_DRIVER)
+            subprocess.check_call(['gfortran', '-O', 'ttab.f90', 'tbessk.o', 'nielsen_generalized_polylog.o', 'interpolation.o',
+                                   'nintlib.o', 'OpticalGlauber_Geometry.o', '-o', 'ttab'], cwd=tmp)
+            out = subprocess.run([os.path.join(tmp, 'ttab')], capture_output=True, text=True, cwd=tmp,
+                                 check=True).stdout
+            vals = [float(l.split()[2]) for l in out.splitlines() if l.startswith('TAB')]
+        finally:
+            shutil.rmtree(tmp)
+        # T_PbO(b) (fm^-2) at b = 0, 3, 6, 9, 12 fm: Hankel transform of the
+        # Woods-Saxon form factors (docs/scripts/ion_flux.py); gamma-UPC's 2-D
+        # quadrature agrees to ~4e-3. With the profile of Pb for O (the bug of
+        # the B grid) T_PbO(0) was 23.4.
+        refs = [31.79344, 27.15819, 12.33721, 1.400881, 0.02614943]
+        for v, r in zip(vals, refs):
+            self.assertTrue(abs(v / r - 1) < 1e-2, "%r != %r" % (v, r))
+
+
 if __name__ == '__main__':
     unittest.main()
