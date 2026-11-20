@@ -34,6 +34,10 @@ typedef struct {
     const int *helicity_runtime;
     /* Runtime helicity index -> exported helicity index. */
     const size_t *helicity_export;
+    /* Flavour-union member (NULL: plain evaluation): its process id, assignment id on the
+     * template runtime, and color_id's index on that runtime's colour axis. */
+    const char *assignment_key;
+    size_t assignment, color_axis;
 } UmamiContribution;
 
 typedef struct {
