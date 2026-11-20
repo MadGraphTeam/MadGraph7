@@ -605,16 +605,16 @@ class Runtime:
         load-time arithmetic or precision (the levels own the carriers).
         ``reduction`` (``"auto"``, ``"ninjars"`` or ``"tirust"``; v2 virtual
         runtimes) overrides the artifact's generation default of the
-        reduction backend for every call that names none (m-lit Q17);
+        reduction backend for every call that names none;
         ``reduction_target`` (a finite positive number; default 1e-5) is the
         target accuracy of every call that sets none: the relative accuracy
-        of each point's result that TIRust's method-choice acceptance follows
-        (m-lit F3); ``reduction_unchecked`` (a bool; default False) is the
+        of each point's result that TIRust's method-choice acceptance
+        follows; ``reduction_unchecked`` (a bool; default False) is the
         unchecked setting of every call that sets none: True reduces without
         the reduction backends' own acceptance and refusal checks (TIRust's
         gates and method choice as method selection without the acceptance
         pass, plain PV at gate 0 as its last resort; NinjaRS with zero
-        stability thresholds; m-lit lit-unchecked); ``lane_rescue`` (a bool;
+        stability thresholds); ``lane_rescue`` (a bool;
         default True) is the lane rescue of every call that sets none: True
         reduces a reduction lane the backend refuses again in a higher
         carrier (docs/user/python-api.md, "Lane rescue of refused reduction
@@ -999,9 +999,14 @@ class Runtime:
         virtual runtime for this call, replacing a load-time default policy;
         with neither policy there are no hidden precision retries
         (docs/user/python-api.md, "Stability rescue").
-        ``on_failure="return"`` retains numerical failures as ``None`` at their
-        original point positions, with typed diagnostics; the default raises.
-        Invalid inputs and unsupported capabilities still raise.
+        ``on_failure`` (virtual runtimes) acts on the points no configured
+        alternative accepts: ``"best-effort"`` (the default) returns each with
+        the unchecked reduction's value, its refusal and an uncertainty,
+        status ``"best-effort"``; ``"return"`` keeps them as ``None`` at their
+        original point positions, with typed diagnostics; ``"raise"`` raises
+        ``EvaluationError`` at the first one (a tree runtime accepts only
+        ``"raise"``). Invalid inputs and unsupported capabilities still
+        raise.
 
         Virtual runtimes of the v2 engine also accept ``poles`` (a
         :class:`PoleSelection`: ``"all"``, the default; ``"none"``, which
@@ -1015,7 +1020,7 @@ class Runtime:
         takes TIRust for a loop-induced and NinjaRS for a Born-interfered
         process, falling back to NinjaRS with the reason recorded where TIRust
         cannot serve the call; on TIRust a point it refuses or fails is
-        evaluated again on NinjaRS (the per-point fallback, m-lit F3); an
+        evaluated again on NinjaRS (the per-point fallback); an
         explicit backend has no fallback, and one that cannot serve the call
         is refused. ``reduction_target`` (default: the runtime's, else 1e-5)
         is the call's target accuracy, the relative accuracy of each point's
