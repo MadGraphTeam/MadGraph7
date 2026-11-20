@@ -3435,7 +3435,7 @@ class test_aloha_creation(IOTests.IOTestManager):
             # Check the content of FFV1__FFV2C1_0.f
             fsock = open('%s/FFV1C1_0.f' % path)
             goal ="""
-SUBROUTINE FFV1_2C1_0(F2, F1, V3, COUP1, COUP2,VERTEX)
+RECURSIVE SUBROUTINE FFV1_2C1_0(F2, F1, V3, COUP1, COUP2,VERTEX)
 USE ALOHA_OBJECT
 IMPLICIT NONE
 PARAMETER (CI=(0D0,1D0))

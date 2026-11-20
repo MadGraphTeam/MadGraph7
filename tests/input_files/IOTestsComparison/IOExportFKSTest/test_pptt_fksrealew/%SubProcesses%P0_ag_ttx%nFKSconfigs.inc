@@ -1,2 +1,1 @@
-      INTEGER FKS_CONFIGS,FKS_INTEGRATED
-      PARAMETER(FKS_CONFIGS=27,FKS_INTEGRATED=11)
+../../_shared/IOExportFKSTest%test_pptt_fksrealew%%SubProcesses%P0_ag_ttx%nFKSconfigs.inc

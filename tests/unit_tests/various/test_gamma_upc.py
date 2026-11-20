@@ -430,6 +430,30 @@ end program check_pbreak
       end
 """
 
+    # Woods-Saxon T_B of beam B (args: nucleus A, nucleus B) from its grid
+    # (IMETH=2) and from the direct integration (IMETH=0), after beam A made
+    # its grid (IMETH=1); grids in memory, at s = 0, R_B/4, ..., 2 R_B
+    tahat_driver = """
+program check_tahat
+  USE OpticalGlauber_Geometry
+  implicit none
+  character(len=7)::nameA,nameB
+  real(kind(1d0))::A1,Z1,R1,aa1,w1,A2,Z2,R2,aa2,w2,t,tb,s
+  integer::i
+  call get_command_argument(1,nameA)
+  call get_command_argument(2,nameB)
+  call GetNuclearInfo(nameA,A1,Z1,R1,aa1,w1)
+  call GetNuclearInfo(nameB,A2,Z2,R2,aa2,w2)
+  t=TAhat_WoodsSaxon(0d0,0d0,R1,w1,aa1,A1,1,.FALSE.)
+  do i=0,8
+     s=0.25d0*i*R2
+     tb=TAhat_WoodsSaxon(s,0d0,R2,w2,aa2,A2,2,.FALSE.)
+     t=TAhat_WoodsSaxon(s,0d0,R2,w2,aa2,A2,0)
+     write(*,'(a,3es24.15)') 'T', s, tb, t
+  enddo
+end program check_tahat
+"""
+
     @classmethod
     def setUpClass(cls):
         cls.fc = misc.which('gfortran')
@@ -453,6 +477,9 @@ end program check_pbreak
             fsock.write(cls.pbreak_driver)
         cls.compile(src, ['-ffixed-line-length-132', '-o', 'check_labels', 'check_labels.f'] + objects)
         cls.compile(src, ['-o', 'check_pbreak', 'check_pbreak.f90'] + objects)
+        with open(pjoin(src, 'check_tahat.f90'), 'w') as fsock:
+            fsock.write(cls.tahat_driver)
+        cls.compile(src, ['-o', 'check_tahat', 'check_tahat.f90'] + objects)
         with open(pjoin(src, 'check_dummy.f'), 'w') as fsock:
             fsock.write(cls.dummy_driver)
         cls.compile(src, ['-o', 'check_dummy', 'check_dummy.f', 'gammaUPC_dummy.f'])
@@ -562,3 +589,19 @@ end program check_pbreak
                     self.assertAlmostEqual(P(y, I), P(I, y), places=14)  # symmetric beams
                     self.assertGreater(P(y, I), 0.)
                 self.assertLess(sum(P(k, I) for k in range(1, 5)), P(X, I))
+
+    def test_woods_saxon_beam_b_grid(self):
+        """TAhat_WoodsSaxon with IMETH=2 interpolates the grid of beam B, which
+        can be another nucleus than beam A: it agrees with the direct
+        integration (IMETH=0) up to the spline error. It used to interpolate
+        the grid of beam A, which was only right for identical beams."""
+
+        for beams in [('Pb208', 'O16'), ('O16', 'Pb208'), ('Pb208', 'Pb208')]:
+            out = self.run_exe('check_tahat', beams)
+            self.assertEqual(out.returncode, 0, out.stdout)
+            rows = [[float(x) for x in l.split()[1:]] for l in out.stdout.split('\n')
+                    if l.startswith('T ')]
+            self.assertEqual(len(rows), 9, out.stdout)
+            for s, grid, direct in rows:
+                self.assertGreater(direct, 0.)
+                self.assertLess(abs(grid / direct - 1.), 1e-3, (beams, s, grid, direct))

@@ -1,2 +1,1 @@
-      INTEGER IRFBC
-      INTEGER REAL_FROM_BORN_CONF(LMAXCONFIGS,67)
+../../_shared/IOExportFKSTest%test_pptt_fksrealew%%SubProcesses%P0_QQx_ttx%real_from_born_configs.inc

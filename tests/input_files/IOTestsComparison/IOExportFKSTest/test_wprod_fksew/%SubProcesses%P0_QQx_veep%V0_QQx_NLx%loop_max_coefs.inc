@@ -1,2 +1,1 @@
-      INTEGER LOOPMAXCOEFS
-      PARAMETER (LOOPMAXCOEFS=15)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_QQx_wp%V0_QQx_wp%loop_max_coefs.inc

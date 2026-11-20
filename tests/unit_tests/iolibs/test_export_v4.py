@@ -10334,7 +10334,7 @@ class AlohaFortranWriterTest(unittest.TestCase):
 C     The process calculated in this file is: 
 C     Gamma(3,2,1)
 C     
-      SUBROUTINE FFV1_1(F2, V3, COUP, M1, W1,F1)
+      RECURSIVE SUBROUTINE FFV1_1(F2, V3, COUP, M1, W1,F1)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -10367,6 +10367,8 @@ C
         
         self.assertTrue(os.path.exists('/tmp/FFV1_1.f'))
         textfile = open('/tmp/FFV1_1.f','r').read()
+        self.assertRegex(textfile, r'(?im)^\s*recursive subroutine FFV1_1\b')
+        self.assertNotRegex(textfile, r'(?im)^\s*recursive\s+entry\b')
         # rstrip each line: the ALOHA line wrapper can leave a trailing space
         # (e.g. after "(M1 " when the width term spills to a continuation), and
         # that cosmetic whitespace is not what this test is checking.

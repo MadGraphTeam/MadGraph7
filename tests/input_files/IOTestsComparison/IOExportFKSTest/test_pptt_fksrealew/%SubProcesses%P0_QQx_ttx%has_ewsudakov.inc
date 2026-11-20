@@ -1,3 +1,1 @@
-      LOGICAL HAS_EWSUDAKOV
-      PARAMETER (HAS_EWSUDAKOV=.FALSE.)
-
+../../_shared/IOExportFKSTest%test_pptt_fks_loonly%%SubProcesses%P0_QQx_ttx%has_ewsudakov.inc

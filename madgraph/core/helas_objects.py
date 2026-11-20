@@ -6718,8 +6718,12 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     'diagrams',
                     base_objects.DiagramList(
                         [base_diagrams[i] for i in kept_positions]))
-                self.set('color_basis', color_amp.ColorBasis())
-                self.process_color()
+                # Decay sub-MEs defer color construction until their open
+                # endpoint has been combined with the production process.
+                # Only rebuild a basis that already existed before trimming.
+                if self.get('color_basis'):
+                    self.set('color_basis', color_amp.ColorBasis())
+                    self.process_color()
 
         # reset wfct numbers for those dropped
         for i,wfct in enumerate(self.get_all_wavefunctions()):

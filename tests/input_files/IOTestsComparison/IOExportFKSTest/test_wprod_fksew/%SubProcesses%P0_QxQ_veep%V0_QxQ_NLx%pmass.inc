@@ -1,4 +1,1 @@
-      PMASS(1)=ZERO
-      PMASS(2)=ZERO
-      PMASS(3)=ZERO
-      PMASS(4)=ZERO
+../../_shared/IOExportFKSTest%test_wprod_fksew%%SubProcesses%P0_QQx_veep%V0_QQx_NLx%pmass.inc

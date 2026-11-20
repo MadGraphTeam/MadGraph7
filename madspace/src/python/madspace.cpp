@@ -820,11 +820,34 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "LeptonLuminosity", pydoc::doc("LeptonLuminosity")
     )
         .def(
-            py::init<double, double, double>(),
+            py::init<double, double, double, bool, bool>(),
             py::arg("s_lab"),
             py::arg("s_hat_min"),
             py::arg("sampling_power") = 0.96,
+            py::arg("reduced_density") = true,
+            py::arg("s_hat_min_condition") = false,
             pydoc::doc("LeptonLuminosity::LeptonLuminosity")
+        )
+        .def("s_lab", &LeptonLuminosity::s_lab, pydoc::doc("LeptonLuminosity::s_lab"))
+        .def(
+            "s_hat_min",
+            &LeptonLuminosity::s_hat_min,
+            pydoc::doc("LeptonLuminosity::s_hat_min")
+        )
+        .def(
+            "sampling_power",
+            &LeptonLuminosity::sampling_power,
+            pydoc::doc("LeptonLuminosity::sampling_power")
+        )
+        .def(
+            "reduced_density",
+            &LeptonLuminosity::reduced_density,
+            pydoc::doc("LeptonLuminosity::reduced_density")
+        )
+        .def(
+            "s_hat_min_condition",
+            &LeptonLuminosity::s_hat_min_condition,
+            pydoc::doc("LeptonLuminosity::s_hat_min_condition")
         );
 
     py::enum_<BeamstrahlungQTerm>(m, "BeamstrahlungQTerm")
@@ -891,7 +914,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "LeptonLuminosityInvariant", pydoc::doc("LeptonLuminosityInvariant")
     )
         .def(
-            py::init<double, double, double, double, double, double, double>(),
+            py::init<double, double, double, double, double, double, double, bool, bool>(),
             py::arg("s_lab"),
             py::arg("s_hat_min"),
             py::arg("s_hat_max") = 0.,
@@ -899,7 +922,19 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mass") = 0.,
             py::arg("width") = 0.,
             py::arg("invariant_power") = 1.,
+            py::arg("reduced_density") = true,
+            py::arg("s_hat_min_condition") = false,
             pydoc::doc("LeptonLuminosityInvariant::LeptonLuminosityInvariant")
+        )
+        .def(
+            "reduced_density",
+            &LeptonLuminosityInvariant::reduced_density,
+            pydoc::doc("LeptonLuminosityInvariant::reduced_density")
+        )
+        .def(
+            "s_hat_min_condition",
+            &LeptonLuminosityInvariant::s_hat_min_condition,
+            pydoc::doc("LeptonLuminosityInvariant::s_hat_min_condition")
         );
 
     py::classh<TwoBodyDecay, Mapping>(m, "TwoBodyDecay", pydoc::doc("TwoBodyDecay"))

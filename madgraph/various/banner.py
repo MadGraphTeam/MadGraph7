@@ -1726,8 +1726,18 @@ class ConfigFile(dict):
         
         return dict.__getitem__(self, name.lower())
 
-    
-    get = __getitem__
+    _no_default = object()
+
+    def get(self, name, default=_no_default):
+        """card[name]. With a default, return it when the card has no such
+        parameter; without one, a missing name raises KeyError (unlike
+        dict.get, which would return None)."""
+        try:
+            return self[name]
+        except KeyError:
+            if default is ConfigFile._no_default:
+                raise
+            return default
 
     def set(self, name, value, changeifuserset=True, user=False, raiseerror=False):
         """convenient way to change attribute.
@@ -8041,8 +8051,6 @@ class RunCardMG7(RunCard):
                            "sets (%s, %s), read beam.pdf1 / beam.pdf2" % (pdf1, pdf2))
         return pdf1
 
-    get = __getitem__
-
     def __setitem__(self, name, value, *args, **opts):
         """Refuse an unsupported (madspace_)cpu_mode instead of silently falling back.
 
@@ -8089,7 +8097,8 @@ class RunCardMG7(RunCard):
         # An MLM run (dynamical_scale_choice = "mlm" with xqcut > 0) reports
         # ickkw = 1 and its xqcut, a CKKW-L run its ktdurham / ptlund cut.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
-        'dparameter', 'pdgs_for_merging_cut', 'lhaid', 'iseed', 'python_seed',
+        'd', 'dparameter', 'pdgs_for_merging_cut', 'lhaid', 'iseed',
+        'python_seed',
         # read by MadSpin (check_launch, do_import) and by Banner.write for
         # the <LesHouchesEvents version=...> of the files it rewrites
         'lhe_version', 'bwcutoff',
@@ -8234,6 +8243,9 @@ class RunCardMG7(RunCard):
             if self.is_mlm_merged() or self.is_ckkwl_merged():
                 return int(beam['max_jet_flavor'])
             return 5
+        if key == 'd':
+            # JetMatching:coneRadius: the D of the clustering's kt measure
+            return float(beam['jet_radius'])
         if key == 'dparameter':
             return float(self['phasespace']['dparameter'])
         if key == 'pdgs_for_merging_cut':
@@ -8675,6 +8687,26 @@ class RunCardMG7(RunCard):
             items.append((key, val))
         return items
 
+    MLM_MODE_HELP = ("the mode is 'madevent' (the MLM clustering as madevent "
+                     "does it) or 'mg7' (mg7's defaults)")
+
+    def set_mlm_mode(self, mode, user=False):
+        """MLM merging (dynamical_scale_choice "mlm") with the clustering
+        options of ``mode``: "madevent" as madevent does it
+        (``_MLM_MADEVENT``), "mg7" back to the card's defaults. The merging
+        cut is left to the caller. Returns the keys set, in order."""
+        if mode == 'madevent':
+            values = self._MLM_MADEVENT
+        elif mode == 'mg7':
+            values = collections.OrderedDict(
+                (key, self.toml_defaults[key]) for key in self._MLM_MODE_KEYS)
+        else:
+            raise InvalidCmd('set mlm %s: %s' % (mode, self.MLM_MODE_HELP))
+        self.set('beam.dynamical_scale_choice', 'mlm', user=user)
+        for key, val in values.items():
+            self.set(key, val, user=user)
+        return ['beam.dynamical_scale_choice'] + list(values)
+
     def set_lo_param(self, name, value, masses=None):
         """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
         not just rename (``_LO_SET_PARAMS``): its value needs translating
@@ -8752,6 +8784,18 @@ class RunCardMG7(RunCard):
             # the MLM clustering's jet flavours, which madevent's maxjetflavor
             # also sets
             put('beam.max_jet_flavor', flavours)
+
+        elif name == 'mlm':
+            # "set mlm madevent": MLM merging with every clustering option
+            # at madevent's choice; "set mlm mg7": with mg7's defaults
+            for key in self.set_mlm_mode(text.lower(), user=True):
+                changes[key] = self[key]
+            # no merging cut, no merged sample: take madevent's default
+            if float(self['phasespace']['xqcut']) <= 0:
+                put('phasespace.xqcut', self.default_mlm_xqcut)
+            if beam['leptonic']:
+                warnings.append('set mlm: the beams are not hadronic, so the '
+                                'events are clustered but not MLM merged')
 
         else:
             # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
@@ -9780,11 +9824,29 @@ class RunCardMG7(RunCard):
         'bwcutoff': 'phasespace.bw_cutoff',
         'cut_decays': 'phasespace.cut_decays',
         'use_syst': 'systematics.enable',
+        # D of the MLM clustering's kt measure (hidden in both cards)
+        'd': 'beam.jet_radius',
         # for "set ktdurham ..." (cli.py); from_LO sets both again explicitly
         'ktdurham': 'phasespace.ktdurham',
         'ptlund': 'phasespace.ptlund',
         'dparameter': 'phasespace.dparameter',
     }
+    # The MLM clustering as madevent does it (set_mlm_mode). min_scale is
+    # setclscales' hard-coded 2 GeV floor. jet_radius, max_jet_flavor and
+    # mlm_shower_start are not here: madevent has them as run_card
+    # parameters too (d, maxjetflavor, mlm_shower_start).
+    _MLM_MADEVENT = collections.OrderedDict([
+        ('beam.scale_scheme', 'madevent'),
+        ('beam.clustering_measure', 'madevent'),
+        ('beam.clustering_history', 'madevent'),
+        ('beam.jet_scale_scheme', 'production'),
+        ('beam.parton_line_scheme', 'goodjet'),
+        ('beam.alphas_reweighting', 'per_vertex'),
+        ('beam.pdf_reweighting', True),
+        ('beam.min_scale', 2.0),
+    ])
+    # what set_mlm_mode('mg7') puts back to the card's defaults
+    _MLM_MODE_KEYS = tuple(_MLM_MADEVENT) + ('beam.clustering_mean_pdf_ladder',)
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
                         3: 'half_transverse_mass', 4: 'partonic_energy'}
@@ -9855,9 +9917,11 @@ class RunCardMG7(RunCard):
     }
     # LO parameters that "set" translates with set_lo_param: not a plain
     # rename (_LO_SCALAR_MAP) nor a cut (_LO_CUT_MAP) nor a beam setting
-    # (lo_beam_params). A set literal: set() is the method of this class here.
+    # (lo_beam_params), plus the mg7 shortcut "set mlm madevent|mg7".
+    # A set literal: set() is the method of this class here.
     _LO_SET_PARAMS = {'fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2',
                       'dynamical_scale_choice', 'sde_strategy', 'maxjetflavor',
+                      'mlm',
                       'mxx_min_pdg', 'mxx_only_part_antipart', *_LO_PDG_CUT_MAP}
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
@@ -10057,11 +10121,17 @@ class RunCardMG7(RunCard):
         # "madevent". mg7 has no MLM with a closed-form scale choice: the
         # clustering scales are used whatever dynamical_scale_choice said.
         ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
+        # unsupported LO names transferred all the same in this context
+        transferred = set()
         if ickkw == 1:
             xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
             if xqcut > 0:
-                mg7.set('beam.dynamical_scale_choice', 'mlm')
-                mg7.set('beam.scale_scheme', 'madevent')
+                # the clustering as madevent does it, as "set mlm madevent",
+                # with madevent's switch for the pdf reweighting
+                mg7.set_mlm_mode('madevent')
+                if 'pdfwgt' in lo:
+                    mg7.set('beam.pdf_reweighting', bool(lo['pdfwgt']))
+                    transferred.add('pdfwgt')
                 mg7.set('phasespace.xqcut', xqcut)
                 if 'mlm_shower_start' in lo:
                     mg7.set('beam.mlm_shower_start', lo['mlm_shower_start'])
@@ -10182,7 +10252,7 @@ class RunCardMG7(RunCard):
 
         # --- report the non-default settings we could not transfer ---
         for name in sorted(cls._LO_UNSUPPORTED):
-            if not nondefault(name):
+            if name in transferred or not nondefault(name):
                 continue
             val = lo[name]
             # skip inactive cut sentinels (they impose no real constraint)

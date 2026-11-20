@@ -773,7 +773,11 @@ class ALOHAWriterForFortran(WriteALOHA):
         couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0)
         for elem in self.routine.symmetries:
             new_name = self.name.rsplit('_',1)[0] + '_%s' % elem
-            out.write('%s\n' % self.get_header_txt(new_name, couplings).replace('subroutine','entry'))
+            # ENTRY inherits the host procedure's attributes and takes no
+            # RECURSIVE prefix of its own.
+            entry = re.sub(r'^(?:recursive\s+)?subroutine\b', 'entry',
+                           self.get_header_txt(new_name, couplings), count=1)
+            out.write('%s\n' % entry)
         #to_end.append('')            
         #out.write('\n'.join(to_end))
         return out.getvalue()

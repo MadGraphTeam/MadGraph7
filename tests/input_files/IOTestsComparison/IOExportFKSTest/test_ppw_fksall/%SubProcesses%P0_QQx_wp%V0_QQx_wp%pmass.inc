@@ -1,3 +1,1 @@
-      PMASS(1)=ZERO
-      PMASS(2)=ZERO
-      PMASS(3)=ABS(MDL_MW)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_QQx_wp%V0_QQx_wp%pmass.inc

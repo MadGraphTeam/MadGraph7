@@ -1,2 +1,1 @@
-      INTEGER FKS_CONFIGS,FKS_INTEGRATED
-      PARAMETER(FKS_CONFIGS=10,FKS_INTEGRATED=10)
+../../_shared/IOExportFKSTest%test_wprod_fksew%%SubProcesses%P0_QQx_veep%nFKSconfigs.inc

@@ -1,2 +1,1 @@
-      INTEGER FKS_CONFIGS,FKS_INTEGRATED
-      PARAMETER(FKS_CONFIGS=8,FKS_INTEGRATED=8)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_QQx_wp%nFKSconfigs.inc

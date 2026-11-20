@@ -1,2 +1,1 @@
-      INTEGER    N_MAX_CG
-      PARAMETER (N_MAX_CG=4)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_QQx_wp%V0_QQx_wp%ngraphs.inc

@@ -1,4 +1,4 @@
-subroutine VVS1_1(V2, S3, COUP, M1, W1,V1)
+recursive subroutine VVS1_1(V2, S3, COUP, M1, W1,V1)
 use aloha_object
 implicit none
  complex*16 CI
@@ -33,7 +33,7 @@ P1(:) = -V1 % P (:)
 
 
 
-subroutine VVS1_2_1(V2, S3, COUP1, COUP2, M1, W1,V1)
+recursive subroutine VVS1_2_1(V2, S3, COUP1, COUP2, M1, W1,V1)
 use aloha_object
 implicit none
  complex*16 CI

@@ -1,4 +1,4 @@
-subroutine FFVM_3(F1, F2, COUP, M3, W3,V3)
+recursive subroutine FFVM_3(F1, F2, COUP, M3, W3,V3)
 use aloha_object
 implicit none
  complex*16 CI
@@ -38,7 +38,7 @@ endif
  end
 
 
-subroutine MP_FFVM_3(F1, F2, COUP, M3, W3,V3)
+recursive subroutine MP_FFVM_3(F1, F2, COUP, M3, W3,V3)
 use aloha_object
 implicit none
  complex*32 CI
