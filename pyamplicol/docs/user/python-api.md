@@ -406,10 +406,11 @@ checks** (one rotation, the reduction-direction check and the rescaled
 check; importable as `pyamplicol.loops.v2.stability.RECOMMENDED_CHECKS`).
 Stability checks are off by default (no estimate is returned then); the
 reduction backends' own acceptance and refusal checks stay on unless
-`reduction_unchecked=True`.
+`reduction_unchecked=True`. How these checks, the lane rescue and the
+rescue stack fit together, and how to turn each one off:
+[The stability machinery, end to end](#the-stability-machinery-end-to-end).
 
-**Default checks per backend** (USER 2026-11-19: the rescaled reduction check
-"for TIRust as part of the default stability stack"). Where pyAmpliCol chooses
+**Default checks per backend.** Where pyAmpliCol chooses
 the checks for the caller, a point TIRust serves runs one rotation **and** the
 rescaled reduction-direction check, a point NinjaRS serves exactly what it ran
 before; checks a caller gives are never changed (an explicit
@@ -560,10 +561,10 @@ exactly these two at 40, 57, 60 and 80 digits (at 80 digits the second one
 was right), and no other point; every other value is unchanged bitwise, the
 worst within 1.2e-10 (40 digits). On g g > g g g, g g > h h, g g > z z,
 u u~ > d d~ and g g > z z g at 40 and 57 digits it fails no point. The
-default rescue stack ends at 57 digits, so there the two points stay
-flagged (`best-effort` under the default `on_failure`, as before not met);
-a stack with 100- and 150-digit levels serves them right (at 150 and 100
-digits). The test rests on numerica's tracked precision, an estimate
+default rescue stack takes the two points on from its 57-digit level to its
+500-digit level (a stack with 100- and 150-digit levels served them right,
+at 150 and 100 digits); a stack that ends at 57 digits keeps them flagged
+(`best-effort` under the default `on_failure`, target not met). The test rests on numerica's tracked precision, an estimate
 rather than a bound: it overstates the accuracy of a ruined value (the two
 points still claim some kept bits, far below `r`, where none are right), and
 it does not see a loss that happens outside the tracked arithmetic.
@@ -574,9 +575,10 @@ rounding noise, so on NinjaRS in arbitrary precision the test fails it
 would have served is that noise. The default loop-induced route (TIRust)
 does not take the test, and the opt-in `"scale"` metric of the rescue stack
 accepts such a zero at its binary64 level; under the default `"relative"`
-metric the point is kept at the last level with the target not met, as
-before, now as `best-effort` when that level is NinjaRS in arbitrary
-precision. The refusal's reason names these routes; an explicit NinjaRS
+metric the stack's stopping rule keeps the point at double-double with the
+target not met (see [Stability rescue](#stability-rescue-one-loop-virtuals),
+step 3); a stack that does reach NinjaRS in arbitrary precision returns it
+there as `best-effort`. The refusal's reason names these routes; an explicit NinjaRS
 arbitrary-precision value of such a zero is obtained with
 `reduction_unchecked=True`, which drops the test (and nothing else of the
 value).
@@ -840,6 +842,76 @@ colour zero (every colour coefficient of the loop amplitude vanishes at
 N_c = 3 by colour algebra, as for `h > g a`, Tr T^a = 0) evaluates to an
 exact 0 and its lanes say so.
 
+### The stability machinery, end to end
+
+A one-loop point meets four safeguards, in this order. Each one acts only
+on what the previous one left.
+
+1. **Reduction-level checks.** The reduction backend tests each lane (one
+   loop family and Laurent column of one point) and refuses the lanes it
+   cannot reduce reliably: TIRust's acceptance checks, NinjaRS's stability
+   thresholds and its conditioning bounds (box mu-expansion in binary64,
+   box Gram in double-double and arbitrary precision). The refusal text
+   names the cause. On by default; `reduction_unchecked=True` drops the
+   thresholds and acceptance checks (the conditioning bounds stay).
+2. **Lane rescue.** A refused lane is reduced again in double-double, then
+   at 500 digits, with its kinematics rebuilt in that precision; every
+   other lane stays as it was. On by default, in the checked and the
+   unchecked mode
+   ([Lane rescue of refused reduction lanes](#lane-rescue-of-refused-reduction-lanes)).
+   Only a lane refused at every carrier fails its point; under `"auto"` on
+   a loop-induced process, the per-point fallback then evaluates that point
+   again on NinjaRS.
+3. **Point-level checks.** Stability checks (rotations, the
+   reduction-direction check, its rescaled variant) re-evaluate the point
+   and give its stability estimate. Off by default in `evaluate` and in
+   the SDKs (no estimate); the recommended set is
+   `VirtualStabilityChecks(1, True, rescaled=True)`. Where pyAmpliCol
+   chooses the checks, every level of the default rescue stack runs one
+   rotation and the rescaled reduction check, and `profile --stability`
+   runs one rotation, plus the rescaled reduction check on TIRust's points
+   (the table above). In arbitrary precision, NinjaRS's tracked-precision test fails a
+   point whose lanes kept too few bits; it is always on, except in the
+   unchecked mode.
+4. **Rescue stack** (Python `evaluate` only). With
+   `stability=VirtualRescuePolicy()`, a point that fails or misses its
+   target is evaluated again at the next level: binary64, double-double,
+   57 digits, 500 digits. A point whose estimate grows instead of falling
+   (a numerical zero) is not escalated further. Off unless a policy is
+   passed ([Stability rescue](#stability-rescue-one-loop-virtuals)).
+
+What remains refused is returned by the failure policy: by default
+(`on_failure="best-effort"`) with the unchecked reduction's value, its
+refusal and an uncertainty, status `best-effort`.
+
+| Safeguard | Default | Python | CLI (`evaluate`, `profile`) | SDK | Run card |
+| --- | --- | --- | --- | --- | --- |
+| Reduction-level checks | on | `reduction_unchecked=True` turns them off | `--reduction-unchecked` | `rusticol_virtual_set_reduction_unchecked(handle, 1)` | `reduction_unchecked = true` |
+| Lane rescue | on | `lane_rescue=False` turns it off | `--no-lane-rescue` | `rusticol_virtual_set_lane_rescue(handle, 0)` | `lane_rescue = false` |
+| Point-level checks | off (`evaluate`, SDK) | `stability_checks=VirtualStabilityChecks(...)` | `--stability-rotations`, `--stability-reduction-direction`, `--stability-rescaled` (`evaluate`) | `rusticol_virtual_set_stability_checks` | `[evaluation.stability_checks]` |
+| Rescue stack | off | `stability=VirtualRescuePolicy()` | none | none | none |
+
+The SDKs have the first three, not the rescue stack: they return the
+estimate and leave escalating the precision to the caller.
+
+**What `profile` runs by default.** The runtime timing (`profile`, or
+`profile --runtime`) times one optimistic binary64 pass per point: the
+unchecked reduction with the lane rescue on, no point-level checks, no
+rescue stack. A reference pass in double-double gives the `(dd xN)`
+multiplier. `--checked` times the checked mode instead, `--no-lane-rescue`
+times pure binary64 calls (points with a refused lane then have no value),
+and `--ground-truth none` runs no reference pass. The stability run
+(`profile --stability`) evaluates flat points in binary64, in the checked
+mode with the lane rescue on and with the default checks (one rotation;
+on TIRust's points also the rescaled reduction check), and compares them
+with a double-double reference. `--reduction-unchecked` measures the
+unchecked mode, `--no-lane-rescue` pure binary64, `--ground-truth arb`
+a 500-digit reference, `--ground-truth none` the estimates alone, and
+`[evaluation.stability_checks]` in a run card replaces the default checks.
+On an expensive process `profile` may leave out the reference or the other
+backend; `--ground-truth` and `--all-backends` keep them
+([command-line guide](command-line-interface.md#profile)).
+
 ### Lane rescue of refused reduction lanes
 
 A one-loop point is reduced lane by lane: one lane per loop family and
@@ -937,11 +1009,14 @@ the same record. Under a rescue policy a level's attempt
 that then misses its target is evaluated again at the next level, and its
 diagnostic is that level's. The lane rescue's time is part of the call
 (`profile`: the reduction stage) and its points are counted in `profile`'s
-cause tables under "lane rescue". Its engines (per rescue carrier, one per
-evaluation backend, built at the first rescued lane and kept) cost a first
-call and memory: on 6-gluon NinjaRS points about 3.6 s and 19 MB for the
-double-double engine, 35 s and about 640 MB for the 500-digit one (TIRust's
-500-digit engine: about 57 MB).
+cause tables under "lane rescue". Its engines (one per rescue carrier and
+backend) are built once, at the first refused lane, and kept: the call that
+meets a runtime's first refused lane also pays that one-time build. Measured:
+NinjaRS's double-double engine 2.9 s on g g > g g g g and 4 s on
+g g > g g g g g, TIRust's 0.03 to 0.4 s; NinjaRS's 500-digit engine about
+35 s on 6-gluon points. Memory: about 19 MB (NinjaRS double-double) and
+640 MB (NinjaRS 500 digits) on 6-gluon points, about 57 MB for TIRust's
+500-digit engine.
 
 ### Best-effort values of refused points
 
