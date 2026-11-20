@@ -80,6 +80,10 @@ PROFILE_GROUPS = (
     PROFILE_REST,
 )
 
+# The lane detail of an evaluation without stability checks (the same text
+# as ``loops.v2.artifact``'s).
+_NO_CHECK_DETAIL = "no stability check was requested, so the accuracy is not estimated"
+
 
 def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
     """The native stages of each timed group of a ``contribution`` call
@@ -1077,7 +1081,7 @@ class V2ObservablesRuntime:
             + (
                 "accuracy is estimated only by the requested stability checks"
                 if checked
-                else "no stability check requested"
+                else _NO_CHECK_DETAIL
             )
             + ("" if rescue is None else "; " + rescue_text(rescue, added)),
             reduction=reduction,
