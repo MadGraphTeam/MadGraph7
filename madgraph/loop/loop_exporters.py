@@ -2030,7 +2030,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                     if tir == 'ninjars':
                         # Recorded flags are argv words; quote them for the makefile shell.
                         link_tir_libs.extend(shlex.quote(flag) for flag in
-                            ninjars_install.pre_link_flags(libpath, self.fortran_compiler))
+                            ninjars_install.pre_link_flags(
+                                libpath, self.fortran_compiler or 'gfortran'))
                     if copied_ninjars:
                         link_tir_libs.append('-L$(LIBDIR) -lninjars')
                         tir_libs.append('$(LIBDIR)libninjars.a')
