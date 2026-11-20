@@ -52,9 +52,12 @@
       common/sctests/softtest,colltest
       integer nerr(0:amp_split_size)
       common /c_nerr/nerr
+      logical invalid_point
+      common /c_invalid_point/invalid_point
 c Each soft/collinear sample has its own failure count.
       nerr=0
       do jtest=1,ntests
+         invalid_point=.false.
          if (colltest) then
             xi_i_fks_fix=xi_i_fks_fix_input
             y_ij_fks_fix=0.9d0
@@ -152,10 +155,13 @@ c endpoint; changing cxiyfix alone does not fix that variable in all maps.
      $     ,towards_wgt_PS(1:nstep),towards_p(0:3,nexternal+1,1:nstep)
      $     ,limit_amp_split(1:amp_split_size),limit_wgt_PS,limit_p(0:3
      $     ,nexternal+1)
+      logical invalid_point
+      common /c_invalid_point/invalid_point
       if (ntests.le.10) then
-         call check_and_print_to_screen(nstep,towards_amp_split
-     $        ,towards_wgt_PS,towards_p,limit_amp_split,limit_wgt_PS
-     $        ,limit_p,jtest)
+c An invalid point has no complete MC sum to print.
+         if (.not.invalid_point) call check_and_print_to_screen(nstep
+     $        ,towards_amp_split,towards_wgt_PS,towards_p
+     $        ,limit_amp_split,limit_wgt_PS,limit_p,jtest)
       else
          call check_limits(nstep,towards_amp_split
      $        ,towards_wgt_PS,towards_p,limit_amp_split,limit_wgt_PS
@@ -180,6 +186,8 @@ c endpoint; changing cxiyfix alone does not fix that variable in all maps.
       common/fks_indices/i_fks,j_fks
       integer nerr(0:amp_split_size)
       common /c_nerr/nerr
+      logical invalid_point
+      common /c_invalid_point/invalid_point
       if (softtest) then
          iflag=0
       endif
@@ -192,16 +200,18 @@ c endpoint; changing cxiyfix alone does not fix that variable in all maps.
      $     =1)
       limit=sum(limit_amp_split(1:amp_split_size),dim=1)
 
-      call checkres(amp(1:nstep) ,limit,towards_wgt_PS(1:nstep)
-     $     ,limit_wgt_PS,towards_p,limit_p,iflag,nstep,jtest,nexternal
-     $     ,i_fks,j_fks,iret)
+c An invalid point fails every check it would get.
+      iret=1
+      if (.not.invalid_point) call checkres(amp(1:nstep) ,limit
+     $     ,towards_wgt_PS(1:nstep),limit_wgt_PS,towards_p,limit_p,iflag
+     $     ,nstep,jtest,nexternal,i_fks,j_fks,iret)
       nerr(0)=nerr(0)+iret
 ! check limit order-by-order
       do iamp=1, amp_split_size
          if (towards_amp_split(iamp ,1).ne.0d0 .or.
      $        limit_amp_split(iamp).ne.0d0) then
-            call checkres(towards_amp_split(iamp,1:nstep)
-     $           ,limit_amp_split(iamp),towards_wgt_PS(1:nstep)
+            if (.not.invalid_point) call checkres(towards_amp_split(iamp
+     $           ,1:nstep),limit_amp_split(iamp),towards_wgt_PS(1:nstep)
      $           ,limit_wgt_PS,towards_p,limit_p,iflag,nstep,jtest
      $           ,nexternal,i_fks,j_fks,iret)
             nerr(iamp)=nerr(iamp)+iret
@@ -494,6 +504,8 @@ c to the exact ME limit. One endpoint alone does not carry the soft current.
       common/c_nFKSprocess/nFKSprocess
       logical softtest,colltest,soft_save,coll_save,pass
       common/sctests/softtest,colltest
+      logical invalid_point
+      common /c_invalid_point/invalid_point
       type(fks_phase_space_point) saved
       external fks_Sij
 
@@ -533,7 +545,14 @@ c fixed xi or y on a different chart.
          if(.not.pass)error stop 'Invalid local MC diagnostic permutation'
          call select_native_recoil(iconfig)
          call generate_native_momenta(flipped,pn,pnlab,pncm,jac,pass)
-         if(.not.pass)error stop 'Invalid local MC diagnostic projection'
+c Production drops such a point. Here it is one failed test point, under
+c the tolerated fraction of failures; the restore below still runs.
+         if(.not.pass)then
+            if(.not.invalid_point)write(*,*)'Invalid local MC '//
+     $           'diagnostic projection for history',ihist
+            invalid_point=.true.
+            exit
+         endif
 c Restore diagnostic precision for the amplitudes, after the native
 c inverse. Otherwise sreal uses its production 1e-6 angular shortcut,
 c while the reference uses 1e-12, leaving a false finite soft offset.

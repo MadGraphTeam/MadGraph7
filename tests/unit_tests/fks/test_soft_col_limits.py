@@ -73,6 +73,9 @@ class TestSoftColLimits(unittest.TestCase):
     def test_missing_mc_counterterms_fail(self):
         self.check_limits("missing_mc")
 
+    def test_invalid_mc_point_fails_every_check(self):
+        self.check_limits("invalid_point")
+
     def test_native_sector_and_order_normalization(self):
         self.check_limits("native_sector")
 

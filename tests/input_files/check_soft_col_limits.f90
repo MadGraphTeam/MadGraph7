@@ -12,6 +12,8 @@ module limit_fixture
   integer :: i_fks, j_fks, nerr(0:namp)
   common /fks_indices/ i_fks, j_fks
   common /c_nerr/ nerr
+  logical :: invalid_point
+  common /c_invalid_point/ invalid_point
 end module limit_fixture
 
 ! Match the production phase-space module while retaining controlled weights.
@@ -107,7 +109,7 @@ program check_soft_col_limits
       call expect_convergence(0)
       values=1d-20
       call expect_convergence(1)
-    case('missing_mc','native_sector')
+    case('missing_mc','native_sector','invalid_point')
       ! The exact sector limit is (1/4)*[0,5,7] times its PS weight 3.
       ! A real-point PS weight of 2 needs MC amplitudes [0,15/8,21/8].
       mc_amplitudes=[0d0,15d0/8d0,21d0/8d0]
@@ -119,10 +121,15 @@ program check_soft_col_limits
       if (any(limit.ne.[0d0,15d0/4d0,21d0/4d0])) stop 2
       if (any(amp(1,:).ne.0d0)) stop 3
       nerr=0
+      ! A point without a complete MC sum fails every active check, even
+      ! with amplitudes that would pass.
+      invalid_point=trim(name).eq.'invalid_point'
       call check_limits(nstep,amp,weights,xp,limit,wlimit,plimit,1)
       if (trim(name).eq.'missing_mc') then
         if (any(amp.ne.0d0)) stop 4
         if (any(nerr.ne.[1,0,1,1])) stop 5
+      elseif (invalid_point) then
+        if (any(nerr.ne.[1,0,1,1])) stop 11
       else
         if (any(nerr.ne.0)) stop 6
       endif
