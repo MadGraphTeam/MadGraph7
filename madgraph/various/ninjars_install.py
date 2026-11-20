@@ -48,6 +48,14 @@ def read_config(libdir):
                 for flag in before)):
         raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
                              "in %s; run 'install ninjars --update'." % libdir)
+    # The static compiler runtime is recorded by absolute path; a compiler
+    # upgrade or a Nix garbage collection removes it behind our back.
+    missing = [flag for flag in before
+               if os.path.isabs(flag) and not os.path.isfile(flag)]
+    if missing:
+        raise MadGraph5Error("NinjaRS compiler runtime %s in %s no longer exists; "
+                             "run 'install ninjars --update'."
+                             % (', '.join(missing), libdir))
     return config
 
 

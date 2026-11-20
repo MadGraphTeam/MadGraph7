@@ -39,6 +39,9 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
 ''')
         (self.bridge / 'Cargo.toml').write_text('[package]\nname = "bridge"\n')
         (self.bridge / 'smoke.f90').write_text('end\n')
+        self.runtime = self.root / 'compiler runtime' / 'libgcc.a'
+        self.runtime.parent.mkdir()
+        self.runtime.write_text('!<arch>\n')
 
     def fake_build(self, command, cwd, log, environment):
         """Emulate compiler output while exercising staging/publish for real."""
@@ -52,7 +55,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             (lib / 'mninjars.mod').write_text('Fortran module')
             (lib / 'ninjars-native-libs.txt').write_text('-lgmp -lmpfr -lpthread\n')
             (lib / 'ninjars-link-before.txt').write_text(
-                shlex.join(['/compiler runtime/libgcc.a', '-lgcc_s']) + '\n')
+                shlex.join([str(self.runtime), '-lgcc_s']) + '\n')
 
     @staticmethod
     def snapshot(directory):
@@ -107,7 +110,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             config = ninjars_install.read_config(libdir)
             self.assertTrue(config['quad_precision'])
             self.assertEqual(config['native_libs'], ['-lgmp', '-lmpfr', '-lpthread'])
-            self.assertEqual(config['link_before'], ['/compiler runtime/libgcc.a', '-lgcc_s'])
+            self.assertEqual(config['link_before'], [str(self.runtime), '-lgcc_s'])
             self.assertEqual(config['compiler_runtime'], 'gnu-linux-static-libgcc-before-rust')
             provenance = config['build_provenance']
             self.assertEqual(provenance['lock_sha256'], hashlib.sha256(
@@ -119,7 +122,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertIn('#' + 'b'*40,
                           provenance['git_dependencies'][1]['source'])
             smoke_link = run.call_args_list[1].args[0]
-            self.assertLess(smoke_link.index('/compiler runtime/libgcc.a'),
+            self.assertLess(smoke_link.index(str(self.runtime)),
                             smoke_link.index('-lgcc_s'))
             self.assertLess(smoke_link.index('-lgcc_s'), next(
                 i for i, arg in enumerate(smoke_link) if arg.endswith('/libninjars.a')))
@@ -130,6 +133,11 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertEqual(run.call_args_list[0].args[3]['CARGO_BUILD_JOBS'], '2')
             self.assertEqual(ninjars_install.install(self.root, self.prefix), libdir)
             self.assertEqual(len(run.call_args_list), 3)
+            # A removed compiler runtime makes the install unavailable, not a link error.
+            self.assertEqual(ninjars_install.pre_link_flags(libdir)[0], str(self.runtime))
+            self.runtime.unlink()
+            with self.assertRaisesRegex(MadGraph5Error, 'no longer exists'):
+                ninjars_install.pre_link_flags(libdir)
 
     def test_update_rebuilds_installed_backend_with_current_checkout_pins(self):
         previous = self.previous_install()
