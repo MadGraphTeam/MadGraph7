@@ -309,15 +309,16 @@ compiler version is unchanged, 17).
 
 ## Python-API results differ slightly between processes
 
-With Python Symbolica 3.0.3 from PyPI, results of the Python API can depend
-on what else was generated earlier in the same Python process: normally about
-1e-30 relative, but amplified at nearly degenerate 2 -> 2 kinematics (near
-forward or at a threshold). Generate each artifact in a fresh process (for
-example one `pyamplicol generate` per artifact) where that matters. The
-Symbolica Community build of the pinned `community` revision (`d0424f9e`)
-behaves the same in double-double and arbitrary precision (a stored process's
-call in the process that generated it and in a fresh one differ at about
-5e-29 relative). Evaluations of a
+One-loop evaluations of a stored artifact do not depend on what the process
+did before: in every carrier and on both reduction backends, an evaluation
+after an in-process generation or a Symbolica state import equals the same
+evaluation in a fresh process bit for bit.
+
+Other Python-API results computed through Symbolica can depend on what else
+was generated earlier in the same Python process: normally about 1e-30
+relative, but amplified at nearly degenerate 2 -> 2 kinematics (near forward
+or at a threshold). Generate each artifact in a fresh process (for example
+one `pyamplicol generate` per artifact) where that matters. Evaluations of a
 stored artifact through the native SDKs do not use Symbolica.
 
 ## Generation appears to repeat expensive validation

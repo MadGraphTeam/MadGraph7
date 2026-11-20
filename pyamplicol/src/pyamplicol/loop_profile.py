@@ -39,8 +39,8 @@ digits of a value v against a reference r is -log10(|v - r| / |r|).
   DEFAULT checks (``DEFAULT_ESTIMATE``; ``evaluation.stability_checks``
   instead when set): one default rotation (``VirtualStabilityChecks(1)``)
   on a point NinjaRS serves, one default rotation and the rescaled
-  reduction-direction check on a point TIRust serves (USER 2026-11-19,
-  ``reduction.default_checks``; per point under ``"auto"``), its absolute
+  reduction-direction check on a point TIRust serves
+  (``reduction.default_checks``; per point under ``"auto"``), its absolute
   finite-part errors summed over the sectors relative to the total.
 
 Both are read on the finite part of the total (the sum over the
@@ -164,7 +164,7 @@ def ground_truth(text: str) -> GroundTruth:
     after ``BenchmarkConfig``: "double-double", "arbitrary" or
     "arbitrary:DIGITS"); "arbitrary" without digits takes the default
     arbitrary-precision digits (500, the native policy's one definition,
-    ``loops.v2.reduction.default_arbitrary_digits``, USER 2026-11-18)."""
+    ``loops.v2.reduction.default_arbitrary_digits``)."""
 
     from pyamplicol.config.models import _ground_truth
     from pyamplicol.loops.v2.reduction import default_arbitrary_digits
@@ -308,12 +308,12 @@ class StabilityPoint:
     """One flat point of a backend's stability run: its ``index`` among the
     flat points (point i from seed + i), ``status`` ("measured": accepted in
     binary64; "best-effort": refused by the backend's own checks, measured
-    with its best-effort value, the unchecked reduction's, m-lit
-    ux-besteffort; "binary64-failed": no binary64 value at all, 0 true digits
+    with its best-effort value, the unchecked reduction's;
+    "binary64-failed": no binary64 value at all, 0 true digits
     and no estimate; "reference-failed": no reference value, not
     measured), the digits and the refusal or failure ``reason``;
     ``uncertainty_digits``: a best-effort point's stated uncertainty
-    (``VirtualBestEffort.uncertainty``, m-lit ux-polish) in digits."""
+    (``VirtualBestEffort.uncertainty``) in digits."""
 
     index: int
     status: str
@@ -1432,8 +1432,8 @@ def profile_loop(
         else:
             budgets = {
                 "runtime": (
-                    f"{_duration(float(bench.target_runtime))} per backend for the "
-                    "runtime timing (--target-runtime)"
+                    f"{_per_point_text(float(bench.target_runtime))} per backend "
+                    "for the runtime timing (--target-runtime)"
                     if runtime_given or runtime_share is not None
                     else f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing"
                 ),

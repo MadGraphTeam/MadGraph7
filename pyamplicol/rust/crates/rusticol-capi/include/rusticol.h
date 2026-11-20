@@ -476,8 +476,8 @@ int rusticol_runtime_set_model_parameters_json(
     const char *path
 );
 
-/* Kinematics improvement of later f64 evaluations (m-lit lit-psimprove;
- * additive, ABI version 1 kept): setting is "z-shift" (MadLoop's
+/* Kinematics improvement of later f64 evaluations (additive, ABI version
+ * 1 kept): setting is "z-shift" (MadLoop's
  * ImprovePSPoint 2 with MadLoop's fallback to 1, finished by the projection
  * where MadLoop leaves the point inexact; the default), "rescaling"
  * (MadLoop 1), "projection" (the frame-independent minimal-norm projection)

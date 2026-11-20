@@ -18,7 +18,7 @@ module rusticol_virtual
   integer(c_int32_t), parameter, public :: VIRTUAL_SUCCESS=0, VIRTUAL_VERIFIED=1, VIRTUAL_RESCUED=2
   integer(c_int32_t), parameter, public :: VIRTUAL_FAILED=3, VIRTUAL_ACCURACY_NOT_ESTABLISHED=4
   ! A point no configured alternative accepted, returned with the unchecked
-  ! reduction's value (never a success; set_on_failure, m-lit ux-besteffort).
+  ! reduction's value (never a success; set_on_failure).
   integer(c_int32_t), parameter, public :: VIRTUAL_BEST_EFFORT=5
 
   type, bind(C), public :: virtual_shape
@@ -1088,7 +1088,7 @@ contains
 
   ! rusticol_virtual_evaluate_selected: the selected helicity rows of a
   ! loop-induced process or, at every colour accuracy, of a Born-interfered
-  ! one (lit-fc-hel) (resolved absent/false: their sum per point, RULED Q39;
+  ! one (resolved absent/false: their sum per point;
   ! resolved: per selected row its colour components). helicity_ids are
   ! global IDs (trailing blanks ignored), helicity_by_point zero-based rows
   ! (one per point; exclusive with helicity_ids), color_ids /

@@ -176,7 +176,7 @@ def _counts_cell(report: Any, color: bool) -> str | None:
         runtime = (
             f"{DEFAULT_RUNTIME_SECONDS:g} s for the runtime timing"
             if target is None
-            else f"--target-runtime {duration_text(float(target))} per backend "
+            else f"--target-runtime {_seconds_text(float(target))} per backend "
             "for the runtime timing"
         )
         text = (

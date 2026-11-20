@@ -94,7 +94,7 @@ REFUSALS = [
         "evaluation.on_failure must be one of 'best-effort', 'return', 'raise'; "
         "got 'x'",
     ),
-    ("[evaluation]\nprecision = 0", "evaluation.precision must be an integer positive"),
+    ("[evaluation]\nprecision = 0", "evaluation.precision must be a positive integer"),
     ("[evaluation]\nprecision = 1.5", "evaluation.precision must be an integer"),
     (
         "[evaluation]\nprecision = 4294967296",
@@ -104,7 +104,7 @@ REFUSALS = [
         "[evaluation.stability_checks]\nrotations = ['x:a:b']",
         "evaluation.stability_checks: Invalid literal for Fraction: 'a'",
     ),
-    ("[evaluation]\nthreads = 0", "evaluation.threads must be an integer positive"),
+    ("[evaluation]\nthreads = 0", "evaluation.threads must be a positive integer"),
     ("[evaluation]\nthreads = 'x'", "evaluation.threads must be an integer"),
     (
         "[evaluation]\nreduction_target = 'x'",

@@ -660,7 +660,7 @@ public:
         check(rusticol_runtime_set_model_parameters_json(handle_, path.c_str()));
     }
 
-    // Kinematics improvement (m-lit lit-psimprove): "z-shift" (the default),
+    // Kinematics improvement: "z-shift" (the default),
     // "rescaling", "projection" or "off"; it runs in these binary64
     // evaluations only with set_kinematics_improvement_binary64(true).
     void set_kinematics_improvement(const std::string &setting) {

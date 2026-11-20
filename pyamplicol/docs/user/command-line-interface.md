@@ -780,7 +780,13 @@ for a loop-induced process, NinjaRS for a Born-interfered one);
 `--loop-reduction tirust|ninjars` profiles that backend only (`auto`: the
 default backend alone, with its per-point fallback). A backend that refuses
 the process is shown as refused with its typed reason; the command still
-succeeds. What is measured:
+succeeds. On an expensive process only the default backend may be profiled,
+and the runtime timing may run without its reference (rules A and B under
+"Time budgets" below; `--all-backends` and `--ground-truth` keep them). What
+each part runs, from the reduction checks and the lane rescue to the
+stability checks, and how to switch each off, is summarised in [The
+stability machinery, end to end](python-api.md#the-stability-machinery-end-to-end).
+What is measured:
 
 | Flags | Measures |
 | --- | --- |
@@ -858,68 +864,46 @@ took):
   the budget, with their time in the `counts` row, follows from the costs
   the timing measured).
 
-  A profile whose minimums exceed its budget also narrows what it runs
-  (USER 2026-11-19), by the `counts` row's own rule: the minimums exceed
-  the budget by more than a factor 1.5, start-ups aside. The budget is the
-  runtime timing's (the default 10 s of all backends, or a given
-  `--target-runtime` per backend) plus, with `--stability`, the stability
-  run's (one minute of wall); with `--completion-time`, what is left of it,
-  start-ups included. Counts given (`--batch-size`, `--minimum-samples`,
-  `--warmup-runs`, `--stability-points` with `--stability`) are honoured as
-  given and nothing is left out; given with `--target-runtime`, the counts
-  win.
-  - The reference of the runtime timing alone (no `--stability`): when the
-    runtime minimums of every backend with their reference points (one
-    untimed and one timed point each) exceed the budget, no reference point
-    is evaluated at all and the `(dd xN)` / `(arb(D) xN)` multiplier is not
-    shown, as with `--ground-truth none`. An explicit `--ground-truth` (any
-    value, also double-double, on the command line or in a run card) times
-    it anyway. With `--stability` the reference always runs (the true digits
-    need it), and the runtime row keeps its multiplier from its own
-    reference pass, one optimistic pass, never from the stability run's.
-  - The backends, with or without `--stability`: when the default backend
-    alone, for everything asked (its runtime minimum with the reference as
-    just decided, and the stability run's five points with their
+  **On an expensive process the profile runs less.** This happens when its
+  minimums exceed the budget by more than a factor 1.5 (the `counts` row's
+  rule, start-ups aside). The budget is the runtime timing's (10 s for all
+  backends by default, or `--target-runtime` per backend), plus the
+  stability run's minute with `--stability`; with `--completion-time`, what
+  is left of it. Two rules then apply:
+  - **Rule B, the reference of the runtime timing** (without `--stability`):
+    when the runtime minimums of all backends with their reference points
+    (one untimed and one timed point each) exceed the budget, no reference
+    point runs and the `(dd xN)` / `(arb(D) xN)` multiplier is not shown, as
+    with `--ground-truth none`. An explicit `--ground-truth` (any value, also
+    `double-double`, on the command line or in a run card) keeps it. With
+    `--stability` the reference always runs (the true digits need it); the
+    runtime row then takes its multiplier from its own reference pass, never
+    from the stability run's.
+  - **Rule A, the backends** (with or without `--stability`): when the
+    default backend alone, for everything asked (its runtime minimum with
+    the reference as rule B decided, and five stability points with their
     reference), still exceeds the budget, only the default backend is
     profiled, in both tables. `--all-backends` profiles every backend
-    whatever the budget (`--no-all-backends` the default only),
-    `--loop-reduction` one backend. With one backend in the stability run
-    and an arbitrary-precision ground truth, every reference is certified by
-    its own checks (there is no second backend's reference to agree with).
-  One decision, whatever the path: each rule is a function of what this
-  run has measured so far (`profile_plan.rule_b_drops`, `rule_a_drops`),
-  called again whenever a measured number arrives: each step of the
-  measurement, the first backend's runtime timing after its binary64 call
-  and after its untimed reference point, the default backend's runtime
-  row. It drops something only when a lower bound of the real cost exceeds
-  the budget: the chunk call at one measured point's cost (a chunk costs
-  at least one of its points), a warm-up at one point, an untimed
-  reference point at its measured cold cost (a stream that warms through
-  the warm entry instead counts the entry's measured seconds, none before
-  it ran, never a point it does not run; while rule B is open no
-  reference warms through the entry, so that the measured cold point
-  bounds it), a timed one at least the
-  binary64 point, a checked stability point at least one optimistic pass,
-  a stability reference point at least the cold one for the first point of
-  each worker only and one binary64 point for the others; without
-  `--runtime` the runtime timing counts nothing. A drop is final: nothing
-  un-drops it, and every bound was valid when it fired. The verdict follows
-  the measured numbers alone: the measurement, a run without one (where
-  the first backend's untimed reference point measures the reference
-  before its timed point runs), with or without a previous profile (whose
-  costs set ETAs only). Rule B is judged on the sum of every backend's
-  minimum with its reference (a backend not measured yet counts nothing)
-  against the budget of all of them, so that a backend's dear reference
-  counts even when the default's is cheap; the first backend's runtime
-  timing re-judges it on its own numbers against what the others' known
-  minimums leave; its verdict holds for every backend (all multipliers or
-  none).
-  Rule A never counts a reference that rule B could leave out. The record
-  and the `counts` row are re-planned from what ran. A backend profiled
-  alone keeps the per-backend share it has beside the others. A notice
-  says what was left out (and when it was measured in a runtime timing),
-  and the `counts` row repeats it ("TIRust not profiled (--all-backends)",
-  "no dd multiplier (--ground-truth)").
+    whatever the budget, `--no-all-backends` only the default one,
+    `--loop-reduction` one backend. With one backend and an
+    arbitrary-precision ground truth, every reference is certified by its
+    own checks (there is no second reference to agree with).
+
+  Counts given (`--batch-size`, `--minimum-samples`, `--warmup-runs`,
+  `--stability-points` with `--stability`) are honoured and nothing is left
+  out; given with `--target-runtime`, the counts win. The rules decide on
+  what this run has measured so far, and again each time a new cost is
+  measured. They leave something out only when a lower bound of its cost
+  already exceeds the budget (a chunk counts at least one measured point, a
+  warm-up one point, a reference that warms through the warm entry the
+  entry's measured seconds), so a decision is never taken back. Rule B is
+  judged on the sum over all backends, so a backend's dear reference counts
+  even when the default's is cheap, and its verdict holds for every backend
+  (all multipliers or none). Rule A never counts a reference that rule B
+  could leave out. A previous profile's costs set the ETAs only, never a
+  verdict. A notice says what was left out, and the `counts` row repeats it
+  ("TIRust not profiled (--all-backends)", "no dd multiplier
+  (--ground-truth)").
 
   The stability run starts no more worker processes than the memory holds:
   at most three quarters of the memory available when it starts, at one
@@ -940,11 +924,15 @@ Loading, process start-up, warm-up calls and the reference pass's minimum
 are outside the default budgets by nature; they are visible phases with
 their own estimates. The reference pass is part of the budget of the phase
 it serves. Where the runtime offers a warm entry (it builds what a
-carrier's first evaluation builds, without evaluating a point) and a point
-costs more than 5 s (a first call's lazy set-up, the measurement's bound),
-the binary64 timing and the reference pass warm through it instead of their
-untimed warm-up point; the timed calls are the same warm passes, and the
-`runtime setup` row says "after a warm entry". On an expensive process the
+carrier's first evaluation builds, without evaluating a point), the
+binary64 timing of the optimistic pass and the reference pass warm through
+it instead of their untimed warm-up, unless that warm-up is known to cost
+less than the entry (the entry's cost from a previous profile, else the
+first-call overhead the measurement saw); while rule B may still drop the
+reference, the reference warms up with its untimed point. `--checked` never
+uses it. The timed calls are the same warm passes, and the `runtime setup`
+row says "after a warm entry" (`--json`: `prepared_seconds`, the entry's
+time). On an expensive process the
 binary64 warm-up is one point (when
 a full call would cost more than 2 s; else one full call), and a stability
 task holds about 4 s of work: a point that costs more is a task of its own,
@@ -1024,7 +1012,8 @@ their numbers masked; also in `--json` as `failure_causes`); nothing is
 printed when nothing failed. The kind `lane rescue` counts served points
 whose refused reduction lanes were reduced again in a higher carrier
 (`reduction lanes rescued in <carrier>`; python-api.md, "Lane rescue of
-refused reduction lanes"); their time is in the timed calls. The
+refused reduction lanes"); their time is in the timed calls (`--json`:
+each runtime row's `lane_rescue_points` and `lane_rescue_reasons`). The
 second table gives the time per point in each stage group (trees: the native
 trees and counterterm kets; dressing: seeds, factors and dressing of a
 Born-interfered process, the dressing of a loop-induced one; scatter;
@@ -1175,8 +1164,8 @@ evaluated so far with a one-line notice (`stability_setup.requested`,
 The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default
 checks: one default rotation on a point NinjaRS serves, one default rotation
 and the rescaled reduction-direction check on a point TIRust serves (per
-point under `--reduction auto`: a per-point NinjaRS fallback point keeps the
-NinjaRS set; USER 2026-11-19); `evaluation.stability_checks` replaces them
+point under `--loop-reduction auto`: a per-point NinjaRS fallback point keeps
+the NinjaRS set); `evaluation.stability_checks` replaces them
 when set, unchanged per backend (the rescue's own check set, a fixed Euler
 rotation plus the rescaled-reduction check on every level, is not what is
 measured here) and again in double-double on the
@@ -1348,13 +1337,14 @@ Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
 artifact, config)` returns the same report; `BenchmarkRunner` /
 `benchmark()` keep profiling one backend (`VirtualProfileResult`).
 
-Changed in the final 1.0.x round: the runtime timing runs on one core (its
+Changed in the final 1.0.x round: the runtime timing runs on one core by
+default (its
 process's pools at one thread; before, as they came: `RAYON_NUM_THREADS` or
 the usable cores) and its timed calls follow `--target-runtime` (at least
 `--minimum-samples`; before, exactly `--minimum-samples`); the stages add up
-to the time per point; the reference multiplier is always timed, as one
-optimistic pass in 16-point calls, and `--ground-truth` selects its
-precision. `profile --arithmetic` is removed (it timed the same batches in
+to the time per point; the reference multiplier is timed as one
+optimistic pass in 16-point calls (on an expensive process rule B may leave
+it out, above), and `--ground-truth` selects its precision. `profile --arithmetic` is removed (it timed the same batches in
 double-double, checked, only on request) and `profile` no longer reads
 `evaluation.arithmetic`; `--json`'s `double_double` is now `reference`. The
 main time is the optimistic pass by default (before: the checked reduction

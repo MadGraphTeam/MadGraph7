@@ -1511,7 +1511,7 @@ contains
     if (.not. status_ok(status, ierr)) return
   end subroutine rusticol_set_model_parameters_json
 
-  ! Kinematics improvement (m-lit lit-psimprove): "z-shift" (the default),
+  ! Kinematics improvement: "z-shift" (the default),
   ! "rescaling", "projection" or "off"; in these binary64 evaluations it runs
   ! only with set_kinematics_improvement_binary64(.true.).
   subroutine rusticol_set_kinematics_improvement(self, setting, ierr)

@@ -53,7 +53,7 @@ fn product(values: &[usize]) -> RusticolResult<usize> {
 
 /// Point statuses are independent of function/ABI errors. A failed point has no
 /// numerical row. Ordinary success does not establish numerical accuracy.
-/// `BestEffort` (m-lit ux-besteffort, the default failure policy
+/// `BestEffort` (the default failure policy
 /// [`OnFailure::BestEffort`]): a point no configured alternative accepted,
 /// with the unchecked reduction's value as its row, never a success; its
 /// refusal and uncertainty are in the result (`uncertainties`,
@@ -105,7 +105,7 @@ pub struct Evaluation {
     pub diagnostics_json: String,
     /// Per requested point the relative uncertainty of a `BestEffort`
     /// point's value (NaN for every other point, and for a best-effort point
-    /// without an estimate; m-lit ux-besteffort).
+    /// without an estimate).
     pub uncertainties: Vec<f64>,
     /// Double-double and arbitrary-precision evaluations: the exact values
     /// (the Python API's `Decimal` results) as decimal literals, in the
@@ -267,8 +267,8 @@ impl Poles {
     }
 }
 
-/// The selection of an evaluation ([`Runtime::evaluate_selected`]; m-lit
-/// lit-sdk-b, the USER's F1 ruling: the tree-level selectors at parity).
+/// The selection of an evaluation ([`Runtime::evaluate_selected`]: the
+/// tree-level selectors at parity).
 /// Global selectors are string IDs, per-point selectors zero-based indices
 /// (one per point); global and per-point selectors are mutually exclusive
 /// on the same axis, as the tree C ABI's `rusticol_runtime_evaluate_selected_f64`.
@@ -276,7 +276,7 @@ impl Poles {
 /// `helicities=`: the runtime's `h<i>` IDs or the tree engine's
 /// `h:<values in leg order>`) and, for a resolved evaluation, the colour
 /// resolution (`color_resolution=`: "contracted", the default, or
-/// "amplitude-basis"); it has no colour flows (full colour only, RULED Q8).
+/// "amplitude-basis"); it has no colour flows (full colour only).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Selection {
     /// Global helicity IDs (None or empty: every row).
@@ -582,7 +582,7 @@ impl Runtime {
     /// The pole selection of later evaluations (default all): "all",
     /// "none", "uv" or "ir", the Python API's four (`Poles`); a selection
     /// the process does not serve (a loop-induced process serves "all" and
-    /// "none", m-lit PLAN §2.a.7) is refused with a typed `Compatibility`
+    /// "none") is refused with a typed `Compatibility`
     /// error in the Python API's words, and nothing changes.
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
         let Engine::V4(native) = &self.engine;
@@ -789,7 +789,7 @@ impl Runtime {
         &self.reduction
     }
     /// The target accuracy of later evaluations, the Python API's
-    /// `reduction_target=` (m-lit F3 (a)): the relative accuracy of each
+    /// `reduction_target=`: the relative accuracy of each
     /// point's result (every squared-order sector against its own size),
     /// `reduction_policy::DEFAULT_TARGET` (1e-5) by default. TIRust's
     /// method-choice acceptance follows it (calibrated,
@@ -808,7 +808,7 @@ impl Runtime {
         self.target
     }
     /// The unchecked setting of later evaluations, the Python API's
-    /// `reduction_unchecked=` (m-lit lit-unchecked; off by default,
+    /// `reduction_unchecked=` (off by default,
     /// `reduction_policy::DEFAULT_UNCHECKED`): the reduction backends reduce
     /// without their own acceptance and refusal checks
     /// (`reduction_policy::UNCHECKED_RECORD`: TIRust's gates and method
@@ -858,8 +858,8 @@ impl Runtime {
     pub fn stability_checks(&self) -> &StabilityChecks {
         &self.checks
     }
-    /// The kinematics improvement of later evaluations (m-lit
-    /// lit-psimprove; the Python API's `kinematics_improvement=`):
+    /// The kinematics improvement of later evaluations (the Python API's
+    /// `kinematics_improvement=`):
     /// `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to
     /// 1, finished by the projection where MadLoop leaves the point inexact;
     /// the default), `"rescaling"` (ImprovePSPoint 1, with the fallback to 2
@@ -1243,10 +1243,10 @@ impl Runtime {
         native.loop_induced()
     }
 
-    /// One evaluation with a selection ([`Selection`]; m-lit lit-sdk-b):
+    /// One evaluation with a selection ([`Selection`]):
     /// the Python API's `evaluate(helicities=...)` (`resolved` false: per
     /// point the sum over the selected helicity rows of |A(h)|^2/avg with
-    /// the total's average, RULED Q39; with `helicity_by_point` each point's
+    /// the total's average; with `helicity_by_point` each point's
     /// own row, its value that of `evaluate(helicities=[that row's ID])` on
     /// that point) and `evaluate_resolved(helicities=...,
     /// color_resolution=...)` (`resolved` true: the selected rows, each with
@@ -1255,14 +1255,14 @@ impl Runtime {
     /// binary64 path runs: only the selected rows are dressed (the
     /// executor's row liveness). Without any selector (and with the
     /// contracted colour resolution) this is [`Runtime::evaluate`]. Refused (nothing evaluated): colour
-    /// flows of a loop-induced process (full colour only, RULED Q8) and an
+    /// flows of a loop-induced process (full colour only) and an
     /// unknown colour resolution, in the Python API's words (typed
     /// `Compatibility`); an unknown helicity ID (the Python API's words) or
     /// row index, per-point selectors of a resolved evaluation and the
     /// mutually exclusive axes (typed `Selector` / `InvalidArgument`); a
     /// colour resolution of a Born-interfered process (the Python API's
     /// words). A Born-interfered process's helicity selection is
-    /// [`Runtime::born_selected`]'s (lit-fc-hel).
+    /// [`Runtime::born_selected`]'s.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_selected(
         &mut self,
@@ -1486,8 +1486,7 @@ impl Runtime {
         Ok(evaluation)
     }
 
-    /// A Born-interfered process's helicity selection (lit-fc-hel; USER
-    /// 2026-11-09 ~19:53): the Python API's `evaluate(helicities=...)`
+    /// A Born-interfered process's helicity selection: the Python API's `evaluate(helicities=...)`
     /// (`resolved` false: per point the selected rows' value, with
     /// `helicity_by_point` each point's own row, points sharing a row in one
     /// batch) and `evaluate_resolved(helicities=...)` (`resolved` true: the

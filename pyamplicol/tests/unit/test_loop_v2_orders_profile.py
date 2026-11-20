@@ -2065,7 +2065,7 @@ def test_a_target_runtime_alone_is_a_budget_the_counts_follow(uux_ddx):
         assert counts["minimum"] == 1 and counts["warmup"] == 1
         assert counts["budget_seconds"] == 0.5
         assert counts["reference_budget_seconds"] == 0.5
-    assert "--target-runtime 1s per backend" in (_counts_cell(report, False) or "")
+    assert "--target-runtime 500 ms per backend" in (_counts_cell(report, False) or "")
 
 
 def test_a_backend_profiled_alone_keeps_its_share(uux_ddx, monkeypatch):
@@ -2217,3 +2217,23 @@ def test_rule_a_is_decided_again_on_the_default_backends_row(uux_ddx, monkeypatc
     report = profile_loop(uux_ddx, config)
     assert {row.backend for row in report.runtime or ()} == {"ninjars"}
     assert report.plan["omitted_backends"] == ["tirust"]
+
+
+@pytest.mark.parametrize(
+    ("target", "shown"),
+    [(0.001, "1 ms"), (0.5, "500 ms"), (5.0, "5 s"), (90.0, "90 s")],
+)
+def test_counts_row_target_runtime_in_seconds_units(target: float, shown: str) -> None:
+    """The counts row writes a --target-runtime budget with the tables' unit
+    convention (a sub-second budget is not rounded up to a whole second)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    report = SimpleNamespace(
+        plan={"rule": "time budgets", "runtime_target": target, "given": {}},
+        seconds=None,
+    )
+    text = _counts_cell(report, False) or ""
+    assert f"--target-runtime {shown} per backend for the runtime timing" in text

@@ -517,7 +517,7 @@ U(1)-subtraction piece counts as a power `1/N_c`, LC keeps the leading degree
 the truncation, so SU(N_c) identities such as colour conservation hold degree
 by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
 exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
-[Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+[Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1n_c-expansion).
 Since a tree request defaults to `lc`, compare a tree with a full-colour
 reference (MadGraph standalone, an analytic formula, a loop-induced |A|^2)
 at `accuracy = "full"`: at `lc` the gluon pair of `g g > h` (HEFT) carries
@@ -2080,8 +2080,9 @@ reduction, rest, from the native executor's stage report of the timed
 calls, each on a new batch of `batch_size` distinct flat points;
 `batch_size`, `warmup_runs`, `minimum_samples` and `target_runtime` apply;
 timed on one core, one fully optimistic pass per point: the backend's
-unchecked reduction alone, no checks) and/or as stable-digit statistics over
-flat points. `[benchmark] checked = true` times the checked mode instead;
+unchecked reduction alone, no checks, refused lanes rescued) and/or as
+stable-digit statistics over flat points. `[evaluation] lane_rescue = false`
+times and measures pure binary64 calls. `[benchmark] checked = true` times the checked mode instead;
 `[evaluation] reduction_unchecked` also makes the stability run's binary64
 calls unchecked (not with `checked`), and `mu_r2` sets the scale (default:
 per point the squared invariant mass of its initial state). The loop settings of
@@ -2091,10 +2092,12 @@ per point the squared invariant mass of its initial state). The loop settings of
 [benchmark]
 runtime = false          # --runtime: time per point and stage
 stability = true         # --stability (neither set: the runtime only)
-stability_points = 1000  # --stability-points: flat (RAMBO on diet) points (default 1000)
+stability_points = 1000  # --stability-points: flat (RAMBO on diet) points (unset: what the budget affords)
 n_core = 10              # --n_core / --n-core: worker processes of --stability only
-ground_truth = "double-double"  # --ground-truth: dd, arb (500 digits) or arb:DIGITS
+ground_truth = "double-double"  # --ground-truth: dd, arb (500 digits), arb:DIGITS or none
 checked = false          # --checked: time the checked mode, not the optimistic pass
+runtime_threads = 1      # --runtime-threads: native threads of each runtime timing call
+# all_backends = true    # --all-backends: every backend whatever the budget (unset: only the default one on an expensive process)
 
 [evaluation.phase_space]
 seed = 1                 # --seed: point i from seed + i

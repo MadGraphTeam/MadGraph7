@@ -155,7 +155,7 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * NinjaRS from its original exact inputs, at the call's own arithmetic, after
  * the TIRust call; a point NinjaRS fails too fails with both reasons. In
  * double-double and arbitrary precision every point the fallback serves is
- * guarded (m-lit lit-fallback-guard): its NinjaRS value runs a rotation
+ * guarded: its NinjaRS value runs a rotation
  * re-test (the point rotated exactly by the recommended checks' rotation and
  * evaluated again) in the call's arithmetic, and a point whose relative
  * estimate of the outputs the
@@ -215,8 +215,8 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
  * "reduction" diagnostics ("lane_rescue"). Any other value is
  * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
 int rusticol_virtual_set_lane_rescue(rusticol_virtual_handle *handle, int on);
-/* Failure policy of later evaluations (the Python API's on_failure=; m-lit
- * ux-besteffort; additive, ABI version 2 kept). "best-effort" (the default,
+/* Failure policy of later evaluations (the Python API's on_failure=;
+ * additive, ABI version 2 kept). "best-effort" (the default,
  * also for NULL): the call returns OK with every point; a point that no
  * configured alternative accepts (the backend's own acceptance checks, the
  * "auto" per-point fallback) is evaluated again from its exact inputs without
@@ -246,7 +246,7 @@ int rusticol_virtual_set_lane_rescue(rusticol_virtual_handle *handle, int on);
 int rusticol_virtual_set_on_failure(rusticol_virtual_handle *handle,
   const char *on_failure);
 /* Kinematics improvement of later evaluations (the Python API's
- * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
+ * kinematics_improvement=; additive, ABI version 2 kept):
  * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1,
  * finished by the projection where MadLoop leaves the point inexact; the
  * default, also for NULL), "rescaling" (ImprovePSPoint 1), "projection" (the
@@ -415,14 +415,14 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  * Every selector is validated before any evaluation; *output is written only
  * on success (NULL otherwise).
  *
- * Loop-induced processes (full colour only, RULED Q8):
+ * Loop-induced processes (full colour only):
  * - helicity IDs are the capabilities' "helicity_ids" (h<i>) or the tree
  *   engine's IDs (h:<helicities in leg order>, e.g. "h:-1,-1,+1,+1");
  *   helicity_by_point[p] is the zero-based helicity row of point p;
  * - request.resolved = 0: per point the sum over the selected rows of
- *   |A(h)|^2/avg with the total's average (RULED Q39: the rows of a complete
- *   selection sum to the ordinary value; no parity or Bose row mapping,
- *   RULED Q37), in the ordinary layout; with helicity_by_point, each point's
+ *   |A(h)|^2/avg with the total's average (the rows of a complete
+ *   selection sum to the ordinary value; no parity or Bose row mapping),
+ *   in the ordinary layout; with helicity_by_point, each point's
  *   value is that of the global selection of its own row on that point;
  * - request.resolved = 1: the selected rows (all without helicity IDs) in
  *   the resolved layout [successful_point,order,helicity,colour,(epsilon)];
@@ -456,7 +456,7 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  * Every process: a NULL selection, or one without selectors whose
  * color_resolution is NULL or "contracted", is rusticol_virtual_evaluate
  * (values and diagnostics, its monitoring included).
- * Born-interfered processes (lit-fc-hel): helicity IDs and helicity_by_point
+ * Born-interfered processes: helicity IDs and helicity_by_point
  * are served at every colour accuracy as for a loop-induced process (ordinary:
  * the selected rows' value per point; resolved: the selected rows in the
  * accuracy's resolved layout, one contracted component at NLC / full colour,
