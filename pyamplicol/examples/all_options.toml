@@ -540,16 +540,20 @@ color_flow_ids = []
 runtime = false
 # benchmark.stability: Loop artifacts: the stability statistics of each
 # reduction backend (binary64 stable digits against a re-run in the
-# ground_truth precision, and the accuracy of the default rotation estimate)
+# ground_truth precision, and the accuracy of the default estimate: one
+# rotation, plus the rescaled reduction-direction check on TIRust's points)
 # over flat points. Default false.
 stability = false
 # benchmark.stability_points: Positive count of flat (RAMBO on diet) phase-space
 # points of the stability statistics (drawn with evaluation.phase_space's
-# seed and sqrt_s). Default 1000.
+# seed and sqrt_s). Unset (the default): as many as the time budget affords
+# (one minute per n_core worker), at least 5; a value set here (as below) is
+# given and honoured.
 stability_points = 1000
 # benchmark.n_core: Positive count of worker processes of the stability
 # statistics (`--n_core`; at most the usable cores; 1 runs in-process; the
-# result does not depend on it; the runtime timing always runs on one core).
+# result does not depend on it; the runtime timing runs one process at a
+# time, on benchmark.runtime_threads threads).
 # Default 10, lowered to what three quarters of the memory available hold at
 # one worker's measured size; a value set here (as below) is given: honoured,
 # with a warning when its workers do not fit.
@@ -558,9 +562,11 @@ n_core = 10
 # profile (`--ground-truth`): the stability run's true values and the
 # reference time multipliers of both tables. "double-double" ("dd") or
 # arbitrary precision, "arbitrary" ("arb", at the default arbitrary-precision
-# digits, 500) or "arbitrary:DIGITS". Default "double-double". A value set here (as
-# below, even the default) is given: the runtime timing then times its
-# multiplier even when its minimal counts exceed the budget.
+# digits, 500) or "arbitrary:DIGITS" (the stability run then cross-checks
+# each reference between the backends), or "none" (no reference: estimates only). Default
+# "double-double". A value set here (as below, even the default) is given:
+# the runtime timing then times its multiplier even when its minimal counts
+# exceed the budget.
 ground_truth = "double-double"
 # benchmark.checked: Loop artifacts: time the checked mode (`--checked`): the
 # backends' own acceptance checks, a refused point served best-effort, the
