@@ -7346,6 +7346,21 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'precision', "color32", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
+        # after the generation, MadtRex reweights the events to the matrix
+        # elements compiled at this FPTYPE and reports how many significant
+        # digits they share with the generated weights (madtrex_driver.
+        # run_precision_validation()); no weights are written. An FPTYPE the
+        # matrix element build accepts (madmatrix.mk SUPPORTED_FPTYPES), or a
+        # precision name; "" (or "none") is off. Not a gridpack parameter:
+        # gridpack runs do not validate.
+        self.add_toml_param('run', 'validation', "",
+            allowed=['', 'none', 'all64', 'all32', 'color32', 'denom64',
+                     'd', 'f', 'm', 'e', 'v'],
+            comment="FPTYPE to validate the generated weights against (d/all64 suggested); \"\" for none")
+        # how many events the validation reweights, evenly spaced through a
+        # larger sample (madtrex_driver._subsample_events()); 0: all of them
+        self.add_toml_param('run', 'validation_events', 0,
+            comment="events the precision validation checks, evenly spaced through the sample; 0 for all")
         # --hel_recycling outputs (madmatrix, cpu only): the size of the recycled
         # tables per SIMD page above which the build takes the plain matrix
         # element (HRMAXMB of madmatrix.mk; -1: the build's default, 0: no
