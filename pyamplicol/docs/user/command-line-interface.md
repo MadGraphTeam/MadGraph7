@@ -1191,7 +1191,14 @@ honoured; the stability plan and its ETA count each extra stream at a lower
 bound of its point (a checked binary64 point below the ground truth, the
 plain reference point for the ground truth's own) until the run measures it,
 and the default budget's deadline admits points at the measured costs of
-every stream. With `--runtime`, every entry other than binary64 also gets
+every stream. The scope rules (A and B above) count them by lower bounds
+too: binary64's calls only when listed, every other precision's stream at
+least two binary64 points in the runtime timing (its measuring call and
+one timed call) and one binary64 point per stability point, a listed
+ground truth as the reference it is; the whole command's ETA counts each
+precision's runtime calls (its measuring point and its budget) until they
+run, and `--completion-time` keeps their estimates out of binary64's share
+and gives each the time left when it starts. With `--runtime`, every entry other than binary64 also gets
 its own "Runtime per reduction backend, <precision>" and "Time per point and
 stage, <precision>" tables after binary64's, in the order given (the
 ground truth's own precision too: timing needs no truth): per backend the

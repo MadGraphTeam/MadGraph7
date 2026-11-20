@@ -1219,6 +1219,32 @@ def profile_loop(
                         float(bench.target_runtime), c.reference
                     )
                 future[f"runtime:{b}"] = seconds
+        if want_runtime and not binary64_timed:
+            # Not timed: binary64's counts only start the others'.
+            for b in list(future):
+                if b.startswith("runtime:"):
+                    future.pop(b)
+        if want_runtime:
+            # Every other measured precision's calls: its measuring point
+            # and its budget (binary64's for that backend), at its lower
+            # bound of a point (the ground truth's reference cost, else
+            # binary64's) until it runs.
+            for b, c in costs_map.items():
+                counts = planned.runtime.get(b)
+                budget = (
+                    float(counts.budget)
+                    if counts is not None
+                    else float(bench.target_runtime)
+                )
+                for m in extra_precisions:
+                    point = (
+                        c.reference
+                        if m is truth_listed and c.reference is not None
+                        else c.binary64
+                    )
+                    future[f"runtime:{b}:{m.label}"] = (
+                        c.start + point + max(budget, point)
+                    )
         if want_stability:
             future["stability"] = planned.stability_seconds
         return future
@@ -1361,12 +1387,24 @@ def profile_loop(
 
         return {b: k for b, k in known.items() if b not in early and b not in omitted}
 
+    # The measured precisions in the scope rules' lower bounds: binary64's
+    # calls when listed, every other precision's stream but a listed ground
+    # truth's (its cost is the reference's, counted as such).
+    streams = {
+        "binary64": binary64_listed,
+        "extra": sum(1 for m in extra_precisions if m is not truth_listed),
+    }
+
     def b_drops() -> bool:
         """Rule B on what is known now: every running serving backend's
         lower bound (one not measured yet: 0) summed."""
 
         return rule_b and rule_b_drops(
-            running(), budget_bound, lanes=DEFAULT_LANES, start=completion is not None
+            running(),
+            budget_bound,
+            lanes=DEFAULT_LANES,
+            start=completion is not None,
+            **streams,
         )
 
     def a_drops() -> bool:
@@ -1384,6 +1422,7 @@ def profile_loop(
                 stability_workers=workers if want_stability else None,
                 start=completion is not None,
                 runtime=want_runtime,
+                **streams,
             )
         )
 
@@ -1757,8 +1796,18 @@ def profile_loop(
             counts = planned.runtime.get(backend)
             if completion is not None and backend in costs and planned.feasible:
                 # Re-planned from what is left: the backends to come share the
-                # runtime's part of it.
-                left = completion - monitor.elapsed() - future.get("stability", 0.0)
+                # runtime's part of it (the measured precisions' calls after
+                # them kept at their estimates).
+                left = (
+                    completion
+                    - monitor.elapsed()
+                    - future.get("stability", 0.0)
+                    - sum(
+                        seconds
+                        for key, seconds in future.items()
+                        if key.count(":") == 2
+                    )
+                )
                 share = left / max(len(backends) - position, 1)
                 if threads > 1:
                     # The one-thread timing's reload, warm-up and minimum
@@ -1860,6 +1909,7 @@ def profile_loop(
                                     budget_bound,
                                     lanes=DEFAULT_LANES,
                                     start=completion is not None,
+                                    **streams,
                                 ),
                                 "known": {
                                     name: getattr(known[backend], name)
@@ -2030,6 +2080,26 @@ def profile_loop(
                 if row.profile is not None
             }
             timed_rows: dict[str, tuple[BackendRuntime, ...]] = {}
+
+            def measured_bench(backend: str, bench_p: Any, label: str) -> Any:
+                """A measured precision's calls of ``backend``: binary64's,
+                with --completion-time what is left of it shared by the
+                measured precisions' calls still to run (the stability
+                run's planned seconds kept); its ETA entry leaves."""
+
+                future.pop(f"runtime:{backend}:{label}", None)
+                if completion is None:
+                    return bench_p
+                rest = [k for k in future if k.startswith("runtime:")]
+                left = (
+                    completion
+                    - monitor.elapsed()
+                    - future.get("stability", 0.0)
+                    - sum(future[k] for k in rest)
+                )
+                start = costs[backend].start if backend in costs else 0.0
+                return replace(bench_p, target_runtime=max(left - start, 1e-9))
+
             for measured in sorted(
                 extra_precisions, key=lambda m: m is not truth_listed
             ):
@@ -2039,25 +2109,30 @@ def profile_loop(
                     benches,
                     truths,
                     truth,
-                    lambda backend, bench_p, precision: _isolated_profile(
-                        path,
-                        evaluation.process,
-                        options,
-                        replace(config, benchmark=bench_p),
-                        timed,
-                        backend,
-                        _BackendRun(
-                            monitor,
+                    lambda backend, bench_p, precision, label=measured.label: (
+                        _isolated_profile(
+                            path,
+                            evaluation.process,
+                            options,
+                            replace(
+                                config,
+                                benchmark=measured_bench(backend, bench_p, label),
+                            ),
+                            timed,
                             backend,
-                            truth,
-                            None if backend not in costs else costs[backend].start,
-                            None,
-                            bench_p.batch_size,
-                            {},
-                            threads,
-                        ),
-                        precision=precision,
-                        warm_entry=warms_through_entry(backend, "binary64", None),
+                            _BackendRun(
+                                monitor,
+                                backend,
+                                truth,
+                                None if backend not in costs else costs[backend].start,
+                                None,
+                                bench_p.batch_size,
+                                {},
+                                threads,
+                            ),
+                            precision=precision,
+                            warm_entry=warms_through_entry(backend, "binary64", None),
+                        )
                     ),
                     fit=is_default(bench.batch_size),
                 )
