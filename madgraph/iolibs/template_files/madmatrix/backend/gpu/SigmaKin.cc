@@ -445,7 +445,9 @@ namespace madmatrix
 
 #ifdef __CUDA_ARCH__
   // Every amplitude: without it the compiler keeps the shared values in registers as well.
-#define SHWF_RELOAD() asm volatile( "" ::: "memory" )
+  // Only with shared slots: 1890 of them make cicc 3x slower on g g > t t~ g g g for nothing.
+#define SHWF_RELOAD() \
+  if constexpr( nSharedWf > 0 ) asm volatile( "" ::: "memory" )
 #else
 #define SHWF_RELOAD()
 #endif
@@ -517,11 +519,12 @@ namespace madmatrix
     // (ievt) [NB these variables are reused several times (and re-initialised each time)
     // within the same event]. Create memory for both momenta and wavefunctions separately,
     // and later wrap them in ALOHAOBJ.
-    fptype_momenta_sv pvec_sv[nwf][np4];
-    cxtype_amp_sv w_sv[nwf][nw6]; // particle wavefunctions within Feynman diagrams
-    cxtype_amp_sv amp_sv[1];      // invariant amplitude for one given Feynman diagram
-    ALOHAOBJ aloha_obj[nwf];
-    for( int iwf = 0; iwf < nwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
+    // nWfSlots, not nwf: slots are reused, and unused ones still cost local memory and stores.
+    fptype_momenta_sv pvec_sv[nWfSlots][np4];
+    cxtype_amp_sv w_sv[nWfSlots][nw6]; // particle wavefunctions within Feynman diagrams
+    cxtype_amp_sv amp_sv[1];           // invariant amplitude for one given Feynman diagram
+    ALOHAOBJ aloha_obj[nWfSlots];
+    for( int iwf = 0; iwf < nWfSlots; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
 #ifdef __CUDA_ARCH__
     if constexpr( nSharedWf > 0 )
     {

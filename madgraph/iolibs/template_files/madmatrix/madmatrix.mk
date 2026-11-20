@@ -983,10 +983,16 @@ endif
 # side picking its fast-math mode as above. Shared memory pays only where calculate_jamps spills without
 # it, so it is kept once that stack exceeds SHAREDWF_STACK bytes (pp > tt~/l+l- + 0-3 jets on L40S and
 # H100: up to 1.7x faster above 168 B, up to 15%% slower below 104 B).
+# FASTMATH=auto, FP32 amplitudes (FASTMATH_CUTOFF_FPTYPES): once a side's -fmad build spills more than
+# FASTMATH_MAD_STACK bytes, its -use_fast_math build is stopped and -fmad kept. Fast math only ever won
+# there below 1.2 KB (96 picks, L40S and H100), and with dense wavefunction arrays approximate division
+# takes ptxas from minutes to over an hour on g g > t t~ g g g.
 ifeq ($(BACKEND),cuda)
 ifneq ($(filter auto,$(FASTMATH) $(SHAREDWF)),)
 FASTMATH_STACK_GROWTH ?= 128
 SHAREDWF_STACK ?= 128
+FASTMATH_MAD_STACK ?= 4096
+FASTMATH_CUTOFF_FPTYPES ?= f v
 override JAMPS_STACK = $(CUDA_HOME)/bin/cuobjdump -res-usage $(1) | awk '/Function .*calculate_jamps/ { found = 1; getline; sub(/.*STACK:/, ""); if ($$1 + 0 > max) max = $$1 + 0 } END { if (!found) exit 1; print max + 0 }'
 override AUTO_SHAREDWFS = $(if $(filter auto,$(SHAREDWF)),sw0 sw1,sw$(SHAREDWF))
 override AUTO_FASTMATHS = $(if $(filter auto,$(FASTMATH)),mad fm1,fm$(FASTMATH))
@@ -997,12 +1003,25 @@ $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../b
 	  case $(SHAREDWF).$$variant in auto.sw0.*) flags=-DMADMATRIX_NO_SHARED_WF;; esac; \
 	  case $(FASTMATH).$$variant in auto.*.fm1) flags="$$flags -use_fast_math";; esac; \
 	  echo "$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o)"; \
-	  $(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o) & pids="$$pids $$!"; \
+	  $(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) $$flags -c -x $(GPULANGUAGE) $< -o $(@:.o=.$$variant.o) & \
+	  eval "pid_$${variant%%.*}_$${variant#*.}=$$!"; \
 	done; \
-	status=0; for pid in $$pids; do wait $$pid || status=1; done; exit $$status
+	rm -f $(@:.o=).*.skipped; status=0; \
+	for variant in $(foreach sw,$(AUTO_SHAREDWFS),$(foreach fm,$(AUTO_FASTMATHS),$(sw).$(fm))); do \
+	  sw=$${variant%%.*} fm=$${variant#*.}; eval "pid=\$$pid_$${sw}_$$fm"; \
+	  if [ -f $(@:.o=.$$variant.skipped) ]; then wait $$pid; continue; fi; \
+	  wait $$pid || { status=1; continue; }; \
+	  [ $$fm = mad ] && [ -n "$(filter $(FPTYPE),$(FASTMATH_CUTOFF_FPTYPES))" ] || continue; \
+	  stack=$$($(call JAMPS_STACK,$(@:.o=.$$variant.o))) || continue; \
+	  [ $$stack -gt $(FASTMATH_MAD_STACK) ] || continue; \
+	  eval "fm1=\$$pid_$${sw}_fm1"; pkill -P $$fm1; kill $$fm1 2> /dev/null; \
+	  echo "$$stack" > $(@:.o=.$$sw.fm1.skipped); rm -f $(@:.o=.$$sw.fm1.o); \
+	done; exit $$status
 	@stack() { stack=$$($(call JAMPS_STACK,$(@:.o=.$$1.o))) || { echo "ERROR! no calculate_jamps stack in $(@:.o=.$$1.o)"; exit 1; }; }; \
 	fastmath() { \
 	  if [ $(FASTMATH) != auto ]; then pick=$$1.fm$(FASTMATH); stack $$pick; return; fi; \
+	  if [ -f $(@:.o=.$$1.fm1.skipped) ]; then pick=$$1.mad; stack $$pick; \
+	    echo "FASTMATH=auto $(processid_short) $$1: calculate_jamps stack $$stack B with -fmad > $(FASTMATH_MAD_STACK), -use_fast_math stopped, keeping $$pick" | tee -a $(@:.o=.fastmath); return; fi; \
 	  stack $$1.mad; mad=$$stack; stack $$1.fm1; growth=$$((stack - mad)); \
 	  if [ $$growth -le $(FASTMATH_STACK_GROWTH) ]; then pick=$$1.fm1; else pick=$$1.mad; stack=$$mad; fi; \
 	  echo "FASTMATH=auto $(processid_short) $$1: calculate_jamps stack +$$growth B with -use_fast_math, keeping $$pick" | tee -a $(@:.o=.fastmath); \

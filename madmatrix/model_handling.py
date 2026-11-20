@@ -2925,16 +2925,19 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
         ff.write('\n'.join(helas_calls))
         ff.close()
-        self.edit_sharedwavefunctions()
+        self.edit_sharedwavefunctions(helas_calls)
         return ''
 
-    def edit_sharedwavefunctions(self):
+    def edit_sharedwavefunctions(self, helas_calls):
         """Generate SharedWavefunctions.inc: the wavefunction slots of EvaluateDiagrams.inc in the
         order the GPU calculate_jamps moves them to shared memory, as many as fit (see
         backend/gpu/SigmaKin.cc)."""
         order = self.helas_call_writer.shared_wf_order()
+        # nwf counts wavefunction calls, slots are reused: size the GPU arrays by the slots indexed
+        nslots = 1 + max((int(i) for line in helas_calls for i in re.findall(r'aloha_obj\[(\d+)\]', line)), default=0)
         lines = ['// Wavefunction slots, most worth keeping out of registers first (generated).',
                  '// #included by backend/gpu/SigmaKin.cc: the first nSharedWf live in shared memory.',
+                 '  constexpr int nWfSlots = %d; // highest aloha_obj index of EvaluateDiagrams.inc + 1' % nslots,
                  '  constexpr int nSharedWfSlots = %d; // the slots EvaluateDiagrams.inc writes' % len(order),
                  '  __device__ constexpr int sharedWfSlots[nSharedWfSlots > 0 ? nSharedWfSlots : 1] = { %s };'
                  % ', '.join(map(str, order or [0])),
