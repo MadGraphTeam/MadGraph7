@@ -30,6 +30,6 @@ jobs:
           - **Pushes to `main`:** the full CI runs after each merge.
           - **Other branches:** run CI only through `workflow_dispatch`.
           - **Forks:** the runs use a read-only token, so they cannot cancel each other.
-          - **Merge gate:** a green CI is not yet required to merge. That is to come.
+          - **Merge:** a green CI and one approval are required to merge.
           NOTICE
           gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file notice.md
