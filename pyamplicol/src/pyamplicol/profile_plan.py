@@ -359,12 +359,15 @@ class Known:
     the scope rules (``rule_b_drops``, ``rule_a_drops``); every field a
     number this run measured (None: not yet): ``point`` one binary64
     one-point call; ``chunk`` binary64 per point of a timed call of whole
-    chunks (the runtime timing's row); ``warm`` the seconds of the binary64
-    warm entry where the stream takes it (0: taken, cost unknown; None: an
-    untimed warm-up point); ``reference`` one reference point measured cold
-    (the measurement's, or the runtime timing's untimed point) and
-    ``reference_timed`` its timed warm point (the row's); ``start`` the
-    start-up of a process that loads the artifact."""
+    chunks (the runtime timing's row); ``warm`` the measured seconds of the
+    binary64 warm entry (the row's; None: not measured); ``reference`` one
+    reference point measured cold (the measurement's, or the runtime
+    timing's untimed point) and ``reference_timed`` its timed warm point
+    (the row's); ``start`` the start-up of a process that loads the
+    artifact. ``warm_entry`` / ``reference_entry``: the binary64 / reference
+    stream warms through the warm entry instead of an untimed point
+    (``loop_profile``'s ``warms_through_entry``), ``reference_warm`` the
+    reference entry's measured seconds (None: not run yet)."""
 
     point: float | None = None
     chunk: float | None = None
@@ -372,6 +375,9 @@ class Known:
     reference: float | None = None
     reference_timed: float | None = None
     start: float = 0.0
+    warm_entry: bool = False
+    reference_entry: bool = False
+    reference_warm: float | None = None
 
 
 def lower_bound(
@@ -387,11 +393,13 @@ def lower_bound(
     (``Known``; nothing known: 0), valid whenever it is taken: with
     ``runtime`` (the runtime timing asked) the binary64 timed call of one
     chunk (``lanes`` x the chunk cost, else one point's: a chunk's call
-    costs at least one of its points'), its warming (the entry's seconds,
+    costs at least one of its points'), its warming (the entry's measured
+    seconds; not measured: none where the stream warms through the entry,
     else one point: the warm-up is a one-point call) and, with
-    ``reference``, its untimed point (measured cold, else one binary64
-    point) and its timed point (the row's, else one binary64 point: a pass
-    in a wider carrier costs at least the binary64 one); with
+    ``reference``, its warming (through the entry: the entry's measured
+    seconds, none before; else its untimed point, measured cold, else one
+    binary64 point) and its timed point (the row's, else one binary64
+    point: a pass in a wider carrier costs at least the binary64 one); with
     ``stability_workers`` the stability run's ``STABILITY_MINIMUM`` points
     on them (a checked point at least one binary64 point; a reference point
     at least one binary64 point, the cold one for the first point of each
@@ -405,9 +413,15 @@ def lower_bound(
     seconds = 0.0
     if runtime:
         call = lanes * known.chunk if known.chunk is not None else point
-        seconds += call + (known.warm if known.warm is not None else point)
+        warm = 0.0 if known.warm_entry else point
+        seconds += call + (known.warm if known.warm is not None else warm)
         if reference:
-            seconds += (known.reference if known.reference is not None else point) + (
+            # Through the entry the cold point never runs (m-4).
+            if known.reference_entry:
+                untimed = known.reference_warm or 0.0
+            else:
+                untimed = known.reference if known.reference is not None else point
+            seconds += untimed + (
                 known.reference_timed if known.reference_timed is not None else point
             )
     if stability_workers is not None:
