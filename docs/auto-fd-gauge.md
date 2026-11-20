@@ -435,8 +435,7 @@ Review follow-ups:
   on the generated text only, against the real-mass one
   (`test_madmatrix_doubleexpansion_propagator`).
 
-Not addressed here: the madmatrix `HRDCOD=1` build is still broken with
-complex parameters (pre-existing). A MadLoop standalone output with `$`
+Not addressed here: a MadLoop standalone output with `$`
 (`u u~ > e+ e- $ z [virt=QCD]`) compiles its HELAS library but does not link,
 in either scheme: the loop HELAS functions have no `theta_functionr`
 (pre-existing).

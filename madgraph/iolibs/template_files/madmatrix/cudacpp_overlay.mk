@@ -7,7 +7,7 @@
 # To be used after the project makefile
 SHELL := /bin/bash
 
-# Determine CUDACPP_BUILDDIR based on the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD and USEBUILDDIR (#829)
+# Determine CUDACPP_BUILDDIR based on the user-defined choices of BACKEND, FPTYPE, HELINL and USEBUILDDIR (#829)
 # Stop with an error if BACKEND=cuda and nvcc is missing or if BACKEND=hip and hipcc is missing
 include ../../src/cudacpp_config.mk
 ifeq ($(CUDACPP_BUILDDIR),)
@@ -23,12 +23,11 @@ UNAME_M ?= $(shell uname -m)
 FFLAGS+= -cpp
 
 # Compile counters with -O3 as in the cudacpp makefile (avoid being "unfair" to Fortran #740)
-CXXFLAGS = -O3 -Wall -Wshadow -Wextra
+CXXFLAGS = -O3 -std=c++20 -Wall -Wshadow -Wextra
 
-# Add -std=c++17 explicitly to avoid build errors on macOS
 # Add -mmacosx-version-min=11.3 to avoid "ld: warning: object file was built for newer macOS version than being linked"
 ifneq ($(shell $(CXX) --version | egrep '^Apple clang'),)
-	CXXFLAGS += -std=c++17 -mmacosx-version-min=11.3
+	CXXFLAGS += -mmacosx-version-min=11.3
 endif
 
 # Enable ccache for C++ if USECCACHE=1 (do not enable it for Fortran since it is not supported for Fortran)

@@ -92,6 +92,9 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         stop
       endif
       rscale = scalefact*rscale
+c     keep alpha_s away from its Landau pole; 0 (clustering scale, set
+c     in setclscales) is left as is
+      if (rscale.gt.0d0) rscale = max(rscale, min_ren_scale)
       return
       end
 

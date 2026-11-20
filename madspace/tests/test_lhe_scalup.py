@@ -15,6 +15,9 @@ import pytest
 
 import madspace as ms
 
+# LHE output from a CPU context
+pytestmark = pytest.mark.cpu_only
+
 CM_ENERGY = 1000.0
 MU_R, MU_F1, MU_F2 = 91.188, 40.0, 60.0
 SEED = 4321

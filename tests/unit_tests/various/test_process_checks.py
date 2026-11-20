@@ -1912,5 +1912,130 @@ class TestCheckGaugeDecayChain(unittest.TestCase):
             self.cmd.exec_cmd('set complex_mass_scheme False')
 
 
+#===============================================================================
+# TestLoopWardCheckSetup
+#===============================================================================
+class TestLoopWardCheckSetup(unittest.TestCase):
+    """The loop Ward-identity check patches the generated HELAS calls so that
+    the polarization of the first massless external vector becomes its
+    momentum. The wavefunctions are TYPE(ALOHA) / TYPE(MP_ALOHA) objects
+    whose polarization is the component %W(1:4)."""
+
+    # Excerpts of helas_calls_ampb_1.f and mp_helas_calls_ampb_1.f of
+    # 'output standalone' for g g > t t~ [virt=QCD]
+    dp_helas_calls = \
+"""      SUBROUTINE ML5_0_HELAS_CALLS_AMPB_1(P,NHEL,H,IC)
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INCLUDE 'coupl.inc'
+      INCLUDE 'mp_coupl.inc'
+      TYPE(ALOHA) W(NWAVEFUNCS)
+      COMMON/ML5_0_W/W
+      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+      CALL VXXXXX(P(0,2),ZERO,NHEL(2),-1,W(2))
+      CALL OXXXXX(P(0,3),MDL_MT,NHEL(3),+1, FLAVOR(3),W(3))
+      END
+"""
+    mp_helas_calls = \
+"""      SUBROUTINE ML5_0_MP_HELAS_CALLS_AMPB_1(P,NHEL,H,IC)
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INCLUDE 'mp_coupl_same_name.inc'
+      TYPE(MP_ALOHA) W(NWAVEFUNCS)
+      COMMON/ML5_0_MP_W/W
+      CALL MP_VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+      CALL MP_VXXXXX(P(0,2),ZERO,NHEL(2),-1,W(2))
+      END
+"""
+    # loop_matrix.f of the non-optimized output keeps one set of
+    # wavefunctions per helicity
+    dp_loop_matrix = \
+"""      SUBROUTINE ML5_0_SLOOPMATRIX(P_IN,ANS)
+      USE ALOHA_OBJECT
+      INCLUDE 'coupl.inc'
+      TYPE(ALOHA) W(NWAVEFUNCS,NCOMB)
+      CALL OXXXXX(P(0,1),MDL_MT,NHEL(1),-1, FLAVOR(1),W(1,H))
+      CALL VXXXXX(P(0,3),ZERO,NHEL(3),+1,W(3,H))
+      CALL VXXXXX(P(0,4),ZERO,NHEL(4),+1,W(4,H))
+      END
+"""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='ward_check_')
+        self.addCleanup(shutil.rmtree, self.tmpdir)
+        self.proc_dir = os.path.join(self.tmpdir, 'P0_gg_ttx')
+        os.mkdir(self.proc_dir)
+
+    def patch(self, file_name, content, file_names, mp):
+        with open(os.path.join(self.proc_dir, file_name), 'w') as f:
+            f.write(content)
+        # setup_ward_check does not use the evaluator instance
+        path, orig, new = process_checks.LoopMatrixElementEvaluator.\
+                            setup_ward_check(None, self.tmpdir, file_names, mp=mp)
+        self.assertEqual(path, os.path.join(self.proc_dir, file_name))
+        self.assertEqual(orig, content)
+        self.assertNotIn('WARDINT+4', new)
+        return new
+
+    def test_ward_check_patch_aloha_type(self):
+        """Double precision: TYPE(ALOHA) W(NWAVEFUNCS)"""
+        new = self.patch('helas_calls_ampb_1.f', self.dp_helas_calls,
+                         ['helas_calls_ampb_1.f', 'loop_matrix.f'], mp=False)
+        expected = self.dp_helas_calls.replace(
+"""      INCLUDE 'coupl.inc'
+""",
+"""      INCLUDE 'coupl.inc'
+      INTEGER WARDINT
+""").replace(
+"""      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+""",
+"""      CALL VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+      DO WARDINT=1,4
+        W(1)%W(WARDINT)=DCMPLX(P(WARDINT-1,1),0.0D0)
+      ENDDO
+""")
+        self.assertEqual(new, expected)
+
+    def test_ward_check_patch_mp_aloha_type(self):
+        """Quadruple precision: TYPE(MP_ALOHA) W(NWAVEFUNCS)"""
+        new = self.patch('mp_helas_calls_ampb_1.f', self.mp_helas_calls,
+                         ['mp_helas_calls_ampb_1.f', 'mp_compute_loop_coefs.f'],
+                         mp=True)
+        expected = self.mp_helas_calls.replace(
+"""      INCLUDE 'mp_coupl_same_name.inc'
+""",
+"""      INCLUDE 'mp_coupl_same_name.inc'
+      INTEGER WARDINT
+""").replace(
+"""      CALL MP_VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+""",
+"""      CALL MP_VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+      DO WARDINT=1,4
+        W(1)%W(WARDINT)=CMPLX(P(WARDINT-1,1),0.0E0_16,KIND=16)
+      ENDDO
+""")
+        self.assertEqual(new, expected)
+
+    def test_ward_check_patch_aloha_type_per_helicity(self):
+        """Non-optimized output: TYPE(ALOHA) W(NWAVEFUNCS,NCOMB), and the
+        first massless vector is not the first external leg"""
+        new = self.patch('loop_matrix.f', self.dp_loop_matrix,
+                         ['helas_calls_ampb_1.f', 'loop_matrix.f'], mp=False)
+        expected = self.dp_loop_matrix.replace(
+"""      INCLUDE 'coupl.inc'
+""",
+"""      INCLUDE 'coupl.inc'
+      INTEGER WARDINT
+""").replace(
+"""      CALL VXXXXX(P(0,3),ZERO,NHEL(3),+1,W(3,H))
+""",
+"""      CALL VXXXXX(P(0,3),ZERO,NHEL(3),+1,W(3,H))
+      DO WARDINT=1,4
+        W(3,H)%W(WARDINT)=DCMPLX(P(WARDINT-1,3),0.0D0)
+      ENDDO
+""")
+        self.assertEqual(new, expected)
+
+
 if __name__ == '__main__':
     unittest.unittest.main()

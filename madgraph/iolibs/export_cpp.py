@@ -3059,6 +3059,30 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 )
             os.chmod(custom_bin, 0o755)
 
+            merge_bin = os.path.join("bin", "merge_gridpacks")
+            with open(merge_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.merge_gridpacks import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main())\n"
+                )
+            os.chmod(merge_bin, 0o755)
+
+            combine_bin = os.path.join("bin", "combine_cluster_runs")
+            with open(combine_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.combine_cluster import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main())\n"
+                )
+            os.chmod(combine_bin, 0o755)
+
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be
     # driven from a shell that never sourced anything MadGraph-related.
@@ -3451,19 +3475,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (KeyError, TypeError):
             processes = None
         amplicol_procs = self.amplicol_processes()
-        amplicol = bool(amplicol_procs)
-        if amplicol:
-            processes = (processes or []) + [amplicol_procs]
+        if amplicol_procs:
+            # one group per process, as the amplitudes: their multiplicities
+            # decide whether the sample is MLM merged
+            processes = (processes or []) + [[proc] for proc in amplicol_procs]
 
         if processes:
             # the crossed subprocesses folded into a base (merge_crossing=
             # 'record') are processes of this output as well
-            processes = [list(procs) + self.folded_crossed_processes(me)
-                         for procs, me in zip(processes, self.me_list(
-                             matrix_elements))]
+            # (the [amplicol] entry appended last has no matrix element
+            # here: keep it instead of letting zip drop it)
+            mes = self.me_list(matrix_elements)
+            processes = [list(procs) + (self.folded_crossed_processes(mes[i])
+                                        if i < len(mes) else [])
+                         for i, procs in enumerate(processes)]
             run_card.create_default_for_process(self.proc_characteristic,
-                                                history, processes,
-                                                amplicol=amplicol)
+                                                history, processes)
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives
@@ -3522,6 +3549,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if procs:
             pc['nexternal'] = max(pc['nexternal'], amplicol_nexternal)
             pc['ninitial'] = 2
+            try:
+                import madgraph.iolibs.export_amplicol as export_amplicol
+                pc['max_n_matched_jets'] = max(
+                    pc['max_n_matched_jets'], export_amplicol.max_matched_jets(
+                        self.amplicol_defs, self.amplicol_model))
+            except Exception as error:
+                logger.warning('could not count the [amplicol] matched jets, so '
+                               'the merged shower may use a wrong nJetMax: %s', error)
         for me in me_list:
             if not me.get('processes'):
                 continue

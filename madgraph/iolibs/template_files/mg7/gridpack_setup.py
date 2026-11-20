@@ -140,10 +140,15 @@ def load_context_data(contexts, backends, madspace_data: dict, precision: str) -
         load_custom_function(
             ms, contexts, device_types, kind, _gridpack_relative(path), parameters
         )
-    # in the order of the run, which gave them their indices
+    # The channels refer to a matrix element by its position, after the custom
+    # functions. A gridpack from a subset of the subprocesses lists the ones it
+    # needs; older gridpacks load all of them.
+    me_list = madspace_data["matrix_elements"]
+    me_indices = madspace_data.get("matrix_element_indices", range(len(me_list)))
+    me_offset = len(madspace_data.get("custom_functions", []))
     for context, backend in zip(contexts, backends):
-        for path_format, init_path, parameters, *helicity_choice in \
-                madspace_data["matrix_elements"]:
+        for me_index in sorted(me_indices):
+            path_format, init_path, parameters, *helicity_choice = me_list[me_index]
             # the good helicities the run chose from its cards, given to every
             # instance; older gridpacks store none (each instance chooses)
             context.load_matrix_element(
@@ -151,6 +156,7 @@ def load_context_data(contexts, backends, madspace_data: dict, precision: str) -
                 _gridpack_relative(init_path),
                 parameters,
                 (helicity_choice[0] if helicity_choice else None) or [],
+                index=me_offset + me_index,
             )
 
 

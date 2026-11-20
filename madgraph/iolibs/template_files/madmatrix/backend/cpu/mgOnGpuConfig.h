@@ -31,10 +31,6 @@
 // By default off; set from outside with -DMGONGPU_INLINE_HELAMPS
 //#define MGONGPU_INLINE_HELAMPS 1
 
-// Choose whether to hardcode cIPD physics parameters instead of reading user cards
-// By default off; set from outside with -DMGONGPU_HARDCODE_PARAM
-//#define MGONGPU_HARDCODE_PARAM 1
-
 // Complex type in C++: cxsmpl by default, or std::complex (CHOOSE ONLY ONE)
 //#define MGONGPU_CPPCXTYPE_STDCOMPLEX 1 // ~8% slower on float, same on double
 #define MGONGPU_CPPCXTYPE_CXSMPL 1 // default
@@ -207,6 +203,10 @@ ispoweroftwo( int n )
 {
   return ( n > 0 ) && !( n & ( n - 1 ) );
 }
+
+#if __cplusplus < 202002L
+#error Unsupported C++ standard: please build with -std=c++20 or later
+#endif
 
 // Compiler version support (#96)
 #if defined __clang__

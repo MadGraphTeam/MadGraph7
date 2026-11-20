@@ -45,6 +45,7 @@ import madgraph
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.master_interface as mgcmd
 from madgraph.mg7 import bootstrap as mg7_bootstrap
+import madgraph.various.banner as bannermod
 
 LAUNCH_MODULE = 'madgraph.mg7.launch'
 _MG_ROOT = str(mg7_bootstrap.MG_ROOT)
@@ -781,6 +782,38 @@ class MG7CmdTest(unittest.TestCase):
         self.assertIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 
+    def test_set_mlm_shortcut_and_jet_radius(self):
+        """set mlm madevent turns on MLM merging with madevent's clustering
+        options, set mlm mg7 goes back to mg7's; set d is madevent's name
+        for beam.jet_radius"""
+        obj = self.cut_selector()
+        obj.do_set('mlm madevent')
+        beam = obj.run_card['beam']
+        self.assertEqual(beam['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(beam['scale_scheme'], 'madevent')
+        self.assertEqual(beam['clustering_history'], 'madevent')
+        self.assertEqual(obj.run_card['phasespace']['xqcut'], 30.0)
+        obj.do_set('mlm mg7')
+        self.assertEqual(beam['scale_scheme'], 'clustering_mean')
+        self.assertEqual(beam['clustering_measure'], 'fxfx')
+        obj.do_set('d 0.7')
+        self.assertEqual(beam['jet_radius'], 0.7)
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_mlm_without_a_mode_lists_the_modes(self):
+        obj = self.cut_selector()
+        beam = dict(obj.run_card['beam'])
+        with self.assertLogs('madgraph.stdout', level='WARNING') as logs:
+            obj.do_set('mlm')
+        self.assertIn("'madevent'", logs.output[0])
+        self.assertIn("'mg7'", logs.output[0])
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        self.assertRaises(madgraph.InvalidCmd, obj.do_set, 'mlm')
+        self.assertRaises(madgraph.InvalidCmd, obj.do_set, 'mlm ckkw')
+        self.assertEqual(dict(obj.run_card['beam']), beam)
+        self.generic_do_set.assert_not_called()
+
     def test_set_mg7_values_still_reach_the_editor(self):
         obj = self.cut_selector()
         obj.do_set('dynamical_scale_choice transverse_mass')
@@ -1283,6 +1316,7 @@ class MG7ReweightingTest(unittest.TestCase):
                                   lambda p: calls.append(('systematics',))), \
                 mock.patch.object(driver, 'run_reweighting',
                                   lambda p, c, decision: calls.append(('reweight', decision))), \
+                mock.patch.object(driver, 'run_precision_validation'), \
                 mock.patch.object(driver, 'run_selected_tools', fake_tools):
             launch.MG7Cmd(me_dir=self.me_dir).do_generate_events('--reweight=%s' % card)
         self.assertEqual(calls, [('prepare', 'ON', None), ('systematics',),
@@ -1330,6 +1364,31 @@ class MG7ReweightingTest(unittest.TestCase):
         self.assertTrue(via_binary(process, madtrex))
         process.run_card, process.gridpack_run_mode = self.run_card(), 'minimal'
         self.assertFalse(via_binary(process, madtrex))
+
+    def test_validated_lhe_run_is_generated_as_npy(self):
+        """An "lhe" run with [run] validation and no reweighting is generated
+        as npy too, when MadtRex can run; not with the classic module."""
+        from madgraph.various import reweight_backend as rb
+        from madgraph.mg7 import driver
+        card = self.run_card()
+        card['run']['validation'] = 'all64'
+        process = mock.Mock(gridpack_run_mode='regular', run_card=card)
+        via_binary = self.launch.lhe_via_binary
+        with mock.patch.object(driver, 'madtrex_unavailable', return_value=''):
+            self.assertTrue(via_binary(process, None))
+            self.assertFalse(via_binary(process, rb.Decision('classic', 'param')))
+            card['run']['output_format'] = 'lhe_npy'
+            self.assertFalse(via_binary(process, None))
+            card['run']['output_format'] = 'lhe'
+            process.gridpack_run_mode = 'minimal'
+            self.assertFalse(via_binary(process, None))
+            process.gridpack_run_mode = 'regular'
+            card['run']['validation'] = ''
+            self.assertFalse(via_binary(process, None))
+            card['run']['validation'] = 'd'
+        with mock.patch.object(driver, 'madtrex_unavailable',
+                               return_value='MadtRex is not installed'):
+            self.assertFalse(via_binary(process, None))
 
     def run_single_as_npy(self, reweighting):
         """run_single() of an "lhe" run MadtRex reweights, with the
@@ -1504,6 +1563,7 @@ class MG7ReweightingTest(unittest.TestCase):
                 mock.patch.object(driver, 'MadgraphProcess', lambda: process), \
                 mock.patch.object(driver, 'run_lhe_postprocessing'), \
                 mock.patch.object(driver, 'run_reweighting', failing), \
+                mock.patch.object(driver, 'run_precision_validation'), \
                 mock.patch.object(driver, 'run_selected_tools',
                                   lambda switch, p: calls.append('tools')), \
                 self.assertLogs('madevent', 'WARNING') as logs:
@@ -1514,6 +1574,188 @@ class MG7ReweightingTest(unittest.TestCase):
         self.assertIn("'reweight run_01'", text)
         self.assertTrue(os.path.exists(os.path.join('Events', 'run_01',
                                                     'reweighting_crash.log')))
+
+    def test_validation_fptype_of_the_run_card(self):
+        """[run] validation: unset ("", "none", missing) is off, a precision
+        name is mapped to its FPTYPE, anything else is taken as given."""
+        from madgraph.mg7 import driver
+        for value, expected in (('', None), ('none', None), ('None', None), (None, None),
+                                ('all64', 'd'), (' ALL64 ', 'd'), ('d', 'd'), ('e', 'e'),
+                                ('validation', 'validation')):
+            self.assertEqual(driver.validation_fptype({'run': {'validation': value}}),
+                             expected, value)
+        self.assertIsNone(driver.validation_fptype({'run': {}}))
+
+    def test_precision_validation_is_off_by_default(self):
+        """Without [run] validation nothing runs: madtrex is not even
+        imported (an import would fail on the None entry, and be reported
+        with a warning), and nothing is logged."""
+        from madgraph.mg7 import driver
+        from madgraph.various.banner import RunCardMG7
+        process = mock.Mock(run_card=RunCardMG7(), run_path=os.getcwd())
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': None}), \
+                mock.patch.object(driver, 'madtrex_unavailable', return_value=''), \
+                self.assertNoLogs('madevent'):
+            self.assertIsNone(driver.run_precision_validation(process))
+        self.assertFalse(os.path.exists('precision_validation_crash.log'))
+
+    def test_the_run_card_only_takes_known_validation_types(self):
+        from madgraph.various.banner import RunCardMG7
+        card = RunCardMG7()
+        for value, expected in (('all64', 'all64'), ('D', 'd'), ('v', 'v'),
+                                ('none', 'none'), ('', '')):
+            card['run']['validation'] = value
+            self.assertEqual(card['run']['validation'], expected, value)
+        card['run']['validation'] = 'd'
+        with self.assertLogs(level='WARNING'):
+            card['run']['validation'] = 'all46'
+        self.assertEqual(card['run']['validation'], 'd')
+
+    def test_precision_validation_without_madtrex_is_one_warning(self):
+        """MadtRex missing: one warning saying so, no crash log, None."""
+        os.makedirs(os.path.join('Events', 'run_01'))
+        from madgraph.mg7 import driver
+        run_path = os.path.abspath(os.path.join('Events', 'run_01'))
+        process = mock.Mock(run_card={'run': {'validation': 'd',
+                                              'output_format': 'lhe'}},
+                            run_path=run_path)
+        with mock.patch.object(driver, 'madtrex_unavailable',
+                               return_value='MadtRex is not installed'), \
+                self.assertLogs('madevent', 'WARNING') as logs:
+            self.assertIsNone(driver.run_precision_validation(process))
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('is skipped: MadtRex is not installed', logs.output[0])
+        self.assertFalse(os.path.exists(os.path.join(run_path,
+                                                     'precision_validation_crash.log')))
+
+    def write_validation_card(self, value):
+        os.makedirs('Cards', exist_ok=True)
+        with open(os.path.join('Cards', 'run_card.toml'), 'w') as f:
+            f.write('[run]\nvalidation = "%s"\n' % value)
+
+    def test_validation_is_checked_before_the_generation(self):
+        """check_precision_validation() warns up front when the validation
+        will not run: MadtRex missing, or the cluster mode."""
+        from madgraph.mg7 import driver
+        self.write_validation_card('all64')
+        with mock.patch.object(driver, 'madtrex_unavailable',
+                               return_value='MadtRex is not installed'), \
+                self.assertLogs('madevent', 'WARNING') as logs:
+            driver.check_precision_validation()
+        self.assertIn('validation = d will be skipped: MadtRex is not installed',
+                      '\n'.join(logs.output))
+        with mock.patch.object(driver, 'madtrex_unavailable', return_value=''), \
+                self.assertLogs('madevent', 'WARNING') as logs:
+            driver.check_precision_validation(cluster=True)
+        self.assertIn('cluster mode', '\n'.join(logs.output))
+        with mock.patch.object(driver, 'madtrex_unavailable', return_value=''), \
+                self.assertNoLogs('madevent'):
+            driver.check_precision_validation()
+        self.write_validation_card('')
+        with mock.patch.object(driver, 'madtrex_unavailable',
+                               return_value='MadtRex is not installed'), \
+                self.assertNoLogs('madevent'):
+            driver.check_precision_validation(cluster=True)
+
+    def test_precision_validation_runs_at_the_run_card_fptype(self):
+        from madgraph.mg7 import driver
+        madtrex = mock.Mock()
+        madtrex.run_precision_validation.return_value = {'digits': {}}
+        process = mock.Mock(run_card={'run': {'validation': 'all64',
+                                              'output_format': 'lhe_npy'}},
+                            events_path='Events/run_01/events.npy')
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
+                mock.patch('madgraph.iolibs.template_files.mg7.madtrex', madtrex,
+                           create=True), \
+                mock.patch.object(driver, 'madtrex_unavailable', return_value=''):
+            self.assertEqual(driver.run_precision_validation(process), {'digits': {}})
+        madtrex.run_precision_validation.assert_called_once_with(
+            'd', events_path='Events/run_01/events.npy', process_directory=os.getcwd(),
+            max_events=0)
+
+    def test_subsampled_npy_events_are_evenly_spaced(self):
+        import numpy as np
+        from madgraph.iolibs.template_files.mg7 import madtrex_driver as md
+        np.save('events.npy', np.zeros(101, dtype=[('id', 'i8'), ('w', 'f8')]))
+        events = np.load('events.npy')
+        events['id'] = np.arange(101)
+        np.save('events.npy', events)
+        os.makedirs('sample')
+        path, total = md._subsample_events('events.npy', 5, 'sample')
+        self.assertEqual(total, 101)
+        self.assertEqual(np.load(path)['id'].tolist(), [0, 25, 50, 75, 100])
+        self.assertIsNone(md._subsample_events('events.npy', 101, 'sample'))
+
+    def test_subsampled_lhe_events_keep_the_header(self):
+        """A gzipped LHE file is subsampled as read: header and <init> kept
+        (an "<event" in a card of the header is not an event), every picked
+        <event> block whole, the closing tag kept."""
+        import gzip
+        from madgraph.iolibs.template_files.mg7 import madtrex_driver as md
+        header = ('<LesHouchesEvents version="3.0">\n<header>\n<MG7RunCard>\n'
+                  '<event> in a card\n</MG7RunCard>\n</header>\n<init>\n'
+                  '2212 2212 1 1 0 0 0 0 3 1\n1.0 0.1 1.0 1\n</init>\n')
+        events = ''.join('<event id="%d">\n 2 1 1.0 91 0.007 0.118\n</event>\n' % i
+                         for i in range(10))
+        with gzip.open('events.lhe.gz', 'wt') as f:
+            f.write(header + events + '</LesHouchesEvents>\n')
+        os.makedirs('sample')
+        path, total = md._subsample_events('events.lhe.gz', 4, 'sample')
+        self.assertEqual(total, 10)
+        self.assertFalse(os.path.exists('events.lhe'))
+        with open(path) as f:
+            text = f.read()
+        picked = ''.join('<event id="%d">\n 2 1 1.0 91 0.007 0.118\n</event>\n' % i
+                         for i in (0, 3, 6, 9))
+        self.assertEqual(text, header + picked + '</LesHouchesEvents>\n')
+        self.assertIsNone(md._subsample_events('events.lhe.gz', 10, 'sample'))
+
+    def test_validation_events_is_passed_on(self):
+        from madgraph.mg7 import driver
+        madtrex = mock.Mock()
+        process = mock.Mock(run_card={'run': {'validation': 'd', 'validation_events': 500,
+                                              'output_format': 'lhe'}},
+                            events_path='Events/run_01/events.lhe.gz')
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
+                mock.patch('madgraph.iolibs.template_files.mg7.madtrex', madtrex,
+                           create=True), \
+                mock.patch.object(driver, 'madtrex_unavailable', return_value=''):
+            driver.run_precision_validation(process)
+        self.assertEqual(madtrex.run_precision_validation.call_args.kwargs['max_events'], 500)
+
+    def test_precision_validation_skips_compact_npy(self):
+        """compact_npy events have no flavor/helicity for MadtRex: skipped
+        with a warning, not an error."""
+        from madgraph.mg7 import driver
+        process = mock.Mock(run_card={'run': {'validation': 'd',
+                                              'output_format': 'compact_npy'}})
+        with self.assertLogs('madevent', 'WARNING') as logs:
+            self.assertIsNone(driver.run_precision_validation(process))
+        self.assertIn('compact_npy', '\n'.join(logs.output))
+
+    def test_a_failing_precision_validation_does_not_stop_the_run(self):
+        """A failure is reported with a crash log, and None returned."""
+        os.makedirs(os.path.join('Events', 'run_01'))
+        from madgraph.mg7 import driver
+        madtrex = mock.Mock()
+        madtrex.run_precision_validation.side_effect = RuntimeError('no such FPTYPE')
+        process = mock.Mock(run_card={'run': {'validation': 'd',
+                                              'output_format': 'lhe_npy'}},
+                            events_path='Events/run_01/events.npy',
+                            run_path=os.path.abspath(os.path.join('Events', 'run_01')))
+        with mock.patch.dict(sys.modules, {
+                'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
+                mock.patch('madgraph.iolibs.template_files.mg7.madtrex', madtrex,
+                           create=True), \
+                mock.patch.object(driver, 'madtrex_unavailable', return_value=''), \
+                self.assertLogs('madevent', 'WARNING') as logs:
+            self.assertIsNone(driver.run_precision_validation(process))
+        self.assertIn('precision validation failed: no such FPTYPE', '\n'.join(logs.output))
+        self.assertTrue(os.path.exists(os.path.join(
+            'Events', 'run_01', 'precision_validation_crash.log')))
 
     def test_existing_run_finds_the_event_file_and_its_format(self):
         import gzip
@@ -2156,6 +2398,134 @@ class MG7ObservablePidsTest(unittest.TestCase):
         with self.assertRaises(ValueError) as error:
             self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass'))
         self.assertIn('apply_flavor_grouping', str(error.exception))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7CkkwlMergingCutTest(unittest.TestCase):
+    """The CKKW-L merging cut (ktdurham / ptlund) built per subprocess: its
+    merging legs, flavours and beams, as madevent's setcuts.f picks them."""
+
+    def setUp(self):
+        from madgraph.mg7 import launch as mg7_launch
+        import madspace as ms
+        self.launch = mg7_launch
+        self.ms = ms
+
+    def run_card(self, **phasespace):
+        card = bannermod.RunCardMG7()
+        for key, value in phasespace.items():
+            card.set('phasespace.' + key, value)
+        return card
+
+    def process(self, card, leptonic=False):
+        process = types.SimpleNamespace(is_decay=False, run_card=card,
+                                        leptonic=leptonic)
+        self.launch.MadgraphProcess.init_merging_cut(process)
+        return process
+
+    @staticmethod
+    def meta(incoming, outgoing, options, on_shell=()):
+        # p p > z j j, z > e+ e- when on_shell = [1]
+        return {
+            'incoming': incoming,
+            'outgoing': outgoing,
+            'flavors': [{'index': 0, 'options': [list(o) for o in options],
+                         'mirror': False}],
+            'channels': [{
+                'vertices': [['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                             ['o2', 'o3', 'p2'], ['p0', 'p2', 'p1']],
+                'on_shell_propagators': list(on_shell),
+                'diagrams': [{'diagram': 1,
+                              'permutation': list(range(len(incoming) + len(outgoing)))}],
+            }],
+        }
+
+    def build(self, process, meta):
+        subprocess = types.SimpleNamespace(
+            meta=meta, unmerged_meta=None, process=process,
+            flavor_pids=lambda: [meta['flavors'][0]['options'][0]])
+        subprocess.merging_leg_mask = types.MethodType(
+            self.launch.MadgraphSubprocess.merging_leg_mask, subprocess)
+        return self.launch.MadgraphSubprocess.build_merging_cut(subprocess)
+
+    def build_amplicol(self, process, meta):
+        from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess
+        subprocess = object.__new__(AmplicolSubprocess)
+        subprocess.meta, subprocess.unmerged_meta = meta, None
+        subprocess.process = process
+        return subprocess.build_merging_cut()
+
+    def test_amplicol_ptlund_ignores_non_merging_flavours(self):
+        """e and mu grouped as one [amplicol] flavour: the leptons are no
+        merging legs, so the ptlund cut does not depend on them"""
+        process = self.process(self.run_card(ptlund=20.0))
+        meta = self.meta([81, -81], [-82, 82, 81, -81],
+                         [[2, -2, -11, 11, 1, -1], [2, -2, -13, 13, 1, -1]])
+        cut = self.build_amplicol(process, meta)
+        self.assertEqual(cut.scale.merging_leg_indices(), [4, 5])
+        # a different merging-leg flavour changes the splittings
+        meta = self.meta([81, -81], [-82, 82, 81, -81],
+                         [[2, -2, -11, 11, 1, -1], [2, -2, -11, 11, 4, -4]])
+        with self.assertRaises(RuntimeError):
+            self.build_amplicol(process, meta)
+
+    def test_no_merging_cut_without_ktdurham_or_ptlund(self):
+        self.assertIsNone(self.process(self.run_card()).merging_cut)
+
+    def test_ktdurham_merging_legs_skip_leptons_and_decay_products(self):
+        process = self.process(self.run_card(ktdurham=30.0))
+        measure, value, pdgs = process.merging_cut
+        self.assertEqual(measure, self.ms.MergingScale.Measure.kt_durham)
+        self.assertEqual(value, 30.0)
+        self.assertIn(21, pdgs)
+        options = [[2, -2, -11, 11, 21, 21]]
+        cut = self.build(process, self.meta([81, -81], [-82, 82, 21, 21], options))
+        self.assertEqual(cut.min, 30.0)
+        self.assertEqual(cut.scale.merging_leg_indices(), [4, 5])
+        self.assertTrue(cut.scale.bounds_pt())
+        # the jets of p p > z, z > j j are decay products: nothing to merge
+        cut = self.build(process, self.meta(
+            [81, -81], [21, 21, -82, 82], [[2, -2, 21, 21, -11, 11]], on_shell=[1]))
+        self.assertIsNone(cut)
+
+    def test_merging_pdgs_restricts_the_legs(self):
+        process = self.process(self.run_card(ptlund=20.0, merging_pdgs=[21]))
+        self.assertEqual(process.merging_cut[0],
+                         self.ms.MergingScale.Measure.pt_lund)
+        cut = self.build(process, self.meta(
+            [21, 21], [21, 21, 81, -81], [[21, 21, 21, 21, 1, -1]]))
+        self.assertEqual(cut.scale.merging_leg_indices(), [2, 3])
+        self.assertFalse(cut.scale.bounds_pt())
+
+    def test_flavours_treated_differently_are_refused(self):
+        process = self.process(self.run_card(ktdurham=30.0, merging_pdgs=[21, 1, 2]))
+        meta = self.meta([21, 21], [21, 21, 81, -81],
+                         [[21, 21, 21, 21, 1, -1], [21, 21, 21, 21, 3, -3]])
+        with self.assertRaises(ValueError) as error:
+            self.build(process, meta)
+        self.assertIn('apply_flavor_grouping', str(error.exception))
+
+    def test_a_lepton_collider_has_no_beam_pt_term(self):
+        process = self.process(self.run_card(ktdurham=10.0), leptonic=True)
+        cut = self.build(process, self.meta(
+            [-11, 11], [21, 21, 81, -81], [[-11, 11, 21, 21, 1, -1]]))
+        self.assertFalse(cut.scale.bounds_pt())
+
+    def test_ckkwl_scale_has_no_alpha_s_or_pdf_ladder(self):
+        card = bannermod.RunCardMG7()
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        self.assertTrue(self.launch.mlm_pdf_ladder(card, True))
+        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        self.assertFalse(self.launch.mlm_pdf_ladder(card, True))
+
+    def test_ckkwl_scale_clusters_over_all_diagrams(self):
+        card = bannermod.RunCardMG7()
+        card.set('beam.clustering_history', 'diagram')
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        self.assertEqual(self.launch.mlm_clustering_history(card), 'diagram')
+        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        self.assertEqual(self.launch.mlm_clustering_history(card), 'all_diagrams')
 
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),

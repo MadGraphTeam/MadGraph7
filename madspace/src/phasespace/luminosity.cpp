@@ -51,7 +51,11 @@ Mapping::Result Luminosity::build_inverse_impl(
 }
 
 LeptonLuminosity::LeptonLuminosity(
-    double s_lab, double s_hat_min, double sampling_power
+    double s_lab,
+    double s_hat_min,
+    double sampling_power,
+    bool reduced_density,
+    bool s_hat_min_condition
 ) :
     Mapping(
         "LeptonLuminosity",
@@ -61,11 +65,19 @@ LeptonLuminosity::LeptonLuminosity(
          {"x2", batch_float},
          {"omx2", batch_float},
          {"s_hat", batch_float}},
-        {}
+        [&] {
+            NamedVector<Type> conditions;
+            if (s_hat_min_condition) {
+                conditions.push_back("s_hat_min", batch_float);
+            }
+            return conditions;
+        }()
     ),
     _s_lab(s_lab),
     _s_hat_min(s_hat_min),
-    _power(sampling_power) {
+    _power(sampling_power),
+    _reduced_density(reduced_density),
+    _s_hat_min_condition(s_hat_min_condition) {
     if (s_lab <= 0.) {
         throw std::invalid_argument("LeptonLuminosity: s_lab must be positive");
     }
@@ -84,34 +96,41 @@ LeptonLuminosity::LeptonLuminosity(
     }
 }
 
+std::pair<Value, Value> LeptonLuminosity::tau_min(
+    FunctionBuilder& fb, const NamedVector<Value>& conditions
+) const {
+    // tau_min and 1 - tau_min, the latter as (s_lab - s_hat_min) / s_lab, so
+    // that it keeps its digits for a bound close to s_lab. The bound of the
+    // condition is clipped to [0, s_lab]: below 0 there is none, and above
+    // s_lab no range of x is left, which gives x1 = x2 = 1 and a zero
+    // Jacobian. The same operations on the bound of the constructor give the
+    // same mapping to the last digit.
+    if (_s_hat_min_condition) {
+        auto s_hat_min = fb.min(fb.max(conditions.at("s_hat_min"), 0.), _s_lab);
+        return {fb.div(s_hat_min, _s_lab), fb.div(fb.sub(_s_lab, s_hat_min), _s_lab)};
+    }
+    return {_s_hat_min / _s_lab, (_s_lab - _s_hat_min) / _s_lab};
+}
+
 Mapping::Result LeptonLuminosity::build_forward_impl(
     FunctionBuilder& fb,
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
-    auto r1 = inputs[0], r2 = inputs[1];
-    auto batch = fb.batch_size({r1});
-    double tau_min = _s_hat_min / _s_lab;
-    // 1-x = r^(1/(1-p)) * (1-xmin); the Jacobian of that is
-    // (1-xmin)^(1-p)/(1-p) * (1-x)^p, and the (1-x)^p is left out on purpose
-    // -- see the class documentation.
-    auto exponent = fb.full({1. / (1. - _power), batch});
-    auto one = fb.full({1., batch});
-    auto norm = fb.full({1. / (1. - _power), batch});
-
-    // first beam: xmin = tau_min, so the span is a constant
-    double span1 = 1. - tau_min;
-    auto omx1 = fb.mul(fb.pow(r1, exponent), fb.full({span1, batch}));
-    auto x1 = fb.sub(one, omx1);
-    auto det1 = fb.full({std::pow(span1, 1. - _power) / (1. - _power), batch});
-
-    // second beam: xmin = tau_min/x1, which the first draw fixes
-    auto span2 = fb.sub(one, fb.div(fb.full({tau_min, batch}), x1));
-    auto omx2 = fb.mul(fb.pow(r2, exponent), span2);
-    auto x2 = fb.sub(one, omx2);
-    auto det2 = fb.mul(fb.pow(span2, fb.full({1. - _power, batch})), norm);
-
-    auto s_hat = fb.mul(fb.mul(x1, x2), fb.full({_s_lab, batch}));
+    // the power of 1 - x in the Jacobian of each beam: none with a reduced
+    // density, which carries (1 - x)^p itself -- see the class documentation
+    double power = _reduced_density ? 0. : _power;
+    auto [tau, omtau] = tau_min(fb, conditions);
+    // The first beam has x_min = tau_min, the second x_min = tau_min / x1, and
+    // the width of each is 1 - x_min. That of the second is 1 minus the
+    // rounded tau_min / x1, the exact length of the range that x2 is then
+    // sampled over, and the inverse builds it from x1 in the same way, so that
+    // the two agree also where x1 approaches tau_min.
+    auto [x1, omx1, det1] = fb.lepton_x_sample(inputs.at(0), tau, omtau, _power, power);
+    auto x_min2 = fb.div(tau, x1);
+    auto [x2, omx2, det2] =
+        fb.lepton_x_sample(inputs.at(1), x_min2, fb.sub(1., x_min2), _power, power);
+    auto s_hat = fb.mul(fb.mul(x1, x2), _s_lab);
     return {
         {{"x1", x1}, {"omx1", omx1}, {"x2", x2}, {"omx2", omx2}, {"s_hat", s_hat}},
         fb.mul(det1, det2)
@@ -123,29 +142,16 @@ Mapping::Result LeptonLuminosity::build_inverse_impl(
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
-    auto x1 = inputs[0], omx1 = inputs[1], omx2 = inputs[3];
-    auto batch = fb.batch_size({x1});
-    double tau_min = _s_hat_min / _s_lab;
-    auto one = fb.full({1., batch});
-    auto inv_exponent = fb.full({1. - _power, batch});
-    // An inverse map returns its own Jacobian, d(r)/d(x), not the forward
-    // one: kernel_uniform_invariant gives gs = s_max - s_min while
-    // kernel_uniform_invariant_inverse gives gs = 1/(s_max - s_min). So these
-    // are the reciprocals of the two factors build_forward_impl returns.
-    auto inv_norm = fb.full({1. - _power, batch});
-    // as a negative power rather than a reciprocal, so that a degenerate
-    // span (x1 at its lower limit) gives zero instead of an infinity -- the
-    // same reason lepton_split writes omx_b^(-p)
-    auto neg_exponent = fb.full({_power - 1., batch});
-
-    double span1 = 1. - tau_min;
-    auto r1 = fb.pow(fb.div(omx1, fb.full({span1, batch})), inv_exponent);
-    auto det1 = fb.full({(1. - _power) / std::pow(span1, 1. - _power), batch});
-
-    auto span2 = fb.sub(one, fb.div(fb.full({tau_min, batch}), x1));
-    auto r2 = fb.pow(fb.div(omx2, span2), inv_exponent);
-    auto det2 = fb.mul(fb.pow(span2, neg_exponent), inv_norm);
-
+    // An inverse map returns its own Jacobian, d(r)/d(x), the reciprocal of
+    // that of the forward map. A point with x1 < tau_min, from another
+    // channel, leaves x2 no range and gives r2 = 0 and a zero Jacobian.
+    double power = _reduced_density ? 0. : _power;
+    auto [tau, omtau] = tau_min(fb, conditions);
+    auto x1 = inputs.at(0), omx1 = inputs.at(1), omx2 = inputs.at(3);
+    auto [r1, det1] = fb.lepton_x_sample_inverse(omx1, omtau, _power, power);
+    auto [r2, det2] = fb.lepton_x_sample_inverse(
+        omx2, fb.sub(1., fb.div(tau, x1)), _power, power
+    );
     return {{{"r1", r1}, {"r2", r2}}, fb.mul(det1, det2)};
 }
 
@@ -156,7 +162,9 @@ LeptonLuminosityInvariant::LeptonLuminosityInvariant(
     double sampling_power,
     double mass,
     double width,
-    double invariant_power
+    double invariant_power,
+    bool reduced_density,
+    bool s_hat_min_condition
 ) :
     Mapping(
         "LeptonLuminosityInvariant",
@@ -166,12 +174,20 @@ LeptonLuminosityInvariant::LeptonLuminosityInvariant(
          {"x2", batch_float},
          {"omx2", batch_float},
          {"s_hat", batch_float}},
-        {}
+        [&] {
+            NamedVector<Type> conditions;
+            if (s_hat_min_condition) {
+                conditions.push_back("s_hat_min", batch_float);
+            }
+            return conditions;
+        }()
     ),
     _s_lab(s_lab),
     _s_hat_min(s_hat_min),
     _s_hat_max(s_hat_max == 0. ? s_lab : s_hat_max),
     _power(sampling_power),
+    _reduced_density(reduced_density),
+    _s_hat_min_condition(s_hat_min_condition),
     _invariant(invariant_power, mass, width) {
     if (s_lab <= 0.) {
         throw std::invalid_argument(
@@ -212,30 +228,26 @@ LeptonSplitResult madspace::lepton_split(
     Value r_x,
     Value r_swap,
     double s_lab,
-    double power
+    double power,
+    double jacobian_power
 ) {
     auto batch = fb.batch_size({s_hat});
-    auto one = fb.full({1., batch});
     auto tau = fb.div(s_hat, fb.full({s_lab, batch}));
 
-    // The drawn fraction is the larger one, over [sqrt(tau), 1]. The span is
-    // built as (1-tau)/(1+sqrt(tau)) rather than 1-sqrt(tau): the sampling
-    // puts 22% of its points where tau has rounded to exactly 1, and the
-    // subtraction gives zero there, which sends det_a to zero and throws the
-    // point away. This form keeps it, because omtau never went through a
-    // cancellation.
+    // The drawn fraction is the larger one, over [sqrt(tau), 1], sampled as
+    // LeptonLuminosity samples a beam. The width is built as
+    // (1-tau)/(1+sqrt(tau)) rather than 1-sqrt(tau): the sampling puts 22% of
+    // its points where tau has rounded to exactly 1, and the subtraction
+    // gives zero there, which sends det_a to zero and throws the point away.
+    // This form keeps it, because omtau never went through a cancellation.
     auto x_min = fb.sqrt(tau);
-    auto span = fb.div(omtau, fb.add(one, x_min));
-    auto omx_a = fb.mul(fb.pow(r_x, fb.full({1. / (1. - power), batch})), span);
-    auto x_a = fb.sub(one, omx_a);
-    auto det_a = fb.mul(
-        fb.pow(span, fb.full({1. - power, batch})),
-        fb.full({1. / (1. - power), batch})
-    );
+    auto span = fb.div(omtau, fb.add(fb.full({1., batch}), x_min));
+    auto [x_a, omx_a, det_a] =
+        fb.lepton_x_sample(r_x, x_min, span, power, jacobian_power);
 
     // the other follows from tau; 1/x_a is the Jacobian of x2 = tau/x1, and
-    // omx_b^(-p) is the factor the density expects to have been cancelled by
-    // the sampling, which for this beam never happened
+    // with a reduced density omx_b^(-p) is the factor the density expects to
+    // have been cancelled by the sampling, which for this beam never happened
     // x_b keeps the division: it is what makes x_a * x_b equal tau exactly,
     // which the momenta are built from, and tau/x_a is accurate at both ends.
     auto x_b = fb.div(tau, x_a);
@@ -247,11 +259,13 @@ LeptonSplitResult madspace::lepton_split(
     // omx_a <= omtau/(1+sqrt(tau)), leaving a relative error of order
     // eps/sqrt(tau) on a quantity that is O(1) there anyway.
     auto omx_b = fb.div(fb.sub(omtau, omx_a), x_a);
-    // Written as omx_b^(-p) rather than 1/omx_b^p on purpose: pow returns 0
-    // for a non-positive base, so a degenerate point gets weight zero, where
-    // the reciprocal would divide by zero and poison the whole batch with an
+    // omx_b^(jacobian_power - p), which is omx_b^(-p) for a reduced density
+    // and one for a full one. Written as a power on purpose: pow returns 0 for
+    // a non-positive base, so a degenerate point gets weight zero, where the
+    // reciprocal would divide by zero and poison the whole batch with an
     // infinity.
-    auto det_b = fb.div(fb.pow(omx_b, fb.full({-power, batch})), x_a);
+    auto det_b =
+        fb.div(fb.pow(omx_b, fb.full({jacobian_power - power, batch})), x_a);
 
     auto swap = fb.sample_discrete(r_swap, fb.full({static_cast<me_int_t>(2), batch}));
     auto index = swap[0];
@@ -277,7 +291,12 @@ Mapping::Result LeptonLuminosityInvariant::build_forward_impl(
 ) const {
     auto r_s = inputs[0], r_x = inputs[1], r_swap = inputs[2];
     auto batch = fb.batch_size({r_s});
-    auto inv = _invariant.build_forward(fb, {r_s}, {_s_hat_min, _s_hat_max});
+    // the bound of the condition clipped to [0, s_hat_max], as in
+    // LeptonLuminosity
+    Value s_hat_min = _s_hat_min_condition
+        ? fb.min(fb.max(conditions.at("s_hat_min"), 0.), _s_hat_max)
+        : Value(_s_hat_min);
+    auto inv = _invariant.build_forward(fb, {r_s}, {s_hat_min, _s_hat_max});
     auto s_hat = inv["invariant"];
     // This channel samples s_hat through a resonance, not from the endpoint,
     // so there is no exact gap to carry and 1-tau is the best available. That
@@ -285,7 +304,9 @@ Mapping::Result LeptonLuminosityInvariant::build_forward_impl(
     // tau -> 1 where the cancellation bites.
     auto omtau =
         fb.sub(fb.full({1., batch}), fb.div(s_hat, fb.full({_s_lab, batch})));
-    auto split = lepton_split(fb, s_hat, omtau, r_x, r_swap, _s_lab, _power);
+    auto split = lepton_split(
+        fb, s_hat, omtau, r_x, r_swap, _s_lab, _power, _reduced_density ? 0. : _power
+    );
     // lepton_split already converts d(s_hat) to d(tau), matching r_to_x1x2
     return {
         {{"x1", split.x1},

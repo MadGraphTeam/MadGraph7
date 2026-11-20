@@ -1101,7 +1101,7 @@ class LoopMatrixElementEvaluator(MatrixElementEvaluator):
                 
     def setup_ward_check(self, working_dir, file_names, mp = False):
         """ Modify loop_matrix.f so to have one external massless gauge boson
-        polarization vector turned into its momentum. It is not a pretty and 
+        polarization vector turned into its momentum. It is not a pretty and
         flexible solution but it works for this particular case."""
         
         shell_name = None
@@ -1139,8 +1139,13 @@ class LoopMatrixElementEvaluator(MatrixElementEvaluator):
                 res=gaugeVectorRegExp.search(line)
                 if res!=None:
                     foundGauge=True
+                    # The wavefunctions are TYPE(ALOHA) (TYPE(MP_ALOHA) in
+                    # quadruple precision), defined in the module ALOHA_OBJECT
+                    # of aloha/template_files/aloha_functions_loop.f: the
+                    # component %W(1:4) holds the polarization vector and
+                    # %P(0:3) the momentum.
                     helas_calls_out+="      DO WARDINT=1,4\n"
-                    helas_calls_out+="        W(WARDINT+4,"+res.group('wf_id')+")="
+                    helas_calls_out+="        W("+res.group('wf_id')+")%W(WARDINT)="
                     if not mp:
                         helas_calls_out+=\
                             "DCMPLX(P(WARDINT-1,"+res.group('p_id')+"),0.0D0)\n"

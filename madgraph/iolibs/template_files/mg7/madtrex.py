@@ -31,6 +31,7 @@ from .madtrex_driver import (  # noqa: F401 -- re-exported
     resolve_pdf_set_files,
     default_output_path,
     run_pdf_reweighting,
+    run_precision_validation,
 )
 
 _MG_ROOT = Path(_mg_pkg.__file__).parents[1]

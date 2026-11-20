@@ -176,9 +176,9 @@ namespace
     if( amp2_out )
     {
       double denominator = denominators[i_event];
-      for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
+      for( int i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * ProcessData::ndiagrams + i_diag], denominator );
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[numeratorsIndex( i_event, i_diag )], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -581,7 +581,7 @@ extern "C"
     UmamiHandle handle,
     char const* name,
     double parameter_real,
-    [[maybe_unused]] double parameter_imag )
+    double parameter_imag )
   {
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     DeviceGuard guard( instance->device );
@@ -603,10 +603,6 @@ extern "C"
       return UMAMI_SUCCESS;
     }
     // The model parameters are the instance's own (those of its CPPProcess)
-#ifdef MGONGPU_HARDCODE_PARAM
-    // Hardcoded parameters are compile-time constants: there is nothing to set.
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !instance->process.modelParameters().setParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     // sigmaKin() and friends read copies of the independent parameters/couplings
@@ -619,22 +615,17 @@ extern "C"
     // A helicity may vanish with some parameters and not with others: choose again
     reset_good_helicities( instance );
     return UMAMI_SUCCESS;
-#endif
   }
 
   UmamiStatus umami_get_parameter(
-    [[maybe_unused]] UmamiHandle handle,
-    [[maybe_unused]] char const* name,
-    [[maybe_unused]] double* parameter_real,
-    [[maybe_unused]] double* parameter_imag )
+    UmamiHandle handle,
+    char const* name,
+    double* parameter_real,
+    double* parameter_imag )
   {
-#ifdef MGONGPU_HARDCODE_PARAM
-    return UMAMI_ERROR_NOT_IMPLEMENTED;
-#else
     if( !static_cast<InterfaceInstance*>( handle )->process.modelParameters().getParameterByName( name, parameter_real, parameter_imag ) )
       return UMAMI_ERROR_UNKNOWN_PARAMETER;
     return UMAMI_SUCCESS;
-#endif
   }
 
   // Numbering of the outputs of a crossed call (crossing on, flavor index
@@ -784,7 +775,7 @@ extern "C"
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
         // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
         // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
-        {reinterpret_cast<void**>(&numerators), rounded_count * ProcessData::ndiagrams * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&numerators), numeratorsBufferSize( rounded_count ) * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},

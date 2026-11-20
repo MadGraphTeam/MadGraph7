@@ -8,6 +8,7 @@ import pytest
 
 import pyamplicol.generation.dag_compiler as dag_compiler_module
 from pyamplicol.color.plan import GenericColorPlan, LCColorSector, build_color_plan
+from pyamplicol.color.plan_types import LCOpenColorLine
 from pyamplicol.generation.dag_algorithms import (
     prune_global_helicity_flip_equivalent_roots,
 )
@@ -22,6 +23,7 @@ from pyamplicol.generation.dag_types import ColorState, CurrentIndex
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model, Particle, Vertex
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
     ColorEndpointSummary,
@@ -372,7 +374,7 @@ def test_relabelled_fundamental_line_auxiliary_requires_model_declaration() -> N
         fermions=(fermion, -fermion),
         massless_adjoint_vectors=(adjoint,),
         vertices=(auxiliary_vertex,),
-        auxiliary_kinds={auxiliary: "u1-subtraction-color-flow-vector"},
+        auxiliary_kinds={auxiliary: U1_SUBTRACTION_AUXILIARY_KIND},
     )
     one_line_process = _process(
         (-fermion, fermion, adjoint, adjoint),
@@ -407,6 +409,78 @@ def test_relabelled_fundamental_line_auxiliary_requires_model_declaration() -> N
         unrelated_model,
     )
     assert unrelated_engine._particle_has_colour(auxiliary) is False
+
+
+def test_larger_singlet_contacts_joining_quark_lines_fail_closed() -> None:
+    """A four-point colour-singlet contact's partial merge records its left
+    input's lines for the final merge; a larger contact, lowered to
+    auxiliaries merged with each other, is refused when it joins three quark
+    lines at full colour."""
+
+    fermion = 810_001
+    boson = 820_001
+    four_point = 770_001
+    nested = (770_002, 770_003)
+    vertices = (
+        Vertex(1, (boson, boson, four_point)),
+        Vertex(2, (four_point, boson, boson)),
+        Vertex(3, (boson, boson, nested[0])),
+        Vertex(4, (boson, boson, nested[1])),
+        Vertex(5, (nested[0], nested[1], boson)),
+    )
+    model = _StructuralModel(
+        particles=(
+            Particle(fermion, -fermion, spin=2, dimension=4, color_rep=3),
+            Particle(boson, boson, spin=3, dimension=4, color_rep=1),
+            *(
+                Particle(auxiliary, auxiliary, spin=-1, dimension=1, color_rep=1)
+                for auxiliary in (four_point, *nested)
+            ),
+        ),
+        representations={
+            fermion: 3,
+            -fermion: -3,
+            boson: 1,
+            four_point: 1,
+            nested[0]: 1,
+            nested[1]: 1,
+        },
+        fermions=(fermion, -fermion),
+        vertices=vertices,
+        auxiliary_kinds={
+            four_point: "ufo-contact:7:result-0:0,3",
+            nested[0]: "ufo-contact-tree:8:result-0:1,2",
+            nested[1]: "ufo-contact-tree:8:result-0:3,4",
+        },
+    )
+    process = _process(
+        (-fermion, fermion) * 3,
+        statistics=("fermion",) * 6,
+        wavefunction_families=("spinor",) * 6,
+        color_roles=("antifundamental", "fundamental") * 3,
+        source_orientations=("antiparticle", "particle") * 3,
+        color_accuracy="full",
+    )
+    lines = tuple(LCOpenColorLine(label + 1, label, ()) for label in (1, 3, 5))
+    engine = ColorEngine(
+        GenericColorPlan(
+            process, "full", (LCColorSector(0, "open-lines", open_color_lines=lines),)
+        ),
+        model,
+    )
+
+    def state(*groups: int) -> ColorState:
+        return ColorState("full", 0, groups)
+
+    (partial,) = engine.combine(
+        state(1), state(0), vertices[0], ordered_external_labels=(4, 3, 2, 1)
+    )
+    assert partial.state.line_groups == (0, 1)
+    assert partial.state.basis_key == ("singlet-contact-partial:1",)
+    with pytest.raises(ValueError, match="more than four legs"):
+        engine.combine(
+            state(0), state(1), vertices[2], ordered_external_labels=(2, 1, 4, 3)
+        )
 
 
 def test_trace_reflection_folding_requires_model_proof() -> None:

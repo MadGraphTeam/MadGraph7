@@ -159,7 +159,7 @@ pub(super) fn load_recurrence_native_runtime(
     Ok(LoadedRecurrenceRuntime { common, lane })
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn load_recurrence_ready_runtime(
     artifact: &mut VerifiedArtifact,
@@ -548,6 +548,7 @@ pub(super) fn load_recurrence_exact_sections(
         contributions: plan.contributions().to_vec(),
         finalizations: plan.finalizations().to_vec(),
         closures: plan.closures().to_vec(),
+        closure_amplitude_orders: plan.amplitude_orders().closure_components().to_vec(),
         row_groups: plan.row_groups().to_vec(),
         momentum_forms: plan.momentum_forms().to_vec(),
         momentum_terms: plan.momentum_terms().to_vec(),
@@ -1235,7 +1236,7 @@ pub(super) fn load_ready_plan(
     )
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn load_plan_reference(
     artifact: &VerifiedArtifact,
@@ -1367,7 +1368,7 @@ fn load_plan_reference(
     })
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 #[cfg_attr(target_vendor = "apple", cold)]
 fn validate_process_binding(
@@ -2379,14 +2380,14 @@ fn validate_on_the_fly_family_execution(
     require_cache_hit: bool,
 ) -> RusticolResult<()> {
     if report.cache_hit != require_cache_hit
-        || report.source_calls != census.union_source_executor_call_groups
-        || report.source_rows != census.union_source_rows
-        || report.contribution_calls != census.union_contribution_executor_call_groups
-        || report.contribution_rows != census.union_contribution_rows
-        || report.finalization_calls != census.union_finalization_executor_call_groups
-        || report.finalization_rows != census.union_finalization_rows
-        || report.closure_calls != census.union_closure_executor_call_groups
-        || report.closure_rows != census.union_closure_rows
+        || report.source_calls != u64::from(census.union_source_executor_call_groups)
+        || report.source_rows != u64::from(census.union_source_rows)
+        || report.contribution_calls != u64::from(census.union_contribution_executor_call_groups)
+        || report.contribution_rows != u64::from(census.union_contribution_rows)
+        || report.finalization_calls != u64::from(census.union_finalization_executor_call_groups)
+        || report.finalization_rows != u64::from(census.union_finalization_rows)
+        || report.closure_calls != u64::from(census.union_closure_executor_call_groups)
+        || report.closure_rows != u64::from(census.union_closure_rows)
     {
         return Err(RusticolError::integrity(
             "on-the-fly family execution differs from its prepared census/cache state",
@@ -3737,7 +3738,7 @@ fn encode_ready_source_domains(
         .collect()
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn decode_ready_source_domains(
     domains: &[RecurrenceReadySourceDomainV1],
@@ -4236,7 +4237,7 @@ struct RecurrenceCommonRuntimeDefinition {
     normalization_electroweak_coupling_power: u64,
 }
 
-#[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+#[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 fn assemble_common_runtime(
     plan: &DirectRecurrencePlan,

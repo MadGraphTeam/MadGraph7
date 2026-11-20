@@ -216,7 +216,11 @@ def test_accepted_factor_is_rational_real_and_optionally_unit() -> None:
     assert accepted_factor(16.0 + 0j, only_unit_multiplier=True) is None
     assert accepted_factor(1.0 + 1e-14j, only_unit_multiplier=True) == 1
     assert accepted_factor(1.0 + 1e-3j, only_unit_multiplier=False) is None
-    assert accepted_factor(math.pi + 0j, only_unit_multiplier=False) is None
+    # No height cap (formerly |p|, q <= 99): any real common ratio is recorded
+    # as its simplest rational within the comparison tolerance (1e-9).
+    assert accepted_factor(256.0 + 0j, only_unit_multiplier=False) == 256
+    pi_like = accepted_factor(math.pi + 0j, only_unit_multiplier=False)
+    assert pi_like is not None and abs(float(pi_like) / math.pi - 1) <= 1e-9
     assert accepted_factor(None, only_unit_multiplier=False) is None
 
 

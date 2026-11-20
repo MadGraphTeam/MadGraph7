@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 from ._physics_ir import ContractionIR
 from .contracts import (
+    U1_SUBTRACTION_AUXILIARY_KIND,
     CompiledClosureContractionRecord,
     CompiledDirectContractionRecord,
     CompiledParameterRecord,
@@ -183,12 +184,10 @@ def _compile_direct_contraction(
             metric_signature="mostly-minus",
         )
     if (
-        left.auxiliary_kind
-        == right.auxiliary_kind
-        == "u1-subtraction-color-flow-vector"
+        left.auxiliary_kind == right.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         and left_dimension == 4
     ):
-        basis = "auxiliary:u1-subtraction-color-flow-vector"
+        basis = f"auxiliary:{U1_SUBTRACTION_AUXILIARY_KIND}"
         return ContractionIR(
             name="lorentz",
             left_basis=basis,
