@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import string
@@ -5524,8 +5525,10 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                     copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(
-                            libpath, getattr(self, 'fortran_compiler', None)))
+                        # Recorded flags are argv words; quote them for the makefile shell.
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.pre_link_flags(
+                                libpath, getattr(self, 'fortran_compiler', None)))
                     if copied_ninjars:
                         link_tir_libs.append('-L$(LIBDIR) -lninjars')
                         tir_libs.append('$(LIBDIR)libninjars.a')
@@ -5535,7 +5538,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                             libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.native_link_flags(libpath))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 

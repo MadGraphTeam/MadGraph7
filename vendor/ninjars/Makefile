@@ -38,7 +38,7 @@ compiler-runtime:
 	  test -f "$$runtime_archive" || { echo 'GNU Fortran did not locate its libgcc.a runtime'; exit 1; }; \
 	  helpers="$$($(NM) -g --defined-only "$$runtime_archive" | awk 'NF == 3 && $$3 ~ /^__[a-z]*(tf[0-9]|tf[a-z]i|[a-z]itf|tf[a-z]f2|[a-z]ftf2)$$/ { print "-Wl,--undefined=" $$3 }' | sort -u)"; \
 	  test -n "$$helpers" || { echo 'GNU Fortran libgcc.a defines no binary128 helpers'; exit 1; }; \
-	  { printf '%q ' $$helpers "$$runtime_archive"; printf '%s\n' '-lgcc_s'; } > ninjars-link-before.txt
+	  $(PYTHON) -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' $$helpers "$$runtime_archive" -lgcc_s > ninjars-link-before.txt
 
 libninjars.a: rust mninjars.o
 	cp "$(CARGO_TARGET_DIR)/release/libmadloop_ninjars.a" $@
