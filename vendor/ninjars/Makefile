@@ -28,16 +28,18 @@ mninjars.o: mninjars.f90 | preflight
 # helpers. A preceding libgcc_s DSO alone can still lose to archive definitions,
 # which ignore directed IEEE rounding on GNU/Nix toolchains. An archive only
 # supplies symbols that are undefined when the linker reaches it, so force every
-# libgcc.a binary128 helper: helpers used only by the Rust objects would
-# otherwise still come from compiler_builtins inside libninjars.a.
+# libgcc.a binary128 helper. A helper first referenced later (for example by
+# objects linked after these flags) would otherwise bind to the weak
+# compiler_builtins definition inside libninjars.a, whose units are always pulled
+# into the link for other symbols.
 compiler-runtime:
 	@test "$$(uname -s)" = Linux || { echo 'NinjaRS is currently supported on Linux with GNU Fortran'; exit 1; }
 	@$(FC) --version | head -n 1 | grep -q 'GNU Fortran' || { echo 'NinjaRS currently validates compiler-runtime isolation with GNU Fortran on Linux'; exit 1; }
 	@case "$$($(FC) -dumpmachine)" in *-linux-*) ;; *) echo 'NinjaRS compiler-runtime isolation is currently validated on Linux'; exit 1 ;; esac
 	@runtime_archive="$$($(FC) -print-file-name=libgcc.a)"; \
 	  test -f "$$runtime_archive" || { echo 'GNU Fortran did not locate its libgcc.a runtime'; exit 1; }; \
-	  helpers="$$($(NM) -g --defined-only "$$runtime_archive" | awk 'NF == 3 && $$3 ~ /^__[a-z]*(tf[0-9]|tf[a-z]i|[a-z]itf|tf[a-z]f2|[a-z]ftf2)$$/ { print "-Wl,--undefined=" $$3 }' | sort -u)"; \
-	  test -n "$$helpers" || { echo 'GNU Fortran libgcc.a defines no binary128 helpers'; exit 1; }; \
+	  helpers="$$($(NM) -g --defined-only "$$runtime_archive" 2>/dev/null | awk 'NF == 3 && $$3 ~ /^__[a-z]*(tf[0-9]|tf[a-z]i|[a-z]itf|tf[a-z]f2|[a-z]ftf2)$$/ { print "-Wl,--undefined=" $$3 }' | sort -u)"; \
+	  test -n "$$helpers" || { echo 'Could not list the binary128 helpers of GNU Fortran libgcc.a with $(NM)'; exit 1; }; \
 	  $(PYTHON) -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' $$helpers "$$runtime_archive" -lgcc_s > ninjars-link-before.txt
 
 libninjars.a: rust mninjars.o

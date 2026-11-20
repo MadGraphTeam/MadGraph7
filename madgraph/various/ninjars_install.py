@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from madgraph import MadGraph5Error, MG5DIR
@@ -371,7 +372,10 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     if provenance:
         # Resolve changed path sources while retaining other locked versions.
         _run(['cargo', 'metadata', '--format-version=1'], bridge, log, environment)
-    _run(['make', 'install', 'PREFIX=' + str(installed), 'FC=' + compiler],
+    # The Makefile writes the link-order file with Python's shlex; use this
+    # interpreter rather than whichever python3 is first on PATH.
+    _run(['make', 'install', 'PREFIX=' + str(installed), 'FC=' + compiler,
+          'PYTHON=' + shlex.quote(sys.executable or 'python3')],
          bridge, log, environment)
 
     libdir = installed / 'lib'

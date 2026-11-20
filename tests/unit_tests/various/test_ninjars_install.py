@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shlex
 import shutil
+import sys
 import tempfile
 import types
 import unittest
@@ -131,6 +132,7 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertTrue((self.prefix / 'ninjars' / 'install.log').is_file())
             self.assertEqual(len(run.call_args_list), 3)
             self.assertEqual(run.call_args_list[0].args[3]['CARGO_BUILD_JOBS'], '2')
+            self.assertIn('PYTHON=' + shlex.quote(sys.executable), run.call_args_list[0].args[0])
             self.assertEqual(ninjars_install.install(self.root, self.prefix), libdir)
             self.assertEqual(len(run.call_args_list), 3)
             # A removed compiler runtime makes the install unavailable, not a link error.
