@@ -5,7 +5,9 @@ A union member is evaluated as an assignment of its template's runtime. Its
 matrix elements, colour tags, ratios and flavour-switch weights must equal
 those of an artifact generated per flavour (strict flavour-blind classes):
 conjugated members, members with exchanged beams and a six-quark union
-included. The full-colour target may have flavour unions too.
+included. The full-colour target may have flavour unions too. With
+process.flavor_union_crossing, leading-colour members may also be crossed
+(sign-flipped momenta, helicities flipped by rho).
 """
 
 from __future__ import annotations
@@ -70,7 +72,7 @@ NAMES_OF = {21: "g", 1: "d", 2: "u", 3: "s", 4: "c"}
 SWITCH_LINES = 3
 
 
-def _config(accuracy: str, unions: bool) -> RunConfig:
+def _config(accuracy: str, unions: bool, crossing: bool = False) -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy=accuracy),
@@ -78,6 +80,7 @@ def _config(accuracy: str, unions: bool) -> RunConfig:
             flavor_scheme=4,
             flavor_blind_strict=True,
             flavor_unions=unions,
+            flavor_union_crossing=crossing,
             max_coupling_orders={"QED": 0},
         ),
         generation=GenerationConfig(
@@ -123,6 +126,7 @@ def built(tmp_path_factory):
     artifacts = {
         "union": root / "lc-union",
         "flavour": root / "lc-flavour",
+        "crossing": root / "lc-crossing",
         "full": root / "full",
         "full-union": root / "full-union",
     }
@@ -131,7 +135,8 @@ def built(tmp_path_factory):
             Generator(
                 _config(
                     "full" if kind.startswith("full") else "lc",
-                    kind in ("union", "full-union"),
+                    kind in ("union", "full-union", "crossing"),
+                    crossing=kind == "crossing",
                 )
             ).generate(
                 ProcessSet.from_expressions(EXPRESSIONS, names=NAMES),
@@ -145,8 +150,10 @@ def built(tmp_path_factory):
         "flavour": ("flavour", "full"),
         "union-full": ("union", "full-union"),
         "flavour-full": ("flavour", "full-union"),
+        "crossing": ("crossing", "full"),
+        "crossing-full": ("crossing", "full-union"),
     }
-    for kind in ("union", "flavour"):
+    for kind in ("union", "flavour", "crossing"):
         build = root / f"build-{kind}"
         _make(artifacts[kind] / "API/umami", config_executable, f"BUILD_DIR={build}")
         result["umami"][kind] = [
@@ -527,9 +534,10 @@ def _ratio_call(
     return [np.array(list(o)) for o in outputs]
 
 
-def _flavour_events(documents, provider, point):
+def _flavour_events(documents, provider, point, every=False):
     """One unswitched event per (channel, flavour) of a provider: (key, event)
-    with the key (process id, physical helicity) of its first member."""
+    with the key (process id, physical helicity) of its first member; a few
+    exported helicities each, or all of them with ``every``."""
 
     data = documents[provider][0]
     events = []
@@ -538,7 +546,8 @@ def _flavour_events(documents, provider, point):
             if not entry["members"]:
                 continue  # a phase-space partner copy
             member = entry["members"][0]
-            for label in entry["runtime"]["helicity_export"][::7][:3]:
+            exported = entry["runtime"]["helicity_export"]
+            for label in exported if every else exported[::7][:3]:
                 physical = _to_physical(entry, member, data["helicities"][label])
                 events.append(
                     (
@@ -554,17 +563,34 @@ def _process(pdgs):
     return " ".join(names[:2]) + " > " + " ".join(names[2:])
 
 
+# the LC reference artifact of each reweight provider
+_REFERENCE = {
+    "union": "union",
+    "union-full": "union",
+    "flavour-full": "flavour",
+    "crossing": "crossing",
+    "crossing-full": "crossing",
+}
+
+
 @pytest.mark.parametrize(
     ("kind", "per_flavour"),
-    [("union", "flavour"), ("union-full", "flavour"), ("flavour-full", "flavour")],
+    [
+        ("union", "flavour"),
+        ("union-full", "flavour"),
+        ("flavour-full", "flavour"),
+        ("crossing", "flavour"),
+        ("crossing-full", "flavour"),
+    ],
 )
 def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
     built, kind, per_flavour
 ):
-    """LC unions, full-colour unions and both against per-flavour artifacts."""
+    """LC unions (crossed or not), full-colour unions and both against
+    per-flavour artifacts."""
 
     artifacts = built["artifacts"]
-    reference = "flavour" if kind == "flavour-full" else "union"
+    reference = _REFERENCE[kind]
     unions, flavours = built["umami"][reference], built["umami"][per_flavour]
     assert len(unions) == len(flavours) == 1
     ((_, union),) = built["reweight"][kind].items()
@@ -579,7 +605,7 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
         densities = _densities()
         for point in _points(2):
             ours = _flavour_events(unions, 0, point)
-            theirs = dict(_flavour_events(flavours, 0, point))
+            theirs = dict(_flavour_events(flavours, 0, point, every=True))
             events = [event for _, event in ours]
             other = [theirs[key] for key, _ in ours]
             # Helicities with numerically zero amplitudes (1e-30 of the largest)
@@ -696,9 +722,9 @@ def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(
         assert lc_library.umami_free(lc_handle) == 0
 
 
-def _assert_switched_draws_equal(union, flavour, umami, point):
+def _assert_switched_draws_equal(union, flavour, umami, point, reference="union"):
     """union and flavour are (directory, sidecar, library) of reweight providers
-    over the LC UMAMI documents umami["union"] and umami["flavour"]."""
+    over the LC UMAMI documents umami[reference] and umami["flavour"]."""
 
     (union_dir, union_sidecar, union_library) = union
     (flavour_dir, flavour_sidecar, flavour_library) = flavour
@@ -706,9 +732,9 @@ def _assert_switched_draws_equal(union, flavour, umami, point):
     flavour_handle = _handle(flavour_library, flavour_dir)
     try:
         densities = _densities()
-        theirs = dict(_flavour_events(umami["flavour"], 0, point))
+        theirs = dict(_flavour_events(umami["flavour"], 0, point, every=True))
         checked = 0
-        for key, event in _flavour_events(umami["union"], 0, point):
+        for key, event in _flavour_events(umami[reference], 0, point):
             other = theirs[key]
             if not all(
                 np.array_equal(a, b) and np.array_equal(a, c)
@@ -735,7 +761,7 @@ def _assert_switched_draws_equal(union, flavour, umami, point):
             )
             draws = []
             for library, handle, sidecar, documents, ev in (
-                (union_library, union_handle, union_sidecar, umami["union"], event),
+                (union_library, union_handle, union_sidecar, umami[reference], event),
                 (flavour_library, flavour_handle, flavour_sidecar, umami["flavour"], other),
             ):
                 data = documents[0][0]
@@ -767,29 +793,112 @@ def _assert_switched_draws_equal(union, flavour, umami, point):
         assert flavour_library.umami_free(flavour_handle) == 0
 
 
-@pytest.mark.parametrize("kind", ["union", "union-full"])
+@pytest.mark.parametrize("kind", ["union", "union-full", "crossing", "crossing-full"])
 def test_switched_draws_equal_per_flavour_artifacts(built, kind):
     """The same random numbers switch an event to the same target, helicity and
-    colour flow with the same ratio, with unions and per flavour."""
+    colour flow with the same ratio, with unions (crossed too) and per flavour."""
 
     ((union),) = built["reweight"][kind].values()
     ((flavour),) = built["reweight"]["flavour"].values()
-    _assert_switched_draws_equal(union, flavour, built["umami"], _points(1)[0])
+    _assert_switched_draws_equal(
+        union, flavour, built["umami"], _points(1)[0], _REFERENCE[kind]
+    )
 
 
-def test_switch_shares_cover_every_flavour_once(built):
+def test_crossed_reweight_tables_carry_their_signs(built):
+    """The crossing artifact has crossed members; their reference rows and switch
+    evaluations carry momentum signs, the targets none."""
+
+    groups = json.loads(
+        (built["artifacts"]["crossing"] / "process-groups.json").read_text()
+    )
+    crossed = {
+        member["process_id"]
+        for group in groups["groups"]
+        for member in group["members"]
+        if "crossing_momentum_signs" in member
+    }
+    assert crossed
+    ((output, _, _),) = built["reweight"]["crossing"].values()
+    header = next(output.glob("reweight_*.h")).read_text()
+    assert "_signs[] = {" in header and "reweight_switch_s" in header
+    from pyamplicol.artifacts.umami_reweight import switch_catalogue
+
+    ((data, _),) = built["umami"]["crossing"]
+    catalogue = switch_catalogue(data, groups, SWITCH_LINES)
+    signed = [e for e in catalogue["evaluations"] if "signs" in e]
+    assert signed and {e["assignment_key"] for e in signed} <= crossed
+    for evaluation in signed:
+        for r, slot in enumerate(evaluation["legs"]):
+            crossed_slot = (r < 2) != (slot < 2)
+            assert evaluation["signs"][r] == (-1 if crossed_slot else 1)
+            assert evaluation["helicity_signs"][r] == 1 or crossed_slot
+    # the full-colour targets stay unsigned
+    with pytest.raises(ValueError, match="reweight targets with crossed"):
+        write_reweight_provider(
+            built["artifacts"]["flavour"],
+            built["artifacts"]["crossing"],
+            output.parent / "reweight-crossed-target",
+        )
+
+
+def test_reweight_provider_without_signs_is_refused(built, tmp_path):
+    """Reference rows that lose the signs of crossed assignments fail at load
+    (the core's crossing of the assignment differs)."""
+
+    import re
+
+    output = tmp_path / "stripped"
+    (identifier,) = write_reweight_provider(
+        built["artifacts"]["crossing"],
+        built["artifacts"]["full"],
+        output,
+        switch_lines=SWITCH_LINES,
+    )
+    header = output / f"reweight_{identifier}.h"
+    text, count = re.subn(
+        r"_permutation, reweight_c\d+_f\d+_signs,", "_permutation, NULL,",
+        header.read_text(),
+    )
+    assert count
+    header.write_text(text)
+    _make(output, _config_executable())
+    library = _library(output / f"build/libreweight_{identifier}.so")
+    handle = ct.c_void_p()
+    if library.umami_initialize(ct.byref(handle), os.fsencode(output)) != 0:
+        return
+    try:
+        ((data, _),) = built["umami"]["crossing"]
+        point = _points(1)[0]
+        events = [
+            (point, channel, flavour, entry["runtime"]["helicity_export"][0])
+            for channel, description in enumerate(data["channels"])
+            for flavour, entry in enumerate(description["processes"])
+            if "momentum_signs" in entry["runtime"]
+        ]
+        assert events
+        with pytest.raises(AssertionError):
+            _ratio_call(library, handle, events, _densities(), switch=False)
+    finally:
+        assert library.umami_free(handle) == 0
+
+
+@pytest.mark.parametrize("kind", ["union", "crossing"])
+def test_switch_shares_cover_every_flavour_once(built, kind):
     """The union catalogue lists the same orderings (flavour, beam order, final
     order) and weights as the per-flavour one, and fewer native calls."""
 
     from pyamplicol.artifacts.umami_reweight import switch_catalogue
 
     catalogues = {}
-    for kind in ("union", "flavour"):
-        ((data, _),) = built["umami"][kind]
+    for name in (kind, "flavour"):
+        ((data, _),) = built["umami"][name]
         groups = json.loads(
-            (built["artifacts"][kind] / "process-groups.json").read_text()
+            (built["artifacts"][name] / "process-groups.json").read_text()
         )
-        catalogues[kind] = switch_catalogue(data, groups, SWITCH_LINES)
+        catalogues["union" if name == kind else name] = switch_catalogue(
+            data, groups, SWITCH_LINES
+        )
 
     def orderings(catalogue):
         result = {}
@@ -810,16 +919,19 @@ def test_switch_shares_cover_every_flavour_once(built):
     assert len(catalogues["union"]["calls"]) < len(catalogues["flavour"]["calls"])
 
 
-def test_relabelled_switch_calls_equal_their_evaluations(built):
+@pytest.mark.parametrize("kind", ["union", "crossing"])
+def test_relabelled_switch_calls_equal_their_evaluations(built, kind):
     """With the union's pattern table, the switch evaluates every template leg
     type once: an evaluation at legs l is its assignment relabelled by
     pi[r] = c^-1[l[r]] at the call's legs c. Each must equal the assignment at
-    its own legs (the phase-5 call), with the same orderings."""
+    its own legs (the phase-5 call), with the same orderings. Every relabelling
+    keeps template sides and particles (the core's symmetry check), so a call's
+    requests share its crossing."""
 
     from pyamplicol.artifacts.umami_reweight import switch_catalogue
 
-    ((data, _),) = built["umami"]["union"]
-    artifact = built["artifacts"]["union"]
+    ((data, _),) = built["umami"][kind]
+    artifact = built["artifacts"][kind]
     groups = json.loads((artifact / "process-groups.json").read_text())
     assert any("flavour_union_pattern_pairs" in group for group in groups["groups"])
     plain = json.loads(json.dumps(groups))
@@ -834,10 +946,31 @@ def test_relabelled_switch_calls_equal_their_evaluations(built):
     assert any(call.get("permutations") for call in relabelled["calls"])
     runtimes = {}
     points = _points(2)
+
+    def gather(point, evaluation):
+        signs = evaluation.get("signs") or [1] * len(evaluation["legs"])
+        return tuple(
+            tuple(s * v for v in point[slot])
+            for s, slot in zip(signs, evaluation["legs"], strict=True)
+        )
+
     for call in relabelled["calls"]:
         if call["assignments"] is None:
             continue
         process = data["runtime_processes"][call["process"]]
+        pdgs = process["pdgs"]
+        for permutation in call["permutations"] or ():
+            # Python copy of the core's validate_symmetry
+            assert sorted(permutation) == list(range(len(pdgs)))
+            assert all(
+                (r < 2) == (image < 2) and pdgs[r] == pdgs[image]
+                for r, image in enumerate(permutation)
+            )
+        first = relabelled["evaluations"][call["evaluations"][0]]
+        assert all(
+            relabelled["evaluations"][e].get("signs") == first.get("signs")
+            for e in call["evaluations"]
+        )
         runtime = runtimes.setdefault(
             call["process"], Runtime.load(artifact, process=process["id"])
         )
@@ -849,11 +982,11 @@ def test_relabelled_switch_calls_equal_their_evaluations(built):
                 call["assignments"], permutations, strict=True
             )
         ]
-        gathered = [tuple(p[slot] for slot in call["legs"]) for p in points]
+        gathered = [gather(p, first) for p in points]
         values = runtime.evaluate_assignments(gathered, [ids] * len(points))
         for evaluation, entry in zip(call["evaluations"], call["entries"], strict=True):
             own = relabelled["evaluations"][evaluation]
-            at_legs = [tuple(p[slot] for slot in own["legs"]) for p in points]
+            at_legs = [gather(p, own) for p in points]
             expected = runtime.evaluate_assignments(
                 at_legs, [[own["assignment"]]] * len(points)
             )
@@ -997,7 +1130,7 @@ def test_massive_switch_ratios_equal_with_and_without_unions(massive):
         densities = _densities()
         for point in _massive_points(2):
             ours = _flavour_events(unions, 0, point)
-            theirs = dict(_flavour_events(flavours, 0, point))
+            theirs = dict(_flavour_events(flavours, 0, point, every=True))
             events = [event for _, event in ours]
             other = [theirs[key] for key, _ in ours]
             lc = np.array(

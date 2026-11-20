@@ -233,11 +233,18 @@ def test_crossed_metadata_is_schema_5_and_keeps_templates_together(built):
             else:
                 assert "momentum_signs" not in record
     assert seen == set(crossed)
-    with pytest.raises(ValueError, match="do not support crossed flavour-union"):
+    # a crossing artifact is a reweight reference, never a target (FC crossing)
+    write_reweight_provider(
+        built["artifacts"]["crossing"],
+        built["artifacts"]["flavour"],
+        built["root"] / "reweight",
+        switch_lines=2,
+    )
+    with pytest.raises(ValueError, match="reweight targets with crossed"):
         write_reweight_provider(
-            built["artifacts"]["crossing"],
             built["artifacts"]["flavour"],
-            built["root"] / "reweight",
+            built["artifacts"]["crossing"],
+            built["root"] / "reweight-target",
         )
 
 

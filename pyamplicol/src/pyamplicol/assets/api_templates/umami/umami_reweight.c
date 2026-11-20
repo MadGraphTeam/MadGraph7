@@ -168,8 +168,24 @@ static bool assignment_matches(RusticolRuntimeHandle *runtime, int assignment,
         strcmp(name, key) == 0;
 }
 
+/* Whether the core's momentum (helicity = false) or helicity signs of an assignment
+ * are `expected` (NULL: all +1, uncrossed). */
+static bool signs_match(RusticolRuntimeHandle *runtime, uint32_t assignment,
+                        signed char const *expected, bool helicity) {
+    int32_t signs[64];
+    size_t required = 0;
+    int status = helicity
+        ? rusticol_runtime_assignment_helicity_signs(runtime, assignment, signs, 64, &required)
+        : rusticol_runtime_assignment_momentum_signs(runtime, assignment, signs, 64, &required);
+    if (status != RUSTICOL_STATUS_OK || required != reweight_provider.particle_count)
+        return false;
+    for (size_t j = 0; j < required; ++j)
+        if (signs[j] != (expected == NULL ? 1 : expected[j])) return false;
+    return true;
+}
+
 /* Whether the flavour-union assignments a reference (side 0) or target process is
- * used with are those of its runtime. */
+ * used with are those of its runtime, with the same crossings. */
 static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t process,
                                    int side) {
     for (size_t c = 0; c < reweight_provider.channel_count; ++c)
@@ -180,19 +196,26 @@ static bool assignments_compatible(RusticolRuntimeHandle *runtime, size_t proces
                 side == 0 ? entry->reference_assignment : entry->target_assignment;
             if (index != process || assignment < 0) continue;
             if (!assignment_matches(runtime, assignment, side == 0
-                    ? entry->assignment_key : entry->target_assignment_key)) return false;
+                    ? entry->assignment_key : entry->target_assignment_key) ||
+                !signs_match(runtime, (uint32_t)assignment, side == 0
+                    ? entry->reference_signs : entry->target_signs, false)) return false;
         }
     ReweightSwitch const *sw = reweight_provider.flavor_switch;
     for (size_t e = 0; sw != NULL && side == 0 && e < sw->evaluation_count; ++e) {
         ReweightSwitchEvaluation const *evaluation = &sw->evaluations[e];
         if (evaluation->process != process || evaluation->assignment < 0) continue;
+        uint32_t assignment = (uint32_t)evaluation->assignment;
         if (!assignment_matches(runtime, evaluation->assignment,
-                evaluation->assignment_key)) return false;
+                evaluation->assignment_key) ||
+            !signs_match(runtime, assignment, evaluation->signs, false) ||
+            !signs_match(runtime, assignment, evaluation->helicity_signs, true))
+            return false;
     }
     for (size_t t = 0; sw != NULL && side == 1 && t < sw->target_count; ++t) {
         ReweightSwitchTarget const *target = &sw->targets[t];
         if (target->target_process != process || target->assignment < 0) continue;
-        if (!assignment_matches(runtime, target->assignment, target->assignment_key))
+        if (!assignment_matches(runtime, target->assignment, target->assignment_key) ||
+            !signs_match(runtime, (uint32_t)target->assignment, NULL, false))
             return false;
     }
     return true;
@@ -232,6 +255,13 @@ static UmamiStatus ensure_loaded(Instance *instance, int side, size_t index) {
             status = native_error(rusticol_runtime_relabel_assignment(
                 runtime, call->assignments[e], &call->entry_permutations[e * n], n,
                 &instance->relabelled[g][e]));
+        /* a relabelled request reads the call's gather: its crossing must be the call's */
+        signed char const *signs = sw->evaluations[call->evaluations[0]].signs;
+        for (size_t e = 0; status == UMAMI_SUCCESS && e < call->entry_count; ++e)
+            if (!signs_match(runtime, instance->relabelled[g][e], signs, false)) {
+                fprintf(stderr, "umami: a relabelled switch request changes its crossing\n");
+                status = UMAMI_ERROR;
+            }
         if (status != UMAMI_SUCCESS) { (void)rusticol_runtime_free(runtime); return status; }
     }
     for (size_t i = 0; i < instance->override_count; ++i) {
@@ -529,10 +559,12 @@ static UmamiStatus switch_totals(Instance *instance, size_t count, size_t stride
         ReweightSwitchEvaluation const *evaluation = &sw->evaluations[call->evaluations[0]];
         UmamiStatus status = ensure_loaded(instance, 0, evaluation->process);
         if (status != UMAMI_SUCCESS) return status;
+        /* the call's evaluations share their crossing (same template sides per slot) */
+        signed char const *signs = evaluation->signs;
         for (size_t i = 0; i < count; ++i)
             for (size_t j = 0; j < n; ++j)
                 for (size_t k = 0; k < 4; ++k)
-                    instance->batch[4 * (n * i + j) + k] =
+                    instance->batch[4 * (n * i + j) + k] = (signs == NULL ? 1.0 : signs[j]) *
                         momenta[offset + i + stride * (n * k + evaluation->legs[j])];
         RusticolRuntimeHandle *runtime = instance->reference[evaluation->process];
         if (call->assignments == NULL) {
@@ -615,10 +647,13 @@ static void gather_switched(Instance *instance, double const *momenta, size_t st
     for (size_t i = 0; i < count; ++i) {
         SwitchedEvent const *s = &instance->switched[sorted[i]];
         ReweightSwitchTarget const *target = &sw->targets[s->target];
-        size_t const *legs = target_legs ? target->legs : sw->evaluations[target->evaluation].legs;
+        ReweightSwitchEvaluation const *evaluation = &sw->evaluations[target->evaluation];
+        size_t const *legs = target_legs ? target->legs : evaluation->legs;
+        /* the targets are uncrossed */
+        signed char const *signs = target_legs ? NULL : evaluation->signs;
         for (size_t j = 0; j < n; ++j)
             for (size_t k = 0; k < 4; ++k)
-                instance->batch[4 * (n * i + j) + k] =
+                instance->batch[4 * (n * i + j) + k] = (signs == NULL ? 1.0 : signs[j]) *
                     momenta[s->event + stride * (n * k + legs[j])];
     }
 }
@@ -641,7 +676,9 @@ static int compare_helicity_keys(void const *a, void const *b) {
 static uint32_t const *helicity_order(Instance *instance, size_t e, RuntimeTables const *lc) {
     if (instance->helicity_orders[e] != NULL) return instance->helicity_orders[e];
     size_t n = reweight_provider.particle_count, count = lc->helicity_count;
-    size_t const *legs = reweight_provider.flavor_switch->evaluations[e].legs;
+    ReweightSwitchEvaluation const *evaluation = &reweight_provider.flavor_switch->evaluations[e];
+    size_t const *legs = evaluation->legs;
+    signed char const *rho = evaluation->helicity_signs;
     int *vectors = malloc((count * n + 1) * sizeof(int));
     HelicityKey *keys = malloc((count + 1) * sizeof(*keys));
     uint32_t *order = malloc((count + 1) * sizeof(uint32_t));
@@ -650,7 +687,8 @@ static uint32_t const *helicity_order(Instance *instance, size_t e, RuntimeTable
         return NULL;
     }
     for (size_t h = 0; h < count; ++h) {
-        for (size_t j = 0; j < n; ++j) vectors[h * n + legs[j]] = lc->helicities[h * n + j];
+        for (size_t j = 0; j < n; ++j)
+            vectors[h * n + legs[j]] = (rho == NULL ? 1 : rho[j]) * lc->helicities[h * n + j];
         keys[h] = (HelicityKey){&vectors[h * n], n, (uint32_t)h};
     }
     qsort(keys, count, sizeof(*keys), compare_helicity_keys);
@@ -716,16 +754,19 @@ static UmamiStatus draw_switched(Instance *instance, SwitchedEvent *s, RuntimeTa
     }
     /* past the flows: a colour without a switch flow (or rounding at the end) */
     if (!drawn && unmatched > 0.0) chosen = -1;
+    /* the runtime helicity in event slots, rho applied at crossed slots */
     int const *vector = &lc->helicities[h * n];
+    signed char const *rho = evaluation->helicity_signs;
+    for (size_t j = 0; j < n; ++j)
+        instance->slot_helicities[evaluation->legs[j]] = (rho == NULL ? 1 : rho[j]) * vector[j];
     int exported = -1, fc_helicity = -1;
     for (size_t e = 0; exported < 0 && e < reweight_provider.exported_helicity_count; ++e) {
         bool equal = true;
         for (size_t j = 0; equal && j < n; ++j)
-            equal = sw->helicities[e * n + evaluation->legs[j]] == vector[j];
+            equal = sw->helicities[e * n + j] == instance->slot_helicities[j];
         if (equal) exported = (int)e;
     }
     /* the target helicity of the same event-slot values, in the target's legs */
-    for (size_t j = 0; j < n; ++j) instance->slot_helicities[evaluation->legs[j]] = vector[j];
     for (size_t f = 0; fc_helicity < 0 && f < fc->helicity_count; ++f) {
         bool equal = true;
         for (size_t j = 0; equal && j < n; ++j)
@@ -869,13 +910,17 @@ static UmamiStatus evaluate_points(Instance *instance, int side, RusticolRuntime
             for (end = start + 1; end < count && alpha_s[events[end]] == alpha_s[events[start]];)
                 ++end;
         size_t size = end - start;
-        for (size_t i = 0; i < size; ++i)
+        for (size_t i = 0; i < size; ++i) {
+            ReweightFlavour const *entry = entries[start + i];
+            /* crossed union members read sign-flipped momenta (q = sigma p) */
+            signed char const *signs = side == 0 ? entry->reference_signs : entry->target_signs;
+            size_t const *permutation =
+                side == 0 ? entry->permutation : entry->target_permutation;
             for (size_t j = 0; j < n; ++j)
                 for (size_t k = 0; k < 4; ++k)
-                    instance->batch[4 * (n * i + j) + k] = momenta[
-                        events[start + i] + stride * (n * k + (side == 0
-                            ? entries[start + i]->permutation[j]
-                            : entries[start + i]->target_permutation[j]))];
+                    instance->batch[4 * (n * i + j) + k] = (signs == NULL ? 1.0 : signs[j]) *
+                        momenta[events[start + i] + stride * (n * k + permutation[j])];
+        }
         double previous_real = 0.0, previous_imaginary = 0.0;
         bool changed = false;
         UmamiStatus status;

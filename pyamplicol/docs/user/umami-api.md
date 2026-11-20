@@ -247,7 +247,8 @@ A provider's metadata contains:
   `helicity_export` and helicity tables already give the member's own
   helicities, and its colour tags are those of the member. Documents with such
   records have `schema_version` 5; all others stay at 4, and a reader refuses
-  `momentum_signs` under 4.
+  `momentum_signs` under 4. Reweight providers take such an artifact as their
+  leading-colour reference (the flavour switch too), not as their target.
 - `grouping` and `runtime_processes`: the assumptions and available coverage
   needed to interpret those contributions correctly.
 

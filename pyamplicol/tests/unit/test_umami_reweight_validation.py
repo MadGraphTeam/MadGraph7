@@ -237,11 +237,159 @@ def test_metadata_schema_versions(tmp_path, version, signs, message):
             load_umami_metadata(artifact)
 
 
-def test_reweight_refuses_crossed_members(tmp_path):
+def test_reweight_refuses_crossed_targets(tmp_path):
     crossed = _document()
     crossed["schema_version"] = 5
     crossed["channels"][0]["processes"][0]["runtime"]["momentum_signs"] = [-1, 1, 1, -1]
-    lc = _write(tmp_path / "lc", crossed)
-    full = _write(tmp_path / "full", _document())
-    with pytest.raises(ValueError, match="do not support crossed flavour-union"):
+    full = _write(tmp_path / "full", crossed)
+    lc = _write(tmp_path / "lc", _document())
+    with pytest.raises(ValueError, match="reweight targets with crossed"):
         write_reweight_provider(lc, full, tmp_path / "out")
+
+
+def _crossed_reference(signs):
+    """A union reference whose flavour is assignment 1 with momentum signs, and a
+    full-colour target of the member's own process."""
+    reference = _document()
+    reference["schema_version"] = 5
+    reference["provider"]["incoming_count"] = 2
+    reference["pdg_ids"] = [[2, 21, 2, 21]]
+    entry = reference["channels"][0]["processes"][0]
+    entry["matrix_elements"] = [{"pdg_ids": 0}]
+    entry["runtime"].update(
+        assignment=1, assignment_key="u_g_to_u_g", momentum_signs=signs
+    )
+    target = _document()
+    target["runtime_processes"] = [
+        {
+            **_process("u_g_to_u_g"),
+            "pdgs": [2, 21, 2, 21],
+            "helicity_ids": ["h:1,1,1,1"],
+        }
+    ]
+    target["channels"][0]["processes"][0]["members"] = [
+        {
+            "process_id": "u_g_to_u_g",
+            "pdgs": [2, 21, 2, 21],
+            "runtime": {"process_index": 0, "permutation": [0, 1, 2, 3], "factor": 1.0},
+        }
+    ]
+    return reference, target
+
+
+def test_crossed_reference_rows_carry_their_signs():
+    reference, target = _crossed_reference([1, -1, -1, 1])
+    header = reweight_header(reference, [target], "lc", "full")
+    assert "static const signed char reweight_c0_f0_signs[] = {1, -1, -1, 1};" in header
+    assert (
+        "{0, 0, reweight_c0_f0_permutation, reweight_c0_f0_signs, "
+        "reweight_c0_f0_reference, reweight_c0_f0_target, 1, "
+        '"u_g_to_u_g", reweight_c0_f0_target_permutation, NULL, 1.0, -1, NULL},'
+    ) in header
+    # uncrossed rows: no signs on either side
+    assert "reweight_c0_f0_permutation, NULL, reweight_c0_f0_reference" in (
+        reweight_header(_document(), [_document()], "lc", "full")
+    )
+    for signs in ([1, -1, 2, 1], [1, -1, True, 1]):
+        bad, _ = _crossed_reference(signs)
+        with pytest.raises(ValueError, match=r"momentum signs|integer"):
+            reweight_header(bad, [target], "lc", "full")
+
+
+def test_canonical_legs_keep_crossed_slots():
+    from pyamplicol.artifacts.umami_reweight import _canonical_legs
+
+    # identical outgoing gluons are sorted, a crossed one (incoming slot 1) is not
+    assert _canonical_legs([2, -2, 21, 21], [0, 1, 3, 2], 2) == (0, 1, 2, 3)
+    assert _canonical_legs([2, 2, 21, 21], [0, 3, 2, 1], 2) == (0, 3, 2, 1)
+    assert _canonical_legs([2, 2, 21, 21, 21], [0, 4, 3, 1, 2], 2) == (0, 4, 2, 1, 3)
+    # a template-initial slot reading an outgoing gluon joins the outgoing ones
+    assert _canonical_legs([21, 2, 21, 2, 21], [4, 1, 2, 3, 0], 2) == (2, 1, 4, 3, 0)
+
+
+def _record(identifier, pdgs, permutation, signs=None, rho=None):
+    record = {
+        "process_id": identifier,
+        "pdgs": list(pdgs),
+        "initial_count": 2,
+        "permutation": list(permutation),
+        "conjugated": False,
+        "factor": {"numerator": 1, "denominator": 1},
+    }
+    if signs is not None:
+        record.update(
+            flavour_union_patterns=[0],
+            flavour_union_pattern_signs=[1],
+            crossing_momentum_signs=list(signs),
+        )
+        if rho is not None:
+            record["crossing_helicity_signs"] = list(rho)
+    return record
+
+
+def _crossed_groups(signs=(1, -1, -1, 1), rho=(1, -1, 1, 1)):
+    # template u u~ > g g; crossed member u g > u g (slots 1 and 2 cross)
+    return {
+        "groups": [
+            {
+                "representative": {"process_id": "r0"},
+                "members": [
+                    _record("r0", [2, -2, 21, 21], [0, 1, 2, 3]),
+                    _record("u_g_to_u_g", [2, 21, 2, 21], [0, 2, 1, 3], signs, rho),
+                ],
+            }
+        ]
+    }
+
+
+def test_switch_evaluations_of_crossed_members_carry_their_signs():
+    reference = _switch_reference(([2, -2, 21, 21], [2, 21, 2, 21]), [0.0] * 4)
+    reference["runtime_processes"] = reference["runtime_processes"][:1]
+    catalogue = switch_catalogue(reference, _crossed_groups(), 1)
+    crossed = [e for e in catalogue["evaluations"] if e["assignment"] == 1]
+    plain = [e for e in catalogue["evaluations"] if e["assignment"] == 0]
+    assert crossed and plain
+    assert all("signs" not in e for e in plain)
+    for evaluation in crossed:
+        legs = evaluation["legs"]
+        assert evaluation["signs"] == [
+            -1 if (r < 2) != (slot < 2) else 1 for r, slot in enumerate(legs)
+        ]
+        assert evaluation["signs"] == [1, -1, -1, 1]
+        assert evaluation["helicity_signs"] == [1, -1, 1, 1]
+    # one native call per crossing: never a crossed and an uncrossed request together
+    for call in catalogue["calls"]:
+        kinds = {
+            tuple(catalogue["evaluations"][e].get("signs") or ())
+            for e in call["evaluations"]
+        }
+        assert len(kinds) == 1
+    from pyamplicol.artifacts.umami_reweight import _switch_tables
+
+    reference["helicities"] = [[1, 1, 1, 1]]
+    lines: list[str] = []
+    _switch_tables(reference, catalogue, lambda *_: (0, None, 1.0, -1, None), lines)
+    index = catalogue["evaluations"].index(crossed[0])
+    prefix = "static const signed char reweight_switch_"
+    assert f"{prefix}s{index}[] = {{1, -1, -1, 1}};" in lines
+    assert f"{prefix}h{index}[] = {{1, -1, 1, 1}};" in lines
+    assert any(
+        line.endswith(f"reweight_switch_s{index}, reweight_switch_h{index}}},")
+        for line in lines
+    )
+    assert any(line.endswith('"r0", NULL, NULL},') for line in lines)
+
+
+@pytest.mark.parametrize(
+    ("signs", "rho"),
+    [
+        ((1, 1, -1, 1), (1, 1, 1, 1)),
+        ((1, -1, -1, 1), (1, -1, 1, -1)),
+        ((1, -1, -1, 1), None),
+    ],
+)
+def test_switch_refuses_inconsistent_crossings(signs, rho):
+    reference = _switch_reference(([2, -2, 21, 21], [2, 21, 2, 21]), [0.0] * 4)
+    reference["runtime_processes"] = reference["runtime_processes"][:1]
+    with pytest.raises(ValueError, match="inconsistent crossing signs"):
+        switch_catalogue(reference, _crossed_groups(signs, rho), 1)

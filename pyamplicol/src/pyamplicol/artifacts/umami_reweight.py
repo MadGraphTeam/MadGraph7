@@ -13,8 +13,10 @@ with the parton densities passed in (parameter ``flavor_switch``).
 
 A flavour-union reference evaluates its members as assignments of their
 template's runtime (one native call per template and slot permutation in the
-switch). Full-colour targets are the members' own processes of the target
-artifact, or assignments of its templates when it has flavour unions too.
+switch). A crossed member (process.flavor_union_crossing) reads sign-flipped
+momenta with helicities flipped by rho; a call of the switch shares one crossing.
+Full-colour targets are the members' own processes of the target artifact, or
+assignments of its templates when it has flavour unions too (never crossed).
 """
 
 from __future__ import annotations
@@ -143,13 +145,48 @@ def _first_unused(source: Sequence[int], destination: Sequence[int]) -> list[int
 
 
 def _canonical_legs(pdgs: Sequence[int], legs: Sequence[int], incoming: int) -> tuple:
-    # the matrix element is symmetric in identical outgoing legs
+    # the matrix element is symmetric in identical outgoing legs: the slots reading
+    # an outgoing event slot (template-initial ones too when crossed)
     legs = list(legs)
-    for pdg in set(pdgs[incoming:]):
-        slots = [k for k in range(incoming, len(pdgs)) if pdgs[k] == pdg]
-        for k, value in zip(slots, sorted(legs[k] for k in slots)):
+    for pdg in set(pdgs):
+        slots = [k for k in range(len(pdgs)) if pdgs[k] == pdg and legs[k] >= incoming]
+        for k, value in zip(slots, sorted(legs[k] for k in slots), strict=True):
             legs[k] = value
     return tuple(legs)
+
+
+def _member_crossing(
+    member: Mapping[str, Any], incoming: int
+) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    """(sigma, rho) in template slot order of a crossed flavour-union member
+    record, sigma checked against its legs; None when uncrossed."""
+    signs = member.get("crossing_momentum_signs")
+    if signs is None:
+        return None
+    identifier = member.get("process_id")
+    if member["conjugated"] or "flavour_union_patterns" not in member:
+        raise ValueError(
+            f"crossed member {identifier!r} must be an unconjugated union member"
+        )
+    permutation = [_integer(v) for v in member["permutation"]]
+    initial = _integer(member["initial_count"])
+    expected = [-1 if (r < incoming) != (leg < initial) else 1
+                for r, leg in enumerate(permutation)]
+    helicity = member.get("crossing_helicity_signs")
+    consistent = (
+        [_integer(v) for v in signs] == expected
+        and helicity is not None
+        and len(helicity) == len(expected)
+        and all(
+            _integer(h) in (-1, 1) and (h == 1 or s == -1)
+            for h, s in zip(helicity, expected, strict=True)
+        )
+    )
+    if not consistent:
+        raise ValueError(
+            f"crossed member {identifier!r} has inconsistent crossing signs"
+        )
+    return tuple(expected), tuple(int(h) for h in helicity)
 
 
 def _canonical_tags(flow: Sequence[Sequence[int]]) -> tuple:
@@ -207,8 +244,9 @@ def switch_catalogue(
         raise ValueError("the flavour switch needs two incoming partons")
     processes = reference["runtime_processes"]
     by_id = {process["id"]: index for index, process in enumerate(processes)}
-    # (runtime process, pdgs, permutation, conjugated, factor, assignment); a
-    # flavour-union assignment (>= 0) includes its factor in the runtime value
+    # (runtime process, pdgs, permutation, conjugated, factor, assignment, rho); a
+    # flavour-union assignment (>= 0) includes its factor in the runtime value, a
+    # crossed one has its helicity signs rho (None: uncrossed)
     members = []
     # per (runtime, assignment): its process id and its value class (equal
     # patterns, signs and factor give equal values, so they share evaluations)
@@ -218,7 +256,7 @@ def switch_catalogue(
     if groups is None:
         members = [
             (index, list(process["pdgs"]), list(range(len(process["pdgs"]))), False,
-             1.0, -1)
+             1.0, -1, None)
             for index, process in enumerate(processes)
         ]
     else:
@@ -237,11 +275,7 @@ def switch_catalogue(
                 )
             assignment = 0
             for member in group["members"]:
-                if "crossing_momentum_signs" in member:
-                    raise ValueError(
-                        f"the flavour switch cannot use the crossed member "
-                        f"{member['process_id']!r} yet"
-                    )
+                crossing = _member_crossing(member, incoming)
                 if union and member["process_id"] != template:
                     if "flavour_union_patterns" not in member:
                         raise ValueError(
@@ -257,6 +291,7 @@ def switch_catalogue(
                     bool(member["conjugated"]),
                     factor["numerator"] / factor["denominator"],
                     assignment if union else -1,
+                    None if crossing is None else crossing[1],
                 ))
                 if union:
                     value_class = (
@@ -316,7 +351,7 @@ def switch_catalogue(
     ]
     n_partons = math.factorial(len(parton_slots))
     for (arrangement, sigma), (
-        rep, pdgs, permutation, conjugated, factor, assignment
+        rep, pdgs, permutation, conjugated, factor, assignment, rho
     ) in itertools.product(enumerate(arrangements), members):
         rep_pdgs = processes[rep]["pdgs"]
         # the member process id names a flavour-union assignment (checked at load)
@@ -358,11 +393,20 @@ def switch_catalogue(
                 legs = _canonical_legs(
                     rep_pdgs, [slots[r] for r in permutation], incoming
                 )
+                # crossed slots: template side != event side (sigma, checked above)
+                if rho is None and any(
+                    (r < incoming) != (slot < incoming) for r, slot in enumerate(legs)
+                ):
+                    raise ValueError(f"flavour {pdgs} changes sides without a crossing")
                 evaluation = evaluations.setdefault(
                     (rep, value_class, legs), len(evaluations)
                 )
                 if evaluation == len(described):
-                    described.append((rep, assignment, legs, assignment_key))
+                    described.append((rep, assignment, legs, assignment_key, rho))
+                elif described[evaluation][4] != rho:
+                    raise ValueError(
+                        f"flavour {pdgs} has two crossings at one evaluation"
+                    )
                 target = -1
                 if lines >= switch_lines:
                     target = len(targets)
@@ -373,8 +417,11 @@ def switch_catalogue(
                             tags = color_flows[flows[rep][flow_id]]
                             slot_tags = [[0, 0] for _ in legs]
                             for j, slot in enumerate(legs):
+                                # template flows are reversed at template-initial slots
                                 pair = list(tags[j])
-                                slot_tags[slot] = pair[::-1] if conjugated else pair
+                                crossed = (j < incoming) != (slot < incoming)
+                                flip = crossed != conjugated
+                                slot_tags[slot] = pair[::-1] if flip else pair
                             found.append((_canonical_tags(slot_tags), slot_index, slot_tags))
                         # the flows in physical order, the order of the colour draw
                         colors = target_colors[rep, legs, conjugated] = ([], [])
@@ -403,17 +450,20 @@ def switch_catalogue(
     # is its assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c.
     calls: dict[tuple, dict[str, Any]] = {}
     entry_of: dict[tuple, int] = {}
-    for index, (rep, assignment, legs, _) in enumerate(described):
+    for index, (rep, assignment, legs, _, _) in enumerate(described):
         table = pattern_tables.get(rep) if assignment >= 0 else None
         if assignment < 0:
             key: tuple = (rep, legs, index)
         elif table is None:
             key = (rep, legs)
         else:
+            # template particle and side per event slot: relabellings keep both
             types = [0] * len(legs)
+            sides = [False] * len(legs)
             for r, slot in enumerate(legs):
                 types[slot] = processes[rep]["pdgs"][r]
-            key = (rep, tuple(types))
+                sides[slot] = r < incoming
+            key = (rep, tuple(types), tuple(sides))
         call = calls.setdefault(
             key,
             {
@@ -466,8 +516,19 @@ def switch_catalogue(
                 "legs": list(legs),
                 "assignment": assignment,
                 "assignment_key": key,
+                **(
+                    {}
+                    if rho is None
+                    else {
+                        "signs": [
+                            -1 if (r < incoming) != (slot < incoming) else 1
+                            for r, slot in enumerate(legs)
+                        ],
+                        "helicity_signs": list(rho),
+                    }
+                ),
             }
-            for (rep, assignment, legs, key) in described
+            for (rep, assignment, legs, key, rho) in described
         ],
         "calls": list(calls.values()),
         "orderings": orderings,
@@ -495,12 +556,26 @@ def _switch_tables(
     """C tables of the flavour switch; target_route maps a target to its target
     process index, its legs in event slots (None: the evaluation's), factor,
     flavour-union assignment (-1: none) and that assignment's process id."""
+    signs = []
     for i, evaluation in enumerate(catalogue["evaluations"]):
         lines.append(_int_array(f"reweight_switch_e{i}", "size_t", evaluation["legs"]))
+        # a crossed evaluation: momentum signs and helicity signs (rho) per runtime slot
+        names = []
+        for prefix, field in (("s", "signs"), ("h", "helicity_signs")):
+            values = evaluation.get(field)
+            if values is None:
+                names.append("NULL")
+                continue
+            if any(_integer(v) not in (-1, 1) for v in values):
+                raise ValueError(f"switch evaluation {i} has invalid {field}")
+            names.append(f"reweight_switch_{prefix}{i}")
+            lines.append(_int_array(names[-1], "signed char", values))
+        signs.append(", ".join(names))
     lines.append("static const ReweightSwitchEvaluation reweight_switch_evaluations[] = {")
     lines.extend(
         f"    {{{_integer(e['process'])}, reweight_switch_e{i}, "
-        f"{_integer(e.get('assignment', -1))}, {_string(e.get('assignment_key'))}}},"
+        f"{_integer(e.get('assignment', -1))}, {_string(e.get('assignment_key'))}, "
+        f"{signs[i]}}},"
         for i, e in enumerate(catalogue["evaluations"])
     )
     lines.extend(_pad_empty(catalogue["evaluations"]))
@@ -770,6 +845,16 @@ def reweight_header(
             lines.append(
                 _int_array(f"{prefix}_permutation", "size_t", runtime["permutation"])
             )
+            # a crossed union member gathers sigma * input[permutation]
+            reference_signs = "NULL"
+            if "momentum_signs" in runtime:
+                signs = [_integer(v) for v in runtime["momentum_signs"]]
+                if assignment is None or any(v not in (-1, 1) for v in signs):
+                    raise ValueError(
+                        f"flavour {f} of channel {c} has invalid momentum signs"
+                    )
+                reference_signs = f"{prefix}_signs"
+                lines.append(_int_array(reference_signs, "signed char", signs))
             target_permutation, target_factor = f"{prefix}_permutation", 1.0
             target_assignment, target_key = -1, None
             match = target_lookup.get(tuple(process["pdgs"]))
@@ -818,10 +903,11 @@ def reweight_header(
                 switch_arrangement = f", {found.pop()}"
             flavour_rows.append(
                 f"    {{{process_index}, {index}, "
-                f"{prefix}_permutation, {prefix}_reference, {prefix}_target, "
+                f"{prefix}_permutation, {reference_signs}, {prefix}_reference, "
+                f"{prefix}_target, "
                 f"{-1 if assignment is None else _integer(assignment)}, "
                 f"{_string(runtime.get('assignment_key'))}, "
-                f"{target_permutation}, {target_factor!r}, {target_assignment}, "
+                f"{target_permutation}, NULL, {target_factor!r}, {target_assignment}, "
                 f"{_string(target_key)}{switch_arrangement}}},"
             )
         lines.extend(
@@ -917,13 +1003,14 @@ def write_reweight_provider(
     targets = load_umami_metadata(Path(target_artifact))
     if any(d["provider"]["color_accuracy"] != "lc" for d in references):
         raise ValueError("the reference artifact must have leading-colour accuracy")
+    # the target side stays unsigned until full-colour crossing
     if any(
         "momentum_signs" in runtime
-        for document in (*references, *targets)
+        for document in targets
         for runtime in _runtime_records(document)
     ):
         raise ValueError(
-            "reweight providers do not support crossed flavour-union members yet "
+            "reweight targets with crossed flavour-union members are not supported "
             "(process.flavor_union_crossing)"
         )
     reference_path = os.path.relpath(Path(reference_artifact).resolve(), output.resolve())

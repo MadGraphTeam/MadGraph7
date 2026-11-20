@@ -18,6 +18,9 @@ typedef struct {
     size_t reference_process, target_process;
     /* runtime[j] = input[permutation[j]], including both incoming legs. */
     const size_t *permutation;
+    /* Crossed union member: runtime[j] = reference_signs[j] * input[permutation[j]]
+     * (NULL: all +1); target_signs likewise for target_permutation. */
+    const signed char *reference_signs;
     /* Exported helicity index -> runtime index of each process, -1 if absent. */
     const int *reference_helicity, *target_helicity;
     /* Flavour-union assignment of the reference runtime (-1: none) and its process id. */
@@ -25,6 +28,7 @@ typedef struct {
     const char *assignment_key;
     /* The target's runtime[j] = input[target_permutation[j]], times target_factor. */
     const size_t *target_permutation;
+    const signed char *target_signs;
     double target_factor;
     /* Flavour-union assignment of the target runtime (-1: none) and its process id. */
     int target_assignment;
@@ -46,6 +50,9 @@ typedef struct {
     /* flavour-union assignment of the runtime (-1: none) and its process id */
     int assignment;
     const char *assignment_key;
+    /* crossed assignment: runtime[j] = signs[j] * input[legs[j]], and the helicity in
+     * event slot legs[j] is helicity_signs[j] * runtime helicity j (NULL: all +1) */
+    const signed char *signs, *helicity_signs;
 } ReweightSwitchEvaluation;
 
 /* Evaluations sharing one native call: one evaluation, or flavour-union

@@ -210,13 +210,29 @@ def test_reweight_writer_validates_the_raw_process_groups(
         write_reweight_provider(lc, full, tmp_path / "out", switch_lines=2)
 
 
-def test_flavour_switch_refuses_crossed_members() -> None:
+def test_flavour_switch_checks_crossed_members() -> None:
     reference = {
-        "provider": {"incoming_count": 2},
+        "provider": {"incoming_count": 2, "masses": [0.0] * 4},
         "runtime_processes": [{"id": TEMPLATE.process_id, "pdgs": list(TEMPLATE.pdgs)}],
+        "pdg_ids": [list(TEMPLATE.pdgs), list(CROSSED.pdgs)],
+        "channels": [],
+        "color_flows": [],
     }
+    document = _map(CROSSED).as_document()
+    catalogue = switch_catalogue(reference, document, 1)
+    crossed = [e for e in catalogue["evaluations"] if "signs" in e]
+    assert crossed and all(
+        e["assignment_key"] == "g_g_to_u_ubar"
+        and e["helicity_signs"] == list(CROSSED.crossing_helicity_signs)
+        for e in crossed
+    )
+    # sigma is re-derived from the legs: a tampered record is refused
+    (member,) = [
+        m for m in document["groups"][0]["members"] if "crossing_momentum_signs" in m
+    ]
+    member["crossing_momentum_signs"] = [1] * len(member["crossing_momentum_signs"])
     with pytest.raises(ValueError, match="crossed member 'g_g_to_u_ubar'"):
-        switch_catalogue(reference, _map(CROSSED).as_document(), 2)
+        switch_catalogue(reference, document, 1)
 
 
 def test_inspection_reports_crossing(monkeypatch: pytest.MonkeyPatch) -> None:
