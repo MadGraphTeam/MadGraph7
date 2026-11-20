@@ -10,7 +10,7 @@ One proposal for how the NLO integrands get their matrix elements through UMAMI,
 - the survey of the providers `umami-nlo-providers.md` (4 November)
 - the key proposal "UMAMI keys for NLO, by correlation order" (14 November)
 
-It keeps what the integrands need for QCD, EW and mixed QCD-EW corrections, the keys and conventions, what the providers have and the open questions. [What changed from Theo's design](#mm9zjf0hs01.11644) is listed at the end. A local madspace prototype implements the NLO keys as provisional ([The prototype in madspace](#mm9zjf0hs01.8992)). Nothing of it is pushed.
+It keeps what the integrands need for QCD, EW and mixed QCD-EW corrections, the keys and conventions, what the providers have and the open questions. [What changed from Theo's design](#what-changed-from-theos-design) is listed at the end. A local madspace prototype implements the NLO keys as provisional ([The prototype in madspace](#the-prototype-in-madspace)). Nothing of it is pushed.
 
 ## What the integrands need
 
@@ -32,7 +32,7 @@ The charge correlations of QED follow from the charges and the Born, so they nee
 
 One library per matrix element, as at LO, and no FKS rows. The Born library answers the Born, amp2 and all correlations, a real library its real, a loop library the virtual. The caller knows which matrix element each kinematics needs, so the subtraction scheme stays on its side. Extra counterterms and Catani-Seymour dipoles call the Born library of their own Born process.
 
-The libraries return building blocks, not counterterms. The caller assembles the soft, collinear and soft-collinear counterterms and the integrated subtraction. The one exception is the spin correlation, which the library contracts with the vector of the caller. The virtual comes from MadLoop, wrapped by [a shim](#mm9zjf0hs01.21277) and not reimplemented.
+The libraries return building blocks, not counterterms. The caller assembles the soft, collinear and soft-collinear counterterms and the integrated subtraction. The one exception is the spin correlation, which the library contracts with the vector of the caller. The virtual comes from MadLoop, wrapped by [a shim](#the-madloop-shim) and not reimplemented.
 
 Every new output carries an axis over the squared coupling orders that the library lists in its metadata. `OUT_MATRIX_ELEMENT` stays their sum. The blocks come without couplings, and the caller multiplies each order by its powers of g\_s and e, at its own scale and in its own scheme. Two inputs carry the couplings, the strong one as `IN_ALPHA_S` (or `IN_G_STRONG` of Daniele's branch) and the electroweak one as `IN_G_EW` of Theo's design, double `()` each. Their unit values, alpha\_s = 1/(4 pi) and g\_ew = 1, give the blocks without couplings (open question 2). Only the power of e comes out of the blocks. The masses, widths and mixing angles stay those of the parameter card.
 
@@ -53,11 +53,13 @@ NLO needs four new outputs, besides the existing `OUT_DIAGRAM_AMP2`. A correlati
 | Level, order | Output key | Shape after the batch | Extra inputs | Needed for | When |
 | --- | --- | --- | --- | --- | --- |
 | tree (0, 0) | `OUT_SQUARED_ORDERS` | `(orders)` | none | everything | NLO |
-| tree (1, 0) | `OUT_COLOR_CORRELATED` | `(orders, n, n)` | none | FKS soft, CS dipoles, I, K, P | NLO |
+| tree (1, 0) | `OUT_COLOR_CORRELATED` | `(orders, n_c (n_c - 1) / 2)` | none | FKS soft, CS dipoles, I, K, P | NLO |
 | tree (0, 1) | `OUT_SPIN_CORRELATED` | `(orders)` | one spin leg and vector | collinear limits of gluons and photons, MC@NLO | NLO |
 | one loop (0, 0) | `OUT_LOOP` | `(orders, 3)` | `IN_SCALE`, the renormalization scale | the virtual | NLO |
 | one loop | `OUT_LOOP_STATUS`, `OUT_LOOP_ACCURACY` | `()` | none | stability of the virtual | reserved |
 | tree, colour flows | `OUT_COLOR_FLOW_WEIGHTS` | `(flows)` | none | colour partners of MC@NLO | reserved |
+
+n\_c is the number of coloured external legs, those with a representation other than 1 in `META_COLOR_REPRESENTATIONS`. The colour-correlated output holds one value per pair of them, see Conventions.
 
 The spin leg and its vector are two inputs. `IN_SPIN_LEGS` is int `(2)`, the 0-based legs whose polarization is replaced, -1 for an unused slot. `IN_SPIN_VECTORS` is double `(2, 4)`. Both are required exactly when a spin-correlated output is requested. At NLO the first slot holds the leg and the second is -1.
 
@@ -66,18 +68,18 @@ The spin leg and its vector are two inputs. `IN_SPIN_LEGS` is int `(2)`, the 0-b
 ## Conventions
 
 - **Normalization.** Every output is summed over helicities and colours and averaged as `OUT_MATRIX_ELEMENT`, with no factor of a subtraction scheme (no iden\_comp, no FKS symmetry factor). Helicity sampling stays for blocks evaluated on their own, the virtual and later the EW Sudakov part.
-- **Colour.** The full symmetric matrix of T\_i . T\_j B over all legs, all taken as outgoing, with C\_i B on the diagonal, without g\_s^2 and without a factor 1/2. Then sborn\_sf(m, n) of MadFKS is g\_s^2 T\_m . T\_n B for m different from n and g\_s^2 C\_m B / 2 on the diagonal. Checked with pyAmpliCol to 1e-12.
+- **Colour.** T\_i . T\_j B for the pairs i < j of the coloured legs, all legs taken as outgoing, without g\_s^2 and without a factor 1/2. The pairs are flattened in the order (1, 2), (1, 3), ..., (1, n\_c), (2, 3), ... of the coloured legs as they appear among the external legs, so the pair (a, b) of coloured legs counted from 0 sits at a (2 n\_c - a - 1) / 2 + b - a - 1. The rest of the full matrix carries no information, since it is symmetric, the colourless legs give zero, and its diagonal is C\_i B with the Casimir of the leg and the Born of the same order, which the caller builds from `META_COLOR_REPRESENTATIONS` and `OUT_SQUARED_ORDERS`. Then sborn\_sf(m, n) of MadFKS is g\_s^2 T\_m . T\_n B for m different from n and g\_s^2 C\_m B / 2 on the diagonal. Checked with pyAmpliCol to 1e-12.
 - **Spin.** B(v) = v\_mu v\_nu B^{mu nu}, the Born with the polarization of each spin leg replaced by its real vector and the other helicities summed. The vector is in the frame of the momenta, and a library that evaluates in another frame boosts it with them. A part along the leg drops out by gauge invariance, so B(v) scales with the square of the transverse part of v. FKS passes k\_perp with v^2 = -1, and its azimuthal term is B / 2 - B(v). The B / 2 of quark mothers stays with the caller.
 - **Virtual.** Absolute, not divided by the Born: finite part, 1/eps and 1/eps^2 per order, as BinothLHA gives them (CDR, normalization (4 pi)^eps / Gamma(1 - eps)), at the scale `IN_SCALE`. It can be requested alone, for the virtual on a fraction of the points.
 - **Charges.** The caller builds the charge correlations from `META_CHARGES` and the Born, T\_m replaced by eta\_m Q\_m with eta = -1 for incoming legs.
-- **Layout.** Column-major as for the momenta: the batch contiguous, the other dimensions strided by the batch, the first one fastest. The order index thus sits next to the batch. Theo's design listed shapes with the fastest axis last, so its `(n, n, orders)` is the same memory as `(orders, n, n)` here.
+- **Layout.** Column-major as for the momenta: the batch contiguous, the other dimensions strided by the batch, the first one fastest. The order index thus sits next to the batch. Theo's design listed shapes with the fastest axis last, so its `(3, orders)` of the virtual is the same memory as `(orders, 3)` here.
 - **Complex values.** An extra axis of size 2, real part first, the slowest of all. With the first axis fastest as here it comes last, so a complex output per order has the shape `(orders, 2)` and its real part is a valid real tensor of shape `(orders)`. No new scalar type, the ABI stays `double`. No NLO key needs it, the EW Sudakov amplitudes later will.
 - **Capabilities.** `umami_supported_inputs` and `umami_supported_outputs` say per key what a library can give at all. An input needed only with some output is required exactly when that output is requested, `IN_SCALE` with `OUT_LOOP` and the spin inputs with `OUT_SPIN_CORRELATED`, otherwise the call returns `UMAMI_ERROR_MISSING_INPUT`. A request the library cannot answer for the given values, such as a spin leg that is no gluon or photon, returns `UMAMI_ERROR_UNSUPPORTED_OUTPUT`.
 - **Helicities.** The loop library takes `IN_RANDOM_HELICITY` or `IN_HELICITY_INDEX` and reports the helicity it took in `OUT_HELICITY_INDEX`, since the virtual samples helicities. Without either it sums.
 
 ## EW and mixed QCD-EW corrections
 
-MadFKS calls the EW corrections QED. Their virtual has the full EW loops, their reals and counterterms photons. The keys above carry them and the mixed QCD-EW corrections with no further output, given the metadata of [Libraries and coupling orders](#mm9zjf0hs01.1892).
+MadFKS calls the EW corrections QED. Their virtual has the full EW loops, their reals and counterterms photons. The keys above carry them and the mixed QCD-EW corrections with no further output, given the metadata of [Libraries and coupling orders](#libraries-and-coupling-orders).
 
 - **Orders.** A QCD correction raises the power of g\_s by two, a QED correction that of e. The Born of order (a, b) in powers of (g\_s, e) feeds the QCD counterterms of the NLO order (a + 2, b) and the QED counterterms of (a, b + 2), as counterterm\_position of MadFKS. `META_SQUARED_ORDER_POWERS` gives the caller this map, so the order axes of the Born, real and loop libraries need not match.
 - **Colour.** The colour-correlated Born of every Born order, the interference orders included, such as alpha\_s alpha in dijets. The library needs split orders for it.
@@ -131,7 +133,7 @@ What the providers have, as read on 4 November:
 | Virtual | none | none, MadLoop stays Fortran | MadLoop |
 | GPU | no | Born only | no |
 
-A possible split: pyAmpliCol first for the Born blocks (its UMAMI export and adapter are smaller work than the MadMatrix generator changes, but QCD on Borns of one coupling order only), MadMatrix for split orders and the GPU, and [the MadLoop shim for the virtual](#mm9zjf0hs01.21277).
+A possible split: pyAmpliCol first for the Born blocks (its UMAMI export and adapter are smaller work than the MadMatrix generator changes, but QCD on Borns of one coupling order only), MadMatrix for split orders and the GPU, and [the MadLoop shim for the virtual](#the-madloop-shim).
 
 Gaps of the MadMatrix UMAMI implementation on Daniele's branch, as read on 1 November:
 
@@ -171,6 +173,7 @@ Not covered yet: `IN_G_EW` (the blocks carry e of the model, and the integrand t
 7. **Colour flows.** `OUT_COLOR_FLOW_WEIGHTS` summed or per order, and whether the colour choice of LO takes the same weights.
 8. **Not designed yet.** The EW Sudakov blocks (complex amplitudes per helicity) and the status and accuracy of the loop.
 9. **MadLoop setup.** How the shim finds the resources of moved or gridpack trees, and which settings are cheap per call (the scale) and which only per handle (the scheme).
+10. **Colour accuracy.** A library at leading colour, as pyAmpliCol by default, fills the same pairs, with zeros for the pairs that no colour line joins, which ones depending on the process. The caller needs to know it, for the leading-colour Casimirs of the diagonal (C\_F becomes N\_c / 2). A sparse output of only the non-zero pairs, linear rather than quadratic in n\_c, can come later as a key of its own for high multiplicities.
 
 ## What changed from Theo's design
 
@@ -181,7 +184,7 @@ Theo's design of 1 November routed every block through an aggregating library pe
 | Libraries | an aggregating library per process with FKS rows (`IN_FKS_ROW`), routing to the Born, real and MadLoop libraries | one library per matrix element, the scheme on the caller side | R1, 14 November |
 | Born blocks | per FKS row | per Born process, the caller passes the leg | R1 |
 | Born kinematics | slots with an `active` mask | one Born per event | R2 |
-| Colour | a list of colour links (`META_COLOR_LINKS`) | the full matrix T\_i . T\_j B with the diagonal | R3 |
+| Colour | a list of colour links (`META_COLOR_LINKS`) | every pair i < j of the coloured legs, flattened, the diagonal from the Casimirs and the Born | R3, 20 November |
 | Spin | one leg per row (`META_SPIN_CORR_LEG`) and one vector | the leg and vector as inputs, contracted in the library, B / 2 - B(v) the azimuthal term, a second slot kept for NNLO | R4, 14 November |
 | Normalization | open | summed over helicities and colours, no iden\_comp | R5, R6 |
 | Frame of the vector | open | the library boosts it with the momenta | R7 |
