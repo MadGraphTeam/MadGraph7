@@ -77,7 +77,13 @@ def failure_lines(causes: Any, table: str, color: bool) -> str | None:
             break_long_words=True,
             break_on_hyphens=False,
         ) or [kind]
-        colour = palette.RECOVERED if kind.startswith("best-effort") else palette.BAD
+        # A best-effort value and a point served by the lane rescue are
+        # served points, not failures.
+        colour = (
+            palette.RECOVERED
+            if kind.startswith(("best-effort", "lane rescue"))
+            else palette.BAD
+        )
         lines.append(
             palette.paint(label, colour, color=color)
             + body[0]
