@@ -782,6 +782,38 @@ class MG7CmdTest(unittest.TestCase):
         self.assertIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 
+    def test_set_mlm_shortcut_and_jet_radius(self):
+        """set mlm madevent turns on MLM merging with madevent's clustering
+        options, set mlm mg7 goes back to mg7's; set d is madevent's name
+        for beam.jet_radius"""
+        obj = self.cut_selector()
+        obj.do_set('mlm madevent')
+        beam = obj.run_card['beam']
+        self.assertEqual(beam['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(beam['scale_scheme'], 'madevent')
+        self.assertEqual(beam['clustering_history'], 'madevent')
+        self.assertEqual(obj.run_card['phasespace']['xqcut'], 30.0)
+        obj.do_set('mlm mg7')
+        self.assertEqual(beam['scale_scheme'], 'clustering_mean')
+        self.assertEqual(beam['clustering_measure'], 'fxfx')
+        obj.do_set('d 0.7')
+        self.assertEqual(beam['jet_radius'], 0.7)
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_mlm_without_a_mode_lists_the_modes(self):
+        obj = self.cut_selector()
+        beam = dict(obj.run_card['beam'])
+        with self.assertLogs('madgraph.stdout', level='WARNING') as logs:
+            obj.do_set('mlm')
+        self.assertIn("'madevent'", logs.output[0])
+        self.assertIn("'mg7'", logs.output[0])
+        obj.mother_interface = types.SimpleNamespace(inputfile=iter([]))
+        self.assertRaises(madgraph.InvalidCmd, obj.do_set, 'mlm')
+        self.assertRaises(madgraph.InvalidCmd, obj.do_set, 'mlm ckkw')
+        self.assertEqual(dict(obj.run_card['beam']), beam)
+        self.generic_do_set.assert_not_called()
+
     def test_set_mg7_values_still_reach_the_editor(self):
         obj = self.cut_selector()
         obj.do_set('dynamical_scale_choice transverse_mass')

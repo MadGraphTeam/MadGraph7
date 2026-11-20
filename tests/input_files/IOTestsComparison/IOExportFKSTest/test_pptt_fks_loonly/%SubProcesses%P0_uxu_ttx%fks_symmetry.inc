@@ -1,6 +1,1 @@
-      INTEGER FKS_FAC_I_D(1),FKS_FAC_J_D(1)
-      DOUBLE PRECISION FKS_IDEN_BORN_D(1),FKS_IDEN_REAL_D(1)
-      DATA FKS_FAC_I_D(1) /1/
-      DATA FKS_FAC_J_D(1) /1/
-      DATA FKS_IDEN_BORN_D(1) /1D0/
-      DATA FKS_IDEN_REAL_D(1) /1D0/
+../../_shared/IOExportFKSTest%test_pptt_fks_loonly%%SubProcesses%P0_gg_ttx%fks_symmetry.inc

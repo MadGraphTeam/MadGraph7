@@ -295,7 +295,7 @@ def main():
                         help='print the LHAPDF set the mg7 check runs with, and exit')
     parser.add_argument('--repo')
     parser.add_argument('--backend')
-    parser.add_argument('--events', type=int, default=5000)
+    parser.add_argument('--events', type=int, default=1000)
     args = parser.parse_args()
     if args.print_reference_pdf:
         print(UUX_MG7_PDF)

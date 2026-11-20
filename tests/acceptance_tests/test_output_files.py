@@ -116,17 +116,22 @@ class IOExportMadLoopAcceptanceTest(test_loop_exporters.IOExportMadLoopUnitTest)
                                    'compute_color_flows': False})
                                   }
 
+            # The model files of loop_sm are compared by short_ML_SMQCD/gg_ttx
+            # (unit tests) for both exporters: compare only process files here.
+
             # d u~ > mu- vmx g
             self.addIOTestsForProcess( testName = 'dux_mumvmxg',
                                        testFolder = 'long_ML_SMQCD',
                                        particles_ids = [1,-2,13,-14,21],
                                        exporters = ['default','optimized'],
-                                       orders = {'QCD': 1, 'QED': 2} )
+                                       orders = {'QCD': 1, 'QED': 2},
+                                       files_to_check=IOTests.IOTest.proc_files)
 
             # g g > w- t b~ Single top (long but really includes everything)
             self.addIOTestsForProcess( testName = 'gg_wmtbx',
                                        testFolder = 'long_ML_SMQCD',
                                        particles_ids = [21,21,-24,6,-5],
                                        exporters = ['default','optimized'],
-                                       orders = {'QCD': 2, 'QED': 1} )
+                                       orders = {'QCD': 2, 'QED': 1},
+                                       files_to_check=IOTests.IOTest.proc_files)
 

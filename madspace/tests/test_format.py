@@ -3,7 +3,12 @@ exposed to Python for testing (format_si_prefix, format_with_error,
 format_progress).
 """
 
+import pytest
+
 import madspace as ms
+
+# host-side string formatting
+pytestmark = pytest.mark.cpu_only
 
 # --- format_si_prefix ------------------------------------------------------
 

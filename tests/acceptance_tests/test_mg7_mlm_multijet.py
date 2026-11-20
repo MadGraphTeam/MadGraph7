@@ -36,7 +36,7 @@ def _launch_with_probe():
     template = (Path(MG5DIR) / 'tests/input_files/mlm_diagram_probe.cpp').read_text()
     load_indices = collections.Counter()
 
-    def load(process, path_format, card, parameters, helicity_choice=None):
+    def load(process, path_format, card, parameters, helicity_choice=None, position=None):
         # MLM initializes unmerged subprocesses in metadata order. Crossed
         # entries can share a library, but each needs its own mask and counter.
         assert process.merged_subprocess_data is None
@@ -70,7 +70,7 @@ def _launch_with_probe():
             if sys.platform != 'darwin':
                 command.append('-ldl')
             subprocess.run(command, check=True)
-        return original(process, str(proxy), card, parameters, helicity_choice)
+        return original(process, str(proxy), card, parameters, helicity_choice, position)
 
     MadgraphProcess.load_matrix_element = load
     main()

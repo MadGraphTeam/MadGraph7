@@ -1,5 +1,1 @@
-
-C     Here are the propagators
-      PMASS( -1,   1)  = ZERO
-      PWIDTH( -1,   1) = ZERO
-      POW( -1,   1) = 2
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_bbx_ttx%born_props.inc
