@@ -1,6 +1,1 @@
-      INTEGER FKS_FAC_I_D(1),FKS_FAC_J_D(1)
-      DOUBLE PRECISION FKS_IDEN_BORN_D(1),FKS_IDEN_REAL_D(1)
-      DATA FKS_FAC_I_D(1) /1/
-      DATA FKS_FAC_J_D(1) /1/
-      DATA FKS_IDEN_BORN_D(1) /2D0/
-      DATA FKS_IDEN_REAL_D(1) /2D0/
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%fks_symmetry.inc

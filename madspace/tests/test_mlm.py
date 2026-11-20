@@ -26,6 +26,9 @@ import pytest
 
 import madspace as ms
 
+# numpy inputs and CPU contexts
+pytestmark = pytest.mark.cpu_only
+
 CM_ENERGY = 13000.0
 BATCH_SIZE = 200
 SEED = 5678

@@ -60,7 +60,8 @@ _SIGNED_OBSERVABLES = {"sfos_pair_mass"}
 def _flavor_options(meta: dict, unmerged_meta: dict | None = None) -> list[list[int]]:
     """Every flavour assignment (signed pdg ids, incoming then outgoing) a
     subprocess evaluates with the same momenta."""
-    if "flavors" in meta:
+    # a merged subprocess's flavours only reference those of its members
+    if "flavors" in meta and all("options" in flavor for flavor in meta["flavors"]):
         return [
             option for flavor in meta["flavors"] for option in flavor["options"]
         ]

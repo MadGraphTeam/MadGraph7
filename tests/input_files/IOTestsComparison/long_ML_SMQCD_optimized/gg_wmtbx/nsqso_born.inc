@@ -1,2 +1,1 @@
-      INTEGER NSQSO_BORN
-      PARAMETER (NSQSO_BORN=1)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%V0_dxu_wp%nsqso_born.inc

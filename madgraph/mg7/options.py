@@ -6,7 +6,11 @@ from madgraph.various import misc
 
 _ROOTED_OPTIONS = ('lhapdf', 'lhapdf_py3', 'lhapdf_py2', 'heptools_install_dir')
 
-def load_mg5_options(me_dir=None) -> dict:
+# string values of the configuration that stand for a boolean
+_BOOLEANS = {'true': True, 'false': False}
+
+
+def load_mg5_options(me_dir=None, with_cluster=False) -> dict:
     """Read the tool paths from the MadGraph configuration, so the launcher
     knows where LHAPDF and the optional programs (Pythia8/Delphes/MadSpin/
     reweight/analysis) live.
@@ -21,6 +25,12 @@ def load_mg5_options(me_dir=None) -> dict:
     the last word. It defaults to the working directory, which is right for
     bin/generate_events (it chdirs there first) but not for an in-process
     caller, which has not moved yet.
+
+    ``with_cluster`` adds every other setting that is set, for the cluster
+    mode: the batch system classes, MadGraph's and those of plugins, read what
+    they need from the whole configuration, as madevent gives it to them. They
+    are left out otherwise, since the madevent interface would apply every
+    option it is given.
     """
 
     import madgraph
@@ -53,8 +63,10 @@ def load_mg5_options(me_dir=None) -> dict:
                 if '=' not in line:
                     continue
                 name, value = (x.strip() for x in line.split('=', 1))
-                if name not in options or value in ('', 'None'):
+                if value in ('', 'None') or not (name in options or with_cluster):
                     continue
+                if name not in options:
+                    value = _BOOLEANS.get(value.lower(), value)
                 if (name.endswith('_path') or name in _ROOTED_OPTIONS) and \
                         not os.path.isabs(value) and \
                         (os.sep in value or value.startswith('.')):
