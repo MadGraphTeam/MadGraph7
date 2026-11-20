@@ -1,3 +1,9 @@
+      module mc_caller_configuration
+      use mc_born_types, only: BornModelConfiguration
+      implicit none
+      type(BornModelConfiguration),save::configuration
+      integer(8),save::saved_revision=-1
+      end module
       subroutine mc_born_local(p,request,result)
       use mc_born_support
       use mc_born_types
@@ -43,6 +49,7 @@
       subroutine mc_prepare_model_configuration(epoch)
       use mc_born_support
       use mc_born_types
+      use mc_caller_configuration
       implicit none
       include 'coupl.inc'
       DOUBLE PRECISION MDL_SQRT__AS,MDL_G__EXP__4,MDL_G__EXP__2  ,MDL_G__EXP__3,MDL_MU_R__EXP__2,MDL_YB,MDL_VEP,MDL_LHV  ,MDL_EPSUV,MDL_EPSIR,MDL_CONJG__CKM33,MDL_CONJG__CKM22  ,MDL_CONJG__CKM11,MDL_SCKM33__EXP__2,MDL_SCKM33  ,MDL_SCKM22__EXP__2,MDL_SCKM22,MDL_SCKM11,MDL_QL__EXP__4  ,MDL_QL__EXP__2,MDL_ME__EXP__2,MDL_MU__EXP__2,MDL_MS__EXP__2  ,MDL_MC__EXP__2,MDL_MB__EXP__4,MDL_MB__EXP__2,MDL_LOGSWITCH  ,MDL_GFREDEFINITIONCHOICE,MDL_CMSPARAM,MDL_CKM33,MDL_CKM22  ,MDL_EP,MDL_NCOL,MDL_CA,MDL_TF,MDL_CF,MDL_MW__EXP__2  ,MDL_MZ__EXP__2,MDL_SW2,MDL_CW,MDL_SQRT__SW2,MDL_SW  ,MDL_MH__EXP__2,MDL_SQRT__2,MDL_I3D,MDL_I3U,MDL_I3L,MDL_I3V  ,MDL_QD,MDL_QU,MDL_QL,MDL_NCOL__EXP__2,MDL_SW__EXP__2  ,MDL_MT__EXP__2,MDL_CW__EXP__2,MDL_MT__EXP__4,MDL_SW__EXP__4  ,MDL_MW__EXP__4,MDL_MT__EXP__3,MDL_MH__EXP__4,MDL_MZ__EXP__4  ,MDL_MT__EXP__6,MDL_MW__EXP__6,MDL_MT__EXP__8,MDL_MW__EXP__8  ,MDL_MT__EXP__10,MDL_MW__EXP__10,MDL_MZ__EXP__6,MDL_SW__EXP__6  ,MDL_SW__EXP__3,MDL_MZ__EXP__3,MDL_CW__EXP__4,MDL_CW__EXP__6  ,MDL_MH__EXP__6,MDL_CW__EXP__3,MDL_SW__EXP__8,MDL_SW__EXP__10  ,MDL_QD__EXP__3,MDL_QD__EXP__2,MDL_I3D__EXP__2,MDL_I3D__EXP__3  ,MDL_QU__EXP__3,MDL_QU__EXP__2,MDL_I3U__EXP__2,MDL_I3U__EXP__3  ,MDL_QL__EXP__3,MDL_I3L__EXP__2,MDL_I3L__EXP__3,MDL_I3V__EXP__3  ,MDL_MW__EXP__3,MDL_QU__EXP__4,MDL_QD__EXP__4,MDL_I3L__EXP__4  ,MDL_I3U__EXP__4,MDL_I3D__EXP__4,MDL_I3V__EXP__4  ,MDL_I3V__EXP__2,MDL_GFBAR,MDL_AEW,AEWM1,MDL_SQRT__AEW,MDL_EE  ,MDL_G1,MDL_GW,MDL_VEV,MDL_VEV__EXP__2,MDL_LAM,MDL_YT,MDL_MUH  ,MDL_AXIALZUP,MDL_AXIALZDOWN,MDL_VECTORZUP,MDL_VECTORZDOWN  ,MDL_AXIALG0UP3,MDL_VECTORAUP,MDL_VECTORADOWN,MDL_VECTORWMDXU  ,MDL_AXIALWMDXU,MDL_VECTORWPUXD,MDL_AXIALWPUXD,MDL_EE__EXP__2  ,MDL_EE__EXP__3,MDL_EE__EXP__4,MDL_NTADPOLE,MDL_GF,AS,MDL_YMT
@@ -51,8 +58,7 @@
       COMMON/PARAMS_C/ MDL_COMPLEXI,MDL_I233,MDL_I333,MDL_VECTORHUP3  ,MDL_VECTORGPUX3D3,MDL_AXIALGPUX3D3,MDL_VECTORGMDX3U3  ,MDL_AXIALGMDX3U3
       integer(8) epoch,current_revision,mc_born_model_revision
       external mc_born_model_revision
-      integer(8),save::saved_revision=-1
-      type(BornModelConfiguration),save::configuration,candidate
+      type(BornModelConfiguration),save::candidate
       integer status
       logical same_configuration
       current_revision=mc_born_model_revision()
@@ -81,4 +87,370 @@
       if(status.ne.0)stop "Cannot reactivate native Born model configuration"
       endif
       epoch=configuration%epoch
+      end
+      integer(8) function mc_live_model_bytes()
+      implicit none
+      mc_live_model_bytes=1584_8
+      end
+      subroutine mc_park_full_model(state)
+      use mc_born_support
+      use mc_born_types
+      use mc_caller_configuration
+      implicit none
+      include 'coupl.inc'
+      DOUBLE PRECISION MDL_SQRT__AS,MDL_G__EXP__4,MDL_G__EXP__2  ,MDL_G__EXP__3,MDL_MU_R__EXP__2,MDL_YB,MDL_VEP,MDL_LHV  ,MDL_EPSUV,MDL_EPSIR,MDL_CONJG__CKM33,MDL_CONJG__CKM22  ,MDL_CONJG__CKM11,MDL_SCKM33__EXP__2,MDL_SCKM33  ,MDL_SCKM22__EXP__2,MDL_SCKM22,MDL_SCKM11,MDL_QL__EXP__4  ,MDL_QL__EXP__2,MDL_ME__EXP__2,MDL_MU__EXP__2,MDL_MS__EXP__2  ,MDL_MC__EXP__2,MDL_MB__EXP__4,MDL_MB__EXP__2,MDL_LOGSWITCH  ,MDL_GFREDEFINITIONCHOICE,MDL_CMSPARAM,MDL_CKM33,MDL_CKM22  ,MDL_EP,MDL_NCOL,MDL_CA,MDL_TF,MDL_CF,MDL_MW__EXP__2  ,MDL_MZ__EXP__2,MDL_SW2,MDL_CW,MDL_SQRT__SW2,MDL_SW  ,MDL_MH__EXP__2,MDL_SQRT__2,MDL_I3D,MDL_I3U,MDL_I3L,MDL_I3V  ,MDL_QD,MDL_QU,MDL_QL,MDL_NCOL__EXP__2,MDL_SW__EXP__2  ,MDL_MT__EXP__2,MDL_CW__EXP__2,MDL_MT__EXP__4,MDL_SW__EXP__4  ,MDL_MW__EXP__4,MDL_MT__EXP__3,MDL_MH__EXP__4,MDL_MZ__EXP__4  ,MDL_MT__EXP__6,MDL_MW__EXP__6,MDL_MT__EXP__8,MDL_MW__EXP__8  ,MDL_MT__EXP__10,MDL_MW__EXP__10,MDL_MZ__EXP__6,MDL_SW__EXP__6  ,MDL_SW__EXP__3,MDL_MZ__EXP__3,MDL_CW__EXP__4,MDL_CW__EXP__6  ,MDL_MH__EXP__6,MDL_CW__EXP__3,MDL_SW__EXP__8,MDL_SW__EXP__10  ,MDL_QD__EXP__3,MDL_QD__EXP__2,MDL_I3D__EXP__2,MDL_I3D__EXP__3  ,MDL_QU__EXP__3,MDL_QU__EXP__2,MDL_I3U__EXP__2,MDL_I3U__EXP__3  ,MDL_QL__EXP__3,MDL_I3L__EXP__2,MDL_I3L__EXP__3,MDL_I3V__EXP__3  ,MDL_MW__EXP__3,MDL_QU__EXP__4,MDL_QD__EXP__4,MDL_I3L__EXP__4  ,MDL_I3U__EXP__4,MDL_I3D__EXP__4,MDL_I3V__EXP__4  ,MDL_I3V__EXP__2,MDL_GFBAR,MDL_AEW,AEWM1,MDL_SQRT__AEW,MDL_EE  ,MDL_G1,MDL_GW,MDL_VEV,MDL_VEV__EXP__2,MDL_LAM,MDL_YT,MDL_MUH  ,MDL_AXIALZUP,MDL_AXIALZDOWN,MDL_VECTORZUP,MDL_VECTORZDOWN  ,MDL_AXIALG0UP3,MDL_VECTORAUP,MDL_VECTORADOWN,MDL_VECTORWMDXU  ,MDL_AXIALWMDXU,MDL_VECTORWPUXD,MDL_AXIALWPUXD,MDL_EE__EXP__2  ,MDL_EE__EXP__3,MDL_EE__EXP__4,MDL_NTADPOLE,MDL_GF,AS,MDL_YMT
+      COMMON/PARAMS_R/ MDL_SQRT__AS,MDL_G__EXP__4,MDL_G__EXP__2  ,MDL_G__EXP__3,MDL_MU_R__EXP__2,MDL_YB,MDL_VEP,MDL_LHV  ,MDL_EPSUV,MDL_EPSIR,MDL_CONJG__CKM33,MDL_CONJG__CKM22  ,MDL_CONJG__CKM11,MDL_SCKM33__EXP__2,MDL_SCKM33  ,MDL_SCKM22__EXP__2,MDL_SCKM22,MDL_SCKM11,MDL_QL__EXP__4  ,MDL_QL__EXP__2,MDL_ME__EXP__2,MDL_MU__EXP__2,MDL_MS__EXP__2  ,MDL_MC__EXP__2,MDL_MB__EXP__4,MDL_MB__EXP__2,MDL_LOGSWITCH  ,MDL_GFREDEFINITIONCHOICE,MDL_CMSPARAM,MDL_CKM33,MDL_CKM22  ,MDL_EP,MDL_NCOL,MDL_CA,MDL_TF,MDL_CF,MDL_MW__EXP__2  ,MDL_MZ__EXP__2,MDL_SW2,MDL_CW,MDL_SQRT__SW2,MDL_SW  ,MDL_MH__EXP__2,MDL_SQRT__2,MDL_I3D,MDL_I3U,MDL_I3L,MDL_I3V  ,MDL_QD,MDL_QU,MDL_QL,MDL_NCOL__EXP__2,MDL_SW__EXP__2  ,MDL_MT__EXP__2,MDL_CW__EXP__2,MDL_MT__EXP__4,MDL_SW__EXP__4  ,MDL_MW__EXP__4,MDL_MT__EXP__3,MDL_MH__EXP__4,MDL_MZ__EXP__4  ,MDL_MT__EXP__6,MDL_MW__EXP__6,MDL_MT__EXP__8,MDL_MW__EXP__8  ,MDL_MT__EXP__10,MDL_MW__EXP__10,MDL_MZ__EXP__6,MDL_SW__EXP__6  ,MDL_SW__EXP__3,MDL_MZ__EXP__3,MDL_CW__EXP__4,MDL_CW__EXP__6  ,MDL_MH__EXP__6,MDL_CW__EXP__3,MDL_SW__EXP__8,MDL_SW__EXP__10  ,MDL_QD__EXP__3,MDL_QD__EXP__2,MDL_I3D__EXP__2,MDL_I3D__EXP__3  ,MDL_QU__EXP__3,MDL_QU__EXP__2,MDL_I3U__EXP__2,MDL_I3U__EXP__3  ,MDL_QL__EXP__3,MDL_I3L__EXP__2,MDL_I3L__EXP__3,MDL_I3V__EXP__3  ,MDL_MW__EXP__3,MDL_QU__EXP__4,MDL_QD__EXP__4,MDL_I3L__EXP__4  ,MDL_I3U__EXP__4,MDL_I3D__EXP__4,MDL_I3V__EXP__4  ,MDL_I3V__EXP__2,MDL_GFBAR,MDL_AEW,AEWM1,MDL_SQRT__AEW,MDL_EE  ,MDL_G1,MDL_GW,MDL_VEV,MDL_VEV__EXP__2,MDL_LAM,MDL_YT,MDL_MUH  ,MDL_AXIALZUP,MDL_AXIALZDOWN,MDL_VECTORZUP,MDL_VECTORZDOWN  ,MDL_AXIALG0UP3,MDL_VECTORAUP,MDL_VECTORADOWN,MDL_VECTORWMDXU  ,MDL_AXIALWMDXU,MDL_VECTORWPUXD,MDL_AXIALWPUXD,MDL_EE__EXP__2  ,MDL_EE__EXP__3,MDL_EE__EXP__4,MDL_NTADPOLE,MDL_GF,AS,MDL_YMT
+      DOUBLE COMPLEX MDL_COMPLEXI,MDL_I233,MDL_I333,MDL_VECTORHUP3  ,MDL_VECTORGPUX3D3,MDL_AXIALGPUX3D3,MDL_VECTORGMDX3U3  ,MDL_AXIALGMDX3U3
+      COMMON/PARAMS_C/ MDL_COMPLEXI,MDL_I233,MDL_I333,MDL_VECTORHUP3  ,MDL_VECTORGPUX3D3,MDL_AXIALGPUX3D3,MDL_VECTORGMDX3U3  ,MDL_AXIALGMDX3U3
+      type(BornLiveModel),intent(inout)::state
+      integer(8) epoch
+      call mc_prepare_model_configuration(epoch)
+      if(state%configuration%epoch.ne.epoch)state%configuration=configuration
+      state%helicity_frame=born_active_helicity_frame
+      if(.not.allocated(state%real_values))allocate(state%real_values(139))
+      if(.not.allocated(state%complex_values))allocate(state%complex_values(24))
+      state%real_values(1)=g
+      state%real_values(2)=all_g
+      state%complex_values(1:2)=gal
+      state%real_values(3)=mu_r
+      state%real_values(4)=all_mu_r
+      state%real_values(5)=mdl_mh
+      state%real_values(6)=mdl_mt
+      state%real_values(7)=mdl_mw
+      state%real_values(8)=mdl_mz
+      state%real_values(9)=mdl_wh
+      state%real_values(10)=mdl_wt
+      state%real_values(11)=mdl_ww
+      state%real_values(12)=mdl_wz
+      state%complex_values(3)=gc_1
+      state%complex_values(4)=gc_2
+      state%complex_values(5)=gc_4
+      state%complex_values(6)=gc_30
+      state%complex_values(7)=gc_39
+      state%complex_values(8)=gc_68
+      state%complex_values(9)=gc_69
+      state%complex_values(10)=gc_71
+      state%complex_values(11)=gc_76
+      state%complex_values(12)=gc_84
+      state%complex_values(13)=gc_85
+      state%complex_values(14)=gc_99
+      state%complex_values(15)=gc_116
+      state%complex_values(16)=gc_124
+      state%real_values(13)=mdl_sqrt__as
+      state%real_values(14)=mdl_g__exp__4
+      state%real_values(15)=mdl_g__exp__2
+      state%real_values(16)=mdl_g__exp__3
+      state%real_values(17)=mdl_mu_r__exp__2
+      state%real_values(18)=mdl_yb
+      state%real_values(19)=mdl_vep
+      state%real_values(20)=mdl_lhv
+      state%real_values(21)=mdl_epsuv
+      state%real_values(22)=mdl_epsir
+      state%real_values(23)=mdl_conjg__ckm33
+      state%real_values(24)=mdl_conjg__ckm22
+      state%real_values(25)=mdl_conjg__ckm11
+      state%real_values(26)=mdl_sckm33__exp__2
+      state%real_values(27)=mdl_sckm33
+      state%real_values(28)=mdl_sckm22__exp__2
+      state%real_values(29)=mdl_sckm22
+      state%real_values(30)=mdl_sckm11
+      state%real_values(31)=mdl_ql__exp__4
+      state%real_values(32)=mdl_ql__exp__2
+      state%real_values(33)=mdl_me__exp__2
+      state%real_values(34)=mdl_mu__exp__2
+      state%real_values(35)=mdl_ms__exp__2
+      state%real_values(36)=mdl_mc__exp__2
+      state%real_values(37)=mdl_mb__exp__4
+      state%real_values(38)=mdl_mb__exp__2
+      state%real_values(39)=mdl_logswitch
+      state%real_values(40)=mdl_gfredefinitionchoice
+      state%real_values(41)=mdl_cmsparam
+      state%real_values(42)=mdl_ckm33
+      state%real_values(43)=mdl_ckm22
+      state%real_values(44)=mdl_ep
+      state%real_values(45)=mdl_ncol
+      state%real_values(46)=mdl_ca
+      state%real_values(47)=mdl_tf
+      state%real_values(48)=mdl_cf
+      state%real_values(49)=mdl_mw__exp__2
+      state%real_values(50)=mdl_mz__exp__2
+      state%real_values(51)=mdl_sw2
+      state%real_values(52)=mdl_cw
+      state%real_values(53)=mdl_sqrt__sw2
+      state%real_values(54)=mdl_sw
+      state%real_values(55)=mdl_mh__exp__2
+      state%real_values(56)=mdl_sqrt__2
+      state%real_values(57)=mdl_i3d
+      state%real_values(58)=mdl_i3u
+      state%real_values(59)=mdl_i3l
+      state%real_values(60)=mdl_i3v
+      state%real_values(61)=mdl_qd
+      state%real_values(62)=mdl_qu
+      state%real_values(63)=mdl_ql
+      state%real_values(64)=mdl_ncol__exp__2
+      state%real_values(65)=mdl_sw__exp__2
+      state%real_values(66)=mdl_mt__exp__2
+      state%real_values(67)=mdl_cw__exp__2
+      state%real_values(68)=mdl_mt__exp__4
+      state%real_values(69)=mdl_sw__exp__4
+      state%real_values(70)=mdl_mw__exp__4
+      state%real_values(71)=mdl_mt__exp__3
+      state%real_values(72)=mdl_mh__exp__4
+      state%real_values(73)=mdl_mz__exp__4
+      state%real_values(74)=mdl_mt__exp__6
+      state%real_values(75)=mdl_mw__exp__6
+      state%real_values(76)=mdl_mt__exp__8
+      state%real_values(77)=mdl_mw__exp__8
+      state%real_values(78)=mdl_mt__exp__10
+      state%real_values(79)=mdl_mw__exp__10
+      state%real_values(80)=mdl_mz__exp__6
+      state%real_values(81)=mdl_sw__exp__6
+      state%real_values(82)=mdl_sw__exp__3
+      state%real_values(83)=mdl_mz__exp__3
+      state%real_values(84)=mdl_cw__exp__4
+      state%real_values(85)=mdl_cw__exp__6
+      state%real_values(86)=mdl_mh__exp__6
+      state%real_values(87)=mdl_cw__exp__3
+      state%real_values(88)=mdl_sw__exp__8
+      state%real_values(89)=mdl_sw__exp__10
+      state%real_values(90)=mdl_qd__exp__3
+      state%real_values(91)=mdl_qd__exp__2
+      state%real_values(92)=mdl_i3d__exp__2
+      state%real_values(93)=mdl_i3d__exp__3
+      state%real_values(94)=mdl_qu__exp__3
+      state%real_values(95)=mdl_qu__exp__2
+      state%real_values(96)=mdl_i3u__exp__2
+      state%real_values(97)=mdl_i3u__exp__3
+      state%real_values(98)=mdl_ql__exp__3
+      state%real_values(99)=mdl_i3l__exp__2
+      state%real_values(100)=mdl_i3l__exp__3
+      state%real_values(101)=mdl_i3v__exp__3
+      state%real_values(102)=mdl_mw__exp__3
+      state%real_values(103)=mdl_qu__exp__4
+      state%real_values(104)=mdl_qd__exp__4
+      state%real_values(105)=mdl_i3l__exp__4
+      state%real_values(106)=mdl_i3u__exp__4
+      state%real_values(107)=mdl_i3d__exp__4
+      state%real_values(108)=mdl_i3v__exp__4
+      state%real_values(109)=mdl_i3v__exp__2
+      state%real_values(110)=mdl_gfbar
+      state%real_values(111)=mdl_aew
+      state%real_values(112)=aewm1
+      state%real_values(113)=mdl_sqrt__aew
+      state%real_values(114)=mdl_ee
+      state%real_values(115)=mdl_g1
+      state%real_values(116)=mdl_gw
+      state%real_values(117)=mdl_vev
+      state%real_values(118)=mdl_vev__exp__2
+      state%real_values(119)=mdl_lam
+      state%real_values(120)=mdl_yt
+      state%real_values(121)=mdl_muh
+      state%real_values(122)=mdl_axialzup
+      state%real_values(123)=mdl_axialzdown
+      state%real_values(124)=mdl_vectorzup
+      state%real_values(125)=mdl_vectorzdown
+      state%real_values(126)=mdl_axialg0up3
+      state%real_values(127)=mdl_vectoraup
+      state%real_values(128)=mdl_vectoradown
+      state%real_values(129)=mdl_vectorwmdxu
+      state%real_values(130)=mdl_axialwmdxu
+      state%real_values(131)=mdl_vectorwpuxd
+      state%real_values(132)=mdl_axialwpuxd
+      state%real_values(133)=mdl_ee__exp__2
+      state%real_values(134)=mdl_ee__exp__3
+      state%real_values(135)=mdl_ee__exp__4
+      state%real_values(136)=mdl_ntadpole
+      state%real_values(137)=mdl_gf
+      state%real_values(138)=as
+      state%real_values(139)=mdl_ymt
+      state%complex_values(17)=mdl_complexi
+      state%complex_values(18)=mdl_i233
+      state%complex_values(19)=mdl_i333
+      state%complex_values(20)=mdl_vectorhup3
+      state%complex_values(21)=mdl_vectorgpux3d3
+      state%complex_values(22)=mdl_axialgpux3d3
+      state%complex_values(23)=mdl_vectorgmdx3u3
+      state%complex_values(24)=mdl_axialgmdx3u3
+      end
+      subroutine mc_activate_full_model(state)
+      use mc_born_support
+      use mc_born_types
+      use mc_caller_configuration
+      implicit none
+      include 'coupl.inc'
+      DOUBLE PRECISION MDL_SQRT__AS,MDL_G__EXP__4,MDL_G__EXP__2  ,MDL_G__EXP__3,MDL_MU_R__EXP__2,MDL_YB,MDL_VEP,MDL_LHV  ,MDL_EPSUV,MDL_EPSIR,MDL_CONJG__CKM33,MDL_CONJG__CKM22  ,MDL_CONJG__CKM11,MDL_SCKM33__EXP__2,MDL_SCKM33  ,MDL_SCKM22__EXP__2,MDL_SCKM22,MDL_SCKM11,MDL_QL__EXP__4  ,MDL_QL__EXP__2,MDL_ME__EXP__2,MDL_MU__EXP__2,MDL_MS__EXP__2  ,MDL_MC__EXP__2,MDL_MB__EXP__4,MDL_MB__EXP__2,MDL_LOGSWITCH  ,MDL_GFREDEFINITIONCHOICE,MDL_CMSPARAM,MDL_CKM33,MDL_CKM22  ,MDL_EP,MDL_NCOL,MDL_CA,MDL_TF,MDL_CF,MDL_MW__EXP__2  ,MDL_MZ__EXP__2,MDL_SW2,MDL_CW,MDL_SQRT__SW2,MDL_SW  ,MDL_MH__EXP__2,MDL_SQRT__2,MDL_I3D,MDL_I3U,MDL_I3L,MDL_I3V  ,MDL_QD,MDL_QU,MDL_QL,MDL_NCOL__EXP__2,MDL_SW__EXP__2  ,MDL_MT__EXP__2,MDL_CW__EXP__2,MDL_MT__EXP__4,MDL_SW__EXP__4  ,MDL_MW__EXP__4,MDL_MT__EXP__3,MDL_MH__EXP__4,MDL_MZ__EXP__4  ,MDL_MT__EXP__6,MDL_MW__EXP__6,MDL_MT__EXP__8,MDL_MW__EXP__8  ,MDL_MT__EXP__10,MDL_MW__EXP__10,MDL_MZ__EXP__6,MDL_SW__EXP__6  ,MDL_SW__EXP__3,MDL_MZ__EXP__3,MDL_CW__EXP__4,MDL_CW__EXP__6  ,MDL_MH__EXP__6,MDL_CW__EXP__3,MDL_SW__EXP__8,MDL_SW__EXP__10  ,MDL_QD__EXP__3,MDL_QD__EXP__2,MDL_I3D__EXP__2,MDL_I3D__EXP__3  ,MDL_QU__EXP__3,MDL_QU__EXP__2,MDL_I3U__EXP__2,MDL_I3U__EXP__3  ,MDL_QL__EXP__3,MDL_I3L__EXP__2,MDL_I3L__EXP__3,MDL_I3V__EXP__3  ,MDL_MW__EXP__3,MDL_QU__EXP__4,MDL_QD__EXP__4,MDL_I3L__EXP__4  ,MDL_I3U__EXP__4,MDL_I3D__EXP__4,MDL_I3V__EXP__4  ,MDL_I3V__EXP__2,MDL_GFBAR,MDL_AEW,AEWM1,MDL_SQRT__AEW,MDL_EE  ,MDL_G1,MDL_GW,MDL_VEV,MDL_VEV__EXP__2,MDL_LAM,MDL_YT,MDL_MUH  ,MDL_AXIALZUP,MDL_AXIALZDOWN,MDL_VECTORZUP,MDL_VECTORZDOWN  ,MDL_AXIALG0UP3,MDL_VECTORAUP,MDL_VECTORADOWN,MDL_VECTORWMDXU  ,MDL_AXIALWMDXU,MDL_VECTORWPUXD,MDL_AXIALWPUXD,MDL_EE__EXP__2  ,MDL_EE__EXP__3,MDL_EE__EXP__4,MDL_NTADPOLE,MDL_GF,AS,MDL_YMT
+      COMMON/PARAMS_R/ MDL_SQRT__AS,MDL_G__EXP__4,MDL_G__EXP__2  ,MDL_G__EXP__3,MDL_MU_R__EXP__2,MDL_YB,MDL_VEP,MDL_LHV  ,MDL_EPSUV,MDL_EPSIR,MDL_CONJG__CKM33,MDL_CONJG__CKM22  ,MDL_CONJG__CKM11,MDL_SCKM33__EXP__2,MDL_SCKM33  ,MDL_SCKM22__EXP__2,MDL_SCKM22,MDL_SCKM11,MDL_QL__EXP__4  ,MDL_QL__EXP__2,MDL_ME__EXP__2,MDL_MU__EXP__2,MDL_MS__EXP__2  ,MDL_MC__EXP__2,MDL_MB__EXP__4,MDL_MB__EXP__2,MDL_LOGSWITCH  ,MDL_GFREDEFINITIONCHOICE,MDL_CMSPARAM,MDL_CKM33,MDL_CKM22  ,MDL_EP,MDL_NCOL,MDL_CA,MDL_TF,MDL_CF,MDL_MW__EXP__2  ,MDL_MZ__EXP__2,MDL_SW2,MDL_CW,MDL_SQRT__SW2,MDL_SW  ,MDL_MH__EXP__2,MDL_SQRT__2,MDL_I3D,MDL_I3U,MDL_I3L,MDL_I3V  ,MDL_QD,MDL_QU,MDL_QL,MDL_NCOL__EXP__2,MDL_SW__EXP__2  ,MDL_MT__EXP__2,MDL_CW__EXP__2,MDL_MT__EXP__4,MDL_SW__EXP__4  ,MDL_MW__EXP__4,MDL_MT__EXP__3,MDL_MH__EXP__4,MDL_MZ__EXP__4  ,MDL_MT__EXP__6,MDL_MW__EXP__6,MDL_MT__EXP__8,MDL_MW__EXP__8  ,MDL_MT__EXP__10,MDL_MW__EXP__10,MDL_MZ__EXP__6,MDL_SW__EXP__6  ,MDL_SW__EXP__3,MDL_MZ__EXP__3,MDL_CW__EXP__4,MDL_CW__EXP__6  ,MDL_MH__EXP__6,MDL_CW__EXP__3,MDL_SW__EXP__8,MDL_SW__EXP__10  ,MDL_QD__EXP__3,MDL_QD__EXP__2,MDL_I3D__EXP__2,MDL_I3D__EXP__3  ,MDL_QU__EXP__3,MDL_QU__EXP__2,MDL_I3U__EXP__2,MDL_I3U__EXP__3  ,MDL_QL__EXP__3,MDL_I3L__EXP__2,MDL_I3L__EXP__3,MDL_I3V__EXP__3  ,MDL_MW__EXP__3,MDL_QU__EXP__4,MDL_QD__EXP__4,MDL_I3L__EXP__4  ,MDL_I3U__EXP__4,MDL_I3D__EXP__4,MDL_I3V__EXP__4  ,MDL_I3V__EXP__2,MDL_GFBAR,MDL_AEW,AEWM1,MDL_SQRT__AEW,MDL_EE  ,MDL_G1,MDL_GW,MDL_VEV,MDL_VEV__EXP__2,MDL_LAM,MDL_YT,MDL_MUH  ,MDL_AXIALZUP,MDL_AXIALZDOWN,MDL_VECTORZUP,MDL_VECTORZDOWN  ,MDL_AXIALG0UP3,MDL_VECTORAUP,MDL_VECTORADOWN,MDL_VECTORWMDXU  ,MDL_AXIALWMDXU,MDL_VECTORWPUXD,MDL_AXIALWPUXD,MDL_EE__EXP__2  ,MDL_EE__EXP__3,MDL_EE__EXP__4,MDL_NTADPOLE,MDL_GF,AS,MDL_YMT
+      DOUBLE COMPLEX MDL_COMPLEXI,MDL_I233,MDL_I333,MDL_VECTORHUP3  ,MDL_VECTORGPUX3D3,MDL_AXIALGPUX3D3,MDL_VECTORGMDX3U3  ,MDL_AXIALGMDX3U3
+      COMMON/PARAMS_C/ MDL_COMPLEXI,MDL_I233,MDL_I333,MDL_VECTORHUP3  ,MDL_VECTORGPUX3D3,MDL_AXIALGPUX3D3,MDL_VECTORGMDX3U3  ,MDL_AXIALGMDX3U3
+      type(BornLiveModel),intent(in)::state
+      integer status
+      integer(8),external::mc_born_model_revision
+      if(state%configuration%epoch.le.0)error stop "Missing native caller model"
+      g=state%real_values(1)
+      all_g=state%real_values(2)
+      gal=state%complex_values(1:2)
+      mu_r=state%real_values(3)
+      all_mu_r=state%real_values(4)
+      mdl_mh=state%real_values(5)
+      mdl_mt=state%real_values(6)
+      mdl_mw=state%real_values(7)
+      mdl_mz=state%real_values(8)
+      mdl_wh=state%real_values(9)
+      mdl_wt=state%real_values(10)
+      mdl_ww=state%real_values(11)
+      mdl_wz=state%real_values(12)
+      gc_1=state%complex_values(3)
+      gc_2=state%complex_values(4)
+      gc_4=state%complex_values(5)
+      gc_30=state%complex_values(6)
+      gc_39=state%complex_values(7)
+      gc_68=state%complex_values(8)
+      gc_69=state%complex_values(9)
+      gc_71=state%complex_values(10)
+      gc_76=state%complex_values(11)
+      gc_84=state%complex_values(12)
+      gc_85=state%complex_values(13)
+      gc_99=state%complex_values(14)
+      gc_116=state%complex_values(15)
+      gc_124=state%complex_values(16)
+      mdl_sqrt__as=state%real_values(13)
+      mdl_g__exp__4=state%real_values(14)
+      mdl_g__exp__2=state%real_values(15)
+      mdl_g__exp__3=state%real_values(16)
+      mdl_mu_r__exp__2=state%real_values(17)
+      mdl_yb=state%real_values(18)
+      mdl_vep=state%real_values(19)
+      mdl_lhv=state%real_values(20)
+      mdl_epsuv=state%real_values(21)
+      mdl_epsir=state%real_values(22)
+      mdl_conjg__ckm33=state%real_values(23)
+      mdl_conjg__ckm22=state%real_values(24)
+      mdl_conjg__ckm11=state%real_values(25)
+      mdl_sckm33__exp__2=state%real_values(26)
+      mdl_sckm33=state%real_values(27)
+      mdl_sckm22__exp__2=state%real_values(28)
+      mdl_sckm22=state%real_values(29)
+      mdl_sckm11=state%real_values(30)
+      mdl_ql__exp__4=state%real_values(31)
+      mdl_ql__exp__2=state%real_values(32)
+      mdl_me__exp__2=state%real_values(33)
+      mdl_mu__exp__2=state%real_values(34)
+      mdl_ms__exp__2=state%real_values(35)
+      mdl_mc__exp__2=state%real_values(36)
+      mdl_mb__exp__4=state%real_values(37)
+      mdl_mb__exp__2=state%real_values(38)
+      mdl_logswitch=state%real_values(39)
+      mdl_gfredefinitionchoice=state%real_values(40)
+      mdl_cmsparam=state%real_values(41)
+      mdl_ckm33=state%real_values(42)
+      mdl_ckm22=state%real_values(43)
+      mdl_ep=state%real_values(44)
+      mdl_ncol=state%real_values(45)
+      mdl_ca=state%real_values(46)
+      mdl_tf=state%real_values(47)
+      mdl_cf=state%real_values(48)
+      mdl_mw__exp__2=state%real_values(49)
+      mdl_mz__exp__2=state%real_values(50)
+      mdl_sw2=state%real_values(51)
+      mdl_cw=state%real_values(52)
+      mdl_sqrt__sw2=state%real_values(53)
+      mdl_sw=state%real_values(54)
+      mdl_mh__exp__2=state%real_values(55)
+      mdl_sqrt__2=state%real_values(56)
+      mdl_i3d=state%real_values(57)
+      mdl_i3u=state%real_values(58)
+      mdl_i3l=state%real_values(59)
+      mdl_i3v=state%real_values(60)
+      mdl_qd=state%real_values(61)
+      mdl_qu=state%real_values(62)
+      mdl_ql=state%real_values(63)
+      mdl_ncol__exp__2=state%real_values(64)
+      mdl_sw__exp__2=state%real_values(65)
+      mdl_mt__exp__2=state%real_values(66)
+      mdl_cw__exp__2=state%real_values(67)
+      mdl_mt__exp__4=state%real_values(68)
+      mdl_sw__exp__4=state%real_values(69)
+      mdl_mw__exp__4=state%real_values(70)
+      mdl_mt__exp__3=state%real_values(71)
+      mdl_mh__exp__4=state%real_values(72)
+      mdl_mz__exp__4=state%real_values(73)
+      mdl_mt__exp__6=state%real_values(74)
+      mdl_mw__exp__6=state%real_values(75)
+      mdl_mt__exp__8=state%real_values(76)
+      mdl_mw__exp__8=state%real_values(77)
+      mdl_mt__exp__10=state%real_values(78)
+      mdl_mw__exp__10=state%real_values(79)
+      mdl_mz__exp__6=state%real_values(80)
+      mdl_sw__exp__6=state%real_values(81)
+      mdl_sw__exp__3=state%real_values(82)
+      mdl_mz__exp__3=state%real_values(83)
+      mdl_cw__exp__4=state%real_values(84)
+      mdl_cw__exp__6=state%real_values(85)
+      mdl_mh__exp__6=state%real_values(86)
+      mdl_cw__exp__3=state%real_values(87)
+      mdl_sw__exp__8=state%real_values(88)
+      mdl_sw__exp__10=state%real_values(89)
+      mdl_qd__exp__3=state%real_values(90)
+      mdl_qd__exp__2=state%real_values(91)
+      mdl_i3d__exp__2=state%real_values(92)
+      mdl_i3d__exp__3=state%real_values(93)
+      mdl_qu__exp__3=state%real_values(94)
+      mdl_qu__exp__2=state%real_values(95)
+      mdl_i3u__exp__2=state%real_values(96)
+      mdl_i3u__exp__3=state%real_values(97)
+      mdl_ql__exp__3=state%real_values(98)
+      mdl_i3l__exp__2=state%real_values(99)
+      mdl_i3l__exp__3=state%real_values(100)
+      mdl_i3v__exp__3=state%real_values(101)
+      mdl_mw__exp__3=state%real_values(102)
+      mdl_qu__exp__4=state%real_values(103)
+      mdl_qd__exp__4=state%real_values(104)
+      mdl_i3l__exp__4=state%real_values(105)
+      mdl_i3u__exp__4=state%real_values(106)
+      mdl_i3d__exp__4=state%real_values(107)
+      mdl_i3v__exp__4=state%real_values(108)
+      mdl_i3v__exp__2=state%real_values(109)
+      mdl_gfbar=state%real_values(110)
+      mdl_aew=state%real_values(111)
+      aewm1=state%real_values(112)
+      mdl_sqrt__aew=state%real_values(113)
+      mdl_ee=state%real_values(114)
+      mdl_g1=state%real_values(115)
+      mdl_gw=state%real_values(116)
+      mdl_vev=state%real_values(117)
+      mdl_vev__exp__2=state%real_values(118)
+      mdl_lam=state%real_values(119)
+      mdl_yt=state%real_values(120)
+      mdl_muh=state%real_values(121)
+      mdl_axialzup=state%real_values(122)
+      mdl_axialzdown=state%real_values(123)
+      mdl_vectorzup=state%real_values(124)
+      mdl_vectorzdown=state%real_values(125)
+      mdl_axialg0up3=state%real_values(126)
+      mdl_vectoraup=state%real_values(127)
+      mdl_vectoradown=state%real_values(128)
+      mdl_vectorwmdxu=state%real_values(129)
+      mdl_axialwmdxu=state%real_values(130)
+      mdl_vectorwpuxd=state%real_values(131)
+      mdl_axialwpuxd=state%real_values(132)
+      mdl_ee__exp__2=state%real_values(133)
+      mdl_ee__exp__3=state%real_values(134)
+      mdl_ee__exp__4=state%real_values(135)
+      mdl_ntadpole=state%real_values(136)
+      mdl_gf=state%real_values(137)
+      as=state%real_values(138)
+      mdl_ymt=state%real_values(139)
+      mdl_complexi=state%complex_values(17)
+      mdl_i233=state%complex_values(18)
+      mdl_i333=state%complex_values(19)
+      mdl_vectorhup3=state%complex_values(20)
+      mdl_vectorgpux3d3=state%complex_values(21)
+      mdl_axialgpux3d3=state%complex_values(22)
+      mdl_vectorgmdx3u3=state%complex_values(23)
+      mdl_axialgmdx3u3=state%complex_values(24)
+      if(configuration%epoch.ne.state%configuration%epoch)configuration=state%configuration
+      saved_revision=mc_born_model_revision()
+      call born_activate_model(configuration,status)
+      if(status.ne.BORN_OK)error stop "Invalid restored native model configuration"
+      born_active_helicity_frame=state%helicity_frame
       end

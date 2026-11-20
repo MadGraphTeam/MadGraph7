@@ -15,6 +15,8 @@ ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
           INTEGER :: PARTNER2(0)
           TYPE(COUPPTR) :: VAL(0)
           END TYPE FLV_COUPLING
+
+
           END MODULE MODEL_OBJECT
 
 

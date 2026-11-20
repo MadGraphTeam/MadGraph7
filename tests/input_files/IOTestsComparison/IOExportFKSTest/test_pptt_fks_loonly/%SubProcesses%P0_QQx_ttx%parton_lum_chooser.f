@@ -1,1 +1,1 @@
-../../_shared/IOExportFKSTest%test_pptt_fks_loonly%%SubProcesses%P0_QQx_ttx%parton_lum_chooser.f
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%parton_lum_chooser.f
