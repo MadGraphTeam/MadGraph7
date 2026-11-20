@@ -1,0 +1,323 @@
+{
+ "what": "lit-val's campaign specification (tools/loop_benchmark/li_manifest.py reads it; data, not code): the identity rows' row ids, the loading options of a source UFO by its directory name, the PLAN §4.1 stress points (M §4.7) and the fixtures this package derives from lit-ref's (LI-Z1's exact colour zeros, which MG5 generates no diagram for). `li_manifest.py stress` writes every derived fixture from it; tests/unit/test_loop_v2_li_manifest.py checks they are current.",
+ "identities": {
+  "checks": {
+   "LI-W1": "L4",
+   "LI-L1": "L5",
+   "LI-P1": "L3"
+  },
+  "crossing_row": "LI-26",
+  "flavour_row": "LI-A5",
+  "limit_row": "LI-A7",
+  "heft_ratio_row": "LI-A1",
+  "ward_cited": {
+   "both_gauges": "tests/unit/test_loop_v2_induced_ew_gauge.py::test_qcd_induced_massive_vectors_agree_in_both_gauges (lit-ew; [li_gg_wpwm] default tier, [li_gg_hz] nightly): the QCD-only g g > w+ w- / g g > h z |A|^2 in unitary and 't Hooft-Feynman gauge agree in binary64 within 1e-9 at every fixture point (§4.0 L4's both-gauges equality)",
+   "goldstone": "the generation-time Goldstone probe on massive external vectors where the artifact records it (lit-ew: tests/unit/test_loop_v2_induced_ew_gauge.py)"
+  }
+ },
+ "ufo_options": {
+  "loop_qcd_qed_sm_Gmu_py3": {
+   "loop": {
+    "external_photons": "none"
+   },
+   "loop.preparation": {
+    "compatibility": "gmu_particle_anti"
+   }
+  }
+ },
+ "stress": [
+  {
+   "base": "li_gg_zz",
+   "kind": "pt",
+   "values": [
+    "1",
+    "0.1",
+    "0.01"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>VV at pT,V = 1, 0.1, 0.01 GeV"
+  },
+  {
+   "base": "li_gg_hh",
+   "kind": "threshold",
+   "values": [
+    "1e-2",
+    "1e-3",
+    "1e-4"
+   ],
+   "energy": null,
+   "pt": "0.01",
+   "source": "§4.1: gg>hh at sqrt(s) -> 2 m_h"
+  },
+  {
+   "base": "li_gg_hh",
+   "kind": "forward",
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>hh at theta -> 0"
+  },
+  {
+   "base": "li_gg_aa",
+   "kind": "forward",
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>aa forward theta = 1e-3 .. 1e-5"
+  },
+  {
+   "base": "li_gg_ag",
+   "kind": "forward",
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>ag forward theta = 1e-3 .. 1e-5"
+  },
+  {
+   "base": "li_gg_hh",
+   "kind": "top-threshold",
+   "values": [
+    "-1e-3",
+    "1e-3"
+   ],
+   "energy": null,
+   "rho": "4",
+   "source": "§4.1: sqrt(s) ~ 2 m_t just above and below"
+  },
+  {
+   "base": "li_gg_zz",
+   "kind": "top-threshold",
+   "values": [
+    "-1e-3",
+    "1e-3"
+   ],
+   "energy": null,
+   "rho": "4",
+   "source": "§4.1: sqrt(s) ~ 2 m_t just above and below"
+  },
+  {
+   "base": "li_gg_wpwm",
+   "kind": "pt",
+   "values": [
+    "1",
+    "0.1",
+    "0.01"
+   ],
+   "energy": "500",
+   "source": "§4.1: gg>VV at pT,V = 1, 0.1, 0.01 GeV (V = W)"
+  },
+  {
+   "base": "li_gg_hgg",
+   "kind": "planar",
+   "values": [
+    "1e-2",
+    "1e-3",
+    "1e-4"
+   ],
+   "energy": "500",
+   "fractions": [
+    "0.3",
+    "0.3",
+    "0.4"
+   ],
+   "transverse": [
+    [
+     "0.5",
+     "0.4"
+    ],
+    [
+     "-0.3",
+     "-0.4"
+    ]
+   ],
+   "source": "§4.1: planar 2->3 (5-point Gram -> 0): the out-of-plane transverse components scaled by the value"
+  },
+  {
+   "base": "li_gg_zz_cms",
+   "kind": "top-threshold",
+   "name": "li_stress_gg_zwpwm_cms_top-threshold",
+   "values": [
+    "1e-2",
+    "1e-3",
+    "1e-4"
+   ],
+   "energy": null,
+   "fractions": [
+    "0.36",
+    "0.32",
+    "0.32"
+   ],
+   "transverse": [
+    [
+     "0.3",
+     "0.2"
+    ],
+    [
+     "-0.1",
+     "0.25"
+    ]
+   ],
+   "masses": [
+    null,
+    null,
+    "MZ",
+    "MW",
+    "MW"
+   ],
+   "process": {
+    "pdgs": [
+     21,
+     21,
+     23,
+     24,
+     -24
+    ],
+    "madloop_process": "g g > z w+ w- [sqrvirt=QCD]",
+    "loop_orders": {
+     "QCD": 2,
+     "QED": 3
+    },
+    "squared_orders": {
+     "QCD": 4,
+     "QED": 6
+    },
+    "fixed_parameters": {
+     "WW": "0"
+    }
+   },
+   "source": "§4.1: several on-shell loop propagators (gg>ZWW-type: pentagons with three top and one bottom propagator on shell just above 2 m_t, arXiv:1507.00020 (c.10)), complex-mass scheme with the scheme's Gamma_t, external W/Z widths zero (the cms-external-width remedy)"
+  }
+ ],
+ "derived": [
+  {
+   "name": "li_h_ga",
+   "base": "li_h_gg",
+   "li_row": "LI-Z1",
+   "pdgs": [
+    25,
+    21,
+    22
+   ],
+   "madloop_process": "h > g a [sqrvirt=QCD]",
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "squared_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "exact_colour_zero": true,
+   "source": "§4.1 LI-Z1: exact colour zero (every loop has one coloured attachment, Tr T^a = 0; MG5 generates no diagram, NoDiagramException); the base's points and scheme"
+  },
+  {
+   "name": "li_z_ga",
+   "base": "li_z_gg",
+   "li_row": "LI-Z1",
+   "pdgs": [
+    23,
+    21,
+    22
+   ],
+   "madloop_process": "z > g a [sqrvirt=QCD]",
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "squared_orders": {
+    "QCD": 2,
+    "QED": 4
+   },
+   "exact_colour_zero": true,
+   "source": "§4.1 LI-Z1: exact colour zero (every loop has one coloured attachment, Tr T^a = 0; MG5 generates no diagram, NoDiagramException); the base's points and scheme"
+  }
+ ],
+ "fig7": {
+  "source": "arXiv:1604.01363 (Hirschi, Peraro), Fig. 7 (fig:StabilityPlot_zz) with §4.2 'Stability study': MadLoop + Ninja in binary64, loop-induced g g > n Z, one helicity configuration g(-) g(-) > n Z(-) (all-minus) or n Z(0) (longitudinal), random points at sqrt(s) = 1 TeV without cuts for the loop-induced processes, 100K / 10K / 1K points for 2 / 3 / 4 final states; the plotted accuracy is MadLoop's own stability ESTIMATE (the loop-direction test combined with a Lorentz-rotation test), the fraction of points with an accuracy below Delta; b quarks massive in all SM processes (§4: 'The b-quarks are considered massive in all SM processes'), otherwise MG5 defaults (no parameter table for Fig. 7)",
+  "comparison_material": "USER 2026-11-06 ~14:55 (DECISIONS ~14:55 (3)): comparison material, compared on what it shares with §4.1 (gg>zz LI-21, gg>zzz LI-34, gg>zzzz LI-44); the paper's curves are an image, so only their features are compared",
+  "scheme_of": "li_gg_hhgg_p15",
+  "scheme_note": "MG5 loop_sm default restriction at the MG5 default card (arXiv:1507.00020 tableParams, the same group's MG5 defaults): massive b (m_b = y_b = 4.7) and tau, fixed tree widths at the card values, Gamma_t = 0, widthless loop propagators",
+  "energy": "1000",
+  "mu_r": "1000",
+  "seed": 20160105,
+  "chunk": 10,
+  "selections": {
+   "all-minus": -1,
+   "longitudinal": 0
+  },
+  "initial_helicity": -1,
+  "checks": "VirtualStabilityChecks(1, reduction_direction=True, rescaled=True): one generic rotation and the loop-direction re-test, as MadLoop's two tests, plus the rescaled re-test",
+  "runs": {
+   "li_gg_zz": 200,
+   "li_gg_zzz": 50,
+   "li_gg_zzzz": 50
+  }
+ },
+ "born_l6": {
+  "source": "m-lit PLAN §4.1 LI-B1 (every G1, M-QCD, M-SM incl. CMS, decay XX01-08, HC row, Born-interfered: L6 all Laurent orders, the theta = 1e-3..1e-5 rows); DECISIONS 2026-11-07 21:50 R8 (lit-val extends the Born-interfered L6 to the other campaigns after lit-tir-mp, reusing lit-tir's scripts), 2026-11-08 08:31 (a lane beyond 10 max(E) below ~1e-5 relative is recorded, not a failure)",
+  "campaigns": {
+   "mqcd": "tests/fixtures/loop/mqcd/manifest.json",
+   "msm": "tests/fixtures/loop/msm/manifest.json",
+   "dec": "tests/fixtures/loop/dec/manifest.json"
+  },
+  "forward": {
+   "values": [
+    "1e-3",
+    "1e-4",
+    "1e-5"
+   ],
+   "source": "§4.1 LI-B1: the theta = 1e-3..1e-5 rows (each 2 -> 2 row with massless beams and equal final masses, at its first reference point's sqrt(s) and scale)"
+  },
+  "high_points": 1,
+  "high_points_source": "double-double at each row's first point (the binary64 lanes at every tier point and the forward points carry the estimate rule; the double-double side is the 1e-24 target, R5)",
+  "public": {
+   "hc": "tools/loop_reference/hc_nlo_x0.json (the HC rows, generated as tests/unit/test_loop_v2_hc.py does: public route, no tools-route executor, so the one comparison of tools/loop_v2_observables_backends.py at |A|^2 per Laurent coefficient)"
+  }
+ },
+ "skips": {
+  "what": "the arms the campaign's heavy optional runs (LI-44) do not take, with their measured costs (lit-val STATE 2026-11-08 02:16, 02:23, 08:03); `li_manifest.py run` and the nightly ids record each as not run with this reason (`run_skips`); `high_plain`: the double-double arms without the checks (the value only, about 1/5 the cost)",
+  "li_gg_aagg": {
+   "arms": {
+    "ninjars/arbitrary/plain": "stopped: the 40-digit AP arm of this 2->4 optional run extrapolates to about 6.9 h (its double-double arm 7405 s times the AP / double-double ratio 3.35 of li_gg_hhgg); L7 at six legs is li_gg_hhgg's",
+    "tirust/arbitrary/plain": "not run: this run's NinjaRS AP arm is not run (about 6.9 h), so L6/L7 in AP are li_gg_hhgg's at six legs",
+    "ward/ninjars/double-double": "not run: about 5.5 h (6 gauge legs x ~0.45 x the 7405 s double-double arm of 3 points, the probe/arm ratio measured on li_gg_hggg); L4 here is binary64 at the fixture points + the generation-time double-double probe",
+    "ward/tirust/double-double": "not run: as the NinjaRS double-double Ward arm of this run (L4 in binary64 here)"
+   }
+  },
+  "li_gg_zzzz": {
+   "high_plain": true,
+   "arms": {
+    "identity/ninjars/double-double": "skipped: the double-double side of L5 is recorded information only (L5 is judged in binary64); about 41 min on this run",
+    "l3/ninjars/double-double": "skipped: about 100 min on this run (0.45 times its double-double checked arm, the ratio measured on li_gg_hggg); L3 is the binary64 probes here",
+    "l3/tirust/double-double": "skipped: as the NinjaRS double-double probe of this run (about 100 min at NinjaRS's cost); L3 is the binary64 probes here",
+    "ward/ninjars/double-double": "not run: about 3 h (2 gauge legs x ~0.45 x ~5 x the 2327 s plain double-double arm of 3 points); L4 here is binary64 at the fixture points + the generation-time double-double probe",
+    "ward/tirust/double-double": "not run: as the NinjaRS double-double Ward arm of this run (L4 in binary64 here)"
+   }
+  }
+ },
+ "colour_checks": {
+  "what": "§4.1 LI-27: the f^abc part of g g > a g (expected to vanish by C-parity) checked numerically, never removed by rule (Q13): per helicity row the difference of the two amplitude-basis anchors relative to their sum (Re(conj(a_t) (G a)_t), induced_observables: on a basis pair exchanged by the quark loop's orientation the difference is the d^abc-f^abc interference), at every fixture point, binary64 (within 10 x the point's relative estimate) and double-double (within the 1e-24 target); the control g g > z g (V_GGGZ: d + f) must exceed the same bounds (the check sees an f^abc part); the |f|^2 projection itself needs the loop amplitude's colour vector, which the public route does not serve",
+  "LI-27": {
+   "run": "li_gg_ag",
+   "control": "li_gg_zg"
+  }
+ },
+ "unrun_checks": {
+  "what": "§4.1 per-row checks lit-ref's manifest does not carry and lit-val does not run, with the reason (never dropped silently)"
+ },
+ "not_applicable_checks": {
+  "what": "§4.1 per-row checks that do not apply by a user ruling, recorded with the ruling beside the row's other checks (they make no row partial)",
+  "LI-24": {
+   "lambda_hhh scan": "not applicable (USER 2026-11-09 ~08:42): the SM models' trilinear lam = MH^2/(2 v^2) is internal and cannot be scaled independently; the triangle-box cancellation and the threshold are li_gg_hh's runs and its stress points"
+  }
+ }
+}

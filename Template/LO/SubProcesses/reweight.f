@@ -683,9 +683,9 @@ c111      logical set_goodjet(n_max_cl) ! variable for debugging unset call
       logical isqcd,isjet,isparton,cluster,isjetvx,is_octet
       logical flavor_allows_graph
       integer ifsno
-      double precision alphas
+      double precision alphas, fact_scale2_min
       external isqcd, isjet, isparton, cluster, isjetvx, alphas, ifsno
-      external is_octet, flavor_allows_graph
+      external is_octet, flavor_allows_graph, fact_scale2_min
       setclscales=.true.
 
 c    WARNING: goodjet() is sometimes accessed for variable which are not
@@ -1267,6 +1267,8 @@ c           Use geom. average of central scales
             scale=sqrt(pt2ijcl(nexternal-2))
          endif
          scale=scalefact*scale
+c        keep alpha_s away from its Landau pole (as set_ren_scale does)
+         if(scale.gt.0) scale=max(scale,min_ren_scale)
          if(scale.gt.0)
      $        G = SQRT(4d0*PI*ALPHAS(scale))
       endif
@@ -1300,9 +1302,10 @@ c     Use the minimum scale found for fact scale in ME
      $        q2fact(2)=scalefact**2*min(pt2ijcl(jfirst(2)),q2fact(2))
       endif
 
-c     Check that factorization scale is >= 2 GeV
-      if(lpp(1).ne.0.and.(q2fact(1).lt.4d0.and..not.fixed_fac_scale1).or.
-     $   lpp(2).ne.0.and.(q2fact(2).lt.4d0.and..not.fixed_fac_scale2))then
+c     Check that each factorization scale is above the lowest scale its
+c     beam density is defined at (fact_scale2_min, 0 if it has none)
+      if(q2fact(1).lt.fact_scale2_min(1).and..not.fixed_fac_scale1.or.
+     $   q2fact(2).lt.fact_scale2_min(2).and..not.fixed_fac_scale2)then
          if(nwarning.le.10) then
              nwarning=nwarning+1
              write(*,*) 'Warning: Too low fact scales: ',
@@ -1377,6 +1380,38 @@ c
             n_pdfrw(i,ivec)=0
          enddo
          s_rwfact(ivec)=1d0
+      endif
+      return
+      end
+
+      double precision function fact_scale2_min(ibeam)
+c***********************************************************
+c     Lowest factorisation scale squared at which the density of beam
+c     ibeam is defined; setclscales rejects a phase-space point below it.
+c     - hadron PDFs (|lpp|=1, also nuclei): 2 GeV, below the starting
+c       scale of the PDF sets
+c     - tabulated dressed-lepton densities (|lpp|=3,4, pdlabel dressed):
+c       1 GeV, the lower edge of their grids (zlow in lep_densities/*/eepdf.f);
+c       the analytic isrbet* sets have no grid and no limit
+c     - everything else, 0: the gamma-UPC fluxes (|lpp|=2, ed*/ch*) do
+c       not depend on the scale, the EPA (iww/none) returns 0 by itself
+c       when q2max < q2min, and EVA has its own mu2min cut.
+c***********************************************************
+      implicit none
+      integer ibeam
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'vector.inc' ! defines VECSIZE_MEMMAX, needed by run.inc
+      include 'run.inc'
+      include '../../Source/PDF/pdf.inc'
+
+      fact_scale2_min=0d0
+      if(abs(lpp(ibeam)).eq.1) then
+         fact_scale2_min=4d0
+      elseif((abs(lpp(ibeam)).eq.3.or.abs(lpp(ibeam)).eq.4).and.
+     $        pdlabel.eq.'dressed'.and.
+     $        pdsublabel(ibeam)(1:6).ne.'isrbet') then
+         fact_scale2_min=1d0
       endif
       return
       end

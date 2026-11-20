@@ -95,8 +95,9 @@ Scales
       - Applies to the dynamical scale only.
 
 The MadEvent default ``dynamical_scale_choice = -1`` follows the clustering of the diagram,
-as needed for MLM merging. In MG7 this is the choice ``"mlm"``, see `MLM merging`_. Otherwise
-the MG7 default is ``half_transverse_mass``.
+as needed for MLM merging. In MG7 this is the choice ``"mlm"``, see `MLM merging`_. A card
+with a ``ktdurham`` or ``ptlund`` cut is translated to MG7's ``"ckkwl"`` clustering scale
+instead. Otherwise the MG7 default is ``half_transverse_mass``.
 
 Generation and phase space
 --------------------------
@@ -152,8 +153,20 @@ MLM merging
 As MadEvent, MG7 sets up MLM merging by itself when the process has several jet
 multiplicities (for example ``p p > w+`` with ``add process p p > w+ j``): the scale choice
 ``"mlm"``, a merging cut ``xqcut = 30`` GeV and no jet ``delta_r`` cuts. The shower then does
-the jet matching (``ickkw = 1``, ``JetMatching:qCut = 1.5 xqcut``). It is not set up for an
-output with ``[amplicol]`` subprocesses.
+the jet matching (``ickkw = 1``, ``JetMatching:qCut = 1.5 xqcut``, and
+``JetMatching:coneRadius`` equal to ``beam.jet_radius``). It is not set up for an output
+with ``[amplicol]`` subprocesses.
+
+By default MG7 reads the scales off the clustering in its own way. To cluster the events as
+MadEvent does, type ``set mlm madevent`` in the launch question. It turns MLM merging on and
+sets every hidden clustering option to MadEvent's choice: ``scale_scheme``,
+``clustering_measure`` and ``clustering_history`` become ``"madevent"``, ``min_scale`` becomes
+MadEvent's 2 GeV floor, and ``jet_scale_scheme``, ``parton_line_scheme``,
+``alphas_reweighting`` and ``pdf_reweighting`` are set to the values the two codes share. A
+merging cut of 30 GeV is added if ``xqcut`` is 0. ``jet_radius``, ``max_jet_flavor`` and
+``mlm_shower_start`` are left as they are, since MadEvent has them as run card parameters too
+(``d``, ``maxjetflavor`` and ``mlm_shower_start``). A MadEvent run card with ``ickkw = 1`` is
+converted the same way. ``set mlm mg7`` puts MG7's defaults back.
 
 .. list-table::
     :header-rows: 1
@@ -178,6 +191,10 @@ output with ``[amplicol]`` subprocesses.
     * - ``pdfwgt``
       - ``beam.pdf_reweighting``
       - Hidden in both.
+    * - ``d``
+      - ``beam.jet_radius``
+      - The jet radius :math:`D` of the clustering measure, 1 by default. Hidden in both.
+        The shower matches the jets with the same value.
     * - ``sys_alpsfact``
       - ``systematics.alps``
       -
@@ -434,10 +451,10 @@ Not supported yet
 
 The following MadEvent features have no MG7 equivalent. Settings for them are ignored.
 
-* Matching and merging other than MLM: ``ickkw = 2``, and the CKKW-L cuts ``ktdurham``,
-  ``ptlund`` and ``dparameter``. The MLM settings ``highestmult``, ``ktscheme``,
-  ``alpsfact``, ``chcluster``, ``asrwgtflavor``, ``clusinfo`` and
-  ``pdgs_for_merging_cut`` have no counterpart either.
+* Matching and merging settings other than MLM (``ickkw = 1``, ``xqcut``,
+  ``auto_ptj_mjj``) and CKKW-L (``ktdurham``, ``ptlund``, ``dparameter``,
+  ``pdgs_for_merging_cut``): ``highestmult``, ``ktscheme``, ``alpsfact``, ``chcluster``,
+  ``pdfwgt``, ``asrwgtflavor``, ``clusinfo``.
 * Biasing: ``bias_module`` and ``bias_parameters``.
 * Beam polarization and heavy-ion or equivalent-photon beams: ``polbeam1``, ``polbeam2``,
   ``nb_proton1``, ``nb_proton2``, ``nb_neutron1``, ``nb_neutron2``, ``mass_ion1``,

@@ -13,8 +13,10 @@
 #include "mgOnGpuConfig.h"
 #include "mgOnGpuCxtypes.h" // for cxtype, fptype_amp_sv
 #include "GpuAbstraction.h"
+#include "ProcessData.h"
 #include "ProcessParameters.h"
 
+#include <cstddef>
 #include <type_traits>
 
 // A kernel argument that the kernel reads in place, without a copy per thread: from
@@ -28,6 +30,23 @@
 
 namespace madmatrix
 {
+  // Multichannel numerators: AoSoA [npagN][ndiagrams][neppN], one page per warp. A warp's
+  // per-diagram atomics coalesce and each diagram's offset is a compile-time constant.
+  constexpr int neppN = 32;
+
+  __host__ __device__ constexpr std::size_t
+  numeratorsIndex( const std::size_t ievt, const int idiag )
+  {
+    return ievt / neppN * ProcessData::ndiagrams * neppN + idiag * neppN + ievt % neppN;
+  }
+
+  // Whole pages: nevt need not be a multiple of neppN.
+  constexpr std::size_t
+  numeratorsBufferSize( const std::size_t nevt )
+  {
+    return ( nevt + neppN - 1 ) / neppN * neppN * ProcessData::ndiagrams;
+  }
+
   // The parameters of the process as the kernels take them: by value, which puts them
   // in the constant bank (as fast as __constant__ memory, and private to each launch,
   // hence to each instance and device), unless they do not fit in the kernel arguments

@@ -9,6 +9,7 @@ import pty
 import sys
 import termios
 import threading
+import time
 import types
 from dataclasses import replace
 from pathlib import Path
@@ -297,6 +298,10 @@ def test_generate_tty_dashboard_preserves_status_lines_and_terminal_width(
             "--json",
             "--progress",
             "tty",
+            # The logger records (developers' level; the default shows only
+            # warnings and the CLI's notices).
+            "--log-level",
+            "info",
             "--color",
             "never",
         ),
@@ -315,6 +320,37 @@ def test_generate_tty_dashboard_preserves_status_lines_and_terminal_width(
     )
 
 
+class _SlowStartServices(_TtyCliServices):
+    def generate(self, config: RunConfig, progress: ProgressSink) -> object:
+        # The command's own first phase comes late (model loading, imports).
+        time.sleep(1.2)
+        return super().generate(config, progress)
+
+
+def test_a_live_display_shows_the_command_before_its_first_phase(
+    tmp_path: Path,
+) -> None:
+    status, payload = _run_cli_in_pty(
+        (
+            "generate",
+            "d d~ > z g",
+            str(tmp_path / "artifact"),
+            "--progress",
+            "tty",
+            "--color",
+            "never",
+        ),
+        services=_SlowStartServices(),
+    )
+    assert status == 0
+    text = payload.decode(errors="replace")
+    # Drawn at once, its clock running, before the generation's phases.
+    assert text.index("pyamplicol generate") < text.index("Generating processes")
+    # N1: the placeholder gives way to the first phase and never comes back.
+    assert "starting" not in text[text.index("Generating processes") :]
+    assert "pyamplicol generate  1s" in text or "elapsed 1s" in text
+
+
 def test_profile_tty_dashboard_closes_between_lifecycle_roots(
     tmp_path: Path,
 ) -> None:
@@ -325,6 +361,10 @@ def test_profile_tty_dashboard_closes_between_lifecycle_roots(
             "--json",
             "--progress",
             "tty",
+            # The logger records (developers' level; the default shows only
+            # warnings and the CLI's notices).
+            "--log-level",
+            "info",
             "--color",
             "never",
         ),
@@ -557,7 +597,10 @@ def test_profile_interrupted_before_sampling_exits_without_traceback(
 
     assert status == 130
     assert stdout.getvalue() == ""
-    assert "interrupted before a complete result was available" in stderr.getvalue()
+    assert (
+        "interrupted (Ctrl-C) before a complete result was available"
+        in stderr.getvalue()
+    )
 
 
 def test_partial_profile_prints_result_and_exits_as_interrupted(tmp_path: Path) -> None:

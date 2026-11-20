@@ -555,7 +555,7 @@ pub(crate) fn discover_recurrence_current_relations(
         });
     }
     for (index, input) in inputs.iter().enumerate() {
-        if input.current_id != index as u32 {
+        if !crate::narrow::is_index(input.current_id, index) {
             return Err(invalid(format!(
                 "current {index} has non-canonical ID {}",
                 input.current_id

@@ -226,6 +226,33 @@ def coupling_orders(procdef, model):
             for order, weight in hierarchy.items() if weight > lowest}
 
 
+def amplitude_qcd_power(procdef, orders):
+    """The power of g_s of the amplitude, -1 if not unique: every vertex carries
+    one coupling, the rest are powers of g_s."""
+    if len(orders) != 1:
+        return -1
+    return len(procdef.get('legs')) - 2 - sum(orders.values())
+
+
+def max_matched_jets(proc_defs, model):
+    """The number of jets an MLM / CKKW-L shower has to match for the [amplicol]
+    processes, as export_v4.write_auto_dsig_file counts it: light coloured
+    final-state partons, at most the QCD order of the amplitude."""
+    def is_light_parton(pdg):
+        particle = model.get_particle(pdg)
+        return (particle is not None and particle.get('mass') == 'ZERO'
+                and particle.get('color') > 1)
+
+    count = 0
+    for procdef in proc_defs:
+        partons = max((len([1 for pdg in proc.get_final_ids() if is_light_parton(pdg)])
+                       for proc in representative_processes([procdef], model)),
+                      default=0)
+        qcd_power = amplitude_qcd_power(procdef, coupling_orders(procdef, model))
+        count = max(count, partons if qcd_power < 0 else min(qcd_power, partons))
+    return count
+
+
 def model_job(model, cache_path, pyamplicol=None):
     """The UFO model of the output with its restriction, compiled for
     pyamplicol once per output and again when the model, its restriction or
@@ -393,6 +420,43 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
     return entries
 
 
+def clustering_model(model):
+    """The particles and 3-point vertices of the model without its flavour
+    grouping, for the MLM clustering of [amplicol] events
+    (madgraph.mg7.amplicol_clustering), and the particles of its vertices with
+    more legs, which the clustering checks are made of 3-point vertices."""
+    merged = set(model.get('merged_particles'))
+
+    def physical(pdgs):
+        return not any(abs(pdg) in merged for pdg in pdgs)
+
+    particles = {}
+    for particle in model.get('particles'):
+        pdg = particle.get_pdg_code()
+        if not physical([pdg]):
+            continue
+        for code in (pdg, particle.get_anti_pdg_code()):
+            part = model.get_particle(code)
+            particles[code] = {'anti': part.get_anti_pdg_code(),
+                               'color': part.get_color(),
+                               'mass': part.get('mass'),
+                               'width': part.get('width')}
+    vertices, contact_vertices = [], []
+    interactions = list(model.get('interactions'))
+    if merged:
+        interactions += list(model['unmerged_interactions'])
+    for interaction in interactions:
+        pdgs = [p.get_pdg_code() for p in interaction.get('particles')]
+        if not physical(pdgs) or not all(p in particles for p in pdgs):
+            continue
+        if len(pdgs) == 3:
+            vertices.append([pdgs, dict(interaction.get('orders'))])
+        elif len(pdgs) > 3:
+            contact_vertices.append(pdgs)
+    return {'particles': particles, 'vertices': vertices,
+            'contact_vertices': contact_vertices}
+
+
 def parameter_references(metadata):
     """The parameter card entry of every mutable runtime parameter."""
     references = {}
@@ -445,13 +509,14 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
         logger.error('pyamplicol failed to generate the [amplicol] matrix elements')
         raise madgraph.InvalidCmd('pyamplicol failed to generate the [amplicol] '
                                   'matrix elements: %s' % error)
+    from madgraph.mg7.amplicol_clustering import CLUSTERING_MODEL
+    with open(pjoin(subproc_dir, CLUSTERING_MODEL), 'w') as stream:
+        json.dump(clustering_model(model), stream)
     entries = []
     for procdef, process, provider_ids in zip(proc_defs, processes, providers):
         name, path, orders = process['name'], process['path'], process['orders']
         rel_dir = pjoin('SubProcesses', name)
-        # every vertex carries one coupling: the rest are powers of g_s
-        qcd_power = (len(procdef.get('legs')) - 2 - sum(orders.values())
-                     if len(orders) == 1 else -1)
+        qcd_power = amplitude_qcd_power(procdef, orders)
         initial_legs = [set(leg_pdgs(leg, model))
                         for leg in procdef.get('legs') if not leg.get('state')]
         copies = []

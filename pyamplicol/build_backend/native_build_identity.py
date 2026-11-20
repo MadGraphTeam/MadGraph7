@@ -90,7 +90,10 @@ _NATIVE_BUILD_IGNORED_TREE_PARTS = frozenset({".artifacts", "__pycache__", "targ
 _NON_NATIVE_RUST_PATHS = frozenset(
     {
         Path("rust/crates/rusticol-capi/tests/eager_artifact.rs"),
+        Path("rust/crates/rusticol-core/tests/compiled_binary64_with_symbolica.rs"),
         Path("rust/crates/rusticol-capi/tests/runtime_selectors.rs"),
+        Path("rust/crates/rusticol-core/benches/loop_v2_kernels.rs"),
+        Path("rust/crates/rusticol-core/benches/loop_v2_schedules.rs"),
         Path("rust/crates/rusticol-core/src/artifact_tests.rs"),
         Path("rust/crates/rusticol-core/src/eager_layout_tests.rs"),
         Path("rust/crates/rusticol-core/src/eager_lowering_v3_tests.rs"),
@@ -103,6 +106,8 @@ _NON_NATIVE_RUST_PATHS = frozenset(
         Path("rust/crates/rusticol-core/src/engine/recurrence_integration_tests.rs"),
         Path("rust/crates/rusticol-core/src/engine/source_metadata_tests.rs"),
         Path("rust/crates/rusticol-core/src/engine_tests.rs"),
+        Path("rust/crates/rusticol-core/src/loop_v2/kernels_tests.rs"),
+        Path("rust/crates/rusticol-core/src/loop_v2/trees_tests.rs"),
         Path("rust/crates/rusticol-core/src/metadata_tests.rs"),
         Path("rust/crates/rusticol-core/src/pacbin_tests.rs"),
         Path("rust/crates/rusticol-core/src/recurrence/direct_backend_tests.rs"),
@@ -522,6 +527,21 @@ def _is_native_build_tree_input(root: Path, tree: Path, path: Path) -> bool:
         return False
     tree_relative = path.relative_to(tree)
     root_relative = path.relative_to(root)
+    if root_relative.is_relative_to("rust/loop-reduction"):
+        # These three crates compile only their manifests/build scripts and src
+        # trees. Python controls, SDK clients/headers and docs are packaged or
+        # tested separately and cannot change the extension or native archive.
+        crates = (
+            Path("rust/loop-reduction"),
+            Path("rust/loop-reduction/python"),
+            Path("rust/loop-reduction/sdk"),
+        )
+        if not any(
+            root_relative in (crate / "Cargo.toml", crate / "build.rs")
+            or root_relative.is_relative_to(crate / "src")
+            for crate in crates
+        ):
+            return False
     return (
         not _NATIVE_BUILD_IGNORED_TREE_PARTS.intersection(tree_relative.parts)
         and root_relative not in _NON_NATIVE_RUST_PATHS

@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import MISSING, dataclass, fields, is_dataclass
 from types import MappingProxyType
-from typing import cast, get_type_hints
+from typing import cast, get_args, get_type_hints
 
 from .errors import ConfigurationError
 from .models import RunConfig
@@ -33,6 +33,19 @@ def _immutable_default(value: object) -> object:
     return value
 
 
+def section_type(hint: object) -> tuple[type, bool]:
+    """Resolve the existing dataclass section, optionally absent as None."""
+    arguments = get_args(hint)
+    if type(None) in arguments:
+        children = tuple(value for value in arguments if value is not type(None))
+        if len(children) != 1 or not is_dataclass(children[0]):
+            raise TypeError("optional configuration sections require one dataclass")
+        return cast(type, children[0]), True
+    if not isinstance(hint, type) or not is_dataclass(hint):
+        raise TypeError("configuration sections require a dataclass")
+    return hint, False
+
+
 def _build_registry(
     cls: type[object], prefix: str = ""
 ) -> tuple[dict[str, ConfigField], set[str]]:
@@ -45,7 +58,10 @@ def _build_registry(
         path = f"{prefix}.{item.name}" if prefix else item.name
         if item.metadata.get("config_section"):
             sections.add(path)
-            child_registry, child_sections = _build_registry(hints[item.name], path)
+            child, nullable = section_type(hints[item.name])
+            if nullable:
+                registry[path] = ConfigField(path=path, kind="section", nullable=True)
+            child_registry, child_sections = _build_registry(child, path)
             registry.update(child_registry)
             sections.update(child_sections)
             continue

@@ -15,10 +15,16 @@ from pyamplicol.models.builtin.process_ir import build_process_ir
 @pytest.fixture(scope="module")
 def three_line_nlc_dag() -> tuple[BuiltinSMModel, GenericDAG]:
     model = BuiltinSMModel()
+    # QED <= 1 admits no electroweak exchange between the quark lines (two
+    # vertices), so the DAG is pure QCD, while the model inventory within the
+    # limits keeps the parity-violating Z couplings: the compiler then leaves
+    # the helicity-flip pruning to the post pass under test (with QED = 0 it
+    # prunes while compiling).
     dag = compile_generic_dag(
         build_process_ir("d d~ > u u~ s s~ g", color_accuracy="nlc"),
         model=model,
         online_evaluation_reuse=True,
+        max_coupling_orders={"QED": 1},
     )
     return model, dag
 

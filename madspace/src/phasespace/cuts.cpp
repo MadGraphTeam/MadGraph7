@@ -18,30 +18,49 @@ void check_custom_cut(const std::optional<CustomFunction>& custom_cut) {
     }
 }
 
+void check_merging_cut(
+    const std::optional<Cuts::MergingCut>& merging_cut,
+    const NamedVector<Type>& arg_types
+) {
+    if (merging_cut &&
+        merging_cut->scale.arg_types().at(0).shape != arg_types.at(0).shape) {
+        throw std::invalid_argument(
+            "merging cut must be built for the same number of particles as the cuts"
+        );
+    }
+}
+
 } // namespace
 
 Cuts::Cuts(
     const std::vector<CutItem>& cut_data,
-    const std::optional<CustomFunction>& custom_cut
+    const std::optional<CustomFunction>& custom_cut,
+    const std::optional<MergingCut>& merging_cut
 ) :
     FunctionGenerator(
         "Cuts", cut_data.at(0).observable.arg_types(), {{"mask", batch_float}}
     ),
     _cut_data(cut_data),
-    _custom_cut(custom_cut) {
+    _custom_cut(custom_cut),
+    _merging_cut(merging_cut) {
     check_custom_cut(custom_cut);
+    check_merging_cut(merging_cut, arg_types());
 }
 
 Cuts::Cuts(
-    std::size_t particle_count, const std::optional<CustomFunction>& custom_cut
+    std::size_t particle_count,
+    const std::optional<CustomFunction>& custom_cut,
+    const std::optional<MergingCut>& merging_cut
 ) :
     FunctionGenerator(
         "Cuts",
         {{"momenta", batch_four_vec_array(particle_count)}},
         {{"mask", batch_float}}
     ),
-    _custom_cut(custom_cut) {
+    _custom_cut(custom_cut),
+    _merging_cut(merging_cut) {
     check_custom_cut(custom_cut);
+    check_merging_cut(merging_cut, arg_types());
 }
 
 NamedVector<Value>
@@ -62,6 +81,12 @@ Cuts::build_function_impl(FunctionBuilder& fb, const NamedVector<Value>& args) c
     }
     if (_custom_cut) {
         weights.push_back(_custom_cut->build_function(fb, {args.at(0)}).at(0));
+    }
+    if (_merging_cut && _merging_cut->scale.active()) {
+        Value scale = _merging_cut->scale.build_function(fb, {args.at(0)}).at(0);
+        weights.push_back(fb.cut_one(
+            scale, _merging_cut->min, std::numeric_limits<double>::infinity()
+        ));
     }
     return {{"mask", fb.product(weights)}};
 }
@@ -138,6 +163,13 @@ std::vector<double> Cuts::pt_min() const {
             if (limit < item.min) {
                 limit = item.min;
             }
+        }
+    }
+    // a hadronic ktdurham cut bounds the pT of every merging leg
+    if (_merging_cut && _merging_cut->scale.bounds_pt()) {
+        for (std::size_t index : _merging_cut->scale.merging_leg_indices()) {
+            double& limit = pt_min.at(index - 2);
+            limit = std::max(limit, _merging_cut->min);
         }
     }
     return pt_min;

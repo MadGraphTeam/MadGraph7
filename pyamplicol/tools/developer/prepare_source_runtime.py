@@ -288,7 +288,10 @@ def _stage_runtime_locked(
         build_info.get("publishable") is True
         or (
             build_info.get("publishable") is False
-            and build_info.get("release_prepared_model_bootstrap") is True
+            and (
+                build_info.get("release_prepared_model_bootstrap") is True
+                or build_info.get("dirty_source_checkout") is True
+            )
         )
     ):
         raise ReleaseError(

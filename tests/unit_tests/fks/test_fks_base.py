@@ -508,6 +508,151 @@ class TestFKSProcess(unittest.TestCase):
 #        self.assertEqual(my_multi_process_qed.get('has_fsr'),True)
 
 
+    def test_FKSMultiProcess_add_other_mode(self):
+        """the processes added to an FKSMultiProcess must have been generated
+        in its mode, serial or low_mem_multicore_nlo_generation
+        (ncores_for_proc_gen): the first one generates the real and virtual
+        amplitudes with the borns, the second one at the output"""
+        for ncores, other_ncores in [(0, 2), (2, 0)]:
+            multi = fks_base.FKSMultiProcess()
+            multi['process_definitions'].append(MG.ProcessDefinition())
+            multi['ncores_for_proc_gen'] = ncores
+            other = fks_base.FKSMultiProcess()
+            other['ncores_for_proc_gen'] = other_ncores
+            self.assertRaises(fks_common.FKSProcessError, multi.add, other)
+            self.assertEqual(len(multi['process_definitions']), 1)
+            # the number of cores may change
+            other['ncores_for_proc_gen'] = 4 if ncores else 0
+            multi.add(other)
+            self.assertEqual(multi['ncores_for_proc_gen'], 4 if ncores else 0)
+        # an empty FKSMultiProcess (generate) takes the mode of the processes
+        multi = fks_base.FKSMultiProcess()
+        other = fks_base.FKSMultiProcess()
+        other['ncores_for_proc_gen'] = -1
+        multi.add(other)
+        self.assertEqual(multi['ncores_for_proc_gen'], -1)
+
+
+    def procdef_list(self, pdgs, nlo_mode='real'):
+        """The process definition (list) of pdgs [QCD]"""
+        legs = MG.MultiLegList([MG.MultiLeg({'ids': [pdg], 'state': n > 1})
+                                for n, pdg in enumerate(pdgs)])
+        return MG.ProcessDefinitionList([MG.ProcessDefinition({
+                        'legs': legs,
+                        'born_sq_orders': {'QCD': 0, 'QED': 4},
+                        'squared_orders': {'QCD': 2, 'QED': 4},
+                        'perturbation_couplings': ['QCD'],
+                        'NLO_mode': nlo_mode,
+                        'model': self.mymodel})])
+
+
+    def test_FKSMultiProcess_no_correction(self):
+        """a process definition without any correction up to NLO is refused
+        when it is generated, also in the low_mem_multicore_nlo_generation
+        mode (ncores_for_proc_gen), where a process of its own generates its
+        real (and virtual) amplitudes until it finds a diagram, the workers of
+        the output generating them again. The loggers which the generation
+        silences are restored, also when it fails."""
+        import logging
+        loggers = [logging.getLogger('madgraph.diagram_generation'),
+                   logging.getLogger('madgraph.loop_diagram_generation')]
+        levels = [logger.level for logger in loggers]
+        for ncores in [0, 1]:
+            options = {'ncores_for_proc_gen': ncores, 'init_lep_split': True}
+            multi = fks_base.FKSMultiProcess(
+                    {'process_definitions': self.procdef_list([2, -2, 11, -11])},
+                    dict(options))
+            self.assertEqual(len(multi['born_processes']), 1)
+            # the low_mem_multicore_nlo_generation mode keeps no amplitude
+            self.assertEqual(bool(multi['real_amplitudes']), not ncores)
+            self.assertRaises(fks_common.FKSProcessError, fks_base.FKSMultiProcess,
+                    {'process_definitions': self.procdef_list([-11, 11, 13, -13])},
+                    dict(options))
+            self.assertEqual([logger.level for logger in loggers], levels)
+            # an invalid NLO mode
+            self.assertRaises(fks_common.FKSProcessError, fks_base.FKSMultiProcess,
+                    {'process_definitions': self.procdef_list([2, -2, 11, -11], 'virt')},
+                    dict(options))
+            self.assertEqual([logger.level for logger in loggers], levels)
+
+
+    def test_link_born_reals_qed(self):
+        """the born/real configuration links (for the H events, also with
+        --allow_qed_ps) of every FKS configuration, QED ones too, one for each
+        born configuration: the real configuration of the same diagram with
+        the splitting, else (beyond the orders of the real amplitude, in an
+        output with mixed QCD and QED orders) the first one of the same
+        topology (u u~ > t t~: the s-channel photon and Z of a photon
+        emission take that of the gluon), else the first one with the
+        splitting (b b~ > t t~: the t-channel W)"""
+        import madgraph.interface.master_interface as MGCmd
+        interface = MGCmd.MasterCmd()
+        def run(line):
+            interface.exec_cmd(line, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        run('import model loop_qcd_qed_sm')
+        run('generate u u~ > t t~ [real=QCD QED]')
+        run('add process b b~ > t t~ [real=QCD QED]')
+        links = {}
+        for born in interface._fks_multi_proc['born_processes']:
+            for real in born.real_amps:
+                for info in real.fks_infos:
+                    self.assertEqual([link['born_conf'] for link in info['rb_links']],
+                                     list(range(len(info['rb_links']))))
+                    emitted = real.process['legs'][info['i'] - 1]['id']
+                    links[(tuple(born.get_pdg_codes()), emitted, info['j'])] = \
+                            [link['real_conf'] for link in info['rb_links']]
+        # the emissions off the top quark
+        ttx = (6, -6)
+        # gluon: the three born configurations (s-channel gluon, photon, Z)
+        # have their own real one
+        self.assertEqual(len(set(links[((2, -2) + ttx, 21, 3)])), 3)
+        # photon: only the one of the gluon at these orders (QED^2=2)
+        self.assertEqual(len(links[((2, -2) + ttx, 22, 3)]), 3)
+        self.assertEqual(len(set(links[((2, -2) + ttx, 22, 3)])), 1)
+        # and also for the t-channel W of b b~ > t t~
+        self.assertGreater(len(links[((5, -5) + ttx, 22, 3)]), 3)
+        self.assertEqual(len(set(links[((5, -5) + ttx, 22, 3)])), 1)
+
+
+    def test_link_born_reals_error(self):
+        """an error of link_rb_configs, whatever it is, for a born with a QED
+        splitting: no links for its FKS configuration, with a warning (an
+        output which does not need them, i.e. but with --allow_qed_ps, is not
+        refused); for a born with only QCD splittings, the error"""
+        from unittest import mock
+        import madgraph.interface.master_interface as MGCmd
+        def fail(*args):
+            raise IndexError('list index out of range')
+        interface = MGCmd.MasterCmd()
+        def run(line):
+            interface.exec_cmd(line, errorhandling=False, printcmd=False,
+                               precmd=True, postcmd=True)
+        run('import model loop_qcd_qed_sm')
+        with mock.patch.object(fks_common, 'link_rb_configs', fail):
+            run('generate u u~ > e+ e- [real=QED]')
+            infos = [info for born in interface._fks_multi_proc['born_processes']
+                     for real in born.real_amps for info in real.fks_infos]
+            self.assertTrue(infos)
+            self.assertEqual(set(info['rb_links'] for info in infos), set([None]))
+            self.assertRaises(IndexError, run, 'generate u u~ > e+ e- [real=QCD]')
+
+
+    def test_FKSMultiProcess_loop_filter(self):
+        """each born keeps the loop_filter of its process definition (for its
+        virtual, which the low_mem_multicore_nlo_generation mode generates
+        at the output, for the processes of all the definitions)"""
+        multi = fks_base.FKSMultiProcess(
+                {'process_definitions': self.procdef_list([2, -2, 11, -11])},
+                {'ncores_for_proc_gen': 1, 'loop_filter': None})
+        other = fks_base.FKSMultiProcess(
+                {'process_definitions': self.procdef_list([1, -1, 11, -11])},
+                {'ncores_for_proc_gen': 1, 'loop_filter': 'not 2 in loop_pdgs'})
+        multi.add(other)
+        self.assertEqual([born.loop_filter for born in multi['born_processes']],
+                         [None, 'not 2 in loop_pdgs'])
+
+
     def test_FKSProcess_gggg(self):
         """tests that for g g > g g all the relevant splittings are there"""
         glu = MG.Leg({'id': 21, 'state':True})
@@ -789,7 +934,15 @@ class TestFKSProcess(unittest.TestCase):
         self.assertEqual(len(myfks.real_amps),9)
         for real, fks_info, pdgs in zip(myfks.real_amps, target_fks_infos, target_real_pdgs):
             self.assertEqual([l['id'] for l in real.process['legs']], pdgs)
-            self.assertEqual(real.fks_infos, fks_info)
+            self.assertEqual([{key: value for key, value in info.items() \
+                               if key != 'rb_links'} for info in real.fks_infos],
+                             fks_info)
+            # the born/real configuration links of each splitting, QCD or QED
+            # (one for each born configuration)
+            for info in real.fks_infos:
+                self.assertEqual([link['born_conf'] for link in info['rb_links']],
+                                 list(range(len(info['rb_links']))))
+                self.assertTrue(info['rb_links'])
 
 
     def test_FKSRealProcess_init(self):

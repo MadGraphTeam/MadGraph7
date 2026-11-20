@@ -1,0 +1,854 @@
+{
+ "kind": "providers",
+ "process": "li_gg_wpwmg",
+ "cpu": 226,
+ "host": "itphlies",
+ "points": 16,
+ "timing_scope": "single pinned core; point 1 once untimed, then points 2..n, 1 timed one by one with the driver's own timer",
+ "providers": {
+  "openloops": {
+   "provider": "openloops",
+   "protocol": "optimistic",
+   "mode": "most optimistic: truepoles 0, stability system off (expert_mode 1, stability_mode 11: one double-precision evaluation), Collier cache",
+   "version": "OpenLoops 2.1.5",
+   "library": {
+    "name": "ppvvj2",
+    "loops": "ls",
+    "git_revision": "eb52577f",
+    "process_api_version": "2",
+    "date": "2024-03-19-22-30-08",
+    "hash": "946a987129869b00d347ae5bb6d9c90c"
+   },
+   "commands": [
+    "int truepoles 0",
+    "int polenorm 0",
+    "int ct_on 1",
+    "int r2_on 1",
+    "int iop_on 0",
+    "int nf 6",
+    "int nq_nondecoupled 5",
+    "int ew_scheme 1",
+    "int ew_renorm_scheme 1",
+    "int complex_mass_scheme 0",
+    "double gmu 0.0000116639",
+    "double mass(23) 91.188",
+    "double width(23) 0",
+    "double mass(24) 80.4190024457561601055171371731",
+    "double width(24) 0",
+    "double mass(25) 125",
+    "double width(25) 0",
+    "double mass(6) 173",
+    "double width(6) 0",
+    "double mass(5) 0",
+    "double width(5) 0",
+    "double mass(4) 0",
+    "double mass(15) 0",
+    "double mass(13) 0",
+    "double mass(11) 0",
+    "double alpha_s 0.118",
+    "int expert_mode 1",
+    "int stability_mode 11",
+    "register 12 21 21 -> 24 -24 21"
+   ],
+   "install_path": "OpenLoopsPath = the OpenLoops tree",
+   "points": 16,
+   "mean_seconds_per_point": 0.0764869181875,
+   "median_seconds_per_point": 0.0734342925,
+   "min_seconds_per_point": 0.061012935,
+   "max_seconds_per_point": 0.113338417,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 7.487581715191172e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.084638266
+    },
+    {
+     "born": 0.0,
+     "finite": 5.474943305062617e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.101480077
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0316911406314896e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.098793057
+    },
+    {
+     "born": 0.0,
+     "finite": 7.902247251732934e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.111119858
+    },
+    {
+     "born": 0.0,
+     "finite": 7.962585256017932e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.112860985
+    },
+    {
+     "born": 0.0,
+     "finite": 2.4636474939997045e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.113338417
+    },
+    {
+     "born": 0.0,
+     "finite": 3.386483159317976e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.091510615
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0319399286545445e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.088859924
+    },
+    {
+     "born": 0.0,
+     "finite": 3.862378755032899e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.089300776
+    },
+    {
+     "born": 0.0,
+     "finite": 1.076479057848582e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.088088691
+    },
+    {
+     "born": 0.0,
+     "finite": 1.7189549073863512e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.076833693
+    },
+    {
+     "born": 0.0,
+     "finite": 4.6920767089466296e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.077005645
+    },
+    {
+     "born": 0.0,
+     "finite": 6.284992560411884e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.076393811
+    },
+    {
+     "born": 0.0,
+     "finite": 2.6428699251249452e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.076479432
+    },
+    {
+     "born": 0.0,
+     "finite": 9.01428984302493e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.080411449
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0744895016638479e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "seconds": 0.091049554
+    }
+   ],
+   "setup": {
+    "start_seconds": 0.000616892,
+    "initial_call_seconds": 0.140251081
+   },
+   "process_wall_seconds": 1.8492634990252554,
+   "harness_wall_seconds": 2.952602646779269,
+   "runs": 4,
+   "run_medians_seconds_per_point": [
+    0.08908035,
+    0.07973635,
+    0.06657805950000001,
+    0.064050174
+   ],
+   "timing": "the pooled per-point times of every optimistic run of the row on its core (the first run, whose rows and values are these, and the paired rounds)",
+   "paired_production": {
+    "rounds": 3,
+    "production_run_medians_seconds_per_point": [
+     0.108862862,
+     0.105925875,
+     0.0935523925
+    ],
+    "ratio_optimistic_to_production_per_round": [
+     0.7324476734774803,
+     0.6285344303268678,
+     0.6846449597748129
+    ],
+    "ratio_optimistic_to_production": 0.6846449597748129,
+    "method": "same core, alternating order per round, 16 stream points per run"
+   }
+  },
+  "recola": {
+   "provider": "recola",
+   "protocol": "optimistic",
+   "mode": "most optimistic: dynamic_settings 0 (alpha_s and the scales set before the generation, outside the timer), compute_ir_poles 0, Collier global cache on (below 7 legs)",
+   "build": {
+    "librecola.so": {
+     "build_dir": "builds/recola",
+     "build_type": "(none)",
+     "fortran_flags": "-ffixed-line-length-132 -cpp -fPIC",
+     "source_flags": [
+      "-O2"
+     ]
+    },
+    "libmodelfile.so": {
+     "build_dir": "builds/recola-sm",
+     "build_type": "(none)",
+     "fortran_flags": "-ffixed-line-length-132 -cpp -fPIC",
+     "source_flags": [
+      "-O0",
+      "-Ofast -flto"
+     ]
+    }
+   },
+   "version": "Recola2 (tree recola2-2.3.0) / libcollier.so 1.2.8 / libmodelfile.so 2.2.3 / librecola.so 2.2.5",
+   "collier_cache": {
+    "on": true,
+    "collier": "1.2.8",
+    "reason": "below 7 legs"
+   },
+   "libraries": {
+    "libcollier.so": "sources/COLLIER-1.2.8/libcollier.so",
+    "libmodelfile.so": "models/SM_2.2.3/libmodelfile.so",
+    "librecola.so": "sources/recola2-2.3.0/librecola.so"
+   },
+   "commands": [
+    "mass W 80.4190024457561601055171371731 0",
+    "mass Z 91.188 0",
+    "mass H 125 0",
+    "mass top 173 0",
+    "mass bottom 0 0",
+    "mass charm 0 0",
+    "mass strange 0 0",
+    "mass up 0 0",
+    "mass down 0 0",
+    "mass tau 0 0",
+    "mass muon 0 0",
+    "mass electron 0 0",
+    "alpha0 0.00754677111397888413442308708219",
+    "onshell",
+    "alphas 0.118 1000 5",
+    "legs 5",
+    "loop_induced",
+    "loop_gs 3",
+    "pow_nlo 3",
+    "process g g -> W+ W- g",
+    "irpoles 0",
+    "dynamic 0",
+    "generate"
+   ],
+   "finite_convention": "Recola (Gamma(1+eps)); MadLoop's adds pi^2/6 D",
+   "points": 16,
+   "mean_seconds_per_point": 0.07924735425,
+   "median_seconds_per_point": 0.078279913,
+   "min_seconds_per_point": 0.071078498,
+   "max_seconds_per_point": 0.100553782,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 7.487581391970943e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.074498483,
+     "raw": {
+      "born": 0.0,
+      "finite": 7.487581391970943e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 5.474943138002969e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.088229492,
+     "raw": {
+      "born": 0.0,
+      "finite": 5.474943138002969e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.031691125400324e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.076506102,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.031691125400324e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 7.902248212713368e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.073763841,
+     "raw": {
+      "born": 0.0,
+      "finite": 7.902248212713368e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 7.96258528596014e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.081915365,
+     "raw": {
+      "born": 0.0,
+      "finite": 7.96258528596014e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 2.4636498692212556e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.075046396,
+     "raw": {
+      "born": 0.0,
+      "finite": 2.4636498692212556e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 3.386483136240894e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.082970239,
+     "raw": {
+      "born": 0.0,
+      "finite": 3.386483136240894e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0319399426440058e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.07846335,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.0319399426440058e-07,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 3.8623786344121727e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.076589123,
+     "raw": {
+      "born": 0.0,
+      "finite": 3.8623786344121727e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0764790881136171e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.078998663,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.0764790881136171e-07,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.7189548975076167e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.074334383,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.7189548975076167e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 4.692076633563756e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.078477211,
+     "raw": {
+      "born": 0.0,
+      "finite": 4.692076633563756e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 6.284992468874832e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.072708096,
+     "raw": {
+      "born": 0.0,
+      "finite": 6.284992468874832e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 2.6428697240825367e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.075286427,
+     "raw": {
+      "born": 0.0,
+      "finite": 2.6428697240825367e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 9.014289837908707e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.075095116,
+     "raw": {
+      "born": 0.0,
+      "finite": 9.014289837908707e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0744895279486859e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "seconds": 0.083833253,
+     "raw": {
+      "born": 0.0,
+      "finite": 1.0744895279486859e-07,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   ],
+   "setup": {
+    "generation_seconds": 1.51001887,
+    "initial_call_seconds": 0.084852547
+   },
+   "process_wall_seconds": 2.864540894050151,
+   "harness_wall_seconds": 3.206974367145449,
+   "runs": 4,
+   "run_medians_seconds_per_point": [
+    0.0765476125,
+    0.08446907449999999,
+    0.073713634,
+    0.0782149275
+   ],
+   "timing": "the pooled per-point times of every optimistic run of the row on its core (the first run, whose rows and values are these, and the paired rounds)",
+   "paired_production": {
+    "rounds": 3,
+    "production_run_medians_seconds_per_point": [
+     0.07989344,
+     0.0789222805,
+     0.0755722615
+    ],
+    "ratio_optimistic_to_production_per_round": [
+     1.05727171717728,
+     0.9340028383999878,
+     1.0349687298956907
+    ],
+    "ratio_optimistic_to_production": 1.0349687298956907,
+    "method": "same core, alternating order per round, 16 stream points per run"
+   }
+  },
+  "madloop": {
+   "provider": "madloop",
+   "protocol": "optimistic",
+   "loop_induced": true,
+   "mode": "loop-induced, the export's card (warm-up past the initialisation), most optimistic: no stability test (CTModeRun 1), MG5 production Fortran flags, COLLIERGlobalCache as in production (below 7 legs)",
+   "version": "MadLoop/MG5_aMC 3.7.0",
+   "export": "${LOOP_REFERENCE_ROOT}/runs/li/li_gg_wpwmg/madloop-export",
+   "collier_cache": {
+    "on": true,
+    "collier": "1.2.9",
+    "reason": "below 7 legs"
+   },
+   "madloop_params": {
+    "MLReductionLib": "7|6|1",
+    "COLLIERGlobalCache": "-1",
+    "MLStabThres": "1.000000d-03",
+    "ImprovePSPoint": "2",
+    "CTModeRun": "1"
+   },
+   "fortran_flags": {
+    "GLOBAL_FLAG": "-O",
+    "ALOHA_FLAG": "",
+    "MATRIX_FLAG": ""
+   },
+   "qp_model_repairs": [
+    "added KIND=16 to 19 CMPLX calls in MP_ functions",
+    "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+   ],
+   "points": 16,
+   "mean_seconds_per_point": 0.21710256296875,
+   "median_seconds_per_point": 0.21508003850000001,
+   "min_seconds_per_point": 0.184562094,
+   "max_seconds_per_point": 0.260335263,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 7.487581096518572e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.229147815,
+     "total_all_orders": [
+      0.0,
+      7.487581096518572e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 5.4749431157568706e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.218679951,
+     "total_all_orders": [
+      0.0,
+      5.4749431157568706e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0316909872267063e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.21591474,
+     "total_all_orders": [
+      0.0,
+      1.0316909872267063e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 7.902258839910158e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.198774187,
+     "total_all_orders": [
+      0.0,
+      7.902258839910158e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 7.962585927767402e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.224415525,
+     "total_all_orders": [
+      0.0,
+      7.962585927767402e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.4636494407016472e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.215377657,
+     "total_all_orders": [
+      0.0,
+      2.4636494407016472e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 3.3864832381603555e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.22346117,
+     "total_all_orders": [
+      0.0,
+      3.3864832381603555e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0319399349609905e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.242406791,
+     "total_all_orders": [
+      0.0,
+      1.0319399349609905e-07,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 3.8623785667115536e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.219112653,
+     "total_all_orders": [
+      0.0,
+      3.8623785667115536e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0764790796201161e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.221708734,
+     "total_all_orders": [
+      0.0,
+      1.0764790796201161e-07,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.7189547425990338e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.229915178,
+     "total_all_orders": [
+      0.0,
+      1.7189547425990338e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 4.692127070888427e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.226842895,
+     "total_all_orders": [
+      0.0,
+      4.692127070888427e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 6.284992388591452e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.217108104,
+     "total_all_orders": [
+      0.0,
+      6.284992388591452e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.64286962969224e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.218963901,
+     "total_all_orders": [
+      0.0,
+      2.64286962969224e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 9.014290443901704e-08,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.231556395,
+     "total_all_orders": [
+      0.0,
+      9.014290443901704e-08,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.0744895191159e-07,
+     "single_pole": 0.0,
+     "double_pole": 0.0,
+     "accuracy": -1.0,
+     "status": 110,
+     "seconds": 0.22794178,
+     "total_all_orders": [
+      0.0,
+      1.0744895191159e-07,
+      0.0,
+      0.0
+     ]
+    }
+   ],
+   "setup": {
+    "split_order_indices": [
+     1,
+     1,
+     1
+    ],
+    "initial_call_seconds": 1.86521438,
+    "initialization_calls": 8
+   },
+   "process_wall_seconds": 5.44409092515707,
+   "stages": {
+    "stages_seconds_per_point": {
+     "loop numerator coefficients": 0.20062561462500003,
+     "Born and counterterm HELAS": 0.0006218220218750001,
+     "reduction and masters": 0.03895297273125001,
+     "colour flows and squaring": 0.00045228633074999997
+    },
+    "residual_seconds_per_point": -0.013552280208875056,
+    "instrumented_seconds_per_point": 0.22710041549999999,
+    "points": 16,
+    "calls_per_point": [
+     72.0,
+     72.0,
+     72.0,
+     144.0
+    ],
+    "method": "loop-induced: (stage totals of the points twice - once) / n, same warm-up"
+   },
+   "harness_wall_seconds": 27.705626604612917,
+   "runs": 4,
+   "run_medians_seconds_per_point": [
+    0.222584952,
+    0.24680464549999998,
+    0.1966815195,
+    0.201814761
+   ],
+   "timing": "the pooled per-point times of every optimistic run of the row on its core (the first run, whose rows and values are these, and the paired rounds)",
+   "paired_production": {
+    "rounds": 3,
+    "production_run_medians_seconds_per_point": [
+     0.426023347,
+     0.4059672175,
+     0.386116173
+    ],
+    "ratio_optimistic_to_production_per_round": [
+     0.5793218781035491,
+     0.48447635922720783,
+     0.5226788596601987
+    ],
+    "ratio_optimistic_to_production": 0.5226788596601987,
+    "method": "same core, alternating order per round, 16 stream points per run"
+   }
+  }
+ },
+ "protocol": "optimistic"
+}

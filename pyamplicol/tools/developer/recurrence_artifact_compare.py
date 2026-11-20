@@ -2574,6 +2574,18 @@ def _normalize_manifest_pair(
     )
     left_generation["recurrence_schedule_profiles"] = _NORMALIZED
     right_generation["recurrence_schedule_profiles"] = _NORMALIZED
+    # The wall time and peak memory of the generation call (absent from
+    # artifacts written before pyAmpliCol recorded them).
+    _record_allowed(
+        allowed,
+        file="artifact.json",
+        json_path="/extensions/generation/statistics",
+        category="timing",
+        baseline=left_generation.get("statistics", _MISSING),
+        candidate=right_generation.get("statistics", _MISSING),
+    )
+    left_generation["statistics"] = _NORMALIZED
+    right_generation["statistics"] = _NORMALIZED
     left_concrete = _records_by_id(
         left_generation.get("concrete_processes"),
         description="baseline concrete processes",

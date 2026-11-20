@@ -278,7 +278,7 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
     assert expected["compatible_targets"] == list(module.COMPATIBLE_TARGETS)
     assert expected["serialization"] == {
         "endianness": "little",
-        "kind": "symjit-application-mir-v3",
+        "kind": "symjit-application-mir-v4",
         "load_behavior": "recompile-mir-for-loading-host",
         "source_optimization_level": 2,
         "word_size_bits": 64,
@@ -330,6 +330,145 @@ def test_selftest_api_drivers_match_the_public_templates() -> None:
         assert actual == expected
         assert payload["size_bytes"] == len(actual)
         assert payload["sha256"] == hashlib.sha256(actual).hexdigest()
+
+
+def _reader(artifact: Path):  # type: ignore[no-untyped-def]
+    def read(relative: str) -> bytes | None:
+        path = artifact / relative
+        return path.read_bytes() if path.is_file() else None
+
+    return read
+
+
+def test_source_selftest_umami_provider_names_the_artifact_identity() -> None:
+    """The shipped UMAMI provider loads its own artifact: its header and
+    metadata carry the manifest identity, as the exporter renders them."""
+
+    from pyamplicol.artifacts.umami_c import provider_header
+
+    module = _module()
+    artifact = FIXTURE / "artifact"
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    metadata = json.loads(
+        (artifact / "API/umami/metadata.json").read_text(encoding="utf-8")
+    )
+
+    assert module.umami_identity_updates(manifest, _reader(artifact)) == {}
+    assert metadata["provider"]["artifact_id"] == manifest["artifact_id"]
+    assert (artifact / "API/umami/provider_p0.h").read_text(
+        encoding="utf-8"
+    ) == provider_header(metadata)
+
+
+def _umami_provider_artifact(
+    root: Path, provider_ids: dict[str, str | None], artifact_id: str
+) -> dict[str, object]:
+    """Write the exporter's files for ``provider_ids`` (id -> recorded identity)
+    from the shipped provider record; return the manifest."""
+
+    from pyamplicol.artifacts.umami_c import provider_header
+
+    template = json.loads(
+        (FIXTURE / "artifact/API/umami/metadata.json").read_text(encoding="utf-8")
+    )
+    files: dict[str, bytes] = {}
+    single = len(provider_ids) == 1
+    for identifier, recorded in provider_ids.items():
+        document = deepcopy(template)
+        document["provider"]["id"] = identifier
+        document["provider"]["artifact_id"] = recorded
+        relative = (
+            "API/umami/metadata.json"
+            if single
+            else f"API/umami/providers/{identifier}/metadata.json"
+        )
+        files[relative] = (
+            json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
+        ).encode()
+        files[f"API/umami/provider_{identifier}.h"] = provider_header(document).encode()
+    if not single:
+        files["API/umami/metadata.json"] = (
+            json.dumps(
+                {
+                    "kind": "pyamplicol-umami-provider-index",
+                    "providers": [{"id": i} for i in provider_ids],
+                    "schema_version": 1,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode()
+    payloads = []
+    for relative, data in sorted(files.items()):
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_bytes(data)
+        payloads.append(
+            {
+                "path": relative,
+                "role": "api-source",
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "size_bytes": len(data),
+            }
+        )
+    return {"artifact_id": artifact_id, "payloads": payloads}
+
+
+@pytest.mark.parametrize(
+    "provider_ids",
+    ({"p0": "e" * 64}, {"p0": "e" * 64, "p1": None, "p2": "c" * 64}),
+    ids=("one-provider", "provider-index"),
+)
+def test_umami_identity_refresh_rebinds_every_provider(
+    tmp_path: Path, provider_ids: dict[str, str | None]
+) -> None:
+    from pyamplicol.artifacts.umami_c import provider_header
+
+    module = _module()
+    manifest = _umami_provider_artifact(tmp_path, provider_ids, "c" * 64)
+    index = (tmp_path / "API/umami/metadata.json").read_bytes()
+
+    changed = module.refresh_umami_artifact_identity(tmp_path, manifest)
+
+    # p2 already names the identity; every other provider changes two files.
+    assert changed == 2 * sum(1 for value in provider_ids.values() if value != "c" * 64)
+    for identifier in provider_ids:
+        relative = (
+            "API/umami/metadata.json"
+            if len(provider_ids) == 1
+            else f"API/umami/providers/{identifier}/metadata.json"
+        )
+        document = json.loads((tmp_path / relative).read_text(encoding="utf-8"))
+        assert document["provider"]["artifact_id"] == "c" * 64
+        header = (tmp_path / f"API/umami/provider_{identifier}.h").read_text(
+            encoding="utf-8"
+        )
+        assert header == provider_header(document)
+    if len(provider_ids) > 1:
+        assert (tmp_path / "API/umami/metadata.json").read_bytes() == index
+    for payload in manifest["payloads"]:  # type: ignore[attr-defined]
+        data = (tmp_path / payload["path"]).read_bytes()
+        assert payload["sha256"] == hashlib.sha256(data).hexdigest()
+        assert payload["size_bytes"] == len(data)
+    assert module.umami_identity_updates(manifest, _reader(tmp_path)) == {}
+
+
+def test_umami_identity_refresh_rejects_a_header_that_disagrees(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    manifest = _umami_provider_artifact(tmp_path, {"p0": "e" * 64}, "c" * 64)
+    header = tmp_path / "API/umami/provider_p0.h"
+    header.write_text(
+        header.read_text(encoding="utf-8").replace("e" * 64, "d" * 64),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="does not carry the artifact identity"):
+        module.refresh_umami_artifact_identity(tmp_path, manifest)
+    (tmp_path / "API/umami/provider_p0.h").unlink()
+    with pytest.raises(RuntimeError, match="provider header is missing"):
+        module.umami_identity_updates(manifest, _reader(tmp_path))
 
 
 @pytest.mark.parametrize("optimization_level", (0, 1, 3))
@@ -641,12 +780,15 @@ def test_source_selftest_compiled_model_matches_active_compiler_sources() -> Non
 
 
 def test_staged_selftest_fixture_loads_with_the_current_native_runtime() -> None:
+    """The staged target fixture, or in a source tree the portable one it is
+    staged from, reproduces its recorded total with the current runtime."""
+
     native = pytest.importorskip("pyamplicol._rusticol")
     from pyamplicol import Runtime
 
     fixture = FIXTURE.parent / str(native.target_info().triple)
     if not fixture.is_dir():
-        pytest.skip("the source runtime has not staged its target self-test fixture")
+        fixture = FIXTURE
     expected = json.loads((fixture / "expected.json").read_text(encoding="utf-8"))
     runtime = Runtime.load(fixture / expected["artifact_path"], mute_warnings=True)
 

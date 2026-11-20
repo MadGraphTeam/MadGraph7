@@ -79,10 +79,10 @@ def _simplify_trace_terms_nc_power(
             for coeff, power, _traces in terms:
                 result[power] = result.get(power, Fraction(0)) + coeff
             return {power: coeff for power, coeff in result.items() if coeff}
-        next_terms, changed = _trace_pair_simplify_nc_power(terms)
+        next_terms, changed = trace_pair_simplify_nc_power(terms)
         terms = _simplify_tr1_tr0_nc_power(next_terms)
-        next_terms, changed_dup = _trace_duplicate_simplify_nc_power(terms)
-        terms = _combine_nc_power_terms(next_terms)
+        next_terms, changed_dup = trace_duplicate_simplify_nc_power(terms)
+        terms = combine_nc_power_terms(next_terms)
         if (
             not changed
             and not changed_dup
@@ -101,10 +101,10 @@ def _simplify_tr1_tr0_nc_power(
         extra_power = sum(1 for trace in traces if len(trace) == 0)
         remaining = tuple(trace for trace in traces if len(trace) != 0)
         result.append((coeff, power + extra_power, remaining))
-    return _combine_nc_power_terms(result)
+    return combine_nc_power_terms(result)
 
 
-def _trace_pair_simplify_nc_power(
+def trace_pair_simplify_nc_power(
     terms: list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]],
 ) -> tuple[list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]], bool]:
     result: list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]] = []
@@ -158,7 +158,7 @@ def _trace_pair_simplify_nc_power(
     return result, changed
 
 
-def _trace_duplicate_simplify_nc_power(
+def trace_duplicate_simplify_nc_power(
     terms: list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]],
 ) -> tuple[list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]], bool]:
     result: list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]] = []
@@ -186,7 +186,7 @@ def _trace_duplicate_simplify_nc_power(
     return result, changed
 
 
-def _combine_nc_power_terms(
+def combine_nc_power_terms(
     terms: Iterable[tuple[Fraction, int, tuple[tuple[int, ...], ...]]],
 ) -> list[tuple[Fraction, int, tuple[tuple[int, ...], ...]]]:
     combined: dict[tuple[int, tuple[tuple[int, ...], ...]], Fraction] = {}

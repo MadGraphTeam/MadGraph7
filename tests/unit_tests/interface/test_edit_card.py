@@ -586,6 +586,35 @@ class TestEditCardCmd(unittest.TestCase):
         self.cmd.do_set('ptj 100  200.1, 3e3')
         self.assertEqual(run['ptj'], [100, 200.1, 3000])
 
+    def test_mg7_cluster_enable_adds_the_cluster_sections(self):
+        """The cluster sections of the mg7 card are left out until the
+        cluster mode is enabled."""
+        import shutil
+        import tempfile
+        import tomllib
+        import madgraph.various.banner as banner_mod
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        os.mkdir(pjoin(d, 'Cards'))
+        paths = {'run': pjoin(d, 'Cards', 'run_card.toml'),
+                 'run_default': pjoin(d, 'Cards', 'run_card_default.toml')}
+        for path in paths.values():
+            banner_mod.RunCardMG7().write(path)
+
+        def sections():
+            with open(paths['run'], 'rb') as f:
+                return tomllib.load(f)
+
+        self.assertNotIn('cluster', sections())
+        cmd = runcmd.AskforEditCard('', cards=paths, mode='auto',
+                                    mother_interface=FakeInterface(d))
+        cmd.do_set('cluster.enable true')
+        cmd.write_card('run')  # the run card is written after the command
+        data = sections()
+        self.assertTrue(data['cluster']['enable'])
+        self.assertEqual(data['cluster_train'], {})
+        self.assertEqual(data['cluster_deploy'], {})
+
     def test_dynamical_scale_choice_ht(self):
         """set dynamical_scale_choice HT/n on the LO, NLO and mg7 cards"""
         import shutil

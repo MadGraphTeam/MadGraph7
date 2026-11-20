@@ -78,7 +78,10 @@ jobs:
   produce-architecture-packs:
     name: Produce prepared JIT pack (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # The macOS arm64 pack builds the release extension with the default tir
+    # feature (TIRust) and needs more than 90 minutes on macos runners
+    # (cancelled at 90 on 2026-11-07, run 42383741811; 40-67 min before tir).
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -101,6 +104,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes /var/folders/*/T files that look unused for three
+        # days, daily at 03:35 UTC: crate sources in a build's CARGO_HOME there.
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
@@ -141,7 +152,9 @@ jobs:
     name: Consume portable pack (${{ matrix.target }})
     needs: produce-architecture-packs
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # The Intel macOS consumer builds the bootstrap wheel from source and needs
+    # more than 90 minutes on macos-15-intel (cancelled at 90 twice).
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -169,6 +182,14 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes /var/folders/*/T files that look unused for three
+        # days, daily at 03:35 UTC: crate sources in a build's CARGO_HOME there.
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
