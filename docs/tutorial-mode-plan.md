@@ -567,7 +567,7 @@ Source material already exists: `docs/standalone_flavor_python.md`.
    flavour combinations from one ME; index in `[1, NFLAV]` versus the
    per-leg group-position array; index 1 is always valid.
 7. Loading a `param_card` into a standalone module.
-8. The C++ / cudacpp path for the same process via the `madmatrix` plugin
+8. The C++ path for the same process via the `madmatrix` plugin
    (`./bin/madgraph -m madmatrix`), and how to check the two agree.
 9. Worked end: a short Python script that computes |M|^2 for a phase-space
    point and cross-checks it against `check_sa`.
@@ -608,10 +608,9 @@ Source material already exists: `docs/standalone_flavor_python.md`.
   `stability`, `poles`), plus `display diagrams`, `open index.html`,
   and how to file a useful bug report.
 * **`performance`** — MG7's speed work: `set group_subprocesses`, helicity
-  recycling, crossing (`--use_crossing`), colour basis choice, the C++/cudacpp
-  backends, and how to time a change honestly.
-* **`install`** — `install` targets (`pythia8`, `lhapdf6`, `madspace`,
-  `cudacpp`, ...) and `set` of the associated paths.
+  recycling, crossing (`--use_crossing`), colour basis choice, the C++
+  `madmatrix` backends, and how to time a change honestly.
+* **`install`** — `install` targets (`pythia8`, `lhapdf6`, `madspace`, ...) and `set` of the associated paths.
 
 **Plugin-provided tutorials.** The plugin API already exposes `new_output`,
 `new_cluster` and `new_interface` (see `madmatrix/__init__.py:29-50`); add

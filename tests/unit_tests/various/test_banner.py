@@ -2695,7 +2695,7 @@ class TestRunCardMG7(unittest.TestCase):
             shutil.rmtree(index_dir)
         self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
         for name, value in (('lhaid', '999999'), ('pdlabel2', 'isronlyll'),
-                            ('pdlabel2', 'none'), ('lpp1', '2'), ('lpp', 'p')):
+                            ('pdlabel2', 'none'), ('lpp1', '5'), ('lpp', 'p')):
             self.assertRaises(bannermod.InvalidRunCard,
                               rc.set_lo_beam_param, name, value)
         self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
@@ -2706,6 +2706,11 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse(rc['beam']['leptonic'])
         rc.set_lo_beam_param('pdlabel', 'none')
         self.assertTrue(rc['beam']['leptonic'])
+        # lpp 2 (elastic photons) is a gamma-UPC beam: beam.upc_flux
+        rc.set_lo_beam_param('lpp', '2')
+        self.assertFalse(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('pdlabel', 'chff')
+        self.assertEqual(rc['beam']['upc_flux'], 'chff')
 
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""
@@ -3106,6 +3111,78 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(card['beam']['mlm_shower_start'], 'hardest_scale')
         card.set('beam.mlm_shower_start', 'collider_energy')
         self.assertEqual(card['beam']['mlm_shower_start'], 'collider_energy')
+
+    def test_set_mlm_modes(self):
+        """set mlm madevent: MLM merging with every clustering option at
+        madevent's choice; set mlm mg7: back to mg7's defaults"""
+        default = bannermod.RunCardMG7()
+        rc = bannermod.RunCardMG7()
+        # options moved away from madevent's beforehand
+        rc.set('beam.min_scale', 5.0)
+        rc.set('beam.alphas_reweighting', 'none')
+        changes, warnings = rc.set_lo_param('mlm', 'madevent')
+        self.assertEqual(warnings, [])
+        self.assertTrue(rc.is_mlm_merged())
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], rc.default_mlm_xqcut)
+        expected = {'beam.scale_scheme': 'madevent',
+                    'beam.clustering_measure': 'madevent',
+                    'beam.clustering_history': 'madevent',
+                    'beam.jet_scale_scheme': 'production',
+                    'beam.parton_line_scheme': 'goodjet',
+                    'beam.alphas_reweighting': 'per_vertex',
+                    'beam.pdf_reweighting': True,
+                    'beam.min_scale': 2.0}
+        for key, val in expected.items():
+            self.assertEqual(rc[key], val, key)
+            self.assertEqual(changes[key], val, key)
+        # mg7 mode: every option the madevent mode sets goes back to the
+        # card's default
+        rc.set('phasespace.xqcut', 20.0)
+        rc.set('beam.clustering_mean_pdf_ladder', False)
+        rc.set_lo_param('mlm', 'mg7')
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        for key in list(expected) + ['beam.clustering_mean_pdf_ladder']:
+            self.assertEqual(rc[key], default[key], key)
+        # a merging cut already set is kept
+        self.assertEqual(rc['phasespace']['xqcut'], 20.0)
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'mlm', 'ckkw')
+
+    def test_set_mlm_on_lepton_beams_warns(self):
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.leptonic', True)
+        changes, warnings = rc.set_lo_param('mlm', 'madevent')
+        self.assertEqual(len(warnings), 1)
+        self.assertFalse(rc.is_mlm_merged())
+
+    def test_from_LO_jet_radius(self):
+        """madevent's hidden d is the D of the MLM clustering: beam.jet_radius,
+        which the shower also reports as JetMatching:coneRadius"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['jet_radius'], 1.0)
+        lo['d'] = 0.7
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['jet_radius'], 0.7)
+        self.assertEqual(mg7['d'], 0.7)
+
+    def test_from_LO_mlm_is_the_madevent_mode(self):
+        """ickkw = 1 converts to the same clustering as "set mlm madevent",
+        with madevent's pdfwgt switch carried over"""
+        lo = bannermod.RunCardLO()
+        lo['ickkw'] = 1
+        lo['xqcut'] = 20
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        for key, val in mg7._MLM_MADEVENT.items():
+            self.assertEqual(mg7[key], val, key)
+        lo['pdfwgt'] = False
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertFalse(mg7['beam']['pdf_reweighting'])
+        self.assertFalse([d for d in dropped if 'pdfwgt' in d], dropped)
+        # without MLM merging pdfwgt has nothing to act on
+        lo['ickkw'] = 0
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertTrue([d for d in dropped if 'pdfwgt' in d], dropped)
 
     def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
         rc = bannermod.RunCardMG7()

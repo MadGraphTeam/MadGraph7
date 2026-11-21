@@ -588,6 +588,81 @@ class testFKSHelasObjects(unittest.TestCase):
                          target_me_qed.get('color_matrix'))
         
         
+    def test_find_real_amplitude(self):
+        """the real amplitude of an FKSRealProcess is the amplitude itself in
+        the list of the real amplitudes, not the first equal one (Amplitude
+        equality ignores the orders: it can be the real of another process
+        definition); an amplitude which is not in the list is an error"""
+        amplitudes = [diagram_generation.Amplitude(),
+                      diagram_generation.Amplitude()]
+        self.assertEqual(amplitudes[0], amplitudes[1])
+        self.assertEqual(
+            fks_helas.find_real_amplitude(amplitudes, amplitudes[1]), 1)
+        self.assertRaises(fks_common.FKSProcessError,
+                          fks_helas.find_real_amplitude, amplitudes,
+                          copy.copy(amplitudes[0]))
+
+
+    def test_fks_helas_process_eq_ewsudakov(self):
+        """two FKSHelasProcesses are not combined if one of them, whichever,
+        has the EW Sudakov corrections: the serial mode compares an existing
+        matrix element with a new one (list.index), the
+        low_mem_multicore_nlo_generation mode a new one with an existing one"""
+        from unittest import mock
+        def matrix_element(ewsudakov):
+            me = fks_helas.FKSHelasProcess()
+            me.born_me = {'base_amplitude': None}
+            me.virt_matrix_element = None
+            me.real_processes = []
+            me.ewsudakov = ewsudakov
+            return me
+        # (the same born tags)
+        with mock.patch.object(helas_objects.IdentifyMETag, 'create_tag',
+                               return_value=[]):
+            self.assertEqual(matrix_element(False), matrix_element(False))
+            for ewsudakovs in [(False, True), (True, False), (True, True)]:
+                first, second = [matrix_element(e) for e in ewsudakovs]
+                self.assertFalse(first == second)
+                self.assertRaises(ValueError, [first].index, second)
+
+
+    def test_low_mem_generation_error(self):
+        """after an error in the low_mem_multicore_nlo_generation mode, the
+        loggers which the generation silences are restored, and its
+        temporary files removed"""
+        import logging
+        import tempfile
+        from unittest import mock
+        legs = MG.MultiLegList([MG.MultiLeg({'ids': [pdg], 'state': n > 1})
+                                for n, pdg in enumerate([2, -2, 11, -11])])
+        procdef = MG.ProcessDefinition({'legs': legs,
+                                        'born_sq_orders': {'QCD': 0, 'QED': 4},
+                                        'squared_orders': {'QCD': 2, 'QED': 4},
+                                        'perturbation_couplings': ['QCD'],
+                                        'NLO_mode': 'real',
+                                        'model': self.mymodel})
+        multi = fks_base.FKSMultiProcess(
+                {'process_definitions': MG.ProcessDefinitionList([procdef])},
+                {'ncores_for_proc_gen': 2})
+        loggers = [logging.getLogger('madgraph.diagram_generation'),
+                   logging.getLogger('madgraph.helas_objects')]
+        levels = [logger.level for logger in loggers]
+        def tmpdirs():
+            return set(name for name in os.listdir(tempfile.gettempdir())
+                       if name.startswith('nlo_low_mem_'))
+        before = tmpdirs()
+        # (the first step: what the other ones would write in the temporary
+        # directory needs the classes of the model of this test, which another
+        # test may have replaced by importing another model)
+        def fail(args):
+            raise fks_common.FKSProcessError('the real failed')
+        with mock.patch.object(fks_helas, 'async_generate_real', fail):
+            self.assertRaises(fks_common.FKSProcessError,
+                              fks_helas.FKSHelasMultiProcess, multi)
+        self.assertEqual([logger.level for logger in loggers], levels)
+        self.assertEqual(tmpdirs() - before, set())
+        
+        
     def test_fks_helas_process_init(self):
         """tests the correct initialization of a FKSHelasProcess object.
         in particular checks:

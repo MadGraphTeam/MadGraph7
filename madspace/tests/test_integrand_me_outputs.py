@@ -20,6 +20,9 @@ from test_event_stream import (
 
 import madspace as ms
 
+# event streams run on a CPU context
+pytestmark = pytest.mark.cpu_only
+
 
 def python_matrix_element(context, function, outputs=("matrix_element",), channel=-1):
     """With a channel, the function also gets the fixed channel index."""

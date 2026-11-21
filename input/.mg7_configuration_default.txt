@@ -241,6 +241,11 @@
 #! The directory must contain libninjars.a and ninjars-config.json.
 # ninjars = None
 
+#! TIRust tensor reduction (MLReductionLib=9), installed with 'install tirust'.
+#! The library directory must include its Fortran archive, shared runtime and metadata.
+# tirust = None
+
+
 #! Set the COLLIER directory containing COLLIER's library
 #! if '' or None: disabling COLLIER 
 #! if ninja=/PATH/TO/ninja/lib: use that specific installation path for COLLIER

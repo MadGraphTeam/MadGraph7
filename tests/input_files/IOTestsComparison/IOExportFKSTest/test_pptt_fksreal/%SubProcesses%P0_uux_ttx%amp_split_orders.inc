@@ -1,4 +1,1 @@
-      INTEGER IASO, AMP_SPLIT_ORDERS(2, NSPLITORDERS)
-      DATA (AMP_SPLIT_ORDERS(1, IASO), IASO=1,NSPLITORDERS) / 4, 0 /
-      DATA (AMP_SPLIT_ORDERS(2, IASO), IASO=1,NSPLITORDERS) / 6, 0 /
-
+../../_shared/IOExportFKSTest%test_pptt_fksreal%%SubProcesses%P0_gg_ttx%amp_split_orders.inc

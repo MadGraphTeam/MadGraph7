@@ -25,6 +25,7 @@ PROCESS= $(patsubst %(dotf)s,%(doto)s,$(wildcard polynomial.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard TIR_interface.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard GOLEM_interface.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard COLLIER_interface.f)) \
+		 $(patsubst %(dotf)s,%(doto)s,$(wildcard TIRUST_interface.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard compute_color_flows.f))
 
 # This is the core of madloop computationally wise, so make sure to turn optimizations on and bound checks off.
@@ -37,6 +38,10 @@ PROCESS= $(patsubst %(dotf)s,%(doto)s,$(wildcard polynomial.f)) \
 	$(FC) $(FFLAGS) -c -I$(LIBDIR) $< %(tir_include)s
 
 all: cleanlib $(LOOPLIB) 
+
+# The TIRust adapter reads the generated polynomial constants module.
+TIRUST_interface.o: polynomial.o
+
 
 $(LOOPLIB): $(PROCESS)   
 	@ar cr $(LOOPLIB) $(PROCESS)

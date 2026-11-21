@@ -17,12 +17,12 @@
 #ifndef HelAmps_sm_H
 #define HelAmps_sm_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
-#include "mgOnGpuVectors.h"
+#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 #include "MadMatrixDenom.h"
 
@@ -127,7 +127,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_INLINE_HELAMPS
+#ifdef MADMATRIX_INLINE_HELAMPS
 #define INLINE inline
 #define ALWAYS_INLINE __attribute__( ( always_inline ) )
 #else
@@ -347,7 +347,7 @@ namespace madmatrix
     const fptype_amp_sv tm = 1 - tp;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
 #else
       volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
@@ -356,7 +356,7 @@ namespace madmatrix
       // The Fortran ip/im indices ( 1 + nh ) / 2 and ( 1 - nh ) / 2 (for pp > 0, ( 3 +- nh ) / 2 as omega(2) has
       // indexes 1,2) are the truth values tp and tm: an array element x[ip] is tm * x[0] + tp * x[1], and
       // ip * x[ip] is just tp * x[1] (and likewise for im)
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pp == 0. )
       {
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
@@ -424,7 +424,7 @@ namespace madmatrix
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -645,7 +645,7 @@ namespace madmatrix
     {
       const fptype_amp_sv nsvahl = static_cast<fptype_amp>( nsv ) * abshel;
       const fptype_amp_sv hel0 = 1 - abshel; // truth value of hel == 0 (longitudinal polarisation)
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pt2 + ( pvec3 * pvec3 ) ) );
       const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
@@ -765,7 +765,7 @@ namespace madmatrix
     else
     {
       const fptype_amp_sv& pp = pvec0; // NB: rewrite the following as in Fortran, using pp instead of pvec0
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt = fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
 #else
       volatile fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
@@ -773,7 +773,7 @@ namespace madmatrix
 #endif
       w[0] = cxzero_sv();
       w[3] = cxmake( hel * pt / pp * sqh, 0. );
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pt != 0. )
       {
         const fptype_amp pzpt = pvec3 / ( pp * pt ) * sqh * hel;
@@ -888,7 +888,7 @@ namespace madmatrix
     const fptype_amp_sv tm = 1 - tp;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) + ( pvec3 * pvec3 ) ) );
       if( pp == 0. )
       {
@@ -964,7 +964,7 @@ namespace madmatrix
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -1151,7 +1151,7 @@ namespace madmatrix
    const fptype_amp_sv one = 1. + fptype_amp_sv{0};
    const fptype_amp_sv zero = 0. + fptype_amp_sv{0};
 
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
 
     if (qabs2 > 0.f)
     {

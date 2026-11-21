@@ -11,7 +11,8 @@ from xml.dom.minidom import parseString
 
 from madgraph import MG5DIR, MadGraph5Error
 from madgraph.iolibs.file_writers import FortranWriter
-from madgraph.madevent.sum_html import RunStatistics, decode_madloop_backend_usage
+from madgraph.madevent.sum_html import (
+    MADLOOP_BACKEND_LABELS, RunStatistics, decode_madloop_backend_usage)
 from madgraph.interface.amcatnlo_run_interface import aMCatNLOCmd
 
 
@@ -174,28 +175,48 @@ class TestNinjaRSStatistics(unittest.TestCase):
 class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
     """Run actual Fortran tally/writer blocks through both Python readers."""
 
-    # Current unit 2 is only NinjaRS. Include synthetic H/T combinations to
-    # ensure the counters use T, independently of the controller's current H
-    # choices: 312 denotes DP precision, whereas 222 denotes QP use.
-    samples = [(100, 1), (211, 2), (213, 4), (214, 5),
-               (215, 6), (216, 7), (217, 8), (328, 9), (329, 10),
-               (212, 11), (232, 12), (312, 13), (322, 14), (342, 15), (222, 16)]
+    # Unit 2 is only NinjaRS; unit 3 is shared by IREGI and TIRust, which the
+    # producers tell apart with ML_GET_RET_CODE_LIBRARY(). Include synthetic
+    # H/T combinations to ensure the counters use T, independently of the
+    # controller's current H choices: 312 denotes DP precision, whereas 222
+    # denotes QP use. Unequal counts expose alias swaps and double counting.
+    # Each sample is (return code, count, MLReductionLib behind its U digit).
+    samples = [(100, 1, 0), (211, 2, 1), (213, 4, 3), (214, 5, 4),
+               (215, 6, 5), (216, 7, 6), (217, 8, 7), (328, 9, 6), (329, 10, 1),
+               (212, 11, 8), (232, 12, 8), (312, 13, 8), (322, 14, 8),
+               (342, 15, 8), (222, 16, 8),
+               (213, 17, 9), (233, 18, 9), (313, 19, 9), (323, 20, 9),
+               (343, 21, 9), (223, 22, 9)]
     expected = {'CutTools_DP': 2, 'PJFry': 0, 'IREGI': 4, 'Golem': 5,
                 'Samurai': 6, 'Ninja': 7, 'COLLIER': 8, 'Ninja_QP': 9,
-                'CutTools_QP': 10, 'NinjaRS_DP': 36, 'NinjaRS_QP': 45}
+                'CutTools_QP': 10, 'NinjaRS_DP': 36, 'NinjaRS_QP': 45,
+                'TIRust_DP': 54, 'TIRust_QP': 63}
 
     def run_producer(self, work, tally, writer):
-        codes = [code for code, count in self.samples for _ in range(count)]
+        codes = ['%d %d' % (code, library)
+                 for code, count, library in self.samples for _ in range(count)]
+        # The producers query MadLoop's own return-code helpers; compile them
+        # unchanged next to the extracted tally and writer.
+        commons = (Path(MG5DIR) / 'Template/loop_material/StandAlone/SubProcesses/'
+                   'MadLoopCommons.inc').read_text()
+        start = commons.index('      INTEGER FUNCTION ML_GET_RETURN_CODE_VERSION')
+        (work / 'commons.f').write_text(
+            commons[start:commons.index('      SUBROUTINE DETECT_LOOPLIB', start)])
         source = """
       program test_statistics
       implicit none
-      integer i,j,u,t,h,return_code,ret_code,outUnit
+      integer i,j,u,t,h,return_code,ret_code,outUnit,library
+      integer SET_RET_CODE_U,ML_GET_RET_CODE_LIBRARY
+      logical doing_qp
       integer NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      integer TIRUST_DP_USAGE,TIRUST_QP_USAGE
       integer U_RETURN_CODES(0:9),T_RETURN_CODES(0:9)
       integer H_RETURN_CODES(0:9),n1(0:9)
       integer ntot,nsun,nsps,nups,neps,nddp,nqdp,nini,n100,n10
       NINJARS_DP_USAGE=0
       NINJARS_QP_USAGE=0
+      TIRUST_DP_USAGE=0
+      TIRUST_QP_USAGE=0
       U_RETURN_CODES=0
       T_RETURN_CODES=0
       H_RETURN_CODES=0
@@ -212,15 +233,19 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
       n10=0
       outUnit=6
       do i=1,%d
-      read(*,*) return_code
+      read(*,*) return_code,library
       ret_code=return_code
+c Record the producing library through MadLoop's own return-code helper.
+      doing_qp=mod(return_code,100)/10.eq.2.or.mod(return_code,100)/10.eq.4
+      if (SET_RET_CODE_U(library,doing_qp,mod(return_code,10).ne.0)
+     $     .ne.mod(return_code,10)) stop 9
 """ % len(codes)
         source += tally + '\n      enddo\n' + writer + '\n      end\n'
         with FortranWriter(str(work / 'statistics.f')) as output:
             output.writelines(source)
         compiled = subprocess.run(
             ['gfortran', '-ffixed-line-length-132', '-fcheck=all',
-             'statistics.f', '-o', 'statistics'], cwd=work,
+             'statistics.f', 'commons.f', '-o', 'statistics'], cwd=work,
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(compiled.returncode, 0, compiled.stdout)
         run = subprocess.run([str(work / 'statistics')], cwd=work,
@@ -291,16 +316,12 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
                     path.write_text(output)
                     _, report = aMCatNLOCmd.compile_advanced_stats(
                         SimpleNamespace(me_dir=directory), [str(path)], [], '')
-                    for label, count in [
-                            ('Not identified (CTModeRun != -1)', 1),
-                            ('CutTools (double precision)', 2),
-                            ('IREGI', 4), ('Golem95', 5), ('Samurai', 6),
-                            ('Ninja (double precision)', 7), ('COLLIER', 8),
-                            ('Ninja (quadruple precision)', 9),
-                            ('CutTools (quadruple precision)', 10),
-                            ('NinjaRS (double precision)', 36),
-                            ('NinjaRS (quadruple precision)', 45)]:
-                        self.assertRegex(report, re.escape(label) +
+                    expected = dict(self.expected, unidentified=1)
+                    for backend, count in expected.items():
+                        if not count:
+                            continue
+                        self.assertRegex(report, re.escape(
+                            MADLOOP_BACKEND_LABELS[backend]) +
                                          r'\s+' + str(count) + r'(?:\n|$)')
                     self.assertNotIn('PJFry++', report)
                     old_path = work / 'historical.log'
@@ -310,6 +331,175 @@ class TestMadLoopStatisticsRoundTrip(unittest.TestCase):
                         [str(path), str(old_path)], [], '')
                     self.assertRegex(mixed, r'PJFry\+\+\s+7(?:\n|$)')
                     self.assertRegex(mixed, r'Ninja \(quadruple precision\)\s+20(?:\n|$)')
+
+
+class TestTIRustStatistics(unittest.TestCase):
+    @staticmethod
+    def xml(extra=''):
+        xml = TestNinjaRSStatistics.xml(extra)
+        xml.getElementsByTagName('u_return_code')[0].childNodes[0].data = (
+            '0,0,7,19,0,0,0,0,11,17')
+        xml.getElementsByTagName('n_evals')[0].childNodes[0].data = '54'
+        return xml
+
+    def test_old_xml_preserves_cuttools_qp_and_iregi(self):
+        stats = RunStatistics()
+        stats.load_statistics(self.xml())
+        self.assertEqual(stats['CutTools_QP_usage'], 17)
+        self.assertEqual(stats['IREGI_usage'], 19)
+        self.assertEqual(stats['TIRust_DP_usage'], 0)
+        self.assertEqual(stats['TIRust_QP_usage'], 0)
+
+    def test_mixed_xml_aggregation_and_optional_counter_reset(self):
+        stats = RunStatistics()
+        stats.load_statistics(self.xml(
+            '<ninjars_dp_usage>9</ninjars_dp_usage>'
+            '<ninjars_qp_usage>5</ninjars_qp_usage>'
+            '<tirust_dp_usage>13</tirust_dp_usage>'
+            '<tirust_qp_usage>11</tirust_qp_usage>'))
+        self.assertEqual(tuple(stats[key + '_usage'] for key in (
+            'PJFry', 'Ninja_QP', 'CutTools_QP', 'IREGI',
+            'NinjaRS_DP', 'NinjaRS_QP', 'TIRust_DP', 'TIRust_QP')),
+            (2, 2, 4, 8, 9, 5, 13, 11))
+        self.assertIn('TIRust_DP', stats.nice_output('test'))
+        self.assertIn('TIRust_QP', stats.nice_output('test'))
+        old = RunStatistics()
+        old.load_statistics(self.xml())
+        stats.aggregate_statistics(old)
+        self.assertEqual(stats['CutTools_QP_usage'], 21)
+        self.assertEqual(stats['IREGI_usage'], 27)
+        self.assertEqual(stats['TIRust_DP_usage'], 13)
+        self.assertEqual(stats['TIRust_QP_usage'], 11)
+        for extra, expected in [
+                ('<tirust_dp_usage>13</tirust_dp_usage>', (4, 19, 13, 0)),
+                ('<tirust_qp_usage>11</tirust_qp_usage>', (17, 8, 0, 11)),
+                ('', (17, 19, 0, 0))]:
+            stats.load_statistics(self.xml(extra))
+            self.assertEqual(tuple(stats[key + '_usage'] for key in (
+                'CutTools_QP', 'IREGI', 'TIRust_DP', 'TIRust_QP')), expected)
+            self.assertEqual(stats['NinjaRS_DP_usage'], 0)
+            self.assertEqual(stats['NinjaRS_QP_usage'], 0)
+
+    def test_decoder_conserves_total_and_input_for_all_aliases(self):
+        units = [0, 0, 7, 19, 0, 0, 0, 0, 11, 17]
+        original = units[:]
+        for _ in range(2):
+            usage = decode_madloop_backend_usage(units, 9, 5,
+                                                 tirust_dp=13, tirust_qp=11)
+            self.assertEqual(tuple(usage[key] for key in (
+                'Ninja_QP', 'PJFry', 'CutTools_QP', 'IREGI')),
+                (2, 2, 4, 8))
+            self.assertEqual(sum(usage.values()), sum(units))
+            self.assertEqual(units, original)
+
+    def test_nlo_log_aggregation_with_legacy_and_mixed_backends(self):
+        log = '''Statistics from MadLoop:
+ Total points tried: 54
+ Stability unknown: 0
+ Stable PS point: 54
+ Unstable PS point (and rescued): 0
+ Exceptional PS point (unstable and not rescued): 0
+ Double precision used: 30
+ Quadruple precision used: 24
+ Initialization phase-space points: 0
+ Unknown return code (100): 0
+ Unknown return code (10): 0
+ #Unit 2 = 7
+ #Unit 3 = 19
+ #Unit 8 = 11
+ #Unit 9 = 17
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            old = Path(directory) / 'old.log'
+            mixed = Path(directory) / 'mixed.log'
+            old.write_text(log)
+            mixed.write_text(log + '#NinjaRS DP = 9\n#NinjaRS QP = 5\n'
+                             '#TIRust DP = 13\n#TIRust QP = 11\n')
+            _, legacy_report = aMCatNLOCmd.compile_advanced_stats(
+                SimpleNamespace(me_dir=directory), [str(old)], [], '')
+            self.assertNotIn('TIRust', legacy_report)
+            _, report = aMCatNLOCmd.compile_advanced_stats(
+                SimpleNamespace(me_dir=directory),
+                [str(old), str(mixed)], [], '')
+            expected = {'PJFry': 9, 'Ninja_QP': 13, 'CutTools_QP': 21,
+                        'IREGI': 27, 'NinjaRS_DP': 9, 'NinjaRS_QP': 5,
+                        'TIRust_DP': 13, 'TIRust_QP': 11}
+            for backend, count in expected.items():
+                self.assertRegex(report, re.escape(
+                    MADLOOP_BACKEND_LABELS[backend]) +
+                    r'\s+' + str(count) + r'(?:\n|$)')
+
+
+    def format_two_xml(self, units='0,0,14,43,0,0,0,0,11,17'):
+        xml = self.xml('<return_code_version>2</return_code_version>'
+                       '<ninjars_dp_usage>9</ninjars_dp_usage>'
+                       '<ninjars_qp_usage>5</ninjars_qp_usage>'
+                       '<tirust_dp_usage>13</tirust_dp_usage>'
+                       '<tirust_qp_usage>11</tirust_qp_usage>')
+        xml.getElementsByTagName('u_return_code')[0].childNodes[0].data = units
+        xml.getElementsByTagName('n_evals')[0].childNodes[0].data = '85'
+        return xml
+
+    def test_format_two_splits_tirust_off_shared_unit_three(self):
+        stats = RunStatistics()
+        stats.load_statistics(self.format_two_xml())
+        self.assertEqual(tuple(stats[key + '_usage'] for key in (
+            'PJFry', 'Ninja_QP', 'CutTools_QP', 'IREGI',
+            'NinjaRS_DP', 'NinjaRS_QP', 'TIRust_DP', 'TIRust_QP')),
+            (0, 11, 17, 19, 9, 5, 13, 11))
+        old = RunStatistics()
+        old.load_statistics(self.xml())
+        stats.aggregate_statistics(old)
+        self.assertEqual(tuple(stats[key + '_usage'] for key in (
+            'CutTools_QP', 'IREGI', 'TIRust_DP', 'TIRust_QP')), (34, 38, 13, 11))
+
+    def test_format_two_rejects_inconsistent_tirust_counters(self):
+        units = [0, 0, 14, 43, 0, 0, 0, 0, 11, 17]
+        for dp, qp in [(13, 31), (-1, 11), (13, -1)]:
+            with self.subTest(dp=dp, qp=qp):
+                with self.assertRaises(MadGraph5Error):
+                    decode_madloop_backend_usage(units, 9, 5, 2,
+                                                 tirust_dp=dp, tirust_qp=qp)
+        usage = decode_madloop_backend_usage(units, 9, 5, 2,
+                                             tirust_dp=13, tirust_qp=11)
+        self.assertEqual(sum(usage.values()), sum(units))
+        self.assertEqual(units, [0, 0, 14, 43, 0, 0, 0, 0, 11, 17])
+
+    def test_nlo_format_two_log_splits_tirust_off_unit_three(self):
+        log = '''Statistics from MadLoop:
+ Total points tried: 85
+ Stability unknown: 0
+ Stable PS point: 85
+ Unstable PS point (and rescued): 0
+ Exceptional PS point (unstable and not rescued): 0
+ Double precision used: 50
+ Quadruple precision used: 35
+ Initialization phase-space points: 0
+ Unknown return code (100): 0
+ Unknown return code (10): 0
+ #Unit 2 = 14
+ #Unit 3 = 43
+ #Unit 8 = 11
+ #Unit 9 = 17
+ #ReturnCodeVersion = 2
+ #NinjaRS DP = 9
+ #NinjaRS QP = 5
+ #TIRust DP = 13
+ #TIRust QP = 11
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'format2.log'
+            path.write_text(log)
+            _, report = aMCatNLOCmd.compile_advanced_stats(
+                SimpleNamespace(me_dir=directory), [str(path)], [], '')
+            expected = {'Ninja_QP': 11, 'CutTools_QP': 17, 'IREGI': 19,
+                        'NinjaRS_DP': 9, 'NinjaRS_QP': 5,
+                        'TIRust_DP': 13, 'TIRust_QP': 11}
+            for backend, count in expected.items():
+                self.assertRegex(report, re.escape(
+                    MADLOOP_BACKEND_LABELS[backend]) +
+                    r'\s+' + str(count) + r'(?:\n|$)')
+            self.assertNotIn('PJFry++', report)
 
 
 if __name__ == "__main__":
