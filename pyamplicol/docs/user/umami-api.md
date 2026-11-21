@@ -145,7 +145,8 @@ be finite and indices valid. Check every returned `UmamiStatus`.
 The matrix-element output sums the artifact's **available helicities**, unless
 `UMAMI_IN_HELICITY_INDEX` selects one of them. A
 generation restricted to one helicity is therefore not an unpolarized provider;
-consult `runtime_processes[].coverage` and `helicity_ids` in the metadata.
+consult `runtime_processes[].coverage` and `runtime_processes[].helicity_ids`
+(the available helicities) in the metadata.
 The result already includes Rusticol's incoming spin/colour averaging and
 identical-final-state normalization. Do not apply these factors again.
 
@@ -237,10 +238,13 @@ A provider's metadata contains:
   `helicities` indices) and helicity mappings of the `processes` entries,
   whose `helicities` and `helicity_mappings` are indices into them. A mapping
   has one list per field, an entry per helicity: `helicity` (a `helicities`
-  index), `representative` (an index into `helicity_ids`, the representative
-  helicity id), `coefficient` and `structural_zero`. Schema 4 and 5 documents
-  have a list of `{helicity, representative_id, coefficient,
-  structural_zero}` records instead.
+  index), `representative` (an index into the top-level `helicity_ids`),
+  `coefficient` and `structural_zero`. Schema 4 and 5 documents have a list of
+  `{helicity, representative_id, coefficient, structural_zero}` records
+  instead.
+- `helicity_ids` (top level, schema 6): the representative helicity ids of the
+  helicity mappings only, each once. It is not the list of available
+  helicities; that is `runtime_processes[].helicity_ids`.
 - `helicity_exports`: the exported helicity of each runtime helicity, one list
   per distinct export. A `runtime` record's `helicity_export` is an index into
   it (schema 6); in schema 4 and 5 documents it is the list itself.
