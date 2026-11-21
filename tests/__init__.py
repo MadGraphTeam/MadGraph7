@@ -16,7 +16,7 @@ def import_madspace():
     madspace is importable.
     """
     try:
-        from madgraph.iolibs.template_files.mg7 import bootstrap
+        from madgraph.mg7 import bootstrap
         installed = bootstrap.madspace_is_installed()
     except Exception:
         bootstrap, installed = None, False
