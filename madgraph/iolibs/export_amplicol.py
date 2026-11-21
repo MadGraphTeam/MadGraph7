@@ -587,10 +587,12 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
     those of the pyamplicol installation, see bootstrap.ensure_pyamplicol;
     ``flavor_unions`` generates the LC and full-colour artifacts with flavour-union
     templates (option amplicol_flavor_unions); ``flavor_union_crossing`` also joins
-    crossed flavours in the LC artifact (option amplicol_flavor_union_crossing)."""
+    crossed flavours in the LC artifact (option amplicol_flavor_union_crossing,
+    which needs the unions)."""
     if flavor_union_crossing and not flavor_unions:
-        raise madgraph.InvalidCmd('amplicol_flavor_union_crossing requires '
-                                  'amplicol_flavor_unions')
+        logger.info('amplicol_flavor_union_crossing has no effect without '
+                    'amplicol_flavor_unions')
+        flavor_union_crossing = False
     pyamplicol = check_pyamplicol(interactive, jobs)
     subproc_dir = pjoin(dir_path, 'SubProcesses')
     write_rusticol_config(subproc_dir, pyamplicol)

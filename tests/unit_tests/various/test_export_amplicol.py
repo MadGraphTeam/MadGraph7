@@ -59,12 +59,11 @@ class TestGenerationInProcess(unittest.TestCase):
         self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': True,
                                  'flavor_union_crossing': True}])
 
-    def test_flavor_union_crossing_requires_unions(self):
+    def test_flavor_union_crossing_needs_unions(self):
         jobs = []
-        with self.assertRaisesRegex(madgraph.InvalidCmd, 'requires amplicol_flavor_unions'):
-            self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
-                            flavor_union_crossing=True)
-        self.assertEqual(jobs, [])
+        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
+                        flavor_union_crossing=True)
+        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': False}])
 
     def test_flavor_union_crossing_sets_the_process_option(self):
         from madgraph.iolibs import amplicol_generation

@@ -11,11 +11,12 @@ ANNOUNCEMENT:
        per flavour class; for unmerged VEGAS runs with the same seed they are the same
        up to rounding.
        'set amplicol_flavor_unions False' before 'output' turns them off.
-   TH: [amplicol] 'set amplicol_flavor_union_crossing True' (off by default) also joins
-       the crossings of a flavour union in the leading-colour artifact (q g > q g with
-       g g > q q~): fewer leading-colour programs to generate, e.g. 4 instead of 10 for
+   TH: [amplicol] the leading-colour artifact also joins the crossings of a flavour union
+       (q g > q g with g g > q q~; MG option amplicol_flavor_union_crossing, on by
+       default): fewer leading-colour programs to generate, e.g. 4 instead of 10 for
        p p > j j j j. The full-colour artifact is unchanged; the events are
        statistically equivalent to those without it.
+       'set amplicol_flavor_union_crossing False' before 'output' turns it off.
    HS: Bug fix (gamma-UPC): in collisions of two different nuclei (A /= B), the Woods-Saxon
        thickness of beam B (TAhat_WoodsSaxon with IMETH=2) was interpolated on the grid of beam
        A, which made the probability of no hadronic interaction, and so the photon-photon
