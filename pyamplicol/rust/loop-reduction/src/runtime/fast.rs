@@ -158,6 +158,10 @@ impl FastReductions {
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if self.active[index] {
                 results.push(sector.evaluate(ids, input, parameters)?);
+                // Taken after a successful evaluation only, which suffices:
+                // NinjaRS's `FastAmplitude::evaluate` forgets the thread's
+                // earlier records on entry (`clear_instabilities`), so those
+                // of a failed evaluation never reach the next one.
                 records.push(super::lane_status::fast_instabilities(ids.len()));
             } else {
                 records.push(vec![None; ids.len()]);

@@ -1882,11 +1882,7 @@ thread_local! {
     static SEQUENTIAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// [`read_binary_with`] within the caller's thread bound: under a load's
-/// bound (`plan::with_load_threads`) with the threads its work uses, inside a
-/// pool's worker on that pool's threads, else sequentially on the calling
-/// thread, never starting rayon's global pool (whose workers would outlive
-/// the call).
+/// [`read_binary_with`] within the caller's thread bound (`read_bounded`).
 /// The loader's read of a stored member (`LoopProgramV4::load_with`): an
 /// executor or runtime built with a thread bound starts no other threads
 /// (M-FINAL MF-8G-1 item 5; the JSON load is sequential too). The model and
@@ -1895,8 +1891,11 @@ pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<
     read_bounded(|| read_binary_with(member, policy))
 }
 
-/// `read` (a read of a binary member) within the caller's thread bound
-/// ([`read_binary_bounded`]).
+/// `read` (a read of a binary member) within the caller's thread bound:
+/// under a load's bound (`plan::with_load_threads`) with the threads its work
+/// uses, inside a pool's worker on that pool's threads, else sequentially on
+/// the calling thread, never starting rayon's global pool (whose workers
+/// would outlive the call).
 pub(super) fn read_bounded<T>(read: impl FnOnce() -> RusticolResult<T>) -> RusticolResult<T> {
     if rayon::current_thread_index().is_some() || super::load_bound().is_some() {
         return read();
@@ -1934,13 +1933,13 @@ pub fn read_pool() -> Option<bool> {
 /// else the bound of a load on this thread (`plan::with_load_threads`: each
 /// list then decodes on the load's pool with the threads it uses,
 /// [`Reader::list_threads`]); else inside a pool's worker that pool's, else
-/// the global pool's, started first. rayon starts the global pool lazily at its first use and panics
-/// there when a worker cannot be spawned, and never starts it after a failed
-/// start (any later use panics too): the reader starts it itself, and a
-/// pool that cannot start, or whose start failed before (outside this
-/// reader, revealed by one caught use), makes every read of the process
-/// decode on one thread, never a refusal or rayon's panic. A pool another
-/// component started first is used as it is.
+/// the global pool's, started first. rayon starts the global pool lazily at
+/// its first use and panics there when a worker cannot be spawned, and never
+/// starts it after a failed start (any later use panics too): the reader
+/// starts it itself, and a pool that cannot start, or whose start failed
+/// before (outside this reader, revealed by one caught use), makes every
+/// read of the process decode on one thread, never a refusal or rayon's
+/// panic. A pool another component started first is used as it is.
 fn read_threads() -> usize {
     if allocations_can_fail() || SEQUENTIAL.with(std::cell::Cell::get) {
         return 1;

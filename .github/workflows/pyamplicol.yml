@@ -439,13 +439,14 @@ jobs:
       # in source-contracts: they are loop tests, which skip without a
       # Symbolica that accepts the package key, and source-contracts installs
       # no Symbolica.
-      # The stability display, wide magnitudes and tracked-precision files
-      # are the fast new one-loop tests of the lane-rescue / runtime-options
-      # import (about 20 s together). test_loop_v2_process_history.py is not
-      # listed: its child process uses Symbolica directly, which is refused
-      # without a personal licence once pytest holds the restricted thread.
-      # The last seven files are the fastest of the restored one-loop engine
-      # tests (about 70 s together).
+      # Two groups are listed for their speed (measured locally, one pytest
+      # process per group): the stability-display, wide-magnitude and
+      # tracked-precision files of the lane-rescue / runtime-options import
+      # (about 20 s), and the last seven files, the fastest of the restored
+      # one-loop engine tests (about 30 s). test_loop_v2_process_history.py
+      # is not listed: its child process uses Symbolica directly, which is
+      # refused without a personal licence once pytest holds the restricted
+      # thread.
       - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
         env:
           PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"

@@ -89,6 +89,23 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--measured-precisions",
+        dest="benchmark.measured_precisions",
+        action="extend",
+        nargs="+",
+        default=argparse.SUPPRESS,
+        metavar="PRECISION",
+        help=(
+            "loop artifacts: the precisions whose stability --stability "
+            "measures (benchmark.measured_precisions), each its own pair of "
+            "tables in the order given: binary64 (double, b64; the default), "
+            "double-double (dd), arbitrary (arb) or arbitrary:DIGITS, at most "
+            "the --ground-truth precision (that one: its estimates only, with "
+            "the default checks); with --runtime each also its own runtime "
+            "tables (--target-runtime per precision); space- or comma-separated"
+        ),
+    )
+    parser.add_argument(
         "--ground-truth",
         dest="benchmark.ground_truth",
         default=argparse.SUPPRESS,
