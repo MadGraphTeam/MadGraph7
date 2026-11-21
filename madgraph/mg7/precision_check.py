@@ -5,16 +5,19 @@ A run whose [run] precision is not all64 (the default, denom64, keeps only the
 momenta and the propagator denominators in double precision) evaluates the
 matrix elements in single precision, which is accurate to ~1e-6 on most phase
 space points but can lose digits where the amplitudes cancel. With
-[run] precision_check > 0, the run builds the CPU library of each MadMatrix
-subprocess in its own precision and in all64 (FPTYPE=d) and, once the events
-are written, evaluates a sample of them with both, at the same momenta, flavour
-and alpha_s, with the same good helicities. It reports the relative deviation
-|M2 - M2_d| / |M2_d|: its mean over the unweighted events estimates the
-relative bias of the cross section; its maximum and the number of events above
-[run] precision_check_threshold flag unstable phase-space regions.
+[run] precision_check > 0 (off by default: it compiles every subprocess a
+second time; [run] validation reweights the whole sample through MadtRex
+instead), the run builds the CPU library of each MadMatrix subprocess in its
+own precision and in all64 (FPTYPE=d) and, once the events are written,
+evaluates a sample of them with both, at the same momenta, flavour and alpha_s,
+with the same good helicities. With r = M2 / M2_d - 1 per event, it reports:
+  * the mean of r: the unweighted events follow dsigma ~ PDF |M2|, so this is
+    the relative change of the cross section from the precision;
+  * the mean and the maximum of |r|, and the number of events with |r| above
+    [run] precision_check_threshold: unstable phase-space regions.
 
-The sample is the first events of the output (the events are written in a
-random order), so an LHE output need not be read to its end. The events are
+The sample is drawn at random from the whole output (an LHE output is read to
+its end, but only the sampled events are parsed). The events are
 matched to a library and flavour by their PDG ids (incoming then outgoing,
 resonances left out, as in the output), the incoming legs swapped for the
 mirrored flavours; events that match none (an AmpliCol subprocess) are not
@@ -216,19 +219,32 @@ def _npy_events(path, count, rng):
     return rows
 
 
-def _lhe_events(path, count):
-    """The pdg ids, momenta and alpha_s of the first count events of an LHE
-    output."""
+def _lhe_events(path, count, rng):
+    """The pdg ids, momenta and alpha_s of count events of an LHE output,
+    drawn at random: one pass over the raw text of the events (reservoir
+    sampling), parsing only the ones kept."""
     from madgraph.various import lhe_parser
 
+    texts = []
+    lhe = lhe_parser.EventFile(path)
+    lhe.parsing = False
+    try:
+        for seen, text in enumerate(lhe):
+            if seen < count:
+                texts.append(text)
+            else:
+                slot = int(rng.integers(0, seen + 1))
+                if slot < count:
+                    texts[slot] = text
+    finally:
+        lhe.close()
     rows = []
-    for event in lhe_parser.EventFile(path):
+    for text in texts:
+        event = lhe_parser.Event(text)
         kept = [p for p in event if p.status in (-1, 1)]
         rows.append(dict(pdgs=tuple(int(p.pid) for p in kept),
                          momenta=[[p.E, p.px, p.py, p.pz] for p in kept],
                          alpha_s=float(event.aqcd)))
-        if len(rows) >= count:
-            break
     return rows
 
 
@@ -250,7 +266,8 @@ def _compact_pdgs(process, subproc_index, flavor_index):
 # the check
 # ----------------------------------------------------------------------------
 def summarize(values, references, threshold):
-    """The statistics of the relative deviation of values from references."""
+    """The statistics of r = values / references - 1 over unweighted events
+    (see the module docstring)."""
     import numpy as np
 
     values = np.asarray(values, dtype=float)
@@ -261,18 +278,28 @@ def summarize(values, references, threshold):
         rel = np.where(scale > 0, np.abs(values - references) / scale,
                        np.where(values == references, 0., np.inf))
     rel = np.where(finite, rel, np.inf)
-    total = float(np.sum(scale[finite]))
+    # signed, over the events with a finite, non-zero reference: the events
+    # already follow |M|^2, so its mean is the relative change of the cross
+    # section (no |M|^2 weight on top)
+    usable = finite & (scale > 0)
+    signed = (values[usable] - references[usable]) / references[usable]
     return {
         "events": int(len(values)),
         "non_finite": int(np.sum(~finite)),
+        "cross_section_bias": float(np.mean(signed)) if len(signed) else 0.,
         "mean_relative_deviation": float(np.mean(rel)) if len(rel) else 0.,
         "max_relative_deviation": float(np.max(rel)) if len(rel) else 0.,
-        # the |M|^2-weighted mean: the relative change of a sum over the events
-        "weighted_relative_deviation":
-            float(np.sum(np.abs(values - references)[finite]) / total) if total > 0 else 0.,
         "above_threshold": int(np.sum(rel > threshold)),
         "threshold": float(threshold),
     }
+
+
+def _json_safe(summary):
+    """summary with its non-finite floats as strings ("inf", "nan"): strict
+    JSON has no Infinity/NaN."""
+    return {key: (repr(value) if isinstance(value, float) and not math.isfinite(value)
+                  else value)
+            for key, value in summary.items()}
 
 
 def run(process):
@@ -304,7 +331,7 @@ def _run(process):
     if events_path.endswith(".npy"):
         rows = _npy_events(events_path, count, np.random.default_rng(process.run_seed))
     else:
-        rows = _lhe_events(events_path, count)
+        rows = _lhe_events(events_path, count, np.random.default_rng(process.run_seed))
     table = flavor_table(process)
 
     groups = {}
@@ -365,13 +392,12 @@ def _run(process):
         "events_path": os.path.basename(events_path),
     })
     with open(os.path.join(process.run_path, RESULT_FILE), "w") as f:
-        json.dump(summary, f, indent=1)
+        json.dump(_json_safe(summary), f, indent=1, allow_nan=False)
 
-    message = ("precision check (%s vs all64, %d events): mean relative deviation "
-               "%.2g, |M|^2-weighted %.2g, max %.2g; %d above %.0e%s")
-    args = (run_card["precision"], summary["events"],
-            summary["mean_relative_deviation"], summary["weighted_relative_deviation"],
-            summary["max_relative_deviation"], summary["above_threshold"], threshold,
+    message = ("precision check (%s vs all64, %d events): cross-section bias %.2g, "
+               "mean |relative deviation| %.2g, max %.2g; %d above %.0e%s")
+    args = (run_card["precision"], summary["events"], summary["cross_section_bias"],
+            summary["mean_relative_deviation"], summary["max_relative_deviation"], summary["above_threshold"], threshold,
             ", %d not finite" % summary["non_finite"] if summary["non_finite"] else "")
     if summary["above_threshold"] or summary["non_finite"]:
         logger.warning(message + ". This process may need [run] precision = "

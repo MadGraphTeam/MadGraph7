@@ -7347,9 +7347,11 @@ class RunCardMG7(RunCard):
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
         # The precision check (madgraph/mg7/precision_check.py): a fraction of
-        # the events evaluated again in all64, for a precision other than all64
-        self.add_toml_param('run', 'precision_check', 0.01,
-            comment="fraction of the events evaluated again in all64 to check the precision (0: no check); needs an all64 build of the matrix elements")
+        # the events evaluated again in all64, for a precision other than all64.
+        # Off by default: it builds every subprocess a second time (in all64);
+        # 'validation' below reweights the whole sample through MadtRex instead.
+        self.add_toml_param('run', 'precision_check', 0.0,
+            comment="fraction of the events evaluated again in all64 to check the precision (0: no check, the default); builds the matrix elements a second time, in all64")
         self.add_toml_param('run', 'precision_check_max_events', 1000, hidden=True,
             comment="the precision check evaluates at most this many events")
         self.add_toml_param('run', 'precision_check_threshold', 1e-3, hidden=True,

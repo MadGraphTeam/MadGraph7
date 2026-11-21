@@ -1977,27 +1977,31 @@ class MadgraphProcess:
         builds = [(backend, fptype) for backend in resolved]
         if not cpu_backends and not self.run_card["run"]["dummy_matrix_element"]:
             builds.append(self.helicity_choice_build)
-        for backend, fptype in builds:
+        # (not 'backend, fptype': a GPU-only run's last build is the scalar
+        # all64 one of the helicity choice, and the precision check below
+        # needs the run's fptype)
+        for build_backend, build_fptype in builds:
             # by library: the flavours of a split subprocess share one; a library
             # built with other recycling settings is rebuilt too: its SigmaKin.o
             # records them in build.<backend>_<fptype>/.hrflags (madmatrix.mk)
             missing = list({
                 meta["me_path"]: meta for meta in madmatrix_data
                 if not os.path.isfile(
-                    meta["me_path"].format(device=backend, fptype=fptype)
+                    meta["me_path"].format(device=build_backend, fptype=build_fptype)
                 )
                 or self.hel_recycling_flags_changed(
-                    meta["path"], backend, fptype, hr_flags)
+                    meta["path"], build_backend, build_fptype, hr_flags)
             }.values())
             if not missing:
                 continue
             logger.info(
-                f"Start compilation of SubProcesses for device '{backend}' "
+                f"Start compilation of SubProcesses for device '{build_backend}' "
                 f"({len(missing)} subprocess(es), {nb_core} parallel job(s)), "
                 f"see log detail in {log_path}"
             )
             start_time = time.time()
-            make_args = [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            make_args = [f"BACKEND={build_backend}", f"FPTYPE={build_fptype}",
+                         "USEBUILDDIR=1"]
             make_args += self.extra_make_args + hr_args
             if (len(missing) >= PCH_MIN_SUBPROCESSES
                     and not any(arg.startswith("PCH=") for arg in make_args)):

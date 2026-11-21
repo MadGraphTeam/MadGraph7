@@ -61,16 +61,19 @@ fixed parameters. Their entries are described below.
     and everything else in double precision. ``denom64``, the default, keeps the momenta and
     propagator denominators in double precision and uses single precision elsewhere.
 
-``precision_check`` (``0.01``)
+``precision_check`` (``0``)
     Fraction of the events evaluated again with the matrix elements in ``all64``, to check
-    the precision of a run in any other precision. The run then also builds an ``all64``
-    CPU library of each subprocess and, once the events are written, compares the two at
-    the momenta of the first events of the output (at most 1000 of them, hidden entry
-    ``precision_check_max_events``). The mean, ``|M|^2``-weighted and maximal relative
-    deviations are logged and written to ``Events/<run>/precision_check.json``; the run
-    warns when an event deviates by more than ``1e-3`` (hidden entry
+    the precision of a run in any other precision. Off by default, because the run then
+    also builds an ``all64`` CPU library of each subprocess (``validation`` below
+    reweights the whole sample through MadtRex instead). Once the events are written, the
+    two are compared at the momenta of events drawn at random from the output (at most
+    1000 of them, hidden entry ``precision_check_max_events``). With
+    ``r = |M|^2 / |M|^2_all64 - 1`` per event, the mean of ``r`` (the relative change of the
+    cross section, since unweighted events already follow ``|M|^2``), the mean and the
+    maximum of ``|r|`` are logged and written to ``Events/<run>/precision_check.json``; the
+    run warns when an event deviates by more than ``1e-3`` (hidden entry
     ``precision_check_threshold``) or is not finite, in which case ``all64`` or ``color32``
-    is the safer choice for that process. ``0`` disables the check, and the extra build.
+    is the safer choice for that process.
 
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)

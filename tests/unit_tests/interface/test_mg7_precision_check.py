@@ -42,7 +42,7 @@ class TestPrecisionDefault(unittest.TestCase):
     def test_run_card_default_is_denom64(self):
         card = RunCardMG7()
         self.assertEqual(card['run']['precision'], 'denom64')
-        self.assertEqual(card['run']['precision_check'], 0.01)
+        self.assertEqual(card['run']['precision_check'], 0.0)
         self.assertEqual(card['run']['precision_check_max_events'], 1000)
         self.assertEqual(card['run']['precision_check_threshold'], 1e-3)
 
@@ -54,9 +54,9 @@ class TestPrecisionDefault(unittest.TestCase):
             with open(path) as f:
                 text = f.read()
             self.assertIn('precision = "denom64"', text)
-            self.assertIn('precision_check = 0.01', text)
+            self.assertIn('precision_check = 0.0', text)
             card = RunCardMG7(path)
-            self.assertEqual(card['run']['precision_check'], 0.01)
+            self.assertEqual(card['run']['precision_check'], 0.0)
         finally:
             shutil.rmtree(tmpdir)
 
@@ -86,8 +86,8 @@ class TestSummarize(unittest.TestCase):
         self.assertEqual(summary['non_finite'], 0)
         self.assertAlmostEqual(summary['max_relative_deviation'], 1e-3)
         self.assertAlmostEqual(summary['mean_relative_deviation'], 1e-3 / 3)
-        # |M|^2-weighted: the relative change of the sum
-        self.assertAlmostEqual(summary['weighted_relative_deviation'], 0.002 / 6.0)
+        # signed mean of r = v/d - 1: the relative change of the cross section
+        self.assertAlmostEqual(summary['cross_section_bias'], 1e-3 / 3)
         self.assertEqual(summary['above_threshold'], 1)
         self.assertEqual(summary['threshold'], 1e-4)
 
@@ -98,8 +98,19 @@ class TestSummarize(unittest.TestCase):
         self.assertEqual(summary['non_finite'], 2)
         self.assertEqual(summary['above_threshold'], 3)
         self.assertTrue(math.isinf(summary['max_relative_deviation']))
-        # the weighted mean only sums the finite events
-        self.assertEqual(summary['weighted_relative_deviation'], 0.0)
+        # the bias only averages finite events with a non-zero reference
+        self.assertEqual(summary['cross_section_bias'], 0.0)
+
+    def test_bias_is_signed(self):
+        summary = precision_check.summarize([1.001, 0.999], [1.0, 1.0], 1e-2)
+        self.assertAlmostEqual(summary['cross_section_bias'], 0.0)
+        self.assertAlmostEqual(summary['mean_relative_deviation'], 1e-3)
+
+    def test_json_safe(self):
+        import json
+        summary = precision_check.summarize([float('inf')], [1.0], 1e-3)
+        text = json.dumps(precision_check._json_safe(summary), allow_nan=False)
+        self.assertEqual(json.loads(text)['max_relative_deviation'], 'inf')
 
     def test_identical(self):
         summary = precision_check.summarize([1.5, 2.5], [1.5, 2.5], 1e-3)
