@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import json
+from array import array
 from pathlib import Path
 
 import pytest
 
 from pyamplicol.artifacts.umami_reweight import (
+    SwitchTargetTable,
     load_umami_metadata,
     reweight_tables,
     switch_catalogue,
     write_reweight_provider,
+    write_switch_sidecar,
 )
 
 
@@ -391,3 +394,40 @@ def test_switch_refuses_inconsistent_crossings(signs, rho):
     reference["runtime_processes"] = reference["runtime_processes"][:1]
     with pytest.raises(ValueError, match="inconsistent crossing signs"):
         switch_catalogue(reference, _crossed_groups(signs, rho), 1)
+
+
+@pytest.mark.parametrize("count", [0, 1, 30_000])
+def test_switch_sidecar_has_the_bytes_of_json_dumps(tmp_path, count):
+    # chunked writing over several chunks, negative pdg ids, an empty table
+    width = 5
+    pdgs = [[21, -2, 2 + k % 3, -(k % 4) - 1, 21] for k in range(count)]
+    flows = [[[501 + k % 7, 0], [0, 502], [503, 501], [0, 0], [502, 503]]
+             for k in range(count // 2)]
+    targets = SwitchTargetTable(
+        array("i"), array("i"), [], array("i", [v for row in pdgs for v in row]), width
+    )
+    catalogue = {
+        "switch_lines": 3,
+        "target_table": targets,
+        "color_flow_table": array("i", [t for f in flows for p in f for t in p]),
+    }
+    path = tmp_path / "flavor_switch_p0.json"
+    write_switch_sidecar(path, catalogue, 17)
+    expected = {"switch_lines": 3, "targets": pdgs}
+    expected.update(color_flow_offset=17, color_flows=flows)
+    assert path.read_text() == json.dumps(expected)
+
+
+def test_switch_catalogue_rows_view_its_tables():
+    reference = _switch_reference(TTJ_ROWS, [0.0, 0.0, 173.0, 173.0, 0.0])
+    catalogue = switch_catalogue(reference, None, 2)
+    table, rows = catalogue["ordering_table"], catalogue["orderings"]
+    assert len(rows) == len(table.evaluation) == 7
+    assert rows[-1] == rows[6] and rows[1:3] == [rows[1], rows[2]]
+    assert [o["target"] for o in rows] == list(table.target)
+    with pytest.raises(IndexError):
+        rows[7]
+    targets = catalogue["target_table"]
+    assert catalogue["target_pdgs"] == [
+        list(targets.pdgs[k * 5:(k + 1) * 5]) for k in range(len(targets.evaluation))
+    ]
