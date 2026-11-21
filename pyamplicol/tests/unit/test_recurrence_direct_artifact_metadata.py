@@ -1356,3 +1356,26 @@ def test_v2_inspection_tolerates_pending_direct_counter_wiring(
     assert result.packed_input_bytes == 0
     assert result.packed_output_bytes == 0
     assert result.scatter_bytes == 0
+
+
+def test_selector_owner_order_must_match_the_companion_destinations() -> None:
+    def sector(sector_id: int, word: tuple[int, ...]) -> SimpleNamespace:
+        return SimpleNamespace(
+            sector_id=sector_id,
+            kind="trace",
+            public_id="flow:" + ",".join(map(str, word)),
+            word_source_slots=word,
+        )
+
+    words = ((0, 1, 2), (0, 2, 1), (1, 0, 2))
+    logical = SimpleNamespace(
+        physical_sectors=tuple(sector(i, w) for i, w in enumerate(words))
+    )
+    service._check_selector_owner_order(logical, logical)  # type: ignore[arg-type]
+    permuted = SimpleNamespace(
+        physical_sectors=tuple(
+            sector(i, w) for i, w in enumerate((words[1], words[0], words[2]))
+        )
+    )
+    with pytest.raises(service.GenerationError, match="owner order"):
+        service._check_selector_owner_order(logical, permuted)  # type: ignore[arg-type]

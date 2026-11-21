@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol import Generator, ProcessSet, Runtime
+from pyamplicol import EvaluationError, Generator, ProcessSet, Runtime
 from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.artifacts import inspect_artifact
 from pyamplicol.config import (
@@ -37,6 +37,7 @@ from pyamplicol.config import (
     RunConfig,
 )
 from pyamplicol.generation.phase_space import flat_final_states
+from tests.integration.test_runtime_selector_api_parity import native_sdk  # noqa: F401
 
 _SELECTOR_ONLY = "rusticol.recurrence-selector-only-fc.v1"
 _CASES = {"pp2j": "p p > j j", "pp3j": "p p > j j j"}
@@ -45,7 +46,14 @@ _OPT_IN_ENV = "PYAMPLICOL_RUN_SELECTOR_ONLY"
 Point = tuple[tuple[float, float, float, float], ...]
 
 
-def _config(*, unions: bool, selector_only: bool, validate: bool = False) -> RunConfig:
+def _config(
+    *,
+    unions: bool,
+    selector_only: bool,
+    validate: bool = False,
+    emit_api: bool = False,
+    qed: int = 0,
+) -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy="full"),
@@ -53,11 +61,11 @@ def _config(*, unions: bool, selector_only: bool, validate: bool = False) -> Run
             flavor_scheme=4,
             flavor_blind_strict=True,
             flavor_unions=unions,
-            max_coupling_orders={"QED": 0},
+            max_coupling_orders={"QED": qed},
         ),
         generation=GenerationConfig(
             workers=1,
-            emit_api_bundle=False,
+            emit_api_bundle=emit_api,
             selector_only_full_colour=selector_only,
             relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
             validation=GenerationValidationConfig(
@@ -259,10 +267,23 @@ def test_apis_needing_the_main_schedule_are_refused(
         runtime.evaluate(points, helicities=helicities[:2])
     with pytest.raises(CompatibilityError, match="resolved helicity/colour output"):
         runtime.evaluate_resolved(points, helicities=helicities[:1])
+    # Colour selectors stop at the NLC/full selector check, as in default mode.
+    with pytest.raises(EvaluationError, match="LC color-flow selection is unavailable"):
+        runtime.evaluate(
+            points, helicities=helicities[:1], color_flows=runtime.physics.color_ids[:1]
+        )
+    # Selector-only processes are never union templates in S1 (section 6).
+    for helicity_by_point in (None, helicities[:1] * len(points)):
+        with pytest.raises(CompatibilityError, match="flavour-union assignments"):
+            runtime.evaluate_assignments(
+                points, [[0]] * len(points), helicity_by_point=helicity_by_point
+            )
     # Native profiles (backend API): single helicity only.
     backend = runtime._backend  # type: ignore[attr-defined]
     with pytest.raises(CompatibilityError, match="helicity-summed evaluation"):
         backend.profile(points)
+    with pytest.raises(CompatibilityError, match="arena profiling"):
+        backend._profile_arena_repeated(points, 1, helicities=helicities[:1])
     profile = backend.profile(points, helicities=helicities[:1], include_values=True)
     assert [complex(v).real for v in profile["values"]] == _real(
         runtime.evaluate(points, helicities=helicities[:1])
@@ -327,3 +348,153 @@ def test_generation_validation_checks_selector_only_processes(
         ProcessSet.from_expressions(("u u~ > g g g",)), output
     )
     assert _selector_only_ids(output)
+
+
+def test_mixed_order_partials_are_refused(tmp_path: Path) -> None:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+    output = tmp_path / "mixed-orders"
+    Generator(_config(unions=False, selector_only=True, qed=2)).generate(
+        ProcessSet.from_expressions(("u d > u d",)), output
+    )
+    process_id = _selector_only_ids(output)[0]
+    runtime = Runtime.load(output, process=process_id)
+    helicities = list(runtime.physics.helicity_ids)
+    points = _points(runtime.physics.process, 3)
+    single = _real(runtime.evaluate(points, helicities=helicities[:1]))
+    assert any(single)
+    with pytest.raises(CompatibilityError, match="amplitude-order partials"):
+        runtime.evaluate_orders(points, helicities=helicities[:1])
+
+
+# C probe: per-helicity, per-point and mixed helicities via the C ABI, raw doubles out.
+_C_PROBE = r"""
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "rusticol.h"
+
+static int write_values(FILE *out, const double *values, size_t count) {
+    return fwrite(values, sizeof(double), count, out) == count ? 0 : 1;
+}
+
+int main(int argc, char **argv) {
+    if (argc != 6) return 2;
+    const size_t point_count = strtoul(argv[4], NULL, 10);
+    FILE *input = fopen(argv[3], "rb");
+    if (input == NULL) return 3;
+    fseek(input, 0, SEEK_END);
+    const size_t momentum_count = (size_t)ftell(input) / sizeof(double);
+    fseek(input, 0, SEEK_SET);
+    double *momenta = malloc(momentum_count * sizeof(double));
+    double *values = malloc(point_count * sizeof(double));
+    uint32_t *by_point = malloc(point_count * sizeof(uint32_t));
+    if (!momenta || !values || !by_point) return 3;
+    if (fread(momenta, sizeof(double), momentum_count, input) != momentum_count)
+        return 3;
+    fclose(input);
+    RusticolRuntimeHandle *runtime = NULL;
+    if (rusticol_runtime_load(argv[1], argv[2], NULL, &runtime) != RUSTICOL_STATUS_OK)
+        return 10;
+    size_t helicity_count = 0;
+    if (rusticol_runtime_helicity_count(runtime, &helicity_count) != RUSTICOL_STATUS_OK)
+        return 11;
+    FILE *out = fopen(argv[5], "wb");
+    if (out == NULL) return 3;
+    for (size_t helicity = 0; helicity < helicity_count; ++helicity) {
+        char id[512];
+        size_t required = 0;
+        if (rusticol_runtime_helicity_id(runtime, helicity, id, sizeof id, &required)
+            != RUSTICOL_STATUS_OK) return 12;
+        const char *ids[] = {id};
+        if (rusticol_runtime_evaluate_selected_f64(
+                runtime, momenta, momentum_count, point_count, ids, 1, NULL, 0,
+                NULL, 0, NULL, 0, values, point_count) != RUSTICOL_STATUS_OK) return 13;
+        if (write_values(out, values, point_count)) return 3;
+        for (size_t point = 0; point < point_count; ++point)
+            by_point[point] = (uint32_t)helicity;
+        if (rusticol_runtime_evaluate_selected_f64(
+                runtime, momenta, momentum_count, point_count, NULL, 0, NULL, 0,
+                by_point, point_count, NULL, 0, values, point_count)
+            != RUSTICOL_STATUS_OK) return 14;
+        if (write_values(out, values, point_count)) return 3;
+    }
+    for (size_t point = 0; point < point_count; ++point)
+        by_point[point] = (uint32_t)((point * 7 + 3) % helicity_count);
+    if (rusticol_runtime_evaluate_selected_f64(
+            runtime, momenta, momentum_count, point_count, NULL, 0, NULL, 0,
+            by_point, point_count, NULL, 0, values, point_count)
+        != RUSTICOL_STATUS_OK) return 15;
+    if (write_values(out, values, point_count)) return 3;
+    fclose(out);
+    /* Helicity sums need the omitted main schedule. */
+    if (rusticol_runtime_evaluate_f64(runtime, momenta, momentum_count, point_count,
+                                      values,
+                                      point_count) == RUSTICOL_STATUS_OK) return 16;
+    if (rusticol_runtime_free(runtime) != RUSTICOL_STATUS_OK) return 17;
+    puts("ok");
+    return 0;
+}
+"""
+
+
+def test_c_abi_values_equal_python_bitwise(
+    artifacts: dict[str, Path],
+    native_sdk: object,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    import struct
+    import subprocess
+
+    from tests.integration.test_runtime_selector_api_parity import (
+        _compile_probe,
+        _source_environment,
+    )
+
+    sdk = native_sdk
+    binary = _compile_probe("c", _C_PROBE, sdk, tmp_path)  # type: ignore[arg-type]
+    artifact = artifacts["selector-u0"]
+    count = 255  # odd: the last tile ends on an unpaired point
+    for process_id in _selector_only_ids(artifact)[:3]:
+        runtime = Runtime.load(artifact, process=process_id)
+        helicities = list(runtime.physics.helicity_ids)
+        points = _points(runtime.physics.process, count)
+        momenta = tmp_path / "momenta.bin"
+        momenta.write_bytes(
+            struct.pack(
+                f"{len(points) * len(points[0]) * 4}d",
+                *(x for point in points for leg in point for x in leg),
+            )
+        )
+        values = tmp_path / "values.bin"
+        completed = subprocess.run(
+            [
+                str(binary),
+                str(artifact),
+                process_id,
+                str(momenta),
+                str(count),
+                str(values),
+            ],
+            env=_source_environment(),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        raw = values.read_bytes()
+        native = list(struct.unpack(f"{len(raw) // 8}d", raw))
+        rows = [native[i : i + count] for i in range(0, len(native), count)]
+        assert len(rows) == 2 * len(helicities) + 1
+        for index, helicity in enumerate(helicities):
+            expected = _real(runtime.evaluate(points, helicities=[helicity]))
+            assert rows[2 * index] == expected, (process_id, helicity)
+            by_point = _real(
+                runtime.evaluate(points, helicity_by_point=[helicity] * count)
+            )
+            assert rows[2 * index + 1] == by_point, (process_id, helicity)
+        mixed = [
+            helicities[(point * 7 + 3) % len(helicities)] for point in range(count)
+        ]
+        assert rows[-1] == _real(runtime.evaluate(points, helicity_by_point=mixed))

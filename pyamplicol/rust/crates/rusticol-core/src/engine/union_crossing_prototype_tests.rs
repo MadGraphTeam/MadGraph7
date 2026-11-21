@@ -275,7 +275,8 @@ fn massless_point(n: usize, seed: u64) -> Vec<[f64; 4]> {
 }
 
 /// Per-point slot lists: a point's rows equal the full evaluation (every assignment
-/// at every point) bitwise and do not depend on what other points request.
+/// at every point) bitwise and do not depend on requests of points in its partition
+/// (same crossing and mask); moving a neighbour to another partition is not covered.
 /// `RUSTICOL_UNION_ASSIGNMENT_ARTIFACTS`: LC union artifacts (path list).
 #[test]
 fn per_point_assignment_slots_equal_the_full_evaluation_when_artifacts_are_supplied() {

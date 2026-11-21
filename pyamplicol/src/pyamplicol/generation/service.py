@@ -2831,7 +2831,13 @@ def _encode_selector_local_color_contraction(
     color_contraction: ColorContractionPlan,
     owner_sector_ids: tuple[int, ...],
 ) -> tuple[bytes, dict[str, object]]:
-    """Encode the one-component contraction over the owner sectors."""
+    """Encode the one-component contraction over the owner sectors.
+
+    ``storage`` with ``factorization.kind`` names the runtime reducer, as in
+    default mode: convolution-kernels = SG-FFT, repeated + Walsh kind = Walsh,
+    repeated/expanded without one = direct. The rectangular builder is a fast
+    path to the same SG-FFT plan, so it records nothing of its own.
+    """
 
     import numpy as np
 
@@ -5624,6 +5630,7 @@ class GenerationBackend:
         *,
         process_id: str,
         progress_callback: Callable[[Mapping[str, object]], None] | None = None,
+        keep_lowering_outputs: bool = False,
     ) -> RecurrenceHelicitySelectorPlanArtifact:
         """Lower and bind one persisted physical-colour/runtime-H schedule.
 
@@ -5812,11 +5819,16 @@ class GenerationBackend:
             referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
             recurrence_process_remap=shared.remap,
             recurrence_process_executor_pack=process_executor_pack,
-            exact_sections=output.exact_sections,
-            generation_profile={
-                "schema_version": 1,
-                "native_passes": {"final": dict(output.generation_profile)},
-            },
+            # Only selector-only processes read these; default mode frees them here.
+            exact_sections=output.exact_sections if keep_lowering_outputs else None,
+            generation_profile=(
+                {
+                    "schema_version": 1,
+                    "native_passes": {"final": dict(output.generation_profile)},
+                }
+                if keep_lowering_outputs
+                else None
+            ),
         )
 
     def _drop_processes_without_amplitudes(
@@ -6603,6 +6615,8 @@ class GenerationBackend:
                 profile["helicity-selector-physical-projection"] = (
                     time.perf_counter() - companion_projection_started
                 )
+                if selector_only:
+                    _check_selector_owner_order(logical, companion_logical)
                 selector_task.update(
                     1,
                     message="physical-color selector input ready",
@@ -6652,6 +6666,7 @@ class GenerationBackend:
                     progress_callback=(
                         report_selector if selector_task.sink is not None else None
                     ),
+                    keep_lowering_outputs=selector_only,
                 )
                 profile["helicity-selector-physical-lowering"] = (
                     time.perf_counter() - companion_lowering_started
@@ -7311,7 +7326,10 @@ class GenerationBackend:
             recurrence_process_executor_pack=(
                 companion_artifact.recurrence_process_executor_pack
             ),
-            helicity_selector_companion=companion_artifact,
+            # The parsed sections are spent; keep them out of the held artifact.
+            helicity_selector_companion=replace(
+                companion_artifact, exact_sections=None, generation_profile=None
+            ),
             process_digest=process_digest,
             selector_only=True,
         )
@@ -9525,6 +9543,34 @@ class GenerationBackend:
             color_topology_replay=None,
             helicity_recurrence=recurrence,
             helicity_materialization=materialization,
+        )
+
+
+def _check_selector_owner_order(
+    logical: RecurrenceBuilderLogicalInputV1,
+    companion_logical: RecurrenceBuilderLogicalInputV1,
+) -> None:
+    """Selector-local owners must be the companion's dense destinations, in rank order.
+
+    The loader pairs them by position, so a permutation would contract the wrong
+    amplitudes silently.
+    """
+
+    sectors = {sector.sector_id: sector for sector in logical.physical_sectors}
+    owners = tuple(
+        (sectors[sector_id].public_id, sectors[sector_id].word_source_slots)
+        for sector_id in recurrence_selector_owner_sector_ids(logical)
+    )
+    companion = tuple(
+        (sector.public_id, sector.word_source_slots)
+        for sector in sorted(
+            companion_logical.physical_sectors, key=lambda item: item.sector_id
+        )
+    )
+    if owners != companion:
+        raise GenerationError(
+            "selector-local color owners differ from the companion's physical "
+            f"owner order ({len(owners)} owners, {len(companion)} destinations)"
         )
 
 

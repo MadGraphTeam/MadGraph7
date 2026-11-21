@@ -399,3 +399,132 @@ fn companion_point_tile_size(plan: &DirectRecurrencePlan) -> RusticolResult<usiz
         .min(cache_tile.max(MINIMUM_TILED_POINTS))
         .max(1))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::engine::{AssignmentOutputMode, NativeRuntime};
+    use crate::{RusticolErrorKind, RusticolResult};
+    use serde_json::Value;
+
+    fn assert_refused<T>(result: RusticolResult<T>, operation: &str) {
+        match result {
+            Ok(_) => panic!("{operation} was not refused"),
+            Err(error) => {
+                assert_eq!(error.kind(), RusticolErrorKind::Compatibility, "{error}");
+                let message = error.to_string();
+                assert!(message.contains(operation), "{message}");
+                assert!(message.contains("selector_only_full_colour"), "{message}");
+            }
+        }
+    }
+
+    /// Massless 2 -> n point: beams on z, final momenta evenly spaced in the x-y plane.
+    fn planar_point(external_count: usize) -> Vec<f64> {
+        let final_count = external_count - 2;
+        let energy = 1000.0 / final_count as f64;
+        let mut momenta = vec![500.0, 0.0, 0.0, 500.0, 500.0, 0.0, 0.0, -500.0];
+        for leg in 0..final_count {
+            let angle = 2.0 * std::f64::consts::PI * (leg as f64 + 0.25) / final_count as f64;
+            momenta.extend([energy, energy * angle.cos(), energy * angle.sin(), 0.0]);
+        }
+        momenta
+    }
+
+    /// `RUSTICOL_SELECTOR_ONLY_ARTIFACTS`: selector-only FC artifacts (path list). Each
+    /// main-schedule API on a loaded selector-only lane is a compatibility refusal.
+    #[test]
+    fn selector_only_lanes_refuse_main_schedule_apis_when_artifacts_are_supplied() {
+        let Some(roots) = std::env::var_os("RUSTICOL_SELECTOR_ONLY_ARTIFACTS") else {
+            return;
+        };
+        let read = |path: std::path::PathBuf| -> Value {
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+        };
+        let mut checked = 0;
+        for root in std::env::split_paths(&roots) {
+            for process in read(root.join("artifact.json"))["processes"]
+                .as_array()
+                .unwrap()
+            {
+                let id = process["id"].as_str().unwrap();
+                let execution = read(root.join("processes").join(id).join("execution.json"));
+                if !execution["required_runtime_capabilities"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|capability| capability == "rusticol.recurrence-selector-only-fc.v1")
+                {
+                    continue;
+                }
+                let mut runtime =
+                    NativeRuntime::load(root.to_str().unwrap(), Some(id), None).unwrap();
+                let momenta = planar_point(process["external_pdgs"].as_array().unwrap().len());
+                let one = [runtime.helicity_ids().unwrap()[0].clone()];
+                let mut value = [0.0];
+                assert_refused(
+                    runtime.evaluate_f64_into_with_selectors(
+                        &momenta, 1, None, None, None, None, &mut value,
+                    ),
+                    "helicity-summed evaluation",
+                );
+                assert_refused(
+                    runtime.evaluate_resolved_f64(&momenta, 1, Some(&one), None),
+                    "resolved helicity/colour output",
+                );
+                assert_refused(
+                    runtime.prepare_recurrence_selector_plan(Some(&one), None),
+                    "recurrence selector plans",
+                );
+                assert_refused(
+                    runtime.evaluate_f64_arena_profile_repeated(&momenta, 1, 1, Some(&one), None),
+                    "arena profiling",
+                );
+                for helicity_by_point in [None, Some(&[0_u32][..])] {
+                    assert_refused(
+                        runtime.evaluate_assignments_f64_into(
+                            &momenta,
+                            1,
+                            &[0, 1],
+                            &[0],
+                            helicity_by_point,
+                            None,
+                            AssignmentOutputMode::Total,
+                            &mut value,
+                        ),
+                        "flavour-union assignments",
+                    );
+                }
+                // Supported: one helicity, and single-order partials equal to it.
+                runtime
+                    .evaluate_f64_into_with_selectors(
+                        &momenta,
+                        1,
+                        Some(&one),
+                        None,
+                        None,
+                        None,
+                        &mut value,
+                    )
+                    .unwrap();
+                let (mut totals, mut partials) = ([0.0], [0.0]);
+                runtime
+                    .evaluate_orders_f64_into_with_selectors(
+                        &momenta,
+                        1,
+                        Some(&one),
+                        None,
+                        &mut totals,
+                        &mut partials,
+                    )
+                    .unwrap();
+                assert_eq!(totals, value);
+                assert_eq!(partials, value);
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "no selector-only process in the supplied artifacts"
+        );
+    }
+}

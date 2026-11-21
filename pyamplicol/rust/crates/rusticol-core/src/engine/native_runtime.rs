@@ -2656,7 +2656,9 @@ impl NativeRuntime {
     /// nonzero and negative exactly where sigma_r = -1, and one point requests one
     /// crossing. Helicity indices stay template axes (member labels via rho, see
     /// [`Self::flavour_union_assignment_helicity`]). Points are grouped by (crossing,
-    /// pattern mask, selectors) and each evaluates only its own assignments; a
+    /// pattern mask, selectors) and each evaluates only its own assignments. A point's
+    /// value is independent of neighbours sharing that key; a neighbour that changes
+    /// key can shift its tile position and change it at roundoff. A
     /// single-assignment request equals the template evaluated at `sigma * p` and,
     /// for an uncrossed member, loading that member bitwise.
     #[allow(clippy::too_many_arguments)]
@@ -2671,6 +2673,14 @@ impl NativeRuntime {
         mode: AssignmentOutputMode,
         output: &mut [f64],
     ) -> RusticolResult<()> {
+        // S1 selector-only lanes carry no union template; S2 moves this after the sign check.
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if matches!(
+            &self.execution_lane,
+            NativeExecutionLane::RecurrenceSelector(_)
+        ) {
+            return Err(selector_only_unsupported("flavour-union assignments"));
+        }
         let assignments = self.flavour_union_assignments.clone().ok_or_else(|| {
             RusticolError::compatibility(
                 "evaluate_assignments requires a pattern-resolved flavour-union template",
@@ -2761,12 +2771,6 @@ impl NativeRuntime {
         validate_energy_signs(momenta, self.runtime.external_count, |point| masks[point])?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            if matches!(
-                &self.execution_lane,
-                NativeExecutionLane::RecurrenceSelector(_)
-            ) {
-                return Err(selector_only_unsupported("flavour-union assignments"));
-            }
             let NativeExecutionLane::Recurrence(lane) = &mut self.execution_lane else {
                 return Err(RusticolError::compatibility(
                     "evaluate_assignments requires a recurrence lane",

@@ -303,6 +303,18 @@ def test_generate_post_build_validation_is_opt_in() -> None:
     assert explicit.generation.validation.post_build_validation
 
 
+def test_generate_selector_only_full_colour_is_opt_in() -> None:
+    default = parse_cli(("generate",)).resolve().effective
+    explicit = (
+        parse_cli(("generate", "--selector-only-full-colour")).resolve().effective
+    )
+    negated = parse_cli(("generate", "--no-selector-only-full-colour")).resolve()
+
+    assert not default.generation.selector_only_full_colour
+    assert explicit.generation.selector_only_full_colour
+    assert not negated.effective.generation.selector_only_full_colour
+
+
 def test_generate_defaults_to_no_numerical_current_reuse() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.generation.relation_discovery.mode is RelationDiscoveryMode.OFF

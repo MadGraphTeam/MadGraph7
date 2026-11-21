@@ -28,6 +28,16 @@ const MAX_FACTOR_RANK: u32 = u32::BITS - 1;
 // requested workspace growth may exceed it.
 const TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES: usize = 512 * 1024 * 1024;
 const ZERO_SECTOR_OWNER: u32 = u32::MAX;
+
+/// Requested lanes capped by the budget; a binding cap rounds down to even, so
+/// every caller's tiles keep the same 2-wide SIMD point pairing.
+fn even_bounded_lane_capacity(requested: usize, budget_lanes: usize) -> usize {
+    if requested <= budget_lanes {
+        requested
+    } else {
+        (budget_lanes & !1).max(1)
+    }
+}
 const FLAG_INCLUDES_COLOR_FACTOR: u32 = 1 << 0;
 const KNOWN_FLAGS: u32 = FLAG_INCLUDES_COLOR_FACTOR;
 
@@ -326,7 +336,7 @@ impl RuntimeSymmetricGroupColorContraction {
             .and_then(|value| value.checked_add(std::mem::size_of::<f64>()))
             .ok_or_else(|| malformed("symmetric-group lane workspace bytes overflow usize"))?;
         let budget_lanes = (TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES / bytes_per_lane).max(1);
-        Ok(requested.min(budget_lanes))
+        Ok(even_bounded_lane_capacity(requested, budget_lanes))
     }
 
     /// Reduce one component/helicity tile.  A call that exceeds the retained
@@ -3159,6 +3169,14 @@ pub(crate) mod tests {
             "expected {expected:?} in {:?}",
             error.message()
         );
+    }
+
+    #[test]
+    fn binding_lane_budget_rounds_down_to_even() {
+        assert_eq!(even_bounded_lane_capacity(5, 512), 5);
+        assert_eq!(even_bounded_lane_capacity(256, 75), 74);
+        assert_eq!(even_bounded_lane_capacity(256, 74), 74);
+        assert_eq!(even_bounded_lane_capacity(256, 1), 1);
     }
 
     #[test]
