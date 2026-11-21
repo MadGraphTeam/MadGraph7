@@ -111,6 +111,7 @@ Template/Common/Source/PDF/lep_densities/*/*ll.json
 models/*
 !models/sm/
 !models/loop_sm/
+!models/loop_sm_onia/
 !models/MSSM_SLHA2/
 !models/taudecay_UFO/
 !models/hgg_plugin/
