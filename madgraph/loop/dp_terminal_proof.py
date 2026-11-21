@@ -151,6 +151,13 @@ def _inventory(directory, source_manifest, include_roots):
             # this proof.
             fixed_module = (path == export / 'Source/MODEL/coupl.f90' and
                             (path.parent / 'makefile').is_file())
+            # Standalone exports also link it as SubProcesses/coupl.f90.  The
+            # link adds no text of its own: the MODEL unit it resolves to is
+            # in scope and is checked in full.
+            if (path.name == 'coupl.f90' and path.is_symlink() and
+                    export / 'Source/MODEL' in scopes and
+                    path.resolve() == (export / 'Source/MODEL/coupl.f90').resolve()):
+                continue
             _need(path.suffix == '.f' or fixed_module, 'Unsupported compilation language')
             _need(_inside(path, export), 'External compilation unit')
             if scope.name == 'SubProcesses' or scope == directory:

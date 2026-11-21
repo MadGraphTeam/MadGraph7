@@ -900,6 +900,39 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
         source.unlink()
         self.assertFalse(self.validate(fixture))
 
+    def test_standalone_link_to_the_model_module_is_the_model_unit(self):
+        # Standalone output links the couplings module into SubProcesses; the
+        # link is skipped because the MODEL unit it resolves to is in scope.
+        export = self.work / 'standalone_coupl'
+        fixture = self.fixture(directory=export / 'SubProcesses/P0_test')
+        model = export / 'Source/MODEL'
+        model.mkdir(parents=True)
+        (model / 'makefile').write_text(
+            (Path(__file__).resolve().parents[3] /
+             'madgraph/models/template_files/fortran/makefile_standalone').read_text())
+        source = model / 'coupl.f90'
+        module = ('      MODULE COUPLINGS\n      IMPLICIT NONE\n'
+                  '      DOUBLE PRECISION, ALLOCATABLE :: G_VEC(:)\n'
+                  '      END MODULE COUPLINGS\n')
+        source.write_text(module)
+        link = export / 'SubProcesses/coupl.f90'
+        link.symlink_to('../Source/MODEL/coupl.f90')
+        self.assertTrue(self.validate(fixture))
+        # What the link names is still checked in full, through MODEL.
+        source.write_text('      SUBROUTINE HIDDEN()\n'
+                          '      COMMON/TEST_WL/A\n      END\n')
+        self.assertFalse(self.validate(fixture))
+        source.write_text(module)
+        # A link to another file, or a copy, is not the MODEL unit.
+        other = export / 'Source/other.f90'
+        other.write_text(module)
+        link.unlink()
+        link.symlink_to('../Source/other.f90')
+        self.assertFalse(self.validate(fixture))
+        link.unlink()
+        link.write_text(module)
+        self.assertFalse(self.validate(fixture))
+
     def test_other_free_form_model_sources_and_changed_recipe_are_rejected(self):
         for name, recipe in (('custom.f90', False), ('coupl.f90', True)):
             with self.subTest(name=name):
