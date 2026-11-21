@@ -514,8 +514,11 @@ class AmplicolSubprocess(MadgraphSubprocess):
             name = table.particles[pdg][kind]
             return 0.0 if name == "ZERO" else float(get(abs(pdg)))
 
+        # the flavours the events index: the base class builds the scale before
+        # __init__ applies lc_flavors
+        flavors = lc_flavors(self.meta, lc_flavor_mode(self.process.run_card))["flavors"]
         classes, keys, flavor_classes = [], {}, []
-        for flavor in self.meta["flavors"]:
+        for flavor in flavors:
             pdgs = tuple(flavor["options"][0])
             flow = None
             if self.meta["color_flows"]:
