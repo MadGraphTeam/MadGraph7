@@ -4,6 +4,7 @@ checks the C loader repeats."""
 
 from __future__ import annotations
 
+import dataclasses
 import struct
 from array import array
 
@@ -25,6 +26,7 @@ from pyamplicol.artifacts.umami_reweight_data import (
     reseal_reweight_data,
     reweight_data_header,
     section_table,
+    write_reweight_data,
 )
 
 N = 4
@@ -178,6 +180,24 @@ def test_semantic_corruption_is_refused(name):
         decode_reweight_data(patch(encode_reweight_data(_tables())))
 
 
+@pytest.mark.parametrize(
+    "calls, message",
+    [
+        # switch_totals writes only the first evaluation of a plain call
+        ([SwitchCall((0, 1), None, None, None)], "malformed plain switch call"),
+        # nothing writes evaluation 1, which orderings 1 and 2 read
+        ([SwitchCall((0,), None, None, None)], "no call writes"),
+    ],
+)
+def test_evaluations_no_call_writes_are_refused(calls, message):
+    tables = _tables()
+    tables = dataclasses.replace(
+        tables, switch=dataclasses.replace(tables.switch, calls=calls)
+    )
+    with pytest.raises(ValueError, match=message):
+        decode_reweight_data(encode_reweight_data(tables))
+
+
 def test_damaged_files_are_refused():
     data = encode_reweight_data(_tables())
     flipped = bytearray(data)
@@ -199,3 +219,15 @@ def test_strings_with_nul_are_refused():
     tables.channels[0][1] = _flavour(reference_assignment=0, assignment_key="a\0b")
     with pytest.raises(ValueError, match="NUL"):
         encode_reweight_data(tables)
+
+
+def test_a_failed_write_leaves_no_temporary_file(tmp_path, monkeypatch):
+    import pyamplicol.artifacts.umami_reweight_data as module
+
+    def fail(source, target):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module.os, "replace", fail)
+    with pytest.raises(OSError, match="disk full"):
+        write_reweight_data(tmp_path, _tables())
+    assert list(tmp_path.iterdir()) == []

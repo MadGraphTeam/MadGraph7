@@ -5,6 +5,7 @@
  * generated header. */
 #ifndef PYAMPLICOL_UMAMI_REWEIGHT_DATA_H
 #define PYAMPLICOL_UMAMI_REWEIGHT_DATA_H
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -227,13 +228,17 @@ static bool rw_validate(RwdView *view) {
             !rw_signs(view, sevl[e].signs) || !rw_signs(view, sevl[e].helicity_signs))
             return rw_fail(view, "invalid switch evaluation");
     RwdCall const *calls = view->at[RW_SCAL];
+    /* switch_totals writes only the evaluations of the calls: the orderings read no others */
+    bool *written = calloc(evaluations + 1, sizeof(bool));
+    if (written == NULL) return rw_fail(view, "out of memory");
     for (uint64_t g = 0; g < view->count[RW_SCAL]; ++g) {
         RwdCall const *call = &calls[g];
         bool plain = call->assignments == REWEIGHT_NULL;
         if (call->evaluation_count < 1 ||
             !rw_array(view, call->evaluations, call->evaluation_count, false, 0,
                       (int64_t)evaluations) ||
-            (plain && (call->entry_count != 1 || call->entry_permutations != REWEIGHT_NULL ||
+            (plain && (call->evaluation_count != 1 || call->entry_count != 1 ||
+                       call->entry_permutations != REWEIGHT_NULL ||
                        call->evaluation_entries != REWEIGHT_NULL)) ||
             (!plain && (call->entry_count < 1 ||
                         !rw_array(view, call->assignments, call->entry_count, false,
@@ -241,17 +246,25 @@ static bool rw_validate(RwdView *view) {
                         !rw_array(view, call->evaluation_entries, call->evaluation_count,
                                   false, 0, call->entry_count) ||
                         !rw_array(view, call->entry_permutations,
-                                  (uint64_t)call->entry_count * n, true, 0, (int64_t)n))))
+                                  (uint64_t)call->entry_count * n, true, 0, (int64_t)n)))) {
+            free(written);
             return rw_fail(view, "invalid switch call");
+        }
+        uint32_t const *members = (uint32_t const *)view->at[RW_I32P] + call->evaluations;
+        for (uint32_t j = 0; j < call->evaluation_count; ++j) written[members[j]] = true;
     }
     uint64_t switch_targets = view->count[RW_STGT];
     ReweightSwitchOrdering const *orderings = view->at[RW_SORD];
     for (uint64_t o = 0; o < view->count[RW_SORD]; ++o)
-        if (orderings[o].evaluation >= evaluations || orderings[o].target < -1 ||
+        if (orderings[o].evaluation >= evaluations || !written[orderings[o].evaluation] ||
+            orderings[o].target < -1 ||
             (orderings[o].target >= 0 && (uint64_t)orderings[o].target >= switch_targets) ||
             orderings[o].pdf[0] >= 13 || orderings[o].pdf[1] >= 13 ||
-            orderings[o].weight >= constants)
+            orderings[o].weight >= constants) {
+            free(written);
             return rw_fail(view, "invalid switch ordering");
+        }
+    free(written);
     if (view->count[RW_SFLW] != references) return rw_fail(view, "flow table count mismatch");
     ReweightSwitchFlows const *flows = view->at[RW_SFLW];
     uint32_t const *ids = view->at[RW_SFID];
@@ -452,6 +465,7 @@ static bool rw_read(char const *path) {
         size_t done = 0;
         while (rw_data != NULL && done < rw_size) {
             ssize_t got = read(fd, rw_data + done, rw_size - done);
+            if (got < 0 && errno == EINTR) continue;
             if (got <= 0) break;
             done += (size_t)got;
         }

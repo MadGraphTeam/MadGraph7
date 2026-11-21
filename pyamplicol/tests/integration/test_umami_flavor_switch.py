@@ -448,6 +448,34 @@ def _pool_end(data: bytes) -> int:
     return section_table(data)["I32P"][1]
 
 
+def _calls(data: bytes, change) -> bytes:
+    """The data re-encoded with the switch calls ``change(calls, orderings)``."""
+
+    import dataclasses
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        decode_reweight_data,
+        encode_reweight_data,
+    )
+
+    tables = decode_reweight_data(data)
+    sw = tables.switch
+    calls = change(list(sw.calls), sw.orderings)
+    return encode_reweight_data(
+        dataclasses.replace(tables, switch=dataclasses.replace(sw, calls=calls))
+    )
+
+
+def _plain_pair(calls, orderings):
+    from pyamplicol.artifacts.umami_reweight_data import SwitchCall
+
+    return [*calls, SwitchCall((0, 1), None, None, None)]
+
+
+def _uncovered(calls, orderings):
+    return [c for c in calls if orderings.evaluation[0] not in c.evaluations]
+
+
 # (corrupted data or None, header and library rebuilt for it, message)
 CORRUPTIONS = {
     "flipped byte": (
@@ -469,6 +497,12 @@ CORRUPTIONS = {
     ),
     "call without evaluations": (lambda d: _field(d, "SCAL", 0, 0, 0), True, "call"),
     "helicity map value": (_helicity_value, True, "flavour"),
+    "plain call of two evaluations": (
+        lambda d: _calls(d, _plain_pair), True, "invalid switch call"
+    ),
+    "ordering of an unwritten evaluation": (
+        lambda d: _calls(d, _uncovered), True, "invalid switch ordering"
+    ),
 }
 
 

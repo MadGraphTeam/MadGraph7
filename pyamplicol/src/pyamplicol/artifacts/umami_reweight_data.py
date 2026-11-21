@@ -725,7 +725,7 @@ def decode_reweight_data(data: bytes) -> ReweightTables:
                 raise ValueError("reweight data: a switch call without evaluations")
             members = ints(members, count, 0, n_eval, False)
             if assignments == NULL:
-                if entry_count != 1 or permutations != NULL or entries != NULL:
+                if count != 1 or entry_count != 1 or permutations != NULL or entries != NULL:
                     raise ValueError("reweight data: malformed plain switch call")
                 calls.append(SwitchCall(members, None, None, None))
                 continue
@@ -749,6 +749,9 @@ def decode_reweight_data(data: bytes) -> ReweightTables:
             array("q", (w & 0xFFFF for w in words[3])),
         )
         _range("ordering evaluation", orderings.evaluation, 0, n_eval)
+        written = {e for call in calls for e in call.evaluations}
+        if not written.issuperset(orderings.evaluation):
+            raise ValueError("reweight data: an ordering reads an evaluation no call writes")
         _range("ordering target", orderings.target, -1, n_targets)
         _range("ordering parton density", orderings.pdf0, 0, PDF_COLUMNS)
         _range("ordering parton density", orderings.pdf1, 0, PDF_COLUMNS)
@@ -832,11 +835,15 @@ def write_reweight_data(output: Path, tables: ReweightTables) -> Path:
     header, chunks = _encode(tables)
     path = output / f"reweight_{identifier}.rwd"
     temporary = output / f".reweight_{identifier}.rwd.{os.getpid()}.tmp"
-    with open(temporary, "wb") as stream:
-        stream.write(header)
-        for chunk in chunks:
-            stream.write(chunk)
-    os.replace(temporary, path)
+    try:
+        with open(temporary, "wb") as stream:
+            stream.write(header)
+            for chunk in chunks:
+                stream.write(chunk)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     (output / f"reweight_{identifier}.h").write_text(
         reweight_data_header(tables, path.name, content_sha256(header)), encoding="utf-8"
     )
