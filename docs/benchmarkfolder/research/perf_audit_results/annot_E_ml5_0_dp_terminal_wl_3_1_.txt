@@ -1,0 +1,579 @@
+ Percent |	Source code & Disassembly of bench for cpu/cycles/Pu (208 samples, percent: local period)
+---------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     00000000000536d0 <ml5_0_dp_terminal_wl_3_1_>:
+    0.00 :   536d0:  push   %rbp
+    0.00 :   536d1:  mov    %rdi,%rax
+    0.00 :   536d4:  mov    %rsp,%rbp
+    0.00 :   536d7:  push   %r15
+    0.00 :   536d9:  push   %r14
+    0.00 :   536db:  push   %r13
+    0.00 :   536dd:  push   %r12
+    0.00 :   536df:  push   %rbx
+    0.00 :   536e0:  mov    %rdx,%rbx
+    0.00 :   536e3:  mov    0x10(%rbp),%rdi
+    0.00 :   536e7:  mov    (%rdi),%edx
+    0.00 :   536e9:  test   %edx,%edx
+    0.00 :   536eb:  je     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   536ed:  cmpl   $0x4,(%rsi)
+    0.00 :   536f0:  je     53710 <ml5_0_dp_terminal_wl_3_1_+0x40>
+    0.00 :   536f2:  mov    %rbx,%rdx
+    0.00 :   536f5:  mov    %rax,%rdi
+    0.00 :   536f8:  pop    %rbx
+    0.00 :   536f9:  pop    %r12
+    0.00 :   536fb:  pop    %r13
+    0.00 :   536fd:  pop    %r14
+    0.00 :   536ff:  pop    %r15
+    0.00 :   53701:  pop    %rbp
+    0.00 :   53702:  jmp    b2a0 <ml5_0_update_wl_3_1_>
+    0.00 :   53707:  nopw   0x0(%rax,%rax,1)
+    0.00 :   53710:  cmpl   $0x4,(%rcx)
+    0.00 :   53713:  jne    536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53715:  cmpl   $0x4,(%r8)
+    0.00 :   53719:  jne    536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   5371b:  lea    0x1a40(%rax),%rdx
+    0.00 :   53722:  mov    %r9,%rdi
+    0.00 :   53725:  mov    %r8,%r9
+    0.00 :   53728:  mov    $0xffffffffffffffff,%r15
+    0.00 :   5372f:  movabs $0x7fffffffffffffff,%r11
+    0.00 :   53739:  mov    %rcx,%r8
+    0.00 :   5373c:  mov    %rdx,%r14
+    0.00 :   5373f:  mov    %rax,%rcx
+    0.00 :   53742:  mov    %rdi,%rax
+    0.00 :   53745:  lea    -0x8c0(%rdx),%rdi
+    0.00 :   5374c:  nopl   0x0(%rax)
+    0.00 :   53750:  mov    -0x1180(%rdi),%r10
+    0.96 :   53757:  test   %r11,%r10
+    0.00 :   5375a:  je     5377b <ml5_0_dp_terminal_wl_3_1_+0xab>
+    0.00 :   5375c:  sar    $0x34,%r10
+    0.47 :   53760:  and    $0x7ff,%r10d
+    0.00 :   53767:  sub    $0x26f,%r10
+    0.00 :   5376e:  cmp    $0x320,%r10
+    0.96 :   53775:  ja     54180 <ml5_0_dp_terminal_wl_3_1_+0xab0>
+    0.00 :   5377b:  mov    -0x1170(%rdi),%r10
+    1.92 :   53782:  test   %r11,%r10
+    0.00 :   53785:  je     537a6 <ml5_0_dp_terminal_wl_3_1_+0xd6>
+    0.00 :   53787:  sar    $0x34,%r10
+    0.48 :   5378b:  and    $0x7ff,%r10d
+    0.96 :   53792:  sub    $0x26f,%r10
+    0.48 :   53799:  cmp    $0x320,%r10
+    0.00 :   537a0:  ja     54180 <ml5_0_dp_terminal_wl_3_1_+0xab0>
+    0.00 :   537a6:  mov    -0x1160(%rdi),%r10
+    0.48 :   537ad:  test   %r11,%r10
+    0.00 :   537b0:  je     537d1 <ml5_0_dp_terminal_wl_3_1_+0x101>
+    0.00 :   537b2:  sar    $0x34,%r10
+    0.48 :   537b6:  and    $0x7ff,%r10d
+    0.00 :   537bd:  sub    $0x26f,%r10
+    0.96 :   537c4:  cmp    $0x320,%r10
+    0.48 :   537cb:  ja     54180 <ml5_0_dp_terminal_wl_3_1_+0xab0>
+    0.00 :   537d1:  mov    -0x1150(%rdi),%r10
+    0.48 :   537d8:  test   %r11,%r10
+    0.00 :   537db:  je     537fc <ml5_0_dp_terminal_wl_3_1_+0x12c>
+    0.00 :   537dd:  sar    $0x34,%r10
+    0.00 :   537e1:  and    $0x7ff,%r10d
+    0.00 :   537e8:  sub    $0x26f,%r10
+    0.00 :   537ef:  cmp    $0x320,%r10
+    0.00 :   537f6:  ja     54180 <ml5_0_dp_terminal_wl_3_1_+0xab0>
+    0.00 :   537fc:  add    $0x40,%rdi
+    0.48 :   53800:  cmp    %rdi,%rdx
+    0.00 :   53803:  jne    53750 <ml5_0_dp_terminal_wl_3_1_+0x80>
+    0.00 :   53809:  lea    0x118(%r15),%rdi
+    0.00 :   53810:  add    $0x1180,%rdx
+    0.00 :   53817:  mov    %rdi,%r15
+    0.00 :   5381a:  cmp    $0x45f,%rdi
+    0.00 :   53821:  jne    53745 <ml5_0_dp_terminal_wl_3_1_+0x75>
+    0.00 :   53827:  mov    %rax,%rdi
+    0.47 :   5382a:  mov    %r14,%rdx
+    0.00 :   5382d:  mov    %rcx,%rax
+    0.00 :   53830:  mov    $0xffffffffffffffff,%r15
+    0.00 :   53837:  mov    %r8,%rcx
+    0.00 :   5383a:  mov    %r9,%r8
+    0.00 :   5383d:  mov    %rdi,%r9
+    0.00 :   53840:  movabs $0x7fffffffffffffff,%rdi
+    0.00 :   5384a:  lea    -0x8c0(%rdx),%r10
+    0.00 :   53851:  data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   5385c:  nopl   0x0(%rax)
+    0.00 :   53860:  mov    -0x1178(%r10),%r11
+    0.95 :   53867:  test   %rdi,%r11
+    0.48 :   5386a:  je     5388b <ml5_0_dp_terminal_wl_3_1_+0x1bb>
+    0.00 :   5386c:  sar    $0x34,%r11
+    0.00 :   53870:  and    $0x7ff,%r11d
+    0.00 :   53877:  sub    $0x26f,%r11
+    0.48 :   5387e:  cmp    $0x320,%r11
+    0.00 :   53885:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   5388b:  mov    -0x1168(%r10),%r11
+    0.96 :   53892:  test   %rdi,%r11
+    0.00 :   53895:  je     538b6 <ml5_0_dp_terminal_wl_3_1_+0x1e6>
+    0.00 :   53897:  sar    $0x34,%r11
+    0.00 :   5389b:  and    $0x7ff,%r11d
+    0.00 :   538a2:  sub    $0x26f,%r11
+    1.93 :   538a9:  cmp    $0x320,%r11
+    0.00 :   538b0:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   538b6:  mov    -0x1158(%r10),%r11
+    0.96 :   538bd:  test   %rdi,%r11
+    0.00 :   538c0:  je     538e1 <ml5_0_dp_terminal_wl_3_1_+0x211>
+    0.00 :   538c2:  sar    $0x34,%r11
+    0.96 :   538c6:  and    $0x7ff,%r11d
+    0.00 :   538cd:  sub    $0x26f,%r11
+    1.44 :   538d4:  cmp    $0x320,%r11
+    0.48 :   538db:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   538e1:  mov    -0x1148(%r10),%r11
+    0.00 :   538e8:  test   %rdi,%r11
+    0.00 :   538eb:  je     5390c <ml5_0_dp_terminal_wl_3_1_+0x23c>
+    0.00 :   538ed:  sar    $0x34,%r11
+    0.96 :   538f1:  and    $0x7ff,%r11d
+    0.00 :   538f8:  sub    $0x26f,%r11
+    0.96 :   538ff:  cmp    $0x320,%r11
+    0.00 :   53906:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   5390c:  add    $0x40,%r10
+    0.00 :   53910:  cmp    %r10,%rdx
+    0.00 :   53913:  jne    53860 <ml5_0_dp_terminal_wl_3_1_+0x190>
+    0.00 :   53919:  lea    0x118(%r15),%r11
+    0.48 :   53920:  add    $0x1180,%rdx
+    0.00 :   53927:  mov    %r11,%r15
+    0.00 :   5392a:  cmp    $0x45f,%r11
+    0.00 :   53931:  jne    5384a <ml5_0_dp_terminal_wl_3_1_+0x17a>
+    0.00 :   53937:  lea    0x500(%rbx),%r14
+    0.48 :   5393e:  mov    %rbx,%rdi
+    0.00 :   53941:  movabs $0x7fffffffffffffff,%r10
+    0.00 :   5394b:  mov    (%rdi),%rdx
+    0.48 :   5394e:  test   %r10,%rdx
+    0.00 :   53951:  je     53971 <ml5_0_dp_terminal_wl_3_1_+0x2a1>
+    0.00 :   53953:  sar    $0x34,%rdx
+    0.00 :   53957:  and    $0x7ff,%edx
+    0.00 :   5395d:  sub    $0x26f,%rdx
+    0.00 :   53964:  cmp    $0x320,%rdx
+    0.00 :   5396b:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53971:  mov    0x10(%rdi),%rdx
+    0.00 :   53975:  test   %r10,%rdx
+    0.00 :   53978:  je     53998 <ml5_0_dp_terminal_wl_3_1_+0x2c8>
+    0.00 :   5397a:  sar    $0x34,%rdx
+    0.00 :   5397e:  and    $0x7ff,%edx
+    0.00 :   53984:  sub    $0x26f,%rdx
+    0.00 :   5398b:  cmp    $0x320,%rdx
+    0.00 :   53992:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53998:  mov    0x20(%rdi),%rdx
+    0.00 :   5399c:  test   %r10,%rdx
+    0.00 :   5399f:  je     539bf <ml5_0_dp_terminal_wl_3_1_+0x2ef>
+    0.00 :   539a1:  sar    $0x34,%rdx
+    0.48 :   539a5:  and    $0x7ff,%edx
+    0.00 :   539ab:  sub    $0x26f,%rdx
+    0.00 :   539b2:  cmp    $0x320,%rdx
+    0.00 :   539b9:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   539bf:  mov    0x30(%rdi),%rdx
+    0.00 :   539c3:  test   %r10,%rdx
+    0.00 :   539c6:  je     539e6 <ml5_0_dp_terminal_wl_3_1_+0x316>
+    0.00 :   539c8:  sar    $0x34,%rdx
+    0.00 :   539cc:  and    $0x7ff,%edx
+    0.00 :   539d2:  sub    $0x26f,%rdx
+    0.00 :   539d9:  cmp    $0x320,%rdx
+    0.00 :   539e0:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   539e6:  mov    0x40(%rdi),%rdx
+    0.00 :   539ea:  test   %r10,%rdx
+    0.00 :   539ed:  je     53a0d <ml5_0_dp_terminal_wl_3_1_+0x33d>
+    0.00 :   539ef:  sar    $0x34,%rdx
+    0.00 :   539f3:  and    $0x7ff,%edx
+    0.00 :   539f9:  sub    $0x26f,%rdx
+    0.00 :   53a00:  cmp    $0x320,%rdx
+    0.00 :   53a07:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53a0d:  mov    0x50(%rdi),%rdx
+    0.00 :   53a11:  test   %r10,%rdx
+    0.00 :   53a14:  je     53a34 <ml5_0_dp_terminal_wl_3_1_+0x364>
+    0.00 :   53a16:  sar    $0x34,%rdx
+    0.00 :   53a1a:  and    $0x7ff,%edx
+    0.00 :   53a20:  sub    $0x26f,%rdx
+    0.00 :   53a27:  cmp    $0x320,%rdx
+    0.00 :   53a2e:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53a34:  mov    0x60(%rdi),%rdx
+    0.00 :   53a38:  test   %r10,%rdx
+    0.00 :   53a3b:  je     53a5b <ml5_0_dp_terminal_wl_3_1_+0x38b>
+    0.00 :   53a3d:  sar    $0x34,%rdx
+    0.00 :   53a41:  and    $0x7ff,%edx
+    0.00 :   53a47:  sub    $0x26f,%rdx
+    0.00 :   53a4e:  cmp    $0x320,%rdx
+    0.00 :   53a55:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53a5b:  mov    0x70(%rdi),%rdx
+    0.00 :   53a5f:  test   %r10,%rdx
+    0.00 :   53a62:  je     53a82 <ml5_0_dp_terminal_wl_3_1_+0x3b2>
+    0.00 :   53a64:  sar    $0x34,%rdx
+    0.00 :   53a68:  and    $0x7ff,%edx
+    0.00 :   53a6e:  sub    $0x26f,%rdx
+    0.00 :   53a75:  cmp    $0x320,%rdx
+    0.00 :   53a7c:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53a82:  mov    0x80(%rdi),%rdx
+    0.00 :   53a89:  test   %r10,%rdx
+    0.00 :   53a8c:  je     53aac <ml5_0_dp_terminal_wl_3_1_+0x3dc>
+    0.00 :   53a8e:  sar    $0x34,%rdx
+    0.00 :   53a92:  and    $0x7ff,%edx
+    0.00 :   53a98:  sub    $0x26f,%rdx
+    0.00 :   53a9f:  cmp    $0x320,%rdx
+    0.00 :   53aa6:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53aac:  mov    0x90(%rdi),%rdx
+    0.00 :   53ab3:  test   %r10,%rdx
+    0.00 :   53ab6:  je     53ad6 <ml5_0_dp_terminal_wl_3_1_+0x406>
+    0.00 :   53ab8:  sar    $0x34,%rdx
+    0.00 :   53abc:  and    $0x7ff,%edx
+    0.00 :   53ac2:  sub    $0x26f,%rdx
+    0.00 :   53ac9:  cmp    $0x320,%rdx
+    0.00 :   53ad0:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53ad6:  mov    0xa0(%rdi),%rdx
+    0.00 :   53add:  test   %r10,%rdx
+    0.00 :   53ae0:  je     53b00 <ml5_0_dp_terminal_wl_3_1_+0x430>
+    0.00 :   53ae2:  sar    $0x34,%rdx
+    0.48 :   53ae6:  and    $0x7ff,%edx
+    0.00 :   53aec:  sub    $0x26f,%rdx
+    0.00 :   53af3:  cmp    $0x320,%rdx
+    0.00 :   53afa:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53b00:  mov    0xb0(%rdi),%rdx
+    0.00 :   53b07:  test   %r10,%rdx
+    0.00 :   53b0a:  je     53b2a <ml5_0_dp_terminal_wl_3_1_+0x45a>
+    0.00 :   53b0c:  sar    $0x34,%rdx
+    0.00 :   53b10:  and    $0x7ff,%edx
+    0.00 :   53b16:  sub    $0x26f,%rdx
+    0.00 :   53b1d:  cmp    $0x320,%rdx
+    0.00 :   53b24:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53b2a:  mov    0xc0(%rdi),%rdx
+    0.00 :   53b31:  test   %r10,%rdx
+    0.00 :   53b34:  je     53b54 <ml5_0_dp_terminal_wl_3_1_+0x484>
+    0.00 :   53b36:  sar    $0x34,%rdx
+    0.00 :   53b3a:  and    $0x7ff,%edx
+    0.00 :   53b40:  sub    $0x26f,%rdx
+    0.00 :   53b47:  cmp    $0x320,%rdx
+    0.00 :   53b4e:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53b54:  mov    0xd0(%rdi),%rdx
+    0.00 :   53b5b:  test   %r10,%rdx
+    0.00 :   53b5e:  je     53b7e <ml5_0_dp_terminal_wl_3_1_+0x4ae>
+    0.00 :   53b60:  sar    $0x34,%rdx
+    0.00 :   53b64:  and    $0x7ff,%edx
+    0.00 :   53b6a:  sub    $0x26f,%rdx
+    0.48 :   53b71:  cmp    $0x320,%rdx
+    0.00 :   53b78:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53b7e:  mov    0xe0(%rdi),%rdx
+    0.00 :   53b85:  test   %r10,%rdx
+    0.00 :   53b88:  je     53ba8 <ml5_0_dp_terminal_wl_3_1_+0x4d8>
+    0.00 :   53b8a:  sar    $0x34,%rdx
+    0.00 :   53b8e:  and    $0x7ff,%edx
+    0.00 :   53b94:  sub    $0x26f,%rdx
+    0.00 :   53b9b:  cmp    $0x320,%rdx
+    0.00 :   53ba2:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53ba8:  mov    0xf0(%rdi),%rdx
+    0.48 :   53baf:  test   %r10,%rdx
+    0.00 :   53bb2:  je     53bd2 <ml5_0_dp_terminal_wl_3_1_+0x502>
+    0.00 :   53bb4:  sar    $0x34,%rdx
+    0.00 :   53bb8:  and    $0x7ff,%edx
+    0.00 :   53bbe:  sub    $0x26f,%rdx
+    0.48 :   53bc5:  cmp    $0x320,%rdx
+    0.00 :   53bcc:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53bd2:  mov    0x100(%rdi),%rdx
+    0.00 :   53bd9:  test   %r10,%rdx
+    0.00 :   53bdc:  je     53bfc <ml5_0_dp_terminal_wl_3_1_+0x52c>
+    0.00 :   53bde:  sar    $0x34,%rdx
+    0.00 :   53be2:  and    $0x7ff,%edx
+    0.00 :   53be8:  sub    $0x26f,%rdx
+    0.00 :   53bef:  cmp    $0x320,%rdx
+    0.00 :   53bf6:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53bfc:  mov    0x110(%rdi),%rdx
+    0.00 :   53c03:  test   %r10,%rdx
+    0.00 :   53c06:  je     53c26 <ml5_0_dp_terminal_wl_3_1_+0x556>
+    0.00 :   53c08:  sar    $0x34,%rdx
+    0.00 :   53c0c:  and    $0x7ff,%edx
+    0.00 :   53c12:  sub    $0x26f,%rdx
+    0.00 :   53c19:  cmp    $0x320,%rdx
+    0.00 :   53c20:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53c26:  mov    0x120(%rdi),%rdx
+    0.00 :   53c2d:  test   %r10,%rdx
+    0.00 :   53c30:  je     53c50 <ml5_0_dp_terminal_wl_3_1_+0x580>
+    0.00 :   53c32:  sar    $0x34,%rdx
+    0.00 :   53c36:  and    $0x7ff,%edx
+    0.00 :   53c3c:  sub    $0x26f,%rdx
+    0.00 :   53c43:  cmp    $0x320,%rdx
+    0.00 :   53c4a:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53c50:  mov    0x130(%rdi),%rdx
+    0.00 :   53c57:  test   %r10,%rdx
+    0.00 :   53c5a:  je     53c7a <ml5_0_dp_terminal_wl_3_1_+0x5aa>
+    0.00 :   53c5c:  sar    $0x34,%rdx
+    0.00 :   53c60:  and    $0x7ff,%edx
+    0.00 :   53c66:  sub    $0x26f,%rdx
+    0.00 :   53c6d:  cmp    $0x320,%rdx
+    0.00 :   53c74:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53c7a:  add    $0x140,%rdi
+    0.00 :   53c81:  cmp    %rdi,%r14
+    0.00 :   53c84:  jne    5394b <ml5_0_dp_terminal_wl_3_1_+0x27b>
+    0.00 :   53c8a:  lea    0x8(%rbx),%rdi
+    0.48 :   53c8e:  lea    0x508(%rbx),%r14
+    0.00 :   53c95:  movabs $0x7fffffffffffffff,%r10
+    0.00 :   53c9f:  mov    (%rdi),%rdx
+    0.00 :   53ca2:  test   %r10,%rdx
+    0.00 :   53ca5:  je     53cc5 <ml5_0_dp_terminal_wl_3_1_+0x5f5>
+    0.00 :   53ca7:  sar    $0x34,%rdx
+    0.00 :   53cab:  and    $0x7ff,%edx
+    0.00 :   53cb1:  sub    $0x26f,%rdx
+    0.00 :   53cb8:  cmp    $0x320,%rdx
+    0.00 :   53cbf:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53cc5:  mov    0x10(%rdi),%rdx
+    0.00 :   53cc9:  test   %r10,%rdx
+    0.00 :   53ccc:  je     53cec <ml5_0_dp_terminal_wl_3_1_+0x61c>
+    0.00 :   53cce:  sar    $0x34,%rdx
+    0.00 :   53cd2:  and    $0x7ff,%edx
+    0.00 :   53cd8:  sub    $0x26f,%rdx
+    0.48 :   53cdf:  cmp    $0x320,%rdx
+    0.00 :   53ce6:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53cec:  mov    0x20(%rdi),%rdx
+    0.48 :   53cf0:  test   %r10,%rdx
+    0.00 :   53cf3:  je     53d13 <ml5_0_dp_terminal_wl_3_1_+0x643>
+    0.00 :   53cf5:  sar    $0x34,%rdx
+    0.00 :   53cf9:  and    $0x7ff,%edx
+    0.00 :   53cff:  sub    $0x26f,%rdx
+    0.48 :   53d06:  cmp    $0x320,%rdx
+    0.00 :   53d0d:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53d13:  mov    0x30(%rdi),%rdx
+    0.00 :   53d17:  test   %r10,%rdx
+    0.00 :   53d1a:  je     53d3a <ml5_0_dp_terminal_wl_3_1_+0x66a>
+    0.00 :   53d1c:  sar    $0x34,%rdx
+    0.00 :   53d20:  and    $0x7ff,%edx
+    0.00 :   53d26:  sub    $0x26f,%rdx
+    0.00 :   53d2d:  cmp    $0x320,%rdx
+    0.00 :   53d34:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53d3a:  mov    0x40(%rdi),%rdx
+    0.00 :   53d3e:  test   %r10,%rdx
+    0.00 :   53d41:  je     53d61 <ml5_0_dp_terminal_wl_3_1_+0x691>
+    0.00 :   53d43:  sar    $0x34,%rdx
+    0.00 :   53d47:  and    $0x7ff,%edx
+    0.00 :   53d4d:  sub    $0x26f,%rdx
+    0.00 :   53d54:  cmp    $0x320,%rdx
+    0.00 :   53d5b:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53d61:  mov    0x50(%rdi),%rdx
+    0.00 :   53d65:  test   %r10,%rdx
+    0.00 :   53d68:  je     53d88 <ml5_0_dp_terminal_wl_3_1_+0x6b8>
+    0.00 :   53d6a:  sar    $0x34,%rdx
+    0.00 :   53d6e:  and    $0x7ff,%edx
+    0.00 :   53d74:  sub    $0x26f,%rdx
+    0.00 :   53d7b:  cmp    $0x320,%rdx
+    0.00 :   53d82:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53d88:  mov    0x60(%rdi),%rdx
+    0.00 :   53d8c:  test   %r10,%rdx
+    0.00 :   53d8f:  je     53daf <ml5_0_dp_terminal_wl_3_1_+0x6df>
+    0.00 :   53d91:  sar    $0x34,%rdx
+    0.00 :   53d95:  and    $0x7ff,%edx
+    0.48 :   53d9b:  sub    $0x26f,%rdx
+    0.00 :   53da2:  cmp    $0x320,%rdx
+    0.00 :   53da9:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53daf:  mov    0x70(%rdi),%rdx
+    0.48 :   53db3:  test   %r10,%rdx
+    0.00 :   53db6:  je     53dd6 <ml5_0_dp_terminal_wl_3_1_+0x706>
+    0.00 :   53db8:  sar    $0x34,%rdx
+    0.00 :   53dbc:  and    $0x7ff,%edx
+    0.00 :   53dc2:  sub    $0x26f,%rdx
+    0.00 :   53dc9:  cmp    $0x320,%rdx
+    0.00 :   53dd0:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53dd6:  mov    0x80(%rdi),%rdx
+    0.00 :   53ddd:  test   %r10,%rdx
+    0.00 :   53de0:  je     53e00 <ml5_0_dp_terminal_wl_3_1_+0x730>
+    0.00 :   53de2:  sar    $0x34,%rdx
+    0.00 :   53de6:  and    $0x7ff,%edx
+    0.00 :   53dec:  sub    $0x26f,%rdx
+    0.00 :   53df3:  cmp    $0x320,%rdx
+    0.00 :   53dfa:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53e00:  mov    0x90(%rdi),%rdx
+    0.00 :   53e07:  test   %r10,%rdx
+    0.00 :   53e0a:  je     53e2a <ml5_0_dp_terminal_wl_3_1_+0x75a>
+    0.00 :   53e0c:  sar    $0x34,%rdx
+    0.00 :   53e10:  and    $0x7ff,%edx
+    0.00 :   53e16:  sub    $0x26f,%rdx
+    0.00 :   53e1d:  cmp    $0x320,%rdx
+    0.00 :   53e24:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53e2a:  mov    0xa0(%rdi),%rdx
+    0.00 :   53e31:  test   %r10,%rdx
+    0.48 :   53e34:  je     53e54 <ml5_0_dp_terminal_wl_3_1_+0x784>
+    0.00 :   53e36:  sar    $0x34,%rdx
+    0.00 :   53e3a:  and    $0x7ff,%edx
+    0.00 :   53e40:  sub    $0x26f,%rdx
+    0.00 :   53e47:  cmp    $0x320,%rdx
+    0.00 :   53e4e:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53e54:  mov    0xb0(%rdi),%rdx
+    0.00 :   53e5b:  test   %r10,%rdx
+    0.00 :   53e5e:  je     53e7e <ml5_0_dp_terminal_wl_3_1_+0x7ae>
+    0.00 :   53e60:  sar    $0x34,%rdx
+    0.00 :   53e64:  and    $0x7ff,%edx
+    0.00 :   53e6a:  sub    $0x26f,%rdx
+    0.00 :   53e71:  cmp    $0x320,%rdx
+    0.00 :   53e78:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53e7e:  mov    0xc0(%rdi),%rdx
+    0.48 :   53e85:  test   %r10,%rdx
+    0.00 :   53e88:  je     53ea8 <ml5_0_dp_terminal_wl_3_1_+0x7d8>
+    0.00 :   53e8a:  sar    $0x34,%rdx
+    0.00 :   53e8e:  and    $0x7ff,%edx
+    0.00 :   53e94:  sub    $0x26f,%rdx
+    0.00 :   53e9b:  cmp    $0x320,%rdx
+    0.00 :   53ea2:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53ea8:  mov    0xd0(%rdi),%rdx
+    0.00 :   53eaf:  test   %r10,%rdx
+    0.00 :   53eb2:  je     53ed2 <ml5_0_dp_terminal_wl_3_1_+0x802>
+    0.00 :   53eb4:  sar    $0x34,%rdx
+    0.00 :   53eb8:  and    $0x7ff,%edx
+    0.00 :   53ebe:  sub    $0x26f,%rdx
+    0.00 :   53ec5:  cmp    $0x320,%rdx
+    0.00 :   53ecc:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53ed2:  mov    0xe0(%rdi),%rdx
+    0.00 :   53ed9:  test   %r10,%rdx
+    0.00 :   53edc:  je     53efc <ml5_0_dp_terminal_wl_3_1_+0x82c>
+    0.00 :   53ede:  sar    $0x34,%rdx
+    0.00 :   53ee2:  and    $0x7ff,%edx
+    0.00 :   53ee8:  sub    $0x26f,%rdx
+    0.00 :   53eef:  cmp    $0x320,%rdx
+    0.00 :   53ef6:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53efc:  mov    0xf0(%rdi),%rdx
+    0.00 :   53f03:  test   %r10,%rdx
+    0.00 :   53f06:  je     53f26 <ml5_0_dp_terminal_wl_3_1_+0x856>
+    0.00 :   53f08:  sar    $0x34,%rdx
+    0.00 :   53f0c:  and    $0x7ff,%edx
+    0.00 :   53f12:  sub    $0x26f,%rdx
+    0.00 :   53f19:  cmp    $0x320,%rdx
+    0.00 :   53f20:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53f26:  mov    0x100(%rdi),%rdx
+    0.00 :   53f2d:  test   %r10,%rdx
+    0.00 :   53f30:  je     53f50 <ml5_0_dp_terminal_wl_3_1_+0x880>
+    0.00 :   53f32:  sar    $0x34,%rdx
+    0.00 :   53f36:  and    $0x7ff,%edx
+    0.00 :   53f3c:  sub    $0x26f,%rdx
+    0.00 :   53f43:  cmp    $0x320,%rdx
+    0.00 :   53f4a:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53f50:  mov    0x110(%rdi),%rdx
+    0.00 :   53f57:  test   %r10,%rdx
+    0.00 :   53f5a:  je     53f7a <ml5_0_dp_terminal_wl_3_1_+0x8aa>
+    0.00 :   53f5c:  sar    $0x34,%rdx
+    0.00 :   53f60:  and    $0x7ff,%edx
+    0.00 :   53f66:  sub    $0x26f,%rdx
+    0.00 :   53f6d:  cmp    $0x320,%rdx
+    0.00 :   53f74:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53f7a:  mov    0x120(%rdi),%rdx
+    0.00 :   53f81:  test   %r10,%rdx
+    0.00 :   53f84:  je     53fa4 <ml5_0_dp_terminal_wl_3_1_+0x8d4>
+    0.00 :   53f86:  sar    $0x34,%rdx
+    0.00 :   53f8a:  and    $0x7ff,%edx
+    0.00 :   53f90:  sub    $0x26f,%rdx
+    0.00 :   53f97:  cmp    $0x320,%rdx
+    0.00 :   53f9e:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53fa4:  mov    0x130(%rdi),%rdx
+    0.00 :   53fab:  test   %r10,%rdx
+    0.00 :   53fae:  je     53fce <ml5_0_dp_terminal_wl_3_1_+0x8fe>
+    0.00 :   53fb0:  sar    $0x34,%rdx
+    0.00 :   53fb4:  and    $0x7ff,%edx
+    0.00 :   53fba:  sub    $0x26f,%rdx
+    0.00 :   53fc1:  cmp    $0x320,%rdx
+    0.00 :   53fc8:  ja     536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>
+    0.00 :   53fce:  add    $0x140,%rdi
+    0.00 :   53fd5:  cmp    %rdi,%r14
+    0.00 :   53fd8:  jne    53c9f <ml5_0_dp_terminal_wl_3_1_+0x5cf>
+    0.00 :   53fde:  lea    0x1180(%r9),%rsi
+    0.00 :   53fe5:  lea    0x57c0(%r9),%rdi
+    0.00 :   53fec:  pxor   %xmm0,%xmm0
+    0.00 :   53ff0:  lea    -0x1180(%rsi),%rdx
+    0.00 :   53ff7:  nopw   0x0(%rax,%rax,1)
+    0.00 :   54000:  movups %xmm0,(%rdx)
+    6.73 :   54003:  sub    $0xffffffffffffff80,%rdx
+    0.00 :   54007:  movups %xmm0,-0x40(%rdx)
+    4.33 :   5400b:  cmp    %rdx,%rsi
+    0.00 :   5400e:  jne    54000 <ml5_0_dp_terminal_wl_3_1_+0x930>
+    0.00 :   54010:  add    $0x1190,%rsi
+    0.00 :   54017:  cmp    %rsi,%rdi
+    0.00 :   5401a:  jne    53ff0 <ml5_0_dp_terminal_wl_3_1_+0x920>
+    0.00 :   5401c:  mov    %rbx,-0x38(%rbp)
+    0.00 :   54020:  mov    $0x46,%r8d
+    0.00 :   54026:  mov    $0x1,%edi
+    0.00 :   5402b:  pxor   %xmm6,%xmm6
+    0.00 :   5402f:  lea    -0x8c0(%rax),%r13
+    0.00 :   54036:  imul   $0x1180,%rdi,%rdx
+    0.00 :   5403d:  mov    %rdi,%rcx
+    0.00 :   54040:  xor    %r11d,%r11d
+    0.00 :   54043:  shl    $0x4,%rcx
+    0.00 :   54047:  add    -0x38(%rbp),%rcx
+    0.00 :   5404b:  mov    %rcx,%rbx
+    0.00 :   5404e:  lea    0x0(%r13,%rdx,1),%r12
+    0.00 :   54053:  imul   $0x118,%r11,%rsi
+    0.48 :   5405a:  mov    %rbx,%r10
+    0.00 :   5405d:  mov    %r12,%rcx
+    0.00 :   54060:  add    0x6a4f39(%rip),%rsi        # 6f8fa0 <_DYNAMIC+0x2c8>
+    0.00 :   54067:  mov    %rsi,%r15
+    0.00 :   5406a:  mov    %r11,%rsi
+    0.00 :   5406d:  mov    $0x1,%r11d
+    0.00 :   54073:  movsd  -0x8(%r10),%xmm3
+    0.96 :   54079:  mov    $0x0,%edx
+    0.00 :   5407e:  movsd  -0x10(%r10),%xmm4
+    0.48 :   54084:  ucomisd %xmm6,%xmm3
+    0.96 :   54088:  setnp  %al
+    0.48 :   5408b:  cmovne %edx,%eax
+    0.48 :   5408e:  test   %al,%al
+    0.96 :   54090:  je     540e0 <ml5_0_dp_terminal_wl_3_1_+0xa10>
+    0.00 :   54092:  ucomisd %xmm6,%xmm4
+    0.96 :   54096:  setnp  %al
+    0.00 :   54099:  cmovne %edx,%eax
+    0.48 :   5409c:  test   %al,%al
+    0.00 :   5409e:  je     540e0 <ml5_0_dp_terminal_wl_3_1_+0xa10>
+    0.00 :   540a0:  add    $0x1,%r11
+    1.44 :   540a4:  add    $0x140,%r10
+    0.00 :   540ab:  add    $0x10,%rcx
+    0.00 :   540af:  cmp    $0x5,%r11
+    0.00 :   540b3:  jne    54073 <ml5_0_dp_terminal_wl_3_1_+0x9a3>
+    0.00 :   540b5:  lea    0x1(%rsi),%r11
+    0.00 :   540b9:  add    $0x40,%rbx
+    0.00 :   540bd:  cmp    $0x5,%r11
+    0.00 :   540c1:  jne    54053 <ml5_0_dp_terminal_wl_3_1_+0x983>
+    0.00 :   540c3:  add    $0x1,%rdi
+    0.00 :   540c7:  add    $0x46,%r8
+    0.00 :   540cb:  cmp    $0x5,%rdi
+    0.00 :   540cf:  jne    54036 <ml5_0_dp_terminal_wl_3_1_+0x966>
+    0.00 :   540d5:  pop    %rbx
+    0.00 :   540d6:  pop    %r12
+    0.00 :   540d8:  pop    %r13
+    0.00 :   540da:  pop    %r14
+    0.00 :   540dc:  pop    %r15
+    0.00 :   540de:  pop    %rbp
+    0.00 :   540df:  ret
+    0.00 :   540e0:  lea    -0x8c0(%rcx),%rax
+    0.00 :   540e7:  mov    %r11,%r14
+    0.00 :   540ea:  mov    %r10,%r11
+    0.00 :   540ed:  mov    %rsi,%r10
+    0.00 :   540f0:  mov    %rax,%rdx
+    0.00 :   540f3:  mov    %rcx,%rsi
+    0.00 :   540f6:  mov    %r15,%rcx
+    0.00 :   540f9:  nopl   0x0(%rax)
+    0.00 :   54100:  movsd  (%rdx),%xmm0
+    2.40 :   54104:  movslq (%rcx),%rax
+    0.48 :   54107:  add    $0x40,%rdx
+    1.93 :   5410b:  add    $0x4,%rcx
+    0.00 :   5410f:  movsd  -0x38(%rdx),%xmm2
+    1.92 :   54114:  movapd %xmm0,%xmm1
+    0.48 :   54118:  add    %r8,%rax
+    0.96 :   5411b:  mulsd  %xmm3,%xmm1
+    7.21 :   5411f:  movapd %xmm2,%xmm5
+    0.96 :   54123:  lea    (%rdi,%rax,4),%rax
+    0.00 :   54127:  mulsd  %xmm4,%xmm5
+    0.95 :   5412b:  shl    $0x4,%rax
+    0.00 :   5412f:  mulsd  %xmm4,%xmm0
+    1.44 :   54133:  add    %r9,%rax
+    0.00 :   54136:  mulsd  %xmm3,%xmm2
+    0.00 :   5413a:  addsd  %xmm5,%xmm1
+    0.00 :   5413e:  addsd  -0x1188(%rax),%xmm1
+   13.46 :   54146:  subsd  %xmm2,%xmm0
+    1.44 :   5414a:  addsd  -0x1190(%rax),%xmm0
+    9.13 :   54152:  movsd  %xmm1,-0x1188(%rax)
+    1.93 :   5415a:  movsd  %xmm0,-0x1190(%rax)
+    6.25 :   54162:  cmp    %rsi,%rdx
+    1.92 :   54165:  jne    54100 <ml5_0_dp_terminal_wl_3_1_+0xa30>
+    0.00 :   54167:  mov    %rsi,%rcx
+    0.00 :   5416a:  mov    %r10,%rsi
+    0.00 :   5416d:  mov    %r11,%r10
+    0.00 :   54170:  mov    %r14,%r11
+    0.00 :   54173:  jmp    540a0 <ml5_0_dp_terminal_wl_3_1_+0x9d0>
+    0.00 :   54178:  nopl   0x0(%rax,%rax,1)
+    0.00 :   54180:  mov    %rax,%rdi
+    0.00 :   54183:  mov    %rcx,%rax
+    0.00 :   54186:  mov    %r8,%rcx
+    0.00 :   54189:  mov    %r9,%r8
+    0.00 :   5418c:  mov    %rdi,%r9
+    0.00 :   5418f:  jmp    536f2 <ml5_0_dp_terminal_wl_3_1_+0x22>

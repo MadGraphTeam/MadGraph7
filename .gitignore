@@ -2,8 +2,16 @@
 .ninjars-build/
 .tirust-build/
 # Local TIRust benchmark workspace, restored from the release bundle
-# (docs/tirust-benchmarks.md).
-/docs/benchmarkfolder/
+# (docs/tirust-benchmarks.md), except the files of the quarkonium one-loop
+# report (docs/onia_loop.md).
+/docs/benchmarkfolder/*
+!/docs/benchmarkfolder/README.md
+!/docs/benchmarkfolder/benchmark.typ
+!/docs/benchmarkfolder/benchmark.pdf
+!/docs/benchmarkfolder/style.typ
+!/docs/benchmarkfolder/data/
+!/docs/benchmarkfolder/scripts/
+!/docs/benchmarkfolder/research/
 vendor/tirust/target/
 vendor/tirust/*.so
 vendor/tirust/smoke

@@ -1,0 +1,56 @@
+== gg_ttxg base
+  28.2%  numerator: UPDATE_WL (dense updaters)
+  16.7%  numerator: DP_TERMINAL_WL (diagonal updaters)
+   5.3%  numerator: memset (OUT(:,:,:)=0 in updaters)
+   6.6%  numerator: CREATE_LOOP_COEFS + MERGE_WL
+  16.1%  SLOOPMATRIX body (CT colour contraction etc.)
+   2.8%  split-order index functions (ML5SOINDEX*, ML5SQSOINDEX)
+   3.0%  gfortran IEEE FP-state save/restore
+   7.9%  HELAS/ALOHA routines (DHELAS)
+   9.5%  reduction: Ninja
+   0.4%  reduction: CutTools (+ EVAL_POLY/LOOPNUM)
+   0.4%  reduction: COLLIER
+   0.7%  malloc/free
+   0.3%  libm
+   1.9%  other
+== gg_ttxg E
+  40.6%  numerator: UPDATE_WL (dense updaters)
+  26.8%  numerator: DP_TERMINAL_WL (diagonal updaters)
+   7.0%  numerator: CREATE_LOOP_COEFS + MERGE_WL
+   2.0%  SLOOPMATRIX body (CT colour contraction etc.)
+   0.2%  gfortran IEEE FP-state save/restore
+   5.2%  HELAS/ALOHA routines (DHELAS)
+  13.9%  reduction: Ninja
+   0.7%  reduction: CutTools (+ EVAL_POLY/LOOPNUM)
+   0.2%  reduction: COLLIER
+   1.0%  malloc/free
+   0.5%  libm
+   1.6%  other
+== uux_zgg base
+  31.0%  numerator: UPDATE_WL (dense updaters)
+  18.2%  numerator: DP_TERMINAL_WL (diagonal updaters)
+   6.7%  numerator: memset (OUT(:,:,:)=0 in updaters)
+   5.2%  numerator: CREATE_LOOP_COEFS + MERGE_WL
+   5.0%  SLOOPMATRIX body (CT colour contraction etc.)
+   1.7%  split-order index functions (ML5SOINDEX*, ML5SQSOINDEX)
+   3.7%  gfortran IEEE FP-state save/restore
+  11.2%  HELAS/ALOHA routines (DHELAS)
+  11.5%  reduction: Ninja
+   0.5%  reduction: CutTools (+ EVAL_POLY/LOOPNUM)
+   0.5%  reduction: COLLIER
+   1.4%  malloc/free
+   0.8%  libm
+   2.2%  other
+== uux_zgg E
+  42.4%  numerator: UPDATE_WL (dense updaters)
+  25.8%  numerator: DP_TERMINAL_WL (diagonal updaters)
+   4.5%  numerator: CREATE_LOOP_COEFS + MERGE_WL
+   0.5%  SLOOPMATRIX body (CT colour contraction etc.)
+   0.2%  gfortran IEEE FP-state save/restore
+   6.0%  HELAS/ALOHA routines (DHELAS)
+  16.3%  reduction: Ninja
+   0.8%  reduction: CutTools (+ EVAL_POLY/LOOPNUM)
+   0.3%  reduction: COLLIER
+   1.0%  malloc/free
+   0.7%  libm
+   1.3%  other

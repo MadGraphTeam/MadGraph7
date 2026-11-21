@@ -1,0 +1,797 @@
+ Percent |	Source code & Disassembly of bench for cpu/cycles/Pu (270 samples, percent: local period)
+---------------------------------------------------------------------------------------------------------
+         :
+         :
+         :
+         : 3     Disassembly of section .text:
+         :
+         : 5     00000000000526e0 <ml5_0_dp_terminal_wl_2_1_>:
+    0.00 :   526e0:  push   %rbp
+    0.00 :   526e1:  mov    %rsp,%rbp
+    0.00 :   526e4:  push   %r15
+    0.00 :   526e6:  mov    0x10(%rbp),%rax
+    0.00 :   526ea:  push   %r14
+    0.00 :   526ec:  push   %rbx
+    0.00 :   526ed:  mov    (%rax),%eax
+    0.00 :   526ef:  test   %eax,%eax
+    0.00 :   526f1:  je     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   526f3:  cmpl   $0x4,(%rsi)
+    0.00 :   526f6:  je     52708 <ml5_0_dp_terminal_wl_2_1_+0x28>
+    0.00 :   526f8:  pop    %rbx
+    0.00 :   526f9:  pop    %r14
+    0.00 :   526fb:  pop    %r15
+    0.00 :   526fd:  pop    %rbp
+    0.00 :   526fe:  jmp    b510 <ml5_0_update_wl_2_1_>
+    0.00 :   52703:  nopl   0x0(%rax,%rax,1)
+    0.00 :   52708:  cmpl   $0x4,(%rcx)
+    0.00 :   5270b:  jne    526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   5270d:  cmpl   $0x4,(%r8)
+    0.00 :   52711:  jne    526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52713:  lea    0x1540(%rdi),%r14
+    0.00 :   5271a:  lea    0x1540(%rdi),%rbx
+    0.00 :   52721:  mov    $0xffffffffffffffff,%r15
+    0.00 :   52728:  movabs $0x7fffffffffffffff,%r11
+    0.00 :   52732:  lea    -0x3c0(%rbx),%rax
+    0.00 :   52739:  nopl   0x0(%rax)
+    0.00 :   52740:  mov    -0x1180(%rax),%r10
+    1.85 :   52747:  test   %r11,%r10
+    0.37 :   5274a:  je     52767 <ml5_0_dp_terminal_wl_2_1_+0x87>
+    0.00 :   5274c:  sar    $0x34,%r10
+    1.48 :   52750:  and    $0x7ff,%r10d
+    0.00 :   52757:  sub    $0x26f,%r10
+    0.00 :   5275e:  cmp    $0x320,%r10
+    0.00 :   52765:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52767:  mov    -0x1170(%rax),%r10
+    2.60 :   5276e:  test   %r11,%r10
+    0.37 :   52771:  je     52792 <ml5_0_dp_terminal_wl_2_1_+0xb2>
+    0.00 :   52773:  sar    $0x34,%r10
+    1.11 :   52777:  and    $0x7ff,%r10d
+    0.00 :   5277e:  sub    $0x26f,%r10
+    0.37 :   52785:  cmp    $0x320,%r10
+    0.00 :   5278c:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52792:  mov    -0x1160(%rax),%r10
+    0.37 :   52799:  test   %r11,%r10
+    0.00 :   5279c:  je     527bd <ml5_0_dp_terminal_wl_2_1_+0xdd>
+    0.00 :   5279e:  sar    $0x34,%r10
+    0.74 :   527a2:  and    $0x7ff,%r10d
+    0.00 :   527a9:  sub    $0x26f,%r10
+    0.37 :   527b0:  cmp    $0x320,%r10
+    0.00 :   527b7:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   527bd:  mov    -0x1150(%rax),%r10
+    0.37 :   527c4:  test   %r11,%r10
+    1.86 :   527c7:  je     527e8 <ml5_0_dp_terminal_wl_2_1_+0x108>
+    0.00 :   527c9:  sar    $0x34,%r10
+    0.37 :   527cd:  and    $0x7ff,%r10d
+    0.37 :   527d4:  sub    $0x26f,%r10
+    0.74 :   527db:  cmp    $0x320,%r10
+    0.37 :   527e2:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   527e8:  add    $0x40,%rax
+    0.74 :   527ec:  cmp    %rax,%rbx
+    0.00 :   527ef:  jne    52740 <ml5_0_dp_terminal_wl_2_1_+0x60>
+    0.00 :   527f5:  lea    0x118(%r15),%rax
+    0.00 :   527fc:  add    $0x1180,%rbx
+    0.00 :   52803:  mov    %rax,%r15
+    0.00 :   52806:  cmp    $0x45f,%rax
+    0.00 :   5280c:  jne    52732 <ml5_0_dp_terminal_wl_2_1_+0x52>
+    0.00 :   52812:  mov    $0xffffffffffffffff,%rbx
+    0.37 :   52819:  movabs $0x7fffffffffffffff,%r11
+    0.00 :   52823:  lea    -0x3c0(%r14),%rax
+    0.00 :   5282a:  nopw   0x0(%rax,%rax,1)
+    0.00 :   52830:  mov    -0x1178(%rax),%r10
+    1.48 :   52837:  test   %r11,%r10
+    0.00 :   5283a:  je     5285b <ml5_0_dp_terminal_wl_2_1_+0x17b>
+    0.00 :   5283c:  sar    $0x34,%r10
+    0.00 :   52840:  and    $0x7ff,%r10d
+    0.37 :   52847:  sub    $0x26f,%r10
+    0.37 :   5284e:  cmp    $0x320,%r10
+    0.00 :   52855:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   5285b:  mov    -0x1168(%rax),%r10
+    1.49 :   52862:  test   %r11,%r10
+    0.74 :   52865:  je     52886 <ml5_0_dp_terminal_wl_2_1_+0x1a6>
+    0.00 :   52867:  sar    $0x34,%r10
+    0.74 :   5286b:  and    $0x7ff,%r10d
+    0.00 :   52872:  sub    $0x26f,%r10
+    0.37 :   52879:  cmp    $0x320,%r10
+    0.00 :   52880:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52886:  mov    -0x1158(%rax),%r10
+    0.74 :   5288d:  test   %r11,%r10
+    0.74 :   52890:  je     528b1 <ml5_0_dp_terminal_wl_2_1_+0x1d1>
+    0.00 :   52892:  sar    $0x34,%r10
+    0.37 :   52896:  and    $0x7ff,%r10d
+    0.00 :   5289d:  sub    $0x26f,%r10
+    0.00 :   528a4:  cmp    $0x320,%r10
+    0.00 :   528ab:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   528b1:  mov    -0x1148(%rax),%r10
+    0.00 :   528b8:  test   %r11,%r10
+    0.00 :   528bb:  je     528dc <ml5_0_dp_terminal_wl_2_1_+0x1fc>
+    0.00 :   528bd:  sar    $0x34,%r10
+    0.74 :   528c1:  and    $0x7ff,%r10d
+    0.00 :   528c8:  sub    $0x26f,%r10
+    0.74 :   528cf:  cmp    $0x320,%r10
+    0.00 :   528d6:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   528dc:  add    $0x40,%rax
+    0.00 :   528e0:  cmp    %rax,%r14
+    0.00 :   528e3:  jne    52830 <ml5_0_dp_terminal_wl_2_1_+0x150>
+    0.00 :   528e9:  lea    0x118(%rbx),%rax
+    0.00 :   528f0:  add    $0x1180,%r14
+    0.00 :   528f7:  mov    %rax,%rbx
+    0.00 :   528fa:  cmp    $0x45f,%rax
+    0.00 :   52900:  jne    52823 <ml5_0_dp_terminal_wl_2_1_+0x143>
+    0.00 :   52906:  lea    0x500(%rdx),%rbx
+    0.00 :   5290d:  mov    %rdx,%rax
+    0.00 :   52910:  movabs $0x7fffffffffffffff,%r10
+    0.00 :   5291a:  mov    (%rax),%r11
+    0.00 :   5291d:  test   %r10,%r11
+    0.00 :   52920:  je     52941 <ml5_0_dp_terminal_wl_2_1_+0x261>
+    0.00 :   52922:  sar    $0x34,%r11
+    0.00 :   52926:  and    $0x7ff,%r11d
+    0.00 :   5292d:  sub    $0x26f,%r11
+    0.00 :   52934:  cmp    $0x320,%r11
+    0.00 :   5293b:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52941:  mov    0x10(%rax),%r11
+    0.00 :   52945:  test   %r10,%r11
+    0.00 :   52948:  je     52969 <ml5_0_dp_terminal_wl_2_1_+0x289>
+    0.00 :   5294a:  sar    $0x34,%r11
+    0.00 :   5294e:  and    $0x7ff,%r11d
+    0.00 :   52955:  sub    $0x26f,%r11
+    0.37 :   5295c:  cmp    $0x320,%r11
+    0.00 :   52963:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52969:  mov    0x20(%rax),%r11
+    0.00 :   5296d:  test   %r10,%r11
+    0.00 :   52970:  je     52991 <ml5_0_dp_terminal_wl_2_1_+0x2b1>
+    0.00 :   52972:  sar    $0x34,%r11
+    0.00 :   52976:  and    $0x7ff,%r11d
+    0.00 :   5297d:  sub    $0x26f,%r11
+    0.00 :   52984:  cmp    $0x320,%r11
+    0.37 :   5298b:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52991:  mov    0x30(%rax),%r11
+    0.00 :   52995:  test   %r10,%r11
+    0.00 :   52998:  je     529b9 <ml5_0_dp_terminal_wl_2_1_+0x2d9>
+    0.00 :   5299a:  sar    $0x34,%r11
+    0.00 :   5299e:  and    $0x7ff,%r11d
+    0.00 :   529a5:  sub    $0x26f,%r11
+    0.00 :   529ac:  cmp    $0x320,%r11
+    0.00 :   529b3:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   529b9:  mov    0x40(%rax),%r11
+    0.00 :   529bd:  test   %r10,%r11
+    0.00 :   529c0:  je     529e1 <ml5_0_dp_terminal_wl_2_1_+0x301>
+    0.00 :   529c2:  sar    $0x34,%r11
+    0.00 :   529c6:  and    $0x7ff,%r11d
+    0.00 :   529cd:  sub    $0x26f,%r11
+    0.00 :   529d4:  cmp    $0x320,%r11
+    0.00 :   529db:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   529e1:  mov    0x50(%rax),%r11
+    0.00 :   529e5:  test   %r10,%r11
+    0.00 :   529e8:  je     52a09 <ml5_0_dp_terminal_wl_2_1_+0x329>
+    0.00 :   529ea:  sar    $0x34,%r11
+    0.00 :   529ee:  and    $0x7ff,%r11d
+    0.00 :   529f5:  sub    $0x26f,%r11
+    0.00 :   529fc:  cmp    $0x320,%r11
+    0.00 :   52a03:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52a09:  mov    0x60(%rax),%r11
+    0.37 :   52a0d:  test   %r10,%r11
+    0.00 :   52a10:  je     52a31 <ml5_0_dp_terminal_wl_2_1_+0x351>
+    0.00 :   52a12:  sar    $0x34,%r11
+    0.00 :   52a16:  and    $0x7ff,%r11d
+    0.00 :   52a1d:  sub    $0x26f,%r11
+    0.00 :   52a24:  cmp    $0x320,%r11
+    0.00 :   52a2b:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52a31:  mov    0x70(%rax),%r11
+    0.00 :   52a35:  test   %r10,%r11
+    0.00 :   52a38:  je     52a59 <ml5_0_dp_terminal_wl_2_1_+0x379>
+    0.00 :   52a3a:  sar    $0x34,%r11
+    0.00 :   52a3e:  and    $0x7ff,%r11d
+    0.00 :   52a45:  sub    $0x26f,%r11
+    0.00 :   52a4c:  cmp    $0x320,%r11
+    0.37 :   52a53:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52a59:  mov    0x80(%rax),%r11
+    0.00 :   52a60:  test   %r10,%r11
+    0.00 :   52a63:  je     52a84 <ml5_0_dp_terminal_wl_2_1_+0x3a4>
+    0.00 :   52a65:  sar    $0x34,%r11
+    0.00 :   52a69:  and    $0x7ff,%r11d
+    0.00 :   52a70:  sub    $0x26f,%r11
+    0.00 :   52a77:  cmp    $0x320,%r11
+    0.00 :   52a7e:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52a84:  mov    0x90(%rax),%r11
+    0.00 :   52a8b:  test   %r10,%r11
+    0.00 :   52a8e:  je     52aaf <ml5_0_dp_terminal_wl_2_1_+0x3cf>
+    0.00 :   52a90:  sar    $0x34,%r11
+    0.37 :   52a94:  and    $0x7ff,%r11d
+    0.00 :   52a9b:  sub    $0x26f,%r11
+    0.00 :   52aa2:  cmp    $0x320,%r11
+    0.00 :   52aa9:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52aaf:  mov    0xa0(%rax),%r11
+    0.00 :   52ab6:  test   %r10,%r11
+    0.00 :   52ab9:  je     52ada <ml5_0_dp_terminal_wl_2_1_+0x3fa>
+    0.00 :   52abb:  sar    $0x34,%r11
+    0.00 :   52abf:  and    $0x7ff,%r11d
+    0.00 :   52ac6:  sub    $0x26f,%r11
+    0.00 :   52acd:  cmp    $0x320,%r11
+    0.00 :   52ad4:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52ada:  mov    0xb0(%rax),%r11
+    0.00 :   52ae1:  test   %r10,%r11
+    0.00 :   52ae4:  je     52b05 <ml5_0_dp_terminal_wl_2_1_+0x425>
+    0.00 :   52ae6:  sar    $0x34,%r11
+    0.00 :   52aea:  and    $0x7ff,%r11d
+    0.00 :   52af1:  sub    $0x26f,%r11
+    0.00 :   52af8:  cmp    $0x320,%r11
+    0.00 :   52aff:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52b05:  mov    0xc0(%rax),%r11
+    0.00 :   52b0c:  test   %r10,%r11
+    0.00 :   52b0f:  je     52b30 <ml5_0_dp_terminal_wl_2_1_+0x450>
+    0.00 :   52b11:  sar    $0x34,%r11
+    0.37 :   52b15:  and    $0x7ff,%r11d
+    0.00 :   52b1c:  sub    $0x26f,%r11
+    0.00 :   52b23:  cmp    $0x320,%r11
+    0.00 :   52b2a:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52b30:  mov    0xd0(%rax),%r11
+    0.00 :   52b37:  test   %r10,%r11
+    0.00 :   52b3a:  je     52b5b <ml5_0_dp_terminal_wl_2_1_+0x47b>
+    0.00 :   52b3c:  sar    $0x34,%r11
+    0.00 :   52b40:  and    $0x7ff,%r11d
+    0.00 :   52b47:  sub    $0x26f,%r11
+    0.00 :   52b4e:  cmp    $0x320,%r11
+    0.00 :   52b55:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52b5b:  mov    0xe0(%rax),%r11
+    0.00 :   52b62:  test   %r10,%r11
+    0.00 :   52b65:  je     52b86 <ml5_0_dp_terminal_wl_2_1_+0x4a6>
+    0.00 :   52b67:  sar    $0x34,%r11
+    0.00 :   52b6b:  and    $0x7ff,%r11d
+    0.00 :   52b72:  sub    $0x26f,%r11
+    0.00 :   52b79:  cmp    $0x320,%r11
+    0.00 :   52b80:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52b86:  mov    0xf0(%rax),%r11
+    0.00 :   52b8d:  test   %r10,%r11
+    0.00 :   52b90:  je     52bb1 <ml5_0_dp_terminal_wl_2_1_+0x4d1>
+    0.00 :   52b92:  sar    $0x34,%r11
+    0.00 :   52b96:  and    $0x7ff,%r11d
+    0.00 :   52b9d:  sub    $0x26f,%r11
+    0.00 :   52ba4:  cmp    $0x320,%r11
+    0.00 :   52bab:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52bb1:  mov    0x100(%rax),%r11
+    0.00 :   52bb8:  test   %r10,%r11
+    0.00 :   52bbb:  je     52bdc <ml5_0_dp_terminal_wl_2_1_+0x4fc>
+    0.00 :   52bbd:  sar    $0x34,%r11
+    0.00 :   52bc1:  and    $0x7ff,%r11d
+    0.00 :   52bc8:  sub    $0x26f,%r11
+    0.00 :   52bcf:  cmp    $0x320,%r11
+    0.00 :   52bd6:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52bdc:  mov    0x110(%rax),%r11
+    0.00 :   52be3:  test   %r10,%r11
+    0.00 :   52be6:  je     52c07 <ml5_0_dp_terminal_wl_2_1_+0x527>
+    0.00 :   52be8:  sar    $0x34,%r11
+    0.00 :   52bec:  and    $0x7ff,%r11d
+    0.00 :   52bf3:  sub    $0x26f,%r11
+    0.00 :   52bfa:  cmp    $0x320,%r11
+    0.00 :   52c01:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52c07:  mov    0x120(%rax),%r11
+    0.00 :   52c0e:  test   %r10,%r11
+    0.00 :   52c11:  je     52c32 <ml5_0_dp_terminal_wl_2_1_+0x552>
+    0.00 :   52c13:  sar    $0x34,%r11
+    0.00 :   52c17:  and    $0x7ff,%r11d
+    0.00 :   52c1e:  sub    $0x26f,%r11
+    0.00 :   52c25:  cmp    $0x320,%r11
+    0.00 :   52c2c:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52c32:  mov    0x130(%rax),%r11
+    0.00 :   52c39:  test   %r10,%r11
+    0.00 :   52c3c:  je     52c5d <ml5_0_dp_terminal_wl_2_1_+0x57d>
+    0.00 :   52c3e:  sar    $0x34,%r11
+    0.37 :   52c42:  and    $0x7ff,%r11d
+    0.00 :   52c49:  sub    $0x26f,%r11
+    0.00 :   52c50:  cmp    $0x320,%r11
+    0.00 :   52c57:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52c5d:  add    $0x140,%rax
+    0.00 :   52c63:  cmp    %rax,%rbx
+    0.00 :   52c66:  jne    5291a <ml5_0_dp_terminal_wl_2_1_+0x23a>
+    0.00 :   52c6c:  lea    0x8(%rdx),%rax
+    0.00 :   52c70:  lea    0x508(%rdx),%rbx
+    0.00 :   52c77:  movabs $0x7fffffffffffffff,%r10
+    0.00 :   52c81:  mov    (%rax),%r11
+    0.00 :   52c84:  test   %r10,%r11
+    0.00 :   52c87:  je     52ca8 <ml5_0_dp_terminal_wl_2_1_+0x5c8>
+    0.00 :   52c89:  sar    $0x34,%r11
+    0.00 :   52c8d:  and    $0x7ff,%r11d
+    0.00 :   52c94:  sub    $0x26f,%r11
+    0.37 :   52c9b:  cmp    $0x320,%r11
+    0.00 :   52ca2:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52ca8:  mov    0x10(%rax),%r11
+    0.00 :   52cac:  test   %r10,%r11
+    0.00 :   52caf:  je     52cd0 <ml5_0_dp_terminal_wl_2_1_+0x5f0>
+    0.00 :   52cb1:  sar    $0x34,%r11
+    0.37 :   52cb5:  and    $0x7ff,%r11d
+    0.00 :   52cbc:  sub    $0x26f,%r11
+    0.00 :   52cc3:  cmp    $0x320,%r11
+    0.37 :   52cca:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52cd0:  mov    0x20(%rax),%r11
+    0.00 :   52cd4:  test   %r10,%r11
+    0.00 :   52cd7:  je     52cf8 <ml5_0_dp_terminal_wl_2_1_+0x618>
+    0.00 :   52cd9:  sar    $0x34,%r11
+    0.00 :   52cdd:  and    $0x7ff,%r11d
+    0.00 :   52ce4:  sub    $0x26f,%r11
+    0.00 :   52ceb:  cmp    $0x320,%r11
+    0.00 :   52cf2:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52cf8:  mov    0x30(%rax),%r11
+    0.37 :   52cfc:  test   %r10,%r11
+    0.00 :   52cff:  je     52d20 <ml5_0_dp_terminal_wl_2_1_+0x640>
+    0.00 :   52d01:  sar    $0x34,%r11
+    0.00 :   52d05:  and    $0x7ff,%r11d
+    0.00 :   52d0c:  sub    $0x26f,%r11
+    0.00 :   52d13:  cmp    $0x320,%r11
+    0.00 :   52d1a:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52d20:  mov    0x40(%rax),%r11
+    0.00 :   52d24:  test   %r10,%r11
+    0.00 :   52d27:  je     52d48 <ml5_0_dp_terminal_wl_2_1_+0x668>
+    0.00 :   52d29:  sar    $0x34,%r11
+    0.00 :   52d2d:  and    $0x7ff,%r11d
+    0.00 :   52d34:  sub    $0x26f,%r11
+    0.00 :   52d3b:  cmp    $0x320,%r11
+    0.00 :   52d42:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52d48:  mov    0x50(%rax),%r11
+    0.00 :   52d4c:  test   %r10,%r11
+    0.00 :   52d4f:  je     52d70 <ml5_0_dp_terminal_wl_2_1_+0x690>
+    0.00 :   52d51:  sar    $0x34,%r11
+    0.00 :   52d55:  and    $0x7ff,%r11d
+    0.00 :   52d5c:  sub    $0x26f,%r11
+    0.00 :   52d63:  cmp    $0x320,%r11
+    0.00 :   52d6a:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52d70:  mov    0x60(%rax),%r11
+    0.00 :   52d74:  test   %r10,%r11
+    0.00 :   52d77:  je     52d98 <ml5_0_dp_terminal_wl_2_1_+0x6b8>
+    0.00 :   52d79:  sar    $0x34,%r11
+    0.37 :   52d7d:  and    $0x7ff,%r11d
+    0.00 :   52d84:  sub    $0x26f,%r11
+    0.00 :   52d8b:  cmp    $0x320,%r11
+    0.00 :   52d92:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52d98:  mov    0x70(%rax),%r11
+    0.00 :   52d9c:  test   %r10,%r11
+    0.00 :   52d9f:  je     52dc0 <ml5_0_dp_terminal_wl_2_1_+0x6e0>
+    0.00 :   52da1:  sar    $0x34,%r11
+    0.00 :   52da5:  and    $0x7ff,%r11d
+    0.00 :   52dac:  sub    $0x26f,%r11
+    0.00 :   52db3:  cmp    $0x320,%r11
+    0.00 :   52dba:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52dc0:  mov    0x80(%rax),%r11
+    0.00 :   52dc7:  test   %r10,%r11
+    0.00 :   52dca:  je     52deb <ml5_0_dp_terminal_wl_2_1_+0x70b>
+    0.00 :   52dcc:  sar    $0x34,%r11
+    0.37 :   52dd0:  and    $0x7ff,%r11d
+    0.00 :   52dd7:  sub    $0x26f,%r11
+    0.00 :   52dde:  cmp    $0x320,%r11
+    0.00 :   52de5:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52deb:  mov    0x90(%rax),%r11
+    0.00 :   52df2:  test   %r10,%r11
+    0.00 :   52df5:  je     52e16 <ml5_0_dp_terminal_wl_2_1_+0x736>
+    0.00 :   52df7:  sar    $0x34,%r11
+    0.37 :   52dfb:  and    $0x7ff,%r11d
+    0.00 :   52e02:  sub    $0x26f,%r11
+    0.00 :   52e09:  cmp    $0x320,%r11
+    0.00 :   52e10:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52e16:  mov    0xa0(%rax),%r11
+    0.00 :   52e1d:  test   %r10,%r11
+    0.00 :   52e20:  je     52e41 <ml5_0_dp_terminal_wl_2_1_+0x761>
+    0.00 :   52e22:  sar    $0x34,%r11
+    0.00 :   52e26:  and    $0x7ff,%r11d
+    0.00 :   52e2d:  sub    $0x26f,%r11
+    0.00 :   52e34:  cmp    $0x320,%r11
+    0.00 :   52e3b:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52e41:  mov    0xb0(%rax),%r11
+    0.00 :   52e48:  test   %r10,%r11
+    0.00 :   52e4b:  je     52e6c <ml5_0_dp_terminal_wl_2_1_+0x78c>
+    0.00 :   52e4d:  sar    $0x34,%r11
+    0.00 :   52e51:  and    $0x7ff,%r11d
+    0.00 :   52e58:  sub    $0x26f,%r11
+    0.00 :   52e5f:  cmp    $0x320,%r11
+    0.00 :   52e66:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52e6c:  mov    0xc0(%rax),%r11
+    0.00 :   52e73:  test   %r10,%r11
+    0.00 :   52e76:  je     52e97 <ml5_0_dp_terminal_wl_2_1_+0x7b7>
+    0.00 :   52e78:  sar    $0x34,%r11
+    0.00 :   52e7c:  and    $0x7ff,%r11d
+    0.00 :   52e83:  sub    $0x26f,%r11
+    0.00 :   52e8a:  cmp    $0x320,%r11
+    0.00 :   52e91:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52e97:  mov    0xd0(%rax),%r11
+    0.00 :   52e9e:  test   %r10,%r11
+    0.00 :   52ea1:  je     52ec2 <ml5_0_dp_terminal_wl_2_1_+0x7e2>
+    0.00 :   52ea3:  sar    $0x34,%r11
+    0.00 :   52ea7:  and    $0x7ff,%r11d
+    0.00 :   52eae:  sub    $0x26f,%r11
+    0.00 :   52eb5:  cmp    $0x320,%r11
+    0.00 :   52ebc:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52ec2:  mov    0xe0(%rax),%r11
+    0.00 :   52ec9:  test   %r10,%r11
+    0.00 :   52ecc:  je     52eed <ml5_0_dp_terminal_wl_2_1_+0x80d>
+    0.00 :   52ece:  sar    $0x34,%r11
+    0.00 :   52ed2:  and    $0x7ff,%r11d
+    0.00 :   52ed9:  sub    $0x26f,%r11
+    0.00 :   52ee0:  cmp    $0x320,%r11
+    0.00 :   52ee7:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52eed:  mov    0xf0(%rax),%r11
+    0.37 :   52ef4:  test   %r10,%r11
+    0.00 :   52ef7:  je     52f18 <ml5_0_dp_terminal_wl_2_1_+0x838>
+    0.00 :   52ef9:  sar    $0x34,%r11
+    0.00 :   52efd:  and    $0x7ff,%r11d
+    0.00 :   52f04:  sub    $0x26f,%r11
+    0.00 :   52f0b:  cmp    $0x320,%r11
+    0.00 :   52f12:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52f18:  mov    0x100(%rax),%r11
+    0.00 :   52f1f:  test   %r10,%r11
+    0.00 :   52f22:  je     52f43 <ml5_0_dp_terminal_wl_2_1_+0x863>
+    0.00 :   52f24:  sar    $0x34,%r11
+    0.00 :   52f28:  and    $0x7ff,%r11d
+    0.00 :   52f2f:  sub    $0x26f,%r11
+    0.00 :   52f36:  cmp    $0x320,%r11
+    0.00 :   52f3d:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52f43:  mov    0x110(%rax),%r11
+    0.00 :   52f4a:  test   %r10,%r11
+    0.00 :   52f4d:  je     52f6e <ml5_0_dp_terminal_wl_2_1_+0x88e>
+    0.00 :   52f4f:  sar    $0x34,%r11
+    0.00 :   52f53:  and    $0x7ff,%r11d
+    0.00 :   52f5a:  sub    $0x26f,%r11
+    0.00 :   52f61:  cmp    $0x320,%r11
+    0.00 :   52f68:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52f6e:  mov    0x120(%rax),%r11
+    0.37 :   52f75:  test   %r10,%r11
+    0.00 :   52f78:  je     52f99 <ml5_0_dp_terminal_wl_2_1_+0x8b9>
+    0.00 :   52f7a:  sar    $0x34,%r11
+    0.00 :   52f7e:  and    $0x7ff,%r11d
+    0.00 :   52f85:  sub    $0x26f,%r11
+    0.00 :   52f8c:  cmp    $0x320,%r11
+    0.00 :   52f93:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52f99:  mov    0x130(%rax),%r11
+    0.00 :   52fa0:  test   %r10,%r11
+    0.00 :   52fa3:  je     52fc4 <ml5_0_dp_terminal_wl_2_1_+0x8e4>
+    0.00 :   52fa5:  sar    $0x34,%r11
+    0.37 :   52fa9:  and    $0x7ff,%r11d
+    0.00 :   52fb0:  sub    $0x26f,%r11
+    0.00 :   52fb7:  cmp    $0x320,%r11
+    0.00 :   52fbe:  ja     526f8 <ml5_0_dp_terminal_wl_2_1_+0x18>
+    0.00 :   52fc4:  add    $0x140,%rax
+    0.00 :   52fca:  cmp    %rax,%rbx
+    0.00 :   52fcd:  jne    52c81 <ml5_0_dp_terminal_wl_2_1_+0x5a1>
+    0.00 :   52fd3:  lea    0x8c0(%r9),%rcx
+    0.00 :   52fda:  lea    0x4f00(%r9),%rsi
+    0.00 :   52fe1:  pxor   %xmm0,%xmm0
+    0.00 :   52fe5:  movups %xmm0,-0x8c0(%rcx)
+    0.74 :   52fec:  lea    -0x880(%rcx),%rax
+    0.00 :   52ff3:  data16 cs nopw 0x0(%rax,%rax,1)
+    0.00 :   52ffe:  xchg   %ax,%ax
+    0.00 :   53000:  movups %xmm0,(%rax)
+    4.08 :   53003:  sub    $0xffffffffffffff80,%rax
+    0.37 :   53007:  movups %xmm0,-0x40(%rax)
+   10.39 :   5300b:  cmp    %rax,%rcx
+    0.00 :   5300e:  jne    53000 <ml5_0_dp_terminal_wl_2_1_+0x920>
+    0.00 :   53010:  add    $0x1190,%rcx
+    0.00 :   53017:  cmp    %rcx,%rsi
+    0.00 :   5301a:  jne    52fe5 <ml5_0_dp_terminal_wl_2_1_+0x905>
+    0.00 :   5301c:  mov    $0x46,%r10d
+    0.00 :   53022:  mov    $0x1,%r8d
+    0.00 :   53028:  pxor   %xmm3,%xmm3
+    0.00 :   5302c:  lea    0x510(%rdx),%r14
+    0.00 :   53033:  lea    0x1180(%rdi),%r15
+    0.00 :   5303a:  xor    %edx,%edx
+    0.00 :   5303c:  lea    0x6a66fd(%rip),%rsi        # 6f9740 <__ml5_0_polynomial_constants_MOD_comb_coef_pos>
+    0.00 :   53043:  mov    %r14,%rdi
+    0.00 :   53046:  xor    %ebx,%ebx
+    0.00 :   53048:  lea    -0x500(%rdi),%rcx
+    0.00 :   5304f:  mov    %r15,%rax
+    0.00 :   53052:  movsd  -0x8(%rcx),%xmm1
+    0.74 :   53057:  movsd  -0x10(%rcx),%xmm0
+    0.00 :   5305c:  ucomisd %xmm3,%xmm1
+    1.48 :   53060:  setnp  %r11b
+    2.22 :   53064:  cmovne %edx,%r11d
+    0.00 :   53068:  test   %r11b,%r11b
+    0.00 :   5306b:  je     530d0 <ml5_0_dp_terminal_wl_2_1_+0x9f0>
+    0.00 :   5306d:  ucomisd %xmm3,%xmm0
+    0.37 :   53071:  setnp  %r11b
+    0.00 :   53075:  cmovne %edx,%r11d
+    0.74 :   53079:  test   %r11b,%r11b
+    0.37 :   5307c:  je     530d0 <ml5_0_dp_terminal_wl_2_1_+0x9f0>
+    0.00 :   5307e:  add    $0x140,%rcx
+    0.37 :   53085:  add    $0x10,%rax
+    0.00 :   53089:  cmp    %rdi,%rcx
+    0.00 :   5308c:  jne    53052 <ml5_0_dp_terminal_wl_2_1_+0x972>
+    0.00 :   5308e:  lea    0x1(%rbx),%rax
+    0.00 :   53092:  lea    0x40(%rcx),%rdi
+    0.00 :   53096:  add    $0x118,%rsi
+    0.00 :   5309d:  mov    %rax,%rbx
+    0.00 :   530a0:  cmp    $0x5,%rax
+    0.00 :   530a4:  jne    53048 <ml5_0_dp_terminal_wl_2_1_+0x968>
+    0.00 :   530a6:  add    $0x1,%r8
+    0.00 :   530aa:  add    $0x1180,%r15
+    0.00 :   530b1:  add    $0x46,%r10
+    0.00 :   530b5:  add    $0x10,%r14
+    0.00 :   530b9:  cmp    $0x5,%r8
+    0.00 :   530bd:  jne    5303c <ml5_0_dp_terminal_wl_2_1_+0x95c>
+    0.00 :   530c3:  pop    %rbx
+    0.00 :   530c4:  pop    %r14
+    0.00 :   530c6:  pop    %r15
+    0.00 :   530c8:  pop    %rbp
+    0.00 :   530c9:  ret
+    0.00 :   530ca:  nopw   0x0(%rax,%rax,1)
+    0.00 :   530d0:  movsd  -0x1180(%rax),%xmm2
+    1.11 :   530d8:  movsd  -0x1178(%rax),%xmm5
+    0.00 :   530e0:  movslq (%rsi),%r11
+    0.00 :   530e3:  movapd %xmm5,%xmm4
+    0.00 :   530e7:  movapd %xmm2,%xmm6
+    0.00 :   530eb:  mulsd  %xmm1,%xmm5
+    0.00 :   530ef:  add    %r10,%r11
+    0.00 :   530f2:  mulsd  %xmm0,%xmm2
+    0.74 :   530f6:  lea    (%r8,%r11,4),%r11
+    0.00 :   530fa:  mulsd  %xmm1,%xmm6
+    0.37 :   530fe:  shl    $0x4,%r11
+    0.00 :   53102:  mulsd  %xmm0,%xmm4
+    0.00 :   53106:  add    %r9,%r11
+    0.00 :   53109:  subsd  %xmm5,%xmm2
+    0.00 :   5310d:  movsd  -0x1138(%rax),%xmm5
+    0.00 :   53115:  addsd  -0x1190(%r11),%xmm2
+    1.86 :   5311e:  addsd  %xmm6,%xmm4
+    0.00 :   53122:  movapd %xmm0,%xmm6
+    0.00 :   53126:  addsd  -0x1188(%r11),%xmm4
+    0.00 :   5312f:  movsd  %xmm2,-0x1190(%r11)
+    0.37 :   53138:  mulsd  %xmm5,%xmm6
+    0.00 :   5313c:  movsd  -0x1140(%rax),%xmm2
+    0.00 :   53144:  mulsd  %xmm1,%xmm5
+    0.00 :   53148:  movsd  %xmm4,-0x1188(%r11)
+    1.11 :   53151:  movslq 0x4(%rsi),%r11
+    0.00 :   53155:  movapd %xmm2,%xmm4
+    0.37 :   53159:  mulsd  %xmm0,%xmm2
+    0.00 :   5315d:  mulsd  %xmm1,%xmm4
+    0.00 :   53161:  add    %r10,%r11
+    0.00 :   53164:  lea    (%r8,%r11,4),%r11
+    0.00 :   53168:  shl    $0x4,%r11
+    0.37 :   5316c:  add    %r9,%r11
+    0.00 :   5316f:  subsd  %xmm5,%xmm2
+    1.48 :   53173:  movsd  -0x10f8(%rax),%xmm5
+    0.00 :   5317b:  addsd  -0x1190(%r11),%xmm2
+    0.37 :   53184:  addsd  %xmm6,%xmm4
+    0.00 :   53188:  movapd %xmm0,%xmm6
+    0.00 :   5318c:  addsd  -0x1188(%r11),%xmm4
+    0.00 :   53195:  mulsd  %xmm5,%xmm6
+    0.00 :   53199:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   531a2:  mulsd  %xmm1,%xmm5
+    0.00 :   531a6:  movsd  -0x1100(%rax),%xmm2
+    0.00 :   531ae:  movsd  %xmm4,-0x1188(%r11)
+    0.74 :   531b7:  movslq 0x8(%rsi),%r11
+    0.00 :   531bb:  movapd %xmm1,%xmm4
+    0.00 :   531bf:  mulsd  %xmm2,%xmm4
+    0.00 :   531c3:  mulsd  %xmm0,%xmm2
+    0.00 :   531c7:  add    %r10,%r11
+    0.00 :   531ca:  lea    (%r8,%r11,4),%r11
+    0.00 :   531ce:  shl    $0x4,%r11
+    0.74 :   531d2:  add    %r9,%r11
+    0.00 :   531d5:  addsd  %xmm6,%xmm4
+    0.00 :   531d9:  movapd %xmm0,%xmm6
+    0.00 :   531dd:  addsd  -0x1188(%r11),%xmm4
+    0.00 :   531e6:  subsd  %xmm5,%xmm2
+    0.00 :   531ea:  movsd  -0x10b8(%rax),%xmm5
+    0.00 :   531f2:  addsd  -0x1190(%r11),%xmm2
+    0.00 :   531fb:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   53204:  movapd %xmm1,%xmm4
+    0.00 :   53208:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   53211:  movslq 0xc(%rsi),%r11
+    0.00 :   53215:  movsd  -0x10c0(%rax),%xmm2
+    0.00 :   5321d:  mulsd  %xmm5,%xmm6
+    0.00 :   53221:  mulsd  %xmm1,%xmm5
+    0.00 :   53225:  mulsd  %xmm2,%xmm4
+    0.37 :   53229:  add    %r10,%r11
+    0.00 :   5322c:  mulsd  %xmm0,%xmm2
+    0.00 :   53230:  lea    (%r8,%r11,4),%r11
+    0.00 :   53234:  shl    $0x4,%r11
+    0.00 :   53238:  add    %r9,%r11
+    0.00 :   5323b:  addsd  %xmm6,%xmm4
+    0.00 :   5323f:  movapd %xmm0,%xmm6
+    0.00 :   53243:  addsd  -0x1188(%r11),%xmm4
+    0.00 :   5324c:  subsd  %xmm5,%xmm2
+    0.00 :   53250:  movsd  -0x1078(%rax),%xmm5
+    0.00 :   53258:  addsd  -0x1190(%r11),%xmm2
+    0.00 :   53261:  movsd  %xmm4,-0x1188(%r11)
+    0.37 :   5326a:  movapd %xmm1,%xmm4
+    0.00 :   5326e:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   53277:  movslq 0x10(%rsi),%r11
+    0.00 :   5327b:  movsd  -0x1080(%rax),%xmm2
+    0.00 :   53283:  mulsd  %xmm5,%xmm6
+    0.00 :   53287:  mulsd  %xmm1,%xmm5
+    0.37 :   5328b:  mulsd  %xmm2,%xmm4
+    0.00 :   5328f:  add    %r10,%r11
+    0.00 :   53292:  mulsd  %xmm0,%xmm2
+    0.37 :   53296:  lea    (%r8,%r11,4),%r11
+    0.00 :   5329a:  shl    $0x4,%r11
+    0.00 :   5329e:  add    %r9,%r11
+    0.00 :   532a1:  addsd  %xmm6,%xmm4
+    0.00 :   532a5:  movapd %xmm0,%xmm6
+    0.00 :   532a9:  addsd  -0x1188(%r11),%xmm4
+    1.11 :   532b2:  subsd  %xmm5,%xmm2
+    0.00 :   532b6:  addsd  -0x1190(%r11),%xmm2
+    0.00 :   532bf:  movsd  -0x1038(%rax),%xmm5
+    0.37 :   532c7:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   532d0:  movapd %xmm1,%xmm4
+    0.00 :   532d4:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   532dd:  movslq 0x14(%rsi),%r11
+    0.00 :   532e1:  movsd  -0x1040(%rax),%xmm2
+    0.00 :   532e9:  mulsd  %xmm5,%xmm6
+    0.37 :   532ed:  mulsd  %xmm1,%xmm5
+    0.00 :   532f1:  mulsd  %xmm2,%xmm4
+    0.00 :   532f5:  add    %r10,%r11
+    0.00 :   532f8:  mulsd  %xmm0,%xmm2
+    0.00 :   532fc:  lea    (%r8,%r11,4),%r11
+    0.00 :   53300:  shl    $0x4,%r11
+    0.37 :   53304:  add    %r9,%r11
+    0.00 :   53307:  addsd  %xmm6,%xmm4
+    0.00 :   5330b:  movapd %xmm1,%xmm6
+    0.00 :   5330f:  addsd  -0x1188(%r11),%xmm4
+    0.74 :   53318:  subsd  %xmm5,%xmm2
+    0.37 :   5331c:  movsd  -0xff8(%rax),%xmm5
+    0.00 :   53324:  addsd  -0x1190(%r11),%xmm2
+    0.00 :   5332d:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   53336:  movapd %xmm5,%xmm4
+    0.00 :   5333a:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   53343:  movsd  -0x1000(%rax),%xmm2
+    0.00 :   5334b:  movslq 0x18(%rsi),%r11
+    0.00 :   5334f:  mulsd  %xmm1,%xmm5
+    0.00 :   53353:  mulsd  %xmm0,%xmm4
+    0.00 :   53357:  mulsd  %xmm2,%xmm6
+    0.00 :   5335b:  add    %r10,%r11
+    0.00 :   5335e:  mulsd  %xmm0,%xmm2
+    0.00 :   53362:  lea    (%r8,%r11,4),%r11
+    0.00 :   53366:  shl    $0x4,%r11
+    0.00 :   5336a:  add    %r9,%r11
+    0.00 :   5336d:  addsd  %xmm6,%xmm4
+    0.00 :   53371:  movapd %xmm1,%xmm6
+    0.37 :   53375:  addsd  -0x1188(%r11),%xmm4
+    1.11 :   5337e:  subsd  %xmm5,%xmm2
+    0.37 :   53382:  movsd  -0xfb8(%rax),%xmm5
+    0.00 :   5338a:  addsd  -0x1190(%r11),%xmm2
+    0.00 :   53393:  movsd  %xmm4,-0x1188(%r11)
+    0.37 :   5339c:  movapd %xmm0,%xmm4
+    0.00 :   533a0:  movsd  %xmm2,-0x1190(%r11)
+    0.37 :   533a9:  movslq 0x1c(%rsi),%r11
+    0.00 :   533ad:  movsd  -0xfc0(%rax),%xmm2
+    0.00 :   533b5:  mulsd  %xmm5,%xmm4
+    0.00 :   533b9:  mulsd  %xmm1,%xmm5
+    0.00 :   533bd:  mulsd  %xmm2,%xmm6
+    0.00 :   533c1:  add    %r10,%r11
+    0.00 :   533c4:  mulsd  %xmm0,%xmm2
+    0.74 :   533c8:  lea    (%r8,%r11,4),%r11
+    0.00 :   533cc:  shl    $0x4,%r11
+    0.00 :   533d0:  add    %r9,%r11
+    0.00 :   533d3:  addsd  %xmm6,%xmm4
+    0.00 :   533d7:  movapd %xmm1,%xmm6
+    0.00 :   533db:  addsd  -0x1188(%r11),%xmm4
+    0.00 :   533e4:  subsd  %xmm5,%xmm2
+    0.00 :   533e8:  movsd  -0xf78(%rax),%xmm5
+    0.00 :   533f0:  addsd  -0x1190(%r11),%xmm2
+    1.48 :   533f9:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   53402:  movapd %xmm0,%xmm4
+    0.37 :   53406:  movsd  %xmm2,-0x1190(%r11)
+    0.37 :   5340f:  movslq 0x20(%rsi),%r11
+    0.00 :   53413:  movsd  -0xf80(%rax),%xmm2
+    0.00 :   5341b:  mulsd  %xmm5,%xmm4
+    0.00 :   5341f:  mulsd  %xmm1,%xmm5
+    0.00 :   53423:  mulsd  %xmm2,%xmm6
+    0.00 :   53427:  add    %r10,%r11
+    0.00 :   5342a:  mulsd  %xmm0,%xmm2
+    0.00 :   5342e:  lea    (%r8,%r11,4),%r11
+    0.00 :   53432:  shl    $0x4,%r11
+    0.74 :   53436:  add    %r9,%r11
+    0.00 :   53439:  addsd  %xmm6,%xmm4
+    0.37 :   5343d:  movapd %xmm0,%xmm6
+    0.00 :   53441:  addsd  -0x1188(%r11),%xmm4
+    1.11 :   5344a:  subsd  %xmm5,%xmm2
+    0.00 :   5344e:  addsd  -0x1190(%r11),%xmm2
+    0.00 :   53457:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   53460:  movapd %xmm1,%xmm4
+    0.37 :   53464:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   5346d:  movslq 0x24(%rsi),%r11
+    0.00 :   53471:  movsd  -0xf40(%rax),%xmm2
+    0.00 :   53479:  movsd  -0xf38(%rax),%xmm5
+    0.00 :   53481:  mulsd  %xmm2,%xmm4
+    0.00 :   53485:  add    %r10,%r11
+    0.00 :   53488:  mulsd  %xmm5,%xmm6
+    0.37 :   5348c:  lea    (%r8,%r11,4),%r11
+    0.00 :   53490:  mulsd  %xmm1,%xmm5
+    0.00 :   53494:  shl    $0x4,%r11
+    0.00 :   53498:  mulsd  %xmm0,%xmm2
+    1.48 :   5349c:  add    %r9,%r11
+    0.00 :   5349f:  addsd  %xmm6,%xmm4
+    0.00 :   534a3:  movapd %xmm1,%xmm6
+    0.00 :   534a7:  addsd  -0x1188(%r11),%xmm4
+    0.37 :   534b0:  subsd  %xmm5,%xmm2
+    0.00 :   534b4:  movsd  -0xef8(%rax),%xmm5
+    0.00 :   534bc:  addsd  -0x1190(%r11),%xmm2
+    0.37 :   534c5:  movsd  %xmm4,-0x1188(%r11)
+    0.23 :   534ce:  movapd %xmm0,%xmm4
+    0.00 :   534d2:  mulsd  %xmm5,%xmm4
+    0.00 :   534d6:  movsd  %xmm2,-0x1190(%r11)
+    0.74 :   534df:  movslq 0x28(%rsi),%r11
+    0.00 :   534e3:  movsd  -0xf00(%rax),%xmm2
+    0.00 :   534eb:  mulsd  %xmm1,%xmm5
+    0.00 :   534ef:  mulsd  %xmm2,%xmm6
+    0.00 :   534f3:  add    %r10,%r11
+    0.00 :   534f6:  mulsd  %xmm0,%xmm2
+    0.00 :   534fa:  lea    (%r8,%r11,4),%r11
+    0.00 :   534fe:  shl    $0x4,%r11
+    0.00 :   53502:  add    %r9,%r11
+    0.00 :   53505:  addsd  %xmm6,%xmm4
+    0.37 :   53509:  movapd %xmm1,%xmm6
+    0.00 :   5350d:  addsd  -0x1188(%r11),%xmm4
+    1.11 :   53516:  subsd  %xmm5,%xmm2
+    0.00 :   5351a:  movsd  -0xeb8(%rax),%xmm5
+    0.37 :   53522:  addsd  -0x1190(%r11),%xmm2
+    1.48 :   5352b:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   53534:  movapd %xmm0,%xmm4
+    0.00 :   53538:  movsd  %xmm2,-0x1190(%r11)
+    0.37 :   53541:  movslq 0x2c(%rsi),%r11
+    0.00 :   53545:  movsd  -0xec0(%rax),%xmm2
+    0.00 :   5354d:  mulsd  %xmm5,%xmm4
+    0.00 :   53551:  mulsd  %xmm1,%xmm5
+    0.00 :   53555:  mulsd  %xmm2,%xmm6
+    0.37 :   53559:  add    %r10,%r11
+    0.00 :   5355c:  mulsd  %xmm0,%xmm2
+    0.74 :   53560:  lea    (%r8,%r11,4),%r11
+    0.00 :   53564:  shl    $0x4,%r11
+    0.37 :   53568:  add    %r9,%r11
+    0.00 :   5356b:  addsd  %xmm6,%xmm4
+    0.00 :   5356f:  movapd %xmm1,%xmm6
+    0.00 :   53573:  addsd  -0x1188(%r11),%xmm4
+    2.23 :   5357c:  subsd  %xmm5,%xmm2
+    0.00 :   53580:  movsd  -0xe78(%rax),%xmm5
+    0.00 :   53588:  addsd  -0x1190(%r11),%xmm2
+    0.37 :   53591:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   5359a:  movapd %xmm0,%xmm4
+    0.00 :   5359e:  movsd  %xmm2,-0x1190(%r11)
+    0.37 :   535a7:  movslq 0x30(%rsi),%r11
+    0.37 :   535ab:  movsd  -0xe80(%rax),%xmm2
+    0.00 :   535b3:  mulsd  %xmm5,%xmm4
+    0.74 :   535b7:  mulsd  %xmm1,%xmm5
+    0.00 :   535bb:  mulsd  %xmm2,%xmm6
+    0.00 :   535bf:  add    %r10,%r11
+    0.00 :   535c2:  mulsd  %xmm0,%xmm2
+    0.37 :   535c6:  lea    (%r8,%r11,4),%r11
+    0.00 :   535ca:  shl    $0x4,%r11
+    0.74 :   535ce:  add    %r9,%r11
+    0.00 :   535d1:  addsd  %xmm6,%xmm4
+    0.00 :   535d5:  movapd %xmm1,%xmm6
+    0.00 :   535d9:  addsd  -0x1188(%r11),%xmm4
+    0.00 :   535e2:  subsd  %xmm5,%xmm2
+    0.00 :   535e6:  movsd  -0xe38(%rax),%xmm5
+    0.00 :   535ee:  addsd  -0x1190(%r11),%xmm2
+    1.11 :   535f7:  movsd  %xmm4,-0x1188(%r11)
+    2.22 :   53600:  movapd %xmm0,%xmm4
+    0.00 :   53604:  movsd  %xmm2,-0x1190(%r11)
+    0.74 :   5360d:  movslq 0x34(%rsi),%r11
+    0.00 :   53611:  movsd  -0xe40(%rax),%xmm2
+    0.00 :   53619:  mulsd  %xmm5,%xmm4
+    0.00 :   5361d:  mulsd  %xmm1,%xmm5
+    0.00 :   53621:  mulsd  %xmm2,%xmm6
+    0.00 :   53625:  add    %r10,%r11
+    0.00 :   53628:  mulsd  %xmm0,%xmm2
+    0.00 :   5362c:  lea    (%r8,%r11,4),%r11
+    0.00 :   53630:  shl    $0x4,%r11
+    1.11 :   53634:  add    %r9,%r11
+    0.00 :   53637:  addsd  %xmm6,%xmm4
+    0.00 :   5363b:  movapd %xmm1,%xmm6
+    0.00 :   5363f:  addsd  -0x1188(%r11),%xmm4
+    0.74 :   53648:  subsd  %xmm5,%xmm2
+    0.00 :   5364c:  addsd  -0x1190(%r11),%xmm2
+    0.37 :   53655:  movsd  %xmm2,-0x1190(%r11)
+    0.00 :   5365e:  movapd %xmm0,%xmm2
+    0.37 :   53662:  movsd  -0xe00(%rax),%xmm5
+    0.37 :   5366a:  movsd  %xmm4,-0x1188(%r11)
+    0.00 :   53673:  movslq 0x38(%rsi),%r11
+    0.00 :   53677:  movsd  -0xdf8(%rax),%xmm4
+    0.00 :   5367f:  mulsd  %xmm5,%xmm6
+    0.00 :   53683:  mulsd  %xmm4,%xmm2
+    0.00 :   53687:  add    %r10,%r11
+    0.00 :   5368a:  mulsd  %xmm5,%xmm0
+    0.74 :   5368e:  lea    (%r8,%r11,4),%r11
+    0.00 :   53692:  mulsd  %xmm4,%xmm1
+    0.37 :   53696:  shl    $0x4,%r11
+    0.00 :   5369a:  add    %r9,%r11
+    0.00 :   5369d:  addsd  %xmm6,%xmm2
+    0.00 :   536a1:  addsd  -0x1188(%r11),%xmm2
+    1.48 :   536aa:  subsd  %xmm1,%xmm0
+    0.00 :   536ae:  addsd  -0x1190(%r11),%xmm0
+    0.37 :   536b7:  movsd  %xmm2,-0x1188(%r11)
+    0.37 :   536c0:  movsd  %xmm0,-0x1190(%r11)
+    1.11 :   536c9:  jmp    5307e <ml5_0_dp_terminal_wl_2_1_+0x99e>
