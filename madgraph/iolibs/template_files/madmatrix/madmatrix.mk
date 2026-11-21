@@ -22,6 +22,11 @@ ifeq ($(HELINL),)
   override HELINL = 0
 endif
 
+# Set the default FASTMATH choice (0: IEEE-strict, i.e. no fast-math and no FP contraction; auto: opt-in, CUDA only, see SigmaKin.o)
+ifeq ($(FASTMATH),)
+  override FASTMATH = 1
+endif
+
 # default USEBUILDDIR = 1
 ifeq ($(USEBUILDDIR),)
   override USEBUILDDIR = 1
@@ -51,6 +56,16 @@ endif
 
 ifneq ($(filter-out 0,$(HRDCOD)),)
   $(error HRDCOD=$(HRDCOD) is no longer supported: model parameters are always read at runtime (#226))
+endif
+
+override SUPPORTED_FASTMATHS = 0 1 auto
+ifneq ($(words $(filter $(FASTMATH), $(SUPPORTED_FASTMATHS))),1)
+  $(error Invalid fastmath FASTMATH='$(FASTMATH)': supported fastmaths are $(foreach fastmath,$(SUPPORTED_FASTMATHS),'$(fastmath)'))
+endif
+ifeq ($(FASTMATH),auto)
+  ifneq ($(BACKEND),cuda)
+    $(error FASTMATH='auto' is implemented for BACKEND=cuda only)
+  endif
 endif
 
 # Stop immediately if BACKEND=cuda but nvcc is missing
@@ -159,7 +174,9 @@ endif
 #=== Configure the C++ compiler
 
 CXXFLAGS = $(OPTFLAGS) -std=c++20 -Wall -Wshadow -Wextra
-ifeq ($(shell $(CXX) --version | grep ^nvc++),)
+ifeq ($(FASTMATH),0)
+  CXXFLAGS += -fno-fast-math -ffp-contract=off
+else ifeq ($(shell $(CXX) --version | grep ^nvc++),)
   CXXFLAGS += -ffast-math # see issue #117
 endif
 ###CXXFLAGS+= -Ofast # performance is not different from --fast-math
@@ -290,7 +307,13 @@ ifeq ($(BACKEND),cuda)
   ###GPUCC_VERSION = $(shell $(GPUCC) --version | grep 'Cuda compilation tools' | cut -d' ' -f5 | cut -d, -f1)
 
   # Fast math
-  GPUFLAGS += -use_fast_math
+  ifeq ($(FASTMATH),0)
+    GPUFLAGS += -fmad=false
+  else ifeq ($(FASTMATH),auto)
+    GPUFLAGS += -fmad=true
+  else
+    GPUFLAGS += -use_fast_math
+  endif
 
   # Extra build warnings
   GPUFLAGS += $(XCOMPILERFLAG) -Wunused-parameter
@@ -347,8 +370,12 @@ else ifeq ($(BACKEND),hip)
   # Other AMD-specific flags
   GPUFLAGS += -target x86_64-linux-gnu -DHIP_PLATFORM=amd
 
-  # Fast math (is -DHIP_FAST_MATH equivalent to -ffast-math?)
-  GPUFLAGS += -DHIP_FAST_MATH
+  # -DHIP_FAST_MATH is read only on hipcc's NVIDIA path, no-op on AMD: FASTMATH=1 is the clang default (FMA contraction on).
+  ifeq ($(FASTMATH),0)
+    GPUFLAGS += -ffp-contract=off
+  else
+    GPUFLAGS += -DHIP_FAST_MATH
+  endif
 
   # Extra build warnings
   ###GPUFLAGS += $(XCOMPILERFLAG) -Wall $(XCOMPILERFLAG) -Wextra $(XCOMPILERFLAG) -Wshadow
@@ -753,7 +780,7 @@ endif
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...)
-override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_fm$(FASTMATH)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
@@ -916,6 +943,22 @@ else
 $(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -c -x $(GPULANGUAGE) $< -o $@
+endif
+
+# FASTMATH=auto: SigmaKin.o is built with -fmad and with -use_fast_math. The approximate div/sqrt of
+# the latter make calculate_jamps spill more, which costs more than they save once its stack grows by
+# more than FASTMATH_STACK_GROWTH bytes (fast-math benchmarks on L40S and H100): then -fmad is kept.
+ifeq ($(FASTMATH)$(BACKEND),autocuda)
+FASTMATH_STACK_GROWTH ?= 128
+override JAMPS_STACK = $(CUDA_HOME)/bin/cuobjdump -res-usage $(1) | awk '/Function .*calculate_jamps/ { getline; sub(/.*STACK:/, ""); if ($$1 + 0 > max) max = $$1 + 0 } END { print max + 0 }'
+$(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
+	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
+	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -c -x $(GPULANGUAGE) $< -o $(@:.o=.mad.o) & mad=$$!; \
+	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -use_fast_math -c -x $(GPULANGUAGE) $< -o $(@:.o=.fm1.o) && wait $$mad
+	@growth=$$(( $$($(call JAMPS_STACK,$(@:.o=.fm1.o))) - $$($(call JAMPS_STACK,$(@:.o=.mad.o))) )); \
+	if [ $$growth -le $(FASTMATH_STACK_GROWTH) ]; then pick=fm1; else pick=mad; fi; \
+	cp $(@:.o=.$$pick.o) $@; \
+	echo "FASTMATH=auto $(processid_short): calculate_jamps stack +$$growth B with -use_fast_math, keeping $$pick" | tee $(@:.o=.fastmath)
 endif
 
 #-------------------------------------------------------------------------------
