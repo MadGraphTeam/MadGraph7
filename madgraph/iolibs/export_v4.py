@@ -2755,17 +2755,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
     
 
     # The ALOHA_OBJECT module of a MadLoop library with a P-wave bound state:
-    # the double-precision wavefunctions are dual numbers (as in
-    # aloha_functions_dual.f), the quadruple-precision ones plain (as in
-    # aloha_functions_loop.f).
+    # the wavefunctions are dual numbers, in double precision as in
+    # aloha_functions_dual.f, in quadruple precision those of
+    # mp_dual_variables.f.
     LOOP_DUAL_ALOHA_OBJECT = """\
       module ALOHA_OBJECT
-c     A MadLoop library with a P-wave bound state: the double-precision
-c     momenta and wavefunction components are dual numbers (the tree-level
-c     P-wave layout of aloha_functions_dual.f), their extra component the
-c     derivative in the relative momentum of the bound state; the
-c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
+c     A MadLoop library with a P-wave bound state: the momenta and
+c     wavefunction components are dual numbers (the tree-level P-wave layout
+c     of aloha_functions_dual.f), their extra component the derivative in
+c     the relative momentum of the bound state, in double (Dual) and in
+c     quadruple precision (MP_Dual).
       use dual_variables
+      use mp_dual_variables
       implicit none
          TYPE ALOHA
             type(Dual) :: W(4)
@@ -2778,22 +2779,17 @@ c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
             integer :: flv_index
          END TYPE ALOHA2D
          TYPE MP_ALOHA
-            SEQUENCE
-            complex*32 :: W(4)
-            complex*32 :: P(0:3)
+            type(MP_Dual) :: W(4)
+            type(MP_Dual) :: P(0:3)
             integer :: flv_index
          END TYPE MP_ALOHA
          TYPE MP_ALOHA2D
-            SEQUENCE
-            complex*32 :: W(16)
-            complex*32 :: P(0:3)
+            type(MP_Dual) :: W(16)
+            type(MP_Dual) :: P(0:3)
             integer :: flv_index
          END TYPE MP_ALOHA2D
       end module ALOHA_OBJECT
 """
-    # the quadruple-precision external wavefunctions of aloha_functions_loop.f
-    LOOP_DUAL_MP_ROUTINES = ('mp_ixxxxx', 'mp_oxxxxx', 'mp_pxxxxx', 'mp_sxxxxx',
-                             'mp_txxxxx', 'mp_vxxxxx')
 
     @classmethod
     def write_loop_dual_aloha_functions(cls, write_dir):
@@ -2804,29 +2800,18 @@ c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
         template = pjoin(MG5DIR, 'aloha', 'template_files')
         with open(pjoin(template, 'aloha_functions_dual.f')) as stream:
             dual = stream.read()
-        with open(pjoin(template, 'aloha_functions_loop.f')) as stream:
-            loop = stream.read().splitlines(True)
+        with open(pjoin(template, 'aloha_functions_mp_dual.f')) as stream:
+            mp_dual = stream.read()
         marker = re.search(r'(?im)^\s*end module ALOHA_OBJECT\s*$', dual)
         if not marker:
             raise MadGraph5Error('Unexpected aloha_functions_dual.f')
-        mp = []
-        for name in cls.LOOP_DUAL_MP_ROUTINES:
-            start = [i for i, line in enumerate(loop)
-                     if re.match(r'(?i)\s+subroutine\s+%s\s*\(' % name, line)]
-            if len(start) != 1:
-                raise MadGraph5Error('Unexpected aloha_functions_loop.f: %s' % name)
-            end = [i for i in range(start[0] + 1, len(loop))
-                   if re.match(r'(?i)\s+end\s*$', loop[i])]
-            if not end:
-                raise MadGraph5Error('Unexpected aloha_functions_loop.f: %s' % name)
-            mp.append(''.join(loop[start[0]:end[0] + 1]))
         with open(pjoin(write_dir, 'aloha_functions.f'), 'w') as stream:
             stream.write(cls.LOOP_DUAL_ALOHA_OBJECT)
             stream.write(dual[marker.end():])
-            stream.write('\n\nc     The quadruple-precision external wavefunctions '
-                         '(plain, aloha_functions_loop.f)\n\n')
-            stream.write('\n'.join(mp))
+            stream.write('\n\n')
+            stream.write(mp_dual)
         cp(pjoin(template, 'dual_variables.f'), pjoin(write_dir, 'dual_variables.f'))
+        cp(pjoin(template, 'mp_dual_variables.f'), pjoin(write_dir, 'mp_dual_variables.f'))
 
         class OnePWave(object):
             """write_dual_opts_file of one P-wave bound state"""
@@ -2849,11 +2834,12 @@ c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
         if makefile.count(old) != 1:
             raise MadGraph5Error('Unexpected aloha Makefile_F')
         makefile = makefile.replace(old,
-            'BASIC_OBJS = dual_variables.o aloha_functions.o')
+            'BASIC_OBJS = dual_variables.o mp_dual_variables.o aloha_functions.o')
         # after the default goal: aloha_functions.o (module ALOHA_OBJECT) uses
-        # the module of dual_variables.o
-        makefile += ('\n# aloha_functions.o (module ALOHA_OBJECT) uses the module of\n'
-                     '# dual_variables.o\naloha_functions.o: dual_variables.o\n')
+        # the modules of dual_variables.o and mp_dual_variables.o
+        makefile += ('\n# aloha_functions.o (module ALOHA_OBJECT) uses the modules of\n'
+                     '# dual_variables.o and mp_dual_variables.o\n'
+                     'aloha_functions.o: dual_variables.o mp_dual_variables.o\n')
         with open(pjoin(write_dir, 'makefile'), 'w') as stream:
             stream.write(makefile)
 
@@ -2865,10 +2851,9 @@ c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
         under its aloha.gauge_scope, see gauge_libraries).
 
         loop_dual: the library of a MadLoop output with a P-wave bound state,
-        Source/DHELAS itself, whose double-precision routines (the tree-level
-        and the loop ones) are the dual-number routines of the tree-level
-        P-wave output, the quadruple-precision ones plain (write_loop_dual_
-        aloha_functions)."""
+        Source/DHELAS itself, whose routines (the tree-level and the loop
+        ones) are the dual-number routines of the tree-level P-wave output,
+        in double and in quadruple precision (write_loop_dual_aloha_functions)."""
 
         old_aloha_mp = aloha.mp_precision
         aloha.mp_precision = self.opt['mp']
@@ -2876,8 +2861,10 @@ c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
         # Backup the loop and dual modes, because they can be changed in what follows.
         old_loop_mode = aloha.loop_mode
         old_dual_mode = aloha.dual_mode
+        old_mp_dual = aloha.mp_dual
         if loop_dual:
             aloha.dual_mode = 1
+            aloha.mp_dual = True
 
         # Create the aloha model or use the existing one (for loop exporters
         # this is useful as the aloha model will be used again in the 
@@ -2917,6 +2904,7 @@ c     quadruple-precision ones are the plain ones of aloha_functions_loop.f.
         # Revert the original aloha loop and dual modes
         aloha.loop_mode = old_loop_mode
         aloha.dual_mode = old_dual_mode
+        aloha.mp_dual = old_mp_dual
 
         #copy Helas Template
         cp(MG5DIR + '/aloha/template_files/Makefile_F', write_dir+'/makefile')

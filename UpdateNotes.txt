@@ -21,8 +21,10 @@ ANNOUNCEMENT:
        L routines), the loop polynomials with their derivative, and the propagator
        derivatives as tensor integrals with one doubled propagator reduced by TIRust
        (raised propagator powers, new in vendor/tirust: tirust_tensor_evaluate_powers).
-       Double precision only for now; the Coulomb box with a doubled gluon is not yet
-       reduced by TIRust at threshold.
+       Double and quadruple precision (MP_Dual numbers, aloha mp_dual_variables.f and
+       aloha_functions_mp_dual.f; the QP rescue of MadLoop's stability tests). The
+       Coulomb box with a doubled gluon is not yet reduced by TIRust at threshold: such a
+       point is reported unstable in every CTModeRun mode.
    HS: MadLoop standalone outputs compile their sources at -O2 (MADLOOP_OPTIMIZATION in the
        loop makefile, before FFLAGS) and their DHELAS and MODEL libraries at -O2 (ALOHA_FLAG
        and the new MODEL_FLAG of make_opts); they tabulate the colour factors and

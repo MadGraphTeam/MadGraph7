@@ -2168,6 +2168,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         self.turn_to_mp_calls(mp_born_calls)
         if loop_onia.has_pwave(matrix_element):
             born_calls = loop_onia.pwave_dual_names(born_calls)
+            mp_born_calls = loop_onia.pwave_dual_names(mp_born_calls, mp=True)
 
         ldme_product = self.get_ldme_product(matrix_element) or '1D0'
         # the entries of loop_matrix.f (split orders, colour matrix, ...) and
@@ -3281,11 +3282,17 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 'IMPLICIT NONE',
                 'TYPE(ALOHA), ALLOCATABLE :: PWW(:)',
                 'TYPE(DUAL), ALLOCATABLE :: PWAMP(:), PWAMPL(:,:), PWPL(:,:), PWPD(:,:)',
+                'C     the same in quadruple precision',
+                'TYPE(MP_ALOHA), ALLOCATABLE :: MPPWW(:)',
+                'TYPE(MP_DUAL), ALLOCATABLE :: MPPWAMP(:), MPPWAMPL(:,:)',
+                'TYPE(MP_DUAL), ALLOCATABLE :: MPPWPL(:,:), MPPWPD(:,:)',
                 'CONTAINS',
                 'SUBROUTINE %(proc_prefix)sPW_DUAL_INIT()',
                 'IF (ALLOCATED(PWW)) RETURN',
                 'ALLOCATE(PWW(%(nwavefuncs)d), PWAMP(%(nbornamps)d), PWAMPL(3,%(nctamps)d))',
                 'ALLOCATE(PWPL(0:3,-1:%(nloopwavefuncs)d), PWPD(0:3,%(nexternal)d))',
+                'ALLOCATE(MPPWW(%(nwavefuncs)d), MPPWAMP(%(nbornamps)d), MPPWAMPL(3,%(nctamps)d))',
+                'ALLOCATE(MPPWPL(0:3,-1:%(nloopwavefuncs)d), MPPWPD(0:3,%(nexternal)d))',
                 'END SUBROUTINE %(proc_prefix)sPW_DUAL_INIT',
                 'END MODULE %(proc_prefix)sPW_DUAL']) % replace_dict + '\n')
 
@@ -3534,8 +3541,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                        squared_orders=squared_orders, split_orders=split_orders)
         self.turn_to_mp_calls(born_ct_helas_calls)
         self.turn_to_mp_calls(uvct_helas_calls)
+        pwave = loop_onia.has_pwave(matrix_element)
         terminal = (fortran_model.get_terminal_wavefunctions(matrix_element)
-                    if _terminal else {})
+                    if _terminal and not pwave else {})
         coef_construction, coef_merging = fortran_model.get_coef_construction_calls(\
                                     matrix_element,group_loops=self.group_loops,
                         squared_orders=squared_orders,split_orders=split_orders,
@@ -3545,8 +3553,19 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                                                            in coef_construction]
         self.turn_to_mp_calls(coef_construction)
         self.turn_to_mp_calls(coef_merging)        
-        coef_construction = self.factorize_mp_coef_calls(
-            coef_construction, matrix_element.rep_dict['proc_prefix'])
+        momenta = 'MP_P'
+        if pwave:
+            # A P-wave bound state: the dual quadruple-precision calls, with
+            # the derivative of the loop wavefunctions (no factorised or
+            # terminal updaters)
+            momenta = 'MPPWPD'
+            coef_construction = loop_onia.pwave_dual_names(
+                loop_onia.pwave_coef_construction_calls(coef_construction), mp=True)
+            born_ct_helas_calls = loop_onia.pwave_dual_names(born_ct_helas_calls, mp=True)
+            uvct_helas_calls = loop_onia.pwave_dual_names(uvct_helas_calls, mp=True)
+        else:
+            coef_construction = self.factorize_mp_coef_calls(
+                coef_construction, matrix_element.rep_dict['proc_prefix'])
         # Add the intrinsic call after MP conversion, which prefixes all CALLs.
         private_call = re.compile(r'(?m)^(CALL MP_'+re.escape(
             matrix_element.rep_dict['proc_prefix'])+_PRIVATE_MP_WL_ROUTINE+r'\()')
@@ -3566,14 +3585,14 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         'mp_born_ct_helas_calls','mp_helas_calls_ampb',
                         required_so_broadcaster = 'MP_CT_REQ_SO_DONE',
                         continue_label = 2000,
-                        momenta_array_name = 'MP_P',
+                        momenta_array_name = momenta,
                         context=context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                         'mp_helas_calls_split.inc',file,uvct_helas_calls,\
                         'mp_uvct_helas_calls','mp_helas_calls_uvct',
                         required_so_broadcaster = 'MP_UVCT_REQ_SO_DONE',
                         continue_label = 3000,
-                        momenta_array_name = 'MP_P',
+                        momenta_array_name = momenta,
                         context=context)
         if has_private_updates:
             replace_dict['terminal_ieee_use'] = '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
@@ -3583,7 +3602,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 'mp_coef_construction','mp_coef_construction',
                 required_so_broadcaster = 'MP_LOOP_REQ_SO_DONE',
                 continue_label = 4000,
-                momenta_array_name = 'MP_P',
+                momenta_array_name = momenta,
                 context=context)
 
         replace_dict['mp_coef_merging']='\n'.join(coef_merging)

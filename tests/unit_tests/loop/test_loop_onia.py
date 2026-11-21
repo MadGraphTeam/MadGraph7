@@ -244,6 +244,25 @@ class TestPwaveCoefficientCalls(unittest.TestCase):
         self.assertEqual(out[2],
             'CALL ML5_0_PW_CREATE_LOOP_COEFS(WL(1,0,1,2),DWL(1,0,1,2),2,4,1,2,1,92,H)')
 
+    def test_mp_calls(self):
+        """The quadruple-precision calls: MP_ updaters, MPPW names."""
+        calls = ['CALL MP_VVV1L2P0_1(PL(0,0),W(5),GC_4,ZERO,ZERO,PL(0,1),COEFS)\n'
+                 'CALL MP_ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,1))',
+                 'CALL MP_ML5_0_CREATE_LOOP_COEFS(WL(1,0,1,2),2,4,1,2,1,92,H)',
+                 'CALL MP_FFV1_0(W(4),W(3),W(5),GC_5,AMP(1))']
+        out = loop_onia.pwave_dual_names(loop_onia.pwave_coef_construction_calls(calls),
+                                         mp=True)
+        self.assertEqual(out[0].split('\n'), [
+            'CALL MP_VVV1L2P0_1(MPPWPL(0,0),MPPWW(5),GC_4,ZERO,ZERO,MPPWPL(0,1),COEFS)',
+            'CALL MP_ML5_0_PW_SPLIT_COEFS(COEFS,COEFS0,COEFS1)',
+            'CALL MP_ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS0,4,4,WL(1,0,1,1))',
+            'CALL MP_ML5_0_UPDATE_WL_0_1(DWL(1,0,1,0),4,COEFS0,4,4,DWL(1,0,1,1))',
+            'CALL MP_ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS1,4,4,TWL)',
+            'CALL MP_ML5_0_PW_ADD_WL(TWL,1,4,4,DWL(1,0,1,1))'])
+        self.assertEqual(out[1],
+            'CALL MP_ML5_0_PW_CREATE_LOOP_COEFS(WL(1,0,1,2),DWL(1,0,1,2),2,4,1,2,1,92,H)')
+        self.assertEqual(out[2], 'CALL MP_FFV1_0(MPPWW(4),MPPWW(3),MPPWW(5),GC_5,MPPWAMP(1))')
+
     def test_unknown_updater_is_refused(self):
         self.assertRaises(loop_onia.OniaLoopError, loop_onia.pwave_coef_construction_calls,
                           ['CALL ML5_0_DP_TERMINAL_WL_1_1(WL(1,0,1,1),4,COEFS,4,4,'

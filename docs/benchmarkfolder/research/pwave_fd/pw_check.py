@@ -5,7 +5,7 @@ sys.path.insert(0, '/shared/external/madloop_onia/madgraph7_madloop_onia/tools')
 import onia_loop_check as olc
 
 SP = '/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad'
-TIRUST = SP + '/pw/install/lib'
+TIRUST = os.environ.get('TIRUST_LIB', SP + '/pw/install/lib')
 PI2 = math.pi ** 2
 CF = 4. / 3.
 CASES = {
@@ -22,7 +22,7 @@ CASES = {
 }
 
 def main(names, npoints=4, regenerate=os.environ.get('REGEN', '1') == '1', ctmode=None):
-    work = SP + '/pw/runs'
+    work = os.environ.get('RUNS', SP + '/pw/runs')
     out = {}
     for name in names:
         case = CASES[name]

@@ -455,8 +455,10 @@ C     This can be accessed with the SET_FORBID_HEL_DOUBLECHECK subroutine of Mad
 	  common/%(proc_prefix)sW/W  
 ## }
 
+## if(not OniaPwave) {
       type(mp_aloha) MPW(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/MPW
+## }
 
 	  %(complex_dp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  %(complex_dp_format)s PL(0:3,-1:NLOOPWAVEFUNCS)

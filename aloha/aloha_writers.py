@@ -573,10 +573,14 @@ class ALOHAWriterForFortran(WriteALOHA):
     writer = writers.FortranWriter
 
     def dual_routine(self):
-        """True if this routine works on dual numbers (P-wave onia). Only the
-        double-precision routines are dual: the quadruple-precision (MP)
-        routines of a loop (MadLoop) library stay plain complex ones."""
-        return bool(aloha.dual_mode) and 'MP' not in self.tag
+        """True if this routine works on dual numbers (P-wave onia). The
+        quadruple-precision (MP) routines of a loop (MadLoop) library are
+        dual only with aloha.mp_dual (type(mp_dual))."""
+        return bool(aloha.dual_mode) and ('MP' not in self.tag or bool(aloha.mp_dual))
+
+    def dual_module(self):
+        """The module of the dual numbers of this routine"""
+        return 'mp_dual_variables' if 'MP' in self.tag else 'dual_variables'
 
     type2def = {}    
     type2def['int'] = 'integer*4'
@@ -678,7 +682,7 @@ class ALOHAWriterForFortran(WriteALOHA):
             out.write('use model_object\n')
         if self.dual_routine():
             # the operators on the dual momenta and wavefunction components
-            out.write('use dual_variables\n')
+            out.write('use %s\n' % self.dual_module())
         out.write('implicit none\n')
         # Check if we are in formfactor mode
         if self.has_model_parameter:
@@ -1576,6 +1580,7 @@ class QP(object):
     type2def['int'] = 'integer*4'
     type2def['double'] = 'real*16'
     type2def['complex'] = 'complex*32'
+    type2def['dual'] = 'type(mp_dual)'
     format = 'q0'
     
 class ALOHAWriterForFortranQP(QP, ALOHAWriterForFortran):
@@ -1678,7 +1683,7 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         # and widths stay plain.
         dual = self.dual_routine()
         if dual:
-            out.write('use dual_variables\n')
+            out.write('use %s\n' % self.dual_module())
         out.write('implicit none\n')
         # define the complex number CI = 0+1j
         if 'MP' in self.tag:

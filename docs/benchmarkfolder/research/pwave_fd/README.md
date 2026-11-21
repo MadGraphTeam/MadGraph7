@@ -16,8 +16,9 @@ This setup avoids two problems:
 |---|---|
 | `build.sh`, `fix_config.py` | scratch TIRust build (TIRust revision, 0001 and follow-up patches, `vendor/tirust` bridge) and its installation metadata |
 | `pw_check.py` | generates the outputs and evaluates them at points (`onia_loop_check.py`) |
-| `fd_patch.py`, `fd_patch2.py`, `fd_patch3.py` | add the test modes to a generated `onia_loop.f` |
+| `fd_patch.py`, `fd_patch2.py`, `fd_patch3.py` | add the test modes to a generated `onia_loop.f`, in double and quadruple precision |
 | `fd_setup.sh`, `pw_fd_driver.f`, `pw_fd.mk` | patch, build and run the check |
+| `pw_modes.py` | the full virtual of an output in the given `CTModeRun` modes (`1,4,-1:1.0d-40`), optionally at a relative momentum with on-shell constituents |
 
 The paths are those of the scratch workspace in which the scripts ran.
 
@@ -30,3 +31,13 @@ Results at q0 = (0.3, 0.2, 0.4) GeV, m_c = 1.55, μ = 2 m_c. The relative differ
 | g g > chic0(1\|3P01) | 1e-10, 9e-11, 2e-12 | 55% |
 
 For a a > chic0, the same evaluation with MadLoop's stability checks (loop reversal) has an estimated accuracy of 1.8e-13 and return code 213.
+
+The patches add the test modes to the double- and quadruple-precision routines alike. With `CTModeRun=4`, the same check runs in quadruple precision. Use `ImprovePSPoint=-1` and the Richardson step h = 3e-4 GeV (1e-3 in double precision):
+
+| Process | QP dual derivative against QP finite differences | QP against DP dual derivative |
+|---|---|---|
+| u u~ > Ps(2\|3P1), m_e = 10 GeV | 3e-13, 4e-14, 3e-12 | 4e-13, 2e-13, 2e-12 |
+| a a > chic0(1\|3P01) | 2e-14, 5e-11 (1/ε, 1/ε² = 0) | 2e-14, 9e-12 |
+| g g > chic0(1\|3P01) | 6e-13, 7e-13, 9e-14 | 2e-14, 4e-13, 7e-14 |
+
+At the same q0 with on-shell constituents, the full virtual (`pw_modes.py`) agrees between double and quadruple precision to 4e-13. The rescue with a forced `MLStabThres` returns code 323.

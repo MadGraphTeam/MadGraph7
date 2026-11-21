@@ -419,13 +419,15 @@ _PW_DUAL_NAMES = [(re.compile(r'\bW\('), 'PWW('), (re.compile(r'\bAMP\('), 'PWAM
                   (re.compile(r'\bAMPL\('), 'PWAMPL('), (re.compile(r'\bPL\('), 'PWPL(')]
 
 
-def pwave_dual_names(calls):
+def pwave_dual_names(calls, mp=False):
     """The HELAS calls of a P-wave output with the names of the dual
     wavefunctions (W), amplitudes (AMP, AMPL) and loop momenta (PL) of the
-    module PW_DUAL."""
+    module PW_DUAL: PWW, ... in double precision, MPPWW, ... for the
+    quadruple-precision calls (mp)."""
+    prefix = 'MP' if mp else ''
     result = []
     for call in calls:
         for pattern, name in _PW_DUAL_NAMES:
-            call = pattern.sub(name, call)
+            call = pattern.sub(prefix + name, call)
         result.append(call)
     return result

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source /shared/external/madloop_onia/madgraph7_madloop_onia/tools/tirust_env.sh
-PW=/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/pw
+PW=${PW:-/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/pw}
 REV=${REV:-f12b322}
 cd $PW
 rm -rf bridge install src
@@ -12,7 +12,7 @@ cp /shared/external/madloop_onia/madgraph7_madloop_onia/HEPTools/tirust/Cargo.lo
 mkdir -p src/madloop-pole-kernels
 cp -r bridge/pole-kernels/. src/madloop-pole-kernels/
 (cd src && patch -p1 --batch --forward --fuzz=0 -i $PW/bridge/patches/0001-direct-poles-only.patch)
-(cd src && patch -p1 --batch --forward --fuzz=0 -i /shared/external/iregi/pwave-patches/0001-followup-soft-line-poles.patch)
+(cd src && patch -p1 --batch --forward --fuzz=0 -i ${FOLLOWUP:-/shared/external/iregi/pwave-patches/0001-followup-soft-line-poles.patch})
 mkdir -p bridge/.cargo
 cat > bridge/.cargo/config.toml <<CFG
 [patch."https://github.com/huashengshao/TIRust"]
@@ -31,6 +31,6 @@ c['raised_powers'] = True
 json.dump(c, open('$PW/install/lib/tirust-config.json', 'w'), indent=1)
 PY
 gfortran -I$PW/install/lib smoke.f90 -lgcc_s $PW/install/lib/libtirust.a -L$PW/install/lib -Wl,-rpath,$PW/install/lib -lmadloop_tirust -o $PW/smoke
-python3 $PW/fix_config.py $PW/install/lib
+python3 /tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/pw/fix_config.py $PW/install/lib
 $PW/smoke --require-poles
 echo BUILD_OK

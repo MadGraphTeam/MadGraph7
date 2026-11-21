@@ -3,7 +3,7 @@
 set -e
 SP=/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad
 source /shared/external/madloop_onia/madgraph7_madloop_onia/tools/tirust_env.sh
-D=$(ls -d $SP/pw/runs/$1/SubProcesses/P*/)
+D=$(ls -d ${RUNS:-$SP/pw/runs}/$1/SubProcesses/P*/)
 cd $D
 [ -f onia_loop.f.gen ] || cp onia_loop.f onia_loop.f.gen
 cp onia_loop.f.gen onia_loop.f

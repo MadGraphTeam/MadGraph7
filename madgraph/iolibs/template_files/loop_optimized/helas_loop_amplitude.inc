@@ -1,7 +1,7 @@
       SUBROUTINE %(proc_prefix)sLOOP_%(nloopline)d%(nwfsargs_header)s(%(pairingargs)s%(wfsargs)s%(margs)s RANK, SQUAREDSOINDEX, LOOPNUM)
       USE ALOHA_OBJECT
 ## if(OniaPwave){
-      USE %(proc_prefix)sPW_DUAL, ONLY: PWW
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWW, MPPWW
 ## }
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -78,13 +78,16 @@ C
 	  type(aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W
 ## }
-      type(mp_aloha) MP_W(NWAVEFUNCS)
-      common/%(proc_prefix)sMP_W/MP_W
 ## if(OniaPwave){
 C     A P-wave bound state: the derivatives of the momenta entering the loop
 C     in the relative momentum, along the last direction (onia_loop.f)
       %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
       common/%(proc_prefix)sPW_DPL/PW_DPL
+      %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
+      common/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
+## } else {
+      type(mp_aloha) MP_W(NWAVEFUNCS)
+      common/%(proc_prefix)sMP_W/MP_W
 ## }
 
 	  %(real_dp_format)s LSCALE 
@@ -124,6 +127,7 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
 		  PL(I,J)=0.D0
 ## if(OniaPwave){
           PW_DPL(I,J)=(0.0D0,0.0D0)
+          MP_PW_DPL(I,J)=(0.0E0_16,0.0E0_16)
 ## }
 		  IF (DOING_QP) THEN
 		    MP_PL(I,J)=0.0e+0_16		    
@@ -133,12 +137,16 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
 C           the dual momenta: value (component 0) and derivative
             PL(I,J)=PL(I,J)-DBLE(PWW(WE(K))%P(I)%COMP(0))
             PW_DPL(I,J)=PW_DPL(I,J)-PWW(WE(K))%P(I)%COMP(1)
+			IF (DOING_QP) THEN
+		      MP_PL(I,J)=MP_PL(I,J)-REAL(MPPWW(WE(K))%P(I)%COMP(0),KIND=16)
+		      MP_PW_DPL(I,J)=MP_PW_DPL(I,J)-MPPWW(WE(K))%P(I)%COMP(1)
+		    ENDIF
 ## } else {
             PL(I,J)=PL(I,J)-W(WE(K))%P(I)
-## }
 			IF (DOING_QP) THEN
 		      MP_PL(I,J)=MP_PL(I,J)-MP_W(WE(K))%P(I)
 		    ENDIF
+## }
           ENDDO
           TEMP=TEMP+PAIRING(J)
         ENDDO
