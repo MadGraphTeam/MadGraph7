@@ -7703,6 +7703,54 @@ This implies that with decay chains:
         for decay in procdef.get('decay_chains'):
             self.validate_polarized_propagator_gauge(decay, aloha_gauge)
 
+    def validate_loop_onia(self, legs, loop_option, perturbation_couplings):
+        """Refuse the perturbed processes with bound states that MadLoop does
+        not support: it computes the one-loop QCD virtual ([virt=QCD]) of
+        processes with S-wave bound states in the final state, as the
+        interference with the Born of the projected amplitudes (colour,
+        spin and total angular momentum projectors of arXiv:2510.26773, at
+        zero relative momentum of the constituents)."""
+
+        if loop_option != 'virt':
+            if loop_option in ['all', 'real', 'LOonly']:
+                raise self.InvalidCmd(
+                    "Bound states at NLO with the FKS subtraction ('[%s]' mode) are "
+                    "not supported here. MadLoop computes their one-loop virtual: use "
+                    "'[virt=QCD]'." % ('QCD' if loop_option == 'all' else
+                                       '%s=QCD' % loop_option))
+            raise self.InvalidCmd(
+                "Bound states are not supported in the '%s' loop mode: MadLoop "
+                "computes the one-loop virtual of processes with a Born, use "
+                "'[virt=QCD]' (loop-induced processes with bound states are not "
+                "supported yet)." % loop_option)
+        others = [o for o in perturbation_couplings if o != 'QCD']
+        if others:
+            raise self.InvalidCmd(
+                "The one-loop virtual of processes with bound states is available "
+                "for QCD corrections only, not for [virt=%s]."
+                % ' '.join(perturbation_couplings))
+        pdict = self._curr_model.get('particle_dict')
+        for leg in legs:
+            onium = leg.get('onium')
+            if not onium:
+                continue
+            if onium.get('L', 0) >= 1:
+                raise self.InvalidCmd(
+                    "The one-loop virtual of a P-wave bound state (%s) is not "
+                    "supported yet: MadLoop handles S-wave bound states."
+                    % onium.get('name'))
+            if leg.get('polarization'):
+                raise self.InvalidCmd(
+                    "Polarised bound states (%s) are not supported at one loop."
+                    % onium.get('name'))
+            part = pdict[leg.get('ids')[0]]
+            if part.get('mass').lower() == 'zero':
+                raise self.InvalidCmd(
+                    "The constituents of %s are massless in this model (%s): at one "
+                    "loop a bound state needs massive constituents (M = m1 + m2), "
+                    "e.g. 'import model loop_sm_onia-c_mass' for charmonia."
+                    % (onium.get('name'), part.get('name')))
+
     def extract_process(self, line, proc_number = 0, overall_orders = {},
                         avoid_squared_orders=False):
         """Extract a process definition from a string. Returns
@@ -8356,15 +8404,12 @@ This implies that with decay chains:
             else:
                 raise self.InvalidCmd("No particle %s in model" % part_name)
 
-        # Bound states are handled by the LO exporters only: nothing in the
-        # FKS/loop path reads back the 'onium' leg properties and there is no
-        # onia matrix-element template for it, so a perturbed process would
-        # silently produce a wrong result rather than fail.
+        # Bound states beyond leading order: MadLoop computes the one-loop
+        # virtual ([virt=QCD]) of S-wave onia; the other NLO modes have no
+        # onia support on this branch and would silently be wrong.
         if onium_index and perturbation_couplings.strip():
-            raise self.InvalidCmd(
-                "Onia are only supported at leading order: the perturbation "
-                "'[%s]' can not be combined with a bound state."
-                % perturbation_couplings.strip())
+            self.validate_loop_onia(myleglist, LoopOption if HasBorn else 'sqrvirt',
+                                 perturbation_couplings.split())
 
         if aloha.dual_mode:
             aloha.npwave.append(aloha.dual_mode)

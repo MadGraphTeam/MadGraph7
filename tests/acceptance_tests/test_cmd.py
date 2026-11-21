@@ -4936,6 +4936,64 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
 
             self.assertTrue(passed)
 
+
+    def test_quarkonium_loop_standalone(self):
+        """MadLoop one-loop QCD virtuals of 2 -> 1 processes with S-wave
+        quarkonia (loop_sm_onia, TIRust) against their analytic values, in
+        units of Born * alpha_s/(2 pi) at mu = M (onia_fks normalisation):
+        Petrelli et al. (hep-ph/9707223) for g g > 1S0[1,8] and
+        q q~ > 3S1[8] (with the bound charm bubble of Hagiwara et al.,
+        0804.1014, plus the massive b and t bubbles of the model), and the
+        textbook eta_c > a a, J/psi > e+ e- corrections."""
+
+        import sys
+        import math
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+
+        tirust = self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+
+        pi2, CF, CA, TF, nl = math.pi**2, 4./3., 3., 0.5, 3
+        log2 = math.log(2.)
+
+        def vp(r):
+            # finite heavy-quark vacuum polarisation integral of the bubbles
+            n = 4000
+            return sum((x*(1-x))*math.log(1-x*(1-x)*r) for x in
+                       ((i+0.5)/n for i in range(n)))/n
+
+        Bn_1S0_1 = CF*(-5+pi2/4) + CA*(1+5*pi2/12)
+        Bn_1S0_8 = CF*(-5+pi2/4) + CA*(2+7*pi2/24)
+        Bn_3S1_8 = CF*(-8+2*pi2/3) + CA*(50./9+2./3*log2-pi2/4)
+        mass_b, mass_t, M = 4.7, 173., 3.1
+        qq8 = 2*(Bn_3S1_8 - 10./9*nl*TF - 16./9*TF) - CF*pi2/3 + \
+              4*vp((M/mass_b)**2) + 4*vp((M/mass_t)**2)
+        processes = [
+            ('a a > etac(1|1S01) [virt=QCD]', 2*CF*(pi2/4-5), 0., 0.),
+            ('e+ e- > Jpsi(1|3S11) [virt=QCD]', -32./3, 0., 0.),
+            ('g g > etac(1|1S01) [virt=QCD]', 2*Bn_1S0_1 - CA*pi2/3, -9., -6.),
+            ('g g > etac(1|1S08) [virt=QCD]', 2*Bn_1S0_8 - CA*pi2/3, -12., -6.),
+            ('u u~ > Jpsi(1|3S18) [virt=QCD]', qq8, -7., -8./3),
+        ]
+        for i, (process, finite, single, double) in enumerate(processes):
+            outdir = onia_loop_check.output_process(
+                'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, 'onia_%d' % i),
+                regenerate=True)
+            pdir = onia_loop_check.subprocess_dir(outdir)
+            onia_loop_check.build_driver(pdir)
+            masses = onia_loop_check.driver_masses(pdir)
+            self.assertAlmostEqual(masses[2], M, 12)
+            points = onia_loop_check.points_lib.generate_points(
+                masses[2:], count=3, incoming_masses=tuple(masses[:2]))
+            onia_loop_check.set_reduction(outdir, [9])
+            results = onia_loop_check.run_points(pdir, [p['momenta'] for p in points])
+            self.assertEqual(len(results), 3)
+            for r in results:
+                self.assertAlmostEqual(r['finite_norm']/finite, 1., 8, process)
+                self.assertAlmostEqual(r['single_norm'], single, 8, process)
+                self.assertAlmostEqual(r['double_norm'], double, 8, process)
          
     def test_standalone_density(self):
         """test that standalone density is working"""

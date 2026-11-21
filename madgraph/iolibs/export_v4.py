@@ -6941,15 +6941,8 @@ c         the dressed-lepton densities read 1-x from OMX_EE, not from x
     def export_onia_files(self, matrix_elements):
         """Configure the files/link of the process according to the model"""
 
-        contains_onia = False
-        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
-            for matrix_element in matrix_elements:
-                for me in matrix_element.get('matrix_elements'):
-                    if me.get_nonia() > 0:
-                        contains_onia = True
-                        break
-                if contains_onia:
-                    break
+        contains_onia = any(me.get_nonia() > 0 for me in
+                            self.onia_matrix_element_list(matrix_elements))
 
         if contains_onia:
 
@@ -7019,15 +7012,24 @@ c         the dressed-lepton densities read 1-x from OMX_EE, not from x
 
 
 
+    @staticmethod
+    def onia_matrix_element_list(matrix_elements):
+        """The matrix elements of a SubProcessGroupList (grouped outputs) or of
+        a HelasMultiProcess (e.g. the MadLoop output), as a list."""
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            return [me for group in matrix_elements for me in group.get('matrix_elements')]
+        if hasattr(matrix_elements, 'get_matrix_elements'):
+            return matrix_elements.get_matrix_elements()
+        return []
+
     def get_onia_info(self, matrix_elements):
 
         info = []
-        for matrix_element in matrix_elements:
-            for me in matrix_element.get('matrix_elements'):
-                for proc in me.get('processes'):
-                    for leg in proc.get('legs'):
-                        if leg.get('onium'):
-                            info += [[abs(leg.get('onium').get('id')),leg.get('onium').get('name').replace('+','').replace('-',''),leg.get('onium').get('mass'),leg.get('onium').get('ldme')]]
+        for me in self.onia_matrix_element_list(matrix_elements):
+            for proc in me.get('processes'):
+                for leg in proc.get('legs'):
+                    if leg.get('onium'):
+                        info += [[abs(leg.get('onium').get('id')),leg.get('onium').get('name').replace('+','').replace('-',''),leg.get('onium').get('mass'),leg.get('onium').get('ldme')]]
 
         info = sorted(info, key=lambda x: (x[0]))
         for i in reversed(range(1,len(info))):

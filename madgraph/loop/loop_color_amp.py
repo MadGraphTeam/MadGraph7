@@ -114,6 +114,9 @@ class LoopColorBasis(color_amp.ColorBasis):
         
         if not isinstance(amplitude,loop_diagram_generation.LoopAmplitude):
             raise color_amp.ColorBasis.ColorBasisError('LoopColorBasis is used with an amplitude which is not a LoopAmplitude')
+        # The colour projectors of the bound states (constituent legs), as for
+        # the Born diagrams
+        onia_color_numbers = self.get_onia_color_numbers(amplitude.get('process'))
         for diagram in amplitude.get('loop_diagrams'):
 
             colorize_dict = self.colorize(diagram,
@@ -130,12 +133,16 @@ class LoopColorBasis(color_amp.ColorBasis):
                                                     finishing_leg.get('number')]
                 self.closeColorLoop(colorize_dict,lcut_charge,lcut_numbers)
 
+            if onia_color_numbers:
+                self.OniaColorProjection(colorize_dict, onia_color_numbers)
             list_color_dict.append(colorize_dict)
             
         # Now let's treat the UVCT diagrams as well
         for diagram in amplitude.get('loop_UVCT_diagrams'):
             colorize_dict = self.colorize(diagram,
                                           amplitude.get('process').get('model'))
+            if onia_color_numbers:
+                self.OniaColorProjection(colorize_dict, onia_color_numbers)
             list_color_dict.append(colorize_dict)
 
         self._list_color_dict = list_color_dict
@@ -151,9 +158,12 @@ class LoopColorBasis(color_amp.ColorBasis):
         if not isinstance(amplitude,loop_diagram_generation.LoopAmplitude):
             raise color_amp.ColorBasis.ColorBasisError('LoopColorBasis is used with an amplitude which is not a LoopAmplitude')
 
+        onia_color_numbers = self.get_onia_color_numbers(amplitude.get('process'))
         for diagram in amplitude.get('born_diagrams'):
             colorize_dict = self.colorize(diagram,
                                           amplitude.get('process').get('model'))
+            if onia_color_numbers:
+                self.OniaColorProjection(colorize_dict, onia_color_numbers)
             list_color_dict.append(colorize_dict)
 
         self._list_color_dict = list_color_dict

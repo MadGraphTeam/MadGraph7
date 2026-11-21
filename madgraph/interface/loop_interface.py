@@ -517,6 +517,8 @@ class LoopInterface(CheckLoop, CompleteLoop, HelpLoop, CommonLoopInterface):
         self._curr_exporter = export_v4.ExportV4Factory(self, \
                      noclean, output_type=output_type, group_subprocesses=False,
                      cmd_options=line_options)
+        # The bound states of the model (rw_onia.f in the model library)
+        self._curr_exporter.pass_information_from_cmd(self)
 
         if self._export_format in ['standalone_fortran', 'matchbox']:
             self._curr_exporter.copy_template(self._curr_model)
@@ -770,8 +772,6 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
         """Copy necessary sources and output the ps representation of 
         the diagrams, if needed"""
 
-        self._curr_exporter.export_onia_files(self._curr_matrix_elements)
-
         if self._export_format in self.supported_ML_format:
             logger.info('Export UFO model to MG4 format')
             # wanted_lorentz are the lorentz structures which are
@@ -790,6 +790,10 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
             self._curr_exporter.convert_model(self._curr_model,
                                            wanted_lorentz,
                                            wanted_couplings)
+
+        # The files of the bound states (onia card, LDMEs): after the model,
+        # whose ident_card.dat they extend
+        self._curr_exporter.export_onia_files(self._curr_matrix_elements)
         
         if self._export_format in self.supported_ML_format:
             flags = []

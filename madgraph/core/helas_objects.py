@@ -6860,9 +6860,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 return True
         return False
 
-    def get_helicity_combinations(self):
+    def get_helicity_combinations(self, onia_physical=True):
         """Gives the number of helicity combinations for external
-        wavefunctions"""
+        wavefunctions. With onia_physical, a bound state counts its 2J+1
+        states in place of the helicities of its two constituents."""
 
         if not self.get('processes'):
             return None
@@ -6873,7 +6874,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                   wf.get('pdg_code')].get_helicity_states())
             for wf in self.get_external_wavefunctions()]
 
-        if self.get_nonia()>0:
+        if onia_physical and self.get_nonia()>0:
             onia_pairs = self.get_onia_pairs()
             constituent = []
             external_wavefunctions = self.get_external_wavefunctions()
@@ -6886,8 +6887,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return reduce(lambda x, y: x * y,
                       hel_per_part)
 
-    def get_helicity_matrix(self, allow_reverse=True):
-        """Gives the helicity matrix for external wavefunctions"""
+    def get_helicity_matrix(self, allow_reverse=True, onia_physical=True):
+        """Gives the helicity matrix for external wavefunctions. With
+        onia_physical, a bound state takes its 2J+1 states in place of the
+        helicities of its two constituents."""
 
         if not self.get('processes'):
             return None
@@ -6899,7 +6902,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                   wf.get('pdg_code')].get_helicity_states(allow_reverse)
             for wf in self.get_external_wavefunctions()]
 
-        if self.get_nonia()>0:
+        if onia_physical and self.get_nonia()>0:
             onia_pairs = self.get_onia_pairs()
             constituent = []
             external_wavefunctions = self.get_external_wavefunctions()

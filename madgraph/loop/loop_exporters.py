@@ -35,6 +35,7 @@ import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.helas_objects as helas_objects
 import madgraph.loop.loop_helas_objects as loop_helas_objects
+import madgraph.loop.loop_onia as loop_onia
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
@@ -281,7 +282,9 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         
 
         MLCard = banner_mod.MadLoopParam(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
-        if not self.has_loop_induced:
+        if getattr(self, 'has_onia', False):
+            self.set_onia_madloop_defaults(MLCard)
+        elif not self.has_loop_induced:
             self.set_default_reduction_library(MLCard)
         # For loop-induced processes and *only* when summing over all helicity configurations
         # (which is the default for standalone usage), COLLIER is faster than Ninja.
@@ -298,6 +301,31 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
             
+    def set_onia_reduction_library(self, card):
+        """With bound states the constituents carry equal momenta: the Gram
+        determinants of every loop with both constituents vanish and the
+        Coulomb-exchange loops have linearly dependent propagators. TIRust
+        (9) reduces them; IREGI (3) is the fallback."""
+        if 'mlreductionlib' in card.user_set:
+            return False
+        available = getattr(self, 'tir_available_dict', {})
+        libs = [lib for lib, name in [(9, 'tirust'), (3, 'iregi')] if available.get(name, False)]
+        if not libs:
+            logger.warning('Processes with bound states need the reduction of '
+                           'Coulomb-exchange integrals: install TIRust (install tirust).')
+            return False
+        card.set('MLReductionLib', '|'.join('%d' % l for l in libs), user=True)
+        return True
+
+    def set_onia_madloop_defaults(self, card):
+        """MadLoopParams.dat defaults of processes with bound states: the
+        reduction libraries (set_onia_reduction_library) and no helicity
+        filter, since which constituent helicity configurations contribute
+        depends on the frame (onia_loop.f skips them point by point)."""
+        self.set_onia_reduction_library(card)
+        if 'helicityfilterlevel' not in card.user_set:
+            card.set('HelicityFilterLevel', 0, user=True)
+
     def set_default_reduction_library(self, card):
         """Prefer a usable NinjaRS installation for untouched ordinary defaults."""
         if (getattr(self, 'has_loop_induced', False) or
@@ -901,7 +929,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                 'AmplitudeReduction': AmplitudeReduction,
                 'TIRCaching': TIRCaching,
                 'MadEventOutput': MadEventOutput,
-                'UseDensity': UseDensity}
+                'UseDensity': UseDensity,
+                'Onia': loop_onia.has_onia(matrix_element)}
 
 
     #===========================================================================
@@ -1090,6 +1119,16 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
         dict['nexternal'] = nexternal
         dict['nincoming'] = ninitial
+        # With bound states MadLoop runs on the constituent legs and the
+        # public SLOOPMATRIX (onia_loop.f) takes the physical momenta: the
+        # core routine is renamed and the public wrappers take one leg per
+        # bound state.
+        if loop_onia.has_onia(matrix_element):
+            dict['sloopmatrix_entry'] = 'SLOOPMATRIX_CONSTITUENTS'
+            dict['nexternal_user'] = matrix_element.get_physical_nexternal_ninitial()[0]
+        else:
+            dict['sloopmatrix_entry'] = 'SLOOPMATRIX'
+            dict['nexternal_user'] = nexternal
         # Extract ncomb
         ncomb = matrix_element.get_helicity_combinations()
         dict['ncomb'] = ncomb
@@ -1307,6 +1346,11 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
             'write_so_born_results','write_so_loop_results','set_coupling_target']:
             if key not in list(replace_dict.keys()):
                 replace_dict[key]=''
+        # With bound states the driver sees the physical legs (one per bound
+        # state, of mass m1+m2: pmass.inc)
+        onia = loop_onia.has_onia(matrix_element)
+        if onia:
+            replace_dict['nexternal'] = matrix_element.get_physical_nexternal_ninitial()[0]
         
         #initialisation of the parameters for density matrix (dont think it is needed)
         replace_dict['use_density'] = '.false.'
@@ -1348,6 +1392,10 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
          
         # We can always write the f2py wrapper if present (in loop optimized mode, it is)
         if not os.path.isfile(pjoin(self.template_dir,'check_py.f.inc')):
+            return
+        if onia:
+            # The f2py wrapper passes arrays of the constituent legs
+            logger.info('No python (f2py) wrapper for processes with bound states.')
             return
         
         file = open(os.path.join(self.template_dir,\
@@ -1417,9 +1465,40 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         else:
             replace_dict['include_vector'] = '' 
 
-        file_mp = open(os.path.join(self.template_dir,'improve_ps.inc')).read()
-        file_mp=file_mp%replace_dict
-        
+        template = open(os.path.join(self.template_dir,'improve_ps.inc')).read()
+        file_mp=template%replace_dict
+
+        if loop_onia.has_onia(matrix_element):
+            # With bound states, MP_IMPROVE_PS_POINT_PRECISION is that of
+            # onia_loop.f: it improves the physical momenta (each bound state
+            # on its mass shell m1+m2) with the instance of these routines
+            # written below, and splits the bound states again.
+            name = '%(proc_prefix)sMP_IMPROVE_PS_POINT_PRECISION' % replace_dict
+            definition = 'SUBROUTINE %s(' % name
+            assert file_mp.count(definition) == 1
+            file_mp = file_mp.replace(definition,
+                                  'SUBROUTINE %s_CONSTITUENT_LEGS(' % name)
+            info = loop_onia.onia_loop_info(matrix_element)
+            phys_dict = copy.copy(replace_dict)
+            phys_dict['proc_prefix'] = replace_dict['proc_prefix'] + 'ONIAPHYS_'
+            phys_dict['nexternal'] = info['nexternal_phys']
+            masses = {}
+            onia_legs = set(o['phys'] for o in info['onia'])
+            for i, m in enumerate(mass_list):
+                if m.lower() == 'zero':
+                    continue
+                leg = info['mapping'][i]
+                mp_mass = '%s%s' % (mp_variable_prefix, m)
+                if leg in onia_legs:
+                    # the constituent masses of MP_ONIA_MASSES (onia_loop.f)
+                    mp_mass = 'SQRT(REAL(REAL(%s,KIND=8)**2,KIND=16))' % mp_mass
+                masses.setdefault(leg, []).append(mp_mass)
+            phys_dict['masses_def'] = '\n' + ''.join(
+                'MASSES(%d)=%s\n' % (leg, '+'.join(masses.get(leg, [mp_variable_prefix + 'ZERO'])))
+                for leg in range(1, info['nexternal_phys'] + 1))
+            file_mp += '\nC The precision improvement of the physical legs ' + \
+                       '(bound states, onia_loop.f)\n' + template % phys_dict
+
         writer.writelines(file_mp)
 
     def write_loop_num(self, writer, matrix_element,fortran_model):
@@ -1979,6 +2058,239 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         super(LoopProcessOptimizedExporterFortranSA, self).copy_template(model)
         
         self.loop_optimized_additional_template_setup()
+
+    #===========================================================================
+    # Bound states (onia)
+    #===========================================================================
+    def check_onia_loop_output(self, matrix_element):
+        """Refuse the loop outputs of processes with bound states that the
+        onia layer (onia_loop.f) does not handle."""
+        if not matrix_element.get('processes')[0].get('has_born'):
+            raise loop_onia.OniaLoopError('Loop-induced processes with bound states '
+                                          'are not supported yet.')
+        if self.compute_color_flows:
+            raise loop_onia.OniaLoopError("The option 'loop_color_flows' is not "
+                                          "supported for processes with bound states.")
+
+    def write_onia_loop_files(self, matrix_element, fortran_model, loop_replace_dict):
+        """Write onia_loop_data.inc and onia_loop.f, the projection of the
+        constituent amplitudes onto the bound states (see loop_onia.py)."""
+
+        self.check_onia_loop_output(matrix_element)
+        self.has_onia = True
+        info = loop_onia.onia_loop_info(matrix_element)
+        nexternal = info['nexternal']
+        ncomb = len(info['helc'])
+        nonia = len(info['onia'])
+        njzt = len(info['jz'])
+        nborn = matrix_element.get_number_of_born_amplitudes()
+        model = matrix_element.get('processes')[0].get('model')
+
+        # The colour factors between the (projected) Born amplitudes
+        ampb_to_jampb = self.get_amp_to_jamp_map(
+            matrix_element.get_born_color_amplitudes(), nborn)
+        born_cm = color_amp.ColorMatrix(matrix_element.get('born_color_basis'))
+        cm_denom = born_cm.get_line_denominators()
+        cm_num = [born_cm.get_line_numerators(i, d) for (i, d) in enumerate(cm_denom)]
+        cfb = loop_onia.born_born_color_factors(ampb_to_jampb, cm_num, cm_denom)
+
+        def ints(values):
+            return ','.join('%d' % v for v in values)
+
+        lines = ['C     Bound states of the process (loop_onia.py, onia_loop.f)',
+                 'INTEGER ONIA_NONIA, ONIA_NJZT, ONIA_NOTHERS, ONIA_IDEN',
+                 'PARAMETER (ONIA_NONIA=%d, ONIA_NJZT=%d, ONIA_NOTHERS=%d, ONIA_IDEN=%d)'
+                 % (nonia, njzt, info['nothers'], matrix_element.get_denominator_factor()),
+                 'C     physical leg of each constituent leg, and the other constituent',
+                 'INTEGER ONIA_MAPPING(%d), ONIA_PARTNER(%d)' % (nexternal, nexternal),
+                 'C     per bound state: particle and antiparticle legs, S, J, colour',
+                 'INTEGER ONIA_Q1(%d), ONIA_Q2(%d), ONIA_S(%d), ONIA_J(%d), ONIA_C(%d)'
+                 % ((nonia,) * 5),
+                 'C     J_z of each bound state in each polarisation configuration',
+                 'INTEGER ONIA_JZ(%d,%d)' % (nonia, njzt),
+                 'C     the constituent helicity configurations (HelConfigs.dat) and',
+                 'C     the index of the helicities of their other legs',
+                 'INTEGER ONIA_HELC(%d,%d), ONIA_OTHERS(%d)' % (nexternal, ncomb, ncomb),
+                 'C     colour factors between the projected Born amplitudes',
+                 'REAL*8 ONIA_CFB_RE(%d,%d), ONIA_CFB_IM(%d,%d)' % (nborn, nborn, nborn, nborn)]
+        partner = [0] * nexternal
+        for o in info['onia']:
+            partner[o['q1'] - 1] = o['q2']
+            partner[o['q2'] - 1] = o['q1']
+        lines.append('DATA ONIA_MAPPING/%s/' % ints(info['mapping']))
+        lines.append('DATA ONIA_PARTNER/%s/' % ints(partner))
+        for key, attr in [('ONIA_Q1', 'q1'), ('ONIA_Q2', 'q2'), ('ONIA_S', 'S'),
+                          ('ONIA_J', 'J'), ('ONIA_C', 'C')]:
+            lines.append('DATA %s/%s/' % (key, ints([o[attr] for o in info['onia']])))
+        lines.append('DATA ONIA_JZ/%s/' % ints([j for t in info['jz'] for j in t]))
+        lines.append('DATA ONIA_HELC/%s/' % ints([h for hel in info['helc'] for h in hel]))
+        lines.append('DATA ONIA_OTHERS/%s/' % ints(info['others']))
+        # column-major order: CFB(i,j) with i fastest
+        lines.append('DATA ONIA_CFB_RE/%s/' % ','.join(
+            loop_onia.fortran_double(cfb[i][j][0]) for j in range(nborn) for i in range(nborn)))
+        lines.append('DATA ONIA_CFB_IM/%s/' % ','.join(
+            loop_onia.fortran_double(cfb[i][j][1]) for j in range(nborn) for i in range(nborn)))
+        writers.FortranWriter('onia_loop_data.inc').writelines(lines)
+
+        # The masses of the constituent legs
+        masses = []
+        for wf in sorted(matrix_element.get_external_wavefunctions(),
+                         key=lambda wf: wf.get('number_external')):
+            mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
+            masses.append('ZERO' if mass.lower() == 'zero' else 'ABS(%s)' % mass)
+        mass_lines = '\n'.join('CMASS(%d)=%s' % (i + 1, m) for i, m in enumerate(masses))
+        # In quadruple precision, the masses squared of the loop propagators
+        # are the double-precision ones (M2L of the loop routines): the QP
+        # constituent masses are their square roots, so that the
+        # constituents stay exactly on the mass shell the reduction sees
+        # (TIRust recognises the Coulomb-exchange degeneracy at the input
+        # precision).
+        mp_mass_lines = '\n'.join(
+            'CMASS(%d)=%s' % (i + 1, m if m == 'ZERO' else
+                              'SQRT(REAL(REAL(%s,KIND=8)**2,KIND=16))' % m)
+            for i, m in enumerate(masses))
+
+        # The Born amplitudes alone (no counterterm), in DP and QP
+        born_calls = []
+        for diagram in matrix_element.get_born_diagrams():
+            born_calls.extend([fortran_model.get_wavefunction_call(wf)
+                               for wf in diagram.get('wavefunctions')])
+            for amplitude in diagram.get('amplitudes'):
+                born_calls.append(fortran_model.get_amplitude_call(amplitude))
+        mp_born_calls = list(born_calls)
+        self.turn_to_mp_calls(mp_born_calls)
+
+        ldme_product = self.get_ldme_product(matrix_element) or '1D0'
+        replace_dict = copy.copy(matrix_element.rep_dict)
+        replace_dict.update({
+            'onia_nexternal_phys': info['nexternal_phys'],
+            'nexternal': nexternal,
+            'ncomb': ncomb,
+            'nbornamps': nborn,
+            'onia_dp_masses': mass_lines,
+            'onia_mp_masses': mp_mass_lines,
+            'onia_born_calls': '\n'.join(born_calls),
+            'onia_mp_born_calls': '\n'.join(mp_born_calls),
+            'onia_dp_norm': loop_onia.fortran_double(info['norm']),
+            'onia_mp_norm': loop_onia.fortran_quad(info['norm']),
+            'onia_ldme_product': ldme_product,
+            'onia_ldme_perturbative': self.get_ldme_perturbative(matrix_element)})
+        if ncomb != matrix_element.get_helicity_combinations():
+            raise loop_onia.OniaLoopError('Inconsistent helicity configurations.')
+        replace_dict['nincoming'] = info['ninitial']
+        self.write_onia_loop_links(matrix_element, info, model)
+        file = open(os.path.join(self.template_dir, 'onia_loop.inc')).read() % replace_dict
+        writers.FortranWriter('onia_loop.f').writelines(file)
+        # The LDMEs of the onia card (Source/MODEL/ldme.inc, export_onia_files)
+        ln('../ldme.inc')
+
+    def write_onia_loop_links(self, matrix_element, info, model):
+        """onia_loop_links.inc: the colour links between the physical legs
+        (loop_onia.color_linked_born_factors) and the coefficient of 1/eps of
+        the Gamma_j of each physical leg, for ONIA_IR_POLES."""
+
+        nborn = matrix_element.get_number_of_born_amplitudes()
+        links = loop_onia.physical_color_links(info, loop_onia.color_linked_born_factors(
+                                                matrix_element, self.get_amp_to_jamp_map))
+        keys = sorted(links)
+        nlinks = max(len(keys), 1)
+        # the massless quark flavours (gamma_g)
+        nl = len(set(abs(p.get('pdg_code')) for p in model.get('particles')
+                     if abs(p.get_color()) == 3 and p.get('spin') == 2
+                     and p.get('mass').lower() == 'zero'))
+        cf, ca, tr = fractions.Fraction(4, 3), fractions.Fraction(3), fractions.Fraction(1, 2)
+        gamma = [fractions.Fraction(0)] * info['nexternal_phys']
+        onia_legs = dict((o['phys'], o) for o in info['onia'])
+        for wf in matrix_element.get_external_wavefunctions():
+            n = wf.get('number_external')
+            leg = info['mapping'][n - 1]
+            part = model.get_particle(wf.get('pdg_code'))
+            if leg in onia_legs:
+                gamma[leg - 1] = ca if (onia_legs[leg]['C'] == 8 and
+                                        abs(part.get_color()) == 3) else fractions.Fraction(0)
+            elif abs(part.get_color()) == 8:
+                gamma[leg - 1] = ca * 11 / 6 - tr * 2 * nl / 3 \
+                    if part.get('mass').lower() == 'zero' else ca
+            elif abs(part.get_color()) == 3:
+                gamma[leg - 1] = cf * 3 / 2 if part.get('mass').lower() == 'zero' else cf
+
+        def col(values):
+            return ','.join(loop_onia.fortran_double(v) for v in values)
+
+        lines = ['C     Colour links between the physical legs (ONIA_IR_POLES)',
+                 'INTEGER ONIA_NLINKS',
+                 'PARAMETER (ONIA_NLINKS=%d)' % len(keys),
+                 'INTEGER ONIA_LINK_J(%d), ONIA_LINK_K(%d)' % (nlinks, nlinks),
+                 'REAL*8 ONIA_CL_RE(%d,%d,%d), ONIA_CL_IM(%d,%d,%d)'
+                 % (nborn, nborn, nlinks, nborn, nborn, nlinks),
+                 'REAL*8 ONIA_LEG_GAMMA(%d)' % info['nexternal_phys'],
+                 'DATA ONIA_LEG_GAMMA/%s/' % col(gamma)]
+        if keys:
+            lines.append('DATA ONIA_LINK_J/%s/' % ','.join('%d' % k[0] for k in keys))
+            lines.append('DATA ONIA_LINK_K/%s/' % ','.join('%d' % k[1] for k in keys))
+            lines.append('DATA ONIA_CL_RE/%s/' % col(links[k][i][j][0] for k in keys
+                         for j in range(nborn) for i in range(nborn)))
+            lines.append('DATA ONIA_CL_IM/%s/' % col(links[k][i][j][1] for k in keys
+                         for j in range(nborn) for i in range(nborn)))
+        else:
+            lines.append('DATA ONIA_LINK_J/0/, ONIA_LINK_K/0/')
+            lines.append('DATA ONIA_CL_RE/%d*0D0/, ONIA_CL_IM/%d*0D0/' % ((nborn * nborn,) * 2))
+        writers.FortranWriter('onia_loop_links.inc').writelines(lines)
+
+    def write_bornmatrix(self, writer, matrix_element, fortran_model):
+        """born_matrix.f. With bound states it is the Born of the constituent
+        process, not projected (the projected Born is in onia_loop.f): the
+        'onium' attributes are dropped from a copy of the matrix element."""
+
+        if not loop_onia.has_onia(matrix_element):
+            return super(LoopProcessOptimizedExporterFortranSA, self).write_bornmatrix(
+                                              writer, matrix_element, fortran_model)
+        constituent_me = copy.copy(matrix_element)
+        for prop in ['diagrams', 'processes']:
+            constituent_me.set(prop, copy.deepcopy(matrix_element.get(prop)), force=True)
+        for diagram in constituent_me.get('diagrams'):
+            for wf in diagram.get('wavefunctions'):
+                wf.set('onium', {})
+            for amp in diagram.get_regular_amplitudes() if hasattr(diagram, 'get_regular_amplitudes') else diagram.get('amplitudes'):
+                for wf in amp.get('mothers'):
+                    if wf.get('onium'):
+                        wf.set('onium', {})
+        for proc in constituent_me.get('processes'):
+            for leg in proc.get('legs'):
+                leg.set('onium', {})
+        res = super(LoopProcessOptimizedExporterFortranSA, self).write_bornmatrix(
+                                              writer, constituent_me, fortran_model)
+        nsqso = open(pjoin(os.path.dirname(os.path.abspath(writer.name)),
+                           'nsqso_born.inc')).read()
+        if 'NSQSO_BORN=1)' not in nsqso.replace(' ', ''):
+            raise loop_onia.OniaLoopError('Processes with bound states and more than '
+                         'one squared split order in the Born are not supported.')
+        return res
+
+    def write_pmass_file(self, writer, matrix_element):
+        """pmass.inc of the physical legs of the check drivers: a bound state
+        has the mass m1+m2 of its constituents (MadLoop's onia layer puts them
+        at zero relative momentum)."""
+
+        if not loop_onia.has_onia(matrix_element):
+            return super(LoopProcessOptimizedExporterFortranSA, self).write_pmass_file(
+                                                             writer, matrix_element)
+        info = loop_onia.onia_loop_info(matrix_element)
+        model = matrix_element.get('processes')[0].get('model')
+        masses = []
+        for wf in sorted(matrix_element.get_external_wavefunctions(),
+                         key=lambda wf: wf.get('number_external')):
+            mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
+            masses.append('ZERO' if mass.lower() == 'zero' else 'ABS(%s)' % mass)
+        phys = {}
+        for i, m in enumerate(masses):
+            phys.setdefault(info['mapping'][i], []).append(m)
+        lines = []
+        for leg in sorted(phys):
+            ms = [m for m in phys[leg] if m != 'ZERO'] or ['ZERO']
+            lines.append('PMASS(%d)=%s' % (leg, '+'.join(ms)))
+        writer.writelines(lines)
+        return True
 
     def get_context(self,matrix_element, **opts):
         """ Additional contextual information which needs to be created for
@@ -3657,6 +3969,9 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         replace_dict["keep_offshell_mass"] = ""
         for i in range(len(offshell_or_not)):
             replace_dict["keep_offshell_mass"] += f"KEEP_OFFSHELL_MASS({i + 1}) = {offshell_or_not[i]}\n"
+
+        if context.get('Onia'):
+            self.write_onia_loop_files(matrix_element, fortran_model, replace_dict)
 
         file = file % replace_dict
         number_of_calls = len([call for call in loop_CT_calls if call.find('CALL LOOP') != 0])   

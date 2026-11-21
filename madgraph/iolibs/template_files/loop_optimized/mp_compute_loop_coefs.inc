@@ -89,6 +89,9 @@ C
 C FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_HEL_SELECTED
+## if(Onia) {
+      LOGICAL %(proc_prefix)sONIA_HEL_LIVE
+## }
       INTEGER %(proc_prefix)sML5SOINDEX_FOR_BORN_AMP
 	  INTEGER %(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP
 	  INTEGER %(proc_prefix)sML5SQSOINDEX
@@ -313,6 +316,14 @@ DO K=1,3
 ENDDO
 
 DPW_COPIED = .False.
+## if(Onia) {
+C The effective Born amplitudes of the bound states for this PS point
+IF (COMPUTE_INTEGRAND_IN_QP) THEN
+  CALL %(proc_prefix)sMP_ONIA_PREPARE(MP_P)
+ELSE
+  CALL %(proc_prefix)sONIA_PREPARE(P)
+ENDIF
+## }
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
 
@@ -320,6 +331,10 @@ C  Handle the possible requirement of specific polarizations
   IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0).eq.0.AND.(.NOT.%(proc_prefix)sIS_HEL_SELECTED(H))) THEN
     CYCLE
   ENDIF
+## if(Onia) {
+C  A constituent helicity configuration without effective Born at this point
+  IF (.NOT.%(proc_prefix)sONIA_HEL_LIVE(H)) CYCLE
+## }
 
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
@@ -410,6 +425,18 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
 
 3000 CONTINUE
   MP_UVCT_REQ_SO_DONE=.TRUE.
+## if(Onia) {
+C The bound states: the Born amplitudes are replaced by the effective Born
+C of this constituent helicity configuration
+  IF (COMPUTE_INTEGRAND_IN_QP) THEN
+    CALL %(proc_prefix)sMP_ONIA_EFFECTIVE_BORN(H,AMP)
+  ELSE
+    CALL %(proc_prefix)sONIA_EFFECTIVE_BORN(H,DP_AMP)
+    DO I=1,NBORNAMPS
+      AMP(I)=CMPLX(DP_AMP(I),KIND=16)
+    ENDDO
+  ENDIF
+## }
 
 ## if(not AmplitudeReduction) { 
   IF (COMPUTE_INTEGRAND_IN_QP) THEN

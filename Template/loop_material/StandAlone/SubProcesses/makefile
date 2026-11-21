@@ -53,6 +53,7 @@ PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard COLLIER_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard TIRUST_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard onia_loop.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard mg5_citation.f))
 
 OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
@@ -74,7 +75,8 @@ OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/COLLIER_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/TIRUST_interface.f)) \
- $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/compute_color_flows.f))
+ $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/compute_color_flows.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/onia_loop.f))
 
 POLYNOMIAL = $(patsubst $(DOTF),$(DOTO),$(wildcard polynomial.f))
 OLP_POLYNOMIAL = $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/polynomial.f))

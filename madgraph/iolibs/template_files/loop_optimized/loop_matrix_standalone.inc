@@ -3,7 +3,7 @@ C   Main subroutine
 C --=========================================--
 
 ## if(ninjars_available) {
-      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      SUBROUTINE %(proc_prefix)s%(sloopmatrix_entry)s(P_USER,ANS)
       IMPLICIT NONE
       INTEGER NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -31,7 +31,7 @@ C     Guaranteed reset after every ordinary return from the implementation.
 
       SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
 ## } else {
-      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      SUBROUTINE %(proc_prefix)s%(sloopmatrix_entry)s(P_USER,ANS)
 ## }
 C  
 %(info_lines)s
@@ -291,6 +291,9 @@ C
       INTEGER %(proc_prefix)sISSAME
       LOGICAL %(proc_prefix)sISZERO
       LOGICAL %(proc_prefix)sIS_HEL_SELECTED
+## if(Onia) {
+      LOGICAL %(proc_prefix)sONIA_HEL_LIVE
+## }
       INTEGER SET_RET_CODE_U
 ## if(LoopInduced){
 	  %(real_dp_format)s Median
@@ -833,7 +836,14 @@ C the split_order summed value I=0 is used in ML5 code.
 DO I=0,NSQSO_BORN
   BORNBUFF(I)=0.0d0
 ENDDO
+## if(Onia) {
+C The Born of the bound states: the projection of the constituent Born
+C amplitudes, which also prepares the effective Born of each constituent
+C helicity configuration (onia_loop.f)
+CALL %(proc_prefix)sONIA_BORN(P_USER,BORNBUFF(0))
+## } else {
 CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))
+## }
 DO I=0,NSQSO_BORN
   ANS(0,I)=BORNBUFF(I)
 ENDDO
@@ -1130,6 +1140,10 @@ C We must skip the double precision computation of both loop amplitudes and CT a
 ## }
 ENDIF
 
+## if(Onia) {
+C The effective Born amplitudes of the bound states for this PS point
+CALL %(proc_prefix)sONIA_PREPARE(P)
+## }
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
   
@@ -1137,6 +1151,10 @@ C  Handle the possible requirement of specific polarizations
   IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0).eq.0.AND.(.NOT.%(proc_prefix)sIS_HEL_SELECTED(H))) THEN
     CYCLE
   ENDIF
+## if(Onia) {
+C  A constituent helicity configuration without effective Born at this point
+  IF (.NOT.%(proc_prefix)sONIA_HEL_LIVE(H)) CYCLE
+## }
 
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
@@ -1187,6 +1205,11 @@ c FeynRules, there are none of these type of counterterms.
   %(uvct_helas_calls)s
 3000 CONTINUE
   UVCT_REQ_SO_DONE=.TRUE.
+## if(Onia) {
+C The bound states: the Born amplitudes are replaced by the effective Born
+C of this constituent helicity configuration
+  CALL %(proc_prefix)sONIA_EFFECTIVE_BORN(H,AMP)
+## }
 
 ## if(not AmplitudeReduction) {
   DO J=1,NBORNAMPS
@@ -2962,7 +2985,7 @@ C
 C CONSTANTS
 C
       INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal)d)
+      PARAMETER (NEXTERNAL=%(nexternal_user)d)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
       %(get_nsqso_born)s
@@ -2988,7 +3011,7 @@ C
 C CONSTANTS
 C
       INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal)d)
+      PARAMETER (NEXTERNAL=%(nexternal_user)d)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
 C  
@@ -3108,7 +3131,7 @@ C
 C CONSTANTS
 C
       INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal)d)
+      PARAMETER (NEXTERNAL=%(nexternal_user)d)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
 C  

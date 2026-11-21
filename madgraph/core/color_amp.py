@@ -902,6 +902,31 @@ class ColorBasis(dict):
 
         return projector_str
 
+    @staticmethod
+    def get_onia_color_numbers(process):
+        """[((colour of constituent 1, colour of constituent 2), (leg number
+        1, leg number 2), colour of the bound state)] for every bound state
+        of the process, the argument of OniaColorProjection."""
+
+        model = process.get('model')
+        onium = False
+        pid_color_numbers = []
+        for l in process.get('legs'):
+            if not l.get('onium'):
+                continue
+            color = None
+            for part in model.get('particles'):
+                if part.get('pdg_code') == l.get('id'): color = part.get('color')
+                if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
+            if not onium:
+                onium = True
+                onium_color = color
+                onium_number = l.get('number')
+            else:
+                onium = False
+                pid_color_numbers.append([(onium_color,color),(onium_number,l.get('number')),l.get('onium').get('C')])
+        return pid_color_numbers
+
     def OniaColorProjection(self, colorize_dict, pid_color_numbers):
         """Color projection for onia"""
         for (pid_charges,pid_numbers,charge) in pid_color_numbers:
@@ -919,27 +944,10 @@ class ColorBasis(dict):
         except Exception:
             self._process_name = 'unknown process'
 
+        pid_color_numbers = self.get_onia_color_numbers(amplitude.get('process'))
         for diagram in amplitude.get('diagrams'):
             colorize_dict = self.colorize(diagram,
                                           amplitude.get('process').get('model'))
-
-            onium = False
-            pid_color_numbers = []
-            for l in amplitude.get('process').get('legs'):
-                if l.get('onium'):
-                    if not onium:
-                        onium = True
-                        for part in amplitude.get('process').get('model').get('particles'):
-                            if part.get('pdg_code') == l.get('id'): color = part.get('color')
-                            if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
-                        onium_color = color
-                        onium_number = l.get('number')
-                    else:
-                        onium = False
-                        for part in amplitude.get('process').get('model').get('particles'):
-                            if part.get('pdg_code') == l.get('id'): color = part.get('color')
-                            if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
-                        pid_color_numbers.append([(onium_color,color),(onium_number,l.get('number')),l.get('onium').get('C')])
 
             if pid_color_numbers: self.OniaColorProjection(colorize_dict, pid_color_numbers)
 
