@@ -59,6 +59,27 @@ class TestGenerationInProcess(unittest.TestCase):
         self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': True,
                                  'flavor_union_crossing': True}])
 
+    def test_selector_only_is_in_the_job_only_when_set(self):
+        jobs = []
+        self.run_export(lambda job: jobs.append(job) or [], selector_only_full_colour=True)
+        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': True,
+                                 'selector_only_full_colour': True}])
+
+    def test_selector_only_sets_the_generation_option(self):
+        from madgraph.iolibs import amplicol_generation
+        configs = []
+        config_module = mock.Mock(resolve_config=lambda value: configs.append(value) or value)
+        pyamplicol = mock.Mock()
+        process = {'multiparticles': {}, 'orders': {'QED': 0}, 'expression': 'p p > j j'}
+        with mock.patch.dict(sys.modules, {'pyamplicol': pyamplicol,
+                                           'pyamplicol.config': config_module}):
+            amplicol_generation.generate_artifact(pyamplicol, '/tmp/a', 'full', process, None)
+            amplicol_generation.generate_artifact(pyamplicol, '/tmp/a', 'full', process, None,
+                                                  selector_only_full_colour=True)
+        self.assertNotIn('selector_only_full_colour', configs[0]['generation'])
+        self.assertTrue(configs[1]['generation']['selector_only_full_colour'])
+        self.assertEqual(configs[1]['generation']['relation_discovery'], {'mode': 'off'})
+
     def test_flavor_union_crossing_requires_unions(self):
         jobs = []
         with self.assertRaisesRegex(madgraph.InvalidCmd, 'requires amplicol_flavor_unions'):
@@ -117,7 +138,8 @@ class TestConcurrentArtifacts(unittest.TestCase):
     """With a license the full-colour artifact is generated in a child process
     while this one generates the leading-colour one."""
 
-    def run_generate(self, licensed, unions=True, crossing=None):
+    def run_generate(self, licensed, unions=True, crossing=None, selector=None,
+                     selectors=None):
         from madgraph.iolibs import amplicol_generation
         calls = []
         licensing = mock.Mock(_cpu_budget=lambda: 5)
@@ -130,8 +152,11 @@ class TestConcurrentArtifacts(unittest.TestCase):
 
         class Child(object):
             def __init__(self, artifact, accuracy, process, model, workers,
-                         flavor_unions=False, flavor_union_crossing=None):
+                         flavor_unions=False, flavor_union_crossing=None,
+                         selector_only_full_colour=None):
                 children.append(self)
+                if selectors is not None:
+                    selectors.append((accuracy, selector_only_full_colour))
                 calls.append(('child', os.path.basename(artifact), workers, flavor_unions,
                               flavor_union_crossing))
 
@@ -145,14 +170,19 @@ class TestConcurrentArtifacts(unittest.TestCase):
                'flavor_unions': unions}
         if crossing is not None:
             job['flavor_union_crossing'] = crossing
+        if selector is not None:
+            job['selector_only_full_colour'] = selector
+
+        def generate_artifact(p, artifact, accuracy, *args, **kwargs):
+            if selectors is not None:
+                selectors.append((accuracy, kwargs.get('selector_only_full_colour')))
+            calls.append((os.path.basename(artifact), kwargs.get('workers'),
+                          kwargs.get('flavor_unions'), kwargs.get('flavor_union_crossing')))
         with mock.patch.dict(sys.modules, modules), \
                 mock.patch.object(amplicol_generation, 'model_source'), \
                 mock.patch.object(amplicol_generation, 'ArtifactProcess', Child), \
                 mock.patch.object(amplicol_generation, 'generate_artifact',
-                                  lambda p, artifact, accuracy, *args, **kwargs: calls.append(
-                                      (os.path.basename(artifact), kwargs.get('workers'),
-                                       kwargs.get('flavor_unions'),
-                                       kwargs.get('flavor_union_crossing')))):
+                                  generate_artifact):
             self.assertEqual(amplicol_generation.generate(job), [['p0']])
         return calls
 
@@ -179,6 +209,35 @@ class TestConcurrentArtifacts(unittest.TestCase):
         self.assertEqual(self.run_generate(False, crossing=True),
                          [('lc', None, True, True), ('full', None, True, False),
                           ('reweight',)])
+
+    def test_selector_only_reaches_only_the_full_colour_artifact(self):
+        for licensed in (True, False):
+            selectors = []
+            self.run_generate(licensed, selectors=selectors)
+            self.assertEqual(sorted(selectors), [('full', False), ('lc', False)])
+            selectors = []
+            self.run_generate(licensed, selector=True, selectors=selectors)
+            self.assertEqual(sorted(selectors), [('full', True), ('lc', False)])
+
+    def test_generate_child_passes_selector_only(self):
+        from madgraph.iolibs import amplicol_generation
+        calls, jobs = [], []
+        with mock.patch('subprocess.Popen',
+                        lambda args, **kwargs: jobs.append(json.loads(args[-1]))):
+            amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 2).log.close()
+            amplicol_generation.ArtifactProcess('/a/full', 'full', {}, '/m', 2,
+                                                selector_only_full_colour=True).log.close()
+        self.assertFalse(jobs[0]['selector_only_full_colour'])
+        self.assertTrue(jobs[1]['selector_only_full_colour'])
+        with mock.patch.dict(sys.modules, {'pyamplicol': mock.Mock()}), \
+                mock.patch.object(amplicol_generation, 'generate_artifact',
+                                  lambda *args, **kwargs: calls.append(kwargs)):
+            for job in jobs:
+                amplicol_generation.generate_child(job)
+        self.assertEqual(calls, [
+            {'workers': 2, 'flavor_unions': True, 'flavor_union_crossing': False},
+            {'workers': 2, 'flavor_unions': True, 'flavor_union_crossing': False,
+             'selector_only_full_colour': True}])
 
     def test_generate_child_passes_flavor_unions(self):
         from madgraph.iolibs import amplicol_generation
@@ -233,8 +292,9 @@ class TestConcurrentArtifacts(unittest.TestCase):
 
 
 class TestExporterOptions(unittest.TestCase):
-    """The MG options amplicol_flavor_unions/_crossing as ProcessExporterMG7
-    passes them to export_amplicol_processes."""
+    """The MG options amplicol_flavor_unions/_crossing and
+    amplicol_selector_only_full_colour as ProcessExporterMG7 passes them to
+    export_amplicol_processes."""
 
     def exported(self, options):
         import madgraph.iolibs.export_cpp as export_cpp
@@ -257,6 +317,18 @@ class TestExporterOptions(unittest.TestCase):
             kwargs = self.exported(options)
             self.assertTrue(kwargs['flavor_unions'])
             self.assertFalse(kwargs['flavor_union_crossing'])
+
+    def test_selector_only_is_off_by_default(self):
+        import madgraph.interface.madgraph_interface as interface
+        defaults = dict(interface.MadGraphCmd.options_madgraph)
+        self.assertIs(defaults['amplicol_selector_only_full_colour'], False)
+        for options in ({}, defaults):
+            self.assertFalse(self.exported(options)['selector_only_full_colour'])
+
+    def test_selector_only_follows_the_option(self):
+        kwargs = self.exported({'amplicol_selector_only_full_colour': True})
+        self.assertTrue(kwargs['selector_only_full_colour'])
+        self.assertFalse(kwargs['flavor_union_crossing'])
 
     def test_crossing_follows_the_option(self):
         kwargs = self.exported({'amplicol_flavor_union_crossing': True})

@@ -159,7 +159,9 @@ process has a smaller basis or faster runtime.
   `evaluator.execution_mode = "recurrence"` and
   `generation.relation_discovery.mode = "off"`; ignored for LC. Full-colour
   flavour-union templates get a pattern-resolved companion and are selector-only
-  too; crossed union members are refused.)
+  too; crossed union members are refused. MadGraph7 turns it on for its
+  full-colour artifact with the option `amplicol_selector_only_full_colour`, off
+  by default.)
 - `pattern_resolved_companion: bool = false` (full-colour flavour-union
   templates also get a pattern-resolved helicity-selector companion beside the
   main schedule; union members evaluated one helicity per point use it. Implied

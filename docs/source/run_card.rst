@@ -572,6 +572,12 @@ helicities and colour flows in another order, so the events are only statistical
 equivalent, also for an unmerged run with the same seed. The event generation is
 currently slower with it (about 10-20% CPU time at ``p p > j j j j``).
 
+``set amplicol_selector_only_full_colour True`` (off by default) generates the
+full-colour artifact without its helicity-summed programs (pyamplicol
+``generation.selector_only_full_colour``). The full-colour pass evaluates one helicity per
+event, so it needs only the programs that do that, and the full-colour generation is
+shorter. The leading-colour artifact is unchanged.
+
 ``color_accuracy`` (``"full"``)
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
     leading-colour events and skips the second pass.

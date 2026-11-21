@@ -582,12 +582,15 @@ def export_amplicol_processes(*args, **kwargs):
 
 def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
                                interactive=None, jobs=None, flavor_unions=True,
-                               flavor_union_crossing=False):
+                               flavor_union_crossing=False,
+                               selector_only_full_colour=False):
     """The body of export_amplicol_processes. ``interactive`` and ``jobs`` are
     those of the pyamplicol installation, see bootstrap.ensure_pyamplicol;
     ``flavor_unions`` generates the LC and full-colour artifacts with flavour-union
     templates (option amplicol_flavor_unions); ``flavor_union_crossing`` also joins
-    crossed flavours in the LC artifact (option amplicol_flavor_union_crossing)."""
+    crossed flavours in the LC artifact (option amplicol_flavor_union_crossing);
+    ``selector_only_full_colour`` generates the full-colour artifact with only its
+    one-helicity-per-point programs (option amplicol_selector_only_full_colour)."""
     if flavor_union_crossing and not flavor_unions:
         raise madgraph.InvalidCmd('amplicol_flavor_union_crossing requires '
                                   'amplicol_flavor_unions')
@@ -616,6 +619,8 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
     # only when set, so that jobs without crossing keep their keys
     if flavor_union_crossing:
         job['flavor_union_crossing'] = True
+    if selector_only_full_colour:
+        job['selector_only_full_colour'] = True
     try:
         providers = amplicol_generation.generate(job)
     except Exception as error:

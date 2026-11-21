@@ -138,7 +138,8 @@ def _remove(path):
 
 
 def generate_artifact(pyamplicol, artifact, accuracy, process, model,
-                      flavor_unions=True, workers=None, flavor_union_crossing=False):
+                      flavor_unions=True, workers=None, flavor_union_crossing=False,
+                      selector_only_full_colour=False):
     from pyamplicol.config import resolve_config
     # workers and cores are left to pyamplicol, which clamps them without a
     # license, unless ``workers`` splits the CPUs between concurrent artifacts
@@ -166,6 +167,9 @@ def generate_artifact(pyamplicol, artifact, accuracy, process, model,
         'evaluator': {'backend': 'jit', 'execution_mode': 'recurrence',
                       'jit': {'optimization_level': 2}},
     }
+    if selector_only_full_colour:
+        # full colour without the main schedule: one helicity per point only
+        config['generation']['selector_only_full_colour'] = True
     if workers is not None:
         config['generation']['workers'] = workers
         config['evaluator']['optimization'] = {'cores': 1}
@@ -182,11 +186,14 @@ _CHILD = ('import json, sys; job = json.loads(sys.argv[1]); sys.path[:0] = job["
 def generate_child(job):
     """The artifact of a job of start_artifact, in a process of its own."""
     import pyamplicol
+    # only when set, so that the call is unchanged without it
+    extra = {'selector_only_full_colour': True} if job.get('selector_only_full_colour') else {}
     generate_artifact(pyamplicol, job['artifact'], job['accuracy'], job['process'],
                       pyamplicol.ModelSource.from_path(job['model']),
                       workers=job['workers'],
                       flavor_unions=job.get('flavor_unions', True),
-                      flavor_union_crossing=job.get('flavor_union_crossing', False))
+                      flavor_union_crossing=job.get('flavor_union_crossing', False),
+                      **extra)
 
 
 class ArtifactProcess(object):
@@ -194,14 +201,16 @@ class ArtifactProcess(object):
     work does not share the GIL of this one."""
 
     def __init__(self, artifact, accuracy, process, model_path, workers,
-                 flavor_unions=True, flavor_union_crossing=False):
+                 flavor_unions=True, flavor_union_crossing=False,
+                 selector_only_full_colour=False):
         import subprocess
         import sys
         import tempfile
         job = {'sys_path': sys.path, 'artifact': artifact, 'accuracy': accuracy,
                'process': process, 'model': model_path, 'workers': workers,
                'flavor_unions': bool(flavor_unions),
-               'flavor_union_crossing': bool(flavor_union_crossing)}
+               'flavor_union_crossing': bool(flavor_union_crossing),
+               'selector_only_full_colour': bool(selector_only_full_colour)}
         self.artifact = artifact
         # a file, not a pipe, which would fill up while this process generates
         self.log = tempfile.TemporaryFile(mode='w+')
@@ -251,16 +260,20 @@ def generate(job):
         flavor_unions = job.get('flavor_unions', True)
         # crossing for lc only until full-colour crossing exists
         crossing = {'lc': job.get('flavor_union_crossing', False), 'full': False}
+        # the reweight step evaluates full colour one helicity per point only
+        selector = {'lc': False, 'full': job.get('selector_only_full_colour', False)}
         if concurrent:
             full = ArtifactProcess(os.path.join(path, 'full'), 'full', process,
                                    job['model']['cache'], budget // 2,
                                    flavor_unions=flavor_unions,
-                                   flavor_union_crossing=crossing['full'])
+                                   flavor_union_crossing=crossing['full'],
+                                   selector_only_full_colour=selector['full'])
             try:
                 generate_artifact(pyamplicol, os.path.join(path, 'lc'), 'lc', process,
                                   model, flavor_unions=flavor_unions,
                                   workers=budget - budget // 2,
-                                  flavor_union_crossing=crossing['lc'])
+                                  flavor_union_crossing=crossing['lc'],
+                                  selector_only_full_colour=selector['lc'])
                 full.wait()
             except BaseException:
                 full.kill()
@@ -269,7 +282,8 @@ def generate(job):
             for accuracy in ('lc', 'full'):
                 generate_artifact(pyamplicol, os.path.join(path, accuracy), accuracy,
                                   process, model, flavor_unions=flavor_unions,
-                                  flavor_union_crossing=crossing[accuracy])
+                                  flavor_union_crossing=crossing[accuracy],
+                                  selector_only_full_colour=selector[accuracy])
         # the flavour switch of lc_flavors = two_lines_resample
         providers.append(umami_reweight.write_reweight_provider(
             os.path.join(path, 'lc'), os.path.join(path, 'full'),

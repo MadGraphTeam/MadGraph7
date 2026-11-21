@@ -3319,6 +3319,9 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # crossed unions in the leading-colour artifact (default off)
         self.amplicol_flavor_union_crossing = bool(
             getattr(cmd, 'options', {}).get('amplicol_flavor_union_crossing', False))
+        # full-colour artifact without the helicity-summed programs (default off)
+        self.amplicol_selector_only_full_colour = bool(
+            getattr(cmd, 'options', {}).get('amplicol_selector_only_full_colour', False))
 
     def amplicol_processes(self):
         """MG processes standing for the [amplicol] processes (built once: for
@@ -3344,6 +3347,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 flavor_unions=getattr(self, 'amplicol_flavor_unions', True),
                 flavor_union_crossing=getattr(
                     self, 'amplicol_flavor_union_crossing', False),
+                selector_only_full_colour=getattr(
+                    self, 'amplicol_selector_only_full_colour', False),
                 **getattr(self, 'amplicol_install', {})):
             # never merged with another subprocess
             self.merged_subprocesses[('amplicol', len(self.process_info))].append(

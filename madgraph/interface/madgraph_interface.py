@@ -2584,7 +2584,8 @@ This will take effect only in a NEW terminal
                                           'low_mem_multicore_nlo_generation',\
                                           'merge_same_topologies',\
                                           'amplicol_flavor_unions',\
-                                          'amplicol_flavor_union_crossing']:
+                                          'amplicol_flavor_union_crossing',\
+                                          'amplicol_selector_only_full_colour']:
             args.append('True')
 
         if len(args) > 2 and '=' == args[1]:
@@ -4250,7 +4251,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'merge_same_topologies',
                     'merge_quartic_vertices',
                     'amplicol_flavor_unions',
-                    'amplicol_flavor_union_crossing'
+                    'amplicol_flavor_union_crossing',
+                    'amplicol_selector_only_full_colour'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
@@ -4342,7 +4344,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False,
                           'amplicol_flavor_unions': True,
-                          'amplicol_flavor_union_crossing': False
+                          'amplicol_flavor_union_crossing': False,
+                          'amplicol_selector_only_full_colour': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -13824,6 +13827,19 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.options['amplicol_flavor_union_crossing'] = \
             banner_module.ConfigFile.format_variable(
                 args[1], bool, 'amplicol_flavor_union_crossing')
+
+    def set2_amplicol_selector_only_full_colour(self, args, log=True):
+        """Set whether the full-colour [amplicol] artifact keeps only the programs
+        that evaluate one helicity per point, which is all the event generation
+        needs (pyamplicol generation.selector_only_full_colour). This shortens the
+        full-colour generation; the matrix elements agree with those of the default
+        artifact to rounding. Default: False.
+        """
+        args = ['amplicol_selector_only_full_colour'] + args
+        self.check_set(args)
+        self.options['amplicol_selector_only_full_colour'] = \
+            banner_module.ConfigFile.format_variable(
+                args[1], bool, 'amplicol_selector_only_full_colour')
 
 
 
