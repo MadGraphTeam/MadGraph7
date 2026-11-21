@@ -35,6 +35,7 @@ c Placeholders: QED_COUPLING, NLINKS_VALUE, LINK_M_VALUES, LINK_N_VALUES.
       double precision p_lab(0:3,nexternal),p_cms(0:3,nexternal)
       double precision ref(5000),tst(5000),rf3(5000),worst(0:3)
       double precision shift3
+      double precision snapshot_worst
       double complex coup_save
       double precision pb(0:3,nexternal-1)
       integer         nndim
@@ -54,6 +55,7 @@ c Placeholders: QED_COUPLING, NLINKS_VALUE, LINK_M_VALUES, LINK_N_VALUES.
       ncount(:)=0
       nhelas(:)=0
       shift3=1d99
+      snapshot_worst=0d0
       do ifks=1,fks_configs
        nFKSprocess=ifks
        call fks_inc_chooser()
@@ -90,6 +92,7 @@ c reference: fresh evaluation at g2
         born_test_fresh=.true.
         born_test_helas=0
         call collect(pb,ref,nval)
+        call check_saved_snapshot(pb,g1,g2,snapshot_worst)
         if(born_test_helas.le.0)error stop 11
         do mode=0,3
 c fresh evaluation at g1: the cache then holds the g1 amplitudes
@@ -142,6 +145,39 @@ c Native requests compare the configuration ID and dynamic values.
      &       ncount(mode),nhelas(mode)
       enddo
       write(*,'(a,e12.4)') ' GSCALE REFUSAL_SHIFT ',shift3
+      write(*,'(a,e12.4)') ' GSCALE SAVED_SNAPSHOT ',snapshot_worst
+      end
+
+
+      subroutine check_saved_snapshot(pb,g1,g2,worst)
+c A returned lane snapshot survives a later scalar-cache rescaling. Its
+c helicity reconstruction must still work while the global cache holds B.
+      implicit none
+      include 'genps.inc'
+      include 'nexternal.inc'
+      include 'born_nhel.inc'
+      include 'orders.inc'
+      double precision pb(0:3,nexternal-1),g1,g2,worst,w
+      double precision amp2(ngraphs),jamp2(0:ncolor)
+      double precision ret(amp_split_size),a,b,hel(3,max_bhel)
+      double complex cnt(2,nsplitorders)
+      double complex retcnt(amp_split_size,2,nsplitorders)
+      double complex saved_a(ngraphs,max_bhel),saved_b(ngraphs,max_bhel)
+      double complex original_a(ngraphs,max_bhel)
+      logical calculatedBorn,check_born_amps,born_checks_amps
+      common/ccalculatedBorn/calculatedBorn
+      common/c_born_amps_check/check_born_amps,born_checks_amps
+      call set_g(g1)
+      calculatedBorn=.false.
+      call sborn_amp(pb,amp2,jamp2,ret,retcnt,w,cnt,saved_a)
+      original_a=saved_a
+      call sborn_hel(pb,a,saved_a,hel)
+      call set_g(g2)
+      check_born_amps=.true.
+      call sborn_amp(pb,amp2,jamp2,ret,retcnt,w,cnt,saved_b)
+      if (any(saved_a.ne.original_a)) stop 96
+      call sborn_hel(pb,b,saved_a,hel)
+      worst=max(worst,abs(a-b)/max(abs(a),1d-300))
       end
 
 
@@ -157,13 +193,16 @@ c Native requests compare the configuration ID and dynamic values.
       subroutine touch_onehel(pb)
 c A single-helicity Born query, as for the EW Sudakov.
       implicit none
+      include 'genps.inc'
       include 'nexternal.inc'
+      include 'born_nhel.inc'
       double precision pb(0:3,nexternal-1),w
+      double complex ret_saveamp(ngraphs,max_bhel)
       integer nhel(nexternal-1),i
       do i=1,nexternal-1
         nhel(i)=-1
       enddo
-      call sborn_onehel(pb,nhel,1,w)
+      call sborn_onehel(pb,nhel,1,w,ret_saveamp)
       end
 
 
@@ -242,6 +281,9 @@ c entry (the colour links cancel between flows)
       enddo
       do i=1,n
         d=abs(a(i)-b(i))/max(abs(a(i)),1d-10*amax,1d-300)
+        if (d.gt.worst.and.d.gt.1d-12) then
+          write(*,*) 'GSCALE MISMATCH ENTRY',i,'REF',a(i),'GOT',b(i)
+        endif
         worst=max(worst,d)
       enddo
       end

@@ -23,6 +23,14 @@ module mc_born_types
     complex(8), allocatable :: complex_values(:)
     integer(8) :: configuration_epoch=0
   end type
+  ! A suspended native caller can read model inputs outside the Born
+  ! amplitude's compact cache key (including real-only couplings).
+  type BornLiveModel
+    real(8), allocatable :: real_values(:)
+    complex(8), allocatable :: complex_values(:)
+    type(BornModelConfiguration) :: configuration
+    integer :: helicity_frame(2)=0
+  end type
   type BornHistory
     integer :: owner_sector=0, provider=0, context=0, sector=0, i=0, j=0, extra=0
     integer, allocatable :: permutation(:), flavours(:), orders(:), amplitudes(:)
@@ -35,6 +43,8 @@ module mc_born_types
     integer, allocatable :: fks(:,:)
     integer, allocatable :: frame_map(:)
     integer, allocatable :: born_ids(:,:), born_mothers(:,:,:), born_colours(:,:,:)
+    integer, allocatable :: sector_born_ids(:,:)
+    real(8), allocatable :: sector_born_identities(:)
     integer, allocatable :: configurations(:), tree(:,:,:), sprop(:,:), tprid(:,:)
     logical, allocatable :: force_bw(:,:)
     logical, allocatable :: colour_amplitudes(:,:,:)

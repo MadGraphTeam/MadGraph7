@@ -25,7 +25,10 @@ class TestNativeFrameMasks(unittest.TestCase):
             for name, source in {
                 'nexternal.inc': 'integer nexternal,nincoming\n'
                                  'parameter(nexternal=5,nincoming=2)',
-                'orders.inc': 'integer nsplitorders\nparameter(nsplitorders=2)',
+                'genps.inc': 'integer ngraphs,ncolor\nparameter(ngraphs=1,ncolor=1)',
+                'orders.inc': 'integer nsplitorders,amp_split_size\n'
+                              'parameter(nsplitorders=2,amp_split_size=2)',
+                'born_nhel.inc': 'integer max_bhel\nparameter(max_bhel=1)',
             }.items():
                 (work / name).write_text(''.join('      ' + line + '\n'
                                                 for line in source.splitlines()))
@@ -183,7 +186,7 @@ do phase=1,3
   call binothlha_frame(p,1d0,virt)
   call assert_restored()
 enddo
-if(calls.ne.15.or.ensure_count.ne.15)error stop 'missing scoped call'
+if(calls.ne.18.or.ensure_count.ne.15)error stop 'missing scoped call'
 if(any(p.ne.2d0))error stop 'mutated input momenta'
 print *, 'PASS scoped native helicity basis'
 contains
@@ -241,9 +244,26 @@ call check_active_key()
 cnts=1d0
 end subroutine
 
-subroutine binothlha(p,born,virt)
-real(8) p(0:3,4),born,virt
+subroutine sborn_amp(p,amp2,jamp2,orders,counts,born,ans_counts,saved)
+real(8) p(0:3,4),amp2(1),jamp2(0:1),orders(2),born
+complex(8) counts(2,2,2),ans_counts(2,2),saved(1,1)
 call check_active_key()
+amp2=1d0
+jamp2=1d0
+orders=1d0
+counts=1d0
+born=1d0
+ans_counts=1d0
+saved=1d0
+end subroutine
+
+subroutine binothlha(p,born,virt,orders,saved,finite,counts)
+real(8) p(0:3,4),born,virt,orders(2),finite(2)
+complex(8) saved(1,1),counts(2,2,2)
+call check_active_key()
+if(any(orders.ne.1d0).or.any(saved.ne.(1d0,0d0))) &
+  error stop 'missing Born amplitude setup'
+finite=1d0
 virt=1d0
 end subroutine
 '''

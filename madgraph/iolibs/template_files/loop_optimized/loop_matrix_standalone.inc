@@ -2,9 +2,24 @@ C --=========================================--
 C   Main subroutine
 C --=========================================--
 
-## if(ninjars_available) {
-      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
       IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL)
+      %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
+      CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P_USER,1,ANS)
+      END
+
+## if(ninjars_available) {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_FLAVOR(P_USER,FLAV_IDX,ANS)
+      IMPLICIT NONE
+      INTEGER FLAV_IDX
       INTEGER NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       %(real_dp_format)s P_USER(0:3,NEXTERNAL),ANS(0:3,*)
@@ -24,14 +39,14 @@ C --=========================================--
       NRS_RETRY_HARD_SKIP=0
       NRS_NATIVE_ACC=-1D0
       NRS_COMP_ACC=-1D0
-      CALL %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+      CALL %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,FLAV_IDX,ANS)
 C     Guaranteed reset after every ordinary return from the implementation.
       NRS_RETRY_MODE=.FALSE.
       END
 
-      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,FLAV_IDX,ANS)
 ## } else {
-      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_FLAVOR(P_USER,FLAV_IDX,ANS)
 ## }
 C  
 %(info_lines)s
@@ -120,6 +135,21 @@ C
 	  PARAMETER (NCOLORROWS=NLOOPAMPS)
 	  INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NVIRTUAL_FLAVORS
+      PARAMETER (NVIRTUAL_FLAVORS=%(nvirtual_flavors)d)
+C     HelFilter.dat and LoopFilter.dat describe one virtual flavour:
+C     FILTER_FLAV_IDX, the only one evaluated with this output. It is 0
+C     when the evaluated flavours are unknown: the filters are off.
+      INTEGER FILTER_FLAV_IDX
+      PARAMETER (FILTER_FLAV_IDX=%(filter_flav_idx)d)
+## if(FilterPerFlavor) {
+C     It is -1 when several flavours are evaluated. Each of them then
+C     has its own check phase and filters, written to the files
+C     HelFilter_<flavour>.dat and LoopFilter_<flavour>.dat, and kept
+C     in its own filter slot while other flavours are evaluated.
+      INTEGER NFILTER_SLOTS
+      PARAMETER (NFILTER_SLOTS=%(nfilter_slots)d)
+## }
       INTEGER NINITIAL
       PARAMETER (NINITIAL=%(nincoming)d)
       INTEGER    NWAVEFUNCS,NLOOPWAVEFUNCS
@@ -188,6 +218,7 @@ c
 c It is however somehow academical. This is why ANS_DIMENSION is not just NSQSO but rather MAX(NSQSO,NSQSO_BORN)
 C
 	  %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
+      INTEGER FLAV_IDX
 C  
 C LOCAL VARIABLES 
 C  
@@ -238,6 +269,10 @@ C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATIO
 	  INTEGER NATTEMPTS
 	  DATA NATTEMPTS/0/
 	  DATA IC/NEXTERNAL*1/
+	  INTEGER FLAVOR(NEXTERNAL),BORN_FLAV_IDX
+	  INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+	  COMMON/%(proc_prefix)sACTIVE_VIRTUAL_FLAVOR/FLAVOR
+%(virtual_flavor_mask_decl)s
 	  %(real_dp_format)s HELSAVED(3,NCOMB)
 	  INTEGER ITEMP
 	  LOGICAL LTEMP
@@ -385,6 +420,32 @@ C     Typically, the hel_offset is 10000
 	  INTEGER GOODHEL(NCOMB)
 	  LOGICAL GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  common/%(proc_prefix)sFilters/GOODAMP,GOODHEL,HELOFFSET
+## if(FilterPerFlavor) {
+C     FILTER_SLOT maps a virtual flavour to its filter slot (0 if it
+C     is never evaluated), which keeps the filter state of the flavour
+C     while another one is evaluated. LOADED_FILTER_FLAV is the
+C     flavour in use.
+	  INTEGER FILTER_SLOT(NVIRTUAL_FLAVORS)
+	  DATA FILTER_SLOT/%(filter_slots)s/
+	  INTEGER LOADED_FILTER_FLAV,ISLOT
+	  DATA LOADED_FILTER_FLAV/0/
+	  CHARACTER*64 FILTER_NAME
+	  LOGICAL SLOT_USED(NFILTER_SLOTS)
+	  DATA SLOT_USED/NFILTER_SLOTS*.FALSE./
+	  INTEGER SLOT_NTRY(NFILTER_SLOTS),SLOT_NATTEMPTS(NFILTER_SLOTS)
+	  LOGICAL SLOT_FOUNDHELFILTER(NFILTER_SLOTS)
+	  LOGICAL SLOT_FOUNDLOOPFILTER(NFILTER_SLOTS)
+	  LOGICAL SLOT_CHECKPHASE(NFILTER_SLOTS)
+	  LOGICAL SLOT_HELDOUBLECHECKED(NFILTER_SLOTS)
+	  LOGICAL SLOT_DONEHELDOUBLECHECK(NFILTER_SLOTS)
+	  INTEGER SLOT_GOODHEL(NCOMB,NFILTER_SLOTS)
+	  LOGICAL SLOT_GOODAMP(NSQUAREDSO,NLOOPGROUPS,NFILTER_SLOTS)
+	  LOGICAL SLOT_LOOPFILTERBUFF(NSQUAREDSO,NLOOPGROUPS,NFILTER_SLOTS)
+	  SAVE SLOT_NTRY,SLOT_NATTEMPTS,SLOT_FOUNDHELFILTER
+	  SAVE SLOT_FOUNDLOOPFILTER,SLOT_CHECKPHASE,SLOT_HELDOUBLECHECKED
+	  SAVE SLOT_DONEHELDOUBLECHECK,SLOT_GOODHEL,SLOT_GOODAMP
+	  SAVE SLOT_LOOPFILTERBUFF
+## }
 
 	  INTEGER HELPICKED
 	  DATA HELPICKED/-1/
@@ -538,6 +599,17 @@ C ----------
 C BEGIN CODE
 C ----------
 
+IF (FLAV_IDX.LT.1.OR.FLAV_IDX.GT.NVIRTUAL_FLAVORS) THEN
+  ANS=0.0d0
+  RETURN
+ENDIF
+IF (FILTER_FLAV_IDX.GT.0.AND.FLAV_IDX.NE.FILTER_FLAV_IDX) THEN
+  WRITE(*,*) '##E03 ERROR The MadLoop filters describe the virtual flavour ',FILTER_FLAV_IDX,' only, not flavour ',FLAV_IDX
+  STOP 1
+ENDIF
+CALL %(proc_prefix)sGET_VIRTUAL_FLAVOR(FLAV_IDX,FLAVOR)
+%(virtual_flavor_mask_setup)s
+
 C     If KEEP_OFFSHELL_MASS is .true., then its mass is computed as m**2 = p**2
 C     If KEEP_OFFSHELL_MASS is .false., then its mass is taken from pmass.inc
 %(keep_offshell_mass)s
@@ -549,6 +621,13 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+  IF (FILTER_FLAV_IDX.EQ.0) THEN
+C   A single MadLoop filter file cannot represent several physical flavours.
+C   Keep every loop/helicity active when the flavours are unknown.
+    UseLoopFilter=.FALSE.
+    HelicityFilterLevel=0
+    DoubleCheckHelicityFilter=.FALSE.
+  ENDIF
   CALL ML_APPLY_LOOP_POLE_MODE()
   IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
     COLLIERComputeUVpoles = COLLIER_UV_POLE_COMPUTATION_CHOICE
@@ -758,6 +837,61 @@ if(MAX_SPIN_EXTERNAL_PARTICLE.gt.3.AND.USERHEL.NE.-1) THEN
    CALL %(proc_prefix)sSET_N_EVALS(N_DP_EVAL,N_QP_EVAL)
 ENDIF
 
+## if(FilterPerFlavor) {
+C Switch to the filters of the virtual flavour FLAV_IDX, after saving
+C those of the flavour evaluated before. A flavour evaluated for the
+C first time reads its own filter files, or else starts its own check
+C phase.
+IF (FLAV_IDX.NE.LOADED_FILTER_FLAV) THEN
+  IF (LOADED_FILTER_FLAV.NE.0) THEN
+    ISLOT=FILTER_SLOT(LOADED_FILTER_FLAV)
+    SLOT_NTRY(ISLOT)=NTRY
+    SLOT_NATTEMPTS(ISLOT)=NATTEMPTS
+    SLOT_FOUNDHELFILTER(ISLOT)=FOUNDHELFILTER
+    SLOT_FOUNDLOOPFILTER(ISLOT)=FOUNDLOOPFILTER
+    SLOT_CHECKPHASE(ISLOT)=CHECKPHASE
+    SLOT_HELDOUBLECHECKED(ISLOT)=HELDOUBLECHECKED
+    SLOT_DONEHELDOUBLECHECK(ISLOT)=DONEHELDOUBLECHECK
+    SLOT_GOODHEL(:,ISLOT)=GOODHEL(:)
+    SLOT_GOODAMP(:,:,ISLOT)=GOODAMP(:,:)
+    SLOT_LOOPFILTERBUFF(:,:,ISLOT)=LOOPFILTERBUFF(:,:)
+  ENDIF
+  ISLOT=FILTER_SLOT(FLAV_IDX)
+  IF (ISLOT.EQ.0) THEN
+    WRITE(*,*) '##E03 ERROR The MadLoop filters are not set up for the virtual flavour ',FLAV_IDX
+    STOP 1
+  ENDIF
+  IF (SLOT_USED(ISLOT)) THEN
+    NTRY=SLOT_NTRY(ISLOT)
+    NATTEMPTS=SLOT_NATTEMPTS(ISLOT)
+    FOUNDHELFILTER=SLOT_FOUNDHELFILTER(ISLOT)
+    FOUNDLOOPFILTER=SLOT_FOUNDLOOPFILTER(ISLOT)
+    CHECKPHASE=SLOT_CHECKPHASE(ISLOT)
+    HELDOUBLECHECKED=SLOT_HELDOUBLECHECKED(ISLOT)
+    DONEHELDOUBLECHECK=SLOT_DONEHELDOUBLECHECK(ISLOT)
+    GOODHEL(:)=SLOT_GOODHEL(:,ISLOT)
+    GOODAMP(:,:)=SLOT_GOODAMP(:,:,ISLOT)
+    LOOPFILTERBUFF(:,:)=SLOT_LOOPFILTERBUFF(:,:,ISLOT)
+  ELSE
+    SLOT_USED(ISLOT)=.TRUE.
+    NTRY=0
+    NATTEMPTS=0
+    FOUNDHELFILTER=.TRUE.
+    FOUNDLOOPFILTER=.TRUE.
+    CHECKPHASE=.TRUE.
+    HELDOUBLECHECKED=.FALSE.
+    DONEHELDOUBLECHECK=.FALSE.
+    LOOPFILTERBUFF(:,:)=.FALSE.
+  ENDIF
+  CALL JOINPATH(MLPATH,PROC_PREFIX,TMP)
+  WRITE(FILTER_NAME,'(A,I0,A)') 'HelFilter_',FLAV_IDX,'.dat'
+  CALL JOINPATH(TMP,FILTER_NAME,HELFILTERFN)
+  WRITE(FILTER_NAME,'(A,I0,A)') 'LoopFilter_',FLAV_IDX,'.dat'
+  CALL JOINPATH(TMP,FILTER_NAME,LOOPFILTERFN)
+  LOADED_FILTER_FLAV=FLAV_IDX
+ENDIF
+
+## }
 IF(NTRY.EQ.0) THEN
   HELDOUBLECHECKED=(.NOT.DoubleCheckHelicityFilter).OR.(HelicityFilterLevel.eq.0)
 OPEN(1, FILE=LoopFilterFN, err=100, status='OLD',           action='READ')
@@ -833,7 +967,13 @@ C the split_order summed value I=0 is used in ML5 code.
 DO I=0,NSQSO_BORN
   BORNBUFF(I)=0.0d0
 ENDDO
-CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))
+BORN_FLAV_IDX=%(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+IF (BORN_FLAV_IDX.EQ.0) THEN
+  WRITE(*,*) 'MadLoop: no Born row for virtual flavor',FLAV_IDX
+  STOP 1
+ENDIF
+CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,BORN_FLAV_IDX,
+     $ BORNBUFF(0))
 DO I=0,NSQSO_BORN
   ANS(0,I)=BORNBUFF(I)
 ENDDO
@@ -1151,6 +1291,21 @@ C  Handle the possible requirement of specific polarizations
   ELSE
     HEL_MULT=1
   ENDIF
+
+## if(not LoopInduced) {
+C Calls skipped by the virtual-flavour masks must leave no amplitude from
+C the preceding helicity behind.
+  DO I=1,NBORNAMPS
+    AMP(I)=(0.0d0,0.0d0)
+  ENDDO
+## }
+## if(not AmplitudeReduction) {
+  DO K=1,3
+    DO I=1,NCTAMPS
+      AMPL(K,I)=(0.0d0,0.0d0)
+    ENDDO
+  ENDDO
+## }
  
 ## if(AmplitudeReduction){
   CTCALL_REQ_SO_DONE=.FALSE.
@@ -2982,7 +3137,41 @@ C ----------
       CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
 	  END
 
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIXHEL_FLAVOR(P,HEL,FLAV_IDX,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P(0:3,NEXTERNAL)
+      %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
+      INTEGER HEL,FLAV_IDX,USERHEL
+      COMMON/%(proc_prefix)sUSERCHOICE/USERHEL
+      USERHEL=HEL
+      CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P,FLAV_IDX,ANS)
+      END
+
       SUBROUTINE %(proc_prefix)sSLOOPMATRIXHEL_THRES(P,HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+	  IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P(0:3,NEXTERNAL),ANS(0:3,0:ANS_DIMENSION)
+      %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
+      INTEGER HEL,RET_CODE
+      CALL %(proc_prefix)sSLOOPMATRIXHEL_THRES_FLAVOR(P,HEL,1,ANS,
+     $ PREC_ASKED,PREC_FOUND,RET_CODE)
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIXHEL_THRES_FLAVOR(P,HEL,
+     $ FLAV_IDX,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
 	  IMPLICIT NONE
 C  
 C CONSTANTS
@@ -2999,7 +3188,7 @@ C
       INTEGER ANS_DIMENSION
       PARAMETER(ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
       %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
-	  INTEGER HEL, RET_CODE
+	  INTEGER HEL,FLAV_IDX,RET_CODE
 	  %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
 C
 C LOCAL VARIABLES
@@ -3023,10 +3212,10 @@ C BEGIN CODE
 C ----------
       USER_STAB_PREC = PREC_ASKED
 
-      CALL %(proc_prefix)sSLOOPMATRIXHEL(P,HEL,ANS)
+      CALL %(proc_prefix)sSLOOPMATRIXHEL_FLAVOR(P,HEL,FLAV_IDX,ANS)
 	  IF(ALWAYS_TEST_STABILITY.AND.(H.eq.1.OR.ACCURACY(0).lt.0.0d0)) THEN
 	    BYPASS_CHECK = .TRUE.
-        CALL %(proc_prefix)sSLOOPMATRIXHEL(P,HEL,ANS) 
+        CALL %(proc_prefix)sSLOOPMATRIXHEL_FLAVOR(P,HEL,FLAV_IDX,ANS)
 	    BYPASS_CHECK = .FALSE.
 C       Make sure we correctly return an initialization-type T code
 		IF (T.eq.2) T=4
@@ -3044,6 +3233,23 @@ C Reset it to default value not to affect next runs
 	  END
 
       SUBROUTINE %(proc_prefix)sSLOOPMATRIX_THRES(P,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
+	  IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER NSQUAREDSO
+      PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
+      %(get_nsqso_born)s
+      INTEGER ANS_DIMENSION
+      PARAMETER (ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
+      %(real_dp_format)s P(0:3,NEXTERNAL),ANS(0:3,0:ANS_DIMENSION)
+      %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
+      INTEGER RET_CODE
+      CALL %(proc_prefix)sSLOOPMATRIX_THRES_FLAVOR(P,1,ANS,PREC_ASKED,
+     $ PREC_FOUND,RET_CODE)
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_THRES_FLAVOR(P,FLAV_IDX,
+     $ ANS,PREC_ASKED,PREC_FOUND,RET_CODE)
 C
 C     Inputs are:
 C     P(0:3, Nexternal)  double  :: Kinematic configuration (E,px,py,pz)
@@ -3120,7 +3326,7 @@ C
       PARAMETER(ANS_DIMENSION=MAX(NSQSO_BORN,NSQUAREDSO))
       %(real_dp_format)s ANS(0:3,0:ANS_DIMENSION)
 	  %(real_dp_format)s PREC_ASKED,PREC_FOUND(0:NSQUAREDSO)
-	  INTEGER RET_CODE	  
+	  INTEGER FLAV_IDX,RET_CODE
 C
 C LOCAL VARIABLES
 C
@@ -3142,10 +3348,10 @@ C ----------
 C BEGIN CODE
 C ----------
       USER_STAB_PREC = PREC_ASKED
-      CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
+      CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P,FLAV_IDX,ANS)
 	  IF(ALWAYS_TEST_STABILITY.AND.(H.eq.1.OR.ACCURACY(0).lt.0.0d0)) THEN
 	    BYPASS_CHECK = .TRUE.	  
-        CALL %(proc_prefix)sSLOOPMATRIX(P,ANS)
+        CALL %(proc_prefix)sSLOOPMATRIX_FLAVOR(P,FLAV_IDX,ANS)
 		BYPASS_CHECK = .FALSE.
 C     Make sure we correctly return an initialization-type T code
 		IF (T.eq.2) T=4
@@ -3178,3 +3384,5 @@ c arrays
 ## }
         CONTINUE
 	  END
+
+%(virtual_flavor_array_function)s

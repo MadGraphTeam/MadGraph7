@@ -29,6 +29,37 @@ import tests.unit_tests as unittest
 class ColorObjectTest(unittest.TestCase):
     """Test class for the ColorObject objects"""
 
+    def test_deepcopy_preserves_color_object_type_and_indices(self):
+        for cls in (color.ColorObject, color.Tr, color.T, color.f, color.d,
+                    color.Epsilon, color.EpsilonBar, color.K6, color.K6Bar,
+                    color.T6, color.ColorOne):
+            with self.subTest(color_object=cls.__name__):
+                original = cls() if cls is color.ColorOne else cls(-1, 2, 3)
+                cloned = copy.deepcopy(original)
+                self.assertIs(type(cloned), cls)
+                self.assertEqual(list(cloned), list(original))
+                self.assertIsNot(cloned, original)
+                if cloned:
+                    cloned[0] = 17
+                    self.assertEqual(original[0], -1)
+
+    def test_deepcopy_preserves_nested_color_algebra(self):
+        tensor = color.T(1, 2, 3)
+        original = color.ColorString([tensor, tensor],
+                                     coeff=fractions.Fraction(2, 3))
+        original.is_imaginary = True
+        original.Nc_power = -2
+        original.loop_Nc_power = 1
+        cloned = copy.deepcopy(original)
+        self.assertIs(type(cloned[0]), color.T)
+        self.assertIs(cloned[0], cloned[1])
+        self.assertIsNot(cloned[0], tensor)
+        self.assertEqual(cloned.coeff, original.coeff)
+        self.assertEqual(cloned.is_imaginary, original.is_imaginary)
+        self.assertEqual(cloned.Nc_power, original.Nc_power)
+        self.assertEqual(cloned.loop_Nc_power, original.loop_Nc_power)
+        self.assertEqual(cloned.create_copy(), original)
+
     def test_standard(self):
         """Test the standard routines of ColorObject"""
 

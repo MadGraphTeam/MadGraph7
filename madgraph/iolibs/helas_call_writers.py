@@ -702,6 +702,21 @@ class HelasCallWriter(base_objects.PhysicsObject):
             return ""
         else:
             return call(amplitude)
+        
+    def get_amplitude_call_ivec(self, amplitude):
+        """Return the function for writing the amplitude
+        corresponding to the key"""
+
+        try:
+            call = self["amplitudes"][amplitude.get_call_key()]
+        except KeyError as error:
+            return ""
+        else:
+            # misc.sprint(type(amplitude))
+            coups = [x + "(ivec)" for x in amplitude.get('coupling')]
+            amplitude.set('coupling', coups)
+            # misc.sprint(str(call(amplitude)))
+            return call(amplitude)
 
     def add_wavefunction(self, key, function):
         """Set the function for writing the wavefunction
@@ -1541,6 +1556,11 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         self.use_flavor_mask = False
         self.me_n_flavors = 0
         self.me_active_flavor_mask = None
+        # Loop output uses a direct bit test against a COMMON flavour index.
+        # Unlike tree MEs, loop/CT amplitude number spaces overlap, so they
+        # cannot share CURRENT_{WF,AMP}_MASK arrays indexed by object number.
+        self.use_direct_flavor_mask = False
+        self.direct_flavor_index = 'ACTIVE_VIRTUAL_FLAVOR_INDEX'
         # When True the external wavefunction NSF/NSV flag is multiplied by
         # IC(i), letting the caller cross a leg between the initial and the
         # final state. Only the exporters whose template passes a meaningful
@@ -1573,6 +1593,35 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             active_mask = all_ones
         if mask == active_mask:
             return ''
+        if getattr(self, 'use_direct_flavor_mask', False):
+            index = getattr(self, 'direct_flavor_index',
+                            'ACTIVE_VIRTUAL_FLAVOR_INDEX')
+            conditions = []
+            nwords = (self.me_n_flavors + 63) // 64
+            for word in range(nwords):
+                word_mask = (mask >> (64 * word)) & ((1 << 64) - 1)
+                if word_mask == 0:
+                    continue
+                # Emit a signed INTEGER*8 literal, including masks with bit 63
+                # set, rather than relying on compiler-specific BOZ handling.
+                if word_mask >= (1 << 63):
+                    word_mask -= (1 << 64)
+                if word_mask == -(1 << 63):
+                    # Gfortran parses the sign separately and therefore
+                    # rejects -9223372036854775808_8 as an oversized positive
+                    # literal.  Spell the minimum value as an expression whose
+                    # individual literals are representable.
+                    word_literal = '(-9223372036854775807_8-1_8)'
+                else:
+                    word_literal = '%d_8' % word_mask
+                first = 64 * word + 1
+                last = min(64 * (word + 1), self.me_n_flavors)
+                conditions.append(
+                    '(%s.GE.%d.AND.%s.LE.%d.AND.BTEST(%s,%s-%d))' %
+                    (index, first, index, last, word_literal, index, first))
+            if not conditions:
+                return 'IF (.FALSE.) '
+            return 'IF (%s) ' % '.OR.'.join(conditions)
         idx = obj.get('number')
         array = 'CURRENT_WF_MASK' if kind == 'wf' else 'CURRENT_AMP_MASK'
         if kind == 'wf' and 'guard_amp_number' in obj:
@@ -1611,6 +1660,193 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
             return call
         prefix = self._flavor_mask_prefix(amplitude, 'amp')
         return prefix + call if prefix else call
+
+    @staticmethod
+    def _is_flavor_coupling(coupling):
+        return isinstance(coupling, base_objects.FLV_Coupling)
+
+    @staticmethod
+    def _loop_flavor_mother(wavefunction):
+        """Prefer a propagated loop flavour, or seed it from an external line.
+
+        The initial L-cut fermion has no physical flavour assigned yet. When
+        it meets a non-loop fermion, that fermion fixes the coupling indices;
+        reading the cut's LOOP_FLAVOR slot would instead select zero.
+        """
+
+        fermions = [mother for mother in wavefunction.get('mothers')
+                    if mother.get('spin') == 2]
+        loop = [mother for mother in fermions if mother.get('is_loop')]
+        if loop and loop[0].get('mothers'):
+            return loop[0]
+        return next((mother for mother in fermions if not mother.get('is_loop')),
+                    loop[0] if loop else None)
+
+    def _loop_flavor_condition(self, wavefunction, k1, k2):
+        """Restrict internal propagators, while keeping legal external rows."""
+        forbidden = getattr(self, 'forbidden_loop_flavors', {})
+        if not forbidden:
+            return ''
+        unused, tags, outgoing = wavefunction.get_aloha_info(True)
+        loop_leg = next((int(tag[1:]) for tag in tags if tag.startswith('L')), None)
+        slots = [(mother, loop_leg) for mother in wavefunction.get('mothers')
+                 if mother.get('is_loop') and mother.get('spin') == 2]
+        if wavefunction.get('spin') == 2:
+            slots.append((wavefunction, outgoing))
+        conditions = []
+        for fermion, leg in slots:
+            indices = forbidden.get(abs(fermion.get('pdg_code')), ())
+            if indices and leg in (1, 2):
+                flavor = k1 if leg == 1 else k2
+                if flavor is not None:
+                    conditions.extend('%s.NE.%d' % (flavor, index) for index in indices)
+        return '.AND.'.join(dict.fromkeys(conditions))
+
+    def _fermion_flavor_expression(self, wavefunction, use_wavefunctions=False):
+        """Resolve a fermion's flavour from its physical attached tree.
+
+        An internal tree's number_external need not identify its fermion leaf.
+        Default loop calls are outside the helicity loop, so reconstruct the
+        index from external FLAVOR entries and intervening partner maps.  The
+        optimized writer can instead read the already evaluated attached W.
+        Returning None at an initial cut keeps closed fermion rings separate
+        from open lines whose flavour is fixed by an attached tree.
+        """
+        if wavefunction.get('spin') != 2:
+            return None
+        is_loop = wavefunction.get('is_loop')
+        if use_wavefunctions and not is_loop:
+            return '%s%%%%FLV_INDEX' % self.format_helas_object(
+                'W(', str(wavefunction.get('number')))
+        if not wavefunction.get('mothers'):
+            return None if is_loop else 'FLAVOR(%d)' % wavefunction.get(
+                'number_external')
+        mother = self._loop_flavor_mother(wavefunction)
+        if mother is None:
+            return None
+        source = self._fermion_flavor_expression(mother, use_wavefunctions)
+        if source is None:
+            return None
+        unused, tags, outgoing = wavefunction.get_aloha_info(True)
+        source_leg = (next((int(tag[1:]) for tag in tags
+                           if tag.startswith('L')), None)
+                      if mother.get('is_loop') else 3 - outgoing)
+        couplings = [coupling for coupling in wavefunction.get('coupling')
+                     if self._is_flavor_coupling(coupling)]
+        if couplings and source_leg != outgoing:
+            if source_leg not in (1, 2) or outgoing not in (1, 2):
+                raise self.PhysicsObjectError('Cannot trace fermion flavour')
+            return 'GET_FLV_PARTNER(%s,%s,%s)' % (
+                couplings[0].get('name'), source,
+                '.TRUE.' if source_leg == 2 else '.FALSE.')
+        return source
+
+    def _open_loop_flavor_seed(self, loopamp, use_wavefunctions=False):
+        """Resolve a merged fermion cut from the segment closing that cut."""
+        if not self['model'].get('merged_particles'):
+            return None
+        cut = loopamp.get_starting_loop_wavefunction()
+        if (cut.get('spin') != 2 or abs(cut.get('pdg_code')) not in
+                self['model'].get('merged_particles')):
+            return None
+        return self._fermion_flavor_expression(
+            loopamp.get_final_loop_wavefunction(), use_wavefunctions)
+
+    def _resolve_nonoptimized_loop_couplings(self, loopamp):
+        """Resolve merged couplings passed to a default-output loop call.
+
+        The default MadLoop output passes all loop-vertex couplings as scalar
+        arguments to its numerator routine.  Reconstruct the fermion flavour
+        along the ordered loop wavefunctions and replace each FLV_Coupling by
+        its scalar double- and multiple-precision value for the active row.
+        """
+
+        loop_flavors = {}
+        cut_seed = self._open_loop_flavor_seed(loopamp)
+        if cut_seed is not None:
+            loop_flavors[loopamp.get_starting_loop_wavefunction().get(
+                'number')] = cut_seed
+        resolved = []
+        original = []
+        for wavefunction in loopamp.get('wavefunctions'):
+            if not wavefunction.get('mothers'):
+                continue
+
+            lorentz, tags, outgoing = wavefunction.get_aloha_info(True)
+            loop_leg = next((int(tag[1:]) for tag in tags
+                             if tag.startswith('L')), None)
+            source_wf = self._loop_flavor_mother(wavefunction)
+            source = None
+            source_leg = None
+            if source_wf is not None:
+                if source_wf.get('is_loop'):
+                    source = loop_flavors.get(source_wf.get('number'))
+                    source_leg = loop_leg
+                else:
+                    source = self._fermion_flavor_expression(source_wf)
+                    if outgoing in (1, 2):
+                        source_leg = 3 - outgoing
+                    else:
+                        source_leg = (1 if source_wf.get('state') ==
+                                      'incoming' else 2)
+
+            couplings = [coupling for coupling in
+                         wavefunction.get('coupling')
+                         if coupling != 'none']
+            original.extend(couplings)
+            flavor_couplings = [coupling for coupling in couplings
+                                if self._is_flavor_coupling(coupling)]
+            output_flavor = source
+            k1 = k2 = source
+            vertex_couplings = []
+            if flavor_couplings:
+                if source is None or source_leg not in (1, 2):
+                    raise self.PhysicsObjectError(
+                        'Cannot resolve the default-loop flavor for merged '
+                        'coupling %s' % flavor_couplings[0].get('name'))
+                main = flavor_couplings[0].get('name')
+                if source_leg == 1:
+                    k1 = source
+                    k2 = 'GET_FLV_PARTNER(%s,%s,.FALSE.)' % (main, source)
+                else:
+                    k2 = source
+                    k1 = 'GET_FLV_PARTNER(%s,%s,.TRUE.)' % (main, source)
+                output_flavor = k1 if outgoing == 1 else (
+                    k2 if outgoing == 2 else None)
+
+                for coupling in couplings:
+                    if self._is_flavor_coupling(coupling):
+                        name = coupling.get('name')
+                        vertex_couplings.append((
+                            'GET_FLV_COUPLING_VALUE(%s,%s,%s)' %
+                            (name, k1, k2),
+                            'MP_GET_FLV_COUPLING_VALUE(%s,%s,%s)' %
+                            (name, k1, k2)))
+                    else:
+                        vertex_couplings.append((coupling, None))
+            else:
+                vertex_couplings.extend((coupling, None) for coupling in couplings)
+
+            condition = self._loop_flavor_condition(wavefunction, k1, k2)
+            for coupling, mp_coupling in vertex_couplings:
+                if condition:
+                    if mp_coupling is None:
+                        mp_coupling = ('-%s%s' % (self.mp_prefix, coupling[1:])
+                            if coupling.startswith('-') else self.mp_prefix + coupling)
+                    coupling = 'MERGE(%s,DCMPLX(0D0),%s)' % (coupling, condition)
+                    mp_coupling = 'MERGE(%s,CMPLX(0D0,KIND=16),%s)' % (mp_coupling, condition)
+                resolved.append((coupling, mp_coupling))
+
+            if wavefunction.get('spin') == 2 and output_flavor is not None:
+                loop_flavors[wavefunction.get('number')] = output_flavor
+
+        amplitude_couplings = loopamp.get('coupling')
+        if len(original) != len(amplitude_couplings) or any(
+                left != right for left, right in
+                zip(original, amplitude_couplings)):
+            raise self.PhysicsObjectError(
+                'Loop coupling order does not match its wavefunction chain')
+        return resolved
         
 
 
@@ -1640,15 +1876,21 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         
         def create_loop_amp(amplitude):
             helas_dict = amplitude.get_helas_call_dict()
+            resolved_couplings = \
+                self._resolve_nonoptimized_loop_couplings(amplitude)
             # Make sure the potential minus sign on coupling appears at the
             # right place when specifying the mp_coupling. It must be
             # -MP__GC10 and not MP__-GC10
-            for i in range(len(loopamp.get('coupling'))):
-                coupl = helas_dict['LoopCoupling%i'%(i+1)] 
-                helas_dict['MPLoopCoupling%i'%(i+1)]= \
-                   '-%s%s'%(self.mp_prefix,coupl[1:]) if coupl.startswith('-') \
-                                              else '%s%s'%(self.mp_prefix,coupl)
-            # We add here the placeholder for the proc_prefix
+            for i in range(len(amplitude.get('coupling'))):
+                coupl, mp_coupl = resolved_couplings[i]
+                helas_dict['LoopCoupling%i' % (i+1)] = coupl
+                if mp_coupl is not None:
+                    helas_dict['MPLoopCoupling%i' % (i+1)] = mp_coupl
+                else:
+                    helas_dict['MPLoopCoupling%i'%(i+1)]= \
+                       '-%s%s'%(self.mp_prefix,coupl[1:]) if coupl.startswith('-') \
+                                                  else '%s%s'%(self.mp_prefix,coupl)
+            # We add here the placeholde for the proc_prefix
             return 'CALL %(proc_prefix)s'+call%helas_dict
 
         self.add_amplitude(loopamp.get_call_key(), create_loop_amp)
@@ -1898,9 +2140,22 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 originalNumbers=[]
                 couplingNumber=1
                 originalCouplings=[]
+                flavor_routine_names={}
                 for lwf in lamp.get('wavefunctions'):
                     if lwf.get('coupling')!=['none']:
                         originalCouplings.append(lwf.get('coupling'))
+                        if any(self._is_flavor_coupling(coupling)
+                               for coupling in lwf.get('coupling')):
+                            lorentz, tags, outgoing = lwf.get_aloha_info(False)
+                            scalar_tags = [tag for tag in tags if tag != 'M']
+                            scalar_name = aloha_writers.combine_name(
+                                '%s' % lorentz[0], lorentz[1:], outgoing,
+                                scalar_tags, False)
+                            flavor_routine_names[lwf.get('number')] = (
+                                scalar_name,
+                                aloha_writers.combine_name(
+                                    '%s' % lorentz[0], lorentz[1:], outgoing,
+                                    list(tags), False))
                         couplings=[]
                         for coup in lwf.get('coupling'):
                             couplings.append("LC(%d)"%couplingNumber)
@@ -1915,8 +2170,15 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 res.append(self.get_wavefunction_call(\
                                          lamp.get_starting_loop_wavefunction()))
                 # And now for all the other wavefunctions
-                res.extend([ self.get_wavefunction_call(wf) for \
-                          wf in lamp.get('wavefunctions') if wf.get('mothers')])
+                for wf in lamp.get('wavefunctions'):
+                    if not wf.get('mothers'):
+                        continue
+                    wf_call = self.get_wavefunction_call(wf)
+                    if wf.get('number') in flavor_routine_names:
+                        scalar_name, flavor_name = \
+                            flavor_routine_names[wf.get('number')]
+                        wf_call = wf_call.replace(scalar_name, flavor_name)
+                    res.append(wf_call)
 
                 # Get the last wf generated and the corresponding loop
                 # wavefunction number
@@ -1963,9 +2225,106 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         does not need to call the function set_octet_majorana_coupling_sign
         for the wavefunctions of the loop amplitudes. So we directly call
         the mother of the mother, namely UFOHelasCallWriter. """
-        
-        return super(FortranUFOHelasCallWriter, self).get_amplitude_call(
+
+        call = super(FortranUFOHelasCallWriter, self).get_amplitude_call(
                                                                    *args,**opts)
+        if not call or not args:
+            return call
+        prefix = self._flavor_mask_prefix(args[0], 'amp')
+        return prefix + call if prefix else call
+
+    @staticmethod
+    def _is_flavor_coupling(coupling):
+        return isinstance(coupling, base_objects.FLV_Coupling)
+
+    def _loop_flavor_source(self, wavefunction):
+        """Return the flavour expression and its FFV fermion-leg number.
+
+        Optimized loop wavefunctions carry only their polynomial momentum in
+        PL/WL.  Track the flavour separately in LOOP_FLAVOR.  For a fermionic
+        loop input the L tag identifies whether it is F1 or F2; when the loop
+        input is bosonic, the source is the non-loop fermion mother.
+        """
+
+        lorentz, tags, outgoing = wavefunction.get_aloha_info(True)
+        loop_leg = next((int(tag[1:]) for tag in tags
+                         if tag.startswith('L')), None)
+        source = self._loop_flavor_mother(wavefunction)
+        if source is None:
+            return None, None, outgoing
+
+        if source.get('is_loop'):
+            expression = 'LOOP_FLAVOR(%d)' % source.get('number')
+            source_leg = loop_leg
+        else:
+            # This call string is interpolated once more with the loop
+            # replacement dictionary by the exporter, hence the doubled %.
+            expression = '%s%%%%FLV_INDEX' % self.format_helas_object(
+                'W(', str(source.get('number')))
+            if outgoing in (1, 2):
+                source_leg = 3 - outgoing
+            else:
+                source_leg = 1 if source.get('state') == 'incoming' else 2
+        return expression, source_leg, outgoing
+
+    def get_wavefunction_call(self, wavefunction, **opts):
+        """Resolve merged couplings and propagate optimized-loop flavours."""
+
+        call = super(FortranUFOHelasCallWriterOptimized,
+                     self).get_wavefunction_call(wavefunction, **opts)
+        if not call or not wavefunction.get('is_loop'):
+            return call
+
+        source, source_leg, outgoing = self._loop_flavor_source(wavefunction)
+        output = 'LOOP_FLAVOR(%d)' % wavefunction.get('number')
+        flavor_couplings = [coupling for coupling in
+                            wavefunction.get('coupling')
+                            if self._is_flavor_coupling(coupling)]
+
+        k1 = k2 = source
+
+        if flavor_couplings:
+            if source is None or source_leg not in (1, 2):
+                raise self.PhysicsObjectError(
+                    'Cannot resolve the loop flavor for merged coupling %s' %
+                    flavor_couplings[0].get('name'))
+
+            main = flavor_couplings[0].get('name')
+            if source_leg == 1:
+                k1 = source
+                k2 = ('GET_FLV_PARTNER(%s,%s,.FALSE.)' % (main, source))
+            else:
+                k2 = source
+                k1 = ('GET_FLV_PARTNER(%s,%s,.TRUE.)' % (main, source))
+
+            if outgoing == 1:
+                setup = '%s=%s' % (output, k1)
+            elif outgoing == 2:
+                setup = '%s=%s' % (output, k2)
+            else:
+                setup = '%s=0' % output
+
+        elif wavefunction.get('spin') == 2 and source is not None:
+            setup = '%s=%s' % (output, source)
+        else:
+            setup = '%s=0' % output
+
+        condition = self._loop_flavor_condition(wavefunction, k1, k2)
+        replacements = {}
+        for coupling in wavefunction.get('coupling'):
+            if self._is_flavor_coupling(coupling):
+                name = coupling.get('name')
+                value = 'GET_FLV_COUPLING_VALUE(%s,%s,%s)' % (name, k1, k2)
+            else:
+                name = coupling.lstrip('-')
+                value = name
+            if condition:
+                value = 'MERGE(%s,DCMPLX(0D0),%s)' % (value, condition)
+            replacements[name] = value
+        if replacements:
+            call = re.sub(r'\b(?:%s)\b' % '|'.join(re.escape(name) for name in replacements),
+                          lambda match: replacements[match.group()], call)
+        return '%s\n%s' % (setup, call)
 
     def format_helas_object(self, prefix, number):
         """ Returns the string for accessing the wavefunction with number in
@@ -2075,6 +2434,11 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         for ldiag in matrix_element.get_loop_diagrams():
             res.append("# Coefficient construction for loop diagram with ID %d"\
                        %ldiag.get('number'))
+            flavor_guard = self._flavor_mask_prefix(ldiag, 'amp')
+            # Do not guard the wavefunction construction as a whole: optimized
+            # loop wavefunctions are reused by later diagrams which can have a
+            # different physical-flavour mask.  Only suppress the final
+            # CREATE_LOOP_COEFS contribution for an invalid diagram.
             for lwf in ldiag.get('loop_wavefunctions'):
                     call = self.get_wavefunction_call(lwf)
                     if lwf.get('number') in terminal_calls:
@@ -2082,6 +2446,22 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
                         call = call.replace(before, after, 1)
                     res.append(call)
             for lamp in ldiag.get_loop_amplitudes():
+                cut_seed = self._open_loop_flavor_seed(lamp, True)
+                if cut_seed is not None:
+                    # A shared polynomial prefix can belong to open lines
+                    # closing on different physical fermions.  Rebuild this
+                    # complete chain with its own cut flavour before use;
+                    # changing the shared cut slot alone leaves stale prefixes.
+                    cut = lamp.get_starting_loop_wavefunction()
+                    res.append('LOOP_FLAVOR(%d)=%s' % (
+                        cut.get('number'), cut_seed))
+                    chain = []
+                    current = lamp.get_final_loop_wavefunction()
+                    while current.get('mothers'):
+                        chain.append(current)
+                        current = current.get_loop_mother()
+                    res.extend(self.get_wavefunction_call(wavefunction)
+                               for wavefunction in reversed(chain))
                 # If the loop grouping is not desired, then make sure it is 
                 # turned off here. It is of course not to be included for 
                 # loop-induced processes
@@ -2098,7 +2478,7 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
                 else:
                     create_coef.append('%(amp_number)d)')
             
-                res.append('CALL %(proc_prefix)s'+','.join(create_coef)%{\
+                create_call = 'CALL %(proc_prefix)s'+','.join(create_coef)%{\
                   'number':lamp.get_final_loop_wavefunction().get('number'),
                   'loop_rank':lamp.get_analytic_info('wavefunction_rank'),
                   'lcut_size':lamp.get_lcut_size(),
@@ -2108,13 +2488,16 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
                   'loop_number':(lamp.get('loop_group_id')+1),
                   'amp_number':lamp.get('amplitudes')[0].get('number'),
                   'LoopSymmetryFactor':lamp.get('loopsymmetryfactor'),
-                  'LoopMultiplier':lamp.get('multiplier')})
+                  'LoopMultiplier':lamp.get('multiplier')}
+                if flavor_guard:
+                    create_call = flavor_guard + create_call
+                res.append(create_call)
                 res.extend(self.get_sqso_target_skip_code(
                       lamp.get('amplitudes')[0].get('number'), 
                       sqso_max_lamp, 4000, split_orders, squared_orders,
                       "# At this point, all loop coefficients needed"+
                                                        " for %s are computed."))
-        
+
         coef_merge=['C  Grouping of loop diagrams now done directly when '+\
                                                       'creating the LOOPCOEFS.']
         

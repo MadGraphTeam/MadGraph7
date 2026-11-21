@@ -639,12 +639,15 @@ class ALOHAWriterForFortran(WriteALOHA):
                      'id': self.outgoing}
             self.declaration.add(('list_complex', output))
         
-        if 'M' in self.tag:
+        # MadLoop numerator routines receive already resolved scalar
+        # couplings.  Keep the M tag in their symbol name, but do not expose
+        # the tree-level FLV_COUPLING ABI when an L tag selects loop mode.
+        if 'M' in self.tag and not aloha.loop_mode:
             args = ', '.join(['M%s' % a  if a.startswith('COUP') else  a for a in arguments])
         else:
             args = ', '.join(arguments)
         
-        out.write('subroutine %(name)s(%(args)s,%(output)s)\n' % \
+        out.write('recursive subroutine %(name)s(%(args)s,%(output)s)\n' % \
                   {'output':output, 'name': name, 'args': args})
         
         return out.getvalue() 
@@ -668,7 +671,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         out = StringIO()
         #to_end = []
         out.write('use aloha_object\n')
-        if 'M' in self.tag:
+        if 'M' in self.tag and not aloha.loop_mode:
             out.write('use model_object\n')
         if aloha.dual_mode:
             # the operators on the dual momenta and wavefunction components
@@ -748,7 +751,8 @@ class ALOHAWriterForFortran(WriteALOHA):
                     continue
                 out.write(' %s %s\n' % (self.type2def['complex'], name))
                 out.write(' external %s\n' % (name))
-            elif name.startswith('COUP') and 'M' in self.tag:
+            elif (name.startswith('COUP') and 'M' in self.tag and
+                  not aloha.loop_mode):
                 out.write(' type(flv_coupling) M%s\n' % (name))
                 out.write(' double complex %s\n' % (name))
                 if name in ['COUP', 'COUP1']:
@@ -769,7 +773,11 @@ class ALOHAWriterForFortran(WriteALOHA):
         couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0)
         for elem in self.routine.symmetries:
             new_name = self.name.rsplit('_',1)[0] + '_%s' % elem
-            out.write('%s\n' % self.get_header_txt(new_name, couplings).replace('subroutine','entry'))
+            # ENTRY inherits the host procedure's attributes and takes no
+            # RECURSIVE prefix of its own.
+            entry = re.sub(r'^(?:recursive\s+)?subroutine\b', 'entry',
+                           self.get_header_txt(new_name, couplings), count=1)
+            out.write('%s\n' % entry)
         #to_end.append('')            
         #out.write('\n'.join(to_end))
         return out.getvalue()
@@ -1509,7 +1517,7 @@ class ALOHAWriterForFortran(WriteALOHA):
                            'id': self.outgoing}
         for i, name in enumerate(lor_list):
             data['name'] = name
-            if 'M' in self.tag:
+            if 'M' in self.tag and not aloha.loop_mode:
                 prefix = 'M'
             else:   
                 prefix = ''
@@ -1836,10 +1844,7 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         out = StringIO()
         # define the type of function and argument
         
-        if 'M' in self.tag:
-            arguments = ['M%s' % arg for format, arg in self.define_argument_list(couplings)]
-        else:
-            arguments = [arg for format, arg in self.define_argument_list(couplings)]
+        arguments = [arg for format, arg in self.define_argument_list(couplings)]
         self.declaration.add(('list_complex', 'P%s'% self.outgoing))
         self.declaration.add(('list_complex', 'P%s'% self.l_helas_id))        
         self.declaration.add(('list_complex', 'coeff'))

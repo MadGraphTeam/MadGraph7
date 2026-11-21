@@ -39,7 +39,8 @@ C
       INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
       DATA IC/NEXTERNAL*1/
       INTEGER FLAVOR(NEXTERNAL)
-      DATA FLAVOR /NEXTERNAL*1/
+      COMMON/ML5_0_ACTIVE_VIRTUAL_FLAVOR/FLAVOR
+
 C     
 C     FUNCTIONS
 C     
@@ -111,6 +112,7 @@ C         Handle the possible requirement of specific polarizations
      $     .EQ.0.AND.(.NOT.ML5_0_IS_HEL_SELECTED(H))) THEN
             CYCLE
           ENDIF
+
           DO I=1,NEXTERNAL
             NHEL(I)=HELC(I,H)
           ENDDO

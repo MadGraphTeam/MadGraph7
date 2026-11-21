@@ -7,6 +7,16 @@ module virt_surrogate
   public :: vs_reset,vs_value,vs_accumulate,vs_solve,vs_write_grids,vs_read_grids
   public :: vs_single_born_order
   public :: vs_maxfeat
+  public :: surrogate_point, capture_surrogate_point, restore_surrogate_point
+
+  ! Features and residuals belong to one folded draw. The fitted coefficients,
+  ! normal equations and iteration totals below belong to the integration job.
+  type :: surrogate_point
+     logical :: computed=.false., features_valid=.false., ratio_set=.false., linked=.false.
+     integer :: residual_order=0, nfeat=4
+     double precision :: virt=0d0, born=0d0, fraction=1d0, ratio=0d0, reference=0d0
+     double precision :: features(vs_maxfeat)=0d0, dipoles(3)=0d0
+  end type
 
 ! Current-point data shared by the matrix-element and weighted-integrand stages.
   logical, public :: vs_vcomp=.false.,vs_featok=.false.,vs_ratio_set=.false.
@@ -34,6 +44,29 @@ module virt_surrogate
        vs_cum_neggrid(vs_maxchan)=0d0, vs_cum_negfit(vs_maxchan)=0d0
 
 contains
+
+  subroutine capture_surrogate_point(point)
+    type(surrogate_point), intent(out) :: point
+    point=surrogate_point(vs_vcomp,vs_featok,vs_ratio_set,have_links,vs_residual_order,vs_nfeat, &
+        vs_virt,vs_born,vs_fvirt,vs_ratio,vs_residual_reference,vs_feat,dipole_features)
+  end subroutine
+
+  subroutine restore_surrogate_point(point)
+    type(surrogate_point), intent(in) :: point
+    vs_vcomp=point%computed
+    vs_featok=point%features_valid
+    vs_ratio_set=point%ratio_set
+    have_links=point%linked
+    vs_residual_order=point%residual_order
+    vs_nfeat=point%nfeat
+    vs_virt=point%virt
+    vs_born=point%born
+    vs_fvirt=point%fraction
+    vs_ratio=point%ratio
+    vs_residual_reference=point%reference
+    vs_feat=point%features
+    dipole_features=point%dipoles
+  end subroutine
 
   subroutine vs_begin_point
     vs_vcomp=.false.

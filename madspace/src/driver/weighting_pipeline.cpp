@@ -98,6 +98,7 @@ json matrix_element_to_json(const MatrixElement& matrix_element) {
         {"particle_count", matrix_element.particle_count()},
         {"inputs", inputs},
         {"outputs", outputs},
+        {"squared_order_count", matrix_element.squared_order_count()},
         {"diagram_count", matrix_element.diagram_count()},
         {"sample_random_inputs", matrix_element.sample_random_inputs()},
         {"me_frame", me_frame},
@@ -124,7 +125,8 @@ MatrixElement matrix_element_from_json(const json& j) {
         j.at("sample_random_inputs").get<bool>(),
         j.at("me_frame").get<std::vector<me_int_t>>(),
         j.at("incoming_count").get<std::size_t>(),
-        j.at("channel").get<me_int_t>()
+        j.at("channel").get<me_int_t>(),
+        j.value("squared_order_count", std::size_t{0})
     );
 }
 

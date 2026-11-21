@@ -14,7 +14,7 @@
       PWIDTH=0D0
       POW=0
       SELECT CASE(ACTIVE_CONTEXT)
-      CASE(1)
+      CASE(3)
         PMASS( -1,   1)  = ZERO
         PWIDTH( -1,   1) = ZERO
         POW( -1,   1) = 2

@@ -1,1 +1,1 @@
-../../_shared/IOExportFKSTest%test_pptt_fksreal%%SubProcesses%P0_gg_ttx%amp_split_orders.inc
+../../_shared/IOExportFKSTest%test_pptt_fksreal%%SubProcesses%P0_QQx_ttx%amp_split_orders.inc

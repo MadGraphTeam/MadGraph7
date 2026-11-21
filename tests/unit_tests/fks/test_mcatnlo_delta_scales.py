@@ -170,7 +170,7 @@ class TestStartingScaleIntegration(unittest.TestCase):
             str(TEMPLATE / 'genps_fks_helpers.f'),
             str(TEMPLATE / 'mcatnlo_delta_scales.f90'),
             str(TEMPLATE / 'herwig7_scales.f90'),
-            str(TEMPLATE / 'scale_module.f90'), str(TEMPLATE / 'weight_lines.f'),
+            str(TEMPLATE / 'scale_module.f90'), str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'),
             str(work / 'routines.f'),
             str(ROOT / 'tests/input_files/check_pythia8_s_scales.f90'),
             '-o', str(cls.executable)], cwd=work, capture_output=True, text=True)

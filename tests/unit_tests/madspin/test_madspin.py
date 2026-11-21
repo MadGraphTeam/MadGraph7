@@ -7347,6 +7347,83 @@ class TestDecayLoopShortcuts(unittest.TestCase):
         self.assertIsNone(stub._decay_lab_boost(parent, None))
 
 
+class TestDensityFlavourModel(unittest.TestCase):
+    """Loop production reloads the grouped model before decay MEs are made.
+
+    The decay pool still holds physical flavours: the density lookup must use
+    the model of the generated MEs, preserving each channel's own density.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cmd = Cmd.MasterCmd()
+        cmd.exec_cmd('import model loop_sm')
+        cls.grouped = cmd._curr_model
+        cmd.exec_cmd('generate g g > w+ w- [noborn=QCD]')
+        cls.physical = cmd._curr_model
+
+    @staticmethod
+    def event(parent, first, second):
+        return lhe_parser.Event('''<event>
+3 1 2.5 80.4 0.0078 0.118
+%d -1 0 0 0 0 0 0 0 80.4 80.4 0 9
+%d 1 1 1 501 0 0 0 40.2 40.2 0 0 9
+%d 1 1 1 0 501 0 0 -40.2 40.2 0 0 9
+</event>''' % (parent, first, second))
+
+    def check_channels(self, model, grouped):
+        from types import SimpleNamespace
+        cmd = interface_madspin.MadSpinInterface.__new__(
+            interface_madspin.MadSpinInterface)
+        cmd.model = self.grouped
+        cmd.generate_all = SimpleNamespace(model=self.grouped,
+            mgcmd=SimpleNamespace(_curr_model=model))
+        cmd.all_me = {}
+        cmd.pdg2prefix = [{}, {}]
+        channels = {(24, 2, -1): 3.0, (24, 4, -3): 7.0,
+                    (-24, -2, 1): 5.0, (-24, -4, 3): 11.0}
+        for parent, first, second in channels:
+            if grouped:
+                first, second = (81 if first > 0 else -81,
+                                 81 if second > 0 else -81)
+            order = ((parent,), (first, second))
+            tag = ((parent,), tuple(sorted((first, second))))
+            cmd.all_me[tag] = dict(order=order, pdir='Pdecay', type='decay')
+            cmd.pdg2prefix[1][(parent, first, second)] = ('DECAY_', 0)
+
+        calls = []
+        def density(**kwargs):
+            pdgs = tuple(kwargs['pdgs'])
+            calls.append(pdgs)
+            return [complex(channels[pdgs])]
+        cmd.f2py_module = [None, SimpleNamespace(py_get_density=density)]
+        cmd._set_density_flavour_model()
+        for pdgs, value in channels.items():
+            event = self.event(*pdgs)
+            original = str(event)
+            for _ in range(2):  # also exercise the per-flavour cache
+                result = cmd.get_density(event, position=[1], allow_hel=[0],
+                                         ncomb=1, dimension=1)
+                self.assertEqual(result.trace(), value)
+                self.assertEqual(calls[-1], pdgs)
+                self.assertEqual(str(event), original)
+                self.assertEqual(event.wgt, 2.5)
+        self.assertIs(cmd.model, model)
+        self.assertIs(cmd.generate_all.model, model)
+        return cmd
+
+    def test_loop_reload_preserves_each_physical_decay_flavour(self):
+        self.assertTrue(self.grouped.get('merged_particles'))
+        self.assertFalse(self.physical.get('merged_particles'))
+        cmd = self.check_channels(self.physical, grouped=False)
+        self.assertFalse(cmd._revert_merged)
+
+    def test_tree_grouping_still_passes_the_physical_flavour_to_density(self):
+        cmd = self.check_channels(self.grouped, grouped=True)
+        self.assertEqual(cmd._revert_merged[2], 81)
+        self.assertEqual(cmd._revert_merged[-3], -81)
+
+
 class TestDensityBackendChoice(unittest.TestCase):
     """decay_all_events_onshell.density_backend: madmatrix, unless the Fortran
     is asked for or the production is loop induced (MadLoop). The complex-mass

@@ -55,6 +55,7 @@ recommends would be refused along with everything else.
 
 from __future__ import absolute_import
 
+import copy
 import os
 import shutil
 import sys
@@ -66,20 +67,28 @@ sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
 import tests.unit_tests as unittest
 
 import madgraph.interface.master_interface as MGCmd
+import madgraph.interface.loop_interface as loop_interface
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.loop.loop_helas_objects as loop_helas_objects
+import madgraph.models.import_ufo as import_ufo
 
-from madgraph import InvalidCmd, MG5DIR
+from madgraph import InvalidCmd, MadGraph5Error, MG5DIR
 
 pjoin = os.path.join
 
 # The cheapest loop-induced process there is: no tree-level diagram exists for
 # g g > h in loop_sm, so [noborn=QCD] gives the quark-loop amplitude alone.
 LOOP_INDUCED_PROCESS = 'g g > h [noborn=QCD]'
-# A 2 -> 2 one, to check the leg count is not accidentally right.
-LOOP_INDUCED_PROCESS_2TO2 = 'g g > z z [noborn=QCD]'
+# A 2 -> 2 one, to check the leg count is not accidentally right.  Its quark
+# loops are top and bottom ones: with flavour grouping, a closed loop of
+# merged light quarks coupling to a Z (as in g g > z z) is refused, see
+# test_grouped_light_quark_loop_induced_is_refused.
+LOOP_INDUCED_PROCESS_2TO2 = 'g g > h h [noborn=QCD]'
+# A loop-induced process with light-quark loops and flavour-dependent
+# couplings.
+LIGHT_QUARK_LOOP_INDUCED_PROCESS = 'g g > z z [noborn=QCD]'
 # The same matrix element, generated the way the refusal message recommends.
 SQRVIRT_PROCESS = 'g g > h [sqrvirt=QCD]'
 # An ordinary virtual correction, for good measure.
@@ -87,7 +96,7 @@ VIRTUAL_PROCESS = 'u u~ > d d~ [virt=QCD]'
 
 
 
-def get_interface(process=LOOP_INDUCED_PROCESS, model='loop_sm'):
+def get_interface(process=LOOP_INDUCED_PROCESS, model='loop_sm', grouped=False):
     """A fresh MasterCmd with 'process' generated, ready to be output.
 
     Not cached: 'output' populates _curr_matrix_elements, and a second output
@@ -95,6 +104,7 @@ def get_interface(process=LOOP_INDUCED_PROCESS, model='loop_sm'):
     """
 
     interface = MGCmd.MasterCmd()
+    interface._experimental_nlo_flavor_grouping = grouped
     interface.no_notification()
     if model:
         interface.exec_cmd('import model %s' % model, printcmd=False,
@@ -147,7 +157,86 @@ class TestLoopInducedExternalFlavors(unittest.TestCase):
         self.assertEqual(me.get_nexternal_ninitial(), (4, 2))
         flavors, pdgs = me.get_external_flavors(return_pdgs=True)
         self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
+        self.assertEqual([list(p) for p in pdgs], [[21, 21, 25, 25]])
+
+    def test_grouped_light_quark_loop_induced(self):
+        """Physical Z-coupled loop flavours survive grouped generation."""
+
+        grouped = get_interface(LIGHT_QUARK_LOOP_INDUCED_PROCESS, grouped=True)
+        self.assertTrue(grouped._curr_model.merged_particles)
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('set apply_flavor_grouping False', printcmd=False,
+                           precmd=True)
+        interface.exec_cmd('import model loop_sm', printcmd=False,
+                           precmd=True)
+        interface.exec_cmd('generate %s' % LIGHT_QUARK_LOOP_INDUCED_PROCESS,
+                           printcmd=False, precmd=True)
+        self.assertTrue(interface._curr_amps[0].get('loop_diagrams'))
+        for key in ('loop_diagrams', 'born_diagrams'):
+            self.assertEqual(len(grouped._curr_amps[0].get(key)),
+                             len(interface._curr_amps[0].get(key)))
+        me = loop_helas_objects.LoopHelasProcess(
+            grouped._curr_amps, optimized_output=True,
+            compute_loop_nc=True).get_matrix_elements()[0]
+        flavors, pdgs = me.get_external_flavors(return_pdgs=True)
+        self.assertEqual([tuple(f) for f in flavors], [(1, 1, 1, 1)])
         self.assertEqual([list(p) for p in pdgs], [[21, 21, 23, 23]])
+
+    def test_nlo_grouping_is_disabled_for_generation(self):
+        """FKS, MadLoop and automatic loop-model upgrades use physical PDGs."""
+        cmd = MGCmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set apply_flavor_grouping True --no_save')
+        cmd.exec_cmd('import model sm')
+        self.assertTrue(cmd._curr_model.merged_particles)
+        cmd.exec_cmd('define qq = u c')
+        cmd.exec_cmd('generate qq u~ > z [real=QCD]')
+        self.assertFalse(cmd._curr_model.merged_particles)
+        self.assertEqual(set(cmd._multiparticles['qq']), {2, 4})
+        self.assertTrue(cmd.options['apply_flavor_grouping'])
+        cmd.exec_cmd('set apply_flavor_grouping True --no_save')
+        cmd.exec_cmd('generate u u~ > z [virt=QCD]')
+        self.assertEqual(cmd._curr_model['name'], 'loop_sm')
+        self.assertFalse(cmd._curr_model.merged_particles)
+
+        # Check an explicit loop-model import as well as sm -> loop_sm.
+        cmd.exec_cmd('import model loop_sm')
+        cmd.exec_cmd('generate u u~ > z [QCD]')
+        self.assertFalse(cmd._curr_model.merged_particles)
+        self.assertNotIn('_experimental_nlo_flavor_grouping', cmd.options)
+        self.assertRaises(InvalidCmd, lambda: cmd.exec_cmd(
+            'set _experimental_nlo_flavor_grouping True --no_save',
+            errorhandling=False))
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate u u~ > z')
+        self.assertTrue(cmd._curr_model.merged_particles)
+
+    def test_developer_validation_preserves_supported_flavor_grouping(self):
+        """A developer can retain supported grouped models for regression studies."""
+        model = import_ufo.import_model(
+            'loop_sm', options={'apply_flavor_grouping': False})
+        model.merge_flavor([1, 2, 3, 4])
+
+        interface = loop_interface.LoopInterface()
+        interface._experimental_nlo_flavor_grouping = True
+        interface._curr_model = model
+        interface.options['apply_flavor_grouping'] = True
+        interface.validate_model(loop_type='virtual', coupling_type=['QCD'])
+
+        self.assertIs(interface._curr_model, model)
+        self.assertTrue(interface.options['apply_flavor_grouping'])
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4])
+
+        unsupported = copy.deepcopy(model)
+        unsupported['lorentz'] = list(unsupported.get('lorentz'))
+        unsupported['lorentz'].append(type(
+            'FourFermionLorentz', (object,), {'spins': [2, 2, 2, 2]})())
+        interface._curr_model = unsupported
+        self.assertRaises(
+            InvalidCmd,
+            lambda: interface.validate_model(
+                loop_type='virtual', coupling_type=['QCD']))
 
 
 #===============================================================================

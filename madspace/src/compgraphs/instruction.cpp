@@ -937,6 +937,8 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
                 );
             }
             break;
+        case UMAMI_IN_G_STRONG:
+        case UMAMI_IN_G_EW:
         case UMAMI_IN_ALPHA_S:
         case UMAMI_IN_RANDOM_COLOR:
         case UMAMI_IN_RANDOM_HELICITY:
@@ -1020,6 +1022,7 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
             dtype = DataType::dt_float64;
             shape = {};
             break;
+        case UMAMI_OUT_SQUARED_ORDERS:
         case UMAMI_OUT_DIAGRAM_AMP2:
             dtype = DataType::dt_float64;
             shape = {output_size};

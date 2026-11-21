@@ -1022,6 +1022,22 @@ class Interaction(PhysicsObject):
         the particles with the ids given in ids_to_merge. 
         Coupling will be passed to FLV_coupling """
 
+        # Keep physical vertices, including their original Lorentz structures
+        # and CT loop content, when successive merges combine flavour tables.
+        if not hasattr(self, 'physical_interactions'):
+            physical = copy.deepcopy(self)
+            physical.set('color', self.get('color'))
+            self.physical_interactions = (physical,)
+
+        # MadLoop associates R2/UVmass vertices with loop diagrams through
+        # ``loop_particles``.  Once physical particles are replaced by a
+        # merged particle, this key must describe the same merged loop content
+        # as the diagram canonical tag.  Within one entry the particles form a
+        # set (the matching code compares sets of particles); the number of
+        # entries is the number of times the counterterm contributes and is
+        # preserved.
+        self.merge_loop_particles(ids_to_merge, merged)
+
         particles = [p for p in self.get('particles') if abs(p.get('pdg_code')) in ids_to_merge]
         
         if ids_to_merge[0] != -ids_to_merge[1]: 
@@ -1067,8 +1083,57 @@ class Interaction(PhysicsObject):
                like for lepton-neutrino W interaction 
         """
 
-        assert isinstance(self.get('couplings')[(0,0)], FLV_Coupling)
-        #assert isinstance(other_flavor.get('couplings')[(0,0)], str)
+        # Flavor partners of a counterterm have the same loop content in
+        # merged-PDG space: the merge key contains it.  A union would change
+        # the number of times the counterterm contributes.
+        if ('loop_particles' in other_flavor and
+                other_flavor.get('loop_particles')):
+            other_loop_particles = self.merged_loop_particles(
+                other_flavor.get('loop_particles'), ids, new_part)
+            if other_loop_particles != (self.get('loop_particles') or [[]]):
+                raise self.PhysicsObjectError(
+                    'Cannot merge interactions with different loop content: '
+                    '%s and %s' % (self.get('loop_particles'),
+                                   other_loop_particles))
+
+        self.physical_interactions += getattr(
+            other_flavor, 'physical_interactions', (other_flavor,))
+
+        self_couplings = self.get('couplings')
+        other_couplings = other_flavor.get('couplings')
+        assert self_couplings and all(
+            isinstance(coupling, FLV_Coupling)
+            for coupling in self_couplings.values())
+        assert other_couplings
+
+        # Coupling keys contain positions in the interaction's color and
+        # Lorentz lists.  Two flavor partners can have different structures at
+        # the same numeric position (for example Z d d~ uses FFV3 where
+        # Z u u~ uses FFV5).  Build a union by structure identity and translate
+        # the incoming keys before merging their flavor dictionaries.
+        def merge_structure_list(name):
+            own = self.get(name)
+            other = other_flavor.get(name)
+            translated = {}
+            for other_index, structure in enumerate(other):
+                try:
+                    own_index = own.index(structure)
+                except ValueError:
+                    # Color lists can be shared with the preserved unmerged
+                    # interaction; detach before extending the merged one.
+                    own = list(own)
+                    own.append(structure)
+                    self.set(name, own)
+                    own_index = len(own) - 1
+                translated[other_index] = own_index
+            return translated
+
+        color_index = merge_structure_list('color')
+        lorentz_index = merge_structure_list('lorentz')
+
+        def translated_couplings():
+            for (color, lorentz), coupling in other_couplings.items():
+                yield ((color_index[color], lorentz_index[lorentz]), coupling)
 
         debug = False
         #if new_part is anti_part:
@@ -1087,31 +1152,72 @@ class Interaction(PhysicsObject):
         if debug: misc.sprint(self, other_flavor)
         if debug: misc.sprint(flav)
 
-        if isinstance(other_flavor.get('couplings')[(0,0)], str):        
-            for color, lor in other_flavor.get('couplings'):
-                if (color, lor) in self.get('couplings'):
+        if all(isinstance(coupling, str)
+               for coupling in other_couplings.values()):
+            for (color, lor), other_coupling in translated_couplings():
+                if (color, lor) in self_couplings:
                     # only need to update the flavor content of the existing Flavor coupling
-                    flav_dict = self.get('couplings')[color, lor].get('flavors')
-                    flav_dict[flav] = other_flavor.get('couplings')[color, lor]
+                    flav_dict = self_couplings[color, lor].get('flavors')
+                    flav_dict[flav] = other_coupling
                 else:
                     # need to create a new flavor coupling
                     coupling = FLV_Coupling()
-                    coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor]})
-                    self.get('couplings')[color, lor] = coupling
+                    coupling.set('flavors', {
+                        flav: other_coupling})
+                    self_couplings[color, lor] = coupling
+        elif all(isinstance(coupling, FLV_Coupling)
+                 for coupling in other_couplings.values()):
+            for (color, lor), other_coupling in translated_couplings():
+                other_flav_dict = other_coupling.get('flavors')
+                transformed = {}
+                for base_flav, base_coupling in other_flav_dict.items():
+                    new_flav = tuple(base_flav[i] + flav[i]
+                                     for i in range(len(flav)))
+                    transformed[new_flav] = base_coupling
+                if (color, lor) in self_couplings:
+                    flav_dict = self.get('couplings')[color, lor].get('flavors')
+                    # only need to update the flavor content of the existing Flavor coupling
+                    flav_dict.update(transformed)
+                else:
+                    # need to create a new flavor coupling
+                    coupling = FLV_Coupling()
+                    coupling.set('flavors', transformed)
+                    self_couplings[color, lor] = coupling
         else:
-            for color, lor in other_flavor.get('couplings'):
-                if (color, lor) in self.get('couplings'):
-                    flav_dict = self.get('couplings')[color, lor].get('flavors')
-                    # only need to update the flavor content of the existing Flavor coupling
-                    other_flav_dict = other_flavor.get('couplings')[color, lor].get('flavors') 
-                    for base_flav in other_flav_dict:
-                        new_flav =  [base_flav[i] + flav[i] for i in range(len(flav))]
-                        flav_dict[tuple(new_flav)] = other_flav_dict[base_flav]
-                else:
-                    # need to create a new flavor coupling
-                    coupling = FLV_Coupling()
-                    coupling.set('flavors', {flav: other_flavor.get('couplings')[color, lor].get('flavors').values()[0]})
-                    self.get('couplings')[color, lor] = coupling
+            raise self.PhysicsObjectError(
+                'Cannot merge interaction with mixed plain and flavor '
+                'couplings: %s' % other_couplings)
+
+    @staticmethod
+    def merged_loop_particles(loop_particles, ids, new_part):
+        """Return MadLoop loop-particle keys in merged-PDG space.
+
+        Each entry is the set of particles running in one loop and is
+        deduplicated.  Entries are never deduplicated against each other: an
+        entry is one contribution of the counterterm (for example one per
+        quark flavour running in the loop), so ``[[1], [3]]`` becomes
+        ``[[81], [81]]`` when d and s are merged into 81.
+        """
+
+        merged_pdg = abs(new_part.get('pdg_code'))
+        ids = set(abs(pdg) for pdg in ids)
+        output = []
+        for loop_content in loop_particles:
+            transformed = []
+            for pdg in loop_content:
+                pdg = merged_pdg if abs(pdg) in ids else pdg
+                if pdg not in transformed:
+                    transformed.append(pdg)
+            transformed.sort()
+            output.append(transformed)
+        return output
+
+    def merge_loop_particles(self, ids, new_part):
+        """Update this loop interaction after a physical-flavour merge."""
+
+        if 'loop_particles' in self and self.get('loop_particles'):
+            self.set('loop_particles', self.merged_loop_particles(
+                self.get('loop_particles'), ids, new_part))
 
     def check_flavor(self, map_flavor, model):
         """map is "original_pdg (so the merged one) -> flavor index (1 if particle is not merged)
@@ -1355,6 +1461,25 @@ class Model(PhysicsObject):
 
         return True
 
+    def get_flavor_grouping_unsupported_reason(self):
+        """Return why this model cannot use merged flavor generation.
+
+        Perturbative/NLO couplings are not themselves a limitation: the same
+        merged-particle, flavor-coupling, and HELAS validity machinery applies
+        to loop-capable models.  Four-fermion Lorentz structures remain outside
+        the supported grouping contract because merging their independent
+        fermion lines is ambiguous.
+
+        ``None`` means that the model passes the currently defined capability
+        checks.  Keeping the diagnostic on ``Model`` gives import and NLO
+        validation one shared policy.
+        """
+        lorentz = self.get('lorentz') or []
+        if any(lor.spins.count(2) > 2 for lor in lorentz):
+            return ('models with Lorentz structures containing more than two '
+                    'fermions are not supported')
+        return None
+
     def get(self, name):
         """Get the value of the property name."""
 
@@ -1403,6 +1528,8 @@ class Model(PhysicsObject):
         if (name == 'interaction_dict') and not self[name]:
             if self['interactions']:
                 self['interaction_dict'] = self['interactions'].generate_dict()
+            self['interaction_dict'].update(
+                getattr(self, '_loop_interactions', {}))
 
         elif (name == 'got_majoranas') and self[name] == None:
             if self['particles']:
@@ -1506,6 +1633,39 @@ class Model(PhysicsObject):
                     return self.name2part[id]
                 except:
                     return None
+
+    def get_merged_particle_kind(self, pdg):
+        """Return the conventional kind represented by a merged pseudo-PDG.
+
+        The preferred pseudo-PDGs 81--83 are not always available in loop
+        models.  Classification must therefore follow ``merged_particles``
+        rather than the numeric fallback selected by
+        :meth:`define_merge_particle_for`.
+        """
+        members = self.get('merged_particles').get(abs(pdg))
+        if not members:
+            return None
+        particles = [self.get_particle(abs(member)) for member in members]
+        if not particles or any(particle is None for particle in particles):
+            return 'generic'
+        if all(particle.is_fermion() and particle.get_color() != 1
+               for particle in particles):
+            return 'quark'
+        if all(particle.is_fermion() and particle.get_color() == 1
+               for particle in particles):
+            if all(particle.get_charge() == 0 for particle in particles):
+                return 'neutrino'
+            return 'lepton'
+        return 'generic'
+
+    def get_merged_particle_label(self, pdg):
+        """Return the stable process-string label for a merged pseudo-PDG."""
+        kind = self.get_merged_particle_kind(pdg)
+        labels = {'quark': 'Q', 'lepton': 'L', 'neutrino': 'N'}
+        if kind is None:
+            return None
+        label = labels.get(kind, 'm%s' % abs(pdg))
+        return label + ('x' if pdg < 0 else '')
     
 
     def define_merge_particle_for(self, ids):
@@ -1532,6 +1692,18 @@ class Model(PhysicsObject):
         else:
             name = '_merged%d' % nb_merged
             pdg_code = 90 + nb_merged
+
+        # Loop-capable UFO models can already use the conventional 81--83
+        # range (notably loop_sm's color-octet ghost at PDG 82).  Never
+        # overwrite a physical/model particle in particle_dict: choose a
+        # deterministic generic pseudo-PDG when the preferred code is occupied.
+        used_pdgs = set(abs(particle.get('pdg_code'))
+                        for particle in self.get('particles'))
+        used_pdgs.update(abs(pdg) for pdg in self['merged_particles'])
+        if abs(pdg_code) in used_pdgs:
+            pdg_code = 90 + nb_merged
+            while abs(pdg_code) in used_pdgs:
+                pdg_code += 1
 
         new_part['name'] = name
         new_part['pdg_code'] = pdg_code
@@ -1628,6 +1800,17 @@ class Model(PhysicsObject):
         
         key = tuple(inter_id), str(inter.get('orders')), delta
 
+        # Loop models contain several R2/UV counterterm interactions with the
+        # same particles and orders (for example R2_GQQ and the UV_GQQ* terms
+        # of each quark flavour).  Only flavor partners of the same
+        # counterterm may be merged: they share the interaction type and the
+        # loop content in merged-PDG space.
+        if inter.get('type') != 'base':
+            loop_content = Interaction.merged_loop_particles(
+                inter.get('loop_particles'), ids, new_part)
+            key += (inter.get('type'),
+                    tuple(tuple(entry) for entry in loop_content))
+
         return key
 
     def merge_flavor(self, ids):
@@ -1638,6 +1821,7 @@ class Model(PhysicsObject):
         The ids is the list of index of the particles to merge, 
         the associated flavor index will start at one"""
 
+        self.clear_loop_interactions()
         if not hasattr(self, 'unmerged_interactions'):
             self['unmerged_interactions'] = InteractionList()
         
@@ -1657,9 +1841,22 @@ class Model(PhysicsObject):
         # Note that we need to support both the case where the interaction did not have any flavor index before
         # and the case where it had one from a previous merge (think lepto-quark)
         new_interactions = {} #key is the tuple of the particle 
+        ct_occurrences = {}
         for inter in self.get('interactions')[:]:
             if any(p.get('pdg_code') in ids for p in inter.get('particles')):
                 key = self.get_get_merge_key(inter, ids, new_part)
+                if inter.get('type') != 'base':
+                    # Several internal-flavour contributions can have the
+                    # same merged loop content for one external flavour.
+                    # They are additive even when their couplings coincide.
+                    # Pair occurrences across external flavours, never two
+                    # contributions of the same external flavour.
+                    external_pdgs = tuple(p.get_pdg_code()
+                                          for p in inter.get('particles'))
+                    occurrence_key = key, external_pdgs
+                    occurrence = ct_occurrences.get(occurrence_key, 0)
+                    ct_occurrences[occurrence_key] = occurrence + 1
+                    key += (occurrence,)
                 if key in new_interactions:
                     new_interactions[key].update_flavor(inter, ids, new_part, anti_part)
                     self.get('interactions').remove(inter)
@@ -1670,6 +1867,8 @@ class Model(PhysicsObject):
                     self.get('interactions').remove(inter)
                     newinter = copy.deepcopy(inter)
                     newinter.set('color', inter.get('color')) # avoid deepcopy issue with color objects
+                    if hasattr(inter, 'physical_interactions'):
+                        newinter.physical_interactions = inter.physical_interactions
                     new_interactions[key] = newinter
                     newinter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
                     self.get('interactions').append(newinter)
@@ -1698,6 +1897,8 @@ class Model(PhysicsObject):
         if not self['merged_particles']:
             return #nothing to unmerge
 
+        self.clear_loop_interactions()
+
         for inter in self.get('interactions')[:]:
             #misc.sprint("check inter", [p.get('pdg_code') for p in inter.get('particles')])
             for pdg, ids in self['merged_particles'].items():
@@ -1725,6 +1926,7 @@ class Model(PhysicsObject):
         the associated flavor index will start at one
         """
 
+        self.clear_loop_interactions()
         new_part = self.define_merged_part_antipart(id)
 
         # Update the model
@@ -1841,6 +2043,41 @@ class Model(PhysicsObject):
             return self.get("interaction_dict")[id]
         except Exception:
             return None
+
+    def clear_loop_interactions(self):
+        """Invalidate physical loop lookup variants when grouping changes."""
+
+        if hasattr(self, '_loop_interactions'):
+            del self._loop_interactions
+            del self._loop_interaction_ids
+            self['interaction_dict'] = {}
+
+    def register_loop_interaction(self, physical, source_key=None):
+        """Expose a physical vertex to loop reconstruction, not tree generation.
+
+        Original and merged interaction IDs can coincide. Give preserved
+        physical vertices fresh IDs and retain them across dictionary resets,
+        without adding them to the model's generating interaction list.
+        """
+
+        if self.get_interaction(physical['id']) is physical:
+            return physical['id']
+        if not hasattr(self, '_loop_interactions'):
+            self._loop_interactions = {}
+            self._loop_interaction_ids = {}
+        source_id = physical['id'] if source_key is None else source_key
+        if source_id not in self._loop_interaction_ids:
+            ids = list(self.get('interaction_dict'))
+            ids.extend(inter['id'] for inter in
+                       getattr(self, 'unmerged_interactions', ()))
+            new_id = max(ids, default=0) + 1
+            variant = copy.deepcopy(physical)
+            variant.set('color', physical.get('color'))
+            variant.set('id', new_id)
+            self._loop_interaction_ids[source_id] = new_id
+            self._loop_interactions[new_id] = variant
+            self.get('interaction_dict')[new_id] = variant
+        return self._loop_interaction_ids[source_id]
 
     def get_parameter(self, name):
         """Return the parameter associated to the name NAME"""
@@ -2562,6 +2799,22 @@ class Model(PhysicsObject):
                 self.add_param(New_param, (mass, width))
                 to_change[mass.name] = New_param.name
         
+        # Some UFOs give Faddeev-Popov ghosts width ZERO although they share
+        # the vector's mass parameter. In CMS their propagator must share its
+        # complex pole too; HELAS selects CMASS from the particle's width.
+        vector_widths = {particle['mass']: particle['width']
+                         for particle in self['particles']
+                         if particle['spin'] == 3 and particle['mass'] in to_change}
+        for particle in self['particles']:
+            if particle['type'] == 'ghost' and particle['width'] == 'ZERO' \
+                    and particle['mass'] in vector_widths:
+                particle.set('width', vector_widths[particle['mass']])
+        # Antiparticles in this cache are copies of the model particles.
+        self['particle_dict'] = {}
+        if hasattr(self, 'name2part'):
+            del self.name2part
+        self.get('particle_dict')
+
         # Remove the Yukawa and fix those accordingly to the mass/complex mass
         yukawas = [p for p in self.get('parameters')[('external',)] 
                                               if p.lhablock.lower() == 'yukawa']
@@ -2726,6 +2979,20 @@ class FLV_Coupling(PhysicsObject):
     def get_all_couplings(self):
         """return all couplings"""
         return misc.make_unique(list(self['flavors'].values()))
+
+    def get_canonical_key(self):
+        """Return immutable physical content suitable for identity tags.
+
+        ``FLV_Coupling`` inherits from ``dict`` and is intentionally mutable
+        while merged interactions are assembled, so the object itself cannot
+        be hashed.  Loop-diagram identification nevertheless needs coupling
+        information in a dictionary key.  The generated ``name`` is not part
+        of the physics and can depend on construction order; the complete,
+        sorted flavor-to-coupling table is the canonical identity.
+        """
+        return ('FLV_Coupling', tuple(sorted(
+            (tuple(flavor), coupling)
+            for flavor, coupling in self['flavors'].items())))
 
     @staticmethod
     def get_partner_indices(key):
@@ -3662,6 +3929,29 @@ class Diagram(PhysicsObject):
             return 1
         else:
             return 2**num_props
+
+    @staticmethod
+    def get_charge_flow_difference(final_charge, initial_charge):
+        """Return the charge-flow identity used by FKS matrix-element tags.
+
+        The historical scalar case remains the numerical difference.  A merged
+        charge is a set of possible physical values, so subtracting tuples is
+        undefined and flattening either endpoint would merge physically
+        different channels.  Keep both immutable endpoints instead.  This is
+        deliberately conservative: it may identify fewer matrix elements, but
+        cannot equate two different merged charge flows.
+        """
+        if not isinstance(final_charge, tuple) and \
+                not isinstance(initial_charge, tuple):
+            return final_charge - initial_charge
+
+        def canonical(charge):
+            if isinstance(charge, tuple):
+                return ('merged', tuple(charge))
+            return ('scalar', charge)
+
+        return ('merged_charge_flow',
+                canonical(initial_charge), canonical(final_charge))
         
     def get_flow_charge_diff(self, model):
         """return the difference of total diff of charge occurring on the
@@ -3699,7 +3989,8 @@ class Diagram(PhysicsObject):
             if vcurrent in drawdiag.initial_vertex:
                 return [None, None]
             
-            out.append(model.get_particle(l_last.id).get('charge') - init_charge)    
+            out.append(self.get_charge_flow_difference(
+                model.get_particle(l_last.id).get('charge'), init_charge))
         return out
                 
 
@@ -4409,12 +4700,9 @@ class Process(PhysicsObject):
                     pdg = abs(leg['flavor'][0]) * leg.get('id')/abs(leg.get('id'))
                     onepart = self['model'].get_particle(pdg)
                     mystr += onepart.get_name()
-                elif leg.get('id') in [81,82,83, -81, -82, -83]:
-                    mystr += {81:'Q', -81:'Qx', 82:'L', -82:'Lx', 83:'N', -83:'Nx'}[leg.get('id')]    
-                elif leg.get('id')>0:
-                    mystr += 'm%s'% leg.get('id')
                 else:
-                    mystr += 'm%sx'% abs(leg.get('id'))
+                    mystr += self['model'].get_merged_particle_label(
+                        leg.get('id'))
             else:
                 mystr = mystr + mypart.get_name() 
                 
@@ -4480,12 +4768,9 @@ class Process(PhysicsObject):
                     single_pdg = abs(leg['flavor'][0]) * leg.get('id')/abs(leg.get('id'))
                     onepart = self['model'].get_particle(single_pdg)
                     mystr += onepart.get_name()
-                elif leg.get('id') in [81,82,83, -81, -82, -83]:
-                    mystr += {81:'Q', -81:'Qx', 82:'L', -82:'Lx', 83:'N', -83:'Nx'}[leg.get('id')]    
-                elif leg.get('id')>0:
-                    mystr += 'm%s'% leg.get('id')
                 else:
-                    mystr += 'm%sx'% abs(leg.get('id'))
+                    mystr += self['model'].get_merged_particle_label(
+                        leg.get('id'))
             elif mypart['is_part']:
                 mystr = mystr + mypart['name']
             else:
@@ -5148,9 +5433,18 @@ class ProcessDefinition(Process):
             mystr=""
         prevleg = None
         for leg in self['legs']:
-            myparts = \
-                   "/".join([self['model'].get('particle_dict')[id].get_name() \
-                             for id in leg.get('ids')])
+            # A merged leg can be restricted to physical members (for
+            # example u rather than the complete merged light-quark group).
+            # Print those members so parsing the definition preserves them.
+            display_ids = []
+            merged = self['model'].get('merged_particles') or {}
+            for pid in leg.get('ids'):
+                sign = 1 if pid > 0 else -1
+                members = {sign * pdg for pdg in merged.get(abs(pid), [])}
+                selected = [pdg for pdg in leg.get('flavor') or [] if pdg in members]
+                display_ids.extend(selected or [pid])
+            myparts = "/".join(self['model'].get_particle(pid).get_name()
+                               for pid in display_ids)
             if prevleg and prevleg['state'] == False \
                    and leg['state'] == True:
                 # Separate initial and final legs by ">"

@@ -91,6 +91,15 @@ public:
         check_umami_status(_functions.get_meta(UMAMI_META_DIAGRAM_COUNT, &count));
         return count;
     }
+    /// Number of local squared coupling orders.
+    std::size_t squared_order_count() const {
+        int count;
+        check_umami_status(_functions.get_meta(UMAMI_META_SQUARED_ORDER_COUNT, &count));
+        if (count <= 0) {
+            throw_error("matrix element reported an invalid squared order count");
+        }
+        return count;
+    }
     /// Number of helicity configurations.
     std::size_t helicity_count() const {
         int count;

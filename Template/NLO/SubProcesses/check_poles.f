@@ -21,6 +21,7 @@ C
       include 'genps.inc'
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       double precision p(0:3, nexternal), prambo(0:3,100)
       double precision pswgt
       double precision fks_double, fks_single
@@ -56,13 +57,21 @@ cc
       integer getordpowfromindex_ml5
       logical, allocatable, save :: keep_order(:)
       include 'orders.inc'
+      include 'born_nhel.inc'
       logical is_aorg(nexternal)
       common /c_is_aorg/is_aorg
       logical force_polecheck, polecheck_passed
       common /to_polecheck/force_polecheck, polecheck_passed
       integer ret_code_ml
       common /to_ret_code/ret_code_ml
-      
+
+      double precision amp2(ngraphs), jamp2(0:ncolor)
+      complex*16 ans_cnt(2, nsplitorders)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision amp_split_finite_ML(amp_split_size)
+
 C-----
 C  BEGIN CODE
 C-----  
@@ -154,7 +163,18 @@ c initialization
       CALL COLLIER_COMPUTE_UV_POLES(.TRUE.)
       CALL COLLIER_COMPUTE_IR_POLES(.TRUE.)
 
-200   continue
+ 200   continue
+          if (HAS_PHYSICAL_FKS_CLASSES) then
+             nFKSprocess=BORN_FKS_CONFIG_D(
+     $          mod(npointsChecked,NBORN_FLAVOR_CONFIGS)+1)
+             call fks_inc_chooser()
+             call leshouche_inc_chooser()
+             call setfksfactor(.false.)
+             write(*,*) 'POLE FLAVOR CLASS',
+     $          BORN_FKS_MAP_D(nFKSprocess),
+     $          BORN_FLAVOR_INDEX_D(nFKSprocess),
+     $          VIRTUAL_FLAVOR_INDEX_D(nFKSprocess)
+          endif
           finite=0d0
           single=0d0
           double=0d0
@@ -217,7 +237,8 @@ c initialization
           enddo
 
           CALL UPDATE_AS_PARAM()
-          call sborn_frame(p_born, born)
+          call sborn_amp_frame(p_born,amp2,jamp2,ret_amp_split,
+     &         ret_amp_split_cnt,born,ans_cnt,ret_saveamp)
           ! extra initialisation calls: skip the first point
           ! as well as any other points which is used for initialization
           ! (according to the return code)
@@ -226,8 +247,12 @@ c poles are proportional to the Born, so a frame mismatch here shows up as
 c a per-point constant ratio between the MadFKS and the OLP poles and the
 c check fails for every point. Go through binothlha_frame, exactly as the
 c integration does at fks_singular.f (bornsoftvirtual).
-          call binothlha_frame(p_born, born, virt_wgt)
-          if (npointsChecked.eq.0) then
+          call binothlha_amp_frame(p_born,born,virt_wgt,
+     &         ret_amp_split,ret_saveamp,amp_split_finite_ML,
+     &         ret_amp_split_cnt)
+c With a helicity filter for each virtual row, each row has its own
+c initialization points, at the end of which MadLoop writes its filter.
+          if (npointsChecked.eq.0 .or. HELFILTER_PER_VIRTUAL_FLAVOR) then
              if (mod(ret_code_ml,100)/10.eq.3 .or.
      &            mod(ret_code_ml,100)/10.eq.4) then
               ! this is to skip initialisation points
@@ -262,7 +287,11 @@ C         Otherwise, perform the check
           endif
           write(*,*)
 
-      if (npointsChecked.lt.npoints) goto 200 
+      if (npointsChecked.lt.npoints) goto 200
+c Check every Born flavour, so that the helicity filters of all virtual
+c rows are written here and not by the integration jobs.
+      if (HELFILTER_PER_VIRTUAL_FLAVOR .and.
+     $     npointsChecked.lt.NBORN_FLAVOR_CONFIGS) goto 200
 
           write(*,*) 'NUMBER OF POINTS PASSING THE CHECK', 
      1     npoints - nfail
@@ -469,4 +498,3 @@ c     Just a wrapper to ran2
       rand = ran2()
       return 
       end
-

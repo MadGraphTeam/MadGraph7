@@ -249,7 +249,8 @@ class TestNativeModelCapture(unittest.TestCase):
                 r'\1fixed_installs=fixed_installs+1\n\1\2', api_source)
             self.assertEqual(count, 1)
             api_path.write_text(api_source)
-            support.write_wrappers(root, record, DYNAMIC_MEMBERS, model_layout=layout)
+            support.write_wrappers(root, record, DYNAMIC_MEMBERS, model_layout=layout,
+                                   full_model=support.common_members(native_model))
             native_source = (sub / 'born_support.f').read_text()
             capture = support.routine(native_source, 'mc_capture_model_state')
             prepare = support.routine(native_source, 'mc_prepare_model_configuration')
@@ -283,7 +284,11 @@ class TestNativeModelCapture(unittest.TestCase):
                                             FIXED_MEMBERS + DYNAMIC_MEMBERS})
             self.assertNotIn('unused_parameter', observed)
             self.assertNotIn('unused_counterterm', observed)
-            support.write_fortran(root / 'capture.f', instrumented)
+            config_module = native_source.split('      end module',1)[0]+'      end module\n'
+            complete = []
+            for name in ('mc_park_full_model', 'mc_activate_full_model'):
+                complete.extend(support.routine(native_source,name))
+            support.write_fortran(root / 'capture.f', list(support.statements(config_module))+instrumented+complete)
             support.write_fortran(model / 'couplings.f',
                                   ['subroutine coup()', 'implicit none', 'return', 'end'])
             support.write_model_revision_hook(root)
@@ -315,6 +320,7 @@ end subroutine
             driver = ['program check', 'use mc_born_types', 'use mc_born_support',
                       'implicit none', *native_model,
                       'type(BornModelConfiguration) alternate',
+                      'type(BornLiveModel) live_a,live_b',
                       'type(BornModelState) state,previous',
                       'type(BornRequest) request', 'type(BornResult) result',
                       'real(8) p(0:3,1)', 'integer status,i,capture_calls,dynamic_bytes,fixed_bytes,fixed_installs',
@@ -339,6 +345,35 @@ end subroutine
             result = subprocess.run([str(root / 'check')], cwd=root,
                                     capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_suspension_restores_full_caller_and_private_born_configuration(self):
+        self.run_capture_driver("""
+      born_active_helicity_frame=[5,8]
+      call mc_park_full_model(live_a)
+      fixed_mass=9d0
+      g=7d0
+      real_only_coupling=(8d0,-4d0)
+      unused_parameter=-17d0
+      unused_counterterm=(-18d0,6d0)
+      born_active_helicity_frame=[1,3]
+      call coup()
+      call mc_park_full_model(live_b)
+      if(live_a%configuration%epoch.eq.live_b%configuration%epoch)stop 1
+      call mc_activate_full_model(live_a)
+      if(fixed_mass.ne.3d0.or.g.ne.2d0.or.unused_parameter.ne.99d0)stop 2
+      if(real_only_coupling.ne.(3d0,0d0).or.unused_counterterm.ne.(99d0,77d0))stop 3
+      if(any(born_active_helicity_frame.ne.[5,8]))stop 4
+      call mc_capture_model_state(state)
+      if(state%configuration_epoch.ne.live_a%configuration%epoch)stop 5
+      call born_evaluate(1,1,p,state,request,result,status)
+      if(status.ne.BORN_OK.or.result%born.ne.20d0)stop 6
+      call mc_activate_full_model(live_b)
+      if(fixed_mass.ne.9d0.or.g.ne.7d0.or.unused_parameter.ne.-17d0)stop 7
+      if(real_only_coupling.ne.(8d0,-4d0).or.unused_counterterm.ne.(-18d0,6d0))stop 8
+      if(any(born_active_helicity_frame.ne.[1,3]))stop 9
+      call mc_capture_model_state(state)
+      if(state%configuration_epoch.ne.live_b%configuration%epoch)stop 10
+""")
 
     def test_only_dynamic_bytes_are_captured_on_repeated_real_requests(self):
         self.run_capture_driver('''

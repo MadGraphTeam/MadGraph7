@@ -10,7 +10,7 @@ from tests.unit_tests.fks.test_momentum_maps import ROOT, TEMPLATE, fortran_rout
 
 
 @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
-class TestBornFlowRejection(unittest.TestCase):
+class NativeIntegrandFixture(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='mg5_born_flow_rejection_')
@@ -18,14 +18,20 @@ class TestBornFlowRejection(unittest.TestCase):
         work = Path(cls.tmp.name)
         includes = {
             'nexternal.inc': 'integer nexternal,nincoming\nparameter(nexternal=5,nincoming=2)',
-            'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=1)',
+            'maxparticles.inc': 'integer max_particles\nparameter(max_particles=5)',
+            'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=8)',
             'genps.inc': 'integer ngraphs,ncolor\nparameter(ngraphs=1,ncolor=3)',
             'born_nhel.inc': 'integer max_bcol\nparameter(max_bcol=3)',
             'orders.inc': 'integer amp_split_size,nsplitorders\n'
                           'parameter(amp_split_size=1,nsplitorders=1)',
             'run.inc': 'integer ickkw\nlogical mcatnlo_delta\n'
-                       'common/test_run/ickkw,mcatnlo_delta',
-            'fks_info.inc': '',
+                       'common/test_run/ickkw,mcatnlo_delta\n'
+                       'double precision q2fact(2),xbk(2),scale\n'
+                       'common/test_scales/q2fact,xbk,scale',
+            'q_es.inc': 'double precision QES2\ncommon/coupl_es/QES2',
+            'fks_info.inc': 'logical has_physical_fks_classes\n'
+                            'integer born_flavor_index_d(8)\n'
+                            'common/test_fks_classes/born_flavor_index_d,has_physical_fks_classes',
             'mc_histories.inc': 'integer MC_HIST_COUNT\nparameter(MC_HIST_COUNT=1)',
         }
         for name, source in includes.items():
@@ -33,11 +39,12 @@ class TestBornFlowRejection(unittest.TestCase):
         (work / 'routines.f').write_text(
             fortran_routine(TEMPLATE / 'fks_singular.f', 'get_born_flow') +
             fortran_routine(TEMPLATE / 'fks_singular.f', 'get_born_flow_weights') +
-            fortran_routine(TEMPLATE / 'driver_mintMC.f', 'sigintF'))
+            fortran_routine(TEMPLATE / 'driver_mintMC.f', 'sigintF') +
+            fortran_routine(TEMPLATE / 'driver_mintMC.f', 'sigintF_advance'))
         # These operations do not participate in the rejection protocol. The
         # fixture below supplies the Born proposals and contribution records.
-        noops = ('find_iproc_map', 'setup_event_attributes', 'update_fks_dir',
-                 'init_process_module_nbody_wrapper',
+        noops = ('find_iproc_map', 'setup_event_attributes',
+                 'init_process_module_nbody_wrapper', 'select_native_recoil',
                  'set_FxFx_scale', 'set_cms_stuff', 'set_born_spread_point',
                  'set_alphaS', 'include_multichannel_enhance', 'compute_ewsudakov',
                  'compute_shower_scale_nbody', 'save_shower_scale_nbody',
@@ -46,7 +53,7 @@ class TestBornFlowRejection(unittest.TestCase):
                  'special_check_SoftSing', 'mc_set_history',
                  'vs_begin_point', 'reset_folded_virtual', 'virt_surrogate_fit_point',
                  'include_bias_wgt', 'sum_identical_contributions',
-                 'apply_born_spread_weight')
+                 'apply_born_spread_weight','resolve_native_real_scalar','compute_real_emission_finish')
         (work / 'noops.f90').write_text('\n'.join(
             'subroutine '+name+'\nend subroutine' for name in noops))
         cls.executable = work / 'check_rejection'
@@ -54,9 +61,9 @@ class TestBornFlowRejection(unittest.TestCase):
             shutil.which('gfortran'), '-O2', '-std=legacy', '-fcheck=all',
             '-ffixed-line-length-none', '-I', str(work),
             str(TEMPLATE / 'FKSParams.f90'),
-            str(TEMPLATE / 'weight_lines.f'),
+            str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'),
             str(ROOT / 'tests/input_files/born_flow_rejection_context.f90'),
-            str(work / 'routines.f'), str(work / 'noops.f90'),
+            str(TEMPLATE / 'mc_point_state.f'), str(TEMPLATE / 'native_mc_point.f'), str(work / 'routines.f'), str(work / 'noops.f90'),
             str(ROOT / 'tests/input_files/check_born_flow_rejection.f90'),
             '-o', str(cls.executable)], cwd=work, capture_output=True, text=True)
         if result.returncode:
@@ -67,6 +74,8 @@ class TestBornFlowRejection(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('PASS '+mode, result.stdout)
 
+
+class TestBornFlowRejection(NativeIntegrandFixture):
     def test_nonfinite_and_zero_colour_weights(self):
         self.check_mode('selection')
 

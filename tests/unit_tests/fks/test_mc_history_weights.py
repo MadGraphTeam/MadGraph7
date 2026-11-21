@@ -37,7 +37,8 @@ class TestMCHistoryWeights(unittest.TestCase):
                            'double precision real_channels_x0\nparameter(real_channels_x0=0d0)\n'
                            'common/test_run/scale,q2fact,xbk,ickkw,lpp',
                 'q_es.inc': 'double precision QES2\ncommon/test_qes/QES2',
-                'fks_info.inc': 'integer fks_i_d(1)\nparameter(fks_i_d=[5])',
+                'fks_info.inc': 'integer fks_i_d(1),fks_flavor_class_d(1),born_flavor_index_d(1)\n'
+                                'parameter(fks_i_d=[5],fks_flavor_class_d=[1],born_flavor_index_d=[1])',
             }
             for name, source in includes.items():
                 (work / name).write_text(''.join('      '+s+'\n' for s in source.splitlines()))
@@ -60,7 +61,8 @@ class TestMCHistoryWeights(unittest.TestCase):
                 'module mint_module\nlogical :: pass_cuts_check=.false.,fixed_order=.false.\nend module\n'
                 'module mc_counterterms\n'
                 'double precision :: gfactsf,gfactcl,gfactazi\nend module\n')
-            routines = ('compute_native_NLOPS_weights', 'compute_real_emission',
+            routines = ('compute_native_NLOPS_weights', 'prepare_native_NLOPS_weights', 'compute_real_emission',
+                        'compute_real_emission_prepare', 'compute_real_emission_finish', 'assemble_real_emission',
                         'compute_soft_counter_term', 'compute_collinear_counter_term',
                         'compute_soft_collinear_counter_term', 'add_wgt',
                         'compute_prefactors_n1body')
@@ -89,7 +91,7 @@ class TestMCHistoryWeights(unittest.TestCase):
                 str(TEMPLATE / 'fks_phase_space_data.f'),
                 str(work / 'contexts.f90'), str(TEMPLATE / 'genps_fks_helpers.f'),
                 str(TEMPLATE / 'genps_fks_radiation.f'), str(work / 'measure.f'),
-                str(TEMPLATE / 'weight_lines.f'),
+                str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'), str(TEMPLATE / 'mc_point_state.f'),
                 str(work / 'weights.f'), str(TEMPLATE / 'boostwdir2.f'),
                 str(ROOT / 'HELAS/boostx.F'), str(ROOT / 'HELAS/rotxxx.F'),
                 str(ROOT / 'tests/input_files/check_mc_history_weights.f90'),

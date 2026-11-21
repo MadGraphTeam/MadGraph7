@@ -614,7 +614,13 @@ decay w+ > all all
         # we just check that there 8 particles in each event and that the w+- have a status of 2.
         for event in lhe:
             self.assertEqual(event.nexternal, len(event))
+            if 'loop_induced' in name_input_file:
+                self.assertTrue(math.isfinite(event.wgt))
+                self.assertGreater(event.wgt, 0.)
             for particle in event:
+                if 'loop_induced' in name_input_file:
+                    self.assertNotIn(abs(particle.pid), (81, 82, 83, 92),
+                                     'internal grouped flavour in decayed LHE')
                 if particle.pid in particle_to_decay:
                     self.assertEqual(particle.status, 2,
                                      'pdg %s not marked as decayed for %s'

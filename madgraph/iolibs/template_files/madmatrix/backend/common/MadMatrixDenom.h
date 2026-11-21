@@ -5,6 +5,8 @@
 #ifndef MadMatrixDenom_H
 #define MadMatrixDenom_H 1
 
+#include "MadMatrixInvariants.h"
+
 // Propagator denominator of the helas routines; included by HelAmps after the backend's fpdenom_bcast.
 namespace madmatrix
 {
@@ -48,6 +50,45 @@ namespace madmatrix
     const fptype_amp_sv im = ( p2a > 0 ) ? width : fptype_amp( 0 );
 #endif
     return cxmake( fpamp_of_mom( p2 - fpdenom_bcast( m2.real() ) ), im );
+  }
+
+  // Standard real-mass VVV propagators can lose the low part of a parent sum
+  // before its nearly cancelling norm is formed. Correct only those binary64
+  // lanes, preserving the ordinary backend virtuality everywhere else.
+  inline __host__ __device__
+  cxtype_amp_sv virtuality_sum2( const fptype_denom_sv P[4],
+                               const fptype_momenta_sv a[4], const fptype_momenta_sv b[4],
+                               fptype M, fptype W, fptype_denom sign_a, fptype_denom sign_b,
+                               bool timelike_only = false )
+  {
+    const cxtype_amp_sv ordinary = timelike_only ? virtuality_timelike( P, mass2( M, W ) )
+                                                : virtuality( P, mass2( M, W ) );
+#if defined(MADMATRIX_FPTYPE_DOUBLE) && !defined(MADMATRIX_SIMD_DENOM64)
+    const fptype_denom_sv real = fp_minkowski_sum2( P, a, b, static_cast<fptype_denom>( M ),
+                                                  sign_a, sign_b, cxreal( ordinary ) );
+    return cxmake( fpamp_of_mom( real ), cximag( ordinary ) );
+#else
+    return ordinary;
+#endif
+  }
+
+  template<typename C>
+  inline __host__ __device__
+  cxtype_amp_sv denom_sum2( fptype ccoeff, const C& coup, const fptype_denom_sv P[4],
+                          const fptype_momenta_sv a[4], const fptype_momenta_sv b[4],
+                          fptype M, fptype W, fptype_denom sign_a, fptype_denom sign_b,
+                               bool timelike_only = false )
+  {
+    return static_cast<fptype_amp>( ccoeff ) * coup / virtuality_sum2( P, a, b, M, W, sign_a, sign_b, timelike_only );
+  }
+
+  inline __host__ __device__
+  cxtype_amp_sv denom_sum2( const fptype_denom_sv P[4],
+                          const fptype_momenta_sv a[4], const fptype_momenta_sv b[4],
+                          fptype M, fptype W, fptype_denom sign_a, fptype_denom sign_b,
+                               bool timelike_only = false )
+  {
+    return fptype_amp( 1 ) / virtuality_sum2( P, a, b, M, W, sign_a, sign_b, timelike_only );
   }
 
   // Propagator coupling Ccoeff * COUP / ( P^2 - m2 ), the division at vertex precision; mass as in mass2.

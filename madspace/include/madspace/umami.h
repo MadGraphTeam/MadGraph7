@@ -29,8 +29,10 @@ extern "C" {
 /**
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
+ * Version 1.5 extends the released 1.3 key layout. The unreleased NLO 1.4 draft
+ * used colliding key values; its generated libraries must be regenerated.
  */
-#define UMAMI_MINOR_VERSION 3
+#define UMAMI_MINOR_VERSION 5
 
 typedef enum {
     /** operation was executed successfully */
@@ -74,6 +76,30 @@ typedef enum {
     UMAMI_META_COLOR_COUNT,
     /** `double` array of length particle count: the external-leg masses (GeV) */
     UMAMI_META_MASSES,
+    /** `int` containing the ABI major version implemented by the library */
+    UMAMI_META_ABI_MAJOR_VERSION,
+    /** `int` containing the ABI minor version implemented by the library */
+    UMAMI_META_ABI_MINOR_VERSION,
+    /** implementation-owned null-terminated process fingerprint (`char const*`) */
+    UMAMI_META_PROCESS_FINGERPRINT,
+    /** `int` specifying the number of local squared-order components */
+    UMAMI_META_SQUARED_ORDER_COUNT,
+    /** int[orders * couplings], powers[order + orders * coupling] */
+    UMAMI_META_SQUARED_ORDER_POWERS,
+    /** const char*, comma-separated names in coupling-axis order */
+    UMAMI_META_COUPLING_NAMES,
+    /** int[particle count], signed colour representations in physical leg order */
+    UMAMI_META_COLOR_REPRESENTATIONS,
+    /** double[particle count], electric charges in units of e, physical incoming convention */
+    UMAMI_META_CHARGES,
+    /** const char*, EW input scheme when specified by the model */
+    UMAMI_META_ALPHA_SCHEME,
+    /** const char*, regularization scheme, for loop providers */
+    UMAMI_META_LOOP_SCHEME,
+    /** int, number of tagged external photons */
+    UMAMI_META_TAGGED_PHOTONS,
+    /** bool[orders], components included in OUT_MATRIX_ELEMENT */
+    UMAMI_META_SQUARED_ORDER_SELECTED,
 } UmamiMetaKey;
 
 typedef enum {
@@ -116,10 +142,15 @@ typedef enum {
     /** parton densities x f(x, mu_F) of the two incoming legs for the PDG ids -6..6,
      * index 6 the gluon, type: `double`, shape: `(2, 13)` */
     UMAMI_IN_PARTON_DENSITIES,
+    /** direct value of the strong coupling G, type: `double`, shape: `()` */
+    UMAMI_IN_G_STRONG,
+    /** electric coupling, double (). Scales the explicit QED power of each
+     * squared order at fixed masses and mixing. Omit to retain the card coupling. */
+    UMAMI_IN_G_EW,
 } UmamiInputKey;
 
 /** Number of values in `UmamiInputKey` */
-#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_PARTON_DENSITIES + 1)
+#define UMAMI_INPUT_KEY_COUNT (UMAMI_IN_G_EW + 1)
 
 typedef enum {
     /** value of the matrix element, type: `double`, shape: `()` */
@@ -155,10 +186,13 @@ typedef enum {
     /** selected flavor index, -1 if the flavor is unchanged, type: `int`, shape:
      * `()` */
     UMAMI_OUT_FLAVOR_INDEX,
+    /** all local squared-order components, type: `double`, shape:
+     * `(squared-order count)`. The order index is the outer (strided) dimension. */
+    UMAMI_OUT_SQUARED_ORDERS,
 } UmamiOutputKey;
 
 /** Number of values in `UmamiOutputKey` */
-#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_FLAVOR_INDEX + 1)
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_SQUARED_ORDERS + 1)
 
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;

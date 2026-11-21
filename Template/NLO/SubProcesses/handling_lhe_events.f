@@ -691,11 +691,13 @@ c
       subroutine write_lhef_event(ifile,
      # NUP,IDPRUP,XWGTUP,SCALUP,AQEDUP,AQCDUP,
      # IDUP,ISTUP,MOTHUP,ICOLUP,PUP,VTIMUP,SPINUP,buff,SCALUP_a)
+      use mc_event_records, only: emit_event_line
       use extra_weights
       implicit none
       INTEGER NUP,IDPRUP,IDUP(*),ISTUP(*),MOTHUP(2,*),ICOLUP(2,*)
       DOUBLE PRECISION XWGTUP,SCALUP,AQEDUP,AQCDUP,
      # PUP(5,*),VTIMUP(*),SPINUP(*)
+      character*256 event_line
       character*1000 buff
       integer ifile,i,kk,oo,cid
       character*9 ch1
@@ -755,23 +757,32 @@ c
       if (event_id.ge.0) then
          event_id=event_id+1
          if (event_id.le.9) then
-            write(ifile,'(a,i1,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i1,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.99) then
-            write(ifile,'(a,i2,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i2,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.999) then
-            write(ifile,'(a,i3,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i3,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.9999) then
-            write(ifile,'(a,i4,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i4,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.99999) then
-            write(ifile,'(a,i5,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i5,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.999999) then
-            write(ifile,'(a,i6,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i6,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.9999999) then
-            write(ifile,'(a,i7,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i7,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.99999999) then
-            write(ifile,'(a,i8,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i8,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          elseif(event_id.le.999999999) then
-            write(ifile,'(a,i9,a)') "  <event id='",event_id,"'>"
+            write(event_line,'(a,i9,a)') "  <event id='",event_id,"'>"
+            call emit_event_line(ifile,trim(event_line))
          else
             write (ifile,*) "ERROR: EVENT ID TOO LARGE",event_id
             write (*,*) "ERROR: EVENT ID TOO LARGE",event_id
@@ -780,60 +791,68 @@ c
       elseif(nattr.eq.2) then
          if ( (npLO.ge.10.or.npLO.lt.0) .and.
      &        (npNLO.ge.10.or.npNLO.lt.0)) then
-            write(ifile,'(a,i2,a,i2,a)') "  <event npLO=' ",npLO
+            write(event_line,'(a,i2,a,i2,a)') "  <event npLO=' ",npLO
      $           ," ' npNLO=' ",npNLO," '>"
+            call emit_event_line(ifile,trim(event_line))
          elseif( (npLO.lt.10.or.npLO.ge.0) .and.
      &        (npNLO.ge.10.or.npNLO.lt.0)) then
-            write(ifile,'(a,i1,a,i2,a)') "  <event npLO=' ",npLO
+            write(event_line,'(a,i1,a,i2,a)') "  <event npLO=' ",npLO
      $           ," ' npNLO=' ",npNLO," '>"
+            call emit_event_line(ifile,trim(event_line))
          elseif( (npLO.ge.10.or.npLO.lt.0) .and.
      &        (npNLO.lt.10.or.npNLO.ge.0)) then
-            write(ifile,'(a,i2,a,i1,a)') "  <event npLO=' ",npLO
+            write(event_line,'(a,i2,a,i1,a)') "  <event npLO=' ",npLO
      $           ," ' npNLO=' ",npNLO," '>"
+            call emit_event_line(ifile,trim(event_line))
          elseif( (npLO.lt.10.or.npLO.ge.0) .and.
      &        (npNLO.lt.10.or.npNLO.ge.0)) then
-            write(ifile,'(a,i1,a,i1,a)') "  <event npLO=' ",npLO
+            write(event_line,'(a,i1,a,i1,a)') "  <event npLO=' ",npLO
      $           ," ' npNLO=' ",npNLO," '>"
+            call emit_event_line(ifile,trim(event_line))
          endif
       else
-         write(ifile,'(a)') '  <event>'
+         call emit_event_line(ifile,'  <event>')
       endif
-      write(ifile,503)NUP,IDPRUP,XWGTUP,SCALUP,AQEDUP,AQCDUP
+      write(event_line,503)NUP,IDPRUP,XWGTUP,SCALUP,AQEDUP,AQCDUP
+      call emit_event_line(ifile,trim(event_line))
       do i=1,nup
-        write(ifile,504)IDUP(I),ISTUP(I),MOTHUP(1,I),MOTHUP(2,I),
+        write(event_line,504)IDUP(I),ISTUP(I),MOTHUP(1,I),MOTHUP(2,I),
      #                  ICOLUP(1,I),ICOLUP(2,I),
      #                  PUP(1,I),PUP(2,I),PUP(3,I),PUP(4,I),PUP(5,I),
      #                  VTIMUP(I),SPINUP(I)
+        call emit_event_line(ifile,trim(event_line))
       enddo
       !! TV: changed this line below to output commented line in events
       !when no scale or pdf variation is performed
       !if(buff(1:1).eq.'#' .and. (do_rwgt .or.
 !     &     jwgtinfo.lt.0)) then
       if(buff(1:1).eq.'#') then
-         write(ifile,'(a)') buff(1:len_trim(buff))
+         call emit_event_line(ifile,buff(1:len_trim(buff)))
          read(buff,*)ch1,iSorH_lhe,ifks_lhe,jfks_lhe,
      #                    fksfather_lhe,ipartner_lhe,
      #                    scale1_lhe,scale2_lhe,
      #                    jwgtinfo,mexternal,iwgtnumpartn,
      #         wgtcentral,wgtmumin,wgtmumax,wgtpdfmin,wgtpdfmax
          if(jwgtinfo.eq.-5.or.jwgtinfo.eq.-9) then
-            write(ifile,'(a)')'  <mgrwgt>'
-            write (ifile,'(1x,d16.10,3(1x,i4))') wgtref,n_ctr_found
+            call emit_event_line(ifile,'  <mgrwgt>')
+            write(event_line,'(1x,d16.10,3(1x,i4))') wgtref,n_ctr_found
      &           ,n_mom_conf, nint(wgtcpower)
+            call emit_event_line(ifile,trim(event_line))
             do i=1,n_mom_conf
                do j=1,mexternal
-                  write (ifile,'(4(1x,d21.15))')
+                  write(event_line,'(4(1x,d21.15))')
      &                 (momenta_str(ii,j,i),ii=0,3)
+                  call emit_event_line(ifile,trim(event_line))
                enddo
             enddo
             do i=1,n_ctr_found
-               write (ifile,'(a)') trim(adjustl(n_ctr_str(i)))
+               call emit_event_line(ifile,trim(adjustl(n_ctr_str(i))))
             enddo
-            write(ifile,'(a)')'  </mgrwgt>'
+            call emit_event_line(ifile,'  </mgrwgt>')
          endif
          if(abs(jwgtinfo).eq.9)then
             if (do_rwgt_scale .or. do_rwgt_pdf) then
-               write(ifile,'(a)') '  <rwgt>'
+               call emit_event_line(ifile,'  <rwgt>')
                idwgt=1000
                if (do_rwgt_scale) then
                   do oo=0,n_orderstags
@@ -842,15 +861,17 @@ c
                            do i=1,nint(scalevarF(0))
                               do j=1,nint(scalevarR(0))
                                  idwgt=idwgt+1
-                                 write(ifile,601) 
+                                 write(event_line,601)
      $                                "   <wgt id='",idwgt,"'>"
      $                                ,wgtxsecmu(oo,j,i,kk)," </wgt>"
+                                 call emit_event_line(ifile,trim(event_line))
                               enddo
                            enddo
                         else
                            idwgt=idwgt+1
-                           write(ifile,601) "   <wgt id='",idwgt,"'>"
+                           write(event_line,601) "   <wgt id='",idwgt,"'>"
      $                          ,wgtxsecmu(oo,1,1,kk)," </wgt>"
+                           call emit_event_line(ifile,trim(event_line))
                         endif
                      enddo
                   enddo
@@ -860,17 +881,19 @@ c
                      if (lpdfvar(j)) then
                         do i=0,nmemPDF(j)
                            idwgt=idwgt+1
-                           write(ifile,601) "   <wgt id='",idwgt,"'>"
+                           write(event_line,601) "   <wgt id='",idwgt,"'>"
      $                          ,wgtxsecPDF(i,j)," </wgt>"
+                           call emit_event_line(ifile,trim(event_line))
                         enddo
                      else
                         idwgt=idwgt+1
-                        write(ifile,601) "   <wgt id='",idwgt,"'>"
+                        write(event_line,601) "   <wgt id='",idwgt,"'>"
      $                       ,wgtxsecPDF(0,j)," </wgt>"
+                        call emit_event_line(ifile,trim(event_line))
                      endif
                   enddo
                endif
-               write(ifile,'(a)') '  </rwgt>'
+               call emit_event_line(ifile,'  </rwgt>')
             endif
          endif
       endif
@@ -884,7 +907,7 @@ c most one real clustering: the first whose iproc equals its nFKS
 c attribute, or NFKSPROCESS if it has none (any, if NFKSPROCESS <= 0).
 c event_type and nFKS attributes are added when absent.
       if (ickkw.eq.3) then
-         write(ifile,'(a)') trim(adjustl(ptclusstring))
+         call emit_event_line(ifile,trim(adjustl(ptclusstring)))
           do cid = 0, MAXFKSLOC
              if (len_trim(clusterstrings(cid)).gt.0) then
                 if (index(clusterstrings(cid),'<clustering').ne.0) then
@@ -966,7 +989,7 @@ c event_type and nFKS attributes are added when absent.
                         endif
                      endif
                   endif
-                   write(ifile,'(a)') trim(adjustl(tmpstr))
+                   call emit_event_line(ifile,trim(adjustl(tmpstr)))
                   if (iproc_val.ne.0) printed_real = .true.
                 endif
              endif
@@ -998,10 +1021,10 @@ c Write the <scales> block only for scales related to valid colour lines
                endif
             enddo
          enddo
-         write(ifile,'(a)')"  "//trim(scale_str)//">"
-         write(ifile,'(a)') "  </scales>"
+         call emit_event_line(ifile,"  "//trim(scale_str)//">")
+         call emit_event_line(ifile,"  </scales>")
       endif
-      write(ifile,'(a)') '  </event>'
+      call emit_event_line(ifile,'  </event>')
       do cid = 0, MAXFKSLOC
          clusterstrings(cid) = ''
       enddo

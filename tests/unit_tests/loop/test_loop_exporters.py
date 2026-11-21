@@ -173,7 +173,10 @@ class IOExportMadLoopUnitTest(IOTests.IOTestManager):
            not hasattr(self, 'loop_exporters'):\
            
             self.models = { \
-                'loop_sm' : import_ufo.import_model('loop_sm') 
+                # These IO tests construct physical Leg IDs directly rather
+                # than going through the command interface's flavour mapping.
+                'loop_sm' : import_ufo.import_model(
+                    'loop_sm', options={'apply_flavor_grouping': False})
                           }
             self.fortran_models = {
                 'fortran_model' : helas_call_writers.FortranUFOHelasCallWriter(\

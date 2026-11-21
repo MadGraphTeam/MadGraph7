@@ -410,6 +410,46 @@ class IOTestManager(unittest.TestCase):
     # Fixed-form Fortran sources, whose comment lines carry no behavior.
     _fortran_suffixes = ('.f', '.inc')
 
+    @staticmethod
+    def canonicalize_flv_identifiers(text):
+        """Normalize ALOHA's process-global flavour-helper suffixes.
+
+        The numeric part of ``FLV_<number>`` depends on which models were
+        imported earlier in the Python process.  It is not part of the
+        generated-code ABI, but the identity and reuse pattern of each
+        helper is.  Canonicalize each file independently in first-use
+        order so IO tests still detect a wrong helper reference.
+        """
+        # Suffix width can also move a closing parenthesis onto a fixed-
+        # form continuation line. Compare those complete CALL statements
+        # before renaming, preserving punctuation and helper reuse.
+        lines = text.split('\n')
+        normalized = []
+        index = 0
+        while index < len(lines):
+            end = index + 1
+            if re.match(r'^ {6,}CALL\b', lines[index], re.I):
+                while end < len(lines) and re.match(r'^ {5}[^ 0]', lines[end]):
+                    end += 1
+            statement = ''.join([lines[index].rstrip()] +
+                                [line[6:].strip() for line in lines[index+1:end]])
+            if re.search(r'\bFLV_[0-9]+\b', statement):
+                normalized.append(statement)
+            else:
+                normalized.extend(lines[index:end])
+            index = end
+        text = '\n'.join(normalized)
+        identifiers = {}
+
+        def replace(match):
+            identifier = match.group(0)
+            if identifier not in identifiers:
+                identifiers[identifier] = len(identifiers) + 1
+            return 'FLV_CANONICAL_%d' % identifiers[identifier]
+
+        return re.sub(r'\bFLV_[0-9]+\b', replace, text)
+
+
     @classmethod
     def comparable_lines(cls, text, fname=None):
         """The lines of a reference or output file that the comparison uses:
@@ -417,6 +457,7 @@ class IOTestManager(unittest.TestCase):
         Fortran files (a C, c or * in column 1, or a line starting with !), so
         that a comment-only change in a template neither fails a test nor
         rewrites its reference files."""
+        text = cls.canonicalize_flv_identifiers(text)
         lines = [line for line in text.split('\n') if line != '']
         if fname is not None and fname.endswith(cls._fortran_suffixes):
             lines = [line for line in lines if line[0] not in 'cC*' and

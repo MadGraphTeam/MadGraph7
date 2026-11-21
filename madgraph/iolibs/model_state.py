@@ -106,6 +106,27 @@ def _argument_base(text):
     return match[1]
 
 
+def _declared_arrays(line):
+    """Return array entities, excluding functions in kinds or initializers."""
+    if '::' in line:
+        attributes, entities = line.split('::', 1)
+    else:
+        match = re.match(r'^(?:double\s+(?:precision|complex)|'
+                         r'(?:integer|real|complex|logical|character)(?:\*\w+|\([^)]*\))?|'
+                         r'type\s*\([^)]*\)|dimension)\s+(.+)$', line)
+        if not match:
+            return set()
+        attributes, entities = line[:match.start(1)], match[1]
+    dimension = bool(re.search(r'\bdimension\s*\(', attributes))
+    arrays = set()
+    for entity in _arguments(entities):
+        declaration = entity.split('=', 1)[0].strip()
+        name = re.match(r'^(\w+)\s*(\()?', declaration)
+        if name and (name[2] or dimension):
+            arrays.add(name[1])
+    return arrays
+
+
 def _assignment(line):
     statement = re.sub(r'^\d+\s+', '', line)
     # A one-line IF/WHERE has an executable assignment after its condition.
@@ -212,6 +233,8 @@ class _Sources:
         self.units, self.by_name, self.by_file = [], defaultdict(list), defaultdict(list)
         self.expanded = {}
         self.module_aliases, self.module_imports = defaultdict(dict), defaultdict(list)
+        self.module_arrays = defaultdict(set)
+        self.module_constant_arrays = defaultdict(set)
         directories = [self.root/'Source/DHELAS', self.root/'Source/MODEL', self.root/'Source']
         directories += [self.root/'SubProcesses'/record['directory'] for record in records]
         for directory in directories:
@@ -223,7 +246,7 @@ class _Sources:
         if path in self.by_file:
             return
         self.by_file[path] = []
-        current, module = None, None
+        current, module, in_type = None, None, False
         for line in _statements(path):
             clean = _clean(line)
             module_start = re.fullmatch(r'module\s+(\w+)', clean)
@@ -238,6 +261,16 @@ class _Sources:
                                                    for local, remote in aliases.items())
                 if not only:
                     self.module_imports[module].append(origin)
+            if module and current is None:
+                if re.match(r'^type\s+(?!\()(?:\w+\s*)$', clean):
+                    in_type = True
+                elif re.match(r'^end\s*type\b', clean):
+                    in_type = False
+                elif not in_type and _DECL.match(clean) and not _START.match(clean):
+                    declared = _declared_arrays(clean)
+                    self.module_arrays[module].update(declared)
+                    if re.search(r'\bparameter\b', clean):
+                        self.module_constant_arrays[module].update(declared)
             match = _START.match(clean)
             if match:
                 current = dict(name=match[2], arguments=tuple(_NAME.findall(match[3] or '')),
@@ -316,12 +349,44 @@ class _Sources:
                        for local in self.module_aliases[module])
         return exports
 
+    def exported_arrays(self, module, seen=None):
+        """Array classification follows module USE/ONLY renames and reexports."""
+        seen = set() if seen is None else set(seen)
+        if module in seen:
+            return set()
+        seen.add(module)
+        arrays = set(self.module_arrays[module])
+        for origin in self.module_imports[module]:
+            arrays.update(self.exported_arrays(origin, seen))
+        for local, (origin, remote) in self.module_aliases[module].items():
+            if remote in self.exported_arrays(origin, seen):
+                arrays.add(local)
+        return arrays
+
+    def constant_arrays(self, module, seen=None):
+        seen = set() if seen is None else set(seen)
+        if module in seen:
+            return set()
+        seen.add(module)
+        arrays = set(self.module_constant_arrays[module])
+        for origin in self.module_imports[module]:
+            arrays.update(self.constant_arrays(origin, seen))
+        for local, (origin, remote) in self.module_aliases[module].items():
+            if remote in self.constant_arrays(origin, seen):
+                arrays.add(local)
+        return arrays
+
     def scan(self, unit):
         key = (unit['path'], unit['name'])
         if key in self.expanded:
             return self.expanded[key]
-        expanded = self.expand(unit['path'], unit['lines'], (unit['path'].resolve(),))
+        lines = unit['lines']
+        if unit['path'].name == 'born.f' and unit['name'] == 'sborn_splitorders_ntry':
+            from madgraph.iolibs.born_support import scalar_provider_lines
+            lines = scalar_provider_lines(lines)
+        expanded = self.expand(unit['path'], lines, (unit['path'].resolve(),))
         arrays, visible, executable, missing, writes = set(), set(), [], [], set()
+        unsnapshotted_arrays = set()
         externals, intrinsic_declarations = set(), set()
         aliases = {}
         for kind, line in expanded:
@@ -337,10 +402,20 @@ class _Sources:
                 imported = _use_imports(line)
                 if imported:
                     module, names, only = imported
+                    imported_arrays = self.exported_arrays(module)
+                    unknown_arrays = imported_arrays-self.constant_arrays(module)
                     if not only:
                         aliases.update(self.module_exports(module))
+                        arrays.update(self.module_symbol(module, name)
+                                      for name in imported_arrays)
+                        unsnapshotted_arrays.update(self.module_symbol(module, name)
+                                                    for name in unknown_arrays)
                     aliases.update((local, self.module_symbol(module, remote))
                                    for local, remote in names.items())
+                    arrays.update(self.module_symbol(module, remote)
+                                  for remote in names.values() if remote in imported_arrays)
+                    unsnapshotted_arrays.update(self.module_symbol(module, remote)
+                                                for remote in names.values() if remote in unknown_arrays)
             if _DECL.match(line):
                 arrays.update(re.findall(r'\b(\w+)\s*\(', line))
                 if re.match(r'^external\b', line) or ('::' in line and re.search(r'\bexternal\b', line)):
@@ -371,6 +446,11 @@ class _Sources:
                                                  (unit['name'], unit['path'].relative_to(self.root)))
         for line in executable:
             line = _rename_used_symbols(line, aliases)
+            unknown_storage = set(_NAME.findall(line)) & unsnapshotted_arrays-self.names-set(unit['arguments'])
+            if unknown_storage:
+                raise MadGraph5Error('Cannot determine model inputs of reachable routine %s: '
+                                     'imported array %s lacks a model snapshot contract' %
+                                     (unit['name'], ', '.join(sorted(unknown_storage))))
             # Assignment targets are writes. Subscripts on an array target may
             # themselves read a model input, so retain everything but its name.
             target, target_index = _assignment(line)
@@ -587,13 +667,24 @@ def build_model_state_layout(root, records, model, members):
         consumers = {}
         for category, patterns in _ROOTS.items():
             paths = {path for pattern in patterns for path in directory.glob(pattern)}
-            roots = [unit for path in sorted(paths) for unit in sources.by_file[path]]
+            # Native providers and their caches use the scalar entrypoints.
+            # Executable lane routines have separate per-lane coupling state.
+            roots = [unit for path in sorted(paths) for unit in sources.by_file[path]
+                     if not unit['name'].endswith('_vec')]
             readset, reasons = sources.readset(roots)
             consumers[category] = sorted(readset)
             used.update(readset)
             mutations.extend(dict(consumer=record['directory'], category=category, **reason)
                              for reason in reasons)
         consumer_readsets[record['directory']] = consumers
+        # FLV_COUPLING stores pointers to scalar couplings. Their graph-level
+        # dependency names remain inputs even when a HELAS call passes the
+        # flavour mapping object rather than the scalar COMMON member.
+        flavor_inputs = {name for matrix in record.get('helicity_matrices', [])
+                         for name in matrix.get('couplings', {})} & names
+        if flavor_inputs:
+            consumers['coupling_graph'] = sorted(flavor_inputs)
+            used.update(flavor_inputs)
     # Positive G is part of the existing certified helicity/amplitude scaling
     # key only when at least one exported amplitude has nonzero strong degree.
     scaling_g = any(matrix.get('homogeneous') and any(matrix.get('amplitude_degrees', []))

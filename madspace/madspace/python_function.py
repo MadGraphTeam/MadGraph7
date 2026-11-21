@@ -13,6 +13,8 @@ from ._madspace_py import (
 # input name: (data type, shape after the batch dimension); "n" is the particle count
 _INPUT_SHAPES = {
     "momenta": (DataType.float64, ("n", 4)),
+    "g_strong": (DataType.float64, ()),
+    "g_ew": (DataType.float64, ()),
     "alpha_s": (DataType.float64, ()),
     "flavor_index": (DataType.int32, ()),
     "random_color": (DataType.float64, ()),

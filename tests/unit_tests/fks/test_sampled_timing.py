@@ -44,7 +44,8 @@ class TestSampledTiming(unittest.TestCase):
             shutil.which('gfortran'), '-O2', '-std=legacy', '-fcheck=all',
             '-ffixed-line-length-132', '-fbacktrace',
             '-I', str(TEMPLATE), str(work / 'clock.f90'), str(work / 'timing.f'),
-            str(work / 'mint.f90'), str(ROOT / 'tests/input_files/check_sampled_timing.f'),
+            str(TEMPLATE / 'mc_decision_ledger.f90'), str(work / 'mint.f90'),
+            str(ROOT / 'tests/input_files/check_sampled_timing.f'),
             '-o', str(cls.executable)], cwd=work, capture_output=True, text=True)
         if result.returncode:
             raise RuntimeError(result.stdout + result.stderr)
@@ -63,6 +64,9 @@ class TestSampledTiming(unittest.TestCase):
 
     def test_nested_categories_are_exclusive_and_same_category_is_cheap(self):
         self.check_mode('exclusive')
+
+    def test_parked_draw_does_not_accrue_another_draws_time(self):
+        self.check_mode('interleave')
 
     def test_unsampled_jobs_report_only_the_exact_total(self):
         output = self.check_mode('empty')

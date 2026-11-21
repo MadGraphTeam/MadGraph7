@@ -7,10 +7,8 @@ C     Visit launchpad.net/madgraph5 and amcatnlo.web.cern.ch
 C     RETURNS PARTON LUMINOSITIES FOR MADFKS                          
 C        
 C     
-C     Process: d~ g > t t~ d~ [ real = QCD QED ] QCD^2<=6 QED^2<=0
-C     Process: s~ g > t t~ s~ [ real = QCD QED ] QCD^2<=6 QED^2<=0
-C     Process: u~ g > t t~ u~ [ real = QCD QED ] QCD^2<=6 QED^2<=0
-C     Process: c~ g > t t~ c~ [ real = QCD QED ] QCD^2<=6 QED^2<=0
+C     Process: _anti_quark g > t t~ _anti_quark [ real = QCD QED ]
+C      QCD^2<=6 QED^2<=0
 C     
 C     ****************************************************            
 C         
@@ -33,12 +31,15 @@ C     LOCAL VARIABLES
 C         
 C     
       INTEGER I, ICROSS
-      DOUBLE PRECISION CX1,SX1,UX1,DX1
-      DOUBLE PRECISION G2
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
+      INTEGER FKS_PDF_PDG1,FKS_PDF_PDG2
+      DOUBLE PRECISION FKS_PDF1,FKS_PDF2
 C     
 C     STUFF FOR UPC
 C     
-
+      DOUBLE PRECISION PHOTONPDFSQUARE
 C     
 C     EXTERNAL FUNCTIONS                                              
 C         
@@ -60,17 +61,15 @@ C     STUFF FOR DRESSED EE COLLISIONS
 C     
       INCLUDE 'eepdf.inc'
       DOUBLE PRECISION EE_COMP_PROD
-      DOUBLE PRECISION CX1_COMPONENTS(N_EE),SX1_COMPONENTS(N_EE)
-     $ ,UX1_COMPONENTS(N_EE),DX1_COMPONENTS(N_EE)
-      DOUBLE PRECISION G2_COMPONENTS(N_EE)
-
+      DOUBLE PRECISION DUMMY_COMPONENTS(N_EE)
+      DOUBLE PRECISION FKS_PDF1_COMPONENTS(N_EE)
+      DOUBLE PRECISION FKS_PDF2_COMPONENTS(N_EE)
       INCLUDE '../../Source/PDF/pdf.inc'
 C     
 C     DATA                                                            
 C         
 C     
-      DATA CX1,SX1,UX1,DX1/4*1D0/
-      DATA G2/1*1D0/
+
       DATA ICROSS/1/
 C     ----------                                                      
 C         
@@ -79,52 +78,92 @@ C
 C     ----------                                                      
 C         
       LUM = 0D0
-      IF (ABS(LPP(1)) .GE. 1) THEN
-        CX1=PDG2PDF(LPP(1),-4,1,XBK(1),DSQRT(Q2FACT(1)))
-        IF ((ABS(LPP(1)).EQ.4.OR.ABS(LPP(1)).EQ.3)
-     $   .AND.PDLABEL.NE.'none') CX1_COMPONENTS(1:N_EE) =
-     $    EE_COMPONENTS(1:N_EE)
-        SX1=PDG2PDF(LPP(1),-3,1,XBK(1),DSQRT(Q2FACT(1)))
-        IF ((ABS(LPP(1)).EQ.4.OR.ABS(LPP(1)).EQ.3)
-     $   .AND.PDLABEL.NE.'none') SX1_COMPONENTS(1:N_EE) =
-     $    EE_COMPONENTS(1:N_EE)
-        UX1=PDG2PDF(LPP(1),-2,1,XBK(1),DSQRT(Q2FACT(1)))
-        IF ((ABS(LPP(1)).EQ.4.OR.ABS(LPP(1)).EQ.3)
-     $   .AND.PDLABEL.NE.'none') UX1_COMPONENTS(1:N_EE) =
-     $    EE_COMPONENTS(1:N_EE)
-        DX1=PDG2PDF(LPP(1),-1,1,XBK(1),DSQRT(Q2FACT(1)))
-        IF ((ABS(LPP(1)).EQ.4.OR.ABS(LPP(1)).EQ.3)
-     $   .AND.PDLABEL.NE.'none') DX1_COMPONENTS(1:N_EE) =
-     $    EE_COMPONENTS(1:N_EE)
+      IF (PDG_TYPE_D(NFKSPROCESS,1).EQ.22.AND.
+     $    PDG_TYPE_D(NFKSPROCESS,2).EQ.22.AND.
+     $    ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.
+     $    (PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch')) THEN
+      FKS_PDF1=DSQRT(PHOTONPDFSQUARE(XBK(1),XBK(2)))
+      FKS_PDF2=FKS_PDF1
       ENDIF
-      IF (ABS(LPP(2)) .GE. 1) THEN
-        G2=PDG2PDF(LPP(2),0,2,XBK(2),DSQRT(Q2FACT(2)))
-        IF ((ABS(LPP(2)).EQ.4.OR.ABS(LPP(2)).EQ.3)
-     $   .AND.PDLABEL.NE.'none') G2_COMPONENTS(1:N_EE) =
-     $    EE_COMPONENTS(1:N_EE)
+      IF (.NOT.(PDG_TYPE_D(NFKSPROCESS,1).EQ.22.AND.
+     $    PDG_TYPE_D(NFKSPROCESS,2).EQ.22.AND.
+     $    ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.
+     $    (PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))) THEN
+      FKS_PDF_PDG1=PDG_TYPE_D(NFKSPROCESS,1)
+      IF (FKS_PDF_PDG1.EQ.21) THEN
+        FKS_PDF_PDG1=0
+      ELSEIF (FKS_PDF_PDG1.EQ.22) THEN
+        FKS_PDF_PDG1=7
+      ELSEIF (FKS_PDF_PDG1.EQ.-11) THEN
+        FKS_PDF_PDG1=-8
+      ELSEIF (FKS_PDF_PDG1.EQ.11) THEN
+        FKS_PDF_PDG1=8
+      ELSEIF (FKS_PDF_PDG1.EQ.-13) THEN
+        FKS_PDF_PDG1=-9
+      ELSEIF (FKS_PDF_PDG1.EQ.13) THEN
+        FKS_PDF_PDG1=9
+      ELSEIF (FKS_PDF_PDG1.EQ.-15) THEN
+        FKS_PDF_PDG1=-10
+      ELSEIF (FKS_PDF_PDG1.EQ.15) THEN
+        FKS_PDF_PDG1=10
       ENDIF
-      PD(0) = 0D0
-      IPROC = 0
-      IPROC=IPROC+1  ! d~ g > t t~ d~
-      PD(IPROC) = DX1*G2
-      IF (ABS(LPP(1)).EQ.ABS(LPP(2)).AND. (ABS(LPP(1))
-     $ .EQ.3.OR.ABS(LPP(1)).EQ.4).AND.PDLABEL.NE.'none')PD(IPROC)
-     $ =EE_COMP_PROD(DX1_COMPONENTS,G2_COMPONENTS)
-      IPROC=IPROC+1  ! s~ g > t t~ s~
-      PD(IPROC) = SX1*G2
-      IF (ABS(LPP(1)).EQ.ABS(LPP(2)).AND. (ABS(LPP(1))
-     $ .EQ.3.OR.ABS(LPP(1)).EQ.4).AND.PDLABEL.NE.'none')PD(IPROC)
-     $ =EE_COMP_PROD(SX1_COMPONENTS,G2_COMPONENTS)
-      IPROC=IPROC+1  ! u~ g > t t~ u~
-      PD(IPROC) = UX1*G2
-      IF (ABS(LPP(1)).EQ.ABS(LPP(2)).AND. (ABS(LPP(1))
-     $ .EQ.3.OR.ABS(LPP(1)).EQ.4).AND.PDLABEL.NE.'none')PD(IPROC)
-     $ =EE_COMP_PROD(UX1_COMPONENTS,G2_COMPONENTS)
-      IPROC=IPROC+1  ! c~ g > t t~ c~
-      PD(IPROC) = CX1*G2
-      IF (ABS(LPP(1)).EQ.ABS(LPP(2)).AND. (ABS(LPP(1))
-     $ .EQ.3.OR.ABS(LPP(1)).EQ.4).AND.PDLABEL.NE.'none')PD(IPROC)
-     $ =EE_COMP_PROD(CX1_COMPONENTS,G2_COMPONENTS)
+      FKS_PDF1=1D0
+      FKS_PDF1_COMPONENTS(1:N_EE)=0D0
+      IF (ABS(LPP(1)).GE.1) THEN
+        IF (ABS(FKS_PDF_PDG1).LE.10) THEN
+          FKS_PDF1=PDG2PDF(LPP(1),
+     $      FKS_PDF_PDG1,1,
+     $      XBK(1),DSQRT(Q2FACT(1)))
+          IF ((ABS(LPP(1)).EQ.4.OR.
+     $         ABS(LPP(1)).EQ.3)
+     $        .AND.PDLABEL.NE.'none')
+     $      FKS_PDF1_COMPONENTS(1:N_EE)=EE_COMPONENTS(1:N_EE)
+        ELSE
+          FKS_PDF1=0D0
+        ENDIF
+      ENDIF
+      FKS_PDF_PDG2=PDG_TYPE_D(NFKSPROCESS,2)
+      IF (FKS_PDF_PDG2.EQ.21) THEN
+        FKS_PDF_PDG2=0
+      ELSEIF (FKS_PDF_PDG2.EQ.22) THEN
+        FKS_PDF_PDG2=7
+      ELSEIF (FKS_PDF_PDG2.EQ.-11) THEN
+        FKS_PDF_PDG2=-8
+      ELSEIF (FKS_PDF_PDG2.EQ.11) THEN
+        FKS_PDF_PDG2=8
+      ELSEIF (FKS_PDF_PDG2.EQ.-13) THEN
+        FKS_PDF_PDG2=-9
+      ELSEIF (FKS_PDF_PDG2.EQ.13) THEN
+        FKS_PDF_PDG2=9
+      ELSEIF (FKS_PDF_PDG2.EQ.-15) THEN
+        FKS_PDF_PDG2=-10
+      ELSEIF (FKS_PDF_PDG2.EQ.15) THEN
+        FKS_PDF_PDG2=10
+      ENDIF
+      FKS_PDF2=1D0
+      FKS_PDF2_COMPONENTS(1:N_EE)=0D0
+      IF (ABS(LPP(2)).GE.1) THEN
+        IF (ABS(FKS_PDF_PDG2).LE.10) THEN
+          FKS_PDF2=PDG2PDF(LPP(2),
+     $      FKS_PDF_PDG2,2,
+     $      XBK(2),DSQRT(Q2FACT(2)))
+          IF ((ABS(LPP(2)).EQ.4.OR.
+     $         ABS(LPP(2)).EQ.3)
+     $        .AND.PDLABEL.NE.'none')
+     $      FKS_PDF2_COMPONENTS(1:N_EE)=EE_COMPONENTS(1:N_EE)
+        ELSE
+          FKS_PDF2=0D0
+        ENDIF
+      ENDIF
+      ENDIF
+      PD(0)=0D0
+      IPROC=1
+      PD(IPROC)=FKS_PDF1*FKS_PDF2
+      IF (ABS(LPP(1)).EQ.ABS(LPP(2)).AND.
+     $   (ABS(LPP(1)).EQ.3.OR.ABS(LPP(1)).EQ.4).AND.
+     $    PDLABEL.NE.'none')
+     $  PD(IPROC)=EE_COMP_PROD(FKS_PDF1_COMPONENTS,
+     $                         FKS_PDF2_COMPONENTS)
       DO I=1,IPROC
         IF (NINCOMING.EQ.2) THEN
           LUM = LUM + PD(I) * CONV

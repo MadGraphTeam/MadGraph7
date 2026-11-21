@@ -1,6 +1,17 @@
 subroutine sudakov_wrapper(p)
 implicit none
 include 'nexternal.inc'
+include 'born_nhel.inc'
+include 'genps.inc'
+double precision p(0:3,nexternal-1)
+double complex saved(ngraphs,max_bhel)
+common/to_saveamp/saved
+call sudakov_wrapper_amp(p,saved)
+end
+
+subroutine sudakov_wrapper_amp(p,ret_saveamp)
+implicit none
+include 'nexternal.inc'
 include "born_nhel.inc"
 double precision p(0:3, nexternal-1)
 
@@ -13,6 +24,7 @@ INTEGER NHEL(NEXTERNAL-1,NCOMB)
 double complex ans_summed
 
 include 'orders.inc'
+include 'genps.inc'
 DOUBLE COMPLEX AMP_SPLIT_EWSUD(AMP_SPLIT_SIZE)
 COMMON /TO_AMP_SPLIT_EWSUD/ AMP_SPLIT_EWSUD
 DOUBLE COMPLEX AMP_SPLIT_EWSUD_LO2(AMP_SPLIT_SIZE)
@@ -84,6 +96,8 @@ logical firsttime
 data firsttime /.true./
 integer hel_min, hel_max, hel_pick
 double precision volh
+double complex ret_saveamp(ngraphs,max_bhel)
+
 
 include 'ewsudakov_haslo.inc'
 
@@ -109,7 +123,7 @@ if (firsttime.or..not.sud_mc_hel) then
  volh=1d0
  firsttime=.false.
 else
- call pickhelicitymc(p,igood_hel,hel,hel_pick,volh)
+ call pickhelicitymc(p,igood_hel,hel,hel_pick,volh,ret_saveamp)
  hel_min = hel(hel_pick)
  hel_max = hel_min
 endif
@@ -135,8 +149,8 @@ endif
 if (.not.good_hel(ihel).and.sud_filter_hel) cycle
 
 C call the born amplitude and store the result
-call sborn_onehel(p,nhel(1,ihel),ihel,ans_summed)
-amp_split_born_onehel(:) = amp_split_ewsud(:)
+call sborn_onehel(p,nhel(1,ihel),ihel,ans_summed,ret_saveamp)
+amp_split_born_onehel(:) = amp_split_ewsud(:) 
 AMP_BORN_SUMHEL = AMP_BORN_SUMHEL + dble(amp_split_born_onehel(1))
 
 if (firsttime_hel(ihel)) then

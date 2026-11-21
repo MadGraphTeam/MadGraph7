@@ -6,6 +6,14 @@
       return
       end
 
+      subroutine BinothLHA_vec(p_born,born_wgt,virt_wgt)
+      implicit none
+      include "nexternal.inc"
+      double precision p_born(0:3,nexternal-1),virt_wgt,born_wgt
+      virt_wgt=0d0
+      return
+      end
+
       subroutine BinothLHAInit(filename)
       implicit none
       character*(*) filename

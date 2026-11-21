@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from tests.unit_tests.fks.test_born_spreading import mint_support, TEMPLATE
+from tests.unit_tests.fks.mint_fixture import mint_runtime_modules
 
 
 @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
@@ -20,6 +21,7 @@ class TestIEEEScope(unittest.TestCase):
             result = subprocess.run([
                 'gfortran', '-O', '-c', 'params.f90',
                 str(TEMPLATE / 'virtual_surrogate.f90'),
+                *mint_runtime_modules(work),
                 str(TEMPLATE / 'mint_module.f90'),
                 str(TEMPLATE / 'qed_shower_support.f90'),
                 str(TEMPLATE.parent / 'Source/BornSupport/mc_born_types.f90')],

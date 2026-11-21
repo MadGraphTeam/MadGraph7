@@ -1,4 +1,4 @@
-subroutine VVS4PZ1_2(V1, S3, COUP, M2, W2,V2)
+recursive subroutine VVS4PZ1_2(V1, S3, COUP, M2, W2,V2)
 use aloha_object
 implicit none
  include "../MODEL/input.inc"

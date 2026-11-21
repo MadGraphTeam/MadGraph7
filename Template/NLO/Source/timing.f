@@ -3,6 +3,8 @@
       include 'timing_variables.inc'
       integer(kind=8) clock_reads(timing_ncategories)
       common/timing_read_counts/clock_reads
+      integer(kind=8) resume_reads
+      common/timing_resume_reads/resume_reads
       double precision elapsed(timing_ncategories),last_clock
       integer stack(0:timing_stack_size),depth,sample_position
       integer(kind=8) points,samples,sampler_state
@@ -10,6 +12,7 @@
       common/timing_stack/stack,depth,sample_position
       common/timing_counts/points,samples,sampler_state
       clock_reads=0_8
+      resume_reads=0_8
       elapsed=0d0
       last_clock=0d0
       stack=timing_weights
@@ -65,6 +68,51 @@ c sequence never consumes a physics random number. Its product fits int64.
       timing_sampled=.false.
       end
 
+      subroutine timing_suspend_point(categories)
+c Pause a native continuation. Park the nesting stack only for sampled
+c draws and stop charging its active category while another draw runs.
+      implicit none
+      include 'timing_variables.inc'
+      integer,allocatable,intent(out) :: categories(:)
+      integer stack(0:timing_stack_size),depth,sample_position,category
+      integer(kind=8) clock_reads(timing_ncategories)
+      double precision elapsed(timing_ncategories),last_clock,now
+      common/timing_read_counts/clock_reads
+      common/timing_clocks/elapsed,last_clock
+      common/timing_stack/stack,depth,sample_position
+      if(.not.timing_sampled)return
+      category=stack(depth)
+      allocate(categories(0:depth))
+      categories(:)=stack(0:depth)
+      call cpu_time(now)
+      elapsed(category)=elapsed(category)+now-last_clock
+      clock_reads(category)=clock_reads(category)+1_8
+      timing_sampled=.false.
+      depth=0
+      end
+
+      subroutine timing_resume_point(categories)
+      implicit none
+      include 'timing_variables.inc'
+      integer,allocatable,intent(inout) :: categories(:)
+      integer stack(0:timing_stack_size),depth,sample_position
+      integer(kind=8) resume_reads
+      common/timing_resume_reads/resume_reads
+      double precision elapsed(timing_ncategories),last_clock
+      common/timing_clocks/elapsed,last_clock
+      common/timing_stack/stack,depth,sample_position
+      if(timing_sampled)error stop 'A different timing point is active'
+      if(.not.allocated(categories))return
+      depth=size(categories)-1
+      if(depth.lt.0.or.depth.gt.timing_stack_size)
+     $     error stop 'Invalid parked timing stack'
+      stack(0:depth)=categories(:)
+      deallocate(categories)
+      timing_sampled=.true.
+      resume_reads=resume_reads+1_8
+      call cpu_time(last_clock)
+      end
+
       subroutine timing_enter(category)
 c Charge the previous category before switching. Reentrant use of the
 c same category only pushes the stack; it needs no additional clock read.
@@ -118,6 +166,8 @@ c same category only pushes the stack; it needs no additional clock read.
       include 'timing_variables.inc'
       integer(kind=8) clock_reads(timing_ncategories)
       common/timing_read_counts/clock_reads
+      integer(kind=8) resume_reads
+      common/timing_resume_reads/resume_reads
       double precision total,elapsed(timing_ncategories),last_clock
       integer(kind=8) points,samples,sampler_state
       common/timing_clocks/elapsed,last_clock
@@ -159,7 +209,7 @@ c block. Do not renormalize estimates to the exact full-job CPU time.
      $           -read_cost*dble(clock_reads(category)))
          enddo
          write(*,*)'Estimated sampled clock overhead : ',
-     $        read_cost*dble(sum(clock_reads)+samples)
+     $        read_cost*dble(sum(clock_reads)+samples+resume_reads)
       else
          write(*,*)'No sampled integration points;'
      $        //' no detailed estimate.'
@@ -175,6 +225,9 @@ c They remain untimed until a MINT point explicitly enables sampling.
       include 'timing_variables.inc'
       integer(kind=8) clock_reads(timing_ncategories)
       common/timing_read_counts/clock_reads
+      integer(kind=8) resume_reads
+      common/timing_resume_reads/resume_reads
+      data resume_reads/0_8/
       double precision elapsed(timing_ncategories),last_clock
       integer stack(0:timing_stack_size),depth,sample_position
       integer(kind=8) points,samples,sampler_state

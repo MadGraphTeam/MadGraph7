@@ -34,10 +34,13 @@ namespace madmatrix
   // is safe to mask on the squared order: sqSoIndex is symmetric (a squared
   // order is the SUM of the two amplitude orders), so a pair and its transpose
   // are always kept or dropped together and the masked total stays real.
+  template<bool CaptureSquaredOrders>
   [[maybe_unused]] static void
   color_sum_cpu_splitorders( fptype* allMEs,                  // output: allMEs[nevt], add |M|^2 for one specific helicity
                              const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed) for one specific helicity
-                             const int ievt0 )                // input: first event number in current C++ event page
+                             const int ievt0,
+                             fptype* allSquaredOrderMEs,
+                             const std::size_t squaredOrderStride )                // input: first event number in current C++ event page
   {
     // Pre-compute a constexpr triangular color matrix properly normalized #475
     struct TriangularNormalizedColorMatrix
@@ -90,7 +93,13 @@ namespace madmatrix
       {
         // The squared order this pair contributes to, dropped if the process
         // asked for a contribution that does not include it
-        if( !chosenSqso[sqSoIndex[iao][jao]] ) continue;
+        const int iso = sqSoIndex[iao][jao];
+        if constexpr( !CaptureSquaredOrders )
+          if( !chosenSqso[iso] ) continue;
+        [[maybe_unused]] fptype_sv deltaPair = { 0 };
+#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+        [[maybe_unused]] fptype_sv deltaPair_next = { 0 };
+#endif
         for( int icol = 0; icol < ncolor; icol++ )
         {
           // Diagonal terms (the color contraction is still triangular)
@@ -105,11 +114,35 @@ namespace madmatrix
           // ztemp comes from the jamps of order iao, and is contracted with those
           // of order jao (Fortran: ZTEMP from JAMP(:,M), times DCONJG(JAMP(I,N)))
           fptype_colour_sv deltaMEs2 = ( jampR_sv[jao][icol] * ztempR_sv + jampI_sv[jao][icol] * ztempI_sv ); // may underflow #831
-#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+          if constexpr( CaptureSquaredOrders )
+          {
+#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+            deltaPair += fpvsplit0( deltaMEs2 );
+            deltaPair_next += fpvsplit1( deltaMEs2 );
+#else
+            deltaPair += deltaMEs2;
+#endif
+            if( !chosenSqso[iso] ) continue;
+          }
+#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           deltaMEs += fpvsplit0( deltaMEs2 );
           deltaMEs_next += fpvsplit1( deltaMEs2 );
 #else
           deltaMEs += deltaMEs2;
+#endif
+        }
+        if constexpr( CaptureSquaredOrders )
+        {
+#ifdef MADMATRIX_SIMD
+          for( int lane = 0; lane < neppV; ++lane )
+          {
+            allSquaredOrderMEs[iso * squaredOrderStride + ievt0 + lane] += deltaPair[lane];
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+            allSquaredOrderMEs[iso * squaredOrderStride + ievt0 + neppV + lane] += deltaPair_next[lane];
+#endif
+          }
+#else
+          allSquaredOrderMEs[iso * squaredOrderStride + ievt0] += deltaPair;
 #endif
         }
       }
@@ -132,12 +165,17 @@ namespace madmatrix
   void
   color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
                  const cxtype_amp_sv* allJamp_sv, // input: jamp_sv[njampso] (float/double) or jamp_sv[2*njampso] (mixed) for one specific helicity
-                 const int ievt0 )            // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
+                 const int ievt0,
+                             fptype* allSquaredOrderMEs,
+                             const std::size_t squaredOrderStride )            // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
   {
     if constexpr( nampso > 1 )
     {
       // The jamps carry an amplitude-order index: pair them instead (see above)
-      color_sum_cpu_splitorders( allMEs, allJamp_sv, ievt0 );
+      if( allSquaredOrderMEs )
+        color_sum_cpu_splitorders<true>( allMEs, allJamp_sv, ievt0, allSquaredOrderMEs, squaredOrderStride );
+      else
+        color_sum_cpu_splitorders<false>( allMEs, allJamp_sv, ievt0, nullptr, 0 );
       return;
     }
     // Pre-compute a constexpr triangular color matrix properly normalized #475

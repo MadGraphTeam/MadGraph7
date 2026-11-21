@@ -1,147 +1,185 @@
-      SUBROUTINE SMATRIX_REAL(P,WGT)
-      USE MC_NATIVE_CONTEXT, ONLY: SHARED_REAL_ACTIVE
-     $ ,SHARED_REAL_EPOCH,SHARED_REAL_POINT,ACTIVE_HISTORY
-     $ ,HISTORY_PERMUTATIONS
-      USE MC_BORN_TYPES, ONLY: BORNMODELSTATE,BORN_MODEL_STATE_EQUAL
+      SUBROUTINE smatrix_real_local(P, RET_AMP_SPLIT, WGT)
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'orders.inc'
-      INCLUDE 'real_matrix_weights.inc'
-      INTEGER,PARAMETER::CACHE_SIZE=16
-      LOGICAL,PARAMETER::SHARE_REAL_FRAME(12)=[.TRUE.,.TRUE.,.TRUE.
-     $ ,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.]
-      TYPE REALCACHEENTRY
-        INTEGER::EVALUATOR=0
-        REAL(8) MOMENTA(0:3,NEXTERNAL),WEIGHT
-     $   ,AMPLITUDES(AMP_SPLIT_SIZE)
-        REAL(8) DIAGRAM_WEIGHTS(SIZE(REAL_AMP2))
-        LOGICAL::HAS_DIAGRAM_WEIGHTS=.FALSE.
-        TYPE(BORNMODELSTATE) MODEL
-        END TYPE
-        TYPE(REALCACHEENTRY),SAVE::CACHE(CACHE_SIZE)
-        TYPE(BORNMODELSTATE),SAVE::STATE
-        INTEGER,SAVE::EPOCH=-1,NEXT_ENTRY=1
-        DOUBLE PRECISION P(0:3,NEXTERNAL),Q(0:3,NEXTERNAL),R(0:3
-     $   ,NEXTERNAL),WGT
-        DOUBLE PRECISION WGT_ME_BORN,WGT_ME_REAL
-        COMMON/C_WGT_ME_TREE/WGT_ME_BORN,WGT_ME_REAL
-        INTEGER NFKSPROCESS,EVALUATOR,I,J
-        COMMON/C_NFKSPROCESS/NFKSPROCESS
-        IF(NFKSPROCESS.LT.1.OR.NFKSPROCESS.GT.12)STOP 'Invalid native'
-     $   //' real sector'
-        R=P
-        IF(SHARED_REAL_ACTIVE.AND.SHARE_REAL_FRAME(NFKSPROCESS))THEN
-          R=SHARED_REAL_POINT
-          IF(ACTIVE_HISTORY.GT.0)THEN
-            DO I=1,NEXTERNAL
-              R(:,I)=SHARED_REAL_POINT(:,HISTORY_PERMUTATIONS(I
-     $         ,ACTIVE_HISTORY))
-            ENDDO
-          ENDIF
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE PRECISION P(0:3, NEXTERNAL)
+      DOUBLE PRECISION WGT
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      IF (NFKSPROCESS.EQ.1) THEN
+        CALL SMATRIX1_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.2) THEN
+        CALL SMATRIX1_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.3) THEN
+        CALL SMATRIX1_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.4) THEN
+        CALL SMATRIX1_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.5) THEN
+        CALL SMATRIX2_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.6) THEN
+        CALL SMATRIX2_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.7) THEN
+        CALL SMATRIX2_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.8) THEN
+        CALL SMATRIX2_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.9) THEN
+        CALL SMATRIX3_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.10) THEN
+        CALL SMATRIX3_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.11) THEN
+        CALL SMATRIX3_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.12) THEN
+        CALL SMATRIX3_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.13) THEN
+        CALL SMATRIX4_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.14) THEN
+        CALL SMATRIX4_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.15) THEN
+        CALL SMATRIX4_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.16) THEN
+        CALL SMATRIX4_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.17) THEN
+        CALL SMATRIX5_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.18) THEN
+        CALL SMATRIX5_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.19) THEN
+        CALL SMATRIX5_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSEIF (NFKSPROCESS.EQ.20) THEN
+        CALL SMATRIX5_AMP(P, RET_AMP_SPLIT, WGT)
+      ELSE
+        WRITE(*,*) 'ERROR: invalid n in real_matrix :', NFKSPROCESS
+        STOP
+      ENDIF
+      RETURN
+      END
+
+      RECURSIVE SUBROUTINE SMATRIX_REAL_VEC(P, RET_AMP_SPLIT, WGT,
+     $  IVEC, NFKSPROCESS, REAL_FLAV_IDX)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE PRECISION P(0:3, NEXTERNAL)
+      DOUBLE PRECISION WGT
+      INTEGER IVEC
+      INTEGER NFKSPROCESS, REAL_FLAV_IDX
+      IF (NFKSPROCESS.EQ.1) THEN
+        CALL SMATRIX1_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.2) THEN
+        CALL SMATRIX1_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.3) THEN
+        CALL SMATRIX1_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.4) THEN
+        CALL SMATRIX1_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.5) THEN
+        CALL SMATRIX2_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.6) THEN
+        CALL SMATRIX2_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.7) THEN
+        CALL SMATRIX2_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.8) THEN
+        CALL SMATRIX2_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.9) THEN
+        CALL SMATRIX3_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.10) THEN
+        CALL SMATRIX3_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.11) THEN
+        CALL SMATRIX3_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.12) THEN
+        CALL SMATRIX3_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.13) THEN
+        CALL SMATRIX4_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.14) THEN
+        CALL SMATRIX4_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.15) THEN
+        CALL SMATRIX4_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.16) THEN
+        CALL SMATRIX4_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.17) THEN
+        CALL SMATRIX5_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.18) THEN
+        CALL SMATRIX5_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.19) THEN
+        CALL SMATRIX5_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSEIF (NFKSPROCESS.EQ.20) THEN
+        CALL SMATRIX5_AMP_VEC(P, RET_AMP_SPLIT, WGT, IVEC,
+     $                   real_flav_idx, nfksprocess)
+      ELSE
+        WRITE(*,*) 'ERROR: invalid n in real_matrix_vec :', NFKSPROCESS
+        STOP
+      ENDIF
+      RETURN
+      END
+
+
+      RECURSIVE SUBROUTINE SMATRIX_REAL_VEC_BATCH(P,G_STRONG,
+     $            ret_amp_split,wgt,active,coup_index,vector_size,
+     $            nfksprocess,real_flav_idx)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INTEGER VECTOR_SIZE,NFKSPROCESS,REAL_FLAV_IDX,IVEC
+      INTEGER COUP_INDEX(VECTOR_SIZE)
+      LOGICAL ACTIVE(VECTOR_SIZE)
+      DOUBLE PRECISION P(0:3,NEXTERNAL,VECTOR_SIZE)
+      DOUBLE PRECISION G_STRONG(VECTOR_SIZE)
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE,VECTOR_SIZE)
+      DOUBLE PRECISION WGT(VECTOR_SIZE)
+      RET_AMP_SPLIT(:,:) = 0D0
+      WGT(:) = 0D0
+      DO IVEC = 1,VECTOR_SIZE
+        IF (ACTIVE(IVEC)) THEN
+          CALL SMATRIX_REAL_VEC(P(:,:,IVEC),
+     $                   ret_amp_split(:,ivec),wgt(ivec),
+     $                   coup_index(ivec),nfksprocess,real_flav_idx)
         ENDIF
-        SELECT CASE(NFKSPROCESS)
-        CASE(1)
-          Q=R
-          EVALUATOR=1
-        CASE(2)
-          Q=R
-          EVALUATOR=1
-        CASE(3)
-          Q=R
-          EVALUATOR=1
-        CASE(4)
-          Q=R
-          EVALUATOR=1
-        CASE(5)
-          Q=R
-          EVALUATOR=2
-        CASE(6)
-          Q=R
-          EVALUATOR=3
-        CASE(7)
-          Q=R
-          EVALUATOR=4
-        CASE(8)
-          Q=R
-          EVALUATOR=5
-        CASE(9)
-          Q(:,1)=R(:,1)
-          Q(:,2)=R(:,2)
-          Q(:,3)=R(:,3)
-          Q(:,4)=R(:,4)
-          Q(:,5)=R(:,5)
-          EVALUATOR=4
-        CASE(10)
-          Q(:,1)=R(:,1)
-          Q(:,2)=R(:,2)
-          Q(:,3)=R(:,3)
-          Q(:,4)=R(:,4)
-          Q(:,5)=R(:,5)
-          EVALUATOR=3
-        CASE(11)
-          Q(:,1)=R(:,1)
-          Q(:,2)=R(:,2)
-          Q(:,3)=R(:,3)
-          Q(:,4)=R(:,4)
-          Q(:,5)=R(:,5)
-          EVALUATOR=5
-        CASE(12)
-          Q(:,1)=R(:,1)
-          Q(:,2)=R(:,2)
-          Q(:,3)=R(:,3)
-          Q(:,4)=R(:,4)
-          Q(:,5)=R(:,5)
-          EVALUATOR=2
-        CASE DEFAULT
-          STOP 'Invalid native real sector'
-        END SELECT
-        IF(SHARED_REAL_ACTIVE)THEN
-          IF(EPOCH.NE.SHARED_REAL_EPOCH)THEN
-            CACHE%EVALUATOR=0
-            NEXT_ENTRY=1
-            EPOCH=SHARED_REAL_EPOCH
-          ENDIF
-          CALL MC_CAPTURE_MODEL_STATE(STATE)
-          DO J=1,CACHE_SIZE
-            IF(CACHE(J)%EVALUATOR.NE.EVALUATOR)CYCLE
-            IF(ANY(CACHE(J)%MOMENTA.NE.Q))CYCLE
-            IF(.NOT.BORN_MODEL_STATE_EQUAL(CACHE(J)%MODEL,STATE))CYCLE
-            IF(GET_REAL_DIAGRAM_WEIGHTS.AND..NOT.CACHE(J)
-     $       %HAS_DIAGRAM_WEIGHTS)CYCLE
-            WGT=CACHE(J)%WEIGHT
-            AMP_SPLIT=CACHE(J)%AMPLITUDES
-            IF(GET_REAL_DIAGRAM_WEIGHTS)REAL_AMP2=CACHE(J)
-     $       %DIAGRAM_WEIGHTS
-            WGT_ME_REAL=WGT
-            RETURN
-          ENDDO
-        ENDIF
-        SELECT CASE(EVALUATOR)
-        CASE(1)
-          CALL SMATRIX1(Q,WGT)
-        CASE(2)
-          CALL SMATRIX2(Q,WGT)
-        CASE(3)
-          CALL SMATRIX3(Q,WGT)
-        CASE(4)
-          CALL SMATRIX4(Q,WGT)
-        CASE(5)
-          CALL SMATRIX5(Q,WGT)
-        CASE DEFAULT
-          STOP 'Invalid local real evaluator'
-        END SELECT
-        IF(SHARED_REAL_ACTIVE)THEN
-          J=NEXT_ENTRY
-          CACHE(J)%EVALUATOR=EVALUATOR
-          CACHE(J)%MOMENTA=Q
-          CACHE(J)%MODEL%REAL_VALUES=STATE%REAL_VALUES
-          CACHE(J)%MODEL%CONFIGURATION_EPOCH=STATE%CONFIGURATION_EPOCH
-          CACHE(J)%MODEL%COMPLEX_VALUES=STATE%COMPLEX_VALUES
-          CACHE(J)%WEIGHT=WGT
-          CACHE(J)%AMPLITUDES=AMP_SPLIT
-          CACHE(J)%HAS_DIAGRAM_WEIGHTS=GET_REAL_DIAGRAM_WEIGHTS
-          IF(GET_REAL_DIAGRAM_WEIGHTS)CACHE(J)
-     $     %DIAGRAM_WEIGHTS=REAL_AMP2
-          NEXT_ENTRY=MOD(NEXT_ENTRY,CACHE_SIZE)+1
-        ENDIF
-        END
+      ENDDO
+      RETURN
+      END
+
+
+      LOGICAL FUNCTION MC_PROVIDER_CAN_BATCH(ROW,FLAV)
+      IMPLICIT NONE
+      INTEGER ROW,FLAV
+      MC_PROVIDER_CAN_BATCH=.FALSE.
+      END
+
+      SUBROUTINE MC_EVALUATE_PROVIDER_BATCH(P,G,EW,ROW,FLAV,N,
+     $             wgt,amps,ok)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INTEGER ROW,FLAV,N
+      DOUBLE PRECISION P(0:3,NEXTERNAL,N),G(N),EW
+      DOUBLE PRECISION WGT(N),AMPS(AMP_SPLIT_SIZE,N)
+      LOGICAL OK
+      OK=.FALSE.
+      WGT=0D0
+      AMPS=0D0
+      END
+
+      LOGICAL FUNCTION MG7_NLO_REAL_IS_FORTRAN()
+      IMPLICIT NONE
+      MG7_NLO_REAL_IS_FORTRAN=.TRUE.
+      END
+

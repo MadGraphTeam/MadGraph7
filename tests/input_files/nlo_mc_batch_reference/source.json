@@ -1,0 +1,54 @@
+{
+  "revision": "7b5bc66dfde15b3a19d2f213e8e671f45afa37f6",
+  "main": "959dcce3ef90d2ee3fbf751ac0a978eafd4c5740",
+  "archive_sha256": "2d9dfc20bd14bca529b7ee718e670e97157ad8f52601740ad0666d1c3cb5f77d",
+  "profile": "strict-o3-v1",
+  "dependency_manifest_sha256": "6e1bed76319dac3ad8d1078616da6715ce1aa475ac05cf7ab3a7f7db24020019",
+  "compiler_tool_hashes": {
+    "ar": "332f2d23d468e422cbb270a2709c320e3744487181b37fd91a843a1262899dea",
+    "g++": "ca8da44bcda81e75a13831ef892508e26fddd3de1faad5aa9ea1e355a8d00568",
+    "gcc": "96122546c8414129187e6978943d35361afde7ea957a42f2ad08b8138181ddb0",
+    "gfortran": "fa84c7f9647ed9b6690080edeb1e1056f54d4d30a0784fc58c2c0a6bfd785193",
+    "nvcc": "6ce80365abc2f14ff5f9e069fe687a93d4eaacc555dbf1d1696ee899d39df52a",
+    "ranlib": "534da658b8c747db99ab067271d94feb56e9357d357b75651092035029444061",
+    "strip": "d09b86305a04fcef8d9e91c54e447290e2909b938f57c5744bb4b429b9cba01c"
+  },
+  "prerequisites": {
+    "oneloop": {
+      "oneloop/libavh_olo.a": "b3ec631562efdea3b45cb54e8e9038c197b2f8c1bb8e1ae14a518204f6a3ce5c"
+    },
+    "ninja": {
+      "ninja/lib/libninja.a": "90fbff94cd133b83958d4847240bfee482867dffc1f9a95d554de39684552eb7",
+      "ninja/lib/libninja.so.0.0.0": "92b2fd5de516944e2d986712d6ded6639fd568aeeb8b825a4025d245b6958a64"
+    },
+    "lhapdf6_py3": {
+      "lhapdf6_py3/lib/libLHAPDF.a": "8ff22bb8f1bcfa57463bde6117a5d3ee3da0cee16ca2ef029ba62f35893ec767",
+      "lhapdf6_py3/lib/libLHAPDF.so": "a76e541443d96c642d370ca00b7c319ae964b116d49c4b2aa640857484d37496"
+    },
+    "CutTools": {
+      "vendor/CutTools/includects/libcts.a": "cfd39c4292cc5d6e4c944d2d95e5f4eadd3894f9c437d0ad1e9865a8ef7e9772"
+    },
+    "IREGI": {
+      "vendor/IREGI/src/libiregi.a": "97a6d109ae85bf2fe1442dc61d04dbbeb2a1350e46b45682a698fb43592bc62e"
+    }
+  },
+  "source_archives": {
+    "OneLOop-3.6.tar.gz": "fd2231cfe5368815d05bfdc4520186ec89985efa9fe37096eb4d09a3f49e5a4e",
+    "Ninja.tar.gz": "c05cf0e5cc56eaf5324c9963914feb7a6a08d22e55339aa2a917b330678a0a15",
+    "LHAPDF-6.5.5.tar.gz": "641d5ea0942b79e4447e15e5a33491ff3c7032d71d618119935e14ad27f5e3a5"
+  },
+  "decision_source_sha256": {
+    "Template/NLO/SubProcesses/driver_mintMC.f": "ba45bf4e309a002e451fed5521e744ed5f36247e8f5bc6d870d30f2743c1a7e4",
+    "Template/NLO/SubProcesses/mint_module.f90": "39ef6a08ec78b2e13732912762c31a896ddb8fd60ce3af9b3fd6c60f7a271b94",
+    "Template/NLO/SubProcesses/mc_batch_trace.f90": "f85068d8ebca1dd3f89bb6591cd03f2a8f2f17be4a3852a13f78633c7efe7c24",
+    "Template/NLO/SubProcesses/mc_decision_ledger.f90": "83ba5347f0eff410416a09823494cf264fd1a1e7d3fbf24cd2e6279980f40b9f",
+    "Template/NLO/SubProcesses/virtual_surrogate.f90": "5ed0d099bc7f1714ca6ccbc16b7ff202451aca6c8e96ee75e90323eafc678e21",
+    "Template/NLO/SubProcesses/fks_singular.f": "e87d9a74bcc1fb633090ad64d277bc739cb5b2bef0dd6f2200a7dc67f6f7603a",
+    "Template/NLO/SubProcesses/makefile_fks_dir": "65c45d7b750da2c3b8720812b077381f6f620603fcdae3b870a9c53437da52fe",
+    "madgraph/iolibs/export_fks.py": "81072bbfe0aea190a02b34832e901bd81dba8e632a529b004c5faeff40121ce8",
+    "madgraph/iolibs/native_histories.py": "018ae8b3298fc7638d547ecd692a76ba3d73155e6d84fc8500563ab196e2fb8e",
+    "madmatrix/output.py": "35297042eed623d0efbcf1e2466fed64686d36cff6ddf6e8d1de3b087009e31b",
+    "madgraph/iolibs/template_files/madmatrix/nlo_real_bridge.cc": "94a6e408504b50c3d1c0000be78c4cbece646ae647cc490da9e7687270fa0511",
+    "madgraph/iolibs/template_files/madmatrix/nlo_real_bridge.h": "e7051e1a695a8a9802c5014d9b1b231ad352d2d19f4ca0ab420b1f3d177d972b"
+  }
+}

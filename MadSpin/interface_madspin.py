@@ -4302,17 +4302,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         self.generate_all.compile()
         self.all_me = self.generate_all.all_me
         self.all_f2py = {}
-        # Build raw-PDG -> merged-particle-ID mapping so event tags can be
-        # remapped to match all_me keys (which are built from process legs,
-        # i.e. merged-particle IDs when apply_flavor_grouping is on).
-        self._revert_merged = {}
-        model_merged = getattr(self.generate_all, 'model', None)
-        model_merged = model_merged.get('merged_particles') if model_merged else None
-        if model_merged:
-            for merged_id, members in model_merged.items():
-                for pdg in members:
-                    self._revert_merged[pdg] = merged_id
-                    self._revert_merged[-pdg] = -merged_id
+        self._set_density_flavour_model()
 
         self.all_density = {}
         time_me_generation = time.time() - time_me_generation
@@ -12862,6 +12852,23 @@ class MadSpinInterface(extended_cmd.Cmd):
         if rest_leg is not None and rest_leg <= len(out):
             out[rest_leg - 1] = (out[rest_leg - 1][0], 0., 0., 0.)
         return out
+
+    def _set_density_flavour_model(self):
+        """Use the model that wrote the production and decay matrix elements.
+
+        Loop generation can reload a grouped model with physical flavours.
+        The handler captured the earlier model before generation; building a
+        map from it would turn physical W decay tags into absent +/-81 tags.
+        """
+        self.model = self.generate_all.mgcmd._curr_model
+        self.generate_all.model = self.model
+        self._revert_merged = {}
+        for merged_id, members in (self.model.get('merged_particles') or {}).items():
+            for pdg in members:
+                self._revert_merged[pdg] = merged_id
+                self._revert_merged[-pdg] = -merged_id
+        self.__dict__.pop('_ms_density_flavours', None)
+        self.__dict__.pop('_pdir_cache', None)
 
     def _density_flavour(self, event):
         """What get_density needs of the flavours of event, for every event

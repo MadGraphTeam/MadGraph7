@@ -1,5 +1,6 @@
 #include "madspace/phasespace/matrix_element.hpp"
 
+#include <climits>
 #include <format>
 #include <utility>
 
@@ -41,7 +42,8 @@ MatrixElement::MatrixElement(
     bool sample_random_inputs,
     const std::vector<me_int_t>& me_frame,
     std::size_t incoming_count,
-    me_int_t channel
+    me_int_t channel,
+    std::size_t squared_order_count
 ) :
     FunctionGenerator(
         "MatrixElement",
@@ -56,6 +58,12 @@ MatrixElement::MatrixElement(
                     break;
                 case alpha_s_in:
                     arg_types.push_back("alpha_s", batch_float);
+                    break;
+                case g_strong_in:
+                    arg_types.push_back("g_strong", batch_float);
+                    break;
+                case g_ew_in:
+                    arg_types.push_back("g_ew", batch_float);
                     break;
                 case random_color_in:
                     if (!sample_random_inputs) {
@@ -130,6 +138,12 @@ MatrixElement::MatrixElement(
                 case matrix_element_out:
                     ret_types.push_back("matrix_element", batch_float);
                     break;
+                case squared_orders_out:
+                    if (squared_order_count == 0 || squared_order_count > INT_MAX) {
+                        throw std::invalid_argument("invalid squared order count");
+                    }
+                    ret_types.push_back("squared_orders", batch_float_array(squared_order_count));
+                    break;
                 case diagram_amp2_out:
                     ret_types.push_back(
                         "diagram_amp2", batch_float_array(diagram_count)
@@ -176,10 +190,11 @@ MatrixElement::MatrixElement(
         }()
     ),
     _matrix_element_index(matrix_element_index),
-    _inputs(inputs),
-    _outputs(outputs),
     _particle_count(particle_count),
     _diagram_count(diagram_count),
+    _squared_order_count(squared_order_count),
+    _inputs(inputs),
+    _outputs(outputs),
     _sample_random_inputs(sample_random_inputs),
     _channel(channel),
     _frame_mask(
@@ -256,6 +271,12 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case alpha_s_in:
             input_key = UMAMI_IN_ALPHA_S;
+            break;
+        case g_strong_in:
+            input_key = UMAMI_IN_G_STRONG;
+            break;
+        case g_ew_in:
+            input_key = UMAMI_IN_G_EW;
             break;
         case flavor_in:
             input_key = UMAMI_IN_FLAVOR_INDEX;
@@ -336,6 +357,10 @@ NamedVector<Value> MatrixElement::build_function_impl(
         switch (output) {
         case matrix_element_out:
             output_key = UMAMI_OUT_MATRIX_ELEMENT;
+            break;
+        case squared_orders_out:
+            output_key = UMAMI_OUT_SQUARED_ORDERS;
+            size_arg = _squared_order_count;
             break;
         case diagram_amp2_out:
             output_key = UMAMI_OUT_DIAGRAM_AMP2;

@@ -340,7 +340,12 @@ class LoopDiagram(base_objects.Diagram):
             inter = model.get_interaction(tag_elem[2])
             coup_keys = sorted(inter.get('couplings').keys())
             interactions_tagging[i]=(
-                tuple((key, inter.get('couplings')[key]) for key in coup_keys),
+                tuple((key,
+                       inter.get('couplings')[key].get_canonical_key()
+                       if isinstance(inter.get('couplings')[key],
+                                     base_objects.FLV_Coupling)
+                       else inter.get('couplings')[key])
+                      for key in coup_keys),
                 tuple(str(c) for c in inter.get('color')),
                 tuple(inter.get('lorentz')))
 
@@ -676,6 +681,11 @@ class LoopDiagram(base_objects.Diagram):
         interaction with id vertID of the model given in argument """
         # Define easy access point
         ref_dict_to1 = model.get('ref_dict_to1')
+        if vertID in getattr(model, '_loop_interactions', {}):
+            # Physical variants belong only to the specialized loop. Keep
+            # their reconstruction rules out of general tree generation.
+            ref_dict_to1 = {}
+            model.get_interaction(vertID).generate_dict_entries({}, ref_dict_to1)
         # Now we make sure we can combine those legs together (and 
         # obtain the output particle ID)
         key=tuple(sorted([leg.get('id') for leg in myleglist]))
@@ -706,8 +716,7 @@ class LoopDiagram(base_objects.Diagram):
                                              'loop_line': True}))
                     # Now we can add the corresponding vertex
                     return base_objects.Vertex({'legs':myleglist,'id':vertID})
-        else:
-            raise cls.PhysicsObjectError("An interaction from the original L-cut diagram could"+\
+        raise cls.PhysicsObjectError("An interaction from the original L-cut diagram could"+\
             " not be found when reconstructing the loop vertices.")
 
     def process_next_loop_leg(self, structRep, fromVert, fromPos, currLeg, \
@@ -1814,4 +1823,3 @@ class FDStructureList(base_objects.PhysicsObjectList):
         for struct in self:
             mystr = mystr + "  " + struct.nice_string() + '\n'
         return mystr[:-1]
-

@@ -1,4 +1,67 @@
-      SUBROUTINE SBORN(P,ANS_SUMMED)
+      recursive subroutine SBORN(P,ANS_SUMMED)
+C  
+%(info_lines)s
+C
+C
+C     Wrapper for SBORN_AMP that does not return amp2 or jamp2, instead storing them as local dummies
+C     Return the sum of the split orders which are required in orders.inc (BORN_ORDERS)
+C     Also the values needed for the counterterms are stored in the C_BORN_CNT common block
+C  
+C  
+%(process_lines)s
+C
+C  
+C CONSTANTS
+C 
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+C  
+C ARGUMENTS 
+C 
+      REAL*8 P(0:3,NEXTERNAL-1)
+      double precision ans_summed
+C
+C VARIABLES
+C
+      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d)
+      COMPLEX*16 ANS_CNT(2, NSPLITORDERS)
+      DOUBLE PRECISION DUMMY_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX DUMMY_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex dummy_saveamp(ngraphs,max_bhel)
+      double complex global_ans_cnt(2,nsplitorders)
+      double complex global_saveamp(ngraphs,max_bhel)
+      double precision wgt_ME_born,wgt_ME_real
+      common/to_amps/amp2,jamp2
+      common/c_born_cnt/global_ans_cnt
+      common/to_saveamp/global_saveamp
+      common/c_wgt_ME_tree/wgt_ME_born,wgt_ME_real
+
+C
+C BEGIN CODE
+C
+      amp2(:) = 0d0
+      jamp2(:) = 0D0
+      ans_cnt(:,:) = 0d0
+
+      call SBORN_AMP(P,AMP2,JAMP2,DUMMY_AMP_SPLIT,DUMMY_AMP_SPLIT_CNT,ANS_SUMMED,ANS_CNT,DUMMY_SAVEAMP)
+      AMP_SPLIT(:)=DUMMY_AMP_SPLIT(:)
+      AMP_SPLIT_CNT(:,:,:)=DUMMY_AMP_SPLIT_CNT(:,:,:)
+      GLOBAL_ANS_CNT(:,:)=ANS_CNT(:,:)
+      GLOBAL_SAVEAMP(:,:)=DUMMY_SAVEAMP(:,:)
+      WGT_ME_BORN=ANS_SUMMED
+
+      return
+      end
+
+
+
+      recursive subroutine SBORN_AMP(P,AMP2,JAMP2,RET_AMP_SPLIT,RET_AMP_SPLIT_CNT,ANS_SUMMED,ANS_CNT,RET_SAVEAMP)
 C  
 %(info_lines)s
 C
@@ -14,6 +77,9 @@ C CONSTANTS
 C 
       implicit none
       include 'nexternal.inc'
+      include 'has_ewsudakov.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
       INTEGER NGRAPHS
@@ -23,37 +89,33 @@ C ARGUMENTS
 C 
       REAL*8 P(0:3,NEXTERNAL-1)
       double precision ans_summed
+      double precision amp2b(%(ngraphs)d), jamp2b(0:%(ncolor)d,0:nampso)
+      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d)
+      COMPLEX*16 ANS_CNT(2, NSPLITORDERS)
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex ret_saveamp(ngraphs,max_bhel)
+
 C
 C VARIABLES
 C
       INTEGER I,J,K
-      include 'has_ewsudakov.inc'
       integer nord_integrated_born
-      include 'orders.inc'
-      COMPLEX*16 ANS(2,0:NSQAMPSO), ANS_CNT(2, NSPLITORDERS)
+      COMPLEX*16 ANS(2,0:NSQAMPSO)
       LOGICAL KEEP_ORDER(NSQAMPSO), KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO), FIRSTTIME
       data keep_order / NSQAMPSO * .TRUE. /
       logical keep_order_born(NSQAMPSO)
       common /c_keep_order_B/ keep_order_born
       common /c_keep_order_cnt/ keep_order_cnt 
-      common /c_born_cnt/ ans_cnt
       integer ord_subtract
       data firsttime / .TRUE. /
       integer amp_orders(nsplitorders)
       double precision tiny
       parameter (tiny = 1d-12)
       double precision max_val
-      double precision       wgt_ME_born,wgt_ME_real
-      common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
 
-      double precision amp2b(%(ngraphs)d), jamp2b(0:%(ncolor)d,0:nampso)
-      common/to_amps_born/  amp2b,       jamp2b
-      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d)
-      common/to_amps/  amp2,       jamp2
       logical split_type_used(nsplitorders)
       common/to_split_type_used/split_type_used
-      logical force_ijglu_zero
-      common /to_force_ijglu/ force_ijglu_zero
 C
 C     FUNCTIONS
 C
@@ -64,72 +126,23 @@ C BEGIN CODE
 C
 C look for orders which match the born order constraint 
 
-force_ijglu_zero = .false.
+amp2b(:) = 0.0
+jamp2b(:,:) = 0.0
+jamp2b(0,0) = %(ncolor)d
 
 if (firsttime) then
- do i = 1, nsqampso
-C this is for the orders of the born to integrate
-  do j = 1, nsplitorders
-   if(GETORDPOWFROMINDEX_B(j, i) .gt. born_orders(j)) then
-    keep_order(i) = .false.
-    EXIT 
-   endif
-  enddo
-  keep_order_born = keep_order
-
-C this is for the orders of the counterterms
-  do j = 1, nsplitorders
-  keep_order_cnt(j,i) = .true.
-   do k = 1, nsplitorders
-    if (j.eq.k) then
-     ord_subtract=2
-    else
-     ord_subtract=0
-    endif
-    if(GETORDPOWFROMINDEX_B(k, i) .gt. nlo_orders(k)-ord_subtract) then
-     keep_order_cnt(j,i) = .false.
-     EXIT 
-    endif
-   enddo
-  enddo
-
-  nord_integrated_born = 0
-  if (keep_order(i)) then
-   nord_integrated_born = nord_integrated_born + 1
-   !write(*,*) 'BORN: keeping split order ', i
-  !else
-   !write(*,*) 'BORN: not keeping split order ', i
-  endif
- enddo
-
-C check that, if one include the sudakov corrections, there is at most one contribution to be integrated at LO
-if (has_ewsudakov.and.nord_integrated_born.gt.1) then
- write(*,*) 'ERROR in born.f, cannot compute Sudakov EW corrections with more than one Born coupling combination to be integrated.Found', nord_integrated_born
- stop 1
+  call FIRSTTIME_SETUP(firsttime)
 endif
 
- do j = 1, nsplitorders
-  write(*,*) 'counterterm S.O', j, ordernames(j)
-  do i = 1, nsqampso
-   if (keep_order_cnt(j,i)) then
-    write(*,*) 'BORN: keeping split order', i
-   else
-    write(*,*) 'BORN: not keeping split order', i
-   endif
-  enddo
- enddo
- firsttime = .false.
-endif
-
-CALL SBORN_SPLITORDERS(P,ANS)
+CALL SBORN_SPLITORDERS(P,AMP2B,JAMP2B,ANS,ret_saveamp)
 
 C the born to be integrated
 ans_summed = 0d0
 max_val = 0d0
 
 C reset the amp_split array
-amp_split(1:amp_split_size) = 0d0
-amp_split_cnt(1:amp_split_size,1:2,1:nsplitorders) = dcmplx(0d0,0d0)
+ret_amp_split(1:amp_split_size) = 0d0
+ret_amp_split_cnt(1:amp_split_size,1:2,1:nsplitorders) = dcmplx(0d0,0d0)
 
 do i = 1, nsqampso
  max_val = max(max_val, abs(ans(1,I)))
@@ -141,13 +154,11 @@ C   keep track of the separate pieces corresponding to different coupling combin
     do j = 1, nsplitorders
       amp_orders(j) = GETORDPOWFROMINDEX_B(j, i)
     enddo
-    if(abs(ans(1,i)).gt.max_val*tiny) amp_split(orders_to_amp_split_pos(amp_orders)) = ans(1,i)
+    if(abs(ans(1,i)).gt.max_val*tiny) ret_amp_split(orders_to_amp_split_pos(amp_orders)) = ans(1,i)
  endif
 enddo
 C this is to avoid fake non-zero contributions 
 if (abs(ans_summed).lt.max_val*tiny) ans_summed=0d0
-
-wgt_me_born=ans_summed
 
 C fill the amp2 and jamp2 arrays
 amp2(1:ngraphs)=amp2b(1:ngraphs)! amp2 just needs to be copied
@@ -177,8 +188,8 @@ C will be multiplied by the corresponding squared coupling
       if (k.eq.j) amp_orders(k) = amp_orders(k) + 2
    enddo
 C this is to avoid fake non-zero contributions 
-   if (abs(ans(1,I)).gt.max_val*tiny) amp_split_cnt(orders_to_amp_split_pos(amp_orders),1,j) = ans(1,I)
-   if (abs(ans(2,I)).gt.max_val*tiny) amp_split_cnt(orders_to_amp_split_pos(amp_orders),2,j) = ans(2,I)
+   if (abs(ans(1,I)).gt.max_val*tiny) ret_amp_split_cnt(orders_to_amp_split_pos(amp_orders),1,j) = ans(1,I)
+   if (abs(ans(2,I)).gt.max_val*tiny) ret_amp_split_cnt(orders_to_amp_split_pos(amp_orders),2,j) = ans(2,I)
   endif
  enddo
 C this is to avoid fake non-zero contributions 
@@ -186,15 +197,254 @@ C this is to avoid fake non-zero contributions
  if (abs(ans_cnt(2,j)).lt.max_val*tiny) ans_cnt(2,j)=(0d0,0d0)
 enddo
 
+C AMP_SPLIT(:) = RET_AMP_SPLIT(:)
+C AMP_SPLIT_CNT(:,:,:) = RET_AMP_SPLIT_CNT(:,:,:)
+
+ 999   return
+END
+
+
+      recursive subroutine SBORN_AMP_VEC(P,AMP2,JAMP2,RET_AMP_SPLIT,RET_AMP_SPLIT_CNT,ANS_SUMMED,ANS_CNT,RET_SAVEAMP,ivec,IIND,ifks,FLAV_IDX)
+C  
+%(info_lines)s
+C
+C
+C     Return the sum of the split orders which are required in orders.inc (BORN_ORDERS)
+C     Also the values needed for the counterterms are stored in the C_BORN_CNT common block
+C  
+C  
+%(process_lines)s
+C
+C  
+C CONSTANTS
+C 
+      implicit none
+      include 'nexternal.inc'
+      include 'has_ewsudakov.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+C  
+C ARGUMENTS 
+C 
+      REAL*8 P(0:3,NEXTERNAL-1)
+      double precision ans_summed
+      double precision amp2b(%(ngraphs)d), jamp2b(0:%(ncolor)d,0:nampso)
+      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d)
+      COMPLEX*16 ANS_CNT(2, NSPLITORDERS)
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      integer ivec, ifks, IIND, FLAV_IDX
+
+C
+C VARIABLES
+C
+      INTEGER I,J,K
+      integer nord_integrated_born
+      COMPLEX*16 ANS(2,0:NSQAMPSO)
+      LOGICAL KEEP_ORDER(NSQAMPSO), KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO), FIRSTTIME
+      data keep_order / NSQAMPSO * .TRUE. /
+      logical keep_order_born(NSQAMPSO)
+      common /c_keep_order_B/ keep_order_born
+      common /c_keep_order_cnt/ keep_order_cnt 
+      integer ord_subtract
+      data firsttime / .TRUE. /
+      integer amp_orders(nsplitorders)
+      double precision tiny
+      parameter (tiny = 1d-12)
+      double precision max_val
+
+      logical split_type_used(nsplitorders)
+      common/to_split_type_used/split_type_used
+C
+C     FUNCTIONS
+C
+      integer GETORDPOWFROMINDEX_B
+      integer orders_to_amp_split_pos
+C
+C BEGIN CODE
+C
+C look for orders which match the born order constraint 
+
+amp2b(:) = 0.0
+jamp2b(:,:) = 0.0
+jamp2b(0,0) = %(ncolor)d
+
+C if (firsttime) then
+C   call FIRSTTIME_SETUP(firsttime)
+C endif
+
+CALL SBORN_SPLITORDERS_VEC(P,AMP2B,JAMP2B,ANS,ret_saveamp,ivec,IIND,ifks,FLAV_IDX)
+
+C the born to be integrated
+ans_summed = 0d0
+max_val = 0d0
+
+C reset the amp_split array
+ret_amp_split(1:amp_split_size) = 0d0
+ret_amp_split_cnt(1:amp_split_size,1:2,1:nsplitorders) = dcmplx(0d0,0d0)
+
+do i = 1, nsqampso
+ max_val = max(max_val, abs(ans(1,I)))
+enddo
+do i = 1, nsqampso
+ if (keep_order(i)) then
+    ANS_SUMMED = ANS_SUMMED + ANS(1,I)
+C   keep track of the separate pieces correspoinding to different coupling combinations
+    do j = 1, nsplitorders
+      amp_orders(j) = GETORDPOWFROMINDEX_B(j, i)
+    enddo
+    if(abs(ans(1,i)).gt.max_val*tiny) ret_amp_split(orders_to_amp_split_pos(amp_orders)) = ans(1,i)
+ endif
+enddo
+C this is to avoid fake non-zero contributions 
+if (abs(ans_summed).lt.max_val*tiny) ans_summed=0d0
+
+C fill the amp2 and jamp2 arrays
+amp2(1:ngraphs)=amp2b(1:ngraphs)! amp2 just needs to be copyed
+
+do i = 0, int(jamp2b(0,0))
+jamp2(i)=0d0
+do j = 1, nampso
+c here sum all, this may be refined later
+jamp2(i)=jamp2(i)+jamp2b(i,j)
+enddo
+enddo
+
+%(skip_amp_cnt)s
+C quantities for the counterterms
+do j = 1, nsplitorders
+ ans_cnt(1:2,j) = (0d0, 0d0)
+ if (.not.split_type_used(j)) cycle
+ do i = 1, nsqampso
+  if (keep_order_cnt(j,i)) then 
+   ANS_CNT(1,j) = ANS_CNT(1,J) + ANS(1,I)
+   ANS_CNT(2,j) = ANS_CNT(2,J) + ANS(2,I)
+C   keep track of the separate pieces also for counterterms
+   do k = 1, nsplitorders
+      amp_orders(k) = GETORDPOWFROMINDEX_B(k, i)
+C take into account the fact that the counterterm for a given split order
+C will be multiplied by the corresponding squared coupling
+      if (k.eq.j) amp_orders(k) = amp_orders(k) + 2
+   enddo
+C this is to avoid fake non-zero contributions 
+   if (abs(ans(1,I)).gt.max_val*tiny) ret_amp_split_cnt(orders_to_amp_split_pos(amp_orders),1,j) = ans(1,I)
+   if (abs(ans(2,I)).gt.max_val*tiny) ret_amp_split_cnt(orders_to_amp_split_pos(amp_orders),2,j) = ans(2,I)
+  endif
+ enddo
+C this is to avoid fake non-zero contributions 
+ if (abs(ans_cnt(1,j)).lt.max_val*tiny) ans_cnt(1,j)=(0d0,0d0)
+ if (abs(ans_cnt(2,j)).lt.max_val*tiny) ans_cnt(2,j)=(0d0,0d0)
+enddo
+
+C AMP_SPLIT(:) = RET_AMP_SPLIT(:)
+C AMP_SPLIT_CNT(:,:,:) = RET_AMP_SPLIT_CNT(:,:,:)
 
  999   return
 END
 
 
 
+      recursive subroutine FIRSTTIME_SETUP(firsttime)
+C  
+C CONSTANTS
+C 
+      implicit none
+      include 'nexternal.inc'
+      include 'has_ewsudakov.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+C  
+C ARGUMENTS 
+C 
+
+C
+C VARIABLES
+C
+      INTEGER I,J,K
+      integer nord_integrated_born
+      LOGICAL KEEP_ORDER(NSQAMPSO), KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO), FIRSTTIME
+      data keep_order / NSQAMPSO * .TRUE. /
+      logical keep_order_born(NSQAMPSO)
+      common /c_keep_order_B/ keep_order_born
+      common /c_keep_order_cnt/ keep_order_cnt 
+      integer ord_subtract
+
+C
+C     FUNCTIONS
+C
+      integer GETORDPOWFROMINDEX_B
+C
+C BEGIN CODE
+C
 
 
-      SUBROUTINE SBORN_ONEHEL(P,NHEL,HELL,ANS_SUMMED)
+ do i = 1, nsqampso
+C this is for the orders of the born to integrate
+  do j = 1, nsplitorders
+   if(GETORDPOWFROMINDEX_B(j, i) .gt. born_orders(j)) then
+    keep_order(i) = .false.
+    EXIT 
+   endif
+  enddo
+C  keep_order_born = keep_order
+
+C this is for the orders of the counterterms
+  do j = 1, nsplitorders
+  keep_order_cnt(j,i) = .true.
+   do k = 1, nsplitorders
+    if (j.eq.k) then
+     ord_subtract=2
+    else
+     ord_subtract=0
+    endif
+    if(GETORDPOWFROMINDEX_B(k, i) .gt. nlo_orders(k)-ord_subtract) then
+     keep_order_cnt(j,i) = .false.
+     EXIT 
+    endif
+   enddo
+  enddo
+
+  nord_integrated_born = 0
+  if (keep_order(i)) then
+   nord_integrated_born = nord_integrated_born + 1
+   !write(*,*) 'BORN: keeping split order ', i
+  !else
+   !write(*,*) 'BORN: not keeping split order ', i
+  endif
+ enddo
+ keep_order_born = keep_order
+
+C check that, if one include the sudakov corrections, there is at most one contribution to be integrated at LO
+if (has_ewsudakov.and.nord_integrated_born.gt.1) then
+ write(*,*) 'ERROR in born.f, cannot compute Sudakov EW corrections with more than one Born coupling combination to be integrated.Found', nord_integrated_born
+ stop 1
+endif
+
+ do j = 1, nsplitorders
+  write(*,*) 'counterterm S.O', j, ordernames(j)
+  do i = 1, nsqampso
+   if (keep_order_cnt(j,i)) then
+    write(*,*) 'BORN: keeping split order', i
+   else
+    write(*,*) 'BORN: not keeping split order', i
+   endif
+  enddo
+ enddo
+
+ firsttime = .false.
+
+ end
+
+
+
+      recursive subroutine SBORN_ONEHEL(P,NHEL,HELL,ANS_SUMMED,RET_SAVEAMP)
 C  
 %(info_lines)s
 C
@@ -225,12 +475,20 @@ C
 C
 C VARIABLES
 C
-      INTEGER I,J,K
+      INTEGER I,J,K,FLAV_IDX
+      INCLUDE 'fks_info.inc'
       include 'orders.inc'
+      include 'born_nhel.inc'
       COMPLEX*16 ANS(2,NSQAMPSO)
       REAL*8 borns(2,0:NSQAMPSO)
       LOGICAL KEEP_ORDER(NSQAMPSO)
       common /c_keep_order_B/ keep_order
+
+C
+C DUMMY AMPS FOR LOCALITY
+C
+      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,0:nampso)
+      double complex ret_saveamp(%(ngraphs)d,max_bhel)
 
       LOGICAL KEEP_ORDER_CNT(NSPLITORDERS, NSQAMPSO)
       common /c_keep_order_cnt/ keep_order_cnt 
@@ -245,8 +503,6 @@ C
       double complex amp_split_ewsud_LO2(amp_split_size)
       common /to_amp_split_ewsud_LO2/ amp_split_ewsud_LO2
       integer iden
-      logical force_ijglu_zero
-      common /to_force_ijglu/ force_ijglu_zero
       %(den_factor_lines)s
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
@@ -265,10 +521,14 @@ C BEGIN CODE
 C
 C look for orders which match the born order constraint 
 
-      iden=iden_values(nfksprocess)
-force_ijglu_zero = .true.
+amp2(:) = 0.0
+jamp2(:,:) = 0.0
+jamp2(0,0) = %(ncolor)d
 
-CALL BORN(P,NHEL,HELL,ANS,borns)
+      iden=iden_values(nfksprocess)
+      FLAV_IDX=BORN_FLAVOR_INDEX_D(NFKSPROCESS)
+      CALL BORN(P,NHEL,HELL,FLAV_IDX,.true.,amp2,jamp2,ANS,borns,
+     $     ret_saveamp)
 
 ans_summed = 0d0
 max_val = 0d0
@@ -311,8 +571,7 @@ END
 
 
 
-
-SUBROUTINE SBORN_SPLITORDERS(P1,ANS)
+recursive subroutine SBORN_SPLITORDERS(P1,AMP2,JAMP2,ANS,RET_SAVEAMP)
 C  
 %(info_lines)s
 C
@@ -340,13 +599,442 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P1(0:3,NEXTERNAL-1)
+      Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
       COMPLEX*16 ANS(2,0:NSQAMPSO)
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,i,j,jj,glu_ij
+       INTEGER IHEL,IDEN,i,j,jj,glu_ij,FLAV_IDX
+       INCLUDE 'fks_info.inc'
       REAL*8 borns(2,0:NSQAMPSO)
       COMPLEX*16 BORNTILDE
+      LOGICAL DO_TRY(%(nconfs)d)
+      DATA DO_TRY /%(nconfs)d*.true./
+      COMPLEX*16 T(2,NSQAMPSO)
+      INTEGER NHEL(NEXTERNAL-1,NCOMB)
+%(helicity_lines)s
+%(den_factor_lines)s
+%(ij_lines)s
+C  
+C GLOBAL VARIABLES
+C   
+      LOGICAL GOODHEL(NCOMB,%(nconfs)d)
+      common /c_goodhel/goodhel
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision savemom(nexternal-1,2)
+      common/to_savemom/savemom
+      integer skip(%(nconfs)d)
+      common/cBorn/skip
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      INTEGER CALCULATED_BORN_FLAVOR
+      COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+      logical cond_ij
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+      COMPLEX*16 BORN_CACHE_ANS(2,0:NSQAMPSO)
+      SAVE BORN_CACHE_ANS
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      DOUBLE PRECISION SAVEMOM4(0:3,NEXTERNAL-1)
+      DOUBLE COMPLEX SAVED_COUP(%(ncoup_check)d)
+      SAVE SAVEMOM4, SAVED_COUP
+C     gscale: the strong coupling SAVED_G of the cached amplitudes,
+C     and the powers RPOW(K) = (G/SAVED_G)**K used by BORN_GSCALE
+      INTEGER MAXQCDPOW
+      PARAMETER (MAXQCDPOW=%(maxqcdpow)d)
+      LOGICAL DO_GSCALE
+      PARAMETER (DO_GSCALE=%(born_gscale)s)
+      DOUBLE PRECISION GSCALE_TOL
+      PARAMETER (GSCALE_TOL=1D-12)
+      DOUBLE PRECISION SAVED_G, RG, RPOW(0:MAXQCDPOW)
+      LOGICAL COUP_CHANGED, GSCALED
+      SAVE SAVED_G
+      DATA SAVED_G /0D0/
+      DOUBLE COMPLEX SAVEAMP(NGRAPHS,MAX_BHEL)
+      COMMON /TO_SAVEAMP/ SAVEAMP
+      DOUBLE PRECISION CACHE_AMP2(NGRAPHS), CACHE_JAMP2(0:%(ncolor)d,0:NAMPSO)
+      COMMON /TO_AMPS_BORN/ CACHE_AMP2, CACHE_JAMP2
+      INCLUDE 'coupl.inc'
+C ----------
+C BEGIN CODE
+C ----------
+      iden=iden_values(nfksprocess)
+      FLAV_IDX=BORN_FLAVOR_INDEX_D(NFKSPROCESS)
+      IF (CALCULATEDBORN .AND.
+     $    CALCULATED_BORN_FLAVOR.NE.FLAV_IDX) CALCULATEDBORN=.FALSE.
+      glu_ij = ij_values(nfksprocess)
+C     set_ren_scale (or sreal_deg) kept the cached amplitudes instead of
+C     discarding them: discard them here unless the momenta are exactly
+C     the ones they were computed with, and the couplings of the Born
+C     too, or differ from them only through alpha_S (gscale below)
+      if (calculatedBorn .and. check_born_amps) then
+         coup_changed=.false.
+%(coup_check_lines)s
+         do j=1,nexternal-1
+            do i=0,3
+               if (p1(i,j).ne.savemom4(i,j)) calculatedBorn=.false.
+            enddo
+         enddo
+         if (calculatedBorn .and. coup_changed) then
+C     gscale: same momenta, other couplings. If only alpha_S
+C     changed (set_alphaS, e.g. the Born of the MC counterterm
+C     at the coupling of the real emission), every coupling
+C     changed by RPOW(n), n its QCD order: then rescale each
+C     cached amplitude by RPOW(n), n its own QCD order (each
+C     split order gets its power), instead of recomputing
+            gscaled=do_gscale .and. saved_g.ne.0d0
+            if (gscaled) then
+               rg=g/saved_g
+               rpow(0)=1d0
+               do i=1,maxqcdpow
+                  rpow(i)=rpow(i-1)*rg
+               enddo
+%(coup_gscale_lines)s
+            endif
+            if (gscaled) then
+               call born_gscale(rpow,born_cache_ans)
+%(coup_record_lines)s
+               saved_g=g
+            else
+               calculatedBorn=.false.
+            endif
+         endif
+      endif
+      check_born_amps=.false.
+      IF (CALCULATEDBORN) THEN
+         IF (ANY(P1.NE.SAVEMOM4)) CALCULATEDBORN=.FALSE.
+      ENDIF
+      IF (.NOT.CALCULATEDBORN) THEN
+         BORN_CACHE_OK=.FALSE.
+         SAVEMOM4(:,:)=P1(:,:)
+         DO J=1,NEXTERNAL-1
+            SAVEMOM(J,1)=P1(0,J)
+            SAVEMOM(J,2)=P1(3,J)
+         ENDDO
+%(coup_record_lines)s
+         SAVED_G=G
+         SAVEAMP(:,:)=(0D0,0D0)
+      ENDIF
+      IF (CALCULATEDBORN.AND.BORN_CACHE_OK.AND.
+     $    NFKSPROCESS.EQ.BORN_CACHE_NFKS) THEN
+         ANS(:,:)=BORN_CACHE_ANS(:,:)
+         AMP2(:)=CACHE_AMP2(:)
+         JAMP2(:,:)=CACHE_JAMP2(:,:)
+         RET_SAVEAMP(:,:)=SAVEAMP(:,:)
+         RETURN
+      ENDIF
+      if(DO_TRY(nFKSprocess)) then
+        call SBORN_SPLITORDERS_NTRY(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY(nFKSprocess))
+      else
+      DO JJ=1,NGRAPHS
+          amp2(jj)=0d0
+      ENDDO
+      DO I=0,NAMPSO
+      DO JJ=1,int(jamp2(0,0))
+          jamp2(jj,I)=0d0
+      ENDDO
+      ENDDO
+      if (calculatedBorn) then
+         do j=1,nexternal-1
+            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
+               calculatedBorn=.false.
+               write (*,*) "momenta not the same in Born"
+	       stop
+            endif
+         enddo
+      endif
+      if (.not.calculatedBorn) then
+         do j=1,nexternal-1
+            savemom(j,1)=p1(0,j)
+            savemom(j,2)=p1(3,j)
+         enddo
+         ret_saveamp(:,:) = (0d0,0d0)
+      endif
+      DO I=0,NSQAMPSO
+          ANS(1,I) = 0D0
+          ANS(2,I) = 0D0
+      ENDDO
+      DO IHEL=1,NCOMB
+        ! the following lines are to avoid segfaults when glu_ij=0
+        cond_ij=skip(nfksprocess).eq.0
+        if (.not.cond_ij) cond_ij=cond_ij.or.nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1)
+        !if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(nfksprocess).eq.0) then
+        if (cond_ij) then
+          IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess)) ) THEN
+            CALL BORN(P1,NHEL(1,IHEL),IHEL,FLAV_IDX,.false.,AMP2,
+     $           JAMP2,T,borns,ret_saveamp)
+            DO I=1,NSQAMPSO
+                ANS(1,I)=ANS(1,I)+T(1,I)
+                ANS(2,I)=ANS(2,I)+T(2,I)
+            ENDDO
+	  ENDIF
+        ENDIF
+      ENDDO
+      DO I=1,NSQAMPSO
+      ANS(1,I)=ANS(1,I)/DBLE(IDEN)
+      ANS(2,I)=ANS(2,I)/DBLE(IDEN)
+      ANS(1,0)=ANS(1,0)+ANS(1,I)
+      ANS(2,0)=ANS(2,0)+ANS(2,I)
+      ENDDO
+      calculatedBorn=.true.
+      CALCULATED_BORN_FLAVOR=FLAV_IDX
+      endif
+      CALCULATEDBORN=.TRUE.
+      CALCULATED_BORN_FLAVOR=FLAV_IDX
+      BORN_CACHE_ANS(:,:)=ANS(:,:)
+      CACHE_AMP2(:)=AMP2(:)
+      CACHE_JAMP2(:,:)=JAMP2(:,:)
+      BORN_CACHE_NFKS=NFKSPROCESS
+      BORN_CACHE_OK=.TRUE.
+      RET_SAVEAMP(:,:)=SAVEAMP(:,:)
+      END
+
+
+
+      SUBROUTINE BORN_GSCALE(RPOW,CACHE_ANS)
+C
+%(info_lines)s
+C
+C Rescales what the Born keeps from its last evaluation, at the
+C strong coupling G0, to the strong coupling G (gscale), with
+C RPOW(K) = (G/G0)**K. Each saved amplitude (all helicities)
+C is rescaled by RPOW(AMPQCD), AMPQCD its QCD order. If the
+C cached scalar SBORN result CACHE_ANS and
+C AMP2/JAMP2 are those of these amplitudes (BORN_CACHE_OK),
+C they are rescaled too, each split order with its own power:
+C the squared split order K by RPOW(SQSOQCD(K)), the JAMP2 of
+C the amplitude split order M by RPOW(2*AMPSOQCD(M)).
+C Otherwise, or if a split order has no single QCD power
+C (GSCALE_FAST false), BORN_CACHE_OK is set to false and SBORN
+C redoes the colour sums from the rescaled amplitudes.
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+      INTEGER MAXQCDPOW
+      PARAMETER (MAXQCDPOW=%(maxqcdpow)d)
+C
+C ARGUMENTS
+C
+      DOUBLE PRECISION RPOW(0:MAXQCDPOW)
+      COMPLEX*16 CACHE_ANS(2,0:NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,K
+      INTEGER AMPQCD(NGRAPHS), AMPSOQCD(NAMPSO), SQSOQCD(NSQAMPSO)
+      LOGICAL GSCALE_FAST
+C
+C GLOBAL VARIABLES
+C
+      double complex saveamp(ngraphs,max_bhel)
+      common/to_saveamp/saveamp
+      Double Precision amp2(ngraphs), jamp2(0:ncolor,0:nampso)
+      common/to_amps_born/  amp2,       jamp2
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+%(gscale_data_lines)s
+C ----------
+C BEGIN CODE
+C ----------
+      DO I=1,NGRAPHS
+        IF (AMPQCD(I).NE.0) SAVEAMP(I,:)=SAVEAMP(I,:)*RPOW(AMPQCD(I))
+      ENDDO
+      IF (.NOT.(BORN_CACHE_OK.AND.GSCALE_FAST)) THEN
+        BORN_CACHE_OK=.FALSE.
+        RETURN
+      ENDIF
+      DO I=1,NGRAPHS
+        AMP2(I)=AMP2(I)*RPOW(2*AMPQCD(I))
+      ENDDO
+      DO J=1,NAMPSO
+        DO I=1,NCOLOR
+          JAMP2(I,J)=JAMP2(I,J)*RPOW(2*AMPSOQCD(J))
+        ENDDO
+      ENDDO
+      CACHE_ANS(:,0)=(0D0,0D0)
+      DO K=1,NSQAMPSO
+        CACHE_ANS(:,K)=CACHE_ANS(:,K)*RPOW(SQSOQCD(K))
+        CACHE_ANS(:,0)=CACHE_ANS(:,0)+CACHE_ANS(:,K)
+      ENDDO
+      END
+
+
+recursive subroutine SBORN_SPLITORDERS_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,IVEC,IIND,IFKS,FLAV_IDX)
+C  
+%(info_lines)s
+C
+C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
+C AND HELICITIES
+C FOR THE POINT IN PHASE SPACE P1(0:3,NEXTERNAL-1)
+C  
+%(process_lines)s
+C
+      use driver_vec
+      IMPLICIT NONE
+C  
+C CONSTANTS
+C  
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    THEL
+      PARAMETER (THEL=NCOMB*%(nconfs)d)
+      INTEGER NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+C  
+C ARGUMENTS 
+C  
+      REAL*8 P1(0:3,NEXTERNAL-1)
+      Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
+      COMPLEX*16 ANS(2,0:NSQAMPSO)
+       integer ivec,ifks,IIND,FLAV_IDX
+C  
+C LOCAL VARIABLES 
+C  
+       INTEGER IHEL,IDEN,i,j,jj,glu_ij
+      INCLUDE 'fks_info.inc'
+      REAL*8 borns(2,0:NSQAMPSO)
+      COMPLEX*16 BORNTILDE
+      LOGICAL DO_TRY(%(nconfs)d)
+      DATA DO_TRY /%(nconfs)d*.true./
+      COMPLEX*16 T(2,NSQAMPSO)
+      INTEGER NHEL(NEXTERNAL-1,NCOMB)
+%(helicity_lines)s
+%(den_factor_lines)s
+%(ij_lines)s
+C  
+C GLOBAL VARIABLES
+C   
+      LOGICAL GOODHEL(NCOMB,%(nconfs)d)
+      common /c_goodhel/goodhel
+      double complex ret_saveamp(ngraphs,max_bhel)
+      integer skip(%(nconfs)d)
+      common/cBorn/skip
+      logical cond_ij
+C ----------
+C BEGIN CODE
+C ----------
+      iden=iden_values(ifks)
+      glu_ij = ij_values(ifks)
+C      if(DO_TRY(ifks)) then
+C        call SBORN_SPLITORDERS_NTRY_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY(ifks),IVEC,IFKS,FLAV_IDX)
+C      else
+      DO JJ=1,NGRAPHS
+          amp2(jj)=0d0
+      ENDDO
+      DO I=0,NAMPSO
+      DO JJ=1,int(jamp2(0,0))
+          jamp2(jj,I)=0d0
+      ENDDO
+      ENDDO
+      nhel_vec(1:nexternal-1,1:ncomb,iind) = nhel(:,:)
+C      if (calculatedBorn) then
+C         do j=1,nexternal-1
+C            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
+C               calculatedBorn=.false.
+C               write (*,*) "momenta not the same in Born"
+C	       stop
+C            endif
+C         enddo
+C      endif
+C      if (.not.calculatedBorn) then
+C         do j=1,nexternal-1
+C            savemom(j,1)=p1(0,j)
+C            savemom(j,2)=p1(3,j)
+C         enddo
+         ret_saveamp(:,:) = (0d0,0d0)
+C      endif
+      DO I=0,NSQAMPSO
+          ANS(1,I) = 0D0
+          ANS(2,I) = 0D0
+      ENDDO
+      DO IHEL=1,NCOMB
+        ! the following lines are to avoid segfaults when glu_ij=0
+        cond_ij=skip(ifks).eq.0
+        if (.not.cond_ij) cond_ij=cond_ij.or.nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1)
+        !if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(ifks).eq.0) then
+        if (cond_ij) then
+          IF ((GOODHEL(IHEL,ifks) .OR. GOODHEL(IHEL+SKIP(ifks),ifks)) ) THEN
+            CALL BORN_VEC(P1,NHEL_VEC(1,IHEL,iind),IHEL,FLAV_IDX,
+     $           .false.,AMP2,JAMP2,T,borns,ret_saveamp,ivec,ifks)
+            DO I=1,NSQAMPSO
+                ANS(1,I)=ANS(1,I)+T(1,I)
+                ANS(2,I)=ANS(2,I)+T(2,I)
+            ENDDO
+	  ENDIF
+        ENDIF
+      ENDDO
+      DO I=1,NSQAMPSO
+      ANS(1,I)=ANS(1,I)/DBLE(IDEN)
+      ANS(2,I)=ANS(2,I)/DBLE(IDEN)
+      ANS(1,0)=ANS(1,0)+ANS(1,I)
+      ANS(2,0)=ANS(2,0)+ANS(2,I)
+      ENDDO
+C      calculatedBorn=.true.
+C      endif
+      END
+
+
+      recursive subroutine SBORN_SPLITORDERS_NTRY(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY)
+C  
+%(info_lines)s
+C
+C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
+C AND HELICITIES
+C FOR THE POINT IN PHASE SPACE P1(0:3,NEXTERNAL-1)
+C  
+%(process_lines)s
+C
+      use driver_vec
+      IMPLICIT NONE
+C  
+C CONSTANTS
+C  
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    THEL
+      PARAMETER (THEL=NCOMB*%(nconfs)d)
+      INTEGER NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+C  
+C ARGUMENTS 
+C  
+      REAL*8 P1(0:3,NEXTERNAL-1)
+      Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
+      COMPLEX*16 ANS(2,0:NSQAMPSO)
+C  
+C LOCAL VARIABLES 
+C  
+      INTEGER IHEL,IDEN,i,j,jj,glu_ij,FLAV_IDX
+      INCLUDE 'fks_info.inc'
+      LOGICAL DO_TRY
+      REAL*8 borns(2,0:NSQAMPSO)
+      COMPLEX*16 BORNTILDE
+      integer max_try
+      data max_try /20/
       INTEGER NTRY(%(nconfs)d)
       DATA NTRY /%(nconfs)d*0/
       COMPLEX*16 T(2,NSQAMPSO)
@@ -356,19 +1044,14 @@ C
 %(ij_lines)s
 C  
 C GLOBAL VARIABLES
-C  
-      Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
-      common/to_amps_born/  amp2,       jamp2
-      DATA jamp2(0,0) /   %(ncolor)d/          
+C   
       LOGICAL GOODHEL(NCOMB,%(nconfs)d)
       common /c_goodhel/goodhel
-      double complex saveamp(ngraphs,max_bhel)
-      common/to_saveamp/saveamp
+      double complex ret_saveamp(ngraphs,max_bhel)
       double precision savemom(nexternal-1,2)
       common/to_savemom/savemom
-      double precision hel_fac
-      integer get_hel,skip(%(nconfs)d)
-      common/cBorn/hel_fac,get_hel,skip
+      integer skip(%(nconfs)d)
+      common/cBorn/skip
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
       integer nfksprocess
@@ -378,18 +1061,20 @@ C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
+      FLAV_IDX=BORN_FLAVOR_INDEX_D(NFKSPROCESS)
       glu_ij = ij_values(nfksprocess)
+      do i=1, driver_vector_size
+            nhel_vec(:,1:NCOMB,i)=nhel(:,:)
+      enddo
       NTRY(nFKSprocess)=NTRY(nFKSprocess)+1
-      if (NTRY(nFKSprocess).lt.2) then
-       if (glu_ij.eq.0) then
-         skip(nfksprocess)=0
-       else
-         skip(nFKSprocess)=1			 
-         do while(nhel(glu_ij ,skip(nFKSprocess)).ne.-NHEL(GLU_IJ ,1))
-            skip(nFKSprocess)=skip(nFKSprocess)+1
-         enddo
-         skip(nFKSprocess)=skip(nFKSprocess)-1
-       endif
+      if (glu_ij.eq.0) then
+            skip(nfksprocess)=0
+      else
+            skip(nFKSprocess)=1			 
+            do while(nhel(glu_ij ,skip(nFKSprocess)).ne.-NHEL(GLU_IJ ,1))
+                  skip(nFKSprocess)=skip(nFKSprocess)+1
+            enddo
+            skip(nFKSprocess)=skip(nFKSprocess)-1
       endif
       DO JJ=1,NGRAPHS
           amp2(jj)=0d0
@@ -413,17 +1098,12 @@ C ----------
             savemom(j,1)=p1(0,j)
             savemom(j,2)=p1(3,j)
          enddo
-         do j=1,max_bhel
-            do jj=1,ngraphs
-               saveamp(jj,j)=(0d0,0d0)
-            enddo
-         enddo
+         ret_saveamp(:,:) = (0d0,0d0)
       endif
       DO I=0,NSQAMPSO
           ANS(1,I) = 0D0
           ANS(2,I) = 0D0
       ENDDO
-      hel_fac=1d0
       DO IHEL=1,NCOMB
         ! the following lines are to avoid segfaults when glu_ij=0
         cond_ij=skip(nfksprocess).eq.0
@@ -431,8 +1111,8 @@ C ----------
         !if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(nfksprocess).eq.0) then
         if (cond_ij) then
           IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) .OR. NTRY(nFKSprocess) .LT. 2) ) THEN
-            
-            CALL BORN(P1,NHEL(1,IHEL),IHEL,T,borns)
+            CALL BORN(P1,NHEL(1,IHEL),IHEL,FLAV_IDX,.false.,AMP2,
+     $           JAMP2,T,borns,ret_saveamp)
             DO I=1,NSQAMPSO
                 ANS(1,I)=ANS(1,I)+T(1,I)
                 ANS(2,I)=ANS(2,I)+T(2,I)
@@ -453,10 +1133,155 @@ C ----------
       ANS(2,0)=ANS(2,0)+ANS(2,I)
       ENDDO
       calculatedBorn=.true.
+      if(ntry(nFKSprocess).ge.max_try) then
+            DO_TRY=.FALSE.
+      endif
+      END
+
+
+      recursive subroutine SBORN_SPLITORDERS_NTRY_VEC(P1,AMP2,JAMP2,ANS,RET_SAVEAMP,DO_TRY,IVEC,IFKS,FLAV_IDX)
+C  
+%(info_lines)s
+C
+C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
+C AND HELICITIES
+C FOR THE POINT IN PHASE SPACE P1(0:3,NEXTERNAL-1)
+C  
+%(process_lines)s
+C
+      IMPLICIT NONE
+C  
+C CONSTANTS
+C  
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      INTEGER     NCOMB
+      PARAMETER ( NCOMB=  %(ncomb)d )
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    THEL
+      PARAMETER (THEL=NCOMB*%(nconfs)d)
+      INTEGER NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+C  
+C ARGUMENTS 
+C  
+      REAL*8 P1(0:3,NEXTERNAL-1)
+      Double Precision amp2(ngraphs), jamp2(0:%(ncolor)d,0:NAMPSO)
+      COMPLEX*16 ANS(2,0:NSQAMPSO)
+      INTEGER IVEC,IFKS,FLAV_IDX
+C  
+C LOCAL VARIABLES 
+C  
+       INTEGER IHEL,IDEN,i,j,jj,glu_ij
+      INCLUDE 'fks_info.inc'
+      LOGICAL DO_TRY
+      REAL*8 borns(2,0:NSQAMPSO)
+      COMPLEX*16 BORNTILDE
+      integer max_try
+      data max_try /20/
+      INTEGER NTRY(%(nconfs)d)
+      DATA NTRY /%(nconfs)d*0/
+      COMPLEX*16 T(2,NSQAMPSO)
+      INTEGER NHEL(NEXTERNAL-1,NCOMB)
+%(helicity_lines)s
+%(den_factor_lines)s
+%(ij_lines)s
+C  
+C GLOBAL VARIABLES
+C   
+      LOGICAL GOODHEL(NCOMB,%(nconfs)d)
+      common /c_goodhel/goodhel
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision savemom(nexternal-1,2)
+      common/to_savemom/savemom
+      integer skip(%(nconfs)d)
+      common/cBorn/skip
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+      logical cond_ij
+C ----------
+C BEGIN CODE
+C ----------
+      iden=iden_values(IFKS)
+      glu_ij = ij_values(IFKS)
+      NTRY(IFKS)=NTRY(ifks)+1
+      if (glu_ij.eq.0) then
+            skip(ifks)=0
+      else
+            skip(ifks)=1			 
+            do while(nhel(glu_ij ,skip(ifks)).ne.-NHEL(GLU_IJ ,1))
+                  skip(ifks)=skip(ifks)+1
+            enddo
+            skip(ifks)=skip(ifks)-1
+      endif
+      DO JJ=1,NGRAPHS
+          amp2(jj)=0d0
+      ENDDO
+      DO I=0,NAMPSO
+      DO JJ=1,int(jamp2(0,0))
+          jamp2(jj,I)=0d0
+      ENDDO
+      ENDDO
+C      if (calculatedBorn) then
+C         do j=1,nexternal-1
+C            if (savemom(j,1).ne.p1(0,j) .or. savemom(j,2).ne.p1(3,j)) then
+C               calculatedBorn=.false.
+C               write (*,*) "momenta not the same in Born"
+C	       stop
+C            endif
+C         enddo
+C      endif
+C      if (.not.calculatedBorn) then
+C         do j=1,nexternal-1
+C            savemom(j,1)=p1(0,j)
+C            savemom(j,2)=p1(3,j)
+C         enddo
+         ret_saveamp(:,:) = (0d0,0d0)
+C      endif
+      DO I=0,NSQAMPSO
+          ANS(1,I) = 0D0
+          ANS(2,I) = 0D0
+      ENDDO
+      DO IHEL=1,NCOMB
+        ! the following lines are to avoid segfaults when glu_ij=0
+        cond_ij=skip(ifks).eq.0
+        if (.not.cond_ij) cond_ij=cond_ij.or.nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1)
+        !if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(ifks).eq.0) then
+        if (cond_ij) then
+          IF ((GOODHEL(IHEL,ifks) .OR. GOODHEL(IHEL+SKIP(ifks),ifks) .OR. NTRY(ifks) .LT. 2) ) THEN
+            CALL BORN_VEC(P1,NHEL(1,IHEL),IHEL,FLAV_IDX,.false.,
+     $           AMP2,JAMP2,T,borns,ret_saveamp,ivec,ifks)
+            DO I=1,NSQAMPSO
+                ANS(1,I)=ANS(1,I)+T(1,I)
+                ANS(2,I)=ANS(2,I)+T(2,I)
+            ENDDO
+            if ( borns(1,0).ne.0d0 .AND. .NOT. GOODHEL(IHEL,ifks) ) then
+              GOODHEL(IHEL,ifks)=.TRUE.
+            endif
+            if ( borns(2,0).ne.0d0 .AND. .NOT. GOODHEL(IHEL+SKIP(ifks),ifks) ) then
+              GOODHEL(IHEL+SKIP(ifks),ifks)=.TRUE.
+            endif
+	  ENDIF
+        ENDIF
+      ENDDO
+      DO I=1,NSQAMPSO
+      ANS(1,I)=ANS(1,I)/DBLE(IDEN)
+      ANS(2,I)=ANS(2,I)/DBLE(IDEN)
+      ANS(1,0)=ANS(1,0)+ANS(1,I)
+      ANS(2,0)=ANS(2,0)+ANS(2,I)
+      ENDDO
+C      calculatedBorn=.true.
+      if(ntry(ifks).ge.max_try) then
+            DO_TRY=.FALSE.
+      endif
       END
        
        
-      SUBROUTINE BORN(P,NHEL,HELL,ANS,borns)
+      recursive subroutine BORN(P,NHEL,HELL,FLAV_IDX,
+     $     force_ijglu_zero,amp2,jamp2,ANS,borns,ret_saveamp)
 C  
 %(info_lines)s
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
@@ -486,7 +1311,9 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL-1),borns(2,0:NSQAMPSO)
-      INTEGER NHEL(NEXTERNAL-1), HELL
+      INTEGER NHEL(NEXTERNAL-1), HELL, FLAV_IDX
+      logical force_ijglu_zero
+      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,0:nampso)
       COMPLEX*16 ANS(2,NSQAMPSO)
 C  
 C LOCAL VARIABLES 
@@ -496,30 +1323,32 @@ C
       parameter (nmo=nexternal-1)
       data ic /nmo*1/
       INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
       INTEGER CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER CF_INDEX, DENOM   
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+%(flavor_mask_decl)s
 C  
 C GLOBAL VARIABLES
 C  
-      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,0:nampso)
-      common/to_amps_born/  amp2,       jamp2
+C      common/to_amps_born/  amp2,       jamp2
       double complex saveamp(ngraphs,max_bhel)
       common/to_saveamp/saveamp
-      double precision hel_fac
-      integer get_hel,skip(%(nconfs)d)
-      common/cBorn/hel_fac,get_hel,skip
+      double complex ret_saveamp(ngraphs,max_bhel)
+      integer skip(%(nconfs)d)
+      common/cBorn/skip
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      INTEGER CALCULATED_BORN_FLAVOR
+      COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
       integer nfksprocess
       common/c_nfksprocess/nfksprocess
       integer step_hel
       logical cond_ij
-      logical force_ijglu_zero
-      common /to_force_ijglu/ force_ijglu_zero
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
 
 C
 C FUNCTION
@@ -534,12 +1363,18 @@ C
 C ----------
 C BEGIN CODE
 C ----------
+      IF (FORCE_IJGLU_ZERO) BORN_CACHE_OK=.FALSE.
       jamp(:,:) = (0d0,0d0)
 ! For a massive father (glu_ij=0), only one JAMPH row is filled.
 ! Its unused spin interference must not retain another sector's values.
       jamph(:,:,:) = (0d0,0d0)
       borns(:,:) =0d0
       ans(:,:) = (0d0, 0d0)
+      FLAVOR(:) = 1
+
+C     A saved Born amplitude is valid only for the selected physical row.
+      IF (CALCULATEDBORN .AND.
+     $    CALCULATED_BORN_FLAVOR.NE.FLAV_IDX) CALCULATEDBORN=.FALSE.
 
       glu_ij = ij_values(nfksprocess)
       if (force_ijglu_zero) glu_ij = 0
@@ -565,12 +1400,23 @@ C ----------
           if (nhel(glu_ij).ne.0) nhel(glu_ij) = ihel
         endif
         if (.not. calculatedBorn) then
+%(flavor_mask_setup)s
+        if(ihel.eq.back_hel)then
+          saveamp(:,hell) = 0d0
+        elseif(ihel.eq.-back_hel)then
+          saveamp(:,hell+skip(nFKSprocess)) = 0d0
+        else
+          write(*,*) "ERROR #1 in born.f"
+          stop
+        endif
 %(helas_calls)s
         do i=1,ngraphs
           if(ihel.eq.back_hel)then
             saveamp(i,hell)=amp(i)
+            ret_saveamp(i,hell) = amp(i)
           elseif(ihel.eq.-back_hel)then
             saveamp(i,hell+skip(nFKSprocess))=amp(i)
+            ret_saveamp(i,hell+skip(nFKSprocess)) = amp(i)
           else
             write(*,*) "ERROR #1 in born.f"
             stop
@@ -580,13 +1426,16 @@ C ----------
         do i=1,ngraphs
           if(ihel.eq.back_hel)then
             amp(i)=saveamp(i,hell)
+            ret_saveamp(i,hell) = saveamp(i,hell)
           elseif(ihel.eq.-back_hel)then
             amp(i)=saveamp(i,hell+skip(nFKSprocess))
+            ret_saveamp(i,hell+skip(nFKSprocess)) = saveamp(i,hell+skip(nFKSprocess))
           else
             write(*,*) "ERROR #1 in born.f"
             stop
           endif
         enddo
+C        ret_saveamp(:,:) = saveamp(:,:)
         endif
 %(jamp_lines)s
 	DO M = 1, NAMPSO
@@ -634,8 +1483,197 @@ C ----------
       ENDDO
       ANS(2,:) = ANS(2,:)/(2d0*DENOM)
       if (glu_ij.ne.0) nhel(glu_ij) = back_hel
+      CALCULATED_BORN_FLAVOR=FLAV_IDX
       END
-       
+
+
+
+      recursive subroutine BORN_VEC(P,NHEL,HELL,FLAV_IDX,
+     $     force_ijglu_zero,amp2,jamp2,ANS,borns,ret_saveamp,ivec,ifks)
+C  
+%(info_lines)s
+C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
+C FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
+
+%(process_lines)s
+C  
+      USE COUPLINGS
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C  
+C CONSTANTS
+C  
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NGRAPHS,    NEIGEN 
+      PARAMETER (NGRAPHS=   %(ngraphs)d,NEIGEN=  1) 
+      INTEGER    NWAVEFUNCS, NCOLOR
+      PARAMETER (NWAVEFUNCS=%(nwavefuncs)d, NCOLOR=%(ncolor)d) 
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      complex*16 imag1
+      parameter (imag1 = (0d0,1d0))
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      include "coupl.inc"
+C  
+C ARGUMENTS 
+C  
+      REAL*8 P(0:3,NEXTERNAL-1),borns(2,0:NSQAMPSO)
+      INTEGER NHEL(NEXTERNAL-1), HELL, FLAV_IDX
+      logical force_ijglu_zero
+      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,0:nampso)
+      COMPLEX*16 ANS(2,NSQAMPSO)
+      integer ivec,ifks
+C  
+C LOCAL VARIABLES 
+C  
+      INTEGER I,J,M,N,ihel,back_hel,glu_ij
+      INTEGER IC(NEXTERNAL-1),nmo
+      parameter (nmo=nexternal-1)
+      data ic /nmo*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      INTEGER CF(NCOLOR*(NCOLOR+1)/2)
+      INTEGER CF_INDEX, DENOM   
+      COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO),
+     $     jamph(2,ncolor,nampso)
+      type(aloha) W(NWAVEFUNCS)
+      COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+%(flavor_mask_decl)s
+C  
+C GLOBAL VARIABLES
+C  
+      double complex ret_saveamp(ngraphs,max_bhel)
+      integer skip(%(nconfs)d)
+      common/cBorn/skip
+      integer step_hel
+      logical cond_ij
+
+C
+C FUNCTION
+C
+      INTEGER SQSOINDEXB
+
+%(ij_lines)s
+C  
+C COLOR DATA
+C  
+%(color_data_lines)s
+C ----------
+C BEGIN CODE
+C ----------
+      jamp(:,:) = (0d0,0d0)
+      jamph(:,:,:) = (0d0,0d0)
+      borns(:,:) =0d0
+      ans(:,:) = (0d0, 0d0)
+      FLAVOR(:) = 1
+
+      glu_ij = ij_values(ifks)
+      if (force_ijglu_zero) glu_ij = 0
+      if (glu_ij.ne.0) then
+        back_hel = NHEL(glu_ij)
+        if (back_hel.ne.0) then
+          step_hel=-2*back_hel
+        else
+          step_hel=1
+        endif
+      else
+        back_hel=0
+        step_hel=1
+      endif
+      DO IHEL=back_hel,-back_hel,step_hel
+        if (glu_ij.ne.0) then
+          cond_ij=IHEL.EQ.back_hel.OR.NHEL(GLU_IJ).NE.0
+        else
+          cond_ij=IHEL.EQ.back_hel 
+        endif
+        IF (cond_ij) THEN
+        if (glu_ij.ne.0) then
+          if (NHEL(glu_ij).ne.0) NHEL(glu_ij) = ihel
+        endif
+C        if (.not. calculatedBorn) then
+C        if(ihel.eq.back_hel)then
+C          saveamp(:,hell) = 0d0
+C        elseif(ihel.eq.-back_hel)then
+C          saveamp(:,hell+skip(ifks)) = 0d0
+C        else
+C          write(*,*) "ERROR #1 in born.f"
+C          stop
+C        endif
+%(flavor_mask_setup)s
+%(helas_calls_vec)s
+        do i=1,ngraphs
+          if(ihel.eq.back_hel)then
+            ret_saveamp(i,hell) = amp(i)
+          elseif(ihel.eq.-back_hel)then
+            ret_saveamp(i,hell+skip(ifks)) = amp(i)
+          else
+            write(*,*) "ERROR #1 in born.f"
+            stop
+          endif
+        enddo
+C        elseif (calculatedBorn) then
+C        do i=1,ngraphs
+C          if(ihel.eq.back_hel)then
+C            amp(i)=saveamp(i,hell)
+C            ret_saveamp(i,hell) = saveamp(i,hell)
+C          elseif(ihel.eq.-back_hel)then
+C            amp(i)=saveamp(i,hell+skip(ifks))
+C            ret_saveamp(i,hell+skip(ifks)) = saveamp(i,hell+skip(ifks))
+C          else
+C            write(*,*) "ERROR #1 in born.f"
+C            stop
+C          endif
+C        enddo
+C        ret_saveamp(:,:) = saveamp(:,:)
+C        endif
+%(jamp_lines)s
+	DO M = 1, NAMPSO
+        CF_INDEX = 0
+        DO I = 1, NCOLOR
+          ZTEMP = (0.D0,0.D0)
+          DO J = I, NCOLOR
+            CF_INDEX = CF_INDEX + 1
+            ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
+          ENDDO
+	      DO N = 1, NAMPSO
+              BORNS(2-(1+back_hel*ihel)/2,SQSOINDEXB(M,N))=BORNS(2-(1+back_hel*ihel)/2,SQSOINDEXB(M,N))+ZTEMP*DCONJG(JAMP(I,N))
+          ENDDO
+        ENDDO
+    ENDDO
+        Do I = 1, NGRAPHS
+          amp2(i)=amp2(i)+amp(i)*dconjg(amp(i))
+        Enddo
+        do J = 1,NAMPSO
+        Do I = 1, NCOLOR
+          Jamp2(i,J)=Jamp2(i,J)+Jamp(i,J)*dconjg(Jamp(i,J))
+          Jamph(2-(1+back_hel*ihel)/2,i,J)=Jamp(i,J)
+        Enddo
+        ENDDO
+      endif
+      Enddo
+      borns(:,:) = borns(:,:)/DENOM
+      do i = 1, nsqampso
+      borns(1,0)=borns(1,0)+borns(1,i)
+      borns(2,0)=borns(2,0)+borns(2,i)
+      ans(1,i) = borns(1,i) + borns(2,i) 
+      enddo
+      DO M = 1, NAMPSO
+      CF_INDEX = 0
+      DO I = 1, NCOLOR
+        ZTEMP = (0.D0,0.D0)
+        DO J = I, NCOLOR
+          CF_INDEX = CF_INDEX +1
+          DO  N = 1, NAMPSO
+             ANS(2,SQSOINDEXB(M,N))= ANS(2,SQSOINDEXB(M,N)) + CF(CF_INDEX)*(JAMPH(2,J,M)*DCONJG(JAMPH(1,I,N))+JAMPH(2,I,M)*DCONJG(JAMPH(1,J,N)))
+          ENDDO
+        ENDDO
+      ENDDO
+
+      ENDDO
+      ANS(2,:) = ANS(2,:)/(2d0*DENOM)
+      if (glu_ij.ne.0) NHEL(glu_ij) = back_hel
+      END
 
       BLOCK DATA GOODHELS
       INTEGER     NCOMB
@@ -644,16 +1682,24 @@ C ----------
       PARAMETER (THEL=NCOMB*%(nconfs)d)
       LOGICAL GOODHEL(NCOMB,%(nconfs)d)
       common /c_goodhel/goodhel
+      INTEGER CALCULATED_BORN_FLAVOR
+      COMMON/CCALCULATEDBORNFLAVOR/CALCULATED_BORN_FLAVOR
       DATA GOODHEL/THEL*.FALSE./
+      LOGICAL CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      COMMON /C_BORN_AMPS_CHECK/ CHECK_BORN_AMPS, BORN_CHECKS_AMPS
+      DATA CHECK_BORN_AMPS /.FALSE./
+      DATA BORN_CHECKS_AMPS /%(born_checks_amps)s/
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+      DATA BORN_CACHE_OK /.FALSE./, BORN_CACHE_NFKS /0/
+      DATA CALCULATED_BORN_FLAVOR /0/
       end
 
 
 
-C
-C Helper functions to deal with the split orders.
-C
 
-      INTEGER FUNCTION SQSOINDEXB(AMPORDERA,AMPORDERB)
+      RECURSIVE INTEGER FUNCTION SQSOINDEXB(AMPORDERA,AMPORDERB)
 C
 C This functions plays the role of the interference matrix. It can be hardcoded or 
 C made more elegant using hashtables if its execution speed ever becomes a relevant
@@ -692,7 +1738,7 @@ C
 
 
 
-      INTEGER FUNCTION SQSOINDEXB_FROM_ORDERS(ORDERS)
+      RECURSIVE INTEGER FUNCTION SQSOINDEXB_FROM_ORDERS(ORDERS)
 C
 C From a list of values for the split orders, this function returns the
 c corresponding index in the squared orders canonical ordering.
@@ -732,7 +1778,7 @@ C
 
 
 
-      INTEGER FUNCTION GETORDPOWFROMINDEX_B(IORDER, INDX)
+      RECURSIVE INTEGER FUNCTION GETORDPOWFROMINDEX_B(IORDER, INDX)
 C
 C Return the power of the IORDER-th order appearing at position INDX
 C in the split-orders output
@@ -771,9 +1817,9 @@ C
       END
 
 
-      SUBROUTINE GET_NSQSO_B(NSQSO)
+      recursive subroutine GET_NSQSO_B(NSQSO)
 C
-C     Simple subroutine returning the number of squared split order
+C     Simple recursive subroutine returning the number of squared split order
 C     contributions returned in ANS when calling SMATRIX_SPLITORDERS
 C
       implicit none
@@ -784,5 +1830,3 @@ C
 	  NSQSO=NSQAMPSO
 
       END
-
-

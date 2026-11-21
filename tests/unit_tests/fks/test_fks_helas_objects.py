@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(root_path,'..','..'))
 
 import tests.unit_tests as unittest
 import madgraph.various.misc as misc
+from madgraph import MadGraph5Error
 import madgraph.interface.master_interface as MGCmd
 import madgraph.fks.fks_base as fks_base
 import madgraph.fks.fks_common as fks_common
@@ -35,11 +36,24 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import copy
 import array
+import pickle
+from unittest.mock import patch
 import madgraph.models.import_ufo as import_ufo
 from madgraph import MG5DIR
 
 class testFKSHelasObjects(unittest.TestCase):
     """a class to test the module FKSHelasObjects"""
+
+    def test_make_unique_couplings_handles_flavor_tables_linearly(self):
+        first = MG.FLV_Coupling(
+            'FLV_A', {(1, 1): 'GC_1', (2, 2): 'GC_2'})
+        duplicate = copy.deepcopy(first)
+        renamed = MG.FLV_Coupling(
+            'FLV_B', {(1, 1): 'GC_1', (2, 2): 'GC_2'})
+        couplings = ['GC_0', first, 'GC_0', duplicate, renamed]
+        self.assertEqual(
+            fks_helas.make_unique_couplings(couplings),
+            ['GC_0', first, renamed])
 
     def _prepare_rs_model(self):
         cache_root = os.path.join(os.path.expanduser('~'), '.cache', 'UFOMODEL')
@@ -873,5 +887,414 @@ class testFKSHelasObjects(unittest.TestCase):
             self.assertEqual(a,b)
 
         self.assertEqual(goal, helas_born_proc.get_fks_info_list())
+
+    def test_grouped_fks_physical_flavor_map(self):
+        """Each physical real row resolves its own local real and underlying
+        Born indices; topology-level merged charges never enter the map.
+        """
+        model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+        legs = MG.LegList([
+            MG.Leg({'id': 81, 'number': 1, 'state': False}),
+            MG.Leg({'id': -81, 'number': 2, 'state': False}),
+            MG.Leg({'id': 24, 'number': 3, 'state': True}),
+            MG.Leg({'id': -24, 'number': 4, 'state': True}),
+        ])
+        process = MG.Process({
+            'legs': legs,
+            'model': model,
+            'squared_orders': {'QCD': 2, 'QED': 4},
+            'sqorders_types': {'QCD': '=', 'QED': '='},
+            'born_sq_orders': {'QCD': 0, 'QED': 4},
+            'perturbation_couplings': ['QCD'],
+            'NLO_mode': 'real',
+            'split_orders': ['QCD', 'QED'],
+        })
+        fks_process = fks_base.FKSProcess(process)
+        fks_process.generate_reals([], diagram_generation.AmplitudeList())
+        helas_process = fks_helas.FKSHelasProcess(fks_process, [], [])
+
+        flavor_map = helas_process.get_fks_flavor_map()
+        self.assertIs(flavor_map, helas_process.get_fks_flavor_map())
+        self.assertEqual(len(flavor_map), 16)
+        self.assertEqual(
+            set(entry['fks_config_index'] for entry in flavor_map),
+            {1, 2, 3, 4})
+
+        for entry in flavor_map:
+            real = helas_process.real_processes[entry['n_me'] - 1]
+            self.assertEqual(
+                real.matrix_element.get_external_flavor_index(
+                    entry['real_pdgs'], from_pdgs=True),
+                entry['real_flavor_index'])
+            self.assertEqual(
+                helas_process.born_me.get_external_flavor_index(
+                    entry['born_pdgs'], from_pdgs=True),
+                entry['born_flavor_index'])
+            self.assertGreater(entry['real_flavor_index'], 0)
+            self.assertGreater(entry['born_flavor_index'], 0)
+            self.assertTrue(all(isinstance(charge, float)
+                                for charge in entry['real_charges']))
+            self.assertTrue(all(abs(pdg) not in model['merged_particles']
+                                for pdg in entry['real_pdgs']))
+            self.assertTrue(all(abs(pdg) not in model['merged_particles']
+                                for pdg in entry['born_pdgs']))
+
+        # Check one crossed g q~ real row explicitly: the real and Born indices
+        # are looked up in separate local tables even when their numeric values
+        # happen to coincide for this process.
+        crossed = [entry for entry in flavor_map
+                   if entry['real_pdgs'] == [21, -2, 24, -24, -2]]
+        self.assertEqual(len(crossed), 1)
+        self.assertEqual(crossed[0]['born_pdgs'], [2, -2, 24, -24])
+        self.assertEqual(crossed[0]['real_flavor_index'], 2)
+        self.assertEqual(crossed[0]['born_flavor_index'], 2)
+
+        # Low-memory generation serializes intermediate FKS objects.  The
+        # physical mapping and its equality identity must survive that boundary.
+        restored = pickle.loads(pickle.dumps(helas_process))
+        self.assertEqual(restored.get_fks_flavor_signature(),
+                         helas_process.get_fks_flavor_signature())
+        self.assertEqual(restored, helas_process)
+
+        incompatible = copy.deepcopy(helas_process)
+        self.assertEqual(incompatible, helas_process)
+        self.assertEqual(helas_process, incompatible)
+        incompatible.real_processes[0].fks_infos[0][
+            'underlying_born'][0][0] = 82
+        incompatible.clear_fks_flavor_map_cache()
+        self.assertNotEqual(incompatible, helas_process)
+        self.assertNotEqual(helas_process, incompatible)
+        self.assertRaises(fks_common.FKSProcessError,
+                          incompatible.get_fks_flavor_map)
+        self.assertRaises(fks_common.FKSProcessError,
+                          helas_process.add_process, incompatible)
+
+        # Virtual rows are another local table.  Reverse a copy deliberately so
+        # that the same physical Born row has a different integer index and
+        # prove get_fks_flavor_map resolves it rather than reusing born_index.
+        virtual = copy.deepcopy(helas_process.born_me)
+        virtual['allowed_flavors'] = list(
+            reversed(virtual['allowed_flavors']))
+        virtual['allowed_flavors_pdgs'] = list(
+            reversed(virtual['allowed_flavors_pdgs']))
+        virtual._external_flavor_index_maps = {}
+        helas_process.virt_matrix_element = virtual
+        helas_process.clear_fks_flavor_map_cache()
+        virtual_map = helas_process.get_fks_flavor_map()
+        first_physical = [entry for entry in virtual_map
+                          if entry['fks_config_index'] == 1 and
+                          entry['born_pdgs'] == [1, -1, 24, -24]][0]
+        self.assertEqual(first_physical['born_flavor_index'], 1)
+        self.assertEqual(first_physical['virtual_flavor_index'], 4)
+
+        # Extra counterterms own a third independent local table.  Reuse the
+        # same physical underlying Born in this focused table-order test; the
+        # alternate-mother reconstruction itself is covered in fks_common.
+        extra_cnt = copy.deepcopy(helas_process.born_me)
+        extra_cnt['allowed_flavors'] = list(
+            reversed(extra_cnt['allowed_flavors']))
+        extra_cnt['allowed_flavors_pdgs'] = list(
+            reversed(extra_cnt['allowed_flavors_pdgs']))
+        extra_cnt._external_flavor_index_maps = {}
+        helas_process.extra_cnt_me_list = [extra_cnt]
+        first_info = helas_process.real_processes[0].fks_infos[0]
+        first_info['underlying_born'].append(
+            list(first_info['underlying_born'][0]))
+        first_info['extra_cnt_index'] = 0
+        helas_process.clear_fks_flavor_map_cache()
+        extra_map = helas_process.get_fks_flavor_map()
+        first_physical = [entry for entry in extra_map
+                          if entry['fks_config_index'] == 1 and
+                          entry['born_pdgs'] == [1, -1, 24, -24]][0]
+        self.assertEqual(first_physical['born_flavor_index'], 1)
+        self.assertEqual(first_physical['extra_cnt_flavor_index'], 4)
+
+    def test_grouped_fks_explicit_flavor_restrictions(self):
+        """Fixed particles inside merged groups stay fixed in NLO syntax."""
+
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate e+ e- > d d~ [real=QCD]')
+        self.assertTrue(interface.options['include_lepton_initiated_processes'])
+
+        process = interface._fks_multi_proc['born_processes'][0].born_amp[
+            'process']
+        self.assertEqual([leg['flavor'] for leg in process['legs']],
+                         [[11], [-11], [1], [-1]])
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        matrix_elements = helas.get_matrix_elements()
+        self.assertEqual(len(matrix_elements), 1)
+        flavor_map = matrix_elements[0].get_fks_flavor_map()
+        self.assertTrue(flavor_map)
+        self.assertTrue(all(entry['born_pdgs'] == [-11, 11, 1, -1]
+                            for entry in flavor_map))
+
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate u u~ > w+ w- [real=QED]')
+        matrix_element = fks_helas.FKSHelasMultiProcess(
+            interface._fks_multi_proc).get_matrix_elements()[0]
+        self.assertTrue(matrix_element.born_me.get_color_amplitudes())
+        self.assertTrue(all(entry['born_pdgs'] == [2, -2, 24, -24]
+                            for entry in matrix_element.get_fks_flavor_map()))
+
+    @patch.object(helas_objects.HelasMatrixElement,
+                  'enumerate_all_flavors', False)
+    def test_grouped_wj_runtime_preserves_fks_flavor_order(self):
+        """Runtime W+j metadata must retain every ungrouped physical class.
+
+        Sorting flavour assignments before selecting the FKS mother can discard
+        the only assignment mapping a real channel to its physical Born row.
+        Exercise the actual Les Houches writer, rather than the larger in-memory
+        amplitude alias set.
+        """
+        import tempfile
+        import math
+        from collections import Counter
+        from madgraph.iolibs import export_fks
+
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+            export_fks.ProcessExporterFortranFKS)
+        coverage = {}
+        sectors = {}
+        grouped_entries = []
+
+        def normalized_sector(element, real, pdgs, born, info):
+            pdgs, born = tuple(pdgs), tuple(born)
+            i, j = info['i'], info['j']
+            real_den = exporter.get_flavor_denominator_factors(
+                real.matrix_element, physical_rows=[pdgs])[0]
+            born_den = exporter.get_flavor_denominator_factors(
+                element.born_me, physical_rows=[born])[0]
+            identical_real = math.prod(math.factorial(n)
+                                       for n in Counter(pdgs[2:]).values())
+            identical_born = math.prod(math.factorial(n)
+                                       for n in Counter(born[2:]).values())
+            fac_i = pdgs[2:].count(pdgs[i - 1])
+            fac_j = (1 if j <= 2 else pdgs[2:].count(pdgs[j - 1]) -
+                     (pdgs[i - 1] == pdgs[j - 1]))
+            return (pdgs, born, i, j, info['ij'],
+                    tuple(info['splitting_type']), info['need_color_links'],
+                    info['need_charge_links'], real_den, born_den,
+                    fac_i, fac_j, identical_real, identical_born)
+
+        for grouped in (False, True):
+            interface = MGCmd.MasterCmd()
+            interface._experimental_nlo_flavor_grouping = True
+            interface.no_notification()
+            for line in [
+                    'set apply_flavor_grouping %s --no_save' % grouped,
+                    'set low_mem_multicore_nlo_generation False --no_save',
+                    'import model loop_sm-no_b_mass',
+                    'define p = g u c d s b u~ c~ d~ s~ b~',
+                    'define j = p',
+                    'generate p p > w+ j [real=QCD]']:
+                interface.exec_cmd(line, errorhandling=False)
+            elements = fks_helas.FKSHelasMultiProcess(
+                interface._fks_multi_proc).get_matrix_elements()
+            rows = []
+            sector_rows = []
+            for element in elements:
+                if grouped:
+                    for entry in element.get_fks_flavor_map(False):
+                        sector_rows.append(normalized_sector(
+                            element, element.real_processes[entry['n_me'] - 1],
+                            entry['real_pdgs'], entry['born_pdgs'],
+                            entry['fks_info']))
+                else:
+                    for real in element.real_processes:
+                        for info in real.fks_infos:
+                            for proc in real.matrix_element['processes']:
+                                legs = fks_common.to_fks_legs(copy.deepcopy(
+                                    proc.get_legs_with_decays()), proc['model'])
+                                pdgs = tuple(leg['id'] for leg in legs)
+                                mothers = fks_common.combine_ij(
+                                    legs[info['i'] - 1], legs[info['j'] - 1],
+                                    proc['model'], {}, pert='QCD')
+                                self.assertEqual(len(mothers), 1)
+                                born = [pdg for number, pdg in enumerate(pdgs, 1)
+                                        if number not in (info['i'], info['j'])]
+                                born.insert(info['ij'] - 1, mothers[0]['id'])
+                                sector_rows.append(normalized_sector(
+                                    element, real, pdgs, born, info))
+            sectors[grouped] = Counter(sector_rows)
+            with tempfile.TemporaryDirectory() as directory:
+                for index, element in enumerate(elements):
+                    path = os.path.join(directory, 'leshouche_%d.dat' % index)
+                    exporter.write_leshouche_info_file(path, element)
+                    with open(path) as stream:
+                        rows.extend(tuple(map(int, line.split()[3:]))
+                                    for line in stream if line.startswith('I'))
+                    if grouped:
+                        grouped_entries.extend(element.get_fks_flavor_map())
+            coverage[grouped] = {
+                (tuple(sorted(row[:2])), tuple(sorted(row[2:])))
+                for row in rows}
+        self.assertEqual(len(coverage[False]), 54)
+        self.assertEqual(coverage[True], coverage[False])
+        # Preserve ordered emitter/spectator multiplicities and every physical
+        # spin/color/identical-particle normalization, not just particle sets.
+        self.assertEqual(sum(sectors[False].values()), 152)
+        self.assertEqual(sectors[True], sectors[False])
+        self.assertTrue(all(count == 1 for count in sectors[True].values()))
+        needed = [entry for entry in grouped_entries
+                  if entry['real_pdgs'] == [-3, -3, 24, -4, -3]
+                  and entry['born_pdgs'] == [-3, 21, 24, -4]
+                  and entry['fks_info']['i'] == 5
+                  and entry['fks_info']['j'] == 2]
+        self.assertTrue(needed)
+        self.assertTrue(all(entry['real_flavor_index'] > 0 and
+                            entry['born_flavor_index'] > 0 for entry in needed))
+        # Per-NLO-instance policy must not change the standalone/LO class default.
+        self.assertFalse(helas_objects.HelasMatrixElement.enumerate_all_flavors)
+
+    def test_grouped_mixed_wj_physical_maps(self):
+        """Mixed QCD/QED W+j keeps only executable physical FKS classes."""
+
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('set nlo_mixed_expansion True')
+        interface.exec_cmd(
+            'import model ./tests/input_files/LoopSMEWTest')
+        interface.exec_cmd(
+            'define p = 21 2 4 1 3 -2 -4 -1 -3 5 -5 22')
+        interface.exec_cmd('define j = p')
+        interface.exec_cmd(
+            'generate p p > w+ j QED^2=4 QCD^2=4 [real=QCD QED]')
+
+        matrix_elements = fks_helas.FKSHelasMultiProcess(
+            interface._fks_multi_proc).get_matrix_elements()
+        maps = [matrix_element.get_fks_flavor_map(resolve_virtual=False)
+                for matrix_element in matrix_elements]
+        self.assertTrue(all(flavor_map for flavor_map in maps))
+        self.assertEqual(
+            sorted(set(entry['extra_cnt_flavor_index']
+                       for entry in maps[0]
+                       if entry['extra_cnt_flavor_index'])),
+            [1, 2])
+        for flavor_map in maps:
+            config_indices = sorted(set(entry['fks_config_index']
+                                        for entry in flavor_map))
+            self.assertEqual(config_indices,
+                             list(range(1, len(config_indices) + 1)))
+
+    def test_grouped_fks_low_memory_flavor_map(self):
+        """The real multicore/low-memory path must preserve flavor couplings
+        and produce the same physical class cardinality as in-process QCD
+        generation.
+        """
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('set nb_core 1')
+        interface.exec_cmd('set low_mem_multicore_nlo_generation True')
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate p p > w+ w- [QCD]')
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        matrix_element_files = helas.get_matrix_elements()
+        self.assertEqual(len(matrix_element_files), 2)
+        try:
+            matrix_elements = []
+            for path in matrix_element_files:
+                with open(path, 'rb') as stream:
+                    matrix_elements.append(pickle.load(stream))
+            self.assertEqual([len(me.get_fks_flavor_map())
+                              for me in matrix_elements], [16, 16])
+            self.assertTrue(all(me.virt_matrix_element is not None
+                                for me in matrix_elements))
+            self.assertTrue(all(
+                entry['virtual_flavor_index'] > 0
+                for me in matrix_elements
+                for entry in me.get_fks_flavor_map()))
+            self.assertTrue(any(isinstance(coupling, MG.FLV_Coupling)
+                                for coupling in helas.get_used_couplings()))
+        finally:
+            for path in matrix_element_files:
+                if os.path.exists(path):
+                    os.remove(path)
+
+    def test_grouped_fks_qed_virtual_flavor_map(self):
+        """Grouped QED virtuals retain every physical FKS charge and row."""
+        model_path = os.path.abspath(os.path.join(
+            root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('import model %s' % model_path)
+        interface.exec_cmd('generate p p > w+ w- [QED]')
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        matrix_elements = helas.get_matrix_elements()
+        self.assertEqual(len(matrix_elements), 3)
+        flavor_maps = [me.get_fks_flavor_map() for me in matrix_elements]
+        self.assertEqual([len(mapping) for mapping in flavor_maps],
+                         [30, 30, 22])
+        for me, mapping in zip(matrix_elements, flavor_maps):
+            self.assertIsNotNone(me.virt_matrix_element)
+            self.assertTrue(all(entry['virtual_flavor_index'] > 0
+                                for entry in mapping))
+            self.assertTrue(all(
+                isinstance(charge, float)
+                for entry in mapping for charge in entry['real_charges']))
+
+    def test_grouped_drell_yan_default_run_card_has_hadron_beams(self):
+        """The default NLO run card of grouped p p > e+ e- uses proton beams.
+
+        With flavour grouping the Born initial state is the merged quark
+        only (no gluon channel as in p p > t t~), which the beam detection
+        must recognise as its physical quark flavours.
+        """
+        import madgraph.various.banner as banner_mod
+        for grouping in (True, False):
+            interface = MGCmd.MasterCmd()
+            interface._experimental_nlo_flavor_grouping = True
+            interface.no_notification()
+            interface.exec_cmd('set apply_flavor_grouping %s' % grouping)
+            interface.exec_cmd('import model loop_sm')
+            interface.exec_cmd('generate p p > e+ e- [real=QCD]')
+            helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+            run_card = banner_mod.RunCardNLO()
+            run_card.create_default_for_process(
+                banner_mod.ProcCharacteristic(), [], helas.get_processes())
+            self.assertEqual((run_card['lpp1'], run_card['lpp2']), (1, 1),
+                             'grouping %s' % grouping)
+            self.assertEqual(run_card['maxjetflavor'], 4)
+
+    def test_grouped_fks_extra_counterterm_flavor_map(self):
+        """Grouped g/a -> q q~ configurations map every physical member to
+        an independently indexed extra-counterterm matrix element.
+        """
+        model_path = os.path.abspath(os.path.join(
+            root_path, os.pardir, 'input_files', 'LoopSMEWTest'))
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('import model %s' % model_path)
+        interface.exec_cmd('set include_lepton_initiated_processes True')
+        interface.exec_cmd('define p p a')
+        interface.exec_cmd(
+            'generate p p > t t~ QED^2=4 QCD^2=4 [real=QCD QED]')
+
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        extra_entries = []
+        merged_pdgs = set(interface._curr_model.get('merged_particles'))
+        for me in helas.get_matrix_elements():
+            extra_entries.extend(
+                entry for entry in me.get_fks_flavor_map()
+                if entry['extra_cnt_flavor_index'] > 0)
+        self.assertEqual(len(extra_entries), 40)
+        for entry in extra_entries:
+            self.assertIsNotNone(entry['extra_cnt_pdgs'])
+            self.assertTrue(all(abs(pdg) not in merged_pdgs
+                                for pdg in entry['real_pdgs']))
+            self.assertTrue(all(abs(pdg) not in merged_pdgs
+                                for pdg in entry['extra_cnt_pdgs']))
 
         

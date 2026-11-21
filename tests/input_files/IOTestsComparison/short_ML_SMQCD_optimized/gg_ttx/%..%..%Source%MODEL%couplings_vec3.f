@@ -1,0 +1,1 @@
+../../_shared/short_ML_SMQCD_default%gg_ttx%%..%..%Source%MODEL%couplings_vec3.f

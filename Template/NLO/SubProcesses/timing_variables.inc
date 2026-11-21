@@ -1,4 +1,12 @@
 *     -*-fortran-*-
+
+      real tBefore, tAfter
+      real tBorn,tIS,tReal,tCount,tFxFx,tf_nb,tf_all,t_as,tr_s,tr_pdf
+     &     ,t_plot,t_cuts,t_MC_subt,t_isum,t_p_unw,t_write,tOLP,tGenPS
+     &     ,t_ewsud,t_coupl, t_vecamp, t_vecreal
+      common/timings/tBorn,tIS,tReal,tCount,tFxFx,tf_nb,tf_all,t_as
+     $     ,tr_s,tr_pdf,t_plot,t_cuts,t_MC_subt,t_isum,t_p_unw,t_write
+     $     ,tOLP,tGenPS,t_ewsud,t_coupl,t_vecamp,t_vecreal
 c Exclusive CPU categories for the sampled integration-point profile.
 c Keep the inexpensive guard at call sites: unsampled points read no clocks.
       integer timing_phase_space,timing_born,timing_real,timing_virtual

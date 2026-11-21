@@ -2086,6 +2086,33 @@ class TestFKSCommon(unittest.TestCase):
             
         for leg, split, res in zip(legs_qed, splittings_qed, res_leglists_qed):
             self.assertEqual(res, fks_common.insert_legs(leglist_orig_qed, leg, split,pert='QED'))
+
+    def test_insert_legs_ignores_massless_merged_charge_in_mass_sort(self):
+        """QED insertion must not take abs() of a merged charge tuple."""
+
+        quark = fks_common.FKSLeg({
+            'id': 81, 'number': 2, 'state': False, 'color': 3,
+            'spin': 2, 'massless': True,
+            'charge': (-1. / 3., 2. / 3.),
+            'is_part': True, 'self_antipart': False})
+        legs = fks_common.FKSLegList([
+            quark,
+            fks_common.FKSLeg({
+                'id': 24, 'number': 3, 'state': True, 'color': 1,
+                'spin': 3, 'massless': False, 'charge': 1.,
+                'is_part': True, 'self_antipart': False}),
+            fks_common.FKSLeg({
+                'id': 81, 'number': 4, 'state': True, 'color': 3,
+                'spin': 2, 'massless': True,
+                'charge': (-1. / 3., 2. / 3.),
+                'is_part': True, 'self_antipart': False})])
+        split = [copy.deepcopy(quark), fks_common.FKSLeg({
+            'id': 22, 'state': True, 'color': 1, 'spin': 3,
+            'massless': True, 'charge': 0., 'is_part': True,
+            'self_antipart': True})]
+
+        result = fks_common.insert_legs(legs, quark, split, pert='QED')
+        self.assertEqual([leg['id'] for leg in result], [81, 24, 81, 22])
     
     
     def test_combine_ij(self):
@@ -2386,6 +2413,131 @@ class TestFKSCommon(unittest.TestCase):
             
         for leg, res in zip(leg_list, res_list):
             self.assertEqual(fks_common.to_fks_leg(leg, self.model), res)                                                                                            
+
+    def test_merged_fks_leg_keeps_and_resolves_physical_charge(self):
+        """A merged FKS leg must not silently replace its charge tuple with
+        zero or with one representative member's charge.
+
+        Structural FKS generation can carry the tuple, while every numerical
+        QED use must name the physical PDG whose scalar charge is required.
+        """
+        model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+        q = model.get_particle(81)
+        self.assertIsNotNone(q)
+
+        leg = fks_common.to_fks_leg(
+            MG.Leg({'id': 81, 'number': 1, 'state': False}), model)
+        self.assertIsInstance(leg.get('charge'), tuple)
+        self.assertEqual(set(round(charge * 3)
+                             for charge in leg.get('charge')), {-1, 2})
+        self.assertAlmostEqual(leg.get_charge_for_pdg(1, model), -1. / 3.)
+        self.assertAlmostEqual(leg.get_charge_for_pdg(2, model), 2. / 3.)
+
+        antileg = fks_common.to_fks_leg(
+            MG.Leg({'id': -81, 'number': 2, 'state': False}), model)
+        self.assertEqual(set(round(charge * 3)
+                             for charge in antileg.get('charge')), {1, -2})
+        self.assertAlmostEqual(
+            antileg.get_charge_for_pdg(-1, model), 1. / 3.)
+        self.assertAlmostEqual(
+            antileg.get_charge_for_pdg(-2, model), -2. / 3.)
+
+        born_legs = fks_common.to_fks_legs(MG.LegList([
+            MG.Leg({'id': 81, 'number': 1, 'state': False}),
+            MG.Leg({'id': -81, 'number': 2, 'state': False}),
+            MG.Leg({'id': 24, 'number': 3, 'state': True}),
+            MG.Leg({'id': -24, 'number': 4, 'state': True}),
+        ]), model)
+        for born_leg in born_legs[:2]:
+            qed_splittings = fks_common.find_splittings(
+                born_leg, model, {}, pert='QED')
+            self.assertTrue(qed_splittings)
+            for splitting in qed_splittings:
+                real_legs = fks_common.insert_legs(
+                    born_legs, born_leg, splitting, pert='QED')
+                self.assertEqual(len(real_legs), len(born_legs) + 1)
+
+        self.assertRaises(fks_common.FKSProcessError,
+                          leg.get_charge_for_pdg, 5, model)
+        self.assertRaises(fks_common.FKSProcessError,
+                          antileg.get_charge_for_pdg, 2, model)
+
+    def test_map_physical_real_to_underlying_born_pdgs(self):
+        """Initial- and final-state FKS mappings are reconstructed from
+        physical real rows without leaking merged pseudo-PDGs.
+        """
+        model = import_ufo.import_model(
+            'sm', options={'apply_flavor_grouping': True})
+
+        initial_info = {
+            'i': 5, 'j': 1, 'ij': 1, 'ij_id': 81,
+            'underlying_born': [[81, -81, 24, -24]],
+        }
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [21, -2, 24, -24, -2], initial_info, model),
+            [2, -2, 24, -24])
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 24, -24, 21], initial_info, model),
+            [2, -2, 24, -24])
+
+        final_info = {
+            'i': 5, 'j': 3, 'ij': 3, 'ij_id': 81,
+            'underlying_born': [[2, -2, 81, -24]],
+        }
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 4, -24, 21], final_info, model),
+            [2, -2, 4, -24])
+
+        gluon_mother_info = {
+            'i': 5, 'j': 4, 'ij': 4, 'ij_id': 21,
+            'underlying_born': [[2, -2, 24, 21]],
+        }
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 24, 3, -3], gluon_mother_info, model),
+            [2, -2, 24, 21])
+
+        # Extra counterterms can replace the primary mother by another one
+        # while retaining the same real daughters (e.g. g/a -> q q~).
+        alternate_mother_info = copy.deepcopy(gluon_mother_info)
+        alternate_mother_info['underlying_born'].append(
+            [2, -2, 24, 22])
+        self.assertEqual(
+            fks_common.map_real_to_born_pdgs(
+                [2, -2, 24, 3, -3], alternate_mother_info, model,
+                underlying_index=1),
+            [2, -2, 24, 22])
+
+        self.assertRaises(
+            fks_common.FKSFlavorNotInTopology,
+            fks_common.map_real_to_born_pdgs,
+            [21, -5, 24, -24, -5], initial_info, model)
+
+        # Ordinary topology non-membership is distinguishable from malformed
+        # metadata so grouped-map construction cannot silently drop channels
+        # when its FKS indices or underlying-Born data are corrupt.
+        wrong_topology_info = copy.deepcopy(initial_info)
+        wrong_topology_info['underlying_born'] = [
+            [81, 81, 24, -24]]
+        self.assertRaises(
+            fks_common.FKSFlavorNotInTopology,
+            fks_common.map_real_to_born_pdgs,
+            [21, -2, 24, -24, -2], wrong_topology_info, model)
+
+        malformed_info = copy.deepcopy(initial_info)
+        del malformed_info['ij']
+        try:
+            fks_common.map_real_to_born_pdgs(
+                [21, -2, 24, -24, -2], malformed_info, model)
+        except fks_common.FKSProcessError as error:
+            self.assertNotIsInstance(
+                error, fks_common.FKSFlavorNotInTopology)
+        else:
+            self.fail('Malformed FKS metadata did not raise FKSProcessError')
 
     def test_find_color_links(self): 
         """tests if all the correct color links are found for a given born process"""

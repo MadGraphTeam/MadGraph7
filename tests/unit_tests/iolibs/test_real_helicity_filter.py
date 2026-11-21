@@ -150,13 +150,23 @@ class TestRealHelicityFilter(unittest.TestCase):
         routine = template[start:end] % dict(
             proc_prefix='1', info_lines='', process_lines='', ncomb=ncomb,
             nSqAmpSplitOrders=nsqamps,
+            hel_configs=1, hel_index_setup='HEL_INDEX=1',
+            flavor_den_factor_setup='      IDEN=2',
             helicity_lines='      DATA NHEL /%s/' % ','.join(map(str, range(1, ncomb+1))),
-            den_factor_line='      PARAMETER (IDEN=2)')
-        lines = support.optimize_real_helicities(list(support.statements(routine)))
+            den_factor_line='')
+        lines = support.optimize_real_helicities(support.routine(routine, 'smatrix1_splitorders'))
+        driver = driver.replace('call matrix_1(p,[i],term)', 'call matrix_1(p,[i],1,term)')
+        driver = driver.replace('subroutine matrix_1(p,nhel,t)\n  implicit none',
+                                'subroutine matrix_1(p,nhel,flav_idx,t)\n  implicit none\n  integer flav_idx')
         with tempfile.TemporaryDirectory(prefix='mg5_real_helicities_') as tmp:
             work = Path(tmp)
             (work/'nexternal.inc').write_text(
                 '      INTEGER NEXTERNAL\n      PARAMETER(NEXTERNAL=1)\n')
+            (work/'nFKSconfigs.inc').write_text(
+                '      INTEGER FKS_CONFIGS\n      PARAMETER(FKS_CONFIGS=1)\n')
+            (work/'fks_info.inc').write_text(
+                '      INTEGER REAL_FLAVOR_INDEX_D(1)\n'
+                '      PARAMETER(REAL_FLAVOR_INDEX_D=[1])\n')
             (work/'real_matrix_weights.inc').write_text(
                 ('      logical get_real_diagram_weights\n'
                  '      common/c_get_real_diagram_weights/get_real_diagram_weights\n'
@@ -166,6 +176,11 @@ class TestRealHelicityFilter(unittest.TestCase):
                 ('      logical,parameter::get_real_diagram_weights=.false.\n'
                  '      real*8 real_amp2(1)\n'))
             support.write_fortran(work/'real.f', lines)
+            with (work/'real.f').open('a') as stream:
+                stream.write('\n      block data selected_sector\n'
+                             '      integer nfksprocess\n'
+                             '      common/c_nfksprocess/nfksprocess\n'
+                             '      data nfksprocess/1/\n      end\n')
             module = work/'mc_born_types.f90'
             shutil.copyfile(ROOT/'Template/NLO/Source/BornSupport/mc_born_types.f90',
                             module)

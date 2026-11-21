@@ -999,6 +999,109 @@ class ModelTest2(unittest.TestCase):
                 found += 1
         self.assertEqual(found, 2)
 
+    def test_merge_flavor_translates_loop_particles(self):
+        """R2/UV loop-content keys follow particles into merged-PDG space."""
+
+        interaction = base_objects.Interaction({
+            'loop_particles': [[1, 21], [2, 21], [4, 2], [5]]})
+        merged = base_objects.Particle({'pdg_code': 81})
+
+        interaction.merge_loop_particles([1, 2, 3, 4], merged)
+
+        # Repeated particles inside a key collapse as required by MadLoop's
+        # set comparison, and unrelated loop content remains untouched.  The
+        # d and u keys both survive: each entry is one contribution of the
+        # counterterm, so the number of entries must not change.
+        self.assertEqual(interaction.get('loop_particles'),
+                         [[21, 81], [21, 81], [81], [5]])
+
+    def test_complex_mass_ghost_inherits_vector_width(self):
+        """A UFO's zero-width ghost still uses its gauge boson's CMS pole."""
+        model = copy.deepcopy(self.model)
+        vector = model.get_particle(24)
+        ghost = copy.copy(vector)
+        ghost.set('pdg_code', 9000024)
+        ghost.set('name', 'testghost')
+        ghost.set('antiname', 'testghost~')
+        ghost.set('spin', 1)
+        ghost.set('type', 'ghost')
+        ghost.set('width', 'ZERO')
+        model['particles'].append(ghost)
+        stable = copy.copy(ghost)
+        stable.set('pdg_code', 9000025)
+        stable.set('name', 'testscalar')
+        stable.set('antiname', 'testscalar~')
+        stable.set('type', '')
+        model['particles'].append(stable)
+        model.reset_dictionaries()
+        # Prime antiparticle lookups: CMS conversion must refresh these too.
+        self.assertEqual(model.get_particle(-9000024)['width'], 'ZERO')
+        self.assertEqual(model.get_particle('testghost~')['width'], 'ZERO')
+        interaction = base_objects.Interaction({'id': 9000024,
+            'particles': base_objects.ParticleList([
+                model.get_particle(9000024), model.get_particle(-9000024)])})
+        model['interactions'].append(interaction)
+        model.change_mass_to_complex_scheme()
+        self.assertTrue(all(p['width'] == vector['width']
+                            for p in interaction['particles']))
+        for pdg in (9000024, -9000024):
+            self.assertEqual(model.get_particle(pdg)['width'], vector['width'])
+        self.assertEqual(model.get_particle('testghost~')['width'], vector['width'])
+        self.assertEqual(stable['width'], 'ZERO')
+
+    def test_merge_flavor_keeps_additive_counterterms(self):
+        """Different internal flavours are additive, not external partners.
+
+        EW R2 q~q vertices can have separate W+d and W+s contributions.
+        Their merged loop keys coincide, but neither may overwrite the
+        other for a fixed external flavour, even if their couplings agree.
+        """
+        from collections import Counter
+
+        for equal_couplings in (False, True):
+            for reverse in (False, True):
+                with self.subTest(equal_couplings=equal_couplings,
+                                  reverse=reverse):
+                    model = copy.deepcopy(self.model)
+                    model.unmerge_flavors()
+                    interactions = base_objects.InteractionList()
+                    expected = {}
+                    for pdg in (1, 2, 3, 4):
+                        expected[pdg] = Counter()
+                        # Include an uneven multiplicity and a repeated
+                        # coupling/loop entry, not just distinct names.
+                        internal_flavours = [1, 3, 3] if pdg == 2 else [1, 3]
+                        for internal in internal_flavours:
+                            coupling = ('R2_COMMON' if equal_couplings else
+                                        'R2_%d_%d' % (pdg, internal))
+                            expected[pdg][coupling] += 1
+                            interactions.append(base_objects.Interaction({
+                                'id': len(interactions) + 1,
+                                'type': 'R2',
+                                'particles': base_objects.ParticleList([
+                                    model.get_particle(-pdg),
+                                    model.get_particle(pdg)]),
+                                'color': [color.ColorString([color.T(1, 2)])],
+                                'lorentz': ['R2_QQ_3'],
+                                'orders': {'QED': 2},
+                                'loop_particles': [[24, internal]],
+                                'couplings': {(0, 0): coupling}}))
+                    if reverse:
+                        interactions.reverse()
+                    model.set('interactions', interactions)
+                    model.merge_flavor([1, 2, 3, 4])
+                    actual = dict((pdg, Counter()) for pdg in expected)
+                    for interaction in model.get('interactions'):
+                        coupling = interaction.get('couplings')[(0, 0)]
+                        if isinstance(coupling, str):
+                            for pdg in actual:
+                                actual[pdg][coupling] += 1
+                        else:
+                            for flavors, name in coupling.get('flavors').items():
+                                self.assertEqual(flavors[0], flavors[1])
+                                actual[flavors[0]][name] += 1
+                    self.assertEqual(actual, expected)
+
     def test_merge_flavor(self):
         """Check that merging particles is working"""
         
@@ -1104,6 +1207,29 @@ class ModelTest2(unittest.TestCase):
 
         pdg_codes = [p.get('pdg_code') for p in model['particles']]
 
+        source_zqq = [inter for inter in model['interactions']
+                      if len(inter['particles']) == 3 and
+                      inter['particles'][2].get_pdg_code() == 23 and
+                      abs(inter['particles'][0].get_pdg_code()) in
+                      [1, 2, 3, 4] and
+                      abs(inter['particles'][1].get_pdg_code()) in
+                      [1, 2, 3, 4]]
+        # Force one flavor partner to carry an extra structure at a fresh
+        # numeric position. This isolates the remapping contract independently
+        # of the particular SM UFO convention used by the test installation.
+        variant = source_zqq[0]
+        variant['lorentz'] = list(variant['lorentz']) + ['TEST_LORENTZ']
+        first_key, first_coupling = next(iter(variant['couplings'].items()))
+        variant['couplings'][(first_key[0], len(variant['lorentz']) - 1)] = \
+            first_coupling
+        source_zqq_lorentz = [set(inter['lorentz']) for inter in source_zqq]
+        expected_zqq_lorentz = set().union(*source_zqq_lorentz)
+        expected_zqq_keyed_lorentz = set(
+            inter['lorentz'][key[1]]
+            for inter in source_zqq for key in inter['couplings'])
+        self.assertGreater(len(set(frozenset(item)
+                                   for item in source_zqq_lorentz)), 1)
+
         
         model.merge_flavor([1,2,3,4])
 
@@ -1136,6 +1262,19 @@ class ModelTest2(unittest.TestCase):
                 has_inter_n81 += 1
         self.assertEqual(has_inter_81, has_inter_n81)
         self.assertEqual(has_inter_81, 5)
+
+        # Flavor partners can use different Lorentz structures at the same UFO
+        # coupling-list position. The merged Z q q~ interaction must keep their
+        # union and remap coupling keys by structure identity.
+        zqq = [inter for inter in model['interactions']
+               if [part.get_pdg_code() for part in inter['particles']]
+               == [-81, 81, 23]]
+        self.assertEqual(len(zqq), 1)
+        zqq = zqq[0]
+        self.assertEqual(set(zqq['lorentz']), expected_zqq_lorentz)
+        keyed_lorentz = set(zqq['lorentz'][key[1]]
+                            for key in zqq['couplings'])
+        self.assertEqual(keyed_lorentz, expected_zqq_keyed_lorentz)
 
         # check that unmerged vertex are kept
         self.assertTrue(hasattr(model, 'unmerged_interactions'))
@@ -1782,6 +1921,21 @@ class DiagramTest(unittest.TestCase):
         self.assertRaises(Exception,
                            mydiagramlist.nice_string)
         return
+
+    def test_charge_flow_difference_with_merged_charges(self):
+        """FKS matrix-element tags retain scalar historical differences and
+        use an immutable, conservative endpoint descriptor for merged charges.
+        """
+        self.assertEqual(
+            base_objects.Diagram.get_charge_flow_difference(2. / 3., -1. / 3.),
+            1.)
+        merged = base_objects.Diagram.get_charge_flow_difference(
+            (-1. / 3., 2. / 3.), (-1. / 3., 2. / 3.))
+        hash(merged)
+        self.assertNotEqual(
+            merged,
+            base_objects.Diagram.get_charge_flow_difference(
+                (-1. / 3., 2. / 3.), (1. / 3., -2. / 3.)))
 
 #===============================================================================
 # ProcessTest

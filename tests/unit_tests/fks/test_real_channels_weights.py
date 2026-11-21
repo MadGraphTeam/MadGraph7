@@ -22,13 +22,13 @@ class TestRealChannelsWeights(unittest.TestCase):
         cls.path = pathlib.Path(cls.directory.name)
         includes = {
             'nexternal.inc': 'integer nexternal,nincoming\nparameter(nexternal=5,nincoming=2)',
-            # Auxiliary native aliases are not additional integration sectors.
+            # Five physical integration sectors plus one native evaluation alias.
             'nFKSconfigs.inc': ('integer fks_configs,FKS_INTEGRATED\n'
-                                'parameter(fks_configs=4,FKS_INTEGRATED=3)'),
+                                'parameter(fks_configs=6,FKS_INTEGRATED=5)'),
             'run.inc': 'double precision real_channels_x0\ncommon /c_real_channels_x0/ real_channels_x0',
             'coupl.inc': 'double precision g,testmass(5)\ncommon /test_coupl/ g,testmass',
             'pmass.inc': 'pmass=testmass',
-            'fks_info.inc': '',
+            'fks_info.inc': 'integer REAL_FLAVOR_INDEX_D(6)\nparameter(REAL_FLAVOR_INDEX_D=(/2,7,2,7,7,99/))',
             'orders.inc': '''integer nsplitorders,amp_split_size,qcd_pos
 parameter(nsplitorders=2,amp_split_size=2,qcd_pos=1)
 double precision amp_split(amp_split_size)
@@ -36,14 +36,14 @@ common /to_amp_split/ amp_split''',
             # Channels 1 and 3 share ME1; channel 2 and sector 2 belong to ME2.
             # The huge ME2 diagram weight must never dilute ME1's partition.
             'real_channels.inc': '''integer n_real_channels
-parameter(n_real_channels=3)
-integer real_channel_me(3),real_channel_fks(3)
-integer real_channel_config(3),real_channel_diagram(3),real_sector_me(3)
-data real_channel_me /1,2,1/
-data real_channel_fks /1,2,1/
-data real_channel_config /1,1,2/
-data real_channel_diagram /1,3,2/
-data real_sector_me /1,2,1/''',
+parameter(n_real_channels=5)
+integer real_channel_me(5),real_channel_fks(5)
+integer real_channel_config(5),real_channel_diagram(5),real_sector_me(6)
+data real_channel_me /1,2,1,1,1/
+data real_channel_fks /1,2,1,4,4/
+data real_channel_config /1,1,2,1,2/
+data real_channel_diagram /1,3,2,1,2/
+data real_sector_me /1,2,1,1,1,1/''',
             'real_matrix_weights.inc': '''double precision real_amp2(3)
 common /c_real_diagram_weights/ real_amp2
 logical get_real_diagram_weights
@@ -131,6 +131,24 @@ common /c_get_real_diagram_weights/ get_real_diagram_weights''',
         for (_, left), (_, right), expected in zip(first, second, [24.64, 36.96, 55.44, 83.16]):
             self.assertAlmostEqual(left[0], expected, places=11)
             self.assertAlmostEqual(right[0], expected, places=11)
+
+    def test_same_me_and_frame_keep_physical_flavours_separate(self):
+        # Row7 has another denominator-normalized ME and inverse diagram
+        # ratio. It shares a numeric flavour with foreign ME2, which is also
+        # excluded, and contains two different underlying Born sectors.
+        for sample in ('normal', 'zero_diagrams'):
+            with self.subTest(sample=sample):
+                _, first, _ = self.weights(4, sample)
+                _, second, _ = self.weights(5, sample)
+                self.assertEqual([tags[1] for tags, _ in first], [4, 4, 5, 5])
+                ratio = 1. / 3. if sample == 'normal' else 1.
+                for (_, left), (_, right) in zip(first, second):
+                    self.assertAlmostEqual(right[0], ratio * left[0], places=10)
+                sums = [sum(records[index][1][0]
+                            for records in (first, second)
+                            for index in (amp, amp + 2)) for amp in (0, 1)]
+                self.assertAlmostEqual(sums[0], 5667.2, places=9)
+                self.assertAlmostEqual(sums[1], 1700.16, places=9)
 
     def test_zero_selected_diagram_does_not_create_weight_records(self):
         summary, records, _ = self.weights(1, 'one_zero')
@@ -241,7 +259,7 @@ use test_state
 nrecords=0
 end subroutine
 
-subroutine update_fks_dir(sector)
+subroutine update_fks_dir_FO(sector)
 use test_state
 implicit none
 include 'orders.inc'
@@ -258,6 +276,11 @@ if(sector==2) then
 elseif(sector==3) then
  j_fks=2
  fkssymmetryfactor=3d0
+elseif(sector==4) then
+ fkssymmetryfactor=4d0
+elseif(sector==5) then
+ j_fks=2
+ fkssymmetryfactor=6d0
 endif
 ! Deliberately invalidate the shared buffer: the hard routine must retain
 ! the raw split amplitudes across sector changes.
@@ -327,8 +350,10 @@ double precision p(0:3,5),total
 if(.not.get_real_diagram_weights.and..not.(sample=='frames'.and.sector_now==3)) stop 71
 me_calls=me_calls+1
 amp_split=[8d0,48d0]
+if(sector_now>=4) amp_split=[80d0,96d0]
 total=sum(amp_split)
 real_amp2=[1d0,3d0,10000d0]
+if(sector_now>=4) real_amp2=[3d0,1d0,10000d0]
 if(sample=='zero_diagrams') real_amp2=0d0
 if(sample=='one_zero') real_amp2(1)=0d0
 end subroutine
@@ -342,6 +367,8 @@ if(abs(y)>1d0.or.xi<=0d0) stop 73
 if(sector_now==1) fks_Sij=.2d0
 if(sector_now==2) fks_Sij=.9d0
 if(sector_now==3) fks_Sij=.3d0
+if(sector_now==4) fks_Sij=.4d0
+if(sector_now==5) fks_Sij=.5d0
 end function
 
 subroutine amp_split_pos_to_orders(iamp,orders)
@@ -354,11 +381,12 @@ integer orders(2)
 get_orders_tag=orders(1)+10*orders(2)
 end function
 
-subroutine add_wgt(kind,orders,w1,w2,w3)
+subroutine add_wgt_buffered(kind,orders,w1,w2,w3,w4,raw_total)
 use extra_weights
 use test_state
 integer kind,orders(2)
-double precision w1,w2,w3
+double precision w1,w2,w3,w4,raw_total
+if(sector_now>=4.and.raw_total/=176d0) stop 76
 if(orders(1)/=QCD_power.or.dble(orders(2))/=wgtcpower) stop 74
 nrecords=nrecords+1
 tags(:,nrecords)=[kind,sector_now,QCD_power,int(wgtcpower),amp_pos,orders_tag]
@@ -401,7 +429,7 @@ if(action=='weights') then
   write(*,*) 'record',tags(:,i),recorded(:,i)
  enddo
  do i=1,3,2
-  call update_fks_dir(i)
+  call update_fks_dir_FO(i)
   write(*,*) 'soft',i,real_channel_soft_fraction(p)
  enddo
 elseif(action=='invariant') then

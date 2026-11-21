@@ -127,12 +127,16 @@ C CONSTANTS
 C  
       include "nexternal.inc"
       include "born_nhel.inc"
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       INTEGER     NCOMB
       PARAMETER ( NCOMB=  %(ncomb)d )
       INTEGER NAMPSO, NSQAMPSO
       PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER HEL_CONFIGS
+      PARAMETER (HEL_CONFIGS=%(hel_configs)s)
       INTEGER    THEL
-      PARAMETER (THEL=NCOMB)
+      PARAMETER (THEL=NCOMB*HEL_CONFIGS)
       INTEGER NGRAPHS
       PARAMETER (NGRAPHS=   %(ngraphs)d)
 C  
@@ -143,10 +147,10 @@ C
 C  
 C LOCAL VARIABLES 
 C  
-      INTEGER IHEL,IDEN,i,glu_ij
+      INTEGER IHEL,IDEN,i,glu_ij,FLAV_IDX,HEL_INDEX
       REAL*8 borns(2,NSQAMPSO)
-      INTEGER NTRY
-      DATA NTRY / 0 /
+      INTEGER NTRY(HEL_CONFIGS)
+      DATA NTRY / HEL_CONFIGS*0 /
       COMPLEX*16 T(2,NSQAMPSO)
       INTEGER NHEL(NEXTERNAL-1,NCOMB)
 %(helicity_lines)s
@@ -161,7 +165,8 @@ C      Double Precision amp2(%(ngraphs)d), jamp2(0:%(ncolor)d,0:NAMPSO)
 C      common/to_amps/  amp2,       jamp2
 C
 C MZ      DATA jamp2(0,0) /   %(ncolor)d/          
-      LOGICAL GOODHEL(NCOMB)
+      LOGICAL GOODHEL(NCOMB,HEL_CONFIGS)
+      DATA GOODHEL / THEL*.FALSE. /
       save goodhel
       double precision hel_fac
       integer get_hel,skip
@@ -172,9 +177,11 @@ C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
+      FLAV_IDX=EXTRA_CNT_FLAVOR_INDEX_D(NFKSPROCESS)
+      %(hel_index_setup)s
       glu_ij = ij_values(nfksprocess)
-      NTRY=NTRY+1
-      if (NTRY.lt.2) then
+      NTRY(HEL_INDEX)=NTRY(HEL_INDEX)+1
+      if (NTRY(HEL_INDEX).lt.2) then
          skip=1			 
          do while(nhel(glu_ij ,skip).ne.1)
             skip=skip+1
@@ -196,18 +203,23 @@ c MZ      ENDDO
       hel_fac=1d0
       DO IHEL=1,NCOMB
         if (nhel(glu_ij,ihel).le.0) then
-          IF ((GOODHEL(IHEL) .OR. GOODHEL(IHEL+SKIP) .OR. NTRY .LT. 2) ) THEN
+          IF ((GOODHEL(IHEL,HEL_INDEX) .OR.
+     $         GOODHEL(IHEL+SKIP,HEL_INDEX) .OR.
+     $         NTRY(HEL_INDEX) .LT. 2) ) THEN
             
-            CALL BORN_CNT%(proc_prefix)s(P1,NHEL(1,IHEL),IHEL,T,borns)
+            CALL BORN_CNT%(proc_prefix)s(P1,NHEL(1,IHEL),IHEL,
+     $           FLAV_IDX,T,borns)
             DO I=1,NSQAMPSO
                 ANS(1,I)=ANS(1,I)+T(1,I)
                 ANS(2,I)=ANS(2,I)+T(2,I)
             ENDDO
-            if ( borns(1,1).ne.0d0 .AND. .NOT. GOODHEL(IHEL) ) then
-              GOODHEL(IHEL)=.TRUE.
+            if ( borns(1,1).ne.0d0 .AND.
+     $           .NOT. GOODHEL(IHEL,HEL_INDEX) ) then
+              GOODHEL(IHEL,HEL_INDEX)=.TRUE.
             endif
-            if ( borns(2,1).ne.0d0 .AND. .NOT. GOODHEL(IHEL+SKIP) ) then
-              GOODHEL(IHEL+SKIP)=.TRUE.
+            if ( borns(2,1).ne.0d0 .AND.
+     $           .NOT. GOODHEL(IHEL+SKIP,HEL_INDEX) ) then
+              GOODHEL(IHEL+SKIP,HEL_INDEX)=.TRUE.
             endif
 	  ENDIF
         ENDIF
@@ -221,7 +233,7 @@ c MZ      ENDDO
       END
        
        
-      SUBROUTINE BORN_CNT%(proc_prefix)s(P,NHEL,HELL,ANS,borns)
+      SUBROUTINE BORN_CNT%(proc_prefix)s(P,NHEL,HELL,FLAV_IDX,ANS,borns)
 C  
 %(info_lines)s
 C RETURNS AMPLITUDE SQUARED SUMMED/AVG OVER COLORS
@@ -231,6 +243,8 @@ C FOR THE POINT WITH EXTERNAL LINES W(0:6,NEXTERNAL-1)
 C  
       USE ALOHA_OBJECT
       IMPLICIT NONE
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
 C  
 C CONSTANTS
 C  
@@ -251,7 +265,7 @@ C
 C ARGUMENTS 
 C  
       REAL*8 P(0:3,NEXTERNAL-1),borns(2,NSQAMPSO)
-      INTEGER NHEL(NEXTERNAL-1), HELL
+      INTEGER NHEL(NEXTERNAL-1), HELL, FLAV_IDX
       COMPLEX*16 ANS(2,NSQAMPSO)
 C  
 C LOCAL VARIABLES 
@@ -261,12 +275,12 @@ C
       parameter (nmo=nexternal-1)
       data ic /nmo*1/
       INTEGER FLAVOR(NEXTERNAL-1)
-      DATA FLAVOR /NMO*1/
       INTEGER  CF(NCOLOR*(NCOLOR+1)/2)
       INTEGER CF_INDEX, DENOM
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO), jamph(2, ncolor,nampso)
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+%(flavor_mask_decl)s
 C  
 C GLOBAL VARIABLES
 C  
@@ -295,6 +309,9 @@ C ----------
 C BEGIN CODE
 C ----------
 
+C don't cache for extra counterterms
+      calculatedBorn=.false.
+      FLAVOR(:) = 1
 C Extra counterterms always evaluate their own HELAS amplitudes.
       glu_ij = ij_values(nfksprocess)
       jamp(:,:) = (0d0,0d0)
@@ -305,6 +322,7 @@ C Extra counterterms always evaluate their own HELAS amplitudes.
         borns(2,I)=0d0
       ENDDO
       back_hel = nhel(glu_ij)
+%(flavor_mask_setup)s
       do ihel=-1,1,2
         if (ihel.eq.-1.or.nhel(glu_ij).ne.0) then
         if (nhel(glu_ij).ne.0) nhel(glu_ij) = ihel
@@ -493,5 +511,3 @@ C
 	  NSQSO=NSQAMPSO
 
       END
-
-
