@@ -1019,7 +1019,7 @@ def write_native_frame_bridge(path):
                 result.append('integer saved_helicity_frame(2),frame_leg')
             if re.match(r'(?i)\s*call\s+get_frame_mask_born\(', line):
                 result.insert(len(result)-1, 'call ensure_native_context()')
-            if re.match(r'(?i)\s*call\s+(?:sborn_native|sborn_onehel|sborn_sf_native|extra_cnt_native|binothlha)\(', line):
+            if re.match(r'(?i)\s*call\s+(?:sborn_native|sborn_amp|sborn_onehel|sborn_sf_native|extra_cnt_native|binothlha)\(', line):
                 result.pop()
                 result += ['saved_helicity_frame=born_active_helicity_frame',
                            'if(any(ids.ne.0).and..not.'
