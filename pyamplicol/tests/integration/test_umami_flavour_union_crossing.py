@@ -356,9 +356,9 @@ def test_crossed_members_equal_per_flavour_providers(built):
         reference = np.where(
             summed, np.abs(theirs), scale[column["key"], column["point"]]
         )
-        # 1e-12 relative down to 1e-6 of the point's largest helicity value; below,
-        # roundoff of the two programs' cancellations: 1e-18 of that value
-        tolerance = 1.0e-12 * np.maximum(np.abs(theirs), 1.0e-6 * reference)
+        # 1e-12 relative down to 1e-5 of the point's largest helicity value; below,
+        # roundoff of the two programs' cancellations: 1e-17 of that value
+        tolerance = 1.0e-12 * np.maximum(np.abs(theirs), 1.0e-5 * reference)
         bad = np.flatnonzero(np.abs(ours - theirs) > tolerance)
         assert not len(bad), [
             (

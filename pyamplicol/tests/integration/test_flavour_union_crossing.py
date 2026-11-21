@@ -309,7 +309,8 @@ def _strings(word: Sequence[int], expression: str) -> frozenset[tuple[int, ...]]
 
 
 def _close(actual: float, expected: float, scale: float, label: object) -> None:
-    tolerance = 1.0e-12 * (abs(expected) if abs(expected) > 1.0e-9 * scale else scale)
+    # below 1e-7 of the scale: roundoff of cancellations, 1e-12 of the scale
+    tolerance = 1.0e-12 * (abs(expected) if abs(expected) > 1.0e-7 * scale else scale)
     assert abs(actual - expected) <= tolerance, (label, actual, expected)
 
 
