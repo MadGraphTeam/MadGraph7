@@ -27,6 +27,8 @@ _INPUT_SHAPES = {
     "scale": (DataType.float64, ()),
     "pdg_id": (DataType.int32, ()),
     "beam_index": (DataType.int32, ()),
+    "random_flavor": (DataType.float64, ()),
+    "parton_densities": (DataType.float64, (2, 13)),
 }
 _OUTPUT_TYPES = {
     "matrix_element": DataType.float64,
@@ -40,6 +42,7 @@ _OUTPUT_TYPES = {
     "pdf": DataType.float64,
     "bias": DataType.float64,
     "matrix_element_ratio": DataType.float64,
+    "flavor_index": DataType.int32,
 }
 
 

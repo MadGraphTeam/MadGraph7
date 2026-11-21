@@ -104,6 +104,16 @@ MatrixElement::MatrixElement(
                 case beam_index_in:
                     arg_types.push_back("beam_index", batch_int);
                     break;
+                case random_flavor_in:
+                    if (!sample_random_inputs) {
+                        arg_types.push_back("random_flavor", batch_float);
+                    }
+                    break;
+                case parton_densities_in:
+                    arg_types.push_back(
+                        "parton_densities", {DataType::dt_float64, batch_size, {2, 13}}
+                    );
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
@@ -154,6 +164,9 @@ MatrixElement::MatrixElement(
                     break;
                 case matrix_element_ratio_out:
                     ret_types.push_back("matrix_element_ratio", batch_float);
+                    break;
+                case flavor_index_out:
+                    ret_types.push_back("flavor_index", batch_int);
                     break;
                 default:
                     throw std::invalid_argument("unknown output type");
@@ -227,8 +240,7 @@ NamedVector<Value> MatrixElement::build_function_impl(
     if (_sample_random_inputs) {
         std::size_t random_count = 0;
         for (auto& input : _inputs) {
-            if (input == random_color_in || input == random_helicity_in ||
-                input == random_diagram_in) {
+            if (is_random_input(input)) {
                 ++random_count;
             }
         }
@@ -284,11 +296,15 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case beam_index_in:
             input_key = UMAMI_IN_BEAM_INDEX;
             break;
+        case random_flavor_in:
+            input_key = UMAMI_IN_RANDOM_FLAVOR;
+            break;
+        case parton_densities_in:
+            input_key = UMAMI_IN_PARTON_DENSITIES;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
-        if (_sample_random_inputs &&
-            (input == random_color_in || input == random_helicity_in ||
-             input == random_diagram_in)) {
+        if (_sample_random_inputs && is_random_input(input)) {
             matrix_args.push_back(random.at(random_index));
             ++random_index;
         } else if (input == channel_in && _channel >= 0) {
@@ -355,6 +371,9 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case matrix_element_ratio_out:
             output_key = UMAMI_OUT_MATRIX_ELEMENT_RATIO;
             break;
+        case flavor_index_out:
+            output_key = UMAMI_OUT_FLAVOR_INDEX;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(output_key));
         matrix_args.push_back(size_arg);
@@ -368,9 +387,7 @@ std::vector<MatrixElement::MatrixElementInput> MatrixElement::external_inputs() 
         if (input == channel_in && _channel >= 0) {
             continue;
         }
-        if (!_sample_random_inputs ||
-            (input != random_color_in && input != random_helicity_in &&
-             input != random_diagram_in)) {
+        if (!_sample_random_inputs || !is_random_input(input)) {
             ret.push_back(input);
         }
     }

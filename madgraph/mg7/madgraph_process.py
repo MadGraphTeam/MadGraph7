@@ -39,7 +39,8 @@ from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
 from madgraph.mg7.model_widths import _proc_characteristic
 from madgraph.mg7.subprocess_amplicol import (
-    AmplicolSubprocess, amplicol_parameters, amplicol_subproc_args, is_amplicol,
+    AmplicolSubprocess, amplicol_parameters, amplicol_subproc_args, event_flavors,
+    is_amplicol, lc_flavor_mode, quark_lines,
 )
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
@@ -361,6 +362,7 @@ class MadgraphProcess:
                 self.merged_subprocess_data = json.load(f)
         else:
             self.merged_subprocess_data = None
+            self.drop_amplicol_without_lc_flavors()
 
         self.init_decay_mode()
         self.init_me_frame()
@@ -501,6 +503,27 @@ class MadgraphProcess:
             for meta in self.subprocess_data
             for single in _single_flavor_metas(meta)
         ]
+
+    def drop_amplicol_without_lc_flavors(self) -> None:
+        """Remove the [amplicol] subprocesses whose flavours all have more than
+        two quark lines under lc_flavors = two_lines(_resample): they are
+        neglected, or reached by the flavour switch of the other subprocesses."""
+        mode = lc_flavor_mode(self.run_card)
+        if mode == "all":
+            return
+        kept = [
+            meta for meta in self.subprocess_data
+            if not is_amplicol(meta)
+            or any(quark_lines(f["options"][0]) <= 2 for f in meta["flavors"])
+        ]
+        if len(kept) < len(self.subprocess_data):
+            logger.info(
+                "lc_flavors = %s: %d [amplicol] subprocesses without a flavour of "
+                "at most two quark lines are skipped",
+                mode,
+                len(self.subprocess_data) - len(kept),
+            )
+        self.subprocess_data = kept
 
     def drop_closed_channels(self) -> None:
         """Remove subprocesses the decaying particle is too light to produce.
@@ -1382,7 +1405,7 @@ class MadgraphProcess:
         for meta in self.subprocess_data:
             beam_pdgs = [
                 [int(flavor["options"][0][0]), int(flavor["options"][0][1])]
-                for flavor in meta["flavors"]
+                for flavor in event_flavors(meta, self)
             ]
             args.append(ms.SubprocessSystArgs(
                 qcd_power=int(meta.get("qcd_power", -1)), beam_pdgs=beam_pdgs))
@@ -1542,7 +1565,7 @@ class MadgraphProcess:
         matrix_elements = []
         flavor_remap = []
         for i, meta in enumerate(self.subprocess_data):
-            flavor_remap.append([int(f["index"]) for f in meta["flavors"]])
+            flavor_remap.append([int(f["index"]) for f in event_flavors(meta, self)])
             if i not in need:
                 matrix_elements.append(None)
                 continue
@@ -2328,7 +2351,7 @@ class MadgraphProcess:
             config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
+            config.buffered_steps_fraction = subproc.madnis_settings["buffered_steps_fraction"]
             config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
@@ -2757,7 +2780,7 @@ class MadgraphProcess:
             return [2212, 2212], list(self.beam_energies)
         data = self.subprocess_data[0]
         incoming = data["incoming"]
-        flavor0 = data["flavors"][0]["options"][0]
+        flavor0 = event_flavors(data, self)[0]["options"][0]
         init_pdgs = flavor0[:len(incoming)]
         beam_pdgs = [pdg if abs(code) in (81, 82) else code
                      for code, pdg in zip(incoming, init_pdgs)]
@@ -3064,6 +3087,11 @@ class MadgraphProcess:
                     os.path.join(gridpack_path, artifact_dir, name),
                 )
             os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
+            # the tables of the flavour switch, read at launch
+            for switch in glob.glob(
+                os.path.join(artifact_dir, "reweight", "flavor_switch_*.json")
+            ):
+                shutil.copy(switch, os.path.join(gridpack_path, artifact_dir, "reweight"))
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)

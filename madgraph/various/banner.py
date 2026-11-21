@@ -7889,12 +7889,21 @@ class RunCardMG7(RunCard):
         # the colour accuracy in a second pass
         self.add_toml_param('amplicol', 'color_accuracy', "full", allowed=["full", "lc"],
             comment="colour accuracy of the [amplicol] events, lc skips the second pass")
-        self.add_toml_param('amplicol', 'mode', "reweight", allowed=["unweight", "reweight"],
+        self.add_toml_param('amplicol', 'mode', "unweight", allowed=["unweight", "reweight"],
             comment="unweight or reweight the events to the colour accuracy")
-        self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.01,
+        # as the second pass: its overweights are carried into the second unweighting
+        self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.001,
             gridpack=True, comment="max_overweight_truncation of the leading-colour unweighting")
         self.add_toml_param('amplicol', 'first_pass_freeze_max_weight_after', 10000,
             gridpack=True, comment="freeze_max_weight_after of the leading-colour unweighting")
+        self.add_toml_param('amplicol', 'prior_partner_share', True,
+            comment="divide each flavour's sampling prior by its number of "
+                    "phase-space channels, its expected share in each")
+        self.add_toml_param('amplicol', 'lc_flavors', "two_lines_resample",
+            allowed=["all", "two_lines_resample", "two_lines"],
+            comment="flavours at leading colour: all; those with at most two quark "
+                    "lines, the full-colour pass switching events to the others "
+                    "(two_lines_resample); or those alone (two_lines)")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
@@ -7917,6 +7926,15 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the discrete-dimension network")
+        self.add_toml_param('madnis', 'flavor_levels', True,
+            comment="sample the flavours in three levels: initial state, final-state "
+                    "content (both learned) and flavour")
+        self.add_toml_param('madnis', 'flavor_prior_floor', 0.05,
+            comment="with flavor_levels, the fraction of the learned levels sampled "
+                    "from their prior")
+        self.add_toml_param('madnis', 'flavor_logit_bound', 2.5,
+            comment="with flavor_levels, bound c of the learned logits, c tanh(x / c); "
+                    "0: unbounded")
         self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True,
             comment="hidden units per layer of the channel weight network")
         self.add_toml_param('madnis', 'cwnet_layers', 3,
@@ -7953,14 +7971,15 @@ class RunCardMG7(RunCard):
             comment="Adam numerical stability constant")
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4,
             comment="Adam weight decay")
-        self.add_toml_param('madnis', 'grad_clip_threshold', 0.003,
+        self.add_toml_param('madnis', 'grad_clip_threshold', 0.03,
             comment="maximum gradient norm; 0 disables clipping")
         self.add_toml_param('madnis', 'buffer_capacity', 60000,
             comment="replay buffer size per channel; 0 disables buffering")
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000,
             comment="buffered samples needed before training on the buffer starts")
-        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8,
-            comment="fraction of training steps done on buffered samples")
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8, auto=True,
+            comment="fraction of training steps done on buffered samples; 0 "
+                    "allocates no buffer; auto: 0 for [amplicol], 0.8 otherwise")
         self.add_toml_param('madnis', 'buffer_skip_batches', 1000,
             comment="initial batches that are not stored in the buffer")
         self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95,
