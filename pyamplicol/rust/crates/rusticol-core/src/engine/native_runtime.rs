@@ -2717,9 +2717,10 @@ impl NativeRuntime {
                     "contracted-colour assignments have no colour-flow selector",
                 ));
             }
-            // Exact request partition: points sharing the program mask and selectors.
+            // Exact request partition: points sharing the crossing, program mask and
+            // selectors (a partition evaluates every requested assignment at every point).
             let mut partitions =
-                BTreeMap::<(Option<u64>, Option<u32>, Option<u32>), Vec<usize>>::new();
+                BTreeMap::<(u32, Option<u64>, Option<u32>, Option<u32>), Vec<usize>>::new();
             for point in 0..point_count {
                 let mut mask = Some(0_u64);
                 for id in &assignment_ids[request_offsets[point]..request_offsets[point + 1]] {
@@ -2730,6 +2731,7 @@ impl NativeRuntime {
                 }
                 partitions
                     .entry((
+                        assignments[assignment_ids[request_offsets[point]] as usize].crossing,
                         mask.filter(|_| !contracted),
                         helicity_by_point
                             .filter(|_| !contracted)
@@ -2746,7 +2748,7 @@ impl NativeRuntime {
             } else {
                 1
             };
-            for ((mask, helicity, color), mut points) in partitions {
+            for ((_, mask, helicity, color), mut points) in partitions {
                 if contracted {
                     // Equal requests share tiles: each tile contracts few assignments.
                     let request = |point: &usize| {
@@ -2788,7 +2790,10 @@ impl NativeRuntime {
                     .iter()
                     .map(|id| &*assignments[*id as usize].signs)
                     .collect::<Vec<_>>();
-                let mut values = vec![vec![0.0; points.len() * block]; requested.len()];
+                // zeroed allocations, not clones of one row block
+                let mut values = (0..requested.len())
+                    .map(|_| vec![0.0; points.len() * block])
+                    .collect::<Vec<_>>();
                 if contracted {
                     let helicities = helicity_by_point.map(|values| {
                         points
