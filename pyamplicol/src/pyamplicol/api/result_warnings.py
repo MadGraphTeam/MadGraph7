@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: 0BSD
-"""Warnings returned alongside a result (m-lit ux-besteffort).
+"""Warnings returned alongside a result.
 
 One structure, :class:`ResultWarning`, carries every warning an operation
-returns as DATA instead of printing, logging or raising it (USER 2026-11-11:
-a Monte-Carlo run must never have its logs swamped, the caller decides):
+returns as DATA instead of printing, logging or raising it (a Monte-Carlo
+run must never have its logs swamped; the caller decides):
 
 - ``source="numerical"``: points of a virtual evaluation that no configured
   alternative served with an accepted value: ``kind="best-effort"`` (the

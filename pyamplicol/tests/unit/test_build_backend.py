@@ -1868,6 +1868,50 @@ def test_python_extension_rebuilds_and_refreshes_embedded_sdk() -> None:
 
     assert "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256" in build_script
     assert "remove_dir_all(&sdk_output)" in build_script
+    # SDK files outside the native inputs (headers, archive form) change
+    # neither environment variable: every staged directory and file reruns it.
+    assert build_script.count('println!("cargo:rerun-if-changed={}"') == 2, build_script
+
+
+def test_sdk_staging_rewrites_only_changed_files(tmp_path: Path) -> None:
+    """The extension's build script reruns on newer staged files; an unchanged
+    restaging keeps every modification time, a changed one moves only what
+    changed, and nothing stale is left behind."""
+
+    def fresh(files: dict[str, bytes]) -> Path:
+        path = tmp_path / "_sdk.next"
+        for name, data in files.items():
+            (path / name).parent.mkdir(parents=True, exist_ok=True)
+            (path / name).write_bytes(data)
+        return path
+
+    staging = tmp_path / "_sdk"
+    first = {"include/a.h": b"a", "include/b.h": b"b", "lib/x.a": b"x"}
+    sdk._update_staging(fresh(first), staging)
+    old = 1_000_000_000_000_000_000
+    for path in staging.rglob("*"):
+        os.utime(path, ns=(old, old))
+
+    sdk._update_staging(fresh(first), staging)
+    assert not (tmp_path / "_sdk.next").exists()
+    assert {p.relative_to(staging).as_posix() for p in staging.rglob("*")} == {
+        "include",
+        "include/a.h",
+        "include/b.h",
+        "lib",
+        "lib/x.a",
+    }
+    assert all(p.stat().st_mtime_ns == old for p in staging.rglob("*"))
+
+    sdk._update_staging(
+        fresh({"include/a.h": b"a", "include/b.h": b"B", "lib/x.a.xz": b"y"}),
+        staging,
+    )
+    assert (staging / "include/b.h").read_bytes() == b"B"
+    assert (staging / "include/b.h").stat().st_mtime_ns > old
+    assert (staging / "include/a.h").stat().st_mtime_ns == old
+    assert not (staging / "lib/x.a").exists()
+    assert (staging / "lib/x.a.xz").read_bytes() == b"y"
 
 
 def test_candidate_lock_follows_every_crate_inheriting_the_workspace_version() -> None:

@@ -306,3 +306,48 @@ def test_python_rust_and_release_lock_wire_versions_are_identical() -> None:
     )
     assert release["prepared_model_bundle"] == PREPARED_MODEL_BUNDLE_SCHEMA_VERSION
     assert release["prepared_kernel_variant"] == PREPARED_KERNEL_VARIANT_ABI
+
+
+def _git_pins_of_workspace_manifests() -> dict[str, set[str]]:
+    """Every ``git = ..., rev = ...`` pin of the Cargo workspace's manifests
+    (the root and its members), by repository URL."""
+
+    root = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    manifests = [ROOT / "Cargo.toml"] + [
+        ROOT / member / "Cargo.toml" for member in root["workspace"]["members"]
+    ]
+    pins: dict[str, set[str]] = {}
+
+    def visit(table: object) -> None:
+        if isinstance(table, dict):
+            if isinstance(table.get("git"), str) and isinstance(table.get("rev"), str):
+                pins.setdefault(table["git"], set()).add(table["rev"])
+            for value in table.values():
+                visit(value)
+
+    for manifest in manifests:
+        visit(tomllib.loads(manifest.read_text(encoding="utf-8")))
+    return pins
+
+
+def test_cargo_lock_resolves_each_git_repository_to_one_revision() -> None:
+    """One source revision per git repository in Cargo.lock (two copies of a
+    crate family, e.g. NinjaRS's ninjars / -graph / -positional / -symbolica
+    at two revisions, would link two slot pools and two engines silently),
+    and every manifest pin of that repository names that same revision, so a
+    re-pin that misses one Cargo.toml line fails here."""
+
+    lock = tomllib.loads((ROOT / "Cargo.lock").read_text(encoding="utf-8"))
+    locked: dict[str, set[str]] = {}
+    for package in lock["package"]:
+        source = package.get("source", "")
+        if source.startswith("git+"):
+            url, _, commit = source.removeprefix("git+").partition("#")
+            locked.setdefault(url.split("?")[0], set()).add(commit)
+    assert locked, "no git source in Cargo.lock"
+    several = {url: sorted(found) for url, found in locked.items() if len(found) > 1}
+    assert not several, f"git repositories locked at several revisions: {several}"
+    for url, revisions in _git_pins_of_workspace_manifests().items():
+        assert url in locked, f"{url} is pinned in a manifest but not locked"
+        (commit,) = locked[url]
+        assert revisions == {commit}, (url, sorted(revisions), commit)

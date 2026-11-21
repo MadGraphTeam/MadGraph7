@@ -16,7 +16,7 @@ model importer, graph generator or alternate reducer. The existing tree SDK is
 unchanged. All interfaces return physical Born–loop interference, all generated
 squared coupling orders, and finite/single/double poles.
 
-**Loop-induced processes** (|A_loop|², no Born; m-lit LIT-SDK) are opened by the
+**Loop-induced processes** (|A_loop|², no Born) are opened by the
 same `rusticol_virtual_open`, with no opt-in, in artifacts of their own or mixed
 with Born-interfered processes: `metadata_json` names `"contribution_kind":
 "loop-induced"` and `"interference": "conj(loop)*loop"`; the shape has zero Born
@@ -123,7 +123,7 @@ enabled binary64 monitoring's own evaluations, is evaluated again on NinjaRS
 from its original exact inputs, in the call's own arithmetic, after the TIRust
 call (the per-point fallback; none on a TIR-only artifact); a point NinjaRS
 fails too fails with both reasons. In double-double and arbitrary precision
-every point the fallback serves is guarded (m-lit lit-fallback-guard): a
+every point the fallback serves is guarded: a
 rotation re-test (the point and its spin sources rotated exactly by the
 recommended checks' rotation and evaluated again on the fallback;
 `reduction_policy::FALLBACK_CHECK`) of the outputs the call returns (the
@@ -180,6 +180,29 @@ keeps its backend and per-point fallback; each result records `"unchecked"`
 in its `"reduction"` diagnostics; any other value is an invalid argument. It
 is a timing and benchmark mode with no accuracy certificate (measured
 accuracy per process: `docs/user/python-api.md`, "Unchecked reductions").
+`rusticol_virtual_set_lane_rescue(handle, on)` (C++ / Fortran / Rust
+`set_lane_rescue`; 1 by default, 0 off) is the lane rescue, as the Python
+API's `lane_rescue=`: a reduction lane a backend refuses is reduced again in
+double-double, then arbitrary precision, from its binary64 coefficients
+(checked and unchecked mode); 0 leaves it to fail its point; each result
+records `"lane_rescue"` in its `"reduction"` diagnostics.
+`rusticol_virtual_set_threads(handle, threads)` (C++ / Fortran / Rust
+`set_threads`; 0 by default: `RAYON_NUM_THREADS`, else every core) bounds
+the handle's later evaluations to that many native threads, clamped to the
+threads the process may use (`loop_artifact::effective_threads`; values
+independent of the count).
+
+Runtime options from a TOML (`Runtime::set_options`, C
+`rusticol_virtual_set_options(handle, toml_text)`; at open, the load bounded
+by its `threads`: `Runtime::open_with_options`, C
+`rusticol_virtual_open_with_options`): the run card's `[evaluation]` table
+(a full run card is accepted; only its runtime options are read), read by
+`rusticol_loop_reduction::runtime_options` with the run card's values and
+refusal texts, every key checked first and then applied through the same
+settings as the setters above (nothing changes on an error; a setter called
+afterwards overrides its key). `Runtime::options_json` (C
+`rusticol_virtual_options_json`) reads the settings back. The keys and their
+setters: `docs/user/configuration.md`, "Runtime options".
 
 The ordinary package builds the tree and virtual APIs into one
 `librusticol_capi.a`. Its existing `_sdk` bundle carries the virtual C/C++ headers,
@@ -301,7 +324,7 @@ version 1's `rusticol_virtual_open_with_policy` and the batch request's
 `verification_json`, which plan v4 refused); the precision rescue is the
 Python API's.
 
-**Stability monitoring** (m-lit LIT-SDK, binary64): `Runtime::set_stability_checks`
+**Stability monitoring** (binary64): `Runtime::set_stability_checks`
 (C `rusticol_virtual_set_stability_checks`, C++ `set_stability_checks`,
 Fortran `set_stability_checks`) takes every field of the Python API's
 `VirtualStabilityChecks`: a count of default rotations (or rotation
@@ -319,7 +342,7 @@ outputs) return `"estimates": null` with the reason.
 Point statuses keep their meaning; comparing an estimate with a target is the
 caller's.
 
-**Failure policy** (m-lit ux-besteffort; the Python API's `on_failure=`):
+**Failure policy** (the Python API's `on_failure=`):
 `Runtime::set_on_failure` (C `rusticol_virtual_set_on_failure`, C++ / Fortran /
 packaged Rust `set_on_failure`). The default, `"best-effort"`, never turns a
 per-point refusal into an error, so a Monte-Carlo run is never interrupted: a

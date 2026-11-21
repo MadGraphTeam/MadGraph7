@@ -88,6 +88,15 @@ const FALLBACK: &str = "ninjars";
 /// from [`policy_json`], the native SDKs from here).
 pub const DEFAULT_TARGET: f64 = 1e-5;
 
+/// The default decimal digits of arbitrary precision (USER 2026-11-18: 'going
+/// to arb prec has large overhead, so setting 500 digits there to amortize
+/// this cost would make sense, not 57!'; 'Make them 500 digits everywhere'):
+/// the digits of every arbitrary-precision default, the built-in rescue's
+/// last level, `profile --ground-truth arb` and the per-lane rescue's
+/// arbitrary step. An explicit digit count is never replaced. The one
+/// definition (Python reads it from [`policy_json`], native code from here).
+pub const DEFAULT_ARBITRARY_DIGITS: u32 = 500;
+
 /// The refusal of a target accuracy that is not a finite positive number:
 /// one text for every surface (the Python API's `config.models.
 /// reduction_target` reads it from [`policy_json`]).
@@ -122,6 +131,11 @@ pub fn target(value: f64) -> Result<f64, Refusal> {
 /// rescue stay their own settings. The one definition: Python reads it from
 /// [`policy_json`], the native SDKs from here.
 pub const DEFAULT_UNCHECKED: bool = false;
+
+/// The lane rescue's default (USER 2026-11-18, "Both, with a switch"): on, in
+/// the checked and the unchecked mode; the Python API's `lane_rescue=`, the
+/// SDKs' `rusticol_virtual_set_lane_rescue`.
+pub const DEFAULT_LANE_RESCUE: bool = true;
 
 /// What the unchecked setting does, as the policy record states it (one
 /// text for every surface: the Python API's and the SDKs' inspect records).
@@ -337,6 +351,10 @@ pub fn fallback_rejected(
     );
     let verdict = if estimate.is_nan() {
         format!("estimate NaN, not within {limit}")
+    } else if estimate > 1.0 {
+        // A relative estimate above 1 shows as ">1" (USER 2026-11-18, a
+        // display rule; the records keep the number).
+        format!("estimate >1, above {limit}")
     } else {
         format!("estimate {estimate:.1e} > {limit}")
     };
@@ -450,7 +468,8 @@ pub fn route(key: &str) -> Option<Route> {
 /// routes, the default target and the unchecked setting): `{"backends",
 /// "carriers", "defaults": {kind: backend}, "fallback", "fallback_check",
 /// "fallback_rotation", "target":
-/// {"default", "refusal"}, "unchecked": {"default", "refusal", "record"},
+/// {"default", "refusal"}, "arbitrary": {"default_digits"}, "unchecked":
+/// {"default", "refusal", "record"},
 /// "routes": {key: {"serves", "backends", "auto"}}}`.
 pub fn policy_json() -> serde_json::Value {
     serde_json::json!({
@@ -460,6 +479,8 @@ pub fn policy_json() -> serde_json::Value {
         "fallback_check": FALLBACK_CHECK,
         "fallback_rotation": FALLBACK_ROTATION,
         "target": {"default": DEFAULT_TARGET, "refusal": TARGET_REFUSAL},
+        "arbitrary": {"default_digits": DEFAULT_ARBITRARY_DIGITS},
+        "lane_rescue": {"default": DEFAULT_LANE_RESCUE},
         "unchecked": {
             "default": DEFAULT_UNCHECKED,
             "refusal": UNCHECKED_REFUSAL,
@@ -805,7 +826,7 @@ mod tests {
                 1e-5
             ),
             "auto: TIRust refused or failed the point (TIRust refused the row); the per-point \
-             NinjaRS fallback's value failed its rotation check: estimate 1.4e2 > \
+             NinjaRS fallback's value failed its rotation check: estimate >1, above \
              1e-5 = max(target 1e-5, 1e-5) (double-double)"
         );
         assert!(
@@ -960,6 +981,10 @@ mod tests {
         assert_eq!(record["fallback"], "ninjars");
         assert_eq!(record["target"]["default"], DEFAULT_TARGET);
         assert_eq!(record["target"]["refusal"], TARGET_REFUSAL);
+        assert_eq!(
+            record["arbitrary"]["default_digits"],
+            DEFAULT_ARBITRARY_DIGITS
+        );
         assert_eq!(
             record["routes"][RESOLVED]["backends"],
             serde_json::json!(["ninjars", "tirust"])

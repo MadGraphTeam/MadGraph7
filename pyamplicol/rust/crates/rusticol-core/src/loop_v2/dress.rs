@@ -237,6 +237,52 @@ impl ExactInvariants {
     }
 }
 
+/// The exact kinematics of one point's family lanes (the lane rescue of
+/// the executor, `loop_execution::v2`): per propagator its exact shift
+/// `p(mask)` and the exact invariant matrix `s[a ^ b]`, as [`LaneData`]
+/// casts them (a single-leg subset or complement on its leg's shell,
+/// [`V2Batch::leg_masses`]). `legs` are the point's `4 × legs` incoming
+/// components.
+pub fn exact_kinematics(
+    legs: &[Rational],
+    onshell: &[Option<Rational>],
+    masks: &[u64],
+) -> (Vec<[Rational; 4]>, Vec<Rational>) {
+    let mut exact = ExactInvariants {
+        legs: vec![legs.to_vec()],
+        momenta: vec![HashMap::new()],
+        squares: vec![HashMap::new()],
+        onshell: onshell.to_vec(),
+    };
+    let shifts = masks.iter().map(|&mask| exact.momentum(0, mask)).collect();
+    let squares = masks
+        .iter()
+        .flat_map(|&a| masks.iter().map(move |&b| a ^ b))
+        .map(|mask| exact.square(0, mask))
+        .collect();
+    (shifts, squares)
+}
+
+/// The exact rational of a carrier value (binary64, double-double: the sum
+/// of its two parts, MPFR), `None` when it is not finite.
+pub fn exact_value<T: Carrier>(value: &T) -> Option<Rational> {
+    use symbolica::domains::float::{DoubleFloat, Float};
+    let any = value as &dyn std::any::Any;
+    if let Some(x) = any.downcast_ref::<f64>() {
+        return Rational::try_from(*x).ok();
+    }
+    if let Some(x) = any.downcast_ref::<DoubleFloat>() {
+        let parts = (*x).into_inner();
+        let hi = Rational::try_from(parts.hi()).ok()?;
+        let lo = Rational::try_from(parts.lo()).ok()?;
+        return Some(&hi + &lo);
+    }
+    if let Some(x) = any.downcast_ref::<Float>() {
+        return x.is_finite().then(|| x.to_rational());
+    }
+    None
+}
+
 /// The inputs of one chunk of `L` lanes as lane vectors.
 pub struct LaneData<T, const L: usize> {
     /// Batch point of each lane (padded lanes repeat the last point).
@@ -691,14 +737,14 @@ fn kernel_input<'a, T: Carrier, const L: usize>(
     input: KernelInput,
     loop_momentum: &'a [T],
     slot_momenta: &'a [std::sync::Arc<Vec<T>>],
-    blocks: Option<&[usize]>,
+    blocks: Option<&[u32]>,
     data: &'a LaneData<T, L>,
 ) -> Option<&'a [T]> {
     let v = lane_vector_len(L);
     match input {
         KernelInput::Loop(mu) => Some(&loop_momentum[mu * v..][..v]),
         KernelInput::Current { slot, component } => {
-            Some(data.block_component(blocks.expect("block rows")[slot], component))
+            Some(data.block_component(blocks.expect("block rows")[slot] as usize, component))
         }
         KernelInput::Momentum { slot, mu } => Some(&slot_momenta[slot][mu * v..][..v]),
         KernelInput::Parameter => None,
@@ -807,14 +853,14 @@ pub fn build_factor<T: Carrier, const L: usize>(
     let reads = |row: usize| read.is_none_or(|read| read[row]);
     for term in &content.terms {
         if let Some(split) = &term.vertex {
-            if !term.rows.iter().any(|(row, _)| reads(*row)) {
+            if !term.rows.iter().any(|(row, _)| reads(row)) {
                 continue;
             }
             let vertex = &plan.vertices[split.id];
             let values = vertex_values(plan, split.id, shift, data, &mut scratch);
             let mut components = vec![data.zero.clone(); term.width() * v];
             let mut product = vec![data.zero.clone(); v];
-            for (row, blocks) in term.rows.iter().filter(|(row, _)| reads(*row)) {
+            for (row, blocks) in term.rows.iter().filter(|&(row, _)| reads(row)) {
                 block_components::<T, L>(term, blocks, data, &mut components, &mut product);
                 let target = &mut out[row * row_len..][..row_len];
                 for (e, (&(_b, nu, _bp, _exponents), &fused)) in
@@ -831,7 +877,7 @@ pub fn build_factor<T: Carrier, const L: usize>(
             continue;
         }
         let slot_momenta: Vec<_> = term.slots.iter().map(|&mask| data.momentum(mask)).collect();
-        for (row, blocks) in term.rows.iter().filter(|(row, _)| reads(*row)) {
+        for (row, blocks) in term.rows.iter().filter(|&(row, _)| reads(row)) {
             let target = &mut out[row * row_len..][..row_len];
             for binding in &term.bindings {
                 let kernel = &plan.kernels[binding.kernel];
@@ -854,7 +900,7 @@ pub fn build_factor<T: Carrier, const L: usize>(
 /// over the slots with the first slot slowest.
 fn block_components<T: Carrier, const L: usize>(
     term: &super::plan::ContentTerm,
-    blocks: &[usize],
+    blocks: &[u32],
     data: &LaneData<T, L>,
     out: &mut [T],
     scratch: &mut [T],
@@ -873,7 +919,11 @@ fn block_components<T: Carrier, const L: usize>(
         for previous in (0..filled).rev() {
             head.clone_from_slice(&out[previous * v..][..v]);
             for k in (0..dimension).rev() {
-                cmul_into::<T, L>(scratch, &head, data.block_component(blocks[slot], k));
+                cmul_into::<T, L>(
+                    scratch,
+                    &head,
+                    data.block_component(blocks[slot] as usize, k),
+                );
                 out[(previous * dimension + k) * v..][..v].clone_from_slice(scratch);
             }
         }

@@ -180,6 +180,7 @@ jobs:
           tests/unit/test_deployment_harness.py
           tests/unit/test_public_import_laziness.py
           tests/unit/test_repository_policy.py
+          tests/unit/test_ninjars_single_source.py
           tests/unit/test_sdk_config.py
           tests/unit/test_otf_cache.py
           tests/release
@@ -438,6 +439,11 @@ jobs:
       # in source-contracts: they are loop tests, which skip without a
       # Symbolica that accepts the package key, and source-contracts installs
       # no Symbolica.
+      # The stability display, wide magnitudes and tracked-precision files
+      # are the fast new one-loop tests of the lane-rescue / runtime-options
+      # import (about 20 s together). test_loop_v2_process_history.py is not
+      # listed: its child process uses Symbolica directly, which is refused
+      # without a personal licence once pytest holds the restricted thread.
       # The last seven files are the fastest of the restored one-loop engine
       # tests (about 70 s together).
       - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
@@ -492,6 +498,9 @@ jobs:
             tests/unit/test_loop_scalar_bindings.py \
             tests/unit/test_loop_scalar_frontend.py \
             tests/unit/test_loop_paired_model.py \
+            tests/unit/test_relative_text.py \
+            tests/unit/test_loop_v2_wide.py \
+            tests/unit/test_loop_v2_tracked_precision.py \
             tests/unit/test_unlicensed_generation.py::test_every_native_entry_point_holds_the_library_key \
             tests/unit/test_symbolica_thread_license.py \
             tests/unit/test_loop_packed_payloads.py \
