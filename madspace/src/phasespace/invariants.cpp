@@ -1,8 +1,12 @@
 #include "madspace/phasespace/invariants.hpp"
 
+#include <stdexcept>
+
 using namespace madspace;
 
-Invariant::Invariant(double power, double mass, double width, double flat_window) :
+Invariant::Invariant(
+    double power, double mass, double width, double flat_window, double shift
+) :
     Mapping(
         "Invariant",
         {{"random", batch_float}},
@@ -12,7 +16,14 @@ Invariant::Invariant(double power, double mass, double width, double flat_window
     _power(power),
     _mass(mass),
     _width(width),
-    _flat_window(flat_window) {}
+    _flat_window(flat_window),
+    _shift(shift) {
+    if (!(shift > 0.)) {
+        throw std::invalid_argument(
+            "Invariant: the shift of the pole must be positive"
+        );
+    }
+}
 
 Mapping::Result Invariant::build_forward_impl(
     FunctionBuilder& fb,
@@ -27,8 +38,8 @@ Mapping::Result Invariant::build_forward_impl(
         : _width != 0 ? fb.breit_wigner_invariant(r, _mass, _width, s_min, s_max)
         : _power == 0 ? fb.uniform_invariant(r, s_min, s_max)
         : _power == 1
-        ? fb.stable_invariant(r, _mass, s_min, s_max)
-        : fb.stable_invariant_nu(r, _mass, _power, s_min, s_max);
+        ? fb.stable_invariant(r, _mass, _shift, s_min, s_max)
+        : fb.stable_invariant_nu(r, _mass, _shift, _power, s_min, s_max);
     return {{{"invariant", s}}, det};
 }
 
@@ -46,7 +57,7 @@ Mapping::Result Invariant::build_inverse_impl(
         ? fb.breit_wigner_invariant_inverse(s, _mass, _width, s_min, s_max)
         : _power == 0 ? fb.uniform_invariant_inverse(s, s_min, s_max)
         : _power == 1
-        ? fb.stable_invariant_inverse(s, _mass, s_min, s_max)
-        : fb.stable_invariant_nu_inverse(s, _mass, _power, s_min, s_max);
+        ? fb.stable_invariant_inverse(s, _mass, _shift, s_min, s_max)
+        : fb.stable_invariant_nu_inverse(s, _mass, _shift, _power, s_min, s_max);
     return {{{"random", r}}, det};
 }

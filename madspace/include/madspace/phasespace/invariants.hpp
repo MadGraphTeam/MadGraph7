@@ -36,9 +36,13 @@ namespace madspace {
  * propagator, whose matrix element vanishes in that window.
  *
  * In the power-law and logarithmic forms the pole is shifted to
- * @f$m^2 - 0.01@f$ (in the units of the invariant), which keeps them finite
- * at a boundary on the pole. The naive choice @f$\nu = 2@f$ is rarely
- * optimal; @ref PhaseSpaceMapping uses @f$\nu = 0.8@f$ by default.
+ * @f$m^2 - \delta@f$ (in the units of the invariant), with
+ * @f$\delta = 0.01@f$ by default, which keeps them finite at a boundary on
+ * the pole. A larger @p shift sets a scale for a falling density without
+ * a lower bound, @f$(s + \delta)^{-\nu}@f$ with @f$\nu > 1@f$ from
+ * @f$s = 0@f$: flat below @f$\delta@f$ and @f$s^{-\nu}@f$ above. The naive
+ * choice @f$\nu = 2@f$ is rarely optimal for a propagator;
+ * @ref PhaseSpaceMapping uses @f$\nu = 0.8@f$ there by default.
  *
  * `batch` is the leading batch dimension.
  *
@@ -71,9 +75,17 @@ public:
      * @param flat_window  Half-width @f$w@f$, in units of @p width, of the
      *               window in which the Breit-Wigner density is flattened;
      *               `0` (the default) keeps the plain Breit-Wigner.
+     * @param shift  Shift @f$\delta@f$ of the pole below @f$m^2@f$ in the
+     *               power-law and logarithmic forms, in the units of the
+     *               invariant. Must be positive.
+     * @throws std::invalid_argument for a @p shift that is not positive.
      */
     Invariant(
-        double power = 0, double mass = 0, double width = 0, double flat_window = 0
+        double power = 0,
+        double mass = 0,
+        double width = 0,
+        double flat_window = 0,
+        double shift = 1e-2
     );
 
 private:
@@ -88,7 +100,7 @@ private:
         const NamedVector<Value>& conditions
     ) const override;
 
-    double _power, _mass, _width, _flat_window;
+    double _power, _mass, _width, _flat_window, _shift;
 };
 
 } // namespace madspace
