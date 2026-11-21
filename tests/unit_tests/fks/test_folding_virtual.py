@@ -12,8 +12,13 @@ from tests.unit_tests.fks.test_momentum_maps import TEMPLATE, fortran_routine
 def production_fixture():
     """Exercise production link collection, selection, residual and cache code."""
     source = fortran_routine(TEMPLATE / 'fks_singular.f', 'bornsoftvirtual')
-    reset = source[source.index('c The first radiation trial'):source.index('      if (firsttime) then')]
-    links = source[source.index(' 547  continue'):source.index('      use_surrogate=VirtTrickSurrogate.ge.1')]
+    reset_end = source.index('\n', source.index(
+        '      first_virtual_evaluation=.not.virtual_fold_ready'))
+    reset = source[source.index('c The first radiation trial'):reset_end] + '\n'
+    # Include the complete fixed-form label line, not a substring starting
+    # inside its five-column label field.
+    links_start = source.rfind('\n', 0, source.index(' 547  continue')) + 1
+    links = source[links_start:source.index('      use_surrogate=VirtTrickSurrogate.ge.1')]
     start = source.index('c The scalar fit is valid only for one virtual Born order normalized by')
     block = source[start:source.index('c eq.(MadFKS.C.13)', start)]
     driver = fortran_routine(TEMPLATE / 'driver_mintFO.f', 'sigint')

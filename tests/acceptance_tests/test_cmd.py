@@ -839,13 +839,16 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
+        # The stored numerical reference is for the physical u d~ channel.
+        self.do('set apply_flavor_grouping False --no_save')
+
         model_path = pjoin(MG5DIR, 'tests', 'input_files', 'loop_smgrav')
         self.do('import model %s' % model_path)
         self.do('generate p p > w+ y')
         self.do('output standalone_fortran %s ' % self.out_dir)
 
         # Pin down whichever P*_udx_wpy directory the exporter chose
-        # (depends on flavor-grouping defaults).
+        # in the physical-flavour output.
         sub_root = pjoin(self.out_dir, 'SubProcesses')
         proc_candidates = [d for d in os.listdir(sub_root)
                            if d.endswith('_udx_wpy') and d.startswith('P')]
@@ -7504,7 +7507,7 @@ set boost_choice [6, -6] pt [0, 0]
 C     The process calculated in this file is: 
 C     Gamma(3,2,1)
 C     
-      SUBROUTINE FFV1P0_3(F1, F2, COUP, M3, W3,V3)
+      RECURSIVE SUBROUTINE FFV1P0_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -7557,7 +7560,7 @@ C
 C     The process calculated in this file is: 
 C     Gamma(3,2,-1)*ProjM(-1,1)
 C     
-      SUBROUTINE FFV2_3(F1, F2, COUP, M3, W3,V3)
+      RECURSIVE SUBROUTINE FFV2_3(F1, F2, COUP, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -7609,7 +7612,7 @@ C     The process calculated in this file is:
 C     Coup(1) * (Gamma(3,2,-1)*ProjM(-1,1)) + Coup(2) *
 C      (Gamma(3,2,-1)*ProjM(-1,1) + 2*Gamma(3,2,-1)*ProjP(-1,1))
 C
-      SUBROUTINE FFV2_4_3(F1, F2, COUP1, COUP2, M3, W3,V3)
+      RECURSIVE SUBROUTINE FFV2_4_3(F1, F2, COUP1, COUP2, M3, W3,V3)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -8232,6 +8235,8 @@ C
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
+        # This checks legacy subprocess symmetry, independently of flavour grouping.
+        self.do('set apply_flavor_grouping False --no_save')
         self.do('import model MSSM_SLHA2')
         self.do('define q = u d u~ d~')
         self.do('set group_subprocesses True')
@@ -8259,11 +8264,27 @@ C
 """
 
                                            
-        self.assertEqual(analyse(target.split('\n')), 
-                         analyse(open(os.path.join(self.out_dir,
-                                           'SubProcesses',
-                                           'P0_qq_gogo_go_qqn1_go_qqn1',
-                                           'symfact_orig.dat'))))
+        subproc = os.path.join(self.out_dir, 'SubProcesses',
+                               'P0_qq_gogo_go_qqn1_go_qqn1')
+        with open(os.path.join(subproc, 'symfact_orig.dat')) as stream:
+            original = analyse(stream)
+
+        def symmetry_classes(rows):
+            # Diagram order can change; the independent reference specifies
+            # three unit-weight classes of four symmetric channels each.
+            weights = dict(rows)
+            self.assertEqual(sorted(weights), list(range(1, 13)))
+            sizes = {}
+            for channel, weight in rows:
+                representative = channel if weight > 0 else -weight
+                self.assertIn(representative, weights)
+                self.assertGreater(weights[representative], 0)
+                sizes[representative] = sizes.get(representative, 0) + 1
+            return sorted((weights[channel], size)
+                          for channel, size in sizes.items())
+
+        self.assertEqual(symmetry_classes(original),
+                         symmetry_classes(analyse(target.split('\n'))))
 
         # Compile the Source directory
         status = subprocess.call(['make'],
@@ -8287,11 +8308,10 @@ C
 
                 
         # Check the new contents of the symfact.dat file
-        self.assertEqual(analyse(open(os.path.join(self.out_dir,
-                                           'SubProcesses',
-                                           'P0_qq_gogo_go_qqn1_go_qqn1',
-                                           'symfact.dat'))), 
-                         analyse(target.split('\n')))
+        with open(os.path.join(subproc, 'symfact.dat')) as stream:
+            # The compiled numerical symmetry finder must reproduce the
+            # generator's complete map in the same diagram ordering.
+            self.assertEqual(analyse(stream), original)
 
     def test_madevent_subproc_group_decay_chain(self):
         """Test decay chain output using the SubProcess group functionality"""

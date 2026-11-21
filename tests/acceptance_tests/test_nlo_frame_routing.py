@@ -27,7 +27,8 @@ class TestNLOFrameRouting(unittest.TestCase):
         root = Path(MG5DIR)
         output = Path(self.tmpdir)/'process'
         cmd = offload.TestNLORealFortranOracle._new_cmd()
-        for line in ('import model loop_sm',
+        for line in ('set nb_core 2 --no_save',
+                     'import model loop_sm',
                      'set apply_flavor_grouping False --no_save',
                      'generate u u~ > z{0} g [real=QCD]',
                      f'output standalone_fortran --fks --limits {output}'
@@ -57,7 +58,14 @@ class TestNLOFrameRouting(unittest.TestCase):
         objects = [p.with_suffix('.o').name for p in sub.glob('matrix_*.f')]
         objects += [p.with_suffix('.o').name for p in sub.glob('b_sf_*.f')]
         objects += ['sborn_sf.o']
-        objects += ['real_me_chooser.o', 'splitorders_stuff.o', 'born.o', 'frame_pipeline.o']
+        objects += ['real_me_chooser.o', 'splitorders_stuff.o', 'born.o',
+                    'extra_cnt_wrapper.o', 'frame_pipeline.o']
+        oracle = offload.TestNLORealFortranOracle()
+        native_objects = oracle._native_real_link_objects(str(output), str(sub))
+        native_flags = oracle._native_real_link_flags(str(output), str(sub))
+        objects += native_objects
+        if 'driver.o' not in objects:
+            objects.append('driver.o')
         backend_options = []
         bridge_flags = []
         if backend:
@@ -65,10 +73,11 @@ class TestNLOFrameRouting(unittest.TestCase):
             subprocess.check_call(['make', '-f', 'nlo_real.mk', 'BACKEND='+backend,
                                    'FPTYPE=d', '-j1'], cwd=sub)
             objects += ['nlo_real_offload.o']
-            bridge_flags = ['-L.', '-lnlo_real_bridge', '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl']
+            bridge_flags = offload.native_bridge_link_flags()
         subprocess.check_call(['make', '-j1', *objects, *backend_options], cwd=sub)
         flags = ['gfortran', '-O0', '-I../../lib', '-I../../Source/MODEL',
                  '-ffixed-line-length-132', '-ffunction-sections', '-fdata-sections']
+        subprocess.check_call(['make', 'fks_phase_space_data.o'], cwd=sub)
         for source, target in (('boost_to_frame.f', 'frame_boost.o'), ('driver_vec.f', 'frame_vec.o')):
             subprocess.check_call(flags+['-c', source, '-o', target], cwd=sub)
         (sub/'frame_lo2.f').write_text('\n'.join(
@@ -76,9 +85,10 @@ class TestNLOFrameRouting(unittest.TestCase):
         subprocess.check_call(flags+['-c', 'frame_lo2.f', '-o', 'frame_lo2.o'], cwd=sub)
         subprocess.check_call(flags+['-c', str(root/'Template/Common/Source/impose_frame_rest.f'),
                                      '-o', 'frame_rest.o'], cwd=sub)
-        subprocess.check_call(['gfortran', '-Wl,--gc-sections', '-o', 'frame_pipeline', *objects,
-                               'driver.o', 'frame_lo2.o', 'frame_rest.o', 'frame_boost.o',
-                               'frame_vec.o', '-L../../lib', '-ldhelas', '-lmodel', *bridge_flags], cwd=sub)
+        subprocess.check_call(['gfortran', offload.native_section_link_flag(), '-o', 'frame_pipeline', *objects,
+                               'fks_phase_space_data.o', 'frame_lo2.o', 'frame_rest.o', 'frame_boost.o',
+                               'frame_vec.o', '-L../../lib', '-ldhelas', '-lmodel',
+                               *bridge_flags, *native_flags], cwd=sub)
 
         def point(vectors, masses):
             energies = [math.sqrt(sum(x*x for x in v)+m*m) for v, m in zip(vectors, masses)]
@@ -123,24 +133,34 @@ class TestNLOFrameRouting(unittest.TestCase):
                 links += 1
         self.assertEqual(checks, 8)
         self.assertEqual(links, 12)
-        self._check_isr_phase(sub, flags, data)
+        self._check_isr_phase(sub, flags, data, native_objects, native_flags)
 
-    def _check_isr_phase(self, sub, flags, data):
-        """Contract nonzero spin amplitudes with the actual scalar/store phases."""
+    def _check_isr_phase(self, sub, flags, data, native_objects, native_flags):
+        """Compare the scalar ISR contraction with an independent tensor sum."""
         root = Path(MG5DIR)
         source = (root/'Template/NLO/SubProcesses/fks_singular.f').read_text()
         routines = []
-        for name in ('sborncol_isr', 'sborncol_isr_store', 'AP_reduced',
+        for name in ('sborncol_isr', 'AP_reduced',
                      'Qterms_reduced_spacelike', 'getaziangles'):
             start = source.index('      subroutine '+name+'(')
             routines.append(source[start:source.index('\n      end\n', start)+11])
-        (sub/'isr_blocks.f').write_text('\n'.join(routines))
+        # Supply controlled nonzero Born tensors only in this isolated phase
+        # probe. The full production-lane probe above uses the actual provider.
+        blocks = '\n'.join(routines)
+        self.assertEqual(blocks.count('call sborn_frame('), 2)
+        self.assertEqual(blocks.count('call extra_cnt_frame('), 1)
+        (sub/'isr_blocks.f').write_text(blocks.replace(
+            'call sborn_frame(', 'call isr_probe_born(').replace(
+            'call extra_cnt_frame(', 'call isr_probe_no_extra('))
         shutil.copy2(root/'tests/input_files/nlo_isr_frame_driver.f', sub/'isr_frame.f')
         for name in ('isr_blocks', 'isr_frame'):
             subprocess.check_call(flags+['-c', name+'.f', '-o', name+'.o'], cwd=sub)
-        subprocess.check_call(['gfortran', '-Wl,--gc-sections', '-o', 'isr_frame',
+        subprocess.check_call(['gfortran', offload.native_section_link_flag(), '-o', 'isr_frame',
                                'isr_blocks.o', 'isr_frame.o', 'frame_boost.o', 'frame_rest.o',
-                               '-L../../lib', '-lgeneric', '-ldhelas', '-lmodel'], cwd=sub)
+                               'fks_phase_space_data.o', 'born.o', 'extra_cnt_wrapper.o',
+                               *native_objects,
+                               '-L../../lib', '-lgeneric', '-ldhelas', '-lmodel',
+                               *native_flags], cwd=sub)
         probe = subprocess.run(['./isr_frame'], cwd=sub, input=data, text=True,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         result = probe.stdout

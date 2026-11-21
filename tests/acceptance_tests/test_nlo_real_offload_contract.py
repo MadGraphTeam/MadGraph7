@@ -45,6 +45,16 @@ from madgraph.various import banner
 pjoin = os.path.join
 # UMAMI 1.5 appends NLO keys after the released 1.3 flavour-switch keys.
 IN_G_STRONG, IN_G_EW, OUT_SQUARED_ORDERS = 17, 18, 14
+
+
+def native_section_link_flag():
+    return '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections'
+
+
+def native_bridge_link_flags(directory="."):
+    if sys.platform == 'darwin':
+        return ['-L'+str(directory), '-lnlo_real_bridge', '-Wl,-rpath,@loader_path', '-lc++', '-ldl']
+    return ['-L'+str(directory), '-lnlo_real_bridge', '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl']
 ORACLE_PATH = pjoin(
     MG5DIR, 'tests', 'input_files', 'nlo_real_amplitudes_oracle.json')
 
@@ -494,7 +504,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
     def _native_real_link_flags(self, output_path, subproc):
         if not os.path.isfile(pjoin(subproc, 'native_real_me_chooser.f')):
             return []
-        return ['-lmc_born_support', '-Wl,--gc-sections',
+        return ['-lmc_born_support', native_section_link_flag(),
                 '-Wl,-rpath,'+pjoin(output_path, 'lib')]
 
     def _compile_routed_driver(self, output_path, case, vector=False,
@@ -531,9 +541,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
         misc.compile(objects + [backend_option], cwd=subproc)
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects + [
-                '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
-                '-L%s' % subproc, '-lnlo_real_bridge',
-                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl']+
+                '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel']+
+                native_bridge_link_flags(subproc)+
                 self._native_real_link_flags(output_path, subproc),
             cwd=subproc)
         return executable
@@ -906,9 +915,8 @@ C     Initialize the native EW coupling for the caller-side order weights.
         executable = pjoin(subproc, 'check_real_batch')
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects + [
-                '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel',
-                '-L%s' % subproc, '-lnlo_real_bridge',
-                '-Wl,-rpath,$ORIGIN', '-lstdc++', '-ldl']+
+                '-L%s' % pjoin(output_path, 'lib'), '-ldhelas', '-lmodel']+
+                native_bridge_link_flags(subproc)+
                 self._native_real_link_flags(output_path, subproc), cwd=subproc)
 
         points = {point['id']: point for point in case['points']}

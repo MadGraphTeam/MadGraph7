@@ -246,16 +246,19 @@ class IOExportV4IOTest(IOTests.IOTestManager,
                 'SUBROUTINE %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P,HEL, FLAV_IDX, ANS)',
                 content)
 
-        # The caller side. Both drivers pass an all-ones INTEGER array where
-        # FLAV_IDX is expected, which resolves to its first element: the
-        # canonical flavor. That is deliberate -- neither driver knows about
-        # merged flavors -- but the argument count has to line up.
+        # The standalone driver selects its canonical flavour. MadLoop maps
+        # its physical virtual row to the matching Born row before evaluation.
+        # Both must pass the flavour index in the third argument slot.
         self.assertIn(
             'CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,FLAVOR,MATELEMS)',
             read('check_sa_splitOrders.f'))
+        loop = read('loop_optimized', 'loop_matrix_standalone.inc')
         self.assertIn(
-            'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
-            read('loop_optimized', 'loop_matrix_standalone.inc'))
+            'BORN_FLAV_IDX=%(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)', loop)
+        self.assertIn('IF (BORN_FLAV_IDX.EQ.0) THEN', loop)
+        self.assertIn(
+            'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS('
+            'P_USER,USERHEL,BORN_FLAV_IDX,\n     $ BORNBUFF(0))', loop)
 
     def test_crossed_get_all_inter_takes_nhel_in_caller_order(self):
         """GET_ALL_INTER_IDX (and its split-order twin

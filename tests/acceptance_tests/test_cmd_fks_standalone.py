@@ -23,12 +23,14 @@ multi-point determinism, output shape, invalid controls and FKS limits.
 from __future__ import division
 from __future__ import absolute_import
 import glob
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -168,6 +170,7 @@ class TestFKSStandalone(unittest.TestCase):
         cmd = MGCmd.MasterCmd()
         cmd.no_notification()
         cmd.run_cmd('set automatic_html_opening False --no_save')
+        cmd.run_cmd('set nb_core 2 --no_save')
         return cmd
 
     @staticmethod
@@ -205,6 +208,10 @@ class TestFKSStandalone(unittest.TestCase):
         self._run(cmd, 'import model %s' % model)
         self._run(cmd, 'generate %s' % process)
         self._run(cmd, 'output %s -f' % path)
+        self._prepare_matrix_probe_cards(path)
+
+    @staticmethod
+    def _prepare_matrix_probe_cards(path):
         # The production comparison needs model and helicity libraries but no
         # PDF values. Keep the acceptance test self-contained on systems where
         # LHAPDF is not installed, just like the standalone output under test.
@@ -242,6 +249,14 @@ class TestFKSStandalone(unittest.TestCase):
         out = subprocess.check_output(command, cwd=born_dir,
                                       stderr=subprocess.STDOUT)
         return out.decode(errors='replace')
+
+    @staticmethod
+    def _native_probe_links(output_path, subproc):
+        """Use the real native context/model-state closure for isolated probes."""
+        from tests.acceptance_tests.test_nlo_real_offload_contract import TestNLORealFortranOracle
+        probe = TestNLORealFortranOracle()
+        return (probe._native_real_link_objects(output_path, subproc),
+                probe._native_real_link_flags(output_path, subproc))
 
     @staticmethod
     def _canonicalize_flv_identifiers(source):
@@ -602,6 +617,8 @@ class TestFKSStandalone(unittest.TestCase):
             objects = matrix_objects + [
                 'real_me_chooser.o', 'splitorders_stuff.o',
                 'check_real_oracle.o']
+            native_objects, native_flags = self._native_probe_links(output_path, subproc)
+            objects += native_objects
             source = pjoin(subproc, 'check_real_oracle.f')
             with open(source, 'w') as stream:
                 stream.write(self._wpwm_real_driver_source())
@@ -610,7 +627,7 @@ class TestFKSStandalone(unittest.TestCase):
             subprocess.check_call(
                 ['gfortran', '-o', executable] + objects + [
                     '-L%s' % pjoin(output_path, 'lib'),
-                    '-ldhelas', '-lmodel'], cwd=subproc)
+                    '-ldhelas', '-lmodel'] + native_flags, cwd=subproc)
             output = subprocess.check_output(
                 [executable], cwd=subproc, stderr=subprocess.STDOUT)
             for line in output.decode(errors='replace').splitlines():
@@ -859,6 +876,7 @@ C     batched one reuses, as set_goodhel does in a run
                 if int(real) == number]
         self.assertTrue(rows, 'no FKS configuration calls SMATRIX%d' % number)
 
+        self._prepare_matrix_probe_cards(path)
         misc.compile(cwd=pjoin(path, 'Source'))
         # the P directory makefile includes the analysis options a launch
         # writes: the dummy analysis, as the aMC@NLO launch writes it
@@ -871,13 +889,15 @@ C     batched one reuses, as set_goodhel does in a run
                    sorted(glob.glob(pjoin(subproc, 'matrix_*.f')))]
         objects += ['real_me_chooser.o', 'splitorders_stuff.o',
                     'check_real_cf.o']
+        native_objects, native_flags = self._native_probe_links(path, subproc)
+        objects += native_objects
         with open(pjoin(subproc, 'check_real_cf.f'), 'w') as stream:
             stream.write(self._real_cf_driver_source())
         misc.compile(objects, cwd=subproc)
         executable = pjoin(subproc, 'check_real_cf')
         subprocess.check_call(
             ['gfortran', '-o', executable] + objects + [
-                '-L%s' % pjoin(path, 'lib'), '-ldhelas', '-lmodel'],
+                '-L%s' % pjoin(path, 'lib'), '-ldhelas', '-lmodel'] + native_flags,
             cwd=subproc)
         stdin = '%d\n' % rows[0] + ''.join(
             ' '.join('%.17e' % component for component in momentum) + '\n'
@@ -994,19 +1014,30 @@ C     batched one reuses, as set_goodhel does in a run
         objects = (matrix_objects + counterterm_objects +
                    ['real_me_chooser.o', 'extra_cnt_wrapper.o',
                     'splitorders_stuff.o'])
+        native_objects, native_flags = self._native_probe_links(output_path, subproc)
+        objects += native_objects
         self.assertTrue(matrix_objects)
         self.assertTrue(counterterm_objects)
 
         source = pjoin(subproc, 'check_mixed_wj.f')
+        from tests.acceptance_tests.test_nlo_real_offload_contract import TestNLORealFortranOracle
+        oracle = TestNLORealFortranOracle()
+        physical_rows, unused_counts = oracle._real_me_contract(subproc)
+        self.assertEqual(sorted(physical_rows),
+                         list(range(1, max(physical_rows) + 1)))
+        # The runtime table also includes Born/history aliases owned by other
+        # native contexts. This probe covers every physical real-provider row.
+        driver = self._mixed_wj_driver_source().replace(
+            'DO I=1,FKS_CONFIGS', 'DO I=1,%d' % max(physical_rows))
         with open(source, 'w') as fsock:
-            fsock.write(self._mixed_wj_driver_source())
+            fsock.write(driver)
         misc.compile(objects + ['check_mixed_wj.o'], cwd=subproc)
 
         executable = pjoin(subproc, 'check_mixed_wj')
         libdir = pjoin(output_path, 'lib')
         subprocess.check_call(
             ['gfortran', '-o', executable, 'check_mixed_wj.o'] + objects +
-            ['-L%s' % libdir, '-ldhelas', '-lmodel'], cwd=subproc)
+            ['-L%s' % libdir, '-ldhelas', '-lmodel'] + native_flags, cwd=subproc)
         output = subprocess.check_output(
             [executable], cwd=subproc, stderr=subprocess.STDOUT)
         return self._parse_mixed_wj_driver(output.decode(errors='replace'))
@@ -1051,6 +1082,7 @@ C     batched one reuses, as set_goodhel does in a run
         """
         import random
         import math
+        from tests.acceptance_tests import test_nlo_real_offload_contract as offload
         from madgraph.various.rambo import RAMBO, FortranList
 
         old_random_state = random.getstate()
@@ -1084,7 +1116,7 @@ C     batched one reuses, as set_goodhel does in a run
         DO J=1,NEXTERNAL
           READ(*,*) (P(M,J),M=0,3)
         ENDDO
-        CALL SMATRIX_REAL(P,RET,WGT)
+        CALL PHYSICAL_REAL(P,RET,WGT)
         WRITE(*,*) 'VALUE',K,FKS_I_D(NFKSPROCESS),
      $    FKS_J_D(NFKSPROCESS),WGT,RET
       ENDDO
@@ -1104,38 +1136,96 @@ C     batched one reuses, as set_goodhel does in a run
                     'output standalone_fortran --fks --limits %s' % path]:
                 self._run(cmd, line)
             misc.compile(cwd=pjoin(path, 'Source'))
+            registry = json.loads((Path(path) /
+                'Source/BornSupport/registry.json').read_text())
+            contexts = {context['directory']: context
+                        for context in registry['contexts']}
+            group_positions = {signed: position
+                for members in (cmd._curr_model.get('merged_particles') or {}).values()
+                for position, pdg in enumerate(members, 1)
+                for signed in (int(pdg), -int(pdg))}
             records = {}
             for sub in sorted(glob.glob(pjoin(path, 'SubProcesses', 'P*'))):
-                with open(pjoin(sub, 'leshouche_info.dat')) as stream:
-                    rows = [(int(words[1]), tuple(map(int, words[3:])))
-                            for line in stream if line.startswith('I')
-                            for words in [line.split()]]
+                # Native finalization adds Born/history aliases and rewrites
+                # runtime rows. leshouche_info.dat retains the earlier export
+                # numbering, so enumerate the registered physical sectors and
+                # call the retained provider before native alias routing.
+                context = contexts[os.path.basename(sub)]
+                oracle = offload.TestNLORealFortranOracle()
+                row_to_me, unused_counts = oracle._real_me_contract(sub)
+                self.assertEqual(sorted(row_to_me),
+                    [sector['sector'] for sector in context['sectors']])
+                flat = ' '.join(line[6:].strip() for line in
+                    (Path(sub) / 'fks_info.inc').read_text().splitlines()
+                    if line and line[0].upper() != 'C')
+                def metadata(name, row):
+                    match = re.search(r'DATA\s+' + name +
+                        r'\s*\(\s*' + str(row) + r'\s*\)\s*/\s*(-?\d+)\s*/',
+                        flat, re.I)
+                    self.assertIsNotNone(match, (name, row))
+                    return int(match.group(1))
+                rows = []
+                for sector in context['sectors']:
+                    row = sector['sector']
+                    self.assertEqual(row_to_me[row], sector['real'])
+                    indices = (sector['fks']['i'], sector['fks']['j'])
+                    self.assertEqual((metadata('FKS_I_D', row),
+                        metadata('FKS_J_D', row)), indices)
+                    matrix = (Path(sub) /
+                        ('matrix_%d.f' % sector['real'])).read_text()
+                    bound = re.search(r'NMASK_FLAV\s*=\s*(\d+)', matrix, re.I)
+                    self.assertIsNotNone(bound)
+                    matrix_flat = ' '.join(line[6:].strip()
+                        for line in matrix.splitlines()
+                        if line and line[0].upper() != 'C')
+                    table = re.search(r'DATA\s+FLAV_TABLE\s*/([^/]+)/',
+                                      matrix_flat, re.I)
+                    self.assertIsNotNone(table)
+                    masks = tuple(map(int, re.findall(r'-?\d+', table.group(1))))
+                    self.assertEqual(len(masks), 5 * int(bound.group(1)))
+                    flavour = metadata('REAL_FLAVOR_INDEX_D', row)
+                    self.assertGreaterEqual(flavour, 1)
+                    self.assertLessEqual(flavour, int(bound.group(1)))
+                    # Multiple processes in a non-grouped sector are genuine
+                    # generation-equivalent channels sharing its sole mask.
+                    if len(sector['processes']) > 1:
+                        self.assertEqual(int(bound.group(1)), 1)
+                    for process in sector['processes']:
+                        pdgs = tuple(leg[0] for leg in process[1])
+                        self.assertEqual(masks[5*(flavour-1):5*flavour],
+                            tuple(group_positions.get(pdg, 1) for pdg in pdgs),
+                            (context['directory'], row, pdgs, flavour))
+                        rows.append((row, pdgs, indices))
                 inputs = []
                 binding = []
-                for row, pdgs in rows:
+                for row, pdgs, indices in rows:
                     for point_index, momenta in enumerate(points):
-                        binding.append((point_index, pdgs))
+                        binding.append((point_index, pdgs, indices))
                         inputs.append(str(row))
                         inputs.extend(' '.join('%.17e' % x for x in p)
                                       for p in momenta)
                 inputs = str(len(binding)) + '\n' + '\n'.join(inputs) + '\n'
                 with open(pjoin(sub, 'check_ordered_wj.f'), 'w') as stream:
-                    stream.write(driver)
+                    stream.write(driver.replace('PHYSICAL_REAL',
+                        oracle._physical_scalar_name(sub)))
                 objects = [os.path.basename(p)[:-2] + '.o' for p in
                            sorted(glob.glob(pjoin(sub, 'matrix_*.f')))]
                 objects += ['real_me_chooser.o', 'splitorders_stuff.o',
                             'check_ordered_wj.o']
+                native_objects, native_flags = self._native_probe_links(path, sub)
+                objects += native_objects
                 misc.compile(objects, cwd=sub)
                 executable = pjoin(sub, 'check_ordered_wj')
                 subprocess.check_call(['gfortran', '-o', executable] + objects +
-                    ['-L' + pjoin(path, 'lib'), '-ldhelas', '-lmodel'], cwd=sub)
+                    ['-L' + pjoin(path, 'lib'), '-ldhelas', '-lmodel'] + native_flags, cwd=sub)
                 output = subprocess.check_output([executable], input=inputs,
                     cwd=sub, text=True, stderr=subprocess.STDOUT)
                 for line in output.splitlines():
                     words = line.split()
                     if not words or words[0] != 'VALUE':
                         continue
-                    point_index, pdgs = binding[int(words[1]) - 1]
+                    point_index, pdgs, indices = binding[int(words[1]) - 1]
+                    self.assertEqual(tuple(map(int, words[2:4])), indices)
                     key = (point_index, pdgs, int(words[2]), int(words[3]))
                     self.assertNotIn(key, records)
                     records[key] = tuple(self._fortran_float(x)
@@ -1245,10 +1335,10 @@ C     batched one reuses, as set_goodhel does in a run
         """the standalone Born building blocks match the ones computed by the
         code of a plain aMC@NLO output of the same process.
 
-        The '--fks' exporter first generates a full FKS directory and then
-        trims it, so retained born.f / sborn_sf.f / b_sf_*.f must remain
-        byte-for-byte production files. We bring the standalone driver into a
-        plain aMC@NLO directory, build it there, and require identical values."""
+        The trimmed standalone retains scalar kernels, while full native
+        output installs registry facades and private providers. Their wrapper
+        text intentionally differs. Bind the build to its registry provider
+        and compare every physical configuration at sixteen fixed points."""
         workdir = self._workdir(spec)
         # 1) standalone_fortran --fks (driver already built by launch)
         path_sa = pjoin(workdir, 'fks_sa')
@@ -1263,18 +1353,16 @@ C     batched one reuses, as set_goodhel does in a run
         # 3) drop the standalone driver + data into the full dir and build it
         pname = os.path.basename(born_dir_sa)
         born_dir_nlo = pjoin(path_nlo, 'SubProcesses', pname)
-        production_sources = ['born.f', 'sborn_sf.f'] + [
-            os.path.basename(f) for f in glob.glob(
-                pjoin(born_dir_sa, 'b_sf_*.f'))]
-        for filename in production_sources:
-            with open(pjoin(born_dir_sa, filename), 'rb') as sa_file, \
-                    open(pjoin(born_dir_nlo, filename), 'rb') as nlo_file:
-                standalone_source = self._canonicalize_flv_identifiers(
-                    sa_file.read())
-                production_source = self._canonicalize_flv_identifiers(
-                    nlo_file.read())
-                self.assertEqual(standalone_source, production_source,
-                                 filename)
+        support = Path(path_nlo) / 'Source/BornSupport'
+        registry = json.loads((support / 'registry.json').read_text())
+        record = next(item for item in registry['contexts']
+                      if item['directory'] == pname)
+        provider = support / ('p%d' % record['provider'])
+        kernel = provider / 'matrix.f'
+        self.assertTrue(kernel.is_file())
+        self.assertIn('p%d/matrix.o' % record['provider'],
+                      (support / 'providers.mk').read_text().splitlines()[0])
+        kernel_hash = hashlib.sha256(kernel.read_bytes()).hexdigest()
         for f in ('check_sa_fks.f', 'born_pmass.inc', 'born_links.dat',
                   'born_charges.inc'):
             shutil.copy(pjoin(born_dir_sa, f), pjoin(born_dir_nlo, f))
@@ -1287,6 +1375,18 @@ C     batched one reuses, as set_goodhel does in a run
                     fsock.write('')
         misc.compile(cwd=pjoin(path_nlo, 'Source'))
         misc.compile(['check_fks'], cwd=born_dir_nlo)
+        self.assertEqual(hashlib.sha256(kernel.read_bytes()).hexdigest(), kernel_hash)
+        self.assertGreaterEqual((provider / 'matrix.o').stat().st_mtime_ns,
+                                kernel.stat().st_mtime_ns)
+        # Keep reproducible source/object/library identities with the probe.
+        (support / 'comparison_provenance.json').write_text(json.dumps({
+            'context': record['context'], 'provider': record['provider'],
+            'source_directory': record['source'], 'source_sha256': kernel_hash,
+            'object_sha256': hashlib.sha256((provider / 'matrix.o').read_bytes()).hexdigest(),
+            'library_sha256': hashlib.sha256(
+                (Path(path_nlo) / ('lib/libmc_born_support' +
+                 ('.dylib' if sys.platform == 'darwin' else '.so'))).read_bytes()).hexdigest(),
+        }, indent=2) + '\n')
         val_nlo = self.parse_check_fks(self._run_check_fks(born_dir_nlo))
 
         # 4) identical Born building blocks (same code, same seed)
@@ -1297,6 +1397,25 @@ C     batched one reuses, as set_goodhel does in a run
         for key in val_sa[2]:
             self.assertClose(val_sa[2][key], val_nlo[2][key], rel=1e-9,
                              msg='B_ij%s' % (key,))
+        points_sa = self.parse_check_fks_points(self._run_check_fks(
+            born_dir_sa, points=16, calls=3))
+        points_nlo = self.parse_check_fks_points(self._run_check_fks(
+            born_dir_nlo, points=16, calls=3))
+        self.assertEqual(len(points_sa), 16)
+        self.assertPointsClose(points_nlo, points_sa, rel=1e-9)
+        for native_point, scalar_point in zip(points_nlo, points_sa):
+            native_rows = native_point['configurations']
+            scalar_rows = scalar_point['configurations']
+            self.assertEqual(len(native_rows), len(scalar_rows))
+            for actual, expected in zip(native_rows, scalar_rows):
+                for key in ('index', 'pdgs', 'flavor_index'):
+                    self.assertEqual(actual[key], expected[key])
+                for key in ('born', 'borntilde'):
+                    self.assertClose(actual[key], expected[key], rel=1e-9, msg=key)
+                self.assertEqual(set(actual['bij']), set(expected['bij']))
+                for key in actual['bij']:
+                    self.assertClose(actual['bij'][key], expected['bij'][key],
+                                     rel=1e-9, msg='B_ij%s' % (key,))
 
     def _build_production_oracle(self, spec, born_dir_sa, path_nlo):
         """Generate plain aMC@NLO and install the standalone driver/data."""
@@ -1580,7 +1699,9 @@ C     batched one reuses, as set_goodhel does in a run
         self.assertEqual(record['helicity_matrices'][0]['amplitude_degrees'],
                          [2, 0, 0])
         signature = json.loads((support/'helicity_signature.json').read_text())
-        self.assertEqual(signature['mode'], 'homogeneous_G')
+        self.assertIn(signature['mode'], ('homogeneous_G', 'exact_compact_state'))
+        certified_scaling = signature['mode'] == 'homogeneous_G'
+        self.assertEqual(signature['signature'] is not None, certified_scaling)
         # The QED input belongs to the cold configuration. Changing it must
         # select a new configuration before any strong-coupling-only reuse.
         qed_coupling = 'GC_2'
@@ -1636,6 +1757,11 @@ C     batched one reuses, as set_goodhel does in a run
             'NLINKS_VALUE', str(nlinks)).replace(
             'LINK_M_VALUES', ','.join(str(m) for m, n in record['links'])).replace(
             'LINK_N_VALUES', ','.join(str(n) for m, n in record['links']))
+        # Snapshot reconstruction retains the explicit-buffer API; the native
+        # scalar facade instead queries the currently active model state.
+        driver = driver.replace('call sborn_hel(', 'call sborn_hel_buffered(')
+        driver = driver.replace('call sborn_onehel(pb,nhel,1,w,ret_saveamp)',
+                                'call sborn_onehel(pb,nhel,1,w)')
         # The explicit-array exporter keeps one source per link. Adapt only
         # this test driver's scalar convenience API, preserving every link
         # comparison and all upstream rescaling/refusal assertions.
@@ -1689,10 +1815,15 @@ C     batched one reuses, as set_goodhel does in a run
         self.assertEqual(sorted(modes), [0, 1, 2, 3], out)
         for mode in (0, 1, 2):
             worst, count, helas = modes[mode]
-            # every point went through the rescaling ...
-            self.assertEqual(count, npoints, 'mode %d: %s' % (mode, out))
-            self.assertEqual(helas, 0, 'mode %d recomputed HELAS: %s' % (mode, out))
-            # ... and agrees with the fresh evaluation
+            if certified_scaling:
+                self.assertEqual(count, npoints, 'mode %d: %s' % (mode, out))
+                self.assertEqual(helas, 0, 'mode %d recomputed HELAS: %s' % (mode, out))
+            else:
+                # Exact model-state certification deliberately selects fresh
+                # HELAS rather than applying an uncertified strong rescaling.
+                self.assertEqual(count, 0, 'mode %d: %s' % (mode, out))
+                self.assertGreater(helas, 0, 'mode %d: %s' % (mode, out))
+            # Both paths must agree with independently fresh evaluations.
             self.assertLess(worst, 1e-12, 'mode %d: %s' % (mode, out))
         worst, count, helas = modes[3]
         # refusal: never rescaled, identical to a fresh evaluation with
