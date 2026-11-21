@@ -279,6 +279,52 @@ def test_switched_targets_and_helicities_follow_the_leading_colour(switch):
                     assert anticolour and not colour
 
 
+def test_charge_conjugate_totals_keep_the_switch(switch, tmp_path, monkeypatch):
+    """Orderings reading the total of their charge conjugate (pure QCD) give the
+    same ratios and draws; the targets keep evaluations no call writes."""
+    import pyamplicol.artifacts.umami_reweight as module
+    from pyamplicol.artifacts.umami_reweight_data import decode_reweight_data
+
+    lc, full, data, _, library, handle = switch
+    old = Path(library._name).parents[1]
+    # the builtin model has no alpha_s proof; its 2 -> 2 flavours are pure QCD
+    monkeypatch.setattr(
+        module, "_pure_qcd", lambda p: all(module._is_qcd_parton(x) for x in p["pdgs"])
+    )
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", True)
+    output = tmp_path / "dedup"
+    assert write_reweight_provider(lc, full, output, switch_lines=2) == ["p0"]
+    completed = subprocess.run(
+        ["make", "-C", str(output), f"RUSTICOL_CONFIG={_config_executable()}"],
+        capture_output=True, text=True, timeout=180, check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    before = decode_reweight_data((old / "reweight_p0.rwd").read_bytes()).switch
+    after = decode_reweight_data((output / "reweight_p0.rwd").read_bytes()).switch
+    assert len(after.calls) < len(before.calls)
+    assert after.targets == before.targets and after.evaluations == before.evaluations
+    written = {e for call in after.calls for e in call.evaluations}
+    assert set(after.targets.evaluation) - written
+    dedup = _library(output / "build/libreweight_p0.so")
+    dedup_handle = ct.c_void_p()
+    assert dedup.umami_initialize(ct.byref(dedup_handle), os.fsencode(output)) == 0
+    point, densities = _point(lc), _densities()
+    channel, flavour, entry = _entry(data)
+    count = 400
+    random_flavor = (np.arange(count) + 0.5) / count * 1.2
+    random_helicity = np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
+    results = [
+        _call(lib, h, point, densities, random_flavor, random_helicity, channel, flavour,
+              helicity_export(data, entry["runtime"])[0], random_color=random_helicity)
+        for lib, h in ((library, handle), (dedup, dedup_handle))
+    ]
+    assert (results[0][1] >= 0).any()
+    np.testing.assert_allclose(results[1][0], results[0][0], rtol=1e-12)
+    for k in (1, 2, 3):
+        assert (results[1][k] == results[0][k]).all()
+    assert dedup.umami_free(dedup_handle) == 0
+
+
 def _flow_strings(pdgs, flow):
     """Open colour strings of LHE tags (fundamental first), as in a runtime flow id."""
     # all outgoing: incoming legs swap colour and anticolour

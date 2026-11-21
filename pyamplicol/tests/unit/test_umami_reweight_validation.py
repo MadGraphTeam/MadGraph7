@@ -431,3 +431,47 @@ def test_switch_catalogue_rows_view_its_tables():
     assert catalogue["target_pdgs"] == [
         list(targets.pdgs[k * 5:(k + 1) * 5]) for k in range(len(targets.evaluation))
     ]
+
+
+def _slot_pdgs(reference, evaluation):
+    pdgs = reference["runtime_processes"][evaluation["process"]]["pdgs"]
+    return tuple(pdg for _, pdg in sorted(zip(evaluation["legs"], pdgs, strict=True)))
+
+
+def _conjugate(pdgs):
+    return tuple(p if p == 21 else -p for p in pdgs)
+
+
+@pytest.mark.parametrize("power", [2, 1, None])
+def test_switch_shares_charge_conjugate_totals_of_pure_qcd(monkeypatch, power):
+    import pyamplicol.artifacts.umami_reweight as module
+
+    rows = ([21, 21, 21, 21], [2, -2, 21, 21], [2, -2, 1, -1], [1, 2, 1, 2])
+    reference = _switch_reference(rows, [0.0] * 4)
+    for process in reference["runtime_processes"]:
+        process["alpha_s_power"] = power
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", False)
+    old = switch_catalogue(reference, None, 2)
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", True)
+    new = switch_catalogue(reference, None, 2)
+    if power != 2:
+        # not proven pure QCD (an electroweak coupling or no proof): unchanged
+        assert new["calls"] == old["calls"]
+        assert new["ordering_table"] == old["ordering_table"]
+        return
+    assert len(new["calls"]) < len(old["calls"])
+    # every evaluation stays for the targets, which keep their own
+    assert new["evaluations"] == old["evaluations"]
+    assert list(new["targets"]) == list(old["targets"])
+    assert list(new["target_pdgs"]) == list(old["target_pdgs"])
+    written = {e for call in new["calls"] for e in call["evaluations"]}
+    assert written == set(new["ordering_table"].evaluation)
+    shared = 0
+    for before, after in zip(old["orderings"], new["orderings"], strict=True):
+        assert {**before, "evaluation": 0} == {**after, "evaluation": 0}
+        own = _slot_pdgs(reference, old["evaluations"][before["evaluation"]])
+        read = _slot_pdgs(reference, new["evaluations"][after["evaluation"]])
+        # the total of the flavour or of its charge conjugate in the same slots
+        assert read in (own, _conjugate(own))
+        shared += read != own
+    assert shared

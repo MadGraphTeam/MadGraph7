@@ -15,12 +15,15 @@ A flavour-union reference evaluates its members as assignments of their
 template's runtime (one native call per template and slot permutation in the
 switch). A crossed member (process.flavor_union_crossing) reads sign-flipped
 momenta with helicities flipped by rho; a call of the switch shares one crossing.
+Pure-QCD orderings read the summed leading colour of one member of their
+charge-conjugate class (``SWITCH_C_DEDUP``); the targets keep their own.
 Full-colour targets are the members' own processes of the target artifact, or
 assignments of its templates when it has flavour unions too (never crossed).
 """
 
 from __future__ import annotations
 
+import heapq
 import importlib.resources
 import itertools
 import json
@@ -29,7 +32,7 @@ import operator
 import os
 import re
 from array import array
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -64,6 +67,10 @@ _TEMPLATES = {
 
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_]+")
+
+# Pure-QCD switch totals share one evaluation per charge-conjugate class (False:
+# one per flavour, for A/B comparisons).
+SWITCH_C_DEDUP = os.environ.get("PYAMPLICOL_SWITCH_C_DEDUP", "1") != "0"
 
 
 def _identifier(value: object) -> str:
@@ -208,6 +215,111 @@ def _jet_partons(reference: Mapping[str, Any]) -> frozenset[int]:
     return frozenset(massless)
 
 
+def _pure_qcd(process: Mapping[str, Any]) -> bool:
+    """Whether a runtime process is pure QCD: coloured partons only and the proven
+    alpha_s power of a tree with no electroweak coupling (C symmetric)."""
+    pdgs, power = process["pdgs"], process.get("alpha_s_power")
+    return (
+        type(power) is int
+        and power == len(pdgs) - 2
+        and all(_is_qcd_parton(pdg) for pdg in pdgs)
+    )
+
+
+def _conjugate(pdg: int | None) -> int | None:
+    return pdg if pdg is None or pdg in (21, 22, 23, 25) else -pdg
+
+
+def _c_representatives(
+    evaluation: array,
+    weight: array,
+    flavours: Mapping[tuple, tuple[int, list[int]]],
+    pure: Sequence[bool],
+    call_of: Sequence[int],
+    costs: Sequence[float],
+) -> list[int] | None:
+    """The evaluation each one's switch total is read from, or None when nothing is
+    shared. The charge conjugate of an ordering's flavour at the same slots has the
+    same pure-QCD leading colour; a class reads one member, chosen by a greedy
+    cost-weighted cover of the classes by calls."""
+    parent = list(range(len(pure)))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    merged = False
+    for (initial, base, _), (start, partons) in flavours.items():
+        key = (
+            tuple(map(_conjugate, initial)),
+            tuple(map(_conjugate, base)),
+            tuple(sorted(map(_conjugate, partons))),
+        )
+        other = flavours.get(key)
+        if other is None:
+            continue
+        rank = {
+            order: k
+            for k, order in enumerate(sorted(set(itertools.permutations(other[1]))))
+        }
+        for k, order in enumerate(sorted(set(itertools.permutations(partons)))):
+            o, p = start + k, other[0] + rank[tuple(map(_conjugate, order))]
+            a, b = find(evaluation[o]), find(evaluation[p])
+            # the ordering factor (non-union members) must agree as well
+            if a != b and pure[evaluation[o]] and pure[evaluation[p]] and (
+                weight[o] == weight[p]
+            ):
+                parent[max(a, b)] = min(a, b)
+                merged = True
+    if not merged:
+        return None
+    classes: dict[int, list[int]] = {}
+    for e in range(len(parent)):
+        classes.setdefault(find(e), []).append(e)
+    members = list(classes.values())
+    covering: list[set[int]] = [set() for _ in costs]
+    for c, group in enumerate(members):
+        for e in group:
+            covering[call_of[e]].add(c)
+    chosen: set[int] = set()
+    covered = [False] * len(members)
+
+    def choose(g: int) -> None:
+        chosen.add(g)
+        for c in covering[g]:
+            covered[c] = True
+
+    # a class within one call forces it; then most classes per cost, lowest index
+    for group in members:
+        calls = {call_of[e] for e in group}
+        if len(calls) == 1:
+            choose(calls.pop())
+    open_count = [sum(not covered[c] for c in classes_) for classes_ in covering]
+    heap = [
+        (-n / costs[g], g) for g, n in enumerate(open_count) if n and g not in chosen
+    ]
+    heapq.heapify(heap)
+    while heap:
+        _, g = heapq.heappop(heap)
+        if g in chosen:
+            continue
+        n = sum(not covered[c] for c in covering[g])
+        if n == 0:
+            continue
+        if heap and (-n / costs[g], g) > heap[0]:
+            heapq.heappush(heap, (-n / costs[g], g))
+            continue
+        choose(g)
+    representative = list(range(len(parent)))
+    for group in members:
+        rep = min(e for e in group if call_of[e] in chosen)
+        for e in group:
+            representative[e] = rep
+    return representative
+
+
 def _pdf_column(pdg: int) -> int:
     if pdg == 21:
         return 6
@@ -272,6 +384,73 @@ class SwitchTargetTable:
 
     def pdgs_of(self, index: int) -> list[int]:
         return self.pdgs[index * self.width:(index + 1) * self.width].tolist()
+
+
+def _switch_calls(
+    described: Sequence[tuple],
+    indices: Iterable[int],
+    call_key: Callable[[int], tuple],
+    pattern_tables: Mapping[int, tuple],
+    member_ids: Mapping[tuple[int, int], tuple[str, tuple]],
+) -> list[dict[str, Any]]:
+    """The native calls of the switch evaluations ``indices``. One call per
+    (runtime, legs): the assignments of a template share it. With a pattern
+    table, one per (template, leg types): an evaluation at legs l is its
+    assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c (those of its
+    first evaluation)."""
+    calls: dict[tuple, dict[str, Any]] = {}
+    entry_of: dict[tuple, int] = {}
+    for index in indices:
+        rep, assignment, legs, _, _ = described[index]
+        table = pattern_tables.get(rep) if assignment >= 0 else None
+        key = call_key(index)
+        call = calls.setdefault(
+            key,
+            {
+                "process": rep,
+                "legs": list(legs),
+                "evaluations": [],
+                "assignments": [] if assignment >= 0 else None,
+                "permutations": [] if table is not None else None,
+                "entries": [],
+            },
+        )
+        call["evaluations"].append(index)
+        if assignment < 0:
+            call["entries"].append(0)
+            continue
+        if table is None:
+            call["entries"].append(len(call["assignments"]))
+            call["assignments"].append(assignment)
+            continue
+        inverse = {slot: r for r, slot in enumerate(call["legs"])}
+        permutation = tuple(inverse[slot] for slot in legs)
+        patterns, signs, numerator, denominator = member_ids[(rep, assignment)][1]
+        if patterns == ("template",):
+            derived: tuple = patterns
+        else:
+            pairs, lookup = table
+            moved = [
+                tuple(sorted((permutation[f], permutation[a]) for f, a in pairs[p]))
+                for p in patterns
+            ]
+            derived = tuple(sorted(
+                (lookup[pattern], sign)
+                for pattern, sign in zip(moved, signs, strict=True)
+            ))
+        entry = entry_of.setdefault(
+            (key, derived, numerator, denominator), len(call["assignments"])
+        )
+        if entry == len(call["assignments"]):
+            call["assignments"].append(assignment)
+            call["permutations"].append(list(permutation))
+        call["entries"].append(entry)
+    for call in calls.values():
+        # identity relabellings need no runtime call
+        permutations = call["permutations"]
+        if permutations is not None and all(p == sorted(p) for p in permutations):
+            call["permutations"] = None
+    return list(calls.values())
 
 
 def switch_catalogue(
@@ -409,6 +588,9 @@ def switch_catalogue(
     evaluations: dict[tuple, int] = {}
     described: list[tuple] = []
     seen: set[tuple] = set()
+    # per (initial, outgoing non-partons by slot, sorted partons): its first
+    # ordering and partons
+    flavours: dict[tuple, tuple[int, list[int]]] = {}
     # the orderings and targets by column (millions of rows at 7j)
     order_columns = SwitchOrderings(
         array("i"), array("b"), array("b"), array("d"), array("i"), array("i")
@@ -496,6 +678,10 @@ def switch_catalogue(
             pdf0, pdf1 = _pdf_column(initial[0]), _pdf_column(initial[1])
             is_target = quark_lines(pdgs) >= switch_lines
             prefix = [0, 1] if orientation == 0 else [1, 0]
+            # the first ordering of the flavour; its parton orders follow sorted
+            flavours[initial, tuple(base_order), tuple(sorted(partons))] = (
+                len(order_columns.evaluation), partons
+            )
             for parton_order in sorted(set(itertools.permutations(partons))):
                 order = list(base_order)
                 for position, pdg in zip(parton_positions, parton_order, strict=True):
@@ -541,70 +727,46 @@ def switch_catalogue(
                 append_weight(weight)
                 append_target(target)
                 append_arrangement(arrangement)
-    # One native call per (runtime, legs): the assignments of a template share it.
-    # With a pattern table, one per (template, leg types): an evaluation at legs l
-    # is its assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c.
-    calls: dict[tuple, dict[str, Any]] = {}
-    entry_of: dict[tuple, int] = {}
-    for index, (rep, assignment, legs, _, _) in enumerate(described):
-        table = pattern_tables.get(rep) if assignment >= 0 else None
+    def call_key(index: int) -> tuple:
+        rep, assignment, legs, _, _ = described[index]
         if assignment < 0:
-            key: tuple = (rep, legs, index)
-        elif table is None:
-            key = (rep, legs)
-        else:
-            # template particle and side per event slot: relabellings keep both
-            types = [0] * len(legs)
-            sides = [False] * len(legs)
-            for r, slot in enumerate(legs):
-                types[slot] = processes[rep]["pdgs"][r]
-                sides[slot] = r < incoming
-            key = (rep, tuple(types), tuple(sides))
-        call = calls.setdefault(
-            key,
-            {
-                "process": rep,
-                "legs": list(legs),
-                "evaluations": [],
-                "assignments": [] if assignment >= 0 else None,
-                "permutations": [] if table is not None else None,
-                "entries": [],
-            },
+            return (rep, legs, index)
+        if pattern_tables.get(rep) is None:
+            return (rep, legs)
+        # template particle and side per event slot: relabellings keep both
+        types = [0] * len(legs)
+        sides = [False] * len(legs)
+        for r, slot in enumerate(legs):
+            types[slot] = processes[rep]["pdgs"][r]
+            sides[slot] = r < incoming
+        return (rep, tuple(types), tuple(sides))
+
+    calls = _switch_calls(described, range(len(described)), call_key, pattern_tables,
+                          member_ids)
+    pure = [_pure_qcd(processes[e[0]]) for e in described] if SWITCH_C_DEDUP else []
+    if any(pure):
+        call_of = [0] * len(described)
+        costs = []
+        for g, call in enumerate(calls):
+            for e in call["evaluations"]:
+                call_of[e] = g
+            # a call costs about one template recursion per helicity and flow
+            rep = call["process"]
+            costs.append(float(max(1, len(processes[rep].get("helicity_ids") or ()))
+                               * max(1, len(flow_ids.get(rep, ())))))
+        representative = _c_representatives(
+            order_columns.evaluation, order_columns.weight, flavours, pure, call_of,
+            costs,
         )
-        call["evaluations"].append(index)
-        if assignment < 0:
-            call["entries"].append(0)
-            continue
-        if table is None:
-            call["entries"].append(len(call["assignments"]))
-            call["assignments"].append(assignment)
-            continue
-        inverse = {slot: r for r, slot in enumerate(call["legs"])}
-        permutation = tuple(inverse[slot] for slot in legs)
-        patterns, signs, numerator, denominator = member_ids[(rep, assignment)][1]
-        if patterns == ("template",):
-            derived: tuple = patterns
-        else:
-            pairs, lookup = table
-            moved = [
-                tuple(sorted((permutation[f], permutation[a]) for f, a in pairs[p]))
-                for p in patterns
-            ]
-            derived = tuple(sorted(
-                (lookup[key], sign) for key, sign in zip(moved, signs, strict=True)
-            ))
-        entry = entry_of.setdefault(
-            (key, derived, numerator, denominator), len(call["assignments"])
-        )
-        if entry == len(call["assignments"]):
-            call["assignments"].append(assignment)
-            call["permutations"].append(list(permutation))
-        call["entries"].append(entry)
-    for call in calls.values():
-        # identity relabellings need no runtime call
-        permutations = call["permutations"]
-        if permutations is not None and all(p == sorted(p) for p in permutations):
-            call["permutations"] = None
+        if representative is not None:
+            # the orderings read the representatives; targets keep their own
+            order_columns.evaluation[:] = array(
+                "i", map(representative.__getitem__, order_columns.evaluation)
+            )
+            calls = _switch_calls(
+                described, sorted(set(order_columns.evaluation)), call_key,
+                pattern_tables, member_ids,
+            )
     targets = SwitchTargetTable(
         target_evaluation, target_color_set, color_sets, target_pdgs, n
     )
@@ -630,7 +792,7 @@ def switch_catalogue(
             }
             for (rep, assignment, legs, key, rho) in described
         ],
-        "calls": list(calls.values()),
+        "calls": calls,
         "ordering_table": order_columns,
         "target_table": targets,
         # row views of the tables (inspection and tests)
