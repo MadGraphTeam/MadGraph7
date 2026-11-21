@@ -208,6 +208,13 @@ def supports_dp_route_statistics(libdir):
             read_config(libdir).get('dp_route_statistics') is True)
 
 
+def supports_raised_powers(libdir):
+    """Optional ABI-1 raised propagator powers (ml_tirust_*_powers and the
+    Fortran tirust_tensor_evaluate_powers); older installations lack them."""
+    return (is_available(libdir) and
+            read_config(libdir).get('raised_powers') is True)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='install tirust',
         description='Install the pinned TIRust/oneloopmaster Fortran interface.')
@@ -559,7 +566,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None,
         raise MadGraph5Error("TIRust build did not produce native link metadata. "
                              "See %s" % log) from error
     config = {'abi_version': ABI_VERSION, 'quad_precision': True,
-              'dp_route_statistics': True,
+              'dp_route_statistics': True, 'raised_powers': True,
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,

@@ -110,6 +110,37 @@ int32_t ml_tirust_evaluate_mp(ml_tirust_context *context, int32_t n, int32_t ran
     unsigned char *output, size_t output_bytes,
     int32_t pole_mode, int32_t compute_finite, int32_t check_pass, int32_t cache_enabled);
 
+/*
+ * Optional raised propagator powers (installations advertise
+ * `raised_powers: true` in their ABI-1 metadata; older ones lack these
+ * symbols). powers[n] holds one power per propagator, each 1 to 8, in the
+ * order of the shifts: (q+p_i)^2 - m_i^2 to the power powers[i]. Unit
+ * powers give the result of the original entry point bit for bit. A raised
+ * power requires compute_finite=1 (the pole-only evaluation has unit powers
+ * only) and evaluates without the shared subintegral stores; the whole-tensor
+ * caches distinguish powers. Everything else is as for ml_tirust_evaluate_dp
+ * and ml_tirust_evaluate_mp, including refusals.
+ */
+/* Pure capability query: SUCCESS when ml_tirust_supports admits
+ * (n, rank, compute_finite) and TIRust reduces these powers. */
+int32_t ml_tirust_supports_powers(int32_t n, int32_t rank,
+    const int32_t *powers, size_t powers_length, int32_t compute_finite);
+int32_t ml_tirust_evaluate_dp_powers(ml_tirust_context *context, int32_t n, int32_t rank,
+    const int32_t *powers, size_t powers_length,
+    const double *shifts, size_t shifts_length,
+    const double *invariants, size_t invariants_length,
+    const ml_tirust_complex *masses, size_t masses_length, double scale_squared,
+    ml_tirust_complex *output, size_t output_length,
+    int32_t pole_mode, int32_t compute_finite, int32_t check_pass, int32_t cache_enabled);
+int32_t ml_tirust_evaluate_mp_powers(ml_tirust_context *context, int32_t n, int32_t rank,
+    const int32_t *powers, size_t powers_length,
+    const unsigned char *shifts, size_t shifts_bytes,
+    const unsigned char *invariants, size_t invariants_bytes,
+    const unsigned char *masses, size_t masses_bytes,
+    const unsigned char *scale_squared, size_t scale_bytes,
+    unsigned char *output, size_t output_bytes,
+    int32_t pole_mode, int32_t compute_finite, int32_t check_pass, int32_t cache_enabled);
+
 /* Required capacity includes NUL. NULL/zero queries it. Error is thread-local. */
 size_t ml_tirust_last_error(unsigned char *output, size_t capacity);
 

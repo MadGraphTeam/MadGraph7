@@ -22,9 +22,15 @@ module mtirust
   public :: tirust_register_plan, tirust_cache_statistics, tirust_set_cache_budget, tirust_supports
   public :: tirust_context_generation, tirust_qp_cache_statistics
   public :: tirust_dp_route_statistics
+  ! Optional raised propagator powers (installation metadata raised_powers).
+  public :: tirust_tensor_evaluate_powers, tirust_supports_powers
 
   interface tirust_tensor_evaluate
     module procedure tensor_dp, tensor_mp
+  end interface
+
+  interface tirust_tensor_evaluate_powers
+    module procedure tensor_dp_powers, tensor_mp_powers
   end interface
 
   interface
@@ -102,6 +108,40 @@ module mtirust
       type(c_ptr), value :: handle
       integer(c_int), value :: n,rank,pole_mode,compute_finite,check_pass,cache_enabled
       integer(c_size_t), value :: plen,slen,mlen,scale_len,olen
+      character(kind=c_char), intent(in) :: p(*),s(*),m(*),mu2(*)
+      character(kind=c_char), intent(out) :: output(*)
+      integer(c_int) :: status
+    end function
+    function supports_powers(n,rank,powers,plen,compute_finite) &
+        bind(C,name="ml_tirust_supports_powers") result(status)
+      import
+      integer(c_int), value :: n,rank,compute_finite
+      integer(c_int), intent(in) :: powers(*)
+      integer(c_size_t), value :: plen
+      integer(c_int) :: status
+    end function
+    function evaluate_dp_powers(handle,n,rank,powers,powers_len,p,plen,s,slen,m,mlen,mu2,output,olen, &
+                                pole_mode,compute_finite,check_pass,cache_enabled) &
+        bind(C,name="ml_tirust_evaluate_dp_powers") result(status)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: n,rank,pole_mode,compute_finite,check_pass,cache_enabled
+      integer(c_int), intent(in) :: powers(*)
+      integer(c_size_t), value :: powers_len,plen,slen,mlen,olen
+      real(c_double), intent(in) :: p(*),s(*)
+      complex(c_double_complex), intent(in) :: m(*)
+      real(c_double), value :: mu2
+      complex(c_double_complex), intent(out) :: output(*)
+      integer(c_int) :: status
+    end function
+    function evaluate_mp_powers(handle,n,rank,powers,powers_len,p,plen,s,slen,m,mlen,mu2,scale_len, &
+                                output,olen,pole_mode,compute_finite,check_pass,cache_enabled) &
+        bind(C,name="ml_tirust_evaluate_mp_powers") result(status)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: n,rank,pole_mode,compute_finite,check_pass,cache_enabled
+      integer(c_int), intent(in) :: powers(*)
+      integer(c_size_t), value :: powers_len,plen,slen,mlen,scale_len,olen
       character(kind=c_char), intent(in) :: p(*),s(*),m(*),mu2(*)
       character(kind=c_char), intent(out) :: output(*)
       integer(c_int) :: status
@@ -221,6 +261,16 @@ contains
                          merge(1_c_int,0_c_int,compute_finite)) == TIRUST_SUCCESS
   end function
 
+  logical function tirust_supports_powers(n,rank,powers,compute_finite) result(supported)
+    ! Requires an installation whose metadata advertises raised_powers.
+    integer, intent(in) :: n,rank,powers(:)
+    logical, intent(in) :: compute_finite
+    integer(c_int) :: c_powers(size(powers))
+    c_powers = int(powers,c_int)
+    supported = supports_powers(int(n,c_int),int(rank,c_int),c_powers,size(c_powers,kind=c_size_t), &
+                                merge(1_c_int,0_c_int,compute_finite)) == TIRUST_SUCCESS
+  end function
+
   pure integer function tirust_coefficient_count(rank) result(count)
     integer, intent(in) :: rank
     integer(c_int64_t) :: r,total
@@ -288,6 +338,37 @@ contains
     if (status /= TIRUST_SUCCESS) coefs = cmplx(0,0,kind=KI_TIR)
   end subroutine
 
+  subroutine tensor_dp_powers(n,rank,powers,shifts,invariants,masses,mu2,coefs,status, &
+                              pole_mode,compute_finite,check_pass,cache_enabled)
+    ! tirust_tensor_evaluate with one power per propagator (powers(n), each
+    ! 1 to 8); unit powers give its result bit for bit.
+    integer, intent(in) :: n,rank,powers(:)
+    real(KI_TIR), intent(in) :: shifts(0:,:),invariants(:,:),mu2
+    complex(KI_TIR), intent(in) :: masses(:)
+    complex(KI_TIR), intent(out) :: coefs(:,:)
+    integer, intent(out) :: status
+    integer, intent(in), optional :: pole_mode
+    logical, intent(in), optional :: compute_finite,check_pass,cache_enabled
+    integer(c_int) :: poles,finite,check,cache
+    integer(c_int) :: c_powers(size(powers))
+    coefs = cmplx(0,0,kind=KI_TIR)
+    if (.not.valid_shapes(n,rank,shape(shifts),shape(invariants),size(masses),shape(coefs),status)) return
+    if (size(powers) /= n) then
+      status = TIRUST_ERROR
+      local_error = 'TIRust needs one propagator power per propagator.'
+      return
+    endif
+    c_powers = int(powers,c_int)
+    call options(pole_mode,compute_finite,check_pass,cache_enabled,poles,finite,check,cache)
+    call ensure_context(status)
+    if (status /= TIRUST_SUCCESS) return
+    status = evaluate_dp_powers(context,int(n,c_int),int(rank,c_int),c_powers,size(c_powers,kind=c_size_t), &
+                                shifts,size(shifts,kind=c_size_t),invariants,size(invariants,kind=c_size_t), &
+                                masses,size(masses,kind=c_size_t),mu2,coefs,size(coefs,kind=c_size_t), &
+                                poles,finite,check,cache)
+    if (status /= TIRUST_SUCCESS) coefs = cmplx(0,0,kind=KI_TIR)
+  end subroutine
+
   subroutine pack(value,record,io_status)
     real(KI_QTIR), intent(in) :: value
     character(kind=c_char), intent(out) :: record(record_size)
@@ -327,6 +408,43 @@ contains
     integer, intent(out) :: status
     integer, intent(in), optional :: pole_mode
     logical, intent(in), optional :: compute_finite,check_pass,cache_enabled
+    call tensor_mp_any(n,rank,shifts,invariants,masses,mu2,coefs,status, &
+                       pole_mode,compute_finite,check_pass,cache_enabled)
+  end subroutine
+
+  subroutine tensor_mp_powers(n,rank,powers,shifts,invariants,masses,mu2,coefs,status, &
+                              pole_mode,compute_finite,check_pass,cache_enabled)
+    ! tirust_tensor_evaluate with one power per propagator (powers(n), each
+    ! 1 to 8); unit powers give its result bit for bit.
+    integer, intent(in) :: n,rank,powers(:)
+    real(KI_QTIR), intent(in) :: shifts(0:,:),invariants(:,:),mu2
+    complex(KI_QTIR), intent(in) :: masses(:)
+    complex(KI_QTIR), intent(out) :: coefs(:,:)
+    integer, intent(out) :: status
+    integer, intent(in), optional :: pole_mode
+    logical, intent(in), optional :: compute_finite,check_pass,cache_enabled
+    coefs = cmplx(0,0,kind=KI_QTIR)
+    if (size(powers) /= n) then
+      status = TIRUST_ERROR
+      local_error = 'TIRust needs one propagator power per propagator.'
+      return
+    endif
+    call tensor_mp_any(n,rank,shifts,invariants,masses,mu2,coefs,status, &
+                       pole_mode,compute_finite,check_pass,cache_enabled,powers)
+  end subroutine
+
+  subroutine tensor_mp_any(n,rank,shifts,invariants,masses,mu2,coefs,status, &
+                           pole_mode,compute_finite,check_pass,cache_enabled,powers)
+    ! The binary128 transport of tensor_mp and tensor_mp_powers: the original
+    ! entry point without powers, the powers entry point with them.
+    integer, intent(in) :: n,rank
+    real(KI_QTIR), intent(in) :: shifts(0:,:),invariants(:,:),mu2
+    complex(KI_QTIR), intent(in) :: masses(:)
+    complex(KI_QTIR), intent(out) :: coefs(:,:)
+    integer, intent(out) :: status
+    integer, intent(in), optional :: pole_mode
+    logical, intent(in), optional :: compute_finite,check_pass,cache_enabled
+    integer, intent(in), optional :: powers(:)
     integer(c_int) :: poles,finite,check,cache
     character(kind=c_char), allocatable :: p_text(:,:),s_text(:,:),m_text(:,:),output(:,:)
     character(kind=c_char) :: scale_text(record_size)
@@ -364,10 +482,18 @@ contains
     call options(pole_mode,compute_finite,check_pass,cache_enabled,poles,finite,check,cache)
     call ensure_context(status)
     if (status /= TIRUST_SUCCESS) return
-    status = evaluate_mp(context,int(n,c_int),int(rank,c_int),p_text,size(p_text,kind=c_size_t), &
-                         s_text,size(s_text,kind=c_size_t),m_text,size(m_text,kind=c_size_t), &
-                         scale_text,size(scale_text,kind=c_size_t),output,size(output,kind=c_size_t), &
-                         poles,finite,check,cache)
+    if (present(powers)) then
+      status = evaluate_mp_powers(context,int(n,c_int),int(rank,c_int),int(powers,c_int), &
+                                  size(powers,kind=c_size_t),p_text,size(p_text,kind=c_size_t), &
+                                  s_text,size(s_text,kind=c_size_t),m_text,size(m_text,kind=c_size_t), &
+                                  scale_text,size(scale_text,kind=c_size_t),output,size(output,kind=c_size_t), &
+                                  poles,finite,check,cache)
+    else
+      status = evaluate_mp(context,int(n,c_int),int(rank,c_int),p_text,size(p_text,kind=c_size_t), &
+                           s_text,size(s_text,kind=c_size_t),m_text,size(m_text,kind=c_size_t), &
+                           scale_text,size(scale_text,kind=c_size_t),output,size(output,kind=c_size_t), &
+                           poles,finite,check,cache)
+    endif
     if (status /= TIRUST_SUCCESS) return
     do k=1,8*count
       call unpack(output(:,k),values(k),ios)

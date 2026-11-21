@@ -220,3 +220,29 @@ capability. Existing installations and exports remain supported; unavailable
 route data must be reported as unavailable. Use `install tirust --update` to
 obtain the new diagnostics. A statistics query does not initialize an unused
 context or clear a prior local diagnostic.
+
+## Optional raised propagator powers
+
+New installations advertise `raised_powers: true` in their existing ABI-1
+metadata (`tirust_install.supports_raised_powers(libdir)`). They add
+`ml_tirust_supports_powers`, `ml_tirust_evaluate_dp_powers` and
+`ml_tirust_evaluate_mp_powers`, and the Fortran `tirust_supports_powers(n,
+rank, powers, compute_finite)` and generic `tirust_tensor_evaluate_powers(n,
+rank, powers, shifts, ...)`. These take one power per propagator
+(`powers(n)`, each 1 to 8), otherwise exactly the arguments of
+`tirust_tensor_evaluate`. An older installation lacks these symbols, so
+generated code must only reference them when the metadata advertises them.
+
+- Unit powers give the original entry point's result bit for bit.
+- A raised power needs `compute_finite=.true.`; the pole-only evaluation has
+  unit powers only and returns `UNSUPPORTED`.
+- The DP and QP paths, their precision ladders and refusals are those of the
+  original entry points. A raised power evaluates without the shared
+  subintegral stores, whose entries carry no powers; the whole-tensor DP and
+  QP caches distinguish powers.
+- `tirust_supports_powers` is a pure query: it also reports whether TIRust's
+  direct engine reduces these powers.
+
+One raised power is the derivative of the integrand in that propagator's
+squared mass. P-wave quarkonium uses it at rank R+1 for the derivative in the
+relative momentum.

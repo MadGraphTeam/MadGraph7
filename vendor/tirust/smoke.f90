@@ -150,6 +150,23 @@ program smoke
   if (status == TIRUST_SUCCESS .or. any(abs(r)>0.0_KI_TIR)) stop 18
   call tirust_error_message(message)
   if (len_trim(message) == 0) stop 19
+
+  ! Raised propagator powers: unit powers repeat the original call; the
+  ! doubled tadpole is dA0/dm^2 = 1/eps_UV - ln(m^2/mu^2), here m^2 = mu^2;
+  ! the pole-only evaluation refuses a raised power.
+  if (.not.tirust_supports_powers(1,0,[2],.true.) .or. tirust_supports_powers(1,0,[2],.false.)) stop 49
+  call tirust_tensor_evaluate_powers(1,0,[1],p,s,m,4.0_KI_TIR,r,status)
+  call require_success('unit powers')
+  if (any(abs(r-reference)>0.0_KI_TIR)) stop 50
+  call tirust_tensor_evaluate_powers(1,0,[2],p,s,m,4.0_KI_TIR,r,status)
+  call require_success('doubled tadpole')
+  if (abs(r(1,1)-1)>1e-12_KI_TIR .or. any(abs(r(1,2:4))>1e-12_KI_TIR)) stop 51
+  call tirust_tensor_evaluate_powers(1,0,[2],qp,qs,qm,mass_qp,qr,status)
+  call require_success('binary128 doubled tadpole')
+  if (abs(qr(1,1)-1)>1e-31_KI_QTIR .or. any(abs(qr(1,2:4))>1e-31_KI_QTIR)) stop 52
+  call tirust_tensor_evaluate_powers(1,0,[2],p,s,m,4.0_KI_TIR,r,status,compute_finite=.false.)
+  if (status /= TIRUST_UNSUPPORTED .or. any(abs(r)>0.0_KI_TIR)) stop 53
+  print *, 'TIRust raised propagator powers passed'
   if (tirust_context_generation() /= first_generation) stop 30
   call tirust_finalize(status)
   call require_success('finalize')

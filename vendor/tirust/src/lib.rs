@@ -39,7 +39,10 @@ const DP_ROUTE_STATS_COUNT: usize = 2 * DP_ROUTE_FIELDS;
 /// the smallest relative factor that moves every binary64 value (by one or
 /// two units in its last place; see [`shift_check_invariants`]).
 const CHECK_INVARIANT_SHIFT: f64 = f64::EPSILON;
-type Key = (usize, u16);
+/// (n, rank, powers). `powers` packs each propagator's power minus one in
+/// three bits, propagator i at bit 3i: zero is the unit-power integral of
+/// the original entry points, whose keys it keeps.
+type Key = (usize, u16, u32);
 type Result<T> = std::result::Result<T, String>;
 
 /// GNU/Linux Fortran COMPLEX(C_DOUBLE_COMPLEX) memory representation.
@@ -115,10 +118,14 @@ impl State {
     fn register(&mut self, key: Key) -> Result<()> {
         if !self.plans.contains_key(&key) {
             let plan = DirectReductionPlan::new(settings(key)).map_err(|e| e.to_string())?;
-            self.store.register(&plan);
-            self.check_store.register(&plan);
-            #[cfg(feature = "poles-only")]
-            self.pole_store.register(&plan);
+            // Raised powers evaluate without the subintegral stores (their
+            // shared entries carry no powers).
+            if key.2 == 0 {
+                self.store.register(&plan);
+                self.check_store.register(&plan);
+                #[cfg(feature = "poles-only")]
+                self.pole_store.register(&plan);
+            }
             self.plans.insert(key, plan);
         }
         Ok(())
@@ -128,6 +135,10 @@ impl State {
         self.last_dp_route = None;
         self.register(key)?;
         if !mode.finite {
+            if key.2 != 0 {
+                set_error("pole-only evaluation has unit propagator powers only");
+                return Ok((UNSUPPORTED, Vec::new()));
+            }
             #[cfg(feature = "poles-only")]
             return self.dp_poles(key, batch, mode);
             #[cfg(not(feature = "poles-only"))]
@@ -174,7 +185,8 @@ impl State {
         // check_view() may alias the primary when no master provider exists.
         // MadLoop's independent direction checks must recompute every entry
         // of the primary pass: they share subintegrals only with each other.
-        let store = mode.cache.then(|| if mode.check { self.check_store.clone() } else { self.store.clone() });
+        let store = (mode.cache && key.2 == 0)
+            .then(|| if mode.check { self.check_store.clone() } else { self.store.clone() });
         let workspace = self.dp.get_mut(&workspace_key).unwrap();
         workspace.set_tensor_store(store.as_ref());
         let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
@@ -277,6 +289,10 @@ impl State {
     ) -> Result<(i32, Vec<u8>)> {
         self.register(key)?;
         if !mode.finite {
+            if key.2 != 0 {
+                set_error("pole-only evaluation has unit propagator powers only");
+                return Ok((UNSUPPORTED, Vec::new()));
+            }
             #[cfg(feature = "poles-only")]
             return self.mp_poles(key, batch, mode);
             #[cfg(not(feature = "poles-only"))]
@@ -516,7 +532,7 @@ impl DpCache {
 }
 fn dp_cache_key(key: Key, batch: &KinematicsBatch<f64>, poles: i32) -> Box<[u64]> {
     let mut words = Vec::with_capacity(1 + 2 * batch.values.len());
-    words.push((key.0 as u64) | (u64::from(key.1) << 8) | ((poles as u64) << 24));
+    words.push((key.0 as u64) | (u64::from(key.1) << 8) | ((poles as u64) << 24) | (u64::from(key.2) << 32));
     for z in &batch.values {
         words.push(z.re.to_bits());
         words.push(z.im.to_bits());
@@ -527,6 +543,7 @@ fn qp_cache_key(key: Key, records: [&[u8]; 4], mode: Mode) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(16 + records.iter().map(|x| x.len()).sum::<usize>());
     bytes.extend_from_slice(&(key.0 as u32).to_le_bytes());
     bytes.extend_from_slice(&key.1.to_le_bytes());
+    bytes.extend_from_slice(&key.2.to_le_bytes());
     bytes.push(mode.poles as u8);
     bytes.push(u8::from(mode.finite));
     bytes.extend_from_slice(&113u32.to_le_bytes());
@@ -542,13 +559,30 @@ pub struct Context {
     state: Mutex<State>,
 }
 
-fn settings((n, rank): Key) -> ReductionSettings {
+fn settings((n, rank, powers): Key) -> ReductionSettings {
     let mut s = ReductionSettings::new(n, rank);
     s.convention = Convention::MadLoop;
     s.tensor_weights = TensorWeights::Components;
     s.invariants = InvariantInput::SuppliedInvariants;
     s.scale_input = ScaleInput::MuSquared;
+    for (i, power) in s.powers.iter_mut().enumerate() {
+        *power = 1 + ((powers >> (3 * i)) & 7) as u16;
+    }
     s
+}
+/// The packed powers of `Key` from one power per propagator, each 1 to 8.
+/// # Safety
+/// `powers` has `count` readable entries.
+unsafe fn pack_powers(n: usize, powers: *const i32, count: usize) -> Result<u32> {
+    length("propagator powers", count, n)?;
+    let mut packed = 0u32;
+    for (i, &power) in unsafe { read(powers, count)? }.iter().enumerate() {
+        if !(1..=8).contains(&power) {
+            return Err(format!("propagator power {power} outside 1..=8"));
+        }
+        packed |= ((power - 1) as u32) << (3 * i);
+    }
+    Ok(packed)
 }
 fn dimensions(n: i32, rank: i32) -> Result<(Key, usize)> {
     if !(1..=6).contains(&n) || !(0..=6).contains(&rank) {
@@ -556,7 +590,7 @@ fn dimensions(n: i32, rank: i32) -> Result<(Key, usize)> {
     }
     let r = rank as usize;
     Ok((
-        (n as usize, rank as u16),
+        (n as usize, rank as u16, 0),
         (r + 1) * (r + 2) * (r + 3) * (r + 4) / 24,
     ))
 }
@@ -884,6 +918,35 @@ pub extern "C" fn ml_tirust_supports(n: i32, rank: i32, compute_finite: i32) -> 
         SUCCESS
     }
 }
+/// Capability query for `ml_tirust_evaluate_{dp,mp}_powers`: `SUCCESS` when
+/// [`ml_tirust_supports`] admits `(n, rank, compute_finite)` and TIRust's
+/// direct engine reduces these powers (`powers[n]`, each 1 to 8). A raised
+/// power needs `compute_finite = 1`: the pole-only evaluation has unit
+/// powers only.
+/// # Safety
+/// `powers` has `powers_len` readable entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_supports_powers(
+    n: i32,
+    rank: i32,
+    powers: *const i32,
+    powers_len: usize,
+    compute_finite: i32,
+) -> i32 {
+    let Ok(((size, r, _), _)) = dimensions(n, rank) else {
+        return UNSUPPORTED;
+    };
+    let Ok(packed) = (unsafe { pack_powers(size, powers, powers_len) }) else {
+        return UNSUPPORTED;
+    };
+    if ml_tirust_supports(n, rank, compute_finite) != SUCCESS {
+        return UNSUPPORTED;
+    }
+    if packed != 0 && (compute_finite != 1 || !DirectReductionPlan::supports(&settings((size, r, packed)))) {
+        return UNSUPPORTED;
+    }
+    SUCCESS
+}
 /// # Safety
 /// `handle` is a live context.
 #[unsafe(no_mangle)]
@@ -1083,12 +1146,74 @@ pub unsafe extern "C" fn ml_tirust_evaluate_dp(
 ) -> i32 {
     guard(|| {
         let (key, nc) = dimensions(n, rank)?;
-        let n = key.0;
         let mode = Mode::new(poles, finite, check, cache)?;
-        if ml_tirust_supports(n as i32, rank, finite) != SUCCESS {
+        if ml_tirust_supports(n, rank, finite) != SUCCESS {
             set_error("pole-only build support is not installed");
             return Ok(UNSUPPORTED);
         }
+        unsafe { evaluate_dp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, mu2, out, out_len) }
+    })
+}
+
+/// [`ml_tirust_evaluate_dp`] with one power per propagator (`powers[n]`,
+/// each 1 to 8); unit powers give that call's result bit for bit. See
+/// [`ml_tirust_supports_powers`].
+/// # Safety
+/// As [`ml_tirust_evaluate_dp`], and `powers` has `powers_len` readable entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_evaluate_dp_powers(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    powers: *const i32,
+    powers_len: usize,
+    p: *const f64,
+    p_len: usize,
+    s: *const f64,
+    s_len: usize,
+    m: *const C64,
+    m_len: usize,
+    mu2: f64,
+    out: *mut C64,
+    out_len: usize,
+    poles: i32,
+    finite: i32,
+    check: i32,
+    cache: i32,
+) -> i32 {
+    guard(|| {
+        let ((size, r, _), nc) = dimensions(n, rank)?;
+        let key = (size, r, unsafe { pack_powers(size, powers, powers_len)? });
+        let mode = Mode::new(poles, finite, check, cache)?;
+        if unsafe { ml_tirust_supports_powers(n, rank, powers, powers_len, finite) } != SUCCESS {
+            set_error("TIRust: these propagator powers are unsupported for this integral or pole mode");
+            return Ok(UNSUPPORTED);
+        }
+        unsafe { evaluate_dp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, mu2, out, out_len) }
+    })
+}
+
+/// The body of the binary64 entry points, for a plan key.
+/// # Safety
+/// As [`ml_tirust_evaluate_dp`].
+#[allow(clippy::too_many_arguments)]
+unsafe fn evaluate_dp_key(
+    handle: *mut Context,
+    key: Key,
+    nc: usize,
+    mode: Mode,
+    p: *const f64,
+    p_len: usize,
+    s: *const f64,
+    s_len: usize,
+    m: *const C64,
+    m_len: usize,
+    mu2: f64,
+    out: *mut C64,
+    out_len: usize,
+) -> Result<i32> {
+    {
+        let n = key.0;
         length("shifts", p_len, 4 * n)?;
         length("invariants", s_len, n * n)?;
         length("masses", m_len, n)?;
@@ -1118,7 +1243,7 @@ pub unsafe extern "C" fn ml_tirust_evaluate_dp(
             }
         }
         Ok(status)
-    })
+    }
 }
 
 /// Evaluate genuine binary128 inputs transported in 64-byte ASCII records.
@@ -1146,12 +1271,76 @@ pub unsafe extern "C" fn ml_tirust_evaluate_mp(
 ) -> i32 {
     guard(|| {
         let (key, nc) = dimensions(n, rank)?;
-        let n = key.0;
         let mode = Mode::new(poles, finite, check, cache)?;
-        if ml_tirust_supports(n as i32, rank, finite) != SUCCESS {
+        if ml_tirust_supports(n, rank, finite) != SUCCESS {
             set_error("pole-only build support is not installed");
             return Ok(UNSUPPORTED);
         }
+        unsafe { evaluate_mp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, scale, scale_len, out, out_len) }
+    })
+}
+
+/// [`ml_tirust_evaluate_mp`] with one power per propagator (`powers[n]`,
+/// each 1 to 8); unit powers give that call's result bit for bit. See
+/// [`ml_tirust_supports_powers`].
+/// # Safety
+/// As [`ml_tirust_evaluate_mp`], and `powers` has `powers_len` readable entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_evaluate_mp_powers(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    powers: *const i32,
+    powers_len: usize,
+    p: *const u8,
+    p_len: usize,
+    s: *const u8,
+    s_len: usize,
+    m: *const u8,
+    m_len: usize,
+    scale: *const u8,
+    scale_len: usize,
+    out: *mut u8,
+    out_len: usize,
+    poles: i32,
+    finite: i32,
+    check: i32,
+    cache: i32,
+) -> i32 {
+    guard(|| {
+        let ((size, r, _), nc) = dimensions(n, rank)?;
+        let key = (size, r, unsafe { pack_powers(size, powers, powers_len)? });
+        let mode = Mode::new(poles, finite, check, cache)?;
+        if unsafe { ml_tirust_supports_powers(n, rank, powers, powers_len, finite) } != SUCCESS {
+            set_error("TIRust: these propagator powers are unsupported for this integral or pole mode");
+            return Ok(UNSUPPORTED);
+        }
+        unsafe { evaluate_mp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, scale, scale_len, out, out_len) }
+    })
+}
+
+/// The body of the binary128-record entry points, for a plan key.
+/// # Safety
+/// As [`ml_tirust_evaluate_mp`].
+#[allow(clippy::too_many_arguments)]
+unsafe fn evaluate_mp_key(
+    handle: *mut Context,
+    key: Key,
+    nc: usize,
+    mode: Mode,
+    p: *const u8,
+    p_len: usize,
+    s: *const u8,
+    s_len: usize,
+    m: *const u8,
+    m_len: usize,
+    scale: *const u8,
+    scale_len: usize,
+    out: *mut u8,
+    out_len: usize,
+) -> Result<i32> {
+    {
+        let n = key.0;
         length("QP shifts", p_len, 4 * n * RECORD)?;
         length("QP invariants", s_len, n * n * RECORD)?;
         length("QP masses", m_len, 2 * n * RECORD)?;
@@ -1175,7 +1364,7 @@ pub unsafe extern "C" fn ml_tirust_evaluate_mp(
             }
         }
         Ok(status)
-    })
+    }
 }
 /// # Safety
 /// NULL/zero queries required size; otherwise `out` has `capacity` writable bytes.
@@ -1748,7 +1937,7 @@ mod tests {
     }
     #[test]
     fn exact_primary_repeats_reuse_the_tensor_and_checks_never_do() {
-        let key = (3, 2);
+        let key = (3, 2, 0);
         let mass = 91.188;
         let shifts = [0., 0., 0., 0., 300., 120., -40., 250., 520., -60., 110., 400.];
         let batch = || {
@@ -1811,7 +2000,7 @@ mod tests {
     #[test]
     fn direction_workspaces_reuse_one_immutable_plan() {
         let mut state = State::new();
-        let key = (3, 2);
+        let key = (3, 2, 0);
         let mass = 91.188;
         let forward = [
             0.,
@@ -1894,7 +2083,7 @@ mod tests {
     }
     #[test]
     fn unstable_dp_call_clears_numerics_but_retains_direction_workspaces() {
-        let key = (1, 0);
+        let key = (1, 0, 0);
         let evaluate = |state: &mut State, check: bool, mass: f64| {
             state
                 .dp_checked(
@@ -1950,7 +2139,7 @@ mod tests {
     }
     #[test]
     fn rust_dp_error_discards_both_workspaces_but_retains_plan() {
-        let key = (1, 0);
+        let key = (1, 0, 0);
         let mode = Mode { poles: 0, finite: true, check: false, cache: true };
         let batch = || dp_batch(1, &[0.; 4], &[0.], &[C64 { re: 4., im: 0. }], 4.).unwrap();
         let mut state = State::new();
@@ -1983,7 +2172,7 @@ mod tests {
     }
     #[test]
     fn complex_mass_box_converges_between_256_and_384_bits() {
-        let key = (4, 4);
+        let key = (4, 4, 0);
         let plan = DirectReductionPlan::new(settings(key)).unwrap();
         let input = dp_batch(
             4,
@@ -2045,7 +2234,7 @@ mod tests {
     #[test]
     fn rank_six_scaleless_poles_sign_and_packing() {
         let c = handle();
-        let key = (2, 6);
+        let key = (2, 6, 0);
         let nc = 210;
         let p = [0., 0., 0., 0., 2., 0., 0., 2.];
         let s = [0.; 4];
@@ -2112,6 +2301,142 @@ mod tests {
         assert_eq!(evaluate(&mut uncached, 0, 0, 0), SUCCESS);
         assert_eq!(uncached, output);
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+}
+
+/// Raised propagator powers (`ml_tirust_*_powers`).
+#[cfg(test)]
+mod raised_powers {
+    use super::*;
+
+    fn handle() -> *mut Context {
+        let mut c = std::ptr::null_mut();
+        assert_eq!(unsafe { ml_tirust_context_create(ABI_VERSION, &mut c) }, SUCCESS);
+        c
+    }
+
+    /// A generic massive triangle: shifts, column-major invariants, squared
+    /// masses (the plumbing, whatever the pinned TIRust reduces).
+    fn triangle(m0: f64) -> (Vec<f64>, Vec<f64>, Vec<C64>) {
+        let shifts = [[0.0, 0.0, 0.0, 0.0], [3.0, 0.0, 0.0, 2.0], [3.0, 1.0, -1.0, 0.5]];
+        let d = |a: &[f64; 4], b: &[f64; 4]| {
+            let v: [f64; 4] = std::array::from_fn(|i| a[i] - b[i]);
+            v[0] * v[0] - v[1] * v[1] - v[2] * v[2] - v[3] * v[3]
+        };
+        let mut s = vec![0.0; 9];
+        for i in 0..3 {
+            for j in 0..3 {
+                s[i + 3 * j] = d(&shifts[i], &shifts[j]);
+            }
+        }
+        let m = [m0, 4.0, 5.0].iter().map(|&re| C64 { re, im: 0.0 }).collect();
+        (shifts.concat(), s, m)
+    }
+
+    fn dp(c: *mut Context, rank: i32, powers: Option<&[i32]>, m0: f64, finite: i32) -> (i32, Vec<C64>) {
+        let (p, s, m) = triangle(m0);
+        let nc = dimensions(3, rank).unwrap().1;
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            match powers {
+                None => ml_tirust_evaluate_dp(
+                    c, 3, rank, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), 9.0,
+                    out.as_mut_ptr(), out.len(), 0, finite, 0, 1,
+                ),
+                Some(powers) => ml_tirust_evaluate_dp_powers(
+                    c, 3, rank, powers.as_ptr(), powers.len(), p.as_ptr(), p.len(), s.as_ptr(), s.len(),
+                    m.as_ptr(), m.len(), 9.0, out.as_mut_ptr(), out.len(), 0, finite, 0, 1,
+                ),
+            }
+        };
+        (status, out)
+    }
+
+    fn records(values: &[String]) -> Vec<u8> {
+        let mut bytes = vec![b' '; values.len() * RECORD];
+        for (i, value) in values.iter().enumerate() {
+            bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+        }
+        bytes
+    }
+
+    fn mp(c: *mut Context, rank: i32, powers: &[i32]) -> (i32, Vec<C64>) {
+        let (p, s, m) = triangle(4.0);
+        let text = |x: f64| format!("{x:e}");
+        let p = records(&p.iter().map(|&x| text(x)).collect::<Vec<_>>());
+        let s = records(&s.iter().map(|&x| text(x)).collect::<Vec<_>>());
+        let m = records(&m.iter().flat_map(|z| [text(z.re), text(z.im)]).collect::<Vec<_>>());
+        let scale = records(&[text(9.0)]);
+        let nc = dimensions(3, rank).unwrap().1;
+        let mut output = vec![0u8; 8 * nc * RECORD];
+        let status = unsafe {
+            ml_tirust_evaluate_mp_powers(
+                c, 3, rank, powers.as_ptr(), powers.len(), p.as_ptr(), p.len(), s.as_ptr(), s.len(),
+                m.as_ptr(), m.len(), scale.as_ptr(), scale.len(), output.as_mut_ptr(), output.len(), 0, 1, 0, 1,
+            )
+        };
+        let value = |k: usize| -> f64 {
+            std::str::from_utf8(&output[k * RECORD..(k + 1) * RECORD]).unwrap().trim().parse().unwrap()
+        };
+        let values = (0..4 * nc).map(|k| C64 { re: value(2 * k), im: value(2 * k + 1) }).collect();
+        (status, values)
+    }
+
+    fn relative(values: &[C64], reference: &[C64]) -> f64 {
+        let error = values.iter().zip(reference).map(|(a, b)| (a.re - b.re).hypot(a.im - b.im)).fold(0.0, f64::max);
+        error / reference.iter().map(|z| z.re.hypot(z.im)).fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn unit_powers_reproduce_the_original_entry_points() {
+        let (a, b) = (handle(), handle());
+        let (status, original) = dp(a, 2, None, 4.0, 1);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(dp(b, 2, Some(&[1, 1, 1]), 4.0, 1), (SUCCESS, original));
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, [1, 1, 1].as_ptr(), 3, 1) }, SUCCESS);
+        for handle in [a, b] {
+            unsafe { ml_tirust_context_destroy(handle) };
+        }
+    }
+
+    /// Line 0 doubled: the mass derivative of the unit-power integral
+    /// (central differences, one Richardson step).
+    #[test]
+    fn a_doubled_line_is_the_mass_derivative_in_dp_and_qp() {
+        let c = handle();
+        let powers = [2, 1, 1];
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, powers.as_ptr(), 3, 1) }, SUCCESS);
+        let (status, dotted) = dp(c, 2, Some(&powers), 4.0, 1);
+        assert_eq!(status, SUCCESS);
+        let central = |h: f64| -> Vec<C64> {
+            let (up, down) = (dp(c, 2, None, 4.0 + h, 1).1, dp(c, 2, None, 4.0 - h, 1).1);
+            up.iter().zip(&down).map(|(u, d)| C64 { re: (u.re - d.re) / (2.0 * h), im: (u.im - d.im) / (2.0 * h) }).collect()
+        };
+        let (coarse, fine) = (central(4e-3), central(2e-3));
+        let derivative: Vec<C64> = coarse
+            .iter()
+            .zip(&fine)
+            .map(|(c, f)| C64 { re: (4.0 * f.re - c.re) / 3.0, im: (4.0 * f.im - c.im) / 3.0 })
+            .collect();
+        assert!(relative(&dotted, &derivative) <= 1e-8, "DP against d/dm^2: {:e}", relative(&dotted, &derivative));
+        let (status, quad) = mp(c, 2, &powers);
+        assert_eq!(status, SUCCESS);
+        assert!(relative(&quad, &dotted) <= 1e-13, "QP against DP: {:e}", relative(&quad, &dotted));
+        unsafe { ml_tirust_context_destroy(c) };
+    }
+
+    #[test]
+    fn raised_powers_are_refused_pole_only_and_invalid() {
+        let c = handle();
+        let powers = [2, 1, 1];
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, powers.as_ptr(), 3, 0) }, UNSUPPORTED);
+        assert_eq!(dp(c, 2, Some(&powers), 4.0, 0).0, UNSUPPORTED);
+        for bad in [[0, 1, 1], [9, 1, 1]] {
+            assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, bad.as_ptr(), 3, 1) }, UNSUPPORTED);
+            assert_eq!(dp(c, 2, Some(&bad), 4.0, 1).0, ERROR);
+        }
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, powers.as_ptr(), 2, 1) }, UNSUPPORTED);
+        unsafe { ml_tirust_context_destroy(c) };
     }
 }
 
