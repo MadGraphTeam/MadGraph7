@@ -131,8 +131,22 @@ end subroutine
     return gen
 
 
+def with_mode_check(driver):
+    """The caller's part of the admission (prepare_dp_terminal_batch): the
+    coefficient batch checks the IEEE modes of the environment it runs in
+    (here, that of the private call) and ANDs them into the captured INEXACT
+    flag, exactly as the generated statements do."""
+    driver = replace_once(driver, 'implicit none\n', 'implicit none\n'
+        'logical :: WL_MODES_OK,WL_HALTING(size(ieee_all))\n'
+        'integer :: WL_H\n'
+        'type(ieee_round_type) :: WL_ROUNDING\n')
+    block = ''.join(text + '\n' for text in Exporter.DP_TERMINAL_MODE_BLOCK)
+    return replace_once(driver, 'call DP_TERMINAL(',
+                        block + 'entry=entry.and.WL_MODES_OK\ncall DP_TERMINAL(')
+
+
 def guard_driver():
-    driver = frozen('guard-driver.f90').replace(
+    driver = with_mode_check(frozen('guard-driver.f90')).replace(
         'ML5_0_POLYNOMIAL_CONSTANTS', 'TEST_POLYNOMIAL_CONSTANTS').replace(
         'call DP_TERMINAL(', 'call TEST_DP_TERMINAL_WL_1_1(')
     driver = replace_once(driver, 'logical :: entry,took_fast',
@@ -248,7 +262,7 @@ class DPTerminalCompiledTest(unittest.TestCase):
             work = Path(tmp)
             prepare(work, rank=2 if left_rank == 1 else 6, left_rank=left_rank)
             guards = guard_driver()
-            traps = frozen('trap-driver.f90').replace(
+            traps = with_mode_check(frozen('trap-driver.f90')).replace(
                 'call DP_TERMINAL(', 'call TEST_DP_TERMINAL_WL_1_1(')
             if left_rank != 1:
                 guards = higher_rank_driver(guards, left_rank)
@@ -560,6 +574,12 @@ integer :: vertex_mode
 common/VERTEX_MODE_CONTROL/vertex_mode
 logical :: update_flags(size(ieee_all))
 common/UPDATER_FLAGS/update_flags
+! split-order tables of CREATE_LOOP_COEFS, filled by loop_matrix.f at its
+! initialisation (Born amplitude split orders; squared split orders cached
+! on first use, 0 = not yet known)
+integer :: bornamp_so(2),loopamp_sqso(2,2)
+common/TEST_SOTABLES/bornamp_so,loopamp_sqso
+integer, external :: TEST_ML5SOINDEX_FOR_BORN_AMP
 logical :: reference_update(size(ieee_all)),reference_final(size(ieee_all)),actual_final(size(ieee_all))
 complex(8) :: saved_coefs(0:LOOPMAXCOEFS-1,3,2),saved_wl(4,0:LOOPMAXCOEFS-1,4),sentinel
 integer(int64) :: cbits(size(loopcoefs)*2),wbits(size(saved_wl)*2)
@@ -568,6 +588,8 @@ integer :: i,j,k,trial
 type(ieee_round_type) :: after_rounding
 call ieee_set_halting_mode(ieee_all,.false.)
 call ieee_set_rounding_mode(ieee_nearest)
+bornamp_so=[(TEST_ML5SOINDEX_FOR_BORN_AMP(i),i=1,2)]
+loopamp_sqso=0
 sentinel=cmplx(-123.25_8,456.125_8,8)
 cf_d=reshape([3,-5,-7,11],[2,2])
 cf_n=reshape([2,-3,5,7],[2,2])

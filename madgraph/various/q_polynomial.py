@@ -598,7 +598,13 @@ END FUNCTION
         zero or component exponents [-400,400] put products on a 2**-904
         lattice and bound partial sums below 2**810; omitted operations cannot
         add invalid, overflow, underflow or divide-by-zero. INEXACT must already
-        be sticky, with nearest rounding and no enabled exception traps.
+        be sticky, with nearest rounding and no enabled exception traps: the
+        caller passes WL_ENTRY_INEXACT=.TRUE. only then. The coefficient batch
+        checks the rounding and halting modes once (they cannot change between
+        its calls: no IEEE_SET_* there, and a procedure restores the modes it
+        changes on return) and captures the sticky flag before each call
+        (loop_exporters.prepare_dp_terminal_batch, certified by
+        dp_terminal_proof).
         """
         if (self.coef_format != 'complex*16' or (r_1, r_2) not in ((1, 1), (2, 1), (3, 1))
                 or self.max_rank < r_1 + r_2 or self.updater_max_rank < 1
@@ -618,33 +624,16 @@ END FUNCTION
         source = replace_once(source, 'SUBROUTINE '+public+'(', 'SUBROUTINE '+private+'(')
         source = replace_once(source, 'OUT_SIZE,OUT)\n', 'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n')
         if r_1 == 1:
-            source = replace_once(source, '  INTEGER I,J,K\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
-  USE, INTRINSIC :: IEEE_EXCEPTIONS
-  INTEGER I,J,K,WL_H
+            source = replace_once(source, '  INTEGER I,J,K\n', '''  INTEGER I,J,K
   LOGICAL WL_ENTRY_INEXACT
-  LOGICAL WL_HALTING(SIZE(IEEE_ALL))
-  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
 ''')
         else:
-            source = replace_once(source, '  implicit none\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
-  USE, INTRINSIC :: IEEE_EXCEPTIONS
-  implicit none
-''')
-            source = replace_once(source, '  INTEGER I,J,K,L,M\n', '''  INTEGER I,J,K,L,M,WL_H
+            source = replace_once(source, '  INTEGER I,J,K,L,M\n', '''  INTEGER I,J,K,L,M
   LOGICAL WL_ENTRY_INEXACT
-  LOGICAL WL_HALTING(SIZE(IEEE_ALL))
-  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
 ''')
         guard = '''C Private diagonal arithmetic requires the rendered consumer proof.
 IF(.NOT.WL_ENTRY_INEXACT) GOTO 900
 IF(MAXLWFSIZE.NE.4.OR.LCUT_SIZE.NE.4.OR.IN_SIZE.NE.4.OR.OUT_SIZE.NE.4) GOTO 900
-CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)
-IF(WL_ROUNDING.NE.IEEE_NEAREST) GOTO 900
-DO WL_H=1,SIZE(IEEE_ALL)
-  IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(WL_H))) GOTO 900
-ENDDO
-CALL IEEE_GET_HALTING_MODE(IEEE_ALL,WL_HALTING)
-IF(ANY(WL_HALTING)) GOTO 900
 IF(.NOT.ALL(WL_DP_BOUNDED(REAL(A(:,0:4,:),KIND=8)))) GOTO 900
 IF(.NOT.ALL(WL_DP_BOUNDED(AIMAG(A(:,0:4,:))))) GOTO 900
 IF(.NOT.ALL(WL_DP_BOUNDED(REAL(B(:,0:4,:),KIND=8)))) GOTO 900

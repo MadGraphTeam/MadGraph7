@@ -10,6 +10,13 @@ from unittest import mock
 
 from madgraph.iolibs.file_writers import FortranWriter
 from madgraph.loop.dp_terminal_proof import validate_dp_terminal_wavefunctions
+from madgraph.loop.loop_exporters import LoopProcessOptimizedExporterFortranSA as _Exporter
+
+# The batch-level IEEE mode check of the generator (prepare_dp_terminal_batch)
+MODE_USE = '      USE, INTRINSIC :: IEEE_ARITHMETIC\n'
+MODE_DECLARATIONS = ''.join('      %s\n' % text for text in _Exporter.DP_TERMINAL_MODE_DECLARATIONS)
+MODE_BLOCK = ''.join('      %s\n' % text for text in _Exporter.DP_TERMINAL_MODE_BLOCK)
+MODE_AND = '      %s\n' % _Exporter.DP_TERMINAL_MODE_AND
 
 
 class DPTerminalConsumerProofTest(unittest.TestCase):
@@ -60,15 +67,15 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
         (root / 'coef_construction_1.f').write_text(
             '      SUBROUTINE CONSTRUCT()\n'
             '      USE %sPOLYNOMIAL_CONSTANTS\n' % prefix +
-            '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n' + declaration() +
-            '      LOGICAL WL_ENTRY_INEXACT\n'
+            MODE_USE + '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n' + declaration() +
+            '      LOGICAL WL_ENTRY_INEXACT\n' + MODE_DECLARATIONS +
             '      CALL %sUPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,\n'
-            '     $ WL(1,0,1,1))\n'
-            '      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n'
+            '     $ WL(1,0,1,1))\n' % prefix + MODE_BLOCK +
+            '      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n' + MODE_AND +
             '      CALL %sDP_TERMINAL_WL_1_1(WL(1,0,1,1),4,COEFS,4,4,\n'
             '     $ WL(1,0,1,2),WL_ENTRY_INEXACT)\n'
             '      CALL %sCREATE_LOOP_COEFS(WL(1,0,1,2),2,4,1,1,1,1,1)\n'
-            '      END\n' % (prefix, prefix, prefix))
+            '      END\n' % (prefix, prefix))
         template = (Path(__file__).resolve().parents[3] /
                     'madgraph/iolibs/template_files/loop_optimized/polynomial.inc')
         create = '\n'.join(line for line in template.read_text().split('## }else{', 1)[0].splitlines()
@@ -540,7 +547,14 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
         cases = ((template, True),
                  (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=-O0\n'), False),
                  (template.replace('\nAMP_FLAG=\n', '\n'), False),
-                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nNEW_FLAG=\n'), False))
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nNEW_FLAG=\n'), False),
+                 # the DHELAS and MODEL libraries of a MadLoop standalone
+                 # output: -O2, nothing that changes the IEEE arithmetic
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nALOHA_FLAG=-O2\nMODEL_FLAG=-O2\n'), True),
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nALOHA_FLAG=\n'), True),
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nALOHA_FLAG=-O3\n'), False),
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nMODEL_FLAG=-O2 -ffast-math\n'), False),
+                 (template.replace('\nAMP_FLAG=\n', '\nAMP_FLAG=\nMODEL_FLAG=-march=native\n'), False))
         for index, (text, accepted) in enumerate(cases):
             with self.subTest(case=index):
                 export = self.work / ('make_opts_export_%d' % index)
@@ -548,6 +562,51 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
                 (export / 'Source').mkdir()
                 (export / 'Source/make_opts').write_text(text)
                 self.assertEqual(self.validate(fixture), accepted)
+
+    def test_batch_ieee_mode_check_is_binding(self):
+        """The rounding and halting modes are checked once per batch, by the
+        canonical block before the first private call, and ANDed into each
+        captured flag: anything else keeps the ordinary updaters."""
+        capture = '      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n'
+        call = '      CALL TEST_DP_TERMINAL_WL_1_1('
+        changes = (
+            (MODE_AND, ''),
+            (MODE_BLOCK, ''),
+            ('      WL_MODES_OK=.FALSE.\n', '      WL_MODES_OK=.TRUE.\n'),
+            ('      IF(ANY(WL_HALTING)) WL_MODES_OK=.FALSE.\n', ''),
+            ('IF(WL_ROUNDING.EQ.IEEE_NEAREST)', 'IF(WL_ROUNDING.NE.IEEE_NEAREST)'),
+            (MODE_AND, MODE_AND.replace('.AND.', '.OR.')),
+            (capture + MODE_AND, MODE_AND + capture),
+            (MODE_AND, '      WL_MODES_OK=.TRUE.\n' + MODE_AND),
+            (MODE_AND, MODE_AND + '      CALL IEEE_SET_HALTING_MODE(IEEE_ALL,.TRUE.)\n'),
+            (MODE_BLOCK, MODE_BLOCK + '  100 CONTINUE\n'),
+            (MODE_BLOCK, '      IF(H.EQ.1) THEN\n' + MODE_BLOCK + '      ENDIF\n'),
+            (MODE_BLOCK, '      DO H=1,2\n' + MODE_BLOCK + '      ENDDO\n'),
+            (MODE_BLOCK, MODE_BLOCK + MODE_BLOCK),
+            (MODE_DECLARATIONS, MODE_DECLARATIONS + '      COMMON/HIDDEN/WL_MODES_OK\n'),
+            ('      LOGICAL WL_MODES_OK\n', ''),
+            (MODE_USE, ''),
+        )
+        for old, new in changes:
+            with self.subTest(mutation=(old, new)):
+                fixture = self.fixture()
+                self.replace(fixture[0], 'coef_construction_1.f', old, new)
+                self.assertFalse(self.validate(fixture))
+        # the block after the private call: moved past it, then nothing
+        # remains before the call
+        fixture = self.fixture()
+        path = fixture[0] / 'coef_construction_1.f'
+        text = path.read_text().replace(MODE_BLOCK, '', 1)
+        path.write_text(text.replace('      CALL TEST_CREATE_LOOP_COEFS(',
+                                     MODE_BLOCK + '      CALL TEST_CREATE_LOOP_COEFS(', 1))
+        self.assertFalse(self.validate(fixture))
+        # a completed IF construct before the block and a label after the
+        # last private call are fine
+        fixture = self.fixture()
+        self.replace(fixture[0], 'coef_construction_1.f', MODE_BLOCK,
+                     '      IF(H.EQ.1) THEN\n      CONTINUE\n      ENDIF\n' + MODE_BLOCK)
+        self.replace(fixture[0], 'coef_construction_1.f', '      END\n', '  900 CONTINUE\n      END\n')
+        self.assertTrue(self.validate(fixture))
 
     def test_modified_merger_or_create_consumer_rejected(self):
         changes = (
@@ -631,8 +690,8 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
             '      CALL %sUPDATE_WL_%d_1(WL(1,0,1,%d),4,COEFS,4,4,\n'
             '     $ WL(1,0,1,%d))\n' % (prefix, rank, rank, rank + 1)
             for rank in range(mother_rank))
-        calls += (
-            '      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n'
+        calls += MODE_BLOCK + (
+            '      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n' + MODE_AND +
             '      CALL %sDP_TERMINAL_WL_%d_1(WL(1,0,1,%d),4,COEFS,4,4,\n'
             '     $ WL(1,0,1,%d),WL_ENTRY_INEXACT)\n'
             '      CALL %sCREATE_LOOP_COEFS(WL(1,0,1,%d),%d,4,1,1,1,1,1)\n'

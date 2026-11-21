@@ -41,11 +41,33 @@ class DPTerminalProposalTest(unittest.TestCase):
                 else:
                     statements.append(line[6:].strip())
             private = next(i for i, text in enumerate(statements) if text.startswith('CALL '+prefix+'DP_TERMINAL_'))
+            # the batch checks the IEEE modes once, before its first private
+            # call; each call ANDs them into the flag captured just before it
+            block = list(Exporter.DP_TERMINAL_MODE_BLOCK)
             self.assertEqual(statements[private-2:private],
-                             ['CALL VERTEX(COEFS)', 'CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)'])
-            self.assertIn('USE, INTRINSIC :: IEEE_EXCEPTIONS, ONLY: IEEE_GET_FLAG,IEEE_INEXACT', statements)
-            self.assertIn('LOGICAL WL_ENTRY_INEXACT', statements)
+                             ['CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)',
+                              Exporter.DP_TERMINAL_MODE_AND])
+            self.assertEqual(statements[private-2-len(block):private-2], block)
+            self.assertEqual(statements[private-3-len(block)], 'CALL VERTEX(COEFS)')
+            for text in ('USE, INTRINSIC :: IEEE_ARITHMETIC', 'USE, INTRINSIC :: IEEE_EXCEPTIONS',
+                         'LOGICAL WL_ENTRY_INEXACT') + Exporter.DP_TERMINAL_MODE_DECLARATIONS:
+                self.assertIn(text, statements)
             self.assertIn('      CALL '+prefix+'CREATE_LOOP_COEFS(WL(1,0,1,3),2,4,1)\n', candidate)
+
+    def test_mode_check_once_before_the_first_private_call(self):
+        call = ('      CALL VERTEX(COEFS)\n'
+                '      CALL TEST_UPDATE_WL_1_1(WL(1,0,1,%d),4,COEFS,4,4,\n'
+                '     $ WL(1,0,1,%d))\n'
+                '      CALL TEST_CREATE_LOOP_COEFS(WL(1,0,1,%d),2,4,1)\n')
+        source = batch().replace(call % (2, 3, 3), call % (2, 3, 3) + call % (4, 5, 5))
+        expected = dict(EXPECTED)
+        expected[5] = dict(EXPECTED[3], loop_mother_number=4, out=5)
+        candidate, found = Exporter.prepare_dp_terminal_batch(source, 'TEST_', expected)
+        self.assertEqual(found, {3, 5})
+        self.assertEqual(candidate.count('CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)'), 1)
+        self.assertEqual(candidate.count(Exporter.DP_TERMINAL_MODE_AND), 2)
+        self.assertLess(candidate.index('\n      WL_MODES_OK=.FALSE.\n'),
+                        candidate.index('DP_TERMINAL_WL_'))
 
     def test_unrelated_batch_is_byte_preserved(self):
         source = batch().replace('WL(1,0,1,3)', 'WL(1,0,1,4)')
@@ -57,7 +79,9 @@ class DPTerminalProposalTest(unittest.TestCase):
         for source in (original.replace('      CALL TEST_UPDATE', '  400 CALL TEST_UPDATE'),
                        original.replace(call, call+call),
                        original.replace('      IMPLICIT NONE\n', ''),
-                       original.replace('      INTEGER I\n', '      LOGICAL WL_ENTRY_INEXACT\n')):
+                       original.replace('      INTEGER I\n', '      LOGICAL WL_ENTRY_INEXACT\n'),
+                       original.replace('      INTEGER I\n', '      LOGICAL WL_MODES_OK\n'),
+                       original.replace('      INTEGER I\n', '      INTEGER WL_H\n')):
             with self.subTest(source=source), self.assertRaises(ValueError):
                 Exporter.prepare_dp_terminal_batch(source, 'TEST_', EXPECTED)
 
@@ -158,12 +182,30 @@ class DPTerminalSelectionTest(unittest.TestCase):
 
 class DPTerminalGeneratorTest(unittest.TestCase):
     def test_existing_rank1_generated_bytes_are_unchanged(self):
-        # Hash from the independently retained committed 1x1-only generator.
-        expected = '9389e3c76827e677ab0ae4bf6f828d6d8a42f50eeb7c2676576869223bd2eb56'
+        # Hash from the independently retained committed 1x1-only generator,
+        # which checked the IEEE modes in the updater. They are now checked
+        # once per coefficient batch (prepare_dp_terminal_batch): putting the
+        # removed statements back must give the retained bytes again.
+        retained = '9389e3c76827e677ab0ae4bf6f828d6d8a42f50eeb7c2676576869223bd2eb56'
+        expected = 'c685e6ebc4d92b66e1395772113ed00ddd77908c050ab139f241f27cb1522749'
         for rank in (2, 4, 7):
             writer = FortranPolynomialRoutines(rank, updater_max_rank=1,
                 sub_prefix='TEST_', proc_prefix='TEST_', coef_format='complex*16')
-            self.assertEqual(sha256(writer.write_dp_terminal_wl_updater().encode()).hexdigest(), expected)
+            source = writer.write_dp_terminal_wl_updater()
+            self.assertEqual(sha256(source.encode()).hexdigest(), expected)
+            before = source.replace('  INTEGER I,J,K\n  LOGICAL WL_ENTRY_INEXACT\n',
+                '  USE, INTRINSIC :: IEEE_ARITHMETIC\n  USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+                '  INTEGER I,J,K,WL_H\n  LOGICAL WL_ENTRY_INEXACT\n'
+                '  LOGICAL WL_HALTING(SIZE(IEEE_ALL))\n  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING\n', 1)
+            before = before.replace('OUT_SIZE.NE.4) GOTO 900\n', 'OUT_SIZE.NE.4) GOTO 900\n'
+                'CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)\n'
+                'IF(WL_ROUNDING.NE.IEEE_NEAREST) GOTO 900\n'
+                'DO WL_H=1,SIZE(IEEE_ALL)\n'
+                '  IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(WL_H))) GOTO 900\n'
+                'ENDDO\n'
+                'CALL IEEE_GET_HALTING_MODE(IEEE_ALL,WL_HALTING)\n'
+                'IF(ANY(WL_HALTING)) GOTO 900\n', 1)
+            self.assertEqual(sha256(before.encode()).hexdigest(), retained)
 
     def test_compact_surviving_arithmetic_and_full_initialization_are_unchanged(self):
         for rank in (2, 3):
@@ -187,7 +229,7 @@ class DPTerminalGeneratorTest(unittest.TestCase):
     def test_unrecognized_compact_structure_fails_closed(self):
         writer = FortranPolynomialRoutines(4, updater_max_rank=1)
         dense = writer.write_compact_wl_updater(2, 1, _sparse=False)
-        for old, new in (('  implicit none\n', ''), ('OUT(:,:,:)', 'OUT(:, :, :)'),
+        for old, new in (('  INTEGER I,J,K,L,M\n', '  INTEGER I,J,K,L,M,N\n'), ('OUT(:,:,:)', 'OUT(:, :, :)'),
                          ('          DO I=1,LCUT_SIZE', '          DO I = 1,LCUT_SIZE')):
             with self.subTest(marker=old), patch.object(writer, 'write_compact_wl_updater',
                                                        return_value=dense.replace(old, new)):

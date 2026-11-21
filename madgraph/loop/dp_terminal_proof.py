@@ -335,13 +335,13 @@ def _rendered(template, actual, values):
     return found
 
 
-def _make_opts_variables(text, allowed):
+def _make_opts_variables(text, allowed, optional=frozenset()):
     variables = {}
     for line in text:
         match = re.fullmatch(r'([A-Z0-9_]+)\s*=\s*([A-Za-z0-9_./:+ =-]*)', line)
         _need(match and match[1] not in variables, 'Unknown compiler option assignment')
         variables[match[1]] = match[2].strip()
-    _need(set(variables) == allowed, 'Unknown compiler option variable')
+    _need(allowed <= set(variables) <= allowed | optional, 'Unknown compiler option variable')
     _need(re.fullmatch(r'[A-Za-z0-9_./+-]+', variables['DEFAULT_F_COMPILER']),
           'Fortran compiler wrapper/options outside proof')
     return variables
@@ -528,10 +528,16 @@ def _build_inputs(export, directory, layout):
         _need(_normalize_make(actual[1]) == _normalize_make(standard[1]), 'Modified compiler recipes')
         variables = _make_opts_variables(_normalize_make(actual[0]),
             {'DEFAULT_F2PY_COMPILER', 'DEFAULT_F_COMPILER', 'DEFAULT_CPP_COMPILER',
-             'MACFLAG', 'MG5AMC_VERSION', 'STDLIB', 'PYTHIA8_PATH', 'STDLIB_FLAG', 'AMP_FLAG'})
+             'MACFLAG', 'MG5AMC_VERSION', 'STDLIB', 'PYTHIA8_PATH', 'STDLIB_FLAG', 'AMP_FLAG'},
+            optional={'ALOHA_FLAG', 'MODEL_FLAG'})
         # Optimisation flag of the tree-level and MadEvent amplitude sources;
         # no loop recipe reads it. Only its default (empty) is within the proof.
         _need(variables['AMP_FLAG'] == '', 'Amplitude optimisation flag outside proof')
+        # The DHELAS and MODEL libraries of a MadLoop standalone output are
+        # built at -O2 (no -march, -ffast-math or -ffp-contract option, which
+        # could change the IEEE arithmetic the private updaters rely on).
+        _need(all(variables.get(name, '') in ('', '-O2') for name in ('ALOHA_FLAG', 'MODEL_FLAG')),
+              'Library optimisation flag outside proof')
     path = export / 'SubProcesses/MadLoop_makefile_definitions'
     if path.exists():
         _need(_inside(path, export), 'External reducer definitions')
@@ -679,6 +685,7 @@ def _scope_bounds(rows, prefix):
     constants = ('MAXLWFSIZE', 'LOOPMAXCOEFS', 'VERTEXMAXCOEFS')
     allowed_use = {'USE' + prefix + 'POLYNOMIAL_CONSTANTS', 'USEALOHA_OBJECT',
                    'USE,INTRINSIC::IEEE_ARITHMETIC,ONLY:IEEE_IS_FINITE',
+                   'USE,INTRINSIC::IEEE_ARITHMETIC',
                    'USE,INTRINSIC::IEEE_EXCEPTIONS',
                    'USE,INTRINSIC::IEEE_EXCEPTIONS,ONLY:IEEE_GET_FLAG,IEEE_INEXACT',
                    'USE,INTRINSIC::IEEE_EXCEPTIONS,ONLY:IEEE_INEXACT,IEEE_GET_FLAG'}
@@ -933,6 +940,62 @@ def _readonly_comb(expanded, certified_rows, prefix):
                           for text in statements), 'Aliased combination reader binding')
 
 
+# The IEEE environment of the private updaters (nearest rounding, no halting
+# exception) is checked once per coefficient batch, by this exact block
+# (loop_exporters.prepare_dp_terminal_batch), and ANDed into the sticky
+# INEXACT flag captured before each call.
+_MODE_DECLARATIONS = ('LOGICALWL_MODES_OK', 'INTEGERWL_H', 'LOGICALWL_HALTING(SIZE(IEEE_ALL))',
+                      'TYPE(IEEE_ROUND_TYPE)WL_ROUNDING')
+_MODE_BLOCK = ('WL_MODES_OK=.FALSE.', 'CALLIEEE_GET_ROUNDING_MODE(WL_ROUNDING)',
+               'IF(WL_ROUNDING.EQ.IEEE_NEAREST)THEN', 'WL_MODES_OK=.TRUE.',
+               'DOWL_H=1,SIZE(IEEE_ALL)',
+               'IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(WL_H)))WL_MODES_OK=.FALSE.', 'ENDDO',
+               'IF(WL_MODES_OK)THEN', 'CALLIEEE_GET_HALTING_MODE(IEEE_ALL,WL_HALTING)',
+               'IF(ANY(WL_HALTING))WL_MODES_OK=.FALSE.', 'ENDIF', 'ENDIF')
+_MODE_AND = 'WL_ENTRY_INEXACT=WL_ENTRY_INEXACT.AND.WL_MODES_OK'
+_MODE_NAMES = ('WL_MODES_OK', 'WL_H', 'WL_HALTING', 'WL_ROUNDING')
+
+
+def _mode_block(rows, normalized, unit):
+    """Locate the batch's IEEE mode check and prove that it runs before every
+    private call: the canonical block, written once in the batch itself,
+    unlabeled, at the top level of its subroutine (no enclosing IF, DO or
+    SELECT construct), its names local and used nowhere else but in the
+    per-call conjunction. The caller requires that no statement from the
+    block to the last private call is labeled, so no jump can skip it, and
+    the batch makes no IEEE_SET_* call that could change the modes after it.
+    Returns the row range of the block."""
+    _need('USE,INTRINSIC::IEEE_ARITHMETIC' in normalized and
+          'USE,INTRINSIC::IEEE_EXCEPTIONS' in normalized, 'Unbound IEEE mode check')
+    for declaration in _MODE_DECLARATIONS:
+        _need(normalized.count(declaration) == 1, 'Unbound IEEE mode declaration')
+    size = len(_MODE_BLOCK)
+    starts = [index for index in range(len(rows) - size + 1)
+              if tuple(normalized[index:index + size]) == _MODE_BLOCK]
+    _need(len(starts) == 1, 'Missing or repeated IEEE mode check')
+    start, end = starts[0], starts[0] + size
+    _need(all(rows[index].origin == unit and not rows[index].label
+              for index in range(start, end)), 'Included or labeled IEEE mode check')
+    for index, row in enumerate(rows):
+        if any(_mentions(row.text, name) for name in _MODE_NAMES):
+            _need(row.origin == unit and (start <= index < end or
+                  normalized[index] in _MODE_DECLARATIONS or normalized[index] == _MODE_AND),
+                  'Aliased or modified IEEE mode check')
+    heads = [index for index in range(start) if normalized[index].startswith('SUBROUTINE')]
+    _need(heads, 'IEEE mode check outside a subroutine')
+    depth = 0
+    for text in normalized[heads[-1] + 1:start]:
+        _need(not re.match(r'[A-Z][A-Z0-9_]*:(?!:)|WHERE\(|FORALL\(|ASSOCIATE\(|BLOCK$|CRITICAL',
+                           text), 'Unknown construct before IEEE mode check')
+        if (re.fullmatch(r'IF\(.*\)THEN', text) or text.startswith('SELECTCASE(') or
+                re.fullmatch(r'DO(?:[A-Z][A-Z0-9_]*=.*|WHILE\(.*\))?', text)):
+            depth += 1
+        elif text in ('ENDIF', 'ENDDO', 'ENDSELECT'):
+            depth -= 1
+    _need(depth == 0, 'IEEE mode check inside a construct')
+    return start, end
+
+
 def _private_references(expanded, directory, prefix, certified_calls):
     """Every private invocation must belong to the certified producer graph.
 
@@ -1086,7 +1149,12 @@ def _proof(directory, prefix, expected, source_manifest, include_roots):
     for _, unit, rows, uses in sorted(batch_rows):
         normalized = [_compact(row.text) for row in rows]
         private_here = any('DP_TERMINAL_WL_' in text for text in normalized)
+        mode_range = None
         if private_here:
+            mode_range = _mode_block(rows, normalized, unit)
+            calls = [index for index, text in enumerate(normalized) if 'DP_TERMINAL_WL_' in text]
+            _need(not any(rows[index].label for index in range(mode_range[0], max(calls) + 1)),
+                  'Jump target between the IEEE mode check and a private call')
             _need(normalized.count('LOGICALWL_ENTRY_INEXACT') == 1 and
                   any(text in ('USE,INTRINSIC::IEEE_EXCEPTIONS',
                                'USE,INTRINSIC::IEEE_EXCEPTIONS,ONLY:IEEE_GET_FLAG,IEEE_INEXACT',
@@ -1098,6 +1166,7 @@ def _proof(directory, prefix, expected, source_manifest, include_roots):
                 if _mentions(row.text, 'WL_ENTRY_INEXACT'):
                     _need(text == 'LOGICALWL_ENTRY_INEXACT' or
                           text == 'CALLIEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)' or
+                          text == _MODE_AND or
                           any(text.startswith('CALL' + prefix + 'DP_TERMINAL_WL_' + pair + '(')
                               for pair in ('1_1', '2_1', '3_1')),
                           'Aliased or modified capture flag')
@@ -1130,8 +1199,11 @@ def _proof(directory, prefix, expected, source_manifest, include_roots):
                 if is_private:
                     index = rows.index(row)
                     _need((left, right) in ((1, 1), (2, 1), (3, 1)) and arguments[6] == 'WL_ENTRY_INEXACT' and
-                          index > 0 and normalized[index - 1] == 'CALLIEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)'
-                          and not row.label and not rows[index - 1].label and rows[index - 1].origin == unit,
+                          mode_range is not None and index - 2 >= mode_range[1] and
+                          normalized[index - 1] == _MODE_AND and
+                          normalized[index - 2] == 'CALLIEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)'
+                          and not row.label and not rows[index - 1].label and not rows[index - 2].label
+                          and rows[index - 1].origin == unit and rows[index - 2].origin == unit,
                           'Terminal call without immediate capture')
                     private[output] = produced[output]
                     certified_private_calls.add((unit, row))

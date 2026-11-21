@@ -12,6 +12,9 @@ else
   FFLAGS+= -fPIC -ffixed-line-length-132
   FC=gfortran
 endif
+# Optimisation of the model sources, set in make_opts by the MadLoop
+# standalone output (MODEL_FLAG=-O2); empty otherwise.
+FFLAGS+= $(MODEL_FLAG)
 
 include makeinc.inc
 

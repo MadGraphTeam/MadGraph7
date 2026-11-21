@@ -2620,6 +2620,24 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         
         return self.group_loops
     
+    def make(self):
+        """Compile Source, its DHELAS and MODEL libraries at -O2 (identical
+        results without -march or fast-math options, faster loop evaluation)
+        for the plain standalone output, whose make_opts has no -O flag. The
+        DP-terminal proof admits exactly these flags (dp_terminal_proof)."""
+        if type(self) is LoopProcessOptimizedExporterFortranSA:
+            self.set_library_optimization()
+        super(LoopProcessOptimizedExporterFortranSA, self).make()
+
+    def set_library_optimization(self, flag='-O2'):
+        """ALOHA_FLAG (read by the DHELAS makefile) and MODEL_FLAG (MODEL
+        makefile) in Source/make_opts."""
+        make_opts = pjoin(self.dir_path, 'Source', 'make_opts')
+        if os.path.exists(make_opts):
+            from madgraph.interface.common_run_interface import CommonRunCmd
+            CommonRunCmd.update_make_opts_full(
+                make_opts, {'ALOHA_FLAG': flag, 'MODEL_FLAG': flag})
+
     def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):
         """create the global information for loops"""
         
@@ -2795,6 +2813,28 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                   info['loop_mother_rank'] + 1 <= rank <= 6)) and
                 info['lcut_size'] == info['in_size'] == info['out_size'] == 4}
 
+    # The IEEE environment of the private DP updaters (nearest rounding, no
+    # halting exception), checked once per coefficient batch, before its first
+    # private call. Each call ANDs it with the sticky INEXACT flag captured
+    # just before it. dp_terminal_proof certifies these exact statements.
+    DP_TERMINAL_MODE_DECLARATIONS = (
+        'LOGICAL WL_MODES_OK', 'INTEGER WL_H',
+        'LOGICAL WL_HALTING(SIZE(IEEE_ALL))', 'TYPE(IEEE_ROUND_TYPE) WL_ROUNDING')
+    DP_TERMINAL_MODE_BLOCK = (
+        'WL_MODES_OK=.FALSE.',
+        'CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)',
+        'IF(WL_ROUNDING.EQ.IEEE_NEAREST) THEN',
+        'WL_MODES_OK=.TRUE.',
+        'DO WL_H=1,SIZE(IEEE_ALL)',
+        'IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(WL_H))) WL_MODES_OK=.FALSE.',
+        'ENDDO',
+        'IF(WL_MODES_OK) THEN',
+        'CALL IEEE_GET_HALTING_MODE(IEEE_ALL,WL_HALTING)',
+        'IF(ANY(WL_HALTING)) WL_MODES_OK=.FALSE.',
+        'ENDIF',
+        'ENDIF')
+    DP_TERMINAL_MODE_AND = 'WL_ENTRY_INEXACT=WL_ENTRY_INEXACT.AND.WL_MODES_OK'
+
     @staticmethod
     def prepare_dp_terminal_batch(source, prefix, expected):
         """Propose exact fixed-form call replacements, leaving other bytes intact.
@@ -2802,8 +2842,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         This is only a proposal: the independent full-source validator must
         accept all consumers and aliases before these private calls survive.
         """
+        cls = LoopProcessOptimizedExporterFortranSA
         if (not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*|', prefix) or
-                'WL_ENTRY_INEXACT' in source.upper()):
+                re.search(r'(?<![A-Z0-9_])(?:WL_ENTRY_INEXACT|WL_MODES_OK|WL_HALTING|'
+                          r'WL_ROUNDING|WL_H)(?![A-Z0-9_])', source.upper())):
             raise ValueError('Unknown DP terminal batch declaration')
         wanted = {}
         for target, info in expected.items():
@@ -2847,15 +2889,24 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             private = text.replace('CALL', 'CALL ', 1).replace(
                 'UPDATE_WL_', 'DP_TERMINAL_WL_', 1)[:-1]+',WL_ENTRY_INEXACT)'
             replacements.append((start, end,
-                fixed('CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)')+fixed(private)))
+                fixed('CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)')+
+                fixed(cls.DP_TERMINAL_MODE_AND)+fixed(private)))
         if not found:
             return source, found
+        # The modes are checked once, before the first private call
+        replacements.sort()
+        start, end, replacement = replacements[0]
+        replacements[0] = (start, end, ''.join(fixed(statement) for statement in
+                                               cls.DP_TERMINAL_MODE_BLOCK) + replacement)
         for start, end, replacement in reversed(replacements):
             physical[start:end] = [replacement]
         candidate = ''.join(physical)
         pattern = r'(?mi)^ {6}IMPLICIT\s+NONE[ \t]*\n'
-        insertion = (fixed('USE, INTRINSIC :: IEEE_EXCEPTIONS, ONLY: IEEE_GET_FLAG,IEEE_INEXACT')+
-                     '      IMPLICIT NONE\n      LOGICAL WL_ENTRY_INEXACT\n')
+        insertion = ('      USE, INTRINSIC :: IEEE_ARITHMETIC\n'
+                     '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+                     '      IMPLICIT NONE\n      LOGICAL WL_ENTRY_INEXACT\n' +
+                     ''.join('      %s\n' % declaration for declaration in
+                             cls.DP_TERMINAL_MODE_DECLARATIONS))
         candidate, count = re.subn(pattern, lambda _: insertion, candidate)
         if count != 1:
             raise ValueError('Unknown DP terminal batch scope')

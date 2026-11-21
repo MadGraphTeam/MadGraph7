@@ -16,9 +16,13 @@ ANNOUNCEMENT:
        dropped at zero relative velocity. P-wave states, processes without a Born and FKS
        modes are refused for now. See docs/onia_loop.md and docs/benchmarkfolder.
    HS: MadLoop standalone outputs compile their sources at -O2 (MADLOOP_OPTIMIZATION in the
-       loop makefile, before FFLAGS) and tabulate the colour factors and split-order indices
-       of the counterterm and loop-coefficient contractions at initialisation: identical
-       results, 8-20% less time per point on the benchmark processes.
+       loop makefile, before FFLAGS) and their DHELAS and MODEL libraries at -O2 (ALOHA_FLAG
+       and the new MODEL_FLAG of make_opts); they tabulate the colour factors and
+       split-order indices of the counterterm and loop-coefficient contractions at
+       initialisation, and check the IEEE modes of the private DP-terminal updaters once
+       per coefficient batch instead of in every call (the DP-terminal proof certifies the
+       new caller statements and admits exactly these flags): identical results, 17-35%
+       less time per point on the benchmark processes.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV
