@@ -146,13 +146,16 @@ class MG7AmplicolTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.path, ignore_errors=True)
 
-    def run_mg7(self, name, processes, gridpack=False, merging=None, **amplicol):
+    def run_mg7(self, name, processes, gridpack=False, merging=None, options=(),
+                **amplicol):
         """Output and run the processes, returns the cross section, its error
-        and the run directory."""
+        and the run directory; options are MG options set before the output."""
         run_dir = pjoin(self.path, name)
         mg = MGCmd.MasterCmd()
         mg.no_notification()
         mg.exec_cmd('set automatic_html_opening False --no_save')
+        for option in options:
+            mg.exec_cmd('set %s --no_save' % option)
         for index, process in enumerate(processes):
             mg.exec_cmd('%s %s' % ('generate' if index == 0 else 'add process',
                                    process))
@@ -201,6 +204,21 @@ class MG7AmplicolTest(unittest.TestCase):
         madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
         amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'])[:2]
         self.assert_compatible(amplicol, madmatrix)
+
+    def test_pp_jjj_crossing(self):
+        """Crossed flavour unions in the leading-colour artifact: 3 programs
+        instead of 7, and the same cross section."""
+        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'],
+                                options=['amplicol_flavor_union_crossing True'])
+        self.assert_compatible(amplicol[:2], madmatrix)
+        lc, = glob.glob(pjoin(amplicol[2], 'SubProcesses', 'A*', 'lc'))
+        with open(pjoin(lc, 'process-groups.json')) as stream:
+            groups = json.load(stream)
+        self.assertEqual(groups['schema_version'], 2)
+        self.assertEqual(len(groups['groups']), 3)
+        self.assertTrue(any('crossing_momentum_signs' in member
+                            for group in groups['groups'] for member in group['members']))
 
     def test_gg_ttxg(self):
         """Massive quarks in the colour-ordered phase space."""
