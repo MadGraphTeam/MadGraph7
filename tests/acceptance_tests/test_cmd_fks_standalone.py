@@ -1410,7 +1410,7 @@ C     batched one reuses, as set_goodhel does in a run
       IMPLICIT NONE
       INTEGER I,IRET1,IRET2
       REAL*8 XSEC(15),XLIM,WGT(15),WGTL
-      REAL*8 XP(15,0:3,21),LXP(0:3,21)
+      REAL*8 XP(0:3,5,15),LXP(0:3,5)
       REAL*8 XLIM2(15),WGTL2(15)
       REAL*8 XP2(15,0:3,5),LXP2(0:3,5)
       DO I=1,15
@@ -1432,6 +1432,12 @@ C     batched one reuses, as set_goodhel does in a run
       CALL CHECKRES2(XSEC,XLIM2,WGT,WGTL2,XP2,LXP2,
      &  0,15,1,1,2,IRET2)
       IF (IRET1.NE.1 .OR. IRET2.NE.1) STOP 2
+      XSEC=1D0
+      CALL CHECKRES(XSEC,XLIM,WGT,WGTL,XP,LXP,
+     &  0,15,1,4,1,2,IRET1)
+      CALL CHECKRES2(XSEC,XLIM2,WGT,WGTL2,XP2,LXP2,
+     &  0,15,1,1,2,IRET2)
+      IF (IRET1.NE.0 .OR. IRET2.NE.0) STOP 3
       WRITE(*,*) 'NONCONVERGENCE SAFELY FAILED'
       END
 
@@ -1454,10 +1460,11 @@ C     batched one reuses, as set_goodhel does in a run
             ['gfortran', '-O0', '-fcheck=bounds',
              '-ffixed-line-length-none', '-o',
              'check_nonconvergence', 'check_nonconvergence.f'], cwd=test_dir)
-        output = subprocess.check_output(
+        result = subprocess.run(
             ['./check_nonconvergence'], cwd=test_dir,
-            stderr=subprocess.STDOUT).decode(errors='replace')
-        self.assertIn('NONCONVERGENCE SAFELY FAILED', output)
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('NONCONVERGENCE SAFELY FAILED', result.stdout)
 
     def _check_limits(self, spec):
         """'--limits' leaves the Born building blocks unchanged, and the
