@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -797,6 +804,7 @@
 <dt class="sig sig-object py" id="madspace.MadnisConfig.buffered_steps_fraction">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">buffered_steps_fraction</span></span><a class="headerlink" href="#madspace.MadnisConfig.buffered_steps_fraction" title="Link to this definition">¶</a></dt>
 <dd><p>Fraction of training steps done on buffered samples, reached once the buffers are full.</p>
+<p><code class="docutils literal notranslate"><span class="pre">0</span></code> disables buffering, as <code class="docutils literal notranslate"><span class="pre">buffer_capacity</span></code> does: no buffer is allocated or filled.</p>
 </dd></dl>
 
 <dl class="py property">

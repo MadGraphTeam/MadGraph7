@@ -1,0 +1,6 @@
+StepStatistics
+==============
+
+.. doxygenstruct:: madspace::StepStatistics
+   :members:
+   :undoc-members:

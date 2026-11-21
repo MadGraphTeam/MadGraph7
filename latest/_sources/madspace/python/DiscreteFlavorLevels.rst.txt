@@ -1,0 +1,7 @@
+DiscreteFlavorLevels
+====================
+
+.. autoclass:: madspace.DiscreteFlavorLevels
+   :members:
+   :undoc-members:
+   :show-inheritance:

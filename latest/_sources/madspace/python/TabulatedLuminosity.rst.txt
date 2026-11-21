@@ -1,0 +1,7 @@
+TabulatedLuminosity
+===================
+
+.. autoclass:: madspace.TabulatedLuminosity
+   :members:
+   :undoc-members:
+   :show-inheritance:

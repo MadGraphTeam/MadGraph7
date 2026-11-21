@@ -1,0 +1,6 @@
+DiscreteFlavorLevels
+====================
+
+.. doxygenclass:: madspace::DiscreteFlavorLevels
+   :members:
+   :undoc-members:

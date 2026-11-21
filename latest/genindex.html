@@ -276,6 +276,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="run_card.html">Run card</a></li>
@@ -306,6 +307,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="madspace/python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DoubleT.html">DoubleT</a></li>
@@ -358,6 +360,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
@@ -459,6 +462,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="madspace/cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DoubleT.html">DoubleT</a></li>
@@ -512,6 +516,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -589,6 +594,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -1099,12 +1106,12 @@
 </li>
         <li><a href="madspace/python/ColorOrderedMapping.html#madspace.ColorOrderedMapping.Options">ColorOrderedMapping.Options (class in madspace)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.com_cos_theta_window">com_cos_theta_window() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.com_cos_theta_window_inverse">com_cos_theta_window_inverse() (madspace.FunctionBuilder method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.com_p_in">com_p_in() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.combine_thread_count">combine_thread_count (madspace.GeneratorConfig property)</a>
@@ -1123,15 +1130,23 @@
 </li>
         <li><a href="madspace/python/compute_generation_batch_event_count.html#madspace.compute_generation_batch_event_count">compute_generation_batch_event_count() (in module madspace)</a>
 </li>
-        <li><a href="madspace/python/DiscreteFlow.html#madspace.DiscreteFlow.condition_dim">condition_dim() (madspace.DiscreteFlow method)</a>
+        <li><a href="madspace/python/DiscreteFlavorLevels.html#madspace.DiscreteFlavorLevels.condition_dim">condition_dim() (madspace.DiscreteFlavorLevels method)</a>
 
         <ul>
+          <li><a href="madspace/python/DiscreteFlow.html#madspace.DiscreteFlow.condition_dim">(madspace.DiscreteFlow method)</a>
+</li>
           <li><a href="madspace/python/Flow.html#madspace.Flow.condition_dim">(madspace.Flow method)</a>
 </li>
         </ul></li>
-        <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.config">config (madspace.SystematicsCalculator property)</a>
+        <li><a href="madspace/python/MadnisTraining.html#madspace.MadnisTraining.config">config (madspace.MadnisTraining property)</a>
+
+        <ul>
+          <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.config">(madspace.SystematicsCalculator property)</a>
 </li>
+        </ul></li>
         <li><a href="madspace/python/LHEHeader.html#madspace.LHEHeader.content">content (madspace.LHEHeader property)</a>
+</li>
+        <li><a href="madspace/python/DiscreteFlavorLevels.html#madspace.DiscreteFlavorLevels.content_count">content_count() (madspace.DiscreteFlavorLevels method)</a>
 </li>
         <li><a href="madspace/python/Context.html#madspace.Context">Context (class in madspace)</a>
 </li>
@@ -1293,10 +1308,10 @@
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementOutput.diagram_index_out">(madspace.MatrixElement.MatrixElementOutput attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.diagram_indices">diagram_indices (madspace.SubprocArgs property)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.diagram_propagator_pdgs">diagram_propagator_pdgs (madspace.SubprocArgs property)</a>
 </li>
         <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.diagram_start_states">diagram_start_states (madspace.MLMClustering property)</a>
@@ -1324,6 +1339,8 @@
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.discrete_histogram">discrete_histogram() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/Integrand.html#madspace.Integrand.discrete_sym">discrete_sym() (madspace.Integrand method)</a>
+</li>
+        <li><a href="madspace/python/DiscreteFlavorLevels.html#madspace.DiscreteFlavorLevels">DiscreteFlavorLevels (class in madspace)</a>
 </li>
         <li><a href="madspace/python/DiscreteFlow.html#madspace.DiscreteFlow">DiscreteFlow (class in madspace)</a>
 </li>
@@ -1503,14 +1520,26 @@
         </ul></li>
         <li><a href="madspace/python/MLMClustering.html#madspace.MLMClustering.flavor_classes">flavor_classes (madspace.MLMClustering property)</a>
 </li>
+        <li><a href="madspace/python/DiscreteFlavorLevels.html#madspace.DiscreteFlavorLevels.flavor_count">flavor_count() (madspace.DiscreteFlavorLevels method)</a>
+</li>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.flavor_in">flavor_in (madspace.MatrixElement attribute)</a>
 
         <ul>
           <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementInput.flavor_in">(madspace.MatrixElement.MatrixElementInput attribute)</a>
 </li>
         </ul></li>
+        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.flavor_index_out">flavor_index_out (madspace.MatrixElement attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementOutput.flavor_index_out">(madspace.MatrixElement.MatrixElementOutput attribute)</a>
+</li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/WeightingStep.html#madspace.WeightingStep.flavor_offset">flavor_offset (madspace.WeightingStep property)</a>
+</li>
+        <li><a href="madspace/python/WeightingStep.html#madspace.WeightingStep.flavor_target_count">flavor_target_count (madspace.WeightingStep property)</a>
+</li>
         <li><a href="madspace/python/DataType.html#madspace.DataType.float32">float32 (madspace.DataType attribute)</a>
 </li>
         <li><a href="madspace/python/DataType.html#madspace.DataType.float64">float64 (madspace.DataType attribute)</a>
@@ -1755,12 +1784,16 @@
 </li>
         <li><a href="madspace/python/PdfMemberSpec.html#madspace.PdfMemberSpec.info_file">info_file (madspace.PdfMemberSpec property)</a>
 </li>
+        <li><a href="madspace/python/DiscreteFlavorLevels.html#madspace.DiscreteFlavorLevels.initial_count">initial_count() (madspace.DiscreteFlavorLevels method)</a>
+</li>
         <li><a href="madspace/python/Flow.html#madspace.Flow.initialize_from_vegas">initialize_from_vegas() (madspace.Flow method)</a>
 </li>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid.initialize_globals">initialize_globals() (madspace.AlphaSGrid method)</a>
 
         <ul>
           <li><a href="madspace/python/ChannelWeightNetwork.html#madspace.ChannelWeightNetwork.initialize_globals">(madspace.ChannelWeightNetwork method)</a>
+</li>
+          <li><a href="madspace/python/DiscreteFlavorLevels.html#madspace.DiscreteFlavorLevels.initialize_globals">(madspace.DiscreteFlavorLevels method)</a>
 </li>
           <li><a href="madspace/python/DiscreteFlow.html#madspace.DiscreteFlow.initialize_globals">(madspace.DiscreteFlow method)</a>
 </li>
@@ -1781,10 +1814,10 @@
         </ul></li>
         <li><a href="madspace/python/initialize_vegas_grid.html#madspace.initialize_vegas_grid">initialize_vegas_grid() (in module madspace)</a>
 </li>
-        <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.initrwgt">initrwgt() (madspace.SystematicsCalculator method)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator.initrwgt">initrwgt() (madspace.SystematicsCalculator method)</a>
+</li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.input">input() (madspace.FunctionBuilder method)</a>
 </li>
         <li><a href="madspace/python/Flow.html#madspace.Flow.input_dim">input_dim() (madspace.Flow method)</a>
@@ -2201,9 +2234,9 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator23add_invalid_step_valuesENSt6size_tE">madspace::ChannelEventGenerator::add_invalid_step_values (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator17add_step_acceptedENSt6size_tEddRKNSt6vectorIdEE">madspace::ChannelEventGenerator::add_step_accepted (C++ function)</a>
-</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator17add_step_integralERK12StepIntegral">madspace::ChannelEventGenerator::add_step_integral (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator19add_step_statisticsENSt6size_tENSt6size_tENSt6size_tEdRKNSt6vectorIdEE">madspace::ChannelEventGenerator::add_step_statistics (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator29apply_step_truncation_budgetsEv">madspace::ChannelEventGenerator::apply_step_truncation_budgets (C++ function)</a>
 </li>
@@ -2215,7 +2248,11 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator12clear_eventsEv">madspace::ChannelEventGenerator::clear_events (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator30count_after_cuts_opt_completedEv">madspace::ChannelEventGenerator::count_after_cuts_opt_completed (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator18count_after_targetENSt6size_tE">madspace::ChannelEventGenerator::count_after_target (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator19count_opt_completedEv">madspace::ChannelEventGenerator::count_opt_completed (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator19count_requested_optEv">madspace::ChannelEventGenerator::count_requested_opt (C++ function)</a>
 </li>
@@ -2236,6 +2273,8 @@
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator17fill_step_buffersERK10StepEventsR11EventBufferR11EventBuffer">madspace::ChannelEventGenerator::fill_step_buffers (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator34first_pass_freeze_max_weight_afterEv">madspace::ChannelEventGenerator::first_pass_freeze_max_weight_after (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator16first_step_countEv">madspace::ChannelEventGenerator::first_step_count (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator19first_step_integralEv">madspace::ChannelEventGenerator::first_step_integral (C++ function)</a>
 </li>
@@ -2311,13 +2350,13 @@
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator6statusEv">madspace::ChannelEventGenerator::status (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator20step_accepted_countsEv">madspace::ChannelEventGenerator::step_accepted_counts (C++ function)</a>
-</li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator13step_integralERK10StepEvents">madspace::ChannelEventGenerator::step_integral (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator15step_max_weightENSt6size_tE">madspace::ChannelEventGenerator::step_max_weight (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator22step_max_weights_fixedEv">madspace::ChannelEventGenerator::step_max_weights_fixed (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4NK8madspace21ChannelEventGenerator15step_statisticsEv">madspace::ChannelEventGenerator::step_statistics (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/ChannelEventGenerator.html#_CPPv4N8madspace21ChannelEventGenerator19submit_unweight_jobER17GeneratorBatchJobR11ResultQueue">madspace::ChannelEventGenerator::submit_unweight_job (C++ function)</a>
 </li>
@@ -2684,6 +2723,20 @@
         <li><a href="madspace/cpp/DifferentialCrossSection.html#_CPPv4NK8madspace24DifferentialCrossSection22returns_matrix_elementEv">madspace::DifferentialCrossSection::returns_matrix_element (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/DifferentialCrossSection.html#_CPPv4NK8madspace24DifferentialCrossSection16running_couplingEv">madspace::DifferentialCrossSection::running_coupling (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4N8madspace20DiscreteFlavorLevelsE">madspace::DiscreteFlavorLevels (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4NK8madspace20DiscreteFlavorLevels13condition_dimEv">madspace::DiscreteFlavorLevels::condition_dim (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4NK8madspace20DiscreteFlavorLevels13content_countEv">madspace::DiscreteFlavorLevels::content_count (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4N8madspace20DiscreteFlavorLevels20DiscreteFlavorLevelsERKNSt6vectorI8me_int_tEERKNSt6vectorI8me_int_tEERKNSt6vectorIdEERKNSt6stringENSt6size_tEddNSt6size_tENSt6size_tEN3MLP10ActivationE8DataType">madspace::DiscreteFlavorLevels::DiscreteFlavorLevels (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4NK8madspace20DiscreteFlavorLevels12flavor_countEv">madspace::DiscreteFlavorLevels::flavor_count (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4NK8madspace20DiscreteFlavorLevels13initial_countEv">madspace::DiscreteFlavorLevels::initial_count (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/DiscreteFlavorLevels.html#_CPPv4NK8madspace20DiscreteFlavorLevels18initialize_globalsE10ContextPtrNSt8optionalINSt8uint64_tEEE">madspace::DiscreteFlavorLevels::initialize_globals (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/DiscreteFlow.html#_CPPv4N8madspace12DiscreteFlowE">madspace::DiscreteFlow (C++ class)</a>
 </li>
@@ -3313,7 +3366,7 @@
 </li>
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand12energy_scaleEv">madspace::Integrand::energy_scale (C++ function)</a>
 </li>
-        <li><a href="madspace/cpp/Integrand.html#_CPPv4N8madspace9Integrand9IntegrandERK17PhaseSpaceMappingRKNSt6vectorI24DifferentialCrossSectionEERK15AdaptiveMappingRK16AdaptiveDiscreteRK16AdaptiveDiscreteRK14nested_vector2I8me_int_tERK9PdfSourceRKNSt8optionalI15RunningCouplingEERKNSt8optionalI11EnergyScaleEERKNSt8optionalI24PropagatorChannelWeightsEERKNSt8optionalI17SubchannelWeightsEERKNSt8optionalI20ChannelWeightNetworkEERK14nested_vector2I8me_int_tENSt6size_tERKNSt6vectorI8me_int_tEENSt6size_tEbbbRKNSt6vectorINSt6size_tEEERK14nested_vector2INSt6size_tEERKNSt6vectorINSt6size_tEEERKNSt6vectorIdEERKNSt6vectorIbEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEENSt6size_tERKNSt8optionalI14CustomFunctionEERKNSt8optionalI7PdfGridEERKNSt8optionalI21MappingChannelWeightsEEiRKNSt8optionalI12EELuminosityEE">madspace::Integrand::Integrand (C++ function)</a>
+        <li><a href="madspace/cpp/Integrand.html#_CPPv4N8madspace9Integrand9IntegrandERK17PhaseSpaceMappingRKNSt6vectorI24DifferentialCrossSectionEERK15AdaptiveMappingRK16AdaptiveDiscreteRK16AdaptiveDiscreteRK14nested_vector2I8me_int_tERK9PdfSourceRKNSt8optionalI15RunningCouplingEERKNSt8optionalI11EnergyScaleEERKNSt8optionalI24PropagatorChannelWeightsEERKNSt8optionalI17SubchannelWeightsEERKNSt8optionalI20ChannelWeightNetworkEERK14nested_vector2I8me_int_tENSt6size_tERKNSt6vectorI8me_int_tEENSt6size_tEbbbRKNSt6vectorINSt6size_tEEERK14nested_vector2INSt6size_tEERKNSt6vectorINSt6size_tEEERKNSt6vectorIdEERKNSt6vectorIbEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEERKNSt6vectorINSt6size_tEEENSt6size_tERKNSt8optionalI14CustomFunctionEERKNSt8optionalI7PdfGridEERKNSt8optionalI21MappingChannelWeightsEEiRKNSt8optionalI12EELuminosityEERKNSt8optionalI19TabulatedLuminosityEEb">madspace::Integrand::Integrand (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand11latent_dimsEv">madspace::Integrand::latent_dims (C++ function)</a>
 </li>
@@ -3336,6 +3389,8 @@
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand17prop_chan_weightsEv">madspace::Integrand::prop_chan_weights (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand10random_dimEv">madspace::Integrand::random_dim (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/Integrand.html#_CPPv4N8madspace9Integrand24set_flavor_prior_factorsERKNSt6vectorIdEE">madspace::Integrand::set_flavor_prior_factors (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/Integrand.html#_CPPv4NK8madspace9Integrand15vegas_bin_countEv">madspace::Integrand::vegas_bin_count (C++ function)</a>
 </li>
@@ -3673,8 +3728,6 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config23buffered_steps_fractionE">madspace::MadnisTraining::Config::buffered_steps_fraction (C++ member)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config25channel_dropping_intervalE">madspace::MadnisTraining::Config::channel_dropping_interval (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config26channel_dropping_thresholdE">madspace::MadnisTraining::Config::channel_dropping_threshold (C++ member)</a>
@@ -3695,6 +3748,8 @@
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config26integration_history_lengthE">madspace::MadnisTraining::Config::integration_history_length (C++ member)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config13learning_rateE">madspace::MadnisTraining::Config::learning_rate (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/MadnisTraining.html#_CPPv4N8madspace14MadnisTraining6Config12log_intervalE">madspace::MadnisTraining::Config::log_interval (C++ member)</a>
@@ -3781,6 +3836,8 @@
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement6inputsEv">madspace::MatrixElement::inputs (C++ function)</a>
 </li>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement15is_random_inputE18MatrixElementInput">madspace::MatrixElement::is_random_input (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4NK8madspace13MatrixElement20matrix_element_indexEv">madspace::MatrixElement::matrix_element_index (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement13MatrixElementENSt6size_tENSt6size_tERKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEENSt6size_tEbRKNSt6vectorI8me_int_tEENSt6size_tE8me_int_t">madspace::MatrixElement::MatrixElement (C++ function)</a>, <a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement13MatrixElementERK16MatrixElementApiRKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEEbRKNSt6vectorI8me_int_tEENSt6size_tE8me_int_t">[1]</a>
@@ -3805,6 +3862,8 @@
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput17particle_count_inE">madspace::MatrixElement::MatrixElementInput::particle_count_in (C++ enumerator)</a>
 </li>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput19parton_densities_inE">madspace::MatrixElement::MatrixElementInput::parton_densities_in (C++ enumerator)</a>
+</li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE">madspace::MatrixElement::MatrixElementInput::pdg_id_in (C++ enumerator)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput10pdg_ids_inE">madspace::MatrixElement::MatrixElementInput::pdg_ids_in (C++ enumerator)</a>
@@ -3812,6 +3871,8 @@
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput15random_color_inE">madspace::MatrixElement::MatrixElementInput::random_color_in (C++ enumerator)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput17random_diagram_inE">madspace::MatrixElement::MatrixElementInput::random_diagram_in (C++ enumerator)</a>
+</li>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput16random_flavor_inE">madspace::MatrixElement::MatrixElementInput::random_flavor_in (C++ enumerator)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement18MatrixElementInput18random_helicity_inE">madspace::MatrixElement::MatrixElementInput::random_helicity_in (C++ enumerator)</a>
 </li>
@@ -3832,6 +3893,8 @@
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale1_outE">madspace::MatrixElement::MatrixElementOutput::fact_scale1_out (C++ enumerator)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement19MatrixElementOutput15fact_scale2_outE">madspace::MatrixElement::MatrixElementOutput::fact_scale2_out (C++ enumerator)</a>
+</li>
+        <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement19MatrixElementOutput16flavor_index_outE">madspace::MatrixElement::MatrixElementOutput::flavor_index_out (C++ enumerator)</a>
 </li>
         <li><a href="madspace/cpp/MatrixElement.html#_CPPv4N8madspace13MatrixElement19MatrixElementOutput18helicity_index_outE">madspace::MatrixElement::MatrixElementOutput::helicity_index_out (C++ enumerator)</a>
 </li>
@@ -4523,6 +4586,8 @@
 </li>
         <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents15generated_countE">madspace::StepEvents::generated_count (C++ member)</a>
 </li>
+        <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents26generated_count_after_cutsE">madspace::StepEvents::generated_count_after_cuts (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents6job_idE">madspace::StepEvents::job_id (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents10max_weightE">madspace::StepEvents::max_weight (C++ member)</a>
@@ -4531,19 +4596,17 @@
 </li>
         <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents6ratiosE">madspace::StepEvents::ratios (C++ member)</a>
 </li>
+        <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents4sumsE">madspace::StepEvents::sums (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/StepEvents.html#_CPPv4N8madspace10StepEvents7weightsE">madspace::StepEvents::weights (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegralE">madspace::StepIntegral (C++ struct)</a>
 </li>
-        <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral7abs_sumE">madspace::StepIntegral::abs_sum (C++ member)</a>
-</li>
-        <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral8abs_sum2E">madspace::StepIntegral::abs_sum2 (C++ member)</a>
-</li>
         <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral5countE">madspace::StepIntegral::count (C++ member)</a>
 </li>
-        <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral3sumE">madspace::StepIntegral::sum (C++ member)</a>
+        <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral16count_after_cutsE">madspace::StepIntegral::count_after_cuts (C++ member)</a>
 </li>
-        <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral4sum2E">madspace::StepIntegral::sum2 (C++ member)</a>
+        <li><a href="madspace/cpp/StepIntegral.html#_CPPv4N8madspace12StepIntegral4sumsE">madspace::StepIntegral::sums (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/StepSettings.html#_CPPv4N8madspace12StepSettingsE">madspace::StepSettings (C++ struct)</a>
 </li>
@@ -4554,6 +4617,46 @@
         <li><a href="madspace/cpp/StepSettings.html#_CPPv4N8madspace12StepSettings5ratioE">madspace::StepSettings::ratio (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/StepSettings.html#_CPPv4N8madspace12StepSettings8unweightE">madspace::StepSettings::unweight (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepStatistics.html#_CPPv4N8madspace14StepStatisticsE">madspace::StepStatistics (C++ struct)</a>
+</li>
+        <li><a href="madspace/cpp/StepStatistics.html#_CPPv4N8madspace14StepStatistics7enteredE">madspace::StepStatistics::entered (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepStatistics.html#_CPPv4N8madspace14StepStatistics6passedE">madspace::StepStatistics::passed (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepStatistics.html#_CPPv4N8madspace14StepStatistics4sumsE">madspace::StepStatistics::sums (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepStatistics.html#_CPPv4N8madspace14StepStatistics8unweightE">madspace::StepStatistics::unweight (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSumsE">madspace::StepSums (C++ struct)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums1aE">madspace::StepSums::a (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums4a_sbE">madspace::StepSums::a_sb (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums2aaE">madspace::StepSums::aa (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums2abE">madspace::StepSums::ab (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums1bE">madspace::StepSums::b (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums2bbE">madspace::StepSums::bb (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums1nE">madspace::StepSums::n (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSumspLERK8StepSums">madspace::StepSums::operator+= (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4NK8madspace8StepSums5ratioEb">madspace::StepSums::ratio (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums2sbE">madspace::StepSums::sb (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums3sb2E">madspace::StepSums::sb2 (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums1uE">madspace::StepSums::u (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4N8madspace8StepSums2u2E">madspace::StepSums::u2 (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/StepSums.html#_CPPv4NK8madspace8StepSums10weight_rsdEv">madspace::StepSums::weight_rsd (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/SubchannelWeights.html#_CPPv4N8madspace17SubchannelWeightsE">madspace::SubchannelWeights (C++ class)</a>
 </li>
@@ -4650,6 +4753,10 @@
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig8togetherE">madspace::SystematicsConfig::together (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/SystematicsConfig.html#_CPPv4N8madspace17SystematicsConfig12write_inputsE">madspace::SystematicsConfig::write_inputs (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/TabulatedLuminosity.html#_CPPv4N8madspace19TabulatedLuminosityE">madspace::TabulatedLuminosity (C++ class)</a>
+</li>
+        <li><a href="madspace/cpp/TabulatedLuminosity.html#_CPPv4N8madspace19TabulatedLuminosity19TabulatedLuminosityERK7PdfGridRKNSt6stringE">madspace::TabulatedLuminosity::TabulatedLuminosity (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/TarReader.html#_CPPv4N8madspace9TarReaderE">madspace::TarReader (C++ class)</a>
 </li>
@@ -5069,6 +5176,10 @@
 </li>
         <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStepE">madspace::WeightingStep (C++ struct)</a>
 </li>
+        <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep13flavor_offsetE">madspace::WeightingStep::flavor_offset (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep19flavor_target_countE">madspace::WeightingStep::flavor_target_count (C++ member)</a>
+</li>
         <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep23freeze_max_weight_afterE">madspace::WeightingStep::freeze_max_weight_after (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep15matrix_elementsE">madspace::WeightingStep::matrix_elements (C++ member)</a>
@@ -5083,9 +5194,15 @@
 </li>
         <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep4Mode8unweightE">madspace::WeightingStep::Mode::unweight (C++ enumerator)</a>
 </li>
+        <li><a href="madspace/cpp/WeightingStep.html#_CPPv4NK8madspace13WeightingStep22needs_parton_densitiesEv">madspace::WeightingStep::needs_parton_densities (C++ function)</a>
+</li>
         <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep16override_outputsE">madspace::WeightingStep::override_outputs (C++ member)</a>
 </li>
         <li><a href="madspace/cpp/WeightingStep.html#_CPPv4NK8madspace13WeightingStep13returns_ratioEv">madspace::WeightingStep::returns_ratio (C++ function)</a>
+</li>
+        <li><a href="madspace/cpp/WeightingStep.html#_CPPv4N8madspace13WeightingStep18switch_diagram_mapE">madspace::WeightingStep::switch_diagram_map (C++ member)</a>
+</li>
+        <li><a href="madspace/cpp/WeightingStep.html#_CPPv4NK8madspace13WeightingStep15switches_flavorEv">madspace::WeightingStep::switches_flavor (C++ function)</a>
 </li>
         <li><a href="madspace/cpp/WeightingStepFunction.html#_CPPv4N8madspace21WeightingStepFunctionE">madspace::WeightingStepFunction (C++ class)</a>
 </li>
@@ -5368,6 +5485,8 @@
         <li><a href="madspace/python/NamedTypes.html#madspace.NamedTypes">NamedTypes (class in madspace)</a>
 </li>
         <li><a href="madspace/python/NamedValues.html#madspace.NamedValues">NamedValues (class in madspace)</a>
+</li>
+        <li><a href="madspace/python/WeightingStep.html#madspace.WeightingStep.needs_parton_densities">needs_parton_densities() (madspace.WeightingStep method)</a>
 </li>
         <li><a href="madspace/python/EventStream.html#madspace.EventStream.next_batch">next_batch() (madspace.EventStream method)</a>
 </li>
@@ -5677,6 +5796,12 @@
         </ul></li>
         <li><a href="madspace/python/LHEEvent.html#madspace.LHEEvent.particles">particles (madspace.LHEEvent property)</a>
 </li>
+        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.parton_densities_in">parton_densities_in (madspace.MatrixElement attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementInput.parton_densities_in">(madspace.MatrixElement.MatrixElementInput attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/PartonDensity.html#madspace.PartonDensity">PartonDensity (class in madspace)</a>
 </li>
         <li><a href="madspace/python/EnergyScale.html#madspace.EnergyScale.partonic_energy">partonic_energy (madspace.EnergyScale attribute)</a>
@@ -5745,10 +5870,10 @@
         </ul></li>
         <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.permutations">permutations (madspace.SubprocArgs property)</a>
 </li>
-        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.permute_momenta">permute_momenta() (madspace.FunctionBuilder method)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.permute_momenta">permute_momenta() (madspace.FunctionBuilder method)</a>
+</li>
         <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping">PhaseSpaceMapping (class in madspace)</a>
 </li>
         <li><a href="madspace/python/PhaseSpaceMapping.html#madspace.PhaseSpaceMapping.TChannelMode">PhaseSpaceMapping.TChannelMode (class in madspace)</a>
@@ -5919,6 +6044,12 @@
           <li><a href="madspace/python/TwoBodyDecay.html#madspace.TwoBodyDecay.random_dim">(madspace.TwoBodyDecay method)</a>
 </li>
         </ul></li>
+        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.random_flavor_in">random_flavor_in (madspace.MatrixElement attribute)</a>
+
+        <ul>
+          <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.MatrixElementInput.random_flavor_in">(madspace.MatrixElement.MatrixElementInput attribute)</a>
+</li>
+        </ul></li>
         <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.random_helicity_in">random_helicity_in (madspace.MatrixElement attribute)</a>
 
         <ul>
@@ -5941,10 +6072,10 @@
           <li><a href="madspace/python/LeptonLuminosityInvariant.html#madspace.LeptonLuminosityInvariant.reduced_density">(madspace.LeptonLuminosityInvariant method)</a>
 </li>
         </ul></li>
-        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.reference_mask">reference_mask() (madspace.MatrixElement method)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/MatrixElement.html#madspace.MatrixElement.reference_mask">reference_mask() (madspace.MatrixElement method)</a>
+</li>
         <li><a href="madspace/python/AlphaSGrid.html#madspace.AlphaSGrid.region_sizes">region_sizes (madspace.AlphaSGrid property)</a>
 
         <ul>
@@ -6119,6 +6250,8 @@
 </li>
         <li><a href="madspace/python/ChannelEventGenerator.html#madspace.ChannelEventGenerator.set_fixed_step_max_weight">set_fixed_step_max_weight() (madspace.ChannelEventGenerator method)</a>
 </li>
+        <li><a href="madspace/python/Integrand.html#madspace.Integrand.set_flavor_prior_factors">set_flavor_prior_factors() (madspace.Integrand method)</a>
+</li>
         <li><a href="madspace/python/PdfGroupInfo.html#madspace.PdfGroupInfo.set_lhaid">set_lhaid (madspace.PdfGroupInfo property)</a>
 
         <ul>
@@ -6273,6 +6406,10 @@
 </li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.survey_target_precision">survey_target_precision (madspace.GeneratorConfig property)</a>
 </li>
+        <li><a href="madspace/python/WeightingStep.html#madspace.WeightingStep.switch_diagram_map">switch_diagram_map (madspace.WeightingStep property)</a>
+</li>
+        <li><a href="madspace/python/WeightingStep.html#madspace.WeightingStep.switches_flavor">switches_flavor() (madspace.WeightingStep method)</a>
+</li>
         <li><a href="madspace/python/SystematicsCalculator.html#madspace.SystematicsCalculator">SystematicsCalculator (class in madspace)</a>
 </li>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig">SystematicsConfig (class in madspace)</a>
@@ -6317,6 +6454,8 @@
 </li>
         <li><a href="madspace/python/FunctionBuilder.html#madspace.FunctionBuilder.t_rapidity_clamp">t_rapidity_clamp() (madspace.FunctionBuilder method)</a>
 </li>
+        <li><a href="madspace/python/TabulatedLuminosity.html#madspace.TabulatedLuminosity">TabulatedLuminosity (class in madspace)</a>
+</li>
         <li><a href="madspace/python/GeneratorConfig.html#madspace.GeneratorConfig.target_count">target_count (madspace.GeneratorConfig property)</a>
 </li>
         <li><a href="madspace/python/Tensor.html#madspace.Tensor">Tensor (class in madspace)</a>
@@ -6343,10 +6482,10 @@
         </ul></li>
         <li><a href="madspace/python/SystematicsConfig.html#madspace.SystematicsConfig.together">together (madspace.SystematicsConfig property)</a>
 </li>
-        <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.topologies">topologies (madspace.SubprocArgs property)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="madspace/python/SubprocArgs.html#madspace.SubprocArgs.topologies">topologies (madspace.SubprocArgs property)</a>
+</li>
         <li><a href="madspace/python/Topology.html#madspace.Topology.topologies">topologies() (madspace.Topology static method)</a>
 </li>
         <li><a href="madspace/python/Topology.html#madspace.Topology">Topology (class in madspace)</a>
@@ -6477,6 +6616,8 @@
 </li>
         <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey23UMAMI_IN_PARTICLE_COUNTE">UmamiInputKey::UMAMI_IN_PARTICLE_COUNT (C++ enumerator)</a>
 </li>
+        <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey25UMAMI_IN_PARTON_DENSITIESE">UmamiInputKey::UMAMI_IN_PARTON_DENSITIES (C++ enumerator)</a>
+</li>
         <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey15UMAMI_IN_PDG_IDE">UmamiInputKey::UMAMI_IN_PDG_ID (C++ enumerator)</a>
 </li>
         <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey16UMAMI_IN_PDG_IDSE">UmamiInputKey::UMAMI_IN_PDG_IDS (C++ enumerator)</a>
@@ -6484,6 +6625,8 @@
         <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey21UMAMI_IN_RANDOM_COLORE">UmamiInputKey::UMAMI_IN_RANDOM_COLOR (C++ enumerator)</a>
 </li>
         <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey23UMAMI_IN_RANDOM_DIAGRAME">UmamiInputKey::UMAMI_IN_RANDOM_DIAGRAM (C++ enumerator)</a>
+</li>
+        <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey22UMAMI_IN_RANDOM_FLAVORE">UmamiInputKey::UMAMI_IN_RANDOM_FLAVOR (C++ enumerator)</a>
 </li>
         <li><a href="madspace/umami-api.html#_CPPv4N13UmamiInputKey24UMAMI_IN_RANDOM_HELICITYE">UmamiInputKey::UMAMI_IN_RANDOM_HELICITY (C++ enumerator)</a>
 </li>
@@ -6520,6 +6663,8 @@
         <li><a href="madspace/umami-api.html#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_1E">UmamiOutputKey::UMAMI_OUT_FACT_SCALE_1 (C++ enumerator)</a>
 </li>
         <li><a href="madspace/umami-api.html#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FACT_SCALE_2E">UmamiOutputKey::UMAMI_OUT_FACT_SCALE_2 (C++ enumerator)</a>
+</li>
+        <li><a href="madspace/umami-api.html#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FLAVOR_INDEXE">UmamiOutputKey::UMAMI_OUT_FLAVOR_INDEX (C++ enumerator)</a>
 </li>
         <li><a href="madspace/umami-api.html#_CPPv4N14UmamiOutputKey20UMAMI_OUT_GPU_STREAME">UmamiOutputKey::UMAMI_OUT_GPU_STREAM (C++ enumerator)</a>
 </li>

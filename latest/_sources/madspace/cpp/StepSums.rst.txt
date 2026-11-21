@@ -1,0 +1,6 @@
+StepSums
+========
+
+.. doxygenstruct:: madspace::StepSums
+   :members:
+   :undoc-members:

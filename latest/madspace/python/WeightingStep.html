@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -730,7 +737,7 @@
 <h1>WeightingStep<a class="headerlink" href="#weightingstep" title="Link to this heading">¶</a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="madspace.WeightingStep">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">WeightingStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">self:</span> <span class="pre">madspace._madspace_py.WeightingStep,</span> <span class="pre">matrix_elements:</span> <span class="pre">collections.abc.Sequence[madspace._madspace_py.MatrixElement],</span> <span class="pre">mode:</span> <span class="pre">madspace._madspace_py.WeightingStep.Mode</span> <span class="pre">=</span> <span class="pre">&lt;Mode.unweight:</span> <span class="pre">0&gt;,</span> <span class="pre">max_overweight_truncation:</span> <span class="pre">typing.SupportsFloat</span> <span class="pre">=</span> <span class="pre">0.01,</span> <span class="pre">freeze_max_weight_after:</span> <span class="pre">typing.SupportsInt</span> <span class="pre">=</span> <span class="pre">10000,</span> <span class="pre">override_outputs:</span> <span class="pre">collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementOutput]</span> <span class="pre">=</span> <span class="pre">[]</span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.WeightingStep" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">WeightingStep</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">self:</span> <span class="pre">madspace._madspace_py.WeightingStep,</span> <span class="pre">matrix_elements:</span> <span class="pre">collections.abc.Sequence[madspace._madspace_py.MatrixElement],</span> <span class="pre">mode:</span> <span class="pre">madspace._madspace_py.WeightingStep.Mode</span> <span class="pre">=</span> <span class="pre">&lt;Mode.unweight:</span> <span class="pre">0&gt;,</span> <span class="pre">max_overweight_truncation:</span> <span class="pre">typing.SupportsFloat</span> <span class="pre">=</span> <span class="pre">0.01,</span> <span class="pre">freeze_max_weight_after:</span> <span class="pre">typing.SupportsInt</span> <span class="pre">=</span> <span class="pre">10000,</span> <span class="pre">override_outputs:</span> <span class="pre">collections.abc.Sequence[madspace._madspace_py.MatrixElement.MatrixElementOutput]</span> <span class="pre">=</span> <span class="pre">[],</span> <span class="pre">flavor_target_count:</span> <span class="pre">typing.SupportsInt</span> <span class="pre">=</span> <span class="pre">0,</span> <span class="pre">flavor_offset:</span> <span class="pre">typing.SupportsInt</span> <span class="pre">=</span> <span class="pre">0,</span> <span class="pre">switch_diagram_map:</span> <span class="pre">collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]]</span> <span class="pre">=</span> <span class="pre">[]</span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.WeightingStep" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>One re- or unweighting step after the first unweighting of an EventGenerator.</p>
 <p>The step evaluates its own matrix element on the events that survived the previous steps and multiplies their weights by the ratio <span class="math notranslate nohighlight">\(r = |M_\text{step}|^2 / |M_\text{previous}|^2\)</span>. All other factors of the weight (PDFs, flux, Jacobian, channel weights, bias) are those of the first step and cancel in the ratio. An unweighting step then unweights the events with respect to the product of the ratios since the last unweighting step, times the overweight factor carried from it, with its own maximum weight. A reweighting step only multiplies the weights.</p>
@@ -777,6 +784,19 @@
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="madspace.WeightingStep.flavor_offset">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">flavor_offset</span></span><a class="headerlink" href="#madspace.WeightingStep.flavor_offset" title="Link to this definition">¶</a></dt>
+<dd><p>Flavour index of the first switch target in the events’ flavour list.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.WeightingStep.flavor_target_count">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">flavor_target_count</span></span><a class="headerlink" href="#madspace.WeightingStep.flavor_target_count" title="Link to this definition">¶</a></dt>
+<dd><p>Number of flavours a single matrix element with <code class="docutils literal notranslate"><span class="pre">flavor_index_out</span></code> can switch an event to; its output k &gt;= 0 is written as the flavour index <code class="docutils literal notranslate"><span class="pre">flavor_offset</span> <span class="pre">+</span> <span class="pre">k</span></code>, with its color and helicity.</p>
+<p>0 without a switch.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="madspace.WeightingStep.freeze_max_weight_after">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">freeze_max_weight_after</span></span><a class="headerlink" href="#madspace.WeightingStep.freeze_max_weight_after" title="Link to this definition">¶</a></dt>
 <dd><p>Like GeneratorConfig::freeze_max_weight_after, for this step.</p>
@@ -801,6 +821,12 @@
 <dd><p>Unweighting or reweighting.</p>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.WeightingStep.needs_parton_densities">
+<span class="sig-name descname"><span class="pre">needs_parton_densities</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.WeightingStep" title="madspace._madspace_py.WeightingStep"><span class="pre">madspace._madspace_py.WeightingStep</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.WeightingStep.needs_parton_densities" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the matrix elements take the parton densities of the events.</p>
+</dd></dl>
+
 <dl class="py property">
 <dt class="sig sig-object py" id="madspace.WeightingStep.override_outputs">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">override_outputs</span></span><a class="headerlink" href="#madspace.WeightingStep.override_outputs" title="Link to this definition">¶</a></dt>
@@ -818,6 +844,19 @@
 <dt class="sig sig-object py" id="madspace.WeightingStep.reweight">
 <span class="sig-name descname"><span class="pre">reweight</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;Mode.reweight:</span> <span class="pre">1&gt;</span></span><a class="headerlink" href="#madspace.WeightingStep.reweight" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="madspace.WeightingStep.switch_diagram_map">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">switch_diagram_map</span></span><a class="headerlink" href="#madspace.WeightingStep.switch_diagram_map" title="Link to this definition">¶</a></dt>
+<dd><p>Per switch target, the diagram index replacing each diagram index of a switched event.</p>
+<p>Empty keeps the diagram.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="madspace.WeightingStep.switches_flavor">
+<span class="sig-name descname"><span class="pre">switches_flavor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.WeightingStep" title="madspace._madspace_py.WeightingStep"><span class="pre">madspace._madspace_py.WeightingStep</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#madspace.WeightingStep.switches_flavor" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the step can switch the flavour of an event.</p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.WeightingStep.unweight">
@@ -891,13 +930,18 @@
 <li><a class="reference internal" href="#madspace.WeightingStep.Mode.value"><code class="docutils literal notranslate"><span class="pre">WeightingStep.Mode.value</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#madspace.WeightingStep.flavor_offset"><code class="docutils literal notranslate"><span class="pre">WeightingStep.flavor_offset</span></code></a></li>
+<li><a class="reference internal" href="#madspace.WeightingStep.flavor_target_count"><code class="docutils literal notranslate"><span class="pre">WeightingStep.flavor_target_count</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.freeze_max_weight_after"><code class="docutils literal notranslate"><span class="pre">WeightingStep.freeze_max_weight_after</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.matrix_elements"><code class="docutils literal notranslate"><span class="pre">WeightingStep.matrix_elements</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.max_overweight_truncation"><code class="docutils literal notranslate"><span class="pre">WeightingStep.max_overweight_truncation</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.mode"><code class="docutils literal notranslate"><span class="pre">WeightingStep.mode</span></code></a></li>
+<li><a class="reference internal" href="#madspace.WeightingStep.needs_parton_densities"><code class="docutils literal notranslate"><span class="pre">WeightingStep.needs_parton_densities()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.override_outputs"><code class="docutils literal notranslate"><span class="pre">WeightingStep.override_outputs</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.returns_ratio"><code class="docutils literal notranslate"><span class="pre">WeightingStep.returns_ratio()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.reweight"><code class="docutils literal notranslate"><span class="pre">WeightingStep.reweight</span></code></a></li>
+<li><a class="reference internal" href="#madspace.WeightingStep.switch_diagram_map"><code class="docutils literal notranslate"><span class="pre">WeightingStep.switch_diagram_map</span></code></a></li>
+<li><a class="reference internal" href="#madspace.WeightingStep.switches_flavor"><code class="docutils literal notranslate"><span class="pre">WeightingStep.switches_flavor()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.WeightingStep.unweight"><code class="docutils literal notranslate"><span class="pre">WeightingStep.unweight</span></code></a></li>
 </ul>
 </li>

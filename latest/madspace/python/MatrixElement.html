@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpp/StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -733,7 +740,7 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">MatrixElement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.MatrixElement" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="FunctionGenerator.html#madspace.FunctionGenerator" title="madspace._madspace_py.FunctionGenerator"><code class="xref py py-class docutils literal notranslate"><span class="pre">FunctionGenerator</span></code></a></p>
 <p>Calls a matrix element through the UMAMI interface.</p>
-<p>UMAMI (Unified MAtrix eleMent Interface) is <code class="docutils literal notranslate"><span class="pre">madspace</span></code>’s uniform way of calling matrix-element code — currently the cudacpp plugin — for both integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are passed and returned is chosen by <code class="docutils literal notranslate"><span class="pre">inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, given as integer keys so the interface can be extended without breaking binary compatibility.</p>
+<p>UMAMI (Unified MAtrix eleMent Interface) is <code class="docutils literal notranslate"><span class="pre">madspace</span></code>’s uniform way of calling matrix-element code — currently the madmatrix backend — for both integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are passed and returned is chosen by <code class="docutils literal notranslate"><span class="pre">inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, given as integer keys so the interface can be extended without breaking binary compatibility.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong> (a subset, selected by <code class="docutils literal notranslate"><span class="pre">inputs</span></code>)</p>
 <ul class="simple">
@@ -812,6 +819,8 @@
 <p>scale_in</p>
 <p>pdg_id_in</p>
 <p>beam_index_in</p>
+<p>random_flavor_in</p>
+<p>parton_densities_in</p>
 </div></blockquote>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
@@ -869,6 +878,11 @@
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.parton_densities_in">
+<span class="sig-name descname"><span class="pre">parton_densities_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.parton_densities_in:</span> <span class="pre">16&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.parton_densities_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.pdg_id_in">
 <span class="sig-name descname"><span class="pre">pdg_id_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.pdg_id_in:</span> <span class="pre">13&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.pdg_id_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -886,6 +900,11 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.random_diagram_in">
 <span class="sig-name descname"><span class="pre">random_diagram_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.random_diagram_in:</span> <span class="pre">5&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.random_diagram_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementInput.random_flavor_in">
+<span class="sig-name descname"><span class="pre">random_flavor_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.random_flavor_in:</span> <span class="pre">15&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementInput.random_flavor_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -923,6 +942,7 @@
 <p>pdf_out</p>
 <p>bias_out</p>
 <p>matrix_element_ratio_out</p>
+<p>flavor_index_out</p>
 </div></blockquote>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
@@ -962,6 +982,11 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.fact_scale2_out">
 <span class="sig-name descname"><span class="pre">fact_scale2_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.fact_scale2_out:</span> <span class="pre">8&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale2_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.MatrixElementOutput.flavor_index_out">
+<span class="sig-name descname"><span class="pre">flavor_index_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.flavor_index_out:</span> <span class="pre">12&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.MatrixElementOutput.flavor_index_out" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1079,6 +1104,11 @@
 <span class="sig-name descname"><span class="pre">flavor_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.flavor_in:</span> <span class="pre">2&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.flavor_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.flavor_index_out">
+<span class="sig-name descname"><span class="pre">flavor_index_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.flavor_index_out:</span> <span class="pre">12&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.flavor_index_out" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.MatrixElement.frame_mask">
 <span class="sig-name descname"><span class="pre">frame_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.MatrixElement" title="madspace._madspace_py.MatrixElement"><span class="pre">madspace._madspace_py.MatrixElement</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#madspace.MatrixElement.frame_mask" title="Link to this definition">¶</a></dt>
@@ -1145,6 +1175,11 @@
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.parton_densities_in">
+<span class="sig-name descname"><span class="pre">parton_densities_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.parton_densities_in:</span> <span class="pre">16&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.parton_densities_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.pdf_out">
 <span class="sig-name descname"><span class="pre">pdf_out</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementOutput.pdf_out:</span> <span class="pre">9&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.pdf_out" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1167,6 +1202,11 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="madspace.MatrixElement.random_diagram_in">
 <span class="sig-name descname"><span class="pre">random_diagram_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.random_diagram_in:</span> <span class="pre">5&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.random_diagram_in" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="madspace.MatrixElement.random_flavor_in">
+<span class="sig-name descname"><span class="pre">random_flavor_in</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">&lt;MatrixElementInput.random_flavor_in:</span> <span class="pre">15&gt;</span></span><a class="headerlink" href="#madspace.MatrixElement.random_flavor_in" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1261,10 +1301,12 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.momenta_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.momenta_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.momentum_fraction_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.momentum_fraction_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.particle_count_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.particle_count_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.parton_densities_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.parton_densities_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.pdg_id_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.pdg_id_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.pdg_ids_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.pdg_ids_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_color_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_color_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_diagram_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_flavor_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_flavor_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.random_helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.random_helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.scale_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.scale_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementInput.value"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementInput.value</span></code></a></li>
@@ -1278,6 +1320,7 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.diagram_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.diagram_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale1_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.fact_scale1_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.fact_scale2_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.fact_scale2_out</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.flavor_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.flavor_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.helicity_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.helicity_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.matrix_element_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.matrix_element_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.MatrixElementOutput.matrix_element_ratio_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.MatrixElementOutput.matrix_element_ratio_out</span></code></a></li>
@@ -1301,6 +1344,7 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.fact_scale1_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.fact_scale1_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.fact_scale2_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.fact_scale2_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.flavor_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.flavor_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.flavor_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.flavor_index_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.frame_mask"><code class="docutils literal notranslate"><span class="pre">MatrixElement.frame_mask()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.helicity_index_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.helicity_index_out</span></code></a></li>
@@ -1313,11 +1357,13 @@
 <li><a class="reference internal" href="#madspace.MatrixElement.outputs"><code class="docutils literal notranslate"><span class="pre">MatrixElement.outputs()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.particle_count"><code class="docutils literal notranslate"><span class="pre">MatrixElement.particle_count()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.particle_count_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.particle_count_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.parton_densities_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.parton_densities_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.pdf_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.pdf_out</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.pdg_id_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.pdg_id_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.pdg_ids_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.pdg_ids_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_color_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_color_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_diagram_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_diagram_in</span></code></a></li>
+<li><a class="reference internal" href="#madspace.MatrixElement.random_flavor_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_flavor_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.random_helicity_in"><code class="docutils literal notranslate"><span class="pre">MatrixElement.random_helicity_in</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.reference_mask"><code class="docutils literal notranslate"><span class="pre">MatrixElement.reference_mask()</span></code></a></li>
 <li><a class="reference internal" href="#madspace.MatrixElement.ren_scale_out"><code class="docutils literal notranslate"><span class="pre">MatrixElement.ren_scale_out</span></code></a></li>

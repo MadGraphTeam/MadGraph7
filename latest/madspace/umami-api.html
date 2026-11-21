@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="python/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="python/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="python/AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="cpp/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="cpp/StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cpp/StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -987,6 +994,18 @@
 <dd><p>index of the beam (0 or 1), type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
 </dd></dl>
 
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey22UMAMI_IN_RANDOM_FLAVORE">
+<span id="_CPPv3N13UmamiInputKey22UMAMI_IN_RANDOM_FLAVORE"></span><span id="_CPPv2N13UmamiInputKey22UMAMI_IN_RANDOM_FLAVORE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483a01a011839fcbdf660fe8bbdcb56e0c6d"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_RANDOM_FLAVOR</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_RANDOM_FLAVORE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>random number for flavor selection, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N13UmamiInputKey25UMAMI_IN_PARTON_DENSITIESE">
+<span id="_CPPv3N13UmamiInputKey25UMAMI_IN_PARTON_DENSITIESE"></span><span id="_CPPv2N13UmamiInputKey25UMAMI_IN_PARTON_DENSITIESE"></span><span class="target" id="umami_8h_1a152a2f1151a0b85727f70a08ada03483ad56618650743e1848453f89e0d9a953f"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_IN_PARTON_DENSITIES</span></span></span><a class="headerlink" href="#_CPPv4N13UmamiInputKey25UMAMI_IN_PARTON_DENSITIESE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>parton densities x f(x, mu_F) of the two incoming legs for the PDG ids -6..6, index 6 the gluon, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">(2,</span> <span class="pre">13)</span></code></p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="cpp enum">
@@ -1070,6 +1089,12 @@
 <dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey30UMAMI_OUT_MATRIX_ELEMENT_RATIOE">
 <span id="_CPPv3N14UmamiOutputKey30UMAMI_OUT_MATRIX_ELEMENT_RATIOE"></span><span id="_CPPv2N14UmamiOutputKey30UMAMI_OUT_MATRIX_ELEMENT_RATIOE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09a921b20ba811029fce94697eddd6791fa"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_MATRIX_ELEMENT_RATIO</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey30UMAMI_OUT_MATRIX_ELEMENT_RATIOE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>ratio of the matrix element to a reference matrix element defined by the caller, type: <code class="docutils literal notranslate"><span class="pre">double</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N14UmamiOutputKey22UMAMI_OUT_FLAVOR_INDEXE">
+<span id="_CPPv3N14UmamiOutputKey22UMAMI_OUT_FLAVOR_INDEXE"></span><span id="_CPPv2N14UmamiOutputKey22UMAMI_OUT_FLAVOR_INDEXE"></span><span class="target" id="umami_8h_1a269d8f99c0177eb25f972a785af5de09ac28937a7884710fa0b3d5331c28e5f96"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">UMAMI_OUT_FLAVOR_INDEX</span></span></span><a class="headerlink" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FLAVOR_INDEXE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>selected flavor index, -1 if the flavor is unchanged, type: <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape: <code class="docutils literal notranslate"><span class="pre">()</span></code></p>
 </dd></dl>
 
 </dd></dl>
@@ -1348,6 +1373,8 @@
 <li><a class="reference internal" href="#_CPPv4N13UmamiInputKey14UMAMI_IN_SCALEE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_SCALE</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N13UmamiInputKey15UMAMI_IN_PDG_IDE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_PDG_ID</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N13UmamiInputKey19UMAMI_IN_BEAM_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_BEAM_INDEX</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey22UMAMI_IN_RANDOM_FLAVORE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_RANDOM_FLAVOR</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N13UmamiInputKey25UMAMI_IN_PARTON_DENSITIESE"><code class="docutils literal notranslate"><span class="pre">UMAMI_IN_PARTON_DENSITIES</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv414UmamiOutputKey"><code class="docutils literal notranslate"><span class="pre">UmamiOutputKey</span></code></a><ul>
@@ -1364,6 +1391,7 @@
 <li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey13UMAMI_OUT_PDFE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_PDF</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey14UMAMI_OUT_BIASE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_BIAS</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey30UMAMI_OUT_MATRIX_ELEMENT_RATIOE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_MATRIX_ELEMENT_RATIO</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N14UmamiOutputKey22UMAMI_OUT_FLAVOR_INDEXE"><code class="docutils literal notranslate"><span class="pre">UMAMI_OUT_FLAVOR_INDEX</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv414umami_get_meta12UmamiMetaKeyPv"><code class="docutils literal notranslate"><span class="pre">umami_get_meta()</span></code></a></li>

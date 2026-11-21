@@ -15,6 +15,7 @@ Invertible maps between the unit hypercube and physical phase space; each also r
 
    cpp/ChiliMapping
    cpp/ColorOrderedMapping
+   cpp/DiscreteFlavorLevels
    cpp/DiscreteFlow
    cpp/DiscreteSampler
    cpp/DoubleT
@@ -77,6 +78,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/PropagatorChannelWeights
    cpp/RunningCoupling
    cpp/SubchannelWeights
+   cpp/TabulatedLuminosity
    cpp/Unweighter
    cpp/VegasHistogram
    cpp/WeightingStepFunction
@@ -181,6 +183,8 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/StepEvents
    cpp/StepIntegral
    cpp/StepSettings
+   cpp/StepStatistics
+   cpp/StepSums
    cpp/SubprocessObservables
    cpp/SubprocessSystArgs
    cpp/SystematicsCalculator

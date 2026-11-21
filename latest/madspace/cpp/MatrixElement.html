@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -732,7 +739,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElementE">
 <span id="_CPPv3N8madspace13MatrixElementE"></span><span id="_CPPv2N8madspace13MatrixElementE"></span><span id="madspace::MatrixElement"></span><span class="target" id="classmadspace_1_1MatrixElement"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">MatrixElement</span></span></span><span class="w"> </span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="k"><span class="pre">public</span></span><span class="w"> </span><span class="n"><span class="pre">madspace</span></span><span class="p"><span class="pre">::</span></span><a class="reference internal" href="FunctionGenerator.html#_CPPv4N8madspace17FunctionGeneratorE" title="madspace::FunctionGenerator"><span class="n"><span class="pre">FunctionGenerator</span></span></a><a class="headerlink" href="#_CPPv4N8madspace13MatrixElementE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Calls a matrix element through the UMAMI interface. </p>
-<p>UMAMI (Unified MAtrix eleMent Interface) is <code class="docutils literal notranslate"><span class="pre">madspace</span></code>’s uniform way of calling matrix-element code — currently the cudacpp plugin — for both integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are passed and returned is chosen by <code class="docutils literal notranslate"><span class="pre">inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, given as integer keys so the interface can be extended without breaking binary compatibility.</p>
+<p>UMAMI (Unified MAtrix eleMent Interface) is <code class="docutils literal notranslate"><span class="pre">madspace</span></code>’s uniform way of calling matrix-element code — currently the madmatrix backend — for both integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are passed and returned is chosen by <code class="docutils literal notranslate"><span class="pre">inputs</span></code> and <code class="docutils literal notranslate"><span class="pre">outputs</span></code>, given as integer keys so the interface can be extended without breaking binary compatibility.</p>
 <p><code class="docutils literal notranslate"><span class="pre">batch</span></code> is the leading batch dimension.</p>
 <p><strong>Arguments</strong> (a subset, selected by <code class="docutils literal notranslate"><span class="pre">inputs</span></code>)<ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">momenta</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">particle_count,</span> <span class="pre">4)</span></code>.</p></li>
@@ -852,6 +859,18 @@
 <dd><p>Index of the beam (0 or 1). </p>
 </dd></dl>
 
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput16random_flavor_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput16random_flavor_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput16random_flavor_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68a213bd9dacd73c409373b15a2689516c0"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">random_flavor_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput16random_flavor_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Random number for the flavour draw. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement18MatrixElementInput19parton_densities_inE">
+<span id="_CPPv3N8madspace13MatrixElement18MatrixElementInput19parton_densities_inE"></span><span id="_CPPv2N8madspace13MatrixElement18MatrixElementInput19parton_densities_inE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a383e369f334dd2429019369abf737f68a571b31caa91f04b1bac37a3aa2366c3e"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">parton_densities_in</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput19parton_densities_inE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>x f(x, mu_F) of both incoming legs for the PDG ids -6..6 (6: gluon). </p>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="cpp enum">
@@ -929,6 +948,12 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput24matrix_element_ratio_outE">
 <span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput24matrix_element_ratio_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput24matrix_element_ratio_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a303ea3d446d6d3f3af4e91a7f120acc5"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">matrix_element_ratio_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput24matrix_element_ratio_outE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Ratio of the matrix element to a reference matrix element, for a <a class="reference internal" href="WeightingStep.html#structmadspace_1_1WeightingStep"><span class="std std-ref">WeightingStep</span></a>. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement19MatrixElementOutput16flavor_index_outE">
+<span id="_CPPv3N8madspace13MatrixElement19MatrixElementOutput16flavor_index_outE"></span><span id="_CPPv2N8madspace13MatrixElement19MatrixElementOutput16flavor_index_outE"></span><span class="target" id="classmadspace_1_1MatrixElement_1a3913a404d7d03ab559847b18c978ab37a5f68128f3251ae1290fccf3bb5aff2af"></span><span class="k"><span class="pre">enumerator</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">flavor_index_out</span></span></span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput16flavor_index_outE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Selected flavour, -1 if unchanged. </p>
 </dd></dl>
 
 </dd></dl>
@@ -1042,6 +1067,15 @@
 </dd></dl>
 
 </div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-functions">Public Static Functions</p>
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace13MatrixElement15is_random_inputE18MatrixElementInput">
+<span id="_CPPv3N8madspace13MatrixElement15is_random_inputE18MatrixElementInput"></span><span id="_CPPv2N8madspace13MatrixElement15is_random_inputE18MatrixElementInput"></span><span id="madspace::MatrixElement::is_random_input__MatrixElementInput"></span><span class="target" id="classmadspace_1_1MatrixElement_1afd37dde7da0ec4151e7abec53dd86f5f"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">bool</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">is_random_input</span></span></span><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInputE" title="madspace::MatrixElement::MatrixElementInput"><span class="n"><span class="pre">MatrixElementInput</span></span></a><span class="w"> </span><span class="n sig-param"><span class="pre">input</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace13MatrixElement15is_random_inputE18MatrixElementInput" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Whether the input is one of the <code class="docutils literal notranslate"><span class="pre">random_*</span></code> inputs. </p>
+</dd></dl>
+
+</div>
 </dd></dl>
 
 </section>
@@ -1119,6 +1153,8 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput8scale_inE"><code class="docutils literal notranslate"><span class="pre">scale_in</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput9pdg_id_inE"><code class="docutils literal notranslate"><span class="pre">pdg_id_in</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput13beam_index_inE"><code class="docutils literal notranslate"><span class="pre">beam_index_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput16random_flavor_inE"><code class="docutils literal notranslate"><span class="pre">random_flavor_in</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement18MatrixElementInput19parton_densities_inE"><code class="docutils literal notranslate"><span class="pre">parton_densities_in</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutputE"><code class="docutils literal notranslate"><span class="pre">MatrixElementOutput</span></code></a><ul>
@@ -1134,6 +1170,7 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput7pdf_outE"><code class="docutils literal notranslate"><span class="pre">pdf_out</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput8bias_outE"><code class="docutils literal notranslate"><span class="pre">bias_out</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput24matrix_element_ratio_outE"><code class="docutils literal notranslate"><span class="pre">matrix_element_ratio_out</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement19MatrixElementOutput16flavor_index_outE"><code class="docutils literal notranslate"><span class="pre">flavor_index_out</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement13MatrixElementENSt6size_tENSt6size_tERKNSt6vectorI18MatrixElementInputEERKNSt6vectorI19MatrixElementOutputEENSt6size_tEbRKNSt6vectorI8me_int_tEENSt6size_tE8me_int_t"><code class="docutils literal notranslate"><span class="pre">MatrixElement()</span></code></a></li>
@@ -1149,6 +1186,7 @@
 <li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement10frame_maskEv"><code class="docutils literal notranslate"><span class="pre">frame_mask()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement14reference_maskEv"><code class="docutils literal notranslate"><span class="pre">reference_mask()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace13MatrixElement10along_beamEv"><code class="docutils literal notranslate"><span class="pre">along_beam()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace13MatrixElement15is_random_inputE18MatrixElementInput"><code class="docutils literal notranslate"><span class="pre">is_random_input()</span></code></a></li>
 </ul>
 </li>
 </ul>

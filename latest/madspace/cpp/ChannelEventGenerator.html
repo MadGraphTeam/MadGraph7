@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -963,7 +970,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4NK8madspace21ChannelEventGenerator15result_integralEv">
 <span id="_CPPv3NK8madspace21ChannelEventGenerator15result_integralEv"></span><span id="_CPPv2NK8madspace21ChannelEventGenerator15result_integralEv"></span><span id="madspace::ChannelEventGenerator::result_integralC"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a37cb8747685e016d2c3028d6bdac22d1"></span><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator16IntegralEstimateE" title="madspace::ChannelEventGenerator::IntegralEstimate"><span class="n"><span class="pre">IntegralEstimate</span></span></a><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">result_integral</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21ChannelEventGenerator15result_integralEv" title="Link to this definition">¶</a><br /></dt>
 <dd><p>See <a class="reference internal" href="#structmadspace_1_1ChannelEventGenerator_1_1IntegralEstimate"><span class="std std-ref">IntegralEstimate</span></a>. </p>
-<p>With steps, but no events through all of them yet, the integral of the first step. </p>
+<p>With steps, but fewer than two events in one of them yet, the integral of the first step. The errors assume that the estimates of the first step and of the steps are independent. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -1047,15 +1054,35 @@
 </dd></dl>
 
 <dl class="cpp function">
-<dt class="sig sig-object cpp" id="_CPPv4N8madspace21ChannelEventGenerator17add_step_acceptedENSt6size_tEddRKNSt6vectorIdEE">
-<span id="_CPPv3N8madspace21ChannelEventGenerator17add_step_acceptedENSt6size_tEddRKNSt6vectorIdEE"></span><span id="_CPPv2N8madspace21ChannelEventGenerator17add_step_acceptedENSt6size_tEddRKNSt6vectorIdEE"></span><span id="madspace::ChannelEventGenerator::add_step_accepted__std::s.double.double.std::vector:double:CR"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a2f9bf2b01b46a4b6c969672ab9b400c9"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">add_step_accepted</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">step</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">count</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">max_weight</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">max_weights</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace21ChannelEventGenerator17add_step_acceptedENSt6size_tEddRKNSt6vectorIdEE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Count <code class="docutils literal notranslate"><span class="pre">count</span></code> events accepted by step <code class="docutils literal notranslate"><span class="pre">step</span></code>, which passed the earlier unweightings with the maxima <code class="docutils literal notranslate"><span class="pre">max_weight</span></code> (first step) and <code class="docutils literal notranslate"><span class="pre">max_weights</span></code> (the steps before). </p>
+<dt class="sig sig-object cpp" id="_CPPv4N8madspace21ChannelEventGenerator19add_step_statisticsENSt6size_tENSt6size_tENSt6size_tEdRKNSt6vectorIdEE">
+<span id="_CPPv3N8madspace21ChannelEventGenerator19add_step_statisticsENSt6size_tENSt6size_tENSt6size_tEdRKNSt6vectorIdEE"></span><span id="_CPPv2N8madspace21ChannelEventGenerator19add_step_statisticsENSt6size_tENSt6size_tENSt6size_tEdRKNSt6vectorIdEE"></span><span id="madspace::ChannelEventGenerator::add_step_statistics__std::s.std::s.std::s.double.std::vector:double:CR"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a9ef43db565571fadc5dfcb21c53a8f3c"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">add_step_statistics</span></span></span><span class="sig-paren">(</span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">step</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">entered</span></span>, <span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">passed</span></span>, <span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="n sig-param"><span class="pre">max_weight</span></span>, <span class="k"><span class="pre">const</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">max_weights</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace21ChannelEventGenerator19add_step_statisticsENSt6size_tENSt6size_tENSt6size_tEdRKNSt6vectorIdEE" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Record that <code class="docutils literal notranslate"><span class="pre">entered</span></code> events went into step <code class="docutils literal notranslate"><span class="pre">step</span></code> and <code class="docutils literal notranslate"><span class="pre">passed</span></code> came out. </p>
+<p>The events passed the earlier unweightings with the maxima <code class="docutils literal notranslate"><span class="pre">max_weight</span></code> (first step) and <code class="docutils literal notranslate"><span class="pre">max_weights</span></code> (the steps before). The integral is not changed, see <a class="reference internal" href="#classmadspace_1_1ChannelEventGenerator_1ac4e3e4074121a508ed9de5d82dd4aba8"><span class="std std-ref">add_step_integral</span></a>. </p>
 </dd></dl>
 
 <dl class="cpp function">
-<dt class="sig sig-object cpp" id="_CPPv4NK8madspace21ChannelEventGenerator20step_accepted_countsEv">
-<span id="_CPPv3NK8madspace21ChannelEventGenerator20step_accepted_countsEv"></span><span id="_CPPv2NK8madspace21ChannelEventGenerator20step_accepted_countsEv"></span><span id="madspace::ChannelEventGenerator::step_accepted_countsC"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a7c6dff27853b90c24460a8c8932cbe0d"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><span class="kt"><span class="pre">double</span></span><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">step_accepted_counts</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21ChannelEventGenerator20step_accepted_countsEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Estimated number of events accepted by the first unweighting and each step so far; without steps, just <a class="reference internal" href="GeneratorStatus.html#structmadspace_1_1GeneratorStatus_1a8585ac042ae8478657881390700ee6d0"><span class="std std-ref">GeneratorStatus::count_unweighted</span></a>. </p>
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace21ChannelEventGenerator15step_statisticsEv">
+<span id="_CPPv3NK8madspace21ChannelEventGenerator15step_statisticsEv"></span><span id="_CPPv2NK8madspace21ChannelEventGenerator15step_statisticsEv"></span><span id="madspace::ChannelEventGenerator::step_statisticsC"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1aeb0ea74be271fcd6d1827be73c8015f1"></span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">vector</span></span><span class="p"><span class="pre">&lt;</span></span><a class="reference internal" href="StepStatistics.html#_CPPv4N8madspace14StepStatisticsE" title="madspace::StepStatistics"><span class="n"><span class="pre">StepStatistics</span></span></a><span class="p"><span class="pre">&gt;</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">step_statistics</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21ChannelEventGenerator15step_statisticsEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Statistics of each step, in order. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace21ChannelEventGenerator16first_step_countEv">
+<span id="_CPPv3NK8madspace21ChannelEventGenerator16first_step_countEv"></span><span id="_CPPv2NK8madspace21ChannelEventGenerator16first_step_countEv"></span><span id="madspace::ChannelEventGenerator::first_step_countC"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a8c58f72a1cdb82594d1460e73b9d7bb2"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">first_step_count</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21ChannelEventGenerator16first_step_countEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Events accepted by the first unweighting, counted as if the current maximum weight had been used all along. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace21ChannelEventGenerator19count_opt_completedEv">
+<span id="_CPPv3NK8madspace21ChannelEventGenerator19count_opt_completedEv"></span><span id="_CPPv2NK8madspace21ChannelEventGenerator19count_opt_completedEv"></span><span id="madspace::ChannelEventGenerator::count_opt_completedC"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a1288fbbe14f6b1fedd214ccd82e31e57"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">count_opt_completed</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21ChannelEventGenerator19count_opt_completedEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Generated points behind the final events counted in <a class="reference internal" href="GeneratorStatus.html#structmadspace_1_1GeneratorStatus_1a8585ac042ae8478657881390700ee6d0"><span class="std std-ref">GeneratorStatus::count_unweighted</span></a>. </p>
+<p>With steps, only the points of jobs whose events went through all steps, so that the quotient is not distorted by jobs still in the steps. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt class="sig sig-object cpp" id="_CPPv4NK8madspace21ChannelEventGenerator30count_after_cuts_opt_completedEv">
+<span id="_CPPv3NK8madspace21ChannelEventGenerator30count_after_cuts_opt_completedEv"></span><span id="_CPPv2NK8madspace21ChannelEventGenerator30count_after_cuts_opt_completedEv"></span><span id="madspace::ChannelEventGenerator::count_after_cuts_opt_completedC"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1a93490e0e378ac9d19098ee39d86f180c"></span><span class="k"><span class="pre">inline</span></span><span class="w"> </span><span class="kt"><span class="pre">double</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">count_after_cuts_opt_completed</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><span class="w"> </span><span class="k"><span class="pre">const</span></span><a class="headerlink" href="#_CPPv4NK8madspace21ChannelEventGenerator30count_after_cuts_opt_completedEv" title="Link to this definition">¶</a><br /></dt>
+<dd><p>Like <a class="reference internal" href="#classmadspace_1_1ChannelEventGenerator_1a1288fbbe14f6b1fedd214ccd82e31e57"><span class="std std-ref">count_opt_completed</span></a>, for the points after the cuts. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -1085,7 +1112,7 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace21ChannelEventGenerator17add_step_integralERK12StepIntegral">
 <span id="_CPPv3N8madspace21ChannelEventGenerator17add_step_integralERK12StepIntegral"></span><span id="_CPPv2N8madspace21ChannelEventGenerator17add_step_integralERK12StepIntegral"></span><span id="madspace::ChannelEventGenerator::add_step_integral__StepIntegralCR"></span><span class="target" id="classmadspace_1_1ChannelEventGenerator_1ac4e3e4074121a508ed9de5d82dd4aba8"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">add_step_integral</span></span></span><span class="sig-paren">(</span><span class="k"><span class="pre">const</span></span><span class="w"> </span><a class="reference internal" href="StepIntegral.html#_CPPv4N8madspace12StepIntegralE" title="madspace::StepIntegral"><span class="n"><span class="pre">StepIntegral</span></span></a><span class="w"> </span><span class="p"><span class="pre">&amp;</span></span><span class="n sig-param"><span class="pre">integral</span></span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace21ChannelEventGenerator17add_step_integralERK12StepIntegral" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Add to the integral of the final weights. </p>
+<dd><p>Add the generated points and the step sums of finished events to the integral of the final weights. </p>
 </dd></dl>
 
 <dl class="cpp function">
@@ -1213,6 +1240,7 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace21ChannelEventGenerator16IntegralEstimateE">
 <span id="_CPPv3N8madspace21ChannelEventGenerator16IntegralEstimateE"></span><span id="_CPPv2N8madspace21ChannelEventGenerator16IntegralEstimateE"></span><span id="madspace::ChannelEventGenerator::IntegralEstimate"></span><span class="target" id="structmadspace_1_1ChannelEventGenerator_1_1IntegralEstimate"></span><span class="k"><span class="pre">struct</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">IntegralEstimate</span></span></span><a class="headerlink" href="#_CPPv4N8madspace21ChannelEventGenerator16IntegralEstimateE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Integral of the final weights: after the last re- or unweighting step, or the weights of the integrand without steps. </p>
+<p>With steps, it is the integral of the first step times the ratios of the steps, each averaged over the events that entered the step. </p>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-members">Public Members</p>
 <dl class="cpp var">
@@ -1353,8 +1381,11 @@
 <li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator22update_step_max_weightENSt6size_tERKNSt6vectorIdEENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">update_step_max_weight()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator23add_invalid_step_valuesENSt6size_tE"><code class="docutils literal notranslate"><span class="pre">add_invalid_step_values()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator29apply_step_truncation_budgetsEv"><code class="docutils literal notranslate"><span class="pre">apply_step_truncation_budgets()</span></code></a></li>
-<li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator17add_step_acceptedENSt6size_tEddRKNSt6vectorIdEE"><code class="docutils literal notranslate"><span class="pre">add_step_accepted()</span></code></a></li>
-<li><a class="reference internal" href="#_CPPv4NK8madspace21ChannelEventGenerator20step_accepted_countsEv"><code class="docutils literal notranslate"><span class="pre">step_accepted_counts()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator19add_step_statisticsENSt6size_tENSt6size_tENSt6size_tEdRKNSt6vectorIdEE"><code class="docutils literal notranslate"><span class="pre">add_step_statistics()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace21ChannelEventGenerator15step_statisticsEv"><code class="docutils literal notranslate"><span class="pre">step_statistics()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace21ChannelEventGenerator16first_step_countEv"><code class="docutils literal notranslate"><span class="pre">first_step_count()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace21ChannelEventGenerator19count_opt_completedEv"><code class="docutils literal notranslate"><span class="pre">count_opt_completed()</span></code></a></li>
+<li><a class="reference internal" href="#_CPPv4NK8madspace21ChannelEventGenerator30count_after_cuts_opt_completedEv"><code class="docutils literal notranslate"><span class="pre">count_after_cuts_opt_completed()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator21add_first_step_eventsENSt6size_tEd"><code class="docutils literal notranslate"><span class="pre">add_first_step_events()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4NK8madspace21ChannelEventGenerator11event_epochEv"><code class="docutils literal notranslate"><span class="pre">event_epoch()</span></code></a></li>
 <li><a class="reference internal" href="#_CPPv4N8madspace21ChannelEventGenerator17write_step_eventsERK10StepEvents"><code class="docutils literal notranslate"><span class="pre">write_step_events()</span></code></a></li>

@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="../python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="../python/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../python/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../python/AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="../cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -739,12 +746,15 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">flavor</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – flavor index of the matrix element.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">matrix_element_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – which matrix element to call, only with several matrix elements.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">color_index</span></code>, <code class="docutils literal notranslate"><span class="pre">helicity_index</span></code>, <code class="docutils literal notranslate"><span class="pre">diagram_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the indices of the earlier steps.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">random</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">4</span> <span class="pre">step_count)</span></code> – four random numbers per step: for the color, helicity and diagram sampling of the matrix element and for the unweighting.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – flavour index of the event.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">parton_densities</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">2,</span> <span class="pre">13)</span></code> – only if <a class="reference internal" href="WeightingStep.html#structmadspace_1_1WeightingStep_1a2093dec7de8b405e1a27982cfbd073b0"><span class="std std-ref">WeightingStep::needs_parton_densities()</span></a>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">random</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,</span> <span class="pre">5</span> <span class="pre">step_count)</span></code> – five random numbers per step: for the color, helicity, diagram and flavour sampling of the matrix element and for the unweighting.</p></li>
 </ul>
 </p>
 <p><strong>Returns</strong><ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">matrix_element</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the matrix element, or the ratio to the previous step if the step returns ratios.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">color_index</span></code>, <code class="docutils literal notranslate"><span class="pre">helicity_index</span></code>, <code class="docutils literal notranslate"><span class="pre">diagram_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the indices the step writes, otherwise the input values.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">flavor_index</span></code> – <code class="docutils literal notranslate"><span class="pre">int</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the switched flavour, otherwise the input value.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">unweight_random</span></code> – <code class="docutils literal notranslate"><span class="pre">float</span></code>, shape <code class="docutils literal notranslate"><span class="pre">(batch,)</span></code> – the random number of this step for the unweighting. </p></li>
 </ul>
 </p>
@@ -772,7 +782,7 @@
 <dl class="cpp var">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace21WeightingStepFunction12random_countE">
 <span id="_CPPv3N8madspace21WeightingStepFunction12random_countE"></span><span id="_CPPv2N8madspace21WeightingStepFunction12random_countE"></span><span id="madspace::WeightingStepFunction::random_count__std::s"></span><span class="target" id="classmadspace_1_1WeightingStepFunction_1a46eec21fb04bf679b3223e86c621c17b"></span><span class="k"><span class="pre">static</span></span><span class="w"> </span><span class="k"><span class="pre">constexpr</span></span><span class="w"> </span><span class="n"><span class="pre">std</span></span><span class="p"><span class="pre">::</span></span><span class="n"><span class="pre">size_t</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">random_count</span></span></span><a class="headerlink" href="#_CPPv4N8madspace21WeightingStepFunction12random_countE" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Random numbers per event and step: color, helicity, diagram, unweighting. </p>
+<dd><p>Random numbers per event and step: color, helicity, diagram, flavour, unweighting. </p>
 </dd></dl>
 
 </div>

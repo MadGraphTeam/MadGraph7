@@ -1,0 +1,6 @@
+TabulatedLuminosity
+===================
+
+.. doxygenclass:: madspace::TabulatedLuminosity
+   :members:
+   :undoc-members:

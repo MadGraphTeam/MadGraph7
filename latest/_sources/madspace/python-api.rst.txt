@@ -15,6 +15,7 @@ Invertible maps between the unit hypercube and physical phase space; each also r
 
    python/ChiliMapping
    python/ColorOrderedMapping
+   python/DiscreteFlavorLevels
    python/DiscreteFlow
    python/DiscreteSampler
    python/DoubleT
@@ -76,6 +77,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    python/PropagatorChannelWeights
    python/RunningCoupling
    python/SubchannelWeights
+   python/TabulatedLuminosity
    python/Unweighter
    python/VegasHistogram
 

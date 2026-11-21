@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="First steps" href="first_steps.html"><link rel="prev" title="MadGraph7 documentation" href="index.html">
+<link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="next" title="TIRust for MadLoop" href="tirust.html"><link rel="prev" title="MadGraph7 documentation" href="index.html">
         <link rel="canonical" href="https://docs.madgraph.org/latest/installation.html">
         <link rel="prefetch" href="_static/logo-light.png" as="image">
         <link rel="prefetch" href="_static/logo-dark.png" as="image">
@@ -278,6 +278,7 @@
   <p class="caption" role="heading"><span class="caption-text">Usage</span></p>
 <ul class="current">
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tirust.html">TIRust for MadLoop</a></li>
 <li class="toctree-l1"><a class="reference internal" href="first_steps.html">First steps</a></li>
 <li class="toctree-l1"><a class="reference internal" href="standalone.html">Standalone matrix elements</a></li>
 <li class="toctree-l1"><a class="reference internal" href="run_card.html">Run card</a></li>
@@ -308,6 +309,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="madspace/python-api.html">Python API</a><input aria-label="Toggle navigation of Python API" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/DoubleT.html">DoubleT</a></li>
@@ -360,6 +362,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/python/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/python/AlphaSGrid.html">AlphaSGrid</a></li>
@@ -461,6 +464,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="madspace/cpp-api.html">C++ API</a><input aria-label="Toggle navigation of C++ API" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ChiliMapping.html">ChiliMapping</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/ColorOrderedMapping.html">ColorOrderedMapping</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteFlavorLevels.html">DiscreteFlavorLevels</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteFlow.html">DiscreteFlow</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DiscreteSampler.html">DiscreteSampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/DoubleT.html">DoubleT</a></li>
@@ -514,6 +518,7 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/PropagatorChannelWeights.html">PropagatorChannelWeights</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/RunningCoupling.html">RunningCoupling</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubchannelWeights.html">SubchannelWeights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/TabulatedLuminosity.html">TabulatedLuminosity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/Unweighter.html">Unweighter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/VegasHistogram.html">VegasHistogram</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/WeightingStepFunction.html">WeightingStepFunction</a></li>
@@ -591,6 +596,8 @@
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepEvents.html">StepEvents</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepIntegral.html">StepIntegral</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepSettings.html">StepSettings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepStatistics.html">StepStatistics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="madspace/cpp/StepSums.html">StepSums</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessObservables.html">SubprocessObservables</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SubprocessSystArgs.html">SubprocessSystArgs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="madspace/cpp/SystematicsCalculator.html">SystematicsCalculator</a></li>
@@ -740,6 +747,8 @@ start the interface:</p>
 installed automatically the first time you launch a run. To build it yourself instead,
 run <code class="docutils literal notranslate"><span class="pre">install</span> <span class="pre">madspace</span></code> from the MadGraph7 prompt, or see the
 <a class="reference internal" href="madspace/installation.html"><span class="doc">MadSpace installation instructions</span></a>.</p>
+<p>For the optional TIRust/oneloopmaster MadLoop reduction backend, see
+<a class="reference internal" href="tirust.html"><span class="doc">TIRust installation and controls</span></a>.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">pyamplicol</span></code> package, used by the <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> matrix-element backend, is
 installed in the same way with <code class="docutils literal notranslate"><span class="pre">install</span> <span class="pre">pyamplicol</span></code>; see the
 <a class="reference internal" href="pyamplicol/user/installation.html"><span class="doc">pyAmpliCol installation instructions</span></a>.</p>
@@ -810,8 +819,19 @@ generated processes.</p>
 </div>
 <p>Here <code class="docutils literal notranslate"><span class="pre">PREFIX</span></code> is the NinjaRS installation directory, usually
 <code class="docutils literal notranslate"><span class="pre">HEPTools/ninjars</span></code>. The current validated compiler-runtime policy is
-GNU Fortran on Linux and places <code class="docutils literal notranslate"><span class="pre">-lgcc_s</span></code> before the archive. Additional
-platforms require validation of their compiler-runtime resolution.</p>
+GNU Fortran on Linux and places <code class="docutils literal notranslate"><span class="pre">-Wl,--undefined=</span></code> flags for every binary128
+helper in the compiler’s static <code class="docutils literal notranslate"><span class="pre">libgcc.a</span></code>, then that archive (the path
+<code class="docutils literal notranslate"><span class="pre">gfortran</span> <span class="pre">-print-file-name=libgcc.a</span></code> reports), then <code class="docutils literal notranslate"><span class="pre">-lgcc_s</span></code>, before the
+archive. The flags make the linker take each helper from <code class="docutils literal notranslate"><span class="pre">libgcc.a</span></code> even when
+it is first referenced by an object linked after the NinjaRS flags.
+<code class="docutils literal notranslate"><span class="pre">-lgcc_s</span></code> alone is not enough on some toolchains, for example GNU Fortran on
+Nix: the archive’s own binary128 helpers still win and the installer’s rounding
+check fails. Installations that record only <code class="docutils literal notranslate"><span class="pre">-lgcc_s</span></code> passed that check on
+their own toolchain and remain usable; <code class="docutils literal notranslate"><span class="pre">install</span> <span class="pre">ninjars</span> <span class="pre">--update</span></code> switches
+them to the current order. If the recorded <code class="docutils literal notranslate"><span class="pre">libgcc.a</span></code> disappears later (a GCC
+upgrade or a Nix garbage collection), NinjaRS reports itself unavailable until
+it is reinstalled. Additional platforms require validation of their
+compiler-runtime resolution.</p>
 </section>
 </section>
 
@@ -820,12 +840,12 @@ platforms require validation of their compiler-runtime resolution.</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="first_steps.html">
+          <a class="next-page" href="tirust.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">First steps</div>
+                <div class="title">TIRust for MadLoop</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
