@@ -349,12 +349,12 @@ couplmod: ../../Source/MODEL/couplings.mod
 endif
 couplmod:
 	ln -sf ../../Source/MODEL/couplings.mod .
-driver.o: couplmod
+driver.o: | couplmod
 born.o born_hel.o extra_cnt_wrapper.o: driver.o
 $(patsubst %.f,%.o,$(wildcard matrix_*.f)): driver.o
 fks_buffered.o: weight_lines.o mint_module.o fks_phase_space_data.o driver.o
 native_real_me_chooser.o: mc_native_context.o nFKSconfigs.inc fks_info.inc orders.inc
-setscales.o: couplmod
+setscales.o: | couplmod
 
 -include nlo_real_offload.mk
 # The fragment extends FILES/FKSSA after make has expanded the prerequisites
