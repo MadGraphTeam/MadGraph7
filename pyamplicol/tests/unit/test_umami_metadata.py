@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from dataclasses import replace
 from fractions import Fraction
 from itertools import permutations
@@ -608,8 +609,10 @@ def test_payloads_have_sdk_roles_and_generated_c_matches_json():
     header = payloads["API/umami/provider_p0.h"].content.decode()
     assert "#define UMAMI_HAS_ALPHA_S 1" in header
     assert "static const UmamiProvider umami_provider" in header
-    assert "umami_c0_f0_permutation[] = {0, 1, 2, 3}" in header
-    assert "umami_c1_f0_permutation" not in header
+    # per-entry arrays are interned: one channel, one flavour, one permutation
+    assert "static const size_t umami_perm0[] = {0, 1, 2, 3};" in header
+    assert "umami_perm1" not in header and "umami_c1_flavours" not in header
+    assert "{1, &umami_contributions[0]}," in header
     assert entries(data)[0]["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
     assert data["provider"]["library"] == "libumami.so"
     assert payloads["API/umami/metadata.json"].role == "sdk-metadata"
@@ -1119,8 +1122,9 @@ def test_crossed_union_member_carries_momentum_signs_and_its_own_labels():
     assert physical_flows(data, "m") == physical_flows(export(reference)[0], "m")
     header = umami_bundle_payloads(processes=[a], compiled_model=model())
     text = next(p.content for p in header if p.path.endswith("provider_p0.h")).decode()
-    assert "_momentum_signs[] = {-1, 1, 1, -1};" in text
-    assert text.count("_momentum_signs}") == 2
+    # sign arrays are interned like the other per-entry arrays
+    assert re.search(r"umami_sgn\d+\[\] = \{-1, 1, 1, -1\};", text)
+    assert len(re.findall(r"umami_sgn\d+\}", text)) == 2
 
 
 def test_uncrossed_union_metadata_stays_schema_4():
