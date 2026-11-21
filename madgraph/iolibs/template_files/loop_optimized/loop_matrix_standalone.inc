@@ -254,6 +254,15 @@ C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATIO
 ## }
       %(complex_dp_format)s COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
       %(complex_dp_format)s CFTOT
+## if(not AmplitudeReduction){
+C     Colour factors of the CT amplitudes with each Born amplitude and the
+C     squared split-order index of their interference, tabulated once from
+C     CF_N/CF_D with the very expressions they replace (bit-identical).
+      %(complex_dp_format)s CF_CT(NCTAMPS,NBORNAMPS)
+      INTEGER SQSO_CT(NCTAMPS,NBORNAMPS)
+      SAVE CF_CT,SQSO_CT
+      %(real_dp_format)s ACC_SO(3),ACC_ALL(3)
+## }
 	  LOGICAL FOUNDHELFILTER,FOUNDLOOPFILTER
 	  DATA FOUNDHELFILTER/.TRUE./
 	  DATA FOUNDLOOPFILTER/.TRUE./
@@ -478,6 +487,14 @@ C This flag is used to prevent the re-computation of the OpenLoop coefficients w
 	  INTEGER CF_D(NCOLORROWS,%(color_matrix_size)s)
 	  INTEGER CF_N(NCOLORROWS,%(color_matrix_size)s)
 	  common/%(proc_prefix)sCF/CF_D,CF_N
+## if(not AmplitudeReduction){
+C     Split-order index tables read by CREATE_LOOP_COEFS: the Born amplitude
+C     split-order indices, and the squared split-order index of (Born split
+C     order, loop amplitude), cached on first use (0 = not yet known).
+	  INTEGER BORNAMP_SO(NBORNAMPS)
+	  INTEGER LOOPAMP_SQSO(NAMPSO,NCOLORROWS)
+	  common/%(proc_prefix)sSOTABLES/BORNAMP_SO,LOOPAMP_SQSO
+## }
 
 	  INTEGER HELC(NEXTERNAL,NCOMB)
 	  common/%(proc_prefix)sHELCONFIGS/HELC
@@ -704,6 +721,22 @@ OPEN(1, FILE=ColorDenomFN, err=106, status='OLD',           action='READ')
   STOP 'Color factors could not be initialized from file %(proc_prefix)sColorDenomFactors.dat. File not found' 
 107  CONTINUE
 CLOSE(1)
+## if(not AmplitudeReduction){
+  DO J=1,NBORNAMPS
+    DO I=1,NCTAMPS
+      CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0d0)
+      IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
+      CF_CT(I,J)=CFTOT
+      SQSO_CT(I,J)=%(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
+    ENDDO
+    BORNAMP_SO(J)=%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J)
+  ENDDO
+  DO I=1,NCOLORROWS
+    DO J=1,NAMPSO
+      LOOPAMP_SQSO(J,I)=0
+    ENDDO
+  ENDDO
+## }
 OPEN(1, FILE=HelConfigFN, err=108, status='OLD',                  action='READ')
   DO H=1,NCOMB
     READ(1,*,END=109) (HELC(I,H),I=1,NEXTERNAL)
@@ -1212,21 +1245,45 @@ C of this constituent helicity configuration
 ## }
 
 ## if(not AmplitudeReduction) {
+C The tabulated factors give the same operations in the same order as the
+C former per-term evaluation. With a single squared split order, every term
+C goes to ANS(K,1) and ANS(K,0): they are accumulated in registers instead.
+  IF (NSQUAREDSO.EQ.1) THEN
+    IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.1) THEN
+      DO K=1,3
+        ACC_SO(K)=ANS(K,1)
+        ACC_ALL(K)=ANS(K,0)
+      ENDDO
+      DO J=1,NBORNAMPS
+        CTEMP = 2.0d0*HEL_MULT*DCONJG(AMP(J))
+        DO I=1,NCTAMPS
+          DO K=1,3
+            TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
+            ACC_SO(K)=ACC_SO(K)+TEMP2
+            ACC_ALL(K)=ACC_ALL(K)+TEMP2
+          ENDDO
+        ENDDO
+      ENDDO
+      DO K=1,3
+        ANS(K,1)=ACC_SO(K)
+        ANS(K,0)=ACC_ALL(K)
+      ENDDO
+    ENDIF
+  ELSE
   DO J=1,NBORNAMPS
     CTEMP = 2.0d0*HEL_MULT*DCONJG(AMP(J))
-    DO I=1,NCTAMPS	
-	  CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0d0)
-      IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
-      ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
+    DO I=1,NCTAMPS
+      ITEMP = SQSO_CT(I,J)
 	  IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN
         DO K=1,3
-          TEMP2 = DBLE(CFTOT*AMPL(K,I)*CTEMP)
+          TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
           ANS(K,ITEMP)=ANS(K,ITEMP)+TEMP2
           ANS(K,0)=ANS(K,0)+TEMP2
         ENDDO
       ENDIF
     ENDDO
   ENDDO
+  ENDIF
 ## }
   
   %(coef_construction)s

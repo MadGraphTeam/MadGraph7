@@ -20,6 +20,11 @@ ROOTNAME = $(notdir $(abspath $(ROOT)))
 # to turn off the bounds check. These can however be modified here if really necessary.
 POLYNOMIAL_OPTIMIZATION = -O3
 POLYNOMIAL_BOUNDS_CHECK =
+# The other MadLoop sources (loop_matrix.f, the Born, CT and coefficient
+# construction calls, the reduction interfaces) are otherwise compiled without
+# optimization, as standalone make_opts sets no -O flag. It comes before
+# FFLAGS, so that an -O flag given there (e.g. -O0 -g) still takes precedence.
+MADLOOP_OPTIMIZATION = -O2
 
 include $(ROOT)/Source/make_opts
 FFLAGS += -I$(ROOT)/Source/MODEL -I$(ROOT)/Source/DHELAS
@@ -112,10 +117,10 @@ $(CHECK_SA_BORN_SPLITORDERS):  check_sa_born_splitOrders.o $(patsubst $(DOTF),$(
 
 
 $(DOTO) : $(DOTF) $(POLYNOMIAL) $(OLP_POLYNOMIAL)
-	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
+	$(FC) $(MADLOOP_OPTIMIZATION) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
 
 $(DOTO) : $(DOTF)
-	$(FC) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
+	$(FC) $(MADLOOP_OPTIMIZATION) $(FFLAGS) -c $< -o $@ $(LOOP_INCLUDE)
 
 $(OLP): $(OLP_PROCESS) $(LIBS) mg5_citation.o
 	$(FC) -shared $(OLP_PROCESS) mg5_citation.o -o libMadLoop.$(dylibext) $(LINKLIBS)
