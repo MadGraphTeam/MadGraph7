@@ -505,6 +505,35 @@ class AmplicolLeadingColourFlavoursTest(unittest.TestCase):
             lambda pid: 0.0, lambda pid: 0.0)
         self.assertEqual(resonances['switch_resonance_pdgs'], [[[]]])
 
+    def test_mlm_clustering_classes_follow_lc_flavors(self):
+        """One clustering class per flavour of the leading-colour pass, in the
+        order the events index them, also when built before lc_flavors."""
+        from types import SimpleNamespace
+        from unittest import mock
+        module = self.module
+        flavors = [dict(f, color_index=0) for f in self.meta['flavors']]
+        flavors.insert(1, {'index': 5, 'options': [[2, -2, 1, -1, 3, -3]],
+                           'factor': 1., 'mirror': True, 'channels': [0],
+                           'color_index': 0})
+        meta = {'flavors': flavors, 'color_flows': [[[0, 0]] * 4],
+                'incoming': [21, 21], 'outgoing': [21, 21], 'path': 'P1'}
+        for mode, count in [('two_lines_resample', 5), ('all', 6)]:
+            subprocess = SimpleNamespace(meta=meta, process=SimpleNamespace(
+                run_card={'amplicol': {'lc_flavors': mode, 'color_accuracy': 'full'}}),
+                incoming_masses=[0., 0.], outgoing_masses=[0., 0.])
+            with mock.patch.object(module.os.path, 'exists', return_value=True), \
+                    mock.patch.object(module, 'vertex_table'), \
+                    mock.patch.object(module, 'max_coupling_orders', return_value=()), \
+                    mock.patch.object(module, 'clustering_diagrams', return_value=[()]), \
+                    mock.patch.object(module, 'madspace_lines', return_value=[]), \
+                    mock.patch.object(module, 'ms') as ms:
+                module.AmplicolSubprocess.build_mlm_clustering(subprocess, {})
+            flavor_classes = ms.MLMClustering.call_args[0][1]
+            self.assertEqual(flavor_classes, list(range(count)))
+            pdgs = [call[0][0] for call in ms.ClusteringClass.call_args_list]
+            self.assertEqual(pdgs, [[abs(p) for p in f['options'][0]] for f in
+                                    module.lc_flavors(meta, mode)['flavors']])
+
     def test_subprocesses_without_lc_flavours_are_skipped(self):
         from types import SimpleNamespace
         from madgraph.mg7.madgraph_process import MadgraphProcess
