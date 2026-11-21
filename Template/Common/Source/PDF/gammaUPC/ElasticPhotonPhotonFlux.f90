@@ -82,6 +82,11 @@ MODULE ElasticPhotonPhotonFlux
   REAL(KIND(1d0)),PUBLIC::FFE_NodeScale=1d0    ! >1: denser quadrature (convergence tests)
   INTEGER,PUBLIC::FFE_Verbose=0                ! >0: print timings and diagnostics
   LOGICAL,PUBLIC::FFE_Tag_Legacy=.FALSE.       ! neutron tagging from the legacy Pbreak functions
+  ! Grid cache: the final grids (with the 1D tables of the PNOHAD=1 guard) are written to and read
+  ! from files in FFE_Grid_Cache_Dir, one per configuration, so that the processes of one run
+  ! (e.g. the MadEvent jobs) build each grid once. Off by default.
+  LOGICAL,PUBLIC::FFE_Grid_Cache=.FALSE.
+  CHARACTER(len=512),PUBLIC::FFE_Grid_Cache_Dir='./'
   PUBLIC::FFE_Reset,FFE_Flux_AB,FFE_DeltaB_AB,FFE_Info,FFE_Test_Value
   TYPE ffe_beam_t
      LOGICAL::proton=.FALSE.,chff=.FALSE.
@@ -141,6 +146,9 @@ MODULE ElasticPhotonPhotonFlux
   TYPE(ffe_vgrid_t),PRIVATE,SAVE::ffe_xg
   INTEGER,PRIVATE,SAVE::ffe_MX=0
   REAL(KIND(1d0)),PRIVATE,SAVE::ffe_xmin=1d-8
+  LOGICAL,PRIVATE,SAVE::ffe_tables=.FALSE.   ! v-grids, kernel and density tables of the configuration
+  LOGICAL,PRIVATE,SAVE::ffe_lnNready=.FALSE. ! the 1D tables ffe_lnN
+  INTEGER,PARAMETER,PRIVATE::ffe_cache_version=1  ! bump when the grids of a configuration change
   REAL(KIND(1d0)),DIMENSION(:,:,:),ALLOCATABLE,PRIVATE,SAVE::ffe_W  ! (MX+1, nv, beam)
   REAL(KIND(1d0)),DIMENSION(:,:,:),ALLOCATABLE,PRIVATE,SAVE::ffe_ZL ! ln(x1 x2 Z), kinds 1..3
   LOGICAL,DIMENSION(3),PRIVATE,SAVE::ffe_Zready=.FALSE.
@@ -12012,6 +12020,7 @@ CONTAINS
     INTEGER::npx,n1,n2,i,g,nint,iw,it,m,jj,off,cnt,n,i1,i2
     REAL(KIND(1d0))::slo,shi,sad,hs,a,c,h,tol,errsum,worst,e,hl,ws,g1,g2,tk0,tk1
     REAL(KIND(1d0)),DIMENSION(6)::xl
+    CALL ffe_build_tables()
     n1=ffe_vg(1)%n
     n2=ffe_vg(2)%n
     IF(.NOT.ALLOCATED(ffe_K))THEN
@@ -12306,10 +12315,9 @@ CONTAINS
     REAL(KIND(1d0)),PARAMETER::mproton=0.938272081d0
     REAL(KIND(1d0)),PARAMETER::Rproton=0.877d0
     REAL(KIND(1d0)),DIMENSION(40)::sig
-    REAL(KIND(1d0))::A,Z,R,aa,w,cmenergy,t0,t1,tt0,base,vlo,vhi
+    REAL(KIND(1d0))::A,Z,R,aa,w,cmenergy,t0,t1,tt0,base
     CHARACTER(len=7)::aname
-    INTEGER::ib,inuc,i,lx
-    REAL(KIND(1d0)),DIMENSION(:),ALLOCATABLE::Wr
+    INTEGER::ib,inuc,lx
     ! MadGraph: the beams come from the MadGraph commons of run90.inc (ebeamMG5 is the energy
     ! of the whole beam particle), converted as in the legacy functions
     IF(nb_proton(1).EQ.1.AND.nb_neutron(1).EQ.0)THEN
@@ -12439,17 +12447,9 @@ CONTAINS
     ffe_sigNN=sigma_inelastic(cmenergy)*0.1d0/GeVm12fm**2 ! mb -> fm^2 -> GeV^-2
     ! pp: elastic slope of the DdE fit (arXiv:2207.03012), as in PhotonPhotonFlux_pp_eval
     ffe_b0pp=9.81d0+0.211d0*DLOG(cmenergy**2)+0.0185d0*DLOG(cmenergy**2)**2
-    ! v-grids: from bmin to 45/(xmin mass) (exp(-90) of the photon density beyond)
-    DO ib=1,2
-       vlo=DLOG(ffe_bm(ib)%bmin)
-       vhi=DLOG(45d0/(ffe_xmin*ffe_bm(ib)%mass))
-       CALL ffe_build_vgrid(ib,vlo,vhi)
-       IF(ffe_bm(ib)%chff.AND..NOT.ffe_bm(ib)%proton)CALL ffe_chff_setup(ib)
-    ENDDO
     CALL CPU_TIME(t1)
     ffe_time(1)=t1-t0
-    t0=t1
-    ! ------------------------------------------------- kernel ingredients --
+    ffe_time(2:5)=0d0
     IF(icoll.EQ.3)THEN
        ffe_tag=neutron_tagging(1).NE.-2.OR.neutron_tagging(2).NE.-2
     ELSEIF(icoll.EQ.1)THEN
@@ -12461,40 +12461,15 @@ CONTAINS
           ffe_tag=neutron_tagging(2).NE.-2
        ENDIF
     ENDIF
-    CALL ffe_build_ptable()
-    IF(ffe_tag)THEN
-       CALL ffe_build_tagtable()
-       CALL ffe_build_tagfine()
-    ENDIF
-    CALL ffe_build_pfast()
-    CALL CPU_TIME(t1)
-    ffe_time(2)=t1-t0
-    t0=t1
-    ! --------------------------------------------- photon densities on the grid --
+    ! the x grid of the final grids
     CALL ffe_build_xgrid(DBLE(NINT(-DLOG10(ffe_xmin))))
     ffe_MX=ffe_xg%n-1
-    IF(ALLOCATED(ffe_W))DEALLOCATE(ffe_W)
-    ALLOCATE(ffe_W(ffe_MX+1,MAX(ffe_vg(1)%n,ffe_vg(2)%n),2))
-    IF(ALLOCATED(ffe_lnN))DEALLOCATE(ffe_lnN)
-    ALLOCATE(ffe_lnN(ffe_MX+1,2))
-    ffe_W=0d0
-    DO ib=1,2
-       ALLOCATE(Wr(ffe_vg(ib)%n))
-       DO i=1,ffe_MX+1
-          CALL ffe_W_row(ib,10d0**(-ffe_xg%v(i)),Wr)
-          ffe_W(i,1:ffe_vg(ib)%n,ib)=Wr
-          ffe_lnN(i,ib)=DLOG(MAX(DOT_PRODUCT(ffe_vg(ib)%qw,Wr),1d-300))
-       ENDDO
-       DEALLOCATE(Wr)
-    ENDDO
-    CALL CPU_TIME(t1)
-    ffe_time(3)=t1-t0
-    ffe_time(4:5)=0d0
+    ! the tables are built on demand (ffe_build_tables): not at all when the grid is in the cache
+    ffe_tables=.FALSE.
+    ffe_lnNready=.FALSE.
     ffe_ready=.TRUE.
-    IF(FFE_Verbose.GE.1)THEN
-       WRITE(*,*)"FFE: v-grid nodes =",ffe_vg(1)%n,ffe_vg(2)%n,", P table bcut [fm] =",ffe_bcut_fm,&
-            ", kernel breakpoints =",ffe_nbeta
-       WRITE(*,*)"FFE: CPU setup, P, W [s] =",ffe_time(1:3)
+    IF(FFE_Grid_Cache)THEN
+       IF(ffe_cache_load(1).AND.FFE_Verbose.GE.1)WRITE(*,*)"FFE: flux grid read from ",TRIM(ffe_cache_file(1))
     ENDIF
   CONTAINS
     SUBROUTINE ffe_set_nucleus(ib0,anum0,znum0,r0,dif0,w0)
@@ -12521,6 +12496,273 @@ CONTAINS
       CALL ffe_normalise(ib0)
     END SUBROUTINE ffe_set_nucleus
   END SUBROUTINE ffe_init
+
+  SUBROUTINE ffe_build_tables()
+    ! the x-independent tables of the current configuration, built on demand (not needed when the
+    ! grid comes from the cache): v-grids and ChFF data, survival and tagging tables, the photon
+    ! densities W on the grid and the 1D tables of the PNOHAD=1 flux
+    IMPLICIT NONE
+    INTEGER::ib,i
+    REAL(KIND(1d0))::vlo,vhi,t0,t1
+    REAL(KIND(1d0)),DIMENSION(:),ALLOCATABLE::Wr
+    IF(ffe_tables)RETURN
+    CALL CPU_TIME(t0)
+    ! v-grids: from bmin to 45/(xmin mass) (exp(-90) of the photon density beyond)
+    DO ib=1,2
+       vlo=DLOG(ffe_bm(ib)%bmin)
+       vhi=DLOG(45d0/(ffe_xmin*ffe_bm(ib)%mass))
+       CALL ffe_build_vgrid(ib,vlo,vhi)
+       IF(ffe_bm(ib)%chff.AND..NOT.ffe_bm(ib)%proton)CALL ffe_chff_setup(ib)
+    ENDDO
+    CALL CPU_TIME(t1)
+    ffe_time(1)=ffe_time(1)+t1-t0
+    t0=t1
+    ! kernel ingredients
+    CALL ffe_build_ptable()
+    IF(ffe_tag)THEN
+       CALL ffe_build_tagtable()
+       CALL ffe_build_tagfine()
+    ENDIF
+    CALL ffe_build_pfast()
+    CALL CPU_TIME(t1)
+    ffe_time(2)=t1-t0
+    t0=t1
+    ! photon densities on the grid
+    IF(ALLOCATED(ffe_W))DEALLOCATE(ffe_W)
+    ALLOCATE(ffe_W(ffe_MX+1,MAX(ffe_vg(1)%n,ffe_vg(2)%n),2))
+    IF(ALLOCATED(ffe_lnN))DEALLOCATE(ffe_lnN)
+    ALLOCATE(ffe_lnN(ffe_MX+1,2))
+    ffe_W=0d0
+    DO ib=1,2
+       ALLOCATE(Wr(ffe_vg(ib)%n))
+       DO i=1,ffe_MX+1
+          CALL ffe_W_row(ib,10d0**(-ffe_xg%v(i)),Wr)
+          ffe_W(i,1:ffe_vg(ib)%n,ib)=Wr
+          ffe_lnN(i,ib)=DLOG(MAX(DOT_PRODUCT(ffe_vg(ib)%qw,Wr),1d-300))
+       ENDDO
+       DEALLOCATE(Wr)
+    ENDDO
+    CALL CPU_TIME(t1)
+    ffe_time(3)=t1-t0
+    ffe_tables=.TRUE.
+    ffe_lnNready=.TRUE.
+    IF(FFE_Verbose.GE.1)THEN
+       WRITE(*,*)"FFE: v-grid nodes =",ffe_vg(1)%n,ffe_vg(2)%n,", P table bcut [fm] =",ffe_bcut_fm,&
+            ", kernel breakpoints =",ffe_nbeta
+       WRITE(*,*)"FFE: CPU setup, P, W [s] =",ffe_time(1:3)
+    ENDIF
+  END SUBROUTINE ffe_build_tables
+
+  SUBROUTINE ffe_grid_prepare(k)
+    ! the grid of kind k: from the cache if possible, else built here (and written to the cache).
+    ! With the cache, the first process takes a lock (an atomic mkdir) and builds; the others wait
+    ! for its file. A lock older than 300 s is stale (a killed process) and is removed.
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::k
+    INTEGER::it
+    LOGICAL::mine
+    REAL(KIND(1d0))::t0,t1
+    mine=.FALSE.
+    IF(FFE_Grid_Cache)THEN
+       IF(ffe_cache_load(k))RETURN
+       mine=ffe_cache_lock(k)
+       IF(.NOT.mine)THEN
+          DO it=1,1500
+             CALL EXECUTE_COMMAND_LINE('sleep 0.2')
+             IF(ffe_cache_load(k))RETURN
+             IF(ffe_cache_lock(k))THEN
+                ! the lock was released (or was stale) without a usable file: build here
+                mine=.TRUE.
+                EXIT
+             ENDIF
+             ! nobody holds the lock and it cannot be taken (e.g. the directory does not exist or
+             ! is not writable): build here without the cache
+             IF(.NOT.ffe_cache_locked(k))EXIT
+          ENDDO
+       ENDIF
+    ENDIF
+    CALL ffe_build_tables()
+    CALL CPU_TIME(t0)
+    IF(.NOT.ffe_Kready(k))THEN
+       CALL ffe_build_K(k)
+       CALL CPU_TIME(t1)
+       ffe_time(4)=ffe_time(4)+t1-t0
+       t0=t1
+    ENDIF
+    CALL ffe_build_grid(k)
+    CALL CPU_TIME(t1)
+    ffe_time(5)=ffe_time(5)+t1-t0
+    IF(FFE_Verbose.GE.1)WRITE(*,*)"FFE: CPU K, grid [s] =",ffe_time(4:5),", nodes =",ffe_nodes
+    IF(FFE_Grid_Cache)THEN
+       CALL ffe_cache_save(k)
+       IF(mine)CALL ffe_cache_unlock(k)
+    ENDIF
+  END SUBROUTINE ffe_grid_prepare
+
+  FUNCTION ffe_cache_file(k)
+    ! the cache file of grid kind k for the current configuration: a 62-bit hash of the format
+    ! version, the kind and the configuration signature (stored in the file and checked on reading)
+    IMPLICIT NONE
+    CHARACTER(len=600)::ffe_cache_file
+    INTEGER,INTENT(IN)::k
+    INTEGER(KIND=1),DIMENSION(8*40)::by
+    INTEGER(KIND=8)::h1,h2
+    INTEGER::i,n
+    CHARACTER(len=16)::hx
+    by=TRANSFER(ffe_sig,by)
+    h1=INT(ffe_cache_version,8)*31_8+INT(k,8)
+    h2=INT(ffe_cache_version,8)*131_8+INT(k,8)
+    DO i=1,SIZE(by)
+       h1=MOD(h1*65599_8+INT(by(i),8)+128_8,2147483647_8)
+       h2=MOD(h2*69069_8+INT(by(i),8)+128_8,2147483629_8)
+    ENDDO
+    WRITE(hx,'(Z8.8,Z8.8)')INT(h1,4),INT(h2,4)
+    n=LEN_TRIM(FFE_Grid_Cache_Dir)
+    IF(n.EQ.0)THEN
+       ffe_cache_file='gammaUPC_grid_'//hx//'_k'//ACHAR(48+k)//'.bin'
+    ELSEIF(FFE_Grid_Cache_Dir(n:n).EQ.'/')THEN
+       ffe_cache_file=FFE_Grid_Cache_Dir(1:n)//'gammaUPC_grid_'//hx//'_k'//ACHAR(48+k)//'.bin'
+    ELSE
+       ffe_cache_file=FFE_Grid_Cache_Dir(1:n)//'/gammaUPC_grid_'//hx//'_k'//ACHAR(48+k)//'.bin'
+    ENDIF
+  END FUNCTION ffe_cache_file
+
+  FUNCTION ffe_cache_load(k)
+    ! read the grid of kind k (and the 1D tables) if the file matches the configuration exactly
+    IMPLICIT NONE
+    LOGICAL::ffe_cache_load
+    INTEGER,INTENT(IN)::k
+    CHARACTER(len=8)::tag
+    INTEGER::u,ios,ver,kk,mx,n
+    LOGICAL::ex
+    REAL(KIND(1d0)),DIMENSION(40)::sig
+    REAL(KIND(1d0)),DIMENSION(:,:),ALLOCATABLE::Z,L
+    REAL(KIND(1d0))::chk
+    ffe_cache_load=.FALSE.
+    INQUIRE(FILE=TRIM(ffe_cache_file(k)),EXIST=ex)
+    IF(.NOT.ex)RETURN
+    OPEN(NEWUNIT=u,FILE=TRIM(ffe_cache_file(k)),ACCESS='STREAM',FORM='UNFORMATTED',STATUS='OLD',&
+         ACTION='READ',IOSTAT=ios)
+    IF(ios.NE.0)RETURN
+    READ(u,IOSTAT=ios)tag,ver,kk,mx,n,sig
+    IF(ios.NE.0.OR.tag.NE.'GUPCGRID'.OR.ver.NE.ffe_cache_version.OR.kk.NE.k.OR.mx.NE.ffe_MX&
+         .OR.n.NE.ffe_MX+1.OR.ANY(sig.NE.ffe_sig))THEN
+       CLOSE(u)
+       RETURN
+    ENDIF
+    ALLOCATE(Z(mx+1,mx+1),L(mx+1,2))
+    READ(u,IOSTAT=ios)Z,L,chk,tag
+    CLOSE(u)
+    IF(ios.NE.0.OR.tag.NE.'GUPCEND!'.OR.chk.NE.SUM(Z)+3d0*SUM(L))RETURN
+    IF(.NOT.ALLOCATED(ffe_ZL))ALLOCATE(ffe_ZL(ffe_MX+1,ffe_MX+1,3))
+    ffe_ZL(:,:,k)=Z
+    IF(.NOT.ffe_lnNready)THEN
+       IF(ALLOCATED(ffe_lnN))DEALLOCATE(ffe_lnN)
+       ALLOCATE(ffe_lnN(ffe_MX+1,2))
+       ffe_lnN=L
+       ffe_lnNready=.TRUE.
+    ENDIF
+    ffe_Zready(k)=.TRUE.
+    ffe_cache_load=.TRUE.
+  END FUNCTION ffe_cache_load
+
+  SUBROUTINE ffe_cache_save(k)
+    ! write the grid of kind k to a temporary file and rename it into place, so that no process
+    ! reads a partial file (failures only mean that there is no cache)
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::k
+    CHARACTER(len=600)::f
+    CHARACTER(len=700)::tmp
+    CHARACTER(len=24)::sfx
+    INTEGER::u,ios,es,cs
+    INTEGER(KIND=8)::cnt
+    REAL::r
+    IF(.NOT.ffe_Zready(k).OR..NOT.ffe_lnNready)RETURN
+    f=ffe_cache_file(k)
+    CALL SYSTEM_CLOCK(cnt)
+    CALL RANDOM_NUMBER(r)
+    WRITE(sfx,'(Z16.16,I0)')cnt,INT(r*1d6)
+    tmp=TRIM(f)//'.tmp'//TRIM(sfx)
+    OPEN(NEWUNIT=u,FILE=TRIM(tmp),ACCESS='STREAM',FORM='UNFORMATTED',STATUS='REPLACE',ACTION='WRITE',&
+         IOSTAT=ios)
+    IF(ios.NE.0)RETURN
+    WRITE(u,IOSTAT=ios)'GUPCGRID',ffe_cache_version,k,ffe_MX,ffe_MX+1,ffe_sig,ffe_ZL(:,:,k),ffe_lnN,&
+         SUM(ffe_ZL(:,:,k))+3d0*SUM(ffe_lnN),'GUPCEND!'
+    CLOSE(u)
+    IF(ios.NE.0)THEN
+       CALL EXECUTE_COMMAND_LINE('rm -f "'//TRIM(tmp)//'"',WAIT=.TRUE.,EXITSTAT=es,CMDSTAT=cs)
+       RETURN
+    ENDIF
+    CALL EXECUTE_COMMAND_LINE('mv -f "'//TRIM(tmp)//'" "'//TRIM(f)//'"',WAIT=.TRUE.,EXITSTAT=es,CMDSTAT=cs)
+    IF(cs.NE.0.OR.es.NE.0)CALL EXECUTE_COMMAND_LINE('rm -f "'//TRIM(tmp)//'"',WAIT=.TRUE.,&
+         EXITSTAT=es,CMDSTAT=cs)
+  END SUBROUTINE ffe_cache_save
+
+  FUNCTION ffe_cache_lock(k)
+    ! take the build lock of grid kind k (mkdir is atomic); a lock older than 300 s is removed first
+    IMPLICIT NONE
+    LOGICAL::ffe_cache_lock
+    INTEGER,INTENT(IN)::k
+    CHARACTER(len=610)::d
+    INTEGER::es,cs,u,ios
+    REAL(KIND(1d0))::t
+    LOGICAL::ex
+    d=TRIM(ffe_cache_file(k))//'.lock'
+    INQUIRE(FILE=TRIM(d)//'/t',EXIST=ex)
+    IF(ex)THEN
+       OPEN(NEWUNIT=u,FILE=TRIM(d)//'/t',STATUS='OLD',ACTION='READ',IOSTAT=ios)
+       IF(ios.EQ.0)THEN
+          READ(u,*,IOSTAT=ios)t
+          CLOSE(u)
+          IF(ios.EQ.0.AND.ffe_now()-t.GT.300d0)CALL EXECUTE_COMMAND_LINE('rm -rf "'//TRIM(d)//'"',&
+               WAIT=.TRUE.,EXITSTAT=es,CMDSTAT=cs)
+       ENDIF
+    ENDIF
+    CALL EXECUTE_COMMAND_LINE('mkdir "'//TRIM(d)//'" 2>/dev/null',WAIT=.TRUE.,EXITSTAT=es,CMDSTAT=cs)
+    ffe_cache_lock=cs.EQ.0.AND.es.EQ.0
+    IF(ffe_cache_lock)THEN
+       OPEN(NEWUNIT=u,FILE=TRIM(d)//'/t',STATUS='REPLACE',ACTION='WRITE',IOSTAT=ios)
+       IF(ios.EQ.0)THEN
+          WRITE(u,*)ffe_now()
+          CLOSE(u)
+       ENDIF
+    ENDIF
+  END FUNCTION ffe_cache_lock
+
+  FUNCTION ffe_cache_locked(k)
+    ! another process holds the build lock of grid kind k (its time stamp is written right after
+    ! the mkdir)
+    IMPLICIT NONE
+    LOGICAL::ffe_cache_locked
+    INTEGER,INTENT(IN)::k
+    INQUIRE(FILE=TRIM(ffe_cache_file(k))//'.lock/t',EXIST=ffe_cache_locked)
+  END FUNCTION ffe_cache_locked
+
+  SUBROUTINE ffe_cache_unlock(k)
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::k
+    INTEGER::es,cs
+    CALL EXECUTE_COMMAND_LINE('rm -rf "'//TRIM(ffe_cache_file(k))//'.lock"',WAIT=.TRUE.,EXITSTAT=es,&
+         CMDSTAT=cs)
+  END SUBROUTINE ffe_cache_unlock
+
+  FUNCTION ffe_now()
+    ! wall-clock time in seconds (days since 1970 from the civil date; for lock ages only)
+    IMPLICIT NONE
+    REAL(KIND(1d0))::ffe_now
+    INTEGER,DIMENSION(8)::v
+    INTEGER::y,m,d,era,yoe,doy,doe
+    CALL DATE_AND_TIME(VALUES=v)
+    y=v(1)
+    m=v(2)
+    d=v(3)
+    IF(m.LE.2)y=y-1
+    era=y/400
+    yoe=y-era*400
+    doy=(153*(m+MERGE(-3,9,m.GT.2))+2)/5+d-1
+    doe=yoe*365+yoe/4-yoe/100+doy
+    ffe_now=86400d0*DBLE(era*146097+doe-719468)+3600d0*v(5)+60d0*v(6)+v(7)+1d-3*v(8)-60d0*v(4)
+  END FUNCTION ffe_now
 
   SUBROUTINE ffe_build_tagtable()
     ! P_tag(b) on a uniform ln b grid (b in GeV^-1). The lowest-order emission probabilities
@@ -12821,21 +13063,10 @@ CONTAINS
     ENDIF
     SELECT CASE(mode)
     CASE(0)
-       IF(.NOT.ffe_Zready(knd))THEN
-          CALL CPU_TIME(t0)
-          IF(.NOT.ffe_Kready(knd))THEN
-             CALL ffe_build_K(knd)
-             CALL CPU_TIME(t1)
-             ffe_time(4)=ffe_time(4)+t1-t0
-             t0=t1
-          ENDIF
-          CALL ffe_build_grid(knd)
-          CALL CPU_TIME(t1)
-          ffe_time(5)=ffe_time(5)+t1-t0
-          IF(FFE_Verbose.GE.1)WRITE(*,*)"FFE: CPU K, grid [s] =",ffe_time(4:5),", nodes =",ffe_nodes
-       ENDIF
+       IF(.NOT.ffe_Zready(knd))CALL ffe_grid_prepare(knd)
        ffe_flux=ffe_grid_val(knd,xa,xb)
     CASE(1)
+       CALL ffe_build_tables()
        IF(.NOT.ffe_Kready(knd))THEN
           CALL CPU_TIME(t0)
           CALL ffe_build_K(knd)
@@ -12844,8 +13075,10 @@ CONTAINS
        ENDIF
        ffe_flux=ffe_direct(knd,xa,xb)
     CASE(2)
+       IF(.NOT.ffe_lnNready)CALL ffe_build_tables()
        ffe_flux=ffe_pnohad1(xa,xb,.FALSE.)
     CASE DEFAULT
+       CALL ffe_build_tables()
        ffe_flux=ffe_pnohad1(xa,xb,.TRUE.)
     END SELECT
   END FUNCTION ffe_flux
@@ -12909,6 +13142,7 @@ CONTAINS
     REAL(KIND(1d0))::y,bg
     INTEGER::i0,ib
     CALL ffe_init(icoll,MIN(1d-8,MAX(x,1d-300)))
+    CALL ffe_build_tables()
     SELECT CASE(what)
     CASE(1,2)
        bg=b/GeVm12fm
