@@ -36,19 +36,17 @@ runs:
           ${{ env.CACHE_KEY }}-
           ${{ env.CACHE_KEY }}
 
-    # Self-heal on a cache miss, like restore_root does for ROOT: build Delphes
-    # inline with MG's installer, exactly like the delphes_cache warm job (keep
-    # the two in sync). Without this a miss (eviction, or a warm run still
-    # queued) leaves delphes_path pointing at nothing, the Delphes acceptance
-    # tests raise SkipTest, and test_manager.py fails the step on any skip.
+    # On a cache miss, main (and only main) builds Delphes inline with MG's
+    # installer, exactly like the delphes_cache warm job (keep the two in sync).
+    # Other branches and PRs never compile their own Delphes: they use main's
+    # cache or fail in the verify step below, with the fix in the message.
     # ROOT is already in ~/.cache/Delphes/root (restore_root above, cached or
-    # installed inline). Nothing is saved here: warm_cache.yml stays the only
-    # writer of delphes-<os>, since an entry saved from a PR is readable only
-    # by that PR and just eats the 10 GB repository quota.
+    # installed inline). Nothing is saved here: the main-only delphes_cache job
+    # of warm_cache.yml is the only writer of delphes-<os>.
     # MG's install may save delphes_path = ./Delphes into the configuration;
-    # the step below appends the cache path afterwards, and the last line wins.
-    - name: Install Delphes (cache miss fallback)
-      if: ${{ inputs.setup_only != 'true' && steps.cache.outputs.cache-matched-key == '' }}
+    # the last step appends the cache path afterwards, and the last line wins.
+    - name: Install Delphes (cache miss fallback, main only)
+      if: ${{ inputs.setup_only != 'true' && steps.cache.outputs.cache-matched-key == '' && github.ref == 'refs/heads/main' }}
       env:
         MAKEFLAGS: "-j4"
       run: |
@@ -66,7 +64,11 @@ runs:
       if: ${{ inputs.setup_only != 'true' }}
       run: |
         if [ ! -x "$HOME/.cache/Delphes/Delphes/DelphesHepMC2" ]; then
-          echo "::error::Delphes is not available at $HOME/.cache/Delphes/Delphes after restore/install."
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            echo "::error::Delphes is not available at $HOME/.cache/Delphes/Delphes after restore/install."
+          else
+            echo "::error::No ${CACHE_KEY} cache from main, and only main builds Delphes. Run the 'Warm all caches' workflow (warm_cache.yml) on main, then re-run this job."
+          fi
           exit 1
         fi
       shell: bash
