@@ -850,12 +850,14 @@ jobs:
           name: pyamplicol-retained-sdist
           path: pyamplicol/.artifacts/retained
       - name: Build and deploy-test in manylinux_2_28 x86_64
-        # The whole checkout is mounted, not pyamplicol/ alone: umami.h is a
-        # symlink into madspace/, which the build reads by content.
+        # The wheel is built from the retained sdist only (--skip-checkout-wheel),
+        # as the macOS wheels are. A second wheel from this checkout cannot be
+        # built here: its prepared models are not committed (only the sdist has
+        # them), and umami.h is a symlink into madspace/, outside the mount.
         run: |
           docker run --rm \
-            -v "$GITHUB_WORKSPACE:/io" \
-            -w /io/pyamplicol \
+            -v "$PWD:/io" \
+            -w /io \
             -e PYAMPLICOL_BUILD_MODE=release \
             quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614 \
             /bin/bash -euxo pipefail -c '
@@ -876,6 +878,7 @@ jobs:
               "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PY311" tools/release/build_release_artifacts.py \
                 --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz \
+                --skip-checkout-wheel \
                 --output-dir .artifacts/platform
               "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PY311" tools/release/test_deployment.py \
