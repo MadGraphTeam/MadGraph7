@@ -232,6 +232,37 @@ class TestConcurrentArtifacts(unittest.TestCase):
                 child.wait()
 
 
+class TestExporterOptions(unittest.TestCase):
+    """The MG options amplicol_flavor_unions/_crossing as ProcessExporterMG7
+    passes them to export_amplicol_processes."""
+
+    def exported(self, options):
+        import madgraph.iolibs.export_cpp as export_cpp
+        exporter = object.__new__(export_cpp.ProcessExporterMG7)
+        cmd = mock.Mock(_curr_proc_defs=None, _curr_amplicol_defs=['p p > j j'],
+                        _curr_amps=[], _curr_model=None, _multiparticles={},
+                        use_rawinput=False, options=options)
+        exporter.pass_information_from_cmd(cmd)
+        exporter.dir_path, exporter.process_info = '/tmp/x', []
+        calls = []
+        with mock.patch.object(export_amplicol, 'export_amplicol_processes',
+                               lambda *args, **kwargs: calls.append(kwargs) or []):
+            exporter.export_amplicol()
+        return calls[0]
+
+    def test_crossing_is_off_by_default(self):
+        import madgraph.interface.madgraph_interface as interface
+        defaults = dict(interface.MadGraphCmd.options_madgraph)
+        for options in ({}, defaults):
+            kwargs = self.exported(options)
+            self.assertTrue(kwargs['flavor_unions'])
+            self.assertFalse(kwargs['flavor_union_crossing'])
+
+    def test_crossing_follows_the_option(self):
+        kwargs = self.exported({'amplicol_flavor_union_crossing': True})
+        self.assertTrue(kwargs['flavor_union_crossing'])
+
+
 class TestCheckPyamplicol(unittest.TestCase):
 
     def test_stale_install_is_an_error(self):
