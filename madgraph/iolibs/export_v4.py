@@ -17310,7 +17310,11 @@ C
 
         if self.vector_size:
             include_vector = "include \'../vector.inc\'\n"
-            module_include_vector = include_vector \
+            # The public flavour arrays need these extents, but callers already
+            # include vector.inc themselves. Do not export its constants into
+            # those scopes through USE MODEL_OBJECT.
+            module_include_vector = (include_vector +
+                'private :: WARP_SIZE,NB_WARP,VECSIZE_MEMMAX\n') \
                 if self.coups_flv_dep else ''
             loop_decl = 'integer j_flv_init' if self.coups_flv_dep else ''
         else:

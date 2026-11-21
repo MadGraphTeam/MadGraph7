@@ -92,6 +92,20 @@ temp_dir_prefix = "TMP_CHECK"
 
 pjoin = os.path.join
 
+
+def _unique_model_couplings(couplings):
+    """Keep named dependencies without hashing mutable flavour tables."""
+    unique = {}
+    for coupling in couplings:
+        if isinstance(coupling, base_objects.FLV_Coupling):
+            key = ('flavour', coupling.get('name'), coupling.get_canonical_key())
+        else:
+            key = ('ordinary', coupling)
+        if key not in unique:
+            unique[key] = coupling
+    return list(unique.values())
+
+
 def zero_widths(evaluator):
     """Set every width of the model of this evaluator to zero: a fixed width
     breaks gauge invariance, which the gauge, BRS and Lorentz checks would
@@ -721,8 +735,8 @@ class LoopMatrixElementEvaluator(MatrixElementEvaluator):
             FortranExporter.copy_template(model)
             FortranExporter.generate_subprocess_directory(matrix_element, FortranModel)
             wanted_lorentz = misc.make_unique(matrix_element.get_used_lorentz())
-            wanted_couplings = misc.make_unique([c for l in matrix_element.get_used_couplings() \
-                                                                    for c in l])
+            wanted_couplings = _unique_model_couplings(
+                c for group in matrix_element.get_used_couplings() for c in group)
             FortranExporter.convert_model(model,wanted_lorentz,wanted_couplings)
             FortranExporter.finalize(matrix_element,"",self.cmd.options, ['nojpeg'])
 
@@ -1274,8 +1288,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             FortranExporter.copy_template(model)
             FortranExporter.generate_subprocess_directory(matrix_element, FortranModel)
             wanted_lorentz = misc.make_unique(matrix_element.get_used_lorentz())
-            wanted_couplings = misc.make_unique([c for l in matrix_element.get_used_couplings() \
-                                                                for c in l])
+            wanted_couplings = _unique_model_couplings(
+                c for group in matrix_element.get_used_couplings() for c in group)
             FortranExporter.convert_model(self.full_model,wanted_lorentz,wanted_couplings)
             infos['Process_output'] = time.time()-start
             start=time.time()
