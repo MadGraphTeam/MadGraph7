@@ -832,3 +832,26 @@ def test_union_native_section_adapter_parses_dispatch_tables() -> None:
     raw["resolved_source_selections"] = [(0, 0)]
     with pytest.raises(ArtifactError, match="does not cover every external source"):
         _parse_exact_sections(raw, sections.process_id)
+
+    # Only a pattern-resolved companion may repeat a sector consecutively.
+    raw["resolved_source_selections"] = [
+        astuple(row) for row in sections.resolved_source_selections
+    ]
+    raw["amplitude_destinations"] = [
+        (0, 0, 10, DIRECT_NONE_U32, 1, 0),
+        (1, 1, 10, DIRECT_NONE_U32, 1, 0),
+    ]
+    raw["public_flow_ids"] = [10]
+    with pytest.raises(ArtifactError, match="not completely covered"):
+        _parse_exact_sections(raw, sections.process_id)
+    parsed = _parse_exact_sections(raw, sections.process_id, pattern_resolved=True)
+    assert [row.target_sector_id for row in parsed.amplitude_destinations] == [10, 10]
+    raw["amplitude_destinations"] = [
+        (0, 0, 10, DIRECT_NONE_U32, 1, 0),
+        (1, 1, 20, DIRECT_NONE_U32, 1, 0),
+        (1, 2, 10, DIRECT_NONE_U32, 1, 0),
+    ]
+    raw["counts"] = (4, 3, 0, 2)
+    raw["public_flow_ids"] = [10, 20]
+    with pytest.raises(ArtifactError, match="not completely covered"):
+        _parse_exact_sections(raw, sections.process_id, pattern_resolved=True)

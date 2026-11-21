@@ -295,6 +295,8 @@ def _native_exact_sections_loader(artifact_root: Path, process_id: str) -> objec
 def _parse_exact_sections(
     raw: object,
     process_id: str,
+    *,
+    pattern_resolved: bool = False,
 ) -> _RecurrenceExactSectionsV1:
     root = _mapping(raw, "recurrence exact sections")
     if root.get("abi") != RECURRENCE_EXACT_SECTIONS_ABI:
@@ -420,7 +422,7 @@ def _parse_exact_sections(
             )
         ),
     )
-    _validate_sections(sections)
+    _validate_sections(sections, pattern_resolved=pattern_resolved)
     return sections
 
 
@@ -545,7 +547,9 @@ def _digest(value: object, context: str) -> str:
     return value
 
 
-def _validate_sections(sections: _RecurrenceExactSectionsV1) -> None:
+def _validate_sections(
+    sections: _RecurrenceExactSectionsV1, *, pattern_resolved: bool = False
+) -> None:
     if tuple(row.semantic_id for row in sections.currents) != tuple(
         range(len(sections.currents))
     ):
@@ -561,7 +565,7 @@ def _validate_sections(sections: _RecurrenceExactSectionsV1) -> None:
     if sections.strategy == "topology-replay":
         _validate_replay_sections(sections)
     elif sections.strategy == "all-flow-union":
-        _validate_union_sections(sections)
+        _validate_union_sections(sections, pattern_resolved=pattern_resolved)
     else:
         _validate_contracted_sections(sections)
 
@@ -624,7 +628,9 @@ def _validate_replay_tables(sections: _RecurrenceExactSectionsV1) -> None:
         )
 
 
-def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
+def _validate_union_sections(
+    sections: _RecurrenceExactSectionsV1, *, pattern_resolved: bool = False
+) -> None:
     if (
         sections.replay_targets
         or sections.source_permutations
@@ -762,11 +768,12 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
                     f"resolved helicity {index} source selection is inconsistent"
                 )
 
-    # A pattern-resolved companion repeats a sector consecutively per pattern.
+    # Only a pattern-resolved companion repeats a sector, consecutively per pattern.
     sectors = [
         row.target_sector_id
         for index, row in enumerate(sections.amplitude_destinations)
-        if index == 0
+        if not pattern_resolved
+        or index == 0
         or row.target_sector_id
         != sections.amplitude_destinations[index - 1].target_sector_id
     ]

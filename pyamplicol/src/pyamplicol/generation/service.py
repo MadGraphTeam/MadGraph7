@@ -7297,6 +7297,10 @@ class GenerationBackend:
             _parse_exact_sections(
                 companion_artifact.exact_sections,
                 logical.process_id,
+                pattern_resolved=(
+                    expanded.flavour_union_template
+                    and expanded.flavour_union_pattern_pairs is not None
+                ),
             ),
             color_accuracy=color_accuracy,
         )
