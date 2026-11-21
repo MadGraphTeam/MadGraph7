@@ -37,7 +37,10 @@ def surrogate_me(momenta):
     return true_me(momenta) * (1.0 + 0.3 * np.sin(momenta[:, 3, 1] / 50.0))
 
 
-def make_integrand(alphas_file, matrix_element, pt_min=20.0):
+def make_integrand(
+    alphas_file, matrix_element, pt_min=20.0, vegas_context=None, name=""
+):
+    """With `vegas_context`, the channel has a VEGAS grid, named after `name`."""
     mapping = ms.PhaseSpaceMapping(
         TOPOLOGY,
         CM_ENERGY,
@@ -57,12 +60,18 @@ def make_integrand(alphas_file, matrix_element, pt_min=20.0):
         energy_scale=ms.CachedScale(),
         return_matrix_element=True,
     )
+    kwargs = {}
+    if vegas_context is not None:
+        vegas = ms.VegasMapping(mapping.random_dim(), 16, f"vegas{name}")
+        vegas.initialize_globals(vegas_context)
+        kwargs["adaptive_map"] = vegas
     return ms.Integrand(
         mapping,
         [diff_xs],
         running_coupling=ms.RunningCoupling(ms.AlphaSGrid(alphas_file)),
         energy_scale=ms.EnergyScale(len(PIDS), 91.188),
         channel_indices=[0],
+        **kwargs,
     )
 
 
@@ -83,6 +92,7 @@ def generate(
     step_kwargs=None,
     config_kwargs=None,
     survey=True,
+    vegas=False,
 ):
     """Survey and generate, returns the status, the combined events and the
     channels. step_me and step_outputs can be lists, one entry per step, and
@@ -109,7 +119,9 @@ def generate(
     channels = [
         ms.ChannelEventGenerator(
             contexts=[context],
-            integrand=make_integrand(alphas_file, me0, pt_min),
+            integrand=make_integrand(
+                alphas_file, me0, pt_min, context if vegas else None, str(i)
+            ),
             event_file=os.path.join(run_dir, f"events.{i}.npy"),
             weight_file=os.path.join(run_dir, f"weights.{i}.npy"),
             config=config,
@@ -285,11 +297,13 @@ def test_generate_holds_vegas_events(tmp_path, reference):
             grouped=(0, 1, 2),
             target_count=6000,
             survey=False,
+            vegas=True,
         )
         for threads in (1, 4)
     ]
     (status_a, events_a, channels_a), (status_b, events_b, _) = results
-    assert all(c.status().iterations > 1 for c in channels_a)
+    # the channels stop before they converge, after several iterations
+    assert all(c.status().iterations > 2 for c in channels_a)
     assert len(events_a) == 6000
     assert np.array_equal(events_a, events_b)
     assert status_a.mean == status_b.mean
