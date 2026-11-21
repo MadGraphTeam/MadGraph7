@@ -190,9 +190,10 @@ jobs:
 
       # ROOT/Delphes are deliberately NOT reset on the weekly schedule (they are
       # large and stable). They are only rebuilt on explicit request, so the
-      # cache can be cleaned independently of the heptools one.
+      # cache can be cleaned independently of the heptools one. Main only, like
+      # the root_cache/delphes_cache jobs that rebuild them.
       - name: Delete root/delphes cache
-        if: inputs.reset_delphes
+        if: inputs.reset_delphes && github.ref == 'refs/heads/main'
         run: |
           "$RUNNER_TEMP/delete_caches.sh" \
             root-${{ env.CACHE_KEY }} \
@@ -1004,8 +1005,13 @@ jobs:
   # (idle >7 days or repo size pressure), the cache-miss branch below rebuilds it
   # automatically. Use the reset_delphes input to force a rebuild, e.g. when
   # bumping the ROOT version.
+  #
+  # Main only, whatever the trigger: a dispatch from another branch (test_ci
+  # included) neither installs ROOT/Delphes nor writes these caches. Every
+  # branch and PR reads main's entries (restore_root/restore_delphes).
   # ---------------------------------------------------------------------------
   root_cache:
+     if: github.ref == 'refs/heads/main'
      runs-on: ${{ matrix.os }}
      needs: delete-cache
      strategy:
@@ -1073,6 +1079,7 @@ jobs:
            key: root-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
   delphes_cache:
+     if: github.ref == 'refs/heads/main'
      runs-on: ${{ matrix.os }}
      needs: root_cache
      strategy:
@@ -1102,6 +1109,8 @@ jobs:
          if: steps.cache-delphes.outputs.cache-matched-key == ''
          uses: ./.github/actions/restore_root
 
+       # NOTE: the same install logic is duplicated in the cache-miss fallback
+       # of .github/actions/restore_delphes/action.yml - keep them in sync.
        - name: Install Delphes into the dedicated cache dir
          if: steps.cache-delphes.outputs.cache-matched-key == ''
          env:
