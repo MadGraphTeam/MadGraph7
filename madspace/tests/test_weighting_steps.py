@@ -283,23 +283,51 @@ def test_survey_skips_cleared_iterations(tmp_path):
     assert status_a.mean == status_b.mean
 
 
-def test_generate_holds_vegas_events(tmp_path, reference):
-    """Without a survey, the channels optimize during generate(). The events of
-    their VEGAS iterations wait for the outcome of the iteration and skip the
-    steps if the next one clears them, independently of the threads."""
-    results = [
-        generate(
-            str(tmp_path / str(threads)),
+class CountingME:
+    """The true matrix element, counting calls and rows. With `stop_at`, the
+    call with that number requests a stop of the generation."""
+
+    def __init__(self, stop_at=None):
+        self.calls = 0
+        self.rows = 0
+        self.stop_at = stop_at
+
+    def __call__(self, momenta):
+        self.calls += 1
+        self.rows += len(momenta)
+        if self.calls == self.stop_at:
+            ms.EventGenerator.request_stop()
+        return true_me(momenta)
+
+
+def generate_vegas(run_dir, step_me, threads=2, config_kwargs=None):
+    """Three channels that optimize during generate(), without a survey."""
+    try:
+        return generate(
+            run_dir,
             [surrogate_me, heavy_tailed_me, surrogate_me],
             ["reweight", "unweight"],
+            step_me=step_me,
             threads=threads,
             pt_mins=(20.0, 20.0, 20.0),
             grouped=(0, 1, 2),
             target_count=6000,
             survey=False,
             vegas=True,
+            config_kwargs=config_kwargs,
         )
-        for threads in (1, 4)
+    finally:
+        ms.EventGenerator.request_stop(False)
+
+
+def test_generate_holds_vegas_events(tmp_path, reference):
+    """Without a survey, the channels optimize during generate(). The events of
+    their VEGAS iterations wait for the outcome of the iteration and skip the
+    steps if the next one clears them, independently of the threads."""
+    step_mes = [CountingME(), CountingME()]
+    results = [
+        generate_vegas(str(tmp_path / str(threads)), step_me, threads)
+        for threads, step_me in zip((1, 4), step_mes)
     ]
     (status_a, events_a, channels_a), (status_b, events_b, _) = results
     # the channels stop before they converge, after several iterations
@@ -307,9 +335,43 @@ def test_generate_holds_vegas_events(tmp_path, reference):
     assert len(events_a) == 6000
     assert np.array_equal(events_a, events_b)
     assert status_a.mean == status_b.mean
+    # 41742 rows reach the steps without the hold, 29190 with it
+    assert step_mes[0].rows == step_mes[1].rows < 35000
     # three copies of the reference process
     error = np.hypot(status_a.error, 3 * reference[0].error)
     assert abs(status_a.mean - 3 * reference[0].mean) < 4 * error
+
+
+def test_generate_converging_vegas(tmp_path, reference):
+    """A channel that converges during generate() keeps the events of its last
+    VEGAS iteration."""
+    results = [
+        generate_vegas(
+            str(tmp_path / str(threads)),
+            true_me,
+            threads,
+            config_kwargs={"optimization_patience": 1},
+        )
+        for threads in (1, 4)
+    ]
+    (status_a, events_a, channels_a), (status_b, events_b, _) = results
+    assert any(c.status().optimized for c in channels_a)
+    assert len(events_a) == 6000
+    assert np.array_equal(events_a, events_b)
+    error = np.hypot(status_a.error, 3 * reference[0].error)
+    assert abs(status_a.mean - 3 * reference[0].mean) < 4 * error
+
+
+def test_stop_during_steps_keeps_held_events(tmp_path):
+    """A stop requested while the steps of a round run, after the held events
+    of some channels were set aside, still keeps those events."""
+    # the first step call is in the first round in which some channels are
+    # released and others held for dropping
+    step_me = CountingME(stop_at=1)
+    status, events, channels = generate_vegas(str(tmp_path), step_me)
+    assert all(c.status().count_unweighted > 0 for c in channels)
+    assert len(events) > 0
+    assert len(events) == status.count_target
 
 
 def test_step_budget_of_smaller_target(tmp_path):
