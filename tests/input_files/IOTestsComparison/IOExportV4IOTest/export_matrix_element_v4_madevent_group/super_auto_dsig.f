@@ -1236,9 +1236,18 @@ C     and update the couplings accordingly (but deactivate for
 C      discrete sampler(imode=5) and
 C     use P1 (permuted/mirrored momenta) to be consistent with the
 C      matrix element
+C     (imode=4, the PDF weights of the subprocess selection, only
+C      needs the
+C     factorisation scales: they are kept per point and flavour class,
+C      see
+C     update_scale_pdf_selection in reweight.f)
       IF (VECSIZE_MEMMAX.LE.1.AND.IMODE.NE.5) THEN  ! no-vector (NB not VECSIZE_USED!)
         CALL GET_FLAVOR(IFLAV, IPROC, FLAVOR)
-        CALL UPDATE_SCALE_COUPLING(P1, FLAVOR,  WGT)
+        IF (IMODE.EQ.4) THEN
+          CALL UPDATE_SCALE_PDF_SELECTION(P1, FLAVOR, WGT)
+        ELSE
+          CALL UPDATE_SCALE_COUPLING(P1, FLAVOR,  WGT)
+        ENDIF
       ENDIF
 
 
