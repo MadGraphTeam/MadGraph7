@@ -1,5 +1,24 @@
 MODULE NINTLIB
   IMPLICIT NONE
+  ! ---------------------------------------------------------------------------
+  ! Fixed-node and adaptive 1D quadrature (added for the factorised flux engine)
+  !   gl_rule(n,x,w)          n-point Gauss-Legendre rule on [-1,1] (cached n<=64)
+  !   composite_gl(...)       composite Gauss-Legendre rule on breakpoint intervals
+  !   gk21_rule(...)          one Gauss-Kronrod G10/K21 panel (QUADPACK qk21)
+  !   gk21_adapt(...)         globally adaptive G10/K21 integration (QUADPACK
+  !                           qag/qagp-like, no extrapolation); reentrant, may be
+  !                           nested to any depth (f may itself call gk21_adapt)
+  ! ---------------------------------------------------------------------------
+  INTEGER,PARAMETER::gk21_maxint=2000 ! max number of subintervals in gk21_adapt
+  INTEGER,PARAMETER,PRIVATE::gl_ncache=64
+  REAL(KIND(1d0)),DIMENSION(gl_ncache,gl_ncache),PRIVATE,SAVE::gl_xcache=0d0,gl_wcache=0d0
+  LOGICAL,DIMENSION(gl_ncache),PRIVATE,SAVE::gl_cached=.FALSE.
+  ! composite_gl(nbreak,breaks,npts,nmax,xs,ws,nout): npts may be a scalar (same
+  ! number of points on every interval) or an array npts(nbreak-1)
+  INTERFACE composite_gl
+     MODULE PROCEDURE composite_gl_s,composite_gl_v
+  END INTERFACE composite_gl
+  PRIVATE::gl_compute,gl_legendre,gk21_heap_down,gk21_heap_up
 CONTAINS
   SUBROUTINE box_nd(func,dim_num,order,xtab,weight,res,eval_num)
     !****************************************************************************
@@ -1388,5 +1407,445 @@ CONTAINS
     Nfun=(mWT_Nfun(p-1,s,nx,xs,psis,Fs)-mWT_Nfun(p-1,s+1,nx,xs,psis,Fs))/(xxs1**(-1)-xxs2**(-1))
     RETURN
   END FUNCTION mWT_Nfun
+
+  ! ===========================================================================
+  ! Gauss-Legendre rules
+  ! ===========================================================================
+  SUBROUTINE gl_rule(n,x,w)
+    ! n-point Gauss-Legendre rule on [-1,1]: nodes x (ascending, exactly
+    ! antisymmetric, x=0 exactly for odd n) and weights w; exact for polynomials
+    ! of degree <= 2n-1. Nodes by Newton iteration on P_n. Rules with n<=64 are
+    ! computed once and cached; larger n are computed on every call.
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::n
+    REAL(KIND(1d0)),DIMENSION(n),INTENT(OUT)::x,w
+    IF(n.LT.1)THEN
+       WRITE(*,*)"ERROR: gl_rule called with n<1, n=",n
+       STOP 1
+    ENDIF
+    IF(n.LE.gl_ncache)THEN
+       IF(.NOT.gl_cached(n))THEN
+          CALL gl_compute(n,gl_xcache(1:n,n),gl_wcache(1:n,n))
+          gl_cached(n)=.TRUE.
+       ENDIF
+       x(1:n)=gl_xcache(1:n,n)
+       w(1:n)=gl_wcache(1:n,n)
+    ELSE
+       CALL gl_compute(n,x,w)
+    ENDIF
+    RETURN
+  END SUBROUTINE gl_rule
+
+  SUBROUTINE gl_compute(n,x,w)
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::n
+    REAL(KIND(1d0)),DIMENSION(n),INTENT(OUT)::x,w
+    REAL(KIND(1d0)),PARAMETER::pi=3.14159265358979323846264338328d0
+    INTEGER::i,m,it,nextra
+    REAL(KIND(1d0))::z,p,dp,dz
+    m=(n+1)/2
+    DO i=1,m
+       IF(2*i-1.EQ.n)THEN
+          z=0d0          ! middle node of an odd rule
+       ELSE
+          z=COS(pi*(DBLE(i)-0.25d0)/(DBLE(n)+0.5d0))
+          nextra=0
+          DO it=1,100
+             CALL gl_legendre(n,z,p,dp)
+             dz=p/dp
+             z=z-dz
+             IF(ABS(dz).LT.1d-10)nextra=nextra+1
+             IF(nextra.GE.2)EXIT
+          ENDDO
+       ENDIF
+       CALL gl_legendre(n,z,p,dp)
+       x(i)=-z
+       x(n+1-i)=z
+       ! w = 2/((1-z^2) P_n'^2) at the true root z-dz, dz=P_n/P_n' being the
+       ! (sub-ulp) Newton residual of the rounded node: to first order
+       ! w(z-dz) = w(z)*(1+2z dz/(1-z^2)), which removes the node-rounding
+       ! error ~ 2z ulp/(1-z^2) of the endpoint weights (1e-13 for n=64)
+       dz=p/dp
+       w(i)=2d0/((1d0-z)*(1d0+z)*dp*dp)*(1d0+2d0*z*dz/((1d0-z)*(1d0+z)))
+       w(n+1-i)=w(i)
+    ENDDO
+    RETURN
+  END SUBROUTINE gl_compute
+
+  SUBROUTINE gl_legendre(n,z,p,dp)
+    ! P_n(z) and P_n'(z) by the three-term recurrence
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::n
+    REAL(KIND(1d0)),INTENT(IN)::z
+    REAL(KIND(1d0)),INTENT(OUT)::p,dp
+    INTEGER::j
+    REAL(KIND(1d0))::p0,p1,p2
+    p0=1d0
+    p1=z
+    DO j=2,n
+       p2=(DBLE(2*j-1)*z*p1-DBLE(j-1)*p0)/DBLE(j)
+       p0=p1
+       p1=p2
+    ENDDO
+    IF(n.EQ.0)THEN
+       p=1d0
+       dp=0d0
+       RETURN
+    ENDIF
+    p=p1
+    ! P_{n-1} is p0 (n>=2) or 1 (n=1)
+    IF(n.EQ.1)p0=1d0
+    dp=DBLE(n)*(z*p1-p0)/((z-1d0)*(z+1d0))
+    RETURN
+  END SUBROUTINE gl_legendre
+
+  SUBROUTINE composite_gl_s(nbreak,breaks,npts,nmax,xs,ws,nout)
+    ! Composite Gauss-Legendre rule with npts points on each of the intervals
+    ! [breaks(i),breaks(i+1)], i=1..nbreak-1 (zero-length intervals are skipped;
+    ! a decreasing pair gives negative weights, i.e. the oriented integral).
+    ! The nout <= nmax nodes and weights are returned in xs(1:nout),ws(1:nout),
+    ! ordered interval by interval. Stops if nmax is too small.
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::nbreak,npts,nmax
+    REAL(KIND(1d0)),DIMENSION(nbreak),INTENT(IN)::breaks
+    REAL(KIND(1d0)),DIMENSION(nmax),INTENT(OUT)::xs,ws
+    INTEGER,INTENT(OUT)::nout
+    INTEGER,DIMENSION(MAX(nbreak-1,1))::nv
+    nv=npts
+    CALL composite_gl_v(nbreak,breaks,nv,nmax,xs,ws,nout)
+    RETURN
+  END SUBROUTINE composite_gl_s
+
+  SUBROUTINE composite_gl_v(nbreak,breaks,npts,nmax,xs,ws,nout)
+    ! As composite_gl_s, with npts(i) points on interval i (npts(i)<=0: skipped)
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::nbreak,nmax
+    REAL(KIND(1d0)),DIMENSION(nbreak),INTENT(IN)::breaks
+    INTEGER,DIMENSION(*),INTENT(IN)::npts
+    REAL(KIND(1d0)),DIMENSION(nmax),INTENT(OUT)::xs,ws
+    INTEGER,INTENT(OUT)::nout
+    INTEGER::i,j,need,ng,ngmax
+    REAL(KIND(1d0))::c,h
+    REAL(KIND(1d0)),DIMENSION(:),ALLOCATABLE::xg,wg
+    nout=0
+    IF(nbreak.LT.2)RETURN
+    need=0
+    ngmax=0
+    DO i=1,nbreak-1
+       IF(breaks(i+1).EQ.breaks(i).OR.npts(i).LE.0)CYCLE
+       need=need+npts(i)
+       ngmax=MAX(ngmax,npts(i))
+    ENDDO
+    IF(need.GT.nmax)THEN
+       WRITE(*,*)"ERROR: composite_gl needs ",need," nodes but nmax=",nmax
+       STOP 1
+    ENDIF
+    IF(need.EQ.0)RETURN
+    ALLOCATE(xg(ngmax),wg(ngmax))
+    DO i=1,nbreak-1
+       ng=npts(i)
+       IF(breaks(i+1).EQ.breaks(i).OR.ng.LE.0)CYCLE
+       CALL gl_rule(ng,xg(1:ng),wg(1:ng))
+       c=0.5d0*(breaks(i)+breaks(i+1))
+       h=0.5d0*(breaks(i+1)-breaks(i))
+       DO j=1,ng
+          nout=nout+1
+          xs(nout)=c+h*xg(j)
+          ws(nout)=h*wg(j)
+       ENDDO
+    ENDDO
+    DEALLOCATE(xg,wg)
+    RETURN
+  END SUBROUTINE composite_gl_v
+
+  ! ===========================================================================
+  ! Gauss-Kronrod G10/K21
+  ! ===========================================================================
+  RECURSIVE SUBROUTINE gk21_rule(f,a,b,res,abserr,resabs,resasc)
+    ! One 21-point Gauss-Kronrod panel on [a,b] (QUADPACK qk21): res = K21
+    ! estimate, abserr = QUADPACK error estimate from |K21-G10|, resabs ~
+    ! int |f|, resasc ~ int |f - mean f|. f is REAL(KIND(1d0)) FUNCTION f(x).
+    IMPLICIT NONE
+    REAL(KIND(1d0)),EXTERNAL::f
+    REAL(KIND(1d0)),INTENT(IN)::a,b
+    REAL(KIND(1d0)),INTENT(OUT)::res,abserr,resabs,resasc
+    ! Kronrod abscissae (xgk(2j) are the G10 nodes) and weights; recomputed with
+    ! mpmath (50 digits), they agree with the QUADPACK tables
+    REAL(KIND(1d0)),DIMENSION(11),PARAMETER::xgk=(/ &
+         9.956571630258080807355273d-1,9.739065285171717200779640d-1,&
+         9.301574913557082260012072d-1,8.650633666889845107320967d-1,&
+         7.808177265864168970637176d-1,6.794095682990244062343274d-1,&
+         5.627571346686046833390001d-1,4.333953941292471907992659d-1,&
+         2.943928627014601981311266d-1,1.488743389816312108848260d-1,0d0/)
+    REAL(KIND(1d0)),DIMENSION(11),PARAMETER::wgk=(/ &
+         1.169463886737187427806440d-2,3.255816230796472747881897d-2,&
+         5.475589657435199603138130d-2,7.503967481091995276704314d-2,&
+         9.312545458369760553506547d-2,1.093871588022976418992106d-1,&
+         1.234919762620658510779581d-1,1.347092173114733259280540d-1,&
+         1.427759385770600807970943d-1,1.477391049013384913748415d-1,&
+         1.494455540029169056649365d-1/)
+    REAL(KIND(1d0)),DIMENSION(5),PARAMETER::wg=(/ &
+         6.667134430868813759356881d-2,1.494513491505805931457763d-1,&
+         2.190863625159820439955349d-1,2.692667193099963550912269d-1,&
+         2.955242247147528701738930d-1/)
+    REAL(KIND(1d0))::centr,hlgth,dhlgth,fc,resg,resk,reskh,absc,xx,fval1,fval2,fsum
+    REAL(KIND(1d0))::epmach,uflow
+    REAL(KIND(1d0)),DIMENSION(10)::fv1,fv2
+    INTEGER::j,jtw,jtwm1
+    epmach=EPSILON(1d0)
+    uflow=TINY(1d0)
+    centr=0.5d0*(a+b)
+    hlgth=0.5d0*(b-a)
+    dhlgth=ABS(hlgth)
+    resg=0d0
+    xx=centr
+    fc=f(xx)
+    resk=wgk(11)*fc
+    resabs=ABS(resk)
+    DO j=1,5
+       jtw=2*j
+       absc=hlgth*xgk(jtw)
+       xx=centr-absc
+       fval1=f(xx)
+       xx=centr+absc
+       fval2=f(xx)
+       fv1(jtw)=fval1
+       fv2(jtw)=fval2
+       fsum=fval1+fval2
+       resg=resg+wg(j)*fsum
+       resk=resk+wgk(jtw)*fsum
+       resabs=resabs+wgk(jtw)*(ABS(fval1)+ABS(fval2))
+    ENDDO
+    DO j=1,5
+       jtwm1=2*j-1
+       absc=hlgth*xgk(jtwm1)
+       xx=centr-absc
+       fval1=f(xx)
+       xx=centr+absc
+       fval2=f(xx)
+       fv1(jtwm1)=fval1
+       fv2(jtwm1)=fval2
+       fsum=fval1+fval2
+       resk=resk+wgk(jtwm1)*fsum
+       resabs=resabs+wgk(jtwm1)*(ABS(fval1)+ABS(fval2))
+    ENDDO
+    reskh=resk*0.5d0
+    resasc=wgk(11)*ABS(fc-reskh)
+    DO j=1,10
+       resasc=resasc+wgk(j)*(ABS(fv1(j)-reskh)+ABS(fv2(j)-reskh))
+    ENDDO
+    res=resk*hlgth
+    resabs=resabs*dhlgth
+    resasc=resasc*dhlgth
+    abserr=ABS((resk-resg)*hlgth)
+    IF(resasc.NE.0d0.AND.abserr.NE.0d0)abserr=resasc*MIN(1d0,(2d2*abserr/resasc)**1.5d0)
+    IF(resabs.GT.uflow/(5d1*epmach))abserr=MAX((epmach*5d1)*resabs,abserr)
+    RETURN
+  END SUBROUTINE gk21_rule
+
+  RECURSIVE SUBROUTINE gk21_adapt(f,a,b,epsabs,epsrel,res,abserr,ier,npts,points,neval)
+    ! Globally adaptive integration of f over [a,b] with G10/K21 panels: the
+    ! panel with the largest error estimate is bisected until the summed error
+    ! estimate is <= max(epsabs,epsrel*|res|) (QUADPACK qag/qagp strategy,
+    ! roundoff detection included, no epsilon extrapolation).
+    !   f       REAL(KIND(1d0)) FUNCTION f(x) (EXTERNAL)
+    !   a,b     limits (b<a allowed: oriented integral)
+    !   epsabs,epsrel  tolerances; epsabs<=0 needs epsrel>=50*EPSILON(1d0)
+    !   res,abserr     integral and error estimate
+    !   ier     0 ok; 1 gk21_maxint (2000) subintervals reached; 2 roundoff
+    !           prevents reaching the tolerance; 3 subinterval too small
+    !           (non-integrable singularity?); 6 invalid input (res=abserr=0)
+    !   npts,points (optional) interior breakpoints (singularities, kinks) used
+    !           to split the initial interval; points outside (a,b) are ignored
+    !   neval   (optional) number of f evaluations
+    ! The achievable accuracy is ~50*EPSILON*int|f| (QUADPACK error floor), so
+    ! for oscillatory integrands an epsabs > 0 is advisable.
+    ! No module or SAVEd state: reentrant, f may call gk21_adapt (nesting).
+    IMPLICIT NONE
+    REAL(KIND(1d0)),EXTERNAL::f
+    REAL(KIND(1d0)),INTENT(IN)::a,b,epsabs,epsrel
+    REAL(KIND(1d0)),INTENT(OUT)::res,abserr
+    INTEGER,INTENT(OUT)::ier
+    INTEGER,INTENT(IN),OPTIONAL::npts
+    REAL(KIND(1d0)),DIMENSION(*),INTENT(IN),OPTIONAL::points
+    INTEGER,INTENT(OUT),OPTIONAL::neval
+    INTEGER,PARAMETER::limit=gk21_maxint
+    REAL(KIND(1d0)),DIMENSION(limit)::alist,blist,rlist,elist
+    INTEGER,DIMENSION(limit)::heap
+    REAL(KIND(1d0)),DIMENSION(limit+1)::brk
+    REAL(KIND(1d0))::lo,hi,sgn,epmach,uflow,area,errsum,errbnd,errmax
+    REAL(KIND(1d0))::a1,a2,b1,b2,area1,area2,area12,error1,error2,erro12
+    REAL(KIND(1d0))::r,e,resabs,resasc,defab1,defab2,pt
+    INTEGER::i,j,nb,nint,last,nh,m,iroff1,iroff2,nev
+    LOGICAL::dup
+    ier=0
+    res=0d0
+    abserr=0d0
+    nev=0
+    IF(PRESENT(neval))neval=0
+    epmach=EPSILON(1d0)
+    uflow=TINY(1d0)
+    IF(epsabs.LE.0d0.AND.epsrel.LT.MAX(5d1*epmach,0.5d-28))THEN
+       ier=6
+       RETURN
+    ENDIF
+    IF(a.EQ.b)RETURN
+    IF(b.GT.a)THEN
+       lo=a
+       hi=b
+       sgn=1d0
+    ELSE
+       lo=b
+       hi=a
+       sgn=-1d0
+    ENDIF
+    ! initial breakpoints: sorted, distinct, strictly inside (lo,hi)
+    nb=1
+    brk(1)=lo
+    IF(PRESENT(npts).AND.PRESENT(points))THEN
+       DO i=1,npts
+          pt=points(i)
+          IF(.NOT.(pt.GT.lo.AND.pt.LT.hi))CYCLE
+          dup=.FALSE.
+          DO j=2,nb
+             IF(brk(j).EQ.pt)dup=.TRUE.
+          ENDDO
+          IF(dup)CYCLE
+          IF(nb.GE.limit)THEN
+             ier=6
+             RETURN
+          ENDIF
+          ! insertion into the sorted list brk(2:nb)
+          j=nb
+          DO WHILE(j.GE.2)
+             IF(brk(j).LT.pt)EXIT
+             brk(j+1)=brk(j)
+             j=j-1
+          ENDDO
+          brk(j+1)=pt
+          nb=nb+1
+       ENDDO
+    ENDIF
+    nb=nb+1
+    brk(nb)=hi
+    nint=nb-1
+    ! first pass over the initial intervals
+    area=0d0
+    errsum=0d0
+    nh=0
+    DO i=1,nint
+       CALL gk21_rule(f,brk(i),brk(i+1),r,e,resabs,resasc)
+       alist(i)=brk(i)
+       blist(i)=brk(i+1)
+       rlist(i)=r
+       elist(i)=e
+       area=area+r
+       errsum=errsum+e
+       nh=nh+1
+       heap(nh)=i
+       CALL gk21_heap_up(heap,nh,elist)
+    ENDDO
+    nev=21*nint
+    last=nint
+    iroff1=0
+    iroff2=0
+    DO
+       errbnd=MAX(epsabs,epsrel*ABS(area))
+       IF(errsum.LE.errbnd)EXIT
+       IF(last.GE.limit)THEN
+          ier=1
+          EXIT
+       ENDIF
+       ! bisect the interval with the largest error estimate
+       m=heap(1)
+       errmax=elist(m)
+       a1=alist(m)
+       b2=blist(m)
+       b1=0.5d0*(a1+b2)
+       a2=b1
+       CALL gk21_rule(f,a1,b1,area1,error1,resabs,defab1)
+       CALL gk21_rule(f,a2,b2,area2,error2,resabs,defab2)
+       nev=nev+42
+       area12=area1+area2
+       erro12=error1+error2
+       errsum=errsum+erro12-errmax
+       area=area+area12-rlist(m)
+       IF(defab1.NE.error1.AND.defab2.NE.error2)THEN
+          IF(ABS(rlist(m)-area12).LE.1d-5*ABS(area12).AND.erro12.GE.0.99d0*errmax)&
+               iroff1=iroff1+1
+          IF(last.GT.10.AND.erro12.GT.errmax)iroff2=iroff2+1
+       ENDIF
+       last=last+1
+       alist(m)=a1
+       blist(m)=b1
+       rlist(m)=area1
+       elist(m)=error1
+       alist(last)=a2
+       blist(last)=b2
+       rlist(last)=area2
+       elist(last)=error2
+       CALL gk21_heap_down(heap,nh,elist)
+       nh=nh+1
+       heap(nh)=last
+       CALL gk21_heap_up(heap,nh,elist)
+       errbnd=MAX(epsabs,epsrel*ABS(area))
+       IF(errsum.GT.errbnd)THEN
+          IF(iroff1.GE.6.OR.iroff2.GE.20)ier=2
+          IF(MAX(ABS(a1),ABS(b2)).LE.(1d0+1d2*epmach)*(ABS(a2)+1d3*uflow))ier=3
+          IF(ier.NE.0)EXIT
+       ENDIF
+    ENDDO
+    res=0d0
+    abserr=0d0
+    DO i=1,last
+       res=res+rlist(i)
+       abserr=abserr+elist(i)
+    ENDDO
+    res=sgn*res
+    IF(PRESENT(neval))neval=nev
+    RETURN
+  END SUBROUTINE gk21_adapt
+
+  SUBROUTINE gk21_heap_up(heap,nh,key)
+    ! restore the max-heap property after appending heap(nh)
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::nh
+    INTEGER,DIMENSION(*),INTENT(INOUT)::heap
+    REAL(KIND(1d0)),DIMENSION(*),INTENT(IN)::key
+    INTEGER::i,ip,itmp
+    i=nh
+    DO WHILE(i.GT.1)
+       ip=i/2
+       IF(key(heap(ip)).GE.key(heap(i)))EXIT
+       itmp=heap(ip)
+       heap(ip)=heap(i)
+       heap(i)=itmp
+       i=ip
+    ENDDO
+    RETURN
+  END SUBROUTINE gk21_heap_up
+
+  SUBROUTINE gk21_heap_down(heap,nh,key)
+    ! restore the max-heap property after the key of heap(1) decreased
+    IMPLICIT NONE
+    INTEGER,INTENT(IN)::nh
+    INTEGER,DIMENSION(*),INTENT(INOUT)::heap
+    REAL(KIND(1d0)),DIMENSION(*),INTENT(IN)::key
+    INTEGER::i,ic,itmp
+    i=1
+    DO
+       ic=2*i
+       IF(ic.GT.nh)EXIT
+       IF(ic+1.LE.nh)THEN
+          IF(key(heap(ic+1)).GT.key(heap(ic)))ic=ic+1
+       ENDIF
+       IF(key(heap(i)).GE.key(heap(ic)))EXIT
+       itmp=heap(ic)
+       heap(ic)=heap(i)
+       heap(i)=itmp
+       i=ic
+    ENDDO
+    RETURN
+  END SUBROUTINE gk21_heap_down
 
 END MODULE NINTLIB
