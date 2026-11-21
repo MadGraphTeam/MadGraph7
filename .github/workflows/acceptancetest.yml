@@ -678,6 +678,13 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_loop_induced_ggh -pA -t0 -l INFO
 
+      # ---- acceptancetest_104_nogroup (from mg5 3.8.2, issue #486) ----
+      - name: test loop-induced gg>h output with group_subprocesses=False
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_loop_induced_ggh_nogroup -pA -t0 -l INFO
+
       # ---- acceptancetest_fks_standalone_limits_pp_ttx ----
       # soft and collinear limits of p p > t t~ [QCD] via the FKS standalone
       # output ('output standalone_fortran --fks --limits'): launch runs
@@ -1359,6 +1366,10 @@ jobs:
       - uses: ./.github/actions/restore-pip-cache
       - name: Check real-emission helicity sums across frames
         run: ./tests/test_manager.py test_real_helicity_sum_survives_a_boost -pA -t0 -l INFO
+      # from mg5 3.8.2: the MadLoop loop filter of a 2>1 process across frames
+      - name: Check MadLoop loop filters across frames
+        if: ${{ !cancelled() }}
+        run: ./tests/test_manager.py test_ML_loop_filter_survives_a_boost -pA -t0 -l INFO
       - name: Cancel the other CI runs of this commit (fail fast)
         if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
         env:
