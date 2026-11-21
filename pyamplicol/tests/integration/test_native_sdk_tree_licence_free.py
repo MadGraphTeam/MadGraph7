@@ -270,6 +270,21 @@ int main(int argc, char **argv) {
     }
     status = rusticol_runtime_set_kinematics_improvement_binary64(runtime, 0);
     printf("kinematics-off %d\n", status);
+    /* The runtime-options TOML (rusticol_runtime_set_options): a tree runtime
+     * takes the two kinematics keys (a run card's other [evaluation] keys are
+     * not read) and refuses a virtual runtime's option, changing nothing. */
+    status = rusticol_runtime_set_options(runtime,
+        "[evaluation]\nkinematics_improvement_binary64 = true\nreduction = \"auto\"\n");
+    printf("options-refused %d\n", status);
+    status = rusticol_runtime_evaluate_f64(runtime, momenta, length, points, out, points);
+    emit("values-options-refused", status, out, points);
+    status = rusticol_runtime_set_options(runtime,
+        "[evaluation]\nmomenta = \"ignored.json\"\nkinematics_improvement = \"z-shift\"\n"
+        "kinematics_improvement_binary64 = true\n[model]\nsource = \"ignored\"\n");
+    printf("options-kinematics %d\n", status);
+    status = rusticol_runtime_evaluate_f64(runtime, momenta, length, points, out, points);
+    emit("values-options", status, out, points);
+    status = rusticol_runtime_set_kinematics_improvement_binary64(runtime, 0);
 
     RusticolWarmUpResult warm;
     memset(&warm, 0, sizeof warm);
@@ -935,6 +950,12 @@ def test_binary64_tree_observables_need_no_symbolica_licensing(
         assert record["kinematics-refused"] == ["1"], (name, record)
         assert record["kinematics-setting"] == record["kinematics-binary64"] == ["0"]
         assert record["kinematics-off"] == ["0"]
+        # The runtime-options TOML: the same values as the setters; a refused
+        # TOML changes nothing.
+        assert record["options-refused"] == ["1"], (name, record)
+        assert record["options-kinematics"] == ["0"], (name, record)
+        assert record["values-options"] == record["values-kinematics"]
+        assert record["values-options-refused"] == record["values"]
         notes = " ".join(record["kinematics-notes"][1:])
         assert record["kinematics-notes"][0] == "0", (name, notes)
         assert (

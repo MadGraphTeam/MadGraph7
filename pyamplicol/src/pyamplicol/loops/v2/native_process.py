@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from types import SimpleNamespace
 from typing import Any
@@ -210,6 +210,33 @@ def _plan_json(plan: Program) -> str:
     return member_json(program_bytes(plan))
 
 
+class AdmittedPlan:
+    """The plan program an artifact's admission loaded
+    (``artifact.admit_programs``: a native ``V2AdmittedPlan``), held for the
+    executors of the process that load the stored plan with the rule kernel
+    forms and no seed overlay (``NativeExecutor``'s first native executor,
+    an observable column set whose seeds are the plan's own), so the plan
+    member is read and derived once. ``release`` drops it (``clear``; a column
+    set with seeds of its own built before the process's executor took it):
+    the executors then load the plan member as before, and nothing holds a
+    program that no executor uses."""
+
+    def __init__(self, program: Any):
+        self._program = program
+        # Whether an executor took the program (it then holds it itself).
+        self.taken = False
+
+    def get(self) -> Any:
+        """The admitted program (marked taken), or None once released."""
+
+        if self._program is not None:
+            self.taken = True
+        return self._program
+
+    def release(self) -> None:
+        self._program = None
+
+
 @dataclass(frozen=True)
 class NativeCompanion:
     """The certified-scaleless companion of a native process: its plan (the
@@ -254,6 +281,9 @@ class NativeProcess:
     # kB; ``_stored_dipoles``), for a loaded process's Catani prediction
     # (``dipole_orbits``); None without two coloured legs.
     dipoles: str | None = None
+    # The plan program the artifact's admission loaded (``AdmittedPlan``), or
+    # None: the executors load ``plan``.
+    admitted: AdmittedPlan | None = field(default=None, compare=False)
 
     @property
     def plan_json(self) -> str:
@@ -525,8 +555,10 @@ class NativeProcess:
         loop native module, ``externals`` the external parameters of the
         process's model (the caller's parameters are checked against them,
         ``_ProcessView._point_parameters``; the public runtime passes its
-        artifact model's; by default the record's ``externals``), ``options``
-        the executor's (lanes, threads, forms)."""
+        artifact model's; by default the record's ``externals``),
+        ``options`` the executor's (lanes, threads, forms). The first native
+        executor takes the plan program the admission loaded (``admitted``,
+        ``AdmittedPlan``) instead of loading the plan member again."""
 
         from .plan_export import NativeExecutor
 
@@ -559,6 +591,7 @@ class NativeProcess:
             plan_json=self.plan,
             inputs="native",
             scaleless=companion,
+            program=None if self.admitted is None else self.admitted.get,
             **options,
         )
 

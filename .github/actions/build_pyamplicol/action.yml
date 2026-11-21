@@ -20,13 +20,26 @@ runs:
         path: pyamplicol/install
         key: pyamplicol-${{ runner.os }}-py${{ env.PAC_PY }}-${{ hashFiles('pyamplicol/src/**', 'pyamplicol/rust/**', 'pyamplicol/build_backend/**', 'pyamplicol/Cargo.*', 'pyamplicol/pyproject.toml', 'pyamplicol/rust-toolchain.toml', 'pyamplicol/dependencies/*.toml') }}
 
-    # ~1.5 GB: one entry per dependency set, pyamplicol's crates rebuild on top.
-    - name: Cache Cargo build tree
+    # Cargo build tree (cargo-target + cargo-home + source overlay), one entry
+    # per dependency set; pyamplicol's own crates rebuild on top of it. It is
+    # ~2.5 GB (2.54 GB on 2026-11-21) against the 10 GB per-repository Actions
+    # cache quota, so only main writes it. Every other ref reads main's entry
+    # and never saves: an entry saved from a PR or branch is readable only by
+    # that ref, and on 2026-11-21 three such copies (7.6 GB) pushed the
+    # repository over quota and evicted root-/delphes-ubuntu24 (the ROOT and
+    # Delphes caches the acceptance tests restore).
+    # restore-keys only off main: a PR that changes Cargo.lock starts from
+    # main's newest tree and recompiles just the changed crates. Main itself
+    # rebuilds a lock change cold, so the tree it saves holds only one
+    # dependency set and does not grow from generation to generation.
+    - name: Restore Cargo build tree
+      id: cache-cargo
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         path: pyamplicol/build/cache
         key: pyamplicol-cargo-${{ runner.os }}-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/rust-toolchain.toml') }}
+        restore-keys: ${{ github.ref != 'refs/heads/main' && format('pyamplicol-cargo-{0}-', runner.os) || '' }}
 
     - name: Prepared models
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
@@ -36,3 +49,17 @@ runs:
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
       run: python3 pyamplicol/install.py --source --yes
       shell: bash
+
+    # Main only, and only for a new dependency set (an exact hit is immutable).
+    # The du listing records what the entry holds, for whoever trims it next.
+    - name: Size of the Cargo build tree
+      if: steps.cache-pyamplicol.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && steps.cache-cargo.outputs.cache-hit != 'true'
+      run: du -h --max-depth=3 pyamplicol/build/cache | sort -h | tail -n 15
+      shell: bash
+
+    - name: Save Cargo build tree (main only)
+      if: steps.cache-pyamplicol.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' && steps.cache-cargo.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: pyamplicol/build/cache
+        key: ${{ steps.cache-cargo.outputs.cache-primary-key }}
