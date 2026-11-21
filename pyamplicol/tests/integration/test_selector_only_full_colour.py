@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol import EvaluationError, Generator, ProcessSet, Runtime
+from pyamplicol import EvaluationError, Generator, ModelSource, ProcessSet, Runtime
 from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.artifacts import inspect_artifact
 from pyamplicol.config import (
@@ -62,6 +62,8 @@ def _config(
             flavor_scheme=4,
             flavor_blind_strict=True,
             flavor_unions=unions,
+            # A QED limit alone keeps the minimal (pure-QCD) orders.
+            coupling_order_policy="explicit" if qed else "minimal",
             max_coupling_orders={"QED": qed},
         ),
         generation=GenerationConfig(
@@ -393,9 +395,23 @@ def test_forced_direct_contraction_keeps_the_reducer_bitwise(
 def test_mixed_order_partials_are_refused(tmp_path: Path) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
+    from importlib.resources import files
+
+    # Several Born orders need a UFO model (the built-in SM has one coupling).
+    bundle = tmp_path / "sm.pyamplicol-model"
+    ModelSource.from_path(
+        Path(str(files("pyamplicol.assets") / "models/json/sm/sm.json")),
+        restriction="default",
+    ).compile(
+        cache_dir=tmp_path / "cache",
+        prepared_output=bundle,
+        evaluator=EvaluatorConfig(),
+    )
     output = tmp_path / "mixed-orders"
     Generator(_config(unions=False, selector_only=True, qed=2)).generate(
-        ProcessSet.from_expressions(("u d > u d",)), output
+        ProcessSet.from_expressions(("u d > u d",)),
+        output,
+        model=ModelSource.from_path(bundle),
     )
     process_id = _selector_only_ids(output)[0]
     runtime = Runtime.load(output, process=process_id)
