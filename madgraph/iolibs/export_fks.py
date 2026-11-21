@@ -3938,9 +3938,16 @@ Parameters              %(params)s\n\
         if ime != None:
             replace_dict['mename'] = 'EWSDK_GOLD_ME_%d' % (ime + 1)
             replace_dict['hell'] = ''
+            replace_dict['saved_amplitude_declarations'] = ''
+            replace_dict['saved_amplitude_argument'] = ''
         else:
             replace_dict['mename'] = 'SBORN_ONEHEL'
             replace_dict['hell'] = 'hell,'
+            replace_dict['saved_amplitude_declarations'] = (
+                "      INCLUDE 'genps.inc'\n"
+                "      INCLUDE 'born_nhel.inc'\n"
+                '      DOUBLE COMPLEX SAVED_AMPLITUDES(NGRAPHS,MAX_BHEL)')
+            replace_dict['saved_amplitude_argument'] = ',SAVED_AMPLITUDES'
 
         if not 'Gmu' in  self.model.get('name'):
             logger.warning('Warning, the parameter renormalisation should be done in the alpha(MZ) scheme')

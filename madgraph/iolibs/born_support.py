@@ -1768,11 +1768,12 @@ def write_wrappers(root, r, members, model_layout=None, full_model=None):
     original_hel = without_routine(original_hel, 'pickhelicitymc')
     original_hel = [re.sub(r'(?i)\bsborn_hel\b', 'sborn_hel_buffered', line)
                     for line in original_hel]
-    sudakov = directory/'ewsudakov_wrapper.f'
-    if sudakov.is_file():
-        # This generated wrapper returns raw one-helicity amplitudes. The
-        # ordinary four-argument facade intentionally returns scalar results.
-        sudakov.write_text(explicit_onehel_calls(sudakov.read_text()))
+    for name in ('ewsudakov_wrapper.f', 'numder_born.f'):
+        sudakov = directory/name
+        if sudakov.is_file():
+            # These callers use the explicit saved-amplitude kernel. The
+            # four-argument native facade returns only scalar/common results.
+            sudakov.write_text(explicit_onehel_calls(sudakov.read_text()))
     standalone = directory/'check_sa_fks.f'
     if standalone.is_file():
         # Born-only standalone output is trimmed before this finalizer and
