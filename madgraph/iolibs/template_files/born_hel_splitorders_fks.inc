@@ -190,6 +190,7 @@ C      elseif (calculatedBorn) then
          amp(i)=loc_saveamp(i,hell)
       enddo
 C      endif
+      JAMP(:,:) = (0D0,0D0)
 %(jamp_lines)s
     ANS(:) = 0d0
     DO M = 1, NAMPSO
