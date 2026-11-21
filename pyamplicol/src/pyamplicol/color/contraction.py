@@ -143,6 +143,8 @@ def _reported_degrees(
 def build_color_contraction_plan(
     color_plan: GenericColorPlan,
     groups: Sequence[ColorGroupDescriptor],
+    *,
+    min_components: int = 2,
 ) -> ColorContractionPlan | None:
     """Build the final colour contraction over coherent amplitude groups.
 
@@ -178,6 +180,7 @@ def build_color_contraction_plan(
         components,
         sector_by_id=sector_by_id,
         accuracy=accuracy,
+        min_components=min_components,
     )
     if repeated_block is not None:
         return ColorContractionPlan(
@@ -251,8 +254,9 @@ def _build_repeated_color_contraction_block(
     *,
     sector_by_id: dict[int, LCColorSector],
     accuracy: str,
+    min_components: int = 2,
 ) -> RepeatedColorContractionBlock | None:
-    if len(components) < 2 or not components[0]:
+    if len(components) < max(1, min_components) or not components[0]:
         return None
     sorted_sector_ids = tuple(
         sorted(descriptor.sector_id for descriptor in components[0])
@@ -315,6 +319,7 @@ def _build_repeated_color_contraction_block(
                 )
             )
     return RepeatedColorContractionBlock(
+        allow_single_component=len(components) == 1,
         component_count=len(components),
         component_group_ids=component_group_ids,
         entries=tuple(base_entries),

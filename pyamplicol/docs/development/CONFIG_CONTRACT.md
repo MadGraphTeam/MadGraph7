@@ -151,6 +151,14 @@ process has a smaller basis or faster runtime.
 - `mode: error | append | replace = error`
 - `workers: auto | int = auto`
 - `emit_api_bundle: bool = true`
+- `selector_only_full_colour: bool = false` (NLC/full recurrence: generate
+  each eligible process with its helicity-selector companion only, without the
+  main contracted-colour schedule. Such processes evaluate one helicity per
+  point (`helicities=[h]` or `helicity_by_point`); helicity sums, resolved
+  output, colour selectors and multi-order partials are refused. Requires
+  `evaluator.execution_mode = "recurrence"` and
+  `generation.relation_discovery.mode = "off"`; ignored for LC. Flavour-union
+  templates keep the main schedule.)
 - `particle_veto: list[str] = []`, `allow_anomalous_veto: bool = false`
   (particles kept out of one-loop loops)
 - `loop_induced_probes: bool = false`, `allow_failed_probes: bool = false`

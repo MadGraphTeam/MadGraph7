@@ -1865,10 +1865,9 @@ pub fn decode_recurrence_color_contraction_v3(
             entry_count
         }
         RecurrenceColorStorage::Repeated => {
-            if component_count < 2 {
-                return Err(malformed(
-                    "repeated storage requires at least two components",
-                ));
+            // One component is the selector-local contraction (keeps its Walsh form).
+            if component_count < 1 {
+                return Err(malformed("repeated storage requires a component"));
             }
             if local_group_count == 0
                 || local_group_count.checked_mul(component_count) != Some(group_count)

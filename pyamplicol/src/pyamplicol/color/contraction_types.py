@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 
 NC = 3
@@ -132,9 +132,11 @@ class RepeatedColorContractionBlock:
     component_group_ids: tuple[int, ...]
     entries: tuple[ColorContractionTemplateEntry, ...]
     factorized_block: FactorizedColorContractionBlock | None = None
+    # Selector-local contraction: one component, kept in repeated (Walsh) form.
+    allow_single_component: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.component_count < 2:
+        if self.component_count < (1 if self.allow_single_component else 2):
             raise ValueError(
                 "repeated color contraction requires at least two components"
             )

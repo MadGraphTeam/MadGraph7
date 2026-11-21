@@ -287,6 +287,10 @@ impl NativeRecurrenceDirectExecutorBackend {
 }
 
 impl NativeRecurrencePreparedExecutorPool {
+    pub(super) fn backend_name(&self) -> &str {
+        &self.summary.backend
+    }
+
     pub(super) fn validate_model_identities(
         &self,
         compiled_model_digest: &str,

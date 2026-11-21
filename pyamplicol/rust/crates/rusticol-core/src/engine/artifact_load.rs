@@ -495,7 +495,20 @@ fn validate_loaded_execution_references(
         }
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         LoadedExecutionManifest::Recurrence(manifest) => {
-            let schedule = artifact.payload(&manifest.plan.runtime_schedule.path)?;
+            // Selector-only processes reference the companion schedule alone.
+            let plan = manifest
+                .plan
+                .as_ref()
+                .or_else(|| {
+                    manifest
+                        .helicity_selector_companion
+                        .as_ref()
+                        .map(|companion| &companion.plan)
+                })
+                .ok_or_else(|| {
+                    RusticolError::integrity("recurrence process references no schedule")
+                })?;
+            let schedule = artifact.payload(&plan.runtime_schedule.path)?;
             if schedule.role != PayloadRole::EvaluatorState || schedule.process_id.is_some() {
                 return Err(RusticolError::security(
                     "recurrence root schedule is not an unbound evaluator-state payload",
@@ -504,7 +517,7 @@ fn validate_loaded_execution_references(
             let relative_root = evaluator_root.strip_prefix(artifact.root()).map_err(|_| {
                 RusticolError::security("recurrence process root escapes the verified artifact")
             })?;
-            let binding = relative_root.join(&manifest.plan.process_binding.path);
+            let binding = relative_root.join(&plan.process_binding.path);
             let binding = binding.to_str().ok_or_else(|| {
                 RusticolError::security("recurrence process-binding path is not valid UTF-8")
             })?;

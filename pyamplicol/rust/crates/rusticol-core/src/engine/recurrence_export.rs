@@ -577,7 +577,7 @@ impl NativeRuntime {
             &artifact,
             &evaluator_root,
             &manifest,
-            &manifest.plan,
+            super::recurrence_load::primary_plan_summary(&manifest)?,
         )?;
         let domains = super::recurrence_load::build_direct_source_domains(
             &loaded.plan,

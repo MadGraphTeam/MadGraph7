@@ -233,6 +233,8 @@ mode = "error"
 workers = "auto"
 # generation.emit_api_bundle: Emit Python/Rust/C/C++/Fortran/UMAMI API bundle. Default true.
 emit_api_bundle = true
+# generation.selector_only_full_colour: NLC/full recurrence keeps only the helicity-selector companion (no main schedule); evaluate one helicity per point. Default false.
+selector_only_full_colour = false
 # generation.pack_payloads: Store per-process payloads and recurrence schedules in one payloads.pacbin. Default false.
 pack_payloads = false
 # generation.particle_veto: Model particle names (a name vetoes its

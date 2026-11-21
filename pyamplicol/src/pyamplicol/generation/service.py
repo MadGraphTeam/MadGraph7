@@ -21,6 +21,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeVar, cast
 
 from pyamplicol._internal.versions import (
+    RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
     active_source_revision,
     verify_native_module,
@@ -54,6 +55,7 @@ from pyamplicol.reporting import (
     ProgressStart,
 )
 
+from ..color.contraction_types import ColorContractionPlan
 from ..color.fft_basis_strategy import best_general_fft_basis
 from ..color.nc_expansion import (
     STRICT_COLOR_ACCURACIES,
@@ -207,6 +209,7 @@ from .recurrence_numerical_current_warmup import (
     validate_recurrence_numerical_evidence_fallback,
 )
 from .recurrence_physics import (
+    _possible_helicities,
     build_on_the_fly_color_contraction,
     build_on_the_fly_public_metadata,
     build_on_the_fly_runtime_metadata,
@@ -214,10 +217,12 @@ from .recurrence_physics import (
     build_recurrence_normalization,
     build_recurrence_physics,
     build_recurrence_runtime_metadata,
+    build_recurrence_selector_color_contraction,
     recurrence_color_contraction_destinations,
     recurrence_color_sector_owner_map,
     recurrence_exact_color_coefficients,
     recurrence_referenced_kernel_ids,
+    recurrence_selector_owner_sector_ids,
 )
 from .recurrence_projection import (
     RecurrenceGenerationSliceV1,
@@ -2818,6 +2823,126 @@ class _CompiledProcess:
     coverage: Mapping[str, object]
     filters: Mapping[str, object]
     validation_points: tuple[ValidationPointRecord, ...]
+
+
+def _encode_selector_local_color_contraction(
+    logical: RecurrenceBuilderLogicalInputV1,
+    color_plan: GenericColorPlan,
+    color_contraction: ColorContractionPlan,
+    owner_sector_ids: tuple[int, ...],
+) -> tuple[bytes, dict[str, object]]:
+    """Encode the one-component contraction over the owner sectors."""
+
+    import numpy as np
+
+    group_count = color_contraction.group_count
+    destination_count = len(owner_sector_ids)
+    if group_count != destination_count:
+        raise GenerationError(
+            "selector-local color contraction does not cover every owner sector"
+        )
+    destination_by_group = np.asarray(
+        range(group_count)
+        if color_contraction.destination_by_group is None
+        else color_contraction.destination_by_group,
+        dtype=np.int64,
+    )
+    if sorted(destination_by_group.tolist()) != list(range(destination_count)):
+        raise GenerationError(
+            "selector-local color plan has an invalid destination projection"
+        )
+    group_sector_ids = np.asarray(owner_sector_ids, dtype=np.int64)[
+        destination_by_group
+    ]
+    group_component_ids = np.zeros(group_count, dtype=np.int64)
+    repeated = color_contraction.repeated_block
+    symmetric_group = color_contraction.symmetric_group_block
+    ordered_group_ids = (
+        repeated.component_group_ids
+        if repeated is not None
+        else symmetric_group.component_group_ids
+        if symmetric_group is not None
+        else tuple(range(group_count))
+    )
+    sector_count = len(logical.physical_sectors)
+    payload = encode_recurrence_color_contraction(
+        color_contraction,
+        sector_count=sector_count,
+        component_count=1,
+        ordered_group_ids=ordered_group_ids,
+        destination_by_group=destination_by_group,
+        destination_count=destination_count,
+        group_sector_ids=group_sector_ids,
+        group_component_ids=group_component_ids,
+        sector_owner_ids=recurrence_color_sector_owner_map(
+            logical, set(owner_sector_ids), set()
+        ),
+        exact_coefficients=recurrence_exact_color_coefficients(
+            color_plan,
+            color_contraction,
+            group_sector_ids.tolist(),
+        ),
+    )
+    summary: dict[str, object] = {
+        "abi": RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
+        "color_accuracy": color_contraction.color_accuracy,
+        "storage": (
+            "convolution-kernels"
+            if symmetric_group is not None
+            else "expanded"
+            if repeated is None
+            else "repeated"
+        ),
+        "includes_color_factor": color_contraction.includes_color_factor,
+        "group_count": group_count,
+        "sector_count": sector_count,
+        "active_sector_count": destination_count,
+        "component_count": 1,
+        "destination_count": destination_count,
+        "entry_count": (
+            symmetric_group.stored_entry_count
+            if symmetric_group is not None
+            else len(color_contraction.entries)
+            if repeated is None
+            else len(repeated.entries)
+        ),
+        "logical_entry_count": color_contraction.logical_entry_count,
+        "semantic_digest": recurrence_color_contraction_digest(payload),
+        "factorization": (
+            {
+                "kind": "symmetric-group-fourier",
+                "rank": symmetric_group.degree,
+                "coset_count": symmetric_group.channel_count,
+            }
+            if symmetric_group is not None
+            else None
+            if repeated is None or repeated.factorized_block is None
+            else {
+                "kind": repeated.factorized_block.kind,
+                "rank": (
+                    2
+                    if repeated.factorized_block.kind == "klein-four-walsh"
+                    else repeated.factorized_block.rank
+                ),
+                "coset_count": len(repeated.factorized_block.cosets),
+            }
+        ),
+    }
+    if symmetric_group is not None:
+        summary["fft_provenance"] = {
+            "method": "symmetric-group-fourier",
+            "degree": symmetric_group.degree,
+            "channel_count": symmetric_group.channel_count,
+            "covered_local_group_count": (
+                symmetric_group.channel_count * math.factorial(symmetric_group.degree)
+            ),
+            "residual_group_count": len(symmetric_group.residual_local_group_indices),
+            "residual_entry_count": len(symmetric_group.residual_entries),
+            "raw_kernel_bytes": len(symmetric_group.kernel_entries) * 16,
+            "transformed_kernel_bytes": len(symmetric_group.kernel_entries) * 8,
+            "capability": SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
+        }
+    return payload, summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -5687,6 +5812,11 @@ class GenerationBackend:
             referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
             recurrence_process_remap=shared.remap,
             recurrence_process_executor_pack=process_executor_pack,
+            exact_sections=output.exact_sections,
+            generation_profile={
+                "schema_version": 1,
+                "native_passes": {"final": dict(output.generation_profile)},
+            },
         )
 
     def _drop_processes_without_amplitudes(
@@ -5751,6 +5881,22 @@ class GenerationBackend:
             self._recurrence_helicity_selector_plan_enabled()
             and not expanded.flavour_union_template
         )
+        # Selector-only full colour: the companion replaces the main schedule.
+        selector_only_requested = (
+            self._generation_config.selector_only_full_colour
+            and selector_plan_enabled
+            and self._nc_expansion is None
+            and str(self._generation_config.relation_discovery.mode) == "off"
+        )
+        if (
+            self._generation_config.selector_only_full_colour
+            and expanded.flavour_union_template
+        ):
+            _LOGGER.info(
+                "selector-only full colour: flavour-union template %s keeps its "
+                "main schedule (no pattern-resolved companion yet)",
+                process_name,
+            )
         with phase.child(
             process_name,
             f"{process_name}: compact recurrence construction",
@@ -5864,10 +6010,11 @@ class GenerationBackend:
                     "public_flow_count": len(logical.public_flows),
                 },
             )
-            columnar_started = time.perf_counter()
-            builder_input = build_recurrence_builder_input_v1(logical)
-            profile["columnar-normalization"] = time.perf_counter() - columnar_started
             native_process_id = logical.process_id
+            # More than one physics helicity keeps the single-helicity shortcut out.
+            selector_only = (
+                selector_only_requested and len(_possible_helicities(logical)) > 1
+            )
             runtime_metadata_started = time.perf_counter()
             runtime_metadata = build_recurrence_runtime_metadata(
                 logical,
@@ -5881,374 +6028,318 @@ class GenerationBackend:
                 raise GenerationError(
                     "recurrence generation has no evaluator configuration"
                 )
-            recurrence_evaluator = run.evaluator.recurrence
-            relation_discovery = self._generation_config.relation_discovery
-            relation_discovery_mode = str(relation_discovery.mode)
-            relation_discovery_identity = (
-                None
-                if relation_discovery_mode == "off"
-                else {
-                    "mode": relation_discovery_mode,
-                    "precision_digits": relation_discovery.precision_digits,
-                    "probe_count": relation_discovery.probe_count,
-                    "verification_probe_count": (
-                        relation_discovery.verification_probe_count
-                    ),
-                    "relative_tolerance": (relation_discovery.relative_tolerance),
-                    "absolute_tolerance": (relation_discovery.absolute_tolerance),
-                    "seed": relation_discovery.seed,
-                    "color_accuracy": str(expanded.process_ir.color_accuracy),
-                    "probe_process_id": native_process_id,
-                }
-            )
-            schedule_digest_started = time.perf_counter()
-            (
-                native_schedule_semantic_digest,
-                request_schedule_digest,
-                sharing_domain_digest,
-            ) = _recurrence_schedule_semantic_digests(
-                logical,
-                prepared_kernel_pack_digest=(model_inputs.prepared_kernel_pack_digest),
-                direct_template_catalog_digest=(
-                    model_inputs.direct_template_catalog.catalog_digest
-                ),
-                point_tile_size=recurrence_evaluator.point_tile_size,
-                workspace_mib=recurrence_evaluator.workspace_mib,
-                relation_discovery=relation_discovery_identity,
-            )
-            profile["schedule-normalization-and-digests"] = (
-                time.perf_counter() - schedule_digest_started
-            )
-            task.update(
-                2,
-                message="Rust recurrence builder",
-                details={
-                    "process": process_name,
-                    "step": "Rust recurrence builder",
-                },
-            )
-            native_phase_total = len(logical.external_legs) + 1
-            with task.child(
-                "rust-builder",
-                f"{process_name}: Rust recurrence construction",
-                total=native_phase_total,
-                unit="phases",
-                details={
-                    "process": process_name,
-                    "step": "source construction",
-                },
-            ) as native_task:
-
-                def report_native(details: Mapping[str, object]) -> None:
-                    progress_index = int(
-                        details.get("phase_index", native_task.completed)
-                    )
-                    progress_total = int(details.get("phase_total", native_phase_total))
-                    contribution_count = int(details.get("contribution_count", 0))
-                    display_details = {
-                        "process": process_name,
-                        "step": str(details.get("step", "recurrence construction")),
-                        "stage_total": int(details.get("stage_total", 0)),
-                        "candidate_parent_pair_count": int(
-                            details.get("candidate_parent_pair_count", 0)
-                        ),
-                        "current_count": int(details.get("current_count", 0)),
-                        "contribution_count": contribution_count,
-                        "dynamic_color_state_count": int(
-                            details.get("dynamic_color_state_count", 0)
-                        ),
-                        "color_target_prune_count": int(
-                            details.get("color_target_prune_count", 0)
-                        ),
-                    }
-                    for name in (
-                        "stage_index",
-                        "subset_size",
-                        "candidate_parent_pair_total",
-                    ):
-                        value = details.get(name)
-                        if value is not None:
-                            display_details[name] = int(value)
-                    native_task.update(
-                        progress_index,
-                        total=progress_total,
-                        message=str(details.get("step", "recurrence construction")),
-                        details=display_details,
-                    )
-
-                final_schedule_path = (
-                    temporary_root
-                    / "recurrence-schedules"
-                    / request_schedule_digest
-                    / "recurrence-runtime.pacbin"
+            builder_input: RecurrenceBuilderInputV1 | None = None
+            output: _RustRecurrenceLoweringOutput | None = None
+            schedule_digest: str | None = None
+            native_schedule_semantic_digest: str | None = None
+            process_remap: RecurrenceProcessRemap | None = None
+            if selector_only:
+                profile["main-lowering-skipped"] = 1.0
+            else:
+                columnar_started = time.perf_counter()
+                builder_input = build_recurrence_builder_input_v1(logical)
+                profile["columnar-normalization"] = (
+                    time.perf_counter() - columnar_started
                 )
+                recurrence_evaluator = run.evaluator.recurrence
+                relation_discovery = self._generation_config.relation_discovery
+                relation_discovery_mode = str(relation_discovery.mode)
+                relation_discovery_identity = (
+                    None
+                    if relation_discovery_mode == "off"
+                    else {
+                        "mode": relation_discovery_mode,
+                        "precision_digits": relation_discovery.precision_digits,
+                        "probe_count": relation_discovery.probe_count,
+                        "verification_probe_count": (
+                            relation_discovery.verification_probe_count
+                        ),
+                        "relative_tolerance": (relation_discovery.relative_tolerance),
+                        "absolute_tolerance": (relation_discovery.absolute_tolerance),
+                        "seed": relation_discovery.seed,
+                        "color_accuracy": str(expanded.process_ir.color_accuracy),
+                        "probe_process_id": native_process_id,
+                    }
+                )
+                schedule_digest_started = time.perf_counter()
+                (
+                    native_schedule_semantic_digest,
+                    request_schedule_digest,
+                    sharing_domain_digest,
+                ) = _recurrence_schedule_semantic_digests(
+                    logical,
+                    prepared_kernel_pack_digest=(
+                        model_inputs.prepared_kernel_pack_digest
+                    ),
+                    direct_template_catalog_digest=(
+                        model_inputs.direct_template_catalog.catalog_digest
+                    ),
+                    point_tile_size=recurrence_evaluator.point_tile_size,
+                    workspace_mib=recurrence_evaluator.workspace_mib,
+                    relation_discovery=relation_discovery_identity,
+                )
+                profile["schedule-normalization-and-digests"] = (
+                    time.perf_counter() - schedule_digest_started
+                )
+                task.update(
+                    2,
+                    message="Rust recurrence builder",
+                    details={
+                        "process": process_name,
+                        "step": "Rust recurrence builder",
+                    },
+                )
+                native_phase_total = len(logical.external_legs) + 1
+                with task.child(
+                    "rust-builder",
+                    f"{process_name}: Rust recurrence construction",
+                    total=native_phase_total,
+                    unit="phases",
+                    details={
+                        "process": process_name,
+                        "step": "source construction",
+                    },
+                ) as native_task:
 
-                def lower_schedule() -> _RustRecurrenceLoweringOutput:
-                    def lower_once(
-                        destination: Path,
-                        *,
-                        mode: str,
-                        evidence: bytes | None,
-                        report_progress: bool,
-                        timing_name: str,
-                    ) -> _RustRecurrenceLoweringOutput:
-                        lowering_started = time.perf_counter()
-                        try:
-                            return _invoke_rust_recurrence_lowering_v2(
-                                builder_input,
-                                model_inputs.template_input,
-                                model_inputs.direct_template_catalog,
-                                model_inputs.prepared_kernel_pack_digest,
-                                native_schedule_semantic_digest,
-                                destination,
-                                point_tile_size=(recurrence_evaluator.point_tile_size),
-                                workspace_mib=recurrence_evaluator.workspace_mib,
-                                relation_discovery_mode=mode,
-                                relation_discovery_precision_digits=(
-                                    relation_discovery.precision_digits
+                    def report_native(details: Mapping[str, object]) -> None:
+                        progress_index = int(
+                            details.get("phase_index", native_task.completed)
+                        )
+                        progress_total = int(
+                            details.get("phase_total", native_phase_total)
+                        )
+                        contribution_count = int(details.get("contribution_count", 0))
+                        display_details = {
+                            "process": process_name,
+                            "step": str(details.get("step", "recurrence construction")),
+                            "stage_total": int(details.get("stage_total", 0)),
+                            "candidate_parent_pair_count": int(
+                                details.get("candidate_parent_pair_count", 0)
+                            ),
+                            "current_count": int(details.get("current_count", 0)),
+                            "contribution_count": contribution_count,
+                            "dynamic_color_state_count": int(
+                                details.get("dynamic_color_state_count", 0)
+                            ),
+                            "color_target_prune_count": int(
+                                details.get("color_target_prune_count", 0)
+                            ),
+                        }
+                        for name in (
+                            "stage_index",
+                            "subset_size",
+                            "candidate_parent_pair_total",
+                        ):
+                            value = details.get(name)
+                            if value is not None:
+                                display_details[name] = int(value)
+                        native_task.update(
+                            progress_index,
+                            total=progress_total,
+                            message=str(details.get("step", "recurrence construction")),
+                            details=display_details,
+                        )
+
+                    final_schedule_path = (
+                        temporary_root
+                        / "recurrence-schedules"
+                        / request_schedule_digest
+                        / "recurrence-runtime.pacbin"
+                    )
+
+                    def lower_schedule() -> _RustRecurrenceLoweringOutput:
+                        def lower_once(
+                            destination: Path,
+                            *,
+                            mode: str,
+                            evidence: bytes | None,
+                            report_progress: bool,
+                            timing_name: str,
+                        ) -> _RustRecurrenceLoweringOutput:
+                            lowering_started = time.perf_counter()
+                            try:
+                                return _invoke_rust_recurrence_lowering_v2(
+                                    builder_input,
+                                    model_inputs.template_input,
+                                    model_inputs.direct_template_catalog,
+                                    model_inputs.prepared_kernel_pack_digest,
+                                    native_schedule_semantic_digest,
+                                    destination,
+                                    point_tile_size=(
+                                        recurrence_evaluator.point_tile_size
+                                    ),
+                                    workspace_mib=recurrence_evaluator.workspace_mib,
+                                    relation_discovery_mode=mode,
+                                    relation_discovery_precision_digits=(
+                                        relation_discovery.precision_digits
+                                    ),
+                                    relation_discovery_probe_count=(
+                                        relation_discovery.probe_count
+                                    ),
+                                    relation_discovery_verification_probe_count=(
+                                        relation_discovery.verification_probe_count
+                                    ),
+                                    relation_discovery_relative_tolerance=(
+                                        relation_discovery.relative_tolerance
+                                    ),
+                                    relation_discovery_absolute_tolerance=(
+                                        relation_discovery.absolute_tolerance
+                                    ),
+                                    relation_discovery_seed=relation_discovery.seed,
+                                    color_accuracy=str(
+                                        expanded.process_ir.color_accuracy
+                                    ),
+                                    relation_discovery_evidence_json=evidence,
+                                    progress_callback=(
+                                        report_native
+                                        if report_progress
+                                        and native_task.sink is not None
+                                        else None
+                                    ),
+                                    direct_template_catalog_json=(
+                                        model_inputs.direct_template_catalog_json
+                                    ),
+                                )
+                            finally:
+                                profile[timing_name] = (
+                                    time.perf_counter() - lowering_started
+                                )
+
+                        if relation_discovery_mode == "off":
+                            output = lower_once(
+                                final_schedule_path,
+                                mode="off",
+                                evidence=None,
+                                report_progress=True,
+                                timing_name="native-final-generation",
+                            )
+                            lane_report = recurrence_numerical_current_opt_out_report(
+                                _parse_exact_sections(
+                                    output.exact_sections,
+                                    native_process_id,
                                 ),
-                                relation_discovery_probe_count=(
-                                    relation_discovery.probe_count
-                                ),
-                                relation_discovery_verification_probe_count=(
-                                    relation_discovery.verification_probe_count
-                                ),
-                                relation_discovery_relative_tolerance=(
-                                    relation_discovery.relative_tolerance
-                                ),
-                                relation_discovery_absolute_tolerance=(
-                                    relation_discovery.absolute_tolerance
-                                ),
-                                relation_discovery_seed=relation_discovery.seed,
                                 color_accuracy=str(expanded.process_ir.color_accuracy),
-                                relation_discovery_evidence_json=evidence,
-                                progress_callback=(
-                                    report_native
-                                    if report_progress and native_task.sink is not None
-                                    else None
-                                ),
-                                direct_template_catalog_json=(
-                                    model_inputs.direct_template_catalog_json
-                                ),
                             )
-                        finally:
-                            profile[timing_name] = (
-                                time.perf_counter() - lowering_started
+                            runtime_inspection, aggregate_report = (
+                                _recurrence_relation_reporting(
+                                    output.inspection_summary,
+                                    mode=relation_discovery_mode,
+                                    lane_report=lane_report,
+                                )
+                            )
+                            return replace(
+                                output,
+                                inspection_summary=runtime_inspection,
+                                generation_profile={
+                                    "schema_version": 1,
+                                    "native_passes": {
+                                        "final": dict(output.generation_profile)
+                                    },
+                                },
+                                numerical_current_reuse_report=aggregate_report,
                             )
 
-                    if relation_discovery_mode == "off":
-                        output = lower_once(
-                            final_schedule_path,
+                        baseline = lower_once(
+                            temporary_root
+                            / ".numerical-current-baseline"
+                            / request_schedule_digest
+                            / "recurrence-runtime.pacbin",
                             mode="off",
                             evidence=None,
                             report_progress=True,
-                            timing_name="native-final-generation",
+                            timing_name="native-baseline-generation",
                         )
-                        lane_report = recurrence_numerical_current_opt_out_report(
-                            _parse_exact_sections(
-                                output.exact_sections,
-                                native_process_id,
-                            ),
-                            color_accuracy=str(expanded.process_ir.color_accuracy),
-                        )
-                        runtime_inspection, aggregate_report = (
-                            _recurrence_relation_reporting(
-                                output.inspection_summary,
-                                mode=relation_discovery_mode,
-                                lane_report=lane_report,
-                            )
-                        )
-                        return replace(
-                            output,
-                            inspection_summary=runtime_inspection,
-                            generation_profile={
-                                "schema_version": 1,
-                                "native_passes": {
-                                    "final": dict(output.generation_profile)
-                                },
-                            },
-                            numerical_current_reuse_report=aggregate_report,
-                        )
-
-                    baseline = lower_once(
-                        temporary_root
-                        / ".numerical-current-baseline"
-                        / request_schedule_digest
-                        / "recurrence-runtime.pacbin",
-                        mode="off",
-                        evidence=None,
-                        report_progress=True,
-                        timing_name="native-baseline-generation",
-                    )
-                    probe_points_started = time.perf_counter()
-                    candidate_points, verification_points = (
-                        build_recurrence_numerical_current_probe_points(
-                            expanded.process_ir,
-                            model,
-                            process_id=native_process_id,
-                            seed=relation_discovery.seed,
-                            candidate_count=relation_discovery.probe_count,
-                            verification_count=(
-                                relation_discovery.verification_probe_count
-                            ),
-                        )
-                    )
-                    profile["numerical-probe-point-preparation"] = (
-                        time.perf_counter() - probe_points_started
-                    )
-                    envelope_fallback: (
-                        RecurrenceNumericalEvidenceEnvelopeExceeded | None
-                    ) = None
-                    warmup = None
-                    try:
-                        with _SYMBOLICA_MATERIALIZATION_LOCK:
-                            baseline_plan_started = time.perf_counter()
-                            baseline_plan = _RecurrenceExactPlan.from_generation(
-                                raw_sections=baseline.exact_sections,
+                        probe_points_started = time.perf_counter()
+                        candidate_points, verification_points = (
+                            build_recurrence_numerical_current_probe_points(
+                                expanded.process_ir,
+                                model,
                                 process_id=native_process_id,
-                                bundle=model_inputs.bundle,
-                                runtime_metadata=runtime_metadata,
-                            )
-                            profile["numerical-baseline-plan-load"] = (
-                                time.perf_counter() - baseline_plan_started
-                            )
-                            warmup_started = time.perf_counter()
-                            warmup = run_recurrence_numerical_current_warmup(
-                                baseline_plan,
-                                candidate_points=candidate_points,
-                                verification_points=verification_points,
-                                mode=cast(
-                                    Literal[
-                                        "diagnostic",
-                                        "certified-reuse",
-                                    ],
-                                    relation_discovery_mode,
-                                ),
-                                color_accuracy=str(expanded.process_ir.color_accuracy),
-                                precision_digits=(relation_discovery.precision_digits),
                                 seed=relation_discovery.seed,
-                                relative_tolerance=(
-                                    relation_discovery.relative_tolerance
-                                ),
-                                absolute_tolerance=(
-                                    relation_discovery.absolute_tolerance
+                                candidate_count=relation_discovery.probe_count,
+                                verification_count=(
+                                    relation_discovery.verification_probe_count
                                 ),
                             )
+                        )
+                        profile["numerical-probe-point-preparation"] = (
+                            time.perf_counter() - probe_points_started
+                        )
+                        envelope_fallback: (
+                            RecurrenceNumericalEvidenceEnvelopeExceeded | None
+                        ) = None
+                        warmup = None
+                        try:
+                            with _SYMBOLICA_MATERIALIZATION_LOCK:
+                                baseline_plan_started = time.perf_counter()
+                                baseline_plan = _RecurrenceExactPlan.from_generation(
+                                    raw_sections=baseline.exact_sections,
+                                    process_id=native_process_id,
+                                    bundle=model_inputs.bundle,
+                                    runtime_metadata=runtime_metadata,
+                                )
+                                profile["numerical-baseline-plan-load"] = (
+                                    time.perf_counter() - baseline_plan_started
+                                )
+                                warmup_started = time.perf_counter()
+                                warmup = run_recurrence_numerical_current_warmup(
+                                    baseline_plan,
+                                    candidate_points=candidate_points,
+                                    verification_points=verification_points,
+                                    mode=cast(
+                                        Literal[
+                                            "diagnostic",
+                                            "certified-reuse",
+                                        ],
+                                        relation_discovery_mode,
+                                    ),
+                                    color_accuracy=str(
+                                        expanded.process_ir.color_accuracy
+                                    ),
+                                    precision_digits=(
+                                        relation_discovery.precision_digits
+                                    ),
+                                    seed=relation_discovery.seed,
+                                    relative_tolerance=(
+                                        relation_discovery.relative_tolerance
+                                    ),
+                                    absolute_tolerance=(
+                                        relation_discovery.absolute_tolerance
+                                    ),
+                                )
+                                profile["numerical-warmup-total"] = (
+                                    time.perf_counter() - warmup_started
+                                )
+                                profile.update(
+                                    {
+                                        f"numerical-{name}": seconds
+                                        for name, seconds in (
+                                            warmup.generation_profile_timings.items()
+                                        )
+                                    }
+                                )
+                        except RecurrenceNumericalEvidenceEnvelopeExceeded as exc:
                             profile["numerical-warmup-total"] = (
                                 time.perf_counter() - warmup_started
                             )
-                            profile.update(
-                                {
-                                    f"numerical-{name}": seconds
-                                    for name, seconds in (
-                                        warmup.generation_profile_timings.items()
-                                    )
-                                }
-                            )
-                    except RecurrenceNumericalEvidenceEnvelopeExceeded as exc:
-                        profile["numerical-warmup-total"] = (
-                            time.perf_counter() - warmup_started
-                        )
-                        if relation_discovery_mode != "certified-reuse":
-                            raise GenerationError(
-                                f"process {process_name!r} recurrence numerical "
-                                "diagnostic evidence exceeds its memory envelope"
-                            ) from exc
-                        envelope_fallback = (
-                            _detached_recurrence_evidence_envelope_outcome(
-                                exc,
-                                source_error=exc,
-                            )
-                        )
-                    except (ArtifactError, ValueError) as exc:
-                        raise GenerationError(
-                            f"process {process_name!r} recurrence numerical "
-                            f"current warm-up failed closed: {exc}"
-                        ) from exc
-                    if envelope_fallback is not None:
-                        fallback_details = envelope_fallback.to_json_dict()
-                        geometry_details = cast(
-                            Mapping[str, object],
-                            fallback_details["geometry"],
-                        )
-                        native_task.update(
-                            native_task.completed,
-                            message=EVIDENCE_ENVELOPE_FALLBACK_WARNING,
-                            details={
-                                "process": process_name,
-                                "step": "numerical-current reuse disabled",
-                                "warning_code": (EVIDENCE_ENVELOPE_FALLBACK_REASON),
-                                "current_count": int(geometry_details["current_count"]),
-                                "component_count": int(
-                                    geometry_details["component_count"]
-                                ),
-                                "scalar_count": int(geometry_details["scalar_count"]),
-                                "row_count": int(geometry_details["row_count"]),
-                            },
-                        )
-                        warmup_owner = None
-                        if warmup is not None:
-                            warmup_owner = [warmup]
-                            warmup = None
-                        return _complete_recurrence_evidence_envelope_fallback(
-                            final_schedule_path=final_schedule_path,
-                            baseline=baseline,
-                            baseline_plan=baseline_plan,
-                            color_accuracy=str(expanded.process_ir.color_accuracy),
-                            outcome=envelope_fallback,
-                            warmup_owner=warmup_owner,
-                        )
-                    if warmup is None:
-                        raise AssertionError(
-                            "recurrence numerical warm-up completed without a result"
-                        )
-                    try:
-                        native_capacity_fallback: (
-                            RecurrenceNumericalEvidenceEnvelopeExceeded | None
-                        ) = None
-                        try:
-                            if not warmup.certificates:
-                                warmup = warmup.without_evidence_transport()
-                            output, application_validation_required = (
-                                _lower_recurrence_after_numerical_warmup(
-                                    lower_once=lower_once,
-                                    final_schedule_path=final_schedule_path,
-                                    baseline=baseline,
-                                    warmup=warmup,
-                                    requested_mode=relation_discovery_mode,
-                                )
-                            )
-                        except (ArtifactError, GenerationError) as exc:
-                            native_capacity_fallback = (
-                                recurrence_numerical_evidence_capacity_outcome(
-                                    baseline_plan.sections,
-                                    candidate_probe_count=len(candidate_points),
-                                    verification_probe_count=len(verification_points),
-                                    runtime_parameter_count=len(
-                                        baseline_plan.runtime_parameter_schema
-                                    ),
-                                    error=exc,
-                                )
-                            )
-                            if (
-                                native_capacity_fallback is None
-                                or relation_discovery_mode != "certified-reuse"
-                            ):
-                                raise
-                            native_capacity_fallback = (
+                            if relation_discovery_mode != "certified-reuse":
+                                raise GenerationError(
+                                    f"process {process_name!r} recurrence numerical "
+                                    "diagnostic evidence exceeds its memory envelope"
+                                ) from exc
+                            envelope_fallback = (
                                 _detached_recurrence_evidence_envelope_outcome(
-                                    native_capacity_fallback,
+                                    exc,
                                     source_error=exc,
                                 )
                             )
-                        if native_capacity_fallback is not None:
-                            # The failed native call can retain its evidence
-                            # argument through exception frames.  The handler
-                            # above detached those frames; close both trusted
-                            # spools and drop the result (including the evidence
-                            # transport) before publishing the already
-                            # validated reuse-off baseline.
-                            fallback_details = native_capacity_fallback.to_json_dict()
+                        except (ArtifactError, ValueError) as exc:
+                            raise GenerationError(
+                                f"process {process_name!r} recurrence numerical "
+                                f"current warm-up failed closed: {exc}"
+                            ) from exc
+                        if envelope_fallback is not None:
+                            fallback_details = envelope_fallback.to_json_dict()
                             geometry_details = cast(
                                 Mapping[str, object],
                                 fallback_details["geometry"],
@@ -6272,42 +6363,137 @@ class GenerationBackend:
                                     "row_count": int(geometry_details["row_count"]),
                                 },
                             )
-                            fallback_color_accuracy = str(
-                                expanded.process_ir.color_accuracy
-                            )
-                            warmup_owner = [warmup]
-                            warmup = None
+                            warmup_owner = None
+                            if warmup is not None:
+                                warmup_owner = [warmup]
+                                warmup = None
                             return _complete_recurrence_evidence_envelope_fallback(
                                 final_schedule_path=final_schedule_path,
                                 baseline=baseline,
                                 baseline_plan=baseline_plan,
-                                color_accuracy=fallback_color_accuracy,
-                                outcome=native_capacity_fallback,
+                                color_accuracy=str(expanded.process_ir.color_accuracy),
+                                outcome=envelope_fallback,
                                 warmup_owner=warmup_owner,
                             )
                         if warmup is None:
                             raise AssertionError(
-                                "recurrence numerical warm-up was released "
-                                "without a fallback"
+                                "recurrence numerical warm-up completed without "
+                                "a result"
                             )
-                        if not application_validation_required:
-                            return output
-                        warmup = warmup.without_evidence_transport()
                         try:
-                            with _SYMBOLICA_MATERIALIZATION_LOCK:
-                                applied_plan_started = time.perf_counter()
-                                applied_plan = _RecurrenceExactPlan.from_generation(
-                                    raw_sections=output.exact_sections,
-                                    process_id=native_process_id,
-                                    bundle=model_inputs.bundle,
-                                    runtime_metadata=runtime_metadata,
+                            native_capacity_fallback: (
+                                RecurrenceNumericalEvidenceEnvelopeExceeded | None
+                            ) = None
+                            try:
+                                if not warmup.certificates:
+                                    warmup = warmup.without_evidence_transport()
+                                output, application_validation_required = (
+                                    _lower_recurrence_after_numerical_warmup(
+                                        lower_once=lower_once,
+                                        final_schedule_path=final_schedule_path,
+                                        baseline=baseline,
+                                        warmup=warmup,
+                                        requested_mode=relation_discovery_mode,
+                                    )
                                 )
-                                profile["numerical-application-plan-load"] = (
-                                    time.perf_counter() - applied_plan_started
+                            except (ArtifactError, GenerationError) as exc:
+                                native_capacity_fallback = (
+                                    recurrence_numerical_evidence_capacity_outcome(
+                                        baseline_plan.sections,
+                                        candidate_probe_count=len(candidate_points),
+                                        verification_probe_count=len(
+                                            verification_points
+                                        ),
+                                        runtime_parameter_count=len(
+                                            baseline_plan.runtime_parameter_schema
+                                        ),
+                                        error=exc,
+                                    )
                                 )
-                                application_validation_started = time.perf_counter()
-                                warmup = (
-                                    validate_recurrence_numerical_current_application(
+                                if (
+                                    native_capacity_fallback is None
+                                    or relation_discovery_mode != "certified-reuse"
+                                ):
+                                    raise
+                                native_capacity_fallback = (
+                                    _detached_recurrence_evidence_envelope_outcome(
+                                        native_capacity_fallback,
+                                        source_error=exc,
+                                    )
+                                )
+                            if native_capacity_fallback is not None:
+                                # The failed native call can retain its evidence
+                                # argument through exception frames.  The handler
+                                # above detached those frames; close both trusted
+                                # spools and drop the result (including the evidence
+                                # transport) before publishing the already
+                                # validated reuse-off baseline.
+                                fallback_details = (
+                                    native_capacity_fallback.to_json_dict()
+                                )
+                                geometry_details = cast(
+                                    Mapping[str, object],
+                                    fallback_details["geometry"],
+                                )
+                                native_task.update(
+                                    native_task.completed,
+                                    message=EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+                                    details={
+                                        "process": process_name,
+                                        "step": "numerical-current reuse disabled",
+                                        "warning_code": (
+                                            EVIDENCE_ENVELOPE_FALLBACK_REASON
+                                        ),
+                                        "current_count": int(
+                                            geometry_details["current_count"]
+                                        ),
+                                        "component_count": int(
+                                            geometry_details["component_count"]
+                                        ),
+                                        "scalar_count": int(
+                                            geometry_details["scalar_count"]
+                                        ),
+                                        "row_count": int(geometry_details["row_count"]),
+                                    },
+                                )
+                                fallback_color_accuracy = str(
+                                    expanded.process_ir.color_accuracy
+                                )
+                                warmup_owner = [warmup]
+                                warmup = None
+                                return _complete_recurrence_evidence_envelope_fallback(
+                                    final_schedule_path=final_schedule_path,
+                                    baseline=baseline,
+                                    baseline_plan=baseline_plan,
+                                    color_accuracy=fallback_color_accuracy,
+                                    outcome=native_capacity_fallback,
+                                    warmup_owner=warmup_owner,
+                                )
+                            if warmup is None:
+                                raise AssertionError(
+                                    "recurrence numerical warm-up was released "
+                                    "without a fallback"
+                                )
+                            if not application_validation_required:
+                                return output
+                            warmup = warmup.without_evidence_transport()
+                            try:
+                                with _SYMBOLICA_MATERIALIZATION_LOCK:
+                                    applied_plan_started = time.perf_counter()
+                                    applied_plan = _RecurrenceExactPlan.from_generation(
+                                        raw_sections=output.exact_sections,
+                                        process_id=native_process_id,
+                                        bundle=model_inputs.bundle,
+                                        runtime_metadata=runtime_metadata,
+                                    )
+                                    profile["numerical-application-plan-load"] = (
+                                        time.perf_counter() - applied_plan_started
+                                    )
+                                    application_validation_started = time.perf_counter()
+                                    validate_application = (
+                                        validate_recurrence_numerical_current_application
+                                    )
+                                    warmup = validate_application(
                                         warmup,
                                         applied_plan,
                                         baseline_plan=baseline_plan,
@@ -6322,57 +6508,61 @@ class GenerationBackend:
                                             relation_discovery.absolute_tolerance
                                         ),
                                     )
+                                    profile["numerical-application-validation"] = (
+                                        time.perf_counter()
+                                        - application_validation_started
+                                    )
+                            except (ArtifactError, ValueError) as exc:
+                                raise GenerationError(
+                                    f"process {process_name!r} optimized recurrence "
+                                    f"current replay failed closed: {exc}"
+                                ) from exc
+                            runtime_inspection, aggregate_report = (
+                                _recurrence_relation_reporting(
+                                    output.inspection_summary,
+                                    mode=relation_discovery_mode,
+                                    lane_report=warmup.to_json_dict(),
                                 )
-                                profile["numerical-application-validation"] = (
-                                    time.perf_counter() - application_validation_started
-                                )
-                        except (ArtifactError, ValueError) as exc:
-                            raise GenerationError(
-                                f"process {process_name!r} optimized recurrence "
-                                f"current replay failed closed: {exc}"
-                            ) from exc
-                        runtime_inspection, aggregate_report = (
-                            _recurrence_relation_reporting(
-                                output.inspection_summary,
-                                mode=relation_discovery_mode,
-                                lane_report=warmup.to_json_dict(),
                             )
-                        )
-                        return replace(
-                            output,
-                            inspection_summary=runtime_inspection,
-                            generation_profile={
-                                "schema_version": 1,
-                                "native_passes": {
-                                    "baseline": dict(baseline.generation_profile),
-                                    "final": dict(output.generation_profile),
+                            return replace(
+                                output,
+                                inspection_summary=runtime_inspection,
+                                generation_profile={
+                                    "schema_version": 1,
+                                    "native_passes": {
+                                        "baseline": dict(baseline.generation_profile),
+                                        "final": dict(output.generation_profile),
+                                    },
                                 },
-                            },
-                            numerical_current_reuse_report=aggregate_report,
-                        )
-                    finally:
-                        if warmup is not None:
-                            warmup.close()
+                                numerical_current_reuse_report=aggregate_report,
+                            )
+                        finally:
+                            if warmup is not None:
+                                warmup.close()
 
-                schedule_lowering_started = time.perf_counter()
-                shared = lowering_cache.lower_process(
-                    logical,
-                    schedule_digest=request_schedule_digest,
-                    sharing_domain_digest=sharing_domain_digest,
-                    native_schedule_semantic_digest=(native_schedule_semantic_digest),
-                    direct_executor_count=len(
-                        model_inputs.direct_template_catalog.templates
-                    ),
-                    parameter_slot_count=len(model_inputs.catalog.parameters),
-                    lower=lower_schedule,
-                )
-                profile["schedule-sharing-and-lowering"] = (
-                    time.perf_counter() - schedule_lowering_started
-                )
-                output = shared.output
-                schedule_digest = shared.schedule_digest
-                native_schedule_semantic_digest = shared.native_schedule_semantic_digest
-                process_remap = shared.remap
+                    schedule_lowering_started = time.perf_counter()
+                    shared = lowering_cache.lower_process(
+                        logical,
+                        schedule_digest=request_schedule_digest,
+                        sharing_domain_digest=sharing_domain_digest,
+                        native_schedule_semantic_digest=(
+                            native_schedule_semantic_digest
+                        ),
+                        direct_executor_count=len(
+                            model_inputs.direct_template_catalog.templates
+                        ),
+                        parameter_slot_count=len(model_inputs.catalog.parameters),
+                        lower=lower_schedule,
+                    )
+                    profile["schedule-sharing-and-lowering"] = (
+                        time.perf_counter() - schedule_lowering_started
+                    )
+                    output = shared.output
+                    schedule_digest = shared.schedule_digest
+                    native_schedule_semantic_digest = (
+                        shared.native_schedule_semantic_digest
+                    )
+                    process_remap = shared.remap
             task.update(
                 3,
                 message="compact recurrence runtime ready",
@@ -6494,6 +6684,33 @@ class GenerationBackend:
         process_digest = _recurrence_projection_digest(
             expanded.process_ir.to_json_dict()
         )
+        if selector_only:
+            if companion_artifact is None:
+                raise GenerationError(
+                    f"selector-only process {process_name!r} has no "
+                    "helicity-selector companion"
+                )
+            return self._finish_selector_only_recurrence_artifact(
+                expanded,
+                model,
+                model_inputs,
+                index=index,
+                phase=phase,
+                prepared=prepared,
+                logical=logical,
+                layout=layout,
+                runtime_metadata=runtime_metadata,
+                normalization_payload=normalization_payload,
+                companion_artifact=companion_artifact,
+                points=points,
+                process_digest=process_digest,
+                profile=profile,
+                profile_started=profile_started,
+                process_binding_started=process_binding_started,
+                generation_timings=generation_timings,
+            )
+        assert output is not None and process_remap is not None
+        assert builder_input is not None and schedule_digest is not None
         resolved_helicities = process_remap.remap_resolved_helicities(
             output.resolved_helicities
         )
@@ -6907,6 +7124,215 @@ class GenerationBackend:
         # The process counts as done once all its work is (binding and
         # physics metadata included): the count never reaches the total
         # while a process is still being finished.
+        phase.advance(
+            message=process_name,
+            details={"process": process_name, "step": "recurrence runtime ready"},
+        )
+        return _GeneratedRecurrenceProcess(
+            expanded=expanded,
+            artifact=artifact,
+            validation_points=points,
+        )
+
+    def _finish_selector_only_recurrence_artifact(
+        self,
+        expanded: _ExpandedProcess,
+        model: Model,
+        model_inputs: _RecurrenceModelInputs,
+        *,
+        index: int,
+        phase: PhaseHandle,
+        prepared: _PreparedProcessConstruction,
+        logical: RecurrenceBuilderLogicalInputV1,
+        layout: str,
+        runtime_metadata: Mapping[str, object],
+        normalization_payload: Mapping[str, object],
+        companion_artifact: RecurrenceHelicitySelectorPlanArtifact,
+        points: tuple[ValidationPointRecord, ...],
+        process_digest: str,
+        profile: dict[str, float],
+        profile_started: float,
+        process_binding_started: float,
+        generation_timings: dict[str, float] | None,
+    ) -> _GeneratedRecurrenceProcess:
+        """Record a selector-only full-colour process: companion, complete
+        helicity physics and a one-component selector-local contraction."""
+
+        process_name = expanded.request.name
+        color_accuracy = str(expanded.process_ir.color_accuracy)
+        profile["process-binding-and-validation-points"] = (
+            time.perf_counter() - process_binding_started
+        )
+        physics_started = time.perf_counter()
+        physics = build_recurrence_physics(
+            expanded.process_ir,
+            logical,
+            model_inputs.catalog,
+            process_id=process_name,
+            resolved_helicities=(),
+            normalization=normalization_payload,
+            selected_color_sector_ids=None,
+            color_plan=prepared.complete_color_plan,
+            helicity_domain="complete",
+        )
+        physics["extensions"]["s_channel_resonances"] = s_channel_resonances(
+            expanded.process_ir, model, self._coupling_order_limits or None
+        )
+        power = alpha_s_power(
+            expanded.process_ir,
+            model,
+            prepared.complete_color_plan,
+            prepared.coupling_order_limits,
+        )
+        if power is not None:
+            physics["extensions"]["alpha_s_power"] = power
+        profile["physics-metadata"] = time.perf_counter() - physics_started
+        run = self._run_config
+        assert run is not None
+        companion_inspection = companion_artifact.inspection_summary
+        schedule_summary = companion_inspection.get("schedule", {})
+        if not isinstance(schedule_summary, Mapping):
+            raise GenerationError("recurrence companion inspection has no schedule")
+        recurrence_summary = {
+            "lc_flow_layout": layout,
+            "builder_input_abi": RECURRENCE_BUILDER_INPUT_ABI,
+            "template_input_abi": RECURRENCE_TEMPLATE_INPUT_ABI,
+            "current_count": schedule_summary.get("current_count", 0),
+            "contribution_count": schedule_summary.get("contribution_count", 0),
+            "closure_term_count": schedule_summary.get("closure_term_count", 0),
+            "lanes": "helicity-selector-only",
+        }
+
+        color_contraction_started = time.perf_counter()
+        owner_sector_ids = recurrence_selector_owner_sector_ids(logical)
+        if len(owner_sector_ids) != companion_artifact.physical_destination_count:
+            raise GenerationError(
+                "selector-local color owners disagree with the companion's "
+                "physical destinations"
+            )
+        color_contraction = build_recurrence_selector_color_contraction(
+            logical,
+            prepared.complete_color_plan,
+            contraction=run.color.contraction.value,
+        )
+        color_contraction_payload, color_contraction_summary = (
+            _encode_selector_local_color_contraction(
+                logical,
+                prepared.complete_color_plan,
+                color_contraction,
+                owner_sector_ids,
+            )
+        )
+        profile["color-contraction"] = time.perf_counter() - color_contraction_started
+
+        artifact_record_started = time.perf_counter()
+        if companion_artifact.exact_sections is None:
+            raise GenerationError("recurrence companion omitted its exact sections")
+        lane_report = recurrence_numerical_current_opt_out_report(
+            _parse_exact_sections(
+                companion_artifact.exact_sections,
+                logical.process_id,
+            ),
+            color_accuracy=color_accuracy,
+        )
+        _runtime_inspection, relation_discovery_payload = (
+            _recurrence_relation_reporting(
+                companion_inspection,
+                mode="off",
+                lane_report=lane_report,
+            )
+        )
+        umami_keys = None
+        umami_physics = None
+        umami_sectors: tuple[Mapping[str, object], ...] = ()
+        if run.generation.emit_api_bundle:
+            umami_sectors = tuple(
+                sector.to_json_dict() for sector in prepared.complete_color_plan.sectors
+            )
+            umami_physics = dict(physics)
+            # Unknown plans give no structural key (no representative sharing).
+            umami_keys = {}
+            replay = (
+                prepared.topology_replay
+                if isinstance(prepared.topology_replay, LCColorTopologyReplayPlan)
+                else build_lc_topology_replay_plan(prepared.complete_color_plan, model)
+            )
+            if replay is not None:
+                umami_physics["extensions"] = {
+                    **cast(Mapping[str, object], physics.get("extensions", {})),
+                    "lc_topology_replay": replay.to_json_dict(),
+                }
+        artifact = RecurrenceProcessArtifact(
+            process_id=process_name,
+            expression=expanded.process_ir.process,
+            color_accuracy=expanded.process_ir.color_accuracy,
+            external_pdgs=(
+                *expanded.process_ir.initial_pdgs,
+                *expanded.process_ir.final_pdgs,
+            ),
+            aliases=expanded.aliases,
+            physics=physics,
+            umami_physics=umami_physics,
+            umami_color_sectors=umami_sectors,
+            umami_structural_keys=umami_keys,
+            recurrence_schedule_path=cast(Path, None),
+            recurrence_schedule_digest=cast(str, None),
+            recurrence_native_schedule_semantic_digest=cast(str, None),
+            recurrence_schedule_size_bytes=cast(int, None),
+            recurrence_schedule_sha256=cast(str, None),
+            recurrence_schedule_member_count=cast(int, None),
+            recurrence_schedule_unpacked_size_bytes=cast(int, None),
+            recurrence_schedule_index_sha256=cast(str, None),
+            builder_input_sha256=companion_artifact.builder_input_sha256,
+            prepared_kernel_pack_digest=model_inputs.prepared_kernel_pack_digest,
+            direct_template_catalog_digest=(
+                model_inputs.direct_template_catalog.catalog_digest
+            ),
+            referenced_kernel_ids=frozenset(
+                kernel.kernel_id for kernel in model_inputs.bundle.kernel_pack.kernels
+            ),
+            inspection_summary=companion_inspection,
+            runtime_metadata=runtime_metadata,
+            color_contraction_payload=color_contraction_payload,
+            color_contraction_summary=color_contraction_summary,
+            point_tile_size=run.evaluator.recurrence.point_tile_size,
+            workspace_mib=run.evaluator.recurrence.workspace_mib,
+            recurrence_summary=recurrence_summary,
+            validation_point=points[0],
+            generation_filters={
+                **self._fft_basis_metadata(prepared.complete_color_plan),
+                "lc_flow_layout": layout,
+                "recurrence": recurrence_summary,
+                "relation_discovery": relation_discovery_payload,
+            },
+            generation_profile=companion_artifact.generation_profile or {},
+            process_support_mask=1 << index,
+            recurrence_process_remap=companion_artifact.recurrence_process_remap,
+            recurrence_process_executor_pack=(
+                companion_artifact.recurrence_process_executor_pack
+            ),
+            helicity_selector_companion=companion_artifact,
+            process_digest=process_digest,
+            selector_only=True,
+        )
+        profile["artifact-record-assembly"] = (
+            time.perf_counter() - artifact_record_started
+        )
+        profile["process-total"] = time.perf_counter() - profile_started
+        if generation_timings is not None:
+            timing_prefix = f"recurrence-process-{index}:{process_name}:"
+            with _RECURRENCE_PROFILE_LOCK:
+                generation_timings.update(
+                    {
+                        f"{timing_prefix}{name}": seconds
+                        for name, seconds in profile.items()
+                    }
+                )
+        _LOGGER.debug(
+            "recurrence generation profile for %s: %s",
+            process_name,
+            json.dumps(profile, allow_nan=False, sort_keys=True),
+        )
         phase.advance(
             message=process_name,
             details={"process": process_name, "step": "recurrence runtime ready"},
@@ -7841,11 +8267,22 @@ class GenerationBackend:
                         f"generated recurrence exposes no selectable components "
                         f"for {process_id!r}"
                     )
+                # Selector-only processes have no resolved output: check the
+                # per-point helicity route against the global selector instead.
+                selector_only = RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY in (
+                    runtime.required_runtime_capabilities
+                )
                 for selector_label, selectors in selector_cases:
                     total = runtime.evaluate(samples, **selectors)
-                    resolved_total = runtime.evaluate_resolved(
-                        samples, **selectors
-                    ).total()
+                    if selector_only:
+                        (helicity,) = selectors["helicities"]
+                        resolved_total = runtime.evaluate(
+                            samples, helicity_by_point=(helicity,) * len(samples)
+                        )
+                    else:
+                        resolved_total = runtime.evaluate_resolved(
+                            samples, **selectors
+                        ).total()
                     if len(total) != len(samples) or len(resolved_total) != len(
                         samples
                     ):

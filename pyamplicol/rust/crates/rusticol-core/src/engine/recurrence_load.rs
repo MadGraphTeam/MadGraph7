@@ -165,6 +165,78 @@ pub(super) fn load_recurrence_native_runtime(
     Ok(LoadedRecurrenceRuntime { common, lane })
 }
 
+pub(super) struct LoadedRecurrenceSelectorRuntime {
+    pub(super) common: ExecutionRuntime,
+    pub(super) lane: RecurrenceSelectorOnlyRuntime,
+}
+
+/// Load a selector-only full-colour process (`plan: null`): the companion,
+/// its parameters and the selector-local contraction; no main Direct plan.
+pub(super) fn load_recurrence_selector_runtime(
+    artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
+    manifest: &RecurrenceExecutionManifest,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<LoadedRecurrenceSelectorRuntime> {
+    let companion = manifest
+        .helicity_selector_companion
+        .as_ref()
+        .ok_or_else(|| {
+            RusticolError::integrity("selector-only recurrence has no helicity-selector companion")
+        })?;
+    let loaded_plan = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
+    let (mut common, parameter_defaults, parameter_projection, _source_domains) =
+        build_common_runtime(&loaded_plan.plan, manifest, physics)?;
+    validate_recurrence_companion_physics(physics)?;
+    let payload_root = recurrence_payload_root(artifact, manifest)?;
+    let kernel_payloads = artifact.evaluator_payload_store(&payload_root)?;
+    common.model_parameter_evaluator = if common
+        .model_parameters
+        .iter()
+        .any(|parameter| parameter.kind == "derived_parameter_component")
+    {
+        let (pack_bytes, mut pack, fallback_payload_root) = load_prepared_pack(artifact, manifest)?;
+        drop(pack_bytes);
+        drop(pack.recurrence_template.take());
+        drop(pack.recurrence_direct_template.take());
+        if fallback_payload_root != payload_root {
+            return Err(RusticolError::integrity(
+                "recurrence parameter fallback resolved a different prepared payload root",
+            ));
+        }
+        super::eager_load::load_prepared_model_parameter_evaluator_for_runtime(
+            &pack,
+            &common.model_parameters,
+            &kernel_payloads,
+        )?
+    } else {
+        None
+    };
+    common.refresh_derived_model_parameters()?;
+    let loaded_companion =
+        super::on_the_fly_load::load_recurrence_helicity_selector_companion_from_plan(
+            artifact,
+            manifest,
+            physics,
+            &kernel_payloads,
+            &common,
+            loaded_plan,
+        )?;
+    let contraction =
+        load_color_contraction(artifact, evaluator_root, manifest)?.ok_or_else(|| {
+            RusticolError::integrity("selector-only recurrence has no color-contraction payload")
+        })?;
+    let lane = RecurrenceSelectorOnlyRuntime::new(
+        loaded_companion.runtime,
+        contraction,
+        loaded_companion.backend_name,
+        parameter_defaults,
+        parameter_projection,
+        physics.helicities.len(),
+    )?;
+    Ok(LoadedRecurrenceSelectorRuntime { common, lane })
+}
+
 #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
 #[cfg_attr(target_vendor = "apple", inline(never))]
 pub(super) fn load_recurrence_ready_runtime(
@@ -623,8 +695,7 @@ pub(super) fn load_recurrence_exact_sections(
     Ok(NativeRecurrenceExactSections {
         process_id: manifest.key.clone(),
         strategy: plan.strategy().as_str().to_string(),
-        semantic_digest: manifest
-            .plan
+        semantic_digest: primary_plan_summary(manifest)?
             .process_binding
             .process_semantic_digest
             .clone(),
@@ -1022,7 +1093,22 @@ fn load_plan(
     evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
 ) -> RusticolResult<LoadedRecurrencePlan> {
-    load_plan_summary(artifact, evaluator_root, manifest, &manifest.plan)
+    load_plan_summary(
+        artifact,
+        evaluator_root,
+        manifest,
+        primary_plan_summary(manifest)?,
+    )
+}
+
+/// The main schedule summary; selector-only processes have none.
+pub(super) fn primary_plan_summary(
+    manifest: &RecurrenceExecutionManifest,
+) -> RusticolResult<&RecurrencePlanSummary> {
+    manifest
+        .plan
+        .as_ref()
+        .ok_or_else(|| selector_only_unsupported("this operation"))
 }
 
 pub(super) fn load_plan_summary(
@@ -2838,7 +2924,7 @@ impl NativeRuntime {
                 .semantic_identity()
                 .input_digest()
                 .to_string()
-                != manifest.plan.builder_input_sha256
+                != primary_plan_summary(&manifest)?.builder_input_sha256
                 || direct.direct_template_catalog_digest().to_string()
                     != manifest.direct_template_catalog_digest
                 || authenticated
@@ -3326,7 +3412,7 @@ impl NativeRuntime {
                 != recurrence_selection.process.external_pdgs
             || on_the_fly_selection.process.color_accuracy
                 != recurrence_selection.process.color_accuracy
-            || recurrence_manifest.plan.builder_input_sha256
+            || primary_plan_summary(&recurrence_manifest)?.builder_input_sha256
                 != authenticated
                     .process()
                     .semantic_identity()
@@ -3764,7 +3850,7 @@ pub(super) fn build_recurrence_ready_execution_v1(
         prepared_kernel_pack_digest: manifest.prepared_kernel_pack_digest.clone(),
         direct_template_catalog_digest: manifest.direct_template_catalog_digest.clone(),
         kernel_pack: manifest.kernel_pack.clone(),
-        primary_plan: RecurrenceReadyPlanV1::from_summary(&manifest.plan),
+        primary_plan: RecurrenceReadyPlanV1::from_summary(primary_plan_summary(manifest)?),
         runtime,
         companion,
     })

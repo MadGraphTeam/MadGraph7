@@ -1827,6 +1827,8 @@ impl NativeRuntime {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::Recurrence(runtime) => runtime.backend_name() == "jit",
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::RecurrenceSelector(runtime) => runtime.backend_name() == "jit",
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::OnTheFly(_) => false,
             };
             if uses_simd_jit {
@@ -1863,6 +1865,12 @@ impl NativeRuntime {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::Recurrence(runtime) => {
                     runtime.select_flavour_union_patterns(&union.patterns, &union.signs)?;
+                }
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::RecurrenceSelector(_) => {
+                    return Err(selector_only_unsupported(
+                        "a flavour-union member (union template without a pattern-resolved companion)",
+                    ));
                 }
                 _ => {
                     return Err(RusticolError::compatibility(
@@ -2143,6 +2151,23 @@ impl NativeRuntime {
                 )
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            LoadedExecutionManifest::Recurrence(manifest) if manifest.plan.is_none() => {
+                let representative_process = manifest.process.clone();
+                let representative_key = manifest.key.clone();
+                let loaded = load_recurrence_selector_runtime(
+                    &artifact,
+                    &evaluator_root,
+                    &manifest,
+                    &physics_v1,
+                )?;
+                (
+                    representative_process,
+                    representative_key,
+                    loaded.common,
+                    NativeExecutionLane::RecurrenceSelector(Box::new(loaded.lane)),
+                )
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             LoadedExecutionManifest::Recurrence(manifest) => {
                 let representative_process = manifest.process.clone();
                 let representative_key = manifest.key.clone();
@@ -2200,6 +2225,15 @@ impl NativeRuntime {
             ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => (
+                "recurrence",
+                Some(runtime.backend_name().to_string()),
+                Some(runtime.effective_point_tile_size()),
+                None,
+                None,
+                None,
+            ),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(runtime) => (
                 "recurrence",
                 Some(runtime.backend_name().to_string()),
                 Some(runtime.effective_point_tile_size()),
@@ -2727,6 +2761,12 @@ impl NativeRuntime {
         validate_energy_signs(momenta, self.runtime.external_count, |point| masks[point])?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
+            if matches!(
+                &self.execution_lane,
+                NativeExecutionLane::RecurrenceSelector(_)
+            ) {
+                return Err(selector_only_unsupported("flavour-union assignments"));
+            }
             let NativeExecutionLane::Recurrence(lane) = &mut self.execution_lane else {
                 return Err(RusticolError::compatibility(
                     "evaluate_assignments requires a recurrence lane",
@@ -3367,6 +3407,9 @@ impl NativeRuntime {
                 NativeExecutionLane::Recurrence(runtime) => {
                     runtime.helicity_selector_companion_state_census(&self.process_key)?
                 }
+                NativeExecutionLane::RecurrenceSelector(runtime) => {
+                    runtime.state_census(&self.process_key)?
+                }
                 _ => None,
             };
             let Some(census) = census else {
@@ -3478,6 +3521,12 @@ impl NativeRuntime {
         helicity_ids: Option<&[String]>,
         color_ids: Option<&[String]>,
     ) -> RusticolResult<NativeRecurrenceSelectorPlan> {
+        if matches!(
+            &self.execution_lane,
+            NativeExecutionLane::RecurrenceSelector(_)
+        ) {
+            return Err(selector_only_unsupported("recurrence selector plans"));
+        }
         let NativeExecutionLane::Recurrence(runtime) = &self.execution_lane else {
             return Err(RusticolError::invalid_argument(
                 "recurrence selector plans require a recurrence artifact",
@@ -3565,6 +3614,12 @@ impl NativeRuntime {
         point_count: usize,
         output: &mut [f64],
     ) -> RusticolResult<()> {
+        if matches!(
+            &self.execution_lane,
+            NativeExecutionLane::RecurrenceSelector(_)
+        ) {
+            return Err(selector_only_unsupported("recurrence selector plans"));
+        }
         if !matches!(&self.execution_lane, NativeExecutionLane::Recurrence(_)) {
             return Err(RusticolError::invalid_argument(
                 "recurrence selector plans require a recurrence artifact",
@@ -3663,6 +3718,10 @@ impl NativeRuntime {
         match &self.execution_lane {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => Ok(runtime.amplitude_order_catalog()),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(runtime) => {
+                Ok(runtime.amplitude_order_catalog())
+            }
             _ => Err(RusticolError::compatibility(
                 "squared coupling-order partials require a recurrence artifact",
             )),
@@ -3717,11 +3776,14 @@ impl NativeRuntime {
         let color_ids = self.execution_color_ids(color_ids);
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            let NativeExecutionLane::Recurrence(runtime) = &mut self.execution_lane else {
+            if !matches!(
+                &self.execution_lane,
+                NativeExecutionLane::Recurrence(_) | NativeExecutionLane::RecurrenceSelector(_)
+            ) {
                 return Err(RusticolError::compatibility(
                     "squared coupling-order partials require a recurrence artifact",
                 ));
-            };
+            }
             let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
             let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
             let result = (|| {
@@ -3737,14 +3799,29 @@ impl NativeRuntime {
                     self.runtime.external_count,
                     crossing_lookup.as_deref(),
                 )?;
-                runtime.run_order_partials_f64_view_into(
-                    &mut self.runtime,
-                    batch,
-                    selected_helicities,
-                    selected_colors,
-                    totals,
-                    partials,
-                )
+                match &mut self.execution_lane {
+                    NativeExecutionLane::Recurrence(runtime) => runtime
+                        .run_order_partials_f64_view_into(
+                            &mut self.runtime,
+                            batch,
+                            selected_helicities,
+                            selected_colors,
+                            totals,
+                            partials,
+                        ),
+                    NativeExecutionLane::RecurrenceSelector(runtime) => runtime
+                        .run_order_partials_f64_view_into(
+                            &self.runtime,
+                            batch,
+                            selected_helicities,
+                            selected_colors,
+                            totals,
+                            partials,
+                        ),
+                    _ => Err(RusticolError::internal(
+                        "squared coupling-order lane changed during evaluation",
+                    )),
+                }
             })();
             self.input_crossing_map = crossing_lookup;
             self.point_selector_scratch = selector_scratch;
@@ -4154,6 +4231,10 @@ impl NativeRuntime {
                 runtime.run_f64_view_into_unprofiled(&mut self.runtime, batch, None, None, output)
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(runtime) => {
+                runtime.run_f64_view_into_unprofiled(&self.runtime, batch, None, None, output)
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::OnTheFly(runtime) => {
                 runtime.run_total_into_unprofiled(&self.runtime, batch, None, None, output)
             }
@@ -4190,6 +4271,15 @@ impl NativeRuntime {
                 selected_colors,
                 output,
             ),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(runtime) => runtime
+                .run_f64_view_into_unprofiled(
+                    &self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    output,
+                ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::OnTheFly(runtime) => runtime.run_total_into_unprofiled(
                 &self.runtime,
@@ -4231,6 +4321,10 @@ impl NativeRuntime {
                         selected_colors,
                     )
                     .map(|(resolved, _profile)| resolved)
+            }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(_) => {
+                Err(selector_only_unsupported("resolved helicity/colour output"))
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::OnTheFly(runtime) => runtime
@@ -4340,6 +4434,14 @@ impl NativeRuntime {
                 profile.total_materialized_value_count += values.len() as u64;
                 Ok((values, profile))
             }
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(runtime) => runtime
+                .run_f64_with_global_selectors(
+                    &self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                ),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::OnTheFly(runtime) => {
                 let view = F64MomentumBatchView::from_nested(batch, self.runtime.external_count)?;
@@ -4473,6 +4575,9 @@ impl NativeRuntime {
                 return Err(RusticolError::compatibility(
                     "warmed Arena profiling is available only for eager and compiled execution",
                 ));
+            }
+            NativeExecutionLane::RecurrenceSelector(_) => {
+                return Err(selector_only_unsupported("arena profiling"));
             }
             NativeExecutionLane::OnTheFly(_) => false,
         };
@@ -4707,6 +4812,14 @@ impl NativeRuntime {
                     (values, profile)
                 }
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::RecurrenceSelector(runtime) => runtime
+                    .run_f64_with_global_selectors(
+                        &self.runtime,
+                        &batch,
+                        selected_helicities.as_ref(),
+                        selected_colors.as_ref(),
+                    )?,
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::OnTheFly(runtime) => {
                     let view =
                         F64MomentumBatchView::from_nested(&batch, self.runtime.external_count)?;
@@ -4733,6 +4846,10 @@ impl NativeRuntime {
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::Recurrence(runtime) => {
                     runtime.run_f64(&mut self.runtime, &batch)?
+                }
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                NativeExecutionLane::RecurrenceSelector(runtime) => {
+                    runtime.run_f64_with_global_selectors(&self.runtime, &batch, None, None)?
                 }
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                 NativeExecutionLane::OnTheFly(runtime) => {
@@ -5178,7 +5295,7 @@ impl NativeRuntime {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Eager(_) => profile.validate_eager_top_level_accounting(),
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-            NativeExecutionLane::Recurrence(_) => {
+            NativeExecutionLane::Recurrence(_) | NativeExecutionLane::RecurrenceSelector(_) => {
                 profile.validate_recurrence_top_level_accounting()
             }
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -5781,12 +5898,15 @@ impl NativeRuntime {
             NativeExecutionLane::Recurrence(runtime) => {
                 runtime.clear_helicity_selector_companion()?
             }
+            NativeExecutionLane::RecurrenceSelector(runtime) => runtime.clear()?,
             _ => {}
         }
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         if matches!(
             &self.execution_lane,
-            NativeExecutionLane::OnTheFly(_) | NativeExecutionLane::Recurrence(_)
+            NativeExecutionLane::OnTheFly(_)
+                | NativeExecutionLane::Recurrence(_)
+                | NativeExecutionLane::RecurrenceSelector(_)
         ) {
             self.point_selector_scratch = PointSelectorExecutionScratch::default();
         }

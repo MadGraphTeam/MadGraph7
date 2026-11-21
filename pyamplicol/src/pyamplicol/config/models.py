@@ -1097,6 +1097,9 @@ class GenerationConfig:
     )
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
+    # NLC/full recurrence: keep only the helicity-selector companion (no main
+    # contracted-colour schedule); such processes evaluate one helicity per point.
+    selector_only_full_colour: bool = field(default=False, metadata=_setting("bool"))
     # store per-process payloads and schedules in one payloads.pacbin
     pack_payloads: bool = field(default=False, metadata=_setting("bool"))
     # Particles (model names; a particle vetoes its antiparticle too) removed
@@ -1147,6 +1150,10 @@ class GenerationConfig:
         )
         if not isinstance(self.emit_api_bundle, bool):
             raise ConfigurationError("generation.emit_api_bundle must be a boolean")
+        if not isinstance(self.selector_only_full_colour, bool):
+            raise ConfigurationError(
+                "generation.selector_only_full_colour must be a boolean"
+            )
         if not isinstance(self.pack_payloads, bool):
             raise ConfigurationError("generation.pack_payloads must be a boolean")
         object.__setattr__(
@@ -2355,6 +2362,20 @@ class RunConfig:
         ):
             raise ConfigurationError(
                 "process.flavor_unions requires color.lc_flow_layout='topology-replay'"
+            )
+        if (
+            self.generation.selector_only_full_colour
+            and self.color.accuracy in (ColorAccuracy.NLC, ColorAccuracy.FULL)
+            and (
+                self.resolved_execution_mode is not EvaluatorExecutionMode.RECURRENCE
+                or self.generation.relation_discovery.mode
+                is not RelationDiscoveryMode.OFF
+            )
+        ):
+            raise ConfigurationError(
+                "generation.selector_only_full_colour requires "
+                "evaluator.execution_mode='recurrence' and "
+                "generation.relation_discovery.mode='off'"
             )
         if self.process.flavor_union_crossing and self.color.accuracy is not (
             ColorAccuracy.LC

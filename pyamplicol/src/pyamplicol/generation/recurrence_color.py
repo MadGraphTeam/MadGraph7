@@ -200,7 +200,7 @@ def encode_recurrence_color_contraction(
         repeated_component_count = _checked_u32(
             "repeated component_count", repeated.component_count
         )
-        if repeated_component_count < 2:
+        if repeated_component_count < (2 - int(repeated.allow_single_component)):
             raise RecurrenceColorCodecError(
                 "repeated storage requires at least two components"
             )

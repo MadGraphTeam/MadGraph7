@@ -65,6 +65,7 @@ pub(super) struct LoadedOnTheFlyRuntime {
 
 pub(super) struct LoadedRecurrenceHelicitySelectorCompanion {
     pub(super) runtime: RecurrencePersistedHelicitySelectorRuntime,
+    pub(super) backend_name: String,
 }
 
 fn clamp_query_construction_threads(requested: usize, available: usize) -> usize {
@@ -245,12 +246,42 @@ pub(super) fn load_recurrence_helicity_selector_companion(
                 "recurrence companion loader was called without a companion descriptor",
             )
         })?;
+    let loaded = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
+    load_recurrence_helicity_selector_companion_from_plan(
+        artifact, manifest, physics, payloads, common, loaded,
+    )
+}
+
+/// Finish a companion whose plan is already loaded. Without a main plan
+/// (selector-only), the top-level process digest is the anchor.
+pub(super) fn load_recurrence_helicity_selector_companion_from_plan(
+    artifact: &VerifiedArtifact,
+    manifest: &super::recurrence_manifest::RecurrenceExecutionManifest,
+    physics: &ProcessPhysicsV1,
+    payloads: &EvaluatorPayloadStore,
+    common: &ExecutionRuntime,
+    loaded: LoadedRecurrencePlan,
+) -> RusticolResult<LoadedRecurrenceHelicitySelectorCompanion> {
+    let companion = manifest
+        .helicity_selector_companion
+        .as_ref()
+        .ok_or_else(|| {
+            RusticolError::integrity(
+                "recurrence companion loader was called without a companion descriptor",
+            )
+        })?;
     let LoadedRecurrencePlan {
         plan,
         process_executors,
-    } = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
+    } = loaded;
+    let anchor_digest = match &manifest.plan {
+        Some(primary) => primary.process_binding.process_digest.as_str(),
+        None => manifest.process_digest.as_deref().ok_or_else(|| {
+            RusticolError::integrity("selector-only recurrence has no process digest")
+        })?,
+    };
     validate_recurrence_companion_process_digest(
-        &manifest.plan.process_binding.process_digest,
+        anchor_digest,
         &companion.process_digest,
         &companion.plan.process_binding.process_digest,
     )?;
@@ -394,6 +425,7 @@ fn finish_recurrence_helicity_selector_companion(
         identities.direct_template_catalog_digest,
     )?;
     let sources = OnTheFlySourceDomainBinding::load_for_process_plan(&plan, source_domains)?;
+    let backend_name = pool.backend_name().to_owned();
     let resolver = Rc::clone(&pool).into_shared_on_the_fly_resolver(sources);
     let runtime = RecurrencePersistedHelicitySelectorRuntime::new(
         plan,
@@ -402,7 +434,10 @@ fn finish_recurrence_helicity_selector_companion(
         direct_helicity_to_physics,
         physics_helicity_count,
     )?;
-    Ok(LoadedRecurrenceHelicitySelectorCompanion { runtime })
+    Ok(LoadedRecurrenceHelicitySelectorCompanion {
+        runtime,
+        backend_name,
+    })
 }
 
 fn symmetric_group_workspace_for_loaded_color(

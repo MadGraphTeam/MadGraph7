@@ -3126,6 +3126,10 @@ def _artifact_inspection_summary(
                     ),
                 )
             )
+            if process.get("recurrence_lanes") is not None:
+                add_execution_row(
+                    (process_id, "lanes", str(process.get("recurrence_lanes")))
+                )
             if process.get("recurrence_color_storage") is not None:
                 factorization = process.get("recurrence_color_factorization_kind")
                 factorization_text = (

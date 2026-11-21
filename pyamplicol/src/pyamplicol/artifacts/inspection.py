@@ -26,6 +26,7 @@ from pyamplicol._internal.versions import (
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
     SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 )
 from pyamplicol.api.errors import ArtifactError
@@ -210,6 +211,8 @@ class ArtifactProcessInspection:
     direct_finalization_row_count: int | None = None
     direct_closure_row_count: int | None = None
     direct_row_group_count: int | None = None
+    # "selector-only (no main schedule)" for selector-only full colour.
+    recurrence_lanes: str | None = None
     recurrence_color_accuracy: str | None = None
     recurrence_color_storage: str | None = None
     recurrence_color_sector_count: int | None = None
@@ -527,6 +530,8 @@ class _ExecutionInspection:
     direct_finalization_row_count: int | None = None
     direct_closure_row_count: int | None = None
     direct_row_group_count: int | None = None
+    # "selector-only (no main schedule)" for selector-only full colour.
+    recurrence_lanes: str | None = None
     recurrence_color_accuracy: str | None = None
     recurrence_color_storage: str | None = None
     recurrence_color_sector_count: int | None = None
@@ -1203,7 +1208,20 @@ def _recurrence_execution_inspection(
         "recurrence execution.runtime_options.workspace_mib",
         minimum=1,
     )
-    plan = _mapping(execution.get("plan"), "recurrence execution.plan")
+    selector_only = RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY in (
+        declared_capabilities
+    )
+    if selector_only:
+        # No main schedule: the companion plan describes the process.
+        if execution.get("plan") is not None:
+            raise ArtifactError("selector-only recurrence carries a main plan")
+        companion = _mapping(
+            execution.get("helicity_selector_companion"),
+            "selector-only recurrence execution.helicity_selector_companion",
+        )
+        plan = _mapping(companion.get("plan"), "recurrence companion plan")
+    else:
+        plan = _mapping(execution.get("plan"), "recurrence execution.plan")
     _require_contract(
         plan,
         "builder_input_abi",
@@ -1602,6 +1620,9 @@ def _recurrence_execution_inspection(
         )
     return _ExecutionInspection(
         execution_mode="recurrence",
+        recurrence_lanes=(
+            "selector-only (no main schedule)" if selector_only else None
+        ),
         prepared_backend=_string(
             pack.get("backend"),
             "prepared recurrence kernel pack.backend",
@@ -3011,6 +3032,7 @@ def _process_inspection(
         direct_finalization_row_count=execution.direct_finalization_row_count,
         direct_closure_row_count=execution.direct_closure_row_count,
         direct_row_group_count=execution.direct_row_group_count,
+        recurrence_lanes=execution.recurrence_lanes,
         recurrence_color_accuracy=execution.recurrence_color_accuracy,
         recurrence_color_storage=execution.recurrence_color_storage,
         recurrence_color_sector_count=execution.recurrence_color_sector_count,

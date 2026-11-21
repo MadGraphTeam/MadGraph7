@@ -13,7 +13,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from itertools import chain, product
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 from .._internal.versions import (
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -102,14 +102,24 @@ def build_recurrence_physics(
     normalization: Mapping[str, object],
     selected_color_sector_ids: Sequence[int] | None,
     color_plan: GenericColorPlan | None = None,
+    helicity_domain: Literal["resolved", "complete"] = "resolved",
 ) -> dict[str, object]:
-    """Build strict ``pyamplicol-resolved-physics`` metadata pre-DAG."""
+    """Build strict ``pyamplicol-resolved-physics`` metadata pre-DAG.
+
+    ``helicity_domain="complete"`` (selector-only full colour, no main
+    lowering) computes every possible helicity: no zeros, no parity aliases.
+    """
 
     if logical.process_id != process.key:
         raise ValueError("recurrence projection does not belong to the process IR")
     if process.color_accuracy != "lc" and color_plan is None:
         raise ValueError("contracted recurrence physics requires its color plan")
-    if logical.layout != "all-flow-union" and not resolved_helicities:
+    complete = helicity_domain == "complete"
+    if helicity_domain not in {"resolved", "complete"}:
+        raise ValueError(f"unknown recurrence helicity domain {helicity_domain!r}")
+    if complete and resolved_helicities:
+        raise ValueError("complete helicity domain takes no resolved helicities")
+    if logical.layout != "all-flow-union" and not resolved_helicities and not complete:
         raise ValueError("fixed-source recurrence has no resolved helicities")
 
     possible_helicities = _possible_helicities(logical)
@@ -124,7 +134,9 @@ def build_recurrence_physics(
     # helicity-expanded destinations.  Every retained assignment is therefore
     # executable even though some may evaluate to zero dynamically.
     computed_helicities = (
-        set(possible_helicities) if logical.layout == "all-flow-union" else resolved
+        set(possible_helicities)
+        if logical.layout == "all-flow-union" or complete
+        else resolved
     )
     parity_proof = next(
         (
@@ -134,7 +146,9 @@ def build_recurrence_physics(
         ),
         None,
     )
-    parity_reduced = parity_proof is not None and logical.layout != "all-flow-union"
+    parity_reduced = (
+        parity_proof is not None and logical.layout != "all-flow-union" and not complete
+    )
     if parity_reduced:
         for values in resolved:
             flipped = tuple(-value for value in values)
@@ -688,6 +702,7 @@ def build_recurrence_color_contraction(
     certified_structural_zero_sector_ids: Sequence[int],
     *,
     contraction: str = "direct",
+    min_components: int = 2,
 ) -> ColorContractionPlan | None:
     if color_plan.color_accuracy == "lc":
         return None
@@ -750,6 +765,7 @@ def build_recurrence_color_contraction(
         contraction_plan = build_color_contraction_plan(
             color_plan,
             tuple(descriptors),
+            min_components=min_components,
         )
     elif contraction in {"auto", "symmetric-group-fft"}:
         active_sector_ids = {descriptor.sector_id for descriptor in descriptors}
@@ -761,6 +777,7 @@ def build_recurrence_color_contraction(
                 active_sector_ids,
                 set(certified_structural_zero_sector_ids),
             ),
+            min_components=min_components,
         )
         # Auto keeps the FFT whenever certified orbits exist: from the plan's
         # own sizes its exact kernel holds channels^2 * m! entries (plus the
@@ -770,7 +787,7 @@ def build_recurrence_color_contraction(
         # or size threshold is needed. ``color.contraction`` overrides it.
         if contraction == "auto" and not contraction_plan.supported:
             contraction_plan = build_color_contraction_plan(
-                color_plan, tuple(descriptors)
+                color_plan, tuple(descriptors), min_components=min_components
             )
     else:
         raise ValueError(f"unknown color contraction method {contraction!r}")
@@ -780,6 +797,45 @@ def build_recurrence_color_contraction(
             f"could not build recurrence color contraction: {reason or 'unsupported'}"
         )
     return contraction_plan
+
+
+def recurrence_selector_owner_sector_ids(
+    logical: RecurrenceBuilderLogicalInputV1,
+) -> tuple[int, ...]:
+    """Canonical owner sectors in sector order: the selector-local colour groups."""
+
+    return tuple(
+        sector_id
+        for sector_id, owner_id in enumerate(_recurrence_color_sector_owners(logical))
+        if sector_id == owner_id
+    )
+
+
+def build_recurrence_selector_color_contraction(
+    logical: RecurrenceBuilderLogicalInputV1,
+    color_plan: GenericColorPlan,
+    *,
+    contraction: str,
+) -> ColorContractionPlan:
+    """One-component, owner-local contraction of a selector-only process.
+
+    The same builder and reducer choice as the default contraction, over one
+    helicity-free component, so its local block equals the default's.
+    """
+
+    owner_sector_ids = recurrence_selector_owner_sector_ids(logical)
+    plan = build_recurrence_color_contraction(
+        logical,
+        color_plan,
+        ((),),
+        tuple((sector_id, 0) for sector_id in owner_sector_ids),
+        (),
+        contraction=contraction,
+        min_components=1,
+    )
+    if plan is None:
+        raise ValueError("selector-only colour contraction requires NLC/full colour")
+    return plan
 
 
 def _rectangular_recurrence_color_contraction(
@@ -979,38 +1035,15 @@ def recurrence_color_sector_owner_map(
     schedule that silently omits, duplicates, or changes an alias class.
     """
 
-    sectors = tuple(sorted(logical.physical_sectors, key=lambda item: item.sector_id))
-    if tuple(sector.sector_id for sector in sectors) != tuple(range(len(sectors))):
-        raise ValueError("recurrence physical color sectors are not densely numbered")
-
-    owner_by_key: dict[tuple[object, ...], int] = {}
-    owners: list[int] = []
-    for sector in sectors:
-        if sector.kind == "open-lines":
-            open_strings = _canonical_open_string_product_key(
-                (
-                    string.fundamental_source_slot,
-                    string.adjoint_source_slots,
-                    string.antifundamental_source_slot,
-                    string.singlet_source_slots,
-                )
-                for string in sector.open_strings
-            )
-            key: tuple[object, ...] = ("open-lines", open_strings)
-        else:
-            # Trace orientation and singlet sectors are already canonicalized
-            # by their construction-sector identity.  Rust does not alias them.
-            key = (sector.kind, sector.sector_id)
-        owner = owner_by_key.setdefault(key, sector.sector_id)
-        owners.append(owner)
+    owners = _recurrence_color_sector_owners(logical)
     active = set(active_sector_ids)
-    unknown = active.difference(range(len(sectors)))
+    unknown = active.difference(range(len(owners)))
     if unknown:
         raise ValueError(
             f"recurrence color destinations reference unknown sectors {sorted(unknown)}"
         )
     certified = set(certified_structural_zero_sector_ids)
-    unknown_certified = certified.difference(range(len(sectors)))
+    unknown_certified = certified.difference(range(len(owners)))
     if unknown_certified:
         raise ValueError(
             "recurrence structural-zero certificate references unknown sectors "
@@ -1045,6 +1078,38 @@ def recurrence_color_sector_owner_map(
             )
         result.append(_ZERO_SECTOR_OWNER)
     return tuple(result)
+
+
+def _recurrence_color_sector_owners(
+    logical: RecurrenceBuilderLogicalInputV1,
+) -> list[int]:
+    """Canonical owner of every sector (open-string permutations alias)."""
+
+    sectors = tuple(sorted(logical.physical_sectors, key=lambda item: item.sector_id))
+    if tuple(sector.sector_id for sector in sectors) != tuple(range(len(sectors))):
+        raise ValueError("recurrence physical color sectors are not densely numbered")
+
+    owner_by_key: dict[tuple[object, ...], int] = {}
+    owners: list[int] = []
+    for sector in sectors:
+        if sector.kind == "open-lines":
+            open_strings = _canonical_open_string_product_key(
+                (
+                    string.fundamental_source_slot,
+                    string.adjoint_source_slots,
+                    string.antifundamental_source_slot,
+                    string.singlet_source_slots,
+                )
+                for string in sector.open_strings
+            )
+            key: tuple[object, ...] = ("open-lines", open_strings)
+        else:
+            # Trace orientation and singlet sectors are already canonicalized
+            # by their construction-sector identity.  Rust does not alias them.
+            key = (sector.kind, sector.sector_id)
+        owner = owner_by_key.setdefault(key, sector.sector_id)
+        owners.append(owner)
+    return owners
 
 
 def recurrence_exact_color_coefficients(

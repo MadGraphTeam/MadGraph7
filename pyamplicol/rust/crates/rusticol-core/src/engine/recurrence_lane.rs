@@ -30,6 +30,10 @@ use crate::recurrence::{
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+#[path = "recurrence_selector_lane.rs"]
+mod selector_only;
+pub(super) use selector_only::{RecurrenceSelectorOnlyRuntime, selector_only_unsupported};
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PreparedParameterProjectionEntry {
     pub(super) runtime_slot: usize,
@@ -1937,6 +1941,43 @@ impl RecurrenceNativeRuntime {
             .set_parameter_planes(parameters_re, parameters_im)
     }
 
+    fn companion_tile_parts(
+        &mut self,
+    ) -> RusticolResult<(
+        &mut RecurrencePersistedHelicitySelectorRuntime,
+        &RecurrenceColorContraction,
+        CompanionTileScratch<'_>,
+    )> {
+        let Self {
+            selectors: RecurrenceNativeSelectors::ContractedColorUnion { contraction, .. },
+            external_source_count,
+            effective_point_tile_size,
+            external_momenta,
+            color_transform_re,
+            color_transform_im,
+            symmetric_group_color_workspace,
+            helicity_selector_companion: Some(companion),
+            ..
+        } = self
+        else {
+            return Err(RusticolError::internal(
+                "persisted helicity companion lost its contracted recurrence lane",
+            ));
+        };
+        Ok((
+            companion,
+            contraction,
+            CompanionTileScratch {
+                external_source_count: *external_source_count,
+                point_tile_size: *effective_point_tile_size,
+                external_momenta,
+                color_transform_re,
+                color_transform_im,
+                symmetric_group_color_workspace,
+            },
+        ))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn run_persisted_companion_view_into_unprofiled(
         &mut self,
@@ -1947,59 +1988,18 @@ impl RecurrenceNativeRuntime {
         resolved_helicity_id: u32,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        let mut tile_start = 0usize;
-        while tile_start < batch.point_count() {
-            let tile_stop =
-                (tile_start + self.effective_point_tile_size()).min(batch.point_count());
-            let point_count =
-                self.flatten_external_tile_view::<false>(batch.subview(tile_start, tile_stop)?)?;
-            self.ensure_primary_symmetric_group_color_workspace_for_capacity(point_count)?;
-            let input_len = self.external_tile_input_len(point_count)?;
-            let point_count_u32 = direct_point_count(point_count)?;
-            let Self {
-                selectors: RecurrenceNativeSelectors::ContractedColorUnion { contraction, .. },
-                external_momenta,
-                color_transform_re,
-                color_transform_im,
-                symmetric_group_color_workspace,
-                helicity_selector_companion: Some(companion),
-                ..
-            } = self
-            else {
-                return Err(RusticolError::internal(
-                    "persisted helicity companion lost its contracted recurrence lane",
-                ));
-            };
-            let RecurrencePersistedHelicitySelectorRuntime {
-                plan,
-                dispatch,
-                executor,
-                primary_color_view: Some(color_view),
-                ..
-            } = companion
-            else {
-                return Err(RusticolError::integrity(
-                    "persisted helicity companion has no primary local-color view",
-                ));
-            };
-            executor.prepare(plan, dispatch, resolved_helicity_id, 4, point_count_u32)?;
-            let tile = executor
-                .execute_tile_unprofiled(&external_momenta[..input_len], point_count_u32)?;
-            contract_primary_local_color_tile(
-                tile,
-                contraction,
-                color_view,
-                physics,
-                physics_helicity_id,
-                normalization_factor,
-                color_transform_re,
-                color_transform_im,
-                symmetric_group_color_workspace.as_mut(),
-                |point, value| output[tile_start + point] += value,
-            )?;
-            tile_start = tile_stop;
-        }
-        Ok(())
+        let (companion, contraction, scratch) = self.companion_tile_parts()?;
+        run_companion_tiles_unprofiled(
+            companion,
+            contraction,
+            scratch,
+            physics,
+            normalization_factor,
+            batch,
+            physics_helicity_id,
+            resolved_helicity_id,
+            output,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2010,88 +2010,26 @@ impl RecurrenceNativeRuntime {
         batch: &[Vec<[f64; 4]>],
         physics_helicity_id: usize,
         resolved_helicity_id: u32,
-        mut accumulate: impl FnMut(usize, f64),
+        accumulate: impl FnMut(usize, f64),
     ) -> RusticolResult<RuntimeProfile> {
         let total_started = Instant::now();
         let parameter_started = Instant::now();
         self.prepare_persisted_companion_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
-        let mut input_setup = Duration::ZERO;
-        let mut execution = Duration::ZERO;
-        let mut reduction = Duration::ZERO;
-        let mut report = persisted_execution_report_aggregate();
-        let mut momentum_scalar_values = 0_u64;
-        let mut tile_start = 0usize;
-        while tile_start < batch.len() {
-            let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
-            let input_started = Instant::now();
-            let point_count = self.flatten_external_tile::<false>(&batch[tile_start..tile_stop])?;
-            input_setup += input_started.elapsed();
-            self.ensure_primary_symmetric_group_color_workspace_for_capacity(point_count)?;
-            let input_len = self.external_tile_input_len(point_count)?;
-            let point_count_u32 = direct_point_count(point_count)?;
-            let Self {
-                selectors: RecurrenceNativeSelectors::ContractedColorUnion { contraction, .. },
-                external_momenta,
-                color_transform_re,
-                color_transform_im,
-                symmetric_group_color_workspace,
-                helicity_selector_companion: Some(companion),
-                ..
-            } = self
-            else {
-                return Err(RusticolError::internal(
-                    "persisted helicity companion lost its contracted recurrence lane",
-                ));
-            };
-            let RecurrencePersistedHelicitySelectorRuntime {
-                plan,
-                dispatch,
-                executor,
-                primary_color_view: Some(color_view),
-                ..
-            } = companion
-            else {
-                return Err(RusticolError::integrity(
-                    "persisted helicity companion has no primary local-color view",
-                ));
-            };
-            let execution_started = Instant::now();
-            executor.prepare(plan, dispatch, resolved_helicity_id, 4, point_count_u32)?;
-            let (tile, tile_report) =
-                executor.execute_tile_profiled(&external_momenta[..input_len], point_count_u32)?;
-            execution += execution_started.elapsed();
-            add_persisted_execution_report(&mut report, tile_report);
-            momentum_scalar_values = momentum_scalar_values.saturating_add(
-                (plan.momentum_forms().len() as u64)
-                    .saturating_mul(4)
-                    .saturating_mul(point_count as u64),
-            );
-            let reduction_started = Instant::now();
-            contract_primary_local_color_tile(
-                tile,
-                contraction,
-                color_view,
-                physics,
-                physics_helicity_id,
-                common.normalization_factor,
-                color_transform_re,
-                color_transform_im,
-                symmetric_group_color_workspace.as_mut(),
-                |point, value| accumulate(tile_start + point, value),
-            )?;
-            reduction += reduction_started.elapsed();
-            tile_start = tile_stop;
-        }
-        Ok(persisted_companion_profile(
-            total_started.elapsed(),
+        let (companion, contraction, scratch) = self.companion_tile_parts()?;
+        run_companion_tiles_profiled(
+            companion,
+            contraction,
+            scratch,
+            physics,
+            common.normalization_factor,
+            batch,
+            physics_helicity_id,
+            resolved_helicity_id,
+            total_started,
             parameter_setup,
-            input_setup,
-            execution,
-            reduction,
-            momentum_scalar_values,
-            report,
-        ))
+            accumulate,
+        )
     }
 
     pub(super) fn run_f64(
@@ -3460,74 +3398,24 @@ impl RecurrenceNativeRuntime {
         &mut self,
         batch: &[Vec<[f64; 4]>],
     ) -> RusticolResult<usize> {
-        let point_count = batch.len();
-        for point in batch {
-            if point.len() != self.external_source_count {
-                return Err(RusticolError::invalid_argument(format!(
-                    "recurrence point has {} external momenta, expected {}",
-                    point.len(),
-                    self.external_source_count
-                )));
-            }
-        }
-        ensure_external_momentum_workspace_capacity(
+        flatten_external_tile_into::<SOURCE_MAJOR>(
             &mut self.external_momenta,
-            point_count,
             self.external_source_count,
             self.effective_point_tile_size,
-        )?;
-        for (point_index, point) in batch.iter().enumerate() {
-            for (source_slot, momentum) in point.iter().enumerate() {
-                write_external_momentum::<SOURCE_MAJOR>(
-                    &mut self.external_momenta,
-                    point_count,
-                    self.external_source_count,
-                    point_index,
-                    source_slot,
-                    momentum,
-                );
-            }
-        }
-        Ok(point_count)
+            batch,
+        )
     }
 
     fn flatten_external_tile_view<const SOURCE_MAJOR: bool>(
         &mut self,
         batch: F64MomentumBatchView<'_>,
     ) -> RusticolResult<usize> {
-        let point_count = batch.point_count();
-        if batch.external_count() != self.external_source_count {
-            return Err(RusticolError::invalid_argument(format!(
-                "recurrence input has {} external momenta, expected {}",
-                batch.external_count(),
-                self.external_source_count
-            )));
-        }
-        ensure_external_momentum_workspace_capacity(
+        flatten_external_tile_view_into::<SOURCE_MAJOR>(
             &mut self.external_momenta,
-            point_count,
             self.external_source_count,
             self.effective_point_tile_size,
-        )?;
-        for point_index in 0..point_count {
-            let point = batch.point(point_index);
-            for source_slot in 0..self.external_source_count {
-                let momentum = point.momentum(source_slot).ok_or_else(|| {
-                    RusticolError::integrity(
-                        "validated recurrence momentum view is missing an external leg",
-                    )
-                })?;
-                write_external_momentum::<SOURCE_MAJOR>(
-                    &mut self.external_momenta,
-                    point_count,
-                    self.external_source_count,
-                    point_index,
-                    source_slot,
-                    &momentum,
-                );
-            }
-        }
-        Ok(point_count)
+            batch,
+        )
     }
 
     fn external_tile_input_len(&self, point_count: usize) -> RusticolResult<usize> {
@@ -3894,6 +3782,277 @@ fn lazy_symmetric_group_workspace_for_point_tile(
         reducer.bounded_lane_capacity(requested_point_tile_size)?,
         None,
     ))
+}
+
+/// Point-tile scratch of one helicity-selector companion run, owned by the
+/// contracted lane or by the selector-only lane.
+pub(super) struct CompanionTileScratch<'a> {
+    pub(super) external_source_count: usize,
+    pub(super) point_tile_size: usize,
+    pub(super) external_momenta: &'a mut Vec<f64>,
+    pub(super) color_transform_re: &'a mut [f64],
+    pub(super) color_transform_im: &'a mut [f64],
+    pub(super) symmetric_group_color_workspace: &'a mut Option<RuntimeSymmetricGroupColorWorkspace>,
+}
+
+fn ensure_contraction_symmetric_group_workspace(
+    contraction: &RecurrenceColorContraction,
+    workspace: &mut Option<RuntimeSymmetricGroupColorWorkspace>,
+    point_capacity: usize,
+) -> RusticolResult<()> {
+    let Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) =
+        contraction.runtime_reducer()
+    else {
+        return Ok(());
+    };
+    ensure_symmetric_group_color_workspace_capacity(workspace, reducer, point_capacity)
+}
+
+/// Run one physics helicity of the companion over `batch`, tile by tile,
+/// accumulating the contracted totals into `output`.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_companion_tiles_unprofiled(
+    companion: &mut RecurrencePersistedHelicitySelectorRuntime,
+    contraction: &RecurrenceColorContraction,
+    scratch: CompanionTileScratch<'_>,
+    physics: &PhysicsRuntime,
+    normalization_factor: f64,
+    batch: F64MomentumBatchView<'_>,
+    physics_helicity_id: usize,
+    resolved_helicity_id: u32,
+    output: &mut [f64],
+) -> RusticolResult<()> {
+    let CompanionTileScratch {
+        external_source_count,
+        point_tile_size,
+        external_momenta,
+        color_transform_re,
+        color_transform_im,
+        symmetric_group_color_workspace,
+    } = scratch;
+    let mut tile_start = 0usize;
+    while tile_start < batch.point_count() {
+        let tile_stop = (tile_start + point_tile_size).min(batch.point_count());
+        let point_count = flatten_external_tile_view_into::<false>(
+            external_momenta,
+            external_source_count,
+            point_tile_size,
+            batch.subview(tile_start, tile_stop)?,
+        )?;
+        ensure_contraction_symmetric_group_workspace(
+            contraction,
+            symmetric_group_color_workspace,
+            point_count,
+        )?;
+        let input_len = external_momentum_scalar_len(point_count, external_source_count)?;
+        let point_count_u32 = direct_point_count(point_count)?;
+        let RecurrencePersistedHelicitySelectorRuntime {
+            plan,
+            dispatch,
+            executor,
+            primary_color_view: Some(color_view),
+            ..
+        } = &mut *companion
+        else {
+            return Err(RusticolError::integrity(
+                "persisted helicity companion has no primary local-color view",
+            ));
+        };
+        executor.prepare(plan, dispatch, resolved_helicity_id, 4, point_count_u32)?;
+        let tile =
+            executor.execute_tile_unprofiled(&external_momenta[..input_len], point_count_u32)?;
+        contract_primary_local_color_tile(
+            tile,
+            contraction,
+            color_view,
+            physics,
+            physics_helicity_id,
+            normalization_factor,
+            color_transform_re,
+            color_transform_im,
+            symmetric_group_color_workspace.as_mut(),
+            |point, value| output[tile_start + point] += value,
+        )?;
+        tile_start = tile_stop;
+    }
+    Ok(())
+}
+
+/// Profiled twin of [`run_companion_tiles_unprofiled`]; parameter setup is
+/// timed by the caller.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_companion_tiles_profiled(
+    companion: &mut RecurrencePersistedHelicitySelectorRuntime,
+    contraction: &RecurrenceColorContraction,
+    scratch: CompanionTileScratch<'_>,
+    physics: &PhysicsRuntime,
+    normalization_factor: f64,
+    batch: &[Vec<[f64; 4]>],
+    physics_helicity_id: usize,
+    resolved_helicity_id: u32,
+    total_started: Instant,
+    parameter_setup: Duration,
+    mut accumulate: impl FnMut(usize, f64),
+) -> RusticolResult<RuntimeProfile> {
+    let CompanionTileScratch {
+        external_source_count,
+        point_tile_size,
+        external_momenta,
+        color_transform_re,
+        color_transform_im,
+        symmetric_group_color_workspace,
+    } = scratch;
+    let mut input_setup = Duration::ZERO;
+    let mut execution = Duration::ZERO;
+    let mut reduction = Duration::ZERO;
+    let mut report = persisted_execution_report_aggregate();
+    let mut momentum_scalar_values = 0_u64;
+    let mut tile_start = 0usize;
+    while tile_start < batch.len() {
+        let tile_stop = (tile_start + point_tile_size).min(batch.len());
+        let input_started = Instant::now();
+        let point_count = flatten_external_tile_into::<false>(
+            external_momenta,
+            external_source_count,
+            point_tile_size,
+            &batch[tile_start..tile_stop],
+        )?;
+        input_setup += input_started.elapsed();
+        ensure_contraction_symmetric_group_workspace(
+            contraction,
+            symmetric_group_color_workspace,
+            point_count,
+        )?;
+        let input_len = external_momentum_scalar_len(point_count, external_source_count)?;
+        let point_count_u32 = direct_point_count(point_count)?;
+        let RecurrencePersistedHelicitySelectorRuntime {
+            plan,
+            dispatch,
+            executor,
+            primary_color_view: Some(color_view),
+            ..
+        } = &mut *companion
+        else {
+            return Err(RusticolError::integrity(
+                "persisted helicity companion has no primary local-color view",
+            ));
+        };
+        let execution_started = Instant::now();
+        executor.prepare(plan, dispatch, resolved_helicity_id, 4, point_count_u32)?;
+        let (tile, tile_report) =
+            executor.execute_tile_profiled(&external_momenta[..input_len], point_count_u32)?;
+        execution += execution_started.elapsed();
+        add_persisted_execution_report(&mut report, tile_report);
+        momentum_scalar_values = momentum_scalar_values.saturating_add(
+            (plan.momentum_forms().len() as u64)
+                .saturating_mul(4)
+                .saturating_mul(point_count as u64),
+        );
+        let reduction_started = Instant::now();
+        contract_primary_local_color_tile(
+            tile,
+            contraction,
+            color_view,
+            physics,
+            physics_helicity_id,
+            normalization_factor,
+            color_transform_re,
+            color_transform_im,
+            symmetric_group_color_workspace.as_mut(),
+            |point, value| accumulate(tile_start + point, value),
+        )?;
+        reduction += reduction_started.elapsed();
+        tile_start = tile_stop;
+    }
+    Ok(persisted_companion_profile(
+        total_started.elapsed(),
+        parameter_setup,
+        input_setup,
+        execution,
+        reduction,
+        momentum_scalar_values,
+        report,
+    ))
+}
+
+// The ordinary direct scheduler consumes contiguous source/component planes;
+// companion runs request the point-major layout (SOURCE_MAJOR=false).
+fn flatten_external_tile_into<const SOURCE_MAJOR: bool>(
+    external_momenta: &mut Vec<f64>,
+    external_source_count: usize,
+    point_tile_size: usize,
+    batch: &[Vec<[f64; 4]>],
+) -> RusticolResult<usize> {
+    let point_count = batch.len();
+    for point in batch {
+        if point.len() != external_source_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "recurrence point has {} external momenta, expected {}",
+                point.len(),
+                external_source_count
+            )));
+        }
+    }
+    ensure_external_momentum_workspace_capacity(
+        external_momenta,
+        point_count,
+        external_source_count,
+        point_tile_size,
+    )?;
+    for (point_index, point) in batch.iter().enumerate() {
+        for (source_slot, momentum) in point.iter().enumerate() {
+            write_external_momentum::<SOURCE_MAJOR>(
+                external_momenta,
+                point_count,
+                external_source_count,
+                point_index,
+                source_slot,
+                momentum,
+            );
+        }
+    }
+    Ok(point_count)
+}
+
+fn flatten_external_tile_view_into<const SOURCE_MAJOR: bool>(
+    external_momenta: &mut Vec<f64>,
+    external_source_count: usize,
+    point_tile_size: usize,
+    batch: F64MomentumBatchView<'_>,
+) -> RusticolResult<usize> {
+    let point_count = batch.point_count();
+    if batch.external_count() != external_source_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "recurrence input has {} external momenta, expected {}",
+            batch.external_count(),
+            external_source_count
+        )));
+    }
+    ensure_external_momentum_workspace_capacity(
+        external_momenta,
+        point_count,
+        external_source_count,
+        point_tile_size,
+    )?;
+    for point_index in 0..point_count {
+        let point = batch.point(point_index);
+        for source_slot in 0..external_source_count {
+            let momentum = point.momentum(source_slot).ok_or_else(|| {
+                RusticolError::integrity(
+                    "validated recurrence momentum view is missing an external leg",
+                )
+            })?;
+            write_external_momentum::<SOURCE_MAJOR>(
+                external_momenta,
+                point_count,
+                external_source_count,
+                point_index,
+                source_slot,
+                &momentum,
+            );
+        }
+    }
+    Ok(point_count)
 }
 
 fn ensure_symmetric_group_color_workspace_capacity(

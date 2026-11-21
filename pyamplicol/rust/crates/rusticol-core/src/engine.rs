@@ -186,6 +186,10 @@ pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY: &str =
     "rusticol.recurrence-helicity-selector-companion.v2";
+/// Full-colour process without the main contracted-colour schedule: evaluated
+/// only through its helicity-selector companion, one helicity per point.
+pub const RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY: &str =
+    "rusticol.recurrence-selector-only-fc.v1";
 pub const ON_THE_FLY_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.complex-f64.v1";
 pub const ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     "rusticol.on-the-fly.contracted-color.v1";
@@ -278,6 +282,7 @@ pub enum RuntimeCapability {
     RecurrenceLcColorV1,
     RecurrenceContractedColorV1,
     RecurrenceHelicitySelectorCompanionV2,
+    RecurrenceSelectorOnlyFcV1,
     SymmetricGroupFftColorContractionV1,
     OnTheFlyRuntimeComplexF64V1,
     OnTheFlyContractedColorV1,
@@ -316,6 +321,7 @@ impl RuntimeCapability {
             Self::RecurrenceHelicitySelectorCompanionV2 => {
                 RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
             }
+            Self::RecurrenceSelectorOnlyFcV1 => RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
             Self::SymmetricGroupFftColorContractionV1 => {
                 SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
             }
@@ -373,6 +379,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -433,6 +441,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY
         | RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
         | RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
+        | RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY
         | SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
         | ON_THE_FLY_RUNTIME_CAPABILITY
         | ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY
@@ -4974,6 +4983,9 @@ enum NativeExecutionLane {
     Eager(Box<EagerNativeRuntime>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     Recurrence(Box<RecurrenceNativeRuntime>),
+    /// Selector-only full colour: the helicity-selector companion alone.
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    RecurrenceSelector(Box<RecurrenceSelectorOnlyRuntime>),
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
     OnTheFly(Box<native_runtime::OnTheFlyExecutionRuntime>),
 }
@@ -4995,7 +5007,7 @@ impl NativeExecutionLane {
     const fn is_recurrence(&self) -> bool {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            matches!(self, Self::Recurrence(_))
+            matches!(self, Self::Recurrence(_) | Self::RecurrenceSelector(_))
         }
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         {

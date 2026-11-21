@@ -354,6 +354,7 @@ def build_symmetric_group_color_contraction_plan(
     groups: Sequence[ColorGroupDescriptor],
     *,
     sector_owner_ids: Sequence[int] | None = None,
+    min_components: int = 2,
 ) -> ColorContractionPlan:
     """Build exact convolution kernels and a direct residual color metric."""
 
@@ -417,7 +418,9 @@ def build_symmetric_group_color_contraction_plan(
             components,
             partition.ordered_sector_ids,
         )
-        direct = build_color_contraction_plan(color_plan, normalized_descriptors)
+        direct = build_color_contraction_plan(
+            color_plan, normalized_descriptors, min_components=min_components
+        )
         if direct is None:
             return _unsupported(
                 accuracy,

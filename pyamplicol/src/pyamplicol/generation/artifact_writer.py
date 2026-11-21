@@ -75,6 +75,7 @@ from .._internal.versions import (
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
     RETIRED_LOOP_RUNTIME_CAPABILITY,
     RUNTIME_PHYSICS_SCHEMA_VERSION,
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
@@ -340,6 +341,9 @@ class RecurrenceProcessArtifact:
     umami_physics: Mapping[str, object] | None = None
     umami_color_sectors: tuple[Mapping[str, object], ...] = ()
     umami_structural_keys: Mapping[str, str] | None = None
+    # Selector-only full colour: no main schedule (its fields are None); the
+    # companion carries the process.
+    selector_only: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,6 +376,9 @@ class RecurrenceHelicitySelectorPlanArtifact:
     referenced_kernel_ids: frozenset[int]
     recurrence_process_remap: RecurrenceProcessRemap
     recurrence_process_executor_pack: RecurrenceProcessExecutorPack
+    # Generation-only lowering outputs (selector-only processes); never serialized.
+    exact_sections: Mapping[str, object] | None = None
+    generation_profile: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1087,14 +1094,18 @@ def write_schema_v3_artifact(
         for process in processes
         if isinstance(process, RecurrenceProcessArtifact)
     )
+    # Selector-only processes have no main schedule to intern.
+    interned_recurrence_processes = tuple(
+        process for process in recurrence_processes if not process.selector_only
+    )
     if existing is not None and recurrence_processes:
         raise ValueError(
             "recurrence root schedules and process bindings are immutable; "
             "regenerate the recurrence process set instead of appending"
         )
     recurrence_sharing_plan = (
-        intern_recurrence_schedules(recurrence_processes)
-        if existing is None and recurrence_processes
+        intern_recurrence_schedules(interned_recurrence_processes)
+        if existing is None and interned_recurrence_processes
         else None
     )
     _validate_append_compatibility(
@@ -2024,25 +2035,31 @@ def _write_process_payloads(
             process_id=process.process_id,
         )
     elif isinstance(process, RecurrenceProcessArtifact):
-        if recurrence_sharing is None:
-            raise ValueError(
-                "recurrence artifacts require root schedule and process-binding "
-                "publication"
+        schedule_path: str | None = None
+        primary_binding: Mapping[str, object] | None = None
+        if not process.selector_only:
+            if recurrence_sharing is None:
+                raise ValueError(
+                    "recurrence artifacts require root schedule and process-binding "
+                    "publication"
+                )
+            binding = recurrence_sharing.binding(process.process_id)
+            schedule = recurrence_sharing.schedule(binding.schedule_digest)
+            binding_record = evaluator_payloads.add_bytes(
+                binding.artifact_path,
+                binding.payload,
+                process_id=process.process_id,
             )
-        binding = recurrence_sharing.binding(process.process_id)
-        schedule = recurrence_sharing.schedule(binding.schedule_digest)
-        binding_record = evaluator_payloads.add_bytes(
-            binding.artifact_path,
-            binding.payload,
-            process_id=process.process_id,
-        )
-        if binding_record.sha256 != binding.sha256 or binding_record.size_bytes != len(
-            binding.payload
-        ):
-            raise ValueError(
-                f"recurrence process binding {process.process_id!r} changed "
-                "during publication"
-            )
+            if (
+                binding_record.sha256 != binding.sha256
+                or binding_record.size_bytes != len(binding.payload)
+            ):
+                raise ValueError(
+                    f"recurrence process binding {process.process_id!r} changed "
+                    "during publication"
+                )
+            schedule_path = schedule.artifact_path
+            primary_binding = binding.to_mapping()
         color_contraction_record = None
         if process.color_contraction_payload is not None:
             if process.color_contraction_summary is None:
@@ -2103,8 +2120,8 @@ def _write_process_payloads(
             execution_path,
             _bounded_recurrence_execution_summary(
                 process,
-                schedule_path=schedule.artifact_path,
-                binding=binding.to_mapping(),
+                schedule_path=schedule_path,
+                binding=primary_binding,
                 color_contraction_record=color_contraction_record,
                 companion_binding=companion_binding,
             ),
@@ -2257,6 +2274,9 @@ def _write_recurrence_bootstraps(
     if not processes:
         return
     if len(processes) != 1 or len(process_records) != 1:
+        return
+    # The v1 image needs a main plan: selector-only processes keep the generic loader.
+    if any(process.selector_only for process in processes):
         return
     if evaluator_payload_container is None:
         raise ValueError("recurrence bootstrap requires an evaluator payload container")
@@ -2795,10 +2815,11 @@ def _recurrence_helicity_selector_companion_v2_manifest(
         "kind": _RECURRENCE_HELICITY_SELECTOR_COMPANION_V2_KIND,
         "process_digest": process_digest,
         "plan": plan,
-        "color_contraction": {
-            "source": "primary",
-            "view": "primary-local-color-view-v1",
-        },
+        "color_contraction": (
+            {"source": "selector-local", "view": "selector-local-color-view-v1"}
+            if process.selector_only
+            else {"source": "primary", "view": "primary-local-color-view-v1"}
+        ),
     }
 
 
@@ -2899,8 +2920,8 @@ def _eager_plan_v3_execution_manifest(
 def _bounded_recurrence_execution_summary(
     process: RecurrenceProcessArtifact,
     *,
-    schedule_path: str,
-    binding: Mapping[str, object],
+    schedule_path: str | None,
+    binding: Mapping[str, object] | None,
     color_contraction_record: PayloadRecord | None,
     companion_binding: Mapping[str, object] | None = None,
 ) -> bytes:
@@ -2931,8 +2952,8 @@ def _bounded_recurrence_execution_summary(
 def _recurrence_execution_manifest(
     process: RecurrenceProcessArtifact,
     *,
-    schedule_path: str,
-    binding: Mapping[str, object],
+    schedule_path: str | None,
+    binding: Mapping[str, object] | None,
     color_contraction_record: PayloadRecord | None,
     companion_binding: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -2940,11 +2961,46 @@ def _recurrence_execution_manifest(
         process.process_digest,
         "recurrence primary process digest",
     )
-    if binding.get("process_digest") != primary_process_digest:
-        raise ValueError(
-            "recurrence primary process binding disagrees with its process digest"
-        )
     capabilities = list(_recurrence_process_runtime_capabilities(process))
+    if process.selector_only:
+        if schedule_path is not None or binding is not None:
+            raise ValueError("selector-only recurrence carries a main schedule")
+        if not isinstance(
+            process.helicity_selector_companion,
+            RecurrenceHelicitySelectorPlanArtifact,
+        ):
+            raise ValueError("selector-only recurrence requires its companion")
+        plan: dict[str, object] | None = None
+    else:
+        if schedule_path is None or binding is None:
+            raise ValueError("recurrence process is missing its main schedule")
+        if binding.get("process_digest") != primary_process_digest:
+            raise ValueError(
+                "recurrence primary process binding disagrees with its process digest"
+            )
+        plan = _recurrence_primary_plan_summary(
+            process,
+            schedule_path=schedule_path,
+            binding=binding,
+            capabilities=capabilities,
+        )
+    return _recurrence_execution_manifest_with_plan(
+        process,
+        plan=plan,
+        primary_process_digest=primary_process_digest,
+        capabilities=capabilities,
+        color_contraction_record=color_contraction_record,
+        companion_binding=companion_binding,
+    )
+
+
+def _recurrence_primary_plan_summary(
+    process: RecurrenceProcessArtifact,
+    *,
+    schedule_path: str,
+    binding: Mapping[str, object],
+    capabilities: list[str],
+) -> dict[str, object]:
     runtime_schedule = {
         "kind": RECURRENCE_RUNTIME_CONTAINER_KIND,
         "schema_version": RECURRENCE_RUNTIME_CONTAINER_SCHEMA_VERSION,
@@ -2998,6 +3054,18 @@ def _recurrence_execution_manifest(
         "process_binding": _deep_plain(binding),
         "inspection_summary": _deep_plain(process.inspection_summary),
     }
+    return plan
+
+
+def _recurrence_execution_manifest_with_plan(
+    process: RecurrenceProcessArtifact,
+    *,
+    plan: dict[str, object] | None,
+    primary_process_digest: str,
+    capabilities: list[str],
+    color_contraction_record: PayloadRecord | None,
+    companion_binding: Mapping[str, object] | None,
+) -> dict[str, object]:
     runtime_metadata = _deep_plain(process.runtime_metadata)
     if not isinstance(runtime_metadata, dict):
         raise TypeError("recurrence runtime metadata must be a mapping")
@@ -5288,6 +5356,8 @@ def _recurrence_process_runtime_capabilities(
     }
     if process.helicity_selector_companion is not None:
         capabilities.add(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY)
+    if process.selector_only:
+        capabilities.add(RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY)
     if _uses_symmetric_group_fft_color_contraction(process):
         capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
     return tuple(sorted(capabilities))
@@ -5459,7 +5529,7 @@ def _extensions(
         process_records.append(record)
     recurrence_schedule_profiles: dict[str, object] = {}
     for process in processes:
-        if not isinstance(process, RecurrenceProcessArtifact):
+        if not isinstance(process, RecurrenceProcessArtifact) or process.selector_only:
             continue
         schedule_digest = _canonical_sha256(
             process.recurrence_schedule_digest,
