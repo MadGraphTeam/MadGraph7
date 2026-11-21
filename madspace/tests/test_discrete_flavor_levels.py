@@ -12,7 +12,7 @@ and flavour, q(f) = q_A(i) q_B(c | i) q_C(f | c).
 
 import pytest
 import torch
-from madspace_testing import default_context
+from madspace_testing import default_context, generator, rand, randint, randn
 
 import madspace as ms
 
@@ -42,8 +42,8 @@ def levels(prior_floor=0.0, logit_bound=0.0):
 
 def prior(n, seed):
     """Parton densities per initial state times the flavour weights."""
-    g = torch.Generator().manual_seed(seed)
-    densities = torch.rand((n, 3), generator=g, dtype=torch.float64) + 0.05
+    g = generator(seed)
+    densities = rand((n, 3), generator=g, dtype=torch.float64) + 0.05
     return densities[:, INITIALS] * torch.tensor(WEIGHTS, dtype=torch.float64)
 
 
@@ -80,10 +80,10 @@ def evaluate(sampler, random, condition, flavor_prior, flavors):
 
 
 def inputs(n, seed):
-    g = torch.Generator().manual_seed(seed)
-    random = torch.rand(n, generator=g, dtype=torch.float64)
-    condition = torch.rand((n, CONDITION_DIM), generator=g, dtype=torch.float64)
-    flavors = torch.randint(0, len(WEIGHTS), (n,), generator=g, dtype=torch.int32)
+    g = generator(seed)
+    random = rand(n, generator=g, dtype=torch.float64)
+    condition = rand((n, CONDITION_DIM), generator=g, dtype=torch.float64)
+    flavors = randint(0, len(WEIGHTS), (n,), generator=g, dtype=torch.int32)
     return random, condition, prior(n, seed), flavors
 
 
@@ -137,11 +137,11 @@ def test_logit_bound_limits_the_learned_correction():
     random, condition, flavor_prior, _ = inputs(n, 4)
     sampler = levels(logit_bound=1.0)
     context = default_context()
-    gen = torch.Generator().manual_seed(5)
+    gen = generator(5)
     for name in context.global_names():
         if name.startswith(f"test_flavor_levels{_prefix_count}"):
             param = context.get_global(name).torch()
-            param += 30.0 * torch.randn(param.shape, generator=gen, dtype=param.dtype)
+            param += 30.0 * randn(param.shape, generator=gen, dtype=param.dtype)
     index, det, _ = evaluate(
         sampler, random, condition, flavor_prior, torch.zeros(n, dtype=torch.int32)
     )
