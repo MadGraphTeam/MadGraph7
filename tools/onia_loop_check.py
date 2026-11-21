@@ -60,11 +60,13 @@ C     With --masses, writes the masses of pmass.inc.
       INTEGER NDIM, NSO, NPOINTS, K, I, J, RET
       INTEGER*8 T0, T1, RATE
       CHARACTER*64 ARG
+      REAL*8 QREL(3)
       PI = 4D0*DATAN(1D0)
       CALL SETPARA('param_card.dat')
 @SETONIA@
       INCLUDE 'pmass.inc'
       CALL GET_COMMAND_ARGUMENT(1,ARG)
+@RELMOM@
       IF (TRIM(ARG).EQ.'--masses') THEN
         DO I=1,NEXTERNAL
           WRITE(*,'(A,I4,ES26.17E3)') 'MASS',I,PMASS(I)
@@ -167,6 +169,14 @@ def build_driver(pdir):
     source = source.replace('@SETONIA@', "      CALL SETONIA('onia_card.dat')" if onia else '')
     source = source.replace('@IRPOLES@', ("        CALL %sONIA_IR_POLES(P,POLES)" % prefix)
                             if onia else '')
+    relmom = '''      IF (TRIM(ARG).EQ.'--relmom') THEN
+        DO I=1,3
+          CALL GET_COMMAND_ARGUMENT(I+1,ARG)
+          READ(ARG,*) QREL(I)
+        ENDDO
+        CALL %sONIA_SET_RELATIVE_MOMENTUM(QREL)
+      ENDIF''' % prefix
+    source = source.replace('@RELMOM@', relmom if onia else '')
     with open(os.path.join(pdir, 'ml_points_driver.f'), 'w') as f:
         f.write(source)
     with open(os.path.join(pdir, 'ml_points_driver.mk'), 'w') as f:
@@ -214,7 +224,7 @@ def set_masses(outdir, masses):
     open(card, 'w').writelines(lines)
 
 
-def run_points(pdir, momenta, mu=None, warmup=3, timeout=None):
+def run_points(pdir, momenta, mu=None, warmup=3, timeout=None, relmom=None):
     """Evaluate the virtual at the given points (lists of 4-vectors); the
     first point is repeated `warmup` times first (MadLoop's initialisation
     of its filters), and those results are dropped."""
@@ -222,7 +232,10 @@ def run_points(pdir, momenta, mu=None, warmup=3, timeout=None):
     for p in [momenta[0]] * warmup + list(momenta):
         lines.append('%.17e' % (mu if mu else -1.0))
         lines.extend(' '.join('%.17e' % c for c in v) for v in p)
-    proc = subprocess.run([os.path.join(pdir, 'ml_points_driver')], cwd=pdir,
+    cmd = [os.path.join(pdir, 'ml_points_driver')]
+    if relmom is not None:
+        cmd += ['--relmom'] + ['%.17e' % q for q in relmom]
+    proc = subprocess.run(cmd, cwd=pdir,
                           input='\n'.join(lines) + '\n', capture_output=True, text=True,
                           timeout=timeout)
     if proc.returncode:
@@ -246,6 +259,66 @@ def run_points(pdir, momenta, mu=None, warmup=3, timeout=None):
                             single_norm=sp / norm if norm else float('nan'),
                             double_norm=dp / norm if norm else float('nan')))
     return results[warmup:]
+
+
+def relative_momentum_scan(pdir, masses, onium_legs, velocities, npoints=1, energy=1000.,
+                           seed=None, mu=None, direction=(0.48, 0.36, 0.8), timeout=None):
+    """The virtual with a relative momentum +-q of the constituents of the
+    bound states (equal constituent masses): for each velocity v of the
+    constituents in the rest frame, q = m v/sqrt(1-v^2) along `direction`,
+    the bound states of mass 2 sqrt(m^2+q^2) = 2m/sqrt(1-v^2), the same
+    random phase-space point for every v (RAMBO is smooth in the masses).
+    Returns {v: [mean of the +q and -q results (finite_norm, single_norm,
+    double_norm) per point]}. The finite part is a/v + b + O(v): the Coulomb
+    singularity and the threshold value b (tools: fit_threshold)."""
+    seed = points_lib.DEFAULT_SEED if seed is None else seed
+    norm = math.sqrt(sum(d * d for d in direction))
+    direction = [d / norm for d in direction]
+    out = {}
+    for v in velocities:
+        mv = list(masses)
+        q = None
+        for leg in onium_legs:
+            m = masses[leg] / 2.
+            mv[leg] = 2. * m / math.sqrt(1. - v * v)
+            q = m * v / math.sqrt(1. - v * v)
+        final = mv[2:]
+        e = energy if len(final) > 1 else final[0]
+        pts = points_lib.generate_points(final, count=npoints, energy=e, seed=seed,
+                                         incoming_masses=tuple(mv[:2]))
+        moms = [p['momenta'] for p in pts]
+        res = []
+        for sign in (1., -1.):
+            res.append(run_points(pdir, moms, mu, timeout=timeout,
+                                  relmom=[sign * q * d for d in direction]))
+        out[v] = [dict((k, 0.5 * (a[k] + b[k])) for k in
+                       ('finite_norm', 'single_norm', 'double_norm', 'born'))
+                  for a, b in zip(*res)]
+    return out
+
+
+def fit_threshold(velocities, values, powers=(-1, 0, 1, 2)):
+    """Least-squares fit of values(v) = sum_k c_k v^k over `powers`;
+    returns {power: c}."""
+    rows = [[v ** k for k in powers] for v in velocities]
+    # normal equations
+    n = len(powers)
+    ata = [[sum(r[i] * r[j] for r in rows) for j in range(n)] for i in range(n)]
+    aty = [sum(r[i] * y for r, y in zip(rows, values)) for i in range(n)]
+    # Gaussian elimination
+    for i in range(n):
+        piv = max(range(i, n), key=lambda r: abs(ata[r][i]))
+        ata[i], ata[piv] = ata[piv], ata[i]
+        aty[i], aty[piv] = aty[piv], aty[i]
+        for r in range(i + 1, n):
+            f = ata[r][i] / ata[i][i]
+            for c in range(i, n):
+                ata[r][c] -= f * ata[i][c]
+            aty[r] -= f * aty[i]
+    x = [0.] * n
+    for i in reversed(range(n)):
+        x[i] = (aty[i] - sum(ata[i][c] * x[c] for c in range(i + 1, n))) / ata[i][i]
+    return dict(zip(powers, x))
 
 
 def main(argv=None):

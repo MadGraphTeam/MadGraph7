@@ -73,9 +73,11 @@ C     bit), the other momenta copied.
       INTEGER NEXTERNAL, NEXTERNAL_PHYS
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
       %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), P(0:3,NEXTERNAL)
-      %(real_dp_format)s CMASS(NEXTERNAL), FRAC
-      INTEGER I, PARTNER
+      %(real_dp_format)s CMASS(NEXTERNAL), FRAC, QLAB(0:3)
+      INTEGER I, PARTNER, K
       INCLUDE 'onia_loop_data.inc'
+      %(real_dp_format)s QREST(3)
+      COMMON/%(proc_prefix)sONIA_RELMOM/QREST
       CALL %(proc_prefix)sONIA_MASSES(CMASS)
       DO I=1,NEXTERNAL
         PARTNER=ONIA_PARTNER(I)
@@ -86,6 +88,60 @@ C     bit), the other momenta copied.
         ENDIF
         P(0:3,I)=FRAC*P_PHYS(0:3,ONIA_MAPPING(I))
       ENDDO
+C     A relative momentum of the constituents (diagnostic, see
+C     ONIA_SET_RELATIVE_MOMENTUM): +-q, q the rest-frame vector QREST
+C     boosted to the frame of the bound state
+      IF (ANY(QREST.NE.0D0)) THEN
+        DO K=1,ONIA_NONIA
+          CALL %(proc_prefix)sONIA_BOOST_REST_VECTOR(
+     &     P_PHYS(0,ONIA_MAPPING(ONIA_Q1(K))),QREST,QLAB)
+          P(0:3,ONIA_Q1(K))=P(0:3,ONIA_Q1(K))+QLAB(0:3)
+          P(0:3,ONIA_Q2(K))=P(0:3,ONIA_Q2(K))-QLAB(0:3)
+        ENDDO
+      ENDIF
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_SET_RELATIVE_MOMENTUM(Q)
+C     Diagnostic: give the constituents of every bound state the relative
+C     momentum +-Q (a 3-vector in the rest frame of the bound state, which
+C     must then have the mass 2 sqrt(m^2+Q^2), equal constituent masses).
+C     The default, Q = 0, is the zero relative momentum of the projection.
+C     Used to check the threshold integrals by extrapolating v -> 0 with
+C     the Coulomb singularity separated (tools/onia_loop_check.py).
+      IMPLICIT NONE
+      %(real_dp_format)s Q(3)
+      %(real_dp_format)s QREST(3)
+      COMMON/%(proc_prefix)sONIA_RELMOM/QREST
+      QREST(1:3)=Q(1:3)
+      END
+
+      BLOCK DATA %(proc_prefix)sONIA_RELMOM_DEFAULT
+      IMPLICIT NONE
+      %(real_dp_format)s QREST(3)
+      COMMON/%(proc_prefix)sONIA_RELMOM/QREST
+      DATA QREST/3*0D0/
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_BOOST_REST_VECTOR(K,Q,QLAB)
+C     The 4-vector (0,Q) of the rest frame of K boosted to the frame of K
+      IMPLICIT NONE
+      %(real_dp_format)s K(0:3), Q(3), QLAB(0:3), M, BQ, G
+      M=SQRT(K(0)**2-K(1)**2-K(2)**2-K(3)**2)
+      BQ=(K(1)*Q(1)+K(2)*Q(2)+K(3)*Q(3))/M
+      G=BQ/(K(0)+M)
+      QLAB(0)=BQ
+      QLAB(1:3)=Q(1:3)+G*K(1:3)
+      END
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_BOOST_REST_VECTOR(K,Q,QLAB)
+C     The 4-vector (0,Q) of the rest frame of K boosted to the frame of K
+      IMPLICIT NONE
+      %(real_mp_format)s K(0:3), Q(3), QLAB(0:3), M, BQ, G
+      M=SQRT(K(0)**2-K(1)**2-K(2)**2-K(3)**2)
+      BQ=(K(1)*Q(1)+K(2)*Q(2)+K(3)*Q(3))/M
+      G=BQ/(K(0)+M)
+      QLAB(0)=BQ
+      QLAB(1:3)=Q(1:3)+G*K(1:3)
       END
 
       SUBROUTINE %(proc_prefix)sMP_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
@@ -94,9 +150,11 @@ C     The momenta of the constituent legs, in quadruple precision
       INTEGER NEXTERNAL, NEXTERNAL_PHYS
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
       %(real_mp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), P(0:3,NEXTERNAL)
-      %(real_mp_format)s CMASS(NEXTERNAL), FRAC
-      INTEGER I, PARTNER
+      %(real_mp_format)s CMASS(NEXTERNAL), FRAC, QLAB(0:3), QMP(3)
+      INTEGER I, PARTNER, K
       INCLUDE 'onia_loop_data.inc'
+      %(real_dp_format)s QREST(3)
+      COMMON/%(proc_prefix)sONIA_RELMOM/QREST
       CALL %(proc_prefix)sMP_ONIA_MASSES(CMASS)
       DO I=1,NEXTERNAL
         PARTNER=ONIA_PARTNER(I)
@@ -107,6 +165,15 @@ C     The momenta of the constituent legs, in quadruple precision
         ENDIF
         P(0:3,I)=FRAC*P_PHYS(0:3,ONIA_MAPPING(I))
       ENDDO
+      IF (ANY(QREST.NE.0D0)) THEN
+        QMP(1:3)=QREST(1:3)
+        DO K=1,ONIA_NONIA
+          CALL %(proc_prefix)sMP_ONIA_BOOST_REST_VECTOR(
+     &     P_PHYS(0,ONIA_MAPPING(ONIA_Q1(K))),QMP,QLAB)
+          P(0:3,ONIA_Q1(K))=P(0:3,ONIA_Q1(K))+QLAB(0:3)
+          P(0:3,ONIA_Q2(K))=P(0:3,ONIA_Q2(K))-QLAB(0:3)
+        ENDDO
+      ENDIF
       END
 
       SUBROUTINE %(proc_prefix)sMP_ONIA_PHYSICAL_MOMENTA(P,P_PHYS)
@@ -147,6 +214,8 @@ C     split again into their constituents at zero relative momentum.
       %(real_mp_format)s PF(0:3), NDIR(3), A, C, E0, DEN, DISC, KMOM
       INTEGER I
       INCLUDE 'onia_loop_data.inc'
+      %(real_dp_format)s QREST(3)
+      COMMON/%(proc_prefix)sONIA_RELMOM/QREST
       DO I=1,NEXTERNAL
         KEEP_PHYS(ONIA_MAPPING(I))=KEEP_OFFSHELL_MASS(I)
       ENDDO
@@ -154,7 +223,13 @@ C     split again into their constituents at zero relative momentum.
       CALL %(proc_prefix)sMP_ONIA_MASSES(CMASS)
       PMASS(1:NEXTERNAL_PHYS)=0.0E0_16
       DO I=1,NEXTERNAL
-        PMASS(ONIA_MAPPING(I))=PMASS(ONIA_MAPPING(I))+CMASS(I)
+        IF (ONIA_PARTNER(I).NE.0.AND.ANY(QREST.NE.0D0)) THEN
+C         the diagnostic relative momentum: 2 sqrt(m^2+q^2)
+          PMASS(ONIA_MAPPING(I))=PMASS(ONIA_MAPPING(I))+SQRT(CMASS(I)**2
+     &     +REAL(QREST(1),16)**2+REAL(QREST(2),16)**2+REAL(QREST(3),16)**2)
+        ELSE
+          PMASS(ONIA_MAPPING(I))=PMASS(ONIA_MAPPING(I))+CMASS(I)
+        ENDIF
       ENDDO
       PF(0:3)=0.0E0_16
       DO I=NINCOMING+1,NEXTERNAL_PHYS
@@ -342,7 +417,8 @@ C     The spin projectors of the constituent helicity configurations
             Q2=ONIA_Q2(K)
             KQ(0:3)=P(0:3,Q1)+P(0:3,Q2)
             CALL %(proc_prefix)sONIA_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
-     &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,CMASS(Q1)+CMASS(Q2),
+     &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
+     &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0D0)),
      &       ONIA_JZ(K,T),ONIA_S(K),PRK)
             PR=PR*PRK
           ENDDO
@@ -451,7 +527,8 @@ C     precision
             Q2=ONIA_Q2(K)
             KQ(0:3)=P(0:3,Q1)+P(0:3,Q2)
             CALL %(proc_prefix)sMP_ONIA_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
-     &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,CMASS(Q1)+CMASS(Q2),
+     &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
+     &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0.0E0_16)),
      &       ONIA_JZ(K,T),ONIA_S(K),PRK)
             PR=PR*PRK
           ENDDO

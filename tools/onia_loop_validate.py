@@ -83,7 +83,7 @@ CASES = {
         source='Petrelli et al. eq. (133) + bound charm bubble (Hagiwara et al. '
                '0804.1014) + massive b, t bubbles of the model (decoupling)'),
     'ee_etac_a': dict(
-        process='e+ e- > etac(1|1S01) a / z [virt=QCD]',
+        process='e+ e- > etac(1|1S01) a / z [virt=QCD]', relmom=True, onium_legs=[2], colour=1,
         masses={4: 1.5, 5: 1.e4, 6: 1.e5}, energy=10.58,
         ref=(2 * -2.573030, 0., 0.), tolerance=1e-6,
         source='Sang & Chen 0910.4071 C(r) at sqrt(s) = 10.58, m_c = 1.5 '
@@ -96,14 +96,50 @@ CASES = {
                '(literature.md C.4), b and t decoupled'),
     'gg_psi_g': dict(
         process='g g > Jpsi(1|3S11) g [virt=QCD]', energy=20.,
+        relmom=True, onium_legs=[2], colour=1,
         ref=None, source='poles: arXiv:2402.19221 eq. (216); TIRust onia_swave'),
     'gg_etac8_g': dict(
         process='g g > etac(1|1S08) g [virt=QCD]', energy=20.,
+        relmom=True, onium_legs=[2], colour=8,
         ref=None, source='poles: arXiv:2402.19221 eq. (217)'),
     'gg_psi8_g': dict(
         process='g g > Jpsi(1|3S18) g [virt=QCD]', energy=20.,
+        relmom=True, onium_legs=[2], colour=8,
         ref=None, source='poles: arXiv:2402.19221 eq. (217)'),
 }
+
+
+def coulomb_coefficient(case_colour):
+    """C of the Coulomb singularity C pi^2/v of c0 (alpha_s/2pi units): C_F
+    for a colour singlet, C_F - C_A/2 for an octet."""
+    return CF if case_colour == 1 else CF - CA / 2
+
+
+def relmom_check(name, case, outdir, pdir, masses, v0_point, energy, timeout,
+                 libs=('9', '7'), velocities=(0.02, 0.04, 0.06, 0.08, 0.1, 0.13, 0.16, 0.2)):
+    """Independent check of the threshold value of the finite part: the
+    virtual at a relative momentum of the constituents (ordinary, non
+    degenerate integrals) extrapolated to v -> 0 with the Coulomb term
+    C pi^2/v subtracted, against the v = 0 result at the same point."""
+    onium_legs = case['onium_legs']
+    res = dict(velocities=list(velocities), libs={})
+    for lib in libs:
+        olc.set_reduction(outdir, lib.split('|'), {'CTModeRun': 1})
+        scan = olc.relative_momentum_scan(pdir, masses, onium_legs, velocities,
+                                          energy=energy, mu=case.get('mu'), timeout=timeout)
+        fin = [scan[v][0]['finite_norm'] for v in velocities]
+        c = coulomb_coefficient(case['colour'])
+        y = [f - c * PI2 / v for f, v in zip(fin, velocities)]
+        fit = olc.fit_threshold(list(velocities), y, (0, 1, 2, 3))
+        free = olc.fit_threshold(list(velocities), fin, (-1, 0, 1, 2, 3))
+        res['libs'][lib] = dict(finite=fin, intercept=fit[0], free_coulomb=free[-1] / PI2,
+                                expected_coulomb=c, v0=v0_point,
+                                relative_difference=abs(fit[0] - v0_point) / max(abs(v0_point), 1.))
+        print('%-12s relmom lib %-3s intercept %.8f  v=0 %.8f  rel %.1e  C(fit) %.5f (exp %.5f)'
+              % (name, lib, fit[0], v0_point, res['libs'][lib]['relative_difference'],
+                 free[-1] / PI2, c), flush=True)
+    olc.set_reduction(outdir, ['9'], {'CTModeRun': -1})
+    return res
 
 
 def run_case(name, case, work, libs, npoints, timeout):
@@ -143,6 +179,10 @@ def run_case(name, case, work, libs, npoints, timeout):
             entry['max_deviation'] = max(dev)
             entry['passed'] = max(dev) < case.get('tolerance', 1e-8)
         res['libs'][lib] = entry
+    if case.get('relmom') and res['libs'].get('9', {}).get('status') == 'ok':
+        res['relmom'] = relmom_check(name, case, outdir, pdir, masses,
+                                     res['libs']['9']['points'][0]['finite_norm'],
+                                     energy, timeout)
         summary = entry.get('max_deviation')
         print('%-12s lib %-6s %s  poles vs prediction %.2e  stable %d/%d' % (
             name, lib, 'max dev %.2e' % summary if summary is not None else 'no reference',
