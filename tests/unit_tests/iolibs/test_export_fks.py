@@ -388,7 +388,8 @@ class TestGroupedFKSMetadata(unittest.TestCase):
                    'MadEventOutput': False, 'UseDensity': False,
                    'collier_available': True, 'iregi_available': False,
                    'ninja_available': True, 'ninjars_available': False,
-                   'ninja_supports_quad_prec': False, 'ninjars_supports_quad_prec': False}
+                   'ninja_supports_quad_prec': False, 'ninjars_supports_quad_prec': False,
+                   'tirust_available': False, 'tirust_supports_quad_prec': False}
         per_row_names = ('NFILTER_SLOTS', 'FILTER_SLOT', 'LOADED_FILTER_FLAV',
                          "'HelFilter_'", "'LoopFilter_'")
         for loop_dir in ('loop', 'loop_optimized'):

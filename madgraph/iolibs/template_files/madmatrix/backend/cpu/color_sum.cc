@@ -89,9 +89,6 @@ namespace madmatrix
         if constexpr( !CaptureSquaredOrders )
           if( !chosenSqso[iso] ) continue;
         [[maybe_unused]] fptype_sv deltaPair = { 0 };
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-        [[maybe_unused]] fptype_sv deltaPair_next = { 0 };
-#endif
         for( int icol = 0; icol < ncolor; icol++ )
         {
           // Diagonal terms (the color contraction is still triangular)
@@ -108,34 +105,13 @@ namespace madmatrix
           fptype_colour_sv deltaMEs2 = ( jampR_sv[jao][icol] * ztempR_sv + jampI_sv[jao][icol] * ztempI_sv ); // may underflow #831
           if constexpr( CaptureSquaredOrders )
           {
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-            deltaPair += fpvsplit0( deltaMEs2 );
-            deltaPair_next += fpvsplit1( deltaMEs2 );
-#else
             deltaPair += deltaMEs2;
-#endif
             if( !chosenSqso[iso] ) continue;
           }
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-          deltaMEs += fpvsplit0( deltaMEs2 );
-          deltaMEs_next += fpvsplit1( deltaMEs2 );
-#else
           deltaMEs += deltaMEs2;
         }
         if constexpr( CaptureSquaredOrders )
-        {
-#ifdef MADMATRIX_SIMD
-          for( int lane = 0; lane < neppV; ++lane )
-          {
-            allSquaredOrderMEs[iso * squaredOrderStride + ievt0 + lane] += deltaPair[lane];
-#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-            allSquaredOrderMEs[iso * squaredOrderStride + ievt0 + neppV + lane] += deltaPair_next[lane];
-#endif
-          }
-#else
           allSquaredOrderMEs[iso * squaredOrderStride + ievt0] += deltaPair;
-#endif
-        }
       }
     }
     // *** STORE THE RESULTS ***
