@@ -608,8 +608,11 @@ def _switch_rows(
     shared: dict[tuple, tuple] = {}
 
     def share(values):
-        values = _ints(values)
-        return shared.setdefault(values, values)
+        values = tuple(values)
+        known = shared.get(values)
+        if known is None:
+            known = shared[values] = _ints(values)
+        return known
 
     targets = SwitchTargets(array("q"), array("q"), [], [], [], array("d"), array("q"), [])
     for i, target in enumerate(catalogue["targets"]):
@@ -787,6 +790,22 @@ def reweight_tables(
             positions[id(target)] = table
         return positions[id(target)]
 
+    # per (target process, legs): the target helicity of each exported one (-1: none)
+    routed: dict[tuple[int, tuple[int, ...]], list[int]] = {}
+
+    def routed_helicities(target, legs: tuple[int, ...]) -> list[int]:
+        key = (id(target), legs)
+        if key not in routed:
+            values = {
+                _helicity_values(identifier): index
+                for index, identifier in enumerate(target["helicity_ids"])
+            }
+            routed[key] = [
+                values.get(tuple(vector[slot] for slot in legs), -1)
+                for vector in reference["helicities"]
+            ]
+        return routed[key]
+
     exported_count = len(reference["helicities"])
     # several arrangements of the switch's non-partons: each entry names its own
     arranged = catalogue is not None and catalogue.get("arrangement_count", 1) > 1
@@ -837,15 +856,9 @@ def reweight_tables(
                 target, target_id, legs, target_factor = route[:4]
                 target_assignment, target_key = route[4:]
                 target_permutation = _ints(legs)
-                values = {
-                    _helicity_values(identifier): index
-                    for index, identifier in enumerate(target["helicity_ids"])
-                }
+                table = routed_helicities(target, target_permutation)
                 for exported in runtime["helicity_export"]:
-                    vector = reference["helicities"][exported]
-                    target_helicity[exported] = values.get(
-                        tuple(vector[slot] for slot in legs), -1
-                    )
+                    target_helicity[exported] = table[exported]
             index = target_index(target, target_id)
             switch_arrangement = 0
             if arranged:
