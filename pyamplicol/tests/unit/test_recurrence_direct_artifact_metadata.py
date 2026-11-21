@@ -127,7 +127,9 @@ def test_recurrence_bootstrap_publishes_exact_authenticated_runtime_inputs(
         )
         artifact_writer._write_recurrence_bootstraps(
             builder,
-            processes=(SimpleNamespace(process_id=process_id),),  # type: ignore[arg-type]
+            processes=(  # type: ignore[arg-type]
+                SimpleNamespace(process_id=process_id, selector_only=False),
+            ),
             process_records=(process_record,),
             producer=producer,
             runtime=runtime,
@@ -280,6 +282,7 @@ def _recurrence_process() -> SimpleNamespace:
         color_contraction_summary=None,
         helicity_selector_companion=None,
         process_digest=_digest("1"),
+        selector_only=False,
     )
 
 
@@ -616,6 +619,100 @@ def test_recurrence_selector_v2_manifest_authenticates_persisted_direct_plan() -
             ),
             companion_binding=binding,
         )
+
+
+def test_selector_only_manifest_omits_the_main_plan_and_binds_the_companion() -> None:
+    process = _recurrence_process()
+    process.color_accuracy = "full"
+    process.selector_only = True
+    process.color_contraction_summary = {
+        "abi": "pyamplicol-recurrence-color-contraction-v3",
+        "color_accuracy": "full",
+        "storage": "expanded",
+        "group_count": 3,
+        "component_count": 1,
+        "factorization": None,
+    }
+    process.recurrence_summary = {
+        "lc_flow_layout": "contracted-color-union",
+        "lanes": "helicity-selector-only",
+    }
+    companion = _selector_companion()
+    process.helicity_selector_companion = companion
+    binding = {
+        "abi": "pyamplicol-recurrence-process-binding-v4",
+        "process_id": process.process_id,
+        "schedule_digest": companion.recurrence_schedule_digest,
+        "native_schedule_semantic_digest": (
+            companion.recurrence_native_schedule_semantic_digest
+        ),
+        "process_digest": process.process_digest,
+        "process_semantic_digest": companion.builder_input_sha256,
+        "process_support_words": [1],
+        "path": "helicity-selector-binding.bin",
+        "size_bytes": 256,
+        "sha256": _digest("9"),
+    }
+    record = SimpleNamespace(size_bytes=5, sha256=_digest("0"))
+
+    manifest = artifact_writer._recurrence_execution_manifest(
+        process,
+        schedule_path=None,
+        binding=None,
+        color_contraction_record=record,
+        companion_binding=binding,
+    )
+
+    assert manifest["plan"] is None
+    assert manifest["process_digest"] == process.process_digest
+    assert manifest["recurrence_summary"]["lanes"] == "helicity-selector-only"
+    capabilities = manifest["required_runtime_capabilities"]
+    assert "rusticol.recurrence-selector-only-fc.v1" in capabilities
+    selector = manifest["helicity_selector_companion"]
+    assert selector["color_contraction"] == {
+        "source": "selector-local",
+        "view": "selector-local-color-view-v1",
+    }
+    assert selector["plan"]["required_runtime_capabilities"] == capabilities
+    # A main schedule next to the selector-only marker is refused.
+    with pytest.raises(ValueError, match="carries a main schedule"):
+        artifact_writer._recurrence_execution_manifest(
+            process,
+            schedule_path="recurrence-runtime.pacbin",
+            binding=binding,
+            color_contraction_record=record,
+            companion_binding=binding,
+        )
+    process.selector_only = False
+    with pytest.raises(ValueError, match="missing its main schedule"):
+        artifact_writer._recurrence_execution_manifest(
+            process,
+            schedule_path=None,
+            binding=None,
+            color_contraction_record=record,
+            companion_binding=binding,
+        )
+
+
+def test_selector_only_processes_get_no_bootstrap_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        artifact_writer,
+        "_recurrence_bootstrap_operation",
+        lambda: pytest.fail("selector-only processes must not build a v1 bootstrap"),
+    )
+    artifact_writer._write_recurrence_bootstraps(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        processes=(  # type: ignore[arg-type]
+            SimpleNamespace(process_id="recurrence", selector_only=True),
+        ),
+        process_records=({"id": "recurrence"},),
+        producer={},
+        runtime={},
+        evaluator_payload_container=None,
+        target={},
+    )
 
 
 def test_recurrence_rejects_retired_on_the_fly_selector_companion() -> None:
@@ -1057,6 +1154,81 @@ def test_recurrence_physics_expands_global_helicity_flip_aliases() -> None:
             }
         ],
     }
+
+
+def test_complete_helicity_domain_computes_every_helicity_without_aliases() -> None:
+    exact_one = SimpleNamespace(
+        real_numerator=1,
+        real_denominator=1,
+        imag_numerator=0,
+        imag_denominator=1,
+    )
+    external_leg = SimpleNamespace(
+        source_slot=0,
+        public_label=1,
+        source_states=(
+            SimpleNamespace(state_index=0, public_helicity=-1),
+            SimpleNamespace(state_index=1, public_helicity=1),
+        ),
+    )
+    logical = SimpleNamespace(
+        process_id="d_dbar_to_z_g",
+        layout="topology-replay",
+        semantic_digests=(
+            RecurrenceSemanticDigestV1(
+                "helicity-equivalence:global-flip-v1",
+                _digest("7"),
+            ),
+        ),
+        selected_source_coverage=None,
+        selected_public_flow_ids=None,
+        external_legs=(external_leg,),
+        public_flows=(
+            SimpleNamespace(
+                flow_id=0,
+                public_id="flow:1",
+                word_source_slots=(0,),
+                reduction_weight=exact_one,
+            ),
+        ),
+    )
+    process = SimpleNamespace(
+        key="d_dbar_to_z_g",
+        process="d d~ > z g",
+        color_accuracy="lc",
+        legs=(SimpleNamespace(label=1, particle="d", pdg=1, is_initial=True),),
+    )
+    arguments = dict(
+        process_id="d_dbar_to_z_g",
+        normalization={},
+        selected_color_sector_ids=None,
+        helicity_domain="complete",
+    )
+
+    physics = recurrence_physics.build_recurrence_physics(
+        process,
+        logical,
+        SimpleNamespace(parameters=()),
+        resolved_helicities=(),
+        **arguments,
+    )
+
+    assert physics["coverage"]["structural_zero_helicity_count"] == 0
+    assert physics["coverage"]["helicities"] == "complete"
+    for helicity in physics["helicities"]:
+        assert helicity["computed"] is True
+        assert helicity["structural_zero"] is False
+        assert helicity["coefficient"] == 1.0
+        assert helicity["representative_id"] == helicity["id"]
+    assert "global_helicity_flip_reduction" not in physics["extensions"]
+    with pytest.raises(ValueError, match="takes no resolved helicities"):
+        recurrence_physics.build_recurrence_physics(
+            process,
+            logical,
+            SimpleNamespace(parameters=()),
+            resolved_helicities=((-1,),),
+            **arguments,
+        )
 
 
 def test_inspection_rejects_retired_recurrence_before_strict_manifest_load(

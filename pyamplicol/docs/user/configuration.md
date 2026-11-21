@@ -620,6 +620,27 @@ for the compact OTF lane. The matching forced-FFT CLI shorthand is
 path. Both require an explicit NLC/full accuracy setting (on the command line
 or in the card). Use `--color-contraction direct` to opt out.
 
+### Selector-only full colour
+
+```toml
+[generation]
+selector_only_full_colour = true   # NLC/full recurrence; default false
+```
+
+Each eligible NLC/full process is then generated with its helicity-selector
+companion only: the main contracted-colour schedule, the expensive part of
+full-colour generation at high multiplicity, is skipped. Such a process
+evaluates one helicity per point (`helicities=[h]` or `helicity_by_point`),
+with the same values as the default artifact; helicity sums, resolved output,
+colour selectors and multi-order partials raise a compatibility error. Its
+physics metadata lists every helicity as computed (no structural zeros or
+parity aliases). Flavour-union templates and single-helicity processes keep
+the main schedule; LC ignores the option. Requires
+`evaluator.execution_mode = "recurrence"` and
+`generation.relation_discovery.mode = "off"` (CLI:
+`--selector-only-full-colour`). Runtimes older than this option refuse the
+artifact.
+
 ## Execution mode and evaluator backend
 
 The accuracy, contraction, and execution choices on this page describe

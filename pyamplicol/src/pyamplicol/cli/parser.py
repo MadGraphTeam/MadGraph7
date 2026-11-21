@@ -470,6 +470,16 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--selector-only-full-colour",
+        dest="generation.selector_only_full_colour",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "NLC/full recurrence: keep only the helicity-selector companion "
+            "(no main schedule); such processes evaluate one helicity per point"
+        ),
+    )
+    parser.add_argument(
         "--particle-veto",
         dest="generation.particle_veto",
         action="append",

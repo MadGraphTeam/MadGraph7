@@ -82,8 +82,9 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # benchmark.samples_output (`profile --samples-output`); 156:
     # benchmark.runtime_threads (`profile --runtime-threads`). MadGraph7 adds
     # process.flavor_blind_strict and generation.pack_payloads; 159:
-    # process.flavor_unions; 160: process.flavor_union_crossing.
-    assert len(FIELD_REGISTRY) == 160
+    # process.flavor_unions; 160: process.flavor_union_crossing; 161:
+    # generation.selector_only_full_colour.
+    assert len(FIELD_REGISTRY) == 161
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
@@ -543,6 +544,32 @@ def test_relation_discovery_defaults_off_and_validates_certification_policy() ->
             relative_tolerance=0.0,
             absolute_tolerance=0.0,
         )
+
+
+def test_selector_only_full_colour_is_an_opt_in_recurrence_option() -> None:
+    assert GenerationConfig().selector_only_full_colour is False
+    with pytest.raises(ConfigurationError, match="selector_only_full_colour"):
+        GenerationConfig(selector_only_full_colour="yes")  # type: ignore[arg-type]
+
+    def run(accuracy: str, mode: str, discovery: str) -> RunConfig:
+        return RunConfig(
+            action="generate",
+            color=ColorConfig(accuracy=accuracy),
+            generation=GenerationConfig(
+                selector_only_full_colour=True,
+                relation_discovery=GenerationRelationDiscoveryConfig(mode=discovery),
+            ),
+            evaluator=EvaluatorConfig(execution_mode=mode),
+        )
+
+    assert run("full", "recurrence", "off").generation.selector_only_full_colour
+    assert run("nlc", "recurrence", "off").generation.selector_only_full_colour
+    # LC accepts and ignores it.
+    assert run("lc", "on-the-fly", "diagnostic").generation.selector_only_full_colour
+    with pytest.raises(ConfigurationError, match=r"relation_discovery\.mode='off'"):
+        run("full", "recurrence", "diagnostic")
+    with pytest.raises(ConfigurationError, match="execution_mode='recurrence'"):
+        run("full", "on-the-fly", "off")
 
 
 def test_all_flow_union_layout_requires_lc_accuracy() -> None:
