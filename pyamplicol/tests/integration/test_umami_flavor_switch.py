@@ -4,7 +4,8 @@
 Events of the flavours with fewer than two quark lines are switched to those
 with two: the provider sums the leading colour of every flavour at the event
 (both beam orientations, every final-state ordering) with the parton densities
-passed in. Checked against the Python runtimes.
+passed in. Checked against the Python runtimes, with a default and a
+selector-only full-colour target.
 """
 
 from __future__ import annotations
@@ -61,13 +62,14 @@ def _keys(prefix: str) -> dict[str, int]:
 IN, OUT = _keys("UmamiInputKey"), _keys("UmamiOutputKey")
 
 
-def _generate(artifact: Path, accuracy: str) -> None:
+def _generate(artifact: Path, accuracy: str, *, selector_only: bool = False) -> None:
     config = RunConfig(
         action="generate",
         color=ColorConfig(accuracy=accuracy),
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=True,
+            selector_only_full_colour=selector_only,
             relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
             validation=GenerationValidationConfig(
                 enabled=False, post_build_validation=False
@@ -87,15 +89,20 @@ def _generate(artifact: Path, accuracy: str) -> None:
         )
 
 
-@pytest.fixture(scope="module")
-def switch(tmp_path_factory):
+@pytest.fixture(scope="module", params=(False, True), ids=("default", "selector-only"))
+def switch(request, tmp_path_factory):
     config_executable = _config_executable()
     if shutil.which("make") is None or shutil.which(os.environ.get("CC", "cc")) is None:
         _unavailable("UMAMI integration requires make and a C compiler")
     root = tmp_path_factory.mktemp("umami-switch")
     lc, full, output = root / "lc", root / "full", root / "reweight"
     _generate(lc, "lc")
-    _generate(full, "full")
+    _generate(full, "full", selector_only=request.param)
+    plans = [
+        json.loads((full / "processes" / p["id"] / "execution.json").read_text())
+        for p in json.loads((full / "artifact.json").read_text())["processes"]
+    ]
+    assert any(plan["plan"] is None for plan in plans) == request.param
     assert write_reweight_provider(lc, full, output, switch_lines=2) == ["p0"]
     completed = subprocess.run(
         ["make", "-C", str(output), f"RUSTICOL_CONFIG={config_executable}"],

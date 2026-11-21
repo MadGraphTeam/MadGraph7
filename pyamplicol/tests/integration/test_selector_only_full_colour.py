@@ -53,10 +53,11 @@ def _config(
     validate: bool = False,
     emit_api: bool = False,
     qed: int = 0,
+    contraction: str = "auto",
 ) -> RunConfig:
     return RunConfig(
         action="generate",
-        color=ColorConfig(accuracy="full"),
+        color=ColorConfig(accuracy="full", contraction=contraction),
         process=ProcessConfig(
             flavor_scheme=4,
             flavor_blind_strict=True,
@@ -99,9 +100,10 @@ def artifacts(
             for selector_only in (False, True):
                 name = f"{'selector' if selector_only else 'default'}-u{int(unions)}"
                 paths[name] = root / name
-                Generator(_config(unions=unions, selector_only=selector_only)).generate(
-                    processes, paths[name]
-                )
+                # MG7's configuration: with the UMAMI/API bundle.
+                Generator(
+                    _config(unions=unions, selector_only=selector_only, emit_api=True)
+                ).generate(processes, paths[name])
         yield paths
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -197,6 +199,8 @@ def test_selector_only_processes_omit_the_main_schedule(
                 h["id"] for h in default_physics["helicities"]
             ]
             assert not any(h["structural_zero"] for h in physics["helicities"])
+        umami = json.loads((selector / "API/umami/metadata.json").read_text())
+        assert umami["helicity_groups"]
         inspected = {
             process.id: process for process in inspect_artifact(selector).processes
         }
@@ -348,6 +352,42 @@ def test_generation_validation_checks_selector_only_processes(
         ProcessSet.from_expressions(("u u~ > g g g",)), output
     )
     assert _selector_only_ids(output)
+
+
+@pytest.mark.parametrize(
+    ("expression", "factorization"),
+    [("g g > g g g", "klein-four-walsh"), ("u u~ > g g g", None)],
+)
+def test_forced_direct_contraction_keeps_the_reducer_bitwise(
+    tmp_path: Path, expression: str, factorization: str | None
+) -> None:
+    """color.contraction=direct: both modes use the same Walsh or direct block."""
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+    paths = {}
+    for selector_only in (False, True):
+        paths[selector_only] = tmp_path / f"direct-{int(selector_only)}"
+        Generator(
+            _config(unions=False, selector_only=selector_only, contraction="direct")
+        ).generate(ProcessSet.from_expressions((expression,)), paths[selector_only])
+    (process_id,) = _selector_only_ids(paths[True])
+    reducer = _reducer(paths[True], process_id)
+    assert reducer == _reducer(paths[False], process_id) == ("repeated", factorization)
+    selector = Runtime.load(paths[True], process=process_id)
+    default = Runtime.load(paths[False], process=process_id)
+    # Default-mode structural zeros are computed (roundoff) in selector-only mode.
+    helicities = [h.id for h in default.physics.helicities if not h.structural_zero]
+    points = _points(selector.physics.process, 33)
+    for helicity in helicities:
+        expected = _real(default.evaluate(points, helicity_by_point=[helicity] * 33))
+        assert (
+            _real(selector.evaluate(points, helicity_by_point=[helicity] * 33))
+            == expected
+        ), helicity
+    mixed = [helicities[(7 * index + 3) % len(helicities)] for index in range(33)]
+    assert _real(selector.evaluate(points, helicity_by_point=mixed)) == _real(
+        default.evaluate(points, helicity_by_point=mixed)
+    )
 
 
 def test_mixed_order_partials_are_refused(tmp_path: Path) -> None:

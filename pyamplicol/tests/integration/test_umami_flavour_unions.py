@@ -7,7 +7,9 @@ those of an artifact generated per flavour (strict flavour-blind classes):
 conjugated members, members with exchanged beams and a six-quark union
 included. The full-colour target may have flavour unions too. With
 process.flavor_union_crossing, leading-colour members may also be crossed
-(sign-flipped momenta, helicities flipped by rho).
+(sign-flipped momenta, helicities flipped by rho). A selector-only full-colour
+union target (MG7 with generation.selector_only_full_colour) gives the same
+ratios.
 """
 
 from __future__ import annotations
@@ -72,7 +74,9 @@ NAMES_OF = {21: "g", 1: "d", 2: "u", 3: "s", 4: "c"}
 SWITCH_LINES = 3
 
 
-def _config(accuracy: str, unions: bool, crossing: bool = False) -> RunConfig:
+def _config(
+    accuracy: str, unions: bool, crossing: bool = False, selector_only: bool = False
+) -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy=accuracy),
@@ -86,6 +90,7 @@ def _config(accuracy: str, unions: bool, crossing: bool = False) -> RunConfig:
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=True,
+            selector_only_full_colour=selector_only,
             relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
             validation=GenerationValidationConfig(
                 enabled=False, post_build_validation=False
@@ -129,14 +134,16 @@ def built(tmp_path_factory):
         "crossing": root / "lc-crossing",
         "full": root / "full",
         "full-union": root / "full-union",
+        "full-union-selector": root / "full-union-selector",
     }
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         for kind, path in artifacts.items():
             Generator(
                 _config(
                     "full" if kind.startswith("full") else "lc",
-                    kind in ("union", "full-union", "crossing"),
+                    kind in ("union", "full-union", "crossing", "full-union-selector"),
                     crossing=kind == "crossing",
+                    selector_only=kind == "full-union-selector",
                 )
             ).generate(
                 ProcessSet.from_expressions(EXPRESSIONS, names=NAMES),
@@ -152,6 +159,7 @@ def built(tmp_path_factory):
         "flavour-full": ("flavour", "full-union"),
         "crossing": ("crossing", "full"),
         "crossing-full": ("crossing", "full-union"),
+        "union-full-selector": ("union", "full-union-selector"),
     }
     for kind in ("union", "flavour", "crossing"):
         build = root / f"build-{kind}"
@@ -299,6 +307,21 @@ def test_union_artifacts_route_members_as_assignments(built):
         for entry in channel["processes"]
     ]
     assert any(runtime.get("assignment", 0) > 0 for runtime in runtimes)
+
+
+def test_selector_only_union_target_mixes_lanes(built):
+    """Per-flavour classes drop the main schedule; union templates keep it."""
+    artifact = built["artifacts"]["full-union-selector"]
+    plans = {}
+    for process in json.loads((artifact / "artifact.json").read_text())["processes"]:
+        execution = json.loads(
+            (artifact / "processes" / process["id"] / "execution.json").read_text()
+        )
+        capabilities = execution["required_runtime_capabilities"]
+        selector_only = "rusticol.recurrence-selector-only-fc.v1" in capabilities
+        assert selector_only == (execution["plan"] is None), process["id"]
+        plans[process["id"]] = selector_only
+    assert any(plans.values()) and not all(plans.values())
 
 
 def _partition(documents, ordered=False):
@@ -570,6 +593,7 @@ _REFERENCE = {
     "flavour-full": "flavour",
     "crossing": "crossing",
     "crossing-full": "crossing",
+    "union-full-selector": "union",
 }
 
 
@@ -581,6 +605,7 @@ _REFERENCE = {
         ("flavour-full", "flavour"),
         ("crossing", "flavour"),
         ("crossing-full", "flavour"),
+        ("union-full-selector", "flavour"),
     ],
 )
 def test_union_ratios_and_switch_weights_equal_per_flavour_artifacts(

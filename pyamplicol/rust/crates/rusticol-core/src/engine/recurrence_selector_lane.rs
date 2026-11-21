@@ -479,6 +479,20 @@ mod tests {
                     runtime.evaluate_f64_arena_profile_repeated(&momenta, 1, 1, Some(&one), None),
                     "arena profiling",
                 );
+                // Colour selection stops at the NLC/full selector check, as in default mode.
+                let colours = runtime.color_ids().unwrap();
+                let error = runtime
+                    .evaluate_f64_into_with_selectors(
+                        &momenta,
+                        1,
+                        Some(&one),
+                        Some(&colours[..1]),
+                        None,
+                        None,
+                        &mut value,
+                    )
+                    .unwrap_err();
+                assert_eq!(error.kind(), RusticolErrorKind::Selector, "{error}");
                 for helicity_by_point in [None, Some(&[0_u32][..])] {
                     assert_refused(
                         runtime.evaluate_assignments_f64_into(
