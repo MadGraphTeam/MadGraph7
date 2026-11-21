@@ -8,7 +8,7 @@ one-loop virtuals of processes with S-wave bound states in MadLoop (branch
 |---|---|
 | `benchmark.typ`, `style.typ` | the report (Typst 0.15), in the style of the pyAmpliCol one-loop report |
 | `data/*.json` | the tables of the report, written by `scripts/collect.py` |
-| `data/raw/` | the campaign records behind them (`validate.json`; `validate_before_guard.json`, the first three cases before the bound-state reducer guard; `timing/*.json`), scratch paths replaced by `WORK` |
+| `data/raw/` | the campaign records behind them (`validate.json`; `validate_before_guard.json`, the first three cases before the bound-state reducer guard; `timing/*.json`: changes A to E; `timing_A_B_B2/`: the first three alone), scratch paths replaced by `WORK` |
 | `scripts/collect.py` | campaign results to `data/*.json` |
 | `research/literature.md` | analytic references and their conventions |
 | `research/perf_audit.md`, `research/perf_audit_results/` | the MadLoop Fortran performance audit |

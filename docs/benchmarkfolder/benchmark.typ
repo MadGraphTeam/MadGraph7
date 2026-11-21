@@ -224,11 +224,13 @@ $v = 0.001 ... 0.02$ is extrapolated to $v = 0$ (quartic fit).
 = Performance <perf>
 
 MadLoop's standalone output compiled its Fortran without optimisation except
-`polynomial.f`. Three changes of the generated code keep every result bit for
-bit and are now on `onia_loop`: `-O2` for the MadLoop sources (they come before
-`FFLAGS`, which can still override them), the colour factors and split-order
-indices of the counterterm contraction tabulated at initialisation with the
-expressions they replace, and split-order tables in `CREATE_LOOP_COEFS`.
+`polynomial.f`. Five changes of the generated code keep every result bit for
+bit and are now on `onia_loop`:
+- *A:* `-O2` for the MadLoop sources (they come before `FFLAGS`, which can still override them);
+- *B:* the colour factors and split-order indices of the counterterm contraction tabulated at initialisation with the expressions they replace;
+- *B2:* split-order tables in `CREATE_LOOP_COEFS`;
+- *D:* the IEEE rounding and halting modes, which the private DP-terminal updaters need, checked once per coefficient batch instead of in every call. The fail-closed proof of these updaters certifies the new caller statements: a canonical block at the top level of the batch, no jump target between it and the private calls, its result ANDed into each captured INEXACT flag. Combined with the batch check, the updaters' frozen IEEE admission corpus (384 000 trials, every rounding mode and trap) gives the same answers as before;
+- *E:* the `DHELAS` and `MODEL` libraries of the standalone output at `-O2` (`ALOHA_FLAG`, `MODEL_FLAG` in `make_opts`, which the proof admits with exactly that value).
 Paired alternating runs on this shared host (AMD EPYC 9754, load 80–100,
 single core): the median time per point after the initialisation, ratio of the
 candidate to the frozen baseline `5c5b573794` (ordinary processes) or to
@@ -255,6 +257,9 @@ confidence interval of the geometric-mean ratio.
 = Sources and reproducibility <sources>
 
 #set text(9pt)
+- Campaign revisions: validation and reducers at `a82b34d314`, timing at `5aadddcbd8`.
+  The changes in between (D and E of @perf) give identical results; the timing
+  campaign compares the results of the two bound-state processes bit for bit.
 - Model: `tools/make_onia_model.py models/loop_sm models/loop_sm_onia`.
 - Validation and reducers (one campaign, `data/raw/validate.json`):
   `tools/onia_loop_validate.py --work DIR --libs 9 3 8 6 7 1 --npoints 10 --timeout 120 --json validate.json`

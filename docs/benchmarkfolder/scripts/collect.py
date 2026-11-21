@@ -62,8 +62,8 @@ STATUS_LINES = [
     'item); such points are reported unstable, not wrong.',
     '*P-wave* is refused at generation until TIRust has the first-derivative threshold '
     'integrals.',
-    '*MadLoop speed* (@perf): `-O2` build and tabulated colour contraction, bit-identical, '
-    'faster on every benchmark process.',
+    '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
+    'checks, bit-identical, faster on every benchmark process.',
 ]
 OPEN_ITEMS = [
     '*P-wave states:* first-derivative (dual) tensor integrals at threshold in TIRust '
@@ -73,8 +73,8 @@ OPEN_ITEMS = [
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
-    '*Further bit-identical MadLoop speed-ups* found by the audit (`DHELAS`/`MODEL` at '
-    '`-O2`, hoisted IEEE checks), not applied yet.',
+    '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
+    '(it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.',
 ]
 BASELINE = '5c5b573794'
 DECISIONS = [
@@ -99,13 +99,13 @@ def commits(base):
     return [line.split('|', 1) for line in out.splitlines() if '|' in line]
 
 
-PERF_NOTE = ('*Where the time goes* (`research/perf_audit.md`, $g g -> t overline(t) g$ with Ninja): '
-             'the loop-numerator updaters (`UPDATE_WL` and the DP-terminal updaters) take 45% of '
-             'the time before these changes and two thirds after, the counterterm colour loop 16% '
-             'before and 2% after. The audit\'s other bit-identical proposals (IEEE checks hoisted '
-             'out of the coefficient construction, `DHELAS`/`MODEL` at `-O2`, rank-limited '
-             'clearing) bring that process to 0.64 of the baseline in its measurements; they '
-             'need changes to the DP-terminal proof and the LO `make_opts` and are not applied.')
+PERF_NOTE = ('*Where the time goes* (`research/perf_audit.md`, $g g -> t overline(t) g$ with Ninja, '
+             'before these changes): the loop-numerator updaters (`UPDATE_WL` and the DP-terminal '
+             'updaters) 45% of the time, the counterterm colour loop 16%, the HELAS routines 8%, '
+             'the IEEE mode queries of the private updaters 3%. In the audit\'s full stack (these '
+             'five changes and C) the colour loop takes 2% and the IEEE queries 0.2%. Not applied: '
+             'C, the rank-limited clearing of the updaters\' output (identical results, but it '
+             'breaks tests that pin full clearing), and the opt-in `-march` builds.')
 
 
 def summarize_validation(cases):
