@@ -26,7 +26,7 @@ jobs:
           ### How CI reacts to this PR
 
           - **Not a draft:** the full CI runs automatically when the PR is opened and on every push.
-          - **Draft:** only the `unittest` workflow runs. Mark the PR "Ready for review" to start the full CI.
+          - **Draft:** only the `unittest` and `IOtest` workflows run. Mark the PR "Ready for review" to start the full CI.
           - **`run-ci` label:** while this label is on the PR, every job keeps running after a failure, so you see all failures. Without it, the first failing job cancels the other runs of that commit.
           - **Closing or merging:** the unfinished CI runs of this PR are cancelled. A merge gets its own run on `main`.
           - **Pushes to `main`:** the full CI runs after each merge.
