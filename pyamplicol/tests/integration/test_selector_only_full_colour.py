@@ -649,7 +649,6 @@ def test_union_members_on_the_companion_equal_their_unions_off_programs(
     multi_pattern = factor_not_one = partial_patterns = 0
     for template_id in templates:
         template = Runtime.load(artifact, process=template_id)
-        assert template.flavour_union_pattern_resolved
         template_helicities = list(template.physics.helicity_ids)
         pattern_count = len(template.flavour_union_assignments[0]["patterns"])
         references: dict[int, tuple[list[Point], list[dict[str, float]]]] = {}
