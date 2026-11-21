@@ -41,6 +41,7 @@ C     state with mass m1+m2), computed from its constituent legs.
       SAVE WARNED
       %(real_dp_format)s QREST(3)
       COMMON/%(proc_prefix)sONIA_RELMOM/QREST
+      INCLUDE 'onia_loop_data.inc'
       IF (USERHEL.NE.-1) THEN
         WRITE(*,*) 'ERROR:: MadLoop sums over the polarisations of the',
      &   ' bound states: the selection of a helicity configuration',
@@ -54,8 +55,11 @@ C     reliably. The other libraries can return wrong values that pass
 C     MadLoop's stability tests (the Gram determinants vanish and the
 C     Coulomb-exchange propagators are linearly dependent), so a result
 C     they give is reported unstable (H=4, U=0) whatever its accuracy.
-C     With a relative momentum (diagnostic) the integrals are ordinary ones.
-      IF ((RET_CODE_H.EQ.2.OR.RET_CODE_H.EQ.3).AND.ALL(QREST.EQ.0D0)) THEN
+C     With a relative momentum (diagnostic) the integrals are ordinary ones,
+C     and without coloured constituents (leptonia) no QCD loop holds both
+C     constituents of a bound state.
+      IF ((RET_CODE_H.EQ.2.OR.RET_CODE_H.EQ.3).AND.ALL(QREST.EQ.0D0)
+     &  .AND.ONIA_THRESHOLD_LOOPS) THEN
         LIB=ML_GET_RET_CODE_LIBRARY()
         IF (LIB.NE.9) THEN
           IF (.NOT.WARNED) THEN

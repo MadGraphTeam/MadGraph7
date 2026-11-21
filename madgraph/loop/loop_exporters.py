@@ -2101,6 +2101,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             loop_onia.fortran_double(cfb[i][j][0]) for j in range(nborn) for i in range(nborn)))
         lines.append('DATA ONIA_CFB_IM/%s/' % ','.join(
             loop_onia.fortran_double(cfb[i][j][1]) for j in range(nborn) for i in range(nborn)))
+        # QCD loops hold both constituents of a bound state, and so meet the
+        # degenerate threshold integrals, only when the constituents are
+        # coloured (not for leptonia)
+        process = matrix_element.get('processes')[0]
+        coloured = any(model.get_particle(leg.get('id')).get('color') != 1
+                       for leg in process.get('legs') if leg.get('onium'))
+        lines.append('C     some loop holds both constituents of a bound state')
+        lines.append('LOGICAL ONIA_THRESHOLD_LOOPS')
+        lines.append('PARAMETER (ONIA_THRESHOLD_LOOPS=%s)'
+                     % ('.TRUE.' if coloured else '.FALSE.'))
         writers.FortranWriter('onia_loop_data.inc').writelines(lines)
 
         # The masses of the constituent legs

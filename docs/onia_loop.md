@@ -97,6 +97,11 @@ instance, gives -13.545 instead of -32/3 for `e+ e- > Jpsi(1|3S11)` and passes
 them. The public `SLOOPMATRIX` of a bound-state output therefore reports the
 result of any library other than TIRust as unstable (return code `4x0`, a
 warning on the first such point). They remain selectable for cross-checks.
+The guard applies when the bound states have coloured constituents
+(`ONIA_THRESHOLD_LOOPS` in `onia_loop_data.inc`): no QCD loop holds both
+constituents of a leptonium. (IREGI has a separate limitation there: at
+leptonium scales, M = 20 MeV and below, it drops the loop and reports the
+result stable; it is right at M = 2 GeV.)
 When TIRust refuses a point (two bound states in one process, see the open
 items of the benchmark report), the point is reported unstable.
 

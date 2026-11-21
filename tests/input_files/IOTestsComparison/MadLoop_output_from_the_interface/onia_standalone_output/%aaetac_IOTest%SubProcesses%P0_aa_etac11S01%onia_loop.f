@@ -49,6 +49,7 @@ C     state with mass m1+m2), computed from its constituent legs.
       SAVE WARNED
       REAL*8 QREST(3)
       COMMON/ML5_0_ONIA_RELMOM/QREST
+      INCLUDE 'onia_loop_data.inc'
       IF (USERHEL.NE.-1) THEN
         WRITE(*,*) 'ERROR:: MadLoop sums over the polarisations of'
      $   //' the',
@@ -64,20 +65,23 @@ C     MadLoop's stability tests (the Gram determinants vanish and the
 C     Coulomb-exchange propagators are linearly dependent), so a result
 C     they give is reported unstable (H=4, U=0) whatever its accuracy.
 C     With a relative momentum (diagnostic) the integrals are ordinary
-C      ones.
-      IF ((RET_CODE_H.EQ.2.OR.RET_CODE_H.EQ.3).AND.ALL(QREST.EQ.0D0))
-     $  THEN
-        LIB=ML_GET_RET_CODE_LIBRARY()
-        IF (LIB.NE.9) THEN
-          IF (.NOT.WARNED) THEN
-            WRITE(*,*) 'WARNING:: bound states at threshold: only',
+C      ones,
+C     and without coloured constituents (leptonia) no QCD loop holds
+C      both
+C     constituents of a bound state.
+      IF ((RET_CODE_H.EQ.2.OR.RET_CODE_H.EQ.3).AND.ALL(QREST.EQ.0D0)
+     &  .AND.ONIA_THRESHOLD_LOOPS) THEN
+      LIB=ML_GET_RET_CODE_LIBRARY()
+      IF (LIB.NE.9) THEN
+        IF (.NOT.WARNED) THEN
+          WRITE(*,*) 'WARNING:: bound states at threshold: only',
      &       ' TIRust (MLReductionLib=9) is reliable; the results of',
      &       ' library',LIB,' are reported unstable.'
-            WARNED=.TRUE.
-          ENDIF
-          RET_CODE_H=4
-          RET_CODE_U=SET_RET_CODE_U(LIB,.FALSE.,.FALSE.)
+          WARNED=.TRUE.
         ENDIF
+        RET_CODE_H=4
+        RET_CODE_U=SET_RET_CODE_U(LIB,.FALSE.,.FALSE.)
+      ENDIF
       ENDIF
       END
 
