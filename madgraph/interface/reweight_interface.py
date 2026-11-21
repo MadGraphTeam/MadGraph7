@@ -98,7 +98,7 @@ REWEIGHT_CHANGE_OPTIONS = frozenset([
     'allow_missing_finalstate', 'boost', 'virtual_path', 'tree_path',
     'output', 'helicity', 'mode', 'rwgt_dir', 'systematics', 'soft_threshold',
     'multicore', 'identical_particle_in_prod_and_decay', 'include_sudakov',
-    'sudakov_xi'])
+    'sudakov_xi', 'sudakov_density_prescription', 'sudakov_density_keep_initial'])
 DENSITY_CHANGE_OPTIONS = frozenset([
     'helicity_direction', 'boost_choice', 'order_helicities',
     'symmetrise_initial_state', 'axis_referential', 'matrix_normalisation',
@@ -192,11 +192,8 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         self.fxfx_clustered_decay_processes = set()
         self._fxfx_cluster_catalog_ready = False
         self.fxfx_catalogue_source = None
-        self.density_prod_dirname = 'rw_me_density_prod'
         self.density_decay_dirname = 'rw_me_density_decay'
-        self.density_prod_id_to_path = {}
         self.density_decay_id_to_path = {}
-        self.density_prod_f2pylib = {}
         self.density_decay_f2pylib = {}
 
         self.beampol = None # (pol1, pol2) of the events' beams (see get_beampol)
@@ -572,6 +569,16 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
             if args[1] == 'True':
                 self.inc_sudakov = True
                 self.rwgt_mode = 'LO'
+        elif args[0] == 'sudakov_density_prescription':
+            if len(args) != 2 or args[1] not in fxfx_ewsudakov.DENSITY_PRESCRIPTIONS:
+                raise self.InvalidCmd('sudakov_density_prescription must be %s' %
+                                      ' or '.join(fxfx_ewsudakov.DENSITY_PRESCRIPTIONS))
+            self.sudakov_density_prescription = args[1]
+        elif args[0] == 'sudakov_density_keep_initial':
+            if len(args) != 2:
+                raise self.InvalidCmd('sudakov_density_keep_initial must be True or False')
+            self.sudakov_density_keep_initial = banner.ConfigFile.format_variable(
+                args[1], bool, args[0])
         elif args[0] == 'sudakov_xi':
             try:
                 xi_values = fxfx_ewsudakov.validate_sudakov_xi(args[1:])
@@ -643,6 +650,7 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         self._ensure_fxfx_cluster_catalogue()
         if self.inc_sudakov:
             self._collect_sudakov_weight_sources()
+            self.check_sudakov_param_card()
 
         if not self.has_standalone_dir:
             out = self.setup_f2py_interface()
@@ -937,6 +945,25 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
                 self.save_to_pickle()  
 
 
+
+    def check_sudakov_param_card(self):
+        """Stop before compiling if the event card breaks the Sudakov kernels.
+
+        Their parameter renormalisation needs YMT = MT, and otherwise stops
+        the Fortran process at the first event. (ntadpole is set to 1 when the
+        Sudakov library writes its param_card.inc.) A card without these
+        parameters is left to the model.
+        """
+        if not isinstance(self.banner, dict) or 'slha' not in self.banner:
+            return
+        try:
+            card = check_param_card.ParamCard(self.banner['slha'].splitlines())
+            mt, ymt = card['mass'].get(6).value, card['yukawa'].get(6).value
+        except KeyError:
+            return
+        if mt != ymt:
+            raise self.InvalidCmd('EW Sudakov reweighting needs YMT = MT in the param card '
+                                  '(MT=%s, YMT=%s)' % (mt, ymt))
 
     @staticmethod
     def write_card_atomically(path, text):
@@ -2939,6 +2966,8 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
 
         commandline = 'output %s %s --prefix=int' % (self.sa_class, out_path)
         mgcmd.exec_cmd(commandline, precmd=True)
+        self.write_card_atomically(pjoin(out_path, 'Cards', 'param_card.dat'),
+                                   self.banner['slha'])
         logger.info('Density output (%s) written to %s', label, out_path)
         return True
 
@@ -3020,16 +3049,14 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         data['fxfx_mode'] = fxfx_mode
         data['fxfx_extra_set'] = fxfx_extra_set
 
-        # Density-matrix production/decay processes, from the same catalogue.
-        density_prod_processes = []
+        # Decay processes of the decay density matrices, from the same
+        # catalogue. The production matrices come from the Sudakov kernel.
         density_decay_processes = []
         if fxfx_mode:
-            density_prod_processes = self._get_fxfx_density_production_processes()
             density_decay_processes = self._get_fxfx_density_decay_processes()
-            if density_prod_processes or density_decay_processes:
-                logger.info('Added %d density production processes and %d decay processes for density matrices',
-                            len(density_prod_processes), len(density_decay_processes))
-        data['density_prod_processes'] = density_prod_processes
+            if density_decay_processes:
+                logger.info('Added %d decay processes for density matrices',
+                            len(density_decay_processes))
         data['density_decay_processes'] = density_decay_processes
 
         # 0. clean previous run ------------------------------------------------
@@ -3133,12 +3160,7 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         else:
             has_nlo = self.create_standalone_tree_directory(data, second)
             if (not second) and self.inc_sudakov:
-                prod_procs = data.get('density_prod_processes', [])
                 decay_procs = data.get('density_decay_processes', [])
-                if prod_procs:
-                    self.create_density_tree_directory(
-                        data, prod_procs, self.density_prod_dirname, label='production'
-                    )
                 if decay_procs:
                     self.create_density_tree_directory(
                         data, decay_procs, self.density_decay_dirname, label='decay'
@@ -3310,30 +3332,25 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
 
 
     def _compile_density_subprocesses(self):
-        """Compile density matrix subprocess directories if present."""
+        """Compile the decay density matrix subprocess directory if present."""
         path_me = self.rwgt_dir if self.rwgt_dir else self.me_dir
-        for dir_name in [self.density_prod_dirname, self.density_decay_dirname]:
-            if not dir_name:
-                continue
-            sub_dir = pjoin(path_me, dir_name, 'SubProcesses')
-            if not os.path.isdir(sub_dir):
-                continue
-            logger.info('Compiling density modules in %s', sub_dir)
-            self.f2py_suffix[dir_name] = self.get_f2py_suffix(sub_dir)
-            self.compile_SubProcess_dir(sub_dir, self.f2py_suffix[dir_name])
+        dir_name = self.density_decay_dirname
+        if not dir_name:
+            return
+        sub_dir = pjoin(path_me, dir_name, 'SubProcesses')
+        if not os.path.isdir(sub_dir):
+            return
+        logger.info('Compiling density modules in %s', sub_dir)
+        self.f2py_suffix[dir_name] = self.get_f2py_suffix(sub_dir)
+        self.compile_SubProcess_dir(sub_dir, self.f2py_suffix[dir_name])
 
     def load_density_modules(self):
-        """Load density matrix modules from the dedicated density directories."""
+        """Load the decay density matrix modules."""
         if not self.inc_sudakov:
             return
         self._density_initialized_modules = {}
-        self.density_prod_id_to_path = {}
         self.density_decay_id_to_path = {}
-        self.density_prod_f2pylib = {}
         self.density_decay_f2pylib = {}
-        self._load_density_dir(self.density_prod_dirname, nincoming=2,
-                               id_to_path=self.density_prod_id_to_path,
-                               f2pylib=self.density_prod_f2pylib)
         self._load_density_dir(self.density_decay_dirname, nincoming=1,
                                id_to_path=self.density_decay_id_to_path,
                                f2pylib=self.density_decay_f2pylib)

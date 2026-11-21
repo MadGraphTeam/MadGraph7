@@ -32,12 +32,8 @@ class TestDensityLibraries(unittest.TestCase):
         self.addCleanup(names.stop)
         self.interface.banner = SimpleNamespace(get=lambda *args: 3)
         self.interface.fxfx_clustered_decay_processes = {(24, (-13, 14))}
-        self.interface.density_prod_dirname = 'rw_me_density_prod'
         self.interface.density_decay_dirname = 'rw_me_density_decay'
-        self.modules = {
-            'rw_me_density_prod': self.module([2, -2, 24, -24]),
-            'rw_me_density_decay': self.module([24, -13, 14]),
-        }
+        self.modules = {'rw_me_density_decay': self.module([24, -13, 14])}
 
     @staticmethod
     def module(pdgs):
@@ -60,8 +56,16 @@ class TestDensityLibraries(unittest.TestCase):
 
     def test_required_missing_directory_stops_setup_with_path(self):
         with self.assertRaisesRegex(fx.DensityLibraryError,
-                                    str(self.root / 'rw_me_density_prod')):
+                                    str(self.root / 'rw_me_density_decay')):
             self.load()
+
+    def test_no_production_library_is_loaded(self):
+        # The production matrices come from the Sudakov kernel.
+        self.make_directories()
+        (self.root / 'rw_me_density_prod' / 'SubProcesses').mkdir(parents=True)
+        imports = []
+        self.load(lambda name: imports.append(name) or self.import_module(name))
+        self.assertFalse([name for name in imports if 'density_prod' in name])
 
     def test_required_tree_import_preserves_original_error(self):
         self.make_directories()
@@ -76,8 +80,7 @@ class TestDensityLibraries(unittest.TestCase):
     def test_optional_loop_module_may_be_absent(self):
         self.make_directories()
         self.load()
-        self.assertEqual(set(self.interface.density_prod_f2pylib), {('rw_me_density_prod', 2)})
-        self.assertIn(((2, -2), (24, -24)), self.interface.density_prod_id_to_path)
+        self.assertEqual(set(self.interface.density_decay_f2pylib), {('rw_me_density_decay', 2)})
         self.assertIn(((24,), (-13, 14)), self.interface.density_decay_id_to_path)
 
     def test_density_rebuild_uses_new_module_and_library_names(self):
@@ -99,16 +102,16 @@ class TestDensityLibraries(unittest.TestCase):
         for name, module in self.modules.items():
             self.assertIn(name + '.SubProcesses.all_matrix2py_r2', imports)
             self.assertIn(name + '_r2', reweight_interface.loaded_f2py_names)
-        self.assertIs(self.interface.density_prod_f2pylib['rw_me_density_prod', 2],
-                      self.modules['rw_me_density_prod'])
+        self.assertIs(self.interface.density_decay_f2pylib['rw_me_density_decay', 2],
+                      self.modules['rw_me_density_decay'])
 
     def test_mappings_come_from_tree_even_if_loop_module_loads(self):
         self.make_directories()
-        loop = self.module([21, 21, 23, 23])
+        loop = self.module([23, 11, -11])
         self.load(lambda name: loop if name.endswith('all_matrix3py')
                   else self.import_module(name))
-        self.assertIn(((2, -2), (24, -24)), self.interface.density_prod_id_to_path)
-        self.assertNotIn(((21, 21), (23, 23)), self.interface.density_prod_id_to_path)
+        self.assertIn(((24,), (-13, 14)), self.interface.density_decay_id_to_path)
+        self.assertNotIn(((23,), (11, -11)), self.interface.density_decay_id_to_path)
 
     def test_required_tree_cannot_be_replaced_by_loop_module(self):
         self.make_directories()
@@ -116,15 +119,10 @@ class TestDensityLibraries(unittest.TestCase):
         def importer(name):
             if name.endswith('all_matrix2py'):
                 raise ImportError('tree module absent')
-            return self.module([21, 21, 23, 23])
+            return self.module([23, 11, -11])
 
         with self.assertRaisesRegex(fx.DensityLibraryError, 'tree module absent'):
             self.load(importer)
-
-    def test_missing_decay_library_stops_setup(self):
-        (self.root / 'rw_me_density_prod' / 'SubProcesses').mkdir(parents=True)
-        with self.assertRaisesRegex(fx.DensityLibraryError, 'rw_me_density_decay'):
-            self.load()
 
     def test_scalar_only_samples_need_no_density_libraries(self):
         for decays, ickkw in ((set(), 3), ({(24, (-13, 14))}, 0)):
@@ -132,15 +130,14 @@ class TestDensityLibraries(unittest.TestCase):
                 self.interface.fxfx_clustered_decay_processes = decays
                 self.interface.banner = SimpleNamespace(get=lambda *args: ickkw)
                 self.load()
-                self.assertEqual(self.interface.density_prod_id_to_path, {})
                 self.assertEqual(self.interface.density_decay_id_to_path, {})
 
     def test_optional_import_failure_is_allowed(self):
         self.make_directories()
         self.interface.fxfx_clustered_decay_processes = set()
         self.load(mock.Mock(side_effect=ImportError('unused library absent')))
-        self.assertEqual(self.interface.density_prod_f2pylib, {})
-        self.assertEqual(self.interface.density_prod_id_to_path, {})
+        self.assertEqual(self.interface.density_decay_f2pylib, {})
+        self.assertEqual(self.interface.density_decay_id_to_path, {})
 
     def test_invalid_required_metadata_retains_cause(self):
         self.make_directories()
@@ -148,7 +145,7 @@ class TestDensityLibraries(unittest.TestCase):
         for get_order, message in ((mock.Mock(side_effect=error), 'corrupt process table'),
                                    (lambda: ([], []), 'No density subprocesses')):
             with self.subTest(message=message):
-                self.modules['rw_me_density_prod'].get_pdg_order = get_order
+                self.modules['rw_me_density_decay'].get_pdg_order = get_order
                 with self.assertRaisesRegex(fx.DensityLibraryError, message) as caught:
                     self.load()
                 self.assertIsInstance(caught.exception.__cause__, ValueError)
@@ -166,12 +163,7 @@ class TestDensityFallback(unittest.TestCase):
         self.event = self.fixture.event
         self.driver = limits.FactorDriver()
         self.module = self.fixture.scalar_module(self.driver, [1.2, 1.1, 1.05])
-        self.module.density_sudakov = mock.Mock(return_value={
-            'density_delta': limits.np.full(9, .1),
-            'density_delta_var': limits.np.full(9, .05),
-            'born_diag': limits.np.ones(9), 'total_dim': 9, 'nres': 2})
-        self.driver.density_prod_id_to_path = {'process': True}
-        self.driver.density_prod_f2pylib = {'module': True}
+        self.module.density_sudakov = mock.Mock(return_value=limits.density_result(9, .2, .1, .05))
         self.driver.density_decay_id_to_path = {'decay': True}
         self.driver.density_decay_f2pylib = {'module': True}
 
@@ -193,7 +185,7 @@ class TestDensityFallback(unittest.TestCase):
         self.assertEqual(fx.FKS_QUALITY_COUNTS['events_density_fallback_' + stage], 1)
 
     def test_production_failure_counted_once_per_event_across_xis(self):
-        with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
+        with mock.patch.object(fx.DensityMatrix, 'from_full_matrix',
                                side_effect=ArithmeticError('production pole failed')):
             for event_id in (0, 1, 2):
                 fx.CURRENT_EVENT_ID = event_id
@@ -210,7 +202,7 @@ class TestDensityFallback(unittest.TestCase):
 
     def test_decay_exception_reaches_fallback_with_original_cause(self):
         with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
-                               side_effect=[limits.np.eye(9), ArithmeticError('decay boost failed')]):
+                               side_effect=ArithmeticError('decay boost failed')):
             self.assert_fallback('decay', 'ArithmeticError: decay boost failed')
 
     def test_kernel_event_error_uses_scalar_factors(self):
@@ -232,21 +224,25 @@ class TestDensityFallback(unittest.TestCase):
     def test_contraction_error_uses_scalar_factors(self):
         with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
                                side_effect=self.density_matrix), \
-                mock.patch.object(fx, 'compute_density_weight',
+                mock.patch.object(fx, 'compute_density_interference_weight',
                                   side_effect=ZeroDivisionError('zero density norm')):
             self.assert_fallback('contraction', 'ZeroDivisionError: zero density norm')
 
-    def test_unavailable_matrix_is_reported(self):
-        for stage, matrices, message in (
-                ('production', [None], 'B matrix'),
-                ('decay', [limits.np.eye(9), None], 'Decay density matrix')):
-            with self.subTest(stage=stage), \
-                    mock.patch.object(fx.DensityHelper, 'compute_density_matrix', side_effect=matrices):
-                fx.fks_reset_accounting()
-                self.assert_fallback(stage, message)
+    def test_unavailable_decay_matrix_is_reported(self):
+        with mock.patch.object(fx.DensityHelper, 'compute_density_matrix', return_value=None):
+            self.assert_fallback('decay', 'Decay density matrix')
+
+    def test_events_take_the_production_matrix_from_the_kernel(self):
+        with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
+                               side_effect=self.density_matrix) as matrix:
+            result = self.evaluate()
+        self.assertTrue(all(len(call.args[0].get_tag_and_order()[0][0]) == 1
+                            for call in matrix.call_args_list))
+        self.fixture.assert_factors(self.driver, result, [1.2, 1.1, 1.05])
+        self.assertEqual(self.driver._density_logger.log_event.call_args.kwargs['mode'], 'density')
 
     def test_required_kernel_or_libraries_are_fatal(self):
-        for missing in ('density_sudakov', 'density_prod_id_to_path', 'density_decay_id_to_path'):
+        for missing in ('density_sudakov', 'density_decay_id_to_path'):
             target = self.module if missing == 'density_sudakov' else self.driver
             previous = getattr(target, missing)
             delattr(target, missing)
