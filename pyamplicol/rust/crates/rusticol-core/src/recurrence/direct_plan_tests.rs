@@ -810,8 +810,10 @@ fn direct_plan_accepts_cold_exact_zero_groups_without_runtime_rows() {
     DirectRecurrencePlan::new(parts).unwrap();
 }
 
+// Plan validation has no role; the main lane refuses pattern-resolved all-flow
+// plans (`main_lane_refuses_pattern_resolved_all_flow_plans`).
 #[test]
-fn destination_patterns_allow_unreplayed_all_flow_companions_only() {
+fn destination_patterns_allow_replay_and_unreplayed_union_plans_only() {
     let patterns = DirectDestinationPatterns {
         pattern_count: 2,
         destination_patterns: vec![0, 1, 1],

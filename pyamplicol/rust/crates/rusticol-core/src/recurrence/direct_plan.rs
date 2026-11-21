@@ -464,7 +464,8 @@ impl DirectDestinationPatterns {
                 Err(invalid("destination patterns require a pattern count"))
             };
         }
-        // Unreplayed contracted colour, or its all-flow helicity-selector companion.
+        // Unreplayed contracted colour, or its all-flow helicity-selector companion
+        // (the main lane refuses a pattern-resolved all-flow plan).
         let contracted = matches!(
             strategy,
             RecurrenceStrategy::ContractedColorUnion | RecurrenceStrategy::AllFlowUnion

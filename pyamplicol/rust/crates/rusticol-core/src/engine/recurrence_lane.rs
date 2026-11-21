@@ -194,6 +194,20 @@ const SELECTED_REPLAY_CACHE_LIMIT: usize = 64;
 /// `points` (ascending, distinct) restricts the sums to those tile points; the
 /// others are left stale. Each point's sum is the same arithmetic either way.
 #[allow(clippy::too_many_arguments)]
+/// Pattern-resolved all-flow plans are helicity-selector companions only: the
+/// main all-flow lane never combines destination patterns.
+fn refuse_main_lane_pattern_resolved_all_flow(
+    strategy: RecurrenceStrategy,
+    pattern_resolved: bool,
+) -> RusticolResult<()> {
+    if pattern_resolved && strategy == RecurrenceStrategy::AllFlowUnion {
+        return Err(RusticolError::integrity(
+            "a main all-flow-union recurrence plan cannot carry destination patterns",
+        ));
+    }
+    Ok(())
+}
+
 fn visit_pattern_groups<'a>(
     destination_patterns: &[u32],
     pattern_map: Option<&[u32]>,
@@ -1044,6 +1058,7 @@ impl RecurrenceNativeRuntime {
         let backend_name = backend_owner.summary().backend.clone();
         let strategy = plan.strategy();
         let pattern_selection = PatternSelection::for_plan(&plan)?;
+        refuse_main_lane_pattern_resolved_all_flow(strategy, pattern_selection.is_some())?;
         let order_catalog = AmplitudeOrderCatalog::from_plan(plan.amplitude_orders())?;
         let has_color_contraction = color_contraction.is_some();
         if public_flow_ids.is_empty() && strategy != RecurrenceStrategy::ContractedColorUnion {
@@ -6204,6 +6219,22 @@ fn replay_mapped_direct_physics_helicity(
 #[cfg(test)]
 mod replay_destination_helicity_tests {
     use super::*;
+
+    #[test]
+    fn main_lane_refuses_pattern_resolved_all_flow_plans() {
+        assert!(
+            refuse_main_lane_pattern_resolved_all_flow(RecurrenceStrategy::AllFlowUnion, true)
+                .is_err()
+        );
+        for strategy in [
+            RecurrenceStrategy::TopologyReplay,
+            RecurrenceStrategy::ContractedColorUnion,
+        ] {
+            refuse_main_lane_pattern_resolved_all_flow(strategy, true).unwrap();
+        }
+        refuse_main_lane_pattern_resolved_all_flow(RecurrenceStrategy::AllFlowUnion, false)
+            .unwrap();
+    }
 
     #[test]
     fn pattern_selection_sums_selected_patterns_per_sector_helicity_before_squaring() {
