@@ -275,6 +275,27 @@ def test_crossed_member_factors_follow_the_external_normalization() -> None:
     assert members["g g > d d~ g g"].factor == Fraction(9, 8)
 
 
+def test_templates_leave_the_fewest_crossed_signatures() -> None:
+    """q q > q q q q~ (q~ q~ conjugated) leaves only q q~ crossed; q q~ as
+    template would cross q q and q~ q~ separately."""
+
+    entries, _, _ = _entries(("p p > j j j j",))
+    templates = {
+        generation_service._grouping_process(e).expression
+        for e in entries
+        if e.flavour_union_template
+    }
+    assert templates == {"d d > d d d d~", "d g > d d d~ g", "d g > d g g g"}
+    union = next(e for e in entries if e.request.expression == "d d > d d d d~")
+    members = {m.expression: m for m in union.group_members}
+    assert members["u~ u~ > u u~ u~ u~"].conjugated
+    assert not members["u~ u~ > u u~ u~ u~"].crossed
+    assert all(
+        m.crossed == (len({m.pdgs[0] > 0, m.pdgs[1] > 0}) == 2)
+        for m in union.group_members
+    )
+
+
 def test_uncrossed_members_keep_their_side_aware_routes() -> None:
     """Where both modes pick the same template, its uncrossed members get the
     same permutation, conjugation and patterns as without crossing."""

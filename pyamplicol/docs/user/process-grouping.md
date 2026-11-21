@@ -685,11 +685,16 @@ target with crossed members is refused). Processes whose legs are all
 massless quarks and gluons are then joined by their all-outgoing content, so
 `p p > j j` and `p p > j j j` need 3 programs and `p p > j j j j` and
 `p p > j j j j j` 4 (the all-gluon process included). Each union's template is
-the requested single-flavour process that leaves the most members uncrossed. A
-member is routed uncrossed where it can be, directly or else conjugated, and
-crossed otherwise. Its permutation pairs legs on the same side first and then
-across, so a member that needs no crossing keeps the route it has without the
-flag. `h` comes from matching the source states of the template and of the
+the requested single-flavour process that leaves the fewest side-aware
+signatures crossed, then the most members uncrossed (a crossed member is never
+conjugated, so `q q` and `q~ q~` crossed separately cost twice: `p p > j j j j`
+takes `d d > d d d d~`, not `d d~ > d d d~ d~`). A member is routed uncrossed
+where it can be, directly or else conjugated, and crossed otherwise. Its
+permutation pairs legs on the same side first and then across, so a member that
+needs no crossing keeps the route it has without the flag. A crossed member's
+quark legs then take the arrangement with the smallest flavour partition of the
+template slots, so members that differ only by flavour names and leg order share
+patterns and flavour-switch evaluations. `h` comes from matching the source states of the template and of the
 member with the template's flavours: -1 on crossed quarks, +1 on gluons. If a
 member cannot be crossed (its source states do not match, its crossed quark
 is not chiral, or it or the template has an s-channel resonance within the

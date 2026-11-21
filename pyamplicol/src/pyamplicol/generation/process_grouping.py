@@ -1407,8 +1407,13 @@ def _choose_union_template(
     table: ParticleTable,
     consider_charge_conjugation: bool,
 ) -> GroupingProcess:
-    """The single-flavour process that leaves the most processes uncrossed
-    (directly or conjugated); ties go to the first in ``single``."""
+    """The single-flavour process that leaves the fewest side-aware signatures
+    crossed, then the most processes uncrossed (directly or conjugated); ties
+    go to the first in ``single``.
+
+    A crossed member is never conjugated, so a crossed signature and its
+    conjugate need separate evaluations; an uncrossed pair shares them.
+    """
 
     plain = [_union_signature(process, table) for process in group]
     conjugate = [
@@ -1418,11 +1423,13 @@ def _choose_union_template(
         for process in group
     ]
 
-    def uncrossed(candidate: GroupingProcess) -> int:
+    def score(candidate: GroupingProcess) -> tuple[int, int]:
         key = _union_signature(candidate, table)
-        return sum(1 for a, b in zip(plain, conjugate, strict=True) if key in (a, b))
+        uncrossed = [key in pair for pair in zip(plain, conjugate, strict=True)]
+        crossed = {a for a, keep in zip(plain, uncrossed, strict=True) if not keep}
+        return -len(crossed), sum(uncrossed)
 
-    template = max(single, key=uncrossed)
+    template = max(single, key=score)
     assert any(is_union_quark_type(table[pdg].type) for pdg in template.pdgs)
     return template
 
