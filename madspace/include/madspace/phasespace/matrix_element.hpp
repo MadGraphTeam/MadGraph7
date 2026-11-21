@@ -9,7 +9,7 @@ namespace madspace {
  * Calls a matrix element through the UMAMI interface.
  *
  * UMAMI (Unified MAtrix eleMent Interface) is `madspace`'s uniform way of
- * calling matrix-element code — currently the cudacpp plugin — for both
+ * calling matrix-element code — currently the madmatrix backend — for both
  * integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are
  * passed and returned is chosen by @p inputs and @p outputs, given as integer
  * keys so the interface can be extended without breaking binary compatibility.

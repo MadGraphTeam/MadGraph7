@@ -646,6 +646,12 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 "dressed-lepton beams (beam.lepton_density) are not supported "
                 "with the AmpliCol output; use the madmatrix one"
             )
+        if self.process.upc_flux:
+            # the same for the gamma-UPC luminosity
+            raise NotImplementedError(
+                "gamma-UPC beams (beam.upc_flux) are not supported with the "
+                "AmpliCol output; use the madmatrix one"
+            )
         flavors = self.meta["flavors"]
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
         mappings = []

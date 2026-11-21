@@ -11,7 +11,7 @@
 
 #include "Density.h"
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ColorData.h" // colorMatrix/colorDenom, sqSoIndex/chosenSqso
 #include "MemoryAccessMomenta.h"
@@ -40,7 +40,7 @@ namespace madmatrix
     using ProcessTables::use_crossing;
 
     // Events evaluated by one call of calculate_jamps (two SIMD pages in mixed precision)
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     constexpr int nParity = 2;
 #else
     constexpr int nParity = 1;
@@ -73,14 +73,14 @@ namespace madmatrix
         if( n > capacity )
         {
           release();
-          data = new( std::align_val_t( mgOnGpu::cppAlign ) ) T[n]();
+          data = new( std::align_val_t( madmatrix::cppAlign ) ) T[n]();
           capacity = n;
         }
         return data;
       }
       void release()
       {
-        if( data ) ::operator delete[]( data, std::align_val_t( mgOnGpu::cppAlign ) );
+        if( data ) ::operator delete[]( data, std::align_val_t( madmatrix::cppAlign ) );
         data = nullptr;
         capacity = 0;
       }

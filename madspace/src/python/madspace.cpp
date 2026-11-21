@@ -2721,6 +2721,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("EELuminosity::EELuminosity")
         );
 
+    py::classh<TabulatedLuminosity, FunctionGenerator>(
+        m, "TabulatedLuminosity", pydoc::doc("TabulatedLuminosity")
+    )
+        .def(
+            py::init<const PdfGrid&, const std::string&>(),
+            py::arg("grid"),
+            py::arg("prefix") = "",
+            pydoc::doc("TabulatedLuminosity::TabulatedLuminosity")
+        );
+
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
         .def(
             py::init<const std::string&>(),
@@ -2951,6 +2961,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<MappingChannelWeights>&,
                 int,
                 const std::optional<EELuminosity>&,
+                const std::optional<TabulatedLuminosity>&,
                 bool>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
@@ -2985,6 +2996,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("mapping_chan_weights") = std::nullopt,
             py::arg("mlm_history_qcd_power") = -1,
             py::arg("lepton_luminosity") = std::nullopt,
+            py::arg("tabulated_luminosity") = std::nullopt,
             py::arg("parton_density_output") = false,
             pydoc::doc("Integrand::Integrand")
         )

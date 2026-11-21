@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -1395,7 +1396,27 @@ class MadgraphSubprocess:
         hadronic PDF -- but its beams do *not* keep their full energy, so the
         mapping still has to sample x. The two senses of the word part here.
         """
-        return self.process.leptonic and self.process.lepton_density is None
+        return (self.process.leptonic and self.process.lepton_density is None
+                and not self.process.upc_flux)
+
+    def upc_tau_min(self) -> float:
+        """A lower bound on s_hat / s of this subprocess, which the table of a
+        gamma-UPC luminosity has to reach: from the outgoing masses and the pt
+        and sqrt(s) cuts (each particle carries at least its transverse mass)."""
+        pt_min = list(self.cuts.pt_min()) if self.cuts is not None else []
+        pt_min += [0.] * (len(self.outgoing_masses) - len(pt_min))
+        sqrt_s = sum(math.hypot(mass, pt)
+                     for mass, pt in zip(self.outgoing_masses, pt_min))
+        if self.cuts is not None:
+            sqrt_s = max(sqrt_s, self.cuts.sqrt_s_min())
+        return sqrt_s ** 2 / self.process.e_cm ** 2
+
+    def non_photon_incoming(self) -> list[int]:
+        """The incoming partons of this subprocess, over all its flavours, that
+        are not photons (which a gamma-UPC luminosity gives no flux)."""
+        n_in = len(clean_pids(self.meta["incoming"]))
+        return sorted({pid for option in _flavor_options(self.meta, self.unmerged_meta)
+                       for pid in option[:n_in] if pid != 22})
 
     @property
     def lepton_sampling_power(self) -> float:
@@ -1562,11 +1583,12 @@ class MadgraphSubprocess:
 
         cross_sections = []
         dressed = self.process.lepton_density
+        upc = self.process.upc_luminosity()
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
             pdf_arg2 = pdf_arg
-            if dressed is not None:
+            if dressed is not None or upc is not None:
                 # one luminosity for both beams, on beam 1; see
                 # lepton_density.pdf_factor for why beam 2 stays empty
                 pdf_arg = ms.CachedPdf()
@@ -1635,6 +1657,7 @@ class MadgraphSubprocess:
                 phasespace.mapping_chan_weights,
                 mlm_history_qcd_power,
                 None if dressed is None else dressed.luminosity,
+                None if upc is None else upc.luminosity,
                 parton_density_output=self.parton_density_output() and not madnis_training,
             ))
         #print(integrands[1].function())

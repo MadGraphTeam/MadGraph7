@@ -1,0 +1,35 @@
+name: Cancel CI of a closed PR
+
+# When a PR is merged or closed, its pull_request CI runs on the head commit are
+# no longer needed. A merge gets its own run on main, so nothing is lost. Cancel
+# the ones still going.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel-pr-runs:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Cancel the unfinished pull_request runs of the closed head commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] && continue
+            # Other PRs can share this head commit; cancel only runs of this PR.
+            if gh api "repos/$REPO/actions/runs/$id" --jq '.pull_requests[].number' | grep -qx "$PR_NUMBER"; then
+              gh run cancel "$id" --repo "$REPO" || true
+            fi
+          done

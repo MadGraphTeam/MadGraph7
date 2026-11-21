@@ -27,7 +27,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h" // for DeviceAccessJamp
-#include "ColorData.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
+#include "ColorData.h" // for madmatrix::nchannels/channel2iconfig/icolamp/nconfigSDE
 
 #include <cfloat>
 #include <cmath>
@@ -330,7 +330,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   __global__ void
-  computeDependentCouplings( MGONGPU_GRID_CONSTANT const ProcessParametersArg params, const fptype* allgs, fptype* allcouplings )
+  computeDependentCouplings( MADMATRIX_GRID_CONSTANT const ProcessParametersArg params, const fptype* allgs, fptype* allcouplings )
   {
     using G_ACCESS = DeviceAccessGs;
     using C_ACCESS = DeviceAccessCouplings;
@@ -382,7 +382,7 @@ namespace madmatrix
   // may differ from one thread to the next (allihel): the external wavefunctions are
   // branch-free in the helicity (see helas.h), so the threads of a warp do not diverge.
   __global__ void /* clang-format off */
-  calculate_jamps( MGONGPU_GRID_CONSTANT const ProcessParametersArg kparams, // input: parameters of the process
+  calculate_jamps( MADMATRIX_GRID_CONSTANT const ProcessParametersArg kparams, // input: parameters of the process
                    int ihel,                           // input: helicity index [0,ncomb) of all events (if !processAllHelicities and allihel == nullptr)
                    const int* allihel,                 // input: helicity index [0,ncomb) of each event[nevt] (nullptr: ihel, or the good helicity blockIdx.y)
                    const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
@@ -826,9 +826,9 @@ namespace madmatrix
         // subprocess whose matrix element is identically zero); 0/0 would turn a zero
         // matrix element into a nan. Floored rather than tested, so that -ffast-math
         // cannot drop the guard - see backend/cpu/SigmaKin.cc for the reasoning.
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
         constexpr fptype fptypeMin = DBL_MIN; // smallest normal double
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
         constexpr fptype fptypeMin = FLT_MIN; // smallest normal float
 #endif
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
@@ -846,7 +846,7 @@ namespace madmatrix
   //--------------------------------------------------------------------------
 
   __global__ void
-  add_and_select_hel( MGONGPU_GRID_CONSTANT const ProcessParametersArg kparams, // input: parameters of the process (good helicities)
+  add_and_select_hel( MADMATRIX_GRID_CONSTANT const ProcessParametersArg kparams, // input: parameters of the process (good helicities)
                       int* allselhel,                   // output: helicity selection[nevt]
                       const fptype* allrndhel,          // input: random numbers[nevt] for helicity selection
                       fptype* ghelAllMEs,               // input/tmp: allMEs for nGoodHel <= ncomb individual/runningsum helicities (index is ighel)
@@ -864,7 +864,7 @@ namespace madmatrix
       // No sum and no choice: each event was evaluated for its given helicity only, whose
       // |M|^2 (signed, with an interference) is the one entry of ghelAllMEs (nhel == 1)
       allMEs[ievt] = ghelAllMEs[ievt];
-      allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+      allselhel[ievt] = allihel[ievt] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
       return;
     }
     // no helicity (0) unless one is chosen below: a vanishing or NaN |M|^2 chooses none, and
@@ -903,7 +903,7 @@ namespace madmatrix
         if constexpr( use_crossing )
           allselhel[ievt] = selected_hel_code( dcGoodHel[ighelLast], iflavorVec[ievt] );
         else
-          allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+          allselhel[ievt] = dcGoodHel[ighelLast] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allMEs[ievt] = copysign( absTotal, ghelAllMEs[ighelLast * nevt + ievt] );
         return;
       }
@@ -930,7 +930,7 @@ namespace madmatrix
         else
         {
           (void)iflavorVec;
-          const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+          const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
           allselhel[ievt] = ihelF;
         }
         break;
@@ -965,18 +965,18 @@ namespace madmatrix
     {
       const DeviceNumerators numerators( allNumerators );
       fptype numerator_sum = 0., normalization = 0.;
-      for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+      for( unsigned int ichan = 0; ichan < madmatrix::nchannels; ichan++ )
       {
-        if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+        if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
         normalization += numerators[ichan];
       }
       // No diagram weight (a zero, NaN or infinite sum): keep the last channel,
       // as on cpu/simd
-      channelId = mgOnGpu::nchannels;
+      channelId = madmatrix::nchannels;
       const bool okcdf = validFlavor && selectable_total( normalization );
-      for( unsigned int ichan = 0; okcdf && ichan < mgOnGpu::nchannels; ichan++ )
+      for( unsigned int ichan = 0; okcdf && ichan < madmatrix::nchannels; ichan++ )
       {
-        if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+        if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
         numerator_sum += numerators[ichan];
         if( allrnddiagram[ievt] < numerator_sum / normalization )
         {
@@ -989,10 +989,10 @@ namespace madmatrix
 
     if( channelId != 0 ) // no event-by-event choice of color if channelId == 0 (fix FPE #783)
     {
-      if( channelId > mgOnGpu::nchannels )
+      if( channelId > madmatrix::nchannels )
       {
-        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, mgOnGpu::nchannels );
-        assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
+        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, madmatrix::nchannels );
+        assert( channelId <= madmatrix::nchannels ); // SANITY CHECK #919 #910
       }
       // Determine the jamp2 for this event (TEMPORARY? could do this with a dedicated memory accessor instead...)
       fptype_amp_sv jamp2_sv[ncolor_flow] = { 0 };
@@ -1002,16 +1002,16 @@ namespace madmatrix
       for( int icolC = 0; icolC < ncolor_flow; icolC++ )
         jamp2_sv[icolC] = J2_ACCESS::kernelAccessIcolConst( allJamp2s, icolC );
       // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
-      const int iconfig = mgOnGpu::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
+      const int iconfig = madmatrix::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
       if( iconfig <= 0 )
       {
         printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which has no associated SDE iconfig\n", channelId );
         assert( iconfig > 0 ); // SANITY CHECK #917
       }
-      else if( iconfig > (int)mgOnGpu::nconfigSDE )
+      else if( iconfig > (int)madmatrix::nconfigSDE )
       {
-        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
-        assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
+        printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, madmatrix::nconfigSDE );
+        assert( iconfig <= (int)madmatrix::nconfigSDE ); // SANITY CHECK #917
       }
       fptype_amp targetamp[ncolor_flow] = { 0 };
       // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
@@ -1022,7 +1022,7 @@ namespace madmatrix
         else
           targetamp[icolC] = targetamp[icolC - 1];
         // NB (see #877): in the array icolamp, the input index uses C indexing (iconfig -1)
-        if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
+        if( madmatrix::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
       const bool okcdf = validFlavor && selectable_total( targetamp[ncolor_flow - 1] );
@@ -1030,7 +1030,7 @@ namespace madmatrix
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
-          allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], cudacpp [0,ncolor-1]
+          allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
           break;
         }
       }
@@ -1076,7 +1076,7 @@ namespace madmatrix
   {
     mgDebugInitialise();
 
-    // SANITY CHECKS for cudacpp code generation (see issues #272 and #343 and PRs #619, #626, #360, #396 and #754)
+    // SANITY CHECKS for madmatrix code generation
     {
       // nprocesses == 2 may happen for "mirror processes" such as P0_uux_ttx within pp_tt012j (see PR #754)
       static_assert( nproc == 1 || nproc == 2, "Assume nprocesses == 1 or 2" );
@@ -1097,7 +1097,7 @@ namespace madmatrix
     // lock-step, and the color sum, the color and channel choice all run on that one helicity.
     const int nhel = ( allihel != nullptr ? 1 : params.nGoodHel );
     gpuMemsetAsync( allMEs, 0, sizeof( fptype ) * nevt, stream );
-    gpuMemsetAsync( ghelAllJamps, 0, sizeof( fptype_amp ) * nhel * njampso * mgOnGpu::nx2 * nevt, stream );
+    gpuMemsetAsync( ghelAllJamps, 0, sizeof( fptype_amp ) * nhel * njampso * madmatrix::nx2 * nevt, stream );
     gpuMemsetAsync( colAllJamp2s, 0, sizeof( fptype_amp ) * ncolor_flow * nevt, stream );
     // The numerators buffer has NO helicity dimension: all good helicities accumulate in place via
     // atomicAdd, so it is zeroed once (see numeratorsIndex). The denominators are derived from the

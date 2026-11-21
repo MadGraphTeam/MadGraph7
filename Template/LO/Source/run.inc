@@ -8,6 +8,10 @@ c
       logical         fixed_ren_scale,fixed_fac_scale1, fixed_fac_scale2,fixed_couplings,hmult
       logical         fixed_extra_scale
       integer         ickkw,nhmult,asrwgtflavor, dynamical_scale_choice
+c     floor on a dynamical renormalisation scale, so that alpha_s is not
+c     evaluated at or below its Landau pole (NLO: minscaleR in setscales.f)
+      double precision min_ren_scale
+      parameter (min_ren_scale=2d0)
 
 c     EVA      
       integer ievo_eva,evaorder,eva_xcut

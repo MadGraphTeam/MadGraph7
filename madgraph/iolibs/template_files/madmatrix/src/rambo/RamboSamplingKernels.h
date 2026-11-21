@@ -7,7 +7,7 @@
 #ifndef RAMBOSAMPLINGKERNELS_H
 #define RAMBOSAMPLINGKERNELS_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryBuffers.h"
 
@@ -128,7 +128,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   // A class encapsulating RAMBO phase space sampling on a GPU device
   class MasslessRamboSamplingKernelDevice final : public SamplingKernelBase, public NumberOfEvents
   {

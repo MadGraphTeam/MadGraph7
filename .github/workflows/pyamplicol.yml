@@ -3,12 +3,12 @@ name: pyAmpliCol
 # Ported from the standalone pyamplicol repository (tests.yml and
 # release-artifacts.yml). Every job runs inside pyamplicol/.
 on:
-  push:
-    # All branches, no tags (see madspace.yml): release.yml gates on the run
-    # for the commit on main and then calls this workflow to build the wheels.
-    branches:
-      - '**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    # main only: other branches run through workflow_dispatch
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       full_matrix:
@@ -23,6 +23,7 @@ on:
         default: false
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
@@ -41,6 +42,7 @@ jobs:
   # Skips the heavy jobs unless pyamplicol changed; a job, not `paths:`, so every
   # commit still gets a (green) run for release.yml's CI gate.
   changes:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     outputs:
       pyamplicol: ${{ steps.diff.outputs.pyamplicol }}
@@ -83,11 +85,25 @@ jobs:
             changed=false
           fi
           echo "pyamplicol=$changed" | tee -a "$GITHUB_OUTPUT"
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   python-compatibility:
     name: Python ${{ matrix.python-version }} lightweight API
     needs: changes
-    if: needs.changes.outputs.pyamplicol == 'true'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -119,11 +135,25 @@ jobs:
           tests/unit/test_ci_fetch_loop_reference_ufos.py
           tests/unit/test_ci_memory_watchdog.py
           -q
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   source-contracts:
     name: Python 3.11 source and release contracts
     needs: changes
-    if: needs.changes.outputs.pyamplicol == 'true'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -159,10 +189,24 @@ jobs:
 
   # Builds through the MadGraph installer and checks that Symbolica accepts the
   # package library key; the install is cached for install_pyamplicol.
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
   installer:
     name: MadGraph installer and Symbolica library key
     needs: changes
-    if: needs.changes.outputs.pyamplicol == 'true'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -208,11 +252,25 @@ jobs:
           print(state)
           assert state.licensed, "Symbolica runs in restricted mode"
           EOF
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   release-runtime:
     name: Published-dependency generation, runtime, and native SDK
     needs: [changes, python-compatibility, source-contracts]
-    if: needs.changes.outputs.pyamplicol == 'true' && github.event_name != 'push'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true' && github.event_name != 'push')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
@@ -484,10 +542,24 @@ jobs:
           .venv/bin/python -m pytest tests/integration/test_examples.py -q
 
   # ---- Release artifacts (release.yml, or a manual run with full_matrix) ----
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   prepared-models:
     name: Release prepared-model archive
-    if: inputs.full_matrix
+    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -503,8 +575,23 @@ jobs:
           name: pyamplicol-prepared-models
           path: pyamplicol/.artifacts/prepared-models/pyamplicol-prepared-models.tar.gz
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   release-source-preflight:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Focused release source preflight
     needs: prepared-models
     runs-on: ubuntu-24.04
@@ -541,10 +628,24 @@ jobs:
           tests/release
           tests/unit/test_dependency_gate.py
           tests/unit/test_release_*.py
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   independent-physics-oracle:
     name: Independent Fortran physics oracle
-    if: inputs.full_matrix
+    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -564,8 +665,23 @@ jobs:
             --prepare-checkout \
             --fixture tests/fixtures/reference/physics-v2.json \
             --jobs 2 >/dev/null
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   retained-sdist:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Build retained source distribution
     needs: [release-source-preflight, independent-physics-oracle]
     runs-on: ubuntu-24.04
@@ -595,8 +711,23 @@ jobs:
           name: pyamplicol-retained-sdist
           path: pyamplicol/.artifacts/release-source/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   macos-wheels:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: macOS release wheel and native deployment (${{ matrix.target }})
     needs: retained-sdist
     strategy:
@@ -682,8 +813,23 @@ jobs:
           name: pyamplicol-release-${{ matrix.target }}
           path: pyamplicol/.artifacts/platform/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   manylinux-wheel:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: manylinux release wheel and native deployment
     needs: retained-sdist
     runs-on: ubuntu-24.04
@@ -736,8 +882,23 @@ jobs:
           name: pyamplicol-release-manylinux-x86_64
           path: pyamplicol/.artifacts/platform/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   validated-artifacts:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Collect validated release artifacts
     needs: [retained-sdist, macos-wheels, manylinux-wheel]
     runs-on: ubuntu-24.04
@@ -766,3 +927,17 @@ jobs:
           name: pyamplicol-validated-release
           path: pyamplicol/.artifacts/validated/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
