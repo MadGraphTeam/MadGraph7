@@ -2012,6 +2012,12 @@ pub unsafe extern "C" fn rusticol_runtime_pattern_pairs(
 /// (template slot -> template slot of the same side and particle): the id evaluated at
 /// momenta `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals). Ids are
 /// interned and stay valid for the handle (requires `rusticol.flavour-union-relabelling.v1`).
+/// With `rusticol.flavour-union-relabelling.v2` a slot may also map to the opposite side
+/// with the same all-outgoing flavour where both slots may cross (Weyl fermion: image PDG
+/// -pdg; massless vector: equal PDG; not on a pure-vector template); the result is then a
+/// crossed assignment ([`rusticol_runtime_assignment_crossing`]), refused for a conjugated
+/// base, and such a slot reads `q'[r] = -q[permutation[r]]`: both ids describe the same
+/// member event, each at its own signed momenta.
 ///
 /// # Safety
 ///
@@ -2614,6 +2620,7 @@ mod tests {
                 "rusticol.flavour-union-assignments.v2".to_string(),
                 "rusticol.flavour-union-contracted-colour.v1".to_string(),
                 "rusticol.flavour-union-relabelling.v1".to_string(),
+                "rusticol.flavour-union-relabelling.v2".to_string(),
                 "rusticol.on-the-fly.complex-f64.v1".to_string(),
                 "rusticol.on-the-fly.contracted-color.v1".to_string(),
                 "rusticol.on-the-fly.lc-color.v1".to_string(),
@@ -2621,6 +2628,8 @@ mod tests {
                 "rusticol.recurrence-color.lc.v1".to_string(),
                 "rusticol.recurrence-direct-arena.complex-f64.v1".to_string(),
                 "rusticol.recurrence-helicity-selector-companion.v2".to_string(),
+                "rusticol.recurrence-pattern-resolved-companion.v1".to_string(),
+                "rusticol.recurrence-selector-only-fc.v1".to_string(),
                 "symbolica.compiled-asm.complex-f64.v1".to_string(),
                 "symbolica.compiled-cpp.complex-f64.v1".to_string(),
                 "symjit.application.complex-f64.v1".to_string(),

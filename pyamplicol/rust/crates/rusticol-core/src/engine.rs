@@ -211,6 +211,10 @@ pub const FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY: &str = "rusticol.flavour-un
 /// Runtime feature: pattern tables and assignments relabelled by template slot symmetries.
 pub const FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY: &str =
     "rusticol.flavour-union-relabelling.v1";
+/// Runtime feature: relabellings may map a crossable slot to the opposite side with the
+/// same all-outgoing flavour (see [`NativeRuntime::relabel_assignment`]).
+pub const FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY: &str =
+    "rusticol.flavour-union-relabelling.v2";
 /// Runtime feature: flavour-union templates and assignments of contracted (full) colour.
 pub const FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY: &str =
     "rusticol.flavour-union-contracted-colour.v1";
@@ -378,6 +382,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_RUNTIME_CAPABILITY,
@@ -446,6 +452,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY
         | FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY
         | FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY
+        | FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY
         | FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY
         | RECURRENCE_RUNTIME_CAPABILITY
         | RECURRENCE_LC_COLOR_RUNTIME_CAPABILITY
@@ -4955,7 +4962,10 @@ impl NativeUnionRelabelling {
         })
     }
 
-    /// Validate a template slot symmetry (side, PDG preserved).
+    /// Validate a template slot symmetry: every slot maps to one of the same side and
+    /// PDG or, on a template that is not pure-vector, to one of the opposite side with
+    /// the same all-outgoing flavour where both slots may cross (Weyl fermions with
+    /// image PDG -pdg, massless vectors with equal PDG).
     fn validate_symmetry(&self, permutation: &[usize]) -> RusticolResult<()> {
         let count = self.template_pdgs.len();
         let mut seen = vec![false; count];
@@ -4968,13 +4978,49 @@ impl NativeUnionRelabelling {
                 "relabelling must be a permutation of the {count} template slots"
             )));
         }
-        if permutation.iter().enumerate().any(|(slot, image)| {
-            (slot < self.initial_count) != (*image < self.initial_count)
-                || self.template_pdgs[slot] != self.template_pdgs[*image]
-        }) {
-            return Err(RusticolError::invalid_argument(
-                "relabelling must map every template slot to one of the same side and particle",
-            ));
+        let pure_vector = self
+            .slot_crossings
+            .iter()
+            .all(|slot| *slot == NativeSlotCrossing::MasslessVector);
+        for (slot, image) in permutation.iter().copied().enumerate() {
+            let (pdg, image_pdg) = (self.template_pdgs[slot], self.template_pdgs[image]);
+            if (slot < self.initial_count) == (image < self.initial_count) {
+                if pdg != image_pdg {
+                    return Err(RusticolError::invalid_argument(
+                        "relabelling must map every template slot to one of the same side and particle",
+                    ));
+                }
+                continue;
+            }
+            let same_outgoing = match (
+                self.slot_crossings.get(slot),
+                self.slot_crossings.get(image),
+            ) {
+                (Some(NativeSlotCrossing::WeylFermion), Some(NativeSlotCrossing::WeylFermion)) => {
+                    image_pdg == -pdg
+                }
+                (
+                    Some(NativeSlotCrossing::MasslessVector),
+                    Some(NativeSlotCrossing::MasslessVector),
+                ) => image_pdg == pdg,
+                _ => {
+                    return Err(RusticolError::compatibility(format!(
+                        "relabelling maps template slot {slot} across sides to slot {image}; \
+                         both must be massless Weyl fermions or massless vectors that may cross"
+                    )));
+                }
+            };
+            if !same_outgoing {
+                return Err(RusticolError::invalid_argument(format!(
+                    "relabelling maps template slot {slot} across sides to slot {image} of a \
+                     different all-outgoing flavour"
+                )));
+            }
+            if pure_vector {
+                return Err(RusticolError::compatibility(
+                    "relabelling crosses sides on a pure-vector template",
+                ));
+            }
         }
         Ok(())
     }
@@ -5529,6 +5575,10 @@ mod recurrence_integration_tests;
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/union_crossing_prototype_tests.rs"]
 mod union_crossing_prototype_tests;
+
+#[cfg(test)]
+#[path = "engine/cross_side_relabelling_tests.rs"]
+mod cross_side_relabelling_tests;
 
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]
 #[path = "engine/eager_v3_manifest_tests.rs"]

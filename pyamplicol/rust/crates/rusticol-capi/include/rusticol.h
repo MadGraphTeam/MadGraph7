@@ -535,7 +535,10 @@ int rusticol_runtime_assignment_helicity_vector(
  * per pair. relabel_assignment returns the id of an assignment relabelled by a
  * template slot symmetry (slot -> slot of the same side and particle): the new id
  * at momenta q equals the old one at q'[r] = q[permutation[r]] (totals; helicity
- * and flow axes relabel accordingly). Ids are interned and stay valid.
+ * and flow axes relabel accordingly). Ids are interned and stay valid. With
+ * "rusticol.flavour-union-relabelling.v2" a crossable slot may map to the opposite
+ * side with the same all-outgoing flavour (Weyl fermion -pdg, massless vector equal
+ * pdg): the result is crossed, and refused for a conjugated base.
  */
 int rusticol_runtime_pattern_count(
     const RusticolRuntimeHandle *handle,

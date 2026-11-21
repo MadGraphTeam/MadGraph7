@@ -2594,7 +2594,13 @@ impl NativeRuntime {
 
     /// The assignment `assignment` relabelled by a template slot symmetry: the returned
     /// id evaluated at `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals;
-    /// helicity and flow axes are relabelled accordingly). Patterns map as
+    /// helicity and flow axes are relabelled accordingly). A slot maps to one of the same
+    /// side and PDG or, since `rusticol.flavour-union-relabelling.v2`, to the opposite side
+    /// with the same all-outgoing flavour where both may cross (Weyl fermion: image PDG
+    /// -pdg; massless vector: equal PDG; not on a pure-vector template). Such an image
+    /// yields a crossed assignment (refused for a conjugated base) and negates the moved
+    /// momentum, `q'[r] = -q[permutation[r]]`: both ids describe the same member event,
+    /// each at its own signed momenta. Patterns map as
     /// `(f, a) -> (permutation[f], permutation[a])`; factor, signs and conjugation are kept;
     /// the crossing is recomputed from the relabelled permutation. Ids are interned per
     /// (assignment, crossing, derived patterns) and stay valid; at most

@@ -730,7 +730,7 @@ fn lc_replay_expands_trace_reflection_for_residual_sectors() {
     );
 }
 
-fn alias_test_physics(color_accuracy: &str) -> ProcessPhysicsV1 {
+pub(super) fn alias_test_physics(color_accuracy: &str) -> ProcessPhysicsV1 {
     let contracted = color_accuracy != "lc";
     let representative_helicity_id = "h:+1,-1,+0,+1,-1".to_string();
     let helicities = vec![
