@@ -25,10 +25,12 @@ import importlib.resources
 import itertools
 import json
 import math
+import operator
 import os
 import re
 from array import array
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -213,6 +215,64 @@ def _pdf_column(pdg: int) -> int:
     return pdg + 6
 
 
+def _flat(flow: Sequence[Sequence[int]]) -> tuple[int, ...]:
+    return tuple(itertools.chain.from_iterable(flow))
+
+
+def _flow_key(values: Sequence[int]) -> bytes:
+    # int16 when it fits (LHE tags are ~500), else int32: the lengths differ
+    try:
+        return array("h", values).tobytes()
+    except OverflowError:
+        return array("i", values).tobytes()
+
+
+class _Rows(Sequence):
+    """Read-only rows of a columnar table, built on access."""
+
+    __slots__ = ("_count", "_row")
+
+    def __init__(self, count: int, row: Callable[[int], Any]) -> None:
+        self._count, self._row = count, row
+
+    def __len__(self) -> int:
+        return self._count
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return [self._row(i) for i in range(*index.indices(self._count))]
+        index = operator.index(index)
+        if index < 0:
+            index += self._count
+        if not 0 <= index < self._count:
+            raise IndexError(index)
+        return self._row(index)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Sequence) and not isinstance(other, str | bytes):
+            return len(self) == len(other) and all(
+                a == b for a, b in zip(self, other, strict=True)
+            )
+        return NotImplemented
+
+    __hash__ = None  # type: ignore[assignment]
+
+
+@dataclass(frozen=True)
+class SwitchTargetTable:
+    """The switch targets of a catalogue by column: evaluation, colour set
+    (colours, flow positions) and pdg ids in event slots (``width`` each)."""
+
+    evaluation: array
+    color_set: array
+    color_sets: list[tuple[tuple[int, ...], tuple[int, ...]]]
+    pdgs: array
+    width: int
+
+    def pdgs_of(self, index: int) -> list[int]:
+        return self.pdgs[index * self.width:(index + 1) * self.width].tolist()
+
+
 def switch_catalogue(
     reference: Mapping[str, Any],
     groups: Mapping[str, Any] | None,
@@ -295,13 +355,65 @@ def switch_catalogue(
                 if index is not None and member.get("color_id") is not None:
                     flows[index][member["color_id"]] = member["color_flows"]
     flow_ids = {index: sorted(table) for index, table in flows.items()}
-    color_flows = [list(map(list, flow)) for flow in reference["color_flows"]]
-    color_index = {tuple(map(tuple, flow)): i for i, flow in enumerate(color_flows)}
-    # the colour flows of a target per (runtime, legs, conjugated)
-    target_colors: dict[tuple, list[int]] = {}
+    n = len(reference["pdg_ids"][0]) if reference["pdg_ids"] else 0
+    base_flows = reference["color_flows"]
+    # colour flows by content: the metadata's, then those the targets add (flat,
+    # two tags per leg); keys are packed bytes, not tuples (millions at 7j)
+    color_index = {_flow_key(_flat(flow)): i for i, flow in enumerate(base_flows)}
+    new_flows = array("i")
+    # per runtime: (flow position, its flat tags + a 0 for unassigned slots)
+    rep_tags = {
+        rep: [(k, (*_flat(base_flows[table[flow_id]]), 0))
+              for k, flow_id in enumerate(flow_ids[rep])]
+        for rep, table in flows.items()
+    }
+    # the (colours, flows) of a target per (runtime, legs, conjugated): an index
+    # into color_sets, whose equal tuples are shared
+    target_colors: dict[tuple, int] = {}
+    color_sets: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+    color_set_index: dict[tuple, int] = {}
+
+    def color_set(rep: int, legs: tuple[int, ...], conjugated: bool) -> int:
+        # flat event-slot tag k reads flat template tag source[k]
+        source = [2 * n] * (2 * n)
+        for j, slot in enumerate(legs):
+            # template flows are reversed at template-initial slots
+            flip = ((j < incoming) != (slot < incoming)) != conjugated
+            source[2 * slot] = 2 * j + flip
+            source[2 * slot + 1] = 2 * j + (not flip)
+        gather = operator.itemgetter(*source)
+        found = []
+        for k, tags in rep_tags[rep]:
+            slot_tags = gather(tags)
+            # colour tags renumbered by first appearance (0: none)
+            names = dict(zip(dict.fromkeys((0, *slot_tags)), itertools.count()))
+            found.append((tuple(map(names.__getitem__, slot_tags)), k, slot_tags))
+        # the flows in physical order, the order of the colour draw
+        found.sort()
+        colors = []
+        for _, _, slot_tags in found:
+            key = _flow_key(slot_tags)
+            index = color_index.get(key)
+            if index is None:
+                index = color_index[key] = len(base_flows) + len(new_flows) // (2 * n)
+                new_flows.extend(slot_tags)
+            colors.append(index)
+        key = (tuple(colors), tuple(k for _, k, _ in found))
+        index = color_set_index.get(key)
+        if index is None:
+            index = color_set_index[key] = len(color_sets)
+            color_sets.append(key)
+        return index
+
     evaluations: dict[tuple, int] = {}
     described: list[tuple] = []
-    orderings, targets, target_pdgs, seen = [], [], [], set()
+    seen: set[tuple] = set()
+    # the orderings and targets by column (millions of rows at 7j)
+    order_columns = SwitchOrderings(
+        array("i"), array("b"), array("b"), array("d"), array("i"), array("i")
+    )
+    target_evaluation, target_color_set = array("i"), array("i")
+    target_pdgs = array("i")
     # the outgoing non-partons (massive quarks too) of every row, in the same slots
     # in every row; their flavours may differ between rows (e+ ve and mu+ vm of l+ vl)
     jet = _jet_partons(reference)
@@ -335,6 +447,12 @@ def switch_catalogue(
         if slot not in fixed_slots
     ]
     n_partons = math.factorial(len(parton_slots))
+    parton_positions = [slot - incoming for slot in parton_slots]
+    append_evaluation = order_columns.evaluation.append
+    append_pdf0, append_pdf1 = order_columns.pdf0.append, order_columns.pdf1.append
+    append_weight = order_columns.weight.append
+    append_target = order_columns.target.append
+    append_arrangement = order_columns.arrangement.append
     for (arrangement, sigma), (
         rep, pdgs, permutation, conjugated, factor, assignment, rho
     ) in itertools.product(enumerate(arrangements), members):
@@ -345,6 +463,11 @@ def switch_catalogue(
             # the member's identical legs in template slots; the runtime has its factor
             rep_pdgs = [pdgs[leg] for leg in permutation]
             factor = 1.0
+        # the matrix element is symmetric in identical legs reading outgoing slots
+        identical = {}
+        for k, pdg in enumerate(rep_pdgs):
+            identical.setdefault(pdg, []).append(k)
+        identical = [ks for ks in identical.values() if len(ks) > 1]
         a, b = pdgs[:incoming]
         for orientation in (0, 1):
             initial = (a, b) if orientation == 0 else (b, a)
@@ -358,7 +481,6 @@ def switch_catalogue(
             if key in seen:
                 continue
             seen.add(key)
-            lines = quark_lines(pdgs)
             final = pdgs[incoming:]
             partons = [p for p in final if p in jet]
             first = canonical.get(tuple(sorted(p for p in final if p not in jet)))
@@ -366,18 +488,26 @@ def switch_catalogue(
                 raise ValueError(f"flavour {pdgs} has other non-partons than the events")
             moves = dict(sigma)
             fixed = {moves.get(slot, slot): pdg for slot, pdg in first.items()}
+            base_order = [fixed.get(s) for s in range(incoming, len(pdgs))]
             weight = factor * math.prod(
                 math.factorial(partons.count(p)) for p in set(partons)
             ) / n_partons
+            pdf0, pdf1 = _pdf_column(initial[0]), _pdf_column(initial[1])
+            is_target = quark_lines(pdgs) >= switch_lines
+            prefix = [0, 1] if orientation == 0 else [1, 0]
             for parton_order in sorted(set(itertools.permutations(partons))):
-                order_slots = dict(fixed)
-                order_slots.update(zip(parton_slots, parton_order))
-                order = tuple(order_slots[s] for s in range(incoming, len(pdgs)))
-                slots = [0, 1] if orientation == 0 else [1, 0]
-                slots += [incoming + j for j in _first_unused(order, final)]
-                legs = _canonical_legs(
-                    rep_pdgs, [slots[r] for r in permutation], incoming
-                )
+                order = list(base_order)
+                for position, pdg in zip(parton_positions, parton_order, strict=True):
+                    order[position] = pdg
+                slots = prefix + [incoming + j for j in _first_unused(order, final)]
+                legs = [slots[r] for r in permutation]
+                for ks in identical:
+                    reading = [k for k in ks if legs[k] >= incoming]
+                    if len(reading) > 1:
+                        values = sorted([legs[k] for k in reading])
+                        for k, value in zip(reading, values, strict=True):
+                            legs[k] = value
+                legs = tuple(legs)
                 # crossed slots: template side != event side (sigma, checked above)
                 if rho is None and any(
                     (r < incoming) != (slot < incoming) for r, slot in enumerate(legs)
@@ -393,43 +523,23 @@ def switch_catalogue(
                         f"flavour {pdgs} has two crossings at one evaluation"
                     )
                 target = -1
-                if lines >= switch_lines:
-                    target = len(targets)
+                if is_target:
+                    target = len(target_evaluation)
                     colors = target_colors.get((rep, legs, conjugated))
                     if colors is None:
-                        found = []
-                        for slot_index, flow_id in enumerate(flow_ids[rep]):
-                            tags = color_flows[flows[rep][flow_id]]
-                            slot_tags = [[0, 0] for _ in legs]
-                            for j, slot in enumerate(legs):
-                                # template flows are reversed at template-initial slots
-                                pair = list(tags[j])
-                                crossed = (j < incoming) != (slot < incoming)
-                                flip = crossed != conjugated
-                                slot_tags[slot] = pair[::-1] if flip else pair
-                            found.append((_canonical_tags(slot_tags), slot_index, slot_tags))
-                        # the flows in physical order, the order of the colour draw
-                        colors = target_colors[rep, legs, conjugated] = ([], [])
-                        for _, slot_index, slot_tags in sorted(found):
-                            key = tuple(map(tuple, slot_tags))
-                            if key not in color_index:
-                                color_index[key] = len(color_flows)
-                                color_flows.append(slot_tags)
-                            colors[0].append(color_index[key])
-                            colors[1].append(slot_index)
-                    targets.append({
-                        "evaluation": evaluation,
-                        "colors": list(colors[0]),
-                        "flows": list(colors[1]),
-                    })
-                    target_pdgs.append([*initial, *order])
-                orderings.append({
-                    "evaluation": evaluation,
-                    "pdf": [_pdf_column(initial[0]), _pdf_column(initial[1])],
-                    "weight": weight,
-                    "target": target,
-                    "arrangement": arrangement,
-                })
+                        colors = target_colors[rep, legs, conjugated] = color_set(
+                            rep, legs, conjugated
+                        )
+                    target_evaluation.append(evaluation)
+                    target_color_set.append(colors)
+                    target_pdgs.extend(initial)
+                    target_pdgs.extend(order)
+                append_evaluation(evaluation)
+                append_pdf0(pdf0)
+                append_pdf1(pdf1)
+                append_weight(weight)
+                append_target(target)
+                append_arrangement(arrangement)
     # One native call per (runtime, legs): the assignments of a template share it.
     # With a pattern table, one per (template, leg types): an evaluation at legs l
     # is its assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c.
@@ -494,6 +604,10 @@ def switch_catalogue(
         permutations = call["permutations"]
         if permutations is not None and all(p == sorted(p) for p in permutations):
             call["permutations"] = None
+    targets = SwitchTargetTable(
+        target_evaluation, target_color_set, color_sets, target_pdgs, n
+    )
+    width = 2 * n
     return {
         "evaluations": [
             {
@@ -516,11 +630,28 @@ def switch_catalogue(
             for (rep, assignment, legs, key, rho) in described
         ],
         "calls": list(calls.values()),
-        "orderings": orderings,
-        "targets": targets,
-        "target_pdgs": target_pdgs,
+        "ordering_table": order_columns,
+        "target_table": targets,
+        # row views of the tables (inspection and tests)
+        "orderings": _Rows(len(order_columns.evaluation), lambda i: {
+            "evaluation": order_columns.evaluation[i],
+            "pdf": [order_columns.pdf0[i], order_columns.pdf1[i]],
+            "weight": order_columns.weight[i],
+            "target": order_columns.target[i],
+            "arrangement": order_columns.arrangement[i],
+        }),
+        "targets": _Rows(len(target_evaluation), lambda i: {
+            "evaluation": target_evaluation[i],
+            "colors": list(color_sets[target_color_set[i]][0]),
+            "flows": list(color_sets[target_color_set[i]][1]),
+        }),
+        "target_pdgs": _Rows(len(target_evaluation), targets.pdgs_of),
         "flow_ids": flow_ids,
-        "color_flows": color_flows[len(reference["color_flows"]):],
+        # the flows the targets add after the metadata's, flat
+        "color_flow_table": new_flows,
+        "color_flows": _Rows(len(new_flows) // width if width else 0, lambda i: [
+            list(new_flows[k:k + 2]) for k in range(i * width, (i + 1) * width, 2)
+        ]),
         "switch_lines": switch_lines,
         "arrangement_count": len(arrangements),
         "row_arrangements": row_arrangements,
@@ -562,9 +693,10 @@ def _switch_rows(
     catalogue: Mapping[str, Any],
     target_route: Any,
 ) -> SwitchRows:
-    """The rows of the flavour switch; target_route maps a target to its target
-    process index, its legs in event slots (None: the evaluation's), factor,
-    flavour-union assignment (-1: none) and that assignment's process id."""
+    """The rows of the flavour switch; target_route maps a target (its
+    evaluation, its pdg ids in event slots) to its target process index, its
+    legs in event slots (None: the evaluation's), factor, flavour-union
+    assignment (-1: none) and that assignment's process id."""
     evaluations = []
     for i, evaluation in enumerate(catalogue["evaluations"]):
         legs = _ints(evaluation["legs"])
@@ -594,16 +726,8 @@ def _switch_rows(
             None if permutations is None
             else _ints([slot for permutation in permutations for slot in permutation]),
         ))
-    arranged = catalogue.get("arrangement_count", 1) > 1
-    rows = catalogue["orderings"]
-    orderings = SwitchOrderings(
-        array("q", (o["evaluation"] for o in rows)),
-        array("q", (o["pdf"][0] for o in rows)),
-        array("q", (o["pdf"][1] for o in rows)),
-        array("d", (float(o["weight"]) for o in rows)),
-        array("q", (o["target"] for o in rows)),
-        array("q", (o["arrangement"] if arranged else 0 for o in rows)),
-    )
+    orderings = catalogue["ordering_table"]
+    table = catalogue["target_table"]
     # equal colour, flow and leg arrays share one tuple
     shared: dict[tuple, tuple] = {}
 
@@ -614,21 +738,26 @@ def _switch_rows(
             known = shared[values] = _ints(values)
         return known
 
-    targets = SwitchTargets(array("q"), array("q"), [], [], [], array("d"), array("q"), [])
-    for i, target in enumerate(catalogue["targets"]):
-        colors = share(target["colors"])
-        flows = share(target.get("flows", range(len(target["colors"]))))
+    sets = [(share(colors), share(flows)) for colors, flows in table.color_sets]
+    count = len(table.evaluation)
+    targets = SwitchTargets(
+        array("i"), array("i"), [None] * count, [None] * count, [None] * count,
+        array("d"), array("i"), [None] * count,
+    )
+    for i in range(count):
+        evaluation = table.evaluation[i]
+        colors, flows = sets[table.color_set[i]]
         index, legs, factor, assignment, key = target_route(
-            target, catalogue["target_pdgs"][i]
+            evaluation, table.pdgs_of(i)
         )
-        targets.evaluation.append(target["evaluation"])
+        targets.evaluation.append(evaluation)
         targets.target_process.append(index)
-        targets.colors.append(colors)
-        targets.flows.append(flows)
-        targets.legs.append(None if legs is None else share(legs))
+        targets.colors[i] = colors
+        targets.flows[i] = flows
+        targets.legs[i] = None if legs is None else share(legs)
         targets.factor.append(float(factor))
         targets.assignment.append(assignment)
-        targets.assignment_key.append(_text(key))
+        targets.assignment_key[i] = _text(key)
     # only the reference processes of the targets need their flow ids
     used = {evaluations[e].process for e in set(targets.evaluation)}
     flows = [
@@ -807,6 +936,9 @@ def reweight_tables(
         return routed[key]
 
     exported_count = len(reference["helicities"])
+    # helicity maps by export (and target): flavours share few distinct ones
+    inverse_exports: dict[tuple, tuple[int, ...]] = {}
+    target_exports: dict[tuple, tuple[int, ...]] = {}
     # several arrangements of the switch's non-partons: each entry names its own
     arranged = catalogue is not None and catalogue.get("arrangement_count", 1) > 1
     channels = []
@@ -819,10 +951,14 @@ def reweight_tables(
             process_index = _integer(runtime["process_index"])
             process = reference_processes[process_index]
             assignment = runtime.get("assignment")
-            reference_helicity = [-1] * exported_count
+            export = tuple(runtime["helicity_export"])
+            reference_helicity = inverse_exports.get(export)
+            if reference_helicity is None:
+                inverse = [-1] * exported_count
+                for runtime_index, exported in enumerate(export):
+                    inverse[exported] = runtime_index
+                reference_helicity = inverse_exports[export] = tuple(inverse)
             target_helicity = [-1] * exported_count
-            for runtime_index, exported in enumerate(runtime["helicity_export"]):
-                reference_helicity[exported] = runtime_index
             permutation = _ints(runtime["permutation"])
             # a crossed union member gathers sigma * input[permutation]
             reference_signs = None
@@ -844,11 +980,15 @@ def reweight_tables(
                 target, target_id = match
                 if target["id"] in templates:
                     target_assignment, target_key = 0, target["id"]
-                target_helicities = helicity_positions(target)
-                for runtime_index, exported in enumerate(runtime["helicity_export"]):
-                    identifier = process["helicity_ids"][runtime_index]
-                    if identifier in target_helicities:
-                        target_helicity[exported] = target_helicities[identifier]
+                key = (id(target), process_index, export)
+                if key not in target_exports:
+                    target_helicities = helicity_positions(target)
+                    for runtime_index, exported in enumerate(export):
+                        identifier = process["helicity_ids"][runtime_index]
+                        if identifier in target_helicities:
+                            target_helicity[exported] = target_helicities[identifier]
+                    target_exports[key] = tuple(target_helicity)
+                target_helicity = target_exports[key]
             else:
                 # A flavour-union member or target: its own route, legs and factor.
                 pdgs = reference["pdg_ids"][entry["matrix_elements"][0]["pdg_ids"]]
@@ -856,9 +996,13 @@ def reweight_tables(
                 target, target_id, legs, target_factor = route[:4]
                 target_assignment, target_key = route[4:]
                 target_permutation = _ints(legs)
-                table = routed_helicities(target, target_permutation)
-                for exported in runtime["helicity_export"]:
-                    target_helicity[exported] = table[exported]
+                key = (id(target), target_permutation, export)
+                if key not in target_exports:
+                    table = routed_helicities(target, target_permutation)
+                    for exported in export:
+                        target_helicity[exported] = table[exported]
+                    target_exports[key] = tuple(target_helicity)
+                target_helicity = target_exports[key]
             index = target_index(target, target_id)
             switch_arrangement = 0
             if arranged:
@@ -873,7 +1017,7 @@ def reweight_tables(
             flavours.append(FlavourRow(
                 process_index, index, permutation, reference_signs,
                 # built from integers here: no per-value check
-                tuple(reference_helicity), tuple(target_helicity),
+                reference_helicity, target_helicity,
                 -1 if assignment is None else _integer(assignment),
                 _text(runtime.get("assignment_key")),
                 target_permutation, None, target_factor, target_assignment,
@@ -881,8 +1025,12 @@ def reweight_tables(
             ))
         channels.append(flavours)
 
-    def target_route(target, pdgs):
-        evaluation = catalogue["evaluations"][target["evaluation"]]
+    # per switch evaluation: its route when it is the target's own process (None:
+    # each target is routed by its flavour)
+    own_routes: dict[int, tuple | None] = {}
+
+    def own_route(evaluation_index):
+        evaluation = catalogue["evaluations"][evaluation_index]
         process = reference_processes[evaluation["process"]]
         match = target_lookup.get(tuple(process["pdgs"]))
         if evaluation.get("assignment", -1) < 0 and (
@@ -895,6 +1043,14 @@ def reweight_tables(
             if match[0]["id"] in templates:
                 return target_index(*match), None, 1.0, 0, match[0]["id"]
             return target_index(*match), None, 1.0, -1, None
+        return None
+
+    def target_route(evaluation_index, pdgs):
+        if evaluation_index not in own_routes:
+            own_routes[evaluation_index] = own_route(evaluation_index)
+        route = own_routes[evaluation_index]
+        if route is not None:
+            return route
         process, target_id, legs, factor, assignment, key = _route(
             route_index(), pdgs, incoming
         )
@@ -919,6 +1075,39 @@ def reweight_tables(
         supports_alpha_s,
     )
     return ReweightTables(provider, reference_rows, target_rows, channels, switch)
+
+
+def write_switch_sidecar(
+    path: Path, catalogue: Mapping[str, Any], color_flow_offset: int
+) -> None:
+    """Write ``flavor_switch_<id>.json`` in chunks: the bytes of ``json.dumps``
+    of {switch_lines, targets, color_flow_offset, color_flows}."""
+    targets = catalogue["target_table"]
+    flows = catalogue["color_flow_table"]
+    width = targets.width
+
+    def rows(values: array, row: str, size: int):
+        # ", "-joined rows of ``size`` values, ~1 MB of text at a time
+        step = max(1, 65536 // max(1, size))
+        count = len(values) // size if size else 0
+        for start in range(0, count, step):
+            stop = min(count, start + step)
+            text = ", ".join(
+                row % tuple(values[k * size:(k + 1) * size]) for k in range(start, stop)
+            )
+            yield (", " if start else "") + text
+
+    with open(path, "w", encoding="utf-8") as stream:
+        lines = json.dumps(catalogue["switch_lines"])
+        stream.write(f'{{"switch_lines": {lines}, "targets": [')
+        for chunk in rows(targets.pdgs, "[" + ", ".join(["%d"] * width) + "]", width):
+            stream.write(chunk)
+        offset = json.dumps(color_flow_offset)
+        stream.write(f'], "color_flow_offset": {offset}, "color_flows": [')
+        pair = "[" + ", ".join(["[%d, %d]"] * width) + "]"
+        for chunk in rows(flows, pair, 2 * width):
+            stream.write(chunk)
+        stream.write("]}")
 
 
 def write_reweight_provider(
@@ -979,14 +1168,10 @@ def write_reweight_provider(
         catalogue = None
         if switch_lines is not None:
             catalogue = switch_catalogue(reference, groups, switch_lines, initial_legs)
-            (output / f"flavor_switch_{identifier}.json").write_text(
-                json.dumps({
-                    "switch_lines": switch_lines,
-                    "targets": catalogue["target_pdgs"],
-                    "color_flow_offset": len(reference["color_flows"]),
-                    "color_flows": catalogue["color_flows"],
-                }),
-                encoding="utf-8",
+            write_switch_sidecar(
+                output / f"flavor_switch_{identifier}.json",
+                catalogue,
+                len(reference["color_flows"]),
             )
         write_reweight_data(output, reweight_tables(
             reference, targets, reference_path, target_path, catalogue
@@ -1006,4 +1191,5 @@ __all__ = [
     "reweight_tables",
     "switch_catalogue",
     "write_reweight_provider",
+    "write_switch_sidecar",
 ]
