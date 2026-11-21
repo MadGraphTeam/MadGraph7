@@ -560,17 +560,14 @@ two agree to about 1e-13. For an unmerged run with VEGAS and the same seed, both
 same events up to rounding. With MLM merging or MadNIS, these rounding differences change
 the sequence of events, so the events are only statistically equivalent.
 
-With the unions, the MG option ``amplicol_flavor_union_crossing`` (on by default) also
-joins, in the leading-colour artifact, the flavours whose legs agree once all of them are
-outgoing, for example ``q g > q g`` with ``g g > q q~``. ``p p > j j j`` then needs 3
-leading-colour programs instead of 7, ``p p > j j j j`` 4 instead of 10 and
-``p p > j j j j j`` 4 instead of 11, which shortens the generation. The full-colour
-artifact keeps its unions. The matrix elements agree with those of the uncrossed unions to
-rounding (about 1e-13, 1e-11 near collinear limits), but a crossed flavour samples its
-helicities in another order and colour orderings of identical particles are grouped
-differently, so the events are only statistically equivalent, also for an unmerged run
-with the same seed. ``set amplicol_flavor_union_crossing False`` before ``output`` turns
-it off.
+``set amplicol_flavor_union_crossing True`` (off by default; it requires
+``amplicol_flavor_unions``) also joins, in the leading-colour artifact, the flavours whose
+legs agree once all of them are outgoing, for example ``q g > q g`` with ``g g > q q~``.
+``p p > j j j`` then needs 3 leading-colour programs instead of 7, and ``p p > j j j j`` 4
+instead of 10, which shortens the generation. The full-colour artifact keeps its
+unions. The matrix elements agree with those of the uncrossed unions to about 1e-13, but
+a crossed flavour samples its helicities and colour flows in another order, so the events
+are only statistically equivalent, also for an unmerged run with the same seed.
 
 ``color_accuracy`` (``"full"``)
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
