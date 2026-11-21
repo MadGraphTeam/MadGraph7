@@ -5012,8 +5012,9 @@ impl NativeUnionRelabelling {
             };
             if !same_outgoing {
                 return Err(RusticolError::invalid_argument(format!(
-                    "relabelling maps template slot {slot} across sides to slot {image} of a \
-                     different all-outgoing flavour"
+                    "relabelling must map every template slot to one of the same side and \
+                     particle, or across sides to one of the same all-outgoing flavour (slot \
+                     {slot} -> {image})"
                 )));
             }
             if pure_vector {
