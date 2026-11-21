@@ -30,6 +30,9 @@ double precision virt_wgt_vec(0:1,2),born_wgt_vec(0:1,2)
 double precision average_virtual(0:1,1),polyfit(0:1)
 double precision average_virtual_vec(0:1,2),polyfit_vec(0:1,2)
 double precision virtual_fraction(1),wgt_mult,observed(0:1,2)
+! virt_surrogate state: no fitted surrogate for this point.
+logical :: vs_vcomp=.false.,vs_ratio_set=.false.
+double precision :: vs_ratio=0d0
 contains
 subroutine accumulate_the_point(x)
 double precision x(4)
@@ -90,16 +93,16 @@ end program
             self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_cache_lifecycle_survives_fold_reset(self):
+        # The vector storage is zeroed when allocated, kept by reset_storage
+        # (a fold reset) and freed by deallocate_storage. The native MC driver
+        # no longer clears it between folds: each lane's virtual is restored
+        # from its own context instead (see the bornsoftvirtual test below).
         compiler = shutil.which('gfortran')
         if not compiler:
             self.skipTest('gfortran required')
         root = Path(MG5DIR)/'Template/NLO/SubProcesses'
-        driver = (root/'driver_mintMC.f').read_text()
-        first = driver.index('call reset_weight_lines_vec(nexternal)')
-        reset = driver[first:driver.index('         endif', first)]
-        clear = '\n'.join(line for line in reset.splitlines() if any(
-            name in line for name in ('bsv_virt_cache', 'virt_wgt_vec',
-                                       'born_wgt_vec', 'virtual_over_born_vec')))
+        clear = ('  bsv_virt_cache=0d0\n  virt_wgt_vec=0d0\n'
+                 '  born_wgt_vec=0d0\n  virtual_over_born_vec=0d0')
         program = '''program lifecycle
 use driver_vec
 implicit none
@@ -146,115 +149,125 @@ end program
             subprocess.check_call([str(tmp/'probe')], cwd=tmp)
 
     def test_folded_lanes_keep_their_virtual_components(self):
+        """The first evaluation of a point computes and saves the virtual
+        residual; later folds restore it. The saved values are per lane (the
+        native scheduler swaps them with each lane's context), so the probe
+        passes them in as lane storage."""
         compiler = shutil.which('gfortran')
         if not compiler:
             self.skipTest('gfortran required')
         source = (Path(MG5DIR)/'Template/NLO/SubProcesses/fks_singular.f').read_text()
         bsv = source[source.index('      subroutine bornsoftvirtual('):]
-        start = bsv.index('      if (fold.eq.0) then')
-        block = bsv[start:bsv.index("      if (abrv(1:4).ne.'virt'", start)]
+        start = bsv.index('      if (first_virtual_evaluation) then\n         vs_vcomp=.false.')
+        block = bsv[start:bsv.index("      if (abrv(1:4).ne.'virt') then", start)]
         probe = '''      program probe
       implicit none
-      integer fold,lane,mode,ncalls
+      integer first,lane,phase,ncalls
       common /probe_calls/ncalls
-      double precision cache(0:2,3),input,v,c(2),fraction,average
+      double precision save_v(2),save_amp(2,2),input,v,c(2)
+      double precision fraction,average
       character*4 abrv
-      cache=0d0
+      save_v=0d0
+      save_amp=0d0
       ncalls=0
- 10   read(*,*,end=20) fold,lane,input,abrv,fraction,mode,average
-      if (fold.eq.-1) then
-         cache=0d0
+ 10   read(*,*,end=20) first,lane,input,abrv,fraction,phase,average
+      if (first.eq.-1) then
+         save_v=0d0
+         save_amp=0d0
          goto 10
       endif
-      call evaluate(fold,input,abrv,fraction,mode,average,
-     $              cache(:,lane),v,c)
+      call evaluate(first.eq.1,input,abrv,fraction,phase,average,
+     $              save_v(lane),save_amp(:,lane),v,c)
       write(*,*) v,c,ncalls
       goto 10
  20   end
 
-      subroutine evaluate(fold,input,abrv,fraction,mode,average,
-     $                    virt_cache,result,component)
+      subroutine evaluate(first_virtual_evaluation,input,abrv,fraction,
+     $     born_spread_phase,average,virt_wgt_save,amp_split_virt_save,
+     $     result,component)
       implicit none
-      integer fold,ichan,iamp,ickkw,amp_split_size,mode
+      integer amp_split_size,ichan,iamp,born_spread_phase
       parameter(amp_split_size=2)
+      integer timing_virtual
+      parameter(timing_virtual=4)
+      logical first_virtual_evaluation,timing_sampled,use_surrogate
+      logical vs_vcomp,vs_ratio_set,virtual_fold_ready
       character*4 abrv
-      logical use_poly_virtual
-      double precision input,result,component(2),ran2,fraction,average
-      double precision virt_cache(0:amp_split_size)
-      double precision p_born(0:3,1),born_wgt,virt_wgt
-      double precision ret_amp_split(2),amp_split_finite_ML(2)
-      double complex ret_saveamp(1,1),ret_amp_split_cnt(2,2,2)
-      double precision amp_split_virt(2),amp_split_born_for_virt(2)
-      double precision virtual_fraction(1),polyfit(2)
-      double precision average_virtual(2,1),virtual_over_born
-      double precision tBefore,tAfter,tOLP
-C Baseline variables allow the same numerical test to fail on the old block.
-      double precision virt_wgt_save,amp_split_virt_save(2)
-      save virt_wgt_save,amp_split_virt_save
+      double precision input,fraction,average,result,component(2)
+      double precision virt_wgt_save,amp_split_virt_save(amp_split_size)
+      double precision p_born(0:3,1),born_wgt,virt_wgt,virtual_over_born
+      double precision amp_split_virt(amp_split_size)
+      double precision amp_split_born_for_virt(amp_split_size)
+      double precision ave_ratio(0:amp_split_size),virtual_fraction(1)
+      double precision vs_born,vs_fvirt,vs_virt,vs_residual_reference
+      integer vs_residual_order
+      double precision amp_split_finite_ML(amp_split_size)
+      common /to_amp_split_finite/amp_split_finite_ML
+      double precision ran2
       external ran2
       ichan=1
-      ickkw=mode
-      use_poly_virtual=mode.eq.1
+      timing_sampled=.false.
+      use_surrogate=.false.
+      vs_ratio_set=.false.
       born_wgt=1d0
       p_born=0d0
       p_born(0,1)=input
-      ret_amp_split=1d0
-      ret_saveamp=0d0
-      ret_amp_split_cnt=0d0
-      amp_split_finite_ML=0d0
       virt_wgt=0d0
       amp_split_virt=0d0
       amp_split_born_for_virt=1d0
+      ave_ratio=average
       virtual_fraction=fraction
-      polyfit=average
-      average_virtual=average
-      tOLP=0d0
 ''' + block + '''      result=virt_wgt
       component=amp_split_virt
       end
       double precision function ran2()
       ran2=0.5d0
       end
-      subroutine binothlha_amp_frame(p,b,v,r,s,f,c)
+      subroutine timing_enter(category)
+      integer category
+      end
+      subroutine timing_leave(category)
+      integer category
+      end
+      subroutine binothlha_frame(p,b,v)
       implicit none
       integer ncalls
       common /probe_calls/ncalls
-      double precision p(0:3,1),b,v,r(2),f(2)
-      double complex s(1,1),c(2,2,2)
+      double precision p(0:3,1),b,v
+      double precision amp_split_finite_ML(2)
+      common /to_amp_split_finite/amp_split_finite_ML
       ncalls=ncalls+1
       v=2*p(0,1)
-      f(1)=-p(0,1)/2
-      f(2)=3*p(0,1)/2
+      amp_split_finite_ML(1)=-p(0,1)/2
+      amp_split_finite_ML(2)=3*p(0,1)/2
       end
 '''
         steps, expected = [], []
         calls = 0
-        for abrv, fraction, mode, average in (
-                ('all', 1., 0, 0.), ('all', .5, 0, 2.),
-                ('all', .5, 1, 2.), ('novi', 1., 0, 0.),
+        for abrv, fraction, phase, average in (
+                ('all', 1., 0, 0.), ('all', .5, 0, 2.), ('novi', 1., 0, 0.),
                 ('all', .25, 0, 0.), ('virt', .25, 0, 0.),
-                ('all', 1., -1, 0.)):
+                ('all', 1., 1, 0.), ('all', 1., 2, 0.), ('all', 1., 3, 1.5)):
             steps.append('-1 1 0 all 1 0 0')
             cache = {}
-            # Partial batch, full batch, repeated folds and unequal lanes.
-            for fold, lane in ((0, 1), (1, 1), (0, 1), (0, 2),
-                               (1, 1), (1, 2), (1, 1), (1, 2)):
+            # Repeated first evaluations, unequal lanes and interleaved folds.
+            for first, lane in ((1, 1), (0, 1), (1, 1), (1, 2),
+                                (0, 1), (0, 2), (0, 1), (0, 2)):
                 value = 12. if lane == 1 else 28.
-                steps.append(f'{fold} {lane} {value} {abrv} {fraction} {mode} {average}')
-                if fold == 0:
-                    if (fraction >= .5 and abrv != 'novi') or abrv == 'virt':
+                steps.append(f'{first} {lane} {value} {abrv} {fraction} {phase} {average}')
+                if first:
+                    computed = phase not in (1, 2) and (
+                        (fraction >= .5 and abrv[:3] != 'nov') or abrv == 'virt')
+                    if computed:
                         calls += 1
-                        parts = [-value/2, 3*value/2]
-                        if mode != -1:
-                            parts = [p-average for p in parts]
-                        total = sum(parts) if mode != -1 else 2*value
+                        parts = [-value/2-average, 3*value/2-average]
                         divisor = fraction if abrv != 'virt' else 1.
-                        cache[lane] = [total/divisor] + [p/divisor for p in parts]
+                        cache[lane] = [sum(parts)/divisor] + [p/divisor for p in parts]
                     else:
                         cache[lane] = [0., 0., 0.]
                 expected.append(cache[lane] + [float(calls)])
-            # A previously filled lane skipped in the next fold0 cannot leak.
-            steps.extend(['-1 1 0 all 1 0 0', '1 2 0 all 1 0 0'])
+            # A lane filled before the reset and only restored after it cannot leak.
+            steps.extend(['-1 1 0 all 1 0 0', '0 2 0 all 1 0 0'])
             expected.append([0., 0., 0., float(calls)])
         with tempfile.TemporaryDirectory(prefix='mg7_fold_cache_') as tmp:
             path = Path(tmp)/'probe.f'

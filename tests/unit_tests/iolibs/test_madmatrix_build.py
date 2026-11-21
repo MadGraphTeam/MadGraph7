@@ -64,7 +64,8 @@ class TestHostBlasBuild(unittest.TestCase):
                     selected, tag, links, defines = result.stdout.strip().splitlines()[-1].split('|')
                     self.assertEqual(selected, setting or default)
                     self.assertIn(selected, tag)
-                    self.assertEqual(links, flags if selected == 'hasBlas' else '')
+                    # make joins the flags with a separating blank.
+                    self.assertEqual(links.strip(), flags if selected == 'hasBlas' else '')
                     self.assertEqual(bool(defines), selected == 'hasBlas')
 
     def test_switching_host_blas_rejects_stale_objects(self):

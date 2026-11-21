@@ -8,6 +8,17 @@ import tests.unit_tests as unittest
 from madgraph import MG5DIR
 
 
+
+# The production routines open sampled timing categories (timing.f); the
+# probes never sample (timing_sampled stays false), so no-op entries suffice.
+TIMING_STUBS = """      subroutine timing_enter(category)
+      integer category
+      end
+      subroutine timing_leave(category)
+      integer category
+      end
+"""
+
 class TestNLOCouplingTimer(unittest.TestCase):
     def test_combined_preparation_preserves_scalar_and_vector_state(self):
         compiler = shutil.which('gfortran')
@@ -62,8 +73,11 @@ class TestNLOCouplingTimer(unittest.TestCase):
          endif
          write(*,*) 'STATE',g,g_vec,result_vec,pp,counts
       enddo
-      if (mode.eq.0.and.ticks.ne.16) stop 1
-      if (mode.eq.1.and.ticks.ne.8) stop 2
+c set_alphaS times itself through sampled categories (timing.f); only
+c set_alphaS_vec_from_scalar still reads the clock, twice per call. The
+c fused set_alphaS_and_vec reads it never.
+      if (mode.eq.0.and.ticks.ne.8) stop 1
+      if (mode.eq.1.and.ticks.ne.0) stop 2
       end
       subroutine probe_time(t)
       real t
@@ -131,7 +145,7 @@ c A momentum-dependent model distinguishes old and newly copied PP.
             for name, text in includes.items():
                 (tmp / name).write_text(text)
             shutil.copy2(directory / 'timing_variables.inc', tmp)
-            (tmp / 'probe.f').write_text(program + source)
+            (tmp / 'probe.f').write_text(program + source + TIMING_STUBS)
             compiled = subprocess.run([compiler, '-O0', '-fcheck=all',
                 '-ffixed-line-length-132', 'probe.f', '-o', 'probe'], cwd=tmp,
                 capture_output=True, text=True)

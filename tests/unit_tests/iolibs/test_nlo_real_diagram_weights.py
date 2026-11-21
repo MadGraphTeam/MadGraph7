@@ -37,9 +37,13 @@ class TestNLORealDiagramRouting(unittest.TestCase):
                 (directory/name).write_text(text)
             (directory/'wrapper.f').write_text(wrappers[start:end]+'\n')
             (directory/'check.f90').write_text(DRIVER)
+            # The wrapper traces its inputs and results through this
+            # self-contained module (inactive unless a trace is requested).
+            shutil.copy2(source.parents[1]/'Template/NLO/SubProcesses/mc_batch_trace.f90',
+                         directory)
             result = subprocess.run(['gfortran', '-O0', '-fcheck=all',
                 '-ffixed-line-length-none', '-ffree-line-length-none',
-                'wrapper.f', 'check.f90', '-o', 'check'], cwd=directory,
+                'mc_batch_trace.f90', 'wrapper.f', 'check.f90', '-o', 'check'], cwd=directory,
                 text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
             result = subprocess.run([str(directory/'check')], cwd=directory,
@@ -102,6 +106,11 @@ if(success) then
  wgt=99d0
 endif
 end subroutine
+
+logical function mg7_nlo_real_is_fortran()
+! The generated nlo_real_offload.f90 answers from the run card backend.
+mg7_nlo_real_is_fortran=.false.
+end function
 
 subroutine smatrix_real_fortran(p,ret,wgt)
 use route_state

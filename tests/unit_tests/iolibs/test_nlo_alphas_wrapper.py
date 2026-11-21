@@ -8,6 +8,17 @@ import tests.unit_tests as unittest
 from madgraph import MG5DIR
 
 
+
+# The production routines open sampled timing categories (timing.f); the
+# probes never sample (timing_sampled stays false), so no-op entries suffice.
+TIMING_STUBS = """      subroutine timing_enter(category)
+      integer category
+      end
+      subroutine timing_leave(category)
+      integer category
+      end
+"""
+
 class TestNLOAlphasWrapper(unittest.TestCase):
     def test_active_pdf_set_scale_and_call_counts(self):
         compiler = shutil.which('gfortran')
@@ -68,7 +79,7 @@ class TestNLOAlphasWrapper(unittest.TestCase):
 '''
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
-            (directory / 'probe.f').write_text(program + wrapper + '\n')
+            (directory / 'probe.f').write_text(program + wrapper + '\n' + TIMING_STUBS)
             (directory / 'alfas.inc').write_text('')
             shutil.copy2(root / 'SubProcesses/timing_variables.inc', directory)
             build = subprocess.run(

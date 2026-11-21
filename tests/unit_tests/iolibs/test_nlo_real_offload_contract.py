@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -435,6 +436,16 @@ UmamiStatus umami_matrix_element(UmamiHandle, size_t, size_t, size_t,
                 bridge_path = os.path.join(directory, 'libnlo_real_bridge.so')
                 saved = os.path.join(directory, 'bridge%d.so' % iteration)
                 shutil.copy2(bridge_path, saved)
+                if sys.platform == 'darwin':
+                    # dyld returns an already loaded image with the same
+                    # install name (@rpath/libnlo_real_bridge.so) instead of
+                    # this copy; give each copy its own name and re-sign it.
+                    # (no longer than the original name: it must fit the header)
+                    subprocess.run(['install_name_tool', '-id',
+                                    '@rpath/bridge%d.so' % iteration, saved],
+                                   check=True, capture_output=True)
+                    subprocess.run(['codesign', '-f', '-s', '-', saved],
+                                   check=True, capture_output=True)
                 bridge = ctypes.CDLL(saved)
                 bridge.mg7_nlo_real_initialize.argtypes = [
                     ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p,
