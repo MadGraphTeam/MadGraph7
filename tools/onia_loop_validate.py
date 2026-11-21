@@ -116,7 +116,7 @@ def coulomb_coefficient(case_colour):
 
 
 def relmom_check(name, case, outdir, pdir, masses, v0_point, energy, timeout,
-                 libs=('9', '7'), velocities=(0.02, 0.04, 0.06, 0.08, 0.1, 0.13, 0.16, 0.2)):
+                 libs=('9', '7'), velocities=(0.001, 0.002, 0.003, 0.005, 0.0075, 0.01, 0.015, 0.02)):
     """Independent check of the threshold value of the finite part: the
     virtual at a relative momentum of the constituents (ordinary, non
     degenerate integrals) extrapolated to v -> 0 with the Coulomb term
@@ -130,8 +130,8 @@ def relmom_check(name, case, outdir, pdir, masses, v0_point, energy, timeout,
         fin = [scan[v][0]['finite_norm'] for v in velocities]
         c = coulomb_coefficient(case['colour'])
         y = [f - c * PI2 / v for f, v in zip(fin, velocities)]
-        fit = olc.fit_threshold(list(velocities), y, (0, 1, 2, 3))
-        free = olc.fit_threshold(list(velocities), fin, (-1, 0, 1, 2, 3))
+        fit = olc.fit_threshold(list(velocities), y, (0, 1, 2, 3, 4))
+        free = olc.fit_threshold(list(velocities), fin, (-1, 0, 1, 2, 3, 4))
         res['libs'][lib] = dict(finite=fin, intercept=fit[0], free_coulomb=free[-1] / PI2,
                                 expected_coulomb=c, v0=v0_point,
                                 relative_difference=abs(fit[0] - v0_point) / max(abs(v0_point), 1.))

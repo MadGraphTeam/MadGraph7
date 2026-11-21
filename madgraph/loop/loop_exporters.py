@@ -1119,16 +1119,6 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
         dict['nexternal'] = nexternal
         dict['nincoming'] = ninitial
-        # With bound states MadLoop runs on the constituent legs and the
-        # public SLOOPMATRIX (onia_loop.f) takes the physical momenta: the
-        # core routine is renamed and the public wrappers take one leg per
-        # bound state.
-        if loop_onia.has_onia(matrix_element):
-            dict['sloopmatrix_entry'] = 'SLOOPMATRIX_CONSTITUENTS'
-            dict['nexternal_user'] = matrix_element.get_physical_nexternal_ninitial()[0]
-        else:
-            dict['sloopmatrix_entry'] = 'SLOOPMATRIX'
-            dict['nexternal_user'] = nexternal
         # Extract ncomb
         ncomb = matrix_element.get_helicity_combinations()
         dict['ncomb'] = ncomb
@@ -2215,6 +2205,31 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             lines.append('DATA ONIA_LINK_J/0/, ONIA_LINK_K/0/')
             lines.append('DATA ONIA_CL_RE/%d*0D0/, ONIA_CL_IM/%d*0D0/' % ((nborn * nborn,) * 2))
         writers.FortranWriter('onia_loop_links.inc').writelines(lines)
+
+    def onia_public_entries(self, file, matrix_element):
+        """loop_matrix.f of a process with bound states: MadLoop runs on the
+        constituent legs and the public SLOOPMATRIX of onia_loop.f takes the
+        physical momenta, so the core routine is SLOOPMATRIX_CONSTITUENTS and
+        the public wrappers (SLOOPMATRIX_THRES, SLOOPMATRIXHEL(_THRES)) take
+        one leg per bound state."""
+        prefix = matrix_element.rep_dict['proc_prefix']
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+        nphys = matrix_element.get_physical_nexternal_ninitial()[0]
+        core = '      SUBROUTINE %sSLOOPMATRIX(P_USER,ANS)\n' % prefix
+        if file.count(core) not in (1, 2):
+            raise loop_onia.OniaLoopError('Unexpected loop_matrix.f: core SLOOPMATRIX')
+        file = file.replace(core, '      SUBROUTINE %sSLOOPMATRIX_CONSTITUENTS(P_USER,ANS)\n' % prefix)
+        parameter = 'PARAMETER (NEXTERNAL=%d)' % nexternal
+        for wrapper in ['SLOOPMATRIXHEL(P,HEL,ANS)',
+                        'SLOOPMATRIXHEL_THRES(P,HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)',
+                        'SLOOPMATRIX_THRES(P,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)']:
+            head = '      SUBROUTINE %s%s' % (prefix, wrapper)
+            if file.count(head) != 1:
+                raise loop_onia.OniaLoopError('Unexpected loop_matrix.f: %s' % wrapper)
+            i = file.index(head)
+            j = file.index(parameter, i)
+            file = file[:j] + 'PARAMETER (NEXTERNAL=%d)' % nphys + file[j + len(parameter):]
+        return file
 
     def write_bornmatrix(self, writer, matrix_element, fortran_model):
         """born_matrix.f. With bound states it is the Born of the constituent
@@ -3953,6 +3968,8 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
             self.write_onia_loop_files(matrix_element, fortran_model, replace_dict)
 
         file = file % replace_dict
+        if context.get('Onia'):
+            file = self.onia_public_entries(file, matrix_element)
         number_of_calls = len([call for call in loop_CT_calls if call.find('CALL LOOP') != 0])   
         if writer:
             # Write the file

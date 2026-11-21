@@ -3,7 +3,7 @@ C   Main subroutine
 C --=========================================--
 
 ## if(ninjars_available) {
-      SUBROUTINE %(proc_prefix)s%(sloopmatrix_entry)s(P_USER,ANS)
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
       IMPLICIT NONE
       INTEGER NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -31,7 +31,7 @@ C     Guaranteed reset after every ordinary return from the implementation.
 
       SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
 ## } else {
-      SUBROUTINE %(proc_prefix)s%(sloopmatrix_entry)s(P_USER,ANS)
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
 ## }
 C  
 %(info_lines)s
@@ -2985,7 +2985,7 @@ C
 C CONSTANTS
 C
       INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal_user)d)
+      PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
       %(get_nsqso_born)s
@@ -3011,7 +3011,7 @@ C
 C CONSTANTS
 C
       INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal_user)d)
+      PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
 C  
@@ -3131,7 +3131,7 @@ C
 C CONSTANTS
 C
       INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=%(nexternal_user)d)
+      PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NSQUAREDSO
       PARAMETER (NSQUAREDSO=%(nSquaredSO)d)
 C  
