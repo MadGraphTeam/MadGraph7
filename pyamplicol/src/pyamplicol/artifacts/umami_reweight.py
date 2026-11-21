@@ -27,7 +27,9 @@ import json
 import math
 import os
 import re
+from array import array
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -542,109 +544,311 @@ def switch_catalogue(
     }
 
 
-def _pad_empty(rows: Sequence[Any]) -> list[str]:
-    """A C array cannot be empty: one zero entry, the stored count stays 0."""
-    return [] if rows else ["    {0},"]
+def _ints(values: Sequence[int]) -> tuple[int, ...]:
+    # every integer array is checked: metadata values reach the provider data
+    if all(type(v) is int for v in values):
+        return tuple(values)
+    return tuple(_integer(v) for v in values)
 
 
-def _switch_tables(
+def _text(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+@dataclass(frozen=True)
+class ProviderScalars:
+    id: str
+    particle_count: int
+    exported_helicity_count: int
+    reference_artifact: str
+    target_artifact: str
+    reference_artifact_id: str | None
+    target_artifact_id: str | None
+    supports_alpha_s: bool
+
+
+@dataclass(frozen=True)
+class ProcessRow:
+    key: str
+    pdgs: tuple[int, ...]
+    alpha_s_name: str | None
+    # -1 if unproven
+    alpha_s_power: int
+    helicity_count: int
+
+
+@dataclass(frozen=True)
+class FlavourRow:
+    """One ReweightFlavour; target_permutation None: the reference permutation."""
+
+    reference_process: int
+    target_process: int
+    permutation: tuple[int, ...]
+    reference_signs: tuple[int, ...] | None
+    reference_helicity: tuple[int, ...]
+    target_helicity: tuple[int, ...]
+    reference_assignment: int
+    assignment_key: str | None
+    target_permutation: tuple[int, ...] | None
+    target_signs: tuple[int, ...] | None
+    target_factor: float
+    target_assignment: int
+    target_assignment_key: str | None
+    switch_arrangement: int
+
+
+@dataclass(frozen=True)
+class SwitchEvaluation:
+    process: int
+    legs: tuple[int, ...]
+    assignment: int
+    assignment_key: str | None
+    signs: tuple[int, ...] | None
+    helicity_signs: tuple[int, ...] | None
+
+
+@dataclass(frozen=True)
+class SwitchCall:
+    """Evaluations of one native call; assignments None: a plain evaluation (one
+    entry, no entries or permutations)."""
+
+    evaluations: tuple[int, ...]
+    assignments: tuple[int, ...] | None
+    entries: tuple[int, ...] | None
+    # the relabelling of each request, particle_count values each (None: identity)
+    permutations: tuple[int, ...] | None
+
+
+@dataclass(frozen=True)
+class SwitchOrderings:
+    """The orderings by column (millions of rows at 7j)."""
+
+    evaluation: array
+    pdf0: array
+    pdf1: array
+    weight: array
+    target: array
+    arrangement: array
+
+
+@dataclass(frozen=True)
+class SwitchTargets:
+    """The targets by column; legs None: the evaluation's legs."""
+
+    evaluation: array
+    target_process: array
+    colors: list[tuple[int, ...]]
+    flows: list[tuple[int, ...]]
+    legs: list[tuple[int, ...] | None]
+    factor: array
+    assignment: array
+    assignment_key: list[str | None]
+
+
+@dataclass(frozen=True)
+class SwitchRows:
+    evaluations: list[SwitchEvaluation]
+    calls: list[SwitchCall]
+    orderings: SwitchOrderings
+    targets: SwitchTargets
+    # flow ids per reference process
+    flows: list[tuple[str, ...]]
+    # the exported helicities, particle_count values each
+    helicities: tuple[int, ...]
+    arrangement_count: int
+
+
+@dataclass(frozen=True)
+class ReweightTables:
+    """The data of one reweight provider, see ``reweight_provider.h``."""
+
+    provider: ProviderScalars
+    reference_processes: list[ProcessRow]
+    target_processes: list[ProcessRow]
+    channels: list[list[FlavourRow]]
+    switch: SwitchRows | None
+
+
+def _process_data(process: Mapping[str, Any]) -> ProcessRow:
+    return ProcessRow(
+        _text(process["id"]),
+        tuple(_integer(v) for v in process["pdgs"]),
+        _text(process["alpha_s_parameter"]),
+        int(_power(process)),
+        len(process["helicity_ids"]),
+    )
+
+
+def _signs(values: Sequence[int] | None, message: str) -> tuple[int, ...] | None:
+    if values is None:
+        return None
+    values = _ints(values)
+    if any(v not in (-1, 1) for v in values):
+        raise ValueError(message)
+    return values
+
+
+def _switch_rows(
     reference: Mapping[str, Any],
     catalogue: Mapping[str, Any],
     target_route: Any,
-    lines: list[str],
-) -> str:
-    """C tables of the flavour switch; target_route maps a target to its target
+) -> SwitchRows:
+    """The rows of the flavour switch; target_route maps a target to its target
     process index, its legs in event slots (None: the evaluation's), factor,
     flavour-union assignment (-1: none) and that assignment's process id."""
-    signs = []
+    evaluations = []
     for i, evaluation in enumerate(catalogue["evaluations"]):
-        lines.append(_int_array(f"reweight_switch_e{i}", "size_t", evaluation["legs"]))
+        legs = _ints(evaluation["legs"])
         # a crossed evaluation: momentum signs and helicity signs (rho) per runtime slot
+        signs = [
+            _signs(evaluation.get(field), f"switch evaluation {i} has invalid {field}")
+            for field in ("signs", "helicity_signs")
+        ]
+        evaluations.append(SwitchEvaluation(
+            _integer(evaluation["process"]), legs,
+            _integer(evaluation.get("assignment", -1)),
+            _text(evaluation.get("assignment_key")), *signs,
+        ))
+    calls = []
+    for call in catalogue.get("calls") or [
+        {"process": e["process"], "evaluations": [i], "assignments": None}
+        for i, e in enumerate(catalogue["evaluations"])
+    ]:
+        members = _ints(call["evaluations"])
+        if call["assignments"] is None:
+            calls.append(SwitchCall(members, None, None, None))
+            continue
+        entries = call.get("entries") or list(range(len(members)))
+        permutations = call.get("permutations")
+        calls.append(SwitchCall(
+            members, _ints(call["assignments"]), _ints(entries),
+            None if permutations is None
+            else _ints([slot for permutation in permutations for slot in permutation]),
+        ))
+    arranged = catalogue.get("arrangement_count", 1) > 1
+    rows = catalogue["orderings"]
+    orderings = SwitchOrderings(
+        array("q", (o["evaluation"] for o in rows)),
+        array("q", (o["pdf"][0] for o in rows)),
+        array("q", (o["pdf"][1] for o in rows)),
+        array("d", (float(o["weight"]) for o in rows)),
+        array("q", (o["target"] for o in rows)),
+        array("q", (o["arrangement"] if arranged else 0 for o in rows)),
+    )
+    # equal colour, flow and leg arrays share one tuple
+    shared: dict[tuple, tuple] = {}
+
+    def share(values):
+        values = _ints(values)
+        return shared.setdefault(values, values)
+
+    targets = SwitchTargets(array("q"), array("q"), [], [], [], array("d"), array("q"), [])
+    for i, target in enumerate(catalogue["targets"]):
+        colors = share(target["colors"])
+        flows = share(target.get("flows", range(len(target["colors"]))))
+        index, legs, factor, assignment, key = target_route(
+            target, catalogue["target_pdgs"][i]
+        )
+        targets.evaluation.append(target["evaluation"])
+        targets.target_process.append(index)
+        targets.colors.append(colors)
+        targets.flows.append(flows)
+        targets.legs.append(None if legs is None else share(legs))
+        targets.factor.append(float(factor))
+        targets.assignment.append(assignment)
+        targets.assignment_key.append(_text(key))
+    flows = [
+        tuple(str(i) for i in catalogue["flow_ids"].get(index, []))
+        for index in range(len(reference["runtime_processes"]))
+    ]
+    helicities = _ints([v for vector in reference["helicities"] for v in vector])
+    return SwitchRows(
+        evaluations, calls, orderings, targets, flows, helicities,
+        int(catalogue.get("arrangement_count", 1)),
+    )
+
+
+def _pad_empty(rows: Sequence[Any]) -> list[str]:
+    """A C array cannot be empty: one zero entry, the stored count stays 0."""
+    return [] if len(rows) else ["    {0},"]
+
+
+def _render_switch(switch: SwitchRows, lines: list[str]) -> str:
+    """C tables of the flavour switch."""
+    signs = []
+    for i, evaluation in enumerate(switch.evaluations):
+        lines.append(_int_array(f"reweight_switch_e{i}", "size_t", evaluation.legs))
         names = []
-        for prefix, field in (("s", "signs"), ("h", "helicity_signs")):
-            values = evaluation.get(field)
+        for prefix, values in (("s", evaluation.signs), ("h", evaluation.helicity_signs)):
             if values is None:
                 names.append("NULL")
                 continue
-            if any(_integer(v) not in (-1, 1) for v in values):
-                raise ValueError(f"switch evaluation {i} has invalid {field}")
             names.append(f"reweight_switch_{prefix}{i}")
             lines.append(_int_array(names[-1], "signed char", values))
         signs.append(", ".join(names))
     lines.append("static const ReweightSwitchEvaluation reweight_switch_evaluations[] = {")
     lines.extend(
-        f"    {{{_integer(e['process'])}, reweight_switch_e{i}, "
-        f"{_integer(e.get('assignment', -1))}, {_string(e.get('assignment_key'))}, "
+        f"    {{{e.process}, reweight_switch_e{i}, "
+        f"{e.assignment}, {_string(e.assignment_key)}, "
         f"{signs[i]}}},"
-        for i, e in enumerate(catalogue["evaluations"])
+        for i, e in enumerate(switch.evaluations)
     )
-    lines.extend(_pad_empty(catalogue["evaluations"]))
+    lines.extend(_pad_empty(switch.evaluations))
     lines.append("};")
-    calls = catalogue.get("calls") or [
-        {"process": e["process"], "evaluations": [i], "assignments": None}
-        for i, e in enumerate(catalogue["evaluations"])
-    ]
     rows = []
-    for i, call in enumerate(calls):
-        lines.append(_int_array(f"reweight_switch_c{i}", "size_t", call["evaluations"]))
-        assignments = call["assignments"]
-        if assignments is None:
+    for i, call in enumerate(switch.calls):
+        lines.append(_int_array(f"reweight_switch_c{i}", "size_t", call.evaluations))
+        if call.assignments is None:
             rows.append(
-                f"    {{{len(call['evaluations'])}, reweight_switch_c{i}, NULL, 1, "
+                f"    {{{len(call.evaluations)}, reweight_switch_c{i}, NULL, 1, "
                 "NULL, NULL},"
             )
             continue
-        lines.append(_int_array(f"reweight_switch_a{i}", "uint32_t", assignments))
-        entries = call.get("entries") or list(range(len(call["evaluations"])))
-        lines.append(_int_array(f"reweight_switch_n{i}", "size_t", entries))
-        permutations = call.get("permutations")
-        if permutations is not None:
-            flat = [slot for permutation in permutations for slot in permutation]
-            lines.append(_int_array(f"reweight_switch_p{i}", "size_t", flat))
+        lines.append(_int_array(f"reweight_switch_a{i}", "uint32_t", call.assignments))
+        lines.append(_int_array(f"reweight_switch_n{i}", "size_t", call.entries))
+        if call.permutations is not None:
+            lines.append(_int_array(f"reweight_switch_p{i}", "size_t", call.permutations))
         rows.append(
-            f"    {{{len(call['evaluations'])}, reweight_switch_c{i}, "
-            f"reweight_switch_a{i}, {len(assignments)}, "
-            + (f"reweight_switch_p{i}" if permutations is not None else "NULL")
+            f"    {{{len(call.evaluations)}, reweight_switch_c{i}, "
+            f"reweight_switch_a{i}, {len(call.assignments)}, "
+            + (f"reweight_switch_p{i}" if call.permutations is not None else "NULL")
             + f", reweight_switch_n{i}}},"
         )
     lines.append("static const ReweightSwitchCall reweight_switch_calls[] = {")
     lines.extend(rows)
-    lines.extend(_pad_empty(calls))
+    lines.extend(_pad_empty(switch.calls))
     lines.append("};")
     lines.append("static const ReweightSwitchOrdering reweight_switch_orderings[] = {")
-    arranged = catalogue.get("arrangement_count", 1) > 1
+    arranged = switch.arrangement_count > 1
+    o = switch.orderings
     lines.extend(
-        f"    {{{o['evaluation']}, {{{o['pdf'][0]}, {o['pdf'][1]}}}, "
-        f"{float(o['weight'])!r}, {o['target']}"
-        + (f", {o['arrangement']}}}," if arranged else "},")
-        for o in catalogue["orderings"]
+        f"    {{{o.evaluation[k]}, {{{o.pdf0[k]}, {o.pdf1[k]}}}, "
+        f"{o.weight[k]!r}, {o.target[k]}"
+        + (f", {o.arrangement[k]}}}," if arranged else "},")
+        for k in range(len(o.evaluation))
     )
-    lines.extend(_pad_empty(catalogue["orderings"]))
+    lines.extend(_pad_empty(o.evaluation))
     lines.append("};")
     rows = []
-    for i, target in enumerate(catalogue["targets"]):
-        lines.append(_int_array(f"reweight_switch_t{i}", "int", target["colors"]))
-        order = target.get("flows", range(len(target["colors"])))
-        lines.append(_int_array(f"reweight_switch_o{i}", "int", list(order)))
-        index, legs, factor, assignment, key = target_route(
-            target, catalogue["target_pdgs"][i]
-        )
-        name = f"reweight_switch_e{target['evaluation']}"
-        if legs is not None:
+    t = switch.targets
+    for i in range(len(t.evaluation)):
+        lines.append(_int_array(f"reweight_switch_t{i}", "int", t.colors[i]))
+        lines.append(_int_array(f"reweight_switch_o{i}", "int", t.flows[i]))
+        name = f"reweight_switch_e{t.evaluation[i]}"
+        if t.legs[i] is not None:
             name = f"reweight_switch_l{i}"
-            lines.append(_int_array(name, "size_t", legs))
+            lines.append(_int_array(name, "size_t", t.legs[i]))
         rows.append(
-            f"    {{{target['evaluation']}, {index}, reweight_switch_t{i}, "
+            f"    {{{t.evaluation[i]}, {t.target_process[i]}, reweight_switch_t{i}, "
             f"reweight_switch_o{i}, {name}, "
-            f"{float(factor)!r}, {assignment}, {_string(key)}}},"
+            f"{t.factor[i]!r}, {t.assignment[i]}, {_string(t.assignment_key[i])}}},"
         )
     lines.append("static const ReweightSwitchTarget reweight_switch_targets[] = {")
     lines.extend(rows)
-    lines.extend(_pad_empty(catalogue["targets"]))
+    lines.extend(_pad_empty(t.evaluation))
     lines.append("};")
     flow_rows = []
-    for index in range(len(reference["runtime_processes"])):
-        ids = catalogue["flow_ids"].get(index, [])
+    for index, ids in enumerate(switch.flows):
         lines.append(
             f"static const char *const reweight_switch_f{index}[] = {{"
             + ", ".join(_string(i) for i in ids or [None])
@@ -654,14 +858,13 @@ def _switch_tables(
     lines.append("static const ReweightSwitchFlows reweight_switch_flows[] = {")
     lines.extend(flow_rows)
     lines.append("};")
-    helicities = [v for vector in reference["helicities"] for v in vector]
-    lines.append(_int_array("reweight_switch_helicities", "int", helicities))
+    lines.append(_int_array("reweight_switch_helicities", "int", switch.helicities))
     lines.extend([
         "static const ReweightSwitch reweight_switch = {",
-        f"    {len(catalogue['evaluations'])}, reweight_switch_evaluations,",
-        f"    {len(calls)}, reweight_switch_calls,",
-        f"    {len(catalogue['orderings'])}, reweight_switch_orderings,",
-        f"    {len(catalogue['targets'])}, reweight_switch_targets,",
+        f"    {len(switch.evaluations)}, reweight_switch_evaluations,",
+        f"    {len(switch.calls)}, reweight_switch_calls,",
+        f"    {len(o.evaluation)}, reweight_switch_orderings,",
+        f"    {len(t.evaluation)}, reweight_switch_targets,",
         "    reweight_switch_flows, reweight_switch_helicities,",
         "};",
     ])
@@ -755,15 +958,15 @@ def _helicity_values(identifier: str) -> tuple[int, ...]:
     return tuple(int(value) for value in identifier[2:].split(","))
 
 
-def reweight_header(
+def reweight_tables(
     reference: Mapping[str, Any],
     targets: Sequence[Mapping[str, Any]],
     reference_path: str,
     target_path: str,
     catalogue: Mapping[str, Any] | None = None,
-) -> str:
-    """Render the tables of one reweight provider, see ``reweight_provider.h``;
-    with a ``switch_catalogue``, also those of the flavour switch."""
+) -> ReweightTables:
+    """The tables of one reweight provider, see ``reweight_provider.h``; with a
+    ``switch_catalogue``, also those of the flavour switch."""
     target_processes: list[Mapping[str, Any]] = []
     target_ids: list[str | None] = []
     target_lookup = {}
@@ -791,16 +994,7 @@ def reweight_header(
             routes = _route_index(target_routes or _target_routes(targets), incoming)
         return routes
     reference_processes = reference["runtime_processes"]
-    lines = [
-        "/* SPDX-License-Identifier: 0BSD */",
-        "/* Generated from the UMAMI metadata of the two artifacts. */",
-        '#include "reweight_provider.h"',
-    ]
-    rows = [
-        _process_row(process, f"reweight_r{i}", lines)
-        for i, process in enumerate(reference_processes)
-    ]
-    lines.extend(["static const ReweightProcess reweight_references[] = {", *rows, "};"])
+    reference_rows = [_process_data(process) for process in reference_processes]
 
     known: dict[int, int] = {}
 
@@ -827,35 +1021,31 @@ def reweight_header(
     exported_count = len(reference["helicities"])
     # several arrangements of the switch's non-partons: each entry names its own
     arranged = catalogue is not None and catalogue.get("arrangement_count", 1) > 1
-    channel_rows = []
+    channels = []
     for c, channel in enumerate(reference["channels"]):
-        flavour_rows = []
+        flavours = []
         for f, entry in enumerate(channel["processes"]):
             runtime = entry["runtime"]
             if "helicity_export" not in runtime:
                 raise ValueError("the reference UMAMI metadata has no helicity export")
             process_index = _integer(runtime["process_index"])
             process = reference_processes[process_index]
-            prefix = f"reweight_c{c}_f{f}"
             assignment = runtime.get("assignment")
             reference_helicity = [-1] * exported_count
             target_helicity = [-1] * exported_count
             for runtime_index, exported in enumerate(runtime["helicity_export"]):
                 reference_helicity[exported] = runtime_index
-            lines.append(
-                _int_array(f"{prefix}_permutation", "size_t", runtime["permutation"])
-            )
+            permutation = _ints(runtime["permutation"])
             # a crossed union member gathers sigma * input[permutation]
-            reference_signs = "NULL"
+            reference_signs = None
             if "momentum_signs" in runtime:
                 signs = [_integer(v) for v in runtime["momentum_signs"]]
                 if assignment is None or any(v not in (-1, 1) for v in signs):
                     raise ValueError(
                         f"flavour {f} of channel {c} has invalid momentum signs"
                     )
-                reference_signs = f"{prefix}_signs"
-                lines.append(_int_array(reference_signs, "signed char", signs))
-            target_permutation, target_factor = f"{prefix}_permutation", 1.0
+                reference_signs = tuple(signs)
+            target_permutation, target_factor = None, 1.0
             target_assignment, target_key = -1, None
             match = target_lookup.get(tuple(process["pdgs"]))
             if assignment is None and (match is not None or not union_targets):
@@ -877,8 +1067,7 @@ def reweight_header(
                 route = _route(route_index(), pdgs, incoming)
                 target, target_id, legs, target_factor = route[:4]
                 target_assignment, target_key = route[4:]
-                target_permutation = f"{prefix}_target_permutation"
-                lines.append(_int_array(target_permutation, "size_t", legs))
+                target_permutation = _ints(legs)
                 values = {
                     _helicity_values(identifier): index
                     for index, identifier in enumerate(target["helicity_ids"])
@@ -889,9 +1078,7 @@ def reweight_header(
                         tuple(vector[slot] for slot in legs), -1
                     )
             index = target_index(target, target_id)
-            lines.append(_int_array(f"{prefix}_reference", "int", reference_helicity))
-            lines.append(_int_array(f"{prefix}_target", "int", target_helicity))
-            switch_arrangement = ""
+            switch_arrangement = 0
             if arranged:
                 # the arrangement of the non-partons in the entry's rows
                 found = {
@@ -900,24 +1087,16 @@ def reweight_header(
                 }
                 if len(found) != 1:
                     raise ValueError(f"flavour {f} of channel {c} mixes arrangements")
-                switch_arrangement = f", {found.pop()}"
-            flavour_rows.append(
-                f"    {{{process_index}, {index}, "
-                f"{prefix}_permutation, {reference_signs}, {prefix}_reference, "
-                f"{prefix}_target, "
-                f"{-1 if assignment is None else _integer(assignment)}, "
-                f"{_string(runtime.get('assignment_key'))}, "
-                f"{target_permutation}, NULL, {target_factor!r}, {target_assignment}, "
-                f"{_string(target_key)}{switch_arrangement}}},"
-            )
-        lines.extend(
-            [
-                f"static const ReweightFlavour reweight_c{c}_flavours[] = {{",
-                *flavour_rows,
-                "};",
-            ]
-        )
-        channel_rows.append(f"    {{{len(flavour_rows)}, reweight_c{c}_flavours}},")
+                switch_arrangement = found.pop()
+            flavours.append(FlavourRow(
+                process_index, index, permutation, reference_signs,
+                _ints(reference_helicity), _ints(target_helicity),
+                -1 if assignment is None else _integer(assignment),
+                _text(runtime.get("assignment_key")),
+                target_permutation, None, target_factor, target_assignment,
+                _text(target_key), switch_arrangement,
+            ))
+        channels.append(flavours)
 
     def target_route(target, pdgs):
         evaluation = catalogue["evaluations"][target["evaluation"]]
@@ -938,43 +1117,134 @@ def reweight_header(
         )
         return target_index(process, target_id), legs, factor, assignment, key
 
-    switch = (
-        "NULL"
-        if catalogue is None
-        else _switch_tables(reference, catalogue, target_route, lines)
-    )
+    switch = None if catalogue is None else _switch_rows(reference, catalogue, target_route)
     if len(set(target_ids)) > 1:
         raise ValueError("the target processes come from different artifacts")
+    target_rows = [_process_data(process) for process in target_processes]
+    supports_alpha_s = all(
+        p["alpha_s_parameter"] is not None
+        for p in [*reference_processes, *target_processes]
+    )
+    provider = ProviderScalars(
+        _text(reference["provider"]["id"]),
+        _integer(reference["provider"]["particle_count"]),
+        exported_count,
+        str(reference_path),
+        str(target_path),
+        _text(reference["provider"].get("artifact_id")),
+        _text(target_ids[0] if target_ids else None),
+        supports_alpha_s,
+    )
+    return ReweightTables(provider, reference_rows, target_rows, channels, switch)
+
+
+def _render_process(process: ProcessRow, prefix: str, lines: list[str]) -> str:
+    lines.append(
+        f"static const int {prefix}_pdgs[] = {{"
+        + ", ".join(map(str, process.pdgs))
+        + "};"
+    )
+    return (
+        "    {"
+        + ", ".join((
+            _string(process.key),
+            f"{prefix}_pdgs",
+            _string(process.alpha_s_name),
+            str(process.alpha_s_power),
+            str(process.helicity_count),
+        ))
+        + "},"
+    )
+
+
+def render_reweight_header(tables: ReweightTables) -> str:
+    """The C header of the tables (the format before the data file)."""
+    lines = [
+        "/* SPDX-License-Identifier: 0BSD */",
+        "/* Generated from the UMAMI metadata of the two artifacts. */",
+        '#include "reweight_provider.h"',
+    ]
     rows = [
-        _process_row(process, f"reweight_t{i}", lines)
-        for i, process in enumerate(target_processes)
+        _render_process(process, f"reweight_r{i}", lines)
+        for i, process in enumerate(tables.reference_processes)
+    ]
+    lines.extend(["static const ReweightProcess reweight_references[] = {", *rows, "};"])
+    arranged = tables.switch is not None and tables.switch.arrangement_count > 1
+    channel_rows = []
+    for c, flavours in enumerate(tables.channels):
+        flavour_rows = []
+        for f, row in enumerate(flavours):
+            prefix = f"reweight_c{c}_f{f}"
+            lines.append(_int_array(f"{prefix}_permutation", "size_t", row.permutation))
+            reference_signs = "NULL"
+            if row.reference_signs is not None:
+                reference_signs = f"{prefix}_signs"
+                lines.append(_int_array(reference_signs, "signed char", row.reference_signs))
+            target_permutation = f"{prefix}_permutation"
+            if row.target_permutation is not None:
+                target_permutation = f"{prefix}_target_permutation"
+                lines.append(_int_array(target_permutation, "size_t", row.target_permutation))
+            lines.append(_int_array(f"{prefix}_reference", "int", row.reference_helicity))
+            lines.append(_int_array(f"{prefix}_target", "int", row.target_helicity))
+            flavour_rows.append(
+                f"    {{{row.reference_process}, {row.target_process}, "
+                f"{prefix}_permutation, {reference_signs}, {prefix}_reference, "
+                f"{prefix}_target, "
+                f"{row.reference_assignment}, "
+                f"{_string(row.assignment_key)}, "
+                f"{target_permutation}, NULL, {row.target_factor!r}, "
+                f"{row.target_assignment}, {_string(row.target_assignment_key)}"
+                + (f", {row.switch_arrangement}" if arranged else "")
+                + "},"
+            )
+        lines.extend(
+            [
+                f"static const ReweightFlavour reweight_c{c}_flavours[] = {{",
+                *flavour_rows,
+                "};",
+            ]
+        )
+        channel_rows.append(f"    {{{len(flavour_rows)}, reweight_c{c}_flavours}},")
+    switch = "NULL" if tables.switch is None else _render_switch(tables.switch, lines)
+    rows = [
+        _render_process(process, f"reweight_t{i}", lines)
+        for i, process in enumerate(tables.target_processes)
     ]
     lines.extend(["static const ReweightProcess reweight_targets[] = {", *rows, "};"])
     lines.extend(
         ["static const ReweightChannel reweight_channels[] = {", *channel_rows, "};"]
     )
-    supports_alpha_s = all(
-        p["alpha_s_parameter"] is not None
-        for p in [*reference_processes, *target_processes]
-    )
+    p = tables.provider
     lines.extend(
         [
-            f"#define UMAMI_HAS_ALPHA_S {int(supports_alpha_s)}",
+            f"#define UMAMI_HAS_ALPHA_S {int(p.supports_alpha_s)}",
             "static const ReweightProvider reweight_provider = {",
-            f"    {_string(reference['provider']['id'])}, "
-            f"{_integer(reference['provider']['particle_count'])}, {exported_count},",
-            f"    {_string(reference_path)}, {_string(target_path)},",
-            f"    {_string(reference['provider'].get('artifact_id'))}, "
-            f"{_string(target_ids[0] if target_ids else None)},",
-            f"    {len(reference_processes)}, reweight_references,",
-            f"    {len(target_processes)}, reweight_targets,",
-            f"    {len(channel_rows)}, reweight_channels, {_boolean(supports_alpha_s)},",
+            f"    {_string(p.id)}, {p.particle_count}, {p.exported_helicity_count},",
+            f"    {_string(p.reference_artifact)}, {_string(p.target_artifact)},",
+            f"    {_string(p.reference_artifact_id)}, {_string(p.target_artifact_id)},",
+            f"    {len(tables.reference_processes)}, reweight_references,",
+            f"    {len(tables.target_processes)}, reweight_targets,",
+            f"    {len(channel_rows)}, reweight_channels, {_boolean(p.supports_alpha_s)},",
             f"    {switch}",
             "};",
             "",
         ]
     )
     return "\n".join(lines)
+
+
+def reweight_header(
+    reference: Mapping[str, Any],
+    targets: Sequence[Mapping[str, Any]],
+    reference_path: str,
+    target_path: str,
+    catalogue: Mapping[str, Any] | None = None,
+) -> str:
+    """Render the tables of one reweight provider, see ``reweight_provider.h``;
+    with a ``switch_catalogue``, also those of the flavour switch."""
+    return render_reweight_header(
+        reweight_tables(reference, targets, reference_path, target_path, catalogue)
+    )
 
 
 def write_reweight_provider(
