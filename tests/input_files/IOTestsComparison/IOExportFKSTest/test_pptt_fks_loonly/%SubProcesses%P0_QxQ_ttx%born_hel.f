@@ -172,6 +172,7 @@
       DO I=1,NGRAPHS
         AMP(I)=LOC_SAVEAMP(I,HELL)
       ENDDO
+      JAMP(:,:) = (0D0,0D0)
       JAMP(1,1) = (-1.666666666666667D-01)*AMP(1)
       JAMP(2,1) = (5.000000000000000D-01)*AMP(1)
       ANS(:) = 0D0

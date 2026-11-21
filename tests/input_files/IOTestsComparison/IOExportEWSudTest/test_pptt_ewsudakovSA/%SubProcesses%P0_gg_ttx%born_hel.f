@@ -205,6 +205,7 @@ C     elseif (calculatedBorn) then
         AMP(I)=LOC_SAVEAMP(I,HELL)
       ENDDO
 C     endif
+      JAMP(:,:) = (0D0,0D0)
 C     JAMPs contributing to orders QCD=2 QED=0
       JAMP(1,1) = ((0.000000000000000D+00,1.000000000000000D+00))
      $ *AMP(1)+(-1.000000000000000D+00)*AMP(2)
