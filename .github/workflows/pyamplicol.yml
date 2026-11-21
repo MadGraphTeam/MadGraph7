@@ -850,10 +850,12 @@ jobs:
           name: pyamplicol-retained-sdist
           path: pyamplicol/.artifacts/retained
       - name: Build and deploy-test in manylinux_2_28 x86_64
+        # The whole checkout is mounted, not pyamplicol/ alone: umami.h is a
+        # symlink into madspace/, which the build reads by content.
         run: |
           docker run --rm \
-            -v "$PWD:/io" \
-            -w /io \
+            -v "$GITHUB_WORKSPACE:/io" \
+            -w /io/pyamplicol \
             -e PYAMPLICOL_BUILD_MODE=release \
             quay.io/pypa/manylinux_2_28_x86_64@sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614 \
             /bin/bash -euxo pipefail -c '
