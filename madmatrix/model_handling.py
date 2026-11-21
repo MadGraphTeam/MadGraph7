@@ -8,6 +8,7 @@ import os
 import sys
 
 import glob
+import bisect
 import math
 import contextlib
 import re
@@ -4270,6 +4271,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         self.nb_tmp_jamp = 0
         # (line, slots read, slot written or None) of every call, in order: see shared_wf_order
         self.wf_events = []
+        # len(wf_events) at each SHWF_RELOAD: see barrier_masks
+        self.barrier_events = []
         # Do not reuse the wavefunctions for loop matrix elements
         if isinstance(matrix_element, loop_helas_objects.LoopHelasMatrixElement):
             return self.get_loop_matrix_element_calls(matrix_element)
@@ -4463,6 +4466,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 if self.hr_probe:
                     amp_block.append('MG_HR_PROBE_AMP( %d );' % namp)
                 amp_block.append('SHWF_RELOAD();')
+                self.barrier_events.append(len(self.wf_events))
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472
@@ -4805,6 +4809,33 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         slots = sorted({write for _, _, write in self.wf_events if write is not None})
         return sorted(slots, key=lambda slot: -score[slot])
 
+    def barrier_masks(self, nbits=32):
+        """Per SHWF_RELOAD of the last get_matrix_element_calls, bit n-1 set when it is needed with the first n
+        slots of shared_wf_order in shared memory: between two accesses of a shared slot, one barrier makes the
+        second one reload it instead of keeping it in a register, and the one closest to that access is kept."""
+        masks = [0] * len(self.barrier_events)
+        order = self.shared_wf_order()
+        for n in range(1, nbits + 1):
+            shared, last, gaps = set(order[:n]), {}, []
+            for i, (_, reads, write) in enumerate(self.wf_events):
+                for slot in reads:
+                    if slot not in shared:
+                        continue
+                    if slot in last:
+                        first = bisect.bisect_right(self.barrier_events, last[slot])
+                        closest = bisect.bisect_right(self.barrier_events, i) - 1
+                        if first <= closest:
+                            gaps.append((first, closest))
+                    last[slot] = i
+                if write in shared:
+                    last[write] = i
+            kept = -1
+            for first, closest in sorted(gaps, key=lambda gap: gap[1]):
+                if kept < first:
+                    kept = closest
+                    masks[closest] |= 1 << (n - 1)
+        return masks
+
     # AV - overload helas_call_writers.GPUFOHelasCallWriter method (improve formatting)
     def get_matrix_element_calls(self, matrix_element, color_amplitudes, multi_channel_map):
         """Return a list of strings, corresponding to the Helas calls for the matrix element"""
@@ -4821,10 +4852,13 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             res = self.super_get_matrix_element_calls(matrix_element, color_amplitudes, multi_channel_map)
         finally:
             self.axial_gauge_refs = {}
+        masks = iter(self.barrier_masks())
         for i, item in enumerate(res):
+            if item == 'SHWF_RELOAD();': item = res[i] = 'SHWF_RELOAD( 0x%08x );' % next(masks)
             ###print(item) # FOR DEBUGGING
             if item.startswith('# Amplitude'): item='//'+item[1:] # AV replace '# Amplitude' by '// Amplitude'
             if not item.startswith('\n') and not item.startswith('#'): res[i]='      '+item
+        assert next(masks, None) is None, 'SHWF_RELOAD count differs from barrier_events'
         return res
 
     # ------------------------------------------------------------------

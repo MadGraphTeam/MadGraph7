@@ -444,12 +444,12 @@ namespace madmatrix
   __device__ const size_t dSharedWfStride = sharedWfStrideBytes;
 
 #ifdef __CUDA_ARCH__
-  // Every amplitude: without it the compiler keeps the shared values in registers as well.
-  // Only with shared slots: 1890 of them make cicc 3x slower on g g > t t~ g g g for nothing.
-#define SHWF_RELOAD() \
-  if constexpr( nSharedWf > 0 ) asm volatile( "" ::: "memory" )
+  // After amplitudes: without it the compiler keeps the shared values in registers as well. Bit n-1 of mask
+  // (generator): needed with nSharedWf = n. Every barrier costs cicc time, 1890 of them 3x on g g > t t~ g g g.
+#define SHWF_RELOAD( mask ) \
+  if constexpr( nSharedWf > 32 || ( nSharedWf > 0 && ( ( ( mask ) >> ( nSharedWf > 0 ? nSharedWf - 1 : 0 ) ) & 1 ) ) ) asm volatile( "" ::: "memory" )
 #else
-#define SHWF_RELOAD()
+#define SHWF_RELOAD( mask )
 #endif
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
