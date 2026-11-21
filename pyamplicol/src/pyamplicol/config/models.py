@@ -1100,6 +1100,9 @@ class GenerationConfig:
     # NLC/full recurrence: keep only the helicity-selector companion (no main
     # contracted-colour schedule); such processes evaluate one helicity per point.
     selector_only_full_colour: bool = field(default=False, metadata=_setting("bool"))
+    # Full-colour flavour-union templates also get a pattern-resolved companion
+    # (implied for union templates under selector_only_full_colour).
+    pattern_resolved_companion: bool = field(default=False, metadata=_setting("bool"))
     # store per-process payloads and schedules in one payloads.pacbin
     pack_payloads: bool = field(default=False, metadata=_setting("bool"))
     # Particles (model names; a particle vetoes its antiparticle too) removed
@@ -1153,6 +1156,10 @@ class GenerationConfig:
         if not isinstance(self.selector_only_full_colour, bool):
             raise ConfigurationError(
                 "generation.selector_only_full_colour must be a boolean"
+            )
+        if not isinstance(self.pattern_resolved_companion, bool):
+            raise ConfigurationError(
+                "generation.pattern_resolved_companion must be a boolean"
             )
         if not isinstance(self.pack_payloads, bool):
             raise ConfigurationError("generation.pack_payloads must be a boolean")

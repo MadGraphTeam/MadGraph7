@@ -464,11 +464,14 @@ impl DirectDestinationPatterns {
                 Err(invalid("destination patterns require a pattern count"))
             };
         }
-        let contracted =
-            strategy == RecurrenceStrategy::ContractedColorUnion && replay_target_count == 0;
+        // Unreplayed contracted colour, or its all-flow helicity-selector companion.
+        let contracted = matches!(
+            strategy,
+            RecurrenceStrategy::ContractedColorUnion | RecurrenceStrategy::AllFlowUnion
+        ) && replay_target_count == 0;
         if strategy != RecurrenceStrategy::TopologyReplay && !contracted {
             return Err(invalid(
-                "destination patterns require topology replay or unreplayed contracted colour",
+                "destination patterns require topology replay, unreplayed contracted colour or an unreplayed all-flow union",
             ));
         }
         if self.destination_patterns.len() != destination_count

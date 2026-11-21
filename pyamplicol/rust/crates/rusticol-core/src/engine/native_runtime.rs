@@ -1867,10 +1867,8 @@ impl NativeRuntime {
                     runtime.select_flavour_union_patterns(&union.patterns, &union.signs)?;
                 }
                 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-                NativeExecutionLane::RecurrenceSelector(_) => {
-                    return Err(selector_only_unsupported(
-                        "a flavour-union member (union template without a pattern-resolved companion)",
-                    ));
+                NativeExecutionLane::RecurrenceSelector(runtime) => {
+                    runtime.select_flavour_union_patterns(&union.patterns, &union.signs)?;
                 }
                 _ => {
                     return Err(RusticolError::compatibility(
@@ -2353,11 +2351,28 @@ impl NativeRuntime {
     ) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            let NativeExecutionLane::Recurrence(lane) = &self.execution_lane else {
-                return Ok(());
-            };
-            let Some(pattern_count) = lane.pattern_count() else {
-                return Ok(());
+            let (pattern_count, slot_crossings, pairing_digest) = match &self.execution_lane {
+                NativeExecutionLane::Recurrence(lane) => {
+                    let Some(pattern_count) = lane.pattern_count() else {
+                        return Ok(());
+                    };
+                    (
+                        pattern_count,
+                        lane.external_slot_crossings().to_vec(),
+                        lane.companion_pairing_catalog_sha256().map(str::to_owned),
+                    )
+                }
+                NativeExecutionLane::RecurrenceSelector(lane) => {
+                    let Some(pattern_count) = lane.pattern_count() else {
+                        return Ok(());
+                    };
+                    (
+                        pattern_count,
+                        lane.external_slot_crossings().to_vec(),
+                        lane.pairing_catalog_sha256().map(str::to_owned),
+                    )
+                }
+                _ => return Ok(()),
             };
             let template = artifact
                 .manifest()
@@ -2373,12 +2388,31 @@ impl NativeRuntime {
                 .split_once('>')
                 .map(|(initial, _)| initial.split_whitespace().count())
                 .ok_or_else(|| RusticolError::artifact("template expression lacks '>'"))?;
+            let pattern_pairs = artifact.flavour_union_pattern_pairs(&template.id)?;
+            // The companion's catalogue must be the member tables' (rule ids and pairings).
+            if let Some(expected) = &pairing_digest {
+                let pairs = pattern_pairs.as_ref().ok_or_else(|| {
+                    RusticolError::integrity(
+                        "pattern-resolved companion's template has no pattern table",
+                    )
+                })?;
+                let encoded = serde_json::to_vec(pairs).map_err(|error| {
+                    RusticolError::serialization(format!("could not encode pattern pairs: {error}"))
+                })?;
+                if &format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&encoded)) != expected
+                    || pairs.len() != pattern_count
+                {
+                    return Err(RusticolError::integrity(
+                        "pattern-resolved companion's pairing catalogue disagrees with the template's member tables",
+                    ));
+                }
+            }
             let mut relabelling = NativeUnionRelabelling::new(
                 template.external_pdgs.clone(),
                 initial_count,
-                artifact.flavour_union_pattern_pairs(&template.id)?,
+                pattern_pairs,
                 pattern_count,
-                lane.external_slot_crossings().into(),
+                slot_crossings.into(),
             )?;
             let all = (0..pattern_count)
                 .map(|pattern| {
@@ -2673,14 +2707,6 @@ impl NativeRuntime {
         mode: AssignmentOutputMode,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        // S1 selector-only lanes carry no union template; S2 moves this after the sign check.
-        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-        if matches!(
-            &self.execution_lane,
-            NativeExecutionLane::RecurrenceSelector(_)
-        ) {
-            return Err(selector_only_unsupported("flavour-union assignments"));
-        }
         let assignments = self.flavour_union_assignments.clone().ok_or_else(|| {
             RusticolError::compatibility(
                 "evaluate_assignments requires a pattern-resolved flavour-union template",
@@ -2771,6 +2797,103 @@ impl NativeRuntime {
         validate_energy_signs(momenta, self.runtime.external_count, |point| masks[point])?;
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
+            // Pattern-resolved companion route, after the shared sign check.
+            let crossed = assignment_ids
+                .iter()
+                .any(|id| assignments[*id as usize].crossing != 0);
+            let companion_route = match &self.execution_lane {
+                NativeExecutionLane::RecurrenceSelector(_) => {
+                    if helicity_by_point.is_none() {
+                        return Err(selector_only_unsupported(
+                            "helicity-summed union assignments",
+                        ));
+                    }
+                    if mode != AssignmentOutputMode::Total {
+                        return Err(selector_only_unsupported("resolved helicity/colour output"));
+                    }
+                    if color_by_point.is_some() {
+                        return Err(selector_only_unsupported("colour-selected evaluation"));
+                    }
+                    if crossed {
+                        return Err(RusticolError::compatibility(
+                            "crossed flavour-union members are not supported on selector-only \
+                             full-colour artifacts (full-colour crossing is unsupported); \
+                             evaluate the member's own process or regenerate without \
+                             generation.selector_only_full_colour",
+                        ));
+                    }
+                    true
+                }
+                NativeExecutionLane::Recurrence(lane) => {
+                    lane.has_pattern_resolved_companion()
+                        && helicity_by_point.is_some()
+                        && mode == AssignmentOutputMode::Total
+                        && color_by_point.is_none()
+                        && !crossed
+                }
+                _ => false,
+            };
+            if companion_route {
+                let helicity_by_point = helicity_by_point.expect("companion route has helicities");
+                // One entry per distinct (point, assignment); duplicate rows copy it.
+                let mut entry_points = Vec::with_capacity(assignment_ids.len());
+                let mut entry_ids = Vec::with_capacity(assignment_ids.len());
+                let mut entry_of_row = Vec::with_capacity(assignment_ids.len());
+                for point in 0..point_count {
+                    let first = entry_ids.len();
+                    for id in &assignment_ids[request_offsets[point]..request_offsets[point + 1]] {
+                        let entry = match entry_ids[first..].iter().position(|own| own == id) {
+                            Some(offset) => first + offset,
+                            None => {
+                                entry_points.push(point);
+                                entry_ids.push(*id);
+                                entry_ids.len() - 1
+                            }
+                        };
+                        entry_of_row.push(entry);
+                    }
+                }
+                let entry_helicities = entry_points
+                    .iter()
+                    .map(|point| helicity_by_point[*point])
+                    .collect::<Vec<_>>();
+                let entry_signs = entry_ids
+                    .iter()
+                    .map(|id| &*assignments[*id as usize].signs)
+                    .collect::<Vec<_>>();
+                let mut values = vec![0.0; entry_ids.len()];
+                match &mut self.execution_lane {
+                    NativeExecutionLane::RecurrenceSelector(lane) => lane
+                        .run_companion_assignments_into(
+                            &self.runtime,
+                            momenta,
+                            &entry_points,
+                            &entry_helicities,
+                            &entry_signs,
+                            &mut values,
+                        )?,
+                    NativeExecutionLane::Recurrence(lane) => lane.run_companion_assignments_into(
+                        &self.runtime,
+                        momenta,
+                        &entry_points,
+                        &entry_helicities,
+                        &entry_signs,
+                        &mut values,
+                    )?,
+                    _ => unreachable!("companion route needs a recurrence lane"),
+                }
+                // Member factor after the contraction, as the main route applies it.
+                for (value, id) in values.iter_mut().zip(&entry_ids) {
+                    apply_rational_factor(
+                        std::slice::from_mut(value),
+                        assignments[*id as usize].factor,
+                    );
+                }
+                for (row, entry) in entry_of_row.iter().enumerate() {
+                    output[row] = values[*entry];
+                }
+                return Ok(());
+            }
             let NativeExecutionLane::Recurrence(lane) = &mut self.execution_lane else {
                 return Err(RusticolError::compatibility(
                     "evaluate_assignments requires a recurrence lane",
@@ -2974,6 +3097,8 @@ impl NativeRuntime {
         match &self.execution_lane {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             NativeExecutionLane::Recurrence(runtime) => runtime.is_pattern_resolved(),
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::RecurrenceSelector(runtime) => runtime.is_pattern_resolved(),
             _ => false,
         }
     }

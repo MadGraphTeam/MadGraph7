@@ -157,8 +157,13 @@ process has a smaller basis or faster runtime.
   point (`helicities=[h]` or `helicity_by_point`); helicity sums, resolved
   output, colour selectors and multi-order partials are refused. Requires
   `evaluator.execution_mode = "recurrence"` and
-  `generation.relation_discovery.mode = "off"`; ignored for LC. Flavour-union
-  templates keep the main schedule.)
+  `generation.relation_discovery.mode = "off"`; ignored for LC. Full-colour
+  flavour-union templates get a pattern-resolved companion and are selector-only
+  too; crossed union members are refused.)
+- `pattern_resolved_companion: bool = false` (full-colour flavour-union
+  templates also get a pattern-resolved helicity-selector companion beside the
+  main schedule; union members evaluated one helicity per point use it. Implied
+  for union templates by `selector_only_full_colour`.)
 - `particle_veto: list[str] = []`, `allow_anomalous_veto: bool = false`
   (particles kept out of one-loop loops)
 - `loop_induced_probes: bool = false`, `allow_failed_probes: bool = false`

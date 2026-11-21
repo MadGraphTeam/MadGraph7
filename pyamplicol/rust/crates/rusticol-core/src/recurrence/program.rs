@@ -2330,8 +2330,10 @@ impl RecurrenceProgram {
         pattern_count: u32,
         replay_maps: Option<Box<[u32]>>,
     ) -> RusticolResult<Self> {
-        let contracted = self.strategy == RecurrenceStrategy::ContractedColorUnion
-            && self.replay_targets.is_empty();
+        let contracted = matches!(
+            self.strategy,
+            RecurrenceStrategy::ContractedColorUnion | RecurrenceStrategy::AllFlowUnion
+        ) && self.replay_targets.is_empty();
         if (self.strategy != RecurrenceStrategy::TopologyReplay && !contracted)
             || pattern_count == 0
         {

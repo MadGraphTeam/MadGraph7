@@ -809,3 +809,31 @@ fn direct_plan_accepts_cold_exact_zero_groups_without_runtime_rows() {
     .unwrap();
     DirectRecurrencePlan::new(parts).unwrap();
 }
+
+#[test]
+fn destination_patterns_allow_unreplayed_all_flow_companions_only() {
+    let patterns = DirectDestinationPatterns {
+        pattern_count: 2,
+        destination_patterns: vec![0, 1, 1],
+        replay_pattern_maps: Vec::new(),
+    };
+    for strategy in [
+        RecurrenceStrategy::AllFlowUnion,
+        RecurrenceStrategy::ContractedColorUnion,
+        RecurrenceStrategy::TopologyReplay,
+    ] {
+        patterns.validate(strategy, 3, 0).unwrap();
+    }
+    // A replayed all-flow union (or contracted plan) cannot combine patterns.
+    for strategy in [
+        RecurrenceStrategy::AllFlowUnion,
+        RecurrenceStrategy::ContractedColorUnion,
+    ] {
+        assert!(patterns.validate(strategy, 3, 1).is_err());
+    }
+    assert!(
+        patterns
+            .validate(RecurrenceStrategy::AllFlowUnion, 2, 0)
+            .is_err()
+    );
+}

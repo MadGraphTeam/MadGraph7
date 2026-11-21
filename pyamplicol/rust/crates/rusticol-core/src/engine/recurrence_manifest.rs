@@ -4,6 +4,7 @@
 
 use crate::engine::{
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+    RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY, SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
 };
 use crate::recurrence::direct_backend::RECURRENCE_DIRECT_BACKEND_ABI;
@@ -124,6 +125,19 @@ pub(super) struct RecurrenceHelicitySelectorCompanionManifest {
     pub(super) process_digest: String,
     pub(super) plan: RecurrencePlanSummary,
     pub(super) color_contraction: RecurrenceHelicitySelectorColorView,
+    /// Flavour-union template: the companion keeps one amplitude per pairing rule
+    /// (behind `rusticol.recurrence-pattern-resolved-companion.v1`).
+    #[serde(default)]
+    pub(super) pattern_resolution: Option<RecurrenceCompanionPatternResolution>,
+}
+
+#[derive(Clone, Debug, Deserialize, Decode)]
+#[cfg_attr(any(feature = "python-generation-bridge", test), derive(Encode))]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceCompanionPatternResolution {
+    pub(super) pattern_count: u32,
+    /// SHA-256 of the compact JSON pattern-pair table (process-groups order).
+    pub(super) pairing_catalog_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Decode)]
@@ -815,12 +829,17 @@ impl RecurrenceExecutionManifest {
             .is_some_and(|factorization| factorization.kind == "symmetric-group-fourier");
         let has_helicity_selector_companion = self.helicity_selector_companion.is_some();
         let selector_only = self.plan.is_none();
+        let pattern_resolved_companion = self
+            .helicity_selector_companion
+            .as_ref()
+            .is_some_and(|companion| companion.pattern_resolution.is_some());
         validate_capabilities(
             &self.required_runtime_capabilities,
             &self.color_accuracy,
             uses_symmetric_group_fft,
             has_helicity_selector_companion,
             selector_only,
+            pattern_resolved_companion,
             "recurrence execution manifest",
         )?;
         validate_capabilities(
@@ -829,6 +848,7 @@ impl RecurrenceExecutionManifest {
             uses_symmetric_group_fft,
             has_helicity_selector_companion,
             selector_only,
+            pattern_resolved_companion,
             "outer recurrence process",
         )?;
         validate_direct_contract(
@@ -882,6 +902,7 @@ impl RecurrenceExecutionManifest {
             uses_symmetric_group_fft,
             has_helicity_selector_companion,
             selector_only: false,
+            pattern_resolved_companion,
             role: RecurrencePlanRole::Primary,
         })?;
         self.recurrence_summary.validate()?;
@@ -991,6 +1012,7 @@ struct RecurrencePlanValidation<'a> {
     uses_symmetric_group_fft: bool,
     has_helicity_selector_companion: bool,
     selector_only: bool,
+    pattern_resolved_companion: bool,
     role: RecurrencePlanRole,
 }
 
@@ -1020,6 +1042,7 @@ impl RecurrencePlanSummary {
             uses_symmetric_group_fft,
             has_helicity_selector_companion,
             selector_only,
+            pattern_resolved_companion,
             role,
         } = validation;
         if self.kind != RECURRENCE_RUNTIME_KIND {
@@ -1061,6 +1084,7 @@ impl RecurrencePlanSummary {
             uses_symmetric_group_fft,
             has_helicity_selector_companion,
             selector_only,
+            pattern_resolved_companion,
             "nested recurrence plan",
         )?;
         if self.helicity_dispatch.is_some() != (role == RecurrencePlanRole::HelicitySelector) {
@@ -1188,15 +1212,41 @@ impl RecurrenceHelicitySelectorCompanionManifest {
             uses_symmetric_group_fft,
             has_helicity_selector_companion: true,
             selector_only: primary_plan.is_none(),
+            pattern_resolved_companion: self.pattern_resolution.is_some(),
             role: RecurrencePlanRole::HelicitySelector,
         })?;
 
         let inspection = &self.plan.inspection_summary;
         let schedule = inspection.schedule;
+        // Dense over owners; a pattern-resolved companion has 1..=patterns per owner
+        // (the load re-checks every owner's group against the plan).
+        let patterns_per_owner = match &self.pattern_resolution {
+            None => 1,
+            Some(resolution) => {
+                parse_sha256(
+                    &resolution.pairing_catalog_sha256,
+                    "recurrence companion pairing catalogue",
+                )?;
+                if resolution.pattern_count == 0
+                    || primary.color_accuracy != "full"
+                    || primary.plan.as_ref().is_some_and(|plan| {
+                        plan.inspection_summary.lc_flow_layout
+                            != RecurrenceLcFlowLayout::ContractedColorUnion
+                    })
+                {
+                    return Err(RusticolError::integrity(
+                        "pattern-resolved helicity-selector companion requires a full-colour union template",
+                    ));
+                }
+                u64::from(resolution.pattern_count)
+            }
+        };
         if inspection.lc_flow_layout != RecurrenceLcFlowLayout::AllFlowUnion
             || schedule.replay_target_count != 0
             || schedule.amplitude_destination_count == 0
-            || schedule.amplitude_destination_count != inspection.sector_count
+            || schedule.amplitude_destination_count < inspection.sector_count
+            || schedule.amplitude_destination_count
+                > inspection.sector_count.saturating_mul(patterns_per_owner)
             || self.plan.process_binding.remap.physical_sector_ids.len() as u64
                 != inspection.sector_count
         {
@@ -3346,6 +3396,7 @@ fn validate_capabilities(
     uses_symmetric_group_fft: bool,
     has_helicity_selector_companion: bool,
     selector_only: bool,
+    pattern_resolved_companion: bool,
     context: &str,
 ) -> RusticolResult<()> {
     let color_capability = match color_accuracy {
@@ -3366,6 +3417,9 @@ fn validate_capabilities(
     }
     if selector_only {
         expected.push(RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY);
+    }
+    if pattern_resolved_companion {
+        expected.push(RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY);
     }
     expected.sort_unstable();
     if capabilities.iter().map(String::as_str).collect::<Vec<_>>() != expected {

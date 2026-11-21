@@ -309,19 +309,24 @@ def test_union_artifacts_route_members_as_assignments(built):
     assert any(runtime.get("assignment", 0) > 0 for runtime in runtimes)
 
 
-def test_selector_only_union_target_mixes_lanes(built):
-    """Per-flavour classes drop the main schedule; union templates keep it."""
+def test_selector_only_union_target_has_no_main_schedule(built):
+    """Every class drops the main schedule; union templates evaluate their
+    members on a pattern-resolved companion."""
     artifact = built["artifacts"]["full-union-selector"]
-    plans = {}
+    pattern_resolved = []
     for process in json.loads((artifact / "artifact.json").read_text())["processes"]:
         execution = json.loads(
             (artifact / "processes" / process["id"] / "execution.json").read_text()
         )
         capabilities = execution["required_runtime_capabilities"]
-        selector_only = "rusticol.recurrence-selector-only-fc.v1" in capabilities
-        assert selector_only == (execution["plan"] is None), process["id"]
-        plans[process["id"]] = selector_only
-    assert any(plans.values()) and not all(plans.values())
+        assert "rusticol.recurrence-selector-only-fc.v1" in capabilities
+        assert execution["plan"] is None, process["id"]
+        resolution = execution["helicity_selector_companion"].get("pattern_resolution")
+        assert (resolution is not None) == (
+            "rusticol.recurrence-pattern-resolved-companion.v1" in capabilities
+        )
+        pattern_resolved.append(resolution is not None)
+    assert any(pattern_resolved) and not all(pattern_resolved)
 
 
 def _partition(documents, ordered=False):

@@ -11258,9 +11258,12 @@ fn pattern_resolution(
     let Some(catalog) = pairing_catalog.filter(|catalog| catalog.pattern_resolved()) else {
         return Ok(None);
     };
-    // Contracted colour combines patterns before contraction; it has no replay here.
-    let contracted =
-        strategy == RecurrenceStrategy::ContractedColorUnion && replay_targets.is_empty();
+    // Contracted colour (and its all-flow companion) combines patterns before
+    // contraction; neither replays here.
+    let contracted = matches!(
+        strategy,
+        RecurrenceStrategy::ContractedColorUnion | RecurrenceStrategy::AllFlowUnion
+    ) && replay_targets.is_empty();
     if strategy != RecurrenceStrategy::TopologyReplay && !contracted {
         return Err(invalid(
             "pattern-resolved recurrence requires LC topology replay or unreplayed contracted colour",

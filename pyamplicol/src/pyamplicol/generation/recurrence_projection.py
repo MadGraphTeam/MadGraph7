@@ -158,13 +158,19 @@ def project_recurrence_process_v1(
         raise TypeError("recurrence projection requires exact normalization v1")
     if type(pattern_resolved) is not bool:
         raise TypeError("pattern-resolved projection opt-in must be boolean")
-    if pattern_resolved and (layout, process.color_accuracy) not in {
-        ("topology-replay", "lc"),
-        ("contracted-color-union", "full"),
-    }:
+    # The full-colour template's helicity-selector companion is all-flow.
+    if (
+        pattern_resolved
+        and (layout, process.color_accuracy)
+        not in {("topology-replay", "lc"), ("contracted-color-union", "full")}
+        and not (
+            contracted_physical_color_union
+            and (layout, process.color_accuracy) == ("all-flow-union", "full")
+        )
+    ):
         raise RecurrenceProjectionError(
-            "pattern-resolved flavour-union templates require LC topology replay "
-            "or full contracted colour"
+            "pattern-resolved flavour-union templates require LC topology "
+            "replay, full contracted colour or its physical-colour companion"
         )
     if (
         isinstance(process_support_mask, bool)

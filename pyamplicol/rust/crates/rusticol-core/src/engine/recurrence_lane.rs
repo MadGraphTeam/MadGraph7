@@ -313,6 +313,19 @@ pub(super) struct RecurrencePersistedHelicitySelectorRuntime {
     executor: PersistedHelicityFamilyExecutorV1<NativeOnTheFlyPreparedExecutorResolver>,
     resolved_helicity_by_physics: Box<[u32]>,
     primary_color_view: Option<PrimaryLocalColorViewV1>,
+    /// Pattern-resolved (flavour-union) companion: per-owner pattern groups, the
+    /// member-load signs and the combine scratch.
+    patterns: Option<PatternSelection>,
+    /// Pairing-catalogue digest from the manifest, checked against the member tables.
+    pairing_catalog_sha256: Option<String>,
+}
+
+/// Pattern signs of a companion run: the companion's selected member (template:
+/// every pattern +1), or one sign row per point (assignments).
+#[derive(Clone, Copy)]
+pub(super) enum CompanionSigns<'a> {
+    Selected,
+    PerPoint(&'a [&'a [f64]]),
 }
 
 struct PrimaryLocalColorViewV1 {
@@ -364,13 +377,80 @@ impl RecurrencePersistedHelicitySelectorRuntime {
                 "persisted selector does not cover the complete public helicity axis",
             ));
         }
+        let patterns = PatternSelection::for_plan(&plan)?;
+        if let Some(patterns) = &patterns {
+            // One group per owner sector, each pattern at most once in it.
+            let mut seen = BTreeSet::new();
+            for (destination, (&group, &pattern)) in plan.amplitude_destinations().iter().zip(
+                patterns
+                    .group_by_destination
+                    .iter()
+                    .zip(&patterns.destination_patterns),
+            ) {
+                if destination.target_helicity_id_or_sentinel != DIRECT_NONE_U32
+                    || !seen.insert((group, pattern))
+                {
+                    return Err(RusticolError::integrity(
+                        "pattern-resolved companion destinations must be distinct patterns per owner sector",
+                    ));
+                }
+            }
+        }
         Ok(Self {
             plan,
             dispatch,
             executor: PersistedHelicityFamilyExecutorV1::new(resolver),
             resolved_helicity_by_physics: resolved_helicity_by_physics.into_boxed_slice(),
             primary_color_view: None,
+            patterns,
+            pairing_catalog_sha256: None,
         })
+    }
+
+    pub(super) const fn is_pattern_resolved(&self) -> bool {
+        self.patterns.is_some()
+    }
+
+    pub(super) fn pattern_count(&self) -> Option<usize> {
+        self.patterns.as_ref().map(PatternSelection::pattern_count)
+    }
+
+    pub(super) fn pairing_catalog_sha256(&self) -> Option<&str> {
+        self.pairing_catalog_sha256.as_deref()
+    }
+
+    /// Bind the manifest's pattern resolution: present exactly for a
+    /// pattern-resolved plan, with its pattern count.
+    pub(super) fn attach_pattern_resolution(
+        &mut self,
+        resolution: Option<(u32, &str)>,
+    ) -> RusticolResult<()> {
+        match (self.pattern_count(), resolution) {
+            (None, None) => Ok(()),
+            (Some(count), Some((expected, digest))) if count == expected as usize => {
+                self.pairing_catalog_sha256 = Some(digest.to_owned());
+                Ok(())
+            }
+            _ => Err(RusticolError::integrity(
+                "helicity-selector companion pattern resolution disagrees with its plan",
+            )),
+        }
+    }
+
+    /// Restrict a pattern-resolved companion to one flavour-union member.
+    pub(super) fn select_flavour_union_patterns(
+        &mut self,
+        patterns: &[u32],
+        signs: &[i32],
+    ) -> RusticolResult<()> {
+        self.patterns
+            .as_mut()
+            .ok_or_else(|| {
+                RusticolError::compatibility(
+                    "flavour-union members need a pattern-resolved helicity-selector companion",
+                )
+            })?
+            .select(patterns, signs)
     }
 
     fn bind_primary_color_view(
@@ -385,6 +465,9 @@ impl RecurrencePersistedHelicitySelectorRuntime {
         self.primary_color_view = Some(primary_local_color_destination_map(
             contraction,
             self.plan.amplitude_destinations(),
+            self.patterns
+                .as_ref()
+                .map(|patterns| (&*patterns.group_by_destination, patterns.group_count)),
         )?);
         Ok(())
     }
@@ -414,9 +497,12 @@ impl RecurrencePersistedHelicitySelectorRuntime {
     }
 }
 
+/// Local colour group -> companion destination, or -> combined pattern group
+/// when `pattern_groups` (group per destination, group count) is given.
 fn primary_local_color_destination_map(
     contraction: &RecurrenceColorContraction,
     auxiliary_destinations: &[DirectAmplitudeDestinationDescriptor],
+    pattern_groups: Option<(&[u32], usize)>,
 ) -> RusticolResult<PrimaryLocalColorViewV1> {
     if contraction.storage() == RecurrenceColorStorage::Expanded
         && contraction.component_count() != 1
@@ -432,9 +518,11 @@ fn primary_local_color_destination_map(
             contraction.local_group_count() as usize
         }
     };
+    let auxiliary_count = pattern_groups.map_or(auxiliary_destinations.len(), |(_, count)| count);
     if local_group_count == 0
         || component_count == 0
-        || auxiliary_destinations.len() != local_group_count
+        || auxiliary_count != local_group_count
+        || pattern_groups.is_some_and(|(groups, _)| groups.len() != auxiliary_destinations.len())
     {
         return Err(RusticolError::integrity(
             "persisted selector physical destinations disagree with the primary local color domain",
@@ -460,7 +548,7 @@ fn primary_local_color_destination_map(
     }
 
     let mut auxiliary_destination_by_rank = vec![DIRECT_NONE_U32; local_group_count];
-    for destination in auxiliary_destinations {
+    for (index, destination) in auxiliary_destinations.iter().enumerate() {
         if destination.target_helicity_id_or_sentinel != DIRECT_NONE_U32 {
             return Err(RusticolError::integrity(
                 "persisted selector auxiliary destination fixes a numerical helicity",
@@ -473,12 +561,14 @@ fn primary_local_color_destination_map(
                     "persisted selector auxiliary destination has a non-dense physical sector",
                 )
             })?;
-        if *slot != DIRECT_NONE_U32 {
+        // Patterns of one owner share its (consecutive) combined group.
+        let value = pattern_groups.map_or(destination.id, |(groups, _)| groups[index]);
+        if *slot != DIRECT_NONE_U32 && (pattern_groups.is_none() || *slot != value) {
             return Err(RusticolError::integrity(
                 "persisted selector repeats an auxiliary physical sector",
             ));
         }
-        *slot = destination.id;
+        *slot = value;
     }
     if auxiliary_destination_by_rank.contains(&DIRECT_NONE_U32) {
         return Err(RusticolError::integrity(
@@ -1110,6 +1200,17 @@ impl RecurrenceNativeRuntime {
                     "recurrence helicity-selector companion has no primary color contraction",
                 ));
             };
+            // A pattern-resolved companion shares the template's pairing catalogue.
+            if companion.pattern_count()
+                != pattern_selection
+                    .as_ref()
+                    .map(PatternSelection::pattern_count)
+                && companion.is_pattern_resolved()
+            {
+                return Err(RusticolError::integrity(
+                    "pattern-resolved companion disagrees with its template's pattern catalogue",
+                ));
+            }
             companion.bind_primary_color_view(contraction)?;
         }
         let external_source_count = usize::try_from(scheduler.plan().external_source_count())
@@ -1592,7 +1693,7 @@ impl RecurrenceNativeRuntime {
         Ok(())
     }
 
-    /// Restrict a pattern-resolved template to one flavour-union member.
+    /// Restrict a pattern-resolved template (and its companion) to one member.
     pub(super) fn select_flavour_union_patterns(
         &mut self,
         patterns: &[u32],
@@ -1605,7 +1706,15 @@ impl RecurrenceNativeRuntime {
                     "flavour-union member patterns require a pattern-resolved recurrence template",
                 )
             })?
-            .select(patterns, signs)
+            .select(patterns, signs)?;
+        if let Some(companion) = self
+            .helicity_selector_companion
+            .as_mut()
+            .filter(|companion| companion.is_pattern_resolved())
+        {
+            companion.select_flavour_union_patterns(patterns, signs)?;
+        }
+        Ok(())
     }
 
     pub(super) fn amplitude_order_catalog(&self) -> &AmplitudeOrderCatalog {
@@ -1884,9 +1993,10 @@ impl RecurrenceNativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
     ) -> RusticolResult<Option<CompanionSingletonSelection>> {
-        // A companion of a pattern-resolved template would sum every pattern.
+        // Only a pattern-resolved companion serves a pattern-resolved template
+        // (with the member's signs); any other would sum every pattern.
         if self.helicity_selector_companion.is_none()
-            || self.pattern_selection.is_some()
+            || (self.pattern_selection.is_some() && !self.has_pattern_resolved_companion())
             || !matches!(
                 &self.selectors,
                 RecurrenceNativeSelectors::ContractedColorUnion { .. }
@@ -1998,6 +2108,52 @@ impl RecurrenceNativeRuntime {
             batch,
             physics_helicity_id,
             resolved_helicity_id,
+            CompanionSigns::Selected,
+            output,
+        )
+    }
+
+    /// Whether union assignments and member loads can run on the companion.
+    pub(super) fn has_pattern_resolved_companion(&self) -> bool {
+        self.helicity_selector_companion
+            .as_ref()
+            .is_some_and(RecurrencePersistedHelicitySelectorRuntime::is_pattern_resolved)
+    }
+
+    pub(super) fn companion_pairing_catalog_sha256(&self) -> Option<&str> {
+        self.helicity_selector_companion
+            .as_ref()
+            .and_then(RecurrencePersistedHelicitySelectorRuntime::pairing_catalog_sha256)
+    }
+
+    /// Union assignment entries on the pattern-resolved companion, see
+    /// [`run_companion_entries_into`].
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn run_companion_assignments_into(
+        &mut self,
+        common: &ExecutionRuntime,
+        momenta: &[f64],
+        points: &[usize],
+        helicities: &[u32],
+        signs: &[&[f64]],
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        self.validate_public_axis_lengths(&physics)?;
+        self.prepare_persisted_companion_parameters(common)?;
+        let (companion, contraction, scratch) = self.companion_tile_parts()?;
+        run_companion_entries_into(
+            companion,
+            contraction,
+            scratch,
+            &physics,
+            common.normalization_factor,
+            momenta,
+            points,
+            helicities,
+            signs,
             output,
         )
     }
@@ -2026,6 +2182,7 @@ impl RecurrenceNativeRuntime {
             batch,
             physics_helicity_id,
             resolved_helicity_id,
+            CompanionSigns::Selected,
             total_started,
             parameter_setup,
             accumulate,
@@ -3795,6 +3952,94 @@ pub(super) struct CompanionTileScratch<'a> {
     pub(super) symmetric_group_color_workspace: &'a mut Option<RuntimeSymmetricGroupColorWorkspace>,
 }
 
+impl CompanionTileScratch<'_> {
+    pub(super) fn reborrow(&mut self) -> CompanionTileScratch<'_> {
+        CompanionTileScratch {
+            external_source_count: self.external_source_count,
+            point_tile_size: self.point_tile_size,
+            external_momenta: self.external_momenta,
+            color_transform_re: self.color_transform_re,
+            color_transform_im: self.color_transform_im,
+            symmetric_group_color_workspace: self.symmetric_group_color_workspace,
+        }
+    }
+}
+
+/// Execute one prepared companion tile into `accumulate`: pattern-resolved
+/// companions combine their member signs per point before the contraction.
+#[allow(clippy::too_many_arguments)]
+fn contract_companion_tile(
+    tile: PersistedHelicityAmplitudeTileV1<'_>,
+    patterns: Option<&mut PatternSelection>,
+    signs: CompanionSigns<'_>,
+    tile_points: std::ops::Range<usize>,
+    contraction: &RecurrenceColorContraction,
+    color_view: &PrimaryLocalColorViewV1,
+    physics: &PhysicsRuntime,
+    physics_helicity_id: usize,
+    normalization_factor: f64,
+    color_transform_re: &mut [f64],
+    color_transform_im: &mut [f64],
+    symmetric_group_workspace: Option<&mut RuntimeSymmetricGroupColorWorkspace>,
+    accumulate: impl FnMut(usize, f64),
+) -> RusticolResult<()> {
+    let Some(patterns) = patterns else {
+        if matches!(signs, CompanionSigns::PerPoint(_)) {
+            return Err(RusticolError::internal(
+                "per-point pattern signs reached a companion without patterns",
+            ));
+        }
+        return contract_primary_local_color_tile(
+            &tile,
+            contraction,
+            color_view,
+            physics,
+            physics_helicity_id,
+            normalization_factor,
+            color_transform_re,
+            color_transform_im,
+            symmetric_group_workspace,
+            accumulate,
+        );
+    };
+    let PatternSelection {
+        destination_patterns,
+        group_by_destination,
+        group_count,
+        signs: selected,
+        combined_re,
+        combined_im,
+    } = patterns;
+    let uniform = [&selected[..]];
+    let rows: &[&[f64]] = match signs {
+        CompanionSigns::Selected => &uniform,
+        CompanionSigns::PerPoint(rows) => rows.get(tile_points).ok_or_else(|| {
+            RusticolError::internal("pattern-resolved companion lost its per-point signs")
+        })?,
+    };
+    let combined = combine_companion_patterns(
+        &tile,
+        destination_patterns,
+        group_by_destination,
+        *group_count,
+        rows,
+        combined_re,
+        combined_im,
+    )?;
+    contract_primary_local_color_tile(
+        &combined,
+        contraction,
+        color_view,
+        physics,
+        physics_helicity_id,
+        normalization_factor,
+        color_transform_re,
+        color_transform_im,
+        symmetric_group_workspace,
+        accumulate,
+    )
+}
+
 fn ensure_contraction_symmetric_group_workspace(
     contraction: &RecurrenceColorContraction,
     workspace: &mut Option<RuntimeSymmetricGroupColorWorkspace>,
@@ -3820,6 +4065,7 @@ pub(super) fn run_companion_tiles_unprofiled(
     batch: F64MomentumBatchView<'_>,
     physics_helicity_id: usize,
     resolved_helicity_id: u32,
+    signs: CompanionSigns<'_>,
     output: &mut [f64],
 ) -> RusticolResult<()> {
     let CompanionTileScratch {
@@ -3830,6 +4076,13 @@ pub(super) fn run_companion_tiles_unprofiled(
         color_transform_im,
         symmetric_group_color_workspace,
     } = scratch;
+    if let CompanionSigns::PerPoint(rows) = signs
+        && rows.len() != batch.point_count()
+    {
+        return Err(RusticolError::internal(
+            "pattern-resolved companion needs one sign row per point",
+        ));
+    }
     let mut tile_start = 0usize;
     while tile_start < batch.point_count() {
         let tile_stop = (tile_start + point_tile_size).min(batch.point_count());
@@ -3851,6 +4104,7 @@ pub(super) fn run_companion_tiles_unprofiled(
             dispatch,
             executor,
             primary_color_view: Some(color_view),
+            patterns,
             ..
         } = &mut *companion
         else {
@@ -3861,8 +4115,11 @@ pub(super) fn run_companion_tiles_unprofiled(
         executor.prepare(plan, dispatch, resolved_helicity_id, 4, point_count_u32)?;
         let tile =
             executor.execute_tile_unprofiled(&external_momenta[..input_len], point_count_u32)?;
-        contract_primary_local_color_tile(
+        contract_companion_tile(
             tile,
+            patterns.as_mut(),
+            signs,
+            tile_start..tile_stop,
             contraction,
             color_view,
             physics,
@@ -3874,6 +4131,96 @@ pub(super) fn run_companion_tiles_unprofiled(
             |point, value| output[tile_start + point] += value,
         )?;
         tile_start = tile_stop;
+    }
+    Ok(())
+}
+
+/// Union assignment entries on a pattern-resolved companion: entry `e` is point
+/// `points[e]` of the point-major `momenta` at physics helicity `helicities[e]`
+/// with pattern signs `signs[e]`. Entries run grouped by helicity, in order;
+/// structural-zero helicities give 0. Member factors are the caller's.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_companion_entries_into(
+    companion: &mut RecurrencePersistedHelicitySelectorRuntime,
+    contraction: &RecurrenceColorContraction,
+    mut scratch: CompanionTileScratch<'_>,
+    physics: &PhysicsRuntime,
+    normalization_factor: f64,
+    momenta: &[f64],
+    points: &[usize],
+    helicities: &[u32],
+    signs: &[&[f64]],
+    output: &mut [f64],
+) -> RusticolResult<()> {
+    if !companion.is_pattern_resolved() {
+        return Err(RusticolError::compatibility(
+            "flavour-union assignments need a pattern-resolved helicity-selector companion",
+        ));
+    }
+    let external_values = scratch.external_source_count * 4;
+    if points.len() != helicities.len()
+        || points.len() != signs.len()
+        || points.len() != output.len()
+        || points
+            .iter()
+            .any(|point| (point + 1) * external_values > momenta.len())
+    {
+        return Err(RusticolError::internal(
+            "companion assignment entries have inconsistent lengths",
+        ));
+    }
+    output.fill(0.0);
+    let mut by_helicity = BTreeMap::<u32, Vec<usize>>::new();
+    for (entry, helicity) in helicities.iter().enumerate() {
+        by_helicity.entry(*helicity).or_default().push(entry);
+    }
+    let mut gathered = Vec::new();
+    let mut values = Vec::new();
+    for (helicity, entries) in by_helicity {
+        let physics_helicity_id = helicity as usize;
+        let record = physics
+            .manifest
+            .helicities
+            .get(physics_helicity_id)
+            .ok_or_else(|| {
+                RusticolError::selector("helicity selector is outside the physical axis")
+            })?;
+        if record.structural_zero || record.coefficient == 0.0 {
+            continue;
+        }
+        let resolved_helicity_id = companion.resolved_helicity_id(physics_helicity_id)?;
+        gathered.clear();
+        let mut rows = Vec::with_capacity(entries.len());
+        for entry in &entries {
+            let point = points[*entry];
+            gathered.extend_from_slice(
+                &momenta[point * external_values..(point + 1) * external_values],
+            );
+            rows.push(signs[*entry]);
+        }
+        let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+            &gathered,
+            entries.len(),
+            scratch.external_source_count,
+            None,
+        )?;
+        values.clear();
+        values.resize(entries.len(), 0.0);
+        run_companion_tiles_unprofiled(
+            companion,
+            contraction,
+            scratch.reborrow(),
+            physics,
+            normalization_factor,
+            batch,
+            physics_helicity_id,
+            resolved_helicity_id,
+            CompanionSigns::PerPoint(&rows),
+            &mut values,
+        )?;
+        for (entry, value) in entries.iter().zip(&values) {
+            output[*entry] = *value;
+        }
     }
     Ok(())
 }
@@ -3890,6 +4237,7 @@ pub(super) fn run_companion_tiles_profiled(
     batch: &[Vec<[f64; 4]>],
     physics_helicity_id: usize,
     resolved_helicity_id: u32,
+    signs: CompanionSigns<'_>,
     total_started: Instant,
     parameter_setup: Duration,
     mut accumulate: impl FnMut(usize, f64),
@@ -3930,6 +4278,7 @@ pub(super) fn run_companion_tiles_profiled(
             dispatch,
             executor,
             primary_color_view: Some(color_view),
+            patterns,
             ..
         } = &mut *companion
         else {
@@ -3949,8 +4298,11 @@ pub(super) fn run_companion_tiles_profiled(
                 .saturating_mul(point_count as u64),
         );
         let reduction_started = Instant::now();
-        contract_primary_local_color_tile(
+        contract_companion_tile(
             tile,
+            patterns.as_mut(),
+            signs,
+            tile_start..tile_stop,
             contraction,
             color_view,
             physics,
@@ -4414,8 +4766,9 @@ fn contracted_replay_routes(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn contract_primary_local_color_tile(
-    output: PersistedHelicityAmplitudeTileV1<'_>,
+#[allow(clippy::too_many_arguments)]
+fn contract_primary_local_color_tile<T: ContractedAmplitudeTile>(
+    output: &T,
     contraction: &RecurrenceColorContraction,
     view: &PrimaryLocalColorViewV1,
     physics: &PhysicsRuntime,
@@ -4470,8 +4823,14 @@ fn contract_primary_local_color_tile(
     }
 }
 
-fn contract_primary_local_direct_tile(
-    output: PersistedHelicityAmplitudeTileV1<'_>,
+/// Destination plane of a primary-local tile; absent is an integrity error.
+#[inline(always)]
+fn primary_local_plane(plane: Option<&[f64]>) -> RusticolResult<&[f64]> {
+    plane.ok_or_else(|| RusticolError::integrity("primary local-color destination is absent"))
+}
+
+fn contract_primary_local_direct_tile<T: ContractedAmplitudeTile>(
+    output: &T,
     contraction: &RecurrenceColorContraction,
     view: &PrimaryLocalColorViewV1,
     scale: f64,
@@ -4528,11 +4887,11 @@ fn contract_primary_local_direct_tile(
             coefficient_re: raw.weight_re * raw.symmetry_factor,
             coefficient_im: raw.weight_im * raw.symmetry_factor,
         };
-        let left_re = output.destination_re(entry.left_destination_id)?;
-        let left_im = output.destination_im(entry.left_destination_id)?;
-        let right_re = output.destination_re(entry.right_destination_id)?;
-        let right_im = output.destination_im(entry.right_destination_id)?;
-        for point in 0..output.point_count() as usize {
+        let left_re = primary_local_plane(output.destination_re(entry.left_destination_id))?;
+        let left_im = primary_local_plane(output.destination_im(entry.left_destination_id))?;
+        let right_re = primary_local_plane(output.destination_re(entry.right_destination_id))?;
+        let right_im = primary_local_plane(output.destination_im(entry.right_destination_id))?;
+        for point in 0..output.point_count() {
             accumulate(
                 point,
                 scale
@@ -4548,8 +4907,8 @@ fn contract_primary_local_direct_tile(
     Ok(())
 }
 
-fn contract_primary_local_symmetric_group_tile(
-    output: PersistedHelicityAmplitudeTileV1<'_>,
+fn contract_primary_local_symmetric_group_tile<T: ContractedAmplitudeTile>(
+    output: &T,
     reducer: &crate::recurrence::RuntimeSymmetricGroupColorContraction,
     workspace: &mut RuntimeSymmetricGroupColorWorkspace,
     auxiliary_destination_by_local_group: &[u32],
@@ -4561,11 +4920,11 @@ fn contract_primary_local_symmetric_group_tile(
             "symmetric-group primary local-color view has the wrong domain",
         ));
     }
-    let point_count = output.point_count() as usize;
+    let point_count = output.point_count();
     reducer.reduce_lanes(workspace, point_count, |local_group, point| {
         let destination = auxiliary_destination_by_local_group[local_group];
-        let real = output.destination_re(destination)?;
-        let imaginary = output.destination_im(destination)?;
+        let real = primary_local_plane(output.destination_re(destination))?;
+        let imaginary = primary_local_plane(output.destination_im(destination))?;
         Ok((real[point], imaginary[point]))
     })?;
     for (point, contracted) in workspace.reduced(point_count)?.iter().copied().enumerate() {
@@ -4575,8 +4934,8 @@ fn contract_primary_local_symmetric_group_tile(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn contract_primary_local_walsh_tile(
-    output: PersistedHelicityAmplitudeTileV1<'_>,
+fn contract_primary_local_walsh_tile<T: ContractedAmplitudeTile>(
+    output: &T,
     factorization: &crate::recurrence::RuntimeFactorizedColorContraction,
     auxiliary_destination_by_local_group: &[u32],
     scale: f64,
@@ -4584,7 +4943,7 @@ fn contract_primary_local_walsh_tile(
     color_transform_im: &mut [f64],
     accumulate: &mut impl FnMut(usize, f64),
 ) -> RusticolResult<()> {
-    let point_count = output.point_count() as usize;
+    let point_count = output.point_count();
     let local_group_count = auxiliary_destination_by_local_group.len();
     let scratch_len = local_group_count.checked_mul(point_count).ok_or_else(|| {
         RusticolError::integrity("factorized primary local-color scratch length overflows")
@@ -4601,8 +4960,8 @@ fn contract_primary_local_walsh_tile(
         .copied()
         .enumerate()
     {
-        let source_re = output.destination_re(destination)?;
-        let source_im = output.destination_im(destination)?;
+        let source_re = primary_local_plane(output.destination_re(destination))?;
+        let source_im = primary_local_plane(output.destination_im(destination))?;
         let start = local_group * point_count;
         transform_re[start..start + point_count].copy_from_slice(source_re);
         transform_im[start..start + point_count].copy_from_slice(source_im);
@@ -4696,6 +5055,98 @@ trait ContractedAmplitudeTile {
     fn point_count(&self) -> usize;
     fn destination_re(&self, destination_id: u32) -> Option<&[f64]>;
     fn destination_im(&self, destination_id: u32) -> Option<&[f64]>;
+}
+
+impl ContractedAmplitudeTile for PersistedHelicityAmplitudeTileV1<'_> {
+    fn point_count(&self) -> usize {
+        PersistedHelicityAmplitudeTileV1::point_count(*self) as usize
+    }
+
+    fn destination_re(&self, destination_id: u32) -> Option<&[f64]> {
+        PersistedHelicityAmplitudeTileV1::destination_re(*self, destination_id).ok()
+    }
+
+    fn destination_im(&self, destination_id: u32) -> Option<&[f64]> {
+        PersistedHelicityAmplitudeTileV1::destination_im(*self, destination_id).ok()
+    }
+}
+
+/// Per-point signed pattern sums of a pattern-resolved companion tile, one
+/// `[group][point]` plane per owner group (zero where no selected pattern lands).
+/// A zero sign is skipped, never multiplied; one sign row means every point.
+fn combine_companion_patterns<'a, T: ContractedAmplitudeTile>(
+    output: &T,
+    destination_patterns: &[u32],
+    group_by_destination: &[u32],
+    group_count: usize,
+    signs: &[&[f64]],
+    values_re: &'a mut Vec<f64>,
+    values_im: &'a mut Vec<f64>,
+) -> RusticolResult<ContractedReplayTile<'a>> {
+    let point_count = output.point_count();
+    if signs.len() != 1 && signs.len() != point_count {
+        return Err(RusticolError::internal(
+            "pattern-resolved companion needs one sign row or one per point",
+        ));
+    }
+    let len = group_count
+        .checked_mul(point_count)
+        .ok_or_else(|| RusticolError::artifact("companion pattern workspace overflows usize"))?;
+    if values_re.len() < len {
+        values_re.resize(len, 0.0);
+        values_im.resize(len, 0.0);
+    }
+    let mut previous = None;
+    for (destination, (&group, &pattern)) in group_by_destination
+        .iter()
+        .zip(destination_patterns)
+        .enumerate()
+    {
+        let start = group as usize * point_count;
+        let re = &mut values_re[start..start + point_count];
+        let im = &mut values_im[start..start + point_count];
+        if previous != Some(group) {
+            re.fill(0.0);
+            im.fill(0.0);
+            previous = Some(group);
+        }
+        let destination = u32::try_from(destination)
+            .map_err(|_| RusticolError::artifact("amplitude destination exceeds u32"))?;
+        let (Some(source_re), Some(source_im)) = (
+            output.destination_re(destination),
+            output.destination_im(destination),
+        ) else {
+            return Err(RusticolError::integrity(
+                "pattern-resolved companion destination is absent",
+            ));
+        };
+        let pattern = pattern as usize;
+        if let [uniform] = signs {
+            let sign = uniform.get(pattern).copied().unwrap_or(0.0);
+            if sign == 0.0 {
+                continue;
+            }
+            for point in 0..point_count {
+                re[point] = sign.mul_add(source_re[point], re[point]);
+                im[point] = sign.mul_add(source_im[point], im[point]);
+            }
+        } else {
+            for point in 0..point_count {
+                let sign = signs[point].get(pattern).copied().unwrap_or(0.0);
+                if sign != 0.0 {
+                    re[point] = sign.mul_add(source_re[point], re[point]);
+                    im[point] = sign.mul_add(source_im[point], im[point]);
+                }
+            }
+        }
+    }
+    Ok(ContractedReplayTile {
+        values_re: &values_re[..len],
+        values_im: &values_im[..len],
+        point_count,
+        point_stride: point_count,
+        destination_count: group_count,
+    })
 }
 
 impl ContractedAmplitudeTile for DirectRecurrenceTileOutput<'_> {
@@ -5920,16 +6371,19 @@ mod replay_destination_helicity_tests {
             destination.id = 12 - destination.id;
         }
         auxiliary.reverse();
-        let view = primary_local_color_destination_map(&contraction, &auxiliary).unwrap();
+        let view = primary_local_color_destination_map(&contraction, &auxiliary, None).unwrap();
         assert_eq!(
             view.auxiliary_destination_by_local_group.as_ref(),
             &[12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
         );
 
         let expanded = RecurrenceColorContraction::expanded_identity_for_runtime_test();
-        let expanded_view =
-            primary_local_color_destination_map(&expanded, &auxiliary_physical_destinations(1))
-                .unwrap();
+        let expanded_view = primary_local_color_destination_map(
+            &expanded,
+            &auxiliary_physical_destinations(1),
+            None,
+        )
+        .unwrap();
         assert_eq!(
             expanded_view.auxiliary_destination_by_local_group.as_ref(),
             &[0]
@@ -5947,7 +6401,7 @@ mod replay_destination_helicity_tests {
                 .with_sparse_sector_domain_for_runtime_test();
         let mut auxiliary = auxiliary_physical_destinations(13);
         auxiliary[0].target_sector_id = 1;
-        let error = match primary_local_color_destination_map(&contraction, &auxiliary) {
+        let error = match primary_local_color_destination_map(&contraction, &auxiliary, None) {
             Ok(_) => panic!("duplicate/missing dense auxiliary owner must fail closed"),
             Err(error) => error,
         };
@@ -5955,6 +6409,116 @@ mod replay_destination_helicity_tests {
             error
                 .message()
                 .contains("repeats an auxiliary physical sector")
+        );
+    }
+
+    #[test]
+    fn primary_local_color_view_maps_owners_to_pattern_groups() {
+        let contraction =
+            RecurrenceColorContraction::symmetric_group_s3_for_runtime_test((0..13).collect(), 13)
+                .with_sparse_sector_domain_for_runtime_test();
+        // Even owners carry two patterns, odd owners one; one group per owner.
+        let mut auxiliary = Vec::new();
+        let mut groups = Vec::new();
+        for sector in 0..13_u32 {
+            for _ in 0..(2 - sector % 2) {
+                auxiliary.push(DirectAmplitudeDestinationDescriptor {
+                    closure_row_start: 0,
+                    id: auxiliary.len() as u32,
+                    target_sector_id: sector,
+                    target_helicity_id_or_sentinel: DIRECT_NONE_U32,
+                    closure_row_count: 0,
+                    selector_domain_id: 0,
+                });
+                groups.push(sector);
+            }
+        }
+        let view =
+            primary_local_color_destination_map(&contraction, &auxiliary, Some((&groups, 13)))
+                .unwrap();
+        assert_eq!(
+            view.auxiliary_destination_by_local_group.as_ref(),
+            (0..13).collect::<Vec<u32>>().as_slice()
+        );
+        // Without pattern groups the repeated owners are refused, as before.
+        assert!(primary_local_color_destination_map(&contraction, &auxiliary, None).is_err());
+        // An owner split over two groups is a repeated sector.
+        let mut split = groups.clone();
+        split[1] = 1;
+        let error =
+            match primary_local_color_destination_map(&contraction, &auxiliary, Some((&split, 13)))
+            {
+                Ok(_) => panic!("an owner in two pattern groups must fail closed"),
+                Err(error) => error,
+            };
+        assert!(
+            error
+                .message()
+                .contains("repeats an auxiliary physical sector")
+        );
+    }
+
+    struct PlaneTile {
+        planes: Vec<(Vec<f64>, Vec<f64>)>,
+        points: usize,
+    }
+
+    impl ContractedAmplitudeTile for PlaneTile {
+        fn point_count(&self) -> usize {
+            self.points
+        }
+        fn destination_re(&self, destination_id: u32) -> Option<&[f64]> {
+            self.planes
+                .get(destination_id as usize)
+                .map(|plane| &plane.0[..])
+        }
+        fn destination_im(&self, destination_id: u32) -> Option<&[f64]> {
+            self.planes
+                .get(destination_id as usize)
+                .map(|plane| &plane.1[..])
+        }
+    }
+
+    #[test]
+    fn companion_pattern_combine_uses_each_points_signs_and_skips_zero_signs() {
+        // Destinations (group, pattern): (0, 0), (0, 1), (1, 1); pattern 1 of point 1
+        // is non-finite and must never be multiplied by its zero sign.
+        let tile = PlaneTile {
+            planes: vec![
+                (vec![1.0, 2.0, 3.0], vec![0.5, 0.5, 0.5]),
+                (vec![10.0, f64::INFINITY, 30.0], vec![1.0, f64::NAN, 3.0]),
+                (vec![7.0, 8.0, 9.0], vec![0.0, 0.0, 0.0]),
+            ],
+            points: 3,
+        };
+        let (a, b, c) = ([1.0, -1.0], [1.0, 0.0], [0.0, 1.0]);
+        let rows: [&[f64]; 3] = [&a, &b, &c];
+        let (mut re, mut im) = (vec![f64::NAN; 2], vec![f64::NAN; 2]);
+        let combined =
+            combine_companion_patterns(&tile, &[0, 1, 1], &[0, 0, 1], 2, &rows, &mut re, &mut im)
+                .unwrap();
+        assert_eq!(combined.destination_re(0).unwrap(), &[-9.0, 2.0, 30.0]);
+        assert_eq!(combined.destination_im(0).unwrap(), &[-0.5, 0.5, 3.0]);
+        assert_eq!(combined.destination_re(1).unwrap(), &[-7.0, 0.0, 9.0]);
+        assert_eq!(combined.destination_im(1).unwrap(), &[0.0, 0.0, 0.0]);
+        // One sign row serves every point; a group without selected patterns is zero.
+        let uniform: [&[f64]; 1] = [&b];
+        let combined = combine_companion_patterns(
+            &tile,
+            &[0, 1, 1],
+            &[0, 0, 1],
+            2,
+            &uniform,
+            &mut re,
+            &mut im,
+        )
+        .unwrap();
+        assert_eq!(combined.destination_re(0).unwrap(), &[1.0, 2.0, 3.0]);
+        assert_eq!(combined.destination_re(1).unwrap(), &[0.0, 0.0, 0.0]);
+        let wrong: [&[f64]; 2] = [&a, &b];
+        assert!(
+            combine_companion_patterns(&tile, &[0, 1, 1], &[0, 0, 1], 2, &wrong, &mut re, &mut im)
+                .is_err()
         );
     }
 

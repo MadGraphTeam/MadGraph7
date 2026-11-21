@@ -296,7 +296,7 @@ pub(super) fn load_recurrence_helicity_selector_companion_from_plan(
         &common.model_parameter_runtime_slots,
     )?;
     let direct_helicity_to_physics = direct_helicity_to_physics(&plan, physics)?;
-    finish_recurrence_helicity_selector_companion(
+    let mut loaded = finish_recurrence_helicity_selector_companion(
         process_executors,
         plan,
         dispatch,
@@ -310,7 +310,16 @@ pub(super) fn load_recurrence_helicity_selector_companion_from_plan(
         source_domains,
         direct_helicity_to_physics,
         physics.helicities.len(),
-    )
+    )?;
+    loaded
+        .runtime
+        .attach_pattern_resolution(companion.pattern_resolution.as_ref().map(|resolution| {
+            (
+                resolution.pattern_count,
+                resolution.pairing_catalog_sha256.as_str(),
+            )
+        }))?;
+    Ok(loaded)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -338,6 +347,12 @@ pub(super) fn load_recurrence_helicity_selector_companion_from_ready_parts(
         plan_reference.helicity_dispatch.as_ref(),
     )?;
     let source_domains = decode_ready_source_domains(&companion.source_domains, &plan)?;
+    // Pattern-resolved companions are never written into bootstrap images.
+    if plan.destination_patterns().is_pattern_resolved() {
+        return Err(RusticolError::integrity(
+            "recurrence bootstrap image carries a pattern-resolved companion",
+        ));
+    }
     let direct_helicity_to_physics = validate_ready_direct_helicity_to_physics(
         &plan,
         &companion.direct_helicity_to_physics,

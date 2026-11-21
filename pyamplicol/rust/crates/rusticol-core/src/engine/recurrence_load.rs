@@ -185,8 +185,12 @@ pub(super) fn load_recurrence_selector_runtime(
             RusticolError::integrity("selector-only recurrence has no helicity-selector companion")
         })?;
     let loaded_plan = load_plan_summary(artifact, evaluator_root, manifest, &companion.plan)?;
-    let (mut common, parameter_defaults, parameter_projection, _source_domains) =
+    let (mut common, parameter_defaults, parameter_projection, source_domains) =
         build_common_runtime(&loaded_plan.plan, manifest, physics)?;
+    let metadata = &manifest.runtime_metadata;
+    let slot_crossings = external_slot_crossings(&loaded_plan.plan, &source_domains, |slot| {
+        unit_crossing_phase(metadata, slot)
+    });
     validate_recurrence_companion_physics(physics)?;
     let payload_root = recurrence_payload_root(artifact, manifest)?;
     let kernel_payloads = artifact.evaluator_payload_store(&payload_root)?;
@@ -226,7 +230,7 @@ pub(super) fn load_recurrence_selector_runtime(
         load_color_contraction(artifact, evaluator_root, manifest)?.ok_or_else(|| {
             RusticolError::integrity("selector-only recurrence has no color-contraction payload")
         })?;
-    let lane = RecurrenceSelectorOnlyRuntime::new(
+    let mut lane = RecurrenceSelectorOnlyRuntime::new(
         loaded_companion.runtime,
         contraction,
         loaded_companion.backend_name,
@@ -234,6 +238,7 @@ pub(super) fn load_recurrence_selector_runtime(
         parameter_projection,
         physics.helicities.len(),
     )?;
+    lane.external_slot_crossings = slot_crossings;
     Ok(LoadedRecurrenceSelectorRuntime { common, lane })
 }
 

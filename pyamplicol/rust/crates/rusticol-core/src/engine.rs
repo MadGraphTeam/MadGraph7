@@ -190,6 +190,10 @@ pub const RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY: &str =
 /// only through its helicity-selector companion, one helicity per point.
 pub const RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY: &str =
     "rusticol.recurrence-selector-only-fc.v1";
+/// Helicity-selector companion of a flavour-union template, one amplitude per
+/// pairing rule: union members evaluate on it with their pattern signs.
+pub const RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY: &str =
+    "rusticol.recurrence-pattern-resolved-companion.v1";
 pub const ON_THE_FLY_RUNTIME_CAPABILITY: &str = "rusticol.on-the-fly.complex-f64.v1";
 pub const ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     "rusticol.on-the-fly.contracted-color.v1";
@@ -283,6 +287,7 @@ pub enum RuntimeCapability {
     RecurrenceContractedColorV1,
     RecurrenceHelicitySelectorCompanionV2,
     RecurrenceSelectorOnlyFcV1,
+    RecurrencePatternResolvedCompanionV1,
     SymmetricGroupFftColorContractionV1,
     OnTheFlyRuntimeComplexF64V1,
     OnTheFlyContractedColorV1,
@@ -322,6 +327,9 @@ impl RuntimeCapability {
                 RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
             }
             Self::RecurrenceSelectorOnlyFcV1 => RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
+            Self::RecurrencePatternResolvedCompanionV1 => {
+                RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY
+            }
             Self::SymmetricGroupFftColorContractionV1 => {
                 SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
             }
@@ -381,6 +389,8 @@ pub fn supported_runtime_capabilities() -> Vec<&'static str> {
         RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY,
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -442,6 +452,7 @@ fn runtime_capability_is_supported(capability: &str) -> bool {
         | RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY
         | RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY
         | RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY
+        | RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY
         | SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY
         | ON_THE_FLY_RUNTIME_CAPABILITY
         | ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY

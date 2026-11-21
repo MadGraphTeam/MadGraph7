@@ -634,12 +634,20 @@ evaluates one helicity per point (`helicities=[h]` or `helicity_by_point`),
 with the same values as the default artifact; helicity sums, resolved output,
 colour selectors and multi-order partials raise a compatibility error. Its
 physics metadata lists every helicity as computed (no structural zeros or
-parity aliases). Flavour-union templates and single-helicity processes keep
-the main schedule; LC ignores the option. Requires
+parity aliases). Single-helicity processes and NLC flavour-union templates
+keep the main schedule; LC ignores the option. Full-colour flavour-union
+templates get a pattern-resolved companion: their members are evaluated with
+`evaluate_assignments` and `helicity_by_point`, or loaded by process id, one
+helicity per point; crossed union members are refused. Requires
 `evaluator.execution_mode = "recurrence"` and
 `generation.relation_discovery.mode = "off"` (CLI:
 `--selector-only-full-colour`). Runtimes older than this option refuse the
 artifact.
+
+`generation.pattern_resolved_companion = true` gives full-colour flavour-union
+templates the same pattern-resolved companion while keeping their main
+schedule, so union members evaluated one helicity per point run on the
+companion instead of the whole template.
 
 ## Execution mode and evaluator backend
 

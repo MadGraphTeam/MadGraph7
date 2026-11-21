@@ -73,6 +73,7 @@ from .._internal.versions import (
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
     RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY,
+    RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY,
     RECURRENCE_PLAN_ABI,
     RECURRENCE_RUNTIME_LAYOUT_ABI,
     RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY,
@@ -379,6 +380,8 @@ class RecurrenceHelicitySelectorPlanArtifact:
     # Generation-only lowering outputs (selector-only processes); never serialized.
     exact_sections: Mapping[str, object] | None = None
     generation_profile: Mapping[str, object] | None = None
+    # Flavour-union template: {"pattern_count", "pairing_catalog_sha256"}.
+    pattern_resolution: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2275,8 +2278,17 @@ def _write_recurrence_bootstraps(
         return
     if len(processes) != 1 or len(process_records) != 1:
         return
-    # The v1 image needs a main plan: selector-only processes keep the generic loader.
-    if any(process.selector_only for process in processes):
+    # The v1 image needs a main plan and no pattern-resolved companion.
+    if any(
+        process.selector_only
+        or getattr(
+            getattr(process, "helicity_selector_companion", None),
+            "pattern_resolution",
+            None,
+        )
+        is not None
+        for process in processes
+    ):
         return
     if evaluator_payload_container is None:
         raise ValueError("recurrence bootstrap requires an evaluator payload container")
@@ -2810,7 +2822,7 @@ def _recurrence_helicity_selector_companion_v2_manifest(
         "process_binding": _deep_plain(binding),
         "inspection_summary": inspection_summary,
     }
-    return {
+    manifest: dict[str, object] = {
         "schema_version": 2,
         "kind": _RECURRENCE_HELICITY_SELECTOR_COMPANION_V2_KIND,
         "process_digest": process_digest,
@@ -2821,6 +2833,33 @@ def _recurrence_helicity_selector_companion_v2_manifest(
             else {"source": "primary", "view": "primary-local-color-view-v1"}
         ),
     }
+    # Written only for union templates, so other companions keep their bytes.
+    if companion.pattern_resolution is not None:
+        resolution = dict(companion.pattern_resolution)
+        manifest["pattern_resolution"] = {
+            "pattern_count": _nonnegative_integer(
+                resolution.get("pattern_count"),
+                "recurrence companion pattern count",
+                minimum=1,
+            ),
+            "pairing_catalog_sha256": _canonical_sha256(
+                resolution.get("pairing_catalog_sha256"),
+                "recurrence companion pairing catalogue SHA-256",
+            ),
+        }
+    return manifest
+
+
+def recurrence_pattern_pairs_sha256(
+    pattern_pairs: Sequence[Sequence[Sequence[int]]],
+) -> str:
+    """SHA-256 of a pattern table as compact JSON (the process-groups encoding)."""
+
+    encoded = json.dumps(
+        [[[int(f), int(a)] for f, a in pattern] for pattern in pattern_pairs],
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(encoded.encode("ascii")).hexdigest()
 
 
 def _eager_execution_summary(
@@ -5358,6 +5397,12 @@ def _recurrence_process_runtime_capabilities(
         capabilities.add(RECURRENCE_HELICITY_SELECTOR_COMPANION_RUNTIME_CAPABILITY)
     if process.selector_only:
         capabilities.add(RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY)
+    companion = process.helicity_selector_companion
+    if (
+        isinstance(companion, RecurrenceHelicitySelectorPlanArtifact)
+        and companion.pattern_resolution is not None
+    ):
+        capabilities.add(RECURRENCE_PATTERN_RESOLVED_COMPANION_RUNTIME_CAPABILITY)
     if _uses_symmetric_group_fft_color_contraction(process):
         capabilities.add(SYMMETRIC_GROUP_FFT_COLOR_RUNTIME_CAPABILITY)
     return tuple(sorted(capabilities))

@@ -5,7 +5,10 @@ Eligible full-colour classes are generated with their helicity-selector
 companion only: no main contracted-colour schedule. Per helicity they must
 equal the default artifact's companion values at the same batch, bitwise;
 helicity sums, resolved output and the other APIs that need the main schedule
-are refused. Flavour-union templates keep their main schedule.
+are refused. Flavour-union templates get a pattern-resolved companion: their
+members (assignments or member loads, one helicity per point) must equal the
+member's own unions-off program at 1e-12, in selector-only mode and in default
+mode with ``generation.pattern_resolved_companion``.
 
 ``p p > j j j`` runs only with ``PYAMPLICOL_RUN_SELECTOR_ONLY=pp3j``.
 """
@@ -25,6 +28,7 @@ import pytest
 from pyamplicol import EvaluationError, Generator, ModelSource, ProcessSet, Runtime
 from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.artifacts import inspect_artifact
+from pyamplicol.artifacts.process_groups import read_process_groups
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
@@ -37,9 +41,11 @@ from pyamplicol.config import (
     RunConfig,
 )
 from pyamplicol.generation.phase_space import flat_final_states
+from pyamplicol.generation.process_grouping import GroupingBasis
 from tests.integration.test_runtime_selector_api_parity import native_sdk  # noqa: F401
 
 _SELECTOR_ONLY = "rusticol.recurrence-selector-only-fc.v1"
+_PATTERN_RESOLVED = "rusticol.recurrence-pattern-resolved-companion.v1"
 _CASES = {"pp2j": "p p > j j", "pp3j": "p p > j j j"}
 _OPT_IN = {"pp3j"}
 _OPT_IN_ENV = "PYAMPLICOL_RUN_SELECTOR_ONLY"
@@ -54,6 +60,7 @@ def _config(
     emit_api: bool = False,
     qed: int = 0,
     contraction: str = "auto",
+    companion: bool = False,
 ) -> RunConfig:
     return RunConfig(
         action="generate",
@@ -70,6 +77,7 @@ def _config(
             workers=1,
             emit_api_bundle=emit_api,
             selector_only_full_colour=selector_only,
+            pattern_resolved_companion=companion,
             relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
             validation=GenerationValidationConfig(
                 enabled=validate, post_build_validation=validate
@@ -106,6 +114,11 @@ def artifacts(
                 Generator(
                     _config(unions=unions, selector_only=selector_only, emit_api=True)
                 ).generate(processes, paths[name])
+        # Default mode with pattern-resolved union companions beside the main schedule.
+        paths["companion-u1"] = root / "companion-u1"
+        Generator(
+            _config(unions=True, selector_only=False, emit_api=True, companion=True)
+        ).generate(processes, paths["companion-u1"])
         yield paths
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -129,6 +142,17 @@ def _selector_only_ids(artifact: Path) -> list[str]:
         for process in _manifest(artifact)["processes"]
         if _SELECTOR_ONLY
         in _execution(artifact, str(process["id"]))["required_runtime_capabilities"]
+    ]
+
+
+def _union_templates(artifact: Path) -> list[str]:
+    groups = read_process_groups(artifact)
+    if groups is None:
+        return []
+    return [
+        template
+        for template, group in groups.groups.items()
+        if any(m.basis is GroupingBasis.FLAVOUR_UNION for m in group.members[1:])
     ]
 
 
@@ -170,17 +194,16 @@ def test_selector_only_processes_omit_the_main_schedule(
             root = selector / "processes" / process_id
             execution = _execution(selector, process_id)
             assert not (root / "recurrence-bootstrap.bin").exists()
-            if process_id not in selected:
-                # Union templates keep the main schedule (no companion yet).
-                assert unions == 1
-                assert execution["plan"] is not None
-                assert execution["helicity_selector_companion"] is None
-                continue
+            # Full colour: union templates are selector-only too.
+            assert process_id in selected
             assert execution["plan"] is None
             assert execution["recurrence_summary"]["lanes"] == (
                 "helicity-selector-only"
             )
             companion = execution["helicity_selector_companion"]
+            assert (companion.get("pattern_resolution") is not None) == (
+                _PATTERN_RESOLVED in execution["required_runtime_capabilities"]
+            )
             assert companion["color_contraction"] == {
                 "source": "selector-local",
                 "view": "selector-local-color-view-v1",
@@ -218,7 +241,8 @@ def test_per_helicity_values_equal_the_default_companion_bitwise(
     generator = random.Random(20261121)
     for unions in (0, 1):
         selector_artifact = artifacts[f"selector-u{unions}"]
-        default_artifact = artifacts[f"default-u{unions}"]
+        # Union templates: the default-mode pattern-resolved companion.
+        default_artifact = artifacts["companion-u1" if unions else "default-u0"]
         for process_id in _selector_only_ids(selector_artifact):
             selector = Runtime.load(selector_artifact, process=process_id)
             default = Runtime.load(default_artifact, process=process_id)
@@ -278,11 +302,14 @@ def test_apis_needing_the_main_schedule_are_refused(
         runtime.evaluate(
             points, helicities=helicities[:1], color_flows=runtime.physics.color_ids[:1]
         )
-    # Selector-only processes are never union templates in S1 (section 6).
-    for helicity_by_point in (None, helicities[:1] * len(points)):
-        with pytest.raises(CompatibilityError, match="flavour-union assignments"):
+    # Assignments need a union template (one helicity per point, totals only).
+    if runtime.flavour_union_assignments:
+        with pytest.raises(CompatibilityError, match="helicity-summed union"):
+            runtime.evaluate_assignments(points, [[0]] * len(points))
+    else:
+        with pytest.raises(CompatibilityError, match="pattern-resolved flavour-union"):
             runtime.evaluate_assignments(
-                points, [[0]] * len(points), helicity_by_point=helicity_by_point
+                points, [[0]] * len(points), helicity_by_point=helicities[:1] * 3
             )
     # Native profiles (backend API): single helicity only.
     backend = runtime._backend  # type: ignore[attr-defined]
@@ -298,17 +325,28 @@ def test_apis_needing_the_main_schedule_are_refused(
     single = _real(runtime.evaluate(points, helicities=helicities[:1]))
     orders = runtime.evaluate_orders(points, helicities=helicities[:1])
     assert _real(orders.total) == single
-    if any(
-        _SELECTOR_ONLY
-        not in _execution(artifact, str(p["id"]))["required_runtime_capabilities"]
-        for p in _manifest(artifact)["processes"]
-    ):
-        template = next(
-            str(p["id"])
-            for p in _manifest(artifact)["processes"]
-            if _execution(artifact, str(p["id"]))["plan"] is not None
-        )
-        assert Runtime.load(artifact, process=template).flavour_union_assignments
+    for template_id in _union_templates(artifact):
+        template = Runtime.load(artifact, process=template_id)
+        own = list(template.physics.helicity_ids)
+        template_points = _points(template.physics.process, 3)
+        with pytest.raises(CompatibilityError, match="helicity-summed union"):
+            template.evaluate_assignments(template_points, [[0]] * 3)
+        with pytest.raises(CompatibilityError, match="resolved helicity/colour"):
+            template.evaluate_assignments(
+                template_points,
+                [[0]] * 3,
+                helicity_by_point=own[:1] * 3,
+                output="helicity",
+            )
+        with pytest.raises(CompatibilityError, match="colour-selected evaluation"):
+            template.evaluate_assignments(
+                template_points,
+                [[0]] * 3,
+                helicity_by_point=own[:1] * 3,
+                color_flow_by_point=[str(template.physics.color_ids[0])] * 3,
+            )
+        with pytest.raises(CompatibilityError, match="helicity-summed evaluation"):
+            template.evaluate(template_points)
 
 
 def test_model_parameters_reach_the_selector_lane(
@@ -554,3 +592,241 @@ def test_c_abi_values_equal_python_bitwise(
             helicities[(point * 7 + 3) % len(helicities)] for point in range(count)
         ]
         assert rows[-1] == _real(runtime.evaluate(points, helicity_by_point=mixed))
+
+
+def _to_template(point: Point, permutation: Sequence[int]) -> Point:
+    """Member momenta in template slot order: ``q[r] = p[permutation[r]]``."""
+
+    return tuple(point[index] for index in permutation)
+
+
+def _member_helicity(helicity: str, permutation: Sequence[int]) -> str:
+    """A template helicity id in the member's legs (slot r is leg permutation[r])."""
+
+    values = helicity.removeprefix("h:").split(",")
+    own = [""] * len(values)
+    for slot, leg in enumerate(permutation):
+        own[leg] = values[slot]
+    return "h:" + ",".join(own)
+
+
+def _main_by_helicity(
+    runtime: Runtime, points: Sequence[Point]
+) -> list[dict[str, float]]:
+    """Per point, the main program's value of every helicity (unions-off reference)."""
+
+    resolved = runtime.evaluate_resolved(points)
+    return [
+        {
+            helicity: sum(complex(value).real for value in row[h])
+            for h, helicity in enumerate(resolved.helicity_ids)
+        }
+        for row in resolved.values
+    ]
+
+
+def _uncrossed(template: Runtime) -> list[tuple[int, dict[str, object]]]:
+    return [
+        (index, entry)
+        for index, entry in enumerate(template.flavour_union_assignments)
+        if not int(entry.get("crossing", 0))
+    ]
+
+
+@pytest.mark.parametrize("kind", ("selector-u1", "companion-u1"))
+def test_union_members_on_the_companion_equal_their_unions_off_programs(
+    artifacts: dict[str, Path], kind: str
+) -> None:
+    """Every uncrossed member, every helicity, through evaluate_assignments, one
+    mixed batch, and the member loaded by id: 1e-12 against the member's own
+    unions-off main program (which sums its Fermi signs independently)."""
+
+    artifact, reference_artifact = artifacts[kind], artifacts["default-u0"]
+    generator = random.Random(20261122)
+    templates = _union_templates(artifact)
+    assert templates
+    count = 6
+    multi_pattern = factor_not_one = partial_patterns = 0
+    for template_id in templates:
+        template = Runtime.load(artifact, process=template_id)
+        assert template.flavour_union_pattern_resolved
+        template_helicities = list(template.physics.helicity_ids)
+        pattern_count = len(template.flavour_union_assignments[0]["patterns"])
+        references: dict[int, tuple[list[Point], list[dict[str, float]]]] = {}
+        for index, entry in _uncrossed(template):
+            expression = str(entry["expression"])
+            permutation = [int(value) for value in entry["permutation"]]
+            factor = entry["factor"]
+            multi_pattern += len(entry["patterns"]) >= 2
+            factor_not_one += factor["numerator"] != factor["denominator"]
+            partial_patterns += len(entry["patterns"]) < pattern_count
+            points = _points(expression, count)
+            template_points = [_to_template(p, permutation) for p in points]
+            reference = Runtime.load(reference_artifact, process=expression)
+            expected = _main_by_helicity(reference, points)
+            references[index] = (template_points, expected)
+            scale = max(abs(v) for row in expected for v in row.values())
+            assert scale > 0.0, expression
+            member = (
+                None
+                if index == 0
+                else Runtime.load(artifact, process=str(entry["process_id"]))
+            )
+            for helicity in template_helicities:
+                own = _member_helicity(helicity, permutation)
+                routed = [
+                    row[0]
+                    for row in template.evaluate_assignments(
+                        template_points,
+                        [[index]] * count,
+                        helicity_by_point=[helicity] * count,
+                    )
+                ]
+                wanted = [row[own] for row in expected]
+                assert routed == pytest.approx(
+                    wanted, rel=1.0e-12, abs=1.0e-12 * scale
+                ), (kind, expression, helicity)
+                if member is None:
+                    continue
+                # A member load runs the same companion, signs and factor: bitwise.
+                loaded = _real(member.evaluate(points, helicity_by_point=[own] * count))
+                assert loaded == routed, (kind, expression, helicity)
+                assert _real(member.evaluate(points, helicities=[own])) == routed
+        # One batch mixing members and helicities, point by point.
+        indices = list(references)
+        chosen = [generator.choice(indices) for _ in range(4 * count)]
+        slots = [generator.randrange(count) for _ in chosen]
+        helicities = [generator.choice(template_helicities) for _ in chosen]
+        mixed = template.evaluate_assignments(
+            [references[i][0][s] for i, s in zip(chosen, slots, strict=True)],
+            [[i] for i in chosen],
+            helicity_by_point=helicities,
+        )
+        for (row,), index, slot, helicity in zip(
+            mixed, chosen, slots, helicities, strict=True
+        ):
+            entry = template.flavour_union_assignments[index]
+            permutation = [int(value) for value in entry["permutation"]]
+            expected = references[index][1]
+            scale = max(abs(v) for point in expected for v in point.values())
+            wanted = expected[slot][_member_helicity(helicity, permutation)]
+            assert row == pytest.approx(wanted, rel=1.0e-12, abs=1.0e-12 * scale)
+    # pp>jj has multi-pattern members, uu>uu-type factors and partial pattern sets.
+    assert multi_pattern and factor_not_one and partial_patterns
+    print(
+        f"{kind}: {len(templates)} templates, multi-pattern {multi_pattern}, "
+        f"factor != 1 {factor_not_one}, partial patterns {partial_patterns}"
+    )
+
+
+# C probe: union assignments, one (assignment, helicity) per point, raw doubles out.
+_C_ASSIGNMENT_PROBE = r"""
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "rusticol.h"
+
+static void *slurp(const char *path, size_t *bytes) {
+    FILE *input = fopen(path, "rb");
+    if (input == NULL) return NULL;
+    fseek(input, 0, SEEK_END);
+    *bytes = (size_t)ftell(input);
+    fseek(input, 0, SEEK_SET);
+    void *data = malloc(*bytes);
+    if (data && fread(data, 1, *bytes, input) != *bytes) data = NULL;
+    fclose(input);
+    return data;
+}
+
+int main(int argc, char **argv) {
+    if (argc != 8) return 2;
+    const size_t point_count = strtoul(argv[4], NULL, 10);
+    size_t momentum_bytes = 0, id_bytes = 0, helicity_bytes = 0;
+    double *momenta = slurp(argv[3], &momentum_bytes);
+    uint32_t *ids = slurp(argv[5], &id_bytes);
+    uint32_t *helicities = slurp(argv[6], &helicity_bytes);
+    size_t *offsets = malloc((point_count + 1) * sizeof(size_t));
+    double *values = malloc(point_count * sizeof(double));
+    if (!momenta || !ids || !helicities || !offsets || !values) return 3;
+    for (size_t point = 0; point <= point_count; ++point) offsets[point] = point;
+    RusticolRuntimeHandle *runtime = NULL;
+    if (rusticol_runtime_load(argv[1], argv[2], NULL, &runtime) != RUSTICOL_STATUS_OK)
+        return 10;
+    if (rusticol_runtime_evaluate_assignments_f64(
+            runtime, momenta, momentum_bytes / sizeof(double), point_count, offsets,
+            point_count + 1, ids, point_count, helicities, point_count, NULL, 0, 0,
+            values, point_count) != RUSTICOL_STATUS_OK) return 11;
+    FILE *out = fopen(argv[7], "wb");
+    if (out == NULL || fwrite(values, sizeof(double), point_count, out) != point_count)
+        return 3;
+    fclose(out);
+    if (rusticol_runtime_free(runtime) != RUSTICOL_STATUS_OK) return 12;
+    puts("ok");
+    return 0;
+}
+"""
+
+
+def test_c_abi_union_assignments_equal_python_bitwise(
+    artifacts: dict[str, Path],
+    native_sdk: object,  # noqa: F811
+    tmp_path: Path,
+) -> None:
+    import struct
+    import subprocess
+
+    from tests.integration.test_runtime_selector_api_parity import (
+        _compile_probe,
+        _source_environment,
+    )
+
+    binary = _compile_probe(
+        "c",
+        _C_ASSIGNMENT_PROBE,
+        native_sdk,  # type: ignore[arg-type]
+        tmp_path,
+    )
+    artifact = artifacts["selector-u1"]
+    count = 255
+    generator = random.Random(20261123)
+    for template_id in _union_templates(artifact):
+        template = Runtime.load(artifact, process=template_id)
+        helicities = list(template.physics.helicity_ids)
+        indices = [index for index, _ in _uncrossed(template)]
+        points = _points(template.physics.process, count)
+        ids = [generator.choice(indices) for _ in points]
+        chosen = [generator.randrange(len(helicities)) for _ in points]
+        paths = {name: tmp_path / f"{name}.bin" for name in ("p", "i", "h", "v")}
+        paths["p"].write_bytes(
+            struct.pack(
+                f"{count * len(points[0]) * 4}d",
+                *(x for point in points for leg in point for x in leg),
+            )
+        )
+        paths["i"].write_bytes(struct.pack(f"{count}I", *ids))
+        paths["h"].write_bytes(struct.pack(f"{count}I", *chosen))
+        completed = subprocess.run(
+            [
+                str(binary),
+                str(artifact),
+                template_id,
+                str(paths["p"]),
+                str(count),
+                str(paths["i"]),
+                str(paths["h"]),
+                str(paths["v"]),
+            ],
+            env=_source_environment(),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        native = list(struct.unpack(f"{count}d", paths["v"].read_bytes()))
+        python = template.evaluate_assignments(
+            points,
+            [[index] for index in ids],
+            helicity_by_point=[helicities[index] for index in chosen],
+        )
+        assert native == [row[0] for row in python], template_id

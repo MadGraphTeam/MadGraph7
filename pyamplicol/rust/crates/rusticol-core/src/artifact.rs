@@ -4057,6 +4057,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::RecurrenceContractedColorV1,
         RuntimeCapability::RecurrenceHelicitySelectorCompanionV2,
         RuntimeCapability::RecurrenceSelectorOnlyFcV1,
+        RuntimeCapability::RecurrencePatternResolvedCompanionV1,
         RuntimeCapability::SymmetricGroupFftColorContractionV1,
         RuntimeCapability::OnTheFlyRuntimeComplexF64V1,
         RuntimeCapability::OnTheFlyContractedColorV1,

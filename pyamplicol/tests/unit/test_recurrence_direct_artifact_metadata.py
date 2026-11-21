@@ -694,6 +694,98 @@ def test_selector_only_manifest_omits_the_main_plan_and_binds_the_companion() ->
         )
 
 
+def test_pattern_resolved_companion_manifest_and_capability() -> None:
+    import dataclasses
+    import hashlib
+    import json
+
+    process = _recurrence_process()
+    process.color_accuracy = "full"
+    process.selector_only = True
+    process.color_contraction_summary = {
+        "abi": "pyamplicol-recurrence-color-contraction-v3",
+        "color_accuracy": "full",
+        "storage": "expanded",
+        "group_count": 3,
+        "component_count": 1,
+        "factorization": None,
+    }
+    process.recurrence_summary = {
+        "lc_flow_layout": "contracted-color-union",
+        "lanes": "helicity-selector-only",
+    }
+    pairs = (((0, 3), (2, 1)), ((0, 1), (2, 3)))
+    digest = artifact_writer.recurrence_pattern_pairs_sha256(pairs)
+    # The process-groups encoding of the same table, compact JSON.
+    assert (
+        digest
+        == hashlib.sha256(
+            json.dumps([[list(p) for p in r] for r in pairs], separators=(",", ":"))
+            .encode()
+        ).hexdigest()
+    )
+    companion = dataclasses.replace(
+        _selector_companion(),
+        pattern_resolution={"pattern_count": 2, "pairing_catalog_sha256": digest},
+    )
+    process.helicity_selector_companion = companion
+    binding = {
+        "abi": "pyamplicol-recurrence-process-binding-v4",
+        "process_id": process.process_id,
+        "schedule_digest": companion.recurrence_schedule_digest,
+        "native_schedule_semantic_digest": (
+            companion.recurrence_native_schedule_semantic_digest
+        ),
+        "process_digest": process.process_digest,
+        "process_semantic_digest": companion.builder_input_sha256,
+        "process_support_words": [1],
+        "path": "helicity-selector-binding.bin",
+        "size_bytes": 256,
+        "sha256": _digest("9"),
+    }
+    manifest = artifact_writer._recurrence_execution_manifest(
+        process,
+        schedule_path=None,
+        binding=None,
+        color_contraction_record=SimpleNamespace(size_bytes=5, sha256=_digest("0")),
+        companion_binding=binding,
+    )
+    capabilities = manifest["required_runtime_capabilities"]
+    assert "rusticol.recurrence-pattern-resolved-companion.v1" in capabilities
+    selector = manifest["helicity_selector_companion"]
+    assert selector["pattern_resolution"] == {
+        "pattern_count": 2,
+        "pairing_catalog_sha256": digest,
+    }
+    assert selector["plan"]["required_runtime_capabilities"] == capabilities
+
+
+def test_pattern_resolved_companions_get_no_bootstrap_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        artifact_writer,
+        "_recurrence_bootstrap_operation",
+        lambda: pytest.fail("pattern-resolved companions must not build a bootstrap"),
+    )
+    companion = SimpleNamespace(pattern_resolution={"pattern_count": 2})
+    artifact_writer._write_recurrence_bootstraps(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        processes=(  # type: ignore[arg-type]
+            SimpleNamespace(
+                process_id="recurrence",
+                selector_only=False,
+                helicity_selector_companion=companion,
+            ),
+        ),
+        process_records=({"id": "recurrence"},),
+        producer={},
+        runtime={},
+        evaluator_payload_container=None,
+        target={},
+    )
+
+
 def test_selector_only_processes_get_no_bootstrap_image(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

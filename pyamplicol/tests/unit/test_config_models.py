@@ -83,8 +83,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # benchmark.runtime_threads (`profile --runtime-threads`). MadGraph7 adds
     # process.flavor_blind_strict and generation.pack_payloads; 159:
     # process.flavor_unions; 160: process.flavor_union_crossing; 161:
-    # generation.selector_only_full_colour.
-    assert len(FIELD_REGISTRY) == 161
+    # generation.selector_only_full_colour; 162: generation.pattern_resolved_companion.
+    assert len(FIELD_REGISTRY) == 162
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2

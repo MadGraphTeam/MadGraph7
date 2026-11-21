@@ -31,6 +31,8 @@ pub(in crate::engine) struct RecurrenceSelectorOnlyRuntime {
     color_transform_im: Vec<f64>,
     symmetric_group_color_workspace: Option<RuntimeSymmetricGroupColorWorkspace>,
     order_catalog: AmplitudeOrderCatalog,
+    /// Per external slot, whether a flavour-union crossing may negate it (set at load).
+    pub(in crate::engine) external_slot_crossings: Box<[super::NativeSlotCrossing]>,
 }
 
 impl RecurrenceSelectorOnlyRuntime {
@@ -118,7 +120,70 @@ impl RecurrenceSelectorOnlyRuntime {
             color_transform_im: vec![0.0; color_transform_len],
             symmetric_group_color_workspace,
             order_catalog,
+            external_slot_crossings: Box::default(),
         })
+    }
+
+    pub(in crate::engine) const fn is_pattern_resolved(&self) -> bool {
+        self.companion.is_pattern_resolved()
+    }
+
+    pub(in crate::engine) fn pattern_count(&self) -> Option<usize> {
+        self.companion.pattern_count()
+    }
+
+    pub(in crate::engine) fn pairing_catalog_sha256(&self) -> Option<&str> {
+        self.companion.pairing_catalog_sha256()
+    }
+
+    pub(in crate::engine) fn external_slot_crossings(&self) -> &[super::NativeSlotCrossing] {
+        &self.external_slot_crossings
+    }
+
+    /// Restrict a union template's pattern-resolved companion to one member.
+    pub(in crate::engine) fn select_flavour_union_patterns(
+        &mut self,
+        patterns: &[u32],
+        signs: &[i32],
+    ) -> RusticolResult<()> {
+        if !self.companion.is_pattern_resolved() {
+            return Err(RusticolError::compatibility(
+                "flavour-union member of a union template without pattern-resolved companion",
+            ));
+        }
+        self.companion
+            .select_flavour_union_patterns(patterns, signs)
+    }
+
+    /// Union assignment entries (one helicity each) on the pattern-resolved
+    /// companion; member factors are the caller's.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::engine) fn run_companion_assignments_into(
+        &mut self,
+        common: &ExecutionRuntime,
+        momenta: &[f64],
+        points: &[usize],
+        helicities: &[u32],
+        signs: &[&[f64]],
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let physics = common.physics.clone().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        self.prepare_parameters(common)?;
+        let (companion, contraction, scratch) = self.tile_parts();
+        run_companion_entries_into(
+            companion,
+            contraction,
+            scratch,
+            &physics,
+            common.normalization_factor,
+            momenta,
+            points,
+            helicities,
+            signs,
+            output,
+        )
     }
 
     pub(in crate::engine) fn backend_name(&self) -> &str {
@@ -272,6 +337,7 @@ impl RecurrenceSelectorOnlyRuntime {
             batch,
             physics_helicity_id,
             resolved_helicity_id,
+            CompanionSigns::Selected,
             output,
         )
     }
@@ -317,6 +383,7 @@ impl RecurrenceSelectorOnlyRuntime {
             batch,
             physics_helicity_id,
             resolved_helicity_id,
+            CompanionSigns::Selected,
             total_started,
             parameter_setup,
             |point, value| values[point] += value,
@@ -440,7 +507,7 @@ mod tests {
         let read = |path: std::path::PathBuf| -> Value {
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
         };
-        let mut checked = 0;
+        let (mut checked, mut union_templates) = (0, 0);
         for root in std::env::split_paths(&roots) {
             for process in read(root.join("artifact.json"))["processes"]
                 .as_array()
@@ -493,20 +560,104 @@ mod tests {
                     )
                     .unwrap_err();
                 assert_eq!(error.kind(), RusticolErrorKind::Selector, "{error}");
-                for helicity_by_point in [None, Some(&[0_u32][..])] {
+                if runtime.flavour_union_pattern_resolved() {
+                    union_templates += 1;
                     assert_refused(
                         runtime.evaluate_assignments_f64_into(
                             &momenta,
                             1,
                             &[0, 1],
                             &[0],
-                            helicity_by_point,
+                            None,
                             None,
                             AssignmentOutputMode::Total,
                             &mut value,
                         ),
-                        "flavour-union assignments",
+                        "helicity-summed union assignments",
                     );
+                    let helicity_count = runtime.helicity_ids().unwrap().len();
+                    let mut resolved = vec![0.0; helicity_count];
+                    assert_refused(
+                        runtime.evaluate_assignments_f64_into(
+                            &momenta,
+                            1,
+                            &[0, 1],
+                            &[0],
+                            Some(&[0]),
+                            None,
+                            AssignmentOutputMode::PerHelicity,
+                            &mut resolved,
+                        ),
+                        "resolved helicity/colour output",
+                    );
+                    // Crossed members stay unsupported on selector-only artifacts.
+                    let count = runtime.flavour_union_assignments().unwrap().len() as u32;
+                    if let Some(crossed) =
+                        (0..count).find(|id| runtime.flavour_union_assignments_crossed(&[*id]))
+                    {
+                        let error = runtime
+                            .evaluate_assignments_f64_into(
+                                &momenta,
+                                1,
+                                &[0, 1],
+                                &[crossed],
+                                Some(&[0]),
+                                None,
+                                AssignmentOutputMode::Total,
+                                &mut value,
+                            )
+                            .unwrap_err();
+                        assert!(
+                            matches!(
+                                error.kind(),
+                                RusticolErrorKind::Compatibility
+                                    | RusticolErrorKind::InvalidArgument
+                            ),
+                            "{error}"
+                        );
+                    }
+                    // The template's own assignment equals its singleton evaluation bitwise.
+                    let mut assigned = [0.0];
+                    runtime
+                        .evaluate_assignments_f64_into(
+                            &momenta,
+                            1,
+                            &[0, 1],
+                            &[0],
+                            Some(&[0]),
+                            None,
+                            AssignmentOutputMode::Total,
+                            &mut assigned,
+                        )
+                        .unwrap();
+                    let mut single = [0.0];
+                    runtime
+                        .evaluate_f64_into_with_selectors(
+                            &momenta,
+                            1,
+                            Some(&one),
+                            None,
+                            None,
+                            None,
+                            &mut single,
+                        )
+                        .unwrap();
+                    assert_eq!(assigned, single);
+                } else {
+                    let error = runtime
+                        .evaluate_assignments_f64_into(
+                            &momenta,
+                            1,
+                            &[0, 1],
+                            &[0],
+                            Some(&[0]),
+                            None,
+                            AssignmentOutputMode::Total,
+                            &mut value,
+                        )
+                        .unwrap_err();
+                    assert_eq!(error.kind(), RusticolErrorKind::Compatibility, "{error}");
+                    assert!(error.to_string().contains("pattern-resolved flavour-union"));
                 }
                 // Supported: one helicity, and single-order partials equal to it.
                 runtime
@@ -540,5 +691,6 @@ mod tests {
             checked > 0,
             "no selector-only process in the supplied artifacts"
         );
+        eprintln!("selector-only processes {checked}, union templates {union_templates}");
     }
 }

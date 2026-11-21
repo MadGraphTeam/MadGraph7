@@ -110,6 +110,7 @@ from .artifact_writer import (
     RecurrenceHelicitySelectorPlanArtifact,
     RecurrenceProcessArtifact,
     _GenerationConfigProvenance,
+    recurrence_pattern_pairs_sha256,
     write_schema_v3_artifact,
 )
 from .born_orders import process_born_amplitude_orders
@@ -5631,11 +5632,14 @@ class GenerationBackend:
         process_id: str,
         progress_callback: Callable[[Mapping[str, object]], None] | None = None,
         keep_lowering_outputs: bool = False,
+        pattern_pairs: PatternPairs | None = None,
     ) -> RecurrenceHelicitySelectorPlanArtifact:
         """Lower and bind one persisted physical-colour/runtime-H schedule.
 
         The native lowering emits the authenticated dispatch sidecar together
         with the ordinary Direct plan; no OTF seed or query family is built.
+        ``pattern_pairs`` (a flavour-union template's member pattern table) makes
+        the companion pattern-resolved over that same pairing catalogue.
         """
 
         if logical.layout != "all-flow-union" or logical.replay_partitions:
@@ -5652,6 +5656,29 @@ class GenerationBackend:
             raise GenerationError(
                 "recurrence helicity-selector lowering has no evaluator config"
             )
+        pattern_resolution: dict[str, object] | None = None
+        if pattern_pairs is not None:
+            catalog = logical.fermion_pairing_catalog
+            companion_pairs = (
+                ()
+                if catalog is None
+                else tuple(
+                    tuple((int(f), int(a)) for f, a in rule.endpoint_pairings)
+                    for rule in catalog.rules
+                )
+            )
+            # Member (pattern, sign) tables apply only over the same catalogue.
+            if companion_pairs != tuple(pattern_pairs):
+                raise GenerationError(
+                    "pattern-resolved companion pairing catalogue differs from the "
+                    "flavour-union template's pattern table"
+                )
+            pattern_resolution = {
+                "pattern_count": len(companion_pairs),
+                "pairing_catalog_sha256": recurrence_pattern_pairs_sha256(
+                    companion_pairs
+                ),
+            }
         recurrence_evaluator = run.evaluator.recurrence
         builder_input = build_recurrence_builder_input_v1(logical)
         native_schedule_digest, base_schedule_digest, sharing_domain_digest = (
@@ -5766,7 +5793,13 @@ class GenerationBackend:
         expected_destinations = tuple(
             (sector_id, None) for sector_id in range(len(logical.physical_sectors))
         )
-        if destinations != expected_destinations:
+        # Pattern-resolved: consecutive realised patterns per owner, every owner.
+        owner_destinations = (
+            destinations
+            if pattern_resolution is None
+            else _pattern_group_destinations(destinations)
+        )
+        if owner_destinations != expected_destinations:
             raise GenerationError(
                 "recurrence helicity-selector destinations are not dense "
                 "runtime-helicity physical owners"
@@ -5813,7 +5846,7 @@ class GenerationBackend:
             helicity_dispatch_resolved_helicity_count=(
                 dispatch.resolved_helicity_count
             ),
-            physical_destination_count=len(destinations),
+            physical_destination_count=len(owner_destinations),
             builder_input_sha256=builder_input.digest,
             inspection_summary=inspection_summary,
             referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
@@ -5829,6 +5862,7 @@ class GenerationBackend:
                 if keep_lowering_outputs
                 else None
             ),
+            pattern_resolution=pattern_resolution,
         )
 
     def _drop_processes_without_amplitudes(
@@ -5888,10 +5922,19 @@ class GenerationBackend:
         process_name = expanded.request.name
         profile_started = time.perf_counter()
         profile: dict[str, float] = {}
-        # Members cannot use a template's companion: it sums every pattern.
-        selector_plan_enabled = (
-            self._recurrence_helicity_selector_plan_enabled()
-            and not expanded.flavour_union_template
+        # Full-colour union templates get a pattern-resolved companion (opt-in,
+        # implied by selector-only); NLC templates keep the main schedule only.
+        union_companion = (
+            expanded.flavour_union_template
+            and expanded.process_ir.color_accuracy == "full"
+            and expanded.flavour_union_pattern_pairs is not None
+            and (
+                self._generation_config.pattern_resolved_companion
+                or self._generation_config.selector_only_full_colour
+            )
+        )
+        selector_plan_enabled = self._recurrence_helicity_selector_plan_enabled() and (
+            not expanded.flavour_union_template or union_companion
         )
         # Selector-only full colour: the companion replaces the main schedule.
         selector_only_requested = (
@@ -5903,10 +5946,11 @@ class GenerationBackend:
         if (
             self._generation_config.selector_only_full_colour
             and expanded.flavour_union_template
+            and not union_companion
         ):
             _LOGGER.info(
                 "selector-only full colour: flavour-union template %s keeps its "
-                "main schedule (no pattern-resolved companion yet)",
+                "main schedule (no pattern-resolved companion for NLC)",
                 process_name,
             )
         with phase.child(
@@ -6611,6 +6655,7 @@ class GenerationBackend:
                         run.color.contraction.value in {"auto", "symmetric-group-fft"}
                     ),
                     contracted_physical_color_union=True,
+                    pattern_resolved=union_companion,
                 )
                 profile["helicity-selector-physical-projection"] = (
                     time.perf_counter() - companion_projection_started
@@ -6667,6 +6712,11 @@ class GenerationBackend:
                         report_selector if selector_task.sink is not None else None
                     ),
                     keep_lowering_outputs=selector_only,
+                    pattern_pairs=(
+                        expanded.flavour_union_pattern_pairs
+                        if union_companion
+                        else None
+                    ),
                 )
                 profile["helicity-selector-physical-lowering"] = (
                     time.perf_counter() - companion_lowering_started
