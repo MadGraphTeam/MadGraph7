@@ -1102,6 +1102,8 @@ jobs:
          if: steps.cache-delphes.outputs.cache-matched-key == ''
          uses: ./.github/actions/restore_root
 
+       # NOTE: the same install logic is duplicated in the cache-miss fallback
+       # of .github/actions/restore_delphes/action.yml - keep them in sync.
        - name: Install Delphes into the dedicated cache dir
          if: steps.cache-delphes.outputs.cache-matched-key == ''
          env:
