@@ -3017,7 +3017,8 @@ class MadgraphProcess:
                             gridpack_subprocesses_json)
 
         # the AmpliCol artifacts are read at run time; the ratio library finds
-        # them next to its own, otherwise empty, reweight directory
+        # them next to its reweight directory, which holds its data file
+        # (include_source has copied all of SubProcesses already)
         for artifact_dir in sorted({
             os.path.dirname(meta["artifact"])
             for meta in subprocess_data if is_amplicol(meta)
@@ -3026,13 +3027,13 @@ class MadgraphProcess:
                 shutil.copytree(
                     os.path.join(artifact_dir, name),
                     os.path.join(gridpack_path, artifact_dir, name),
+                    dirs_exist_ok=True,
                 )
-            os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
-            # the tables of the flavour switch, read at launch
-            for switch in glob.glob(
-                os.path.join(artifact_dir, "reweight", "flavor_switch_*.json")
-            ):
-                shutil.copy(switch, os.path.join(gridpack_path, artifact_dir, "reweight"))
+            os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"), exist_ok=True)
+            # the tables of the ratio library, and of the flavour switch read at launch
+            for pattern in ("reweight_*.rwd", "flavor_switch_*.json"):
+                for path in glob.glob(os.path.join(artifact_dir, "reweight", pattern)):
+                    shutil.copy(path, os.path.join(gridpack_path, artifact_dir, "reweight"))
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)
