@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -23,6 +23,19 @@ def _boolean(value: object) -> str:
 def _power(process: Mapping[str, Any]) -> str:
     power = process.get("alpha_s_power")
     return "-1" if power is None else str(int(power))
+
+
+def helicity_export(
+    data: Mapping[str, Any], runtime: Mapping[str, Any]
+) -> Sequence[int]:
+    """The exported helicity of each helicity of a runtime record: from schema 6
+    its ``helicity_export`` is an index into the document's ``helicity_exports``."""
+    export = runtime["helicity_export"]
+    if data.get("schema_version", 0) < 6:
+        return export
+    if isinstance(export, bool) or not isinstance(export, int):
+        raise ValueError(f"expected a helicity export index, got {export!r}")
+    return data["helicity_exports"][export]
 
 
 def provider_header(data: Mapping[str, Any]) -> str:
@@ -118,14 +131,14 @@ def provider_header(data: Mapping[str, Any]) -> str:
             permutation = array(
                 "perm", "size_t", [str(v) for v in runtime["permutation"]]
             )
-            exported = runtime["helicity_export"]
+            exported = helicity_export(data, runtime)
             to_runtime = [-1] * len(data["helicities"])
             for runtime_index, export_index in enumerate(exported):
                 to_runtime[export_index] = runtime_index
             helicity_runtime = array(
                 "hrt", "int", [str(v) for v in to_runtime or [-1]]
             )
-            helicity_export = array(
+            export_array = array(
                 "hex", "size_t", [str(v) for v in exported or [0]]
             )
             signs = runtime.get("momentum_signs")
@@ -141,7 +154,7 @@ def provider_header(data: Mapping[str, Any]) -> str:
                 permutation,
                 _number(runtime["factor"]),
                 helicity_runtime,
-                helicity_export,
+                export_array,
             ]
             if "assignment" in runtime:
                 # Flavour-union assignment; omitted fields stay zero (NULL key).

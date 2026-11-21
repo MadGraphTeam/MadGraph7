@@ -28,7 +28,7 @@ import pytest
 
 from pyamplicol import Generator, ProcessSet
 from pyamplicol.artifacts.process_groups import read_process_groups
-from pyamplicol.artifacts.umami_c import provider_header
+from pyamplicol.artifacts.umami_c import helicity_export, provider_header
 from pyamplicol.artifacts.umami_reweight import (
     load_umami_metadata,
     write_reweight_provider,
@@ -206,13 +206,14 @@ def _crossed_members(artifact):
     }
 
 
-def test_crossed_metadata_is_schema_5_and_keeps_templates_together(built):
+def test_crossed_metadata_has_momentum_signs_and_keeps_templates_together(built):
     crossed = _crossed_members(built["artifacts"]["crossing"])
     assert crossed
     documents = [data for data, _ in built["umami"]["crossing"]]
     references = [data for data, _ in built["umami"]["flavour"]]
-    assert all(data["schema_version"] == 5 for data in documents)
-    assert all(data["schema_version"] == 4 for data in references)
+    assert all(data["schema_version"] == 6 for data in documents + references)
+    assert any("momentum_signs" in json.dumps(data) for data in documents)
+    assert not any("momentum_signs" in json.dumps(data) for data in references)
     assert len(documents) == len(references)
     seen = set()
     for data in documents:
@@ -280,7 +281,7 @@ def test_crossed_members_equal_per_flavour_providers(built):
         legs["ours"].append(own)
         legs["theirs"].append(theirs)
         labels, other_labels = [-1], [-1]
-        for label in entry["runtime"]["helicity_export"]:
+        for label in helicity_export(data, entry["runtime"]):
             # the exported vector in physical legs, then the reference's label
             physical = [0] * n
             for slot, leg in enumerate(own):
@@ -418,7 +419,8 @@ def test_crossed_members_equal_per_flavour_providers(built):
             assert np.allclose(sampled[0], ours[selection], rtol=1.0e-13, atol=0.0)
             for i, label in zip(selection, sampled[2], strict=True):
                 entry = ours_members[keys[own["key"][i]]][3]
-                assert label in entry["runtime"]["helicity_export"]
+                exported = helicity_export(ours_docs[provider][0], entry["runtime"])
+                assert label in exported
     finally:
         for providers in handles.values():
             for provider in providers:

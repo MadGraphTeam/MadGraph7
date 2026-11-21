@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import (
     load_umami_metadata,
     write_reweight_provider,
@@ -157,7 +158,7 @@ def _status(directory: Path, lc: Path, *, switch: bool) -> int:
             tuple(map(float, p.momentum)) for p in generic_validation_point("g g > g g")
         ]
         events = [
-            (channel, flavour, entry["runtime"]["helicity_export"][0])
+            (channel, flavour, helicity_export(data, entry["runtime"])[0])
             for channel, description in enumerate(data["channels"])
             for flavour, entry in enumerate(description["processes"])
         ]

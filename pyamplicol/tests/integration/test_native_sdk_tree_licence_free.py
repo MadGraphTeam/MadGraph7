@@ -48,6 +48,7 @@ from pyamplicol import (
     ProcessSet,
     Runtime,
 )
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
@@ -771,7 +772,7 @@ def _umami_provider(artifact: Path, build: Path) -> dict:
     runtime = metadata["channels"][0]["processes"][0]["runtime"]
     return {
         "library": str(build / metadata["provider"]["library"]),
-        "helicities": list(runtime["helicity_export"]),
+        "helicities": list(helicity_export(metadata, runtime)),
         "lc": metadata["provider"]["color_accuracy"] == "lc",
     }
 

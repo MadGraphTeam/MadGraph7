@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import quark_lines, write_reweight_provider
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -209,7 +210,7 @@ def test_stay_is_the_ratio_times_the_summed_flavours(switch):
     lc, _, data, _, library, handle = switch
     point, densities = _point(lc), _densities()
     channel, flavour, entry = _entry(data)
-    helicity = entry["runtime"]["helicity_export"][3]
+    helicity = helicity_export(data, entry["runtime"])[3]
     generated, dropped = _summed(lc, data, point, densities)
     assert dropped > 0.0
     off = _call(library, handle, point, densities, [0.0], [0.5], channel, flavour,
@@ -233,7 +234,7 @@ def test_switched_targets_and_helicities_follow_the_leading_colour(switch):
     random_helicity = np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
     ratio, target, helicity, color = _call(
         library, handle, point, densities, random_flavor, random_helicity, channel,
-        flavour, entry["runtime"]["helicity_export"][0],
+        flavour, helicity_export(data, entry["runtime"])[0],
     )
     assert (target >= 0).all()
     shares = {}
@@ -324,7 +325,7 @@ def test_switched_colours_follow_the_leading_colour_flows(switch):
             ratio, target, helicity, color = _call(
                 library, handle, point, densities, [fixed] * count,
                 [random_helicity] * count, channel, flavour,
-                entry["runtime"]["helicity_export"][0], random_color=grid,
+                helicity_export(data, entry["runtime"])[0], random_color=grid,
             )
             assert len(set(target)) == 1 and len(set(helicity)) == 1
             k, e = int(target[0]), int(helicity[0])

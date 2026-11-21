@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from ..generation.process_grouping import ProcessGroupMap
-from .umami_c import _power
+from .umami_c import _power, helicity_export
 from .umami_reweight_data import (
     FlavourRow,
     ProcessRow,
@@ -89,9 +89,10 @@ def _runtime_records(document: Mapping[str, Any]):
 
 
 def _checked_metadata(document: dict[str, Any]) -> dict[str, Any]:
-    # schema 5 adds momentum_signs (crossed flavour-union members) to schema 4
+    # schema 5 adds momentum_signs (crossed flavour-union members) to schema 4;
+    # schema 6 interns the helicity exports and has columnar helicity mappings
     version = document.get("schema_version")
-    if version not in (4, 5):
+    if version not in (4, 5, 6):
         raise ValueError(f"unsupported UMAMI metadata schema version {version!r}")
     if version == 4 and any(
         "momentum_signs" in runtime for runtime in _runtime_records(document)
@@ -951,7 +952,7 @@ def reweight_tables(
             process_index = _integer(runtime["process_index"])
             process = reference_processes[process_index]
             assignment = runtime.get("assignment")
-            export = tuple(runtime["helicity_export"])
+            export = tuple(helicity_export(reference, runtime))
             reference_helicity = inverse_exports.get(export)
             if reference_helicity is None:
                 inverse = [-1] * exported_count

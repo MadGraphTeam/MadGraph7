@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
     packaged_prepared_model_path,
@@ -681,14 +682,14 @@ def test_fixed_helicities_and_sampled_helicity(providers):
             assert status == 0
             total, label = outputs[0][0], outputs[3][0]
             values = {}
-            for index in exported["helicity_export"]:
+            for index in helicity_export(provider.data, exported):
                 status, fixed = _batch(provider, handle, (point,), helicity=index)
                 assert status == 0 and fixed[3] == [index]
                 values[index] = fixed[0][0]
             assert sum(values.values()) == pytest.approx(total, rel=1e-12)
             # the label of the random number 0.5 in the runtime helicity order
             cumulative, expected = 0.0, None
-            for index in exported["helicity_export"]:
+            for index in helicity_export(provider.data, exported):
                 if values[index] <= 0.0:
                     continue
                 expected, cumulative = index, cumulative + values[index]

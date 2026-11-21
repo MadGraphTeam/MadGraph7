@@ -614,7 +614,8 @@ class _InternTable(list):
 
 def _frozen(value: Any) -> Any:
     if isinstance(value, list | tuple):
-        return tuple(_frozen(v) for v in value)
+        # no call per scalar: the tables hold millions of them at 6j
+        return tuple([_frozen(v) if isinstance(v, list | tuple) else v for v in value])
     return value
 
 
@@ -639,7 +640,8 @@ def _intern_vector(table: _InternTable, values: list) -> int:
 
 def _intern_mappings(data, mappings, helicities) -> int:
     """The index in ``data["helicity_mappings"]`` of ``mappings`` with their
-    helicities replaced by ``helicities`` (built only when new)."""
+    helicities replaced by ``helicities`` (built only when new): one column per
+    field, representative ids by index into ``data["helicity_ids"]`` (schema 6)."""
     table = data["helicity_mappings"]
     key = tuple(
         (h, m["representative_id"], m["coefficient"], m["structural_zero"])
@@ -648,9 +650,14 @@ def _intern_mappings(data, mappings, helicities) -> int:
     index = table.positions.get(key)
     if index is None:
         index = table.positions[key] = len(table)
-        table.append(
-            [{**m, "helicity": h} for m, h in zip(mappings, helicities, strict=True)]
-        )
+        table.append({
+            "helicity": list(helicities),
+            "representative": [
+                _intern(data["helicity_ids"], m["representative_id"]) for m in mappings
+            ],
+            "coefficient": [m["coefficient"] for m in mappings],
+            "structural_zero": [m["structural_zero"] for m in mappings],
+        })
     return index
 
 
@@ -937,10 +944,11 @@ def _canonical_order(data):
 
 def _export_helicities(data, runtime_helicities):
     """Map runtime helicities to exported ones, given in the input leg order
-    (a crossed member's flipped by its helicity signs rho)."""
+    (a crossed member's flipped by its helicity signs rho): each runtime's
+    ``helicity_export`` is an index into ``data["helicity_exports"]``."""
     entries = [e for c in data["channels"] for e in c["processes"]]
     # the export of a (runtime process, permutation, signs), shared by its runtimes
-    cache: dict[tuple, list[int]] = {}
+    cache: dict[tuple, int] = {}
     for runtime in [e["runtime"] for e in entries] + [
         m["runtime"] for e in entries for m in e["members"]
     ]:
@@ -953,7 +961,7 @@ def _export_helicities(data, runtime_helicities):
             signs,
         )
         if key not in cache:
-            exported = cache[key] = []
+            exported = []
             for values in runtime_helicities[runtime["process_index"]]:
                 ordered = [0] * len(values)
                 for runtime_leg, input_leg in enumerate(permutation):
@@ -962,7 +970,8 @@ def _export_helicities(data, runtime_helicities):
                     for runtime_leg, input_leg in enumerate(permutation):
                         ordered[input_leg] *= signs[runtime_leg]
                 exported.append(_intern_vector(data["helicities"], ordered))
-        runtime["helicity_export"] = cache[key]  # shared, never modified
+            cache[key] = _intern_vector(data["helicity_exports"], exported)
+        runtime["helicity_export"] = cache[key]
 
 
 def build_umami_metadata(
@@ -1106,7 +1115,8 @@ def _build_provider(
         assumptions.append(FLAVOR_BLIND_ASSUMPTION)
     data: dict[str, Any] = {
         "kind": "pyamplicol-umami-metadata",
-        "schema_version": 4,
+        # 6: interned helicity exports and columnar helicity mappings
+        "schema_version": 6,
         "provider": {
             "id": provider_id,
             "library": "libumami.so" if single else f"libumami_{provider_id}.so",
@@ -1125,6 +1135,9 @@ def _build_provider(
         # the helicity groups and mappings of the process entries, by index
         "helicity_groups": _InternTable(),
         "helicity_mappings": _InternTable(),
+        # the exported helicities of the runtimes, and the mappings' helicity ids
+        "helicity_exports": _InternTable(),
+        "helicity_ids": _InternTable(),
         "runtime_processes": [],
         "aliases": [],
         "xml_header": (
@@ -1551,14 +1564,10 @@ def _build_provider(
         for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
             runtime.pop("_assignment_class", None)
     _export_helicities(data, runtime_helicities)
-    crossed = False
+    # schema 6 runtime records may carry momentum_signs (as schema 5)
     for entry in (e for c in data["channels"] for e in c["processes"]):
         for runtime in [entry["runtime"], *(m["runtime"] for m in entry["members"])]:
             runtime.pop("_helicity_signs", None)
-            crossed = crossed or "momentum_signs" in runtime
-    if crossed:
-        # schema 5: runtime records may carry momentum_signs
-        data["schema_version"] = 5
     alpha_names = {p["alpha_s_parameter"] for p in data["runtime_processes"]}
     data["provider"]["alpha_s_parameter"] = (
         next(iter(alpha_names)) if len(alpha_names) == 1 else None
@@ -1581,6 +1590,8 @@ def _build_provider(
         "helicities",
         "helicity_groups",
         "helicity_mappings",
+        "helicity_exports",
+        "helicity_ids",
     ):
         data[name] = list(data[name])
     return data

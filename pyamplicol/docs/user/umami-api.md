@@ -234,10 +234,16 @@ A provider's metadata contains:
   configuration tables. Indices are zero-based and colour-flow references can
   be absent for contracted colour.
 - `helicity_groups` and `helicity_mappings`: the helicity groups (lists of
-  `helicities` indices) and helicity mapping lists (`helicity`,
-  `representative_id`, `coefficient`, `structural_zero` per helicity) of the
-  `processes` entries, whose `helicities` and `helicity_mappings` are indices
-  into them (schema 4).
+  `helicities` indices) and helicity mappings of the `processes` entries,
+  whose `helicities` and `helicity_mappings` are indices into them. A mapping
+  has one list per field, an entry per helicity: `helicity` (a `helicities`
+  index), `representative` (an index into `helicity_ids`, the representative
+  helicity id), `coefficient` and `structural_zero`. Schema 4 and 5 documents
+  have a list of `{helicity, representative_id, coefficient,
+  structural_zero}` records instead.
+- `helicity_exports`: the exported helicity of each runtime helicity, one list
+  per distinct export. A `runtime` record's `helicity_export` is an index into
+  it (schema 6); in schema 4 and 5 documents it is the list itself.
 - `runtime` and `members`: the representative evaluator, certified momentum
   permutations and covered physical contributions. A runtime evaluates input
   leg `permutation[j]` as its leg `j`. A crossed flavour-union member
@@ -245,10 +251,11 @@ A provider's metadata contains:
   runtime leg `j` gets `momentum_signs[j]` times that momentum (all four
   components), -1 where the two legs lie on different sides of the `>`. Its
   `helicity_export` and helicity tables already give the member's own
-  helicities, and its colour tags are those of the member. Documents with such
-  records have `schema_version` 5; all others stay at 4, and a reader refuses
-  `momentum_signs` under 4. Reweight providers take such an artifact as their
-  leading-colour reference (the flavour switch too), not as their target.
+  helicities, and its colour tags are those of the member. Documents are
+  written with `schema_version` 6. Older artifacts have 4, or 5 when they
+  carry such records, and a reader refuses `momentum_signs` under 4. Reweight
+  providers take such an artifact as their leading-colour reference (the
+  flavour switch too), not as their target.
 - `grouping` and `runtime_processes`: the assumptions and available coverage
   needed to interpret those contributions correctly.
 

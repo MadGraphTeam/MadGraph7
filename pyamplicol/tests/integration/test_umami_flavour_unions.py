@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import (
     load_umami_metadata,
     write_reweight_provider,
@@ -419,7 +420,7 @@ def test_union_matrix_elements_equal_per_flavour_artifacts(built):
                 )
             # fixed helicities, mapped through the physical legs
             data, other_data = unions[provider][0], flavours[other[0]][0]
-            for label in entry["runtime"]["helicity_export"][:4]:
+            for label in helicity_export(data, entry["runtime"])[:4]:
                 physical = _to_physical(entry, member, data["helicities"][label])
                 other_label = other_data["helicities"].index(
                     list(_to_input(other[3], other[4], physical))
@@ -546,7 +547,7 @@ def _flavour_events(documents, provider, point, every=False):
             if not entry["members"]:
                 continue  # a phase-space partner copy
             member = entry["members"][0]
-            exported = entry["runtime"]["helicity_export"]
+            exported = helicity_export(data, entry["runtime"])
             for label in exported if every else exported[::7][:3]:
                 physical = _to_physical(entry, member, data["helicities"][label])
                 events.append(
@@ -878,7 +879,7 @@ def test_reweight_provider_without_signs_is_refused(built, tmp_path):
         ((data, _),) = built["umami"]["crossing"]
         point = _points(1)[0]
         events = [
-            (point, channel, flavour, entry["runtime"]["helicity_export"][0])
+            (point, channel, flavour, helicity_export(data, entry["runtime"])[0])
             for channel, description in enumerate(data["channels"])
             for flavour, entry in enumerate(description["processes"])
             if "momentum_signs" in entry["runtime"]
