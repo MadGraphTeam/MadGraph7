@@ -11547,7 +11547,7 @@ CONTAINS
     INTEGER,PARAMETER::ng=4
     REAL(KIND(1d0)),DIMENSION(ng)::xg,wg
     REAL(KIND(1d0)),DIMENSION(8)::xt,wtt
-    REAL(KIND(1d0)),DIMENSION(16)::xl,wl
+    REAL(KIND(1d0)),DIMENSION(16)::xgl,wgl
     REAL(KIND(1d0)),DIMENSION(:),ALLOCATABLE,SAVE::ph
     INTEGER::i,np,ig,m,i0
     REAL(KIND(1d0))::Gp,G4,ad,Dsum,hh,cc,b12,sn,pp,s1,s2,arg,pd1,y,cn,sum1,sum2,u,wv,php
@@ -11648,7 +11648,7 @@ CONTAINS
        RETURN
     ENDIF
     CALL ffe_gauleg(ng,xg,wg)
-    CALL ffe_gauleg(16,xl,wl)
+    CALL ffe_gauleg(16,xgl,wgl)
     np=1
     ph(1)=0d0
     DO i=1,ffe_nbeta
@@ -11674,8 +11674,8 @@ CONTAINS
              s1=s1+2d0*hh
              IF(nk.GE.2)THEN
                 DO ig=1,16
-                   sn=DSIN(0.5d0*(cc+hh*xl(ig)))
-                   s2=s2+hh*wl(ig)*DSQRT(d*d+G4*sn*sn)
+                   sn=DSIN(0.5d0*(cc+hh*xgl(ig)))
+                   s2=s2+hh*wgl(ig)*DSQRT(d*d+G4*sn*sn)
                 ENDDO
              ENDIF
              CYCLE
