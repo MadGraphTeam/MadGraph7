@@ -120,13 +120,13 @@ def quark_lines(pdgs: Sequence[int]) -> int:
 
 def _first_unused(source: Sequence[int], destination: Sequence[int]) -> list[int]:
     # destination leg k takes the first unused source leg with its pdg
-    used: set[int] = set()
-    result = []
-    for pdg in destination:
-        j = next(j for j, s in enumerate(source) if s == pdg and j not in used)
-        used.add(j)
-        result.append(j)
-    return result
+    slots: dict[int, list[int]] = {}
+    for j in range(len(source) - 1, -1, -1):
+        slots.setdefault(source[j], []).append(j)
+    try:
+        return [slots[pdg].pop() for pdg in destination]
+    except (KeyError, IndexError):
+        raise StopIteration from None
 
 
 def _canonical_legs(pdgs: Sequence[int], legs: Sequence[int], incoming: int) -> tuple:
@@ -872,7 +872,8 @@ def reweight_tables(
                 switch_arrangement = found.pop()
             flavours.append(FlavourRow(
                 process_index, index, permutation, reference_signs,
-                _ints(reference_helicity), _ints(target_helicity),
+                # built from integers here: no per-value check
+                tuple(reference_helicity), tuple(target_helicity),
                 -1 if assignment is None else _integer(assignment),
                 _text(runtime.get("assignment_key")),
                 target_permutation, None, target_factor, target_assignment,
