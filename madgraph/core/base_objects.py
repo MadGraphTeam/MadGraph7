@@ -5433,9 +5433,18 @@ class ProcessDefinition(Process):
             mystr=""
         prevleg = None
         for leg in self['legs']:
-            myparts = \
-                   "/".join([self['model'].get('particle_dict')[id].get_name() \
-                             for id in leg.get('ids')])
+            # A merged leg can be restricted to physical members (for
+            # example u rather than the complete merged light-quark group).
+            # Print those members so parsing the definition preserves them.
+            display_ids = []
+            merged = self['model'].get('merged_particles') or {}
+            for pid in leg.get('ids'):
+                sign = 1 if pid > 0 else -1
+                members = {sign * pdg for pdg in merged.get(abs(pid), [])}
+                selected = [pdg for pdg in leg.get('flavor') or [] if pdg in members]
+                display_ids.extend(selected or [pid])
+            myparts = "/".join(self['model'].get_particle(pid).get_name()
+                               for pid in display_ids)
             if prevleg and prevleg['state'] == False \
                    and leg['state'] == True:
                 # Separate initial and final legs by ">"

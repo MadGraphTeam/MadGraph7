@@ -328,7 +328,29 @@ class CommonLoopInterface(mg_interface.MadGraphCmd):
                 model = self._curr_model.get('modelpath+restriction')
                 import_flags = [flag for flag in self.history.get('full_model_line').split()
                                 if flag in ('-modelname', '--modelname', '--noprefix')]
-                multiparticles = copy.deepcopy(self._multiparticles)
+                merged = self._curr_model.merged_particles
+
+                def physical_members(values):
+                    # Aliases such as "all" can contain the old model's merged
+                    # IDs. Preserve signed members and alternative groups when
+                    # reloading the physical model used by NLO and MadLoop.
+                    result = []
+                    for value in values:
+                        if isinstance(value, list):
+                            expanded = [physical_members(value)]
+                        elif abs(value) in merged:
+                            sign = 1 if value > 0 else -1
+                            expanded = [sign * pid for pid in merged[abs(value)]]
+                        else:
+                            expanded = [value]
+                        for member in expanded:
+                            if member not in result:
+                                result.append(member)
+                    return result
+
+                multiparticles = {
+                    name: physical_members(values)
+                    for name, values in self._multiparticles.items()}
                 # do_import clears both the current process and its generate line.
                 generate_info = self._generate_info
                 mg_interface.MadGraphCmd.do_import(
