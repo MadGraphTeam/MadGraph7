@@ -91,7 +91,7 @@ void EventGenerator::commit_generate_job(GeneratorBatchJob& job) {
 void EventGenerator::commit_unweight_job(GeneratorBatchJob& job) {
     auto& channel = _channels.at(job.channel_index);
     if (_pipeline && _pipeline->contains(job.channel_index)) {
-        // the next VEGAS iteration would clear them, see resolve_held_events()
+        // the next VEGAS iteration would clear them, see release_held_events()
         _pipeline->add_events(
             job, job.is_vegas_batch && _generate_mode == GenerateMode::events
         );
@@ -251,8 +251,9 @@ void EventGenerator::run_generate(GenerateMode mode) {
             round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
                 start_pipeline_jobs();
         }
-        resolve_held_events(stopping());
+        release_held_events(stopping());
         drain_pipeline();
+        finish_held_events(stopping());
 
         if (mode == GenerateMode::optimize_only) {
             if (std::none_of(_channels.begin(), _channels.end(), [](auto& channel) {
@@ -648,8 +649,8 @@ std::size_t EventGenerator::start_pipeline_jobs() {
     return _pipeline->start_jobs(_result_queue, flush, _context_job_counts);
 }
 
-void EventGenerator::resolve_held_events(bool stopping) {
-    if (!_pipeline) {
+void EventGenerator::release_held_events(bool stopping) {
+    if (!_pipeline || !_pipeline->has_held()) {
         return;
     }
     // the shares update_integral_fractions() would give with the current estimates
@@ -670,14 +671,32 @@ void EventGenerator::resolve_held_events(bool stopping) {
         // The channel iterates again and clears the events unless they can reach
         // its target. The margin covers the target change from the steps.
         constexpr double target_margin = 0.5;
-        if (stopping || !std::isfinite(target) ||
+        if (stopping || !channel->needs_optimization() || !std::isfinite(target) ||
             channel->status().count_unweighted +
                     _pipeline->held_count_bound(channel_index) >=
                 target_margin * target) {
             _pipeline->release_held(channel_index);
+        }
+    }
+}
+
+void EventGenerator::finish_held_events(bool stopping) {
+    if (!_pipeline || !_pipeline->has_held()) {
+        return;
+    }
+    for (std::size_t channel_index = 0; channel_index < _channels.size();
+         ++channel_index) {
+        if (!_pipeline->has_held(channel_index)) {
+            continue;
+        }
+        if (stopping) {
+            _pipeline->release_held(channel_index);
         } else {
             _pipeline->drop_held(channel_index);
         }
+    }
+    if (stopping) {
+        drain_pipeline();
     }
 }
 

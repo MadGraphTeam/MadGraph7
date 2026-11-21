@@ -441,6 +441,7 @@ double WeightingPipeline::held_count_bound(std::size_t channel_index) const {
 }
 
 void WeightingPipeline::release_held(std::size_t channel_index) {
+    _held_chunk_count -= _held.at(channel_index).size();
     for (auto& chunk : _held.at(channel_index)) {
         advance(chunk, 1);
     }
@@ -448,6 +449,7 @@ void WeightingPipeline::release_held(std::size_t channel_index) {
 }
 
 void WeightingPipeline::drop_held(std::size_t channel_index) {
+    _held_chunk_count -= _held.at(channel_index).size();
     for (auto& chunk : _held.at(channel_index)) {
         chunk->dropped = true;
         chunk->clear();
@@ -489,6 +491,7 @@ void WeightingPipeline::add_events(GeneratorBatchJob& job, bool hold) {
     ++_chunk_count;
     if (hold) {
         _held.at(job.channel_index).push_back(chunk);
+        ++_held_chunk_count;
         return;
     }
     advance(chunk, 1);
@@ -952,5 +955,6 @@ void WeightingPipeline::reset() {
     for (auto& held : _held) {
         held.clear();
     }
+    _held_chunk_count = 0;
     _chunk_count = 0;
 }
