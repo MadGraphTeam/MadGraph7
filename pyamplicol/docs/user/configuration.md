@@ -631,8 +631,9 @@ Each eligible NLC/full process is then generated with its helicity-selector
 companion only: the main contracted-colour schedule, the expensive part of
 full-colour generation at high multiplicity, is skipped. Such a process
 evaluates one helicity per point (`helicities=[h]` or `helicity_by_point`),
-with the same values as the default artifact; helicity sums, resolved output,
-colour selectors and multi-order partials raise a compatibility error. Its
+with the same values as the default artifact up to rounding; helicity sums,
+resolved output, colour selectors and multi-order partials raise a
+compatibility error. Its
 physics metadata lists every helicity as computed (no structural zeros or
 parity aliases). Single-helicity processes and NLC flavour-union templates
 keep the main schedule; LC ignores the option. Full-colour flavour-union

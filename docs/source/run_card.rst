@@ -578,8 +578,9 @@ full-colour artifact without its helicity-summed programs (pyamplicol
 event, so it needs only the programs that do that, and the full-colour generation is
 shorter (7 s instead of 11 s at ``p p > j j j j j``, after which the leading-colour
 generation sets the total). The leading-colour artifact is unchanged. The matrix elements
-agree with those of the default artifact to about 1e-12 relative, and an unmerged VEGAS
-run with the same seed gives the same events.
+agree with those of the default artifact to about 1e-12 relative. In the tests at
+``p p > j j j`` and ``p p > j j j j``, an unmerged VEGAS run with the same seed gave the
+same events, but an event close to the unweighting threshold can change in rare cases.
 
 ``color_accuracy`` (``"full"``)
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
