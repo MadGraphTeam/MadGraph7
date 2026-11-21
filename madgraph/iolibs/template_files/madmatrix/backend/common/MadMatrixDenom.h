@@ -44,7 +44,7 @@ namespace madmatrix
     const fptype_denom_sv p2 = ( P[0] * P[0] ) - ( P[1] * P[1] ) - ( P[2] * P[2] ) - ( P[3] * P[3] );
     const fptype_amp_sv p2a = fpamp_of_mom( p2 );
     const fptype_amp width = static_cast<fptype_amp>( -m2.imag() );
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     const fptype_amp_sv im = fpternary( p2a > 0, fptype_amp_sv{} + width, fptype_amp_sv{} );
 #else
     const fptype_amp_sv im = ( p2a > 0 ) ? width : fptype_amp( 0 );
@@ -63,7 +63,7 @@ namespace madmatrix
   {
     const cxtype_amp_sv ordinary = timelike_only ? virtuality_timelike( P, mass2( M, W ) )
                                                 : virtuality( P, mass2( M, W ) );
-#if defined(MGONGPU_FPTYPE_DOUBLE) && !defined(MGONGPU_SIMD_DENOM64)
+#if defined(MADMATRIX_FPTYPE_DOUBLE) && !defined(MADMATRIX_SIMD_DENOM64)
     const fptype_denom_sv real = fp_minkowski_sum2( P, a, b, static_cast<fptype_denom>( M ),
                                                   sign_a, sign_b, cxreal( ordinary ) );
     return cxmake( fpamp_of_mom( real ), cximag( ordinary ) );

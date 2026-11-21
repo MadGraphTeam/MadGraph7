@@ -79,9 +79,7 @@ namespace
   // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
   // std::numeric_limits<double>::min(), which is a host function and cannot be
   // called from device code.
-#ifdef MGONGPUCPP_GPUIMPL
   __host__ __device__
-#endif
     inline double
     channel_amp2( double numerator, double denominator )
   {
@@ -110,8 +108,8 @@ namespace
 
   __device__ bool selectable_diagram( const int diagram )
   {
-    return diagram >= 0 && static_cast<unsigned int>( diagram ) < mgOnGpu::nchannels &&
-      mgOnGpu::channel2iconfig[diagram] > 0;
+    return diagram >= 0 && static_cast<unsigned int>( diagram ) < madmatrix::nchannels &&
+      madmatrix::channel2iconfig[diagram] > 0;
   }
 
   __global__ void copy_inputs(
@@ -864,7 +862,7 @@ extern "C"
         {reinterpret_cast<void**>(&helicity_given), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
         // njampso = ncolor per amplitude split order (just ncolor without split orders)
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * madmatrix::nx2 * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&staged_momenta), dense_nlo ? count * ProcessData::npar * 4 * sizeof( double ) : 0},
         {reinterpret_cast<void**>(&staged_ew), dense_nlo && g_ew_in ? count * sizeof( double ) : 0},
         {reinterpret_cast<void**>(&staged_g), dense_nlo ? count * sizeof( double ) : 0},

@@ -140,7 +140,7 @@ class TestHostBlasBuild(unittest.TestCase):
                 for flags in compile_lines:
                     self.assertEqual('-fno-fast-math' in flags, strict)
                     self.assertEqual('-ffast-math' in flags, not strict)
-                    self.assertIn('-DMGONGPU_FPTYPE_DOUBLE', flags)
+                    self.assertIn('-DMADMATRIX_FPTYPE_DOUBLE', flags)
                 if strict:
                     self.assertIn('_strict1', result.stdout)
                 else:

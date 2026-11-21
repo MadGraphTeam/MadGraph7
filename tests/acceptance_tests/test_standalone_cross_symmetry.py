@@ -3657,7 +3657,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
         # assertTrue rather than assertIn/assertRegex: those print the whole file
         self.assertTrue(re.search(
-            r'#ifdef MGONGPUCPP_GPUIMPL\n[^#]*int xperm\[npar\], xic\[npar\];\s*'
+            r'#ifdef MADMATRIX_GPUIMPL\n[^#]*int xperm\[npar\], xic\[npar\];\s*'
             r'cross_gather\( \(int\)\( iflavor_ext / \(unsigned int\)nmaxflavor \), xperm, xic \);',
             diagrams), 'EvaluateDiagrams.inc reads no crossing row on the GPU')
         # every crossed external block: cpu blend first, then the GPU call

@@ -3,11 +3,11 @@
 #ifndef MadMatrixInvariants_H
 #define MadMatrixInvariants_H 1
 
-#include "mgOnGpuConfig.h"
-#ifdef MGONGPU_HAS_VECTORS_H
-#include "mgOnGpuVectors.h"
+#include "MadMatrixConfig.h"
+#ifdef MADMATRIX_HAS_VECTORS_H
+#include "MadMatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 #include "Arithmetics/Invariant.h"
 
@@ -21,9 +21,9 @@ namespace madmatrix
                     fptype_denom sign_a, fptype_denom sign_b,
                     fptype_denom_sv result )
   {
-#if defined(MGONGPU_FPTYPE_DOUBLE) && !defined(MGONGPU_SIMD_DENOM64)
+#if defined(MADMATRIX_FPTYPE_DOUBLE) && !defined(MADMATRIX_SIMD_DENOM64)
     const fptype_denom_sv scale = p[0]*p[0] + p[1]*p[1] + p[2]*p[2] + p[3]*p[3] + mass*mass;
-#ifdef MGONGPU_HAS_VECTORS_H
+#ifdef MADMATRIX_HAS_VECTORS_H
     for( int lane = 0; lane < neppV; ++lane )
     {
       if( ::fabs( result[lane] ) < 0x1p-10 * scale[lane] )

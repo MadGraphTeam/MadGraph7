@@ -88,7 +88,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -114,7 +114,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
       { 1, 1, 1, -1 } };
     static constexpr short tFlavors[nmaxflavor][npar] = {
       { 20, 20, 5, 5 } };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
 #else
@@ -123,7 +123,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
 #endif
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -144,7 +144,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
         nGoodHel++;
       }
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
 #endif
@@ -155,7 +155,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
                       const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
@@ -176,7 +176,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allselhel[ievt] = ihelF;
         //printf( "select_hel: ievt=%4d ihel=%4d\n", ievt, ihelF );
         break;
@@ -198,7 +198,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -224,7 +224,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
       { 1, 1, 1, -1 } };
     static constexpr short tFlavors[nmaxflavor][npar] = {
       { 20, 20, 5, 5 } };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
 #else
@@ -233,7 +233,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
 #endif
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -254,7 +254,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
         nGoodHel++;
       }
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
 #endif
@@ -265,7 +265,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
                       const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
@@ -287,7 +287,7 @@ class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allselhel[ievt] = ihelF;
         //printf( "select_hel: ievt=%4d ihel=%4d
 ", ievt, ihelF );
@@ -752,7 +752,7 @@ class DDMColorFlowMG7Test(unittest.TestCase):
                         # the color flow half: the color matrix before it is
                         # the one of the basis the color sum runs on
                         text = stream.read()
-                        written[(npar, ddm)] = text[text.index('namespace mgOnGpu'):]
+                        written[(npar, ddm)] = text[text.index('namespace madmatrix'):]
                 finally:
                     shutil.rmtree(exporter.path)
                 self.assertTrue(written[(npar, ddm)])

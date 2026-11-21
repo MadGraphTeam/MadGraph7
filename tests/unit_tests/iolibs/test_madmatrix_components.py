@@ -18,7 +18,7 @@ class TestSquaredOrderPrecision(unittest.TestCase):
             if 'avx2' in features:
                 variants.append(('avx2', 'simd', ['-march=haswell']))
             if 'avx512f' in features:
-                variants.append(('avx512', 'simd', ['-march=skylake-avx512', '-DMGONGPU_PVW512']))
+                variants.append(('avx512', 'simd', ['-march=skylake-avx512', '-DMADMATRIX_PVW512']))
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory/'ProcessData.h').write_text('''#pragma once
@@ -48,12 +48,12 @@ constexpr bool chosenSqso[3]={true,false,false};
 #include <iostream>
 using namespace madmatrix;
 int main() {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
   constexpr int lanes=neppV;
 #else
   constexpr int lanes=1;
 #endif
-#if defined MGONGPU_CPPSIMD && defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_SIMD && defined MADMATRIX_FPTYPE2_FLOAT
   constexpr int halves=2;
 #else
   constexpr int halves=1;
@@ -62,7 +62,7 @@ int main() {
   for(int half=0;half<halves;++half) for(int color=0;color<3;++color) {
     fptype_amp_sv real={}, imag={};
     const fptype value=color==1 ? 1 : 10000;
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     for(int lane=0;lane<lanes;++lane) real[lane]=value;
 #else
     real=value;
@@ -82,7 +82,7 @@ int main() {
                     with self.subTest(backend=name, color_precision=color_precision):
                         executable = directory/(name+'-'+color_precision)
                         command = ['g++', '-std=c++20', '-O3', '-ffast-math', *flags,
-                            '-DMGONGPU_FPTYPE_DOUBLE', '-DMGONGPU_FPTYPE2_'+color_precision,
+                            '-DMADMATRIX_FPTYPE_DOUBLE', '-DMADMATRIX_FPTYPE2_'+color_precision,
                             '-I'+str(directory), '-I'+str(templates/'backend'/backend),
                             '-I'+str(templates/'backend/common'), str(source),
                             str(templates/'backend'/backend/'color_sum.cc'), '-o', str(executable)]

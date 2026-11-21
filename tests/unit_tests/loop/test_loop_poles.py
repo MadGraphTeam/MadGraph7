@@ -50,7 +50,7 @@ class LoopPoleFortranTest(unittest.TestCase):
                          str(PARAMS / 'MadLoopParamReader.f'), '-o', 'check')
 
     def test_fortran_card_flags_and_rescue_chain_validation(self):
-        (self.work / 'card.dat').write_text('#LoopPoleMode\n2\n#MLReductionLib\n8|7\n')
+        (self.work / 'card.dat').write_text('#LoopPoleMode\n2\n#MLReductionLib\n9|8|7\n')
         (self.work / 'check.f').write_text('''
       PROGRAM CHECK
       IMPLICIT NONE
@@ -104,8 +104,47 @@ class LoopPoleFortranTest(unittest.TestCase):
         self.assertIn('POLE SELECTOR PASSED', result.stdout)
         result = self.run_command(str(self.work / 'check'), '1', success=False)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Set MLReductionLib to 8, 7 or 8|7', result.stdout)
+        self.assertIn('Select only IDs 7, 8, 9', result.stdout)
         self.assertNotIn('POLE SELECTOR PASSED', result.stdout)
+
+    def test_legacy_card_initializes_new_controls_without_defaultparam(self):
+        (self.work / 'card.dat').write_text('#MLReductionLib\n6|7|1\n')
+        (self.work / 'legacy.f').write_text("""
+      PROGRAM LEGACY
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      CHARACTER*512 FILENAME
+      FILENAME='card.dat'
+      CALL MADLOOPPARAMREADER(FILENAME,.FALSE.)
+      IF(.NOT.TIRustComputeFinite) STOP 1
+      IF(.NOT.UseQPIntegrandForTIRust) STOP 2
+      IF(TIRustGlobalCache.NE.-1) STOP 3
+      IF(TIRustCacheMaxBytes.NE.268435456_8) STOP 4
+      IF(ANY(MLReductionLib.NE.(/6,7,1,0,0,0,0,0,0,0/))) STOP 5
+      END
+""")
+        self.compile('legacy.f')
+        self.run_command(str(self.work / 'check'))
+
+    def test_partial_tensor_request_fails_ordinary_amplitude_nonzero(self):
+        source = (TEMPLATES / 'loop_matrix_standalone.inc').read_text()
+        guard = source.split('CALL ML_CHECK_LOOP_POLE_MODE()', 1)[1]
+        guard = guard[:guard.index('C Learned zero')]
+        with FortranWriter(str(self.work / 'partial.f')) as writer:
+            writer.writelines('''
+      PROGRAM PARTIAL
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      CALL DEFAULTPARAM()
+      TIRustComputeFinite=.FALSE.
+''' + guard + '''
+      STOP 99
+      END
+''')
+        self.compile('partial.f')
+        result = self.run_command(str(self.work / 'check'), success=False)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('TIRUST_TENSOR_DIAGNOSTIC', result.stdout)
 
     def test_partial_card_prints_effective_reduction_list(self):
         (self.work / 'card.dat').write_text('#LoopPoleMode\n2\n')
@@ -113,7 +152,7 @@ class LoopPoleFortranTest(unittest.TestCase):
       PROGRAM CHECK
       IMPLICIT NONE
       INCLUDE 'MadLoopParams.inc'
-      INTEGER MODE,EXPECTED(9)
+      INTEGER MODE,EXPECTED(10)
       CHARACTER*1 ARG
       CHARACTER*512 FILENAME
       CALL DEFAULTPARAM()
@@ -121,7 +160,7 @@ class LoopPoleFortranTest(unittest.TestCase):
       READ(ARG,*) MODE
       IF(MODE.EQ.1) THEN
         MLReductionLib=0
-        MLReductionLib(1:2)=(/8,7/)
+        MLReductionLib(1:3)=(/9,8,7/)
       ENDIF
       EXPECTED=MLReductionLib
       IF(MODE.EQ.2) THEN
@@ -135,7 +174,7 @@ class LoopPoleFortranTest(unittest.TestCase):
       END
 ''')
         self.compile('check.f')
-        for mode, expected in ((0, '6|7|1'), (1, '8|7'), (2, '7|8')):
+        for mode, expected in ((0, '6|7|1'), (1, '9|8|7'), (2, '7|8')):
             if mode == 2:
                 (self.work / 'card.dat').write_text(
                     '#LoopPoleMode\n2\n#MLReductionLib\n7|8\n')

@@ -111,11 +111,11 @@ class TestInvariantInterfaces(unittest.TestCase):
                  ([-32.000000001, 0., 0., -32.], [32., 0., 0., -32.], 64.),
                  ([-128., 16., 8., 32.], [64., 4., 2., -16.], 0.),
                  ([-128., 16., 8., 32.], [64., 4., 2., -16.], 64.)]
-        source_text = '''#include "mgOnGpuConfig.h"
-#ifdef MGONGPU_HAS_VECTORS_H
-#include "mgOnGpuVectors.h"
+        source_text = '''#include "MadMatrixConfig.h"
+#ifdef MADMATRIX_HAS_VECTORS_H
+#include "MadMatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 #include "MadMatrixDenom.h"
 #include <iostream>
@@ -129,7 +129,7 @@ int main() {
     struct Vector { fptype_momenta_sv pvec[4]; } V2, V3;
     fptype_denom_sv dP1[4];
     for(int k=0;k<4;++k) {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       for(int lane=0;lane<neppV;++lane) {
         V2.pvec[k][lane]=a[lane%4][k]; V3.pvec[k][lane]=b[lane%4][k];
       }
@@ -145,7 +145,7 @@ int main() {
     const auto ordinary=dP1[0]*dP1[0]-dP1[1]*dP1[1]-dP1[2]*dP1[2]-dP1[3]*dP1[3]-M1*M1;
     for(int lane=0;lane<neppV;++lane) {
       std::cout << std::setprecision(17)
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
         << real[lane] << " " << imag[lane] << " " << ordinary[lane]
 #else
         << real << " " << imag << " " << ordinary
@@ -155,14 +155,14 @@ int main() {
   }
 }
 '''
-        backends = [('scalar', ['-DMGONGPU_NOARMNEON'])]
+        backends = [('scalar', ['-DMADMATRIX_NOARMNEON'])]
         features = Path('/proc/cpuinfo').read_text() if Path('/proc/cpuinfo').exists() else ''
         if platform.machine().lower() in ('x86_64', 'amd64'):
             backends = [('scalar', ['-march=x86-64'])]
             if 'avx2' in features:
                 backends.append(('avx2', ['-march=haswell']))
             if 'avx512f' in features:
-                backends.append(('avx512', ['-march=skylake-avx512', '-mprefer-vector-width=512', '-DMGONGPU_PVW512']))
+                backends.append(('avx512', ['-march=skylake-avx512', '-mprefer-vector-width=512', '-DMADMATRIX_PVW512']))
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             shutil.copytree(templates/'Arithmetics', directory/'Arithmetics')
@@ -170,7 +170,7 @@ int main() {
             for backend, flags in backends:
                 executable = directory/backend
                 compiled = subprocess.run(['g++', '-std=c++20', '-O3', '-ffast-math', *flags,
-                    '-DMGONGPU_FPTYPE_DOUBLE', '-DMGONGPU_FPTYPE2_DOUBLE',
+                    '-DMADMATRIX_FPTYPE_DOUBLE', '-DMADMATRIX_FPTYPE2_DOUBLE',
                     *self.header_flags(templates, backend), str(source), '-o', str(executable)],
                     capture_output=True, text=True, timeout=60)
                 self.assertEqual(compiled.returncode, 0, compiled.stderr)
@@ -214,14 +214,14 @@ int main() {
             source.write_text('''#ifdef __CUDACC__
 #include <cuda_runtime.h>
 #endif
-#include "mgOnGpuConfig.h"
-#ifdef MGONGPU_HAS_VECTORS_H
-#include "mgOnGpuVectors.h"
+#include "MadMatrixConfig.h"
+#ifdef MADMATRIX_HAS_VECTORS_H
+#include "MadMatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 #include "MadMatrixDenom.h"
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 using namespace madmatrix;
 __global__ void probe(cxtype_amp_sv* out, const fptype_momenta_sv* input) {
 #else
@@ -233,28 +233,28 @@ cxtype_amp_sv probe(const fptype_momenta_sv* input) {
   const fptype_denom_sv dP1[4]={-V1.pvec[0],-V1.pvec[1],-V1.pvec[2],-V1.pvec[3]};
   const fptype M1=64, W1=1;
   const cxtype_denom cId(0,1);
-#if defined(MGONGPU_FPTYPE_DOUBLE) && !defined(MGONGPU_SIMD_DENOM64)
+#if defined(MADMATRIX_FPTYPE_DOUBLE) && !defined(MADMATRIX_SIMD_DENOM64)
   const cxtype_amp_sv value = '''+expression+''';
 #else
   const cxtype_amp_sv value = virtuality(dP1, mass2(M1,W1));
 #endif
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   out[0]=value;
 #else
   return value;
 #endif
 }
 ''')
-            precisions = [(['MGONGPU_FPTYPE_DOUBLE','MGONGPU_FPTYPE2_DOUBLE'], 'd'),
-                          (['MGONGPU_FPTYPE_DOUBLE','MGONGPU_FPTYPE2_FLOAT'], 'm'),
-                          (['MGONGPU_FPTYPE_FLOAT','MGONGPU_FPTYPE2_FLOAT'], 'f'),
-                          (['MGONGPU_FPTYPE_FLOAT','MGONGPU_FPTYPE2_FLOAT',
-                            'MGONGPU_FPTYPE_MOMENTA_DOUBLE'], 'v')]
-            backends = [('scalar', ['-DMGONGPU_NOARMNEON'])]
+            precisions = [(['MADMATRIX_FPTYPE_DOUBLE','MADMATRIX_FPTYPE2_DOUBLE'], 'd'),
+                          (['MADMATRIX_FPTYPE_DOUBLE','MADMATRIX_FPTYPE2_FLOAT'], 'm'),
+                          (['MADMATRIX_FPTYPE_FLOAT','MADMATRIX_FPTYPE2_FLOAT'], 'f'),
+                          (['MADMATRIX_FPTYPE_FLOAT','MADMATRIX_FPTYPE2_FLOAT',
+                            'MADMATRIX_FPTYPE_MOMENTA_DOUBLE'], 'v')]
+            backends = [('scalar', ['-DMADMATRIX_NOARMNEON'])]
             if platform.machine().lower() in ('x86_64','amd64'):
                 backends = [('scalar', ['-march=x86-64']),
                             ('avx2', ['-march=haswell']),
-                            ('avx512', ['-march=skylake-avx512','-mprefer-vector-width=512','-DMGONGPU_PVW512'])]
+                            ('avx512', ['-march=skylake-avx512','-mprefer-vector-width=512','-DMADMATRIX_PVW512'])]
             for backend, flags in backends:
                 for defines, precision in precisions:
                     with self.subTest(backend=backend, precision=precision):
@@ -266,7 +266,7 @@ cxtype_amp_sv probe(const fptype_momenta_sv* input) {
                 cuda=directory/'probe.cu';cuda.write_text(source.read_text())
                 result=subprocess.run(['nvcc','-std=c++20','--use_fast_math',
                     '-allow-unsupported-compiler','-arch=sm_90',
-                    '-DMGONGPU_FPTYPE_DOUBLE','-DMGONGPU_FPTYPE2_DOUBLE',
+                    '-DMADMATRIX_FPTYPE_DOUBLE','-DMADMATRIX_FPTYPE2_DOUBLE',
                     *self.header_flags(templates, 'cuda'),'-c',str(cuda),'-o',str(directory/'probe.o')],
                     capture_output=True,text=True,timeout=90)
                 self.assertEqual(result.returncode,0,result.stderr)

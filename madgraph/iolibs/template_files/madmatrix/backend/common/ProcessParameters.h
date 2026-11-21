@@ -12,9 +12,9 @@
 #ifndef PROCESSPARAMETERS_H
 #define PROCESSPARAMETERS_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "Parameters.h"    // nBsmIndepParam
 #include "ProcessData.h"   // ncomb, nIPD, nIPC, nIPF
