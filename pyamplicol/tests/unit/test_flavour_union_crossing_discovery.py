@@ -687,3 +687,52 @@ def test_minimal_coupling_orders_need_no_explicit_qed_limit() -> None:
         )
     assert len(entries) == 3
     assert sum(m.crossed for e in entries for m in e.group_members) == 56
+
+
+def test_a_member_with_its_own_s_channel_resonance_is_not_crossed(
+    model: BuiltinSMModel,
+) -> None:
+    """A flavour-changing resonance (a toy W' in u d~ only) is invisible on the
+    member with the template's flavours, so the member's own legs are checked."""
+
+    from types import SimpleNamespace
+
+    _, table, _ = _entries(("p p > j j",))
+    template, member = _processes("d d > d d", "u d~ > u d~")
+    calls: list[str] = []
+
+    def process_ir(process: GroupingProcess) -> Any:
+        return SimpleNamespace(pdgs=process.pdgs)
+
+    def limits_for(process_id: str, _ir: Any) -> dict[str, int]:
+        calls.append(process_id)
+        return {"QCD": 2, "QED": 2}
+
+    def resonances(ir: Any, _model: Any, _limits: Any) -> list[str]:
+        return ["W'"] if ir.pdgs == (2, -1, 2, -1) else []
+
+    selection = generation_service._ProcessSelection()
+    backend = SimpleNamespace(_process_selection=selection)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(generation_service, "s_channel_resonances", resonances)
+        patch.setattr(
+            generation_service, "project_external_source_legs", lambda ir, _c: ir
+        )
+        patch.setattr(
+            generation_service,
+            "external_crossing_relation",
+            lambda _r, _t, p: ((1,) * len(p), (1,) * len(p)),
+        )
+
+        def relation(allowed: Any) -> Any:
+            return generation_service.GenerationBackend._union_crossing_relation(
+                backend, model, None, table, [template, member], process_ir, allowed
+            )
+
+        # slots 1 and 3 cross: template initial d <- final d~, final d <- initial d~
+        crossed = relation(limits_for)
+        assert crossed(template, member, (0, 3, 2, 1)) is None
+        assert crossed.refused == 1
+        assert "p1" in calls
+        patch.setattr(generation_service, "s_channel_resonances", lambda *_: [])
+        assert relation(limits_for)(template, member, (0, 3, 2, 1)) is not None

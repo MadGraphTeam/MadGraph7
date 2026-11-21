@@ -4861,7 +4861,8 @@ class GenerationBackend:
         all-outgoing source states (as exact schedule sharing matches them).
 
         Stage 1 refuses (``None``) crossed quark slots outside the Weyl family
-        and s-channel resonances within the coupling orders generated."""
+        and s-channel resonances within the coupling orders generated, of the
+        template, the substituted member and the member's own flavours."""
 
         selection = self._process_selection
         if (
@@ -4876,11 +4877,12 @@ class GenerationBackend:
         known = {
             (process.pdgs, process.initial_count): process for process in processes
         }
+        resonant: dict[tuple[tuple[int, ...], int], tuple[Any, bool]] = {}
         legs: dict[tuple[tuple[int, ...], int], Any] = {}
 
-        def external(pdgs: tuple[int, ...], initial_count: int) -> Any:
+        def resonances(pdgs: tuple[int, ...], initial_count: int) -> tuple[Any, bool]:
             key = (pdgs, initial_count)
-            if key not in legs:
+            if key not in resonant:
                 process = known.get(key)
                 if process is None:
                     names = [table[pdg].name for pdg in pdgs]
@@ -4894,12 +4896,16 @@ class GenerationBackend:
                         initial_count,
                     )
                 ir = process_ir(process)
-                # resonances are not recomputed per crossing (stage 1)
                 limits = limits_for(process.process_id, ir) or None
+                resonant[key] = (ir, bool(s_channel_resonances(ir, model, limits)))
+            return resonant[key]
+
+        def external(pdgs: tuple[int, ...], initial_count: int) -> Any:
+            key = (pdgs, initial_count)
+            if key not in legs:
+                ir, refused = resonances(pdgs, initial_count)
                 legs[key] = (
-                    None
-                    if s_channel_resonances(ir, model, limits)
-                    else project_external_source_legs(ir, catalog)
+                    None if refused else project_external_source_legs(ir, catalog)
                 )
             return legs[key]
 
@@ -4921,7 +4927,8 @@ class GenerationBackend:
                 and is_union_quark_type(table[member.pdgs[leg]].type)
                 and not model.is_chiral_eligible(member.pdgs[leg])
                 for sign, leg in zip(sigma, permutation, strict=True)
-            ):
+            ) or resonances(member.pdgs, member.initial_count)[1]:
+                # a member with its own s-channel resonance keeps its routing
                 result = None
             else:
                 # the member with the template's flavours, particle/antiparticle kept
