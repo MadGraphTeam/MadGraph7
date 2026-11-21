@@ -1470,35 +1470,14 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
 
         if loop_onia.has_onia(matrix_element):
             # With bound states, MP_IMPROVE_PS_POINT_PRECISION is that of
-            # onia_loop.f: it improves the physical momenta (each bound state
-            # on its mass shell m1+m2) with the instance of these routines
-            # written below, and splits the bound states again.
+            # onia_loop.f: it puts the physical particles (a bound state of
+            # mass m1+m2) on their mass shell with exact momentum
+            # conservation, and splits the bound states again.
             name = '%(proc_prefix)sMP_IMPROVE_PS_POINT_PRECISION' % replace_dict
             definition = 'SUBROUTINE %s(' % name
             assert file_mp.count(definition) == 1
             file_mp = file_mp.replace(definition,
                                   'SUBROUTINE %s_CONSTITUENT_LEGS(' % name)
-            info = loop_onia.onia_loop_info(matrix_element)
-            phys_dict = copy.copy(replace_dict)
-            phys_dict['proc_prefix'] = replace_dict['proc_prefix'] + 'ONIAPHYS_'
-            phys_dict['nexternal'] = info['nexternal_phys']
-            masses = {}
-            onia_legs = set(o['phys'] for o in info['onia'])
-            for i, m in enumerate(mass_list):
-                if m.lower() == 'zero':
-                    continue
-                leg = info['mapping'][i]
-                mp_mass = '%s%s' % (mp_variable_prefix, m)
-                if leg in onia_legs:
-                    # the constituent masses of MP_ONIA_MASSES (onia_loop.f)
-                    mp_mass = 'SQRT(REAL(REAL(%s,KIND=8)**2,KIND=16))' % mp_mass
-                masses.setdefault(leg, []).append(mp_mass)
-            phys_dict['masses_def'] = '\n' + ''.join(
-                'MASSES(%d)=%s\n' % (leg, '+'.join(masses.get(leg, [mp_variable_prefix + 'ZERO'])))
-                for leg in range(1, info['nexternal_phys'] + 1))
-            file_mp += '\nC The precision improvement of the physical legs ' + \
-                       '(bound states, onia_loop.f)\n' + template % phys_dict
-
         writer.writelines(file_mp)
 
     def write_loop_num(self, writer, matrix_element,fortran_model):

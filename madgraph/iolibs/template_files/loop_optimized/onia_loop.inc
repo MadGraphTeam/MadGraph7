@@ -125,46 +125,43 @@ C     of its constituents), in quadruple precision
       END
 
       SUBROUTINE %(proc_prefix)sMP_IMPROVE_PS_POINT_PRECISION(KEEP_OFFSHELL_MASS, P)
-C     The precision improvement of a phase-space point of the constituent
-C     legs: that of the physical process (each bound state on its mass
-C     shell m1+m2), whose bound states are then split again into their
-C     constituents at zero relative momentum.
+C     The precision improvement of a phase-space point with bound states,
+C     in place of MadLoop's generic one (which can fail for a bound state at
+C     rest). TIRust recognises the degenerate Coulomb-exchange integrals at
+C     the precision of its inputs, so the momenta must be exactly on shell
+C     with the masses the loops use (the double-precision squared masses,
+C     MP_ONIA_MASSES) and conserve momentum: the physical final-state
+C     particles are put on their mass shell (keeping their 3-momenta; a
+C     bound state of mass m1+m2), the initial momenta are rebuilt from the
+C     final ones along their original directions, and the bound states are
+C     split again into their constituents at zero relative momentum.
       IMPLICIT NONE
-      INTEGER NEXTERNAL, NEXTERNAL_PHYS
+      INTEGER NEXTERNAL, NEXTERNAL_PHYS, NINCOMING
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      PARAMETER (NINCOMING=%(nincoming)d)
       %(real_mp_format)s P(0:3,NEXTERNAL)
       LOGICAL KEEP_OFFSHELL_MASS(NEXTERNAL)
       %(real_mp_format)s P_PHYS(0:3,NEXTERNAL_PHYS)
       LOGICAL KEEP_PHYS(NEXTERNAL_PHYS)
-      %(real_mp_format)s CMASS(NEXTERNAL), PMASS(NEXTERNAL_PHYS), MK
+      %(real_mp_format)s CMASS(NEXTERNAL), PMASS(NEXTERNAL_PHYS)
       %(real_mp_format)s PF(0:3), NDIR(3), A, C, E0, DEN, DISC, KMOM
-      INTEGER I, K, NINCOMING
-      PARAMETER (NINCOMING=%(nincoming)d)
+      INTEGER I
       INCLUDE 'onia_loop_data.inc'
       DO I=1,NEXTERNAL
         KEEP_PHYS(ONIA_MAPPING(I))=KEEP_OFFSHELL_MASS(I)
       ENDDO
       CALL %(proc_prefix)sMP_ONIA_PHYSICAL_MOMENTA(P,P_PHYS)
-      CALL %(proc_prefix)sONIAPHYS_MP_IMPROVE_PS_POINT_PRECISION(KEEP_PHYS, P_PHYS)
-C     The improvement above can fail for a bound state at rest (its energy
-C     below its mass). TIRust recognises the degenerate Coulomb-exchange
-C     integrals at the precision of its inputs, so the momenta must be
-C     exactly on shell and conserve momentum: each bound state is put on the
-C     shell m1+m2 of the constituent masses of the loops (MP_ONIA_MASSES),
-C     and the initial momenta are rebuilt from the final ones along their
-C     original directions.
       CALL %(proc_prefix)sMP_ONIA_MASSES(CMASS)
       PMASS(1:NEXTERNAL_PHYS)=0.0E0_16
       DO I=1,NEXTERNAL
         PMASS(ONIA_MAPPING(I))=PMASS(ONIA_MAPPING(I))+CMASS(I)
       ENDDO
-      DO K=1,ONIA_NONIA
-        I=ONIA_MAPPING(ONIA_Q1(K))
-        MK=PMASS(I)
-        P_PHYS(0,I)=SQRT(MK**2+P_PHYS(1,I)**2+P_PHYS(2,I)**2+P_PHYS(3,I)**2)
-      ENDDO
       PF(0:3)=0.0E0_16
       DO I=NINCOMING+1,NEXTERNAL_PHYS
+        IF (.NOT.KEEP_PHYS(I)) THEN
+          P_PHYS(0,I)=SQRT(PMASS(I)**2+P_PHYS(1,I)**2+P_PHYS(2,I)**2
+     &     +P_PHYS(3,I)**2)
+        ENDIF
         PF(0:3)=PF(0:3)+P_PHYS(0:3,I)
       ENDDO
       IF (NINCOMING.EQ.1) THEN
@@ -173,7 +170,7 @@ C     original directions.
         KMOM=SQRT(P_PHYS(1,1)**2+P_PHYS(2,1)**2+P_PHYS(3,1)**2)
         IF (KMOM.GT.0.0E0_16) THEN
           NDIR(1:3)=P_PHYS(1:3,1)/KMOM
-C         p1 = (sqrt(k^2+m1^2), k n) and (PF-p1)^2 = m2^2
+C         p1 = (sqrt(k^2+m1^2), k n) with (PF-p1)^2 = m2^2
           E0=PF(0)
           C=PF(1)*NDIR(1)+PF(2)*NDIR(2)+PF(3)*NDIR(3)
           A=(E0**2-PF(1)**2-PF(2)**2-PF(3)**2+PMASS(1)**2-PMASS(2)**2)/2.0E0_16
