@@ -215,14 +215,31 @@ def _jet_partons(reference: Mapping[str, Any]) -> frozenset[int]:
     return frozenset(massless)
 
 
+def _width_parameters(process: Mapping[str, Any]) -> set[int]:
+    """The particles with a width parameter among the runtime's parameters."""
+    widths = set()
+    for parameter in process.get("parameters") or ():
+        code = parameter.get("lhacode") or ()
+        if parameter.get("lhablock") == "DECAY" and len(code) == 1:
+            widths.add(abs(int(code[0])))
+        match = re.fullmatch(r"particle\.(-?[0-9]+)\.width", str(parameter["name"]))
+        if match:
+            widths.add(abs(int(match.group(1))))
+    return widths
+
+
 def _pure_qcd(process: Mapping[str, Any]) -> bool:
-    """Whether a runtime process is pure QCD: coloured partons only and the proven
-    alpha_s power of a tree with no electroweak coupling (C symmetric)."""
+    """Whether a runtime's summed leading colour is C symmetric: QCD partons only,
+    the proven alpha_s power of a tree without electroweak couplings, and no width
+    of a parton (a fixed top width breaks it, e.g. in g g > t t~ q q~). This
+    assumes vector-like QCD vertices, as in the SM; a model with other coloured
+    couplings of the same alpha_s power needs PYAMPLICOL_SWITCH_C_DEDUP=0."""
     pdgs, power = process["pdgs"], process.get("alpha_s_power")
     return (
         type(power) is int
         and power == len(pdgs) - 2
         and all(_is_qcd_parton(pdg) for pdg in pdgs)
+        and not {abs(pdg) for pdg in pdgs} & _width_parameters(process)
     )
 
 

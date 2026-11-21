@@ -76,6 +76,7 @@ typedef struct {
  * arrays are refs (offsets into the int pool, REWEIGHT_NULL: none), weights and
  * factors indices into the constants. */
 typedef struct {
+    /* the summed LC read: the flavour's, or its charge conjugate's when equal */
     uint32_t evaluation;
     /* switch target index, -1 for a flavour events are generated for */
     int32_t target;

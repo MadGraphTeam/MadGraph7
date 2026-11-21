@@ -475,3 +475,42 @@ def test_switch_shares_charge_conjugate_totals_of_pure_qcd(monkeypatch, power):
         assert read in (own, _conjugate(own))
         shared += read != own
     assert shared
+
+
+@pytest.mark.parametrize("width", [None, {"lhablock": "DECAY", "lhacode": [6]},
+                                   {"name": "particle.6.width"}])
+def test_charge_conjugate_totals_cross_arrangements_without_a_width(
+    monkeypatch, width
+):
+    import pyamplicol.artifacts.umami_reweight as module
+
+    # t and t~ swap slots under C: the pairs join different arrangements
+    rows = ([21, 21, 6, -6, 21, 21], [21, 21, -6, 6, 21, 21],
+            [2, -2, 6, -6, 21, 21], [2, -2, -6, 6, 21, 21],
+            [21, 21, 6, -6, 2, -2], [21, 21, -6, 6, 2, -2])
+    reference = _switch_reference(rows, [0.0, 0.0, 173.0, 173.0, 0.0, 0.0])
+    for process in reference["runtime_processes"]:
+        process["alpha_s_power"] = 4
+        process["parameters"] = [{"name": "MT"}]
+        if width is not None:
+            process["parameters"].append({"name": "WT", **width})
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", False)
+    old = switch_catalogue(reference, None, 2)
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", True)
+    new = switch_catalogue(reference, None, 2)
+    if width is not None:
+        # a top width breaks the symmetry of the leading colour: unchanged
+        assert new["calls"] == old["calls"]
+        assert new["ordering_table"] == old["ordering_table"]
+        return
+    assert len(new["calls"]) < len(old["calls"])
+    arrangements: dict[int, set[int]] = {}
+    for row in old["orderings"]:
+        arrangements.setdefault(row["evaluation"], set()).add(row["arrangement"])
+    crossing = 0
+    for before, after in zip(old["orderings"], new["orderings"], strict=True):
+        own = _slot_pdgs(reference, old["evaluations"][before["evaluation"]])
+        read = _slot_pdgs(reference, new["evaluations"][after["evaluation"]])
+        assert read in (own, _conjugate(own))
+        crossing += before["arrangement"] not in arrangements[after["evaluation"]]
+    assert crossing
