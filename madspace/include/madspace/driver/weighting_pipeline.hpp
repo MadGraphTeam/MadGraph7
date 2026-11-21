@@ -76,7 +76,20 @@ public:
     /// Whether `job_id` belongs to the pipeline.
     static bool owns_job(std::size_t job_id) { return job_id & job_id_flag; }
     /// Take the unweighted events of `job`, in the job order of its channel.
-    void add_events(GeneratorBatchJob& job);
+    /// With `hold`, they wait for @ref release_held or @ref drop_held.
+    void add_events(GeneratorBatchJob& job, bool hold = false);
+    /// Whether channel `channel_index` has held events.
+    bool has_held(std::size_t channel_index) const {
+        return !_held.at(channel_index).empty();
+    }
+    /// Upper bound of the unweighted count the held events of the channel can
+    /// add, in the units of ChannelEventGenerator::status().count_unweighted.
+    double held_count_bound(std::size_t channel_index) const;
+    /// Send the held events of the channel through the steps.
+    void release_held(std::size_t channel_index);
+    /// Discard the held events of the channel without running the steps, for
+    /// events that the next VEGAS iteration of the channel would clear.
+    void drop_held(std::size_t channel_index);
     /// Start the jobs of full batches. With `flush`, all collected events are
     /// split over the free threads of each context, where `busy_counts` are
     /// the other jobs running on it. Returns the number of started jobs.
@@ -103,6 +116,8 @@ private:
         std::size_t generated_count;
         std::size_t generated_count_after_cuts = 0;
         std::size_t count_target;
+        // discarded by drop_held(), handled like a stale chunk
+        bool dropped = false;
         // on the device: rows offset to offset + size() of source, before the
         // last decision, which keeps the rows in keep
         std::shared_ptr<TensorVec> source;
@@ -152,6 +167,7 @@ private:
     };
 
     void advance(ChunkPtr chunk, std::size_t stage);
+    bool is_stale(const Chunk& chunk) const;
     void set_ready(ChunkPtr chunk, std::size_t stage);
     void commit_stage(ChunkPtr chunk, std::size_t stage);
     void decide(Chunk& chunk, std::size_t step);
@@ -191,6 +207,8 @@ private:
     std::mutex _concat_mutex;
     std::size_t _job_counter = 0;
     std::size_t _chunk_count = 0;
+    // per channel: chunks of add_events() with `hold`, in sequence order
+    std::vector<std::vector<ChunkPtr>> _held;
     Sink _sink;
 };
 

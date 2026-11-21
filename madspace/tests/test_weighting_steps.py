@@ -271,6 +271,33 @@ def test_survey_skips_cleared_iterations(tmp_path):
     assert status_a.mean == status_b.mean
 
 
+def test_generate_holds_vegas_events(tmp_path, reference):
+    """Without a survey, the channels optimize during generate(). The events of
+    their VEGAS iterations wait for the outcome of the iteration and skip the
+    steps if the next one clears them, independently of the threads."""
+    results = [
+        generate(
+            str(tmp_path / str(threads)),
+            [surrogate_me, heavy_tailed_me, surrogate_me],
+            ["reweight", "unweight"],
+            threads=threads,
+            pt_mins=(20.0, 20.0, 20.0),
+            grouped=(0, 1, 2),
+            target_count=6000,
+            survey=False,
+        )
+        for threads in (1, 4)
+    ]
+    (status_a, events_a, channels_a), (status_b, events_b, _) = results
+    assert all(c.status().iterations > 1 for c in channels_a)
+    assert len(events_a) == 6000
+    assert np.array_equal(events_a, events_b)
+    assert status_a.mean == status_b.mean
+    # three copies of the reference process
+    error = np.hypot(status_a.error, 3 * reference[0].error)
+    assert abs(status_a.mean - 3 * reference[0].mean) < 4 * error
+
+
 def test_step_budget_of_smaller_target(tmp_path):
     """A smaller target applies its truncation budget to the step maxima too,
     and rescales the unweighted count accordingly. EventGenerator does this at

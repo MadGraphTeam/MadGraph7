@@ -305,6 +305,9 @@ private:
     );
     // run the re- and unweighting steps of all collected events
     void drain_pipeline();
+    // At the end of a round: send the held VEGAS-iteration events of each
+    // channel through the steps, or drop them if its next iteration clears them.
+    void resolve_held_events(bool stopping);
     // Statistics of the passes: the first unweighting, then the steps. A step
     // that does not unweight has no efficiency (NaN). The efficiencies and
     // RSDs only use events that have gone through the pass, whatever is still
