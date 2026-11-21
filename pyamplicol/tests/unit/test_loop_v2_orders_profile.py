@@ -154,6 +154,12 @@ def test_the_profile_counts_every_native_batch_of_a_call():
     assert "_collected_stage_seconds" not in vars(runtime._backend._executor)
     with collected_stage_seconds(object()) as nothing:
         assert nothing is None
+    # The native executor has its report attribute before its first call,
+    # so a profile's first timed call (after a warm entry, with no warm-up
+    # call) is collected too.
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    assert NativeExecutor.last_report is None
 
 
 @pytest.mark.loop_physics
