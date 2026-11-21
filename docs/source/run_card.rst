@@ -576,7 +576,10 @@ currently slower with it (about 10-20% CPU time at ``p p > j j j j``).
 full-colour artifact without its helicity-summed programs (pyamplicol
 ``generation.selector_only_full_colour``). The full-colour pass evaluates one helicity per
 event, so it needs only the programs that do that, and the full-colour generation is
-shorter. The leading-colour artifact is unchanged.
+shorter (7 s instead of 11 s at ``p p > j j j j j``, after which the leading-colour
+generation sets the total). The leading-colour artifact is unchanged. The matrix elements
+agree with those of the default artifact to about 1e-12 relative, and an unmerged VEGAS
+run with the same seed gives the same events.
 
 ``color_accuracy`` (``"full"``)
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
