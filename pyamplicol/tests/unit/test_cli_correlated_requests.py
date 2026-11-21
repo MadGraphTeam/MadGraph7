@@ -164,7 +164,10 @@ def test_grouped_cli_calls_one_public_batch_and_preserves_tree_arithmetic(
     assert len(batch) == 2 and list(mapped) == ["physical", "joint"]
     assert batch[0][0][0] == Decimal("1.000000000000000000000000000001")
     assert mapped["joint"].spin_vectors[3][1] == Decimal("1e-4000")
-    assert options["precision"] == 16 and options["helicities"] is None
+    # An unset precision (the carrier's default, resolved by the runtime:
+    # 16 here, the default arbitrary-precision digits with an arbitrary
+    # virtual carrier) is passed on unset.
+    assert options["precision"] is None and options["helicities"] is None
     if virtual:
         assert options["mu_r2"] == "1000000" and options["on_failure"] == "return"
         assert "stability" not in options

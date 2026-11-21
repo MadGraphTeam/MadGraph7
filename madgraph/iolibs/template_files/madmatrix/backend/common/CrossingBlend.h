@@ -19,7 +19,7 @@ namespace madmatrix
   {
     return sp * a + sm * b;
   }
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
   inline fptype_momenta_sv
   xblend( const fptype_sv& sp, const fptype_sv& sm, const fptype_momenta_sv& a, const fptype_momenta_sv& b )
   {

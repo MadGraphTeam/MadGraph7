@@ -46,7 +46,7 @@ ifdef lhapdf
   endif
 else
   TOREMOVE += pdfwrap_lhapdf.o
-  PDF += Ctq6Pdf.o pdfwrap.o pdf.o pdg2pdf.o NNPDFDriver.o eepdf.o gridpdfaux.o dfint.o kerset.o
+  PDF += Ctq6Pdf.o pdfwrap.o pdf.o pdg2pdf.o NNPDFDriver.o eepdf.o ddilog.o gridpdfaux.o dfint.o kerset.o
 endif
 
 

@@ -12,8 +12,15 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
 2. a point that failed (``FailedPoints`` reasons, failures of its rotated
    evaluations included) or whose estimate missed the level's target is
    evaluated again at the next level, from its original exact inputs (no
-   value is promoted, MASTER_PLAN §2.18); an accepted point is never
-   evaluated again;
+   value is promoted, MASTER_PLAN §2.18, except the refused lanes' binary64
+   coefficients, lifted exactly into the lane rescue's higher-carrier
+   reduction inside a level); an accepted point is never
+   evaluated again; a point whose estimate grew, against the next lower
+   precision under the same metric, at least by the square root of the two
+   levels' unit-roundoff ratio is not escalated either (the stopping rule,
+   ``_stalled``: the signature of a numerical zero, whose value falls like
+   u^2 and its error like u) and keeps that level's value with the target
+   not met;
 3. at the last level a point that evaluates keeps its value with the target
    marked as not met; a point that failed at every level is a failed lane,
    or, under ``on_failure="best-effort"``, a best-effort lane when the last
@@ -23,8 +30,12 @@ batch (``V2VirtualRuntime`` and ``V2ObservablesRuntime``):
 A level compares the public estimate's field named by its ``metric`` with
 its target. An integrated zero (a Landau-Yang |A|^2 of a loop-induced
 process, m-lit PLAN §2.a.8; numerical, never declared, RULED Q13) can never
-meet a "relative" or "finite" target, its value being itself rounding: it
-climbs to the last level and is kept there with the target not met. The
+meet a "relative" or "finite" target, its value being itself rounding: its
+relative estimate grows like 1 / u (|A|^2 falls with the unit roundoff
+squared, E with the unit roundoff), so the stopping rule keeps it at the
+first level of higher precision where it grew at least by sqrt(u_lower /
+u), with the target not met (g g > z on the loop-induced default stack: the
+double-double level; before the rule it climbed to the last level). The
 opt-in "scale" metric (``VirtualRescueLevel.metric``: E <= target x S,
 the estimate against the pre-cancellation scale S of its floor,
 ``VirtualStabilityEstimate.scale``) accepts it at the first level, where
@@ -45,9 +56,10 @@ only, in no SDK, the CLI or the configuration.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, cast
 
 from pyamplicol.api.errors import CompatibilityError, EvaluationError
 from pyamplicol.api.virtual_results import (
@@ -59,6 +71,7 @@ from pyamplicol.api.virtual_results import (
     VirtualRescueRecord,
     splits_poles,
 )
+from pyamplicol.loops.v2.stability import relative_text
 
 # One level's evaluation of the points at the given batch indices (in that
 # order), failures returned as failed lanes (``on_failure="return"``).
@@ -150,6 +163,9 @@ class _Kept:
     lane: int
     level: int
     met: bool
+    # Kept below the last level by the stopping rule (``_stalled``): the
+    # lower-precision attempt whose estimate it did not improve on.
+    stalled: _Stall | None = None
 
 
 def rescue(
@@ -189,14 +205,114 @@ def rescue(
                     and attempt.estimate is not None
                     and attempt.estimate <= level.target
                 )
-                if met or last:
-                    kept[index] = _Kept(evaluation, lane, k, met)
+                stalled = (
+                    None
+                    if met or last or not diagnostic.valid
+                    else _stalled(attempts[index], levels)
+                )
+                if met or last or stalled is not None:
+                    kept[index] = _Kept(evaluation, lane, k, met, stalled)
                 else:
                     retry.append(index)
         pending = tuple(sorted(retry))
     if template is None:  # pragma: no cover - level 0 always runs
         raise EvaluationError("a rescue policy ran no level")
     return _merged(template, kept, attempts, policy, on_failure)
+
+
+def _stalled(
+    history: list[VirtualRescueAttempt], levels: tuple[VirtualRescueLevel, ...]
+) -> _Stall | None:
+    """The stopping rule ("stop when no gain", USER 2026-11-18; refined by
+    review B3): a point is not escalated when its estimate at its latest
+    level (the last of ``history``, one attempt per level from level 0)
+    GREW, against its estimate at the next lower precision under the same
+    metric, at least by sqrt(u_lower / u_latest), the square root of the
+    ratio of the two levels' unit roundoffs. That growth is the signature of
+    a numerical zero: its value is rounding of the size u^2 (|A|^2 of
+    amplitudes that vanish to u) while its absolute error falls like u, so
+    its relative estimate grows like 1 / u (g g > z: 4.7e15 in binary64,
+    8.4e33 in double-double, a growth of 1.8e18 against the 4.7e7 needed).
+    A real point's relative estimate falls with u, or, ruined (a relative
+    estimate above 1 has no order), stays flat and noisy, its error and its
+    wrong value falling together (HC05 #40 point 29: 13.96 at 50 digits,
+    48.8 at 57, a growth of 3.5 against the 3.2e3 needed): both escalate.
+    The argument holds for the same computation at two roundoffs: where two
+    backends ran at the next lower precision (the loop-induced default
+    stack's TIRust and NinjaRS binary64 levels), the comparison is with the
+    latest level's own effective backend when it has an estimate there, else
+    with the larger of their estimates (never the smaller, which would count
+    the gap between the backends as growth: review F1). Returns the
+    comparison (``_Stall``), or None (escalate). A failed attempt has no
+    estimate and never stops a point; nor does a level of the same
+    precision (the other backend)."""
+
+    latest = history[-1]
+    if latest.estimate is None:
+        return None
+    k = len(history) - 1
+    metric = levels[k].metric
+    lower = [
+        (j, attempt)
+        for j, attempt in enumerate(history[:-1])
+        if attempt.estimate is not None
+        and attempt.precision_bits < latest.precision_bits
+        and levels[j].metric == metric
+    ]
+    if not lower:
+        return None
+    # The next lower precision. The growth argument holds for the same
+    # computation at two roundoffs: where two backends ran there, compare
+    # with the latest level's own effective backend when it has an estimate,
+    # else with the larger estimate (review F1: the smaller would add the gap
+    # between the backends to the growth).
+    bits = max(attempt.precision_bits for _, attempt in lower)
+    candidates = [
+        (j, attempt) for j, attempt in lower if attempt.precision_bits == bits
+    ]
+    mine = _effective(latest)
+    same = [item for item in candidates if mine and _effective(item[1]) == mine]
+    j, below = max(same or candidates, key=lambda item: cast(float, item[1].estimate))
+    before, after = cast(float, below.estimate), latest.estimate
+    if not before or not after:
+        return None
+    needed = (_log2_roundoff(levels[j]) - _log2_roundoff(levels[k])) / 2
+    grew = math.log2(after) - math.log2(before) if math.isfinite(after) else math.inf
+    return _Stall(below, grew, needed) if grew >= needed else None
+
+
+@dataclass(frozen=True, slots=True)
+class _Stall:
+    """A point the stopping rule keeps: the lower-precision attempt compared
+    with, and log2 of the estimate's growth and of the growth needed."""
+
+    attempt: VirtualRescueAttempt
+    grew: float
+    needed: float
+
+
+def _effective(attempt: VirtualRescueAttempt) -> str | None:
+    """The attempt's effective reduction backend, None when not recorded."""
+
+    return None if attempt.reduction is None else attempt.reduction.effective
+
+
+def _factor(log2: float) -> str:
+    """2^log2 as text (``inf`` beyond binary64)."""
+
+    return f"{2.0**log2:.1e}" if log2 < 1000 else "inf"
+
+
+def _log2_roundoff(level: VirtualRescueLevel) -> float:
+    """log2 of a level's unit roundoff: 2^-53 binary64, 2^-104
+    double-double (``assemble.Precision.unit_roundoff``), 0.5 x 10^(1 - d)
+    at d digits."""
+
+    if level.arithmetic == "double":
+        return -53.0
+    if level.arithmetic == "double-double":
+        return -104.0
+    return -1.0 + (1 - cast(int, level.precision)) * math.log2(10.0)
 
 
 def _attempt(
@@ -227,17 +343,29 @@ def _attempt(
     )
 
 
-def _detail(record: VirtualRescueRecord, metric: str) -> str:
+def _detail(
+    record: VirtualRescueRecord,
+    metric: str,
+    stalled: _Stall | None = None,
+) -> str:
     level = f"rescue level {record.level} ({record.arithmetic})"
     value = record.attempts[-1].estimate
     if value is None:
         return f"{level}: last level, no stability check; accuracy not estimated"
-    verdict = (
-        f"within the target {record.target:.1e}"
-        if record.met
-        else f"target {record.target:.1e} not met at the final level"
-    )
-    return f"{level}: estimated {metric} accuracy {value:.2e}, {verdict}"
+    if record.met:
+        verdict = f"within the target {record.target:.1e}"
+    elif stalled is not None:
+        below = stalled.attempt
+        backend = "" if below.reduction is None else f" {below.reduction.effective}"
+        verdict = (
+            f"target {record.target:.1e} not met; not escalated: its estimate "
+            f"grew from the {below.arithmetic}{backend} level's by "
+            f"{_factor(stalled.grew)} (at least {_factor(stalled.needed)}, the "
+            "square root of their unit-roundoff ratio), as a numerical zero's does"
+        )
+    else:
+        verdict = f"target {record.target:.1e} not met at the final level"
+    return f"{level}: estimated {metric} accuracy {relative_text(value)}, {verdict}"
 
 
 def _merged(
@@ -285,7 +413,7 @@ def _merged(
                 original,
                 status="success" if item.level == 0 else "rescued",
                 accuracy_established=item.met,
-                detail=_detail(record, level.metric),
+                detail=_detail(record, level.metric, item.stalled),
             )
         else:
             reasons = "; ".join(

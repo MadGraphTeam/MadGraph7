@@ -2,7 +2,7 @@
 
 use super::*;
 #[cfg(feature = "symbolica-runtime")]
-use symbolica::{atom::Atom, atom::AtomCore, parser::ParseSettings};
+use symbolica::{atom::Atom, atom::AtomCore};
 
 /// The parameter through which the built-in normalization contract applies
 /// `(4 pi alpha_s)^p` (see `refresh_normalization_factor`).
@@ -527,7 +527,7 @@ impl ExactModelParameterDerivation {
         // Model expressions may call pyAmpliCol's scalar predicates.
         crate::source_scalar::register_scalar_primitives();
         let parse = |text: &str| {
-            Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {
+            crate::symbol_order::parse(text, "python").map_err(|error| {
                 RusticolError::artifact(format!(
                     "compiled model: cannot parse a parameter definition: {error}"
                 ))

@@ -9,7 +9,6 @@
 
 #include "MemoryAccessGs.h"
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------

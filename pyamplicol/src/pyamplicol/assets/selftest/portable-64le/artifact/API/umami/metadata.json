@@ -330,6 +330,7 @@
   "runtime_processes": [
     {
       "alpha_s_parameter": null,
+      "alpha_s_power": null,
       "color_accuracy": "lc",
       "coverage": {
         "color": "complete",

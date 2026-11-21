@@ -4,15 +4,15 @@
 //
 // Backend-owned driver: sigmaKin and everything it calls (calculate_jamps,
 // good-helicity filtering, color/channel selection). Declared here so that
-// umami.cc/MatrixElementKernels.cc/Density.cc can call them. They all take the
-// parameters of the process they evaluate (ProcessParameters.h) as an argument.
+// umami.cc/Density.cc can call them. They all take the parameters of the process
+// they evaluate (ProcessParameters.h) as an argument.
 
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1
 
-#include "mgOnGpuConfig.h"
-#include "mgOnGpuCxtypes.h" // for cxtype
-#include "mgOnGpuVectors.h" // for fptype_amp_sv
+#include "MadMatrixConfig.h"
+#include "MadMatrixCxtypes.h" // for cxtype
+#include "MadMatrixVectors.h" // for fptype_amp_sv
 
 namespace madmatrix
 {

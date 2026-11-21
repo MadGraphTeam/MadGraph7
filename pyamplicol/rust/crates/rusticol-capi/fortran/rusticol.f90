@@ -147,6 +147,7 @@ module rusticol
     procedure, public :: set_kinematics_improvement => rusticol_set_kinematics_improvement
     procedure, public :: set_kinematics_improvement_binary64 => &
         rusticol_set_kinematics_improvement_binary64
+    procedure, public :: set_options => rusticol_set_options
     procedure, public :: mute_warnings => rusticol_mute_warnings
     procedure, public :: unmute_warnings => rusticol_unmute_warnings
     procedure, public :: take_warnings_json => rusticol_take_warnings_json
@@ -524,6 +525,13 @@ module rusticol
       type(c_ptr), value :: handle, path
       integer(c_int) :: status
     end function c_rusticol_runtime_set_model_parameters_json
+
+    function c_rusticol_runtime_set_options(handle, options) &
+        bind(C, name="rusticol_runtime_set_options") result(status)
+      import :: c_ptr, c_int
+      type(c_ptr), value :: handle, options
+      integer(c_int) :: status
+    end function c_rusticol_runtime_set_options
 
     function c_rusticol_runtime_set_kinematics_improvement(handle, setting) &
         bind(C, name="rusticol_runtime_set_kinematics_improvement") result(status)
@@ -1503,7 +1511,7 @@ contains
     if (.not. status_ok(status, ierr)) return
   end subroutine rusticol_set_model_parameters_json
 
-  ! Kinematics improvement (m-lit lit-psimprove): "z-shift" (the default),
+  ! Kinematics improvement: "z-shift" (the default),
   ! "rescaling", "projection" or "off"; in these binary64 evaluations it runs
   ! only with set_kinematics_improvement_binary64(.true.).
   subroutine rusticol_set_kinematics_improvement(self, setting, ierr)
@@ -1530,6 +1538,20 @@ contains
     status = c_rusticol_runtime_set_kinematics_improvement_binary64(self%handle, flag)
     if (.not. status_ok(status, ierr)) return
   end subroutine rusticol_set_kinematics_improvement_binary64
+
+  ! Runtime options of a TOML text (its [evaluation] table; a tree runtime
+  ! takes kinematics_improvement and kinematics_improvement_binary64).
+  subroutine rusticol_set_options(self, options_toml, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    character(len=*), intent(in) :: options_toml
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: buffer(:)
+    integer(c_int) :: status
+
+    call build_c_string(options_toml, buffer)
+    status = c_rusticol_runtime_set_options(self%handle, c_loc(buffer(1)))
+    if (.not. status_ok(status, ierr)) return
+  end subroutine rusticol_set_options
 
   subroutine rusticol_mute_warnings(self, ierr)
     class(rusticol_runtime), intent(inout) :: self

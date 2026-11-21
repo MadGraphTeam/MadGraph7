@@ -2391,6 +2391,37 @@ class MG7ObservablePidsTest(unittest.TestCase):
             self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass')),
             [2, -2, -11, 11, 21, 21])
 
+    def test_a_merged_b_quark_is_selected_as_a_bottom(self):
+        # sm-no_b_mass merges the b with the light quarks
+        meta = self.meta([-82, 83, 81, -81], [[2, -1, -11, 12, 5, -5],
+                                              [4, -3, -11, 12, 5, -5]])
+        bottom = self.kwargs('pt', ([5, -5],))
+        self.assertEqual(self.launch.observable_pids(meta, bottom, strict=True),
+                         [1, 1, 11, 12, 5, 5])
+
+    def test_a_merged_subprocess_takes_the_flavours_of_its_members(self):
+        member = self.meta([-82, 82, 81, -81], [[2, -2, -11, 11, 1, -1],
+                                                 [2, -2, -13, 13, 3, -3]])
+        merged = {'incoming': [81, -81], 'outgoing': [-82, 82, 81, -81],
+                  'subprocesses': [0],
+                  'flavors': [{'subprocess': 0, 'flavor': 0},
+                              {'subprocess': 0, 'flavor': 1}]}
+        jets = self.kwargs('pt', ([1, -1, 3, -3, 21],))
+        self.assertEqual(
+            self.launch.observable_pids(merged, jets, [member], strict=True),
+            [1, 1, 11, 11, 1, 1])
+
+    def test_flavours_in_different_groups_refuse_a_cut_only(self):
+        meta = self.meta([-82, 82, 21], [[2, -2, -11, 11, 21],
+                                         [2, -2, -13, 13, 21]])
+        electrons = self.kwargs('pt', ([11, -11],))
+        with self.assertRaises(ValueError) as error:
+            self.launch.observable_pids(meta, electrons, strict=True)
+        self.assertIn('apply_flavor_grouping', str(error.exception))
+        # a histogram keeps the representatives
+        self.assertEqual(self.launch.observable_pids(meta, electrons),
+                         [1, 1, 11, 11, 21])
+
     def test_sfos_refuses_flavours_that_pair_differently(self):
         # e+ e- mu+ mu- and e+ mu- mu+ e-: the same momenta, different pairs
         meta = self.meta([-82, 82, -82, 82], [[2, -2, -11, 11, -13, 13],

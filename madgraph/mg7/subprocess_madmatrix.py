@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -339,7 +340,9 @@ class MadgraphSubprocess:
         n_in = len(self.incoming_masses)
 
         def cut_pids(observable_kwargs):
-            pids = observable_pids(self.meta, observable_kwargs, self.unmerged_meta)
+            pids = observable_pids(
+                self.meta, observable_kwargs, self.unmerged_meta, strict=True
+            )
             # pdg id 0 is in no group, so the particle is never selected
             return [0 if i - n_in in uncut else pid for i, pid in enumerate(pids)]
 
@@ -1168,6 +1171,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
+    def auto_buffered_steps_fraction(self) -> float:
+        """The auto buffered_steps_fraction: buffered training saves matrix
+        element evaluations."""
+        return 0.8
+
     def set_madnis_auto_settings(self, rsd: float, random_dim: int):
         """Choose the MadNIS settings of this subprocess from the relative
         spread rsd of the survey. random_dim is the smallest number of random
@@ -1200,6 +1208,7 @@ class MadgraphSubprocess:
             "lr": lr,
             "fixed_cwnet_fraction": fixed_cwnet_fraction,
             "batch_size_per_channel": batch_size_per_channel,
+            "buffered_steps_fraction": self.auto_buffered_steps_fraction(),
         }
         for key, value in self.madnis_settings.items():
             run_card_value = madnis_args[key]
@@ -1263,7 +1272,24 @@ class MadgraphSubprocess:
                 cond_dim += perm_count
 
             discrete_flavor = channel.discrete_flavor
-            if discrete_flavor is not None:
+            if (discrete_flavor is not None and madnis_args["flavor_levels"]
+                    and not self.process.leptonic):
+                initials, contents, weights = self.flavor_levels()
+                discrete_flavor = ms.DiscreteFlavorLevels(
+                    flavor_initials=initials,
+                    flavor_contents=contents,
+                    flavor_weights=weights,
+                    prefix=f"{prefix}.discrete_flavor_levels",
+                    condition_dim=cond_dim,
+                    prior_floor=madnis_args["flavor_prior_floor"],
+                    logit_bound=madnis_args["flavor_logit_bound"],
+                    subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
+                    subnet_layers=madnis_args["discrete_layers"],
+                    subnet_activation=self.activation(madnis_args["discrete_activation"]),
+                    subnet_precision=self.nn_precision(),
+                )
+                discrete_flavor.initialize_globals(self.process.contexts[0], seed)
+            elif discrete_flavor is not None:
                 discrete_flavor = ms.DiscreteFlow(
                     option_counts=[len(self.meta["flavors"])],
                     prefix=f"{prefix}.discrete_flow_flavor",
@@ -1370,7 +1396,27 @@ class MadgraphSubprocess:
         hadronic PDF -- but its beams do *not* keep their full energy, so the
         mapping still has to sample x. The two senses of the word part here.
         """
-        return self.process.leptonic and self.process.lepton_density is None
+        return (self.process.leptonic and self.process.lepton_density is None
+                and not self.process.upc_flux)
+
+    def upc_tau_min(self) -> float:
+        """A lower bound on s_hat / s of this subprocess, which the table of a
+        gamma-UPC luminosity has to reach: from the outgoing masses and the pt
+        and sqrt(s) cuts (each particle carries at least its transverse mass)."""
+        pt_min = list(self.cuts.pt_min()) if self.cuts is not None else []
+        pt_min += [0.] * (len(self.outgoing_masses) - len(pt_min))
+        sqrt_s = sum(math.hypot(mass, pt)
+                     for mass, pt in zip(self.outgoing_masses, pt_min))
+        if self.cuts is not None:
+            sqrt_s = max(sqrt_s, self.cuts.sqrt_s_min())
+        return sqrt_s ** 2 / self.process.e_cm ** 2
+
+    def non_photon_incoming(self) -> list[int]:
+        """The incoming partons of this subprocess, over all its flavours, that
+        are not photons (which a gamma-UPC luminosity gives no flux)."""
+        n_in = len(clean_pids(self.meta["incoming"]))
+        return sorted({pid for option in _flavor_options(self.meta, self.unmerged_meta)
+                       for pid in option[:n_in] if pid != 22})
 
     @property
     def lepton_sampling_power(self) -> float:
@@ -1478,6 +1524,38 @@ class MadgraphSubprocess:
             matrix_elements.append(mat)
         return matrix_elements
 
+    def resolved_flavors(self) -> list[dict]:
+        """The flavours of the integrand, those of the merged subprocesses
+        resolved, in the order of build_integrands."""
+        flavors = []
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            flavors.append(flav)
+        return flavors
+
+    def flavor_levels(self) -> tuple[list[int], list[int], list[float]]:
+        """For ms.DiscreteFlavorLevels, per flavour its initial state, its
+        final-state content (given the initial state) and its weight, the factor
+        of its prior that the parton densities do not give."""
+        initials, contents, weights = {}, {}, []
+        flavor_initials, flavor_contents = [], []
+        for flav in self.resolved_flavors():
+            pdgs = flav["options"][0]
+            initial = tuple(pdgs[:2])
+            content = (initial, tuple(sorted(pdgs[2:])))
+            flavor_initials.append(initials.setdefault(initial, len(initials)))
+            flavor_contents.append(contents.setdefault(content, len(contents)))
+            factor = flav.get("prior_factor", flav.get("factor", len(flav["options"])))
+            weights.append(factor * (2. if flav["mirror"] else 1.))
+        return flavor_initials, flavor_contents, weights
+
+    def parton_density_output(self) -> bool:
+        """Whether the events carry the parton densities of all partons, for a
+        weighting step that switches their flavour."""
+        return False
+
     def build_integrands(
         self,
         phasespace: PhaseSpace,
@@ -1492,15 +1570,12 @@ class MadgraphSubprocess:
         flavor_subproc_indices = []
         flavor_per_subproc_remap = []
 
-        for flav in self.meta["flavors"]:
+        for merged, flav in zip(self.meta["flavors"], self.resolved_flavors()):
             if self.unmerged_meta is not None:
-                diff_xs_index = flav["subprocess"]
-                subproc_index = self.meta["subprocesses"][diff_xs_index]
-                ps_flavor = flav["flavor"]
+                diff_xs_index = merged["subprocess"]
                 flavor_diff_xs_indices.append(diff_xs_index)
-                flavor_subproc_indices.append(subproc_index)
-                flavor_per_subproc_remap.append(ps_flavor)
-                flav = self.unmerged_meta[subproc_index]["flavors"][ps_flavor]
+                flavor_subproc_indices.append(self.meta["subprocesses"][diff_xs_index])
+                flavor_per_subproc_remap.append(merged["flavor"])
             flavors.append(flav["options"][0])
             flavor_remap.append(flav["index"])
             flavor_factors.append(flav.get("factor", len(flav["options"])))
@@ -1508,11 +1583,12 @@ class MadgraphSubprocess:
 
         cross_sections = []
         dressed = self.process.lepton_density
+        upc = self.process.upc_luminosity()
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
             pdf_arg2 = pdf_arg
-            if dressed is not None:
+            if dressed is not None or upc is not None:
                 # one luminosity for both beams, on beam 1; see
                 # lepton_density.pdf_factor for why beam 2 stays empty
                 pdf_arg = ms.CachedPdf()
@@ -1581,6 +1657,8 @@ class MadgraphSubprocess:
                 phasespace.mapping_chan_weights,
                 mlm_history_qcd_power,
                 None if dressed is None else dressed.luminosity,
+                None if upc is None else upc.luminosity,
+                parton_density_output=self.parton_density_output() and not madnis_training,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

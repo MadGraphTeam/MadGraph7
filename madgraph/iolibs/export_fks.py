@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import string
@@ -1024,6 +1025,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         # Check for compiler
         fcompiler_chosen = self.set_fortran_compiler(compiler_dict)
         ccompiler_chosen = self.set_cpp_compiler(compiler_dict['cpp'])
+
+        # Every source and build recipe of the loop directories now exists:
+        # keep the private DP terminal updaters only where the rendered proof
+        # succeeds (optimized output), before the export is packed below.
+        finalize_dp_terminal = getattr(self, 'finalize_dp_terminal_updates', None)
+        if finalize_dp_terminal:
+            finalize_dp_terminal()
 
         old_pos = os.getcwd()
         os.chdir(os.path.join(self.dir_path, 'SubProcesses'))
@@ -5563,23 +5571,37 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                               libpath,"lib%s.a"%tir,tir_name=tir)
             setattr(self,tir_dir,libpath)
             if libpath != "":
-                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars']:
+                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars','tirust']:
                     # We should link dynamically when possible, so we use the original
                     # location of these libraries.
-                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                        # Recorded flags are argv words; quote them for the makefile shell.
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.pre_link_flags(
+                                libpath, getattr(self, 'fortran_compiler', None) or 'gfortran'))
+                    if tir == 'tirust':
+                        from madgraph.various import tirust_install
+                        link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
                     if copied_ninjars:
-                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
-                        tir_libs.append('$(LIBDIR)libninjars.a')
+                        link_tir_libs.append('-L$(LIBDIR) -l' + tir)
+                        tir_libs.append('$(LIBDIR)lib' + tir + '.a')
                     else:
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
                         tir_libs.append('%s/lib%s.%s' % (
-                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                            libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.native_link_flags(libpath))
+                    if tir == 'tirust':
+                        from madgraph.various import tirust_install
+                        link_tir_libs.extend(tirust_install.native_link_flags(libpath))
+                        # Executables live in SubProcesses or its process directories;
+                        # shared process libraries live in lib.
+                        link_tir_libs.extend(tirust_install.runtime_search_flags(
+                            libpath, copied_ninjars))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -5589,7 +5611,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
                     # We must add the corresponding includes for these TIR
-                    if tir in ['golem','samurai','ninja','collier','ninjars']:
+                    if tir in ['golem','samurai','ninja','collier','ninjars','tirust']:
                         trg_path = pjoin(os.path.dirname(libpath),'include')
                         trg_path2 = pjoin(trg_path,tir)
                         to_include = None
@@ -5599,7 +5621,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         if to_include is None and os.path.isdir(trg_path2):
                             to_include = misc.find_includes_path(trg_path2,
                                                         self.include_names[tir])
-                        if to_include is None and tir == 'ninjars':
+                        if to_include is None and tir in ('ninjars', 'tirust'):
                             to_include = misc.find_includes_path(
                                 libpath, self.include_names[tir])
                         # Special possible location for collier
