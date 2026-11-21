@@ -353,3 +353,135 @@ def test_switched_colours_follow_the_leading_colour_flows(switch):
                 assert abs(drawn.get(key, 0) - count * value / total) <= 2, (pdgs, key)
             multi += sum(value > 0 for value in expected.values()) > 1
     assert multi
+
+
+def _rebuilt(source: Path, target: Path, data: bytes | None, header: bool) -> Path:
+    """A copy of a provider with the data file ``data`` (None: removed); with
+    ``header``, its header bound to that data and the library rebuilt."""
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        content_sha256,
+        decode_reweight_data,
+        reweight_data_header,
+    )
+
+    shutil.copytree(source, target)
+    path = target / "reweight_p0.rwd"
+    if data is None:
+        path.unlink()
+        return target
+    if header:
+        tables = decode_reweight_data(path.read_bytes())
+        (target / "reweight_p0.h").write_text(
+            reweight_data_header(tables, path.name, content_sha256(data))
+        )
+    path.write_bytes(data)
+    if header:
+        completed = subprocess.run(
+            ["make", "-C", str(target), f"RUSTICOL_CONFIG={_config_executable()}"],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+    return target
+
+
+def _initialize(directory: Path) -> tuple[int, str]:
+    """umami_initialize in a child process: its status and stderr (no crash)."""
+
+    import sys
+
+    code = (
+        "import ctypes as ct, sys; lib = ct.CDLL(sys.argv[1]); h = ct.c_void_p(); "
+        "s = lib.umami_initialize(ct.byref(h), sys.argv[2].encode()); "
+        "s == 0 and lib.umami_free(h); print(s)"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(directory / "build/libreweight_p0.so"),
+         str(directory)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return int(completed.stdout), completed.stderr
+
+
+def _field(data: bytes, tag: str, row: int, field: int, value: int) -> bytes:
+    import struct
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        reseal_reweight_data,
+        section_table,
+    )
+
+    offset, count, size = section_table(data)[tag]
+    assert row < count, tag
+    patched = bytearray(data)
+    struct.pack_into("<i", patched, offset + row * size + 4 * field, value)
+    return reseal_reweight_data(bytes(patched))
+
+
+def _helicity_value(data: bytes) -> bytes:
+    """The first value of flavour 0's reference helicity map out of range."""
+
+    import struct
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        reseal_reweight_data,
+        section_table,
+    )
+
+    table = section_table(data)
+    ref = struct.unpack_from("<I", data, table["FLAV"][0] + 16)[0]
+    patched = bytearray(data)
+    struct.pack_into("<i", patched, table["I32P"][0] + 4 * ref, 1 << 20)
+    return reseal_reweight_data(bytes(patched))
+
+
+def _pool_end(data: bytes) -> int:
+    from pyamplicol.artifacts.umami_reweight_data import section_table
+
+    return section_table(data)["I32P"][1]
+
+
+# (corrupted data or None, header and library rebuilt for it, message)
+CORRUPTIONS = {
+    "flipped byte": (
+        lambda d: d[:-5] + bytes([d[-5] ^ 0x40]) + d[-4:], False, "checksum"
+    ),
+    "truncated": (lambda d: d[:-8], False, "file size"),
+    "newer format": (
+        lambda d: d[:8] + (2).to_bytes(4, "little") + d[12:], False, "format version 2"
+    ),
+    "missing": (lambda d: None, False, "cannot read the reweight data"),
+    "stale library": (lambda d: _field(d, "FLAV", 0, 13, 7), False, "digest"),
+    "target evaluation": (lambda d: _field(d, "STGT", 0, 0, 1 << 20), True, "target"),
+    "ordering target": (lambda d: _field(d, "SORD", 0, 1, 1 << 20), True, "ordering"),
+    "colour length": (
+        lambda d: _field(d, "STGT", 0, 2, _pool_end(d)), True, "target"
+    ),
+    "assignment without key": (
+        lambda d: _field(d, "FLAV", 0, 8, 0), True, "flavour"
+    ),
+    "call without evaluations": (lambda d: _field(d, "SCAL", 0, 0, 0), True, "call"),
+    "helicity map value": (_helicity_value, True, "flavour"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(CORRUPTIONS))
+def test_a_corrupted_data_file_fails_the_load(switch, tmp_path, name):
+    """umami_initialize refuses damaged, mismatched or out-of-range data with a
+    message; semantic damage behind a matching digest is caught by validation."""
+
+    library = switch[4]
+    output = Path(library._name).parents[1]
+    patch, header, message = CORRUPTIONS[name]
+    data = patch((output / "reweight_p0.rwd").read_bytes())
+    copy = _rebuilt(output, tmp_path / "copy", data, header)
+    status, stderr = _initialize(copy)
+    assert status != 0
+    assert "umami: " in stderr and message in stderr, stderr

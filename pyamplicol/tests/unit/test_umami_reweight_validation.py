@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Crafted UMAMI metadata must not reach the generated reweight sources."""
+"""Crafted UMAMI metadata must not reach the reweight provider data."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 
 from pyamplicol.artifacts.umami_reweight import (
     load_umami_metadata,
-    reweight_header,
+    reweight_tables,
     switch_catalogue,
     write_reweight_provider,
 )
@@ -60,9 +60,10 @@ def _write(artifact: Path, document) -> Path:
     return artifact
 
 
-def test_valid_metadata_renders():
-    header = reweight_header(_document(), [_document()], "lc", "full")
-    assert "reweight_c0_f0_permutation[] = {0, 1, 2, 3};" in header
+def test_valid_metadata_gives_tables():
+    tables = reweight_tables(_document(), [_document()], "lc", "full")
+    (row,) = tables.channels[0]
+    assert row.permutation == (0, 1, 2, 3) and row.target_permutation is None
 
 
 @pytest.mark.parametrize(
@@ -75,7 +76,7 @@ def test_valid_metadata_renders():
 )
 def test_non_integer_metadata_is_rejected(document):
     with pytest.raises(ValueError, match="integer"):
-        reweight_header(document, [_document()], "lc", "full")
+        reweight_tables(document, [_document()], "lc", "full")
 
 
 def test_provider_id_is_validated(tmp_path):
@@ -279,21 +280,21 @@ def _crossed_reference(signs):
 
 def test_crossed_reference_rows_carry_their_signs():
     reference, target = _crossed_reference([1, -1, -1, 1])
-    header = reweight_header(reference, [target], "lc", "full")
-    assert "static const signed char reweight_c0_f0_signs[] = {1, -1, -1, 1};" in header
-    assert (
-        "{0, 0, reweight_c0_f0_permutation, reweight_c0_f0_signs, "
-        "reweight_c0_f0_reference, reweight_c0_f0_target, 1, "
-        '"u_g_to_u_g", reweight_c0_f0_target_permutation, NULL, 1.0, -1, NULL},'
-    ) in header
-    # uncrossed rows: no signs on either side
-    assert "reweight_c0_f0_permutation, NULL, reweight_c0_f0_reference" in (
-        reweight_header(_document(), [_document()], "lc", "full")
+    (row,) = reweight_tables(reference, [target], "lc", "full").channels[0]
+    assert row.reference_signs == (1, -1, -1, 1)
+    assert (row.reference_process, row.target_process) == (0, 0)
+    assert (row.reference_assignment, row.assignment_key) == (1, "u_g_to_u_g")
+    assert row.target_permutation is not None and row.target_signs is None
+    assert (row.target_factor, row.target_assignment, row.target_assignment_key) == (
+        1.0, -1, None
     )
+    # uncrossed rows: no signs on either side
+    (plain,) = reweight_tables(_document(), [_document()], "lc", "full").channels[0]
+    assert plain.reference_signs is None and plain.target_signs is None
     for signs in ([1, -1, 2, 1], [1, -1, True, 1]):
         bad, _ = _crossed_reference(signs)
         with pytest.raises(ValueError, match=r"momentum signs|integer"):
-            reweight_header(bad, [target], "lc", "full")
+            reweight_tables(bad, [target], "lc", "full")
 
 
 def test_canonical_legs_keep_crossed_slots():
@@ -364,20 +365,17 @@ def test_switch_evaluations_of_crossed_members_carry_their_signs():
             for e in call["evaluations"]
         }
         assert len(kinds) == 1
-    from pyamplicol.artifacts.umami_reweight import _switch_tables
+    from pyamplicol.artifacts.umami_reweight import _switch_rows
 
     reference["helicities"] = [[1, 1, 1, 1]]
-    lines: list[str] = []
-    _switch_tables(reference, catalogue, lambda *_: (0, None, 1.0, -1, None), lines)
+    rows = _switch_rows(reference, catalogue, lambda *_: (0, None, 1.0, -1, None))
     index = catalogue["evaluations"].index(crossed[0])
-    prefix = "static const signed char reweight_switch_"
-    assert f"{prefix}s{index}[] = {{1, -1, -1, 1}};" in lines
-    assert f"{prefix}h{index}[] = {{1, -1, 1, 1}};" in lines
+    assert rows.evaluations[index].signs == (1, -1, -1, 1)
+    assert rows.evaluations[index].helicity_signs == (1, -1, 1, 1)
     assert any(
-        line.endswith(f"reweight_switch_s{index}, reweight_switch_h{index}}},")
-        for line in lines
+        e.assignment_key == "r0" and e.signs is None and e.helicity_signs is None
+        for e in rows.evaluations
     )
-    assert any(line.endswith('"r0", NULL, NULL},') for line in lines)
 
 
 @pytest.mark.parametrize(

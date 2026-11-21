@@ -820,8 +820,11 @@ def test_crossed_reweight_tables_carry_their_signs(built):
     }
     assert crossed
     ((output, _, _),) = built["reweight"]["crossing"].values()
-    header = next(output.glob("reweight_*.h")).read_text()
-    assert "_signs[] = {" in header and "reweight_switch_s" in header
+    from pyamplicol.artifacts.umami_reweight_data import decode_reweight_data
+
+    tables = decode_reweight_data(next(output.glob("reweight_*.rwd")).read_bytes())
+    assert any(row.reference_signs for rows in tables.channels for row in rows)
+    assert any(e.signs for e in tables.switch.evaluations)
     from pyamplicol.artifacts.umami_reweight import switch_catalogue
 
     ((data, _),) = built["umami"]["crossing"]
@@ -846,7 +849,12 @@ def test_reweight_provider_without_signs_is_refused(built, tmp_path):
     """Reference rows that lose the signs of crossed assignments fail at load
     (the core's crossing of the assignment differs)."""
 
-    import re
+    from dataclasses import replace
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        decode_reweight_data,
+        write_reweight_data,
+    )
 
     output = tmp_path / "stripped"
     (identifier,) = write_reweight_provider(
@@ -855,13 +863,12 @@ def test_reweight_provider_without_signs_is_refused(built, tmp_path):
         output,
         switch_lines=SWITCH_LINES,
     )
-    header = output / f"reweight_{identifier}.h"
-    text, count = re.subn(
-        r"_permutation, reweight_c\d+_f\d+_signs,", "_permutation, NULL,",
-        header.read_text(),
-    )
+    tables = decode_reweight_data((output / f"reweight_{identifier}.rwd").read_bytes())
+    count = sum(row.reference_signs is not None for rows in tables.channels for row in rows)
     assert count
-    header.write_text(text)
+    for rows in tables.channels:
+        rows[:] = [replace(row, reference_signs=None) for row in rows]
+    write_reweight_data(output, tables)
     _make(output, _config_executable())
     library = _library(output / f"build/libreweight_{identifier}.so")
     handle = ct.c_void_p()
