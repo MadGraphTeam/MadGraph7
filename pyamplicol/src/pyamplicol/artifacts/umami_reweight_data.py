@@ -725,7 +725,8 @@ def decode_reweight_data(data: bytes) -> ReweightTables:
                 raise ValueError("reweight data: a switch call without evaluations")
             members = ints(members, count, 0, n_eval, False)
             if assignments == NULL:
-                if count != 1 or entry_count != 1 or permutations != NULL or entries != NULL:
+                plain = count == 1 and entry_count == 1
+                if not plain or permutations != NULL or entries != NULL:
                     raise ValueError("reweight data: malformed plain switch call")
                 calls.append(SwitchCall(members, None, None, None))
                 continue
@@ -751,7 +752,9 @@ def decode_reweight_data(data: bytes) -> ReweightTables:
         _range("ordering evaluation", orderings.evaluation, 0, n_eval)
         written = {e for call in calls for e in call.evaluations}
         if not written.issuperset(orderings.evaluation):
-            raise ValueError("reweight data: an ordering reads an evaluation no call writes")
+            raise ValueError(
+                "reweight data: an ordering reads an evaluation no call writes"
+            )
         _range("ordering target", orderings.target, -1, n_targets)
         _range("ordering parton density", orderings.pdf0, 0, PDF_COLUMNS)
         _range("ordering parton density", orderings.pdf1, 0, PDF_COLUMNS)
