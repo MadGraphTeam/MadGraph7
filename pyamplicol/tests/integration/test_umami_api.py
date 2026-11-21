@@ -8,6 +8,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -249,6 +250,11 @@ def providers(request, tmp_path_factory):
         assert documents[0]["provider"]["supports_alpha_s"]
         assert all(
             process["alpha_s_parameter"] == "aS"
+            for process in documents[0]["runtime_processes"]
+        )
+        # proven from the model expressions, see the event-alpha_s test below
+        assert all(
+            process["alpha_s_power"] == 2
             for process in documents[0]["runtime_processes"]
         )
     if restricted:
@@ -766,6 +772,186 @@ def test_rejects_other_valid_artifact_with_identical_external_labels(
     invalid = ct.c_void_p(123)
     assert provider.library.umami_initialize(ct.byref(invalid), os.fsencode(other)) == 1
     assert invalid.value is None
+
+
+def _call(provider, handle, events, *, alpha_s=None, helicities=None, offset=0):
+    """One call over events of (channel, flavour, point, random helicity)."""
+    stride, n = len(events) + offset, len(events[0][2])
+    rows = [events[0]] * offset + list(events)
+    momenta = (ct.c_double * (4 * n * stride))(
+        *(
+            float(rows[event][2][leg][component])
+            for component in range(4)
+            for leg in range(n)
+            for event in range(stride)
+        )
+    )
+    inputs = {
+        0: momenta,
+        2: (ct.c_int * stride)(*(row[1] for row in rows)),
+        4: (ct.c_double * stride)(*(row[3] for row in rows)),
+        8: (ct.c_uint * stride)(*(row[0] for row in rows)),
+    }
+    if alpha_s is not None:
+        inputs[1] = (ct.c_double * stride)(*([alpha_s[0]] * offset + list(alpha_s)))
+    if helicities is not None:
+        inputs[6] = (ct.c_int * stride)(*([helicities[0]] * offset + list(helicities)))
+    outputs = {
+        0: (ct.c_double * stride)(*[-123.0] * stride),
+        3: (ct.c_int * stride)(*[-123] * stride),
+    }
+    if provider.data["provider"]["color_accuracy"] == "lc":
+        outputs[2] = (ct.c_int * stride)(*[-123] * stride)
+    status = provider.library.umami_matrix_element(
+        handle,
+        len(events),
+        stride,
+        offset,
+        len(inputs),
+        (ct.c_int * len(inputs))(*inputs),
+        (ct.c_void_p * len(inputs))(
+            *(ct.cast(value, ct.c_void_p) for value in inputs.values())
+        ),
+        len(outputs),
+        (ct.c_int * len(outputs))(*outputs),
+        (ct.c_void_p * len(outputs))(
+            *(ct.cast(value, ct.c_void_p) for value in outputs.values())
+        ),
+    )
+    return status, {key: list(value)[offset:] for key, value in outputs.items()}
+
+
+def _distinct_points(provider, entry, count):
+    """Physical points of one entry that differ in their matrix elements."""
+    point = _point(provider, entry)
+    masses = provider.data["provider"]["masses"]
+    incoming = provider.data["provider"]["incoming_count"]
+    final = list(range(incoming, len(point)))
+    swaps = [(a, b) for a in final for b in final if a < b and masses[a] == masses[b]]
+    points = []
+    for index in range(count):
+        legs = list(point)
+        if swaps and index % 2:
+            a, b = swaps[(index // 2) % len(swaps)]
+            legs[a], legs[b] = legs[b], legs[a]
+        # Massless points scale without leaving the mass shell.
+        scale = 1.0 + 0.01 * index if not any(masses) else 1.0
+        points.append(tuple(tuple(scale * v for v in leg) for leg in legs))
+    return points
+
+
+def test_batched_calls_match_single_events(providers):
+    for provider in providers:
+        selections = [
+            (channel, flavour)
+            for channel, description in enumerate(provider.data["channels"])
+            for flavour in range(len(description["processes"]))
+        ]
+        # More events than one native batch, with the selections interleaved.
+        events = []
+        per_selection = 1 + 600 // len(selections)
+        for channel, flavour in selections:
+            entry = _entry(provider, channel, flavour)
+            for index, point in enumerate(
+                _distinct_points(provider, entry, per_selection)
+            ):
+                events.append((channel, flavour, point, (0.37 * index + 0.11) % 1.0))
+        order = sorted(range(len(events)), key=lambda i: (i * 7919) % len(events))
+        events = [events[i] for i in order]
+        supports_alpha_s = provider.data["provider"]["supports_alpha_s"]
+        name = provider.data["provider"].get("alpha_s_parameter")
+        with provider.handle() as handle:
+            reference = (
+                _parameter(provider, handle, name).real if supports_alpha_s else 0.0
+            )
+            # runs of equal values and changing ones
+            alpha_s = [
+                reference * (1.0 + 0.1 * ((i // 3) % 4)) for i in range(len(events))
+            ]
+            labels = [i % len(provider.data["helicities"]) for i in range(len(events))]
+            cases = [{}, {"helicities": labels}]
+            if supports_alpha_s:
+                cases += [
+                    {"alpha_s": alpha_s},
+                    {"alpha_s": alpha_s, "helicities": labels},
+                ]
+            for case in cases:
+                status, batched = _call(provider, handle, events, offset=2, **case)
+                assert status == 0
+                # Structurally zero helicities differ by rounding only.
+                scale = 1e-12 * max(abs(value) for value in batched[0])
+                for position in range(0, len(events), len(events) // 97 + 1):
+                    single_case = {
+                        key: [value[position]] for key, value in case.items()
+                    }
+                    status, single = _call(
+                        provider, handle, [events[position]], **single_case
+                    )
+                    assert status == 0
+                    for key, values in single.items():
+                        assert batched[key][position] == pytest.approx(
+                            values[0], rel=1e-12, abs=scale if key == 0 else 0
+                        ), (sorted(case), key, position)
+                assert -123 not in batched[3]
+            if supports_alpha_s:
+                assert _parameter(provider, handle, name).real == reference
+
+
+def test_event_alpha_s_without_proven_power_sets_the_parameter(providers, tmp_path):
+    for provider in providers:
+        if not provider.data["provider"]["supports_alpha_s"]:
+            continue
+        # The same provider, rebuilt as if its alpha_s power were not proven.
+        sdk = tmp_path / "sdk"
+        shutil.copytree(provider.artifact / "API/umami", sdk)
+        for header in sdk.glob("provider_*.h"):
+            text = header.read_text()
+            unproven = re.sub(r'("aS"), [0-9]+, ', r"\1, -1, ", text)
+            assert unproven != text
+            header.write_text(unproven)
+        build = tmp_path / "build"
+        completed = subprocess.run(
+            [
+                "make",
+                "-C",
+                str(sdk),
+                f"BUILD_DIR={build}",
+                f"RUSTICOL_CONFIG={_config_executable()}",
+            ],
+            env=dict(
+                os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[2] / "src")
+            ),
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        fallback = Provider(
+            provider.artifact,
+            build,
+            provider.data,
+            _library(build / provider.data["provider"]["library"]),
+            [],
+        )
+        name = provider.data["provider"]["alpha_s_parameter"]
+        events = [
+            (channel, flavour, point, 0.5)
+            for channel, description in enumerate(provider.data["channels"])
+            for flavour in range(len(description["processes"]))
+            for point in _distinct_points(
+                provider, _entry(provider, channel, flavour), 8
+            )
+        ]
+        with provider.handle() as proven, fallback.handle() as unproven:
+            reference = _parameter(provider, proven, name).real
+            alpha_s = [reference * (0.8 + 0.05 * (i % 7)) for i in range(len(events))]
+            status, expected = _call(provider, proven, events, alpha_s=alpha_s)
+            assert status == 0
+            status, values = _call(fallback, unproven, events, alpha_s=alpha_s)
+            assert status == 0
+            assert values[0] == pytest.approx(expected[0], rel=1e-12)
+            assert _parameter(fallback, unproven, name).real == reference
 
 
 def _assert_relative_make_run(provider, *, makefile=None):

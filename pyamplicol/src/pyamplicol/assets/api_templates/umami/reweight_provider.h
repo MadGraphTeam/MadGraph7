@@ -8,6 +8,8 @@ typedef struct {
     const char *key;
     const int *pdgs;
     const char *alpha_s_name;
+    /* ME(alpha_s) = (alpha_s / alpha_s_0)^alpha_s_power ME(alpha_s_0), -1 if unproven. */
+    int alpha_s_power;
     size_t helicity_count;
 } ReweightProcess;
 
@@ -24,6 +26,47 @@ typedef struct {
     const ReweightFlavour *flavours;
 } ReweightChannel;
 
+/* Flavour switch: every flavour of the provider in event slot order. */
+typedef struct {
+    size_t process;
+    /* runtime[j] = input[legs[j]] */
+    const size_t *legs;
+} ReweightSwitchEvaluation;
+
+typedef struct {
+    size_t evaluation;
+    /* parton density columns of the incoming legs, PDG id + 6 (gluon 6) */
+    unsigned char pdf[2];
+    /* x1 f x2 f weight * LC is the ordering's share of the summed flavour */
+    double weight;
+    /* switch target index, -1 for a flavour events are generated for */
+    int target;
+} ReweightSwitchOrdering;
+
+typedef struct {
+    size_t evaluation, target_process;
+    /* colour index of each flow of the reference process, see ReweightSwitchFlows */
+    const int *colors;
+} ReweightSwitchTarget;
+
+typedef struct {
+    size_t flow_count;
+    const char *const *flow_ids;
+} ReweightSwitchFlows;
+
+typedef struct {
+    size_t evaluation_count;
+    const ReweightSwitchEvaluation *evaluations;
+    size_t ordering_count;
+    const ReweightSwitchOrdering *orderings;
+    size_t target_count;
+    const ReweightSwitchTarget *targets;
+    /* per reference process */
+    const ReweightSwitchFlows *flows;
+    /* the exported helicities, particle_count values each */
+    const int *helicities;
+} ReweightSwitch;
+
 typedef struct {
     const char *id;
     size_t particle_count, exported_helicity_count;
@@ -37,5 +80,6 @@ typedef struct {
     size_t channel_count;
     const ReweightChannel *channels;
     bool supports_alpha_s;
+    const ReweightSwitch *flavor_switch;
 } ReweightProvider;
 #endif

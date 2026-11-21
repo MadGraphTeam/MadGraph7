@@ -11,9 +11,17 @@ input the library sums helicities. Its components include the physical spin and
 colour averages and identical-particle normalization. The caller supplies any
 subtraction factors separately.
 
-The real-emission extensions in ABI 1.4 preserve the numeric keys of the
-MadGraph7 feature branch's ABI 1.3. Discover inputs and outputs through the
-capability functions.
+The real-emission extensions in ABI 1.5 preserve the released ABI 1.3 flavour
+selection keys: random flavour and parton densities are inputs 15 and 16, and
+selected flavour is output 13. Direct strong/EW couplings are appended as inputs
+17 and 18, and local squared orders as output 14. Discover inputs and outputs
+through the capability functions.
+
+The draft NLO ABI 1.4 used the same slots for different quantities and is not
+compatible with the released flavour interface. Regenerate its process outputs
+and libraries. The native bridge requires ABI 1.5 and the updated process
+fingerprint; MadSpace rejects providers explicitly reporting the draft ABI 1.4.
+Released ABI 1.3 libraries remain supported.
 
 * ``UMAMI_META_COUPLING_NAMES`` returns a library-owned comma-separated string.
   ``UMAMI_META_SQUARED_ORDER_POWERS`` fills a caller-allocated integer array

@@ -257,23 +257,26 @@ int main() {
             with open(path) as stream:
                 header = stream.read()
             self.assertRegex(
-                header, r'#define\s+UMAMI_MINOR_VERSION\s+4\b')
+                header, r'#define\s+UMAMI_MINOR_VERSION\s+5\b')
             for symbol in required:
                 self.assertIn(symbol, header)
 
     @unittest.skipUnless(shutil.which('gcc'), 'requires a C11 compiler')
     def test_umami_extensions_preserve_upstream_numeric_keys(self):
-        """Appended NLO keys must never alias upstream minor-version2 keys."""
+        """Appended NLO keys must never alias released minor-version3 keys."""
         source = '''#include "umami.h"
 _Static_assert(UMAMI_IN_PARTICLE_COUNT==9,"upstream inputs");
 _Static_assert(UMAMI_IN_BEAM_INDEX==14,"upstream inputs");
-_Static_assert(UMAMI_IN_G_STRONG==15,"NLO input");
+_Static_assert(UMAMI_IN_RANDOM_FLAVOR==15,"released flavour input");
+_Static_assert(UMAMI_IN_PARTON_DENSITIES==16,"released PDF input");
+_Static_assert(UMAMI_IN_G_STRONG==17,"NLO input");
 _Static_assert(UMAMI_OUT_CUT==6,"upstream outputs");
 _Static_assert(UMAMI_OUT_MATRIX_ELEMENT_RATIO==12,"upstream outputs");
-_Static_assert(UMAMI_OUT_SQUARED_ORDERS==13,"NLO output");
-_Static_assert(UMAMI_IN_G_EW==16,"optional EW coupling");
+_Static_assert(UMAMI_OUT_FLAVOR_INDEX==13,"released flavour output");
+_Static_assert(UMAMI_OUT_SQUARED_ORDERS==14,"NLO output");
+_Static_assert(UMAMI_IN_G_EW==18,"optional EW coupling");
 _Static_assert(UMAMI_META_SQUARED_ORDER_POWERS==10,"coupling powers");
-_Static_assert(UMAMI_MINOR_VERSION==4,"additive ABI");
+_Static_assert(UMAMI_MINOR_VERSION==5,"additive ABI");
 '''
         for path in self._umami_headers():
             compiled = subprocess.run(['gcc', '-std=c11', '-x', 'c',
@@ -281,6 +284,55 @@ _Static_assert(UMAMI_MINOR_VERSION==4,"additive ABI");
                 input=source.replace('"umami.h"', json.dumps(os.path.basename(path))),
                 text=True, capture_output=True)
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
+
+    @unittest.skipUnless(shutil.which('g++'), 'requires a C++ compiler')
+    def test_backend_capabilities_do_not_alias_flavour_switch_keys(self):
+        """Compile the actual capability functions against the merged header."""
+        templates = os.path.join(MG5DIR, 'madgraph', 'iolibs', 'template_files',
+                          'madmatrix', 'backend')
+        header = self._umami_headers()[0]
+        for backend in ('cpu', 'simd', 'gpu'):
+            with open(os.path.join(templates, backend, 'umami.cc')) as stream:
+                source = stream.read()
+            start = source.index('  UmamiStatus umami_supported_inputs(')
+            end = source.index('  UmamiStatus umami_initialize(', start)
+            functions = source[start:end]
+            for orders, ew in ((1, True), (3, True), (1, False)):
+                with self.subTest(backend=backend, orders=orders, ew=ew), \
+                        tempfile.TemporaryDirectory() as directory:
+                    probe = '''#include "umami.h"
+#include <array>
+struct UmamiOrders { static constexpr bool ewResolved = EW; };
+struct ProcessData { static constexpr int nsqampso = ORDERS; };
+FUNCTIONS
+int main() {
+  bool const *inputs, *outputs; int ni, no;
+  if(umami_supported_inputs(&inputs,&ni)!=UMAMI_SUCCESS ||
+     umami_supported_outputs(&outputs,&no)!=UMAMI_SUCCESS) return 1;
+  if(ni!=UMAMI_INPUT_KEY_COUNT || no!=UMAMI_OUTPUT_KEY_COUNT) return 2;
+  if(inputs[UMAMI_IN_RANDOM_FLAVOR] || inputs[UMAMI_IN_PARTON_DENSITIES] ||
+     outputs[UMAMI_OUT_FLAVOR_INDEX]) return 3;
+  if(!inputs[UMAMI_IN_G_STRONG]) return 4;
+  if(inputs[UMAMI_IN_G_EW] != EXPECT_EW) return 5;
+  if(outputs[UMAMI_OUT_SQUARED_ORDERS] != EXPECT_ORDERS) return 6;
+  if(outputs[UMAMI_OUT_GPU_STREAM] != GPU) return 7;
+}
+'''.replace('FUNCTIONS', functions).replace('ORDERS;', str(orders)+';')
+                    probe = probe.replace('= EW;', '= '+str(ew).lower()+';')
+                    gpu = backend == 'gpu'
+                    probe = probe.replace('EXPECT_EW', str(ew and (not gpu or orders == 1)).lower())
+                    probe = probe.replace('EXPECT_ORDERS', str(not gpu or orders == 1).lower())
+                    probe = probe.replace('!= GPU)', '!= '+str(gpu).lower()+')')
+                    path = os.path.join(directory, 'capabilities.cc')
+                    with open(path, 'w') as stream:
+                        stream.write(probe)
+                    executable = os.path.join(directory, 'capabilities')
+                    compiled = subprocess.run([
+                        'g++', '-std=c++17', '-I'+os.path.dirname(header),
+                        path, '-o', executable], capture_output=True, text=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    result = subprocess.run([executable], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
 
     def test_generated_nlo_bridge_has_the_frozen_c_abi(self):
         """Fortran calls one exception-safe, dynamically loaded C adapter."""

@@ -154,7 +154,7 @@ extern "C"
               real.get_meta( UMAMI_META_PARTICLE_COUNT,
                              &real.particle_count ) != UMAMI_SUCCESS )
             throw std::runtime_error( "incomplete UMAMI metadata in " + path );
-          if( major != UMAMI_MAJOR_VERSION || minor < 4 )
+          if( major != UMAMI_MAJOR_VERSION || minor < 5 )
             throw std::runtime_error( "incompatible UMAMI ABI in " + path );
           if( !fingerprint || std::string( fingerprint ) != config.fingerprint )
             throw std::runtime_error( "process fingerprint mismatch in " + path );

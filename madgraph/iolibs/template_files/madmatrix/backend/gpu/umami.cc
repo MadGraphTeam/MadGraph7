@@ -586,10 +586,16 @@ extern "C"
 
   UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
-    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
-    // HELICITY_INDEX, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, true, UmamiOrders::ewResolved && ProcessData::nsqampso == 1 };
-    *supported = data;
+    static const auto data = [] {
+      std::array<bool, UMAMI_INPUT_KEY_COUNT> keys{};
+      for( auto key : { UMAMI_IN_MOMENTA, UMAMI_IN_ALPHA_S, UMAMI_IN_FLAVOR_INDEX,
+                        UMAMI_IN_RANDOM_COLOR, UMAMI_IN_RANDOM_HELICITY, UMAMI_IN_RANDOM_DIAGRAM,
+                        UMAMI_IN_HELICITY_INDEX, UMAMI_IN_DIAGRAM_INDEX, UMAMI_IN_G_STRONG } )
+        keys[key] = true;
+      keys[UMAMI_IN_G_EW] = UmamiOrders::ewResolved && ProcessData::nsqampso == 1;
+      return keys;
+    }();
+    *supported = data.data();
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }
@@ -604,9 +610,15 @@ extern "C"
 
   UmamiStatus umami_supported_outputs( bool const** supported, int* count )
   {
-    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
-    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true, true, false, false, false, false, false, false, false, ProcessData::nsqampso == 1 };
-    *supported = data;
+    static const auto data = [] {
+      std::array<bool, UMAMI_OUTPUT_KEY_COUNT> keys{};
+      for( auto key : { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_DIAGRAM_AMP2, UMAMI_OUT_COLOR_INDEX,
+                        UMAMI_OUT_HELICITY_INDEX, UMAMI_OUT_DIAGRAM_INDEX, UMAMI_OUT_GPU_STREAM } )
+        keys[key] = true;
+      keys[UMAMI_OUT_SQUARED_ORDERS] = ProcessData::nsqampso == 1;
+      return keys;
+    }();
+    *supported = data.data();
     *count = UMAMI_OUTPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }

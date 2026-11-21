@@ -1,6 +1,6 @@
 # NLO matrix elements through UMAMI
 
-Nov 17, 2026, last updated Nov 20, 2026 · @Ramon
+Nov 17, 2026, last updated Nov 21, 2026 · @Ramon
 
 ## What this is
 
@@ -15,7 +15,7 @@ It keeps what the integrands need for QCD, EW and mixed QCD-EW corrections, the 
 ## Implemented real-provider scope
 
 The native NLO real-emission path implements the real-library part of these
-conventions through the additive UMAMI 1.4 interface. One library evaluates one
+conventions through the additive UMAMI 1.5 interface. One library evaluates one
 real matrix element, without FKS-row inputs. It returns every signed local
 squared-order component in batch-contiguous layout. For these NLO libraries,
 `OUT_MATRIX_ELEMENT` is the sum of the complete returned block; the native FKS
@@ -33,9 +33,12 @@ and native diagram-weight requirements keep their declared Fortran path. All
 generated providers use the same header and report unsupported capabilities
 explicitly; the Fortran-backed LO provider does not advertise the new blocks.
 
-The dated provider survey and proposed 1.3 numbering below are historical. The
-implemented 1.4 numeric keys are preserved, rather than reordered around an
-unmerged proposal. Born providers and their colour/spin correlations, the
+The dated provider survey and proposed numbering below are historical. The
+released UMAMI 1.3 flavour-switch keys retain their numeric positions; ABI 1.5
+appends the NLO inputs and outputs after them. The earlier draft NLO 1.4 used
+colliding positions, so its generated outputs and libraries must be regenerated.
+The native bridge checks the new ABI and fingerprint, and MadSpace rejects the
+incompatible draft version before initializing it. Born providers and their colour/spin correlations, the
 MadLoop UMAMI shim, colour-flow outputs and further GPU capabilities require
 additional development in a separate branch and PR. The flattened coloured-leg
 pair convention applies to that future Born work, not to the real block here.

@@ -3215,14 +3215,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         payload = {
             'process': process.nice_string().strip(),
             'nexternal': me.get_nexternal_ninitial()[0],
-            'umami_minor': 4,
+            'umami_minor': 5,
             'flavours': [[list(row) for row in group]
                          for group in self.runtime_flavor_groups(me)],
             'split_orders': list(process.get('split_orders') or []),
             'squared_orders': [list(order) for order in squared_orders],
         }
         if self.nlo_real_order_blocks:
-            payload['order_block_contract'] = 'nlo-real-all-local-v1'
+            payload['order_block_contract'] = 'nlo-real-all-local-umami15-v2'
         encoded = json.dumps(payload, sort_keys=True,
                              separators=(',', ':')).encode('utf-8')
         return hashlib.sha256(encoded).hexdigest()

@@ -29,8 +29,10 @@ extern "C" {
 /**
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
+ * Version 1.5 extends the released 1.3 key layout. The unreleased NLO 1.4 draft
+ * used colliding key values; its generated libraries must be regenerated.
  */
-#define UMAMI_MINOR_VERSION 4
+#define UMAMI_MINOR_VERSION 5
 
 typedef enum {
     /** operation was executed successfully */
@@ -135,6 +137,11 @@ typedef enum {
     UMAMI_IN_PDG_ID,
     /** index of the beam (0 or 1), type: `int`, shape: `()` */
     UMAMI_IN_BEAM_INDEX,
+    /** random number for flavor selection, type: `double`, shape: `()` */
+    UMAMI_IN_RANDOM_FLAVOR,
+    /** parton densities x f(x, mu_F) of the two incoming legs for the PDG ids -6..6,
+     * index 6 the gluon, type: `double`, shape: `(2, 13)` */
+    UMAMI_IN_PARTON_DENSITIES,
     /** direct value of the strong coupling G, type: `double`, shape: `()` */
     UMAMI_IN_G_STRONG,
     /** electric coupling, double (). Scales the explicit QED power of each
@@ -176,6 +183,9 @@ typedef enum {
     /** ratio of the matrix element to a reference matrix element defined by the
      * caller, type: `double`, shape: `()` */
     UMAMI_OUT_MATRIX_ELEMENT_RATIO,
+    /** selected flavor index, -1 if the flavor is unchanged, type: `int`, shape:
+     * `()` */
+    UMAMI_OUT_FLAVOR_INDEX,
     /** all local squared-order components, type: `double`, shape:
      * `(squared-order count)`. The order index is the outer (strided) dimension. */
     UMAMI_OUT_SQUARED_ORDERS,

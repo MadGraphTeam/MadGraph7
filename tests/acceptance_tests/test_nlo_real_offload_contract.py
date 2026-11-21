@@ -43,6 +43,8 @@ from madgraph.various import banner
 
 
 pjoin = os.path.join
+# UMAMI 1.5 appends NLO keys after the released 1.3 flavour-switch keys.
+IN_G_STRONG, IN_G_EW, OUT_SQUARED_ORDERS = 17, 18, 14
 ORACLE_PATH = pjoin(
     MG5DIR, 'tests', 'input_files', 'nlo_real_amplitudes_oracle.json')
 
@@ -172,8 +174,16 @@ class TestNLORealFortranOracle(unittest.TestCase):
                             if line and line[0].upper() != 'C')
         def array_values(name):
             match = re.search(r'DATA\s+' + name + r'\s*/([^/]+)/', flat, re.I)
-            self.assertIsNotNone(match, name)
-            return [int(x) for x in re.findall(r'-?\d+', match.group(1))]
+            if match:
+                return [int(x) for x in re.findall(r'-?\d+', match.group(1))]
+            # Native-context exports initialize each alias separately; the
+            # original physical real rows remain the leading entries.
+            indexed = {int(index): int(value) for index, value in re.findall(
+                r'DATA\s+' + name + r'\s*\(\s*(\d+)\s*\)\s*/\s*(-?\d+)\s*/',
+                flat, re.I)}
+            self.assertTrue(indexed, name)
+            self.assertEqual(sorted(indexed), list(range(1, max(indexed) + 1)))
+            return [indexed[index] for index in sorted(indexed)]
         topology = array_values('FKS_TOPOLOGY_D')
         flavours = array_values('REAL_FLAVOR_INDEX_D')
         pdgs = {int(row): tuple(map(int, re.findall(r'-?\d+', values)))
@@ -269,9 +279,21 @@ class TestNLORealFortranOracle(unittest.TestCase):
             local_counts[real_me] = int(match.group(1))
         return row_to_me, local_counts
 
+    @staticmethod
+    def _physical_scalar_name(subproc):
+        with open(pjoin(subproc, 'real_me_chooser.f')) as stream:
+            chooser = stream.read()
+        return ('SMATRIX_REAL_LOCAL' if re.search(
+            r'(?i)\bsubroutine\s+smatrix_real_local\s*\(', chooser)
+            else 'SMATRIX_REAL')
+
     def _driver_source(self, row_to_me, local_counts, vector=False,
-                       fortran_vector=False):
+                       fortran_vector=False, scalar_name='SMATRIX_REAL'):
         """Build a fixed-form driver without modifying production wrappers.
+
+        Physical real rows are distinct from the extra native Born/history
+        aliases. Exercise the retained physical provider leaf (including its
+        MadMatrix wrapper when generated), not the surrounding alias router.
 
         With fortran_vector, the batched Fortran real ME of lane 1 is
         recorded, after the scalar one on the same point and FKS row (which
@@ -289,7 +311,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
             "      INCLUDE 'orders.inc'",
             "      INCLUDE 'nFKSconfigs.inc'",
             "      INCLUDE 'coupl.inc'",
-            '      INTEGER I,J,K,NPOINTS,NME,NLOCAL,NFKSPROCESS',
+            '      INTEGER I,J,K,IROW,NPOINTS,NME,NLOCAL,NFKSPROCESS',
             '      DOUBLE PRECISION P(0:3,NEXTERNAL),GIN,WGT',
             '      DOUBLE PRECISION LOCAL(0:AMP_SPLIT_SIZE)',
             '      DOUBLE PRECISION GLOBAL(AMP_SPLIT_SIZE)',
@@ -319,7 +341,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
         if fortran_vector:
             lines.append('        CALL UPDATE_AS_PARAM_VEC(1)')
         lines.extend([
-            '        DO NFKSPROCESS=1,FKS_CONFIGS',
+            '        DO IROW=1,%d' % max(row_to_me),
+            '          NFKSPROCESS=IROW',
             '          NME=0',
             '          NLOCAL=0',
         ])
@@ -331,18 +354,18 @@ class TestNLORealFortranOracle(unittest.TestCase):
             lines.append(
                 '          IF (NME.EQ.%d) NLOCAL=%d' %
                 (real_me, count))
-        real_call = ['          CALL SMATRIX_REAL(P,GLOBAL,WGT)']
+        real_call = ['          CALL %s(P,GLOBAL,WGT)' % scalar_name]
         if vector:
             real_call = [
                 '          CALL SMATRIX_REAL_VEC(P,GLOBAL,WGT,1,',
                 '     $      NFKSPROCESS,',
                 '     $      REAL_FLAVOR_INDEX_D(NFKSPROCESS))']
         if fortran_vector:
-            real_call.insert(0, '          CALL SMATRIX_REAL(P,SGLOBAL,SWGT)')
+            real_call.insert(0, '          CALL %s(P,SGLOBAL,SWGT)' % scalar_name)
         lines.extend([
             '          GLOBAL(:)=0D0',
             '          LOCAL(:)=0D0',
-        ] + real_call)
+        ] + real_call + ['          NFKSPROCESS=IROW'])
         for real_me in real_mes:
             lines.extend([
                 '          IF (NME.EQ.%d) THEN' % real_me,
@@ -416,8 +439,9 @@ class TestNLORealFortranOracle(unittest.TestCase):
         self.assertEqual(selected_rows, sorted(row_to_me))
 
         name = 'check_real_oracle%s' % ('_fvec' if fortran_vector else '')
-        driver = self._driver_source(row_to_me, local_counts,
-                                     fortran_vector=fortran_vector)
+        driver = self._driver_source(
+            row_to_me, local_counts, fortran_vector=fortran_vector,
+            scalar_name=self._physical_scalar_name(subproc))
         driver_path = pjoin(subproc, name + '.f')
         with open(driver_path, 'w') as stream:
             stream.write(driver)
@@ -475,7 +499,7 @@ class TestNLORealFortranOracle(unittest.TestCase):
 
     def _compile_routed_driver(self, output_path, case, vector=False,
                                backend='scalar'):
-        """Build a frozen-oracle driver through the production wrapper.
+        """Check the production physical-provider wrapper before alias routing.
 
         The backend is compiled into the wrapper exactly as the run-card
         nlo_real_backend is (there is no run-time override), so each backend
@@ -489,7 +513,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
             suffix, backend))
         with open(pjoin(subproc, source_name), 'w') as stream:
             stream.write(self._driver_source(
-                row_to_me, local_counts, vector=vector))
+                row_to_me, local_counts, vector=vector,
+                scalar_name=self._physical_scalar_name(subproc)))
 
         misc.compile(cwd=pjoin(output_path, 'Source'))
         backend_option = 'NLO_REAL_RUNTIME_BACKEND=%s' % backend
@@ -747,8 +772,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
         self._assert_case(case, actual)
 
     def _run_fortran_vector_case(self, name):
-        """The batched Fortran real ME (SMATRIX_REAL_VEC) reproduces the
-        oracle and, bit for bit, the scalar SMATRIX_REAL.
+        """The batched Fortran physical provider reproduces the oracle
+        and, bit for bit, the scalar physical provider.
 
         Once the scalar routine has set the helicity filter, the batched one
         must apply it, including the reuse of a helicity identical to an
@@ -1088,11 +1113,11 @@ C     Initialize the native EW coupling for the caller-side order weights.
                                 for component in range(4):
                                     momenta[stride * (nexternal * component + particle)
                                             + offset + event] = point['momenta'][particle][component]
-                        keys = (ctypes.c_int * 3)(0, 15, 2)
+                        keys = (ctypes.c_int * 3)(0, IN_G_STRONG, 2)
                         inputs = (ctypes.c_void_p * 3)(*[
                             ctypes.cast(array, ctypes.c_void_p)
                             for array in (momenta, coupling, flavour)])
-                        output_keys = (ctypes.c_int * 1)(13)
+                        output_keys = (ctypes.c_int * 1)(OUT_SQUARED_ORDERS)
                         outputs = (ctypes.c_void_p * 1)(
                             ctypes.cast(output, ctypes.c_void_p))
                         pointers = []
@@ -1116,7 +1141,7 @@ C     Initialize the native EW coupling for the caller-side order weights.
                             if explicit_stream:
                                 self.assertEqual(runtime.cudaStreamCreateWithFlags(
                                     ctypes.byref(stream), 1), 0)
-                                output_keys = (ctypes.c_int * 2)(13, 5)
+                                output_keys = (ctypes.c_int * 2)(OUT_SQUARED_ORDERS, 5)
                                 outputs = (ctypes.c_void_p * 2)(
                                     pointers[3].value, stream.value)
                             self.assertEqual(library.umami_matrix_element(
@@ -1548,8 +1573,8 @@ C     Initialize the native EW coupling for the caller-side order weights.
             ins = (ctypes.c_void_p * 3)(*map(ctypes.addressof, (momenta, gs, ew)))
             outs = (ctypes.c_void_p * 2)(*map(ctypes.addressof, (total, blocks)))
             self.assertEqual(library.umami_matrix_element(
-                handle, count, stride, offset, 3, (ctypes.c_int * 3)(0, 15, 16), ins,
-                2, (ctypes.c_int * 2)(0, 13), outs), 0)
+                handle, count, stride, offset, 3, (ctypes.c_int * 3)(0, IN_G_STRONG, IN_G_EW), ins,
+                2, (ctypes.c_int * 2)(0, OUT_SQUARED_ORDERS), outs), 0)
             for lane, point in enumerate(references, offset):
                 expected = [component['value'] * (gs[lane] / point['g_strong']) ** qs
                             * (ew[lane] / card_e) ** qe for component, (qs, qe)
@@ -1566,8 +1591,8 @@ C     Initialize the native EW coupling for the caller-side order weights.
                 handle, (ctypes.c_int * 2)(0, 0), 2), 0)
             saved_blocks, saved_total = list(blocks), list(total)
             self.assertEqual(library.umami_matrix_element(
-                handle, count, stride, offset, 3, (ctypes.c_int * 3)(0, 15, 16), ins,
-                2, (ctypes.c_int * 2)(0, 13), outs), 0)
+                handle, count, stride, offset, 3, (ctypes.c_int * 3)(0, IN_G_STRONG, IN_G_EW), ins,
+                2, (ctypes.c_int * 2)(0, OUT_SQUARED_ORDERS), outs), 0)
             for actual, expected in zip(blocks, saved_blocks):
                 self._assert_close(actual, expected)
             for actual, expected in zip(total, saved_total):
@@ -1575,7 +1600,7 @@ C     Initialize the native EW coupling for the caller-side order weights.
             # The ordinary total-only path (no G_EW) must agree with the
             # unscaled full block sum after a component request as well.
             self.assertEqual(library.umami_matrix_element(
-                handle, count, stride, offset, 2, (ctypes.c_int * 2)(0, 15), ins,
+                handle, count, stride, offset, 2, (ctypes.c_int * 2)(0, IN_G_STRONG), ins,
                 1, (ctypes.c_int * 1)(0), outs), 0)
             for lane, point in enumerate(references, offset):
                 expected = [component['value'] * (gs[lane] / point['g_strong']) ** qs
