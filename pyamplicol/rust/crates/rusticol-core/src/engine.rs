@@ -4641,6 +4641,8 @@ pub(crate) struct NativeUnionRelabelling {
     derived: BTreeMap<(u32, u32, Vec<(u32, i32)>), u32>,
     /// Per template slot, whether it may cross (from the lane's external sources).
     slot_crossings: Box<[NativeSlotCrossing]>,
+    /// Whether the lane evaluates crossed assignments (false on full-colour lanes).
+    crossed_lane: bool,
     /// Interned crossings of the assignments; id 0 is the identity.
     crossings: Vec<NativeUnionCrossing>,
 }
@@ -4832,8 +4834,15 @@ impl NativeUnionRelabelling {
             pattern_by_pairs,
             derived: BTreeMap::new(),
             slot_crossings,
+            crossed_lane: true,
             crossings,
         })
+    }
+
+    /// Refuse cross-side symmetries: the lane does not evaluate crossed assignments.
+    pub(crate) fn without_crossed_lane(mut self) -> Self {
+        self.crossed_lane = false;
+        self
     }
 
     pub(crate) fn crossing(&self, id: u32) -> Option<&NativeUnionCrossing> {
@@ -4963,9 +4972,10 @@ impl NativeUnionRelabelling {
     }
 
     /// Validate a template slot symmetry: every slot maps to one of the same side and
-    /// PDG or, on a template that is not pure-vector, to one of the opposite side with
-    /// the same all-outgoing flavour where both slots may cross (Weyl fermions with
-    /// image PDG -pdg, massless vectors with equal PDG).
+    /// PDG or, on a leading-colour lane and a template that is not pure-vector, to one of
+    /// the opposite side with the same all-outgoing flavour where both slots may cross
+    /// (Weyl fermions with image PDG -pdg, massless vectors with equal PDG). Wrong
+    /// flavours are `InvalidArgument`, uncrossable slots or lanes `Compatibility`.
     fn validate_symmetry(&self, permutation: &[usize]) -> RusticolResult<()> {
         let count = self.template_pdgs.len();
         let mut seen = vec![false; count];
@@ -4978,46 +4988,67 @@ impl NativeUnionRelabelling {
                 "relabelling must be a permutation of the {count} template slots"
             )));
         }
-        let pure_vector = self
-            .slot_crossings
-            .iter()
-            .all(|slot| *slot == NativeSlotCrossing::MasslessVector);
+        let crosses =
+            |slot: usize, image: usize| (slot < self.initial_count) != (image < self.initial_count);
+        // Flavour first, over every slot, so the error kind does not depend on slot order.
+        let mut uncrossable = None;
         for (slot, image) in permutation.iter().copied().enumerate() {
             let (pdg, image_pdg) = (self.template_pdgs[slot], self.template_pdgs[image]);
-            if (slot < self.initial_count) == (image < self.initial_count) {
-                if pdg != image_pdg {
-                    return Err(RusticolError::invalid_argument(
-                        "relabelling must map every template slot to one of the same side and particle",
-                    ));
-                }
-                continue;
-            }
-            let same_outgoing = match (
-                self.slot_crossings.get(slot),
-                self.slot_crossings.get(image),
-            ) {
-                (Some(NativeSlotCrossing::WeylFermion), Some(NativeSlotCrossing::WeylFermion)) => {
-                    image_pdg == -pdg
-                }
-                (
-                    Some(NativeSlotCrossing::MasslessVector),
-                    Some(NativeSlotCrossing::MasslessVector),
-                ) => image_pdg == pdg,
-                _ => {
-                    return Err(RusticolError::compatibility(format!(
-                        "relabelling maps template slot {slot} across sides to slot {image}; \
-                         both must be massless Weyl fermions or massless vectors that may cross"
-                    )));
+            let flavour_ok = if !crosses(slot, image) {
+                pdg == image_pdg
+            } else {
+                match (
+                    self.slot_crossings.get(slot),
+                    self.slot_crossings.get(image),
+                ) {
+                    (
+                        Some(NativeSlotCrossing::WeylFermion),
+                        Some(NativeSlotCrossing::WeylFermion),
+                    ) => image_pdg == -pdg,
+                    (
+                        Some(NativeSlotCrossing::MasslessVector),
+                        Some(NativeSlotCrossing::MasslessVector),
+                    ) => image_pdg == pdg,
+                    (
+                        Some(NativeSlotCrossing::WeylFermion | NativeSlotCrossing::MasslessVector),
+                        Some(NativeSlotCrossing::WeylFermion | NativeSlotCrossing::MasslessVector),
+                    ) => false,
+                    // A slot that may not cross: refused below unless no particle fits.
+                    _ => {
+                        uncrossable.get_or_insert((slot, image));
+                        image_pdg == pdg || image_pdg == -pdg
+                    }
                 }
             };
-            if !same_outgoing {
+            if !flavour_ok {
                 return Err(RusticolError::invalid_argument(format!(
                     "relabelling must map every template slot to one of the same side and \
                      particle, or across sides to one of the same all-outgoing flavour (slot \
                      {slot} -> {image})"
                 )));
             }
-            if pure_vector {
+        }
+        if let Some((slot, image)) = uncrossable {
+            return Err(RusticolError::compatibility(format!(
+                "relabelling maps template slot {slot} across sides to slot {image}; \
+                 both must be massless Weyl fermions or massless vectors that may cross"
+            )));
+        }
+        if permutation
+            .iter()
+            .enumerate()
+            .any(|(slot, image)| crosses(slot, *image))
+        {
+            if !self.crossed_lane {
+                return Err(RusticolError::compatibility(
+                    "relabelling crosses sides on a full-colour lane (full-colour crossing is unsupported)",
+                ));
+            }
+            if self
+                .slot_crossings
+                .iter()
+                .all(|slot| *slot == NativeSlotCrossing::MasslessVector)
+            {
                 return Err(RusticolError::compatibility(
                     "relabelling crosses sides on a pure-vector template",
                 ));

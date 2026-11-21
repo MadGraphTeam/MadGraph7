@@ -95,7 +95,25 @@ fn cross_side_symmetries_need_equal_outgoing_flavour_on_crossable_slots() {
         .validate_symmetry(&[0, 1, 2, 4, 3, 5])
         .unwrap_err();
     assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
-    // A slot that may not cross (or no crossing table, as on the selector lane).
+    // Quark -> gluon across sides is a wrong flavour, not an uncrossable slot.
+    let error = relabelling
+        .validate_symmetry(&[5, 1, 2, 3, 4, 0])
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
+    // A wrong flavour wins over an uncrossable slot at any slot order.
+    let error = dg_relabelling(vec![W, V, W, W, NativeSlotCrossing::Refused, V])
+        .validate_symmetry(&[4, 1, 0, 3, 2, 5])
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
+    // A full-colour lane refuses cross-side images but keeps same-side ones.
+    let full_colour = dg_relabelling(vec![W, V, W, W, W, V]).without_crossed_lane();
+    full_colour.validate_symmetry(&[0, 1, 3, 2, 4, 5]).unwrap();
+    let error = full_colour
+        .validate_symmetry(&[4, 1, 2, 3, 0, 5])
+        .unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(error.to_string().contains("full-colour"), "{error}");
+    // A slot that may not cross, or no crossing table.
     for crossings in [vec![W, V, W, W, NativeSlotCrossing::Refused, V], Vec::new()] {
         let error = dg_relabelling(crossings)
             .validate_symmetry(&[4, 1, 2, 3, 0, 5])
@@ -252,10 +270,16 @@ fn signed_momenta(runtime: &NativeRuntime, assignment: u32, point: &[[f64; 4]]) 
         .collect()
 }
 
+/// Per-helicity values of `assignment` at member point `point`, keyed by member helicity.
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-fn assignment_total(runtime: &mut NativeRuntime, assignment: u32, point: &[[f64; 4]]) -> f64 {
+fn assignment_helicities(
+    runtime: &mut NativeRuntime,
+    assignment: u32,
+    point: &[[f64; 4]],
+) -> BTreeMap<Vec<i32>, f64> {
     let momenta = signed_momenta(runtime, assignment, point);
-    let mut value = [0.0];
+    let count = runtime.helicity_ids().unwrap().len();
+    let mut values = vec![0.0; count];
     runtime
         .evaluate_assignments_f64_into(
             &momenta,
@@ -264,11 +288,20 @@ fn assignment_total(runtime: &mut NativeRuntime, assignment: u32, point: &[[f64;
             &[assignment],
             None,
             None,
-            AssignmentOutputMode::Total,
-            &mut value,
+            AssignmentOutputMode::PerHelicity,
+            &mut values,
         )
         .unwrap();
-    value[0]
+    values
+        .into_iter()
+        .enumerate()
+        .map(|(helicity, value)| {
+            let labels = runtime
+                .flavour_union_assignment_helicity(assignment as usize, helicity)
+                .unwrap();
+            (labels, value)
+        })
+        .collect()
 }
 
 /// Every non-identity template symmetry of `0..count`: with at least one cross-side
@@ -325,8 +358,9 @@ fn symmetries(relabelling: &NativeUnionRelabelling, count: usize, cross: bool) -
 
 /// `RUSTICOL_CROSS_SIDE_RELABELLING_ARTIFACTS`: LC flavour-union artifacts (path list).
 /// Every cross-side relabelling of every unconjugated assignment of every template equals
-/// the base at the same member point at roundoff; conjugated bases are refused. Same-side
-/// (v1) relabellings at the same points give the roundoff reference.
+/// the base at the same member point, in total and per member helicity, at roundoff
+/// (99% within 1e-12, all within 1e-9); conjugated bases are refused. Same-side (v1)
+/// relabellings at the same points give the roundoff reference.
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
 fn cross_side_relabelled_values_equal_their_base_when_artifacts_are_supplied() {
@@ -337,8 +371,9 @@ fn cross_side_relabelled_values_equal_their_base_when_artifacts_are_supplied() {
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
     };
     let (mut refused, mut templates) = (0usize, 0usize);
-    // relative differences: [same side, cross side]
+    // relative differences: [same side, cross side]; per helicity relative to the total
     let mut differences = [Vec::<f64>::new(), Vec::<f64>::new()];
+    let mut helicity_differences = [Vec::<f64>::new(), Vec::<f64>::new()];
     for root in std::env::split_paths(&roots) {
         let root = root.to_str().unwrap().to_owned();
         for process in read(std::path::Path::new(&root).join("artifact.json"))["processes"]
@@ -405,14 +440,32 @@ fn cross_side_relabelled_values_equal_their_base_when_artifacts_are_supplied() {
                         };
                         let seed = (u64::from(base) << 20) | ((cross as u64) << 19) | index as u64;
                         let point = member_point(count, seed);
-                        let direct = assignment_total(&mut runtime, base, &point);
-                        let value = assignment_total(&mut runtime, relabelled, &point);
-                        let relative = (value - direct).abs() / direct.abs().max(value.abs());
+                        let own = assignment_helicities(&mut runtime, base, &point);
+                        let other = assignment_helicities(&mut runtime, relabelled, &point);
+                        let direct = own.values().sum::<f64>();
+                        let value = other.values().sum::<f64>();
+                        let scale = direct.abs().max(value.abs());
+                        let relative = (value - direct).abs() / scale;
                         assert!(
-                            relative <= 1e-8 && direct != 0.0,
+                            relative <= 1e-9 && direct != 0.0,
                             "{id} assignment {base} by {permutation:?}: {value:e} vs {direct:e} ({relative:e})"
                         );
                         differences[cross].push(relative);
+                        assert_eq!(
+                            own.keys().collect::<Vec<_>>(),
+                            other.keys().collect::<Vec<_>>(),
+                            "{id} assignment {base} by {permutation:?}: member helicities differ"
+                        );
+                        let worst = own
+                            .values()
+                            .zip(other.values())
+                            .map(|(left, right)| (left - right).abs() / scale)
+                            .fold(0.0, f64::max);
+                        assert!(
+                            worst <= 1e-9,
+                            "{id} assignment {base} by {permutation:?}: helicity difference {worst:e}"
+                        );
+                        helicity_differences[cross].push(worst);
                         if relative > 1e-11 {
                             eprintln!(
                                 "  {} {id} assignment {base} by {permutation:?}: {relative:e}",
@@ -428,32 +481,46 @@ fn cross_side_relabelled_values_equal_their_base_when_artifacts_are_supplied() {
         !differences[1].is_empty(),
         "no cross-side relabelling was compared"
     );
-    for (label, values) in ["same-side", "cross-side"].iter().zip(&mut differences) {
+    let labels = [
+        "same-side",
+        "cross-side",
+        "same-side per helicity",
+        "cross-side per helicity",
+    ];
+    let [same, cross] = differences;
+    let [same_helicity, cross_helicity] = helicity_differences;
+    for (label, mut values) in labels
+        .into_iter()
+        .zip([same, cross, same_helicity, cross_helicity])
+    {
         values.sort_by(f64::total_cmp);
         let quantile = |q: f64| {
             values
                 .get(((values.len() as f64 - 1.0) * q) as usize)
                 .copied()
+                .unwrap_or(0.0)
         };
         eprintln!(
             "{label} relabellings: templates {templates}, compared {}, median {:e}, 99% {:e}, max {:e}, \
              above 1e-12 {}",
             values.len(),
-            quantile(0.5).unwrap_or(0.0),
-            quantile(0.99).unwrap_or(0.0),
+            quantile(0.5),
+            quantile(0.99),
             values.last().copied().unwrap_or(0.0),
             values.iter().filter(|value| **value > 1e-12).count()
         );
+        // Rare badly conditioned points: a wrong sign or pattern is O(1) everywhere.
+        assert!(quantile(0.99) <= 1e-12, "{label}: 99% {:e}", quantile(0.99));
     }
     eprintln!("cross-side relabellings refused: {refused}");
 }
 
-/// `RUSTICOL_SELECTOR_ONLY_ARTIFACTS`: on the selector-only lane a cross-side relabelling
-/// yields a crossed id that the lane refuses to evaluate, and a same-side one equals its
-/// base summed over helicities at the same member point.
+/// `RUSTICOL_SELECTOR_ONLY_ARTIFACTS`: full-colour lanes (selector-only, contracted) refuse
+/// a cross-side relabelling at relabel time; on the selector-only lane a same-side one
+/// equals its base summed over helicities at the same member point.
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
-fn selector_only_lane_relabels_same_side_only_when_artifacts_are_supplied() {
+fn selector_only_lane_refuses_cross_side_relabelling_when_artifacts_are_supplied() {
     let Some(roots) = std::env::var_os("RUSTICOL_SELECTOR_ONLY_ARTIFACTS") else {
         return;
     };
@@ -471,13 +538,19 @@ fn selector_only_lane_relabels_same_side_only_when_artifacts_are_supplied() {
             let Ok(mut runtime) = NativeRuntime::load(&root, Some(id), None) else {
                 continue;
             };
-            if !matches!(
+            let selector = matches!(
                 runtime.execution_lane,
                 NativeExecutionLane::RecurrenceSelector(_)
-            ) || runtime
-                .flavour_union_relabelling
-                .as_ref()
-                .is_none_or(|table| table.pattern_pairs.is_none())
+            );
+            let contracted = matches!(
+                &runtime.execution_lane,
+                NativeExecutionLane::Recurrence(lane) if lane.is_contracted()
+            );
+            if !(selector || contracted)
+                || runtime
+                    .flavour_union_relabelling
+                    .as_ref()
+                    .is_none_or(|table| table.pattern_pairs.is_none())
             {
                 continue;
             }
@@ -485,8 +558,7 @@ fn selector_only_lane_relabels_same_side_only_when_artifacts_are_supplied() {
             let (pdgs, initial) = (table.template_pdgs.clone(), table.initial_count);
             let count = pdgs.len();
             // A cross-side candidate: an incoming slot to an outgoing one of the same
-            // all-outgoing flavour (quark in -> antiquark out, gluon in -> gluon out). It is
-            // a valid crossed id, but the selector-only lane refuses to evaluate it.
+            // all-outgoing flavour (quark in -> antiquark out, gluon in -> gluon out).
             let candidate = (0..initial).find_map(|slot| {
                 let outgoing = if pdgs[slot] == 21 { 21 } else { -pdgs[slot] };
                 (initial..count)
@@ -497,28 +569,9 @@ fn selector_only_lane_relabels_same_side_only_when_artifacts_are_supplied() {
                         permutation
                     })
             });
-            if let Some(permutation) = candidate
-                && let Ok(crossed) = runtime.relabel_assignment(0, &permutation)
-            {
-                assert!(
-                    runtime.flavour_union_assignments_crossed(&[crossed]),
-                    "{id}"
-                );
-                let point = member_point(count, 3);
-                let momenta = signed_momenta(&runtime, crossed, &point);
-                let mut value = [0.0];
-                let error = runtime
-                    .evaluate_assignments_f64_into(
-                        &momenta,
-                        1,
-                        &[0, 1],
-                        &[crossed],
-                        Some(&[0]),
-                        None,
-                        AssignmentOutputMode::Total,
-                        &mut value,
-                    )
-                    .unwrap_err();
+            if let Some(permutation) = candidate {
+                let known = runtime.flavour_union_assignments().unwrap().len();
+                let error = runtime.relabel_assignment(0, &permutation).unwrap_err();
                 assert_eq!(
                     error.kind(),
                     crate::RusticolErrorKind::Compatibility,
@@ -530,7 +583,11 @@ fn selector_only_lane_relabels_same_side_only_when_artifacts_are_supplied() {
                         .contains("full-colour crossing is unsupported"),
                     "{error}"
                 );
+                assert_eq!(runtime.flavour_union_assignments().unwrap().len(), known);
                 refused += 1;
+            }
+            if !selector {
+                continue;
             }
             // A same-side swap of two equal final slots, applied to every assignment.
             let Some((left, right)) = (initial..count).find_map(|left| {

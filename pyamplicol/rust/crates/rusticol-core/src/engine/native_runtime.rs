@@ -2383,29 +2383,33 @@ impl NativeRuntime {
     ) -> RusticolResult<()> {
         #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
         {
-            let (pattern_count, slot_crossings, pairing_digest) = match &self.execution_lane {
-                NativeExecutionLane::Recurrence(lane) => {
-                    let Some(pattern_count) = lane.pattern_count() else {
-                        return Ok(());
-                    };
-                    (
-                        pattern_count,
-                        lane.external_slot_crossings().to_vec(),
-                        lane.companion_pairing_catalog_sha256().map(str::to_owned),
-                    )
-                }
-                NativeExecutionLane::RecurrenceSelector(lane) => {
-                    let Some(pattern_count) = lane.pattern_count() else {
-                        return Ok(());
-                    };
-                    (
-                        pattern_count,
-                        lane.external_slot_crossings().to_vec(),
-                        lane.pairing_catalog_sha256().map(str::to_owned),
-                    )
-                }
-                _ => return Ok(()),
-            };
+            // Only the leading-colour lane evaluates crossed assignments.
+            let (pattern_count, slot_crossings, pairing_digest, crossed_lane) =
+                match &self.execution_lane {
+                    NativeExecutionLane::Recurrence(lane) => {
+                        let Some(pattern_count) = lane.pattern_count() else {
+                            return Ok(());
+                        };
+                        (
+                            pattern_count,
+                            lane.external_slot_crossings().to_vec(),
+                            lane.companion_pairing_catalog_sha256().map(str::to_owned),
+                            !lane.is_contracted(),
+                        )
+                    }
+                    NativeExecutionLane::RecurrenceSelector(lane) => {
+                        let Some(pattern_count) = lane.pattern_count() else {
+                            return Ok(());
+                        };
+                        (
+                            pattern_count,
+                            lane.external_slot_crossings().to_vec(),
+                            lane.pairing_catalog_sha256().map(str::to_owned),
+                            false,
+                        )
+                    }
+                    _ => return Ok(()),
+                };
             let template = artifact
                 .manifest()
                 .processes
@@ -2446,6 +2450,9 @@ impl NativeRuntime {
                 pattern_count,
                 slot_crossings.into(),
             )?;
+            if !crossed_lane {
+                relabelling = relabelling.without_crossed_lane();
+            }
             let all = (0..pattern_count)
                 .map(|pattern| {
                     u32::try_from(pattern)
@@ -2595,12 +2602,13 @@ impl NativeRuntime {
     /// The assignment `assignment` relabelled by a template slot symmetry: the returned
     /// id evaluated at `q` equals `assignment` at `q'[r] = q[permutation[r]]` (totals;
     /// helicity and flow axes are relabelled accordingly). A slot maps to one of the same
-    /// side and PDG or, since `rusticol.flavour-union-relabelling.v2`, to the opposite side
-    /// with the same all-outgoing flavour where both may cross (Weyl fermion: image PDG
-    /// -pdg; massless vector: equal PDG; not on a pure-vector template). Such an image
-    /// yields a crossed assignment (refused for a conjugated base) and negates the moved
-    /// momentum, `q'[r] = -q[permutation[r]]`: both ids describe the same member event,
-    /// each at its own signed momenta. Patterns map as
+    /// side and PDG or, since `rusticol.flavour-union-relabelling.v2` and on a leading-colour
+    /// lane only, to the opposite side with the same all-outgoing flavour where both may
+    /// cross (Weyl fermion: image PDG -pdg; massless vector: equal PDG; not on a
+    /// pure-vector template). Such an image yields a crossed assignment (refused for a
+    /// conjugated base) and negates the moved momentum, `q'[r] = -q[permutation[r]]`; a
+    /// moved Weyl slot also flips its helicity label (`helicity_signs`, rho = -1). Both ids
+    /// describe the same member event, each at its own signed momenta. Patterns map as
     /// `(f, a) -> (permutation[f], permutation[a])`; factor, signs and conjugation are kept;
     /// the crossing is recomputed from the relabelled permutation. Ids are interned per
     /// (assignment, crossing, derived patterns) and stay valid; at most
@@ -3082,15 +3090,19 @@ impl NativeRuntime {
                         }
                     }
                 } else {
-                    // One value block per (point, own slot) entry, in a kept buffer the
-                    // lane zeroes.
+                    // One value block per (point, own slot) entry; narrow blocks (compact
+                    // or total) reuse a kept buffer the lane zeroes, wide ones are fresh.
                     let block = if compact_color.is_some() {
                         helicity_count
                     } else {
                         block
                     };
-                    let mut values =
-                        std::mem::take(&mut self.point_selector_scratch.assignment_values);
+                    let keep = block <= helicity_count;
+                    let mut values = if keep {
+                        std::mem::take(&mut self.point_selector_scratch.assignment_values)
+                    } else {
+                        Vec::new()
+                    };
                     values.resize(slots.len() * block, 0.0);
                     lane.run_pattern_assignments_into(
                         &mut self.runtime,
@@ -3118,7 +3130,7 @@ impl NativeRuntime {
                         }
                     }
                     // Keep at most 64 MiB between calls.
-                    if values.capacity() <= ASSIGNMENT_SCRATCH_KEEP {
+                    if keep && values.capacity() <= ASSIGNMENT_SCRATCH_KEEP {
                         self.point_selector_scratch.assignment_values = values;
                     }
                 }

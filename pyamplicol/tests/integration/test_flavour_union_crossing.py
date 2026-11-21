@@ -450,6 +450,86 @@ def test_relabelled_crossed_assignments_recompute_their_crossing(
             _close(value, own, abs(own), (symmetry, value))
 
 
+def _member_helicity_values(
+    template: Runtime, index: int, signed: Sequence[Point]
+) -> list[dict[tuple[int, ...], float]]:
+    """Per-helicity values of assignment ``index``, keyed by member helicity."""
+
+    entry = template.flavour_union_assignments[index]
+    perm = [int(value) for value in entry["permutation"]]
+    rho = [int(value) for value in entry["helicity_signs"]]
+    keys = []
+    for helicity in template.physics.helicities:
+        vector = [0] * len(perm)
+        for r, value in enumerate(helicity.values):
+            vector[perm[r]] = rho[r] * value
+        keys.append(tuple(vector))
+    rows = template.evaluate_assignments(
+        signed, [[index]] * len(signed), output="helicity"
+    )
+    return [dict(zip(keys, row[0], strict=True)) for row in rows]
+
+
+@pytest.mark.parametrize("expression", ["d d~ > d d~", "d d~ > d d~ g"])
+def test_cross_side_relabellings_equal_their_base(
+    artifacts: dict[str, Path], expression: str
+) -> None:
+    """rusticol.flavour-union-relabelling.v2: a quark slot moved to the other side
+    as the antiquark of the same all-outgoing flavour gives a crossed id that equals
+    its base at the same member point, in total and per member helicity."""
+
+    template = _template(artifacts["lc_union"], expression)
+    # d in <-> d~ out, d~ in <-> d out, and both.
+    symmetries = [[3, 1, 2, 0], [0, 2, 1, 3], [3, 2, 1, 0]]
+    symmetries = [perm + list(range(4, len(_pdgs(expression)))) for perm in symmetries]
+    compared = refused = 0
+    for index in range(len(template.flavour_union_assignments)):
+        base = template.flavour_union_assignments[index]
+        points = _member_points(str(base["expression"]))
+        for symmetry in symmetries:
+            try:
+                relabelled = template.relabel_assignment(index, symmetry)
+            except Exception as error:
+                # Conjugated bases may not be crossed.
+                assert base.get("conjugated"), (index, symmetry, error)
+                assert "crossed and conjugated" in str(error), error
+                refused += 1
+                continue
+            entry = template.flavour_union_assignments[relabelled]
+            assert entry["expression"] == base["expression"]
+            signed = {
+                which: [
+                    _signed(
+                        point,
+                        [int(v) for v in item["permutation"]],
+                        [int(v) for v in item["momentum_signs"]],
+                    )
+                    for point in points
+                ]
+                for which, item in (("base", base), ("relabelled", entry))
+            }
+            own = _member_helicity_values(template, index, signed["base"])
+            other = _member_helicity_values(template, relabelled, signed["relabelled"])
+            for point, (left, right) in enumerate(zip(own, other, strict=True)):
+                assert left.keys() == right.keys()
+                total = sum(left.values())
+                _close(sum(right.values()), total, abs(total), (index, symmetry, point))
+                for key, value in left.items():
+                    _close(right[key], value, abs(total), (index, symmetry, key))
+            compared += 1
+    assert compared >= len(symmetries), (compared, refused)
+
+
+def test_full_colour_lanes_refuse_cross_side_relabellings(
+    artifacts: dict[str, Path],
+) -> None:
+    template = _template(artifacts["full_union"], "d d~ > d d~")
+    count = len(template.flavour_union_assignments)
+    with pytest.raises(Exception, match="full-colour crossing is unsupported"):
+        template.relabel_assignment(0, [3, 1, 2, 0])
+    assert len(template.flavour_union_assignments) == count
+
+
 _C_PROBE = r"""
 #include <stdio.h>
 #include <stdlib.h>

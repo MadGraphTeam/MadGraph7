@@ -349,7 +349,7 @@ pub(super) struct PointSelectorExecutionScratch {
     pub(super) color_selector_sets: SelectorSetCache,
     pub(super) helicity_singletons: Vec<BTreeSet<String>>,
     pub(super) color_singletons: Vec<BTreeSet<String>>,
-    /// Resolved assignment blocks, kept across calls (zeroed by the lane).
+    /// Narrow (compact or total) assignment blocks, kept across calls (zeroed by the lane).
     pub(super) assignment_values: Vec<f64>,
 }
 
