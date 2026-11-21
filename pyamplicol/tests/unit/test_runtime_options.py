@@ -666,7 +666,8 @@ def threads():
     with open("/proc/self/status") as status:
         return int(next(l for l in status if l.startswith("Threads:")).split()[1])
 
-artifact, mode, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
+artifact, mode = sys.argv[1], sys.argv[2]
+count, limit = int(sys.argv[3]), int(sys.argv[4])
 point = [[180.91015625, 0, 0, 180.91015625], [180.91015625, 0, 0, -180.91015625],
          [180.91015625, 0, 31.74609375, 42.328125],
          [180.91015625, 0, -31.74609375, -42.328125]]
@@ -686,12 +687,21 @@ else:
         artifact.encode(), b"ggtt", None, None, toml, ctypes.byref(handle)) == 0
     _evaluate(sdk, handle, [point] * 8, [1e6] * 8)
     effective = None
-# Threads alive once the call's transient ones have exited (the threads of
-# a decode pool the load replaced exit asynchronously, docs "Threads"): a
-# pool, of the bound or of RAYON_NUM_THREADS, never exits.
+# Threads alive once the call's transient ones have exited: a pool, of the
+# bound or of RAYON_NUM_THREADS, never exits. The transient ones are the
+# threads of a decode pool the load replaced (docs "Threads") and
+# Symbolica's licence checks, each of which waits for its server's answer
+# (milliseconds on a near host, longer on a CI runner). The count is taken
+# once it has been steady for 0.3 s, and, while it is above `limit`, not
+# before a minute has passed.
 import time
-after, since, deadline = threads(), time.monotonic(), time.monotonic() + 2.0
-while time.monotonic() < deadline and time.monotonic() - since < 0.3:
+start = time.monotonic()
+after, since = threads(), start
+while True:
+    steady = time.monotonic() - since >= 0.3
+    waited = time.monotonic() - start
+    if steady and (after - before <= limit or waited >= 60.0):
+        break
     time.sleep(0.05)
     now = threads()
     if now != after:
@@ -700,10 +710,13 @@ print(json.dumps([before, after, effective, len(os.sched_getaffinity(0))]))
 """
 
 
-def _affinity_run(tmp_path, ggtt, mode, count, cores=None):  # noqa: F811
+def _affinity_run(tmp_path, ggtt, mode, count, limit, cores=None):  # noqa: F811
+    """The child's thread counts before and after one call; `limit` is the
+    most threads the caller accepts the call to leave alive."""
+
     script = tmp_path / "affinity.py"
     script.write_text(AFFINITY_SCRIPT)
-    command = [sys.executable, str(script), str(ggtt), mode, str(count)]
+    command = [sys.executable, str(script), str(ggtt), mode, str(count), str(limit)]
     if cores is not None:
         command = ["taskset", "-c", cores, *command]
     root = Path(__file__).resolve().parents[2]
@@ -736,10 +749,14 @@ def test_threads_above_the_affinity_mask_give_its_cores(ggtt, tmp_path):  # noqa
 
     first = sorted(os.sched_getaffinity(0))[:2]
     cores = f"{first[0]},{first[1]}"
-    before, after, effective, mask = _affinity_run(tmp_path, ggtt, "python", 64, cores)
+    before, after, effective, mask = _affinity_run(
+        tmp_path, ggtt, "python", 64, 4, cores
+    )
     assert (effective, mask) == (2, 2)
     assert after - before <= 2 * 2, (before, after)
-    before, after, _effective, mask = _affinity_run(tmp_path, ggtt, "sdk", HUGE, cores)
+    before, after, _effective, mask = _affinity_run(
+        tmp_path, ggtt, "sdk", HUGE, 4, cores
+    )
     assert mask == 2
     assert after - before <= 2 * 2, (before, after)
 
@@ -751,7 +768,9 @@ def test_the_sdk_thread_bound_counted(ggtt, tmp_path):  # noqa: F811
     after the call: at most the pool, no pool of 16)."""
 
     for count in (1, 2):
-        before, after, _effective, _mask = _affinity_run(tmp_path, ggtt, "sdk", count)
+        before, after, _effective, _mask = _affinity_run(
+            tmp_path, ggtt, "sdk", count, count + 1
+        )
         assert 1 <= after - before <= count + 1, (count, before, after)
 
 
