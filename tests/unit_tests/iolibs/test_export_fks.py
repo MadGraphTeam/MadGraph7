@@ -1088,7 +1088,9 @@ class TestFKSOutput(unittest.TestCase):
     # what differs between two outputs of the same process: the dates, the
     # timings, the command history (which has the option itself) and the
     # pickled model (a copy of the model of the session)
-    ignored_files = ['amcatnlo.tar.gz', 'index.html',
+    # gen_jpeg-pl copies each subprocess thumbnail to this shared preview;
+    # its final image depends on worker completion order, unlike the sources.
+    ignored_files = ['amcatnlo.tar.gz', 'index.html', os.path.join('HTML', 'card.jpg'),
                      os.path.join('Cards', 'proc_card_mg5.dat')]
     ignored_patterns = [r'_debug\.log$', r'\.pkl$']
 
