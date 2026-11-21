@@ -8270,7 +8270,9 @@ class GenerationBackend:
                 # Selector-only processes have no resolved output: check the
                 # per-point helicity route against the global selector instead.
                 selector_only = RECURRENCE_SELECTOR_ONLY_FC_RUNTIME_CAPABILITY in (
-                    runtime.required_runtime_capabilities
+                    process_record_by_id[process_id].get(
+                        "required_runtime_capabilities", ()
+                    )
                 )
                 for selector_label, selectors in selector_cases:
                     total = runtime.evaluate(samples, **selectors)

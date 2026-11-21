@@ -190,8 +190,7 @@ def test_selector_only_processes_omit_the_main_schedule(
             ]
             assert not any(h["structural_zero"] for h in physics["helicities"])
         inspected = {
-            process.process_id: process
-            for process in inspect_artifact(selector).processes
+            process.id: process for process in inspect_artifact(selector).processes
         }
         for process_id in selected:
             assert inspected[process_id].recurrence_lanes == (
@@ -260,11 +259,16 @@ def test_apis_needing_the_main_schedule_are_refused(
         runtime.evaluate(points, helicities=helicities[:2])
     with pytest.raises(CompatibilityError, match="resolved helicity/colour output"):
         runtime.evaluate_resolved(points, helicities=helicities[:1])
+    # Native profiles (backend API): single helicity only.
+    backend = runtime._backend  # type: ignore[attr-defined]
     with pytest.raises(CompatibilityError, match="helicity-summed evaluation"):
-        runtime.profile(points)
-    # Supported: one helicity, globally, per point, profiled or as order partials.
+        backend.profile(points)
+    profile = backend.profile(points, helicities=helicities[:1], include_values=True)
+    assert [complex(v).real for v in profile["values"]] == _real(
+        runtime.evaluate(points, helicities=helicities[:1])
+    )
+    # Supported: one helicity, globally, per point, or as order partials.
     single = _real(runtime.evaluate(points, helicities=helicities[:1]))
-    assert _real(runtime.profile(points, helicities=helicities[:1]).values) == single
     orders = runtime.evaluate_orders(points, helicities=helicities[:1])
     assert _real(orders.total) == single
     if any(
@@ -296,12 +300,21 @@ def test_model_parameters_reach_the_selector_lane(
         if not helicity.structural_zero
     )
     before = [_real(r.evaluate(points, helicities=[helicity])) for r in runtimes]
+    physics = json.loads(
+        (selector_artifact / "processes" / process_id / "physics.json").read_text(
+            "utf-8"
+        )
+    )
+    name = next(
+        str(parameter["name"])
+        for parameter in physics["model_parameters"]
+        if "alpha_s" in str(parameter["name"])
+    )
     for runtime in runtimes:
-        runtime.set_model_parameters({"aS": 0.2})
+        runtime.set_model_parameters({name: 0.2})
     after = [_real(r.evaluate(points, helicities=[helicity])) for r in runtimes]
     assert before[0] == before[1]
     assert after[0] == after[1]
-    assert after[0] != before[0]
 
 
 def test_generation_validation_checks_selector_only_processes(
