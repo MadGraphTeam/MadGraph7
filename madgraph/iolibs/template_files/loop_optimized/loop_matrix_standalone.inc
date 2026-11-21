@@ -46,6 +46,9 @@ C Modules
 C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
+## if(OniaPwave) {
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWPL, PWPD, %(proc_prefix)sPW_DUAL_INIT
+## }
 C
 ## if(ninjars_available) {
       USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
@@ -303,6 +306,9 @@ C
 ## if(Onia) {
       LOGICAL %(proc_prefix)sONIA_HEL_LIVE
 ## }
+## if(OniaPwave) {
+      LOGICAL %(proc_prefix)sONIA_PW_DIRECTION, %(proc_prefix)sONIA_PW_CT_INPUT
+## }
       INTEGER SET_RET_CODE_U
 ## if(LoopInduced){
 	  %(real_dp_format)s Median
@@ -444,8 +450,10 @@ C     This can be accessed with the SET_FORBID_HEL_DOUBLECHECK subroutine of Mad
 	  %(complex_dp_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)sAMPS/AMP
 ## }
+## if(not OniaPwave) {
 	  type(aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W  
+## }
 
       type(mp_aloha) MPW(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/MPW
@@ -453,6 +461,17 @@ C     This can be accessed with the SET_FORBID_HEL_DOUBLECHECK subroutine of Mad
 	  %(complex_dp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  %(complex_dp_format)s PL(0:3,-1:NLOOPWAVEFUNCS)
 	  common/%(proc_prefix)sWL/WL,PL
+## if(OniaPwave) {
+C     A P-wave bound state (onia_loop.f): the dual constituent momenta of
+C     the current direction of the relative momentum, the derivatives DWL of
+C     the loop wavefunctions, the dual momenta of the loop lines, and the
+C     polynomials PCOEFS of the propagator derivatives
+      INTEGER ONIA_ILZ, ONIA_PASS
+	  %(complex_dp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sPW_DWL/DWL
+	  %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  common/%(proc_prefix)sPW_PCOEFS/PCOEFS
+## }
 
 ## if(not AmplitudeReduction){
 	  %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
@@ -766,6 +785,22 @@ C The index -1 is for the charge-conjugated fermions with flipped fermion flow.
 	  ENDDO
 	ENDDO
   ENDDO
+## if(OniaPwave) {
+C The starting loop wavefunctions do not depend on the relative momentum
+  CALL %(proc_prefix)sPW_DUAL_INIT()
+  DO I=0,3
+    PWPL(I,-1)=0.0d0
+    PWPL(I,0)=0.0d0
+  ENDDO
+  DO I=1,MAXLWFSIZE
+    DO J=0,LOOPMAXCOEFS-1
+	  DO K=1,MAXLWFSIZE
+	    DWL(I,J,K,-1)=(0.0d0,0.0d0)
+	    DWL(I,J,K,0)=(0.0d0,0.0d0)
+	  ENDDO
+	ENDDO
+  ENDDO
+## }
   IF(BOOTANDSTOP) THEN
     WRITE(*,*) '##Stopped by user request.'
     stop
@@ -1128,6 +1163,9 @@ DO I=1,NLOOPGROUPS
   ENDDO
 ENDDO
 ## }
+## if(OniaPwave) {
+PCOEFS=(0.0d0,0.0d0)
+## }
 
 DO I=1,NLOOPGROUPS
   DO J=1,3
@@ -1192,6 +1230,12 @@ C  A constituent helicity configuration without effective Born at this point
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
   ENDDO
+## if(OniaPwave) {
+C  A P-wave bound state: the amplitudes and their derivatives along each
+C  direction eps(L_z) of the relative momentum (dual momenta PD)
+  DO ONIA_ILZ=1,3
+  IF (.NOT.%(proc_prefix)sONIA_PW_DIRECTION(P,H,ONIA_ILZ,PWPD)) CYCLE
+## }
   
   UVCT_REQ_SO_DONE=.FALSE.
   CT_REQ_SO_DONE=.FALSE.
@@ -1238,10 +1282,17 @@ c FeynRules, there are none of these type of counterterms.
   %(uvct_helas_calls)s
 3000 CONTINUE
   UVCT_REQ_SO_DONE=.TRUE.
+## if(OniaPwave) {
+C The P-wave bound state: the counterterm amplitudes (pass 1: derivative,
+C pass 2: value) with their effective Born
+  DO ONIA_PASS=1,2
+  IF (.NOT.%(proc_prefix)sONIA_PW_CT_INPUT(H,ONIA_PASS,AMP,AMPL)) CYCLE
+## } else {
 ## if(Onia) {
 C The bound states: the Born amplitudes are replaced by the effective Born
 C of this constituent helicity configuration
   CALL %(proc_prefix)sONIA_EFFECTIVE_BORN(H,AMP)
+## }
 ## }
 
 ## if(not AmplitudeReduction) {
@@ -1285,10 +1336,16 @@ C goes to ANS(K,1) and ANS(K,0): they are accumulated in registers instead.
   ENDDO
   ENDIF
 ## }
+## if(OniaPwave) {
+  ENDDO
+## }
   
   %(coef_construction)s
 4000 CONTINUE
   LOOP_REQ_SO_DONE=.TRUE.
+## if(OniaPwave) {
+  ENDDO
+## }
 
 ## if(AmplitudeReduction) {
   IF(SKIPLOOPEVAL.OR.(.NOT.LOOP_REQ_SO_DONE.AND..NOT.MP_LOOP_REQ_SO_DONE)) THEN

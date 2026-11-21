@@ -12,6 +12,11 @@ C Modules
 C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
+## if(OniaPwave) {
+C     (the double-precision HELAS calls of a P-wave bound state take the
+C     dual momenta PWPD; they are not used here, see ONIA_PW_NO_QP)
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWPD
+## }
 C
       IMPLICIT NONE
 C  
@@ -132,8 +137,10 @@ C
 	  type(mp_aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/W  
 
+## if(not OniaPwave) {
 	  type(aloha) DPW(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/DPW
+## }
 
 	  %(complex_mp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  %(complex_mp_format)s PL(0:3,-1:NLOOPWAVEFUNCS)
@@ -317,12 +324,19 @@ ENDDO
 
 DPW_COPIED = .False.
 ## if(Onia) {
+## if(OniaPwave) {
+C A P-wave bound state has no quadruple-precision evaluation yet: no
+C constituent helicity configuration contributes and the evaluation is
+C reported unstable (onia_loop.f)
+CALL %(proc_prefix)sONIA_PW_NO_QP()
+## } else {
 C The effective Born amplitudes of the bound states for this PS point
 IF (COMPUTE_INTEGRAND_IN_QP) THEN
   CALL %(proc_prefix)sMP_ONIA_PREPARE(MP_P)
 ELSE
   CALL %(proc_prefix)sONIA_PREPARE(P)
 ENDIF
+## }
 ## }
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
@@ -414,6 +428,7 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
         AMPL(K,I)=CMPLX(DP_AMPL(K,I),KIND=16)
       ENDDO
     ENDDO
+## if(not OniaPwave) {
     DO I=1,NWAVEFUNCS
       DO J=1,SIZE(W(I)%W)
         W(I)%W(J)=CMPLX(DPW(I)%W(J),KIND=16)
@@ -421,6 +436,7 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
       W(I)%P = DPW(I)%P
       W(I)%flv_index = DPW(I)%flv_index
     ENDDO
+## }
   ENDIF
 
 3000 CONTINUE
@@ -525,6 +541,7 @@ C Copy the multiple precision CT amplitudes computed to the AMPL double precisio
 
 c Copy the qp wfs to the dp ones as they are used to setup the CT calls.
 C This needs to be done once since only the momenta of these WF matters.
+## if(not OniaPwave) {
   IF(.NOT.DPW_COPIED.AND.COMPUTE_INTEGRAND_IN_QP) THEN
     DO I=1,NWAVEFUNCS
       DO J=1,SIZE(W(I)%W)
@@ -535,6 +552,7 @@ C This needs to be done once since only the momenta of these WF matters.
     ENDDO
     DPW_COPIED=.True.
   ENDIF
+## }
 
 ## if(AmplitudeReduction) {
   DO I=1,NSQUAREDSO

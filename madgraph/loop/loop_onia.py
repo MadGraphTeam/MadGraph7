@@ -33,10 +33,24 @@ amplitudes A(h) of each constituent helicity configuration replaced by the
 effective Born W(h). The configurations h sharing the helicities of the other
 (elementary) legs are combined; their index is OTHERS(h).
 
+A P-wave bound state (one per process) is the derivative of the projected
+amplitude in the relative momentum q of its constituents, p_Q = K/2 + q and
+p_Qbar = K/2 - q, along the polarisation vectors eps(L_z) of the orbital
+angular momentum, combined with the spin projectors by the Clebsch-Gordan
+coefficients <1 L_z; S S_z|J J_z> as at tree level. MadLoop computes the
+constituent amplitudes in dual numbers (value, derivative along eps(L_z)):
+the HELAS routines of a P-wave output are the dual ones of the tree-level
+output, the loop polynomials carry their derivative (the updates are
+linear in each factor), and the derivative of the loop propagators gives
+the integrals with one propagator doubled, reduced by TIRust (raised
+propagator powers). See onia_loop.inc for the projection of the
+interference.
+
 This module collects the data the generated Fortran needs.
 """
 
 import fractions
+import re
 import itertools
 
 import madgraph
@@ -107,13 +121,21 @@ def onia_loop_info(matrix_element):
         raise OniaLoopError('A bound state without its second constituent.')
     if not onia:
         raise OniaLoopError('No bound state in this process.')
+    pwave = [o for o in onia if o['L'] != 0]
     for o in onia:
-        if o['L'] != 0:
-            raise OniaLoopError('P-wave bound states (%s) are not supported at one loop yet.'
+        if o['L'] > 1:
+            raise OniaLoopError('Bound states with L > 1 (%s) are not supported at one loop.'
                                 % o['name'])
-        if o['S'] != o['J']:
+        if o['L'] == 0 and o['S'] != o['J']:
             raise OniaLoopError('Inconsistent S-wave bound state %s (S=%s, J=%s).'
                                 % (o['name'], o['S'], o['J']))
+        if o['L'] == 1 and not abs(o['S'] - 1) <= o['J'] <= o['S'] + 1:
+            raise OniaLoopError('Inconsistent P-wave bound state %s (S=%s, J=%s).'
+                                % (o['name'], o['S'], o['J']))
+    if len(pwave) > 1:
+        raise OniaLoopError('Processes with more than one P-wave bound state (%s) are '
+                            'not supported at one loop.'
+                            % ', '.join(o['name'] for o in pwave))
 
     # physical leg of each constituent leg: the second constituent of a bound
     # state takes the physical number of the first one
@@ -147,9 +169,25 @@ def onia_loop_info(matrix_element):
     for o in onia:
         norm *= fractions.Fraction(1, 3) if o['C'] == 1 else fractions.Fraction(2)
 
+    # the P-wave bound state (one at most): its index (1-based) in onia, 0 if
+    # there is none
+    ipwave = onia.index(pwave[0]) + 1 if pwave else 0
+
     return dict(nexternal=nexternal, ninitial=ninitial, nexternal_phys=nexternal_phys,
                 mapping=mapping, onia=onia, helc=helc, others=others,
-                nothers=len(signatures), jz=jz, norm=norm)
+                nothers=len(signatures), jz=jz, norm=norm, ipwave=ipwave)
+
+
+def has_pwave(matrix_element):
+    """True if the (loop) matrix element has a P-wave bound state (its
+    constituent legs carry onium['L'] = 1)."""
+    if not has_onia(matrix_element):
+        return False
+    for leg in matrix_element.get('processes')[0].get('legs'):
+        onium = leg.get('onium')
+        if onium and onium.get('L', 0) >= 1:
+            return True
+    return False
 
 
 def complex_fraction_product(a, b):
@@ -312,4 +350,82 @@ def physical_color_links(info, constituent_links):
                             for j in range(len(cl))] for i in range(len(cl))]
         else:
             result[key] = cl
+    return result
+
+
+#===============================================================================
+# P-wave: the coefficient construction in dual numbers
+#===============================================================================
+_PW_UPDATE = re.compile(r'^CALL (?P<pre>\w*?)UPDATE_WL_(?P<r>\d+)_(?P<v>\d+)'
+                        r'\(WL\((?P<a>[^()]*)\),(?P<n>[^,()]+),COEFS,(?P<m>[^,()]+),'
+                        r'(?P<k>[^,()]+),WL\((?P<b>[^()]*)\)\)$')
+_PW_CREATE = re.compile(r'^CALL (?P<pre>\w*?)CREATE_LOOP_COEFS'
+                        r'\(WL\((?P<a>[^()]*)\),(?P<rest>[^()]*)\)$')
+
+
+def pwave_coef_construction_calls(calls):
+    """The double-precision coefficient construction of a P-wave output: the
+    loop wavefunctions WL carry their derivative DWL in the relative
+    momentum. The (dual) loop vertex routines are unchanged: their dual
+    coefficients COEFS = C0 + d C1 update both polynomials,
+       WL' = U(WL, C0),   DWL' = U(DWL, C0) + U(WL, C1),
+    with the plain update routines U, and the closed loops are merged with
+    the P-wave weights (PW_CREATE_LOOP_COEFS). calls are the statements
+    of get_coef_construction_calls, with the process prefix substituted."""
+
+    result = []
+    for entry in calls:
+        result.append('\n'.join(_pwave_coef_statements(entry.split('\n'))))
+    return result
+
+
+def _pwave_coef_statements(statements):
+    """pwave_coef_construction_calls for the statements of one entry"""
+    result = []
+    for call in statements:
+        text = call.strip()
+        if not text.upper().startswith('CALL '):
+            result.append(call)
+            continue
+        update = _PW_UPDATE.match(text)
+        create = _PW_CREATE.match(text)
+        if update:
+            d = update.groupdict()
+            d['rout'] = int(d['r']) + int(d['v'])
+            result.append('\n'.join([
+                'CALL {pre}PW_SPLIT_COEFS(COEFS,COEFS0,COEFS1)',
+                'CALL {pre}UPDATE_WL_{r}_{v}(WL({a}),{n},COEFS0,{m},{k},WL({b}))',
+                'CALL {pre}UPDATE_WL_{r}_{v}(DWL({a}),{n},COEFS0,{m},{k},DWL({b}))',
+                'CALL {pre}UPDATE_WL_{r}_{v}(WL({a}),{n},COEFS1,{m},{k},TWL)',
+                'CALL {pre}PW_ADD_WL(TWL,{rout},{n},{k},DWL({b}))']).format(**d))
+        elif create:
+            result.append('CALL {pre}PW_CREATE_LOOP_COEFS(WL({a}),DWL({a}),{rest})'
+                          .format(**create.groupdict()))
+        elif 'UPDATE_WL' in text.upper() or 'LOOP_COEFS' in text.upper() or \
+                'TERMINAL_WL' in text.upper():
+            raise OniaLoopError('Unexpected coefficient construction call for a P-wave '
+                                'bound state: %s' % text)
+        else:
+            # a loop vertex (dual coefficients)
+            result.append(call)
+    return result
+
+
+# The dual objects shared by the routines of a P-wave output are in the module
+# <prefix>PW_DUAL (dual numbers cannot be in COMMON blocks). gfortran 15
+# crashes on renamed module variables (USE ..., ONLY: W=>PWW), so the calls
+# use the module names.
+_PW_DUAL_NAMES = [(re.compile(r'\bW\('), 'PWW('), (re.compile(r'\bAMP\('), 'PWAMP('),
+                  (re.compile(r'\bAMPL\('), 'PWAMPL('), (re.compile(r'\bPL\('), 'PWPL(')]
+
+
+def pwave_dual_names(calls):
+    """The HELAS calls of a P-wave output with the names of the dual
+    wavefunctions (W), amplitudes (AMP, AMPL) and loop momenta (PL) of the
+    module PW_DUAL."""
+    result = []
+    for call in calls:
+        for pattern, name in _PW_DUAL_NAMES:
+            call = pattern.sub(name, call)
+        result.append(call)
     return result

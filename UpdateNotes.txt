@@ -13,8 +13,16 @@ ANNOUNCEMENT:
        through an effective Born per constituent helicity; the threshold integrals are
        reduced by TIRust (default reduction chain 9|3 for these outputs); the IR poles are
        predicted from colour-linked projected Borns. 't Hooft-Veltman scheme, Coulomb term
-       dropped at zero relative velocity. P-wave states, processes without a Born and FKS
-       modes are refused for now. See docs/onia_loop.md and docs/benchmarkfolder.
+       dropped at zero relative velocity. Processes without a Born and FKS modes are
+       refused for now. See docs/onia_loop.md and docs/benchmarkfolder.
+   HS: MadLoop: one P-wave bound state per process at one loop ("generate g g >
+       chic0(1|3P01) [virt=QCD]"). The derivative in the relative momentum is computed in
+       dual numbers: dual HELAS and loop vertex routines (ALOHA dual mode, now also for the
+       L routines), the loop polynomials with their derivative, and the propagator
+       derivatives as tensor integrals with one doubled propagator reduced by TIRust
+       (raised propagator powers, new in vendor/tirust: tirust_tensor_evaluate_powers).
+       Double precision only for now; the Coulomb box with a doubled gluon is not yet
+       reduced by TIRust at threshold.
    HS: MadLoop standalone outputs compile their sources at -O2 (MADLOOP_OPTIMIZATION in the
        loop makefile, before FFLAGS) and their DHELAS and MODEL libraries at -O2 (ALOHA_FLAG
        and the new MODEL_FLAG of make_opts); they tabulate the colour factors and

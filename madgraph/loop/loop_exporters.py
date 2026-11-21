@@ -596,6 +596,21 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         super(LoopProcessExporterFortranSA, self).convert_model(model,
            wanted_lorentz = wanted_lorentz, wanted_couplings = wanted_couplings)
 
+    def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
+                            loop_dual=False):
+        """The HELAS library of the loop output: with a P-wave bound state
+        its double-precision routines are dual (export_v4), for all the
+        processes of the output, which must then all have one."""
+        pwave = getattr(self, 'onia_pwave_processes', [])
+        if any(pwave):
+            if not all(pwave):
+                raise loop_onia.OniaLoopError(
+                    'A process with a P-wave bound state must be output alone (or '
+                    'with other P-wave processes): its HELAS library is in dual numbers.')
+            loop_dual = True
+        return super(LoopProcessExporterFortranSA, self).write_aloha_library(
+            model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual)
+
     def get_ME_identifier(self, matrix_element, 
                                  group_number = None, group_elem_number = None):
         """ A function returning a string uniquely identifying the matrix 
@@ -932,7 +947,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                 'TIRCaching': TIRCaching,
                 'MadEventOutput': MadEventOutput,
                 'UseDensity': UseDensity,
-                'Onia': loop_onia.has_onia(matrix_element)}
+                'Onia': loop_onia.has_onia(matrix_element),
+                'OniaPwave': loop_onia.has_pwave(matrix_element)}
 
 
     #===========================================================================
@@ -2111,7 +2127,17 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         lines.append('LOGICAL ONIA_THRESHOLD_LOOPS')
         lines.append('PARAMETER (ONIA_THRESHOLD_LOOPS=%s)'
                      % ('.TRUE.' if coloured else '.FALSE.'))
+        lines.append('C     the P-wave bound state (0 if none), and L of each bound state')
+        lines.append('INTEGER ONIA_IPW, ONIA_L(%d)' % nonia)
+        lines.append('PARAMETER (ONIA_IPW=%d)' % info['ipwave'])
+        lines.append('DATA ONIA_L/%s/' % ints([o['L'] for o in info['onia']]))
         writers.FortranWriter('onia_loop_data.inc').writelines(lines)
+        context = self.get_context(matrix_element)
+        if context.get('OniaPwave') and not context.get('tirust_raised_powers'):
+            raise loop_onia.OniaLoopError(
+                'The one-loop virtual of a P-wave bound state needs TIRust with '
+                'raised propagator powers (installation metadata raised_powers): '
+                "run 'install tirust --update'.")
 
         # The masses of the constituent legs
         masses = []
@@ -2140,9 +2166,14 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 born_calls.append(fortran_model.get_amplitude_call(amplitude))
         mp_born_calls = list(born_calls)
         self.turn_to_mp_calls(mp_born_calls)
+        if loop_onia.has_pwave(matrix_element):
+            born_calls = loop_onia.pwave_dual_names(born_calls)
 
         ldme_product = self.get_ldme_product(matrix_element) or '1D0'
-        replace_dict = copy.copy(matrix_element.rep_dict)
+        # the entries of loop_matrix.f (split orders, colour matrix, ...) and
+        # the bound states
+        replace_dict = copy.copy(loop_replace_dict)
+        replace_dict.update(matrix_element.rep_dict)
         replace_dict.update({
             'onia_nexternal_phys': info['nexternal_phys'],
             'nexternal': nexternal,
@@ -2161,7 +2192,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         replace_dict['nincoming'] = info['ninitial']
         self.write_onia_loop_links(matrix_element, info, model)
         file = open(os.path.join(self.template_dir, 'onia_loop.inc')).read() % replace_dict
-        writers.FortranWriter('onia_loop.f').writelines(file)
+        writers.FortranWriter('onia_loop.f').writelines(file, context=context)
         # The LDMEs of the onia card (Source/MODEL/ldme.inc, export_onia_files)
         ln('../ldme.inc')
 
@@ -2324,6 +2355,11 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.tir_available_dict.get('tirust', False) and
             tirust_install.supports_dp_route_statistics(
                 getattr(self, 'tirust_dir', '')))
+
+        # optional raised propagator powers (P-wave bound states)
+        context['tirust_raised_powers'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_raised_powers(getattr(self, 'tirust_dir', '')))
 
         for tir in self.all_tir:
             context['%s_available'%tir]=self.tir_available_dict[tir]
@@ -2796,6 +2832,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         from madgraph.iolibs import export_fks
         if (type(self) not in (LoopProcessOptimizedExporterFortranSA,
                                export_fks.ProcessOptimizedExporterFortranFKS) or
+                loop_onia.has_pwave(matrix_element) or
                 self.opt.get('vector_size') or
                 self.get_context(matrix_element)['MadEventOutput'] or
                 not matrix_element.get('processes')[0].get('has_born') or
@@ -2957,6 +2994,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         are set in the mother class LoopProcessExporterFortranSA."""
         
         max_loop_rank=matrix_element.get_max_loop_rank()
+        if loop_onia.has_pwave(matrix_element):
+            # P-wave bound states: the derivative of a loop propagator gives
+            # the integral of rank R+1 with that propagator doubled
+            max_loop_rank += 1
         matrix_element.rep_dict['maxrank']=max_loop_rank
         matrix_element.rep_dict['loop_max_coefs']=\
                         q_polynomial.get_number_of_coefs_for_rank(max_loop_rank)
@@ -3210,18 +3251,46 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         subroutines.append(dp_routine)
         subroutines.append(mp_routine)        
 
-        # Initialize the polynomial routine writer
+        # Initialize the polynomial routine writer (rank R+1 for a P-wave
+        # bound state, whose doubled propagators have one more power of l)
+        poly_rank = matrix_element.get_max_loop_rank() + \
+                    (1 if loop_onia.has_pwave(matrix_element) else 0)
         poly_writer=q_polynomial.FortranPolynomialRoutines(
-            matrix_element.get_max_loop_rank(),
+            poly_rank,
             updater_max_rank = matrix_element.get_max_loop_vertex_rank(), 
             sub_prefix=replace_dict['proc_prefix'],
             proc_prefix=replace_dict['proc_prefix'],
             mp_prefix='')
         # Write the polynomial constant module common to all
         writer.writelines(poly_writer.write_polynomial_constant_module()+'\n')
+        if loop_onia.has_pwave(matrix_element):
+            # A P-wave bound state: the dual numbers have default
+            # initialisation and type-bound procedures, so cannot be in COMMON
+            # blocks; the dual objects shared by the routines are in a module
+            # (polynomial.f is compiled before the other files)
+            writer.writelines('\n'.join([
+                'MODULE %(proc_prefix)sPW_DUAL',
+                'C     A P-wave bound state: the dual (value, derivative in the relative',
+                'C     momentum) wavefunctions, Born and counterterm amplitudes and loop',
+                'C     momenta shared by the routines of the process (onia_loop.f), and',
+                'C     the dual constituent momenta of the current direction. They are',
+                'C     allocatable: gfortran 15.2 re-applies the default initialisation',
+                'C     of the dual numbers to use-associated (non-allocatable) arrays on',
+                'C     entry of the procedures that use them.',
+                'USE ALOHA_OBJECT',
+                'IMPLICIT NONE',
+                'TYPE(ALOHA), ALLOCATABLE :: PWW(:)',
+                'TYPE(DUAL), ALLOCATABLE :: PWAMP(:), PWAMPL(:,:), PWPL(:,:), PWPD(:,:)',
+                'CONTAINS',
+                'SUBROUTINE %(proc_prefix)sPW_DUAL_INIT()',
+                'IF (ALLOCATED(PWW)) RETURN',
+                'ALLOCATE(PWW(%(nwavefuncs)d), PWAMP(%(nbornamps)d), PWAMPL(3,%(nctamps)d))',
+                'ALLOCATE(PWPL(0:3,-1:%(nloopwavefuncs)d), PWPD(0:3,%(nexternal)d))',
+                'END SUBROUTINE %(proc_prefix)sPW_DUAL_INIT',
+                'END MODULE %(proc_prefix)sPW_DUAL']) % replace_dict + '\n')
 
         mp_poly_writer=q_polynomial.FortranPolynomialRoutines(
-            matrix_element.get_max_loop_rank(),
+            poly_rank,
             updater_max_rank = matrix_element.get_max_loop_vertex_rank(),        
             coef_format='complex*32', sub_prefix='MP_'+replace_dict['proc_prefix'],
             proc_prefix=replace_dict['proc_prefix'], mp_prefix='MP_')
@@ -3981,26 +4050,42 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         # Setup the contextual environment which is used in the splitting
         # functions below
         context = self.get_context(matrix_element)
+        # A P-wave bound state: the double-precision amplitudes are computed
+        # in dual numbers, from the dual constituent momenta PD
+        momenta = 'P'
+        if not hasattr(self, 'onia_pwave_processes'):
+            self.onia_pwave_processes = []
+        self.onia_pwave_processes.append(bool(context.get('OniaPwave')))
+        if context.get('OniaPwave'):
+            momenta = 'PWPD'
+            coef_construction = loop_onia.pwave_dual_names(
+                loop_onia.pwave_coef_construction_calls(coef_construction))
+            born_ct_helas_calls = loop_onia.pwave_dual_names(born_ct_helas_calls)
+            uvct_helas_calls = loop_onia.pwave_dual_names(uvct_helas_calls)
         file=self.split_HELASCALLS(writer,replace_dict,\
                         'helas_calls_split.inc',file,born_ct_helas_calls,\
                         'born_ct_helas_calls','helas_calls_ampb',
                         required_so_broadcaster = 'CT_REQ_SO_DONE',
-                        continue_label = 2000, context = context)
+                        continue_label = 2000, momenta_array_name=momenta,
+                        context = context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                         'helas_calls_split.inc',file,uvct_helas_calls,\
                         'uvct_helas_calls','helas_calls_uvct',
                         required_so_broadcaster = 'UVCT_REQ_SO_DONE',
-                        continue_label = 3000, context=context)
+                        continue_label = 3000, momenta_array_name=momenta,
+                        context=context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                 'helas_calls_split.inc',file,coef_construction,\
                 'coef_construction','coef_construction',
                 required_so_broadcaster = 'LOOP_REQ_SO_DONE',
-                continue_label = 4000, context=context)    
+                continue_label = 4000, momenta_array_name=momenta,
+                context=context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                 'helas_calls_split.inc',file,loop_CT_calls,\
                 'loop_CT_calls','loop_CT_calls',
                 required_so_broadcaster = 'CTCALL_REQ_SO_DONE',
-                continue_label = 5000, context=context)
+                continue_label = 5000, momenta_array_name=momenta,
+                context=context)
        
         # Add the entries above to the general_replace_dict so that it can be 
         # used by write_mp_compute_loop_coefs later

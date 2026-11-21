@@ -7706,10 +7706,11 @@ This implies that with decay chains:
     def validate_loop_onia(self, legs, loop_option, perturbation_couplings):
         """Refuse the perturbed processes with bound states that MadLoop does
         not support: it computes the one-loop QCD virtual ([virt=QCD]) of
-        processes with S-wave bound states in the final state, as the
-        interference with the Born of the projected amplitudes (colour,
-        spin and total angular momentum projectors of arXiv:2510.26773, at
-        zero relative momentum of the constituents)."""
+        processes with S-wave bound states, and at most one P-wave bound
+        state, in the final state, as the interference with the Born of the
+        projected amplitudes (colour, spin, orbital and total angular
+        momentum projectors of arXiv:2510.26773, at zero relative momentum of
+        the constituents)."""
 
         if loop_option != 'virt':
             if loop_option in ['all', 'real', 'LOonly']:
@@ -7730,15 +7731,22 @@ This implies that with decay chains:
                 "for QCD corrections only, not for [virt=%s]."
                 % ' '.join(perturbation_couplings))
         pdict = self._curr_model.get('particle_dict')
+        pwave = set()
         for leg in legs:
             onium = leg.get('onium')
             if not onium:
                 continue
-            if onium.get('L', 0) >= 1:
+            if onium.get('L', 0) >= 2:
                 raise self.InvalidCmd(
-                    "The one-loop virtual of a P-wave bound state (%s) is not "
-                    "supported yet: MadLoop handles S-wave bound states."
+                    "The one-loop virtual of a bound state with L >= 2 (%s) is not "
+                    "supported: MadLoop handles S- and P-wave bound states."
                     % onium.get('name'))
+            if onium.get('L', 0) == 1:
+                pwave.add(onium.get('index'))
+                if len(pwave) > 1:
+                    raise self.InvalidCmd(
+                        "The one-loop virtual of processes with more than one P-wave "
+                        "bound state is not supported (%s)." % onium.get('name'))
             if leg.get('polarization'):
                 raise self.InvalidCmd(
                     "Polarised bound states (%s) are not supported at one loop."

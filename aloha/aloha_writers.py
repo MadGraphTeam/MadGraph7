@@ -572,6 +572,12 @@ class ALOHAWriterForFortran(WriteALOHA):
     extension = '.f'
     writer = writers.FortranWriter
 
+    def dual_routine(self):
+        """True if this routine works on dual numbers (P-wave onia). Only the
+        double-precision routines are dual: the quadruple-precision (MP)
+        routines of a loop (MadLoop) library stay plain complex ones."""
+        return bool(aloha.dual_mode) and 'MP' not in self.tag
+
     type2def = {}    
     type2def['int'] = 'integer*4'
     if aloha.mp_precision:
@@ -629,7 +635,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         arguments = [arg for format, arg in self.define_argument_list(couplings)]
         if not self.offshell:
             output = 'vertex'
-            if aloha.dual_mode:
+            if self.dual_routine():
                 self.declaration.add(('dual','vertex'))
             else:
                 self.declaration.add(('complex','vertex'))
@@ -670,7 +676,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         out.write('use aloha_object\n')
         if 'M' in self.tag:
             out.write('use model_object\n')
-        if aloha.dual_mode:
+        if self.dual_routine():
             # the operators on the dual momenta and wavefunction components
             out.write('use dual_variables\n')
         out.write('implicit none\n')
@@ -703,7 +709,7 @@ class ALOHAWriterForFortran(WriteALOHA):
         for type, name in self.declaration.tolist():
             if type.startswith('list'):
                 type = type[5:]
-                if aloha.dual_mode and (type == 'complex' or name.startswith('P')):
+                if self.dual_routine() and (type == 'complex' or name.startswith('P')):
                     type = 'dual'
                 #determine the size of the list
                 if name.startswith('FD'):
@@ -754,7 +760,7 @@ class ALOHAWriterForFortran(WriteALOHA):
                 if name in ['COUP', 'COUP1']:
                     out.write(' integer flv_index\n')
             else:
-                if aloha.dual_mode and (name[0] == 'T' or name[0] == 't' or name in ('denom', 'vertex')):
+                if self.dual_routine() and (name[0] == 'T' or name[0] == 't' or name in ('denom', 'vertex')):
                     type = 'dual'
                 out.write(' %s %s\n' % (self.type2def[type], name))
                 
@@ -1153,7 +1159,7 @@ class ALOHAWriterForFortran(WriteALOHA):
                         # A dual momentum (onium p-wave) carries derivatives
                         # next to its value, and DBLE keeps it dual: take
                         # the branch on the value alone.
-                        if aloha.dual_mode:
+                        if self.dual_routine():
                             p2sign = '-'.join('P%s(%d)%%comp(0)**2'
                                               % (self.outgoing, mu)
                                               for mu in range(4))
@@ -1666,6 +1672,13 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
         # type(aloha) / type(mp_aloha) must be accessible for the tree-level
         # wavefunction arguments that are now passed as structured types.
         out.write('use ALOHA_OBJECT\n')
+        # P-wave onia: the momenta, the coefficients and the temporaries are
+        # dual numbers (value and derivative in the relative momentum), as
+        # the wavefunctions of the dual ALOHA_OBJECT; the couplings, masses
+        # and widths stay plain.
+        dual = self.dual_routine()
+        if dual:
+            out.write('use dual_variables\n')
         out.write('implicit none\n')
         # define the complex number CI = 0+1j
         if 'MP' in self.tag:
@@ -1701,7 +1714,8 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
                 elif name == 'coeff':
                     out.write("include 'coef_specs.inc'\n")
                     size = 'MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE'
-    
+                if dual and type == 'complex':
+                    type = 'dual'
                 out.write(' %s %s(%s)\n' % (self.type2def[type], name, size))
             elif type == 'fct':
                 if name.upper() in ['EXP','LOG','SIN','COS','ASIN','ACOS']:
@@ -1709,6 +1723,8 @@ class ALOHAWriterForFortranLoop(ALOHAWriterForFortran):
                 out.write(' %s %s\n' % (self.type2def['complex'], name))
                 out.write(' external %s\n' % (name))
             else:
+                if dual and type == 'complex' and not name.startswith('COUP'):
+                    type = 'dual'
                 out.write(' %s %s\n' % (self.type2def[type], name))
 
         return out.getvalue()

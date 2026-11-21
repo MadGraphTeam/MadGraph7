@@ -41,6 +41,12 @@ C
       %(complex_dp_format)s M2LCT(0:NLOOPLINE-1)	  
       %(complex_dp_format)s RES(3)
 	  LOGICAL STABLE	  
+## if(OniaPwave){
+C     A P-wave bound state: the lines and masses before the reduction (which
+C     may reverse them in place), for the integrals with a doubled line
+      %(real_dp_format)s PW_PL(0:3,NLOOPLINE)
+      %(mass_dp_format)s PW_M2L(NLOOPLINE)
+## }
 C  
 C LOCAL VARIABLES 
 C
@@ -284,6 +290,10 @@ C       We add here the numerical inaccuracies linearly to be conservative
 ## }
       CASE(9)
 ## if(tirust_available){
+## if(OniaPwave){
+      PW_PL=PL
+      PW_M2L=M2L
+## }
       CALL %(proc_prefix)sTIRUSTLOOP(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
       IF(.NOT.STABLE) THEN
         FPE_IN_DP_REDUCTION=.TRUE.
@@ -323,6 +333,18 @@ C The zero index is dummy and means no caching at all since TIR_CACHE_SIZE=0.
 ## }
 	 ENDDO
       ENDDO
+## if(OniaPwave){
+C     A P-wave bound state: the derivatives of the propagators in the
+C     relative momentum, the integrals with one doubled line (onia_loop.f)
+      IF(MLReductionLib(I_LIB).EQ.9) THEN
+        CALL %(proc_prefix)sONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PW_PL,PW_M2L,RES,STABLE)
+        IF(.NOT.STABLE) THEN
+          FPE_IN_DP_REDUCTION=.TRUE.
+          RES=0
+          RETURN
+        ENDIF
+      ENDIF
+## }
 ## if(AmplitudeReduction){
       RES(1)=NORMALIZATION*RES(1)
       RES(2)=NORMALIZATION*RES(2)

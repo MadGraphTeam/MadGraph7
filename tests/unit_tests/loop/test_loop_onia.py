@@ -134,12 +134,13 @@ class TestLoopOniaGeneration(unittest.TestCase):
         return mes.get_matrix_elements()[0]
 
     def test_refused_processes(self):
-        """Only [virt=QCD] with S-wave bound states is accepted."""
+        """Only [virt=QCD] with S-wave bound states and at most one P-wave
+        bound state is accepted."""
         refused = ['g g > etac(1|1S01) [QCD]',
                    'g g > etac(1|1S01) [real=QCD]',
                    'g g > etac(1|1S01) [sqrvirt=QCD]',
                    'g g > etac(1|1S01) [virt=QED]',
-                   'g g > chic0(1|3P01) [virt=QCD]']
+                   'g g > chic0(1|3P01) chic2(1|3P21) [virt=QCD]']
         for process in refused:
             self.assertRaises(madgraph.InvalidCmd, lambda p=process: self.cmd.exec_cmd(
                               'generate %s' % p, printcmd=False, errorhandling=False))
@@ -174,6 +175,18 @@ class TestLoopOniaGeneration(unittest.TestCase):
             same = [o2 for h2, o2 in zip(info['helc'], info['others']) if h2[:2] == h[:2]]
             self.assertEqual(set(same), set([o]))
 
+    def test_pwave_projection_data(self):
+        """g g > chic2: one P-wave bound state, its five J_z."""
+        me = self.matrix_element('g g > chic2(1|3P21) [virt=QCD]')
+        self.assertTrue(loop_onia.has_pwave(me))
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual(info['ipwave'], 1)
+        onium = info['onia'][0]
+        self.assertEqual((onium['L'], onium['S'], onium['J'], onium['C']), (1, 1, 2, 1))
+        self.assertEqual(info['jz'], [(-2,), (-1,), (0,), (1,), (2,)])
+        self.assertFalse(loop_onia.has_pwave(
+            self.matrix_element('g g > etac(1|1S01) [virt=QCD]')))
+
     def test_triplet_polarisations(self):
         """A spin triplet has three J_z, a colour octet the norm 2."""
         me = self.matrix_element('u u~ > Jpsi(1|3S18) [virt=QCD]')
@@ -207,6 +220,43 @@ class TestLoopOniaGeneration(unittest.TestCase):
         # every colour structure of the loop basis carries the singlet projector
         for col_str in me.get('loop_color_basis').keys():
             self.assertTrue(col_str is not None)
+
+
+class TestPwaveCoefficientCalls(unittest.TestCase):
+    """The double-precision coefficient construction of a P-wave output:
+    the dual loop vertices update the value and the derivative of the loop
+    wavefunctions, the dual objects carry the names of the PW_DUAL module."""
+
+    def test_calls(self):
+        calls = ['# Coefficient construction for loop diagram with ID 4',
+                 'CALL VVV1L2P0_1(PL(0,0),W(5),GC_4,ZERO,ZERO,PL(0,1),COEFS)\n'
+                 'CALL ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,1))',
+                 'CALL ML5_0_CREATE_LOOP_COEFS(WL(1,0,1,2),2,4,1,2,1,92,H)']
+        out = loop_onia.pwave_dual_names(loop_onia.pwave_coef_construction_calls(calls))
+        self.assertEqual(out[0], calls[0])
+        self.assertEqual(out[1].split('\n'), [
+            'CALL VVV1L2P0_1(PWPL(0,0),PWW(5),GC_4,ZERO,ZERO,PWPL(0,1),COEFS)',
+            'CALL ML5_0_PW_SPLIT_COEFS(COEFS,COEFS0,COEFS1)',
+            'CALL ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS0,4,4,WL(1,0,1,1))',
+            'CALL ML5_0_UPDATE_WL_0_1(DWL(1,0,1,0),4,COEFS0,4,4,DWL(1,0,1,1))',
+            'CALL ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS1,4,4,TWL)',
+            'CALL ML5_0_PW_ADD_WL(TWL,1,4,4,DWL(1,0,1,1))'])
+        self.assertEqual(out[2],
+            'CALL ML5_0_PW_CREATE_LOOP_COEFS(WL(1,0,1,2),DWL(1,0,1,2),2,4,1,2,1,92,H)')
+
+    def test_unknown_updater_is_refused(self):
+        self.assertRaises(loop_onia.OniaLoopError, loop_onia.pwave_coef_construction_calls,
+                          ['CALL ML5_0_DP_TERMINAL_WL_1_1(WL(1,0,1,1),4,COEFS,4,4,'
+                           'WL(1,0,1,2),WL_ENTRY_INEXACT)'])
+
+    def test_dual_names(self):
+        self.assertEqual(loop_onia.pwave_dual_names(
+            ['CALL FFV1_0(W(4),W(3),W(5),GC_5,AMP(1))',
+             'AMPL(2,86)=AMPL(2,86)*(6.0D0*UVWFCT_G_0_1EPS)',
+             'CALL ML5_0_UPDATE_WL_1_1(WL(1,0,1,2),4,COEFS0,4,4,DWL(1,0,1,3))']),
+            ['CALL FFV1_0(PWW(4),PWW(3),PWW(5),GC_5,PWAMP(1))',
+             'PWAMPL(2,86)=PWAMPL(2,86)*(6.0D0*UVWFCT_G_0_1EPS)',
+             'CALL ML5_0_UPDATE_WL_1_1(WL(1,0,1,2),4,COEFS0,4,4,DWL(1,0,1,3))'])
 
 
 class TestBornBornColourFactors(unittest.TestCase):

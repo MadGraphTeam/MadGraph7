@@ -2,9 +2,10 @@
 
 MadLoop computes the one-loop QCD virtual of processes with S-wave bound
 states (quarkonia, leptonia) in the final state, colour singlets and octets of
-any total angular momentum J, together with elementary particles. The bound
-states are those of the tree-level implementation (arXiv:2510.26773,
-arXiv:2607.26739), projected the same way.
+any total angular momentum J, together with elementary particles. A process
+may also have one P-wave bound state (see below). The bound states are those
+of the tree-level implementation (arXiv:2510.26773, arXiv:2607.26739),
+projected the same way.
 
 ## Usage
 
@@ -26,10 +27,14 @@ of a bound state is `m1 + m2`, the sum of its constituent masses, as in
 points, several reduction libraries, JSON output) drive the output. The LDMEs
 are read from `Cards/onia_card.dat`.
 
-Supported: `[virt=QCD]` with S-wave bound states in the final state.
+Supported: `[virt=QCD]` with S-wave bound states in the final state, and at
+most one P-wave bound state. A P-wave output needs a TIRust installation with
+raised propagator powers (`raised_powers` in its metadata; `install tirust
+--update`), and must be output alone or with other P-wave processes: its
+HELAS library is in dual numbers.
 
 Refused with an explanatory error:
-- P-wave states;
+- more than one P-wave bound state, and states with L >= 2;
 - the FKS modes `[QCD]` and `[real=QCD]` (developed on the `onia_fks` branch);
 - loop-induced processes (`[sqrvirt=QCD]`);
 - `[virt=QED]`;
@@ -118,6 +123,41 @@ library reduces; the Coulomb singularity `C pi^2/v` appears in the finite
 part (`C = C_F` for a singlet, `C_F - C_A/2` for an octet). Subtracted and
 extrapolated to `v = 0`, it gives an independent check of the threshold
 value (`relmom_check` of `tools/onia_loop_validate.py`).
+
+**P-wave bound states.** The amplitude of a P-wave state is the derivative
+of the projected constituent amplitude in the relative momentum q of the
+constituents, `p_Q = K/2 + q`, `p_Qbar = K/2 - q`, along the polarisation
+vectors `eps(L_z)` of the orbital angular momentum. The spin projectors are
+combined with the Clebsch-Gordan coefficients `<1 L_z; S S_z|J J_z>`, as at
+tree level (`matrix_standalone_v4_onia_pwave.inc`).
+
+MadLoop computes the constituent amplitudes in first-order dual numbers:
+value and derivative along the current direction `eps(L_z)`, one direction
+at a time. The pieces are:
+- **HELAS library.** The double-precision routines of the output are the
+  dual ones of the tree-level P-wave library, its loop vertex routines
+  included. Their wavefunctions, amplitudes and loop momenta are shared
+  through the module `PW_DUAL` of `polynomial.f`.
+- **Loop polynomials.** The polynomial updates are the plain ones, applied to
+  the value and the derivative: `WL' = U(WL, C0)` and
+  `DWL' = U(DWL, C0) + U(WL, C1)`, for vertex coefficients `C0 + d C1`.
+- **Propagators.** The derivative of the loop propagators,
+  `-2 (S_i - l).dS_i / D_i^2`, gives integrals of rank R+1 with line i
+  doubled. TIRust reduces them (`tirust_tensor_evaluate_powers`). Their
+  numerators come from four extra polynomials per loop group.
+- **Weights.** The interference with the projected Born uses the effective
+  Born `W1` on the value and `W2(L_z)` on the derivative of each direction
+  (`ONIA_PREPARE` of `onia_loop.f`).
+
+Status:
+- At zero relative momentum every TIRust integral is served except one. The
+  exception is the Coulomb box with its gluon line doubled (TIRust phase 2),
+  so quarkonium P-wave results are not complete yet.
+- There is no quadruple-precision path yet: a point sent to the QP rescue is
+  reported unstable.
+- `docs/benchmarkfolder/research/pwave_fd/` checks the derivative, doubled
+  lines included, against finite differences at a relative momentum
+  `q0 != 0`.
 
 **IR poles.** `ONIA_IR_POLES` predicts the poles from the colour-linked
 projected Borns (Catani-Dittmaier-Trocsanyi; arXiv:2402.19221, eqs.
