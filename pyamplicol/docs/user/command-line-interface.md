@@ -1206,8 +1206,9 @@ precision's runtime calls (its measuring point and its budget) until they
 run, and `--completion-time` keeps their estimates out of binary64's share
 and gives each the time left when it starts. With `--runtime`, every entry other than binary64 also gets
 its own "Runtime per reduction backend, <precision>" and "Time per point and
-stage, <precision>" tables after binary64's, in the order given (the
-ground truth's own precision too: timing needs no truth): per backend the
+stage, <precision>" tables, in the order given (the
+ground truth's own precision too: timing needs no truth; with a list given,
+binary64's runtime and checks tables are titled ", binary64" as well): per backend the
 same optimistic pass as binary64's in that arithmetic, in a process of its
 own (one core, or `--runtime-threads`), its stage groups from the native
 stage reports of those calls and its peak RAM. It starts from binary64's

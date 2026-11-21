@@ -1411,6 +1411,8 @@ def test_every_measured_precision_has_its_tables_and_json():
     text = plain.getvalue()
     titles = [
         "Stable digits of binary64 vs arb(60)",
+        # binary64's checks table is named too once precisions are listed.
+        "Default checks against the truth, binary64",
         "Stable digits of double-double vs arb(60)",
         "Default checks against the truth, double-double",
         "Estimated digits of arb(60) (the ground truth)",
@@ -1545,6 +1547,62 @@ def test_a_measured_precision_has_its_runtime_rows():
         report, runtime_measured=({"precision": dd.record(), "runtime": rows},)
     )
     assert timed.cli_json()["runtime_measured"][0]["precision"]["label"] == "dd"
+
+
+def test_listed_precisions_name_every_runtime_table():
+    """With ``--measured-precisions`` each precision's runtime tables carry
+    its name, binary64's included, in the order given; the default's titles
+    stay bare."""
+
+    from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.loop_profile import GroundTruth, measured_precisions
+    from pyamplicol.reporting import render_summary
+
+    def rows(seconds):
+        profile = VirtualProfileResult(
+            "gg_zgg",
+            "g g > z g g",
+            "loop-induced",
+            4,
+            2,
+            0,
+            seconds,
+            seconds,
+            seconds,
+            {"trees": seconds / 2, "reduction": seconds / 2},
+            {"lanes": {"tirust": 8}},
+            False,
+            0,
+        )
+        return (BackendRuntime("tirust", profile, ratio=1.0),)
+
+    report = _report(None, rows(1e-3))
+    bare = render_summary(report, color=False)
+    assert "Runtime per reduction backend" in bare
+    assert "Runtime per reduction backend," not in bare
+    assert "Time per point and stage," not in bare
+    b64, dd = measured_precisions(
+        ("binary64", "double-double"), GroundTruth("arbitrary", 60)
+    )
+    listed = replace(
+        report,
+        runtime_measured=(
+            {"precision": b64.record(), "runtime": None},
+            {"precision": dd.record(), "runtime": rows(3e-2)},
+        ),
+    )
+    text = render_summary(listed, color=False)
+    titles = [
+        "Runtime per reduction backend, binary64",
+        "Time per point and stage, binary64",
+        "Runtime per reduction backend, double-double",
+        "Time per point and stage, double-double",
+    ]
+    assert [text.index(title) for title in titles] == sorted(
+        text.index(title) for title in titles
+    )
+    for title in ("Runtime per reduction backend", "Time per point and stage"):
+        assert text.count(title) == text.count(title + ",") == 2
 
 
 def test_the_ground_truths_own_stream_is_its_reference():

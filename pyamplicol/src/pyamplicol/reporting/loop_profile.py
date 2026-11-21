@@ -337,9 +337,10 @@ def _lanes(row: Any) -> dict[str, int]:
 
 
 def _runtime_suffix(report: Any) -> str:
-    """ ", <precision>" after a runtime table's title for a measured precision
-    other than binary64 (its view, ``_measured_runtime_tables``); binary64's
-    titles as they were."""
+    """ ", <precision>" after a runtime table's title when
+    ``--measured-precisions`` lists the precisions (a view of
+    ``_measured_runtime_tables``, binary64's included); the default's titles
+    as they were."""
 
     precision = getattr(report, "runtime_precision", None)
     return "" if precision is None else f", {precision}"
@@ -348,8 +349,8 @@ def _runtime_suffix(report: Any) -> str:
 def _measured_runtime_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     """The runtime tables of every measured precision in the order given
     (``runtime_measured``; none: binary64's alone, as they are): binary64's
-    from ``runtime``, every other one's from its own rows in a view of the
-    report."""
+    from ``runtime``, every other one's from its own rows, each in a view of
+    the report that names its precision in the titles."""
 
     from types import SimpleNamespace
 
@@ -358,20 +359,19 @@ def _measured_runtime_tables(report: Any, prettytable: Any, color: bool) -> list
         return _runtime_tables(report, prettytable, color)
     blocks: list[str] = []
     for entry in entries:
-        if entry["runtime"] is None:
-            # binary64's, listed here.
-            blocks += _runtime_tables(report, prettytable, color)
-            continue
+        # binary64's rows are the report's own (its entry has none).
+        own = entry["runtime"] is None
         view = SimpleNamespace(
             **{
                 name: getattr(report, name)
                 for name in report.__dataclass_fields__
                 if name != "runtime"
             },
-            runtime=tuple(entry["runtime"]),
+            runtime=report.runtime if own else tuple(entry["runtime"]),
             runtime_precision=entry["precision"]["precision"],
         )
-        view.failure_causes = tuple(entry.get("failure_causes") or ())
+        if not own:
+            view.failure_causes = tuple(entry.get("failure_causes") or ())
         blocks += _runtime_tables(view, prettytable, color)
     return blocks
 
@@ -997,11 +997,13 @@ def _measured_name(setup: Any) -> str:
 
 
 def _measured_suffix(setup: Any) -> str:
-    """ ", <precision>" after a checks table's title for a measured precision
-    other than binary64 (binary64's titles as they were)."""
+    """ ", <precision>" after a checks table's title when
+    ``--measured-precisions`` lists the precisions (binary64's included,
+    ``measured_title``); the default's titles as they were."""
 
     measured = setup.get("measured_precision")
-    return "" if not measured else f", {measured['precision']}"
+    name = measured["precision"] if measured else setup.get("measured_title")
+    return f", {name}" if name else ""
 
 
 def _cap(setup: Any) -> float | None:
@@ -1031,7 +1033,12 @@ def _measured_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     blocks: list[str] = []
     for entry in entries:
         if entry.get("stability") is None:
-            blocks += _stability_tables(report, prettytable, color)
+            # binary64's own rows, its checks tables named as the others'.
+            named = replace(
+                report,
+                stability_setup={**setup, "measured_title": entry["precision"]},
+            )
+            blocks += _stability_tables(named, prettytable, color)
             continue
         view = replace(
             report,
