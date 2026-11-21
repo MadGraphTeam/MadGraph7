@@ -220,6 +220,27 @@ class MG7AmplicolTest(unittest.TestCase):
         self.assertTrue(any('crossing_momentum_signs' in member
                             for group in groups['groups'] for member in group['members']))
 
+    def test_pp_jjj_selector_only(self):
+        """A full-colour artifact with only its one-helicity-per-point programs
+        (union templates included), and the same cross section."""
+        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'],
+                                options=['amplicol_selector_only_full_colour True'])
+        self.assert_compatible(amplicol[:2], madmatrix)
+        selector = 'rusticol.recurrence-selector-only-fc.v1'
+        unions = 'rusticol.recurrence-pattern-resolved-companion.v1'
+        capabilities = {}
+        for accuracy in ('full', 'lc'):
+            artifact, = glob.glob(pjoin(amplicol[2], 'SubProcesses', 'A*', accuracy))
+            with open(pjoin(artifact, 'artifact.json')) as stream:
+                capabilities[accuracy] = [process['required_runtime_capabilities']
+                                          for process in json.load(stream)['processes']]
+        self.assertEqual(len(capabilities['full']), 7)
+        self.assertTrue(all(selector in caps for caps in capabilities['full']))
+        # the union templates are selector-only through their companion
+        self.assertEqual(sum(unions in caps for caps in capabilities['full']), 3)
+        self.assertFalse(any(selector in caps for caps in capabilities['lc']))
+
     def test_gg_ttxg(self):
         """Massive quarks in the colour-ordered phase space."""
         madmatrix = self.run_mg7('mm', ['g g > t t~ g'])[:2]
