@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import tempfile
@@ -12,15 +13,18 @@ import types
 import unittest
 from unittest import mock
 
-from madgraph import MadGraph5Error
+from madgraph import MadGraph5Error, MG5DIR
 from madgraph.interface.madgraph_interface import MadGraphCmd
 from madgraph.iolibs.export_fks import ProcessOptimizedExporterFortranFKS
 from madgraph.loop.loop_exporters import LoopProcessOptimizedExporterFortranSA
-from madgraph.various import banner, ninjars_install
+from madgraph.various import banner, ninjars_install, rust_dependency_notices
 
 
 class TestNinjaRSInstaller(unittest.TestCase):
     def setUp(self):
+        notice_patch = mock.patch.object(rust_dependency_notices, 'package', side_effect=self.fake_notices)
+        notice_patch.start()
+        self.addCleanup(notice_patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
@@ -40,6 +44,15 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         (self.bridge / 'Cargo.toml').write_text('[package]\nname = "bridge"\n')
         (self.bridge / 'smoke.f90').write_text('end\n')
 
+    @staticmethod
+    def fake_notices(bridge, libdir, backend, environment):
+        names = [backend + suffix for suffix in (
+            '-dependency-notices.tar.gz', '-dependency-provenance.json', '-NOTICES.txt')]
+        for name in names:
+            (Path(libdir) / name).write_text('fixture dependency notice\n')
+        return {'files': names, 'sha256': {name: hashlib.sha256(
+            (Path(libdir) / name).read_bytes()).hexdigest() for name in names}, 'package_count': 1}
+
     def fake_build(self, command, cwd, log, environment):
         """Emulate compiler output while exercising staging/publish for real."""
         log.write_text('build and smoke log\n')
@@ -51,7 +64,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             (lib / 'libninjars.a').write_text('new working archive')
             (lib / 'mninjars.mod').write_text('Fortran module')
             (lib / 'ninjars-native-libs.txt').write_text('-lgmp -lmpfr -lpthread\n')
-            (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
+            (lib / 'ninjars-link-before.txt').write_text(
+                shlex.join(['/compiler runtime/libgcc.a', '-lgcc_s']) + '\n')
 
     @staticmethod
     def snapshot(directory):
@@ -106,7 +120,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             config = ninjars_install.read_config(libdir)
             self.assertTrue(config['quad_precision'])
             self.assertEqual(config['native_libs'], ['-lgmp', '-lmpfr', '-lpthread'])
-            self.assertEqual(config['link_before'], ['-lgcc_s'])
+            self.assertEqual(config['link_before'], ['/compiler runtime/libgcc.a', '-lgcc_s'])
+            self.assertEqual(config['compiler_runtime'], 'gnu-linux-static-libgcc-before-rust')
             provenance = config['build_provenance']
             self.assertEqual(provenance['lock_sha256'], hashlib.sha256(
                 (self.bridge/'Cargo.lock').read_bytes()).hexdigest())
@@ -117,6 +132,8 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             self.assertIn('#' + 'b'*40,
                           provenance['git_dependencies'][1]['source'])
             smoke_link = run.call_args_list[1].args[0]
+            self.assertLess(smoke_link.index('/compiler runtime/libgcc.a'),
+                            smoke_link.index('-lgcc_s'))
             self.assertLess(smoke_link.index('-lgcc_s'), next(
                 i for i, arg in enumerate(smoke_link) if arg.endswith('/libninjars.a')))
             self.assertTrue((self.prefix / 'lib' / 'libninjars.a').is_file())
@@ -557,6 +574,20 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         self.assertEqual(reread['MLReductionLib'], '8|6|1')
         self.assertFalse(reread['UseQPIntegrandForNinjaRS'])
         self.assertEqual(card._ID_reduction_tool_map[8], 'NinjaRS')
+
+
+class TestNinjaRSVendoredLock(unittest.TestCase):
+    def test_locked_psm_assembly_does_not_request_an_executable_stack(self):
+        # psm < 0.1.29 assembles its stack-switching routines without a
+        # .note.GNU-stack section, so every shared library that links
+        # libninjars.a requests an executable stack, and glibc >= 2.41 refuses
+        # to dlopen it (MadLoop's f2py modules). pest 2.9.3-2.9.4 pin psm 0.1.24.
+        lock = (Path(MG5DIR) / 'vendor' / 'ninjars' / 'Cargo.lock').read_text()
+        versions = re.findall(r'^name = "psm"\nversion = "([^"]+)"$', lock, re.M)
+        self.assertTrue(versions, 'psm is no longer locked; remove this check')
+        for version in versions:
+            self.assertGreaterEqual(tuple(map(int, version.split('.'))), (0, 1, 29),
+                                    'psm %s has no .note.GNU-stack section' % version)
 
 
 if __name__ == '__main__':

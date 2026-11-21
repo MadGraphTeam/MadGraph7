@@ -36,7 +36,7 @@ FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value
 // (= CD_ACCESS here) so get_coupling_def reads dpf_value with the right per-flavor stride.
 constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CDPF_ACCESS::flv_stride : 1 );
 // cppAlign is only defined for SIMD
-alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
+alignas( madmatrix::cppAlign ) fptype dpf_value[ndpfbuf]{};
 for( int idpf = 0; idpf < nDPF; idpf++ )
   for( int imf = 0; imf < nMF; imf++ )
   {

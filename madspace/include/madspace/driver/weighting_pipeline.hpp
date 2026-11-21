@@ -101,6 +101,7 @@ private:
         std::size_t epoch;
         std::size_t context_index;
         std::size_t generated_count;
+        std::size_t generated_count_after_cuts = 0;
         std::size_t count_target;
         // on the device: rows offset to offset + size() of source, before the
         // last decision, which keeps the rows in keep
@@ -114,6 +115,7 @@ private:
         std::vector<std::vector<double>> ratios;
         double max_weight;
         std::vector<double> max_weights;
+        std::vector<StepSums> step_sums;
         // results of the last job
         std::vector<double> step_matrix_elements, step_random;
         TensorVec cpu_events;
@@ -138,7 +140,9 @@ private:
         std::vector<std::vector<std::vector<ChunkPtr>>> buffers;
         std::vector<std::vector<std::size_t>> buffer_sizes;
         std::vector<bool> multiple_matrix_elements;
-        int momenta, alpha_s, flavor, me_index, color, helicity, diagram, random;
+        std::vector<bool> parton_density_steps;
+        int momenta, alpha_s, flavor, me_index, color, helicity, diagram, flavor_index,
+            parton_densities, random;
     };
     struct Job {
         std::size_t group;

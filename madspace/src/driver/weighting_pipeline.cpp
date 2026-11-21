@@ -150,6 +150,9 @@ madspace::weighting_groups_to_json(const std::vector<WeightingGroup>& groups) {
                 {"max_overweight_truncation", step.max_overweight_truncation},
                 {"freeze_max_weight_after", step.freeze_max_weight_after},
                 {"override_outputs", override_outputs},
+                {"flavor_target_count", step.flavor_target_count},
+                {"flavor_offset", step.flavor_offset},
+                {"switch_diagram_map", step.switch_diagram_map},
             });
         }
         json group_json{{"channel_indices", group.channel_indices}, {"steps", steps}};
@@ -200,6 +203,11 @@ madspace::weighting_groups_from_json(const std::string& text) {
                     static_cast<MatrixElement::MatrixElementOutput>(output)
                 );
             }
+            // absent in groups stored before the flavour switch
+            step.flavor_target_count = step_json.value("flavor_target_count", 0);
+            step.flavor_offset = step_json.value("flavor_offset", 0);
+            step.switch_diagram_map =
+                step_json.value("switch_diagram_map", nested_vector2<me_int_t>{});
             group.steps.push_back(std::move(step));
         }
         groups.push_back(std::move(group));
@@ -316,6 +324,10 @@ WeightingPipeline::WeightingPipeline(
             .color = static_cast<int>(index_map.at("color_index")),
             .helicity = static_cast<int>(index_map.at("helicity_index")),
             .diagram = static_cast<int>(index_map.at("diagram_index")),
+            .flavor_index = static_cast<int>(index_map.at("flavor_index")),
+            .parton_densities = index_map.contains("parton_densities")
+                ? static_cast<int>(index_map.at("parton_densities"))
+                : -1,
             .random = static_cast<int>(types.size() - 1),
         };
 
@@ -329,6 +341,19 @@ WeightingPipeline::WeightingPipeline(
                 );
             }
             group.multiple_matrix_elements.push_back(step.matrix_elements.size() > 1);
+            group.parton_density_steps.push_back(step.needs_parton_densities());
+            if (step.needs_parton_densities() && group.parton_densities == -1) {
+                throw std::invalid_argument(
+                    "a weighting step needs the parton densities, but the integrand "
+                    "does not return them"
+                );
+            }
+            if (step.switches_flavor() && step_index + 1 != step_count) {
+                // later steps would see the old matrix_element_flavor
+                throw std::invalid_argument(
+                    "a flavour-switching weighting step must be the last step"
+                );
+            }
             group.settings.push_back({
                 .unweight = step.mode == WeightingStep::unweight,
                 .max_overweight_truncation = step.max_overweight_truncation,
@@ -410,6 +435,12 @@ void WeightingPipeline::add_events(GeneratorBatchJob& job) {
     chunk->epoch = channel->event_epoch();
     chunk->context_index = job.context_index;
     chunk->generated_count = job.weights.size(0);
+    auto generated_weights = job.weights.view<double, 1>();
+    for (std::size_t i = 0; i < generated_weights.size(); ++i) {
+        if (generated_weights[i] != 0) {
+            ++chunk->generated_count_after_cuts;
+        }
+    }
     chunk->count_target = job.count_target;
     chunk->source = std::make_shared<TensorVec>(std::move(job.unweighted_events));
     chunk->weights = to_vector(job.step_host.at(0));
@@ -466,6 +497,7 @@ void WeightingPipeline::commit_stage(ChunkPtr chunk, std::size_t stage) {
         } else {
             chunk->ratios.emplace_back();
             chunk->max_weights.push_back(0.);
+            chunk->step_sums.emplace_back();
         }
         advance(chunk, stage + 1);
         return;
@@ -482,6 +514,8 @@ void WeightingPipeline::commit_stage(ChunkPtr chunk, std::size_t stage) {
             .max_weights = std::move(chunk->max_weights),
             .biases = std::move(chunk->biases),
             .generated_count = chunk->generated_count,
+            .generated_count_after_cuts = chunk->generated_count_after_cuts,
+            .sums = std::move(chunk->step_sums),
         };
         _sink(step_events);
     }
@@ -493,6 +527,15 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
     std::size_t count = chunk.size();
     std::vector<double> ratios(count);
     std::size_t invalid_count = 0;
+    // The weight an event carries in units of the integral: the maxima of the
+    // unweightings it passed times its overweight.
+    double unit = chunk.max_weight;
+    for (std::size_t i = 0; i + 1 < step; ++i) {
+        if (channel->weighting_steps().at(i).unweight && chunk.max_weights.at(i) > 0) {
+            unit *= chunk.max_weights.at(i);
+        }
+    }
+    StepSums sums;
     for (std::size_t i = 0; i < count; ++i) {
         double previous = chunk.matrix_elements.at(i);
         double& value = chunk.step_matrix_elements.at(i);
@@ -513,11 +556,31 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
             value = ratio * previous;
         }
         ratios.at(i) = ratio;
+        double entering =
+            unit * chunk.overweights.at(i) * std::abs(chunk.ratio_products.at(i));
         chunk.ratio_products.at(i) *= ratio;
+        double leaving = entering * std::abs(ratio);
+        double signed_leaving = std::copysign(leaving, chunk.ratio_products.at(i));
+        if (!chunk.biases.empty()) {
+            signed_leaving /= chunk.biases.at(i);
+        }
+        ++sums.n;
+        sums.a += entering;
+        sums.aa += entering * entering;
+        sums.b += leaving;
+        sums.ab += entering * leaving;
+        sums.bb += leaving * leaving;
+        sums.sb += signed_leaving;
+        sums.a_sb += entering * signed_leaving;
+        sums.sb2 += signed_leaving * signed_leaving;
+        double weight = chunk.overweights.at(i) * std::abs(chunk.ratio_products.at(i));
+        sums.u += weight;
+        sums.u2 += weight * weight;
     }
     if (invalid_count > 0) {
         channel->add_invalid_step_values(invalid_count);
     }
+    chunk.step_sums.push_back(sums);
     std::vector<me_int_t> keep;
     if (settings.unweight) {
         // the overweight of the last unweighting times the ratios since, see
@@ -537,8 +600,8 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
             chunk.overweights.at(i) = std::max(1., value / max_weight);
             chunk.ratio_products.at(i) = std::copysign(1., chunk.ratio_products.at(i));
         }
-        channel->add_step_accepted(
-            step, static_cast<double>(keep.size()), chunk.max_weight, chunk.max_weights
+        channel->add_step_statistics(
+            step, count, keep.size(), chunk.max_weight, chunk.max_weights
         );
         chunk.max_weights.push_back(max_weight);
     } else {
@@ -547,8 +610,8 @@ void WeightingPipeline::decide(Chunk& chunk, std::size_t step) {
                 keep.push_back(static_cast<me_int_t>(i));
             }
         }
-        channel->add_step_accepted(
-            step, static_cast<double>(keep.size()), chunk.max_weight, chunk.max_weights
+        channel->add_step_statistics(
+            step, count, keep.size(), chunk.max_weight, chunk.max_weights
         );
         chunk.max_weights.push_back(0.);
     }
@@ -783,13 +846,18 @@ void WeightingPipeline::run_job(Job& job) {
     step_args.push_back(events.at(group.color));
     step_args.push_back(events.at(group.helicity));
     step_args.push_back(events.at(group.diagram));
+    step_args.push_back(events.at(group.flavor_index));
+    if (group.parton_density_steps.at(job.stage - 1)) {
+        step_args.push_back(events.at(group.parton_densities));
+    }
     step_args.push_back(events.at(group.random));
     TensorVec outputs = runtimes.steps.at(job.stage - 1)->run(step_args);
     auto matrix_elements = to_vector(outputs.at(0).cpu());
-    auto random = to_vector(outputs.at(4).cpu());
+    auto random = to_vector(outputs.at(5).cpu());
     events.at(group.color) = outputs.at(1);
     events.at(group.helicity) = outputs.at(2);
     events.at(group.diagram) = outputs.at(3);
+    events.at(group.flavor_index) = outputs.at(4);
 
     auto shared_events = std::make_shared<TensorVec>(std::move(events));
     std::size_t offset = 0;

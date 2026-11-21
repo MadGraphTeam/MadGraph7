@@ -445,7 +445,10 @@ c     Global
 c
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       DATA NINJARS_DP_USAGE,NINJARS_QP_USAGE/0,0/
+      DATA TIRUST_DP_USAGE,TIRUST_QP_USAGE/0,0/
       INTEGER U_RETURN_CODES(0:9)
       INTEGER T_RETURN_CODES(0:9)
       INTEGER H_RETURN_CODES(0:9)
@@ -487,6 +490,10 @@ c-----
      &     '</ninjars_dp_usage>'
       write(outUnit,'(A,I0,A)') '<ninjars_qp_usage>',NINJARS_QP_USAGE,
      &     '</ninjars_qp_usage>'
+      write(outUnit,'(A,I0,A)') '<tirust_dp_usage>',TIRUST_DP_USAGE,
+     &     '</tirust_dp_usage>'
+      write(outUnit,'(A,I0,A)') '<tirust_qp_usage>',TIRUST_QP_USAGE,
+     &     '</tirust_qp_usage>'
       write(outUnit,33) '<t_return_code>',T_RETURN_CODES,'</t_return_code>'
       write(outUnit,33) '<h_return_code>',H_RETURN_CODES,'</h_return_code>'
       write(outUnit,*) '<average_time>'//trim(toStr_real(AVG_TIMING))
@@ -1804,6 +1811,8 @@ c     max_overweight_truncation (set in run.inc, see store_events in unwgt.f)
       common /to_refine_lastn/ last_nref
       double precision max_overweight_truncation
       common/to_overweight/max_overweight_truncation
+      double precision ow_thr, ow_fix, ow_kn, ow_nz
+      common/to_unwgt_thr/ow_thr, ow_fix, ow_kn, ow_nz
 
       data prb/maxprb*1d0/
       data fprb/maxfprb*1d0/
@@ -1816,6 +1825,15 @@ c-----
       if (first_time) then
          first_time = .false.
          last_it = .false.
+         ow_thr = 0d0
+c        fixed unweighting threshold of an enforce_overweight_limit top-up job
+         ow_fix = 0d0
+         ow_kn = 0d0
+         ow_nz = 0d0
+         open(unit=93, file='ow_threshold.dat', status='old', err=9302)
+         read(93, *, err=9301, end=9301) ow_fix
+ 9301    close(93)
+ 9302    continue
          last_on = use_cut .ne. -2 .and. (use_cut .ne. 0 .or.
      &        max_overweight_truncation .gt. 0d0)
          last_ufix = 0d0
@@ -1873,6 +1891,7 @@ c        Add the current point to the DiscreteSamplerGrid
          endif
 
          kn = kn + 1
+         ow_kn = kn
          if (.true.) then       !Average points to increase error estimate
             twgt1=twgt1+dabs(wgt)     !This doesn't change anything should remove
             iavg = iavg+1
@@ -1889,6 +1908,7 @@ c        Add the current point to the DiscreteSamplerGrid
                wmax=dabs(wgt)*itm*events
             endif
             non_zero = non_zero + 1
+            ow_nz = non_zero
             mean = mean + dabs(wgt)
             rmean = rmean + wgt
 c           expected number of unweighted events of this point: a large weight
@@ -2391,6 +2411,10 @@ c     when that one contains a large weight)
                if (last_it) last_xnorm = xmean(cur_it-1)
                if (use_cut.eq.-2) then
                   call store_events(force_max_wgt, .False.)
+               elseif (ow_fix .gt. 0d0) then
+c                 overweight-limit top-up job (ow_threshold.dat):
+c                 the finest consistent maximum, gen_ximprove unweights the pool
+                  call store_events(0d0, .True.)
                else
                   call store_events(-1d0, .True.)
                endif
@@ -2504,12 +2528,16 @@ c 129              close(22)
             if (cur_it .gt. itm) then               
                if (use_cut.eq.-2)then
                   call store_events(force_max_wgt, .False.)
+               elseif (ow_fix .gt. 0d0) then
+c                 overweight-limit top-up job (ow_threshold.dat):
+c                 the finest consistent maximum, gen_ximprove unweights the pool
+                  call store_events(0d0, .True.)
                else
                   call store_events(-1d0, .True.)
                endif
                tmean = tmean / tsigma
                trmean = trmean / tsigma
-               chi2 = dabs(chi2 / tmean / tmean - tsigma) / dble(itm - 1)
+               chi2 = dabs(chi2 / tmean / tmean - tsigma) / dble(max(itm - 1, 1))
                tsigma = tmean / sqrt(tsigma)
                write(*, 80) real(tmean), real(tsigma), real(trmean), real(chi2)
  80            format(/1X,79(1H-)/1X,23HAccumulated results:   ,

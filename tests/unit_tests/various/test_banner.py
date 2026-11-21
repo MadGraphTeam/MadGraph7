@@ -2695,7 +2695,7 @@ class TestRunCardMG7(unittest.TestCase):
             shutil.rmtree(index_dir)
         self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
         for name, value in (('lhaid', '999999'), ('pdlabel2', 'isronlyll'),
-                            ('pdlabel2', 'none'), ('lpp1', '2'), ('lpp', 'p')):
+                            ('pdlabel2', 'none'), ('lpp1', '5'), ('lpp', 'p')):
             self.assertRaises(bannermod.InvalidRunCard,
                               rc.set_lo_beam_param, name, value)
         self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
@@ -2706,6 +2706,11 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse(rc['beam']['leptonic'])
         rc.set_lo_beam_param('pdlabel', 'none')
         self.assertTrue(rc['beam']['leptonic'])
+        # lpp 2 (elastic photons) is a gamma-UPC beam: beam.upc_flux
+        rc.set_lo_beam_param('lpp', '2')
+        self.assertFalse(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('pdlabel', 'chff')
+        self.assertEqual(rc['beam']['upc_flux'], 'chff')
 
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""

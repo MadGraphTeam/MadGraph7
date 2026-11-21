@@ -1,4 +1,1 @@
-      INCLUDE 'maxparticles.inc'
-      INCLUDE 'maxconfigs.inc'
-      INTEGER MAXPROC,NGRAPHS,NCOLOR,MAXFLOW
-      PARAMETER (MAXPROC=2,NGRAPHS=1,NCOLOR=1,MAXFLOW=1)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%genps.inc

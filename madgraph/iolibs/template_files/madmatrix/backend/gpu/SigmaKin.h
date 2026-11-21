@@ -4,14 +4,14 @@
 //
 // Backend-owned driver: sigmaKin and everything it calls (calculate_jamps,
 // good-helicity filtering, color/channel selection). Declared here so that
-// umami.cc/MatrixElementKernels.cc can call them. They all take the parameters
-// of the process they evaluate (ProcessParameters.h) as an argument.
+// umami.cc can call them. They all take the parameters of the process they
+// evaluate (ProcessParameters.h) as an argument.
 
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1
 
-#include "mgOnGpuConfig.h"
-#include "mgOnGpuCxtypes.h" // for cxtype, fptype_amp_sv
+#include "MadMatrixConfig.h"
+#include "MadMatrixCxtypes.h" // for cxtype, fptype_amp_sv
 #include "GpuAbstraction.h"
 #include "ProcessData.h"
 #include "ProcessParameters.h"
@@ -23,9 +23,9 @@
 // the constant bank, as __constant__ memory (CUDA 11.7 and later; HIP passes the
 // kernel arguments in a read-only segment of their own)
 #if defined __CUDACC__ && ( __CUDACC_VER_MAJOR__ > 11 || ( __CUDACC_VER_MAJOR__ == 11 && __CUDACC_VER_MINOR__ >= 7 ) )
-#define MGONGPU_GRID_CONSTANT __grid_constant__
+#define MADMATRIX_GRID_CONSTANT __grid_constant__
 #else
-#define MGONGPU_GRID_CONSTANT
+#define MADMATRIX_GRID_CONSTANT
 #endif
 
 namespace madmatrix
@@ -51,8 +51,8 @@ namespace madmatrix
   // in the constant bank (as fast as __constant__ memory, and private to each launch,
   // hence to each instance and device), unless they do not fit in the kernel arguments
   // (4 kB): a pointer to a copy in global memory (DeviceProcessParameters) then. The
-  // latter can be forced with -DMGONGPU_PARAMS_IN_GLOBAL_MEMORY.
-#ifdef MGONGPU_PARAMS_IN_GLOBAL_MEMORY
+  // latter can be forced with -DMADMATRIX_PARAMS_IN_GLOBAL_MEMORY.
+#ifdef MADMATRIX_PARAMS_IN_GLOBAL_MEMORY
   constexpr bool processParametersByValue = false;
 #else
   constexpr bool processParametersByValue = sizeof( ProcessParameters ) <= 4000;
@@ -82,7 +82,7 @@ namespace madmatrix
   };
 
   __global__ void
-  computeDependentCouplings( MGONGPU_GRID_CONSTANT const ProcessParametersArg params, // input: parameters of the process
+  computeDependentCouplings( MADMATRIX_GRID_CONSTANT const ProcessParametersArg params, // input: parameters of the process
                              const fptype* allgs,                                 // input: Gs[nevt]
                              fptype* allcouplings );                              // output: couplings[nevt*ndcoup*2]
 

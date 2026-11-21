@@ -279,6 +279,7 @@ class TestCmdShell1(unittest.TestCase):
                     'low_mem_multicore_nlo_generation': False,
                     'ninja': './HEPTools/lib',
                     'ninjars': None,
+                    'tirust': None,
                     'samurai': None,
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,
@@ -494,7 +495,7 @@ class TestCmdShell2(unittest.TestCase,
         """mg7 equivalent of test_output_madevent_directory.
 
         Checks that `output mg7` produces a complete, self-consistent mg7
-        (madmatrix/cudacpp) directory for e+ e- > e+ e- -- the top-level layout
+        (madmatrix) directory for e+ e- > e+ e- -- the top-level layout
         (src/, SubProcesses/, lib/, Cards/, bin/), the mg7 cards and launcher,
         and that the generated subprocess compiles into the expected shared
         libraries (scalar backend).
@@ -1436,7 +1437,7 @@ class TestCmdShell2(unittest.TestCase,
                             'all matrix elements vanished for %s' % proc)
 
     def test_madmatrix_goodhel_filter(self):
-        """The standalone (madmatrix/cudacpp) good-helicity filter must reproduce the
+        """The standalone (madmatrix) good-helicity filter must reproduce the
         per-flavor matrix element of every flavor served by a merged matrix
         element.
 
@@ -2917,7 +2918,7 @@ int main(int argc, char** argv){
         different order, so compare sorted rather than index-by-index / exact.
         `atol` lets callers treat numerically-tiny (vanishing-flavour) values as
         zero, where the different floating-point arithmetic of the Fortran vs
-        cudacpp backends produces different noise."""
+        madmatrix backends produces different noise."""
         a, b = sorted(a), sorted(b)
         self.assertEqual(len(a), len(b),
                          'different number of matrix elements: %d vs %d'
@@ -3073,7 +3074,7 @@ int main(int argc, char** argv){
         standalone = get_values('standalone_fortran')
 
         # atol: this process's matrix elements are O(1e-20), i.e. at the
-        # floating-point noise floor, where the Fortran and cudacpp backends
+        # floating-point noise floor, where the Fortran and madmatrix backends
         # differ; only require agreement above an absolute floor (the original
         # cpp-vs-standalone check used assertAlmostEqual, equally lenient here).
         self._assert_me_lists_close(madmatrix, standalone, atol=1e-7)
@@ -3114,7 +3115,7 @@ int main(int argc, char** argv){
         into a vacuous one.
 
         madmatrix is checked once per backend: the FD wavefunctions are written
-        twice in helas_fd.h, once under #ifndef MGONGPU_CPPSIMD and once for the
+        twice in helas_fd.h, once under #ifndef MADMATRIX_SIMD and once for the
         vector types, and the two have drifted apart before. Which one a plain
         'make' builds depends on the host (cpu), so neither is exercised
         unless it is asked for by name.
@@ -3306,7 +3307,7 @@ int main(int argc, char** argv){
         compute the same thing, over many events.
 
         The FD wavefunctions are written twice in helas_fd.h -- once under
-        #ifndef MGONGPU_CPPSIMD, once for the vector types -- and only the first
+        #ifndef MADMATRIX_SIMD, once for the vector types -- and only the first
         event of the first lane is ever printed by check_sa.exe 'matrix' mode.
         A vector branch that is right in the first lane and wrong in the others
         is therefore invisible to a single point: the FD block of vxxxxx built
@@ -7341,7 +7342,7 @@ set boost_choice [6, -6] pt [0, 0]
 
 
     def test_mg7_ufo_aloha(self):
-        """Test mg7 (madmatrix/cudacpp) output with UFO/ALOHA.
+        """Test mg7 (madmatrix) output with UFO/ALOHA.
 
         mg7's analogue of the Fortran ALOHA routines is the C++ ``HelAmps_sm.h``
         header: the same FFV* helicity-amplitude functions are emitted as inline
@@ -8419,7 +8420,7 @@ P1_qq_wp_wp_lvl
     def test_ungroup_decay_mg7(self):
         """mg7 equivalent of test_ungroup_decay.
 
-        Mirrors test_ungroup_decay for the mg7 (madmatrix/cudacpp) backend.
+        Mirrors test_ungroup_decay for the mg7 (madmatrix) backend.
         Unlike madevent, mg7 uses the per-subprocess (ungrouped-style)
         directory naming regardless of the group_subprocesses flag: the
         flavour-merged madevent names (e.g. wp_lvl, wp_qq) are never produced,
@@ -8654,7 +8655,7 @@ P1_qq_wp_wp_lvl
         """mg7 equivalent of test_leshouche_sextet_diquarks (TODO).
 
         leshouche.inc is a MadEvent Fortran artifact (Les Houches colour/flavour
-        table for the Fortran integrator); the mg7 (madmatrix/cudacpp) export
+        table for the Fortran integrator); the mg7 (madmatrix) export
         does not produce it. This test is xfail to keep mg7 leshouche support on
         the to-do list: when mg7 grows an equivalent it will start passing and
         the expectedFailure decorator should be removed.
