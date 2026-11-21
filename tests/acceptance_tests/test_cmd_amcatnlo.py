@@ -861,6 +861,11 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertEqual(len(mfile), 1, 'no matrix file for u d~ > w+ g g')
         mfile = mfile[0]
         pfx = mfile[len('matrix_'):-len('.f')]
+        from tests.acceptance_tests.test_nlo_real_offload_contract import TestNLORealFortranOracle
+        native_probe = TestNLORealFortranOracle()
+        row_to_me, _ = native_probe._real_me_contract(proc_dir)
+        physical_row = next(row for row, real_me in sorted(row_to_me.items())
+                            if real_me == int(pfx))
         body = open(pjoin(proc_dir, mfile)).read()
         body = body.split('SUBROUTINE SMATRIX%s_SPLITORDERS' % pfx)[1]
         body = body.split('\n      END\n')[0]
@@ -872,7 +877,8 @@ class MECmdShell(IOTests.IOTestManager):
                 ('__IDEN__', re.search(r'DATA IDEN/(\d+)/', body).group(1)),
                 ('__NHEL__', '\n'.join(l for l in body.split('\n')
                                        if 'DATA (NHEL(I,' in l)),
-                ('__PFX__', pfx)):
+                ('__PFX__', pfx),
+                ('__NFKSPROCESS__', str(physical_row))):
             driver = driver.replace(key, value)
         open(pjoin(proc_dir, 'real_tie_frame.f'), 'w').write(driver)
 
@@ -882,11 +888,18 @@ class MECmdShell(IOTests.IOTestManager):
                                cwd=pjoin(self.path, 'Source'),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(build.returncode, 0, build.stdout.decode())
+        # These launch-time option files are unused by the amplitude probe.
+        for name in ('analyse_opts', 'pythia8_opts'):
+            path = pjoin(self.path, 'SubProcesses', name)
+            if not os.path.exists(path):
+                open(path, 'w').close()
+        native_objects = native_probe._native_real_link_objects(self.path, proc_dir)
+        objects = ['real_tie_frame.o', mfile[:-2] + '.o']
+        misc.compile(objects, cwd=proc_dir)
         build = subprocess.run(
-            ['gfortran', '-O', '-ffixed-line-length-none', '-I.', '-I../../lib',
-             'real_tie_frame.f', mfile, 'born_support.f', '../../Source/timing.f',
-             '-o', 'real_tie_frame', '-L../../lib', '-lmc_born_support',
-             '-ldhelas', '-lmodel', '-Wl,-rpath,' + pjoin(self.path, 'lib')],
+            ['gfortran', '-o', 'real_tie_frame'] + objects + native_objects +
+            ['-L../../lib', '-ldhelas', '-lmodel'] +
+            native_probe._native_real_link_flags(self.path, proc_dir),
             cwd=proc_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(build.returncode, 0,
                          'could not build the driver:\n%s' % build.stdout.decode())
