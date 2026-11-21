@@ -154,6 +154,7 @@ static bool rw_array(RwdView const *view, uint32_t ref, uint64_t length, bool nu
     if (ref == REWEIGHT_NULL) return nullable;
     if ((uint64_t)ref + length > view->count[RW_I32P]) return false;
     int32_t const *values = (int32_t const *)view->at[RW_I32P] + ref;
+    if (low <= INT32_MIN && high > INT32_MAX) return true;
     for (uint64_t k = 0; k < length; ++k)
         if (values[k] < low || values[k] >= high) return false;
     return true;
@@ -262,18 +263,32 @@ static bool rw_validate(RwdView *view) {
                 return rw_fail(view, "invalid flow id");
     }
     ReweightSwitchTarget const *stgt = view->at[RW_STGT];
-    for (uint64_t t = 0; t < switch_targets; ++t) {
+    /* the targets share few flow-order arrays: each (ref, width) is checked once */
+    uint16_t *checked = switch_targets > 0
+        ? calloc(view->count[RW_I32P] + 1, sizeof(uint16_t)) : NULL;
+    if (switch_targets > 0 && checked == NULL) return rw_fail(view, "out of memory");
+    bool valid = true;
+    for (uint64_t t = 0; valid && t < switch_targets; ++t) {
         ReweightSwitchTarget const *target = &stgt[t];
-        if (target->evaluation >= evaluations || target->target_process >= targets)
-            return rw_fail(view, "invalid switch target");
+        if (target->evaluation >= evaluations || target->target_process >= targets) {
+            valid = false;
+            break;
+        }
         uint64_t width = flows[sevl[target->evaluation].process].count;
-        if (!rw_array(view, target->colors, width, false, INT32_MIN, INT32_MAX) ||
-            !rw_array(view, target->flows, width, false, 0, (int64_t)width) ||
-            !rw_array(view, target->legs, n, true, 0, (int64_t)n) ||
-            !rw_string(view, target->assignment_key, target->assignment < 0) ||
-            target->factor >= constants)
-            return rw_fail(view, "invalid switch target");
+        bool order = target->flows != REWEIGHT_NULL && target->flows < view->count[RW_I32P] &&
+                     width < UINT16_MAX && checked[target->flows] == width + 1;
+        if (!order) {
+            order = rw_array(view, target->flows, width, false, 0, (int64_t)width);
+            if (order && width < UINT16_MAX && target->flows < view->count[RW_I32P])
+                checked[target->flows] = (uint16_t)(width + 1);
+        }
+        valid = order && rw_array(view, target->colors, width, false, INT32_MIN, INT64_MAX) &&
+                rw_array(view, target->legs, n, true, 0, (int64_t)n) &&
+                rw_string(view, target->assignment_key, target->assignment < 0) &&
+                target->factor < constants;
     }
+    free(checked);
+    if (!valid) return rw_fail(view, "invalid switch target");
     if (view->count[RW_SHEL] != REWEIGHT_EXPORTED_HELICITY_COUNT * n)
         return rw_fail(view, "switch helicity count mismatch");
     return true;

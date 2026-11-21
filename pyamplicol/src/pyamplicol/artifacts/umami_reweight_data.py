@@ -255,7 +255,7 @@ def _u32(values) -> array:
     return array("I", (v & 0xFFFFFFFF for v in values))
 
 
-def _interleave(columns: Sequence[array], count: int) -> bytes:
+def _interleave(columns: Sequence[array], count: int) -> array:
     width = len(columns)
     out = array("I", bytes(4 * width * count))
     for k, column in enumerate(columns):
@@ -263,11 +263,12 @@ def _interleave(columns: Sequence[array], count: int) -> bytes:
     return _little(out)
 
 
-def _little(values: array) -> bytes:
+def _little(values: array) -> array:
+    # an array is written as it is (no copy) on little-endian hosts
     if sys.byteorder != "little":
         values = array(values.typecode, values)
         values.byteswap()
-    return values.tobytes()
+    return values
 
 
 def _range(name: str, values, low: int, high: int) -> None:
@@ -278,6 +279,13 @@ def _range(name: str, values, low: int, high: int) -> None:
 
 def encode_reweight_data(tables: ReweightTables) -> bytes:
     """The data file of the tables; deterministic (interning in order of first use)."""
+    header, chunks = _encode(tables)
+    return header + b"".join(chunks)
+
+
+def _encode(tables: ReweightTables) -> tuple[bytes, list]:
+    """The header and the payload chunks of the data file (written without
+    joining them: the payload is most of the writer's memory at 7j)."""
     pools = _Pools()
     p = tables.provider
     n = p.particle_count
@@ -426,29 +434,26 @@ def encode_reweight_data(tables: ReweightTables) -> bytes:
     sections[b"STRS"] = bytes(pools.strings)
     sections[b"I32P"] = _little(pools.ints)
     sections[b"F64T"] = _little(pools.doubles)
-    table_size = _ENTRY.size * len(_ORDER)
-    offset = HEADER_SIZE + table_size
-    entries, payload = [], bytearray()
+    position = HEADER_SIZE + _ENTRY.size * len(_ORDER)
+    entries, data_chunks = [], []
     for tag in _ORDER:
-        data = sections[tag]
+        data = memoryview(sections[tag]).cast("B")
         size = _RECORDS[tag].size
         if len(data) % size:
             raise AssertionError(f"section {tag!r} is not a multiple of {size}")
-        pad = -(offset + len(payload)) % 8
-        payload += b"\0" * pad
+        pad = -position % 8
+        data_chunks.append(b"\0" * pad)
+        position += pad
         entries.append(
-            _ENTRY.pack(
-                int.from_bytes(tag, "little"),
-                size,
-                offset + len(payload),
-                len(data) // size,
-                0,
-            )
+            _ENTRY.pack(int.from_bytes(tag, "little"), size, position, len(data) // size, 0)
         )
-        payload += data
-    body = b"".join(entries) + bytes(payload)
-    file_size = HEADER_SIZE + len(body)
-    digest = hashlib.sha256(body).digest()
+        data_chunks.append(data)
+        position += len(data)
+    chunks = [b"".join(entries), *data_chunks]
+    digest, crc = hashlib.sha256(), 0
+    for chunk in chunks:
+        digest.update(chunk)
+        crc = zlib.crc32(chunk, crc)
     header = bytearray(
         _HEADER.pack(
             MAGIC,
@@ -456,15 +461,15 @@ def encode_reweight_data(tables: ReweightTables) -> bytes:
             HEADER_SIZE,
             ENDIAN_TAG,
             len(_ORDER),
-            file_size,
-            zlib.crc32(body),
+            position,
+            crc,
             0,
-            digest,
+            digest.digest(),
             b"\0" * 56,
         )
     )
     struct.pack_into("<I", header, 36, zlib.crc32(header))
-    return bytes(header) + body
+    return bytes(header), chunks
 
 
 def reseal_reweight_data(data: bytes) -> bytes:
@@ -824,13 +829,16 @@ def write_reweight_data(output: Path, tables: ReweightTables) -> Path:
     ``reweight_<id>.h`` to ``output``; returns the data file."""
     output = Path(output)
     identifier = tables.provider.id
-    data = encode_reweight_data(tables)
+    header, chunks = _encode(tables)
     path = output / f"reweight_{identifier}.rwd"
     temporary = output / f".reweight_{identifier}.rwd.{os.getpid()}.tmp"
-    temporary.write_bytes(data)
+    with open(temporary, "wb") as stream:
+        stream.write(header)
+        for chunk in chunks:
+            stream.write(chunk)
     os.replace(temporary, path)
     (output / f"reweight_{identifier}.h").write_text(
-        reweight_data_header(tables, path.name, content_sha256(data)), encoding="utf-8"
+        reweight_data_header(tables, path.name, content_sha256(header)), encoding="utf-8"
     )
     return path
 
