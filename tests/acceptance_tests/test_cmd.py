@@ -4991,7 +4991,12 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
             results = onia_loop_check.run_points(pdir, [p['momenta'] for p in points])
             self.assertEqual(len(results), 3)
             for r in results:
-                self.assertAlmostEqual(r['finite_norm']/finite, 1., 8, process)
+                # stable in double precision with TIRust, and right within
+                # MadLoop's own accuracy estimate (about 1e-8 for the boosted
+                # q q~ > 3S1[8] points, 1e-15 at rest)
+                self.assertEqual(r['ret_code'] // 100, 2, process)
+                self.assertLess(abs(r['finite_norm']/finite - 1.),
+                                max(5e-9, r['accuracy']), process)
                 self.assertAlmostEqual(r['single_norm'], single, 8, process)
                 self.assertAlmostEqual(r['double_norm'], double, 8, process)
          

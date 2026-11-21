@@ -304,17 +304,19 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
     def set_onia_reduction_library(self, card):
         """With bound states the constituents carry equal momenta: the Gram
         determinants of every loop with both constituents vanish and the
-        Coulomb-exchange loops have linearly dependent propagators. TIRust
-        (9) reduces them; IREGI (3) is the fallback."""
+        Coulomb-exchange loops have linearly dependent propagators. Only
+        TIRust (9) reduces them reliably: the other libraries, IREGI
+        included, can return wrong values that pass MadLoop's stability
+        tests, and onia_loop.f reports their results unstable. TIRust is
+        therefore the only library of the default chain."""
         if 'mlreductionlib' in card.user_set:
             return False
-        available = getattr(self, 'tir_available_dict', {})
-        libs = [lib for lib, name in [(9, 'tirust'), (3, 'iregi')] if available.get(name, False)]
-        if not libs:
-            logger.warning('Processes with bound states need the reduction of '
-                           'Coulomb-exchange integrals: install TIRust (install tirust).')
+        if not getattr(self, 'tir_available_dict', {}).get('tirust', False):
+            logger.warning('Processes with bound states need TIRust for the '
+                           'reduction of their threshold integrals (install tirust): '
+                           'the results of the other libraries are reported unstable.')
             return False
-        card.set('MLReductionLib', '|'.join('%d' % l for l in libs), user=True)
+        card.set('MLReductionLib', '9', user=True)
         return True
 
     def set_onia_madloop_defaults(self, card):

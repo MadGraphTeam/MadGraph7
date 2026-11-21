@@ -90,12 +90,29 @@ configurations without effective Born are skipped point by point.
 **Reduction.** With `p_Q = p_Qbar` every Gram determinant of a loop with both
 constituents vanishes. In the Coulomb-exchange loops the propagators are
 linearly dependent, `2 D_g = D_Q + D_Qbar`. TIRust (backend 9) reduces these
-integrals (huashengshao/TIRust#38) and is the default for bound states
-(`MLReductionLib = 9|3`). IREGI (3) is a fallback that is not reliable here.
+integrals (huashengshao/TIRust#38) and is the only library of the default
+chain for bound states (`MLReductionLib = 9`). The other libraries fail
+there, and MadLoop's stability tests do not always notice: COLLIER alone, for
+instance, gives -13.545 instead of -32/3 for `e+ e- > Jpsi(1|3S11)` and passes
+them. The public `SLOOPMATRIX` of a bound-state output therefore reports the
+result of any library other than TIRust as unstable (return code `4x0`, a
+warning on the first such point). They remain selectable for cross-checks.
+When TIRust refuses a point (two bound states in one process, see the open
+items of the benchmark report), the point is reported unstable.
 
 **Precision rescue.** The quadruple-precision rescue improves the physical
 momenta, each bound state on its mass shell, and splits the bound states
-again (`MP_IMPROVE_PS_POINT_PRECISION` of `onia_loop.f`).
+again (`MP_IMPROVE_PS_POINT_PRECISION` of `onia_loop.f`). TIRust's binary128
+path does not yet reduce the threshold integrals, so a point that fails the
+double-precision tests is reported unstable.
+
+**Diagnostic.** `ONIA_SET_RELATIVE_MOMENTUM(Q)` gives the constituents the
+relative momentum `+-q` in the rest frame of the pair (`--relmom` of
+`tools/onia_loop_check.py`). The integrals are then ordinary ones, which any
+library reduces; the Coulomb singularity `C pi^2/v` appears in the finite
+part (`C = C_F` for a singlet, `C_F - C_A/2` for an octet). Subtracted and
+extrapolated to `v = 0`, it gives an independent check of the threshold
+value (`relmom_check` of `tools/onia_loop_validate.py`).
 
 **IR poles.** `ONIA_IR_POLES` predicts the poles from the colour-linked
 projected Borns (Catani-Dittmaier-Trocsanyi; arXiv:2402.19221, eqs.

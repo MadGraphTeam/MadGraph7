@@ -227,3 +227,50 @@ class TestBornBornColourFactors(unittest.TestCase):
         self.assertEqual(cfb[1][0], (F(-1, 2), F(-2)))
         # |i|^2 * 2 + 1 * 2 + conj(i)*(-1)*1/2 + (-1)*i*1/2 = 4
         self.assertEqual(cfb[1][1], (F(4), F(0)))
+
+
+import madgraph.loop.loop_exporters as loop_exporters
+import madgraph.various.banner as banner_mod
+
+
+class TestOniaMadLoopDefaults(unittest.TestCase):
+    """MadLoopParams.dat defaults of outputs with bound states: TIRust alone
+    (the other libraries are not reliable at threshold) and no helicity
+    filter, unless the user set them."""
+
+    class Exporter(object):
+        def __init__(self, available):
+            self.tir_available_dict = available
+
+    def card(self):
+        return banner_mod.MadLoopParam(os.path.join(
+            mg_root, 'Template', 'loop_material', 'StandAlone', 'Cards',
+            'MadLoopParams.dat'))
+
+    def apply(self, available, card):
+        exporter = self.Exporter(available)
+        cls = loop_exporters.LoopProcessExporterFortranSA
+        exporter.set_onia_reduction_library = \
+            cls.set_onia_reduction_library.__get__(exporter)
+        return cls.set_onia_madloop_defaults(exporter, card)
+
+    def test_tirust_alone(self):
+        card = self.card()
+        self.apply({'tirust': True, 'iregi': True, 'collier': True}, card)
+        self.assertEqual(str(card['MLReductionLib']), '9')
+        self.assertEqual(card['HelicityFilterLevel'], 0)
+
+    def test_without_tirust(self):
+        card = self.card()
+        before = card['MLReductionLib']
+        self.apply({'tirust': False, 'iregi': True}, card)
+        self.assertEqual(card['MLReductionLib'], before)
+        self.assertEqual(card['HelicityFilterLevel'], 0)
+
+    def test_user_choice_is_kept(self):
+        card = self.card()
+        card.set('MLReductionLib', '7', user=True)
+        card.set('HelicityFilterLevel', 2, user=True)
+        self.apply({'tirust': True}, card)
+        self.assertEqual(str(card['MLReductionLib']), '7')
+        self.assertEqual(card['HelicityFilterLevel'], 2)

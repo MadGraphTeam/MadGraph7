@@ -1499,6 +1499,23 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
                     'PRINT_MADLOOP_BANNER')
 
     @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
+    def testIO_onia_standalone_output(self):
+        r""" target: aaetac_IOTest/SubProcesses/P0_aa_etac11S01/[onia_loop\.f]
+            target: aaetac_IOTest/SubProcesses/P0_aa_etac11S01/[onia_loop_(data|links)\.inc]
+        """
+        # The bound-state layer of MadLoop (madgraph/loop/loop_onia.py,
+        # loop_optimized/onia_loop.inc): the projection data, the colour links
+        # of the pole prediction and the public routines on physical momenta.
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm_onia-c_mass', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.exec_cmd('generate a a > etac(1|1S01) [virt=QCD]', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.onecmd('output standalone %s -f' %
+                                    str(pjoin(self.IOpath, 'aaetac_IOTest')))
+
+    @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
     def testIO_loop_induced_standalone_output(self):
         r""" target: gghLI_IOTest/SubProcesses/P0_gg_h/[(check_sa|loop_matrix)\.f]
         """

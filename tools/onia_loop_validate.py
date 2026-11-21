@@ -82,6 +82,11 @@ CASES = {
              + 4 * vp((2 * MC / MB) ** 2) + 4 * vp((2 * MC / MT) ** 2), -7., -8. / 3),
         source='Petrelli et al. eq. (133) + bound charm bubble (Hagiwara et al. '
                '0804.1014) + massive b, t bubbles of the model (decoupling)'),
+    'uu_ps': dict(
+        process='u u~ > Ps(1|3S1) [virt=QCD]', model='loop_sm_onia-lepton_masses',
+        ref=(CF * (PI2 - 8), -3 * CF, -2 * CF),
+        source='q qbar -> gamma* vertex C_F (pi^2 - 8) (Altarelli, Ellis, Martinelli); '
+               'leptonium as a colourless 3S1 final state'),
     'ee_etac_a': dict(
         process='e+ e- > etac(1|1S01) a / z [virt=QCD]', relmom=True, onium_legs=[2], colour=1,
         masses={4: 1.5, 5: 1.e4, 6: 1.e5}, energy=10.58,
@@ -143,7 +148,7 @@ def relmom_check(name, case, outdir, pdir, masses, v0_point, energy, timeout,
 
 
 def run_case(name, case, work, libs, npoints, timeout):
-    outdir = olc.output_process('loop_sm_onia-c_mass', case['process'],
+    outdir = olc.output_process(case.get('model', 'loop_sm_onia-c_mass'), case['process'],
                                 os.path.join(work, name))
     pdir = olc.subprocess_dir(outdir)
     if case.get('masses'):
@@ -164,6 +169,7 @@ def run_case(name, case, work, libs, npoints, timeout):
             out = olc.run_points(pdir, momenta, case.get('mu'), timeout=timeout)
         except Exception as error:
             res['libs'][lib] = dict(status='failed: %s' % str(error)[:200])
+            print('%-12s lib %-6s failed: %s' % (name, lib, str(error)[:120]), flush=True)
             continue
         entry = dict(status='ok', points=out)
         # the poles against the universal prediction (ONIA_IR_POLES)
@@ -179,14 +185,15 @@ def run_case(name, case, work, libs, npoints, timeout):
             entry['max_deviation'] = max(dev)
             entry['passed'] = max(dev) < case.get('tolerance', 1e-8)
         res['libs'][lib] = entry
+        summary = entry.get('max_deviation')
+        print('%-12s lib %-6s %s  poles vs prediction %.2e  stable %d/%d  codes %s' % (
+            name, lib, 'max dev %.2e' % summary if summary is not None else 'no reference',
+            entry['max_pole_deviation'], entry['stable_points'], len(out),
+            sorted(set(r['ret_code'] for r in out))), flush=True)
     if case.get('relmom') and res['libs'].get('9', {}).get('status') == 'ok':
         res['relmom'] = relmom_check(name, case, outdir, pdir, masses,
                                      res['libs']['9']['points'][0]['finite_norm'],
                                      energy, timeout)
-        summary = entry.get('max_deviation')
-        print('%-12s lib %-6s %s  poles vs prediction %.2e  stable %d/%d' % (
-            name, lib, 'max dev %.2e' % summary if summary is not None else 'no reference',
-            entry['max_pole_deviation'], entry['stable_points'], len(out)), flush=True)
     return res
 
 

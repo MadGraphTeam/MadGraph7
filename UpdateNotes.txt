@@ -5,6 +5,20 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   HS: MadLoop computes the one-loop QCD virtual of processes with S-wave bound states
+       (quarkonia, leptonia; colour singlets and octets of any J) in the final state with
+       elementary particles, e.g. "generate g g > Jpsi(1|3S11) g [virt=QCD]" with the new
+       model loop_sm_onia (loop_sm with the Fock states of sm_onia; tools/make_onia_model.py
+       adds them to any loop UFO model). The constituent loop amplitudes are projected
+       through an effective Born per constituent helicity; the threshold integrals are
+       reduced by TIRust (default reduction chain 9|3 for these outputs); the IR poles are
+       predicted from colour-linked projected Borns. 't Hooft-Veltman scheme, Coulomb term
+       dropped at zero relative velocity. P-wave states, processes without a Born and FKS
+       modes are refused for now. See docs/onia_loop.md and docs/benchmarkfolder.
+   HS: MadLoop standalone outputs compile their sources at -O2 (MADLOOP_OPTIMIZATION in the
+       loop makefile, before FFLAGS) and tabulate the colour factors and split-order indices
+       of the counterterm and loop-coefficient contractions at initialisation: identical
+       results, 8-20% less time per point on the benchmark processes.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV

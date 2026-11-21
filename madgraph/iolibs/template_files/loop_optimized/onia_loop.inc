@@ -30,6 +30,17 @@ C     state with mass m1+m2), computed from its constituent legs.
       %(real_dp_format)s P(0:3,NEXTERNAL)
       INTEGER USERHEL
       COMMON/%(proc_prefix)sUSERCHOICE/USERHEL
+      INCLUDE 'nsquaredSO.inc'
+      INTEGER RET_CODE_H,RET_CODE_T,RET_CODE_U
+      %(real_dp_format)s ACCURACY(0:NSQUAREDSO)
+      COMMON/%(proc_prefix)sACC/ACCURACY,RET_CODE_H,RET_CODE_T,RET_CODE_U
+      INTEGER ML_GET_RET_CODE_LIBRARY, SET_RET_CODE_U
+      INTEGER LIB
+      LOGICAL WARNED
+      DATA WARNED/.FALSE./
+      SAVE WARNED
+      %(real_dp_format)s QREST(3)
+      COMMON/%(proc_prefix)sONIA_RELMOM/QREST
       IF (USERHEL.NE.-1) THEN
         WRITE(*,*) 'ERROR:: MadLoop sums over the polarisations of the',
      &   ' bound states: the selection of a helicity configuration',
@@ -38,6 +49,25 @@ C     state with mass m1+m2), computed from its constituent legs.
       ENDIF
       CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       CALL %(proc_prefix)sSLOOPMATRIX_CONSTITUENTS(P,ANS)
+C     At threshold only TIRust (MLReductionLib=9) reduces the integrals
+C     reliably. The other libraries can return wrong values that pass
+C     MadLoop's stability tests (the Gram determinants vanish and the
+C     Coulomb-exchange propagators are linearly dependent), so a result
+C     they give is reported unstable (H=4, U=0) whatever its accuracy.
+C     With a relative momentum (diagnostic) the integrals are ordinary ones.
+      IF ((RET_CODE_H.EQ.2.OR.RET_CODE_H.EQ.3).AND.ALL(QREST.EQ.0D0)) THEN
+        LIB=ML_GET_RET_CODE_LIBRARY()
+        IF (LIB.NE.9) THEN
+          IF (.NOT.WARNED) THEN
+            WRITE(*,*) 'WARNING:: bound states at threshold: only',
+     &       ' TIRust (MLReductionLib=9) is reliable; the results of',
+     &       ' library',LIB,' are reported unstable.'
+            WARNED=.TRUE.
+          ENDIF
+          RET_CODE_H=4
+          RET_CODE_U=SET_RET_CODE_U(LIB,.FALSE.,.FALSE.)
+        ENDIF
+      ENDIF
       END
 
       SUBROUTINE %(proc_prefix)sONIA_MASSES(CMASS)
