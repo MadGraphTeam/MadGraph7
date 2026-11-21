@@ -987,15 +987,42 @@ endif
 # FASTMATH_MAD_STACK bytes, its -use_fast_math build is stopped and -fmad kept. Fast math only ever won
 # there below 1.2 KB (96 picks, L40S and H100), and with dense wavefunction arrays approximate division
 # takes ptxas from minutes to over an hour on g g > t t~ g g g.
+# AUTO_PREDICT=1, FPTYPE d/f/v: the picks follow the number of amplitudes in EvaluateDiagrams.inc, the same
+# on every GPU outside a band (234 picks on L40S, H100 and sm_70/80/100 builds, none missed), so outside it
+# only the predicted variant is compiled. AUTO_PREDICT=0 compiles all of them.
 ifeq ($(BACKEND),cuda)
 ifneq ($(filter auto,$(FASTMATH) $(SHAREDWF)),)
 FASTMATH_STACK_GROWTH ?= 128
 SHAREDWF_STACK ?= 128
 FASTMATH_MAD_STACK ?= 4096
 FASTMATH_CUTOFF_FPTYPES ?= f v
+AUTO_PREDICT ?= 1
 override JAMPS_STACK = $(CUDA_HOME)/bin/cuobjdump -res-usage $(1) | awk '/Function .*calculate_jamps/ { found = 1; getline; sub(/.*STACK:/, ""); if ($$1 + 0 > max) max = $$1 + 0 } END { if (!found) exit 1; print max + 0 }'
 override AUTO_SHAREDWFS = $(if $(filter auto,$(SHAREDWF)),sw0 sw1,sw$(SHAREDWF))
 override AUTO_FASTMATHS = $(if $(filter auto,$(FASTMATH)),mad fm1,fm$(FASTMATH))
+ifeq ($(AUTO_PREDICT)$(filter $(FPTYPE),d f v),1$(FPTYPE))
+override GATE_AMPS := $(if $(wildcard EvaluateDiagrams.inc),$(strip $(shell grep -o '&amp_fp\[' EvaluateDiagrams.inc | wc -l)))
+endif
+ifneq ($(GATE_AMPS),)
+override gate_amps = $(shell [ $(GATE_AMPS) $(1) $(2) ] && echo y)
+ifeq ($(SHAREDWF),auto)
+  ifeq ($(call gate_amps,-lt,$(if $(filter d,$(FPTYPE)),10,21)),y)
+    override AUTO_SHAREDWFS = sw0
+  else ifeq ($(call gate_amps,-gt,$(if $(filter d,$(FPTYPE)),30,130)),y)
+    override AUTO_SHAREDWFS = sw1
+  endif
+endif
+ifeq ($(FASTMATH),auto)
+  # FP64: -use_fast_math never grew the stack.
+  ifeq ($(FPTYPE),d)
+    override AUTO_FASTMATHS = fm1
+  else ifeq ($(call gate_amps,-lt,21),y)
+    override AUTO_FASTMATHS = fm1
+  else ifeq ($(call gate_amps,-gt,300),y)
+    override AUTO_FASTMATHS = mad
+  endif
+endif
+endif
 $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	@pids=; for variant in $(foreach sw,$(AUTO_SHAREDWFS),$(foreach fm,$(AUTO_FASTMATHS),$(sw).$(fm))); do \
@@ -1011,7 +1038,7 @@ $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../b
 	  sw=$${variant%%.*} fm=$${variant#*.}; eval "pid=\$$pid_$${sw}_$$fm"; \
 	  if [ -f $(@:.o=.$$variant.skipped) ]; then wait $$pid; continue; fi; \
 	  wait $$pid || { status=1; continue; }; \
-	  [ $$fm = mad ] && [ -n "$(filter $(FPTYPE),$(FASTMATH_CUTOFF_FPTYPES))" ] || continue; \
+	  [ $$fm = mad ] && [ -n "$(filter $(FPTYPE),$(FASTMATH_CUTOFF_FPTYPES))" ] && [ -n "$(filter fm1,$(AUTO_FASTMATHS))" ] || continue; \
 	  stack=$$($(call JAMPS_STACK,$(@:.o=.$$variant.o))) || continue; \
 	  [ $$stack -gt $(FASTMATH_MAD_STACK) ] || continue; \
 	  eval "fm1=\$$pid_$${sw}_fm1"; pkill -P $$fm1; kill $$fm1 2> /dev/null; \
@@ -1020,6 +1047,8 @@ $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../b
 	@stack() { stack=$$($(call JAMPS_STACK,$(@:.o=.$$1.o))) || { echo "ERROR! no calculate_jamps stack in $(@:.o=.$$1.o)"; exit 1; }; }; \
 	fastmath() { \
 	  if [ $(FASTMATH) != auto ]; then pick=$$1.fm$(FASTMATH); stack $$pick; return; fi; \
+	  if [ "$(AUTO_FASTMATHS)" != "mad fm1" ]; then pick=$$1.$(AUTO_FASTMATHS); stack $$pick; \
+	    echo "FASTMATH=auto $(processid_short) $$1: $(GATE_AMPS) amplitudes, compiled and keeping $$pick only" | tee -a $(@:.o=.fastmath); return; fi; \
 	  if [ -f $(@:.o=.$$1.fm1.skipped) ]; then pick=$$1.mad; stack $$pick; \
 	    echo "FASTMATH=auto $(processid_short) $$1: calculate_jamps stack $$stack B with -fmad > $(FASTMATH_MAD_STACK), -use_fast_math stopped, keeping $$pick" | tee -a $(@:.o=.fastmath); return; fi; \
 	  stack $$1.mad; mad=$$stack; stack $$1.fm1; growth=$$((stack - mad)); \
@@ -1028,6 +1057,8 @@ $(BUILDDIR)/SigmaKin.o : SigmaKin.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../b
 	}; \
 	: > $(@:.o=.fastmath); \
 	if [ $(SHAREDWF) != auto ]; then fastmath sw$(SHAREDWF); \
+	elif [ "$(AUTO_SHAREDWFS)" != "sw0 sw1" ]; then fastmath $(AUTO_SHAREDWFS); \
+	  echo "SHAREDWF=auto $(processid_short): $(GATE_AMPS) amplitudes, compiled and keeping $$pick only" | tee $(@:.o=.sharedwf); \
 	else \
 	  fastmath sw0; without=$$stack; \
 	  if [ $$without -gt $(SHAREDWF_STACK) ]; then fastmath sw1; fi; \
