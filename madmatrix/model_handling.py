@@ -2178,10 +2178,16 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # bloating a tree library, loop-only helpers use functions such as COND
         # and reglog which are intentionally absent from MadMatrix device code.
         # Retain the transitive parameter closure of the selected couplings.
+        # Always keep the parameters up to and including G (mdl_sqrt__aS, G):
+        # super_generate_parameters_class_files writes those as comments and
+        # only writes the later parameters for real once it has reached G.
+        # Without G, every running parameter (e.g. one read only by a running
+        # propagator, b b~ > h > ta+ ta-) would be commented out.
         if wanted_couplings:
             expressions = [coupling.expr
                            for coupling in self.coups_dep.values()]
-            selected = set()
+            names = [parameter.name for parameter in self.params_dep]
+            selected = set(names[:names.index('G') + 1]) if 'G' in names else set()
             changed = True
             while changed:
                 changed = False
