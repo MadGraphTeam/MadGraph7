@@ -40,7 +40,9 @@ from pyamplicol.generation.process_grouping import (
     ProcessGroupMap,
     _legs,
     _mapping,
+    _union_permutation,
     crossing_signs,
+    flavor_class_key,
     flavour_unions,
     is_union_quark_type,
 )
@@ -296,6 +298,74 @@ def test_uncrossed_members_keep_their_side_aware_routes() -> None:
                 assert member == old
                 compared += 1
     assert compared > 50
+
+
+def _flavour_partition(member: GroupMember) -> tuple[int, ...]:
+    # the member's flavours per template slot, numbered by first appearance
+    names: dict[int, int] = {}
+    return tuple(
+        names.setdefault(abs(member.pdgs[leg]), len(names))
+        for leg in member.permutation
+    )
+
+
+def test_isomorphic_crossed_members_share_their_canonical_route() -> None:
+    """Crossed members that differ only by flavour names and leg order get the
+    same sides, helicity signs, patterns and flavour partition of the template
+    slots, so the flavour switch evaluates them in the same calls."""
+
+    entries, table, _ = _entries(("p p > j j j j",))
+    checked = 0
+    for entry in entries:
+        if not entry.flavour_union_template:
+            continue
+        routes: dict[Any, set[tuple[Any, ...]]] = {}
+        for member in entry.group_members:
+            if not member.crossed:
+                continue
+            key = flavor_class_key(
+                member.process, table, consider_charge_conjugation=False
+            )
+            routes.setdefault(key, set()).add(
+                (
+                    member.crossing_momentum_signs,
+                    member.crossing_helicity_signs,
+                    member.patterns,
+                    _flavour_partition(member),
+                )
+            )
+            checked += 1
+        assert all(len(found) == 1 for found in routes.values()), routes
+    assert checked > 100
+
+
+def test_crossed_route_does_not_depend_on_flavour_names_or_leg_order() -> None:
+    _, table, _ = _entries(("p p > j j",))
+    template = _processes("d d~ > d d d~ d~")[0]
+    template_legs = _legs(template, table)
+    routes = {
+        member.expression: _union_permutation(
+            _legs(member, table), template_legs, crossing=True
+        )
+        for member in _processes(
+            "d~ d~ > u d~ d~ u~", "u~ u~ > d d~ u~ u~", "c~ c~ > s c~ s~ c~"
+        )
+    }
+    # sigma stays (-1, 1, 1, -1, 1, 1): slot 0 takes a final, 3 an initial antiquark
+    assert routes["d~ d~ > u d~ d~ u~"] == (3, 0, 2, 1, 4, 5)
+    assert routes["u~ u~ > d d~ u~ u~"] == (4, 0, 2, 1, 5, 3)
+    assert routes["c~ c~ > s c~ s~ c~"] == (3, 0, 2, 1, 5, 4)
+    # one flavour partition: slots 0, 1, 3, 4 share a flavour, slots 2 and 5 another
+    for expression, permutation in routes.items():
+        pdgs = _processes(expression)[0].pdgs
+        flavours = [abs(pdgs[leg]) for leg in permutation]
+        assert flavours[0] == flavours[1] == flavours[3] == flavours[4]
+        assert flavours[2] == flavours[5] != flavours[0]
+    # an uncrossed member keeps its side-aware route
+    plain = _processes("u u~ > d u d~ u~")[0]
+    assert _union_permutation(
+        _legs(plain, table), template_legs, crossing=True
+    ) == _union_permutation(_legs(plain, table), template_legs)
 
 
 def test_shuffled_requests_give_identical_process_groups() -> None:

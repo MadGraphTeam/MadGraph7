@@ -1081,7 +1081,66 @@ def _union_permutation(
                 raise ValueError("member does not have the union's slot shape")
             legs.remove(match)
             permutation[slot] = match.index
-    return tuple(int(leg) for leg in permutation)  # type: ignore[arg-type]
+    result = tuple(int(leg) for leg in permutation)  # type: ignore[arg-type]
+    if crossing and any(
+        slot.initial != member[leg].initial
+        for slot, leg in zip(template, result, strict=True)
+    ):
+        return _canonical_crossed_permutation(member, template, result)
+    return result
+
+
+def _canonical_crossed_permutation(
+    member: Sequence[_Leg],
+    template: Sequence[_Leg],
+    permutation: tuple[int, ...],
+) -> tuple[int, ...]:
+    """A crossed route whose flavour partition of the template slots does not
+    depend on flavour names or leg order, so isomorphic members share it.
+
+    Keeps the sides (sigma) and the non-union slots of ``permutation``. The
+    union-quark slots take the member legs of their slot shape and member side
+    in the arrangement with the smallest flavour partition (flavours numbered
+    by first appearance in slot order), ties by flavour, then by leg index.
+    """
+
+    pools: dict[tuple[Any, ...], list[int]] = {}
+    for slot, leg in enumerate(permutation):
+        if is_union_quark_type(template[slot].type):
+            pools.setdefault(
+                (_union_slot(template[slot], True), member[leg].initial), []
+            ).append(slot)
+    groups = [
+        (slots, sorted(member[permutation[slot]].flavour for slot in slots))
+        for slots in pools.values()
+    ]
+    ordered = sorted(slot for slots, _ in groups for slot in slots)
+    best: tuple[tuple[int, ...], tuple[int, ...]] | None = None
+    for choice in itertools.product(
+        *(sorted(set(itertools.permutations(flavours))) for _, flavours in groups)
+    ):
+        flavour = {
+            slot: value
+            for (slots, _), values in zip(groups, choice, strict=True)
+            for slot, value in zip(slots, values, strict=True)
+        }
+        names: dict[int, int] = {}
+        key = (
+            tuple(names.setdefault(flavour[slot], len(names)) for slot in ordered),
+            tuple(flavour[slot] for slot in ordered),
+        )
+        if best is None or key < best:
+            best = key
+    assert best is not None
+    chosen = dict(zip(ordered, best[1], strict=True))
+    result = list(permutation)
+    for slots, _ in groups:
+        free = sorted(permutation[slot] for slot in slots)
+        for slot in slots:
+            leg = next(leg for leg in free if member[leg].flavour == chosen[slot])
+            free.remove(leg)
+            result[slot] = leg
+    return tuple(result)
 
 
 def _class_union_permutations(
