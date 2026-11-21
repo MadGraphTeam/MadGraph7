@@ -226,3 +226,195 @@ fn crossing_prototype_evaluates_signed_template_momenta_when_cases_are_supplied(
         results.len()
     );
 }
+
+/// Massless 2 -> n-2 point in member leg order: beams along z, RAMBO final state.
+fn massless_point(n: usize, seed: u64) -> Vec<[f64; 4]> {
+    let mut state = seed;
+    let mut uniform = || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((state >> 11) as f64 + 0.5) / (1_u64 << 53) as f64
+    };
+    let sqrt_s = 1000.0;
+    let mut legs = vec![
+        [sqrt_s / 2.0, 0.0, 0.0, sqrt_s / 2.0],
+        [sqrt_s / 2.0, 0.0, 0.0, -sqrt_s / 2.0],
+    ];
+    let raw = (2..n)
+        .map(|_| {
+            let cos = 2.0 * uniform() - 1.0;
+            let phi = std::f64::consts::TAU * uniform();
+            let energy = -(uniform() * uniform()).ln();
+            let sin = (1.0 - cos * cos).sqrt();
+            [
+                energy,
+                energy * sin * phi.cos(),
+                energy * sin * phi.sin(),
+                energy * cos,
+            ]
+        })
+        .collect::<Vec<_>>();
+    let total = (0..4)
+        .map(|c| raw.iter().map(|q| q[c]).sum::<f64>())
+        .collect::<Vec<_>>();
+    let mass = (total[0] * total[0] - total[1..].iter().map(|v| v * v).sum::<f64>()).sqrt();
+    let boost = [-total[1] / mass, -total[2] / mass, -total[3] / mass];
+    let (gamma, scale) = (total[0] / mass, sqrt_s / mass);
+    let a = 1.0 / (1.0 + gamma);
+    for q in raw {
+        let bq = boost[0] * q[1] + boost[1] * q[2] + boost[2] * q[3];
+        legs.push([
+            scale * (gamma * q[0] + bq),
+            scale * (q[1] + boost[0] * (q[0] + a * bq)),
+            scale * (q[2] + boost[1] * (q[0] + a * bq)),
+            scale * (q[3] + boost[2] * (q[0] + a * bq)),
+        ]);
+    }
+    legs
+}
+
+/// Per-point slot lists: a point's rows equal the full evaluation (every assignment
+/// at every point) bitwise and do not depend on what other points request.
+/// `RUSTICOL_UNION_ASSIGNMENT_ARTIFACTS`: LC union artifacts (path list).
+#[test]
+fn per_point_assignment_slots_equal_the_full_evaluation_when_artifacts_are_supplied() {
+    let Some(roots) = std::env::var_os("RUSTICOL_UNION_ASSIGNMENT_ARTIFACTS") else {
+        return;
+    };
+    let mut checked = 0;
+    for root in std::env::split_paths(&roots) {
+        let groups: Value =
+            serde_json::from_slice(&std::fs::read(root.join("process-groups.json")).unwrap())
+                .unwrap();
+        for group in groups["groups"].as_array().unwrap() {
+            let template = group["representative"]["process_id"].as_str().unwrap();
+            let mut runtime =
+                NativeRuntime::load(root.to_str().unwrap(), Some(template), None).unwrap();
+            let Some(assignments) = runtime.flavour_union_assignments.clone() else {
+                continue;
+            };
+            let width =
+                runtime.helicities().unwrap().len() * runtime.color_components().unwrap().len();
+            let mut classes = BTreeMap::<(u32, Option<u64>), Vec<u32>>::new();
+            for (id, assignment) in assignments.iter().enumerate() {
+                classes
+                    .entry((assignment.crossing, assignment.mask))
+                    .or_default()
+                    .push(u32::try_from(id).unwrap());
+            }
+            for ((crossing, _), ids) in classes.into_iter().filter(|(_, ids)| ids.len() >= 2) {
+                let negative = runtime
+                    .flavour_union_relabelling
+                    .as_ref()
+                    .unwrap()
+                    .crossing(crossing)
+                    .unwrap()
+                    .negative_mask();
+                let permutation = assignments[ids[0] as usize].permutation.clone();
+                let n = permutation.len();
+                let points = 150;
+                let momenta = (0..points)
+                    .flat_map(|point| {
+                        let legs = massless_point(n, 1 + point as u64);
+                        let permutation = permutation.clone();
+                        (0..n).flat_map(move |slot| {
+                            let sign = if negative >> slot & 1 == 1 { -1.0 } else { 1.0 };
+                            legs[permutation[slot]].map(|component| sign * component)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let k = ids.len();
+                for (mode, row) in [
+                    (AssignmentOutputMode::Total, 1),
+                    (AssignmentOutputMode::PerHelicityFlow, width),
+                ] {
+                    let mut evaluate = |momenta: &[f64], requests: &[Vec<u32>]| {
+                        let mut offsets = vec![0];
+                        for request in requests {
+                            offsets.push(offsets.last().unwrap() + request.len());
+                        }
+                        let flat = requests.concat();
+                        let mut output = vec![f64::NAN; flat.len() * row];
+                        runtime
+                            .evaluate_assignments_f64_into(
+                                momenta,
+                                requests.len(),
+                                &offsets,
+                                &flat,
+                                None,
+                                None,
+                                mode,
+                                &mut output,
+                            )
+                            .unwrap();
+                        requests
+                            .iter()
+                            .enumerate()
+                            .map(|(point, request)| {
+                                (0..request.len())
+                                    .map(|j| {
+                                        let start = (offsets[point] + j) * row;
+                                        output[start..start + row]
+                                            .iter()
+                                            .map(|value| value.to_bits())
+                                            .collect::<Vec<_>>()
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>()
+                    };
+                    let own = |point: usize| ids[point % k];
+                    let full = evaluate(&momenta, &vec![ids.clone(); points]);
+                    let single = evaluate(
+                        &momenta,
+                        &(0..points).map(|p| vec![own(p)]).collect::<Vec<_>>(),
+                    );
+                    // Odd points switch assignment; even points keep theirs.
+                    let shifted = evaluate(
+                        &momenta,
+                        &(0..points)
+                            .map(|p| vec![if p % 2 == 1 { ids[(p + 1) % k] } else { own(p) }])
+                            .collect::<Vec<_>>(),
+                    );
+                    let duplicated = evaluate(
+                        &momenta,
+                        &(0..points)
+                            .map(|p| vec![own(p), ids[(p + 1) % k], own(p)])
+                            .collect::<Vec<_>>(),
+                    );
+                    for point in 0..points {
+                        let reference = &full[point];
+                        assert_eq!(
+                            single[point][0],
+                            reference[point % k],
+                            "{template} point {point}"
+                        );
+                        if point % 2 == 0 {
+                            assert_eq!(
+                                shifted[point][0], single[point][0],
+                                "{template} point {point}"
+                            );
+                        }
+                        assert_eq!(duplicated[point][0], reference[point % k]);
+                        assert_eq!(duplicated[point][1], reference[(point + 1) % k]);
+                        assert_eq!(duplicated[point][2], reference[point % k]);
+                    }
+                    // Diagnostic only: the template program's tile position (alone vs in a batch).
+                    let alone = (0..points)
+                        .filter(|point| {
+                            let at = &momenta[point * 4 * n..(point + 1) * 4 * n];
+                            evaluate(at, &[vec![own(*point)]])[0][0] != single[*point][0]
+                        })
+                        .count();
+                    eprintln!(
+                        "{template} crossing {crossing} ({k} assignments, {mode:?}): \
+                         {alone}/{points} points differ alone vs in the batch"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked > 0, "no assignment class with two or more members");
+}

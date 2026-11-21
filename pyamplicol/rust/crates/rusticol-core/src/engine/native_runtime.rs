@@ -131,6 +131,27 @@ pub(super) fn apply_rational_factor(values: &mut [f64], factor: NativeRationalFa
     }
 }
 
+/// Write one assignment row from its resolved `[helicity][flow]` block (or total).
+fn write_assignment_row(
+    mode: AssignmentOutputMode,
+    color_count: usize,
+    source: &[f64],
+    target: &mut [f64],
+) {
+    match mode {
+        AssignmentOutputMode::Total | AssignmentOutputMode::PerHelicityFlow => {
+            target.copy_from_slice(source);
+        }
+        AssignmentOutputMode::PerHelicity => {
+            for (helicity, value) in target.iter_mut().enumerate() {
+                *value = source[helicity * color_count..(helicity + 1) * color_count]
+                    .iter()
+                    .sum();
+            }
+        }
+    }
+}
+
 /// Public metadata of `selection`: the representative physics remapped to the
 /// requested order and, for a process-group member, relabelled as the member.
 fn public_process_physics(
@@ -2600,9 +2621,10 @@ impl NativeRuntime {
     /// assignment takes `q[r] = sigma_r * p_member[pi_r]`; energies must be finite,
     /// nonzero and negative exactly where sigma_r = -1, and one point requests one
     /// crossing. Helicity indices stay template axes (member labels via rho, see
-    /// [`Self::flavour_union_assignment_helicity`]). Points are grouped by (pattern
-    /// mask, selectors); a single-assignment request equals the template evaluated
-    /// at `sigma * p` and, for an uncrossed member, loading that member bitwise.
+    /// [`Self::flavour_union_assignment_helicity`]). Points are grouped by (crossing,
+    /// pattern mask, selectors) and each evaluates only its own assignments; a
+    /// single-assignment request equals the template evaluated at `sigma * p` and,
+    /// for an uncrossed member, loading that member bitwise.
     #[allow(clippy::too_many_arguments)]
     pub fn evaluate_assignments_f64_into(
         &mut self,
@@ -2718,7 +2740,7 @@ impl NativeRuntime {
                 ));
             }
             // Exact request partition: points sharing the crossing, program mask and
-            // selectors (a partition evaluates every requested assignment at every point).
+            // selectors; per-point slot lists keep each point to its own assignments.
             let mut partitions =
                 BTreeMap::<(u32, Option<u64>, Option<u32>, Option<u32>), Vec<usize>>::new();
             for point in 0..point_count {
@@ -2790,29 +2812,44 @@ impl NativeRuntime {
                     .iter()
                     .map(|id| &*assignments[*id as usize].signs)
                     .collect::<Vec<_>>();
-                // zeroed allocations, not clones of one row block
-                let mut values = (0..requested.len())
-                    .map(|_| vec![0.0; points.len() * block])
-                    .collect::<Vec<_>>();
+                // Per point its distinct slots in `requested`, in first-request order.
+                let mut slot_offsets = Vec::with_capacity(points.len() + 1);
+                let mut slots = Vec::new();
+                slot_offsets.push(0);
+                for point in &points {
+                    let own = slots.len();
+                    for id in &assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
+                    {
+                        let slot = requested.binary_search(id).expect("requested assignment");
+                        if !slots[own..].contains(&slot) {
+                            slots.push(slot);
+                        }
+                    }
+                    slot_offsets.push(slots.len());
+                }
+                // The entry of a request row: its slot's position in the point's list.
+                let entry = |local: usize, row: usize| {
+                    let slot = requested
+                        .binary_search(&assignment_ids[row])
+                        .expect("requested assignment");
+                    let own = &slots[slot_offsets[local]..slot_offsets[local + 1]];
+                    (
+                        slot,
+                        slot_offsets[local]
+                            + own.iter().position(|s| *s == slot).expect("own slot"),
+                    )
+                };
                 if contracted {
+                    // zeroed allocations, not clones of one row block
+                    let mut values = (0..requested.len())
+                        .map(|_| vec![0.0; points.len() * block])
+                        .collect::<Vec<_>>();
                     let helicities = helicity_by_point.map(|values| {
                         points
                             .iter()
                             .map(|point| values[*point])
                             .collect::<Vec<_>>()
                     });
-                    // Per point its slots in `requested`.
-                    let mut slot_offsets = Vec::with_capacity(points.len() + 1);
-                    let mut slots = Vec::new();
-                    slot_offsets.push(0);
-                    for point in &points {
-                        for id in
-                            &assignment_ids[request_offsets[*point]..request_offsets[*point + 1]]
-                        {
-                            slots.push(requested.binary_search(id).expect("requested assignment"));
-                        }
-                        slot_offsets.push(slots.len());
-                    }
                     let mut outputs = values.iter_mut().map(Vec::as_mut_slice).collect::<Vec<_>>();
                     lane.run_contracted_pattern_assignments_into(
                         &mut self.runtime,
@@ -2823,8 +2860,24 @@ impl NativeRuntime {
                         resolved,
                         &mut outputs,
                     )?;
+                    for (slot, id) in requested.iter().enumerate() {
+                        apply_rational_factor(&mut values[slot], assignments[*id as usize].factor);
+                    }
+                    for (local, point) in points.iter().enumerate() {
+                        for row in request_offsets[*point]..request_offsets[*point + 1] {
+                            let (slot, _) = entry(local, row);
+                            let source = &values[slot][local * block..(local + 1) * block];
+                            write_assignment_row(
+                                mode,
+                                color_count,
+                                source,
+                                &mut output[row * width..(row + 1) * width],
+                            );
+                        }
+                    }
                 } else {
-                    let mut outputs = values.iter_mut().map(Vec::as_mut_slice).collect::<Vec<_>>();
+                    // One value block per (point, own slot) entry.
+                    let mut values = vec![0.0; slots.len() * block];
                     lane.run_pattern_assignments_into(
                         &mut self.runtime,
                         batch,
@@ -2832,32 +2885,25 @@ impl NativeRuntime {
                         selected_colors.as_ref(),
                         mask,
                         &signs,
+                        (slot_offsets.as_slice(), slots.as_slice()),
                         resolved,
-                        &mut outputs,
+                        &mut values,
                     )?;
-                }
-                for (slot, id) in requested.iter().enumerate() {
-                    apply_rational_factor(&mut values[slot], assignments[*id as usize].factor);
-                }
-                for (local, point) in points.iter().enumerate() {
-                    for row in request_offsets[*point]..request_offsets[*point + 1] {
-                        let slot = requested
-                            .binary_search(&assignment_ids[row])
-                            .expect("requested assignment");
-                        let source = &values[slot][local * block..(local + 1) * block];
-                        let target = &mut output[row * width..(row + 1) * width];
-                        match mode {
-                            AssignmentOutputMode::Total | AssignmentOutputMode::PerHelicityFlow => {
-                                target.copy_from_slice(source);
-                            }
-                            AssignmentOutputMode::PerHelicity => {
-                                for (helicity, value) in target.iter_mut().enumerate() {
-                                    *value = source
-                                        [helicity * color_count..(helicity + 1) * color_count]
-                                        .iter()
-                                        .sum();
-                                }
-                            }
+                    for (index, slot) in slots.iter().enumerate() {
+                        apply_rational_factor(
+                            &mut values[index * block..(index + 1) * block],
+                            assignments[requested[*slot] as usize].factor,
+                        );
+                    }
+                    for (local, point) in points.iter().enumerate() {
+                        for row in request_offsets[*point]..request_offsets[*point + 1] {
+                            let (_, index) = entry(local, row);
+                            write_assignment_row(
+                                mode,
+                                color_count,
+                                &values[index * block..(index + 1) * block],
+                                &mut output[row * width..(row + 1) * width],
+                            );
                         }
                     }
                 }

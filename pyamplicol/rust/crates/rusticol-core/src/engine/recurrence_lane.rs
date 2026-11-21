@@ -163,6 +163,7 @@ impl PatternSelection {
             &mut self.combined_im,
             amplitudes,
             point_count,
+            None,
             visit,
         )
     }
@@ -186,6 +187,8 @@ type ReplayRestriction = (Option<u64>, Option<BTreeSet<String>>);
 const SELECTED_REPLAY_CACHE_LIMIT: usize = 64;
 
 /// Sum the selected patterns of each consecutive (sector, helicity) group.
+/// `points` (ascending, distinct) restricts the sums to those tile points; the
+/// others are left stale. Each point's sum is the same arithmetic either way.
 #[allow(clippy::too_many_arguments)]
 fn visit_pattern_groups<'a>(
     destination_patterns: &[u32],
@@ -195,6 +198,7 @@ fn visit_pattern_groups<'a>(
     combined_im: &mut Vec<f64>,
     amplitudes: impl Iterator<Item = RusticolResult<DirectRecurrenceAmplitudeView<'a>>>,
     point_count: usize,
+    points: Option<&[u32]>,
     mut visit: impl FnMut(&DirectAmplitudeDestinationDescriptor, &[f64], &[f64]) -> RusticolResult<()>,
 ) -> RusticolResult<()> {
     combined_re.resize(point_count, 0.0);
@@ -232,18 +236,33 @@ fn visit_pattern_groups<'a>(
             &amplitude.real[..point_count],
             &amplitude.imaginary[..point_count],
         );
-        if active {
-            for point in 0..point_count {
-                re[point] = sign.mul_add(real[point], re[point]);
-                im[point] = sign.mul_add(imaginary[point], im[point]);
+        match (active, points) {
+            (true, None) => {
+                for point in 0..point_count {
+                    re[point] = sign.mul_add(real[point], re[point]);
+                    im[point] = sign.mul_add(imaginary[point], im[point]);
+                }
             }
-        } else {
-            for point in 0..point_count {
-                re[point] = sign * real[point];
-                im[point] = sign * imaginary[point];
+            (false, None) => {
+                for point in 0..point_count {
+                    re[point] = sign * real[point];
+                    im[point] = sign * imaginary[point];
+                }
             }
-            active = true;
+            (true, Some(points)) => {
+                for point in points.iter().map(|point| *point as usize) {
+                    re[point] = sign.mul_add(real[point], re[point]);
+                    im[point] = sign.mul_add(imaginary[point], im[point]);
+                }
+            }
+            (false, Some(points)) => {
+                for point in points.iter().map(|point| *point as usize) {
+                    re[point] = sign * real[point];
+                    im[point] = sign * imaginary[point];
+                }
+            }
         }
+        active = true;
     }
     if active {
         visit(group.expect("active group"), re, im)?;
@@ -1183,9 +1202,11 @@ impl RecurrenceNativeRuntime {
 
     /// Evaluate signed pattern selections of a pattern-resolved template on
     /// one batch. `pattern_mask` restricts the program (it must cover every
-    /// selection); each selection accumulates exactly as a loaded member does:
-    /// totals per point, or resolved values `[point][helicity][flow]` over the
-    /// complete physical axes.
+    /// selection). Point `p` evaluates only its distinct selections
+    /// `slots[offsets[p]..offsets[p + 1]]` (`point_selections`), each into its own
+    /// entry of `output` (the CSR position): a total, or resolved values
+    /// `[helicity][flow]` over the complete physical axes, accumulated exactly as
+    /// a loaded member does. A value does not depend on the other points' selections.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn run_pattern_assignments_into(
         &mut self,
@@ -1195,22 +1216,35 @@ impl RecurrenceNativeRuntime {
         selected_colors: Option<&BTreeSet<String>>,
         pattern_mask: Option<u64>,
         signs: &[&[f64]],
+        point_selections: (&[usize], &[usize]),
         resolved: bool,
-        outputs: &mut [&mut [f64]],
+        output: &mut [f64],
     ) -> RusticolResult<()> {
         if self.pattern_selection.is_none() {
             return Err(RusticolError::compatibility(
                 "pattern assignments require a pattern-resolved template",
             ));
         }
-        if signs.len() != outputs.len() {
-            return Err(RusticolError::internal(
-                "pattern assignments need one output per selection",
-            ));
-        }
         if batch.external_count() != self.external_source_count {
             return Err(RusticolError::invalid_argument(
                 "recurrence input has the wrong external momentum count",
+            ));
+        }
+        let (offsets, slots) = point_selections;
+        if offsets.len() != batch.point_count() + 1
+            || offsets.first() != Some(&0)
+            || offsets.last() != Some(&slots.len())
+            || offsets.windows(2).any(|pair| pair[1] < pair[0])
+            || slots.iter().any(|slot| *slot >= signs.len())
+            || offsets.windows(2).any(|pair| {
+                let own = &slots[pair[0]..pair[1]];
+                own.iter()
+                    .enumerate()
+                    .any(|(index, slot)| own[..index].contains(slot))
+            })
+        {
+            return Err(RusticolError::internal(
+                "pattern assignments need one list of distinct selections per point",
             ));
         }
         let physics = common.physics.clone().ok_or_else(|| {
@@ -1225,14 +1259,12 @@ impl RecurrenceNativeRuntime {
         } else {
             1
         };
-        for output in outputs.iter_mut() {
-            if output.len() != batch.point_count() * block {
-                return Err(RusticolError::internal(
-                    "pattern assignment output has the wrong length",
-                ));
-            }
-            output.fill(0.0);
+        if output.len() != slots.len() * block {
+            return Err(RusticolError::internal(
+                "pattern assignment output has the wrong length",
+            ));
         }
+        output.fill(0.0);
         if selected_helicities.is_some_and(BTreeSet::is_empty) {
             return Ok(());
         }
@@ -1244,6 +1276,11 @@ impl RecurrenceNativeRuntime {
         } else {
             color_indices.extend(0..color_count);
         }
+        // Per selection, the tile points requesting it and their output entries.
+        let mut member_offsets = vec![0_usize; signs.len() + 1];
+        let mut member_cursor = vec![0_usize; signs.len()];
+        let mut member_points = Vec::<u32>::new();
+        let mut member_entries = Vec::<usize>::new();
         for color_index in color_indices {
             if !reduction.color_is_computed(color_index) {
                 continue;
@@ -1262,6 +1299,25 @@ impl RecurrenceNativeRuntime {
                 let point_count =
                     self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
                 let input_len = self.external_tile_input_len(point_count)?;
+                member_offsets.fill(0);
+                for slot in &slots[offsets[tile_start]..offsets[tile_stop]] {
+                    member_offsets[slot + 1] += 1;
+                }
+                for selection in 0..signs.len() {
+                    member_offsets[selection + 1] += member_offsets[selection];
+                    member_cursor[selection] = member_offsets[selection];
+                }
+                member_points.resize(offsets[tile_stop] - offsets[tile_start], 0);
+                member_entries.resize(member_points.len(), 0);
+                for point in tile_start..tile_stop {
+                    for entry in offsets[point]..offsets[point + 1] {
+                        let cursor = &mut member_cursor[slots[entry]];
+                        member_points[*cursor] =
+                            u32::try_from(point - tile_start).expect("tile points fit u32");
+                        member_entries[*cursor] = entry;
+                        *cursor += 1;
+                    }
+                }
                 let RecurrenceNativeSelectors::TopologyReplay {
                     replay_selectors,
                     direct_helicity_to_physics,
@@ -1303,7 +1359,13 @@ impl RecurrenceNativeRuntime {
                     .pattern_selection
                     .as_mut()
                     .expect("pattern selection checked above");
-                for (output, signs) in outputs.iter_mut().zip(signs) {
+                for (selection, signs) in signs.iter().enumerate() {
+                    let members = member_offsets[selection]..member_offsets[selection + 1];
+                    if members.is_empty() {
+                        continue;
+                    }
+                    let points = &member_points[members.clone()];
+                    let entries = &member_entries[members];
                     visit_pattern_groups(
                         destination_patterns,
                         replay_selector.pattern_map(),
@@ -1312,6 +1374,7 @@ impl RecurrenceNativeRuntime {
                         combined_im,
                         direct_output.selected_amplitudes(),
                         point_count,
+                        (points.len() != point_count).then_some(points),
                         |destination, real, imaginary| {
                             let helicity_index = replay_destination_physics_helicity(
                                 replay_selector.helicity_map(),
@@ -1325,6 +1388,10 @@ impl RecurrenceNativeRuntime {
                             {
                                 return Ok(());
                             }
+                            let value = |member: usize| {
+                                let point = points[member] as usize;
+                                (real[point], imaginary[point])
+                            };
                             if resolved {
                                 for physical in reduction.helicity_orbit_members(helicity_index) {
                                     if !reduction
@@ -1336,13 +1403,12 @@ impl RecurrenceNativeRuntime {
                                         * color_weight
                                         * normalization_factor;
                                     accumulate_lc_diagonal_amplitude(
-                                        point_count,
+                                        points.len(),
                                         weight,
-                                        |point| (real[point], imaginary[point]),
-                                        |point, value| {
-                                            output[((tile_start + point) * helicity_count
-                                                + physical)
-                                                * color_count
+                                        value,
+                                        |member, value| {
+                                            output[entries[member] * block
+                                                + physical * color_count
                                                 + color_index] += value;
                                         },
                                     );
@@ -1355,10 +1421,10 @@ impl RecurrenceNativeRuntime {
                                 }
                                 let weight = helicity_weight * color_weight * normalization_factor;
                                 accumulate_lc_diagonal_amplitude(
-                                    point_count,
+                                    points.len(),
                                     weight,
-                                    |point| (real[point], imaginary[point]),
-                                    |point, value| output[tile_start + point] += value,
+                                    value,
+                                    |member, value| output[entries[member]] += value,
                                 );
                             }
                             Ok(())
@@ -5601,6 +5667,75 @@ mod replay_destination_helicity_tests {
         assert_eq!(mapped, [(0, vec![-1.0, -2.0]), (3, vec![-5.0, -6.0])]);
         assert!(selection.select(&[2], &[1]).is_err());
         assert!(selection.select(&[0, 0], &[1, 1]).is_err());
+    }
+
+    #[test]
+    fn pattern_groups_restricted_to_points_equal_the_full_sums_there() {
+        let destinations = [(0, 0), (0, 0), (0, 0), (1, 1), (1, 1)]
+            .into_iter()
+            .enumerate()
+            .map(
+                |(id, (sector, helicity))| DirectAmplitudeDestinationDescriptor {
+                    closure_row_start: 0,
+                    id: id as u32,
+                    target_sector_id: sector,
+                    target_helicity_id_or_sentinel: helicity,
+                    closure_row_count: 1,
+                    selector_domain_id: 0,
+                },
+            )
+            .collect::<Vec<_>>();
+        // Inexact values, so a different operation order would show bitwise.
+        let plane = |seed: f64| {
+            (0..7)
+                .map(|p| (seed + p as f64).sin() / 3.0)
+                .collect::<Vec<_>>()
+        };
+        let real = (0..5).map(|d| plane(d as f64)).collect::<Vec<_>>();
+        let imaginary = (0..5).map(|d| plane(10.0 + d as f64)).collect::<Vec<_>>();
+        let amplitudes = || {
+            destinations.iter().map(|destination| {
+                Ok(DirectRecurrenceAmplitudeView {
+                    destination,
+                    real: &real[destination.id as usize],
+                    imaginary: &imaginary[destination.id as usize],
+                })
+            })
+        };
+        let patterns = [0, 1, 2, 0, 2];
+        let signs = [1.0, -1.0, 1.0];
+        let run = |points: Option<&[u32]>, re: &mut Vec<f64>, im: &mut Vec<f64>| {
+            let mut visited = Vec::new();
+            visit_pattern_groups(
+                &patterns,
+                None,
+                &signs,
+                re,
+                im,
+                amplitudes(),
+                7,
+                points,
+                |d, r, i| {
+                    visited.push((d.id, r.to_vec(), i.to_vec()));
+                    Ok(())
+                },
+            )
+            .unwrap();
+            visited
+        };
+        let full = run(None, &mut Vec::new(), &mut Vec::new());
+        // Stale workspace from an earlier selection must not leak into listed points.
+        let (mut re, mut im) = (vec![f64::NAN; 7], vec![f64::NAN; 7]);
+        let points = [1_u32, 4, 6];
+        let restricted = run(Some(&points), &mut re, &mut im);
+        assert_eq!(full.len(), restricted.len());
+        for ((id, full_re, full_im), (restricted_id, re, im)) in full.iter().zip(&restricted) {
+            assert_eq!(id, restricted_id);
+            for point in points.map(|point| point as usize) {
+                assert_eq!(full_re[point].to_bits(), re[point].to_bits());
+                assert_eq!(full_im[point].to_bits(), im[point].to_bits());
+            }
+        }
     }
 
     fn auxiliary_physical_destinations(count: u32) -> Vec<DirectAmplitudeDestinationDescriptor> {
