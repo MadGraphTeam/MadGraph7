@@ -762,7 +762,14 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
                     f"resolved helicity {index} source selection is inconsistent"
                 )
 
-    sectors = [row.target_sector_id for row in sections.amplitude_destinations]
+    # A pattern-resolved companion repeats a sector consecutively per pattern.
+    sectors = [
+        row.target_sector_id
+        for index, row in enumerate(sections.amplitude_destinations)
+        if index == 0
+        or row.target_sector_id
+        != sections.amplitude_destinations[index - 1].target_sector_id
+    ]
     if any(
         row.target_helicity_id != DIRECT_NONE_U32
         for row in sections.amplitude_destinations
