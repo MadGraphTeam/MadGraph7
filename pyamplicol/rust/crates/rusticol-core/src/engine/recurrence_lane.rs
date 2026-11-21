@@ -1327,6 +1327,8 @@ impl RecurrenceNativeRuntime {
     /// entry of `output` (the CSR position): a total, or resolved values
     /// `[helicity][flow]` over the complete physical axes, accumulated exactly as
     /// a loaded member does. A value does not depend on the other points' selections.
+    /// `compact_color` (resolved only): the one selected flow's manifest index; each
+    /// entry then holds `[helicity]` of that flow, with the same bits.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn run_pattern_assignments_into(
         &mut self,
@@ -1338,6 +1340,7 @@ impl RecurrenceNativeRuntime {
         signs: &[&[f64]],
         point_selections: (&[usize], &[usize]),
         resolved: bool,
+        compact_color: Option<usize>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
         if self.pattern_selection.is_none() {
@@ -1374,10 +1377,11 @@ impl RecurrenceNativeRuntime {
         let reduction = physics.lc_selector_reduction_view();
         let helicity_count = reduction.helicities.len();
         let color_count = reduction.color_components.len();
-        let block = if resolved {
-            helicity_count * color_count
-        } else {
-            1
+        let compact = compact_color.filter(|_| resolved);
+        let (block, helicity_stride) = match (resolved, compact) {
+            (false, _) => (1, 0),
+            (true, Some(_)) => (helicity_count, 1),
+            (true, None) => (helicity_count * color_count, color_count),
         };
         if output.len() != slots.len() * block {
             return Err(RusticolError::internal(
@@ -1395,6 +1399,13 @@ impl RecurrenceNativeRuntime {
             reduction.retain_selected_color_indices(selected, &mut color_indices)?;
         } else {
             color_indices.extend(0..color_count);
+        }
+        if let Some(manifest) = compact
+            && color_indices != [manifest]
+        {
+            return Err(RusticolError::internal(format!(
+                "compact assignment block expects flow {manifest}, the lane selected {color_indices:?}"
+            )));
         }
         // Per selection, the tile points requesting it and their output entries.
         let mut member_offsets = vec![0_usize; signs.len() + 1];
@@ -1522,14 +1533,15 @@ impl RecurrenceNativeRuntime {
                                     let weight = reduction.helicity(*physical).coefficient
                                         * color_weight
                                         * normalization_factor;
+                                    // Compact blocks drop the flow axis (stride 1, no offset).
+                                    let column = physical * helicity_stride
+                                        + if compact.is_some() { 0 } else { color_index };
                                     accumulate_lc_diagonal_amplitude(
                                         points.len(),
                                         weight,
                                         value,
                                         |member, value| {
-                                            output[entries[member] * block
-                                                + physical * color_count
-                                                + color_index] += value;
+                                            output[entries[member] * block + column] += value;
                                         },
                                     );
                                 }

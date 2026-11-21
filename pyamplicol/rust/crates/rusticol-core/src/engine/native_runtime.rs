@@ -131,21 +131,53 @@ pub(super) fn apply_rational_factor(values: &mut [f64], factor: NativeRationalFa
     }
 }
 
-/// Write one assignment row from its resolved `[helicity][flow]` block (or total).
+/// Largest resolved assignment buffer (f64 values) kept between calls.
+const ASSIGNMENT_SCRATCH_KEEP: usize = 1 << 23;
+
+/// `value` scaled as [`apply_rational_factor`] scales it (same bits).
+#[inline]
+fn scale_by_rational_factor(value: f64, factor: NativeRationalFactor) -> f64 {
+    let NativeRationalFactor {
+        numerator,
+        denominator,
+    } = factor;
+    if numerator == denominator {
+        value
+    } else {
+        value * numerator as f64 / denominator as f64
+    }
+}
+
+/// Write one assignment row, scaled by `factor`, from its resolved block: `[helicity][flow]`,
+/// `[helicity]` of flow `compact_color` alone, or a total.
 fn write_assignment_row(
     mode: AssignmentOutputMode,
     color_count: usize,
+    compact_color: Option<usize>,
+    factor: NativeRationalFactor,
     source: &[f64],
     target: &mut [f64],
 ) {
-    match mode {
-        AssignmentOutputMode::Total | AssignmentOutputMode::PerHelicityFlow => {
-            target.copy_from_slice(source);
+    let scale = |value: &f64| scale_by_rational_factor(*value, factor);
+    match (mode, compact_color) {
+        (AssignmentOutputMode::Total, _)
+        | (AssignmentOutputMode::PerHelicity, Some(_))
+        | (AssignmentOutputMode::PerHelicityFlow, None) => {
+            for (value, source) in target.iter_mut().zip(source) {
+                *value = scale(source);
+            }
         }
-        AssignmentOutputMode::PerHelicity => {
+        (AssignmentOutputMode::PerHelicityFlow, Some(color)) => {
+            target.fill(0.0);
+            for (helicity, source) in source.iter().enumerate() {
+                target[helicity * color_count + color] = scale(source);
+            }
+        }
+        (AssignmentOutputMode::PerHelicity, None) => {
             for (helicity, value) in target.iter_mut().enumerate() {
                 *value = source[helicity * color_count..(helicity + 1) * color_count]
                     .iter()
+                    .map(scale)
                     .sum();
             }
         }
@@ -2938,6 +2970,8 @@ impl NativeRuntime {
                 1
             };
             for ((_, mask, helicity, color), mut points) in partitions {
+                // One flow per partition: resolved blocks keep only its helicity column.
+                let compact_color = color.filter(|_| resolved).map(|index| index as usize);
                 if contracted {
                     // Equal requests share tiles: each tile contracts few assignments.
                     let request = |point: &usize| {
@@ -3027,9 +3061,6 @@ impl NativeRuntime {
                         resolved,
                         &mut outputs,
                     )?;
-                    for (slot, id) in requested.iter().enumerate() {
-                        apply_rational_factor(&mut values[slot], assignments[*id as usize].factor);
-                    }
                     for (local, point) in points.iter().enumerate() {
                         for row in request_offsets[*point]..request_offsets[*point + 1] {
                             let (slot, _) = entry(local, row);
@@ -3037,14 +3068,24 @@ impl NativeRuntime {
                             write_assignment_row(
                                 mode,
                                 color_count,
+                                None,
+                                assignments[assignment_ids[row] as usize].factor,
                                 source,
                                 &mut output[row * width..(row + 1) * width],
                             );
                         }
                     }
                 } else {
-                    // One value block per (point, own slot) entry.
-                    let mut values = vec![0.0; slots.len() * block];
+                    // One value block per (point, own slot) entry, in a kept buffer the
+                    // lane zeroes.
+                    let block = if compact_color.is_some() {
+                        helicity_count
+                    } else {
+                        block
+                    };
+                    let mut values =
+                        std::mem::take(&mut self.point_selector_scratch.assignment_values);
+                    values.resize(slots.len() * block, 0.0);
                     lane.run_pattern_assignments_into(
                         &mut self.runtime,
                         batch,
@@ -3054,24 +3095,25 @@ impl NativeRuntime {
                         &signs,
                         (slot_offsets.as_slice(), slots.as_slice()),
                         resolved,
+                        compact_color,
                         &mut values,
                     )?;
-                    for (index, slot) in slots.iter().enumerate() {
-                        apply_rational_factor(
-                            &mut values[index * block..(index + 1) * block],
-                            assignments[requested[*slot] as usize].factor,
-                        );
-                    }
                     for (local, point) in points.iter().enumerate() {
                         for row in request_offsets[*point]..request_offsets[*point + 1] {
                             let (_, index) = entry(local, row);
                             write_assignment_row(
                                 mode,
                                 color_count,
+                                compact_color,
+                                assignments[assignment_ids[row] as usize].factor,
                                 &values[index * block..(index + 1) * block],
                                 &mut output[row * width..(row + 1) * width],
                             );
                         }
+                    }
+                    // Keep at most 64 MiB between calls.
+                    if values.capacity() <= ASSIGNMENT_SCRATCH_KEEP {
+                        self.point_selector_scratch.assignment_values = values;
                     }
                 }
             }
@@ -4032,6 +4074,7 @@ impl NativeRuntime {
                 color_selector_sets,
                 helicity_singletons,
                 color_singletons,
+                ..
             } = &mut selector_scratch;
             let selected_helicities = helicity_selector_sets.resolve(helicity_ids, "helicity")?;
             let selected_colors = color_selector_sets.resolve(color_ids, "color component")?;
