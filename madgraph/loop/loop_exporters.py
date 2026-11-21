@@ -22,6 +22,7 @@ import os
 import stat
 import sys
 import re
+import shlex
 import shutil
 import subprocess
 import itertools
@@ -2038,7 +2039,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                     # It is cleaner to use the original location of the libraries
                     copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
                     if tir == 'ninjars':
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                        # Recorded flags are argv words; quote them for the makefile shell.
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.pre_link_flags(
+                                libpath, self.fortran_compiler or 'gfortran'))
                     if tir == 'tirust':
                         link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
                     if copied_ninjars:
@@ -2049,7 +2053,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         tir_libs.append('%s/lib%s.%s' % (
                             libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
                     if tir == 'ninjars':
-                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.native_link_flags(libpath))
                     if tir == 'tirust':
                         link_tir_libs.extend(tirust_install.native_link_flags(libpath))
                         # Executables live in SubProcesses or its process directories;

@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import string
@@ -5576,7 +5577,10 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                     copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                        # Recorded flags are argv words; quote them for the makefile shell.
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.pre_link_flags(
+                                libpath, getattr(self, 'fortran_compiler', None) or 'gfortran'))
                     if tir == 'tirust':
                         from madgraph.various import tirust_install
                         link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
@@ -5589,7 +5593,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                             libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.native_link_flags(libpath))
                     if tir == 'tirust':
                         from madgraph.various import tirust_install
                         link_tir_libs.extend(tirust_install.native_link_flags(libpath))
