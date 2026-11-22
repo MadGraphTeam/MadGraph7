@@ -82,3 +82,33 @@ The robust fix is in TIRust's binary64 entry point. For these lanes it would:
 - evaluate in double-double or binary128 arithmetic, like the binary64 gate does for ill-conditioned lanes.
 
 The lanes are the pentagons with zero Gram determinant and a doubled line, at large s/m². The substitution tests give the expected effect. The DP errors would drop to about 10⁻⁶ in both passes, so the estimate would become honest and no point at 1 TeV would need the rescue. Only the doubled pentagons would cost extra time.
+
+## Reproducer for TIRust
+
+`data/repro_doubled_pentagons.json.gz` is written by `repro.py` (`python3 repro.py OUTDIR OUT.json.gz 0 7`, on an output patched by `instrument.py`). It holds the ten DP calls with powers and five lines of u ū → χ_c0 g at points 0 and 7 of setup A, in both passes. For each call it records:
+- the inputs MadLoop passes: powers, masses², invariants, shifts and μ² (= 10⁶ GeV²);
+- the DP array;
+- the QP array of the same call, from `CTModeRun 4` or 5 and rounded to double.
+
+All numbers are hex doubles.
+
+There are five families of pentagons, each twice per pass, all of rank 4, with m_c² = 2.4025 GeV². In the primary pass:
+
+| Line powers | Masses² |
+|---|---|
+| (1,1,1,1,2) | (0,0,0,0,m²) |
+| (1,1,1,2,1) | (0,0,0,m²,m²) |
+| (1,1,1,1,2) | (0,0,0,m²,m²) |
+| (1,1,2,1,1) | (0,0,m²,0,0) |
+| (1,1,1,2,1) | (0,0,0,m²,0) |
+
+The finite parts of the amplitude, relative error against QP:
+
+| Point | Primary pass | Reversed pass |
+|---|---|---|
+| 0 | 9.3·10⁻⁵ | 1.5·10⁻⁵ |
+| 7 | 3.4·10⁻² | 0.45 |
+
+The largest array deviation, relative to the largest finite entry of the call, is 2·10⁻¹⁰.
+
+In the reversed pass TIRust also shifts the invariants itself (`CHECK_PASS`), and its DP array includes that shift, while the recorded inputs are the unshifted ones.
