@@ -89,7 +89,7 @@ The lanes are the pentagons with zero Gram determinant and a doubled line, at la
 
 ## Candidate fix: TIRust 14f2696
 
-The TIRust session's answer to the reproducer below. The runs here use the local revision 14f2696 with `oneloop` 07fc754. It has since been pushed to PR #56, whose head 8b436f9 adds merges of TIRust's main, among them the re-pin of `oneloop` to cdbc912 (the small-momentum C0 series):
+The TIRust session's answer to the reproducer below. The runs in this section use 14f2696, with `oneloop` 07fc754. The head of PR #56, 8b436f9, gives the same results (see "On the PR head 8b436f9" below):
 - **TIRust 14f2696**, one commit on 370b632. It adds an embedder option, `relation_tiers`. Binary64 lanes that the first pass serves through an affine relation (a constant identity or a Coulomb partial fraction) are evaluated again from the double-double tier up. The inputs are still declared binary64, so the same relations are found.
 - **The bridge patch** `madloop-tirust-relation-tiers.patch`, one line: `relation_tiers: key.2 != 0`. Only calls with raised powers, i.e. the P waves, use the option.
 
@@ -116,9 +116,18 @@ Cost (`cost.py`, alternating batches of the two builds on the same points; `data
 | g g → χ_c0 g | production, 20 GeV | 0.92 s | 1.08 s |
 | e⁺e⁻ → cc̄[³P₀⁽⁸⁾] g | production, 1 TeV / 20 GeV | 25 / 25 ms | 31 / 30 ms |
 
+"Production" means MadLoop's defaults (`MLStabThres` 10⁻³, no rotations, QP rescue). "Profile settings" means those of the stability profiles. The stability profiles of every P wave with this candidate are in `data/profiles_14f2696/`.
+
 The P-wave checks of `research/pwave_fd` (`pw_check.py`, all 16 cases, the same points) give the same results with this candidate (`data/pw_check_14f2696.json`). The finite parts agree within 10⁻¹⁰ and the poles match the prediction to 5·10⁻¹¹, every point stable.
 
-"Production" means MadLoop's defaults (`MLStabThres` 10⁻³, no rotations, QP rescue). "Profile settings" means those of the stability profiles. The stability profiles of every P wave with this candidate are in the report (dotted curves, `data/raw/stability/*14_*.json`).
+### On the PR head 8b436f9
+
+The relation tiers are now in PR #56. Its head, 8b436f9, is 14f2696 plus merges of TIRust's main, and the merges re-pin `oneloop` from 07fc754 to cdbc912 (a small-momentum C0 series).
+- **Build.** The bridge's pole kernels (`vendor/tirust/pole-kernels`) still pin `oneloop` 07fc754. With cdbc912 in TIRust, two versions of the crate meet, and `iregi-rust` does not compile. `build.sh` therefore takes `ONELOOP_REV=cdbc912ab7b8327a23fe5fc08ddb0c58b9d55a21`, which moves the pole kernels of the scratch copy to the same revision; `vendor/tirust` itself is unchanged.
+- **Same results.** The 24-point diagnosis (`data/estim_*_8b436f9.json`: u ū at 1 TeV and 20 GeV, g g at 1 TeV, all three passes and QP) is bit-identical to 14f2696. 22 of the 24 stability profiles have bit-identical estimates. In the two g g profiles at 20 GeV, the new `oneloop` changes estimates of about 10⁻¹² by factors of 0.6 to 1.6, with the same maximum and the same points above 10⁻⁹. The P-wave checks (`data/pw_check_8b436f9.json`) are bit-identical in 15 of the 16 cases, and g g → χ_c0 g differs by 6·10⁻¹⁶.
+- **Same cost.** In production settings (`data/cost_8b436f9_vs_14f2696_*.json`): u ū → χ_c0 g takes 96–97 ms per point with either build, at both energies, and g g → χ_c0 g at 20 GeV 1.06 s against 1.10 s.
+
+The report's dotted curves are the 8b436f9 profiles (`data/raw/stability/*56_*.json`). The 14f2696 profiles are kept in `data/profiles_14f2696/`.
 
 ## Reproducer for TIRust
 

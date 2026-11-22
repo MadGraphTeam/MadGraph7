@@ -14,7 +14,7 @@ This setup avoids two problems:
 
 | File | Role |
 |---|---|
-| `build.sh`, `fix_config.py` | scratch TIRust build (TIRust revision, 0001 and follow-up patches, `vendor/tirust` bridge, optionally patched with `BRIDGE_PATCH`) and its installation metadata |
+| `build.sh`, `fix_config.py` | scratch TIRust build (TIRust revision, 0001 and follow-up patches, `vendor/tirust` bridge, optionally patched with `BRIDGE_PATCH`, its pole kernels optionally on the `oneloop` revision `ONELOOP_REV`) and its installation metadata |
 | `pw_check.py` | generates the outputs and evaluates them at points (`onia_loop_check.py`) |
 | `fd_patch.py`, `fd_patch2.py`, `fd_patch3.py` | add the test modes to a generated `onia_loop.f`, in double and quadruple precision |
 | `fd_setup.sh`, `pw_fd_driver.f`, `pw_fd.mk` | patch, build and run the check |
@@ -76,4 +76,4 @@ With TIRust 48958d1 (part of PR #56, built by `build.sh` with `REV=48958d1` and 
 | the 2 → 1 processes above but g g > etac(1\|1P18) | M | 0 | < 1e-12 |
 
 - **Why it vanishes.** For equal masses the self term and the LDME counterterm cancel for every S-wave state S'. What is left are the cross vectors, which vanish by colour conservation when the bound state has a single coloured partner, as in the e+e- cases. In the 2 → 1 cases other than ¹P₁[8], every S' Born vanishes.
-- **2 → 2 processes.** TIRust 48958d1 serves every integral of `u u~ > chic0 g` and `g u > chic0 u` at these points, but not those of `g g > chic0 g` (doubled-gluon pentagons). TIRust 370b632 (the head of PR #56) serves them: all four points stable (213), poles as predicted (P → S term +6.9 to +9.9) to 1.3e-9, finite parts equal to forced QP within 4e-12. The finite parts of these processes have no reference.
+- **2 → 2 processes.** TIRust 48958d1 serves every integral of `u u~ > chic0 g` and `g u > chic0 u` at these points, but not those of `g g > chic0 g` (doubled-gluon pentagons). TIRust 370b632 (in PR #56) serves them: all four points stable (213), poles as predicted (P → S term +6.9 to +9.9) to 1.3e-9, finite parts equal to forced QP within 4e-12. The finite parts of these processes have no reference.

@@ -13,7 +13,7 @@ of both). Points MadLoop evaluated without a stability test (return code
 categorical palette (dataviz reference palette, light mode, checked on
 white); the octet figure starts the slot order again, one slot per state. A
 bottomonium process takes the colour of its charmonium analogue; a run with
-the TIRust candidate (case suffix 14) takes the colour of its process, dotted;
+TIRust 8b436f9 (case suffix 56) takes the colour of its process, dotted;
 the reference process of the paper is a dashed neutral line in every row."""
 import glob
 import json
@@ -29,18 +29,18 @@ import numpy as np
 # family -> processes in plotting order; the reference ttg is drawn in every row
 FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
-     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'chic0g14', 'ggchic0g', 'ggchic0g14']),
+     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'chic0g56', 'ggchic0g', 'ggchic0g56']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
-     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'chib0g14', 'ggchib0g', 'ggchib0g14']),
+     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'chib0g56', 'ggchib0g', 'ggchib0g56']),
 ]
 # the P-wave colour octets, in a figure of their own
 OCTET_FAMILIES = [
     ('charmonium octets', r'charmonium P-wave octets: $e^+e^-\to c\bar c[n^{(8)}]\,g$, loop_sm_onia-c_mass',
-     ['cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g', 'cc3p08g14', 'cc3p18g14', 'cc3p28g14',
-      'cc1p18g14']),
+     ['cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g', 'cc3p08g56', 'cc3p18g56', 'cc3p28g56',
+      'cc1p18g56']),
     ('bottomonium octets', r'bottomonium P-wave octets: $e^+e^-\to b\bar b[n^{(8)}]\,g$, loop_sm_onia-no_tau_mass',
-     ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g', 'bb3p08g14', 'bb3p18g14', 'bb3p28g14',
-      'bb1p18g14']),
+     ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g', 'bb3p08g56', 'bb3p18g56', 'bb3p28g56',
+      'bb1p18g56']),
 ]
 # (file suffix, families, legend columns, legend keyed by colour = process and line style = build)
 FIGURES = [('', FAMILIES, 3, False), ('_octets', OCTET_FAMILIES, 4, True)]
@@ -93,9 +93,9 @@ for q in 'cb':
     COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
                   q * 2 + '1p18g': YELLOW})
 STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
-# the TIRust candidate 14f2696 (suffix 14): the colour of the process, dotted
-CANDIDATE = '14f2696'
-for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if c.endswith('14')]:
+# TIRust 8b436f9, the head of PR #56 with relation tiers (suffix 56): the colour of the process, dotted
+CANDIDATE = '8b436f9'
+for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if c.endswith('56')]:
     base = c[:-2]
     LABEL[c] = LABEL[base].replace(', TIRust 370b632', '').replace(')', ', TIRust %s)' % CANDIDATE) \
         if base in ('chic0g', 'ggchic0g', 'chib0g', 'ggchib0g') else LABEL[base] + ', TIRust ' + CANDIDATE
@@ -197,7 +197,7 @@ def plot(runs, out, family_list, ncol=3, style_key=False):
             # one entry per process (its colour), then the line styles and the reference;
             # legends fill column by column, two rows
             from matplotlib.lines import Line2D
-            base = [c for c in cases if not c.endswith('14')]
+            base = [c for c in cases if not c.endswith('56')]
             m = next(runs[(c, s)][0] for c in base for s in setups if (c, s) in runs)
             procs = [Line2D([], [], color=COLOR[c], lw=1.4, label=LABEL[c]) for c in base]
             keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label=reducer(m)),

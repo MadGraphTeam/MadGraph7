@@ -11,6 +11,12 @@ rsync -a --exclude target --exclude .git --exclude '*.o' --exclude '*.mod' --exc
 cp /shared/external/madloop_onia/madgraph7_madloop_onia/HEPTools/tirust/Cargo.lock bridge/Cargo.lock
 # optional patch of the bridge copy (paths a/vendor/tirust/...), e.g. madloop-tirust-relation-tiers.patch
 if [ -n "${BRIDGE_PATCH:-}" ]; then patch -p3 --batch --forward --fuzz=0 -d bridge -i "$BRIDGE_PATCH"; fi
+# optional oneloop revision for the bridge copy's pole kernels, to match a TIRust revision that
+# re-pins oneloop (8b436f9: cdbc912); vendor/tirust itself is not changed
+if [ -n "${ONELOOP_REV:-}" ]; then
+  sed -i -E 's#(oneloopmaster\.git", rev = ")[0-9a-f]+#\1'"$ONELOOP_REV"'#' bridge/pole-kernels/Cargo.toml
+  grep -c "$ONELOOP_REV" bridge/pole-kernels/Cargo.toml
+fi
 mkdir -p src/madloop-pole-kernels
 cp -r bridge/pole-kernels/. src/madloop-pole-kernels/
 (cd src && patch -p1 --batch --forward --fuzz=0 -i $PW/bridge/patches/0001-direct-poles-only.patch)

@@ -227,8 +227,8 @@ Status:
   - `g g > etac(1|1P18)` (the `onia_fks` constant, P->S pole included).
 
   It also serves `u u~ > chic0 g` and `g u > chic0 u` (poles checked), but
-  not the doubled-gluon pentagons of `g g > chic0 g`; TIRust 370b632 (the
-  head of PR #56) serves those too (poles checked, finite part equal to QP).
+  not the doubled-gluon pentagons of `g g > chic0 g`; TIRust 370b632 (in
+  PR #56) serves those too (poles checked, finite part equal to QP).
 - When TIRust refuses an integral with a doubled line, its contribution is
   missing: the point is reported unstable (`H=4`) in every mode
   (`CTModeRun`), with a warning on the first such point.
