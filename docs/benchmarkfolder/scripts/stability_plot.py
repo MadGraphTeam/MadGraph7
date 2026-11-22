@@ -93,7 +93,7 @@ for q in 'cb':
     COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
                   q * 2 + '1p18g': YELLOW})
 STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
-# TIRust 8b436f9, the head of PR #56 with relation tiers (suffix 56): the colour of the process, dotted
+# TIRust 8b436f9, in PR #56, with relation tiers (suffix 56): the colour of the process, dotted
 CANDIDATE = '8b436f9'
 for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if c.endswith('56')]:
     base = c[:-2]

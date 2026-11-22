@@ -493,7 +493,7 @@ estimate over random phase-space points.
   The $u overline(u)$ P waves and the P-wave colour octets use TIRust 48958d1. The $g g$ P waves,
   $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
   (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every P
-  wave is also run with TIRust 8b436f9, the head of PR \#56, which adds
+  wave is also run with TIRust 8b436f9, in PR \#56, which adds
   _relation tiers_, and a one-line bridge patch that enables them (not
   pinned; build in `research/pwave_stability`).
 - *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
@@ -566,7 +566,7 @@ estimate over random phase-space points.
       for $u overline(u) -> chi_(c 0) g$ (largest error $5 dot 10^(-5)$), but not
       for $g g -> chi_(c 0) g$: its threshold relations hold only to
       double-precision rounding, and that path refuses them.
-  - *The fix in TIRust: relation tiers* (PR \#56, head 8b436f9; dotted in
+  - *The fix in TIRust: relation tiers* (PR \#56, at 8b436f9; dotted in
     @fig:stability). Lanes
     that TIRust serves through an affine relation (a constant identity or a
     Coulomb partial fraction) are evaluated again in double-double, from the
