@@ -354,6 +354,219 @@ def physical_color_links(info, constituent_links):
 
 
 #===============================================================================
+# P-wave: the colour of the soft current (P -> S pole of the virtual)
+#===============================================================================
+# A soft gluon turns a P-wave quarkonium into the S-wave states of
+# pwave_aux_states (arXiv:2402.19221, sect. 3.1 and appendix B), through the
+# effective generators
+#   Q_eff(18)^a = (2+r+1/r)/sqrt(2 N_c) Delta^a     (P[1] -> S[8], Delta^a_ob = delta_ab)
+#   Q_eff(81)^a = (2+r+1/r)/sqrt(2 N_c) Delta^aT    (P[8] -> S[1])
+#   Q_eff(88)^a = (2+r+1/r) D^a/2 + (1/r-r) T^a/2   (P[8] -> S[8], D^a_bc = d_abc,
+#                                                     T^a_bc = -i f_abc)
+# between normalised colour states, r = m_Q/m_Qbar; for equal masses
+# Q_eff = 2 (T_Q - T_Qbar), from the derivative of the soft functions of the
+# heavy quarks in their relative momentum. The colour charges are those of
+# the onia FKS layer (fks_onia.colour_charge_string): t^a for a final quark
+# or an initial antiquark, -t^aT for a final antiquark or an initial quark,
+# T^a = -i f for an octet.
+
+def pwave_aux_states(onium):
+    """The S-wave states of the soft current of a P-wave quarkonium, as
+    (colour C', label of Q_eff): P[1] -> S[8]; P[8] -> S[1] and S[8]."""
+    if onium['C'] == 1:
+        return [(8, '18')]
+    return [(1, '81'), (8, '88')]
+
+
+def _colour_charge_string(rep, num, a, fresh):
+    """The colour charge Q^a of a leg of representation rep (3, -3, 8) and
+    colour index num, acting on a colour string whose index num is renamed
+    fresh."""
+    import madgraph.core.color_algebra as color_algebra
+    if rep == 3:
+        return color_algebra.ColorString([color_algebra.T(a, num, fresh)])
+    if rep == -3:
+        string = color_algebra.ColorString([color_algebra.T(a, fresh, num)])
+        string.coeff = fractions.Fraction(-1)
+        return string
+    if rep == 8:
+        string = color_algebra.ColorString([color_algebra.f(a, num, fresh)])
+        string.coeff = fractions.Fraction(-1)
+        string.is_imaginary = True
+        return string
+    raise OniaLoopError('No colour charge for the representation %s.' % rep)
+
+
+def _colour_contract(struct_p, struct_s, repl_p, repl_s, insertion, Nc=3):
+    """sum over colours of conj(c_p) [insertion] c_s for two immutable colour
+    strings, their indices renamed by repl_p and repl_s first, as (re, im)
+    Fractions."""
+    import madgraph.core.color_algebra as color_algebra
+    import madgraph.core.color_amp as color_amp
+
+    def rename(struct, repl):
+        return tuple((elem[0], tuple(repl.get(i, i) for i in elem[1])) for elem in struct)
+
+    linked = color_algebra.ColorString()
+    linked.from_immutable(rename(struct_s, repl_s))
+    if insertion is not None:
+        linked.product(insertion.create_copy())
+    other = color_algebra.ColorString()
+    other.from_immutable(color_amp.ColorMatrix.fix_summed_indices(
+        linked.to_immutable(), rename(struct_p, repl_p)))
+    product = linked.create_copy()
+    product.product(other.complex_conjugate())
+    re, im = color_algebra.ColorFactor([product]).full_simplify().set_Nc(Nc)
+    return fractions.Fraction(re), fractions.Fraction(im)
+
+
+def _to_amplitude_space(mat, amp_p, amp_s, nborn):
+    """M[a][b] = sum conj(c_ja(a)) mat[(ja, jb)] c_jb(b) over the colour
+    flows of Born amplitudes a and b (amp_p, amp_s: get_amp_to_jamp_map of
+    the two bases), as (re, im) Fractions; mat maps (ja, jb) to (re, im)."""
+
+    def as_complex(coeff):
+        frac, is_imag = coeff
+        return (fractions.Fraction(0), frac) if is_imag else (frac, fractions.Fraction(0))
+
+    zero = (fractions.Fraction(0), fractions.Fraction(0))
+    res = [[zero] * nborn for _ in range(nborn)]
+    for a, alist in enumerate(amp_p):
+        for b, blist in enumerate(amp_s):
+            re, im = fractions.Fraction(0), fractions.Fraction(0)
+            for (ja, ca), (jb, cb) in itertools.product(alist, blist):
+                m = mat.get((ja, jb))
+                if m is None or m == zero:
+                    continue
+                x = as_complex(ca)
+                prod = complex_fraction_product(complex_fraction_product(
+                    (x[0], -x[1]), m), as_complex(cb))
+                re += prod[0]
+                im += prod[1]
+            res[a][b] = (re, im)
+    return res
+
+
+def pwave_soft_current(matrix_element, info, amp_to_jamp):
+    """The colour data of the soft current of the P-wave bound state of a
+    loop matrix element, for its P -> S pole (ONIA_PW_SOFT_POLE): a list
+    with one dict per S-wave state S' of pwave_aux_states that the colour
+    allows, with
+      colour, label   C' and the label of Q_eff
+      cnorm           n_C'/n_C, the ratio of the squared normalisations of
+                      the colour projectors (1/3 for a singlet, 2 for an
+                      octet)
+      cs              the colour matrix of S' between Born amplitudes,
+                      CS[a][b] = sum_colours conj(c'_a) c'_b
+      links           {(k, kind): X} for every coloured physical leg k
+                      other than the P-wave state, kind 1 for Delta (18,
+                      81) or D (88) and 2 for T (88), with
+                      X[a][b] = sum_colours conj(c_a) Q_k^a Q_eff^a c'_b
+                      without the mass factors of Q_eff
+    c (c') are the colour strings of the Born amplitudes projected on the
+    colour of the P-wave state (of S'), as (re, im) Fractions. amp_to_jamp
+    is the exporter's get_amp_to_jamp_map."""
+    import madgraph.core.color_algebra as color_algebra
+    import madgraph.core.color_amp as color_amp
+    import madgraph.loop.loop_color_amp as loop_color_amp
+
+    pw = info['onia'][info['ipwave'] - 1]
+    process = matrix_element.get('processes')[0]
+    model = process.get('model')
+    legs = process.get('legs')
+    nborn = matrix_element.get_number_of_born_amplitudes()
+    born_diagrams = matrix_element.get('base_amplitude').get('born_diagrams')
+    basis = loop_color_amp.LoopColorBasis()
+    col_obj = [basis.colorize(d, model) for d in born_diagrams]
+    onia_numbers = basis.get_onia_color_numbers(process)
+    born_basis = matrix_element.get('born_color_basis')
+    keys_p = sorted(born_basis.keys())
+    amp_p = amp_to_jamp(matrix_element.get_born_color_amplitudes(), nborn)
+    # the octet index of a quarkonium is the number of its quark (colour 3)
+    n_q = pw['q1']
+    octet_index = {}
+    for o in info['onia']:
+        octet_index[o['q1']] = o
+    a, fresh, c_new, m_new = -4001, -4002, -4003, -4004
+
+    def qeff(kind, b, c):
+        if kind == 'D':
+            return color_algebra.ColorString([color_algebra.d(a, b, c)])
+        return _colour_charge_string(8, b, a, c)
+
+    # the coloured physical legs other than the P-wave state: (number of
+    # the colour index, representation of the colour charge, physical leg)
+    charged = []
+    for leg in legs:
+        num = leg.get('number')
+        onium = leg.get('onium')
+        if onium:
+            o = octet_index.get(num)
+            if o is None or o is pw or o['C'] != 8:
+                continue
+            if abs(model.get_particle(leg.get('id')).get_color()) != 3:
+                continue
+            charged.append((num, 8, info['mapping'][num - 1]))
+            continue
+        colour = model.get_particle(leg.get('id')).get_color()
+        if colour in (1, 0):
+            continue
+        rep = 8 if colour == 8 else (colour if leg.get('state') else -colour)
+        charged.append((num, rep, info['mapping'][num - 1]))
+
+    norm = {1: fractions.Fraction(1, 3), 8: fractions.Fraction(2)}
+    result = []
+    for colour, label in pwave_aux_states(pw):
+        numbers = [[charges, numbers_, (colour if n_q in numbers_ else charge)]
+                   for charges, numbers_, charge in onia_numbers]
+        projected = []
+        for old in col_obj:
+            new = dict((key, string.create_copy()) for key, string in old.items())
+            basis.OniaColorProjection(new, numbers)
+            projected.append(new)
+        basis_s = color_amp.ColorBasis()
+        for index, new in enumerate(projected):
+            basis_s.update_color_basis(new, index)
+        if not len(basis_s):
+            # colour forbidden: this S-wave state has no Born
+            continue
+        keys_s = sorted(basis_s.keys())
+        amp_s = amp_to_jamp(matrix_element.generate_color_amplitudes(
+            basis_s, matrix_element.get_born_diagrams()), nborn)
+        cm = color_amp.ColorMatrix(basis_s)
+        mat = {}
+        for (i, j), (m_val, m_imag) in cm.col_matrix_fixed_Nc.items():
+            if m_val:
+                mat[(i, j)] = (fractions.Fraction(0), fractions.Fraction(m_val)) if m_imag \
+                    else (fractions.Fraction(m_val), fractions.Fraction(0))
+        cs = _to_amplitude_space(mat, amp_s, amp_s, nborn)
+        links = {}
+        for num, rep, phys in charged:
+            for kind in (['Delta'] if label in ('18', '81') else ['D', 'T']):
+                repl_p, repl_s = {}, {num: fresh}
+                insertion = _colour_charge_string(rep, num, a, fresh)
+                if label == '18':
+                    repl_s[n_q] = a
+                elif label == '81':
+                    repl_p[n_q] = a
+                else:
+                    repl_s[n_q] = c_new
+                    insertion.product(qeff(kind, n_q, c_new))
+                xmat = {}
+                for ib, ks in enumerate(keys_s):
+                    for ia, kp in enumerate(keys_p):
+                        value = _colour_contract(kp, ks, repl_p, repl_s, insertion)
+                        if value != (0, 0):
+                            xmat[(ia, ib)] = value
+                if xmat:
+                    links[(phys, 2 if kind == 'T' else 1)] = \
+                        _to_amplitude_space(xmat, amp_p, amp_s, nborn)
+        result.append(dict(colour=colour, label=label, cnorm=norm[colour] / norm[pw['C']],
+                           cs=cs, links=links))
+    return result
+
+
+#===============================================================================
 # P-wave: the coefficient construction in dual numbers
 #===============================================================================
 _PW_UPDATE = re.compile(r'^CALL (?P<pre>\w*?)UPDATE_WL_(?P<r>\d+)_(?P<v>\d+)'

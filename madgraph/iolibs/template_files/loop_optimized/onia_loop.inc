@@ -840,6 +840,8 @@ C     constituent momenta P (at zero relative momentum).
       %(complex_dp_format)s BPROJ(NBORNAMPS,ONIA_NOTHERS,ONIA_NJZT)
       %(real_dp_format)s FACT
       COMMON/%(proc_prefix)sONIA_PROJECTED/BPROJ,FACT
+      %(complex_dp_format)s VS(NBORNAMPS,0:3,ONIA_NOTHERS,ONIA_NJZT)
+      COMMON/%(proc_prefix)sPW_SOFT/VS
       %(complex_dp_format)s PR0(ONIA_NJZT,NCOMB,3), PR1(ONIA_NJZT,NCOMB,3)
       %(complex_dp_format)s A0(NBORNAMPS,NCOMB), A1(NBORNAMPS,NCOMB,3)
       %(complex_dp_format)s TMP
@@ -936,6 +938,23 @@ C     The projected Born amplitudes
           ENDDO
         ENDDO
       ENDDO
+C     The S-wave amplitudes of the soft current (ONIA_PW_SOFT_POLE): the
+C     values of the Born amplitudes with the spin projectors of
+C     S_z = J_z-L_z, VS = sum_{L_z} CG eps(L_z) A(S_z)
+      VS(1:NBORNAMPS,0:3,1:ONIA_NOTHERS,1:ONIA_NJZT)=(0D0,0D0)
+      DO H=1,NCOMB
+        IF (.NOT.ACTIVE(H)) CYCLE
+        O=ONIA_OTHERS(H)
+        DO T=1,ONIA_NJZT
+          DO ILZ=1,3
+            IF (PR0(T,H,ILZ).EQ.(0D0,0D0)) CYCLE
+            DO MU=0,3
+              VS(1:NBORNAMPS,MU,O,T)=VS(1:NBORNAMPS,MU,O,T)
+     &         +PR0(T,H,ILZ)*EPSLZ(MU,ILZ)*A0(1:NBORNAMPS,H)
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
 C     The weights of each constituent helicity configuration
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=(0D0,0D0)
@@ -989,6 +1008,133 @@ C     The projected Born matrix element
         ENDDO
       ENDDO
       BORN2=BORN2*FACT/DBLE(ONIA_IDEN)
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_PW_SOFT_POLE(P_PHYS,PMASS,CMASS,CONTR)
+C     The single pole of the virtual of the P-wave bound state beyond its
+C     colour-linked Borns, in units of alpha_s/(2 pi) (arXiv:2402.19221,
+C     appendix B; getpoles_onia of the onia FKS layer), at the point of the
+C     last ONIA_PREPARE:
+C       sum_k k.VEC(k)/(P.k)                                  (k massless)
+C     + sum_k k.VEC(k)/(P.k) m_k^2 P^2/(2 v_k^3 (P.k)^2)
+C             [2 v_k/(1-v_k^2) - log((1+v_k)/(1-v_k))]       (k massive)
+C     - 2/(3 P^2) sum_S' C_eff(S') g_mu nu M^mu nu(S')
+C     - 8/(m_Q m_Qbar) sum_S' c_S' M(r_S')
+C     with v_k = sqrt(1 - m_k^2 P^2/(P.k)^2), k the coloured legs but the
+C     P-wave state P. A soft gluon turns P into the S-wave states S' of
+C     colour C' (P[1] -> S[8]; P[8] -> S[1], S[8]) through Q_eff(CC'):
+C       VEC^mu(k) = -2 Re sum <P| T_k.Q_eff |S'^mu>,
+C       M^mu nu(S') = sum <S'^mu|S'^nu>,  M(r_S') = -g_mu nu M^mu nu (2S+1)/(2J+1),
+C     with |S'^mu> the amplitudes VS of ONIA_PREPARE in the colour of S'
+C     (onia_loop_pwsoft.inc, loop_onia.pwave_soft_current), normalised as
+C     the projected Born, with sqrt(n_C'/n_C) for the colour projector.
+C     These are minus the poles of the integrated soft current and of the
+C     LDME counterterm of the FKS subtraction.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL, NEXTERNAL_PHYS, NBORNAMPS
+      PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      PARAMETER (NBORNAMPS=%(nbornamps)d)
+      %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), PMASS(NEXTERNAL_PHYS)
+      %(real_dp_format)s CMASS(NEXTERNAL), CONTR
+      INCLUDE 'onia_loop_data.inc'
+      INCLUDE 'onia_loop_pwsoft.inc'
+      %(complex_dp_format)s BPROJ(NBORNAMPS,ONIA_NOTHERS,ONIA_NJZT)
+      %(real_dp_format)s FACT
+      COMMON/%(proc_prefix)sONIA_PROJECTED/BPROJ,FACT
+      %(complex_dp_format)s VS(NBORNAMPS,0:3,ONIA_NOTHERS,ONIA_NJZT)
+      COMMON/%(proc_prefix)sPW_SOFT/VS
+      %(real_dp_format)s NC, CF, BF
+      PARAMETER (NC=3D0, CF=4D0/3D0, BF=5D0/12D0)
+      %(real_dp_format)s METRIC(0:3)
+      DATA METRIC/1D0,-1D0,-1D0,-1D0/
+      %(real_dp_format)s K(0:3), PK(0:3), KTOT2, PKK, MK2, V, FAC, F
+      %(real_dp_format)s MQ, MQB, R, MSUM, CEFF, CLDME, GMN, MR, VK
+      %(complex_dp_format)s Z, KV(NBORNAMPS), TMP
+      INTEGER L, A, I, J, O, T, MU, KL, IPHYS
+      CONTR=0D0
+      IPHYS=ONIA_MAPPING(ONIA_Q1(ONIA_IPW))
+      K(0:3)=P_PHYS(0:3,IPHYS)
+      KTOT2=K(0)**2-K(1)**2-K(2)**2-K(3)**2
+      MQ=CMASS(ONIA_Q1(ONIA_IPW))
+      MQB=CMASS(ONIA_Q2(ONIA_IPW))
+      R=MQ/MQB
+      MSUM=2D0+R+1D0/R
+      FAC=FACT/DBLE(ONIA_IDEN)
+C     the cross vectors k.VEC(k)
+      DO L=1,PWS_NLINKS
+        A=PWS_AUX(L)
+        IF (PWS_KIND(L).EQ.1) THEN
+          IF (PWS_LABEL(A).EQ.'88') THEN
+            F=MSUM/2D0
+          ELSE
+            F=MSUM/SQRT(2D0*NC)
+          ENDIF
+        ELSE
+          F=(1D0/R-R)/2D0
+        ENDIF
+        IF (F.EQ.0D0) CYCLE
+        KL=PWS_LEG(L)
+        PK(0:3)=P_PHYS(0:3,KL)
+        PKK=K(0)*PK(0)-K(1)*PK(1)-K(2)*PK(2)-K(3)*PK(3)
+        Z=(0D0,0D0)
+        DO O=1,ONIA_NOTHERS
+          DO T=1,ONIA_NJZT
+            DO J=1,NBORNAMPS
+              KV(J)=PK(0)*VS(J,0,O,T)-PK(1)*VS(J,1,O,T)
+     &         -PK(2)*VS(J,2,O,T)-PK(3)*VS(J,3,O,T)
+            ENDDO
+            DO I=1,NBORNAMPS
+              IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
+              TMP=(0D0,0D0)
+              DO J=1,NBORNAMPS
+                TMP=TMP+DCMPLX(PWS_X_RE(I,J,L),PWS_X_IM(I,J,L))*KV(J)
+              ENDDO
+              Z=Z+DCONJG(BPROJ(I,O,T))*TMP
+            ENDDO
+          ENDDO
+        ENDDO
+        VK=-2D0*FAC*F*SQRT(PWS_CNORM(A))*DBLE(Z)
+        MK2=PMASS(KL)**2
+        IF (MK2.EQ.0D0) THEN
+          CONTR=CONTR+VK/PKK
+        ELSE
+          V=SQRT(1D0-MK2*KTOT2/PKK**2)
+          CONTR=CONTR+VK/PKK*MK2*KTOT2/(2D0*V**3*PKK**2)
+     &     *(2D0*V/(1D0-V**2)-LOG((1D0+V)/(1D0-V)))
+        ENDIF
+      ENDDO
+C     the self term and the LDME counterterm of each S-wave state
+      DO A=1,PWS_NAUX
+        GMN=0D0
+        DO O=1,ONIA_NOTHERS
+          DO T=1,ONIA_NJZT
+            DO MU=0,3
+              DO I=1,NBORNAMPS
+                IF (VS(I,MU,O,T).EQ.(0D0,0D0)) CYCLE
+                TMP=(0D0,0D0)
+                DO J=1,NBORNAMPS
+                  TMP=TMP+DCMPLX(PWS_CS_RE(I,J,A),PWS_CS_IM(I,J,A))*VS(J,MU,O,T)
+                ENDDO
+                GMN=GMN+METRIC(MU)*DBLE(DCONJG(VS(I,MU,O,T))*TMP)
+              ENDDO
+            ENDDO
+          ENDDO
+        ENDDO
+        GMN=GMN*FAC*PWS_CNORM(A)
+        IF (PWS_LABEL(A).EQ.'18') THEN
+          CEFF=MSUM**2/(2D0*NC)
+          CLDME=1D0/(2D0*NC)
+        ELSEIF (PWS_LABEL(A).EQ.'81') THEN
+          CEFF=MSUM**2*CF
+          CLDME=CF
+        ELSE
+          CEFF=MSUM*(-2D0/NC+(NC**2-2D0)/(2D0*NC)*(R+1D0/R))
+          CLDME=BF
+        ENDIF
+        IF (ONIA_S(ONIA_IPW).EQ.1) CLDME=CLDME*(2D0*ONIA_J(ONIA_IPW)+1D0)/9D0
+        MR=-GMN*(2D0*ONIA_S(ONIA_IPW)+1D0)/(2D0*ONIA_J(ONIA_IPW)+1D0)
+        CONTR=CONTR-2D0/(3D0*KTOT2)*CEFF*GMN-8D0/(MQ*MQB)*CLDME*MR
+      ENDDO
       END
 
       LOGICAL FUNCTION %(proc_prefix)sONIA_PW_DIRECTION(P,H,ILZ,PD)
@@ -2010,6 +2156,9 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       %(real_dp_format)s LINKED, PJK, SJK, V, MU2, AO2PI, PI
       %(complex_dp_format)s TMP
       INTEGER L, I, J, O, T, JL, KL
+## if(OniaPwave){
+      %(real_dp_format)s PSPOLE
+## }
       PI=4D0*DATAN(1D0)
       MU2=MU_R**2
       AO2PI=G**2/(8D0*PI**2)
@@ -2064,6 +2213,11 @@ C     (colour-octet bound state)
       DO J=1,NEXTERNAL_PHYS
         POLES(1)=POLES(1)-ONIA_LEG_GAMMA(J)*BORN2
       ENDDO
+## if(OniaPwave){
+C     the P -> S transitions of the soft current of the P-wave state
+      CALL %(proc_prefix)sONIA_PW_SOFT_POLE(P_PHYS,PMASS,CMASS,PSPOLE)
+      POLES(1)=POLES(1)+PSPOLE
+## }
       POLES(1)=AO2PI*POLES(1)
       POLES(2)=AO2PI*POLES(2)
       END

@@ -187,6 +187,52 @@ class TestLoopOniaGeneration(unittest.TestCase):
         self.assertFalse(loop_onia.has_pwave(
             self.matrix_element('g g > etac(1|1S01) [virt=QCD]')))
 
+    def soft_current(self, process):
+        import madgraph.loop.loop_exporters as loop_exporters
+        exporter = loop_exporters.LoopProcessOptimizedExporterFortranSA.__new__(
+            loop_exporters.LoopProcessOptimizedExporterFortranSA)
+        me = self.matrix_element(process)
+        info = loop_onia.onia_loop_info(me)
+        return me, loop_onia.pwave_soft_current(me, info, exporter.get_amp_to_jamp_map)
+
+    def assert_colour_conservation(self, aux, nborn):
+        """sum_k T_k = -T_P on the transition matrices: zero for a P-wave
+        singlet, and for an octet but for the T part of Q_eff(88)
+        (f_abm d_amc = 0, T^a_{b'a} = 0)."""
+        zero = (fractions.Fraction(0), fractions.Fraction(0))
+        for a in aux:
+            for kind in set(k for _, k in a['links']):
+                if a['label'] == '88' and kind == 2:
+                    continue
+                mats = [x for (leg, k), x in a['links'].items() if k == kind]
+                self.assertTrue(any(c != zero for x in mats for row in x for c in row))
+                for i in range(nborn):
+                    for j in range(nborn):
+                        self.assertEqual(sum(x[i][j][0] for x in mats), 0)
+                        self.assertEqual(sum(x[i][j][1] for x in mats), 0)
+
+    def test_pwave_soft_current_colour(self):
+        """The S-wave states and colour of the soft current of a P-wave
+        bound state (P -> S pole), and colour conservation of the
+        transition matrices."""
+        me, aux = self.soft_current('g g > chic0(1|3P01) [virt=QCD]')
+        self.assertEqual([(a['label'], a['cnorm']) for a in aux], [('18', 6)])
+        self.assertEqual(sorted(aux[0]['links']), [(1, 1), (2, 1)])
+        self.assert_colour_conservation(aux, me.get_number_of_born_amplitudes())
+        me, aux = self.soft_current('g g > etac(1|1P18) [virt=QCD]')
+        self.assertEqual([(a['label'], a['cnorm']) for a in aux],
+                         [('81', fractions.Fraction(1, 6)), ('88', 1)])
+        self.assertEqual(sorted(aux[1]['links']), [(1, 1), (1, 2), (2, 1), (2, 2)])
+        self.assert_colour_conservation(aux, me.get_number_of_born_amplitudes())
+        # the colour charges of the light quarks: initial quark -t^aT,
+        # initial antiquark t^a
+        me, aux = self.soft_current('u u~ > chic0(1|3P01) g [virt=QCD]')
+        self.assertEqual(sorted(aux[0]['links']), [(1, 1), (2, 1), (4, 1)])
+        self.assert_colour_conservation(aux, me.get_number_of_born_amplitudes())
+        # a colour-forbidden S-wave state is left out: e+ e- > 3S1[1] g
+        me, aux = self.soft_current('e+ e- > Jpsi(1|3P08) g [virt=QCD]')
+        self.assertEqual([a['label'] for a in aux], ['88'])
+
     def test_triplet_polarisations(self):
         """A spin triplet has three J_z, a colour octet the norm 2."""
         me = self.matrix_element('u u~ > Jpsi(1|3S18) [virt=QCD]')

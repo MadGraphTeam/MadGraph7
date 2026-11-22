@@ -2249,6 +2249,56 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             lines.append('DATA ONIA_LINK_J/0/, ONIA_LINK_K/0/')
             lines.append('DATA ONIA_CL_RE/%d*0D0/, ONIA_CL_IM/%d*0D0/' % ((nborn * nborn,) * 2))
         writers.FortranWriter('onia_loop_links.inc').writelines(lines)
+        if info['ipwave']:
+            self.write_onia_loop_pwsoft(matrix_element, info)
+
+    def write_onia_loop_pwsoft(self, matrix_element, info):
+        """onia_loop_pwsoft.inc: the colour of the soft current of the P-wave
+        bound state (loop_onia.pwave_soft_current), for the P -> S pole of
+        ONIA_PW_SOFT_POLE."""
+
+        nborn = matrix_element.get_number_of_born_amplitudes()
+        aux = loop_onia.pwave_soft_current(matrix_element, info, self.get_amp_to_jamp_map)
+        links = [(ia + 1, k, kind, x) for ia, a in enumerate(aux)
+                 for (k, kind), x in sorted(a['links'].items())]
+        naux, nlinks = max(len(aux), 1), max(len(links), 1)
+
+        def col(values):
+            return ','.join(loop_onia.fortran_double(v) for v in values)
+
+        lines = ['C     The S-wave states of the soft current of the P-wave bound state',
+                 'C     and their colour (ONIA_PW_SOFT_POLE)',
+                 'INTEGER PWS_NAUX, PWS_NLINKS',
+                 'PARAMETER (PWS_NAUX=%d, PWS_NLINKS=%d)' % (len(aux), len(links)),
+                 "CHARACTER*2 PWS_LABEL(%d)" % naux,
+                 'REAL*8 PWS_CNORM(%d)' % naux,
+                 'REAL*8 PWS_CS_RE(%d,%d,%d), PWS_CS_IM(%d,%d,%d)'
+                 % (nborn, nborn, naux, nborn, nborn, naux),
+                 'INTEGER PWS_AUX(%d), PWS_LEG(%d), PWS_KIND(%d)' % (nlinks, nlinks, nlinks),
+                 'REAL*8 PWS_X_RE(%d,%d,%d), PWS_X_IM(%d,%d,%d)'
+                 % (nborn, nborn, nlinks, nborn, nborn, nlinks)]
+        if aux:
+            lines.append('DATA PWS_LABEL/%s/' % ','.join("'%s'" % a['label'] for a in aux))
+            lines.append('DATA PWS_CNORM/%s/' % col(a['cnorm'] for a in aux))
+            lines.append('DATA PWS_CS_RE/%s/' % col(a['cs'][i][j][0] for a in aux
+                         for j in range(nborn) for i in range(nborn)))
+            lines.append('DATA PWS_CS_IM/%s/' % col(a['cs'][i][j][1] for a in aux
+                         for j in range(nborn) for i in range(nborn)))
+        else:
+            lines.append("DATA PWS_LABEL/'  '/, PWS_CNORM/0D0/")
+            lines.append('DATA PWS_CS_RE/%d*0D0/, PWS_CS_IM/%d*0D0/' % ((nborn * nborn,) * 2))
+        if links:
+            lines.append('DATA PWS_AUX/%s/' % ','.join('%d' % l[0] for l in links))
+            lines.append('DATA PWS_LEG/%s/' % ','.join('%d' % l[1] for l in links))
+            lines.append('DATA PWS_KIND/%s/' % ','.join('%d' % l[2] for l in links))
+            lines.append('DATA PWS_X_RE/%s/' % col(l[3][i][j][0] for l in links
+                         for j in range(nborn) for i in range(nborn)))
+            lines.append('DATA PWS_X_IM/%s/' % col(l[3][i][j][1] for l in links
+                         for j in range(nborn) for i in range(nborn)))
+        else:
+            lines.append('DATA PWS_AUX/0/, PWS_LEG/0/, PWS_KIND/0/')
+            lines.append('DATA PWS_X_RE/%d*0D0/, PWS_X_IM/%d*0D0/' % ((nborn * nborn,) * 2))
+        writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
 
     def onia_public_entries(self, file, matrix_element):
         """loop_matrix.f of a process with bound states: MadLoop runs on the

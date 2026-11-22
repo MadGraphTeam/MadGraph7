@@ -60,5 +60,20 @@ With TIRust 48958d1 (PR #50, built by `build.sh` with `REV=48958d1` and `FOLLOWU
 
 - **Conversions.** The references are those of `research/literature.md`, converted to MadLoop's normalisation by its section B.5.
 - **Octet colour factor.** The octets confirm the corrected colour factor of the four-gluon-vertex diagram. Petrelli et al. print 15.0397510 and 11.2057601.
-- **¹P₁[8] pole.** For `g g > etac(1|1P18)`, −18 includes the P → S pole −2C_A of arXiv:2402.19221 (appendix B). `ONIA_IR_POLES` does not include that term yet and predicts −12.
+- **¹P₁[8] pole.** For `g g > etac(1|1P18)`, −18 includes the P → S pole −2C_A of arXiv:2402.19221 (appendix B). `ONIA_IR_POLES` includes it (`ONIA_PW_SOFT_POLE`) and predicts −18; without it, the prediction would be −12.
 - **Earlier TIRust revisions.** They refuse the doubled-gluon Coulomb box. The point is then reported unstable, and the 1/ε coefficient misses −2C_F: γγ → χ_c0 gave −8.6838 and −8/3.
+
+## The P → S pole of the prediction
+
+`ONIA_IR_POLES` adds the P → S single pole of the soft current (arXiv:2402.19221, appendix B; `ONIA_PW_SOFT_POLE`). `pw_check.py` compares the predicted 1/ε coefficient with the computed one, with TIRust 48958d1 and four points per process. Every point is stable (code 213). The size of the term is that of a print of `PSPOLE` in the generated code, in units of Born·α_s/2π:
+
+| Process | √s (GeV) | P → S term | Prediction − computed (1/ε) |
+|---|---|---|---|
+| g g > etac(1\|1P18) | M | −6 (−2 C_A) | < 1e-12 |
+| u u~ > chic0(1\|3P01) g | 20 | −11.1 to −39.3 | ≤ 7e-9 |
+| g u > chic0(1\|3P01) u | 20 | +10.9 to +42.7 | ≤ 2e-9 |
+| e+ e- > Jpsi(1\|3PJ8) g, J = 0, 1, 2; etac(1\|1P18) g | 10 | 0 (≤ 5e-20) | ≤ 7e-11 |
+| the 2 → 1 processes above but g g > etac(1\|1P18) | M | 0 | < 1e-12 |
+
+- **Why it vanishes.** For equal masses the self term and the LDME counterterm cancel for every S-wave state S'. What is left are the cross vectors, which vanish by colour conservation when the bound state has a single coloured partner, as in the e+e- cases. In the 2 → 1 cases other than ¹P₁[8], every S' Born vanishes.
+- **2 → 2 processes.** TIRust 48958d1 serves every integral of `u u~ > chic0 g` and `g u > chic0 u` at these points, but not those of `g g > chic0 g` (doubled-gluon pentagons). The finite parts of these processes have no reference.

@@ -27,6 +27,14 @@ CASES = {
     'ag_3p28': dict(process='a g > Jpsi(1|3P28) [virt=QCD]', ref=(10.7171815, -7.5, -3.)),
     'gg_1p18': dict(process='g g > etac(1|1P18) [virt=QCD]', ref=None),
     'gg_chic0g': dict(process='g g > chic0(1|3P01) g [virt=QCD]', ref=None),
+    # the P -> S pole with a final-state gluon (88: P[8] -> S[8])
+    'ee_3p08g': dict(process='e+ e- > Jpsi(1|3P08) g [virt=QCD]', ref=None),
+    'ee_3p18g': dict(process='e+ e- > Jpsi(1|3P18) g [virt=QCD]', ref=None),
+    'ee_3p28g': dict(process='e+ e- > Jpsi(1|3P28) g [virt=QCD]', ref=None),
+    'ee_1p18g': dict(process='e+ e- > etac(1|1P18) g [virt=QCD]', ref=None),
+    # the P -> S pole with three coloured partons (18: P[1] -> S[8])
+    'uu_chic0g': dict(process='u u~ > chic0(1|3P01) g [virt=QCD]', ref=None),
+    'gu_chic0u': dict(process='g u > chic0(1|3P01) u [virt=QCD]', ref=None),
 }
 
 def main(names, npoints=4, regenerate=os.environ.get('REGEN', '1') == '1', ctmode=None):
