@@ -13,7 +13,8 @@ of both). Points MadLoop evaluated without a stability test (return code
 categorical palette (dataviz reference palette, light mode, checked on
 white); the octet figure starts the slot order again, one slot per state. A
 bottomonium process takes the colour of its charmonium analogue; a run with
-TIRust 5025e12 (PR #56; case suffix 56) takes the colour of its process, dotted;
+TIRust 5025e12 with the bridge's binary64 gate and relation tiers (PR #56; case suffix 56)
+takes the colour of its process, dotted;
 the reference process of the paper is a dashed neutral line in every row."""
 import glob
 import json
@@ -29,10 +30,10 @@ import numpy as np
 # family -> processes in plotting order; the reference ttg is drawn in every row
 FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
-     ['etacg', 'jpsig', 'etac8g', 'chic0g', 'ggchic0g', 'jpsig08',
+     ['etacg', 'jpsig', 'etac8g', 'chic0g', 'ggchic0g',
       'etacg56', 'jpsig56', 'etac8g56', 'chic0g56', 'ggchic0g56']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
-     ['etabg', 'upsg', 'etab8g', 'chib0g', 'ggchib0g', 'upsg08',
+     ['etabg', 'upsg', 'etab8g', 'chib0g', 'ggchib0g',
       'etabg56', 'upsg56', 'etab8g56', 'chib0g56', 'ggchib0g56']),
 ]
 # the P-wave colour octets, in a figure of their own
@@ -95,11 +96,12 @@ for q in 'cb':
     COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
                   q * 2 + '1p18g': YELLOW})
 # line style = TIRust build: the builds of the base cases (pinned for the S waves, 48958d1 and
-# 370b632 for the P waves) solid, 08edee3 with the gate patch 0006 (suffix 08) dash-dotted,
-# 5025e12, the head of PR #56 with relation tiers (suffix 56), dotted
+# 370b632 for the P waves) solid, 08edee3 with the gate patch 0006 (suffix 08, no longer drawn)
+# dash-dotted, 5025e12, the head of PR #56, with the bridge patch for the binary64 gate 0006 and
+# the relation tiers (suffix 56), dotted
 CANDIDATE = '5025e12'
 BUILD_STYLE = {'': '-', '08': '-.', '56': ':'}
-BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s (PR #56)' % CANDIDATE}
+BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s + gate (PR #56)' % CANDIDATE}
 STYLE = {'ttg': '--'}
 
 

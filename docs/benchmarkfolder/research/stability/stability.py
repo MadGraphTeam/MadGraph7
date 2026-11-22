@@ -14,8 +14,9 @@ initialisation) are dropped.
 CASE and SETUP are keys of CASES and SETUPS. Environment: TIRUST_LIB48958
 (the TIRust build for the P-wave cases), TIRUST_LIB370 (TIRust 370b632, for
 ggchic0g and ggchib0g), TIRUST_LIB08 (TIRust 08edee3 with the bridge gate patch, for
-jpsig08 and upsg08), TIRUST_LIB56 (TIRust 5025e12, the head of PR #56, with
-relation tiers, and the relation-tier bridge patch, for the P-wave cases with the suffix 56), NWORKERS (16), NPOINTS (to override the
+jpsig08 and upsg08), TIRUST_LIB56 (TIRust 5025e12, the head of PR #56,
+with the bridge patch for the binary64 gate 0006 and the relation tiers, for the cases with the
+suffix 56), NWORKERS (16), NPOINTS (to override the
 number of points)."""
 import concurrent.futures
 import json
@@ -57,12 +58,11 @@ CASES = {
     'bb3p28g': ('loop_sm_onia-no_tau_mass', 'e+ e- > Upsilon(1|3P28) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
     'bb1p18g': ('loop_sm_onia-no_tau_mass', 'e+ e- > etab(1|1P18) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
 }
-# every P wave again with TIRust 5025e12 (head of PR #56: relation tiers) and the bridge patch
+# every P wave again with TIRust 5025e12 (head of PR #56) and the gate + relation-tier bridge patch
 PWAVE = ['chic0g', 'ggchic0g', 'chib0g', 'ggchib0g', 'cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g',
          'bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g']
 CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in PWAVE})
-# and every S wave (the bridge patch acts on raised powers only, so for these it is the plain
-# 5025e12 bridge; the 08edee3 cases above also carry the binary64 gate patch 0006)
+# and every S wave (the relation tiers act on raised powers only, the gate on every call)
 SWAVE = ['etacg', 'jpsig', 'etac8g', 'etabg', 'upsg', 'etab8g']
 CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in SWAVE})
 SETUPS = {

@@ -70,14 +70,14 @@ STATUS_LINES = [
     '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
     '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
-    'bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV, '
-    'served by 08edee3 and 5025e12) and a tail of true double-precision errors (estimates '
-    '$10^(-6)$ to $10^(-4)$) in 1–2% of the $J\\/psi$, $Upsilon$ points, which the bridge\'s '
-    'binary64 gate (patch 0006) removes; the P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, '
-    'through TIRust\'s double-precision pentagons with a doubled line; TIRust 5025e12 '
-    '(PR \\#56: relation tiers in double-double) fixes this: no P-wave point above $10^(-3)$, no rescue at 1 TeV, '
-    '18–49% more time at 20 GeV (@stability); '
-    'the P-wave octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$.',
+    'bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV) '
+    'and a tail of true double-precision errors in 1–2% of the $J\\/psi$, $Upsilon$ points; the '
+    'P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, through TIRust\'s '
+    'pentagons with a doubled line. TIRust 5025e12 (PR \\#56) with the bridge patch for its '
+    'relation tiers and a binary64 gate (MadGraph7\\#528) fixes all three: no point of any '
+    'process above $10^(-3)$, no S wave above $10^(-6)$, no rescue at 1 TeV, 18–49% more time '
+    'for the P waves at 20 GeV (@stability). The P-wave octets '
+    '$e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]
@@ -86,14 +86,14 @@ OPEN_ITEMS = [
     '\\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). '
     '370b632 (in \\#56) also serves $g g -> chi_(c 0) g$ (@pwave). For double precision '
     'at high energy, the relation tiers of \\#56 (5025e12) with their bridge patch, and the pole '
-    'kernels of the bridge on the `oneloop` of that revision '
-    '(@stability).',
+    'kernels of the bridge on the `oneloop` of that revision (@stability).',
     '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
     '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).',
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
-    '*Binary64 gate of the bridge:* patch 0006 (gate $10^(-10)$) removes the true '
-    'double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability); it is not on '
-    '`onia_loop`\'s bridge, and it touches the same lines as the relation-tier patch.',
+    '*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes '
+    'the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge '
+    'patch with the gate and the relation tiers together exists; neither is on `onia_loop`\'s '
+    'bridge yet.',
     '*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of '
     '$p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such '
     'points are reported unstable. TIRust 08edee3 serves them, and MadLoop\'s double precision '

@@ -493,8 +493,8 @@ estimate over random phase-space points.
   The $u overline(u)$ P waves and the P-wave colour octets use TIRust 48958d1. The $g g$ P waves,
   $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
   (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every
-  process but the reference is also run with TIRust 5025e12 (head of PR \#56,
-  with _relation tiers_ and the bridge patch that enables them; not pinned).
+  process but the reference is also run with TIRust 5025e12 (head of PR \#56;
+  not pinned) and a bridge patch for its _relation tiers_ and a binary64 gate.
 - *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
   $n = ""^3 P_0, ""^3 P_1, ""^3 P_2, ""^1 P_1$, the charmonium octets of the
   $2 -> 2$ pole checks (@tab:pwave22) and their bottomonium analogues, in a
@@ -502,11 +502,11 @@ estimate over random phase-space points.
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the pinned one (S waves), 48958d1 or 370b632 (P waves), dash-dotted 08edee3 with the gate patch 0006, dotted 5025e12 (PR \#56); dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the pinned one (S waves), 48958d1 or 370b632 (P waves), dotted 5025e12 (PR \#56) with the bridge's gate and relation tiers; dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
-#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1 (solid) and 5025e12 (dotted, PR \#56), charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
+#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1 (solid) and 5025e12 with the bridge's gate and relation tiers (dotted, PR \#56), charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
   #image("figures/stability_octets.svg", width: 100%)
 ] <fig:stability-octets>
 
@@ -530,11 +530,9 @@ estimate over random phase-space points.
       150 GeV (charmonium).
     - In setup B, bottomonium also has refusals around $theta = 90 degree$,
       where $t approx u$: 16% to 42% of the points with $|cos theta| < 0.05$.
-    - TIRust 08edee3 with the gate patch (not pinned) serves all of them: no
-      point of $g g -> J\/psi thin g$ or $g g -> Upsilon thin g$ is then above
-      $10^(-6)$, in either setup.
-    - So does TIRust 5025e12 (PR \#56): no S-wave point is above $10^(-3)$
-      with it, in either setup, and every point is stable.
+    - TIRust 5025e12 (PR \#56) serves all of them. With the bridge's binary64
+      gate no S-wave point is then above $10^(-6)$, in either setup, and
+      every point is stable.
   - *S waves otherwise.* Apart from the refusals, the S-wave profiles are
     steep: the median estimate is $10^(-13)$ to $10^(-8)$, and no point is
     between $10^(-3)$ and 1.
@@ -543,15 +541,18 @@ estimate over random phase-space points.
       1 TeV, at most 0.03% at 20 GeV.
     - The tail is a true double-precision error. At 16 of its points
       ($g g -> J\/psi thin g$, 1 TeV), against quadruple precision,
-      5025e12 is off by $1.2 dot 10^(-8)$ to $3.2 dot 10^(-6)$ (MadLoop's
-      estimate is at least twice that). The pinned TIRust is off by as much
-      at ten of them and by $1.1$ to $1.7 dot 10^(-5)$ at five; 08edee3 with
-      the gate patch is off by at most $2.3 dot 10^(-10)$.
-    - It is the bridge's binary64 gate that removes it: patch 0006 sends
-      lanes whose conditioning is below $10^(-10)$ (TIRust's default:
-      $10^(-12)$) to the double-double tier. 5025e12 without it keeps the
-      tail: 1.8% ($J\/psi$) and 1.7% ($Upsilon$) of the points at 1 TeV are
-      above $10^(-6)$, the largest at $10^(-4)$.
+      5025e12 without the gate is off by $1.2 dot 10^(-8)$ to
+      $3.2 dot 10^(-6)$ (MadLoop's estimate is at least twice that), and the
+      pinned TIRust by as much at ten of them and by $1.1$ to
+      $1.7 dot 10^(-5)$ at five. With the gate, 5025e12 is off by at most
+      $2.3 dot 10^(-10)$.
+    - It is the bridge's binary64 gate (patch 0006, MadGraph7\#528) that
+      removes it, not the TIRust revision. It sends lanes whose conditioning
+      is below $10^(-10)$ (TIRust's default: $10^(-12)$) to the double-double
+      tier. Without it, 5025e12 keeps the tail: 1.8% ($J\/psi$) and 1.7%
+      ($Upsilon$) of the points at 1 TeV are above $10^(-6)$, the largest at
+      $10^(-4)$. In production settings the gate costs nothing measurable here
+      ($g g -> J\/psi thin g$: 88 ms per point with it, 89 without).
   - *The P-wave singlets at 1 TeV.* At $sqrt(s) = 1$ TeV the estimate is above
     $10^(-3)$ at 75% of the $u overline(u) -> chi_(c 0) thin g$ points, 40% of the
     $g g -> chi_(c 0) thin g$ points, 8.8% of the $u overline(u) -> chi_(b 0) thin g$
@@ -603,11 +604,12 @@ estimate over random phase-space points.
       18% ($g g$: 0.92 to 1.08 s).
     - The P-wave checks of @pwave are unchanged with it: the same finite parts
       within $10^(-10)$, and the poles as predicted to $5 dot 10^(-11)$.
-    - 5025e12 and 8b436f9 give bit-identical results here (profiles,
-      diagnosis and checks). So does 14f2696, the commit that introduced the
-      relation tiers, except in the $g g$ channels at 20 GeV, where the newer
-      `oneloop` changes estimates of about $10^(-12)$ by factors between 0.6
-      and 1.6.
+    - Without the gate, 5025e12, 8b436f9 and 14f2696 (the commit that
+      introduced the relation tiers) give the same results: bit-identical but
+      for estimates of about $10^(-12)$ in the $g g$ channels at 20 GeV. The
+      gate leaves the P-wave checks bit-identical and the errors at the 24
+      points the same; it only lowers the largest $g g$ estimate at 20 GeV,
+      from $9 dot 10^(-7)$ to $3 dot 10^(-8)$.
   - *The P-wave octets* (@fig:stability-octets). No point of
     $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ has an estimate above
     $10^(-4)$, in either setup. The largest is $2.2 dot 10^(-5)$, for
@@ -685,7 +687,7 @@ confidence interval of the geometric-mean ratio.
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56` for the scratch TIRust builds; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56` for the scratch TIRust builds; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,

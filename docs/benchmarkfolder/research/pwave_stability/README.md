@@ -130,7 +130,7 @@ The relation tiers are now in PR #56. 8b436f9, its head at the time of these run
 
 The head of PR #56 is now 5025e12, one commit on 8b436f9. In it, a relation-tier lane that every precision tier refuses comes back unstable, where 8b436f9 kept its binary64 value. It is built the same way. Against 8b436f9, every result is bit-identical: all 24 stability profiles (estimates and return codes), the 24-point diagnosis (u ū at 1 TeV and 20 GeV, g g at 1 TeV) and the 16 P-wave checks (`data/pw_check_5025e12.json`). So no point of these samples meets a lane that every tier refuses.
 
-The report's dotted curves are the 5025e12 profiles (`data/raw/stability/*56_*.json`). The 14f2696 profiles are kept in `data/profiles_14f2696/`.
+These gate-less 5025e12 profiles are kept in `data/profiles_5025e12_nogate/`, and the 14f2696 ones in `data/profiles_14f2696/`. The report's dotted curves are 5025e12 with the gate as well (next section).
 
 ## S waves on 5025e12
 
@@ -141,7 +141,14 @@ The S-wave profiles were also run on 5025e12, with the same build. The relation-
   - 5025e12 is off by 1.2·10⁻⁸ to 3.2·10⁻⁶, and MadLoop's estimate is at least twice that;
   - the pinned build is off by the same at 10 of them, by 1.1·10⁻⁵ to 1.7·10⁻⁵ at five, and by 0.32 at one where it refuses an integral (that point is then reported unstable);
   - 08edee3 with the gate patch is off by at most 2.3·10⁻¹⁰.
-- So it is the gate, not the TIRust revision, that removes the tail. Patch 0006 is not on onia_loop's bridge, and it does not apply on top of the relation-tier patch, because both change the same `EmbedderOptions` block.
+- So it is the gate, not the TIRust revision, that removes the tail. Patch 0006 does not apply on top of the relation-tier patch, because both change the same `EmbedderOptions` block.
+
+## Everything on 5025e12 with the gate and the relation tiers
+
+The TIRust session merged the two bridge patches into `madloop-tirust-gate-and-relation-tiers.patch` (in `/shared/external/iregi/pwave-patches/`, notes in GATE-AND-RELATION-TIERS.md; the gate is MadGraph7#528). It applies to onia_loop's `vendor/tirust`. Build: `build.sh` with `REV=5025e12`, `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912…`. All 36 profiles were run again on it; they are the report's dotted curves (`data/raw/stability/*56_*.json`).
+- **S waves.** No point is above 10⁻⁶ in any of the 12 profiles, and every point is stable. The J/ψ and Υ tail is gone, with the largest estimate 8·10⁻⁷. At the 16 tail points above (`data/tail_jpsig_A_5025e12_gate.json`), this build is off by 2·10⁻¹² to 2.3·10⁻¹⁰ against QP, exactly as 08edee3 with the gate. The 08edee3 profiles are therefore kept only in `data/profiles_08edee3_gate/`.
+- **P waves.** The octet profiles are bit-identical to those without the gate. The singlets are the same up to rounding: the largest g g estimate at 20 GeV drops from 9·10⁻⁷ to 3·10⁻⁸. The 24-point diagnosis gives the same errors (`data/estim_*_5025e12_gate.json`: u ū largest 2.7·10⁻⁵, g g 4.2·10⁻⁶), and the 16 P-wave checks are bit-identical (`data/pw_check_5025e12_gate.json`).
+- **Cost of the gate.** In production settings, alternating gate and no-gate builds on the same points (`data/cost_gate_vs_nogate_*.json`): g g → J/ψ g at 1 TeV takes 88 vs 89 ms per point, and u ū → χ_c0 g 93.5 vs 93.3 ms (1 TeV) and 92.6 vs 93.8 ms (20 GeV). None of this is measurable here.
 
 ## Reproducer for TIRust
 
