@@ -188,6 +188,9 @@ pub const OTHER_KEYS: &[&str] = &[
     "phase_space.points",
     "phase_space.seed",
     "phase_space.sqrt_s",
+    "phase_space.pt_min",
+    "phase_space.delta_r_min",
+    "phase_space.cut_attempts",
 ];
 
 /// The sub-tables of `[evaluation]`.
