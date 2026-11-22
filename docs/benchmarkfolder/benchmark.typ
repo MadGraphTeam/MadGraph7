@@ -264,12 +264,27 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     MadLoop returns code `4x0` with accuracy 1, and its $c_1$ misses $-2 C_F$
     or $-C_F\/2$ of the Born. The pole prediction `ONIA_IR_POLES` agrees with
     the reference at these points.
-  - *With TIRust 08edee3* (PR \#51, not pinned) all 34 such points are served
-    and most agree with the reference. At the softest ones the binary64 result
-    is wrong, while MadLoop's tests report an accuracy of $10^(-8)$ to
+  - *With TIRust 08edee3* (PR \#51, not pinned) all 34 such points are served,
+    and most agree with the reference. At the softest ones the double-precision
+    result is wrong, while MadLoop's tests report an accuracy of $10^(-8)$ to
     $10^(-12)$. For $g g -> Upsilon g$ at $sqrt(s) = 9.51$ GeV (a 10 MeV gluon),
-    $c_0 = -333.247$ against $-335.116$; binary128 (`CTModeRun = 4`) gives
-    the reference value. This was reported to the TIRust session.
+    $c_0 = -333.247$ against $-335.116$. Quadruple precision (`CTModeRun = 4`)
+    gives the reference value.
+  - *The cause is MadLoop's, not TIRust's.* Substituting all of TIRust's
+    arrays with their quadruple-precision values leaves the error unchanged.
+    The cause is the R2 counterterms of the gluon self-energy with the $b$ and
+    $t$ quarks:
+    - with the $10^4$ GeV masses that decouple these quarks here, the terms
+      carry $M^2 approx 10^8$;
+    - they multiply current contractions that vanish exactly;
+    - they leave double-precision rounding, enhanced by the soft gluon.
+  - *Scaling with the mass.* The error scales with $M^2$. For
+    $g g -> J\/psi thin g$ at $sqrt(s) = 3.1015$ GeV it is:
+    - 22% with $m_b = m_t = 10^4$ GeV;
+    - $5 dot 10^(-3)$ with $10^3$ GeV;
+    - $1.7 dot 10^(-4)$ with the physical masses.
+    MadLoop's stability tests vary only the loop part, not the counterterm
+    amplitudes.
 ]
 
 *$J\/psi$ polarisation.* `Jpsi_double_cs_NEW` gives the virtual of the
@@ -295,9 +310,10 @@ $J_z = 0$, each in units of its own Born.
 
 The longitudinal Born is suppressed, so its double-precision value carries
 MadLoop's rounding of $10^(-7)$ relative to it; in quadruple precision every
-polarisation agrees to $3 dot 10^(-12)$. The red column is the binary64
-problem of TIRust 08edee3 at the soft points (above): at $sqrt(s) = 3.1015$ GeV
-the longitudinal $c_0$ is off by 440% while reported stable.
+polarisation agrees to $3 dot 10^(-12)$. The red column is the double-precision
+rounding of the R2 counterterms of the $10^4$ GeV $b$ and $t$ quarks at the soft
+points (above): at $sqrt(s) = 3.1015$ GeV the longitudinal $c_0$ is off by 440%
+while reported stable.
 
 = P-wave bound states <pwave>
 
@@ -310,7 +326,7 @@ $n_l = 3$, four points per process (2 → 1: the rest frame and longitudinal
 boosts), in units of the Born times $alpha_s\/2pi$, with the literature values
 converted by section B.5 of `research/literature.md`.
 
-#figure(caption: [P-wave $2 -> 1$ processes against the literature: "dev." is the largest deviation over the points (relative for $c_0$, absolute for the poles), green within $10^(-8)$, or $10^(-7)$ for the 8-digit $gamma g$ values; "poles" is the largest deviation of $c_1$, $c_2$ from the prediction of `ONIA_IR_POLES`, whose $P -> S$ term is given in the last column.])[
+#block(breakable: false)[#figure(caption: [P-wave $2 -> 1$ processes against the literature: "dev." is the largest deviation over the points (relative for $c_0$, absolute for the poles), green within $10^(-8)$, or $10^(-7)$ for the 8-digit $gamma g$ values; "poles" is the largest deviation of $c_1$, $c_2$ from the prediction of `ONIA_IR_POLES`, whose $P -> S$ term is given in the last column.])[
   #tstyle(table(columns: (auto, 1fr, auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, left, right, right, right, right, right, right, center),
     [Process], [Reference], [$c_0$ ref.], [$c_0$ MadLoop], [$c_1$, $c_2$], [dev.], [poles], [$P -> S$], [stable],
@@ -319,7 +335,7 @@ converted by section B.5 of `research/literature.md`.
       dev-cell(c.max_deviation, target: c.target), dev-cell(c.max_pole_deviation, target: 1e-9),
       if calc.abs(c.ps_term.at(0)) < 1e-12 and calc.abs(c.ps_term.at(1)) < 1e-12 [0] else [#dec(c.ps_term.at(0), 6)],
       [#c.stable/#c.npoints])).flatten()))
-] <tab:pwave>
+] <tab:pwave>]
 
 *The $P -> S$ pole.* A soft gluon turns a P-wave state into the S-wave states
 $S'$ of colour $C'$: $P^((1)) -> S^((8))$, and $P^((8)) -> S^((1)), S^((8))$

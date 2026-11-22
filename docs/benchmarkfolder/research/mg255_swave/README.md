@@ -56,8 +56,13 @@ The paths are those of the scratch workspace in which the scripts ran.
 - **J/ψ polarisation.** `Jpsi_double_cs_NEW` also gives the transverse and longitudinal J/ψ in the helicity frame of the partonic centre-of-mass frame. `pol_jpsi.py` evaluates MadLoop with `ONIA_SELECT_JZ` (J_z = ±1 and 0) at the same points (`data/pol_gg_jpsig.json`). The polarised Borns agree to 1e-12.
   - **Pinned TIRust, at the 12 stable points.** T agrees within 2.3e-8 and L within 9.2e-7. L's double-precision value carries MadLoop's rounding of ~1e-7 relative to its suppressed Born.
   - **TIRust 08edee3 in forced quadruple precision, at all 16 points.** T, L and their sum agree within 3e-12, and the 1/ε coefficients within 5e-11.
-  - **TIRust 08edee3 in double precision.** Every point is reported stable, but at the soft points the result is wrong: up to 440% for L at √s = 3.1015.
+  - **TIRust 08edee3 in double precision.** Every point is reported stable, but at the soft points the result is wrong: up to 440% for L at √s = 3.1015. The cause is MadLoop's double-precision R2 counterterms of the 10⁴ GeV b and t (next item), not TIRust.
 - **Points reported unstable.** All of them have a soft or low-p_T jet: p_T below 0.05 GeV for charmonium, and up to 0.86 GeV in g g > etab/Upsilon g, which are stable from 1.05 GeV. All are in the gg and qq̄ channels; the qg channels are stable down to p_T = 6 MeV.
   - At these points TIRust refuses some integrals in both precisions: the Coulomb triangle, and the Coulomb boxes and pentagons with the jet attached.
   - MadLoop returns code 4x0 with accuracy 1, and the 1/ε coefficient misses −2C_F or −C_F/2 of the Born.
   - MadLoop's own pole prediction (`ONIA_IR_POLES`) agrees with the reference at these points.
+- **With TIRust 08edee3** (not pinned) these points are served, and at the softest ones MadLoop's double precision is silently wrong. For example, g g > Upsilon g at √s = 9.51 is 5.6e-3 off, and g g > Jpsi g at 3.1015 is 22% off, with accuracy estimates of 1e-8 to 1e-12. Quadruple precision gives the reference.
+  - **Not TIRust.** With every TIRust array replaced by its quadruple-precision value (call dumps and substitution, scratch), the double-precision result is unchanged. The loop part agrees between the two precisions to 4e-8.
+  - **The cause.** The R2 counterterms of the gluon self-energy with the b and t quarks (`R2_GGB`, `R2_GGT`) carry M² ≈ 1e8 for the 10⁴ GeV masses that decouple them here. They multiply current contractions that vanish exactly (1e-17 in quadruple precision, ±17 in double precision).
+  - **Scaling.** The error scales with M². For g g > Jpsi g at 3.1015 it is 22% with m_b = m_t = 1e4, 4.9e-3 with 1e3, and 1.7e-4 with the physical 4.75 and 173.
+  - **Unseen by the stability tests.** MadLoop's stability tests vary only the loop part, not the counterterm amplitudes.

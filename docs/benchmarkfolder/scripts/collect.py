@@ -78,8 +78,10 @@ OPEN_ITEMS = [
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
     '*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of '
     '$p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such '
-    'points are reported unstable. TIRust 08edee3 serves them, but its binary64 path is '
-    'silently wrong at the softest (up to $6 dot 10^(-3)$; reported).',
+    'points are reported unstable. TIRust 08edee3 serves them, and MadLoop\'s double precision '
+    'is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; '
+    '22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ '
+    'with physical masses), which MadLoop\'s stability tests do not vary.',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '

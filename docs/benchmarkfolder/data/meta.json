@@ -79,6 +79,14 @@
   [
    "aad91a8240",
    "docs/benchmarkfolder: g g > Jpsi g against the direct evaluation of Jpsi_double_cs_NEW"
+  ],
+  [
+   "975eb62e32",
+   "MadLoop onia: polarised bound states (ONIA_SELECT_JZ); J/psi polarisation against Jpsi_double_cs_NEW"
+  ],
+  [
+   "e6a1a57191",
+   "MadLoop onia: a failed reduction is unstable in every CTModeRun mode"
   ]
  ],
  "decisions": [
@@ -108,7 +116,7 @@
   "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47 to \\#51; until then a P-wave point meets a refused integral and is reported unstable); the doubled-gluon pentagons of $g g -> chi_(c J) g$ (equal-mass bubbles at zero momentum with raised powers).",
   "*Two S-wave bound states* in one process: threshold bubble pinches and two Coulomb relations in one loop, in TIRust.",
   "*Quadruple-precision rescue:* the degenerate lanes in TIRust's binary128 path.",
-  "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, but its binary64 path is silently wrong at the softest (up to $6 dot 10^(-3)$; reported).",
+  "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, and MadLoop's double precision is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; 22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ with physical masses), which MadLoop's stability tests do not vary.",
   "*Loop-induced processes* with bound states; the FKS integration on `onia_fks` (its `BinothLHA` can call this virtual).",
   "*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters' output (it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit."
  ],
