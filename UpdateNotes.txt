@@ -33,11 +33,6 @@ ANNOUNCEMENT:
        cancel in the projected helicity sum. Such points are rescued in quadruple
        precision: g g > Jpsi g with a 1.5 MeV gluon was 22% off (1e4 GeV b, t) or 1.7e-4
        off (physical masses) with an accuracy of 1e-9.
-   HS: MadLoop: outputs with bound states rotate the point once in the double-precision
-       stability test (NRotations_DP = 1, unless set). Reversing the loop direction
-       leaves the counterterm amplitudes unchanged, and near a soft jet the heavy-quark
-       R2 terms (mass squared times vanishing contractions) could lose digits without
-       trace. The rotation costs about +50% per point.
    HS: MadLoop: ONIA_SELECT_JZ(K,NJZ,JZS) restricts a bound state to chosen J_z (its
        helicity in the frame of the momenta): polarised one-loop virtuals, e.g. the
        transverse and longitudinal J/psi of g g > Jpsi g.

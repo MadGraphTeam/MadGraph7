@@ -350,9 +350,8 @@ import madgraph.various.banner as banner_mod
 
 class TestOniaMadLoopDefaults(unittest.TestCase):
     """MadLoopParams.dat defaults of outputs with bound states: TIRust alone
-    (the other libraries are not reliable at threshold), no helicity filter
-    and one rotation in the double-precision stability test, unless the user
-    set them."""
+    (the other libraries are not reliable at threshold) and no helicity
+    filter, unless the user set them."""
 
     class Exporter(object):
         def __init__(self, available):
@@ -375,7 +374,6 @@ class TestOniaMadLoopDefaults(unittest.TestCase):
         self.apply({'tirust': True, 'iregi': True, 'collier': True}, card)
         self.assertEqual(str(card['MLReductionLib']), '9')
         self.assertEqual(card['HelicityFilterLevel'], 0)
-        self.assertEqual(card['NRotations_DP'], 1)
 
     def test_without_tirust(self):
         card = self.card()
@@ -383,14 +381,12 @@ class TestOniaMadLoopDefaults(unittest.TestCase):
         self.apply({'tirust': False, 'iregi': True}, card)
         self.assertEqual(card['MLReductionLib'], before)
         self.assertEqual(card['HelicityFilterLevel'], 0)
-        self.assertEqual(card['NRotations_DP'], 1)
 
     def test_user_choice_is_kept(self):
         card = self.card()
         card.set('MLReductionLib', '7', user=True)
         card.set('HelicityFilterLevel', 2, user=True)
-        card.set('NRotations_DP', 0, user=True)
         self.apply({'tirust': True}, card)
         self.assertEqual(str(card['MLReductionLib']), '7')
         self.assertEqual(card['HelicityFilterLevel'], 2)
-        self.assertEqual(card['NRotations_DP'], 0)
+

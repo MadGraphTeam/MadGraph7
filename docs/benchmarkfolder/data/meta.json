@@ -95,6 +95,10 @@
   [
    "72812d0100",
    "MadLoop onia: one rotation in the double-precision stability test by default"
+  ],
+  [
+   "a320013f3f",
+   "MadLoop onia: an estimate of the counterterm rounding in the stability test"
   ]
  ],
  "decisions": [

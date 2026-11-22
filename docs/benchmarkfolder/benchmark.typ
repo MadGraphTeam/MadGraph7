@@ -299,13 +299,11 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     - With physical masses only the 3.1015 GeV point is rescued (its
       double-precision error is $1.7 dot 10^(-4)$); the other accuracies stay
       near $10^(-9)$.
-  - *Also a rotation.* Bound-state outputs further rotate the point once
-    (`NRotations_DP = 1`), about +50% per point (not in the timing table of
-    @perf).
-    - The rotation alone catches the worst point, but not the transverse
-      $J\/psi$ alone there.
-    - With the counterterm estimate, the rotation is no longer needed for
-      these points.
+  - *Rotations are not enough.* MadLoop's rotation of the point
+    (`NRotations_DP = 1`, a permutation of the axes) catches the worst point,
+    but not the transverse $J\/psi$ alone there, which stays 33% off. It also
+    costs about +50% per point. Bound-state outputs leave it at MadLoop's
+    default, 0.
 ]
 
 *$J\/psi$ polarisation.* `Jpsi_double_cs_NEW` gives the virtual of the
