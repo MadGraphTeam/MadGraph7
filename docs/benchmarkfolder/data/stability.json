@@ -90,6 +90,24 @@
   "ms": 132.0
  },
  {
+  "case": "ggchic0g",
+  "setup": "A",
+  "family": "charmonium",
+  "label": "g g -> chi_(c 0) thin g",
+  "process": "g g > chic0(1|3P01) g [virt=QCD]",
+  "model": "loop_sm_onia-c_mass",
+  "reducer": "TIRust 370b632",
+  "libs": "9",
+  "energy": 1000.0,
+  "ptmin": 50.0,
+  "npoints": 2000,
+  "frac_1e3": 0.404,
+  "frac_1e6": 1.0,
+  "frac_1e9": 1.0,
+  "median": 0.0006545,
+  "ms": 2220.0
+ },
+ {
   "case": "etacg",
   "setup": "B",
   "family": "charmonium",
@@ -178,6 +196,24 @@
   "frac_1e9": 0.283,
   "median": 2.595e-10,
   "ms": 130.0
+ },
+ {
+  "case": "ggchic0g",
+  "setup": "B",
+  "family": "charmonium",
+  "label": "g g -> chi_(c 0) thin g",
+  "process": "g g > chic0(1|3P01) g [virt=QCD]",
+  "model": "loop_sm_onia-c_mass",
+  "reducer": "TIRust 370b632",
+  "libs": "9",
+  "energy": 20.0,
+  "ptmin": 2.0,
+  "npoints": 2000,
+  "frac_1e3": 0.0,
+  "frac_1e6": 0.001,
+  "frac_1e9": 0.1415,
+  "median": 7.975e-11,
+  "ms": 1950.0
  },
  {
   "case": "etabg",

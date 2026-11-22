@@ -8,7 +8,7 @@ bottomonium), one column per setup.
 
 Writes the figure and data/stability.json (the summary table). Points
 MadLoop evaluated without a stability test (return code 1xx) are dropped.
-The colours are the first four slots of the validated categorical palette
+The colours are the first five slots of the validated categorical palette
 (dataviz reference palette, light mode, checked on white). A bottomonium
 process takes the colour of its charmonium analogue; the reference process
 of the paper is a dashed neutral line in both rows."""
@@ -26,7 +26,7 @@ import numpy as np
 # family -> processes in plotting order; the reference ttg is drawn in every row
 FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
-     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g']),
+     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'ggchic0g']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
      ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g']),
 ]
@@ -38,6 +38,7 @@ LABEL = {
     'jpsig08': r'$gg\to J/\psi\,g$, TIRust 08edee3',
     'etac8g': r'$gg\to c\bar c[{}^1S_0^{(8)}]\,g$',
     'chic0g': r'$u\bar u\to\chi_{c0}\,g$ (P wave)',
+    'ggchic0g': r'$gg\to\chi_{c0}\,g$ (P wave, TIRust 370b632)',
     'etabg': r'$gg\to\eta_b\,g$',
     'upsg': r'$gg\to\Upsilon\,g$',
     'upsg08': r'$gg\to\Upsilon\,g$, TIRust 08edee3',
@@ -51,6 +52,7 @@ TYPST = {
     'jpsig08': r'g g -> J\/psi thin g',
     'etac8g': r'g g -> c overline(c) thin [""^1 S_0^((8))] thin g',
     'chic0g': r'u overline(u) -> chi_(c 0) thin g',
+    'ggchic0g': r'g g -> chi_(c 0) thin g',
     'etabg': r'g g -> eta_b thin g',
     'upsg': r'g g -> Upsilon thin g',
     'upsg08': r'g g -> Upsilon thin g',
@@ -58,11 +60,11 @@ TYPST = {
     'chib0g': r'u overline(u) -> chi_(b 0) thin g',
     'ttg': r'g g -> t overline(t) thin g',
 }
-BLUE, ORANGE, AQUA, YELLOW, GREY = '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#8a8985'
-COLOR = {'etacg': BLUE, 'jpsig': ORANGE, 'jpsig08': ORANGE, 'etac8g': AQUA, 'chic0g': YELLOW,
+BLUE, ORANGE, AQUA, YELLOW, MAGENTA, GREY = '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#8a8985'
+COLOR = {'etacg': BLUE, 'jpsig': ORANGE, 'jpsig08': ORANGE, 'etac8g': AQUA, 'chic0g': YELLOW, 'ggchic0g': MAGENTA,
          'etabg': BLUE, 'upsg': ORANGE, 'upsg08': ORANGE, 'etab8g': AQUA, 'chib0g': YELLOW,
          'ttg': GREY}
-STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':'}
+STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.'}
 INK, INK2, GRID = '#0b0b0b', '#52514e', '#e4e3df'
 SETUP_TITLE = {'A': r'$\sqrt{s}=1$ TeV, $p_T>50$ GeV', 'B': r'$\sqrt{s}=20$ GeV, $p_T>2$ GeV'}
 THRESHOLD = 1e-3

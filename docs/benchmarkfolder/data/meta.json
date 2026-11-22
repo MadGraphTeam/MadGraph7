@@ -1,5 +1,5 @@
 {
- "revision": "7f3a54608d",
+ "revision": "f4ef55f5b8",
  "date": "2026-11-22",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
@@ -111,6 +111,14 @@
   [
    "7f3a54608d",
    "docs/benchmarkfolder: bottomonium stability profiles"
+  ],
+  [
+   "6c1b4ec1d0",
+   "MadLoop onia: J/psi eta_c and gg -> chi_c0 g with TIRust 370b632"
+  ],
+  [
+   "f4ef55f5b8",
+   "docs/benchmarkfolder: reproduction note for the TIRust 370b632 row"
   ]
  ],
  "decisions": [
@@ -134,7 +142,7 @@
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
   "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
   "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.",
-  "*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV, served by 08edee3); the P waves lose digits in double precision at 1 TeV, not at 20 GeV.",
+  "*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV, served by 08edee3); the P waves lose digits in double precision at 1 TeV, not at 20 GeV, through TIRust's double-precision pentagons with a doubled line (a TIRust-side fix; @stability).",
   "*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE checks, bit-identical, faster on every benchmark process."
  ],
  "open_items": [

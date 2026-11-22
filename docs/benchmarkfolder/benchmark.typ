@@ -489,10 +489,13 @@ estimate over random phase-space points.
     $t$, $n_l = 3$);
   - bottomonium with `loop_sm_onia-no_tau_mass` (massless charm,
     $m_b = 4.7$ GeV, $m_t = 173$ GeV, $n_l = 4$).
+
+  The $u overline(u)$ P waves use TIRust 48958d1. $g g -> chi_(c 0) thin g$ uses
+  TIRust 370b632 (PR \#56), because 48958d1 refuses its doubled-gluon pentagons.
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 (P waves). Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 ($u overline(u)$ P waves). Dash-dotted: $g g -> chi_(c 0) thin g$ with TIRust 370b632. Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
@@ -526,17 +529,32 @@ estimate over random phase-space points.
       tail between $10^(-6)$ and $10^(-3)$: 1.4% and 1.3% of the points at
       1 TeV, at most 0.03% at 20 GeV.
     - The newer TIRust removes that tail as well.
-  - *The P waves at 1 TeV.* At $sqrt(s) = 1$ TeV, 75% of the points of
-    $u overline(u) -> chi_(c 0) thin g$ are above $10^(-3)$, and 8.8% of those of
-    $u overline(u) -> chi_(b 0) thin g$. At 20 GeV neither has any.
+  - *The P waves at 1 TeV.* At $sqrt(s) = 1$ TeV the estimate is above
+    $10^(-3)$ at 75% of the $u overline(u) -> chi_(c 0) thin g$ points, 40% of the
+    $g g -> chi_(c 0) thin g$ points and 8.8% of the $u overline(u) -> chi_(b 0) thin g$
+    points. At 20 GeV no P-wave point is.
     - The derivative of the threshold amplitude cancels the more strongly
       the smaller $M\/sqrt(s)$ is: $3 dot 10^(-3)$ for $chi_(c 0)$ against
       $10^(-2)$ for $chi_(b 0)$.
-    - In a sample of six $chi_(c 0)$ points, the pass with the shifted invariants
-      differs from the primary evaluation by up to 24%, while the primary
-      one is $6 dot 10^(-5)$ to $6 dot 10^(-4)$ from quadruple precision. The
-      estimate is therefore conservative.
-    - In production these points are rescued in quadruple precision.
+    - *Diagnosis* (24 points each, `research/pwave_stability`): against
+      quadruple precision, 4/24 ($u overline(u)$) and 1/24 ($g g$) are truly above
+      $10^(-3)$ (largest $3.4 dot 10^(-2)$ and $3.9 dot 10^(-2)$).
+    - Replacing only the double-precision TIRust pentagons with a doubled
+      propagator by their quadruple-precision values brings the ten points
+      tested to $6 dot 10^(-7)$–$2.4 dot 10^(-5)$. These pentagons have the heavy line
+      between the two constituents doubled, and a vanishing Gram determinant
+      (both constituents carry $P\/2$). Their arrays are off by only
+      $5 dot 10^(-12)$, but the P-wave sum amplifies that by about $10^8$.
+    - The reversed-loop pass meets the same pentagons less accurately (up to
+      2.3 off), so MadLoop's estimate is pessimistic as well. With accurate
+      pentagons both passes agree to about $10^(-6)$.
+    - In production these points are rescued in quadruple precision. The fix
+      belongs in TIRust: these lanes evaluated in extended precision from the
+      double-precision inputs. Evaluating them through TIRust's quadruple-precision
+      path instead works for $u overline(u) -> chi_(c 0) g$ (largest error
+      $5 dot 10^(-5)$, nothing above $10^(-3)$, 0.5 s per point), but it fails for
+      $g g -> chi_(c 0) g$: its threshold relations hold only to double-precision
+      rounding, and that path refuses them.
   - *The reference.* For $g g -> t overline(t) thin g$, 0.04% of the points are
     above $10^(-3)$, which is the steep profile of the paper's first process
     class.
