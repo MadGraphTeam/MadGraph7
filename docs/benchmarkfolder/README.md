@@ -16,6 +16,8 @@ onium + jet virtuals against the MG5 2.5.5 onia outputs.
 | `research/tirust_qp_repro/` | reproducers of the open TIRust items |
 | `research/mg255_swave/` | the S-wave onium + jet comparison with MG5 2.5.5 (`data/cmp_*.json`) |
 | `research/pwave_fd/` | the P-wave checks: finite differences, literature values, poles |
+| `research/stability/` | the stability profiles (after appendix C of arXiv:1604.01363): `stability.py` |
+| `scripts/stability_plot.py`, `figures/stability.svg` | their figure and `data/stability.json` |
 
 ## Reproduction
 

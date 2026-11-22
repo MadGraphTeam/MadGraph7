@@ -12,6 +12,7 @@
 !/docs/benchmarkfolder/data/
 !/docs/benchmarkfolder/scripts/
 !/docs/benchmarkfolder/research/
+!/docs/benchmarkfolder/figures/
 vendor/tirust/target/
 vendor/tirust/*.so
 vendor/tirust/smoke

@@ -11,6 +11,7 @@
 #let mg = json("data/mg255.json")
 #let mgp = json("data/mg255_pol.json")
 #let pw = json("data/pwave.json")
+#let stab = json("data/stability.json")
 
 #show: report-style.with(
   title: "MadLoop for quarkonium at one loop — validation, reducers and performance",
@@ -449,6 +450,74 @@ vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]
   TIRust 48958d1 has them for the $2 -> 1$ processes (@pwave), not yet pinned.
 ]
 
+= Stability profiles <stability>
+
+These profiles follow appendix C of arXiv:1604.01363 (Hirschi, Peraro), which
+characterises MadLoop's reductions by its own double-precision accuracy
+estimate over random phase-space points.
+- *Points.* Random points with $p_T > p_T^"min"$ for every final-state particle
+  and $Delta R > 0.5$ between them.
+- *Accuracy.* For each point, MadLoop's estimate combines its two tests: the
+  reversed loop direction, a pass in which TIRust also moves each invariant
+  by one unit in its last place, and one Lorentz rotation of the point
+  (`NRotations_DP = 1`). For bound states it is at least the counterterm
+  rounding estimate (@mg255).
+- *No rescue.* The quadruple-precision rescue is switched off
+  (`MLStabThres` $= 10^(99)$), so what is recorded is the double-precision
+  estimate. A refused integral sets it to 1.
+- *Setups.* Setup A is the paper's, $sqrt(s) = 1$ TeV with $p_T > 50$ GeV;
+  setup B is a quarkonium-scale one, $sqrt(s) = 20$ GeV with $p_T > 2$ GeV.
+- *Samples and models.* $10^4$ points per $2 -> 2$ process (the paper used
+  $10^5$) and $2 dot 10^3$ for the P wave, with the default parameters of
+  `loop_sm_onia-c_mass` (physical $b$ and $t$).
+- *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
+  class, with MadLoop's default chain, as a reference.
+
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes). The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 (P wave). Dotted: $g g -> J\/psi thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
+  #image("figures/stability.svg", width: 100%)
+] <fig:stability>
+
+#figure(caption: [The profiles in numbers (the table view of @fig:stability): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
+  #tstyle(table(columns: (auto, auto, 1fr, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, center, left, right, right, right, right, right),
+    [Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt],
+    ..stab.map(c => (text(8.4pt, font: "Libertinus Serif", eval(c.label, mode: "math")), [#c.setup], text(7pt)[#c.reducer], [#c.npoints],
+      table.cell(fill: if c.frac_1e3 <= 0.01 { good } else { warm })[#fixed(100 * c.frac_1e3, 2)%],
+      [#fixed(100 * c.frac_1e6, 2)%], sci(c.median), ms2(c.ms))).flatten()))
+] <tab:stability>
+
+#box-note[
+  - *Forward jets and the pinned TIRust.* The plateaus at 3.0% (setup A)
+    and 1.2% (setup B) of the three S-wave processes are the same points,
+    reported unstable with estimate 1 because the pinned TIRust refuses
+    integrals there.
+    - They are nearly all forward jets, with $|cos theta| > 0.95$.
+    - In setup A, every point with $p_T < 100$ GeV and 44% of those between
+      100 and 150 GeV are refused, plus one other point.
+    - In setup B, 40% of the points with $p_T$ between 2 and 3 GeV are
+      refused, plus 9 other points.
+    - TIRust 08edee3 with the gate patch (not pinned) serves them: no point
+      of $g g -> J\/psi thin g$ is then above $10^(-6)$, in either setup.
+  - *S waves otherwise.* Apart from the refusals, the S-wave profiles are
+    steep: the median estimate is $10^(-13)$ to $10^(-8)$, and no point is
+    between $10^(-3)$ and 1.
+    - With the pinned TIRust, $g g -> J\/psi thin g$ has a tail between
+      $10^(-6)$ and $10^(-3)$: 1.4% of the points at 1 TeV and 0.03% at 20 GeV.
+    - The newer TIRust removes that tail as well.
+  - *The P wave at 1 TeV.* $u overline(u) -> chi_(c 0) thin g$ has 75% of its points
+    above $10^(-3)$ at $sqrt(s) = 1$ TeV. At 20 GeV it has none.
+    - At $M\/sqrt(s) = 3 dot 10^(-3)$ the derivative of the threshold
+      amplitude cancels strongly.
+    - In a sample of six points, the pass with the shifted invariants
+      differs from the primary evaluation by up to 24%, while the primary
+      one is $6 dot 10^(-5)$ to $6 dot 10^(-4)$ from quadruple precision. The
+      estimate is therefore conservative.
+    - In production these points are rescued in quadruple precision.
+  - *The reference.* For $g g -> t overline(t) thin g$, 0.04% of the points are
+    above $10^(-3)$, which is the steep profile of the paper's first process
+    class.
+]
+
 = Performance <perf>
 
 MadLoop's standalone output compiled its Fortran without optimisation except
@@ -501,6 +570,7 @@ confidence interval of the geometric-mean ratio.
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB08` for the scratch TIRust builds), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`.
 - This report: `python3 scripts/collect.py ... --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,
