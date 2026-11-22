@@ -14,6 +14,13 @@ DEFS=""
 grep -q 'calcoption' constants.f90 && DEFS="$DEFS -DWITH_CALCOPTION"
 grep -q 'MDL_MC' coupl.inc && DEFS="$DEFS -DHAS_MC"
 grep -q 'MDL_MB' coupl.inc && DEFS="$DEFS -DHAS_MB"
+grep -qi 'virt_wgts(3,2)' matrix.f 2>/dev/null && DEFS="$DEFS -DTWO_POL"
+# a standalone package (no FKS layout) leaves grid_file to its own main.f;
+# the driver runs in run/, one level below the grid
+if grep -q 'grid_file' constants.f90 2>/dev/null && ! grep -qi 'grid_file *=' matrix.f; then
+  g=$(ls *grid*.dat 2>/dev/null | head -1)
+  [ -n "$g" ] && DEFS="$DEFS -DGRID_FILE='../$g'"
+fi
 FF="-O1 -w -ffixed-line-length-132 -I. -I$OLO"
 # modules first, in dependency order
 for m in constants use_func Func_PSI interpolation; do

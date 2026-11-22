@@ -9,6 +9,8 @@ SP = '/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-099
 R = '/shared/external/madloop_onia/references/NLO_Onia_Nov2026'
 CF, CA = 4. / 3., 3.
 # case: reference V0, build dir, m_Q, ONIUM_FACTOR, Casimir sum, default calcoption, energies
+# (gg_jpsig: the user's Jpsi_double_cs_NEW, with a direct evaluation, at the points of
+# gg_etacg's PS*.input too; the 2.5.5_Onia V0 has only its grid)
 CASES = {
     'gg_etacg': ('2.5.5_Onia1S01/pp2etacj_Grid_FKS_MultiChan/SubProcesses/P0_gg_ccxg/V0_gg_ccxg',
                  'etac/gg', 1.55, 1.16 / 18 / (3 * 1.55), 3 * CA, 3, (5., 11., 40.)),
@@ -18,8 +20,8 @@ CASES = {
                  'etac/ug', 1.55, 1.16 / 18 / (3 * 1.55), CA + 2 * CF, 3, (5., 11., 40.)),
     'uux_etacg': ('2.5.5_Onia1S01/pp2etacj_Grid_FKS_MultiChan/SubProcesses/P0_uux_ccxg/V0_uux_ccxg',
                   'etac/uux', 1.55, 1.16 / 18 / (3 * 1.55), CA + 2 * CF, 3, (5., 11., 40.)),
-    'gg_jpsig': ('2.5.5_Onia/pp2psij_Grid_FKS_MultiChan/SubProcesses/P0_gg_ccxg/V0_gg_ccxg',
-                 'jpsi/gg', 1.55, 1.16 / (18 * 3 * 1.55), 3 * CA, None, (5., 11., 40.)),
+    'gg_jpsig': ('Jpsi_double_cs_NEW', 'jpsi_new/gg', 1.55, 1.16 / (18 * 3 * 1.55), 3 * CA, 1,
+                 (5., 11., 40.)),
     'gg_etabg': ('2.5.5_bOnia1S01/pp2etabj_Grid_FKS_MultiChan/SubProcesses/P0_gg_bbxg/V0_gg_bbxg',
                  'etab/gg', 4.75, 9.28 / 18 / (3 * 4.75), 3 * CA, 1, (11., 20., 80.)),
     'gu_etabu': ('2.5.5_bOnia1S01/pp2etabj_Grid_FKS_MultiChan/SubProcesses/P0_gu_bbxu/V0_gu_bbxu',
@@ -31,6 +33,8 @@ CASES = {
     'gg_upsg': ('2.5.5_bOnia3S11/pp2Yj_Grid_FKS_MultiChan/SubProcesses/P0_gg_bbxg/V0_gg_bbxg',
                 'ups/gg', 4.75, 9.28 / 18 / (3 * 4.75), 3 * CA, 1, (11., 20., 80.)),
 }
+# cases evaluated at the PS*.input points of another reference (same masses)
+POINTS_FROM = {'gg_jpsig': CASES['gg_etacg'][0]}
 G = math.sqrt(4 * math.pi * 0.118)
 A = 0.118 / (2 * math.pi)
 
@@ -67,14 +71,18 @@ def run_ref(bdir, mq, of, scheme, opt, pts, mu):
     out = proc.stdout
     if out.count('\nV ') + out.startswith('V ') != len(pts):
         raise RuntimeError('reference failed in %s: %s' % (bdir, (out + proc.stderr)[-800:]))
-    return [[float(x) for x in l.split()[1:]] for l in out.splitlines() if l.startswith('V ')]
+    vals = [[float(x) for x in l.split()[1:]] for l in out.splitlines() if l.startswith('V ')]
+    pols = [[float(x) for x in l.split()[1:]] for l in out.splitlines() if l.startswith('P ')]
+    return vals, pols
 
 def main(case, mu):
     src, b, mq, of, csum, dopt, energies = CASES[case]
     bdir = os.path.join(SP, 'swj', 'ref', b)
-    pts = ref_points(src) + random_points(mq, energies)
+    pts = ref_points(POINTS_FROM.get(case, src)) + random_points(mq, energies)
     opts = [3] + ([dopt] if dopt not in (None, 3) else []) if dopt is not None else [None]
-    ref = {o: run_ref(bdir, mq, of, 1, o, pts, mu) for o in opts}
+    ref, pol = {}, {}
+    for o in opts:
+        ref[o], pol[o] = run_ref(bdir, mq, of, 1, o, pts, mu)
     pf = os.path.join(SP, 'swj', 'pts_%s.json' % case)
     json.dump([r for _, r in pts], open(pf, 'w'))
     mf = os.path.join(SP, 'swj', 'ml_%s.json' % case)
@@ -91,6 +99,12 @@ def main(case, mu):
             v = ref[o][i]
             bn = -v[2] / csum
             entry['ref'][str(o)] = dict(born=bn / A, fin=v[0] / bn, c1=v[1] / bn, c2=v[2] / bn)
+            if pol[o]:
+                # transverse and longitudinal onium, each in units of its own Born
+                for k, name in ((0, 'T'), (3, 'L')):
+                    w = pol[o][i][k:k + 3]
+                    b = -w[2] / csum
+                    entry['ref'][str(o)][name] = dict(born=b / A, fin=w[0] / b, c1=w[1] / b, c2=w[2] / b)
         rows.append(entry)
     json.dump(rows, open(os.path.join(SP, 'swj', 'cmp_%s.json' % case), 'w'), indent=1)
     o = str(opts[0])

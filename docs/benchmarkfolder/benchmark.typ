@@ -202,7 +202,8 @@ $v = 0.001 ... 0.02$ is extrapolated to $v = 0$ (quartic fit).
 
 The one-loop virtuals of $p p -> eta_c, J\/psi, eta_b, Upsilon + "jet"$ are
 compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
-`references/NLO_Onia_Nov2026`:
+`references/NLO_Onia_Nov2026` and, for $J\/psi$, of its standalone package
+`Jpsi_double_cs_NEW`:
 - *Channels.* The $g g$, $g u$, $u g$ and $u overline(u)$ channels of
   $eta_c$ and $eta_b$, and the $g g$ channels of $J\/psi$ and $Upsilon$.
 - *Settings.* The constituent masses are $m_c = 1.55$ and $m_b = 4.75$ GeV,
@@ -216,14 +217,16 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
 - *Normalisation.* Both results are in units of the Born times
   $alpha_s\/2pi$; the 2.5.5 Born is its double pole divided by
   $-sum_i C_i$.
-- *Points.* The reference's `PS*.input` points and three random points at
-  each of three energies; MadLoop uses TIRust with its stability checks.
+- *Points.* The reference's `PS*.input` points ($J\/psi$: those of
+  $g g -> eta_c g$) and three random points at each of three energies;
+  MadLoop uses TIRust with its stability checks.
 - *Reference evaluation.* The reference is its direct evaluation
-  (`calcoption = 3`, OneLOop boxes in quadruple precision), except for
-  $J\/psi$, which has only its grid of virtual/Born.
+  (`calcoption = 3`, OneLOop boxes in quadruple precision). The $J\/psi$
+  package splits the virtual into transverse and longitudinal $J\/psi$; their
+  sum is compared.
 
 #let mg-target(c) = if c.reference == "direct" { 1e-5 } else { 1e-3 }
-#block(breakable: false)[#figure(caption: [MadLoop against the 2.5.5 virtuals at the points MadLoop reports stable (return codes `1xx` to `3xx`): the largest relative difference of $c_0$ and the largest absolute differences of $c_1$, $c_2$, green within $10^(-5)$ ($10^(-3)$ against the $J\/psi$ grid). "grid" is the 2.5.5 grid against its own direct evaluation; "unstable" counts the points with a soft or low-$p_T$ jet that TIRust refuses (largest $sqrt(s)$ among them).])[
+#block(breakable: false)[#figure(caption: [MadLoop against the 2.5.5 virtuals at the points MadLoop reports stable (return codes `1xx` to `3xx`): the largest relative difference of $c_0$ and the largest absolute differences of $c_1$, $c_2$, green within $10^(-5)$. "grid" is the 2.5.5 grid against its own direct evaluation; "unstable" counts the points with a soft or low-$p_T$ jet that TIRust refuses (largest $sqrt(s)$ among them).])[
   #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, right, left, right, right, right, right, right, right),
     [Process], [$m_Q$, $n_l$], [ref.], [stable ($sqrt(s)$, GeV)], [$c_0$ dev.], [$c_1$ dev.], [$c_2$ dev.], [grid], [unstable],
@@ -246,10 +249,10 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
   - *Borns.* They agree up to the LDMEs of the two models: the ratio is
     1.000086 for $eta_c$ (0.3867 against 1.16/3), 0.999892 for $eta_b$
     (3.093 against 9.28/3), and 1 for $J\/psi$ and $Upsilon$.
-  - *$J\/psi$.* The reference interpolates virtual/Born on a grid, and its
-    accuracy, about $10^(-4)$, limits the comparison. The other grids agree
-    with their direct evaluation within $10^(-8)$, except for $Upsilon$
-    ($1.1 dot 10^(-4)$).
+  - *Grids.* The 2.5.5 grids agree with their direct evaluation within
+    $10^(-8)$, except for $Upsilon$ ($1.1 dot 10^(-4)$) and the $J\/psi$
+    package ($6.8 dot 10^(-4)$); against the grid of the `2.5.5_Onia` output,
+    $J\/psi$ agreed within $1.3 dot 10^(-4)$.
   - *Unstable points.* Every point MadLoop reports unstable has a soft or
     low-$p_T$ jet: $p_T < 0.05$ GeV for charmonium, and up to 0.86 GeV in
     $g g -> eta_b\/Upsilon thin g$, which are stable from 1.05 GeV. All of them
@@ -260,6 +263,12 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     MadLoop returns code `4x0` with accuracy 1, and its $c_1$ misses $-2 C_F$
     or $-C_F\/2$ of the Born. The pole prediction `ONIA_IR_POLES` agrees with
     the reference at these points.
+  - *With TIRust 08edee3* (PR \#51, not pinned) all 34 such points are served
+    and most agree with the reference. At the softest ones the binary64 result
+    is wrong, while MadLoop's tests report an accuracy of $10^(-8)$ to
+    $10^(-12)$. For $g g -> Upsilon g$ at $sqrt(s) = 9.51$ GeV (a 10 MeV gluon),
+    $c_0 = -333.247$ against $-335.116$; binary128 (`CTModeRun = 4`) gives
+    the reference value. This was reported to the TIRust session.
 ]
 
 = P-wave bound states <pwave>
@@ -304,7 +313,7 @@ vanish by colour conservation when the bound state has a single coloured
 partner, as in $e^+ e^- -> c overline(c)[P^((8))] thin g$, or when every $S'$ Born
 vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]$.
 
-#figure(caption: [The poles of $2 -> 2$ P-wave processes against the prediction, TIRust 48958d1, four points at the given $sqrt(s)$: the range of $c_1$ over the points, the range of the $P -> S$ term of the prediction, and the largest deviation of $c_1$, $c_2$ from the prediction (green within $10^(-8)$). The finite parts have no reference.])[
+#block(breakable: false)[#figure(caption: [The poles of $2 -> 2$ P-wave processes against the prediction, TIRust 48958d1, four points at the given $sqrt(s)$: the range of $c_1$ over the points, the range of the $P -> S$ term of the prediction, and the largest deviation of $c_1$, $c_2$ from the prediction (green within $10^(-8)$). The finite parts have no reference.])[
   #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, center),
     [Process], [$sqrt(s)$ (GeV)], [$c_2$], [$c_1$], [$P -> S$ term], [poles dev.], [stable],
@@ -313,7 +322,7 @@ vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]
       if calc.abs(c.ps_term.at(0)) < 1e-9 and calc.abs(c.ps_term.at(1)) < 1e-9 [0 (≤ #sci(calc.max(calc.abs(c.ps_term.at(0)), calc.abs(c.ps_term.at(1)))))]
       else [#dec(c.ps_term.at(0), 2) … #dec(c.ps_term.at(1), 2)],
       dev-cell(c.max_pole_deviation, target: 1e-8), [#c.stable/#c.npoints])).flatten()))
-] <tab:pwave22>
+] <tab:pwave22>]
 
 #box-note[
   - *Derivative.* At a relative momentum $q_0 != 0$, where every integral is

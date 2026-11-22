@@ -64,7 +64,7 @@ STATUS_LINES = [
     'literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term '
     'of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.',
     '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
-    '($J\\/psi$: $10^(-4)$, the accuracy of its grid) at the points MadLoop reports stable.',
+    '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]
@@ -78,7 +78,8 @@ OPEN_ITEMS = [
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
     '*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of '
     '$p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such '
-    'points are reported unstable.',
+    'points are reported unstable. TIRust 08edee3 serves them, but its binary64 path is '
+    'silently wrong at the softest (up to $6 dot 10^(-3)$; reported).',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '

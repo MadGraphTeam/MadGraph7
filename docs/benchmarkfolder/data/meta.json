@@ -71,6 +71,10 @@
   [
    "eda7d7fe04",
    "MadLoop: the P -> S pole of a P-wave bound state in the pole prediction"
+  ],
+  [
+   "4b677220bb",
+   "docs/benchmarkfolder: P-wave results and the MG5 2.5.5 onium + jet comparison in the report"
   ]
  ],
  "decisions": [
@@ -93,14 +97,14 @@
   "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): TIRust refuses lanes, the points are reported exceptional (open TIRust item).",
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
   "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
-  "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-4)$, the accuracy of its grid) at the points MadLoop reports stable.",
+  "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.",
   "*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE checks, bit-identical, faster on every benchmark process."
  ],
  "open_items": [
   "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47 to \\#51; until then a P-wave point meets a refused integral and is reported unstable); the doubled-gluon pentagons of $g g -> chi_(c J) g$ (equal-mass bubbles at zero momentum with raised powers).",
   "*Two S-wave bound states* in one process: threshold bubble pinches and two Coulomb relations in one loop, in TIRust.",
   "*Quadruple-precision rescue:* the degenerate lanes in TIRust's binary128 path.",
-  "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable.",
+  "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, but its binary64 path is silently wrong at the softest (up to $6 dot 10^(-3)$; reported).",
   "*Loop-induced processes* with bound states; the FKS integration on `onia_fks` (its `BinothLHA` can call this virtual).",
   "*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters' output (it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit."
  ],
