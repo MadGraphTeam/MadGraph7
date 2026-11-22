@@ -601,7 +601,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
            wanted_lorentz = wanted_lorentz, wanted_couplings = wanted_couplings)
 
     def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
-                            loop_dual=False):
+                            loop_dual=False, loop_npwave=1):
         """The HELAS library of the loop output: with a P-wave bound state
         its double-precision routines are dual (export_v4), for all the
         processes of the output, which must then all have one."""
@@ -612,6 +612,16 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     'A process with a P-wave bound state must be output alone (or '
                     'with other P-wave processes): its HELAS library is in dual numbers.')
             loop_dual = True
+            # the dual numbers of the library have one direction per P-wave
+            # state: all the processes of the output must have the same number
+            counts = getattr(self, 'onia_npwave', set()) or {1}
+            if len(counts) > 1:
+                raise loop_onia.OniaLoopError(
+                    'Processes with one and with two P-wave bound states must be '
+                    'output separately: their HELAS libraries differ.')
+            return super(LoopProcessExporterFortranSA, self).write_aloha_library(
+                model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual,
+                loop_npwave=max(counts))
         return super(LoopProcessExporterFortranSA, self).write_aloha_library(
             model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual)
 
@@ -952,7 +962,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                 'MadEventOutput': MadEventOutput,
                 'UseDensity': UseDensity,
                 'Onia': loop_onia.has_onia(matrix_element),
-                'OniaPwave': loop_onia.has_pwave(matrix_element)}
+                'OniaPwave': loop_onia.has_pwave(matrix_element),
+                'OniaPwave2': loop_onia.npwave(matrix_element) == 2}
 
 
     #===========================================================================
@@ -2134,6 +2145,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         lines.append('C     the P-wave bound state (0 if none), and L of each bound state')
         lines.append('INTEGER ONIA_IPW, ONIA_L(%d)' % nonia)
         lines.append('PARAMETER (ONIA_IPW=%d)' % info['ipwave'])
+        if info['npwave'] == 2:
+            lines.append('C     the second P-wave bound state (dual component 2)')
+            lines.append('INTEGER ONIA_IPW2')
+            lines.append('PARAMETER (ONIA_IPW2=%d)' % info['ipwaves'][1])
         lines.append('DATA ONIA_L/%s/' % ints([o['L'] for o in info['onia']]))
         writers.FortranWriter('onia_loop_data.inc').writelines(lines)
         context = self.get_context(matrix_element)
@@ -3051,8 +3066,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         max_loop_rank=matrix_element.get_max_loop_rank()
         if loop_onia.has_pwave(matrix_element):
             # P-wave bound states: the derivative of a loop propagator gives
-            # the integral of rank R+1 with that propagator doubled
-            max_loop_rank += 1
+            # the integral of rank R+1 with that propagator doubled, and with
+            # two P-wave states the mixed derivative ranks up to R+2
+            max_loop_rank += loop_onia.npwave(matrix_element)
         matrix_element.rep_dict['maxrank']=max_loop_rank
         matrix_element.rep_dict['loop_max_coefs']=\
                         q_polynomial.get_number_of_coefs_for_rank(max_loop_rank)
@@ -4129,10 +4145,14 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         if not hasattr(self, 'onia_pwave_processes'):
             self.onia_pwave_processes = []
         self.onia_pwave_processes.append(bool(context.get('OniaPwave')))
+        if not hasattr(self, 'onia_npwave'):
+            self.onia_npwave = set()
         if context.get('OniaPwave'):
+            self.onia_npwave.add(loop_onia.npwave(matrix_element))
             momenta = 'PWPD'
             coef_construction = loop_onia.pwave_dual_names(
-                loop_onia.pwave_coef_construction_calls(coef_construction))
+                loop_onia.pwave_coef_construction_calls(
+                    coef_construction, loop_onia.npwave(matrix_element)))
             born_ct_helas_calls = loop_onia.pwave_dual_names(born_ct_helas_calls)
             uvct_helas_calls = loop_onia.pwave_dual_names(uvct_helas_calls)
         file=self.split_HELASCALLS(writer,replace_dict,\

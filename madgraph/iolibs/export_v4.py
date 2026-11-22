@@ -2792,10 +2792,11 @@ c     quadruple precision (MP_Dual).
 """
 
     @classmethod
-    def write_loop_dual_aloha_functions(cls, write_dir):
+    def write_loop_dual_aloha_functions(cls, write_dir, npwave=1):
         """aloha_functions.f, dual_variables.f, dual_opts.inc and the makefile
-        of the HELAS library of a MadLoop output with a P-wave bound state
-        (one, at first order: NPWAVE=1)."""
+        of the HELAS library of a MadLoop output with P-wave bound states (one
+        or two, at first order: NPWAVE=npwave). The quadruple-precision dual
+        numbers (mp_dual_variables.f) have one direction only."""
 
         template = pjoin(MG5DIR, 'aloha', 'template_files')
         with open(pjoin(template, 'aloha_functions_dual.f')) as stream:
@@ -2814,15 +2815,15 @@ c     quadruple precision (MP_Dual).
         cp(pjoin(template, 'mp_dual_variables.f'), pjoin(write_dir, 'mp_dual_variables.f'))
 
         class OnePWave(object):
-            """write_dual_opts_file of one P-wave bound state"""
+            """write_dual_opts_file of npwave P-wave bound states"""
             def get(self, key):
                 return [{'model': None}]
             def get_nexternal_ninitial(self):
                 return 0, 0
             def get_nonia(self):
-                return 1
+                return npwave
             def get_npwave(self):
-                return 1
+                return npwave
             def get_highest_derivate_order(self):
                 return 1
         ProcessExporterFortran.write_dual_opts_file(
@@ -2844,7 +2845,7 @@ c     quadruple precision (MP_Dual).
             stream.write(makefile)
 
     def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
-                            loop_dual=False):
+                            loop_dual=False, loop_npwave=1):
         """The ALOHA routines of the matrix elements and their helper file:
         Source/DHELAS, Source/DHELAS<n> for P-wave onia, and for the other
         gauge of an output that mixes gauges Source/DHELAS_<GAUGE> (called
@@ -2916,7 +2917,7 @@ c     quadruple precision (MP_Dual).
                 f.write(text.replace('libdhelas', 'libdhelas' +
                                      self.gauge_libraries[gauge][1]))
         if loop_dual:
-            self.write_loop_dual_aloha_functions(write_dir)
+            self.write_loop_dual_aloha_functions(write_dir, loop_npwave)
             aloha_model.loop_mode = False
         elif any([any([tag.startswith('L') for tag in d[1]]) for d in wanted_lorentz]):
             cp(MG5DIR + '/aloha/template_files/aloha_functions_loop.f',

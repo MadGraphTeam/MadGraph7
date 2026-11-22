@@ -59,6 +59,10 @@ C
 C     its value and derivative, and a scratch loop wavefunction
 	  %(complex_dp_format)s COEFS0(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
 	  %(complex_dp_format)s COEFS1(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+## if(OniaPwave2) {
+	  %(complex_dp_format)s COEFS2(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+	  %(complex_dp_format)s COEFS3(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+## }
 	  %(complex_dp_format)s TWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
 ## } else {
 	  %(complex_dp_format)s COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
@@ -100,6 +104,11 @@ C     the loop wavefunctions WL (value) and DWL (derivative)
 	  common/%(proc_prefix)sWL/WL,PLC
 	  %(complex_dp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  common/%(proc_prefix)sPW_DWL/DWL
+## if(OniaPwave2) {
+	  %(complex_dp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_dp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sPW_DWL2/DWL2,D2WL
+## }
 ## } else {
 ## if(not LoopInduced) {
 	  %(complex_dp_format)s AMP(NBORNAMPS)

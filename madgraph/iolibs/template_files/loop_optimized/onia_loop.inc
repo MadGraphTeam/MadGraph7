@@ -863,6 +863,7 @@ C     NHEL for the dual momenta P, without the counterterms
 %(onia_born_calls)s
       END
 
+## if(not OniaPwave2){
       SUBROUTINE %(proc_prefix)sONIA_PREPARE(P)
 C     The spin projectors and their derivatives, the projected Born
 C     amplitudes, the weights W1 (WEFF), W2 and V of each constituent
@@ -1264,6 +1265,7 @@ C     no weight.
       ENDDO
       END
 
+## }
       SUBROUTINE %(proc_prefix)sONIA_EFFECTIVE_BORN(H,AMP)
 C     (S-wave interface, unused with a P-wave bound state)
       IMPLICIT NONE
@@ -1427,6 +1429,7 @@ C     with W1 and with V (the propagator derivatives, PCOEFS)
       ENDDO
       END
 
+## if(not OniaPwave2){
       SUBROUTINE %(proc_prefix)sONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
 C     RES = RES + the derivatives of the propagators of the loop group: for
 C     each line J whose shift S_J depends on the relative momentum,
@@ -1537,6 +1540,746 @@ C       C_J = dS_J.eps*/(eps.eps*)
         ENDDO
       ENDDO
       END
+## }
+
+## if(OniaPwave2){
+C ======================================================================
+C  Two P-wave bound states (ONIA_IPW and ONIA_IPW2)
+C ======================================================================
+C
+C  The amplitude is the mixed derivative of the constituent amplitude in
+C  the relative momenta q1, q2 of the two states, along the directions
+C  eps1(L_z1) and eps2(L_z2) of the pair IDIR = ILZ1 + 3 (ILZ2-1), ILZ =
+C  L_z+2 (9 pairs). The dual numbers have the components 0 (value), 1
+C  (d/d eps1), 2 (d/d eps2) and 3 (d2/d eps1 d eps2), as at tree level
+C  (matrix_standalone_v4_onia_pwave.inc). With PR_c the components of the
+C  product of the spin projectors (with the Clebsch-Gordan coefficients of
+C  both states) and L_c those of a loop amplitude, the projected loop is
+C  sum_{h,IDIR} sum_c PR_(3-c) L_c, so that its interference is
+C     sum_{h,IDIR} sum_c conj(W_c) L_c,   W_c = F sum_T conj(PR_(3-c)) B(T),
+C  W0 (WEFF) independent of the direction, W1 of ILZ1, W2 of ILZ2, W3 of
+C  the pair. A propagator of line i with shift S_i(q1,q2) contributes
+C  through 1/D_i = 1/D - (D_1 e1 + D_2 e2 + D_12 e1 e2)/D^2
+C  + 2 D_1 D_2 e1 e2/D^3, with D_a = 2 (S_i-l).dS_ia, dS_ia = c_ia eps_a
+C  and D_12 = 2 dS_i1.dS_i2: the polynomials merged with the direction
+C  sums of the weights (PW2_PCOEFS)
+C     P1(mu) = N0 x VW1 + N2 x V3B,   P2(mu) = N0 x VW2 + N1 x V3A,
+C     PX = N0 x XW,                   PT(mu,nu) = N0 x TW
+C  (N_c the loop numerators) are reduced with raised propagator powers
+C  (ONIA_PW_DOUBLED): line i doubled at rank R+1, line i tripled and two
+C  lines doubled at rank R+2.
+
+      SUBROUTINE %(proc_prefix)sONIA_PW2_EPSILONS(P)
+C     The directions eps1(L_z1) and eps2(L_z2) of the relative momenta of
+C     the two P-wave bound states (the vectors of VXXXXX, as at tree level)
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      %(real_dp_format)s P(0:3,NEXTERNAL)
+      INCLUDE 'onia_loop_data.inc'
+      %(complex_dp_format)s EPS1(0:3,3), EPS2(0:3,3)
+      COMMON/%(proc_prefix)sPW2_EPS/EPS1,EPS2
+      %(real_dp_format)s CMASS(NEXTERNAL)
+      TYPE(DUAL) KD(0:3)
+      TYPE(ALOHA) EPSW
+      INTEGER I, ILZ, Q1, Q2, S, K
+      CALL %(proc_prefix)sONIA_MASSES(CMASS)
+      DO S=1,2
+        IF (S.EQ.1) THEN
+          K=ONIA_IPW
+        ELSE
+          K=ONIA_IPW2
+        ENDIF
+        Q1=ONIA_Q1(K)
+        Q2=ONIA_Q2(K)
+        DO I=0,3
+          KD(I)=P(I,Q1)+P(I,Q2)
+        ENDDO
+        DO ILZ=1,3
+          CALL VXXXXX(KD,CMASS(Q1)+CMASS(Q2),ILZ-2,+1,EPSW)
+          DO I=0,3
+            IF (S.EQ.1) THEN
+              EPS1(I,ILZ)=EPSW%%W(I+1)%%COMP(0)
+            ELSE
+              EPS2(I,ILZ)=EPSW%%W(I+1)%%COMP(0)
+            ENDIF
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_PW2_SET_DUAL(P,IDIR,PD)
+C     The dual constituent momenta of the direction pair IDIR: component 1
+C     +-eps1(ILZ1) on the constituents of the first P-wave state, component
+C     2 +-eps2(ILZ2) on those of the second
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      %(real_dp_format)s P(0:3,NEXTERNAL)
+      INTEGER IDIR
+      TYPE(DUAL) PD(0:3,NEXTERNAL)
+      INCLUDE 'onia_loop_data.inc'
+      %(complex_dp_format)s EPS1(0:3,3), EPS2(0:3,3)
+      COMMON/%(proc_prefix)sPW2_EPS/EPS1,EPS2
+      INTEGER PW_IDIR, PW_ILZ1, PW_ILZ2
+      %(complex_dp_format)s PW_EPS1(0:3), PW_EPS2(0:3)
+      COMMON/%(proc_prefix)sPW2_DIR/PW_EPS1,PW_EPS2,PW_IDIR,PW_ILZ1,PW_ILZ2
+      INTEGER I, J
+      PW_IDIR=IDIR
+      PW_ILZ1=MOD(IDIR-1,3)+1
+      PW_ILZ2=(IDIR-1)/3+1
+      DO J=1,NEXTERNAL
+        DO I=0,3
+          PD(I,J)=P(I,J)
+        ENDDO
+      ENDDO
+      DO I=0,3
+        PD(I,ONIA_Q1(ONIA_IPW))%%COMP(1)=EPS1(I,PW_ILZ1)
+        PD(I,ONIA_Q2(ONIA_IPW))%%COMP(1)=-EPS1(I,PW_ILZ1)
+        PD(I,ONIA_Q1(ONIA_IPW2))%%COMP(2)=EPS2(I,PW_ILZ2)
+        PD(I,ONIA_Q2(ONIA_IPW2))%%COMP(2)=-EPS2(I,PW_ILZ2)
+        PW_EPS1(I)=EPS1(I,PW_ILZ1)
+        PW_EPS2(I)=EPS2(I,PW_ILZ2)
+      ENDDO
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_PREPARE(P)
+C     Two P-wave bound states: the dual components of the product of the
+C     spin projectors for each direction pair, the projected Born
+C     amplitudes, the weights W0 (WEFF), W1, W2, W3 and their direction sums
+C     of each constituent helicity configuration, and the projected Born
+C     matrix element, for the constituent momenta P (at zero relative
+C     momenta)
+      USE ALOHA_OBJECT
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWAMP, %(proc_prefix)sPW_DUAL_INIT
+      IMPLICIT NONE
+      INTEGER NEXTERNAL, NCOMB, NBORNAMPS
+      PARAMETER (NEXTERNAL=%(nexternal)d, NCOMB=%(ncomb)d, NBORNAMPS=%(nbornamps)d)
+      %(real_dp_format)s P(0:3,NEXTERNAL)
+      INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
+      %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
+      %(real_dp_format)s BORN2
+      COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
+      %(complex_dp_format)s W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
+      %(complex_dp_format)s W3(NBORNAMPS,NCOMB,9)
+      %(complex_dp_format)s VW1(NBORNAMPS,0:3,NCOMB), VW2(NBORNAMPS,0:3,NCOMB)
+      %(complex_dp_format)s V3A(NBORNAMPS,0:3,NCOMB,3), V3B(NBORNAMPS,0:3,NCOMB,3)
+      %(complex_dp_format)s XW(NBORNAMPS,NCOMB), TW(NBORNAMPS,0:3,0:3,NCOMB)
+      COMMON/%(proc_prefix)sPW2_WEIGHTS/W1,W2,W3,VW1,VW2,V3A,V3B,XW,TW
+      LOGICAL LIVE(NCOMB)
+      COMMON/%(proc_prefix)sONIA_LIVE/LIVE
+      %(complex_dp_format)s EPS1(0:3,3), EPS2(0:3,3)
+      COMMON/%(proc_prefix)sPW2_EPS/EPS1,EPS2
+      %(complex_dp_format)s BPROJ(NBORNAMPS,ONIA_NOTHERS,ONIA_NJZT)
+      %(real_dp_format)s FACT
+      COMMON/%(proc_prefix)sONIA_PROJECTED/BPROJ,FACT
+      %(complex_dp_format)s PRC(ONIA_NJZT,NCOMB,9,0:3)
+      %(complex_dp_format)s A(NBORNAMPS,NCOMB,9,0:3)
+      SAVE PRC, A
+      %(complex_dp_format)s TMP, E12
+      TYPE(DUAL) PD(0:3,NEXTERNAL), KD(0:3), PR, PRK
+      %(real_dp_format)s CMASS(NEXTERNAL), CG, GMET(0:3)
+      LOGICAL ACTIVE(NCOMB)
+      INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+      DATA IC /NEXTERNAL*1/
+      DATA GMET/1D0,-1D0,-1D0,-1D0/
+      INTEGER H, T, K, I, J, O, Q1, Q2, IDIR, ILZ1, ILZ2, LZ, SZ, MU, NU, C
+      INCLUDE 'coupl.inc'
+      INCLUDE 'ldme.inc'
+      CALL %(proc_prefix)sPW_DUAL_INIT()
+      CALL %(proc_prefix)sONIA_MASSES(CMASS)
+C     The normalisation of the colour projectors and the LDMEs
+      FACT=%(onia_dp_norm)s
+      DO K=1,ONIA_NONIA
+        Q1=ONIA_Q1(K)
+        Q2=ONIA_Q2(K)
+        FACT=FACT*(CMASS(Q1)+CMASS(Q2))/(2D0*CMASS(Q1)*CMASS(Q2))
+        IF (ONIA_C(K).EQ.1) THEN
+          FACT=FACT/6D0/(2D0*ONIA_J(K)+1D0)
+        ELSE
+          FACT=FACT/8D0/(2D0*ONIA_J(K)+1D0)
+        ENDIF
+      ENDDO
+%(onia_ldme_perturbative)s
+      FACT=FACT*%(onia_ldme_product)s
+C     The directions of the relative momenta
+      CALL %(proc_prefix)sONIA_PW2_EPSILONS(P)
+C     The products of the spin projectors (with the Clebsch-Gordan
+C     coefficients of both P-wave states) and their dual components
+      DO H=1,NCOMB
+        ACTIVE(H)=.FALSE.
+        DO IDIR=1,9
+          ILZ1=MOD(IDIR-1,3)+1
+          ILZ2=(IDIR-1)/3+1
+          CALL %(proc_prefix)sONIA_PW2_SET_DUAL(P,IDIR,PD)
+          DO T=1,ONIA_NJZT
+            PR=(1D0,0D0)
+            DO K=1,ONIA_NONIA
+              Q1=ONIA_Q1(K)
+              Q2=ONIA_Q2(K)
+              DO I=0,3
+                KD(I)=PD(I,Q1)+PD(I,Q2)
+              ENDDO
+              IF (K.EQ.ONIA_IPW.OR.K.EQ.ONIA_IPW2) THEN
+                IF (K.EQ.ONIA_IPW) THEN
+                  LZ=ILZ1-2
+                ELSE
+                  LZ=ILZ2-2
+                ENDIF
+                SZ=ONIA_JZ(K,T)-LZ
+                IF (ABS(SZ).GT.ONIA_S(K)) THEN
+                  PR=(0D0,0D0)
+                  EXIT
+                ENDIF
+                CALL CLEBSCH_GORDAN(1,LZ,ONIA_S(K),SZ,ONIA_J(K),ONIA_JZ(K,T),CG)
+              ELSE
+                SZ=ONIA_JZ(K,T)
+                CG=1D0
+              ENDIF
+              CALL %(proc_prefix)sONIA_PW_PROJ(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
+     &         SZ,ONIA_S(K),PRK)
+              PR=PR*PRK*CG
+            ENDDO
+            DO C=0,3
+              PRC(T,H,IDIR,C)=PR%%COMP(C)
+              IF (PRC(T,H,IDIR,C).NE.(0D0,0D0)) ACTIVE(H)=.TRUE.
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+C     The Born amplitudes and their derivatives
+      DO H=1,NCOMB
+        A(1:NBORNAMPS,H,1:9,0:3)=(0D0,0D0)
+        IF (.NOT.ACTIVE(H)) CYCLE
+        DO I=1,NEXTERNAL
+          NHEL(I)=ONIA_HELC(I,H)
+        ENDDO
+        DO IDIR=1,9
+          CALL %(proc_prefix)sONIA_PW2_SET_DUAL(P,IDIR,PD)
+          CALL %(proc_prefix)sONIA_BORN_AMPS(PD,NHEL,H,IC)
+          DO C=0,3
+            DO I=1,NBORNAMPS
+              A(I,H,IDIR,C)=PWAMP(I)%%COMP(C)
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+C     The projected Born amplitudes: the mixed component of PR x A
+      BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,1:ONIA_NJZT)=(0D0,0D0)
+      DO H=1,NCOMB
+        IF (.NOT.ACTIVE(H)) CYCLE
+        O=ONIA_OTHERS(H)
+        DO T=1,ONIA_NJZT
+          DO IDIR=1,9
+            DO C=0,3
+              BPROJ(1:NBORNAMPS,O,T)=BPROJ(1:NBORNAMPS,O,T)
+     &         +PRC(T,H,IDIR,3-C)*A(1:NBORNAMPS,H,IDIR,C)
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL %(proc_prefix)sONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=(0D0,0D0)
+        ENDDO
+      ENDIF
+C     The weights of each constituent helicity configuration and their
+C     direction sums
+      DO H=1,NCOMB
+        WEFF(1:NBORNAMPS,H)=(0D0,0D0)
+        W1(1:NBORNAMPS,H,1:3)=(0D0,0D0)
+        W2(1:NBORNAMPS,H,1:3)=(0D0,0D0)
+        W3(1:NBORNAMPS,H,1:9)=(0D0,0D0)
+        VW1(1:NBORNAMPS,0:3,H)=(0D0,0D0)
+        VW2(1:NBORNAMPS,0:3,H)=(0D0,0D0)
+        V3A(1:NBORNAMPS,0:3,H,1:3)=(0D0,0D0)
+        V3B(1:NBORNAMPS,0:3,H,1:3)=(0D0,0D0)
+        XW(1:NBORNAMPS,H)=(0D0,0D0)
+        TW(1:NBORNAMPS,0:3,0:3,H)=(0D0,0D0)
+        LIVE(H)=.FALSE.
+        IF (.NOT.ACTIVE(H)) CYCLE
+        O=ONIA_OTHERS(H)
+        DO T=1,ONIA_NJZT
+          DO IDIR=1,9
+            ILZ1=MOD(IDIR-1,3)+1
+            ILZ2=(IDIR-1)/3+1
+            WEFF(1:NBORNAMPS,H)=WEFF(1:NBORNAMPS,H)
+     &       +DCONJG(PRC(T,H,IDIR,3))*BPROJ(1:NBORNAMPS,O,T)
+            W1(1:NBORNAMPS,H,ILZ1)=W1(1:NBORNAMPS,H,ILZ1)
+     &       +DCONJG(PRC(T,H,IDIR,2))*BPROJ(1:NBORNAMPS,O,T)
+            W2(1:NBORNAMPS,H,ILZ2)=W2(1:NBORNAMPS,H,ILZ2)
+     &       +DCONJG(PRC(T,H,IDIR,1))*BPROJ(1:NBORNAMPS,O,T)
+            W3(1:NBORNAMPS,H,IDIR)=W3(1:NBORNAMPS,H,IDIR)
+     &       +DCONJG(PRC(T,H,IDIR,0))*BPROJ(1:NBORNAMPS,O,T)
+          ENDDO
+        ENDDO
+        WEFF(1:NBORNAMPS,H)=FACT*WEFF(1:NBORNAMPS,H)
+        W1(1:NBORNAMPS,H,1:3)=FACT*W1(1:NBORNAMPS,H,1:3)
+        W2(1:NBORNAMPS,H,1:3)=FACT*W2(1:NBORNAMPS,H,1:3)
+        W3(1:NBORNAMPS,H,1:9)=FACT*W3(1:NBORNAMPS,H,1:9)
+C       (the weights of the polynomials of the propagator derivatives carry
+C       the complex conjugate of the directions: PW_MERGE_LOOP conjugates
+C       them back)
+        DO IDIR=1,9
+          ILZ1=MOD(IDIR-1,3)+1
+          ILZ2=(IDIR-1)/3+1
+          E12=(0D0,0D0)
+          DO MU=0,3
+            E12=E12+GMET(MU)*EPS1(MU,ILZ1)*EPS2(MU,ILZ2)
+          ENDDO
+          XW(1:NBORNAMPS,H)=XW(1:NBORNAMPS,H)+W3(1:NBORNAMPS,H,IDIR)*DCONJG(E12)
+          DO MU=0,3
+            V3A(1:NBORNAMPS,MU,H,ILZ1)=V3A(1:NBORNAMPS,MU,H,ILZ1)
+     &       +W3(1:NBORNAMPS,H,IDIR)*DCONJG(EPS2(MU,ILZ2))
+            V3B(1:NBORNAMPS,MU,H,ILZ2)=V3B(1:NBORNAMPS,MU,H,ILZ2)
+     &       +W3(1:NBORNAMPS,H,IDIR)*DCONJG(EPS1(MU,ILZ1))
+            DO NU=0,3
+              TW(1:NBORNAMPS,MU,NU,H)=TW(1:NBORNAMPS,MU,NU,H)
+     &         +W3(1:NBORNAMPS,H,IDIR)*DCONJG(EPS1(MU,ILZ1)*EPS2(NU,ILZ2))
+            ENDDO
+          ENDDO
+        ENDDO
+        DO ILZ1=1,3
+          DO MU=0,3
+            VW1(1:NBORNAMPS,MU,H)=VW1(1:NBORNAMPS,MU,H)
+     &       +W1(1:NBORNAMPS,H,ILZ1)*DCONJG(EPS1(MU,ILZ1))
+            VW2(1:NBORNAMPS,MU,H)=VW2(1:NBORNAMPS,MU,H)
+     &       +W2(1:NBORNAMPS,H,ILZ1)*DCONJG(EPS2(MU,ILZ1))
+          ENDDO
+        ENDDO
+        LIVE(H)=ANY(WEFF(1:NBORNAMPS,H).NE.(0D0,0D0))
+     &   .OR.ANY(W1(1:NBORNAMPS,H,1:3).NE.(0D0,0D0))
+     &   .OR.ANY(W2(1:NBORNAMPS,H,1:3).NE.(0D0,0D0))
+     &   .OR.ANY(W3(1:NBORNAMPS,H,1:9).NE.(0D0,0D0))
+      ENDDO
+C     The projected Born matrix element
+      BORN2=0D0
+      DO O=1,ONIA_NOTHERS
+        DO T=1,ONIA_NJZT
+          DO I=1,NBORNAMPS
+            IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
+            TMP=(0D0,0D0)
+            DO J=1,NBORNAMPS
+              TMP=TMP+DCMPLX(ONIA_CFB_RE(I,J),ONIA_CFB_IM(I,J))*BPROJ(J,O,T)
+            ENDDO
+            BORN2=BORN2+DBLE(DCONJG(BPROJ(I,O,T))*TMP)
+          ENDDO
+        ENDDO
+      ENDDO
+      BORN2=BORN2*FACT/DBLE(ONIA_IDEN)
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_PW_SOFT_POLE(P_PHYS,PMASS,CMASS,CONTR)
+C     Two P-wave bound states: the poles of the soft current beyond the
+C     colour-linked Borns (the P -> S transitions of each state, and the
+C     dipole-dipole exchange between the two states, arXiv:1809.07993) are
+C     not predicted yet: 0, with a warning
+      IMPLICIT NONE
+      INTEGER NEXTERNAL, NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), PMASS(NEXTERNAL_PHYS)
+      %(real_dp_format)s CMASS(NEXTERNAL), CONTR
+      LOGICAL WARNED
+      DATA WARNED/.FALSE./
+      SAVE WARNED
+      CONTR=0D0
+      IF (.NOT.WARNED) THEN
+        WRITE(*,*) 'WARNING:: two P-wave bound states: the soft-current',
+     &   ' poles (P -> S, dipole-dipole) are not predicted yet.'
+        WARNED=.TRUE.
+      ENDIF
+      END
+
+      LOGICAL FUNCTION %(proc_prefix)sONIA_PW_DIRECTION(P,H,IDIR,PD)
+C     Two P-wave bound states: .TRUE. if the direction pair IDIR is computed
+C     for the constituent helicity configuration H (all pairs of a live
+C     configuration); PD are then its dual momenta
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INTEGER NEXTERNAL, NCOMB
+      PARAMETER (NEXTERNAL=%(nexternal)d, NCOMB=%(ncomb)d)
+      %(real_dp_format)s P(0:3,NEXTERNAL)
+      INTEGER H, IDIR
+      TYPE(DUAL) PD(0:3,NEXTERNAL)
+      LOGICAL LIVE(NCOMB)
+      COMMON/%(proc_prefix)sONIA_LIVE/LIVE
+      %(proc_prefix)sONIA_PW_DIRECTION=LIVE(H)
+      IF (.NOT.LIVE(H)) RETURN
+      CALL %(proc_prefix)sONIA_PW2_SET_DUAL(P,IDIR,PD)
+      END
+
+      LOGICAL FUNCTION %(proc_prefix)sONIA_PW_CT_INPUT(H,PASS,AMP,AMPL)
+C     Two P-wave bound states: the counterterm amplitudes AMPL of the current
+C     direction pair and their effective Born AMP: the mixed component with
+C     W3 (PASS=1, every pair), the d/d eps1 component with W1 (PASS=2, once
+C     per ILZ1), the d/d eps2 component with W2 (PASS=3, once per ILZ2) and
+C     the value with W0 (PASS=4, on the first pair). .FALSE. if this pass
+C     has no weight.
+      USE ALOHA_OBJECT
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWAMPL
+      IMPLICIT NONE
+      INTEGER NCOMB, NBORNAMPS, NCTAMPS
+      PARAMETER (NCOMB=%(ncomb)d, NBORNAMPS=%(nbornamps)d, NCTAMPS=%(nctamps)d)
+      INTEGER H, PASS
+      %(complex_dp_format)s AMP(NBORNAMPS), AMPL(3,NCTAMPS)
+      %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
+      %(real_dp_format)s BORN2
+      COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
+      %(complex_dp_format)s W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
+      %(complex_dp_format)s W3(NBORNAMPS,NCOMB,9)
+      %(complex_dp_format)s VW1(NBORNAMPS,0:3,NCOMB), VW2(NBORNAMPS,0:3,NCOMB)
+      %(complex_dp_format)s V3A(NBORNAMPS,0:3,NCOMB,3), V3B(NBORNAMPS,0:3,NCOMB,3)
+      %(complex_dp_format)s XW(NBORNAMPS,NCOMB), TW(NBORNAMPS,0:3,0:3,NCOMB)
+      COMMON/%(proc_prefix)sPW2_WEIGHTS/W1,W2,W3,VW1,VW2,V3A,V3B,XW,TW
+      INTEGER PW_IDIR, PW_ILZ1, PW_ILZ2
+      %(complex_dp_format)s PW_EPS1(0:3), PW_EPS2(0:3)
+      COMMON/%(proc_prefix)sPW2_DIR/PW_EPS1,PW_EPS2,PW_IDIR,PW_ILZ1,PW_ILZ2
+      INTEGER I, K, COMP
+      %(proc_prefix)sONIA_PW_CT_INPUT=.FALSE.
+      IF (PASS.EQ.1) THEN
+        AMP(1:NBORNAMPS)=W3(1:NBORNAMPS,H,PW_IDIR)
+        COMP=3
+      ELSEIF (PASS.EQ.2) THEN
+        IF (PW_ILZ2.NE.1) RETURN
+        AMP(1:NBORNAMPS)=W1(1:NBORNAMPS,H,PW_ILZ1)
+        COMP=1
+      ELSEIF (PASS.EQ.3) THEN
+        IF (PW_ILZ1.NE.1) RETURN
+        AMP(1:NBORNAMPS)=W2(1:NBORNAMPS,H,PW_ILZ2)
+        COMP=2
+      ELSE
+        IF (PW_IDIR.NE.1) RETURN
+        AMP(1:NBORNAMPS)=WEFF(1:NBORNAMPS,H)
+        COMP=0
+      ENDIF
+      %(proc_prefix)sONIA_PW_CT_INPUT=ANY(AMP(1:NBORNAMPS).NE.(0D0,0D0))
+      DO I=1,NCTAMPS
+        DO K=1,3
+          AMPL(K,I)=PWAMPL(K,I)%%COMP(COMP)
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE %(proc_prefix)sPW_SPLIT_COEFS2(COEFS,C0,C1,C2,C3)
+C     The four components of the dual coefficients of a loop vertex (two
+C     P-wave bound states)
+      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      TYPE(DUAL) COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s C0(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s C1(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s C2(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s C3(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+      INTEGER I, J, K
+      DO K=1,MAXLWFSIZE
+        DO J=0,VERTEXMAXCOEFS-1
+          DO I=1,MAXLWFSIZE
+            C0(I,J,K)=COEFS(I,J,K)%%COMP(0)
+            C1(I,J,K)=COEFS(I,J,K)%%COMP(1)
+            C2(I,J,K)=COEFS(I,J,K)%%COMP(2)
+            C3(I,J,K)=COEFS(I,J,K)%%COMP(3)
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE %(proc_prefix)sPW_CREATE_LOOP_COEFS2(WL,DWL,DWL2,D2WL,RANK,LCUT_SIZE,
+     & LOOP_GROUP_NUMBER,SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
+C     Two P-wave bound states: the closed loop of the current direction pair
+C     merged with its weights: its mixed component D2WL with W3 (every
+C     pair); its d/d eps1 component DWL with W1 into the loop coefficients
+C     and with V3A into P2 (once per ILZ1); its d/d eps2 component DWL2 with
+C     W2 and with V3B into P1 (once per ILZ2); its value WL with W0, with
+C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
+      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      IMPLICIT NONE
+      INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
+      PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
+      PARAMETER (NLOOPGROUPS=%(nloop_groups)d, NSQUAREDSO=%(nSquaredSO)d)
+      %(complex_dp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      %(complex_dp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
+      %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+      COMMON/%(proc_prefix)sLCOEFS/LOOPCOEFS
+      %(complex_dp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+      %(complex_dp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+      %(complex_dp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+      %(complex_dp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
+      COMMON/%(proc_prefix)sPW2_PCOEFS/P1,P2,PX,PT
+      %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
+      %(real_dp_format)s BORN2
+      COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
+      %(complex_dp_format)s W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
+      %(complex_dp_format)s W3(NBORNAMPS,NCOMB,9)
+      %(complex_dp_format)s VW1(NBORNAMPS,0:3,NCOMB), VW2(NBORNAMPS,0:3,NCOMB)
+      %(complex_dp_format)s V3A(NBORNAMPS,0:3,NCOMB,3), V3B(NBORNAMPS,0:3,NCOMB,3)
+      %(complex_dp_format)s XW(NBORNAMPS,NCOMB), TW(NBORNAMPS,0:3,0:3,NCOMB)
+      COMMON/%(proc_prefix)sPW2_WEIGHTS/W1,W2,W3,VW1,VW2,V3A,V3B,XW,TW
+      INTEGER PW_IDIR, PW_ILZ1, PW_ILZ2
+      %(complex_dp_format)s PW_EPS1(0:3), PW_EPS2(0:3)
+      COMMON/%(proc_prefix)sPW2_DIR/PW_EPS1,PW_EPS2,PW_IDIR,PW_ILZ1,PW_ILZ2
+      INTEGER MU, NU
+      CALL %(proc_prefix)sPW_MERGE_LOOP(D2WL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     & MULTIPLIER,COLOR_ID,HELCONFIG,W3(1,HELCONFIG,PW_IDIR),LOOPCOEFS)
+      IF (PW_ILZ2.EQ.1) THEN
+        CALL %(proc_prefix)sPW_MERGE_LOOP(DWL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &   MULTIPLIER,COLOR_ID,HELCONFIG,W1(1,HELCONFIG,PW_ILZ1),LOOPCOEFS)
+        DO MU=0,3
+          CALL %(proc_prefix)sPW_MERGE_LOOP(DWL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &     MULTIPLIER,COLOR_ID,HELCONFIG,V3A(1,MU,HELCONFIG,PW_ILZ1),P2(0,1,1,MU))
+        ENDDO
+      ENDIF
+      IF (PW_ILZ1.EQ.1) THEN
+        CALL %(proc_prefix)sPW_MERGE_LOOP(DWL2,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &   MULTIPLIER,COLOR_ID,HELCONFIG,W2(1,HELCONFIG,PW_ILZ2),LOOPCOEFS)
+        DO MU=0,3
+          CALL %(proc_prefix)sPW_MERGE_LOOP(DWL2,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &     MULTIPLIER,COLOR_ID,HELCONFIG,V3B(1,MU,HELCONFIG,PW_ILZ2),P1(0,1,1,MU))
+        ENDDO
+      ENDIF
+      IF (PW_IDIR.NE.1) RETURN
+      CALL %(proc_prefix)sPW_MERGE_LOOP(WL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     & MULTIPLIER,COLOR_ID,HELCONFIG,WEFF(1,HELCONFIG),LOOPCOEFS)
+      CALL %(proc_prefix)sPW_MERGE_LOOP(WL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     & MULTIPLIER,COLOR_ID,HELCONFIG,XW(1,HELCONFIG),PX)
+      DO MU=0,3
+        CALL %(proc_prefix)sPW_MERGE_LOOP(WL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &   MULTIPLIER,COLOR_ID,HELCONFIG,VW1(1,MU,HELCONFIG),P1(0,1,1,MU))
+        CALL %(proc_prefix)sPW_MERGE_LOOP(WL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &   MULTIPLIER,COLOR_ID,HELCONFIG,VW2(1,MU,HELCONFIG),P2(0,1,1,MU))
+        DO NU=0,3
+          CALL %(proc_prefix)sPW_MERGE_LOOP(WL,RANK,LCUT_SIZE,LOOP_GROUP_NUMBER,SYMFACT,
+     &     MULTIPLIER,COLOR_ID,HELCONFIG,TW(1,MU,NU,HELCONFIG),PT(0,1,1,MU,NU))
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
+C     Two P-wave bound states: RES = RES + the propagator-derivative terms
+C     of the loop group, for the lines J with the derivatives dS_J1 =
+C     C1_J eps1 and dS_J2 = C2_J eps2 of their shifts (TIRust's shifts: S_1
+C     the sum of PL, S_J that of the first J-1):
+C     - line J doubled (rank RANK+1): the numerator
+C         -2 sum_mu g_mu (S_J-l)^mu [C1_J P1(l;mu) + C2_J P2(l;mu)]
+C         -2 C1_J C2_J PX(l)
+C     - line J tripled (rank RANK+2): 8 C1_J C2_J T_JJ,
+C     - lines J and JJ doubled, J /= JJ (rank RANK+2): 4 C1_J C2_JJ T_JJJ,
+C     T_JK = sum_mu,nu g_mu g_nu (S_J-l)^mu (S_K-l)^nu PT(l;mu,nu)
+C     (onia_loop.f header). PL and M2L are the lines and masses of the loop
+C     (TIR_interface.f), the derivatives of PL those of the last LOOP_n
+C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
+      USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      IMPLICIT NONE
+      INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      PARAMETER (NLOOPGROUPS=%(nloop_groups)d, NSQUAREDSO=%(nSquaredSO)d)
+      INTEGER I_SQSO, I_LOOPGROUP, CTMODE, NLOOPLINE, RANK
+      %(real_dp_format)s PL(0:3,NLOOPLINE)
+      %(complex_dp_format)s M2L(NLOOPLINE)
+      %(complex_dp_format)s RES(3)
+      LOGICAL STABLE
+      %(complex_dp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+      %(complex_dp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+      %(complex_dp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+      %(complex_dp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
+      COMMON/%(proc_prefix)sPW2_PCOEFS/P1,P2,PX,PT
+      %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
+      COMMON/%(proc_prefix)sPW_DPL/PW_DPL
+      %(complex_dp_format)s PW_DPL2(0:3,NEXTERNAL)
+      COMMON/%(proc_prefix)sPW_DPL2/PW_DPL2
+      INTEGER PW_IDIR, PW_ILZ1, PW_ILZ2
+      %(complex_dp_format)s PW_EPS1(0:3), PW_EPS2(0:3)
+      COMMON/%(proc_prefix)sPW2_DIR/PW_EPS1,PW_EPS2,PW_IDIR,PW_ILZ1,PW_ILZ2
+      %(real_dp_format)s SHIFT(0:3,NLOOPLINE), PLC(0:3,NLOOPLINE), PREFIX, G(0:3)
+      %(real_dp_format)s C1(NLOOPLINE), C2(NLOOPLINE), F
+      %(complex_dp_format)s DS1(0:3,NLOOPLINE), DS2(0:3,NLOOPLINE), DP1, DP2
+      %(complex_dp_format)s EE, EN1, EN2, PC
+      %(complex_dp_format)s M2LC(NLOOPLINE)
+      %(complex_dp_format)s QC(0:LOOPMAXCOEFS-1), TIRCOEFS(0:LOOPMAXCOEFS-1,3)
+      INTEGER POWERS(NLOOPLINE), I, J, JJ, K, MU, NU, NC, NC1, NC2, KK, S
+      LOGICAL OK
+      LOGICAL PW_REFUSED
+      COMMON/%(proc_prefix)sPW_REFUSED/PW_REFUSED
+      DATA G/1D0,-1D0,-1D0,-1D0/
+      IF (RANK+2.GT.%(maxrank)d) THEN
+        WRITE(*,*) 'ERROR:: two P-wave states: rank',RANK+2,'above the maximal rank'
+        STOP 1
+      ENDIF
+      NC=NCOEF_R(RANK)
+      NC1=NCOEF_R(RANK+1)
+      NC2=NCOEF_R(RANK+2)
+      IF (ALL(P1(0:NC-1,I_SQSO,I_LOOPGROUP,0:3).EQ.(0D0,0D0)).AND.
+     & ALL(P2(0:NC-1,I_SQSO,I_LOOPGROUP,0:3).EQ.(0D0,0D0)).AND.
+     & ALL(PX(0:NC-1,I_SQSO,I_LOOPGROUP).EQ.(0D0,0D0)).AND.
+     & ALL(PT(0:NC-1,I_SQSO,I_LOOPGROUP,0:3,0:3).EQ.(0D0,0D0))) RETURN
+      DO I=0,3
+        SHIFT(I,1)=0D0
+        DS1(I,1)=(0D0,0D0)
+        DS2(I,1)=(0D0,0D0)
+        DO J=1,NLOOPLINE
+          SHIFT(I,1)=SHIFT(I,1)+PL(I,J)
+          DS1(I,1)=DS1(I,1)+PW_DPL(I,J)
+          DS2(I,1)=DS2(I,1)+PW_DPL2(I,J)
+        ENDDO
+        PREFIX=0D0
+        DP1=(0D0,0D0)
+        DP2=(0D0,0D0)
+        DO J=2,NLOOPLINE
+          PREFIX=PREFIX+PL(I,J-1)
+          DP1=DP1+PW_DPL(I,J-1)
+          DP2=DP2+PW_DPL2(I,J-1)
+          SHIFT(I,J)=PREFIX
+          DS1(I,J)=DP1
+          DS2(I,J)=DP2
+        ENDDO
+      ENDDO
+      EN1=(0D0,0D0)
+      EN2=(0D0,0D0)
+      DO MU=0,3
+        EN1=EN1+G(MU)*PW_EPS1(MU)*DCONJG(PW_EPS1(MU))
+        EN2=EN2+G(MU)*PW_EPS2(MU)*DCONJG(PW_EPS2(MU))
+      ENDDO
+C     C1_J = dS_J1.eps1*/(eps1.eps1*), C2_J the same for the second state:
+C     integers, zero for J=1
+      DO J=1,NLOOPLINE
+        DO S=1,2
+          EE=(0D0,0D0)
+          DO MU=0,3
+            IF (S.EQ.1) THEN
+              EE=EE+G(MU)*DS1(MU,J)*DCONJG(PW_EPS1(MU))
+            ELSE
+              EE=EE+G(MU)*DS2(MU,J)*DCONJG(PW_EPS2(MU))
+            ENDIF
+          ENDDO
+          IF (S.EQ.1) THEN
+            EE=EE/EN1
+          ELSE
+            EE=EE/EN2
+          ENDIF
+          F=DBLE(EE)
+          IF (ABS(F).LT.0.5D0.AND.ABS(EE).LT.1D-8) THEN
+            F=0D0
+          ELSEIF (ABS(F-NINT(F)).GT.1D-8.OR.ABS(DIMAG(EE)).GT.1D-8.OR.J.EQ.1) THEN
+            WRITE(*,*) 'ERROR:: P-wave: unexpected derivative of a loop line',J,S,EE
+            STABLE=.FALSE.
+            RETURN
+          ELSE
+            F=DBLE(NINT(F))
+          ENDIF
+          IF (S.EQ.1) THEN
+            C1(J)=F
+          ELSE
+            C2(J)=F
+          ENDIF
+        ENDDO
+      ENDDO
+C     Line J doubled
+      DO J=1,NLOOPLINE
+        IF (C1(J).EQ.0D0.AND.C2(J).EQ.0D0) CYCLE
+        DO K=0,NC1-1
+          QC(K)=(0D0,0D0)
+        ENDDO
+        DO MU=0,3
+          DO K=0,NC-1
+            PC=C1(J)*P1(K,I_SQSO,I_LOOPGROUP,MU)+C2(J)*P2(K,I_SQSO,I_LOOPGROUP,MU)
+            IF (PC.EQ.(0D0,0D0)) CYCLE
+            QC(K)=QC(K)-2D0*G(MU)*SHIFT(MU,J)*PC
+            KK=COMB_COEF_POS(K,MU+1)
+            QC(KK)=QC(KK)+2D0*G(MU)*PC
+          ENDDO
+        ENDDO
+        IF (C1(J).NE.0D0.AND.C2(J).NE.0D0) THEN
+          DO K=0,NC-1
+            QC(K)=QC(K)-2D0*C1(J)*C2(J)*PX(K,I_SQSO,I_LOOPGROUP)
+          ENDDO
+        ENDIF
+        IF (ALL(QC(0:NC1-1).EQ.(0D0,0D0))) CYCLE
+        DO I=1,NLOOPLINE
+          POWERS(I)=1
+        ENDDO
+        POWERS(J)=2
+        PLC=PL
+        M2LC=M2L
+        CALL %(proc_prefix)sTIRUST_TENSOR_POWERS(CTMODE,NLOOPLINE,RANK+1,POWERS,PLC,M2LC,
+     &   TIRCOEFS,OK)
+        IF (.NOT.OK) THEN
+          STABLE=.FALSE.
+          PW_REFUSED=.TRUE.
+          RETURN
+        ENDIF
+        DO I=1,3
+          DO K=0,NC1-1
+            RES(I)=RES(I)+QC(K)*TIRCOEFS(K,I)
+          ENDDO
+        ENDDO
+      ENDDO
+C     Line J tripled (JJ=J) and lines J and JJ doubled (JJ /= J)
+      DO J=1,NLOOPLINE
+        IF (C1(J).EQ.0D0) CYCLE
+        DO JJ=1,NLOOPLINE
+          IF (C2(JJ).EQ.0D0) CYCLE
+          IF (J.EQ.JJ) THEN
+            F=8D0*C1(J)*C2(JJ)
+          ELSE
+            F=4D0*C1(J)*C2(JJ)
+          ENDIF
+          DO K=0,NC2-1
+            QC(K)=(0D0,0D0)
+          ENDDO
+          DO MU=0,3
+            DO NU=0,3
+              DO K=0,NC-1
+                PC=PT(K,I_SQSO,I_LOOPGROUP,MU,NU)
+                IF (PC.EQ.(0D0,0D0)) CYCLE
+                PC=F*G(MU)*G(NU)*PC
+C               (S_J-l)^mu (S_JJ-l)^nu
+                QC(K)=QC(K)+SHIFT(MU,J)*SHIFT(NU,JJ)*PC
+                KK=COMB_COEF_POS(K,MU+1)
+                QC(KK)=QC(KK)-SHIFT(NU,JJ)*PC
+                QC(COMB_COEF_POS(KK,NU+1))=QC(COMB_COEF_POS(KK,NU+1))+PC
+                KK=COMB_COEF_POS(K,NU+1)
+                QC(KK)=QC(KK)-SHIFT(MU,J)*PC
+              ENDDO
+            ENDDO
+          ENDDO
+          IF (ALL(QC(0:NC2-1).EQ.(0D0,0D0))) CYCLE
+          DO I=1,NLOOPLINE
+            POWERS(I)=1
+          ENDDO
+          IF (J.EQ.JJ) THEN
+            POWERS(J)=3
+          ELSE
+            POWERS(J)=2
+            POWERS(JJ)=2
+          ENDIF
+          PLC=PL
+          M2LC=M2L
+          CALL %(proc_prefix)sTIRUST_TENSOR_POWERS(CTMODE,NLOOPLINE,RANK+2,POWERS,PLC,M2LC,
+     &     TIRCOEFS,OK)
+          IF (.NOT.OK) THEN
+            STABLE=.FALSE.
+            PW_REFUSED=.TRUE.
+            RETURN
+          ENDIF
+          DO I=1,3
+            DO K=0,NC2-1
+              RES(I)=RES(I)+QC(K)*TIRCOEFS(K,I)
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+## }
 
 C ----------------------------------------------------------------------
 C  The P-wave bound state in quadruple precision (the routines above in
@@ -1700,6 +2443,12 @@ C     ONIA_PREPARE, without the Born matrix element)
       INTEGER H, T, K, I, O, Q1, Q2, ILZ, LZ, SZ, MU
       INCLUDE 'coupl.inc'
       INCLUDE 'ldme.inc'
+## if(OniaPwave2){
+      WRITE(*,*) 'ERROR:: two P-wave bound states: the quadruple-precision',
+     & ' evaluation is not available yet (set MLStabThres high and',
+     & ' CTModeRun to -1 or 1).'
+      STOP 1
+## }
       CALL %(proc_prefix)sPW_DUAL_INIT()
       CALL %(proc_prefix)sMP_ONIA_MASSES(CMASS)
       FACT=%(onia_mp_norm)s

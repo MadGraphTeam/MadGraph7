@@ -132,8 +132,8 @@ def onia_loop_info(matrix_element):
         if o['L'] == 1 and not abs(o['S'] - 1) <= o['J'] <= o['S'] + 1:
             raise OniaLoopError('Inconsistent P-wave bound state %s (S=%s, J=%s).'
                                 % (o['name'], o['S'], o['J']))
-    if len(pwave) > 1:
-        raise OniaLoopError('Processes with more than one P-wave bound state (%s) are '
+    if len(pwave) > 2:
+        raise OniaLoopError('Processes with more than two P-wave bound states (%s) are '
                             'not supported at one loop.'
                             % ', '.join(o['name'] for o in pwave))
 
@@ -169,13 +169,28 @@ def onia_loop_info(matrix_element):
     for o in onia:
         norm *= fractions.Fraction(1, 3) if o['C'] == 1 else fractions.Fraction(2)
 
-    # the P-wave bound state (one at most): its index (1-based) in onia, 0 if
-    # there is none
-    ipwave = onia.index(pwave[0]) + 1 if pwave else 0
+    # the P-wave bound states (two at most): their indices (1-based) in onia,
+    # in the order of their dual directions (component 2**(k-1) for the k-th);
+    # ipwave is the first one, 0 if there is none
+    ipwaves = [onia.index(o) + 1 for o in pwave]
+    ipwave = ipwaves[0] if ipwaves else 0
 
     return dict(nexternal=nexternal, ninitial=ninitial, nexternal_phys=nexternal_phys,
                 mapping=mapping, onia=onia, helc=helc, others=others,
-                nothers=len(signatures), jz=jz, norm=norm, ipwave=ipwave)
+                nothers=len(signatures), jz=jz, norm=norm, ipwave=ipwave,
+                ipwaves=ipwaves, npwave=len(ipwaves))
+
+
+def npwave(matrix_element):
+    """The number of P-wave bound states of the (loop) matrix element."""
+    if not has_onia(matrix_element):
+        return 0
+    seen = set()
+    for wf in matrix_element.get_external_wavefunctions():
+        onium = wf.get('onium')
+        if onium and onium.get('L', 0) >= 1:
+            seen.add(onium.get('index'))
+    return len(seen)
 
 
 def has_pwave(matrix_element):
@@ -576,7 +591,7 @@ _PW_CREATE = re.compile(r'^CALL (?P<pre>\w*?)CREATE_LOOP_COEFS'
                         r'\(WL\((?P<a>[^()]*)\),(?P<rest>[^()]*)\)$')
 
 
-def pwave_coef_construction_calls(calls):
+def pwave_coef_construction_calls(calls, npwave=1):
     """The double-precision coefficient construction of a P-wave output: the
     loop wavefunctions WL carry their derivative DWL in the relative
     momentum. The (dual) loop vertex routines are unchanged: their dual
@@ -584,15 +599,25 @@ def pwave_coef_construction_calls(calls):
        WL' = U(WL, C0),   DWL' = U(DWL, C0) + U(WL, C1),
     with the plain update routines U, and the closed loops are merged with
     the P-wave weights (PW_CREATE_LOOP_COEFS). calls are the statements
-    of get_coef_construction_calls, with the process prefix substituted."""
+    of get_coef_construction_calls, with the process prefix substituted.
+
+    Two P-wave bound states (npwave=2): the dual coefficients have the
+    components C0 (value), C1 and C2 (derivatives along the directions of
+    the first and of the second state) and C3 (the mixed derivative), and
+    the loop wavefunctions WL, DWL (d1), DWL2 (d2) and D2WL (d1 d2) follow
+    the Leibniz rule,
+       WL' = U(WL,C0),  DWL' = U(DWL,C0) + U(WL,C1),
+       DWL2' = U(DWL2,C0) + U(WL,C2),
+       D2WL' = U(D2WL,C0) + U(DWL,C2) + U(DWL2,C1) + U(WL,C3);
+    the closed loops are merged by PW_CREATE_LOOP_COEFS2."""
 
     result = []
     for entry in calls:
-        result.append('\n'.join(_pwave_coef_statements(entry.split('\n'))))
+        result.append('\n'.join(_pwave_coef_statements(entry.split('\n'), npwave)))
     return result
 
 
-def _pwave_coef_statements(statements):
+def _pwave_coef_statements(statements, npwave=1):
     """pwave_coef_construction_calls for the statements of one entry"""
     result = []
     for call in statements:
@@ -602,7 +627,26 @@ def _pwave_coef_statements(statements):
             continue
         update = _PW_UPDATE.match(text)
         create = _PW_CREATE.match(text)
-        if update:
+        if update and npwave == 2:
+            d = update.groupdict()
+            d['rout'] = int(d['r']) + int(d['v'])
+            u = 'CALL {pre}UPDATE_WL_{r}_{v}(%s({a}),{n},%s,{m},{k},%s)'
+            add = 'CALL {pre}PW_ADD_WL(TWL,{rout},{n},{k},%s({b}))'
+            result.append('\n'.join([
+                'CALL {pre}PW_SPLIT_COEFS2(COEFS,COEFS0,COEFS1,COEFS2,COEFS3)',
+                u % ('D2WL', 'COEFS0', 'D2WL({b})'),
+                u % ('DWL', 'COEFS2', 'TWL'), add % 'D2WL',
+                u % ('DWL2', 'COEFS1', 'TWL'), add % 'D2WL',
+                u % ('WL', 'COEFS3', 'TWL'), add % 'D2WL',
+                u % ('DWL', 'COEFS0', 'DWL({b})'),
+                u % ('WL', 'COEFS1', 'TWL'), add % 'DWL',
+                u % ('DWL2', 'COEFS0', 'DWL2({b})'),
+                u % ('WL', 'COEFS2', 'TWL'), add % 'DWL2',
+                u % ('WL', 'COEFS0', 'WL({b})')]).format(**d))
+        elif create and npwave == 2:
+            result.append('CALL {pre}PW_CREATE_LOOP_COEFS2(WL({a}),DWL({a}),DWL2({a}),'
+                          'D2WL({a}),{rest})'.format(**create.groupdict()))
+        elif update:
             d = update.groupdict()
             d['rout'] = int(d['r']) + int(d['v'])
             result.append('\n'.join([

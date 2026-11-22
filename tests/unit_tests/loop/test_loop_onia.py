@@ -134,13 +134,13 @@ class TestLoopOniaGeneration(unittest.TestCase):
         return mes.get_matrix_elements()[0]
 
     def test_refused_processes(self):
-        """Only [virt=QCD] with S-wave bound states and at most one P-wave
-        bound state is accepted."""
+        """Only [virt=QCD] with S-wave bound states and at most two P-wave
+        bound states is accepted."""
         refused = ['g g > etac(1|1S01) [QCD]',
                    'g g > etac(1|1S01) [real=QCD]',
                    'g g > etac(1|1S01) [sqrvirt=QCD]',
                    'g g > etac(1|1S01) [virt=QED]',
-                   'g g > chic0(1|3P01) chic2(1|3P21) [virt=QCD]']
+                   'e+ e- > chic0(1|3P01) chic2(1|3P21) hc(1|1P11) [virt=QCD]']
         for process in refused:
             self.assertRaises(madgraph.InvalidCmd, lambda p=process: self.cmd.exec_cmd(
                               'generate %s' % p, printcmd=False, errorhandling=False))
@@ -186,6 +186,18 @@ class TestLoopOniaGeneration(unittest.TestCase):
         self.assertEqual(info['jz'], [(-2,), (-1,), (0,), (1,), (2,)])
         self.assertFalse(loop_onia.has_pwave(
             self.matrix_element('g g > etac(1|1S01) [virt=QCD]')))
+
+    def test_two_pwave_projection_data(self):
+        """e+ e- > chic0 hc: two P-wave bound states, in the order of their dual
+        directions."""
+        me = self.matrix_element('e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]')
+        self.assertEqual(loop_onia.npwave(me), 2)
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual((info['npwave'], info['ipwaves'], info['ipwave']), (2, [1, 2], 1))
+        self.assertEqual([(o['L'], o['S'], o['J']) for o in info['onia']],
+                         [(1, 1, 0), (1, 0, 1)])
+        self.assertEqual(info['jz'], [(0, -1), (0, 0), (0, 1)])
+        self.assertEqual(loop_onia.npwave(self.matrix_element('g g > chic2(1|3P21) [virt=QCD]')), 1)
 
     def soft_current(self, process):
         import madgraph.loop.loop_exporters as loop_exporters
@@ -289,6 +301,28 @@ class TestPwaveCoefficientCalls(unittest.TestCase):
             'CALL ML5_0_PW_ADD_WL(TWL,1,4,4,DWL(1,0,1,1))'])
         self.assertEqual(out[2],
             'CALL ML5_0_PW_CREATE_LOOP_COEFS(WL(1,0,1,2),DWL(1,0,1,2),2,4,1,2,1,92,H)')
+
+    def test_two_pwave_calls(self):
+        """Two P-wave states: the Leibniz rule over the four components (WL,
+        DWL, DWL2, D2WL), nine updates per vertex."""
+        calls = ['CALL ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,1))',
+                 'CALL ML5_0_CREATE_LOOP_COEFS(WL(1,0,1,2),2,4,1,2,1,92,H)']
+        out = loop_onia.pwave_coef_construction_calls(calls, npwave=2)
+        u = 'CALL ML5_0_UPDATE_WL_0_1(%s(1,0,1,0),4,%s,4,4,%s)'
+        add = 'CALL ML5_0_PW_ADD_WL(TWL,1,4,4,%s(1,0,1,1))'
+        self.assertEqual(out[0].split('\n'), [
+            'CALL ML5_0_PW_SPLIT_COEFS2(COEFS,COEFS0,COEFS1,COEFS2,COEFS3)',
+            u % ('D2WL', 'COEFS0', 'D2WL(1,0,1,1)'),
+            u % ('DWL', 'COEFS2', 'TWL'), add % 'D2WL',
+            u % ('DWL2', 'COEFS1', 'TWL'), add % 'D2WL',
+            u % ('WL', 'COEFS3', 'TWL'), add % 'D2WL',
+            u % ('DWL', 'COEFS0', 'DWL(1,0,1,1)'),
+            u % ('WL', 'COEFS1', 'TWL'), add % 'DWL',
+            u % ('DWL2', 'COEFS0', 'DWL2(1,0,1,1)'),
+            u % ('WL', 'COEFS2', 'TWL'), add % 'DWL2',
+            u % ('WL', 'COEFS0', 'WL(1,0,1,1)')])
+        self.assertEqual(out[1], 'CALL ML5_0_PW_CREATE_LOOP_COEFS2(WL(1,0,1,2),DWL(1,0,1,2),'
+                                 'DWL2(1,0,1,2),D2WL(1,0,1,2),2,4,1,2,1,92,H)')
 
     def test_mp_calls(self):
         """The quadruple-precision calls: MP_ updaters, MPPW names."""

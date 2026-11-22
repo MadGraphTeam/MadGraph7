@@ -85,6 +85,11 @@ C     in the relative momentum, along the last direction (onia_loop.f)
       common/%(proc_prefix)sPW_DPL/PW_DPL
       %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
       common/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
+## if(OniaPwave2){
+C     and along the direction of the second P-wave state
+      %(complex_dp_format)s PW_DPL2(0:3,NEXTERNAL)
+      common/%(proc_prefix)sPW_DPL2/PW_DPL2
+## }
 ## } else {
       type(mp_aloha) MP_W(NWAVEFUNCS)
       common/%(proc_prefix)sMP_W/MP_W
@@ -128,6 +133,9 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
 ## if(OniaPwave){
           PW_DPL(I,J)=(0.0D0,0.0D0)
           MP_PW_DPL(I,J)=(0.0E0_16,0.0E0_16)
+## if(OniaPwave2){
+          PW_DPL2(I,J)=(0.0D0,0.0D0)
+## }
 ## }
 		  IF (DOING_QP) THEN
 		    MP_PL(I,J)=0.0e+0_16		    
@@ -137,6 +145,9 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
 C           the dual momenta: value (component 0) and derivative
             PL(I,J)=PL(I,J)-DBLE(PWW(WE(K))%P(I)%COMP(0))
             PW_DPL(I,J)=PW_DPL(I,J)-PWW(WE(K))%P(I)%COMP(1)
+## if(OniaPwave2){
+            PW_DPL2(I,J)=PW_DPL2(I,J)-PWW(WE(K))%P(I)%COMP(2)
+## }
 			IF (DOING_QP) THEN
 		      MP_PL(I,J)=MP_PL(I,J)-REAL(MPPWW(WE(K))%P(I)%COMP(0),KIND=16)
 		      MP_PW_DPL(I,J)=MP_PW_DPL(I,J)-MPPWW(WE(K))%P(I)%COMP(1)

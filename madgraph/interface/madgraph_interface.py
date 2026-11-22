@@ -7706,8 +7706,8 @@ This implies that with decay chains:
     def validate_loop_onia(self, legs, loop_option, perturbation_couplings):
         """Refuse the perturbed processes with bound states that MadLoop does
         not support: it computes the one-loop QCD virtual ([virt=QCD]) of
-        processes with S-wave bound states, and at most one P-wave bound
-        state, in the final state, as the interference with the Born of the
+        processes with S-wave bound states, and at most two P-wave bound
+        states, in the final state, as the interference with the Born of the
         projected amplitudes (colour, spin, orbital and total angular
         momentum projectors of arXiv:2510.26773, at zero relative momentum of
         the constituents)."""
@@ -7743,10 +7743,10 @@ This implies that with decay chains:
                     % onium.get('name'))
             if onium.get('L', 0) == 1:
                 pwave.add(onium.get('index'))
-                if len(pwave) > 1:
+                if len(pwave) > 2:
                     raise self.InvalidCmd(
-                        "The one-loop virtual of processes with more than one P-wave "
-                        "bound state is not supported (%s)." % onium.get('name'))
+                        "The one-loop virtual of processes with more than two P-wave "
+                        "bound states is not supported (%s)." % onium.get('name'))
             if leg.get('polarization'):
                 raise self.InvalidCmd(
                     "Polarised bound states (%s) are not supported at one loop."

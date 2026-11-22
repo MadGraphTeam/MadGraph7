@@ -476,6 +476,19 @@ C     polynomials PCOEFS of the propagator derivatives
 	  common/%(proc_prefix)sPW_DWL/DWL
 	  %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
 	  common/%(proc_prefix)sPW_PCOEFS/PCOEFS
+## if(OniaPwave2) {
+C     Two P-wave bound states: the derivatives DWL2 (second state) and D2WL
+C     (mixed) of the loop wavefunctions, and the polynomials of the
+C     propagator derivatives
+	  %(complex_dp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_dp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sPW_DWL2/DWL2,D2WL
+	  %(complex_dp_format)s PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_dp_format)s PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_dp_format)s PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+	  %(complex_dp_format)s PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
+	  common/%(proc_prefix)sPW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+## }
 ## }
 
 ## if(not AmplitudeReduction){
@@ -802,6 +815,12 @@ C The starting loop wavefunctions do not depend on the relative momentum
 	  DO K=1,MAXLWFSIZE
 	    DWL(I,J,K,-1)=(0.0d0,0.0d0)
 	    DWL(I,J,K,0)=(0.0d0,0.0d0)
+## if(OniaPwave2) {
+	    DWL2(I,J,K,-1)=(0.0d0,0.0d0)
+	    DWL2(I,J,K,0)=(0.0d0,0.0d0)
+	    D2WL(I,J,K,-1)=(0.0d0,0.0d0)
+	    D2WL(I,J,K,0)=(0.0d0,0.0d0)
+## }
 	  ENDDO
 	ENDDO
   ENDDO
@@ -1170,6 +1189,12 @@ ENDDO
 ## }
 ## if(OniaPwave) {
 PCOEFS=(0.0d0,0.0d0)
+## if(OniaPwave2) {
+PW2_P1=(0.0d0,0.0d0)
+PW2_P2=(0.0d0,0.0d0)
+PW2_PX=(0.0d0,0.0d0)
+PW2_PT=(0.0d0,0.0d0)
+## }
 ## }
 
 DO I=1,NLOOPGROUPS
@@ -1238,8 +1263,13 @@ C  A constituent helicity configuration without effective Born at this point
   ENDDO
 ## if(OniaPwave) {
 C  A P-wave bound state: the amplitudes and their derivatives along each
-C  direction eps(L_z) of the relative momentum (dual momenta PD)
+C  direction eps(L_z) of the relative momentum (dual momenta PD); with two
+C  P-wave states along each pair of directions
+## if(OniaPwave2) {
+  DO ONIA_ILZ=1,9
+## } else {
   DO ONIA_ILZ=1,3
+## }
   IF (.NOT.%(proc_prefix)sONIA_PW_DIRECTION(P,H,ONIA_ILZ,PWPD)) CYCLE
 ## }
   
@@ -1290,8 +1320,13 @@ c FeynRules, there are none of these type of counterterms.
   UVCT_REQ_SO_DONE=.TRUE.
 ## if(OniaPwave) {
 C The P-wave bound state: the counterterm amplitudes (pass 1: derivative,
-C pass 2: value) with their effective Born
+C pass 2: value) with their effective Born; with two P-wave states the
+C four components of each pair of directions
+## if(OniaPwave2) {
+  DO ONIA_PASS=1,4
+## } else {
   DO ONIA_PASS=1,2
+## }
   IF (.NOT.%(proc_prefix)sONIA_PW_CT_INPUT(H,ONIA_PASS,AMP,AMPL)) CYCLE
 ## } else {
 ## if(Onia) {
