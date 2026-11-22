@@ -44,9 +44,9 @@ C      common /pborn/   p_born
       common /cxiScut_used/xiScut_used,xiBSVcut_used
       double precision g22
       integer get_orders_tag
-      call cpu_time(tBefore)
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
+      if(timing_sampled)call timing_enter(timing_born)
       do iamp=1, amp_split_size
         if (ret_amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
@@ -72,8 +72,7 @@ c     photon-photon initial state
         call add_wgt_buffered(2,orders,wgt1,0d0,0d0,wgt_c,0d0)
       enddo
 
-      call cpu_time(tAfter)
-      tBorn=tBorn+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_born)
       return
       end
 
@@ -134,9 +133,9 @@ C      common /pborn/   p_born
 
       if (.not.has_ewsudakov) return
 
-      call cpu_time(tBefore)
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
+      if(timing_sampled)call timing_enter(timing_ewsudakov)
 
       if (cpower_pos.gt.0) then
           write(*,*)'Error, cannot compute EW sudakov with Cpower >0'
@@ -199,8 +198,7 @@ C      common /pborn/   p_born
         endif
        enddo
       enddo
-      call cpu_time(tAfter)
-      t_ewsud=t_ewsud+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_ewsudakov)
       return
       end
 
@@ -524,9 +522,9 @@ c value to the list of weights using the add_wgt_buffered subroutine
       character*4      abrv
       common /to_abrv/ abrv
       integer iamp_test
-      call cpu_time(tBefore)
       if (f_nb.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
+      if(timing_sampled)call timing_enter(timing_fks_integrated)
    !    call bornsoftvirtual_buffered(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt
    !   $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
    !   $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur)
@@ -626,8 +624,7 @@ C wrt the hard matrix element. Relevant for lepton collisions.
         call add_wgt_buffered(3,orders,wgtal1,wgtal2,wgtal3,wgt_born,0d0)
       enddo
 
-      call cpu_time(tAfter)
-      tIS=tIS+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_fks_integrated)
       return
       end
 
@@ -662,10 +659,10 @@ c its value to the list of weights using the add_wgt_buffered subroutine
       double precision     f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
       integer get_orders_tag
-      call cpu_time(tBefore)
       if (f_r.eq.0d0) return
       s_ev = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
       if (s_ev.le.0.d0) return
+      if(timing_sampled)call timing_enter(timing_real)
 C      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,ret_amp_split)
       do iamp=1, amp_split_size
         if (ret_amp_split(iamp).eq.0d0) cycle
@@ -690,8 +687,7 @@ c from Sudakov damping, whose complement uses n-body kinematics.
           call add_wgt_buffered(11,orders,wgt1*(1d0-sudakov_damp),0d0,0d0,0d0,fx_ev)
         endif
       enddo
-      call cpu_time(tAfter)
-      tReal=tReal+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_real)
       return
       end
 
@@ -734,12 +730,12 @@ c the list of weights using the add_wgt_buffered subroutine
       common/factor_n1body_NLOPS/f_s_MC_S,f_s_MC_H,f_c_MC_S,f_c_MC_H
      $     ,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
       integer get_orders_tag
-      call cpu_time(tBefore)
       if (f_s.eq.0d0 .and. f_s_MC_S.eq.0d0 .and. f_s_MC_H.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0).gt.xiScut_used .and. replace_MC_subt.eq.0d0)
      $     return
       s_s = fks_Sij(p1_cnt(0,1,0),i_fks,j_fks,zero,y_ij_fks_ev)
       if (s_s.le.0d0) return
+      if(timing_sampled)call timing_enter(timing_fks_local)
 C      call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,ret_amp_split)
 
       do iamp=1, amp_split_size
@@ -764,8 +760,7 @@ C      call sreal(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,ret_amp_split)
         if (wgt1.ne.0d0) call add_wgt_buffered(4,orders,wgt1,0d0,0d0,0d0,fx_s)
       enddo
 
-      call cpu_time(tAfter)
-      tCount=tCount+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_fks_local)
       return
       end
 
@@ -824,7 +819,6 @@ c to the list of weights using the add_wgt_buffered subroutine
      $     ,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
       double precision pmass(nexternal)
       integer get_orders_tag
-      call cpu_time(tBefore)
       include 'pmass.inc'
       if (f_c.eq.0d0 .and. f_dc.eq.0d0 .and. f_c_MC_S.eq.0d0 .and.
      $     f_c_MC_H.eq.0d0)return
@@ -832,6 +826,7 @@ c to the list of weights using the add_wgt_buffered subroutine
      $     pmass(j_fks).ne.0.d0 ) return
       s_c = fks_Sij(p1_cnt(0,1,1),i_fks,j_fks,xi_i_fks_cnt(1),one)
       if (s_c.le.0d0) return
+      if(timing_sampled)call timing_enter(timing_fks_local)
       ! sreal_deg_buffered should be called **BEFORE** sreal 
       ! in order not to overwrtie the amp_split array
 C      call sreal_deg_buffered(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,deg_xi_c
@@ -873,8 +868,7 @@ C      call sreal(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,ret_amp_split)
         if (wgt1.ne.0d0 .or. wgt3.ne.0d0) call add_wgt_buffered(5,orders,wgt1,0d0,wgt3,0d0,fx_c)
       enddo
 
-      call cpu_time(tAfter)
-      tCount=tCount+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_fks_local)
       return
       end
 
@@ -942,7 +936,6 @@ c value to the list of weights using the add_wgt_buffered subroutine
       double precision pmass(nexternal)
       integer get_orders_tag
       include 'pmass.inc'
-      call cpu_time(tBefore)
       if (f_sc.eq.0d0 .and. f_dsc(1).eq.0d0 .and. f_dsc(2).eq.0d0 .and.
      $     f_dsc(3).eq.0d0 .and. f_dsc(4).eq.0d0 .and. f_sc_MC_S.eq.0d0
      $     .and. f_sc_MC_H.eq.0d0) return
@@ -951,6 +944,7 @@ c value to the list of weights using the add_wgt_buffered subroutine
      $     pmass(j_fks).ne.0.d0 ) return
       s_sc = fks_Sij(p1_cnt(0,1,2),i_fks,j_fks,zero,one)
       if (s_sc.le.0d0) return
+      if(timing_sampled)call timing_enter(timing_fks_local)
       ! sreal_deg_buffered should be called **BEFORE** sreal 
       ! in order not to overwrtie the amp_split array
 C      call sreal_deg_buffered(p1_cnt(0,1,2),zero,one, deg_xi_sc,deg_lxi_sc)
@@ -996,8 +990,7 @@ C      call sreal(p1_cnt(0,1,2),zero,one,fx_sc,ret_amp_split)
         if (wgt1.ne.0d0 .or. wgt3.ne.0d0) call add_wgt_buffered(6,orders,wgt1,0d0,wgt3,0d0,fx_sc)
       enddo
 
-      call cpu_time(tAfter)
-      tCount=tCount+(tAfter-tBefore)
+      if(timing_sampled)call timing_leave(timing_fks_local)
       return
       end
 
@@ -1065,7 +1058,6 @@ C      common/to_amps/  amp2,          jamp2
       logical use_evpr
       common /to_use_evpr/use_evpr
 
-      call cpu_time(tBefore)
 
 c Compute the multi-channel enhancement factor 'enhance'.
       enhance=1.d0
@@ -1186,8 +1178,6 @@ c Compute the multi-channel enhancement factor 'enhance_real'.
          f_pdfsch_p=  f_pdfsch_p  *enhance
          f_pdfsch_l=  f_pdfsch_l  *enhance
       endif
-      call cpu_time(tAfter)
-      tf_nb=tf_nb+(tAfter-tBefore)
 
       return
       end
@@ -1640,7 +1630,7 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       if (fold.eq.0) then
          if ((ran2().le.virtual_fraction(ichan) .and.
      $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
-            call cpu_time(tBefore)
+            if(timing_sampled)call timing_enter(timing_virtual)
             Call binothlha_amp_frame(p_born,born_wgt,virt_wgt,
      $           ret_amp_split,ret_saveamp,amp_split_finite_ML,
      $           ret_amp_split_cnt)
@@ -1672,8 +1662,7 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
      &                 /virtual_fraction(ichan)
                enddo
             endif
-            call cpu_time(tAfter)
-            tOLP=tOLP+(tAfter-tBefore)
+            if(timing_sampled)call timing_leave(timing_virtual)
          endif
          virt_cache(0)=virt_wgt
          virt_cache(1:amp_split_size)=

@@ -2017,6 +2017,9 @@ contains
     double precision, dimension(ndimmax) :: x
     double precision, external :: fun
     integer :: ivec, vector_size
+    ! Sample one vector page as compute_integrand samples one point, so the
+    ! category timings of batched fixed-order runs are filled too.
+    call timing_begin_point()
     ! contribution to integral
     ifirst=0
     vector_size = driver_active_size
@@ -2054,6 +2057,7 @@ contains
        dummy=fun(2)
        f(1:nintegrals)=f_vec(1:nintegrals,1)
     endif
+    call timing_end_point()
   end subroutine compute_integrand_vec
   subroutine get_mint_wgt(x,vol)
     ! Given a random point x, compute the corresponding wgt from the
