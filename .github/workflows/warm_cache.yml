@@ -785,6 +785,15 @@ jobs:
           key: pythia8-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
+      # The check below requires the two NLO PDF sets, which only the lhapdf
+      # job unpacks. If that cache was evicted (repo over its 10 GB quota), the
+      # restored pythia8 tree lacks them: fetch them back before checking.
+      - name: Ensure the NLO PDF sets are present
+        run: |
+          bash ./.github/actions/restore_heptools_lhapdf/fetch_pdfsets.sh \
+            "$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF" \
+            cteq6l1 NNPDF23_nlo_as_0118_qed
+
       - name: Verify the core tree before saving it
         uses: ./.github/actions/check_heptools
         with:
