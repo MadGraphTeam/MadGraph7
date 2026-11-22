@@ -38,7 +38,7 @@ The scripts:
 | `tail.py` | The points of a stability profile above a given estimate, in DP with several builds and in QP. |
 | `hybrid.py`, `hybrid_run.py` | QP MadLoop with TIRust's DP integrals (`ONIA_DBG_DPTIR`). |
 | `ep_retarget.py` | Phase 1 prototype of the 80-bit mode: retargets the QP path of an output copy to kind 10, with TIRust's DP entry. |
-| `lowwords.py`, `lowwords_run.py` | The low-word tests: TIRust's raised-power `RAW + RAW_LO` summed in extended precision, in QP MadLoop (hybrid) and in the 80-bit copy; the route split. |
+| `lowwords.py`, `lowwords_run.py`, `lowwords_cost.py` | The low-word tests: TIRust's raised-power `RAW + RAW_LO` summed in extended precision and the extended-input entry (`--ext`), in QP MadLoop (hybrid) and in the 80-bit copy; the route split; the paired cost of the 80-bit modes. |
 | `qsubst.py`, `qsubst_run.py` | DP MadLoop with the doubled-line integrals at full QP precision, contracted in QP (`ONIA_DBG_QDUMP`, `ONIA_DBG_QSUBST`, `ONIA_DBG_QMODE`). |
 
 The results are in `data/`.
@@ -223,6 +223,30 @@ Scratch build `$SP/pw59` (`pwave_fd/build.sh` with `FOLLOWUP=0001-followup-pwave
 - **Consequence:**
   - g g → χ_c0 g passes the gate (< 10⁻⁶ everywhere) at 5.7× DP;
   - u ū → χ_c0 g needs the input low words as well: shifts and invariants in extended precision from MadLoop, consumed by TIRust's double-double tier. With 80-bit inputs, 11 more bits should take its 10⁻⁵ to about 10⁻⁸.
+
+### With extended inputs (the 80-bit gate)
+
+TIRust's next candidate takes the integral inputs as hi + lo words: TIRust d17085a (local branch `hs/pwave-low-words`, a8937ea plus one commit), with the bridge patch `madloop-tirust-gate-relation-tiers-low-words-extended-inputs.patch` and the scratch build `$SP/pw61`. Its entry `tirust_tensor_evaluate_powers_ext` adds:
+- `shifts_lo` and `invariants_lo`;
+- `input_bits`, the precision that hi + lo carries.
+
+A call with nonzero low words always goes to the precision tiers. `lowwords.py --ext` adds `ML5_0_TIRUST_TENSOR_POWERS_EXT`, a copy of the binary128 raised-power routine that forms the shifts and invariants in its own precision (kind 10 in the 80-bit copy) and passes them split. The data are in `data/extinputs_*_d17085a.json`.
+
+| 24 points, 1 TeV: largest / median | u ū → χ_c0 g | g g → χ_c0 g |
+|---|---|---|
+| DP production | 2.7·10⁻⁵ / 3.7·10⁻⁶ | 4.2·10⁻⁶ / 1.3·10⁻⁶ |
+| QP MadLoop, extended raised-power inputs (106 bits) | 0 / 0 (identical to QP) | 1.6·10⁻¹² / 0 |
+| … with binary64 unit-power integrals | 6.4·10⁻⁶ / 1.3·10⁻⁶ | 3.5·10⁻⁷ / 6.3·10⁻⁸ |
+| … with the unit powers on extended inputs too | 5.5·10⁻¹¹ / 1.3·10⁻¹¹ | 6.3·10⁻¹² / 1.9·10⁻¹² |
+| 80-bit, `RAW + RAW_LO` | 5.5·10⁻⁶ / 4.3·10⁻⁷ | 4.8·10⁻⁷ / 3.7·10⁻⁸ |
+| 80-bit, extended raised-power inputs (64 bits) | 6.4·10⁻⁶ / 1.3·10⁻⁶ | 3.5·10⁻⁷ / 6.3·10⁻⁸ |
+| **80-bit, every TIRust call on extended inputs** | **2.2·10⁻⁸ / 4.1·10⁻⁹** | **2.2·10⁻⁹ / 6.0·10⁻¹⁰** |
+
+- **Extended inputs for the raised powers alone change nothing in the 80-bit copy.** The QP hybrid shows why: with the unit-power integrals in binary64 from rounded inputs, as the 80-bit copy takes them, it gives the same numbers to the digit. The binary64 rounding of the unit-power inputs is the next floor, and MadLoop's 80-bit arithmetic stays below it.
+- **TIRust already serves unit powers through the extended entry** (powers all 1): every call goes to the double-double tier. The result is rounded to binary64, since unit-power workspaces keep no low words, and that is enough: 5.5·10⁻¹¹ in the QP hybrid. In the 80-bit copy, `ONIA_EP_LOWWORDS=3` sends every call there.
+- **The gate is passed.** With every call on extended inputs (64 bits), no point is at 10⁻⁶ or above; u ū has 3 of 24 at 10⁻⁸ or above, g g none.
+- **No refusals:** over the 24 points every call took route 2 (u ū: 1080 raised-power, 1896 unit-power calls; g g: 4392 and 7176); every return code is 120.
+- **Cost** (`lowwords_cost.py`, four alternating pairs of 24-point batches, median time per point): every call on extended inputs is +3% against `RAW + RAW_LO` for u ū (0.543 vs 0.522 s) and +0% for g g (5.44 vs 5.45 s). Raised powers alone: +1% and −0.4%. The 80-bit mode as a whole stays at 7.6× (u ū) and 6.0× (g g) DP.
 
 ## Reproducer for TIRust
 

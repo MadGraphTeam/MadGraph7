@@ -20,15 +20,29 @@ EmbedderOptions::low_words and the bridge entry tirust_tensor_evaluate_powers_dd
   The two split the error of =1 into that of the tier-served calls (their
   inputs' rounding and the tier's precision) and that of the binary64
   calls;
-- ONIA_DBG_ROUTES=FILE: one line per call of the new entry (lines, rank,
+- ONIA_DBG_UNIT=1 in the quadruple-precision run: the unit-power calls take
+  TIRust's binary64 entry with the loop momenta rounded to double, as they
+  do in the 80-bit copy of ep_retarget.py; with --ext, ONIA_DBG_UNIT=2
+  sends them through ML5_0_TIRUST_TENSOR_POWERS_EXT instead (unit powers,
+  INPUT_BITS = 106);
+- ONIA_DBG_ROUTES=FILE: one line per call of the new entries (lines, rank,
   powers, TIRust route: 0 binary64, 2 double-double, 3 256 bits, 4 512 bits,
   5 none).
+With --ext (TIRust with extended inputs, tirust_tensor_evaluate_powers_ext):
+- adds ML5_0_TIRUST_TENSOR_POWERS_EXT(CTMODE,N,RANK,POWERS,PL,M2L,TIRCOEFS,
+  STABLE,INPUT_BITS): a copy of the binary128 raised-power routine whose
+  shifts and invariants, formed in its own precision (kind 10 after
+  ep_retarget.py), go to TIRust as hi + lo words; RAW + RAW_LO summed in
+  that precision;
+- ONIA_DBG_LW=5: the calls with raised powers take it with INPUT_BITS = 106
+  (the binary128 values split into two doubles).
 
-    lowwords.py SUBPROCESS_DIR      (then rebuild ml_points_driver)"""
+    lowwords.py SUBPROCESS_DIR [--ext]      (then rebuild ml_points_driver)"""
 import os
 import re
 import sys
 
+ext = '--ext' in sys.argv[2:]
 path = os.path.join(sys.argv[1], 'TIRUST_interface.f')
 src = open(path).read()
 if 'ML5_0_TIRUST_TENSOR_POWERS_XP' in src:
@@ -87,6 +101,48 @@ xp = body.replace(init, init + '      LWROUTE=5\n')
 # the hybrid hook in the binary128 raised-power routine
 s2, e2 = routine(src, 'ML5_0_MP_TIRUST_TENSOR_POWERS')
 mp = src[s2:e2]
+
+# the extended-input entry: a copy of the binary128 routine
+xe = mp
+
+
+def esub(old, new):
+    global xe
+    assert xe.count(old) == 1, old
+    xe = xe.replace(old, new)
+
+
+esub('''      SUBROUTINE ML5_0_MP_TIRUST_TENSOR_POWERS(CTMODE,NLOOPLINE,RANK
+     $ ,POWERS,PL,M2L,TIRCOEFS,STABLE)''', '''      SUBROUTINE ML5_0_TIRUST_TENSOR_POWERS_EXT(CTMODE,NLOOPLINE,RANK
+     $ ,POWERS,PL,M2L,TIRCOEFS,STABLE,INPUT_BITS)
+C     lowwords.py --ext: the shifts and invariants of this precision as
+C     hi + lo words to tirust_tensor_evaluate_powers_ext''')
+esub('''      COMPLEX*32 RAW(LOOPMAXCOEFS,4)
+''', '''      COMPLEX*32 RAW(LOOPMAXCOEFS,4)
+      INTEGER INPUT_BITS,ROUTE,LWROUTE
+      COMMON/ONIA_LW_LAST/LWROUTE
+      REAL*8 SH_HI(0:3,NLOOPLINE),SH_LO(0:3,NLOOPLINE)
+      REAL*8 IN_HI(NLOOPLINE,NLOOPLINE),IN_LO(NLOOPLINE,NLOOPLINE)
+      REAL*8 DSCALE
+      COMPLEX*16 DMASSES(NLOOPLINE)
+      COMPLEX*16 RAW_HI(LOOPMAXCOEFS,4),RAW_LO(LOOPMAXCOEFS,4)
+''')
+esub(init, init + '      LWROUTE=5\n')
+esub(call, '''      SH_HI=REAL(SHIFTS,KIND=8)
+      SH_LO=REAL(SHIFTS-REAL(SH_HI,KIND=KI_QTIR),KIND=8)
+      IN_HI=REAL(INVARIANTS,KIND=8)
+      IN_LO=REAL(INVARIANTS-REAL(IN_HI,KIND=KI_QTIR),KIND=8)
+      DMASSES=CMPLX(MASSES,KIND=8)
+      DSCALE=MU_R**2
+      CALL TIRUST_TENSOR_EVALUATE_POWERS_EXT(NLOOPLINE,RANK,POW,SH_HI
+     $ ,SH_LO,IN_HI,IN_LO,INPUT_BITS,DMASSES,DSCALE,RAW_HI(1:NC,1:4)
+     $ ,RAW_LO(1:NC,1:4),ROUTE,STATUS,MAX(0,LOOPPOLEMODE)
+     $ ,TIRUSTCOMPUTEFINITE,CHECK_PASS,CACHE_ENABLED)
+      CALL ONIA_DBG_ROUTE(NLOOPLINE,RANK,POW,ROUTE)
+      LWROUTE=ROUTE
+      RAW(1:NC,1:4)=CMPLX(RAW_HI(1:NC,1:4),KIND=KI_QTIR)
+     $ +CMPLX(RAW_LO(1:NC,1:4),KIND=KI_QTIR)
+''')
 decl = '      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS\n'
 assert mp.count(decl) == 1
 mp = mp.replace(decl, '''      REAL*8 ONIA_LWPL(0:3,NLOOPLINE)
@@ -119,11 +175,42 @@ mp = mp.replace(hook, hook + '''      CALL GET_ENVIRONMENT_VARIABLE('ONIA_DBG_LW
         IF(LWKEEP) RETURN
         STABLE=.FALSE.
         TIRCOEFS=0
-      ENDIF
+''' + ('''      ELSEIF(ONIA_LWENV(1:1).EQ.'5') THEN
+        CALL ML5_0_TIRUST_TENSOR_POWERS_EXT(CTMODE,NLOOPLINE,RANK,POWERS
+     $   ,PL,M2L,TIRCOEFS,STABLE,106)
+        RETURN
+''' if ext else '') + '''      ENDIF
 ''')
 src = src[:s2] + mp + src[e2:]
+
+# ONIA_DBG_UNIT=1: the unit-power calls of the binary128 run take TIRust's
+# binary64 entry with the loop momenta rounded to double, as in the 80-bit copy
+s3, e3 = routine(src, 'ML5_0_MP_TIRUST_TENSOR_DIAGNOSTIC')
+dg = src[s3:e3]
+assert dg.count(decl) == 1 and dg.count(hook) == 1
+dg = dg.replace(decl, '''      REAL*8 ONIA_UPL(0:3,NLOOPLINE)
+      COMPLEX*16 ONIA_UC(0:LOOPMAXCOEFS-1,3)
+      CHARACTER*8 ONIA_UENV
+      INTEGER ONIA_UPOW(NLOOPLINE)
+''' + decl)
+dg = dg.replace(hook, hook + '''      CALL GET_ENVIRONMENT_VARIABLE('ONIA_DBG_UNIT',ONIA_UENV)
+''' + ('''      IF(ONIA_UENV(1:1).EQ.'2') THEN
+        ONIA_UPOW=1
+        CALL ML5_0_TIRUST_TENSOR_POWERS_EXT(CTMODE,NLOOPLINE,RANK
+     $   ,ONIA_UPOW,PL,M2L,TIRCOEFS,STABLE,106)
+        RETURN
+      ENDIF
+''' if ext else '') + '''      IF(LEN_TRIM(ONIA_UENV).GT.0) THEN
+        ONIA_UPL=REAL(PL,KIND=8)
+        CALL ML5_0_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK
+     $   ,ONIA_UPL,M2L,ONIA_UC,STABLE)
+        TIRCOEFS=ONIA_UC
+        RETURN
+      ENDIF
+''')
+src = src[:s3] + dg + src[e3:]
 s, e = routine(src, 'ML5_0_TIRUST_TENSOR_POWERS')
-src = src[:e] + '\n' + xp + src[e:] + '''
+src = src[:e] + '\n' + xp + ('\n' + xe if ext else '') + src[e:] + '''
       SUBROUTINE ONIA_DBG_ROUTE(N,RANK,POW,ROUTE)
 C     lowwords.py: the TIRust route of each raised-power call
       IMPLICIT NONE

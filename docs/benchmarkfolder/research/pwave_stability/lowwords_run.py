@@ -6,9 +6,15 @@ estim.py run, against its plain quadruple precision:
   inputs (ONIA_DBG_LW=2; not usable, binary128 refuses them);
 - lw3, lw4: the split of lw1 (ONIA_DBG_LW=3: only the tier-served calls
   take RAW + RAW_LO; =4: only the binary64-served calls take RAW);
-- ep_hi, ep_lw: 80-bit MadLoop with RAW, and with RAW + RAW_LO
-  (ONIA_EP_LOWWORDS=1);
-- routes: the TIRust route of every raised-power call at the first point.
+- lw5: QP MadLoop, extended inputs (lowwords.py --ext, ONIA_DBG_LW=5);
+  lw5u: the same with the unit-power integrals from TIRust's binary64 entry
+  (ONIA_DBG_UNIT=1, as in the 80-bit copy); lw5x: with the unit powers
+  through the extended entry, 106-bit inputs (ONIA_DBG_UNIT=2);
+- ep_hi, ep_lw, ep_ext, ep_all: 80-bit MadLoop with RAW, with RAW + RAW_LO
+  (ONIA_EP_LOWWORDS=1), with extended inputs (=2) and with the unit-power
+  calls on extended inputs too (=3);
+- routes, routes_ext: the TIRust route of every raised-power call at the
+  first point.
 
     lowwords_run.py QP_OUTDIR EP_OUTDIR ESTIM.json OUT.json NWORKERS [KEY ...]
 
@@ -67,7 +73,12 @@ if 'qp_check' in keys:
     out['qp_check'] = [r['finite_norm'] for r in run(qpdir, {}, pts[:3])]
 for key, outdir, env in (('lw1', qpdir, {'ONIA_DBG_LW': '1'}), ('lw2', qpdir, {'ONIA_DBG_LW': '2'}),
                          ('lw3', qpdir, {'ONIA_DBG_LW': '3'}), ('lw4', qpdir, {'ONIA_DBG_LW': '4'}),
-                         ('ep_hi', epdir, {}), ('ep_lw', epdir, {'ONIA_EP_LOWWORDS': '1'})):
+                         ('lw5', qpdir, {'ONIA_DBG_LW': '5'}),
+                         ('lw5u', qpdir, {'ONIA_DBG_LW': '5', 'ONIA_DBG_UNIT': '1'}),
+                         ('lw5x', qpdir, {'ONIA_DBG_LW': '5', 'ONIA_DBG_UNIT': '2'}),
+                         ('ep_hi', epdir, {}), ('ep_lw', epdir, {'ONIA_EP_LOWWORDS': '1'}),
+                         ('ep_ext', epdir, {'ONIA_EP_LOWWORDS': '2'}),
+                         ('ep_all', epdir, {'ONIA_EP_LOWWORDS': '3'})):
     if key not in keys:
         continue
     res = run(outdir, env)
@@ -77,6 +88,9 @@ for key, outdir, env in (('lw1', qpdir, {'ONIA_DBG_LW': '1'}), ('lw2', qpdir, {'
 if 'routes' in keys:
     out['routes_lw1'] = routes(qpdir, {'ONIA_DBG_LW': '1'})
     out['routes_ep_lw'] = routes(epdir, {'ONIA_EP_LOWWORDS': '1'})
+if 'routes_ext' in keys:
+    out['routes_lw5'] = routes(qpdir, {'ONIA_DBG_LW': '5'})
+    out['routes_ep_ext'] = routes(epdir, {'ONIA_EP_LOWWORDS': '2'})
 json.dump(out, open(outjson, 'w'))
 
 rel = lambda k: [abs(x - q) / abs(q) for x, q in zip(out[k], out['qp'])]
@@ -87,8 +101,13 @@ names = (('ct1', 'DP production'),
          ('lw1', 'QP MadLoop, RAW + RAW_LO'),
          ('lw3', 'QP MadLoop, RAW + RAW_LO of tier-served calls only'),
          ('lw4', 'QP MadLoop, RAW of binary64-served calls only'),
+         ('lw5', 'QP MadLoop, extended inputs (106 bits)'),
+         ('lw5u', '... with binary64 unit-power integrals'),
+         ('lw5x', '... with unit powers through the extended entry'),
          ('ep_hi', '80-bit MadLoop, RAW'),
-         ('ep_lw', '80-bit MadLoop, RAW + RAW_LO'))
+         ('ep_lw', '80-bit MadLoop, RAW + RAW_LO'),
+         ('ep_ext', '80-bit MadLoop, extended inputs (64 bits)'),
+         ('ep_all', '80-bit MadLoop, extended inputs, unit powers too'))
 for k, name in names:
     if k not in out:
         continue
@@ -96,9 +115,9 @@ for k, name in names:
     t = ('  %.3f s/pt' % statistics.mean(out[k + '_time'])) if k + '_time' in out else ''
     c = ('  codes %s' % out[k + '_codes']) if k + '_codes' in out else ''
     print('%-52s largest %.1e  median %.1e%s%s' % (name, max(e), statistics.median(e), t, c))
-if 'routes_lw1' in out:
-    print('routes at point 0 (QP MadLoop):', out['routes_lw1'])
-    print('routes at point 0 (80-bit):    ', out['routes_ep_lw'])
+for k in ('routes_lw1', 'routes_ep_lw', 'routes_lw5', 'routes_ep_ext'):
+    if k in out:
+        print('routes at point 0 (%s):' % k[7:], out[k])
 cols = [k for k, _ in names if k in out]
 for i in range(len(pts)):
     print('p%-3d ' % i + '  '.join('%s %.1e' % (k, rel(k)[i]) for k in cols))

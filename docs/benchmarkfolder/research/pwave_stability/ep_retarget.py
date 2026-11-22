@@ -16,6 +16,10 @@ precision entry in place of its binary128 one.
   If lowwords.py was applied first (TIRust with low words), the raised-
   power wrapper takes ML5_0_TIRUST_TENSOR_POWERS_XP (RAW + RAW_LO, summed
   in kind 10) when ONIA_EP_LOWWORDS is set at run time, else RAW only.
+  After lowwords.py --ext, ONIA_EP_LOWWORDS=2 takes
+  ML5_0_TIRUST_TENSOR_POWERS_EXT instead: shifts and invariants formed in
+  kind 10, passed as hi + lo words with INPUT_BITS = 64; =3 sends the
+  unit-power calls through it as well (powers all 1).
 
 Prototype only: the generator support comes in Phase 2."""
 import glob
@@ -77,7 +81,16 @@ C     ep_retarget.py: the double-precision TIRust entry, widened
       LOGICAL STABLE
       REAL*8 DPL(0:3,NLOOPLINE)
       COMPLEX*16 DC(0:LOOPMAXCOEFS-1,3)
-      DPL=REAL(PL,KIND=8)
+''' + ('''      CHARACTER*8 LWENV
+      INTEGER UPOW(NLOOPLINE)
+      CALL GET_ENVIRONMENT_VARIABLE('ONIA_EP_LOWWORDS',LWENV)
+      IF(LWENV(1:1).EQ.'3') THEN
+        UPOW=1
+        CALL ML5_0_TIRUST_TENSOR_POWERS_EXT(CTMODE,NLOOPLINE,RANK,UPOW
+     $   ,PL,M2L,TIRCOEFS,STABLE,64)
+        RETURN
+      ENDIF
+''' if 'ML5_0_TIRUST_TENSOR_POWERS_EXT' in src else '') + '''      DPL=REAL(PL,KIND=8)
       CALL ML5_0_TIRUST_TENSOR_DIAGNOSTIC(CTMODE,NLOOPLINE,RANK,DPL
      $ ,M2L,DC,STABLE)
       TIRCOEFS=DC
@@ -100,7 +113,12 @@ C     RAW + RAW_LO with ONIA_EP_LOWWORDS after lowwords.py)
       CHARACTER*8 LWENV
       DPL=REAL(PL,KIND=8)
 ''' + ('''      CALL GET_ENVIRONMENT_VARIABLE('ONIA_EP_LOWWORDS',LWENV)
-      IF(LEN_TRIM(LWENV).GT.0) THEN
+''' if 'ML5_0_TIRUST_TENSOR_POWERS_XP' in src else '') + ('''      IF(LWENV(1:1).EQ.'2'.OR.LWENV(1:1).EQ.'3') THEN
+        CALL ML5_0_TIRUST_TENSOR_POWERS_EXT(CTMODE,NLOOPLINE,RANK,POWERS
+     $   ,PL,M2L,TIRCOEFS,STABLE,64)
+        RETURN
+      ENDIF
+''' if 'ML5_0_TIRUST_TENSOR_POWERS_EXT' in src else '') + ('''      IF(LEN_TRIM(LWENV).GT.0) THEN
         CALL ML5_0_TIRUST_TENSOR_POWERS_XP(CTMODE,NLOOPLINE,RANK,POWERS
      $   ,DPL,M2L,TIRCOEFS,STABLE)
         RETURN
