@@ -1,18 +1,21 @@
 # MadLoop for quarkonium at one loop: report
 
 `benchmark.pdf` is the validation, reducer and performance report of the
-one-loop virtuals of processes with S-wave bound states in MadLoop (branch
-`onia_loop`; usage and design in `docs/onia_loop.md`).
+one-loop virtuals of processes with S-wave and P-wave bound states in MadLoop
+(branch `onia_loop`; usage and design in `docs/onia_loop.md`), with the S-wave
+onium + jet virtuals against the MG5 2.5.5 onia outputs.
 
 | Path | Content |
 |---|---|
 | `benchmark.typ`, `style.typ` | the report (Typst 0.15), in the style of the pyAmpliCol one-loop report |
 | `data/*.json` | the tables of the report, written by `scripts/collect.py` |
-| `data/raw/` | the campaign records behind them (`validate.json`; `validate_before_guard.json`, the first three cases before the bound-state reducer guard; `timing/*.json`: changes A to E; `timing_A_B_B2/`: the first three alone), scratch paths replaced by `WORK` |
+| `data/raw/` | the campaign records behind them (`validate.json`; `validate_before_guard.json`, the first three cases before the bound-state reducer guard; `timing/*.json`: changes A to E; `timing_A_B_B2/`: the first three alone; `pwave/`: `pw_check.py` and `ps_term.py` of the P-wave cases), scratch paths replaced by `WORK` |
 | `scripts/collect.py` | campaign results to `data/*.json` |
 | `research/literature.md` | analytic references and their conventions |
 | `research/perf_audit.md`, `research/perf_audit_results/` | the MadLoop Fortran performance audit |
 | `research/tirust_qp_repro/` | reproducers of the open TIRust items |
+| `research/mg255_swave/` | the S-wave onium + jet comparison with MG5 2.5.5 (`data/cmp_*.json`) |
+| `research/pwave_fd/` | the P-wave checks: finite differences, literature values, poles |
 
 ## Reproduction
 
@@ -31,12 +34,14 @@ python3 tools/onia_loop_timing.py --root base=BASELINE_CHECKOUT --root cand=. \
 # the report
 cd docs/benchmarkfolder
 python3 scripts/collect.py --validation WORK/validate.json --reducers WORK/validate.json \
-    --timing WORK/timing --git $(git rev-parse --short=10 HEAD) --date YYYY-MM-DD
+    --timing WORK/timing --mg255 research/mg255_swave/data --pwave data/raw/pwave \
+    --git $(git rev-parse --short=10 HEAD) --date YYYY-MM-DD
 typst compile benchmark.typ benchmark.pdf
 ```
 
 The timing processes and settings are those of the timing table of the
-report. On this host `make` needs `SHELL` set to an existing bash
+report. The 2.5.5 and P-wave inputs are made by the scripts of
+`research/mg255_swave` and `research/pwave_fd` (their READMEs). On this host `make` needs `SHELL` set to an existing bash
 (`make SHELL=$(command -v bash)`), as `/bin/bash` is missing.
 
 ## The TIRust benchmark workspace

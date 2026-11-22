@@ -60,17 +60,25 @@ STATUS_LINES = [
     'points are reported exceptional (open TIRust item).',
     '*No QP rescue yet:* TIRust\'s binary128 path refuses the threshold lanes (open TIRust '
     'item); such points are reported unstable, not wrong.',
-    '*P-wave* is refused at generation until TIRust has the first-derivative threshold '
-    'integrals.',
+    '*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ '
+    'literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term '
+    'of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.',
+    '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
+    '($J\\/psi$: $10^(-4)$, the accuracy of its grid) at the points MadLoop reports stable.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]
 OPEN_ITEMS = [
-    '*P-wave states:* first-derivative (dual) tensor integrals at threshold in TIRust '
-    '(phase 1 non-Coulomb lanes, phase 2 Coulomb lanes), dual loop numerators in MadLoop.',
+    '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47 to '
+    '\\#51; until then a P-wave point meets a refused integral and is reported unstable); the '
+    'doubled-gluon pentagons of $g g -> chi_(c J) g$ (equal-mass bubbles at zero momentum with '
+    'raised powers).',
     '*Two S-wave bound states* in one process: threshold bubble pinches and two Coulomb '
     'relations in one loop, in TIRust.',
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
+    '*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of '
+    '$p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such '
+    'points are reported unstable.',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
@@ -213,11 +221,160 @@ def summarize_reducers(cases):
     return out
 
 
+#------------------------------------------------------------------------------
+# S-wave onium + jet against the MG5 2.5.5 onia outputs (research/mg255_swave)
+#------------------------------------------------------------------------------
+MG255 = [
+    # case, label, m_Q, n_lq
+    ('gg_etacg', r'g g -> eta_c thin g', 1.55, 3),
+    ('gu_etacu', r'g u -> eta_c thin u', 1.55, 3),
+    ('ug_etacu', r'u g -> eta_c thin u', 1.55, 3),
+    ('uux_etacg', r'u overline(u) -> eta_c thin g', 1.55, 3),
+    ('gg_jpsig', r'g g -> J\/psi thin g', 1.55, 3),
+    ('gg_etabg', r'g g -> eta_b thin g', 4.75, 4),
+    ('gu_etabu', r'g u -> eta_b thin u', 4.75, 4),
+    ('ug_etabu', r'u g -> eta_b thin u', 4.75, 4),
+    ('uux_etabg', r'u overline(u) -> eta_b thin g', 4.75, 4),
+    ('gg_upsg', r'g g -> Upsilon thin g', 4.75, 4),
+]
+
+
+def summarize_mg255(folder):
+    """Per case: the points MadLoop reports stable (return codes 1xx-3xx)
+    against the 2.5.5 V0 (its direct evaluation, calcoption=3, when there is
+    one; else its grid), the unstable points, the grid against the direct
+    evaluation, and the lowest- and highest-energy stable points."""
+    out = []
+    for name, label, mq, nl in MG255:
+        rows = json.load(open(os.path.join(folder, 'cmp_%s.json' % name)))
+        opt = '3' if '3' in rows[0]['ref'] else sorted(rows[0]['ref'])[-1]
+        stable = [r for r in rows if int(r['ml']['code']) // 100 in (1, 2, 3)]
+        unstable = [r for r in rows if r not in stable]
+
+        def rel(r, key='fin', o=opt):
+            return abs(r['ml'][key] - r['ref'][o][key]) / abs(r['ref'][o][key])
+
+        both = [r for r in rows if '1' in r['ref'] and '3' in r['ref']]
+        stable.sort(key=lambda r: r['sqrts'])
+        samples = []
+        for r in (stable[0], stable[-1]):
+            samples.append(dict(sqrts=r['sqrts'], ml_fin=r['ml']['fin'],
+                                ref_fin=r['ref'][opt]['fin'], rel=rel(r),
+                                ml_c1=r['ml']['c1'], ref_c1=r['ref'][opt]['c1'],
+                                code=int(r['ml']['code'])))
+        out.append(dict(
+            name=name, label=label, mq=mq, nl=nl,
+            reference='direct' if opt == '3' else 'grid',
+            npoints=len(rows), stable=len(stable),
+            sqrts_min=stable[0]['sqrts'], sqrts_max=stable[-1]['sqrts'],
+            max_fin=max(rel(r) for r in stable),
+            max_c1=max(abs(r['ml']['c1'] - r['ref'][opt]['c1']) for r in stable),
+            max_c2=max(abs(r['ml']['c2'] - r['ref'][opt]['c2']) for r in stable),
+            born_ratio=[min(r['ml']['born'] / r['ref'][opt]['born'] for r in stable),
+                        max(r['ml']['born'] / r['ref'][opt]['born'] for r in stable)],
+            unstable=len(unstable),
+            unstable_sqrts_max=max(r['sqrts'] for r in unstable) if unstable else None,
+            grid_vs_direct=max(abs(r['ref']['1']['fin'] - r['ref']['3']['fin'])
+                               / abs(r['ref']['3']['fin']) for r in both) if both else None,
+            samples=samples))
+    return out
+
+
+#------------------------------------------------------------------------------
+# P-wave bound states (research/pwave_fd: pw_check.py, ps_term.py)
+#------------------------------------------------------------------------------
+_CF, _CA = 4. / 3., 3.
+_PI2, _LOG2 = math.pi ** 2, math.log(2.)
+
+
+def _gg(b, c1):
+    """c0, c1, c2 of g g -> onium at mu = M from Petrelli's B (B.5 of
+    research/literature.md)."""
+    return (2 * b - _CA * _PI2 / 3, c1, -2 * _CA)
+
+
+PWAVE_21 = [
+    # name, label, reference (c0, c1, c2), source, target of the finite part
+    ('aa_chic0', r'gamma gamma -> chi_(c 0) thin [""^3 P_0^((1))]',
+     (2 * _CF * (_PI2 / 4 - 7. / 3), 0., 0.), '1511.06288 (7): $2 C_F (pi^2\\/4 - 7\\/3)$', 1e-8),
+    ('aa_chic2', r'gamma gamma -> chi_(c 2) thin [""^3 P_2^((1))]',
+     (-8 * _CF, 0., 0.), '1511.06288 (8b): $-8 C_F$', 1e-8),
+    ('gg_chic0', r'g g -> chi_(c 0) thin [""^3 P_0^((1))]',
+     _gg(_CF * (-7. / 3 + _PI2 / 4) + _CA * (1. / 3 + 5 * _PI2 / 12), -9.),
+     'Petrelli et al. (126)', 1e-8),
+    ('gg_chic2', r'g g -> chi_(c 2) thin [""^3 P_2^((1))]',
+     _gg(-4 * _CF + _CA * (1. / 3 + 5. / 3 * _LOG2 + _PI2 / 6), -9.),
+     'Petrelli et al. (127)', 1e-8),
+    ('gg_3p08', r'g g -> c overline(c) thin [""^3 P_0^((8))]',
+     _gg(_CF * (-7. / 3 + _PI2 / 4) + _CA * (2. / 3 + 7 * _PI2 / 24), -12.),
+     'recomputed (`onia_fks`); Petrelli (130) differs', 1e-8),
+    ('gg_3p28', r'g g -> c overline(c) thin [""^3 P_2^((8))]',
+     _gg(-4 * _CF + _CA * (11. / 12 + 4. / 3 * _LOG2 + 5 * _PI2 / 12), -12.),
+     'recomputed (`onia_fks`); Petrelli (131) differs', 1e-8),
+    ('ag_3p08', r'gamma g -> c overline(c) thin [""^3 P_0^((8))]',
+     (3.3575140, -7.5, -3.), '2501.04188 $H^((1))$ (8 digits)', 1e-7),
+    ('ag_3p28', r'gamma g -> c overline(c) thin [""^3 P_2^((8))]',
+     (10.7171815, -7.5, -3.), '2501.04188 $H^((1))$ (8 digits)', 1e-7),
+    ('gg_1p18', r'g g -> c overline(c) thin [""^1 P_1^((8))]',
+     _gg(_CF * (_PI2 / 2 - 5 - 4 * _LOG2) + _CA * (1 + _LOG2 + _PI2 / 6), -18.),
+     '`onia_fks` (CDR, Larin $gamma_5$)', 1e-8),
+]
+PWAVE_22 = [
+    ('ee_3p08g', r'e^+ e^- -> c overline(c) thin [""^3 P_0^((8))] thin g'),
+    ('ee_3p18g', r'e^+ e^- -> c overline(c) thin [""^3 P_1^((8))] thin g'),
+    ('ee_3p28g', r'e^+ e^- -> c overline(c) thin [""^3 P_2^((8))] thin g'),
+    ('ee_1p18g', r'e^+ e^- -> c overline(c) thin [""^1 P_1^((8))] thin g'),
+    ('uu_chic0g', r'u overline(u) -> chi_(c 0) thin g'),
+    ('gu_chic0u', r'g u -> chi_(c 0) thin u'),
+]
+
+
+def summarize_pwave(folder):
+    """The threshold values of the 2 -> 1 processes against the literature,
+    and for every process the P -> S term of the pole prediction and the
+    poles against the prediction (folder: pw_check_<case>.json and
+    ps_term.json)."""
+    terms = json.load(open(os.path.join(folder, 'ps_term.json')))
+
+    def load(name):
+        return json.load(open(os.path.join(folder, 'pw_check_%s.json' % name)))[name]
+
+    def common(name, pts):
+        t = terms[name]['ps_term']
+        return dict(
+            npoints=len(pts), stable=sum(1 for p in pts if p['ret_code'] // 100 in (1, 2, 3)),
+            return_codes=sorted(set(p['ret_code'] for p in pts)),
+            finite=statistics.median(p['finite_norm'] for p in pts),
+            single=statistics.median(p['single_norm'] for p in pts),
+            double=statistics.median(p['double_norm'] for p in pts),
+            single_range=[min(p['single_norm'] for p in pts), max(p['single_norm'] for p in pts)],
+            max_pole_deviation=max(max(abs(p['single_norm'] - p['predicted_single_norm']),
+                                       abs(p['double_norm'] - p['predicted_double_norm']))
+                                   for p in pts),
+            ps_term=[min(t), max(t)], energy=terms[name]['energy'],
+            accuracy=max(p['accuracy'] for p in pts))
+
+    two_one = []
+    for name, label, ref, source, target in PWAVE_21:
+        pts = load(name)
+        entry = dict(name=name, label=label, reference=list(ref), source=source,
+                     target=target, **common(name, pts))
+        entry['max_deviation'] = max(
+            max(abs(p['finite_norm'] - ref[0]) / max(abs(ref[0]), 1.),
+                abs(p['single_norm'] - ref[1]), abs(p['double_norm'] - ref[2])) for p in pts)
+        two_one.append(entry)
+    two_two = [dict(name=name, label=label, **common(name, load(name)))
+               for name, label in PWAVE_22]
+    return dict(two_one=two_one, two_two=two_two)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--validation')
     parser.add_argument('--timing')
     parser.add_argument('--reducers')
+    parser.add_argument('--mg255', help='research/mg255_swave/data')
+    parser.add_argument('--pwave', help='data/raw/pwave')
     parser.add_argument('--git', default='')
     parser.add_argument('--date', default='')
     args = parser.parse_args()
@@ -248,6 +405,12 @@ def main():
                              max_relative_difference=r['max_relative_difference']))
         with open(os.path.join(DATA, 'timing.json'), 'w') as f:
             json.dump(rows, f, indent=1)
+    if args.mg255:
+        with open(os.path.join(DATA, 'mg255.json'), 'w') as f:
+            json.dump(summarize_mg255(args.mg255), f, indent=1)
+    if args.pwave:
+        with open(os.path.join(DATA, 'pwave.json'), 'w') as f:
+            json.dump(summarize_pwave(args.pwave), f, indent=1)
     meta = dict(
         revision=args.git, date=args.date, host='AMD EPYC 9754 (shared host)',
         baseline=BASELINE, commits=commits(BASELINE), decisions=DECISIONS,

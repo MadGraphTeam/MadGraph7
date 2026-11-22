@@ -1,6 +1,6 @@
 {
- "revision": "5aadddcbd8",
- "date": "2026-11-21",
+ "revision": "eda7d7fe04",
+ "date": "2026-11-22",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
  "commits": [
@@ -47,6 +47,30 @@
   [
    "5aadddcbd8",
    "MadLoop: IEEE mode check once per coefficient batch, DHELAS and MODEL at -O2"
+  ],
+  [
+   "695df82343",
+   "docs/benchmarkfolder: the report with all five MadLoop speed-ups"
+  ],
+  [
+   "1a6f8ce5e9",
+   "vendor/tirust: raised propagator powers (bridge for P-wave onia)"
+  ],
+  [
+   "c4b57e0708",
+   "MadLoop: P-wave bound states at one loop (double precision)"
+  ],
+  [
+   "8effaa7a29",
+   "MadLoop: P-wave bound states in quadruple precision; S-wave check against MG5 2.5.5"
+  ],
+  [
+   "1ec6503463",
+   "docs: P-wave onia virtuals at threshold against the literature (TIRust 48958d1)"
+  ],
+  [
+   "eda7d7fe04",
+   "MadLoop: the P -> S pole of a P-wave bound state in the pole prediction"
   ]
  ],
  "decisions": [
@@ -68,13 +92,15 @@
   "*TIRust in double precision*, stable points in every frame. The other libraries fail at threshold, not always detected by MadLoop's tests: their results are now reported unstable, and TIRust is the default chain (@reducers).",
   "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): TIRust refuses lanes, the points are reported exceptional (open TIRust item).",
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
-  "*P-wave* is refused at generation until TIRust has the first-derivative threshold integrals.",
+  "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
+  "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-4)$, the accuracy of its grid) at the points MadLoop reports stable.",
   "*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE checks, bit-identical, faster on every benchmark process."
  ],
  "open_items": [
-  "*P-wave states:* first-derivative (dual) tensor integrals at threshold in TIRust (phase 1 non-Coulomb lanes, phase 2 Coulomb lanes), dual loop numerators in MadLoop.",
+  "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47 to \\#51; until then a P-wave point meets a refused integral and is reported unstable); the doubled-gluon pentagons of $g g -> chi_(c J) g$ (equal-mass bubbles at zero momentum with raised powers).",
   "*Two S-wave bound states* in one process: threshold bubble pinches and two Coulomb relations in one loop, in TIRust.",
   "*Quadruple-precision rescue:* the degenerate lanes in TIRust's binary128 path.",
+  "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable.",
   "*Loop-induced processes* with bound states; the FKS integration on `onia_fks` (its `BinothLHA` can call this virtual).",
   "*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters' output (it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit."
  ],

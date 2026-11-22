@@ -1,0 +1,423 @@
+{
+ "two_one": [
+  {
+   "name": "aa_chic0",
+   "label": "gamma gamma -> chi_(c 0) thin [\"\"^3 P_0^((1))]",
+   "reference": [
+    0.3575140451706827,
+    0.0,
+    0.0
+   ],
+   "source": "1511.06288 (7): $2 C_F (pi^2\\/4 - 7\\/3)$",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 0.35751404517066604,
+   "single": -4.4013097439465554e-16,
+   "double": 0.0,
+   "single_range": [
+    -2.670127911327614e-14,
+    1.3115903036960734e-13
+   ],
+   "max_pole_deviation": 1.3115903036960734e-13,
+   "ps_term": [
+    0.0,
+    0.0
+   ],
+   "energy": 3.1,
+   "accuracy": 1.205e-11,
+   "max_deviation": 6.117328865684613e-13
+  },
+  {
+   "name": "aa_chic2",
+   "label": "gamma gamma -> chi_(c 2) thin [\"\"^3 P_2^((1))]",
+   "reference": [
+    -10.666666666666666,
+    0.0,
+    0.0
+   ],
+   "source": "1511.06288 (8b): $-8 C_F$",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": -10.666666666666663,
+   "single": -8.800980571585551e-16,
+   "double": 0.0,
+   "single_range": [
+    -3.520392228634223e-15,
+    -4.400490285792775e-16
+   ],
+   "max_pole_deviation": 3.520392228634223e-15,
+   "ps_term": [
+    0.0,
+    0.0
+   ],
+   "energy": 3.1,
+   "accuracy": 1.2376e-15,
+   "max_deviation": 3.520392228634223e-15
+  },
+  {
+   "name": "gg_chic0",
+   "label": "g g -> chi_(c 0) thin [\"\"^3 P_0^((1))]",
+   "reference": [
+    17.16192064680472,
+    -9.0,
+    -6.0
+   ],
+   "source": "Petrelli et al. (126)",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 17.161920646805072,
+   "single": -9.000000000000092,
+   "double": -6.000000000000078,
+   "single_range": [
+    -9.000000000000417,
+    -8.999999999999998
+   ],
+   "max_pole_deviation": 4.192202140984591e-13,
+   "ps_term": [
+    -6.310459930426176e-16,
+    2.2777644975176785e-33
+   ],
+   "energy": 3.1,
+   "accuracy": 7.7161e-12,
+   "max_deviation": 4.1744385725905886e-13
+  },
+  {
+   "name": "gg_chic2",
+   "label": "g g -> chi_(c 2) thin [\"\"^3 P_2^((1))]",
+   "reference": [
+    -1.735194861067212,
+    -9.0,
+    -6.0
+   ],
+   "source": "Petrelli et al. (127)",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": -1.7351948610672103,
+   "single": -9.000000000000007,
+   "double": -6.0,
+   "single_range": [
+    -9.000000000000016,
+    -8.99999999999998
+   ],
+   "max_pole_deviation": 2.1316282072803006e-14,
+   "ps_term": [
+    -3.8259318917902605e-31,
+    8.19842548240769e-32
+   ],
+   "energy": 3.1,
+   "accuracy": 1.3216e-14,
+   "max_deviation": 1.9539925233402755e-14
+  },
+  {
+   "name": "gg_3p08",
+   "label": "g g -> c overline(c) thin [\"\"^3 P_0^((8))]",
+   "reference": [
+    11.7597173459877,
+    -12.0,
+    -6.0
+   ],
+   "source": "recomputed (`onia_fks`); Petrelli (130) differs",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 11.759717345987692,
+   "single": -12.000000000000071,
+   "double": -6.000000000000057,
+   "single_range": [
+    -12.000000000000213,
+    -11.999999999999948
+   ],
+   "max_pole_deviation": 2.149391775674303e-13,
+   "ps_term": [
+    -4.732844947819631e-16,
+    7.42929746821552e-36
+   ],
+   "energy": 3.1,
+   "accuracy": 3.9379e-13,
+   "max_deviation": 2.1316282072803006e-13
+  },
+  {
+   "name": "gg_3p28",
+   "label": "g g -> c overline(c) thin [\"\"^3 P_2^((8))]",
+   "reference": [
+    15.182917379446938,
+    -12.0,
+    -6.0
+   ],
+   "source": "recomputed (`onia_fks`); Petrelli (131) differs",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 15.182917379446934,
+   "single": -11.99999999999999,
+   "double": -6.0,
+   "single_range": [
+    -11.999999999999995,
+    -11.999999999999975
+   ],
+   "max_pole_deviation": 2.6645352591003757e-14,
+   "ps_term": [
+    -1.4834821184532625e-31,
+    2.2822801822357852e-32
+   ],
+   "energy": 3.1,
+   "accuracy": 4.2256e-14,
+   "max_deviation": 2.4868995751603507e-14
+  },
+  {
+   "name": "ag_3p08",
+   "label": "gamma g -> c overline(c) thin [\"\"^3 P_0^((8))]",
+   "reference": [
+    3.357514,
+    -7.5,
+    -3.0
+   ],
+   "source": "2501.04188 $H^((1))$ (8 digits)",
+   "target": 1e-07,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 3.357514045170666,
+   "single": -7.499999999999991,
+   "double": -2.999999999999999,
+   "single_range": [
+    -7.500000000000167,
+    -7.499999999999577
+   ],
+   "max_pole_deviation": 4.227729277772596e-13,
+   "ps_term": [
+    0.0,
+    0.0
+   ],
+   "energy": 3.1,
+   "accuracy": 1.8472e-12,
+   "max_deviation": 1.345362261200608e-08
+  },
+  {
+   "name": "ag_3p28",
+   "label": "gamma g -> c overline(c) thin [\"\"^3 P_2^((8))]",
+   "reference": [
+    10.7171815,
+    -7.5,
+    -3.0
+   ],
+   "source": "2501.04188 $H^((1))$ (8 digits)",
+   "target": 1e-07,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 10.717181476647204,
+   "single": -7.500000000000001,
+   "double": -2.9999999999999964,
+   "single_range": [
+    -7.500000000000003,
+    -7.499999999999982
+   ],
+   "max_pole_deviation": 2.042810365310288e-14,
+   "ps_term": [
+    0.0,
+    0.0
+   ],
+   "energy": 3.1,
+   "accuracy": 1.9047e-13,
+   "max_deviation": 2.1790057938449708e-09
+  },
+  {
+   "name": "gg_1p18",
+   "label": "g g -> c overline(c) thin [\"\"^1 P_1^((8))]",
+   "reference": [
+    2.591452358839401,
+    -18.0,
+    -6.0
+   ],
+   "source": "`onia_fks` (CDR, Larin $gamma_5$)",
+   "target": 1e-08,
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 2.5914523588393656,
+   "single": -18.000000000000004,
+   "double": -6.000000000000001,
+   "single_range": [
+    -18.00000000000083,
+    -17.999999999999964
+   ],
+   "max_pole_deviation": 8.384404281969182e-13,
+   "ps_term": [
+    -6.0,
+    -5.999999999999995
+   ],
+   "energy": 3.1,
+   "accuracy": 5.6817e-13,
+   "max_deviation": 8.313350008393172e-13
+  }
+ ],
+ "two_two": [
+  {
+   "name": "ee_3p08g",
+   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_0^((8))] thin g",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 59.89196895024468,
+   "single": -1.0791213760489078,
+   "double": -2.999999999999999,
+   "single_range": [
+    -1.0791213760490301,
+    -1.079121376048751
+   ],
+   "max_pole_deviation": 2.1005419625907962e-13,
+   "ps_term": [
+    -1.3364737164964487e-20,
+    5.258962468702887e-20
+   ],
+   "energy": 10.0,
+   "accuracy": 1.9029e-13
+  },
+  {
+   "name": "ee_3p18g",
+   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_1^((8))] thin g",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 50.95653868916083,
+   "single": -1.0791213760489775,
+   "double": -2.9999999999999964,
+   "single_range": [
+    -1.079121376049034,
+    -1.079121376048961
+   ],
+   "max_pole_deviation": 7.194245199571014e-14,
+   "ps_term": [
+    -3.869343310755068e-21,
+    1.5065063339690498e-20
+   ],
+   "energy": 10.0,
+   "accuracy": 8.2271e-15
+  },
+  {
+   "name": "ee_3p28g",
+   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_2^((8))] thin g",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 56.381534656116315,
+   "single": -1.0791213760489806,
+   "double": -3.0,
+   "single_range": [
+    -1.079121376049059,
+    -1.0791213760488023
+   ],
+   "max_pole_deviation": 1.5720758028692217e-13,
+   "ps_term": [
+    -1.741972673478822e-20,
+    5.1630724957367694e-20
+   ],
+   "energy": 10.0,
+   "accuracy": 1.2039e-13
+  },
+  {
+   "name": "ee_1p18g",
+   "label": "e^+ e^- -> c overline(c) thin [\"\"^1 P_1^((8))] thin g",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 58.68785438263323,
+   "single": -1.0791213760574743,
+   "double": -3.000000000000144,
+   "single_range": [
+    -1.0791213760733938,
+    -1.0791213760289387
+   ],
+   "max_pole_deviation": 6.5817795658063e-11,
+   "ps_term": [
+    -1.4070273921477498e-11,
+    4.127785083200909e-11
+   ],
+   "energy": 10.0,
+   "accuracy": 1.5028e-11
+  },
+  {
+   "name": "uu_chic0g",
+   "label": "u overline(u) -> chi_(c 0) thin g",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": -40.485934292510144,
+   "single": -27.30351740702825,
+   "double": -5.666666666779896,
+   "single_range": [
+    -55.10911469206873,
+    -24.11823884302168
+   ],
+   "max_pole_deviation": 6.9740266894768865e-09,
+   "ps_term": [
+    -39.28268233467122,
+    -11.088885564025755
+   ],
+   "energy": 20.0,
+   "accuracy": 1.5267e-09
+  },
+  {
+   "name": "gu_chic0u",
+   "label": "g u -> chi_(c 0) thin u",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 136.4205848220805,
+   "single": 6.695870149674665,
+   "double": -5.6666666666612535,
+   "single_range": [
+    1.3356044201419897,
+    27.26357695271521
+   ],
+   "max_pole_deviation": 1.649464564934533e-09,
+   "ps_term": [
+    10.930972472347953,
+    42.65166906022067
+   ],
+   "energy": 20.0,
+   "accuracy": 7.1484e-11
+  }
+ ]
+}

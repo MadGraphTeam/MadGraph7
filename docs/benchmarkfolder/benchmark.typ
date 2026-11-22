@@ -8,6 +8,8 @@
 #let val = json("data/validation.json")
 #let red = json("data/reducers.json")
 #let tim = json("data/timing.json")
+#let mg = json("data/mg255.json")
+#let pw = json("data/pwave.json")
 
 #show: report-style.with(
   title: "MadLoop for quarkonium at one loop — validation, reducers and performance",
@@ -22,7 +24,7 @@
   #v(0.1em)
   #text(24pt, weight: "bold", fill: navy)[MadLoop for quarkonium at one loop]
   #v(-0.5em)
-  #text(12pt, fill: luma(80))[S-wave one-loop QCD virtuals: validation, reduction and performance]
+  #text(12pt, fill: luma(80))[S- and P-wave one-loop QCD virtuals: validation, reduction and performance]
   #v(-0.3em)
   #text(9pt, fill: luma(110))[#meta.date · branch `onia_loop` · revision #meta.revision · #meta.host]
 ]
@@ -37,7 +39,9 @@ with the constituents at zero relative velocity, where the Coulomb singularity
 is absent in dimensional regularisation (it is part of the long-distance
 matrix element). The bound states are those of the tree-level implementation
 (arXiv:2510.26773, arXiv:2607.26739) and the model is `loop_sm_onia`, the
-`loop_sm` UFO model with the Fock states of `sm_onia`.
+`loop_sm` UFO model with the Fock states of `sm_onia`. A process may also have
+one P-wave bound state (@pwave), and the S-wave onium + jet virtuals are compared
+with those of the MG5 2.5.5 onia outputs (@mg255).
 
 #let analytic = val.filter(c => c.reference != none and c.at("status", default: "ok") == "ok")
 // The target: 1e-8, the precision of the published value (e+ e- K factors),
@@ -48,9 +52,11 @@ matrix element). The bound states are those of the tree-level implementation
 #let worst-pole = calc.max(..rm-cases.map(c => c.max_pole_deviation))
 #let worst-rm = calc.max(..rm-cases.map(c => c.relmom.at("9").relative))
 #let worst-up = calc.max(..tim.map(r => r.upper95))
+#let pw-pass = pw.two_one.filter(c => c.max_deviation <= c.target)
+#let worst-mg = calc.max(..mg.filter(c => c.reference == "direct").map(c => c.max_fin))
 #let all-identical = tim.all(r => r.identical)
 #let one-state = analytic.filter(c => c.stable > 0)
-#let badge = [Analytic: #passed.len() of #one-state.len() within target#if one-state.len() < analytic.len() [ (+ #(analytic.len() - one-state.len()) with two bound states, flagged)] · 2 → 2 poles ≤ #sci(worst-pole, d: 0), $v -> 0$ ≤ #sci(worst-rm, d: 0) · timing: upper 95% ≤ #fixed(worst-up, 2)#if all-identical [, bit-identical]]
+#let badge = [Analytic: #passed.len() of #one-state.len() within target#if one-state.len() < analytic.len() [ (+ #(analytic.len() - one-state.len()) with two bound states, flagged)] · 2 → 2 poles ≤ #sci(worst-pole, d: 0), $v -> 0$ ≤ #sci(worst-rm, d: 0) · P-wave: #pw-pass.len() of #pw.two_one.len() within target · 2.5.5 onium + jet ≤ #sci(worst-mg, d: 0) · timing: upper 95% ≤ #fixed(worst-up, 2)#if all-identical [, bit-identical]]
 
 #grid(columns: (1.2fr, 1fr), gutter: 8pt,
   box-note[
@@ -124,7 +130,19 @@ closed-form IR-singular bases, in dimensional regularisation at $v = 0$.
 *Poles.* `ONIA_IR_POLES` evaluates the Catani–Dittmaier–Trócsányi structure
 (arXiv:2402.19221, eqs. (216)–(217)): a colour singlet is colourless, an octet a
 massive adjoint particle of mass $m_1+m_2$ with colour charge
-$T_Q + T_(overline(Q))$.
+$T_Q + T_(overline(Q))$. A P-wave state adds the $P -> S$ pole of its soft current
+(@pwave).
+
+*P waves.* The amplitude of a P-wave state is the derivative of the projected
+constituent amplitude in the relative momentum $q$ ($p_Q = K\/2 + q$,
+$p_(overline(Q)) = K\/2 - q$) along the polarisation vectors $epsilon(L_z)$,
+combined with the spin projectors by $chevron.l 1 L_z; S S_z|J J_z chevron.r$ as at
+tree level. MadLoop computes it in first-order dual numbers: dual HELAS and loop
+vertex routines, loop polynomials that carry their derivative, and the
+derivative of the propagators, $-2 (S_i - l) dot d S_i\/D_i^2$, as tensor
+integrals with one doubled propagator, reduced by TIRust
+(`tirust_tensor_evaluate_powers`). The quadruple-precision rescue repeats it in
+`MP_Dual` numbers.
 
 = Validation against analytic results <analytic>
 
@@ -180,6 +198,141 @@ $v = 0.001 ... 0.02$ is extrapolated to $v = 0$ (quartic fit).
       [#dec(c.relmom.at("9").coulomb, 5) / #dec(c.relmom.at("9").expected, 5)])).flatten()))
 ]
 
+= S-wave onium + jet against MG5 2.5.5 <mg255>
+
+The one-loop virtuals of $p p -> eta_c, J\/psi, eta_b, Upsilon + "jet"$ are
+compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
+`references/NLO_Onia_Nov2026`:
+- *Channels.* The $g g$, $g u$, $u g$ and $u overline(u)$ channels of
+  $eta_c$ and $eta_b$, and the $g g$ channels of $J\/psi$ and $Upsilon$.
+- *Settings.* The constituent masses are $m_c = 1.55$ and $m_b = 4.75$ GeV,
+  with $n_l = 3$ and 4 light flavours, and $mu_R = 11$ GeV, so the
+  $log(mu^2\/m_Q^2)$ terms of the scheme are tested.
+- *Scheme.* The 2.5.5 code passes `V0` to MadFKS unchanged (`BinothLHA.f`,
+  no DR to CDR conversion), and its `renormalisation_scheme = 1` decouples
+  the heavy quark as MadLoop does. Charmonium uses `loop_sm_onia-c_mass`
+  with $m_b = m_t = 10^4$ GeV; bottomonium uses `loop_sm_onia-no_tau_mass`
+  with massless charm and $m_t = 10^4$ GeV.
+- *Normalisation.* Both results are in units of the Born times
+  $alpha_s\/2pi$; the 2.5.5 Born is its double pole divided by
+  $-sum_i C_i$.
+- *Points.* The reference's `PS*.input` points and three random points at
+  each of three energies; MadLoop uses TIRust with its stability checks.
+- *Reference evaluation.* The reference is its direct evaluation
+  (`calcoption = 3`, OneLOop boxes in quadruple precision), except for
+  $J\/psi$, which has only its grid of virtual/Born.
+
+#let mg-target(c) = if c.reference == "direct" { 1e-5 } else { 1e-3 }
+#block(breakable: false)[#figure(caption: [MadLoop against the 2.5.5 virtuals at the points MadLoop reports stable (return codes `1xx` to `3xx`): the largest relative difference of $c_0$ and the largest absolute differences of $c_1$, $c_2$, green within $10^(-5)$ ($10^(-3)$ against the $J\/psi$ grid). "grid" is the 2.5.5 grid against its own direct evaluation; "unstable" counts the points with a soft or low-$p_T$ jet that TIRust refuses (largest $sqrt(s)$ among them).])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, left, right, right, right, right, right, right),
+    [Process], [$m_Q$, $n_l$], [ref.], [stable ($sqrt(s)$, GeV)], [$c_0$ dev.], [$c_1$ dev.], [$c_2$ dev.], [grid], [unstable],
+    ..mg.map(c => (lbl(c), [#c.mq, #c.nl], [#c.reference],
+      [#c.stable (#fixed(c.sqrts_min, 2)–#fixed(c.sqrts_max, 0))],
+      dev-cell(c.max_fin, target: mg-target(c)), sci(c.max_c1), sci(c.max_c2),
+      if c.grid_vs_direct == none [—] else [#sci(c.grid_vs_direct)],
+      if c.unstable == 0 [0] else [#c.unstable (≤ #fixed(c.unstable_sqrts_max, 2))])).flatten()))
+] <tab:mg255>]
+
+#figure(caption: [The lowest- and highest-energy stable point of each process: the finite part $c_0$ of MadLoop and of the 2.5.5 reference and their relative difference, and the $1\/epsilon$ coefficient $c_1$ (MadLoop; the reference agrees within the deviation of @tab:mg255).])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right),
+    [Process], [$sqrt(s)$ (GeV)], [$c_0$ MadLoop], [$c_0$ 2.5.5], [rel. diff.], [$c_1$],
+    ..mg.map(c => c.samples.map(s => (lbl(c), fixed(s.sqrts, 2), dec(s.ml_fin, 8), dec(s.ref_fin, 8),
+      dev-cell(s.rel, target: mg-target(c)), dec(s.ml_c1, 6))).flatten()).flatten()))
+]
+
+#box-note[
+  - *Borns.* They agree up to the LDMEs of the two models: the ratio is
+    1.000086 for $eta_c$ (0.3867 against 1.16/3), 0.999892 for $eta_b$
+    (3.093 against 9.28/3), and 1 for $J\/psi$ and $Upsilon$.
+  - *$J\/psi$.* The reference interpolates virtual/Born on a grid, and its
+    accuracy, about $10^(-4)$, limits the comparison. The other grids agree
+    with their direct evaluation within $10^(-8)$, except for $Upsilon$
+    ($1.1 dot 10^(-4)$).
+  - *Unstable points.* Every point MadLoop reports unstable has a soft or
+    low-$p_T$ jet: $p_T < 0.05$ GeV for charmonium, and up to 0.86 GeV in
+    $g g -> eta_b\/Upsilon thin g$, which are stable from 1.05 GeV. All of them
+    are in the $g g$ and $u overline(u)$ channels; the $q g$ channels are
+    stable down to $p_T = 6$ MeV.
+  - *What TIRust refuses there.* In both precisions it refuses the Coulomb
+    triangle, and the Coulomb boxes and pentagons with the jet attached.
+    MadLoop returns code `4x0` with accuracy 1, and its $c_1$ misses $-2 C_F$
+    or $-C_F\/2$ of the Born. The pole prediction `ONIA_IR_POLES` agrees with
+    the reference at these points.
+]
+
+= P-wave bound states <pwave>
+
+The P-wave results use TIRust 48958d1 (huashengshao/TIRust PR \#50, stacked on
+\#47 to \#49, not yet the pinned revision). That revision serves every integral
+of the $2 -> 1$ processes at zero relative momentum, including the Coulomb box
+with its gluon line doubled. Earlier revisions refuse that box, and the point is
+then reported unstable (`H = 4`). The settings are $mu = M = 2 m_c = 3.1$ GeV,
+$n_l = 3$, four points per process (2 → 1: the rest frame and longitudinal
+boosts), in units of the Born times $alpha_s\/2pi$, with the literature values
+converted by section B.5 of `research/literature.md`.
+
+#figure(caption: [P-wave $2 -> 1$ processes against the literature: "dev." is the largest deviation over the points (relative for $c_0$, absolute for the poles), green within $10^(-8)$, or $10^(-7)$ for the 8-digit $gamma g$ values; "poles" is the largest deviation of $c_1$, $c_2$ from the prediction of `ONIA_IR_POLES`, whose $P -> S$ term is given in the last column.])[
+  #tstyle(table(columns: (auto, 1fr, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, left, right, right, right, right, right, right, center),
+    [Process], [Reference], [$c_0$ ref.], [$c_0$ MadLoop], [$c_1$, $c_2$], [dev.], [poles], [$P -> S$], [stable],
+    ..pw.two_one.map(c => (lbl(c), text(7pt, eval(c.source, mode: "markup")), dec(c.reference.at(0), 8),
+      dec(c.finite, 8), [#dec(c.single, 4) #linebreak() #dec(c.double, 4)],
+      dev-cell(c.max_deviation, target: c.target), dev-cell(c.max_pole_deviation, target: 1e-9),
+      if calc.abs(c.ps_term.at(0)) < 1e-12 and calc.abs(c.ps_term.at(1)) < 1e-12 [0] else [#dec(c.ps_term.at(0), 6)],
+      [#c.stable/#c.npoints])).flatten()))
+] <tab:pwave>
+
+*The $P -> S$ pole.* A soft gluon turns a P-wave state into the S-wave states
+$S'$ of colour $C'$: $P^((1)) -> S^((8))$, and $P^((8)) -> S^((1)), S^((8))$
+(arXiv:2402.19221, appendix B). Their amplitudes are the values of the Born
+amplitudes at $q = 0$ with the spin projectors of $S_z = J_z - L_z$, and
+`loop_onia.pwave_soft_current` generates their colour. The single pole the
+transitions add to the virtual has three parts:
+- *Cross vectors,* $chevron.l P|T_k dot Q_"eff"|S' chevron.r$ of the coloured
+  legs $k$. For equal masses, $Q_"eff" = 2 (T_Q - T_(overline(Q)))$, the
+  derivative of the heavy quarks' soft functions in $q$.
+- *Self term,* $-2\/(3 P^2) sum_(S') C_"eff" (S') thin g_(mu nu) M^(mu nu)(S')$,
+  quadratic in the $S'$ amplitudes.
+- *LDME counterterm,* $-8\/(m_Q m_(overline(Q))) sum_(S') c_(S') M(r_(S'))$, the
+  pole absorbed into the long-distance matrix element of $S'$.
+
+The formula is that of `getpoles_onia` on `onia_fks` (`ONIA_PW_SOFT_POLE`). For
+equal masses the self term and the LDME counterterm cancel. The cross vectors
+vanish by colour conservation when the bound state has a single coloured
+partner, as in $e^+ e^- -> c overline(c)[P^((8))] thin g$, or when every $S'$ Born
+vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]$.
+
+#figure(caption: [The poles of $2 -> 2$ P-wave processes against the prediction, TIRust 48958d1, four points at the given $sqrt(s)$: the range of $c_1$ over the points, the range of the $P -> S$ term of the prediction, and the largest deviation of $c_1$, $c_2$ from the prediction (green within $10^(-8)$). The finite parts have no reference.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, center),
+    [Process], [$sqrt(s)$ (GeV)], [$c_2$], [$c_1$], [$P -> S$ term], [poles dev.], [stable],
+    ..pw.two_two.map(c => (lbl(c), fixed(c.energy, 0), dec(c.double, 4),
+      [#dec(c.single_range.at(0), 4) … #dec(c.single_range.at(1), 4)],
+      if calc.abs(c.ps_term.at(0)) < 1e-9 and calc.abs(c.ps_term.at(1)) < 1e-9 [0 (≤ #sci(calc.max(calc.abs(c.ps_term.at(0)), calc.abs(c.ps_term.at(1)))))]
+      else [#dec(c.ps_term.at(0), 2) … #dec(c.ps_term.at(1), 2)],
+      dev-cell(c.max_pole_deviation, target: 1e-8), [#c.stable/#c.npoints])).flatten()))
+] <tab:pwave22>
+
+#box-note[
+  - *Derivative.* At a relative momentum $q_0 != 0$, where every integral is
+    an ordinary one, the dual derivative, doubled lines included, agrees with
+    finite differences: 2e-14 to 7e-13 on the finite parts of
+    $u overline(u) -> "Ps"[""^3 P_1]$, $gamma gamma -> chi_(c 0)$ and
+    $g g -> chi_(c 0)$, in double and in quadruple precision
+    (`research/pwave_fd`).
+  - *Quadruple precision.* It agrees with double precision to
+    $10^(-14)$–$4 dot 10^(-13)$. A rescue forced by a tight `MLStabThres`
+    returns code 323.
+  - *Refused integrals.* When TIRust refuses an integral with a doubled
+    line, the point is reported unstable in every `CTModeRun` mode, with a
+    warning. TIRust 48958d1 serves $u overline(u) -> chi_(c 0) g$ and
+    $g u -> chi_(c 0) u$, but not the doubled-gluon pentagons of
+    $g g -> chi_(c 0) g$ (equal-mass heavy bubbles at zero momentum with
+    raised powers; open TIRust item).
+]
+
 = Reduction libraries at threshold <reducers>
 
 #let caught = rgb("#f8d4cc")
@@ -218,7 +371,8 @@ $v = 0.001 ... 0.02$ is extrapolated to $v = 0$ (quartic fit).
   so there is no QP rescue for bound states yet;
   (2) processes with two bound states ($e^+ e^- -> J\/psi eta_c$) meet refused
   lanes (a threshold bubble pinch; two Coulomb relations in one pentagon);
-  (3) P-wave states need first-derivative (dual) tensor integrals at threshold.
+  (3) P-wave states need the doubled-propagator integrals at threshold:
+  TIRust 48958d1 has them for the $2 -> 1$ processes (@pwave), not yet pinned.
 ]
 
 = Performance <perf>
@@ -257,7 +411,8 @@ confidence interval of the geometric-mean ratio.
 = Sources and reproducibility <sources>
 
 #set text(9pt)
-- Campaign revisions: validation and reducers at `a82b34d314`, timing at `5aadddcbd8`.
+- Campaign revisions: validation and reducers at `a82b34d314`, timing at `5aadddcbd8`,
+  the 2.5.5 comparison at `8effaa7a29`, the P-wave checks at `eda7d7fe04`.
   The changes in between (D and E of @perf) give identical results; the timing
   campaign compares the results of the two bound-state processes bit for bit.
 - Model: `tools/make_onia_model.py models/loop_sm models/loop_sm_onia`.
@@ -266,9 +421,16 @@ confidence interval of the geometric-mean ratio.
   (cases and references in the tool and `research/literature.md`).
 - Timing (`data/raw/timing/`): `tools/onia_loop_timing.py --root base=... --root cand=... --process ... --pairs 9`, settings as in @perf.
 - One process: `tools/onia_loop_check.py --model loop_sm_onia-c_mass --process "g g > etac(1|1S01) [virt=QCD]" --out DIR --libs 9`.
-- This report: `python3 scripts/collect.py ...; typst compile benchmark.typ benchmark.pdf`.
+- S-wave onium + jet against MG5 2.5.5 (`research/mg255_swave/data`): `build_ref.sh`,
+  `gen.py`, `compare.py <case>` of `research/mg255_swave` (README there).
+- P-wave (`data/raw/pwave/`): `research/pwave_fd/pw_check.py <case>` with
+  `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
+  $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
+  for the $P -> S$ term.
+- This report: `python3 scripts/collect.py ... --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,
   0712.4220; Catani, Dittmaier, Trócsányi, hep-ph/0011222; quarkonium in
   MadGraph: arXiv:2510.26773, arXiv:2607.26739 (tree level), arXiv:2402.19221
-  (NLO, FKS and poles). Style after the pyAmpliCol one-loop report.
+  (NLO, FKS and poles); 1511.06288 and 2501.04188 ($chi_(c J) -> gamma gamma$,
+  $gamma g$). Style after the pyAmpliCol one-loop report.
