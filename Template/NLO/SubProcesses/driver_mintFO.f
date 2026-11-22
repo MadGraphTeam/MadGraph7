@@ -511,7 +511,7 @@ c The n-body contribution is independent of which topology was selected.
 c Evaluate each physical Born class once without a topology correction.
             if (abrv.ne.'real') then
                nbody=.true.
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call update_fks_dir_FO(nFKS_born)
                if (nFKS_sector.eq.0) then
                   jac=1d0
@@ -582,7 +582,7 @@ c through the phase-space Jacobian.
      $             abrv(1:4).eq.'bosk' .or.
      $               abrv(1:2).eq.'vi') cycle
                   nbody=.false.
-                  calculatedBorn=.false.
+                  call refresh_born_cache()
 c MZ this is a temporary fix for processes without soft singularities
 c associated to the initial state. Do not extend this to event generation.
                   wgt_me_born=0d0
@@ -629,13 +629,13 @@ c associated to the initial state. Do not extend this to event generation.
                       call compute_soft_counter_term_buffered(0d0,
      $                     ret_amp_split,fx_s)
                       call set_cms_stuff(itwo)
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
      $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
      $                     born_saveamp)
 
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born_coll,coll_amp2,
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
@@ -654,12 +654,12 @@ c associated to the initial state. Do not extend this to event generation.
 c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
 c counterterm hook may modify model/cache state, so retain its refresh.
                       if (iextra_cnt.gt.0) then
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
      $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
      $                     born_saveamp)
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born_coll,coll_amp2,
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
@@ -683,12 +683,12 @@ c counterterm hook may modify model/cache state, so retain its refresh.
                      call set_alphaS(p1_cnt(0,1,1))
                      call set_cms_stuff(ione)
                       storeCalculatedBorn=calculatedBorn
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
      $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
      $                     born_saveamp)
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born_coll,coll_amp2,
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
@@ -707,12 +707,12 @@ c counterterm hook may modify model/cache state, so retain its refresh.
 c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
 c counterterm hook may modify model/cache state, so retain its refresh.
                       if (iextra_cnt.gt.0) then
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
      $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
      $                     born_saveamp)
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born_coll,coll_amp2,
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
@@ -737,7 +737,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
                      pass_cuts_check=.true.
                       call set_cms_stuff(mohdr)
                       call set_alphaS(p)
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
      $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
@@ -745,7 +745,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
                       ev_amp2(:)=0d0
                       norad_amp2(:)=0d0
                       if (p_born_ev(0,1).gt.0d0) then
-                         calculatedBorn=.false.
+                         call refresh_born_cache()
                       projection_scale=0d0
                       projection_scale(:,1:nexternal-1)=p_born_ev
                       call set_alphaS(projection_scale)
@@ -756,7 +756,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
                       call set_alphaS(p)
                       endif
                       if (p_born_norad(0,1).gt.0d0) then
-                         calculatedBorn=.false.
+                         call refresh_born_cache()
                       projection_scale=0d0
                       projection_scale(:,1:nexternal-1)=p_born_norad
                       call set_alphaS(projection_scale)
@@ -770,7 +770,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
      $                     ev_amp2,norad_amp2)
                       storeCalculatedBorn=calculatedBorn
                       p_born_used(:,:)=p_born(:,:)
-                      calculatedBorn=.false.
+                      call refresh_born_cache()
                       call sborn_amp_frame(p_born_coll,coll_amp2,
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
@@ -916,10 +916,10 @@ c Counterevents keep the scales of their underlying Born state.
      $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
             call compute_soft_counter_term_buffered(0d0,ret_amp_split,fx_s)
             call set_cms_stuff(itwo)
-            calculatedBorn=.false.
+            call refresh_born_cache()
             call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
-            calculatedBorn=.false.
+            call refresh_born_cache()
             call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
             call sreal_deg_buffered(p1_cnt(0,1,2),zero,one, deg_xi_sc,deg_lxi_sc,
@@ -930,10 +930,10 @@ c Counterevents keep the scales of their underlying Born state.
 c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
 c counterterm hook may modify model/cache state, so retain its refresh.
                if (iextra_cnt.gt.0) then
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
                endif
@@ -952,10 +952,10 @@ c counterterm hook may modify model/cache state, so retain its refresh.
            call set_alphaS(p1_cnt(0,1,1))
            call set_cms_stuff(ione)
                storeCalculatedBorn=calculatedBorn
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
                call sreal_deg_buffered(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,deg_xi_c,deg_lxi_c,
@@ -966,10 +966,10 @@ c counterterm hook may modify model/cache state, so retain its refresh.
 c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
 c counterterm hook may modify model/cache state, so retain its refresh.
                if (iextra_cnt.gt.0) then
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
                endif
@@ -988,7 +988,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
             call set_cms_stuff(mohdr)
             if (ickkw.eq.3) call set_FxFx_scale(-3,p)
             call set_alphaS(p)
-            calculatedBorn=.false.
+            call refresh_born_cache()
             call sborn_amp_frame(p_born,born_amp2,born_jamp2,
      $           born_amp_split,born_amp_split_cnt,wgt_born,
      $           born_ans_cnt,born_saveamp)
@@ -1001,7 +1001,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
             ev_amp2(:)=0d0
             norad_amp2(:)=0d0
             if (p_born_ev(0,1).gt.0d0) then
-               calculatedBorn=.false.
+               call refresh_born_cache()
                       projection_scale=0d0
                       projection_scale(:,1:nexternal-1)=p_born_ev
                       call set_alphaS(projection_scale)
@@ -1011,7 +1011,7 @@ c counterterm hook may modify model/cache state, so retain its refresh.
                       call set_alphaS(p)
             endif
             if (p_born_norad(0,1).gt.0d0) then
-               calculatedBorn=.false.
+               call refresh_born_cache()
                       projection_scale=0d0
                       projection_scale(:,1:nexternal-1)=p_born_norad
                       call set_alphaS(projection_scale)
@@ -1024,10 +1024,10 @@ c counterterm hook may modify model/cache state, so retain its refresh.
      $           norad_amp2)
                storeCalculatedBorn=calculatedBorn
                p_born_used(:,:) = p_born(:,:)
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
-               calculatedBorn=.false.
+               call refresh_born_cache()
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
 c sreal_store_buffered takes the real matrix element as an input: evaluate it.

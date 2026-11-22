@@ -2762,3 +2762,30 @@ C      calculatedborn=.false.
       wgt_ME_real=wr
       call add_wgt(type,orders,w1,w2,w3)
       end
+
+
+      subroutine refresh_born_cache()
+c Before a Born evaluation whose momenta or couplings may have changed: let
+c the Born reuse its cached amplitudes only after checking them (identical
+c momenta, and identical couplings or couplings differing only through G,
+c in which case the amplitudes are rescaled; see SBORN). The check needs
+c the couplings to be recorded by born.f (born_checks_amps) and a cache
+c filled for the current FKS configuration, since the summed helicities
+c depend on it. Otherwise discard the cached amplitudes, as was always done.
+      implicit none
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
+      logical check_born_amps, born_checks_amps
+      common/c_born_amps_check/check_born_amps,born_checks_amps
+      logical born_cache_ok
+      integer born_cache_nfks
+      common/c_born_cache/born_cache_ok,born_cache_nfks
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
+      if (born_checks_amps .and. born_cache_ok .and.
+     &     nfksprocess.eq.born_cache_nfks) then
+         check_born_amps=.true.
+      else
+         calculatedBorn=.false.
+      endif
+      end
