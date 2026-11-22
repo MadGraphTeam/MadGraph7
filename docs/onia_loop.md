@@ -130,6 +130,31 @@ modes (`CTModeRun = 1` or 4) and the initialisation points run no test.
 There the public `SLOOPMATRIX` reads the same flags and reports the point
 unstable itself, with a warning on the first such point.
 
+**Stability test.** Bound-state outputs rotate the point once in the
+double-precision stability test (`NRotations_DP = 1`). MadLoop's default
+test reverses the loop direction, which leaves the counterterm amplitudes
+unchanged.
+
+The counterterm amplitudes can lose digits near a soft jet without trace:
+- the R2 gluon self-energy terms of a heavy quark carry its mass squared;
+- they multiply current contractions that vanish exactly;
+- their rounding is then amplified by the soft gluon.
+
+For `g g > Jpsi(1|3S11) g` with a 1.5 MeV gluon, the double-precision result
+was off by 1.7e-4 with the physical b and t masses, and by 22% with
+m_b = m_t = 1e4 GeV. MadLoop estimated the accuracy at 1e-9 in both cases.
+
+A rotation (a permutation of the axes) changes the rounding of the
+helicity routines. That point is then reported unstable and rescued in
+quadruple precision, and the accuracy estimates at milder soft points
+become realistic. Two limits remain:
+- The rotation does not catch every case. With 1e4 GeV b and t, the
+  transverse J/psi alone (`ONIA_SELECT_JZ`) at that point stays 33% off with
+  an estimate of 4e-5, even with two rotations.
+- It costs one more double-precision evaluation per point, about +50%.
+
+A value set in `MadLoopParams.dat` is kept.
+
 **Precision rescue.** The quadruple-precision rescue improves the physical
 momenta, each bound state on its mass shell, and splits the bound states
 again (`MP_IMPROVE_PS_POINT_PRECISION` of `onia_loop.f`). TIRust's binary128

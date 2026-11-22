@@ -81,7 +81,9 @@ OPEN_ITEMS = [
     'points are reported unstable. TIRust 08edee3 serves them, and MadLoop\'s double precision '
     'is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; '
     '22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ '
-    'with physical masses), which MadLoop\'s stability tests do not vary.',
+    'with physical masses), which MadLoop\'s loop-direction test does not vary. Bound-state '
+    'outputs now also rotate the point once (`NRotations_DP = 1`), which rescues the worst point '
+    '(not the transverse $J\\/psi$ alone).',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '

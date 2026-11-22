@@ -283,8 +283,18 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     - 22% with $m_b = m_t = 10^4$ GeV;
     - $5 dot 10^(-3)$ with $10^3$ GeV;
     - $1.7 dot 10^(-4)$ with the physical masses.
-    MadLoop's stability tests vary only the loop part, not the counterterm
-    amplitudes.
+    MadLoop's default stability test (reversing the loop direction) varies
+    only the loop part, not the counterterm amplitudes.
+  - *Default since this report: one rotation.* Bound-state outputs now rotate
+    the point once in the double-precision test (`NRotations_DP = 1`).
+    - At the 3.1015 GeV point, the unpolarised and longitudinal results are
+      reported unstable and rescued in quadruple precision, right to
+      $10^(-12)$.
+    - At the milder soft points the accuracy estimates become realistic.
+    - Not caught: the transverse $J\/psi$ alone at 3.1015 GeV stays 33% off
+      with an estimate of $4 dot 10^(-5)$, even with two rotations.
+    - The rotation costs one more evaluation per point, about +50% (not in
+      the timing table of @perf).
 ]
 
 *$J\/psi$ polarisation.* `Jpsi_double_cs_NEW` gives the virtual of the

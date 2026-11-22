@@ -26,6 +26,11 @@ ANNOUNCEMENT:
        Coulomb box with a doubled gluon is not yet reduced by TIRust at threshold: such a
        point is reported unstable in every CTModeRun mode. The pole prediction includes
        the P -> S pole of the soft current (arXiv:2402.19221, appendix B).
+   HS: MadLoop: outputs with bound states rotate the point once in the double-precision
+       stability test (NRotations_DP = 1, unless set). Reversing the loop direction
+       leaves the counterterm amplitudes unchanged, and near a soft jet the heavy-quark
+       R2 terms (mass squared times vanishing contractions) could lose digits without
+       trace. The rotation costs about +50% per point.
    HS: MadLoop: ONIA_SELECT_JZ(K,NJZ,JZS) restricts a bound state to chosen J_z (its
        helicity in the frame of the momenta): polarised one-loop virtuals, e.g. the
        transverse and longitudinal J/psi of g g > Jpsi g.

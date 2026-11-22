@@ -320,13 +320,26 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         return True
 
     def set_onia_madloop_defaults(self, card):
-        """MadLoopParams.dat defaults of processes with bound states: the
-        reduction libraries (set_onia_reduction_library) and no helicity
-        filter, since which constituent helicity configurations contribute
-        depends on the frame (onia_loop.f skips them point by point)."""
+        """MadLoopParams.dat defaults of processes with bound states:
+        - the reduction libraries (set_onia_reduction_library);
+        - no helicity filter, since which constituent helicity configurations
+          contribute depends on the frame (onia_loop.f skips them point by
+          point);
+        - one rotation of the point in the double-precision stability test
+          (NRotations_DP = 1). Reversing the loop direction, the default test,
+          leaves the counterterm amplitudes as they are. Near a soft jet, their
+          rounding can be amplified without trace: the R2 gluon self-energy
+          terms of a heavy quark carry its mass squared, and multiply current
+          contractions that vanish. For g g > Jpsi g with a 1.5 MeV gluon this
+          was 1.7e-4 with physical b and t masses and 22% with 1e4 GeV ones,
+          with an accuracy estimate of 1e-9. A rotation changes all the
+          rounding, so such a point is then rescued in quadruple precision.
+        Values the user set are kept."""
         self.set_onia_reduction_library(card)
         if 'helicityfilterlevel' not in card.user_set:
             card.set('HelicityFilterLevel', 0, user=True)
+        if 'nrotations_dp' not in card.user_set:
+            card.set('NRotations_DP', 1, user=True)
 
     def set_default_reduction_library(self, card):
         """Prefer a usable NinjaRS installation for untouched ordinary defaults."""
