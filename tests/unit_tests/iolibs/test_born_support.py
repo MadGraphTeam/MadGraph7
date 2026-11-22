@@ -275,6 +275,55 @@ class TestBornRegistry(unittest.TestCase):
                                          for line in module]+helper)
             self.assertFalse(support.explicit_helas_dependencies(root))
 
+    def test_flavour_coupling_records_preserve_the_dependency_proof(self):
+        # ALOHA_OBJECT uses MODEL_OBJECT (flavour-coupling record types) and
+        # contains the flavour-coupling accessors. Rejecting them dropped the
+        # G-rescaling helicity predicate for every output, so each real
+        # emission relearned its helicity mask whenever G changed.
+        model_object = ['module model_object', 'type coupptr  ! pointer array',
+                        'sequence', 'double complex, pointer :: p', 'end type coupptr',
+                        'type flv_coupling', 'sequence', 'integer :: partner(0)',
+                        'integer :: partner2(0)', 'type(coupptr) :: val(0)',
+                        'end type flv_coupling', 'end module model_object',
+                        'subroutine init_flv_couplings()', 'use model_object', 'end']
+        module = ['module aloha_object', 'use model_object', 'type aloha', 'sequence',
+                  'double complex::w(4)', 'double complex :: p(0:3)',
+                  'integer :: flv_index', 'end type aloha', 'contains',
+                  'double complex function get_flv_coupling_value(mcoup,k1,k2)',
+                  'type(flv_coupling), intent(in) :: mcoup',
+                  'integer, intent(in) :: k1,k2',
+                  'get_flv_coupling_value=mcoup%val(k1)%p',
+                  'end function get_flv_coupling_value', 'end module aloha_object']
+        helper = ['subroutine helper(w)', 'use aloha_object', 'implicit none',
+                  'type(aloha) w', 'w%w(1)=2d0*w%p(0)', 'end']
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'Source/DHELAS').mkdir(parents=True)
+            (root/'Source/MODEL').mkdir(parents=True)
+            path = root/'Source/DHELAS/aloha_functions.f'
+            model = root/'Source/MODEL/flavor_couplings.f'
+            support.write_fortran(path, module+helper)
+            # Without the model module the record types are unproven.
+            self.assertFalse(support.explicit_helas_dependencies(root))
+            support.write_fortran(model, model_object)
+            self.assertTrue(support.model_object_holds_only_types(root))
+            self.assertTrue(support.explicit_helas_dependencies(root))
+            # Module-level state in MODEL_OBJECT is a hidden input.
+            for hidden in ('double complex, target :: gc_1', 'double precision scale'):
+                support.write_fortran(model, model_object[:11]+[hidden]+model_object[11:])
+                self.assertFalse(support.model_object_holds_only_types(root), hidden)
+                self.assertFalse(support.explicit_helas_dependencies(root), hidden)
+            support.write_fortran(model, model_object)
+            # A helper reading a coupling through the accessor is not certified,
+            # nor is one declaring a flavour-coupling record.
+            for body in (['double complex function vertex(m)', 'use aloha_object',
+                          'type(flv_coupling) m', 'vertex=get_flv_coupling_value(m,1,1)',
+                          'end'],
+                         ['subroutine vertex(w,c)', 'use aloha_object', 'type(aloha) w',
+                          'double complex c', 'c=get_flv_coupling_value(w,1,1)', 'end']):
+                support.write_fortran(path, module+helper+body)
+                self.assertFalse(support.explicit_helas_dependencies(root), body)
+
     def test_target_couplings_are_transferred_as_numeric_model_state(self):
         lines = ['double complex, target :: gc_10,gc_11',
                  'double complex, target :: gal(2)',

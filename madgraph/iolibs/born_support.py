@@ -393,9 +393,15 @@ def helicity_coupling_degrees(model):
         finally:
             visiting.remove(name)
 
+    def number(node):
+        # Numeric literals are ast.Constant nodes; ast.Num, its deprecated
+        # alias, no longer exists in Python 3.14, where every coupling then
+        # came out of unknown degree and no output certified G scaling.
+        return (isinstance(node, ast.Constant) and not isinstance(node.value, bool)
+                and isinstance(node.value, (int, float, complex)))
+
     def expression(node):
-        # Num also recognizes numeric Constant nodes on Python >= 3.8.
-        if isinstance(node, ast.Num):
+        if number(node):
             return Fraction(0)
         if isinstance(node, ast.Name):
             return variable(node.id)
@@ -412,8 +418,9 @@ def helicity_coupling_degrees(model):
                 return left-right
             if isinstance(node.op, (ast.Add, ast.Sub)) and left == right:
                 return left
-            if isinstance(node.op, ast.Pow) and isinstance(node.right, ast.Num):
-                return left*Fraction(node.right.n)
+            if (isinstance(node.op, ast.Pow) and number(node.right)
+                    and not isinstance(node.right.value, complex)):
+                return left*Fraction(node.right.value)
         if isinstance(node, ast.Call):
             name = node.func.id if isinstance(node.func, ast.Name) else (
                 node.func.attr if isinstance(node.func, ast.Attribute) and
@@ -520,6 +527,51 @@ def helicity_matrix_metadata(matrix, model):
     return result
 
 
+def model_object_holds_only_types(root):
+    """True when Source/MODEL's MODEL_OBJECT module defines derived types only.
+
+    ALOHA_OBJECT uses MODEL_OBJECT for the flavour-coupling record types
+    (COUPPTR, FLV_COUPLING). A module of type definitions carries no model
+    state, so it cannot hide an input from the HELAS dependency proof. A
+    HELAS routine still cannot declare such a record (only ALOHA records are
+    certified declarations), so coupling values reached through FLV_COUPLING
+    pointers stay outside the certified helpers. Any module variable,
+    initializer, procedure or unknown line keeps the full model-state key.
+    """
+    path = root/'Source'/'MODEL'/'flavor_couplings.f'
+    if not path.exists():
+        return False
+    try:
+        lines = expand(path)
+    except (OSError, MadGraph5Error):
+        return False
+    member = re.compile(r'\s*(?:double\s+(?:precision|complex)|complex\*(?:16|32)|'
+                        r'integer|logical|type\s*\(\s*\w+\s*\))'
+                        r'\s*(?:,\s*pointer\s*)?::\s*\w+(?:\([0-9,:+\- ]*\))?\s*')
+    found, module, record = False, False, None
+    for line in lines:
+        line = line.split('!', 1)[0].lower()
+        if not module:
+            if re.fullmatch(r'\s*module\s+model_object\s*', line):
+                if found:
+                    return False
+                found = module = True
+            continue
+        if record is None:
+            match = re.fullmatch(r'\s*type\s+(\w+)\s*', line)
+            if match:
+                record = match[1]
+            elif re.fullmatch(r'\s*end\s*module(?:\s+model_object)?\s*', line):
+                module = False
+            elif line.strip():
+                return False
+        elif re.fullmatch(r'\s*end\s*type(?:\s+'+record+r')?\s*', line):
+            record = None
+        elif not (line.strip() in ('', 'sequence') or member.fullmatch(line)):
+            return False
+    return found and not module and record is None
+
+
 def explicit_helas_dependencies(root):
     """Conservatively certify argument-only fixed-form HELAS helpers.
 
@@ -548,7 +600,7 @@ def explicit_helas_dependencies(root):
             lines = expand(path)
         except (OSError, MadGraph5Error):
             return False
-        clean, module, record = [], False, None
+        clean, module, record, contained = [], False, None, False
         for line in lines:
             # String literals and diagnostics cannot declare dependencies.
             line = re.sub(r'''('(?:[^']|'')*'|"(?:[^"]|"")*")''', '', line).split('!', 1)[0].lower()
@@ -556,6 +608,16 @@ def explicit_helas_dependencies(root):
                 if module:
                     return False
                 module = True
+                continue
+            if contained:
+                # Module procedures (the flavour-coupling accessors) are not
+                # certified routines: their names stay out of `names`, so a
+                # helper calling one is rejected below as any unknown call.
+                if re.fullmatch(r'\s*end\s*module(?:\s+aloha_object)?\s*', line):
+                    module = contained = False
+                continue
+            if module and record is None and line.strip() == 'contains':
+                contained = True
                 continue
             if module:
                 # The built-in module carries record definitions only. No
@@ -565,7 +627,12 @@ def explicit_helas_dependencies(root):
                 # which also defines the quadruple-precision records
                 # MP_ALOHA/MP_ALOHA2D (complex*32 members).
                 match = re.fullmatch(r'\s*type\s+((?:mp_)?(?:aloha|aloha2d))\s*', line)
-                if match and record is None:
+                if (record is None and re.fullmatch(r'\s*use\s+model_object\s*', line)
+                        and model_object_holds_only_types(root)):
+                    # Flavour-coupling record types only: see
+                    # model_object_holds_only_types.
+                    pass
+                elif match and record is None:
                     record = match[1]
                     aloha_records.add(record)
                 elif re.fullmatch(r'\s*end\s*type(?:\s+'+str(record)+r')?\s*', line) and record:
@@ -647,11 +714,17 @@ def helicity_state_signature(root, records, model, members, fixed_members=()):
     if not explicit_helas_dependencies(root):
         return None
     direct = set()
+    # The Born cache's gscale bookkeeping (born.f, SBORN) reads G only to
+    # rescale its cached amplitudes by powers of G'/G, i.e. it assumes the
+    # very homogeneity certified here; it is not a hidden model input.
+    gscale = re.compile(r'\s*(?:rg\s*=\s*g\s*/\s*saved_g|saved_g\s*=\s*g)\s*')
     for record in records:
         source = root/'SubProcesses'/record['directory']
         for pattern in ('born.f', 'born_hel.f', 'born_cnt_*.f', 'matrix_*.f'):
             for path in source.glob(pattern):
-                direct.update(re.findall(r'\b[a-zA-Z]\w*\b', '\n'.join(statements(path.read_text())).lower()))
+                lines = [line.lower() for line in statements(path.read_text())]
+                direct.update(re.findall(r'\b[a-zA-Z]\w*\b', '\n'.join(
+                    line for line in lines if not gscale.fullmatch(line))))
     independent = {v.name.lower() for v in model['parameters'].get(('external',), [])
                    if not ((str(getattr(v, 'lhablock', '')).lower(),
                             tuple(getattr(v, 'lhacode', []))) in

@@ -98,6 +98,32 @@ class TestRealHelicityFilter(unittest.TestCase):
         self.assertEqual(signature['real'], [2])
         self.assertEqual(signature['couplings'], [('complex', 1, 1)])
 
+    def test_born_gscale_bookkeeping_is_not_an_exact_mask_key(self):
+        # SBORN reads G only to rescale its cached amplitudes by (G'/G)**n.
+        # Treating that as a direct input kept G in the exact key, so every
+        # helicity mask was relearned whenever G changed. Any other direct G
+        # read still is an exact input.
+        model = dict(parameters={('external',): [
+            ParamCardVariable('aS', .118, 'SMINPUTS', [3])]})
+        members = [('g', 'real', '1'), ('gc_10', 'complex', '1')]
+        records = [dict(directory='P0', helicity_matrices=[
+            dict(homogeneous=True, couplings={'gc_10': 1})])]
+        born = ("      subroutine born\n      include 'coupl.inc'\n"
+                "      double precision saved_g,rg\n"
+                "      rg=g/saved_g\n      saved_g=g\n"
+                "      call vertex(gc_10)\n%s      end\n")
+        for extra, real in (('', []), ('      x=g*2d0\n', [1])):
+            with self.subTest(extra=extra), \
+                    tempfile.TemporaryDirectory(prefix='mg5_helicity_gscale_') as tmp:
+                root = Path(tmp)
+                (root/'Source/DHELAS').mkdir(parents=True)
+                sub = root/'SubProcesses/P0'
+                sub.mkdir(parents=True)
+                (sub/'born.f').write_text(born % extra)
+                signature = support.helicity_state_signature(root, records, model, members)
+                self.assertIsNotNone(signature)
+                self.assertEqual(signature['real'], real)
+
     def test_sm_and_heft_coupling_degrees(self):
         # Legacy HEFT assigns QCD order zero to GH, despite GH being
         # proportional to G**2. Keep this fixture local: CI need not download
