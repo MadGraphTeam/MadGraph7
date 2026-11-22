@@ -770,6 +770,13 @@ jobs:
       # on the madtrex sources and on the madspace sources it is built against
       # (not madspace/install, restored above). Saved right after the build, so
       # that a failing test below does not throw the build away.
+      # Saved on main only (here on a main push, and by the madtrex_cache job of
+      # warm_cache.yml, which also keeps it warm): a PR restores main's entry
+      # when it touches neither madtrex/ nor madspace/, and otherwise builds it
+      # in this job without leaving a per-PR cache behind. This job is the only
+      # consumer, so nothing else in the run needs the PR's build.
+      # The key expression is duplicated in warm_cache.yml (madtrex_cache):
+      # keep the two in sync.
       - name: madtrex cache key
         run: |
             echo "MADTREX_KEY=madtrex-${{ runner.os }}-py$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')-${{ hashFiles('madtrex/**', 'madspace/**', '!madspace/install/**') }}" >> $GITHUB_ENV
@@ -785,7 +792,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             python3 madtrex/install.py --yes -j 4
       - name: Save madtrex install
-        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        if: steps.cache-madtrex.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v5
         with:
           path: madtrex/install
