@@ -545,6 +545,21 @@ mod tests {
     }
 
     #[test]
+    fn the_run_cards_other_keys_are_accepted_and_not_read() {
+        let options = RuntimeOptions::from_toml(
+            "[evaluation]\nresolved = true\n[evaluation.phase_space]\npoints = 64\nseed = 3\n\
+             sqrt_s = 1000.0\npt_min = 25.0\ndelta_r_min = 0.7\ncut_attempts = 100000\n",
+        )
+        .unwrap();
+        assert_eq!(options, RuntimeOptions::default());
+        assert_eq!(
+            RuntimeOptions::from_toml("[evaluation.phase_space]\npt_mim = 25.0\n").unwrap_err(),
+            "unknown configuration field 'evaluation.phase_space.pt_mim'; \
+             did you mean 'evaluation.phase_space.pt_min'?"
+        );
+    }
+
+    #[test]
     fn the_carrier_follows_the_python_api() {
         let carrier = |text: &str| RuntimeOptions::from_toml(text).unwrap().carrier();
         assert_eq!(
