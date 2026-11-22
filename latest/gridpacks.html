@@ -939,7 +939,7 @@ stays empty.
 This is useful if the gridpack has to run on a different platform. The gridpack does
 not compile anything by itself, so build the libraries once before the first run:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>SubProcesses
-make<span class="w"> </span>-j8<span class="w"> </span><span class="nv">BACKEND</span><span class="o">=</span>simd_128<span class="w"> </span><span class="nv">FPTYPE</span><span class="o">=</span>m<span class="w"> </span><span class="nv">USEBUILDDIR</span><span class="o">=</span><span class="m">1</span>
+make<span class="w"> </span>-j8<span class="w"> </span><span class="nv">BACKEND</span><span class="o">=</span>simd_128<span class="w"> </span><span class="nv">FPTYPE</span><span class="o">=</span>v<span class="w"> </span><span class="nv">USEBUILDDIR</span><span class="o">=</span><span class="m">1</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">BACKEND</span></code> is the <code class="docutils literal notranslate"><span class="pre">cpu_mode</span></code> in <code class="docutils literal notranslate"><span class="pre">Cards/grid_run_card.toml</span></code> for a <code class="docutils literal notranslate"><span class="pre">cpu</span></code> device, and

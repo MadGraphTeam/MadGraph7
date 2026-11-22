@@ -778,10 +778,23 @@ supports.</p>
 <code class="docutils literal notranslate"><span class="pre">auto</span></code> picks <code class="docutils literal notranslate"><span class="pre">simd_512</span></code>, then <code class="docutils literal notranslate"><span class="pre">simd_256</span></code> on x86. On ARM it picks <code class="docutils literal notranslate"><span class="pre">scalar</span></code>,
 because the vectorized mode is currently slower there.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">precision</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;color32&quot;</span></code>)</dt><dd><p>Floating-point precision of the matrix elements. <code class="docutils literal notranslate"><span class="pre">all64</span></code> and <code class="docutils literal notranslate"><span class="pre">all32</span></code> use double and
+<dt><code class="docutils literal notranslate"><span class="pre">precision</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;denom64&quot;</span></code>)</dt><dd><p>Floating-point precision of the matrix elements. <code class="docutils literal notranslate"><span class="pre">all64</span></code> and <code class="docutils literal notranslate"><span class="pre">all32</span></code> use double and
 single precision throughout. <code class="docutils literal notranslate"><span class="pre">color32</span></code> evaluates the color algebra in single precision
-and everything else in double precision. <code class="docutils literal notranslate"><span class="pre">denom64</span></code> keeps the momenta and propagator
-denominators in double precision and uses single precision elsewhere.</p>
+and everything else in double precision. <code class="docutils literal notranslate"><span class="pre">denom64</span></code>, the default, keeps the momenta and
+propagator denominators in double precision and uses single precision elsewhere.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">precision_check</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code>)</dt><dd><p>Fraction of the events evaluated again with the matrix elements in <code class="docutils literal notranslate"><span class="pre">all64</span></code>, to check
+the precision of a run in any other precision. Off by default, because the run then
+also builds an <code class="docutils literal notranslate"><span class="pre">all64</span></code> CPU library of each subprocess (<code class="docutils literal notranslate"><span class="pre">[run]</span> <span class="pre">validation</span></code>
+reweights the whole sample through MadtRex instead). Once the events are written, the
+two are compared at the momenta of events drawn at random from the output (at most
+1000 of them, hidden entry <code class="docutils literal notranslate"><span class="pre">precision_check_max_events</span></code>). With
+<code class="docutils literal notranslate"><span class="pre">r</span> <span class="pre">=</span> <span class="pre">|M|^2</span> <span class="pre">/</span> <span class="pre">|M|^2_all64</span> <span class="pre">-</span> <span class="pre">1</span></code> per event, the mean of <code class="docutils literal notranslate"><span class="pre">r</span></code> (the relative change of the
+cross section, since unweighted events already follow <code class="docutils literal notranslate"><span class="pre">|M|^2</span></code>), the mean and the
+maximum of <code class="docutils literal notranslate"><span class="pre">|r|</span></code> are logged and written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run&gt;/precision_check.json</span></code>; the
+run warns when an event deviates by more than <code class="docutils literal notranslate"><span class="pre">1e-3</span></code> (hidden entry
+<code class="docutils literal notranslate"><span class="pre">precision_check_threshold</span></code>) or is not finite, in which case <code class="docutils literal notranslate"><span class="pre">all64</span></code> or <code class="docutils literal notranslate"><span class="pre">color32</span></code>
+is the safer choice for that process.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">cpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>), <code class="docutils literal notranslate"><span class="pre">gpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">combine_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Number of threads for each <code class="docutils literal notranslate"><span class="pre">cpu</span></code> device, each GPU device and for combining the
 channel results. <code class="docutils literal notranslate"><span class="pre">-1</span></code> chooses based on the number of CPUs.</p>

@@ -752,7 +752,7 @@ generation of <code class="docutils literal notranslate"><span class="pre">outpu
 <p>In a <code class="docutils literal notranslate"><span class="pre">P1_*</span></code> directory, <code class="docutils literal notranslate"><span class="pre">make</span></code> builds the process library and <code class="docutils literal notranslate"><span class="pre">check_sa.exe</span></code>.
 Two variables select the build; they are part of the library name, so several
 builds coexist:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">make</span> <span class="n">BACKEND</span><span class="o">=</span><span class="n">auto</span> <span class="n">FPTYPE</span><span class="o">=</span><span class="n">m</span>          <span class="c1"># the defaults</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">make</span> <span class="n">BACKEND</span><span class="o">=</span><span class="n">auto</span> <span class="n">FPTYPE</span><span class="o">=</span><span class="n">v</span>          <span class="c1"># the defaults</span>
 <span class="n">make</span> <span class="n">BACKEND</span><span class="o">=</span><span class="n">simd_256</span> <span class="n">FPTYPE</span><span class="o">=</span><span class="n">d</span> <span class="o">-</span><span class="n">j8</span>
 </pre></div>
 </div>
@@ -761,9 +761,9 @@ builds coexist:</p>
 <code class="docutils literal notranslate"><span class="pre">hip</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> picks the widest SIMD flavour the host supports (<code class="docutils literal notranslate"><span class="pre">simd_128</span></code>
 on Apple silicon). The resolved choice is written to <code class="docutils literal notranslate"><span class="pre">.resolved-backend</span></code>.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">FPTYPE</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">d</span></code> (double precision everywhere), <code class="docutils literal notranslate"><span class="pre">f</span></code> (single), <code class="docutils literal notranslate"><span class="pre">m</span></code> (the default:
-amplitudes in double precision, colour algebra in single precision), <code class="docutils literal notranslate"><span class="pre">v</span></code>
-(single-precision amplitudes with double-precision momenta and denominators),
+<dt><code class="docutils literal notranslate"><span class="pre">FPTYPE</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">d</span></code> (double precision everywhere), <code class="docutils literal notranslate"><span class="pre">f</span></code> (single), <code class="docutils literal notranslate"><span class="pre">m</span></code> (amplitudes in
+double precision, colour algebra in single precision), <code class="docutils literal notranslate"><span class="pre">v</span></code> (the default:
+single-precision amplitudes with double-precision momenta and denominators),
 <code class="docutils literal notranslate"><span class="pre">e</span></code> (double-word expansion). Compare them with <code class="docutils literal notranslate"><span class="pre">check</span> <span class="pre">precision</span></code>.</p>
 </dd>
 </dl>
