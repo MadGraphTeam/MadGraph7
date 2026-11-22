@@ -44,7 +44,7 @@ At the same q0 with on-shell constituents, the full virtual (`pw_modes.py`) agre
 
 ## Threshold values against the literature (TIRust 48958d1)
 
-With TIRust 48958d1 (PR #50, built by `build.sh` with `REV=48958d1` and `FOLLOWUP=0001-followup-pwave-collinear.patch`), every integral of the 2 → 1 processes is served at zero relative momentum, the Coulomb box with a doubled gluon included. `pw_check.py` gives these values at μ = M = 2 m_c = 3.1 GeV, n_l = 3, in units of Born·α_s/2π. Every point is stable in double precision (code 213):
+With TIRust 48958d1 (part of PR #56, built by `build.sh` with `REV=48958d1` and `FOLLOWUP=0001-followup-pwave-collinear.patch`), every integral of the 2 → 1 processes is served at zero relative momentum, the Coulomb box with a doubled gluon included. `pw_check.py` gives these values at μ = M = 2 m_c = 3.1 GeV, n_l = 3, in units of Born·α_s/2π. Every point is stable in double precision (code 213):
 
 | Process | 1/ε² | 1/ε | Finite | Reference | Relative difference |
 |---|---|---|---|---|---|
@@ -76,4 +76,4 @@ With TIRust 48958d1 (PR #50, built by `build.sh` with `REV=48958d1` and `FOLLOWU
 | the 2 → 1 processes above but g g > etac(1\|1P18) | M | 0 | < 1e-12 |
 
 - **Why it vanishes.** For equal masses the self term and the LDME counterterm cancel for every S-wave state S'. What is left are the cross vectors, which vanish by colour conservation when the bound state has a single coloured partner, as in the e+e- cases. In the 2 → 1 cases other than ¹P₁[8], every S' Born vanishes.
-- **2 → 2 processes.** TIRust 48958d1 serves every integral of `u u~ > chic0 g` and `g u > chic0 u` at these points, but not those of `g g > chic0 g` (doubled-gluon pentagons). The finite parts of these processes have no reference.
+- **2 → 2 processes.** TIRust 48958d1 serves every integral of `u u~ > chic0 g` and `g u > chic0 u` at these points, but not those of `g g > chic0 g` (doubled-gluon pentagons). TIRust 370b632 (the head of PR #56) serves them: all four points stable (213), poles as predicted (P → S term +6.9 to +9.9) to 1.3e-9, finite parts equal to forced QP within 4e-12. The finite parts of these processes have no reference.

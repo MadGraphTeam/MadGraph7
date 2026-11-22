@@ -14,7 +14,8 @@
 """Validation campaign of the one-loop virtuals of quarkonium processes.
 
     tools/onia_loop_validate.py --work WORKDIR [--cases NAME ...] [--libs 9 3]
-                                [--npoints 10] --json results.json
+                                [--npoints 10] [--tirust LIB --tirust-label REV]
+                                --json results.json
 
 Each case is a process of loop_sm_onia generated through the MadGraph CLI and
 evaluated by tools/onia_loop_check.py at deterministic points, compared with
@@ -147,9 +148,12 @@ def relmom_check(name, case, outdir, pdir, masses, v0_point, energy, timeout,
     return res
 
 
-def run_case(name, case, work, libs, npoints, timeout):
+def run_case(name, case, work, libs, npoints, timeout, tirust=None, tirust_label=None):
+    # tirust: another TIRust build (its lib folder) than the pinned one, for
+    # candidate revisions; the output is then regenerated with it
+    extra = ['set tirust %s --no_save' % tirust] if tirust else []
     outdir = olc.output_process(case.get('model', 'loop_sm_onia-c_mass'), case['process'],
-                                os.path.join(work, name))
+                                os.path.join(work, name), extra=extra, regenerate=bool(tirust))
     pdir = olc.subprocess_dir(outdir)
     if case.get('masses'):
         olc.set_masses(outdir, case['masses'])
@@ -163,6 +167,8 @@ def run_case(name, case, work, libs, npoints, timeout):
     res = dict(name=name, process=case['process'], source=case['source'],
                reference=case['ref'], masses=masses, energy=energy,
                mu=case.get('mu'), libs={})
+    if tirust:
+        res['tirust'] = tirust_label or 'unpinned build'
     for lib in libs:
         olc.set_reduction(outdir, lib.split('|'))
         try:
@@ -204,12 +210,15 @@ def main(argv=None):
     parser.add_argument('--libs', nargs='+', default=['9'])
     parser.add_argument('--npoints', type=int, default=10)
     parser.add_argument('--timeout', type=float, default=1800)
+    parser.add_argument('--tirust', help='lib folder of a TIRust build to use instead of '
+                        'the pinned one (set tirust)')
+    parser.add_argument('--tirust-label', help='its revision, recorded in the results')
     parser.add_argument('--json', required=True)
     args = parser.parse_args(argv)
     results = []
     for name in args.cases:
         results.append(run_case(name, CASES[name], args.work, args.libs,
-                                args.npoints, args.timeout))
+                                args.npoints, args.timeout, args.tirust, args.tirust_label))
         with open(args.json, 'w') as f:
             json.dump(results, f, indent=1)
 

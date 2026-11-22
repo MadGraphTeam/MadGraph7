@@ -32,7 +32,7 @@ CASES = {
     'ttg': ('loop_sm', 'g g > t t~ g [virt=QCD]', None, 10000),
     'etacg': ('loop_sm_onia-c_mass', 'g g > etac(1|1S01) g [virt=QCD]', None, 10000),
     'jpsig': ('loop_sm_onia-c_mass', 'g g > Jpsi(1|3S11) g [virt=QCD]', None, 10000),
-    # the same with TIRust 08edee3 (PRs #47 to #51) and the bridge gate patch 0006
+    # the same with TIRust 08edee3 (PRs #47, #55 and part of #56) and the bridge gate patch 0006
     'jpsig08': ('loop_sm_onia-c_mass', 'g g > Jpsi(1|3S11) g [virt=QCD]', 'TIRUST_LIB08', 10000),
     'etac8g': ('loop_sm_onia-c_mass', 'g g > etac(1|1S08) g [virt=QCD]', None, 10000),
     'chic0g': ('loop_sm_onia-c_mass', 'u u~ > chic0(1|3P01) g [virt=QCD]', 'TIRUST_LIB48958', 2000),

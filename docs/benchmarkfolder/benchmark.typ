@@ -177,6 +177,18 @@ $alpha_s\/2pi$; literature values in units of $alpha_s\/pi$ doubled (sources in
   exchange only.
 ]
 
+#box-note(fill: warm)[
+  *Two bound states.* With the pinned TIRust every $e^+ e^- -> J\/psi thin eta_c$
+  point meets refused lanes (a threshold bubble pinch, and pentagons holding the
+  Coulomb relations of both onia) and is reported exceptional. The second row
+  uses TIRust 370b632 (the head of PR \#56, stacked on \#47 and \#55; not yet pinned), which
+  serves them: every point stable in double precision (code 213), poles zero to
+  $1.3 dot 10^(-7)$, the finite part within $3.1 dot 10^(-7)$ of Gong and Wang.
+  Forced quadruple precision gives poles of $10^(-15)$ and the finite part
+  within $6 dot 10^(-8)$, inside the 7 published digits; what is left comes from
+  the double-precision momenta, whose onium masses sit a few ulp off $2 m_c$.
+]
+
 = 2 → 2 processes: poles and an independent check of the finite parts <twotwo>
 
 No point-wise one-loop results are published for hadronic 2 → 2 quarkonium
@@ -265,7 +277,7 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     MadLoop returns code `4x0` with accuracy 1, and its $c_1$ misses $-2 C_F$
     or $-C_F\/2$ of the Born. The pole prediction `ONIA_IR_POLES` agrees with
     the reference at these points.
-  - *With TIRust 08edee3* (PR \#51, not pinned) all 34 such points are served,
+  - *With TIRust 08edee3* (in PR \#56, not pinned) all 34 such points are served,
     and most agree with the reference. At the softest ones the double-precision
     result is wrong, while MadLoop's tests report an accuracy of $10^(-8)$ to
     $10^(-12)$. For $g g -> Upsilon g$ at $sqrt(s) = 9.51$ GeV (a 10 MeV gluon),
@@ -339,8 +351,8 @@ Those soft points are rescued in quadruple precision.
 
 = P-wave bound states <pwave>
 
-The P-wave results use TIRust 48958d1 (huashengshao/TIRust PR \#50, stacked on
-\#47 to \#49, not yet the pinned revision). That revision serves every integral
+The P-wave results use TIRust 48958d1 (in huashengshao/TIRust PR \#56, stacked on
+\#47 and \#55, not yet the pinned revision). That revision serves every integral
 of the $2 -> 1$ processes at zero relative momentum, including the Coulomb box
 with its gluon line doubled. Earlier revisions refuse that box, and the point is
 then reported unstable (`H = 4`). The settings are $mu = M = 2 m_c = 3.1$ GeV,
@@ -379,7 +391,7 @@ vanish by colour conservation when the bound state has a single coloured
 partner, as in $e^+ e^- -> c overline(c)[P^((8))] thin g$, or when every $S'$ Born
 vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]$.
 
-#block(breakable: false)[#figure(caption: [The poles of $2 -> 2$ P-wave processes against the prediction, TIRust 48958d1, four points at the given $sqrt(s)$: the range of $c_1$ over the points, the range of the $P -> S$ term of the prediction, and the largest deviation of $c_1$, $c_2$ from the prediction (green within $10^(-8)$). The finite parts have no reference.])[
+#block(breakable: false)[#figure(caption: [The poles of $2 -> 2$ P-wave processes against the prediction, TIRust 48958d1 ($g g -> chi_(c 0) thin g$: 370b632), four points at the given $sqrt(s)$: the range of $c_1$ over the points, the range of the $P -> S$ term of the prediction, and the largest deviation of $c_1$, $c_2$ from the prediction (green within $10^(-8)$). The finite parts have no reference.])[
   #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, center),
     [Process], [$sqrt(s)$ (GeV)], [$c_2$], [$c_1$], [$P -> S$ term], [poles dev.], [stable],
@@ -405,7 +417,10 @@ vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]
     warning. TIRust 48958d1 serves $u overline(u) -> chi_(c 0) g$ and
     $g u -> chi_(c 0) u$, but not the doubled-gluon pentagons of
     $g g -> chi_(c 0) g$ (equal-mass heavy bubbles at zero momentum with
-    raised powers; open TIRust item).
+    raised powers). TIRust 370b632 (the head of PR \#56, not yet pinned)
+    serves them: every point stable (code 213), the poles as predicted to
+    $1.3 dot 10^(-9)$, the finite parts equal to forced quadruple precision
+    within $4 dot 10^(-12)$, at 0.9 s per point.
 ]
 
 = Reduction libraries at threshold <reducers>
@@ -445,7 +460,8 @@ vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]
   (1) the binary128 path refuses the degenerate lanes even with exact inputs,
   so there is no QP rescue for bound states yet;
   (2) processes with two bound states ($e^+ e^- -> J\/psi eta_c$) meet refused
-  lanes (a threshold bubble pinch; two Coulomb relations in one pentagon);
+  lanes (a threshold bubble pinch; two Coulomb relations in one pentagon),
+  served by TIRust 370b632 (PR \#56, not yet pinned; @analytic);
   (3) P-wave states need the doubled-propagator integrals at threshold:
   TIRust 48958d1 has them for the $2 -> 1$ processes (@pwave), not yet pinned.
 ]

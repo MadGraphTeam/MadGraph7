@@ -6,6 +6,9 @@
         --git REVISION
 
 validation: the output of tools/onia_loop_validate.py (all cases);
+validation-extra: runs of tools/onia_loop_validate.py with an unpinned TIRust
+          build (--tirust, --tirust-label), listed after the pinned row of the
+          same case;
 timing: the *.json reports of tools/onia_loop_timing.py;
 reducers: the output of tools/onia_loop_validate.py run with several
           reduction libraries (--libs 9 3 8 6 7 1).
@@ -56,8 +59,9 @@ STATUS_LINES = [
     '*TIRust in double precision*, stable points in every frame. The other libraries fail '
     'at threshold, not always detected by MadLoop\'s tests: their results are now reported '
     'unstable, and TIRust is the default chain (@reducers).',
-    '*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): TIRust refuses lanes, the '
-    'points are reported exceptional (open TIRust item).',
+    '*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes '
+    'and the points are reported exceptional; TIRust 370b632 (PR \\#56, not yet pinned) serves '
+    'them, stable, Gong–Wang reproduced to $3 dot 10^(-7)$ (@analytic).',
     '*No QP rescue yet:* TIRust\'s binary128 path refuses the threshold lanes (open TIRust '
     'item); such points are reported unstable, not wrong.',
     '*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ '
@@ -72,12 +76,11 @@ STATUS_LINES = [
     'checks, bit-identical, faster on every benchmark process.',
 ]
 OPEN_ITEMS = [
-    '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47 to '
-    '\\#51; until then a P-wave point meets a refused integral and is reported unstable); the '
-    'doubled-gluon pentagons of $g g -> chi_(c J) g$ (equal-mass bubbles at zero momentum with '
-    'raised powers).',
-    '*Two S-wave bound states* in one process: threshold bubble pinches and two Coulomb '
-    'relations in one loop, in TIRust.',
+    '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, '
+    '\\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). '
+    '370b632, the head of \\#56, also serves $g g -> chi_(c 0) g$ (@pwave).',
+    '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
+    '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).',
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
     '*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of '
     '$p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such '
@@ -161,7 +164,20 @@ def summarize_validation(cases):
                 entry['relmom_libs_agree'] = max(
                     abs(a - b) / max(abs(a), 1.) for a, b in
                     zip(rm['libs']['9']['finite'], rm['libs']['7']['finite']))
+        if c.get('tirust'):
+            entry['tirust'] = c['tirust']
+            entry['ref_short'] += '; TIRust %s' % c['tirust']
         out.append(entry)
+    return out
+
+
+def merge_extra(rows, extra):
+    """Insert the rows of unpinned TIRust builds after the pinned row of the
+    same case."""
+    out = list(rows)
+    for e in extra:
+        at = max([i for i, r in enumerate(out) if r['name'] == e['name']], default=len(out) - 1)
+        out.insert(at + 1, e)
     return out
 
 
@@ -364,6 +380,8 @@ PWAVE_22 = [
     ('ee_1p18g', r'e^+ e^- -> c overline(c) thin [""^1 P_1^((8))] thin g'),
     ('uu_chic0g', r'u overline(u) -> chi_(c 0) thin g'),
     ('gu_chic0u', r'g u -> chi_(c 0) thin u'),
+    # TIRust 370b632 (PR #56): the doubled-gluon pentagons that 48958d1 refuses
+    ('gg_chic0g', r'g g -> chi_(c 0) thin g'),
 ]
 
 
@@ -409,6 +427,7 @@ def summarize_pwave(folder):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--validation')
+    parser.add_argument('--validation-extra', nargs='*', default=[])
     parser.add_argument('--timing')
     parser.add_argument('--reducers')
     parser.add_argument('--mg255', help='research/mg255_swave/data')
@@ -419,7 +438,10 @@ def main():
     os.makedirs(DATA, exist_ok=True)
     if args.validation:
         with open(os.path.join(DATA, 'validation.json'), 'w') as f:
-            json.dump(summarize_validation(json.load(open(args.validation))), f, indent=1)
+            extra = [e for path in args.validation_extra
+                     for e in summarize_validation(json.load(open(path)))]
+            json.dump(merge_extra(summarize_validation(json.load(open(args.validation))), extra),
+                      f, indent=1)
     if args.reducers:
         with open(os.path.join(DATA, 'reducers.json'), 'w') as f:
             json.dump(summarize_reducers(json.load(open(args.reducers))), f, indent=1)

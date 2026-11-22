@@ -418,6 +418,29 @@
    ],
    "energy": 20.0,
    "accuracy": 7.1484e-11
+  },
+  {
+   "name": "gg_chic0g",
+   "label": "g g -> chi_(c 0) thin g",
+   "npoints": 4,
+   "stable": 4,
+   "return_codes": [
+    213
+   ],
+   "finite": 76.70123987271492,
+   "single": -8.916051129435985,
+   "double": -8.999999999974538,
+   "single_range": [
+    -13.87770252392507,
+    -8.170152532983954
+   ],
+   "max_pole_deviation": 1.2552519024211506e-09,
+   "ps_term": [
+    6.948729825243148,
+    9.859200746098832
+   ],
+   "energy": 20.0,
+   "accuracy": 6.5882e-10
   }
  ]
 }

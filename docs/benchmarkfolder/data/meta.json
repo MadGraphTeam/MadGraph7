@@ -1,5 +1,5 @@
 {
- "revision": "eda7d7fe04",
+ "revision": "7f3a54608d",
  "date": "2026-11-22",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
@@ -107,6 +107,10 @@
   [
    "583335239c",
    "docs/benchmarkfolder: stability profiles after appendix C of arXiv:1604.01363"
+  ],
+  [
+   "7f3a54608d",
+   "docs/benchmarkfolder: bottomonium stability profiles"
   ]
  ],
  "decisions": [
@@ -126,7 +130,7 @@
  "status_lines": [
   "*S-wave, one bound state* (singlet or octet, any $J$) with elementary particles: the analytic $2 -> 1$ and $e^+ e^-$ results reproduced to $10^(-8)$, the published precision or MadLoop's accuracy estimate (@analytic); $2 -> 2$ poles as predicted, finite parts confirmed by the $v -> 0$ extrapolation of ordinary integrals (@twotwo).",
   "*TIRust in double precision*, stable points in every frame. The other libraries fail at threshold, not always detected by MadLoop's tests: their results are now reported unstable, and TIRust is the default chain (@reducers).",
-  "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): TIRust refuses lanes, the points are reported exceptional (open TIRust item).",
+  "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes and the points are reported exceptional; TIRust 370b632 (PR \\#56, not yet pinned) serves them, stable, Gong\u2013Wang reproduced to $3 dot 10^(-7)$ (@analytic).",
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
   "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
   "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.",
@@ -134,8 +138,8 @@
   "*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE checks, bit-identical, faster on every benchmark process."
  ],
  "open_items": [
-  "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47 to \\#51; until then a P-wave point meets a refused integral and is reported unstable); the doubled-gluon pentagons of $g g -> chi_(c J) g$ (equal-mass bubbles at zero momentum with raised powers).",
-  "*Two S-wave bound states* in one process: threshold bubble pinches and two Coulomb relations in one loop, in TIRust.",
+  "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, \\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). 370b632, the head of \\#56, also serves $g g -> chi_(c 0) g$ (@pwave).",
+  "*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 (threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).",
   "*Quadruple-precision rescue:* the degenerate lanes in TIRust's binary128 path.",
   "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, and MadLoop's double precision is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; 22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ with physical masses), which MadLoop's loop-direction test does not vary. Fixed: bound-state outputs now estimate the rounding of the counterterm interference and rescue such points in quadruple precision (every point right).",
   "*Loop-induced processes* with bound states; the FKS integration on `onia_fks` (its `BinothLHA` can call this virtual).",
