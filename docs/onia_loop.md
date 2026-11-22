@@ -118,8 +118,17 @@ The guard applies when the bound states have coloured constituents
 constituents of a leptonium. (IREGI has a separate limitation there: at
 leptonium scales, M = 20 MeV and below, it drops the loop and reports the
 result stable; it is right at M = 2 GeV.)
-When TIRust refuses a point (two bound states in one process, see the open
-items of the benchmark report), the point is reported unstable.
+When TIRust refuses an integral (two bound states in one process, see the
+open items of the benchmark report; the binary128 path of the pinned
+revision, for instance at most points of `g g > Jpsi(1|3S11) g` at
+sqrt(s) = 5 GeV with `CTModeRun = 4`), its contribution is missing and the
+point is reported unstable (`H=4`, accuracy 1) in every mode. With
+`CTModeRun = -1` MadLoop's stability tests do this: a refusal counts as a
+floating-point exception of the reduction (`FPE_IN_DP/QP_REDUCTION`), so
+MadLoop tries the next library or quadruple precision first. The forced
+modes (`CTModeRun = 1` or 4) and the initialisation points run no test.
+There the public `SLOOPMATRIX` reads the same flags and reports the point
+unstable itself, with a warning on the first such point.
 
 **Precision rescue.** The quadruple-precision rescue improves the physical
 momenta, each bound state on its mass shell, and splits the bound states

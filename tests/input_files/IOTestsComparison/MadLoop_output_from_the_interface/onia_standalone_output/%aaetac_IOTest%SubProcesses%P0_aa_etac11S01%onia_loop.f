@@ -49,6 +49,13 @@ C     state with mass m1+m2), computed from its constituent legs.
       SAVE WARNED
       REAL*8 QREST(3)
       COMMON/ML5_0_ONIA_RELMOM/QREST
+      LOGICAL FPE_IN_DP_REDUCTION, FPE_IN_QP_REDUCTION
+      COMMON/ML5_0_FPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,
+     &  FPE_IN_QP_REDUCTION
+      LOGICAL FAILED_WARNED
+      DATA FAILED_WARNED/.FALSE./
+      SAVE FAILED_WARNED
+      INTEGER I
       INCLUDE 'onia_loop_data.inc'
       IF (USERHEL.NE.-1) THEN
         WRITE(*,*) 'ERROR:: MadLoop sums over the polarisations of'
@@ -82,6 +89,31 @@ C     constituents of a bound state.
         RET_CODE_H=4
         RET_CODE_U=SET_RET_CODE_U(LIB,.FALSE.,.FALSE.)
       ENDIF
+      ENDIF
+C     A failed reduction (an integral TIRust refuses, or a
+C     floating-point exception) leaves its integrals out of the
+C     result. MadLoop's stability tests (CTModeRun=-1) then try the
+C     next library or quadruple precision, and report the point
+C     unstable if none succeeds. The forced modes (CTModeRun=1 or 4)
+C     and the initialisation points run no test: the incomplete result
+C     is reported unstable here. The flags are those of the evaluation
+C     returned (MadLoop clears them when it changes library or
+C     precision).
+      IF ((FPE_IN_DP_REDUCTION.OR.FPE_IN_QP_REDUCTION)
+     &  .AND.RET_CODE_H.NE.4) THEN
+      IF (.NOT.FAILED_WARNED) THEN
+        WRITE(*,*) 'WARNING:: bound states: the reduction of',
+     &     ' some loop integrals failed (TIRust refuses some at',
+     &     ' this point). Their contribution is missing; the result',
+     &     ' is reported unstable.'
+        FAILED_WARNED=.TRUE.
+      ENDIF
+      RET_CODE_H=4
+      RET_CODE_U=SET_RET_CODE_U(ML_GET_RET_CODE_LIBRARY(),.FALSE.,
+     &   .FALSE.)
+      DO I=0,NSQUAREDSO
+        ACCURACY(I)=1D0
+      ENDDO
       ENDIF
       END
 
