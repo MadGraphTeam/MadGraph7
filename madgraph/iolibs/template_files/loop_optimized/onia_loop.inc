@@ -436,6 +436,7 @@ C     momenta P.
       PARAMETER (NEXTERNAL=%(nexternal)d, NCOMB=%(ncomb)d, NBORNAMPS=%(nbornamps)d)
       %(real_dp_format)s P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
       %(complex_dp_format)s AMP(NBORNAMPS)
       COMMON/%(proc_prefix)sAMPS/AMP
       %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
@@ -511,6 +512,14 @@ C     The projected Born amplitudes
      &     +PROJW(T,H)*AMPH(1:NBORNAMPS,H)
         ENDDO
       ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL %(proc_prefix)sONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=(0D0,0D0)
+        ENDDO
+      ENDIF
 C     The effective Born of each constituent helicity configuration
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=(0D0,0D0)
@@ -550,6 +559,7 @@ C     precision
       PARAMETER (NEXTERNAL=%(nexternal)d, NCOMB=%(ncomb)d, NBORNAMPS=%(nbornamps)d)
       %(real_mp_format)s P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
       %(complex_mp_format)s AMP(NBORNAMPS)
       COMMON/%(proc_prefix)sMP_AMPS/AMP
       %(complex_mp_format)s WEFF(NBORNAMPS,NCOMB)
@@ -619,6 +629,14 @@ C     precision
      &     +PROJW(T,H)*AMPH(1:NBORNAMPS,H)
         ENDDO
       ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL %(proc_prefix)sONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=CZERO
+        ENDDO
+      ENDIF
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=CZERO
         IF (.NOT.ACTIVE(H)) CYCLE
@@ -826,6 +844,7 @@ C     constituent momenta P (at zero relative momentum).
       PARAMETER (NEXTERNAL=%(nexternal)d, NCOMB=%(ncomb)d, NBORNAMPS=%(nbornamps)d)
       %(real_dp_format)s P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
       %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
       %(real_dp_format)s BORN2
       COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
@@ -955,6 +974,15 @@ C     S_z = J_z-L_z, VS = sum_{L_z} CG eps(L_z) A(S_z)
           ENDDO
         ENDDO
       ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL %(proc_prefix)sONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=(0D0,0D0)
+          VS(1:NBORNAMPS,0:3,1:ONIA_NOTHERS,T)=(0D0,0D0)
+        ENDDO
+      ENDIF
 C     The weights of each constituent helicity configuration
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=(0D0,0D0)
@@ -1618,6 +1646,7 @@ C     ONIA_PREPARE, without the Born matrix element)
       PARAMETER (NEXTERNAL=%(nexternal)d, NCOMB=%(ncomb)d, NBORNAMPS=%(nbornamps)d)
       %(real_mp_format)s P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
       %(complex_mp_format)s WEFF(NBORNAMPS,NCOMB)
       COMMON/%(proc_prefix)sMP_ONIA_EFFECTIVE/WEFF
       %(complex_mp_format)s W2(NBORNAMPS,NCOMB,3), VW(NBORNAMPS,0:3,NCOMB)
@@ -1718,6 +1747,14 @@ C     ONIA_PREPARE, without the Born matrix element)
           ENDDO
         ENDDO
       ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL %(proc_prefix)sONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=CZERO
+        ENDDO
+      ENDIF
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=CZERO
         W2(1:NBORNAMPS,H,1:3)=CZERO
@@ -2111,6 +2148,74 @@ C     As ONIA_PW_DOUBLED, in quadruple precision
       ENDDO
       END
 ## }
+
+      SUBROUTINE %(proc_prefix)sONIA_SELECT_JZ(K,NJZ,JZS)
+C     Restricts the polarisation of bound state K (1 to the number of bound
+C     states, in the order of the process) to the NJZ values JZS(1:NJZ) of
+C     J_z; NJZ = 0 selects every J_z again (the default). J_z is the helicity
+C     of the bound state in the frame of the momenta given to SLOOPMATRIX (the
+C     polarisation vectors of VXXXXX for its momentum there): with momenta in
+C     the partonic centre-of-mass frame, J_z = +-1 and 0 of a J = 1 state are
+C     its transverse and longitudinal polarisations in the helicity frame.
+C     The Born, the virtual and the predicted poles are those of the selected
+C     J_z, summed over them.
+      IMPLICIT NONE
+      INTEGER K, NJZ, JZS(*)
+      INCLUDE 'onia_loop_data.inc'
+      INTEGER MASK(ONIA_NONIA), I
+      IF (K.LT.1.OR.K.GT.ONIA_NONIA) THEN
+        WRITE(*,*) 'ERROR:: ONIA_SELECT_JZ: no bound state',K
+        STOP 1
+      ENDIF
+      CALL %(proc_prefix)sONIA_JZ_MASK(.FALSE.,MASK)
+      MASK(K)=0
+      DO I=1,NJZ
+        IF (ABS(JZS(I)).GT.ONIA_J(K)) THEN
+          WRITE(*,*) 'ERROR:: ONIA_SELECT_JZ: J_z',JZS(I),
+     &     'out of range for J =',ONIA_J(K)
+          STOP 1
+        ENDIF
+        MASK(K)=IBSET(MASK(K),JZS(I)+ONIA_J(K))
+      ENDDO
+      CALL %(proc_prefix)sONIA_JZ_MASK(.TRUE.,MASK)
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_JZ_MASK(SET,MASK)
+C     The J_z selected for each bound state, bit J_z+J of MASK(K) (0: all):
+C     stored (SET) or returned
+      IMPLICIT NONE
+      LOGICAL SET
+      INCLUDE 'onia_loop_data.inc'
+      INTEGER MASK(ONIA_NONIA), SAVED(ONIA_NONIA)
+      DATA SAVED/ONIA_NONIA*0/
+      SAVE SAVED
+      IF (SET) THEN
+        SAVED(1:ONIA_NONIA)=MASK(1:ONIA_NONIA)
+      ELSE
+        MASK(1:ONIA_NONIA)=SAVED(1:ONIA_NONIA)
+      ENDIF
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_JZ_TSEL(TSEL,ALLSEL)
+C     TSEL(T): whether the J_z combination T of the bound states is
+C     selected (ONIA_SELECT_JZ); ALLSEL: every one is
+      IMPLICIT NONE
+      INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLSEL
+      INTEGER MASK(ONIA_NONIA), T, K
+      CALL %(proc_prefix)sONIA_JZ_MASK(.FALSE.,MASK)
+      ALLSEL=.TRUE.
+      DO K=1,ONIA_NONIA
+        IF (MASK(K).NE.0) ALLSEL=.FALSE.
+      ENDDO
+      DO T=1,ONIA_NJZT
+        TSEL(T)=.TRUE.
+        DO K=1,ONIA_NONIA
+          IF (MASK(K).EQ.0) CYCLE
+          IF (.NOT.BTEST(MASK(K),ONIA_JZ(K,T)+ONIA_J(K))) TSEL(T)=.FALSE.
+        ENDDO
+      ENDDO
+      END
 
       SUBROUTINE %(proc_prefix)sONIA_BORN(P,ANSB)
 C     The projected Born matrix element (ANSB(0), and ANSB(1) for its

@@ -27,6 +27,17 @@ of a bound state is `m1 + m2`, the sum of its constituent masses, as in
 points, several reduction libraries, JSON output) drive the output. The LDMEs
 are read from `Cards/onia_card.dat`.
 
+The sum over the polarisations of a bound state can be restricted with
+`ONIA_SELECT_JZ(K, NJZ, JZS)`: bound state K (in the order of the process)
+then takes only the NJZ values `JZS(1:NJZ)` of J_z (NJZ = 0 restores the
+sum). J_z is the helicity of the bound state in the frame of the momenta
+given to `SLOOPMATRIX` (its polarisation vectors from `VXXXXX`). With
+momenta in the partonic centre-of-mass frame, J_z = +-1 and 0 of a J = 1
+state are its transverse and longitudinal polarisations in the helicity
+frame. The Born, the virtual and the predicted poles are those of the
+selected J_z. `tools/onia_loop_check.py` exposes it as `jz=(K, [J_z, ...])` of
+`run_points` (driver option `--jz`).
+
 Supported: `[virt=QCD]` with S-wave bound states in the final state, and at
 most one P-wave bound state. A P-wave output needs a TIRust installation with
 raised propagator powers (`raised_powers` in its metadata; `install tirust

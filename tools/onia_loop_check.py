@@ -46,7 +46,8 @@ import tirust_benchmark_points as points_lib
 DRIVER = """\
 C     Reads NPOINTS, then per point MU_R (<= 0: sqrt(s)) and the momenta of
 C     the NEXTERNAL physical legs; writes one RESULT line per point.
-C     With --masses, writes the masses of pmass.inc.
+C     With --masses, writes the masses of pmass.inc. With --jz K N JZ1 ...
+C     JZN (bound states), only those J_z of bound state K (ONIA_SELECT_JZ).
       PROGRAM ML_POINTS_DRIVER
       IMPLICIT NONE
       INTEGER NEXTERNAL
@@ -61,12 +62,14 @@ C     With --masses, writes the masses of pmass.inc.
       INTEGER*8 T0, T1, RATE
       CHARACTER*64 ARG
       REAL*8 QREL(3)
+      INTEGER KJZ, NJZ, JZS(32)
       PI = 4D0*DATAN(1D0)
       CALL SETPARA('param_card.dat')
 @SETONIA@
       INCLUDE 'pmass.inc'
       CALL GET_COMMAND_ARGUMENT(1,ARG)
 @RELMOM@
+@SELJZ@
       IF (TRIM(ARG).EQ.'--masses') THEN
         DO I=1,NEXTERNAL
           WRITE(*,'(A,I4,ES26.17E3)') 'MASS',I,PMASS(I)
@@ -177,6 +180,20 @@ def build_driver(pdir):
         CALL %sONIA_SET_RELATIVE_MOMENTUM(QREL)
       ENDIF''' % prefix
     source = source.replace('@RELMOM@', relmom if onia else '')
+    seljz = '''      IF (TRIM(ARG).EQ.'--jz') THEN
+        CALL GET_COMMAND_ARGUMENT(2,ARG)
+        READ(ARG,*) KJZ
+        CALL GET_COMMAND_ARGUMENT(3,ARG)
+        READ(ARG,*) NJZ
+        DO I=1,NJZ
+          CALL GET_COMMAND_ARGUMENT(3+I,ARG)
+          READ(ARG,*) JZS(I)
+        ENDDO
+        CALL %sONIA_SELECT_JZ(KJZ,NJZ,JZS)
+      ENDIF''' % prefix
+    # outputs generated before ONIA_SELECT_JZ existed have no --jz
+    has_jz = onia and 'ONIA_SELECT_JZ' in open(os.path.join(pdir, 'onia_loop.f')).read()
+    source = source.replace('@SELJZ@', seljz if has_jz else '')
     with open(os.path.join(pdir, 'ml_points_driver.f'), 'w') as f:
         f.write(source)
     with open(os.path.join(pdir, 'ml_points_driver.mk'), 'w') as f:
@@ -224,10 +241,11 @@ def set_masses(outdir, masses):
     open(card, 'w').writelines(lines)
 
 
-def run_points(pdir, momenta, mu=None, warmup=3, timeout=None, relmom=None):
+def run_points(pdir, momenta, mu=None, warmup=3, timeout=None, relmom=None, jz=None):
     """Evaluate the virtual at the given points (lists of 4-vectors); the
     first point is repeated `warmup` times first (MadLoop's initialisation
-    of its filters), and those results are dropped."""
+    of its filters), and those results are dropped. jz = (k, [J_z, ...])
+    restricts bound state k to those J_z (ONIA_SELECT_JZ)."""
     lines = [str(len(momenta) + warmup)]
     for p in [momenta[0]] * warmup + list(momenta):
         lines.append('%.17e' % (mu if mu else -1.0))
@@ -235,6 +253,9 @@ def run_points(pdir, momenta, mu=None, warmup=3, timeout=None, relmom=None):
     cmd = [os.path.join(pdir, 'ml_points_driver')]
     if relmom is not None:
         cmd += ['--relmom'] + ['%.17e' % q for q in relmom]
+    elif jz is not None:
+        # (bound state, [J_z, ...]): only those J_z of that bound state
+        cmd += ['--jz', str(jz[0]), str(len(jz[1]))] + [str(j) for j in jz[1]]
     proc = subprocess.run(cmd, cwd=pdir,
                           input='\n'.join(lines) + '\n', capture_output=True, text=True,
                           timeout=timeout)

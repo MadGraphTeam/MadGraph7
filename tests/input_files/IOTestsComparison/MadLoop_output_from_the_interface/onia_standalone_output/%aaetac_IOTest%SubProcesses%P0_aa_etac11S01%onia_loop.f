@@ -468,6 +468,7 @@ C     momenta P.
       PARAMETER (NEXTERNAL=4, NCOMB=16, NBORNAMPS=2)
       REAL*8 P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
       COMPLEX*16 AMP(NBORNAMPS)
       COMMON/ML5_0_AMPS/AMP
       COMPLEX*16 WEFF(NBORNAMPS,NCOMB)
@@ -543,6 +544,14 @@ C     The projected Born amplitudes
      &     +PROJW(T,H)*AMPH(1:NBORNAMPS,H)
         ENDDO
       ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL ML5_0_ONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=(0D0,0D0)
+        ENDDO
+      ENDIF
 C     The effective Born of each constituent helicity configuration
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=(0D0,0D0)
@@ -584,6 +593,7 @@ C     precision
       PARAMETER (NEXTERNAL=4, NCOMB=16, NBORNAMPS=2)
       REAL*16 P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLJZ
       COMPLEX*32 AMP(NBORNAMPS)
       COMMON/ML5_0_MP_AMPS/AMP
       COMPLEX*32 WEFF(NBORNAMPS,NCOMB)
@@ -653,6 +663,14 @@ C     precision
      &     +PROJW(T,H)*AMPH(1:NBORNAMPS,H)
         ENDDO
       ENDDO
+C     The J_z selected with ONIA_SELECT_JZ (all by default)
+      CALL ML5_0_ONIA_JZ_TSEL(TSEL,ALLJZ)
+      IF (.NOT.ALLJZ) THEN
+        DO T=1,ONIA_NJZT
+          IF (TSEL(T)) CYCLE
+          BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=CZERO
+        ENDDO
+      ENDIF
       DO H=1,NCOMB
         WEFF(1:NBORNAMPS,H)=CZERO
         IF (.NOT.ACTIVE(H)) CYCLE
@@ -712,6 +730,85 @@ C     AMP = the effective Born W(H) of the last MP_ONIA_PREPARE
       COMPLEX*32 WEFF(NBORNAMPS,NCOMB)
       COMMON/ML5_0_MP_ONIA_EFFECTIVE/WEFF
       AMP(1:NBORNAMPS)=WEFF(1:NBORNAMPS,H)
+      END
+
+
+      SUBROUTINE ML5_0_ONIA_SELECT_JZ(K,NJZ,JZS)
+C     Restricts the polarisation of bound state K (1 to the number of
+C      bound
+C     states, in the order of the process) to the NJZ values
+C      JZS(1:NJZ) of
+C     J_z; NJZ = 0 selects every J_z again (the default). J_z is the
+C      helicity
+C     of the bound state in the frame of the momenta given to
+C      SLOOPMATRIX (the
+C     polarisation vectors of VXXXXX for its momentum there): with
+C      momenta in
+C     the partonic centre-of-mass frame, J_z = +-1 and 0 of a J = 1
+C      state are
+C     its transverse and longitudinal polarisations in the helicity
+C      frame.
+C     The Born, the virtual and the predicted poles are those of the
+C      selected
+C     J_z, summed over them.
+      IMPLICIT NONE
+      INTEGER K, NJZ, JZS(*)
+      INCLUDE 'onia_loop_data.inc'
+      INTEGER MASK(ONIA_NONIA), I
+      IF (K.LT.1.OR.K.GT.ONIA_NONIA) THEN
+        WRITE(*,*) 'ERROR:: ONIA_SELECT_JZ: no bound state',K
+        STOP 1
+      ENDIF
+      CALL ML5_0_ONIA_JZ_MASK(.FALSE.,MASK)
+      MASK(K)=0
+      DO I=1,NJZ
+        IF (ABS(JZS(I)).GT.ONIA_J(K)) THEN
+          WRITE(*,*) 'ERROR:: ONIA_SELECT_JZ: J_z',JZS(I),
+     &     'out of range for J =',ONIA_J(K)
+          STOP 1
+        ENDIF
+        MASK(K)=IBSET(MASK(K),JZS(I)+ONIA_J(K))
+      ENDDO
+      CALL ML5_0_ONIA_JZ_MASK(.TRUE.,MASK)
+      END
+
+      SUBROUTINE ML5_0_ONIA_JZ_MASK(SET,MASK)
+C     The J_z selected for each bound state, bit J_z+J of MASK(K) (0:
+C      all):
+C     stored (SET) or returned
+      IMPLICIT NONE
+      LOGICAL SET
+      INCLUDE 'onia_loop_data.inc'
+      INTEGER MASK(ONIA_NONIA), SAVED(ONIA_NONIA)
+      DATA SAVED/ONIA_NONIA*0/
+      SAVE SAVED
+      IF (SET) THEN
+        SAVED(1:ONIA_NONIA)=MASK(1:ONIA_NONIA)
+      ELSE
+        MASK(1:ONIA_NONIA)=SAVED(1:ONIA_NONIA)
+      ENDIF
+      END
+
+      SUBROUTINE ML5_0_ONIA_JZ_TSEL(TSEL,ALLSEL)
+C     TSEL(T): whether the J_z combination T of the bound states is
+C     selected (ONIA_SELECT_JZ); ALLSEL: every one is
+      IMPLICIT NONE
+      INCLUDE 'onia_loop_data.inc'
+      LOGICAL TSEL(ONIA_NJZT), ALLSEL
+      INTEGER MASK(ONIA_NONIA), T, K
+      CALL ML5_0_ONIA_JZ_MASK(.FALSE.,MASK)
+      ALLSEL=.TRUE.
+      DO K=1,ONIA_NONIA
+        IF (MASK(K).NE.0) ALLSEL=.FALSE.
+      ENDDO
+      DO T=1,ONIA_NJZT
+        TSEL(T)=.TRUE.
+        DO K=1,ONIA_NONIA
+          IF (MASK(K).EQ.0) CYCLE
+          IF (.NOT.BTEST(MASK(K),ONIA_JZ(K,T)+ONIA_J(K))) TSEL(T)
+     $     =.FALSE.
+        ENDDO
+      ENDDO
       END
 
       SUBROUTINE ML5_0_ONIA_BORN(P,ANSB)

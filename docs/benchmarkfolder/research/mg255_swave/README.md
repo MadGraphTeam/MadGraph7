@@ -29,6 +29,7 @@ The 2.5.5 code passes the V0 result to MadFKS unchanged (`BinothLHA.f`: no DR-to
 | `compare.py <case>` | the reference's `PS*.input` points and three random points at each of three energies |
 | `summarize.py` | the largest differences per case |
 | `data/cmp_<case>.json` | the results per point: MadLoop, and the reference for each `calcoption` (for J/ψ also per polarisation, `T` and `L`, each in units of its own Born) |
+| `pol_jpsi.py`, `data/pol_gg_jpsig.json` | g g > Jpsi g per J/ψ polarisation (`ONIA_SELECT_JZ`) against the transverse and longitudinal virtuals of `Jpsi_double_cs_NEW` |
 | `data/cmp_gg_jpsig_255grid.json` | the earlier J/ψ comparison with the grid of `2.5.5_Onia/pp2psij_Grid_FKS_MultiChan` (9 random points, 1.3e-4) |
 
 The paths are those of the scratch workspace in which the scripts ran.
@@ -52,6 +53,10 @@ The paths are those of the scratch workspace in which the scripts ran.
 
 - **Borns.** The Borns agree up to the LDMEs of the model: 0.3867 against 1.16/3 for η_c (ratio 1.000086), 3.093 against 9.28/3 for η_b (ratio 0.999892), and 1.16 for J/ψ and Υ (ratio 1).
 - **J/ψ.** `Jpsi_double_cs_NEW` evaluates the virtual directly, and MadLoop agrees with it to 1.3e-8. Its grid differs from that evaluation by up to 6.8e-4, and the earlier comparison with the grid of `2.5.5_Onia` gave 1.3e-4. The other grids (`calcoption=1`) agree with their direct evaluation to 1e-8, except for Υ, where they differ by up to 1.1e-4.
+- **J/ψ polarisation.** `Jpsi_double_cs_NEW` also gives the transverse and longitudinal J/ψ in the helicity frame of the partonic centre-of-mass frame. `pol_jpsi.py` evaluates MadLoop with `ONIA_SELECT_JZ` (J_z = ±1 and 0) at the same points (`data/pol_gg_jpsig.json`). The polarised Borns agree to 1e-12.
+  - **Pinned TIRust, at the 12 stable points.** T agrees within 2.3e-8 and L within 9.2e-7. L's double-precision value carries MadLoop's rounding of ~1e-7 relative to its suppressed Born.
+  - **TIRust 08edee3 in forced quadruple precision, at all 16 points.** T, L and their sum agree within 3e-12, and the 1/ε coefficients within 5e-11.
+  - **TIRust 08edee3 in double precision.** Every point is reported stable, but at the soft points the result is wrong: up to 440% for L at √s = 3.1015.
 - **Points reported unstable.** All of them have a soft or low-p_T jet: p_T below 0.05 GeV for charmonium, and up to 0.86 GeV in g g > etab/Upsilon g, which are stable from 1.05 GeV. All are in the gg and qq̄ channels; the qg channels are stable down to p_T = 6 MeV.
   - At these points TIRust refuses some integrals in both precisions: the Coulomb triangle, and the Coulomb boxes and pentagons with the jet attached.
   - MadLoop returns code 4x0 with accuracy 1, and the 1/ε coefficient misses −2C_F or −C_F/2 of the Born.

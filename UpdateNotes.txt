@@ -26,6 +26,9 @@ ANNOUNCEMENT:
        Coulomb box with a doubled gluon is not yet reduced by TIRust at threshold: such a
        point is reported unstable in every CTModeRun mode. The pole prediction includes
        the P -> S pole of the soft current (arXiv:2402.19221, appendix B).
+   HS: MadLoop: ONIA_SELECT_JZ(K,NJZ,JZS) restricts a bound state to chosen J_z (its
+       helicity in the frame of the momenta): polarised one-loop virtuals, e.g. the
+       transverse and longitudinal J/psi of g g > Jpsi g.
    HS: MadLoop standalone outputs compile their sources at -O2 (MADLOOP_OPTIMIZATION in the
        loop makefile, before FFLAGS) and their DHELAS and MODEL libraries at -O2 (ALOHA_FLAG
        and the new MODEL_FLAG of make_opts); they tabulate the colour factors and

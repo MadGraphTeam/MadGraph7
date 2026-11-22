@@ -9,6 +9,7 @@
 #let red = json("data/reducers.json")
 #let tim = json("data/timing.json")
 #let mg = json("data/mg255.json")
+#let mgp = json("data/mg255_pol.json")
 #let pw = json("data/pwave.json")
 
 #show: report-style.with(
@@ -270,6 +271,33 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     $c_0 = -333.247$ against $-335.116$; binary128 (`CTModeRun = 4`) gives
     the reference value. This was reported to the TIRust session.
 ]
+
+*$J\/psi$ polarisation.* `Jpsi_double_cs_NEW` gives the virtual of the
+transverse and the longitudinal $J\/psi$ in the helicity frame of the
+partonic centre-of-mass frame. MadLoop restricts a bound state to chosen
+$J_z$ with `ONIA_SELECT_JZ`. Its $J_z$ is the helicity in the frame of the
+momenta, here that same frame. Below, T is $J_z = plus.minus 1$ and L is
+$J_z = 0$, each in units of its own Born.
+
+#let pol-label = (T: [transverse ($J_z = plus.minus 1$)], L: [longitudinal ($J_z = 0$)], all: [sum])
+#figure(caption: [$g g -> J\/psi thin g$ per polarisation against the direct evaluation of `Jpsi_double_cs_NEW` (largest relative deviation of $c_0$, absolute of $c_1$, each in units of its own Born):
+- MadLoop with the pinned TIRust at the points it reports stable;
+- MadLoop with TIRust 08edee3 in forced quadruple precision (`CTModeRun = 4`) at all 16 points, including the soft ones;
+- the same in double precision with the stability checks, every point reported stable (code 213).])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right),
+    [Polarisation], [Born ratio], [pinned: stable], [$c_0$ dev.], [$c_1$ dev.], [08edee3 QP: $c_0$, $c_1$ dev.], [08edee3 DP: $c_0$ dev.],
+    ..mgp.map(c => (pol-label.at(c.pol), [#fixed(c.born_ratio.at(0), 9)–#fixed(c.born_ratio.at(1), 9)],
+      [#c.stable/#c.npoints], dev-cell(c.pin_fin, target: 1e-5), sci(c.pin_c1),
+      [#sci(c.qp_fin), #sci(c.qp_c1)],
+      table.cell(fill: acc-fill(c.dp_fin, 1e-5))[#sci(c.dp_fin)])).flatten()))
+] <tab:jpsipol>
+
+The longitudinal Born is suppressed, so its double-precision value carries
+MadLoop's rounding of $10^(-7)$ relative to it; in quadruple precision every
+polarisation agrees to $3 dot 10^(-12)$. The red column is the binary64
+problem of TIRust 08edee3 at the soft points (above): at $sqrt(s) = 3.1015$ GeV
+the longitudinal $c_0$ is off by 440% while reported stable.
 
 = P-wave bound states <pwave>
 

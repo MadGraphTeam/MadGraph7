@@ -75,6 +75,10 @@
   [
    "4b677220bb",
    "docs/benchmarkfolder: P-wave results and the MG5 2.5.5 onium + jet comparison in the report"
+  ],
+  [
+   "aad91a8240",
+   "docs/benchmarkfolder: g g > Jpsi g against the direct evaluation of Jpsi_double_cs_NEW"
   ]
  ],
  "decisions": [

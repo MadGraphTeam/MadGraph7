@@ -281,6 +281,34 @@ def summarize_mg255(folder):
     return out
 
 
+def summarize_mg255_pol(folder):
+    """g g > Jpsi g per polarisation (pol_gg_jpsig.json, pol_jpsi.py): for
+    T (J_z = +-1), L (J_z = 0) and their sum, the Born ratio, MadLoop with
+    the pinned TIRust (CTModeRun -1) at the points it reports stable, and
+    with TIRust 08edee3 in forced quadruple precision (CTModeRun 4) and in
+    double precision (CTModeRun -1) at every point, against the direct
+    evaluation of Jpsi_double_cs_NEW."""
+    path = os.path.join(folder, 'pol_gg_jpsig.json')
+    if not os.path.isfile(path):
+        return None
+    rows = json.load(open(path))
+    out = []
+    for pol in ('T', 'L', 'all'):
+        def dev(key, pts, what='fin'):
+            return max((abs(r['ml'][key][what] - r['ref'][pol][what])
+                        / (abs(r['ref'][pol][what]) if what == 'fin' else 1.)) for r in pts)
+        stable = [r for r in rows if r['ml']['%s_pin_-1' % pol]['code'] // 100 in (1, 2, 3)]
+        out.append(dict(
+            pol=pol, npoints=len(rows), stable=len(stable),
+            born_ratio=[min(r['ml']['%s_pin_-1' % pol]['born'] / r['ref'][pol]['born'] for r in rows),
+                        max(r['ml']['%s_pin_-1' % pol]['born'] / r['ref'][pol]['born'] for r in rows)],
+            pin_fin=dev('%s_pin_-1' % pol, stable), pin_c1=dev('%s_pin_-1' % pol, stable, 'c1'),
+            qp_fin=dev('%s_4_08edee3' % pol, rows), qp_c1=dev('%s_4_08edee3' % pol, rows, 'c1'),
+            dp_fin=dev('%s_-1_08edee3' % pol, rows),
+            dp_codes=sorted(set(r['ml']['%s_-1_08edee3' % pol]['code'] for r in rows))))
+    return out
+
+
 #------------------------------------------------------------------------------
 # P-wave bound states (research/pwave_fd: pw_check.py, ps_term.py)
 #------------------------------------------------------------------------------
@@ -409,6 +437,10 @@ def main():
     if args.mg255:
         with open(os.path.join(DATA, 'mg255.json'), 'w') as f:
             json.dump(summarize_mg255(args.mg255), f, indent=1)
+        pol = summarize_mg255_pol(args.mg255)
+        if pol is not None:
+            with open(os.path.join(DATA, 'mg255_pol.json'), 'w') as f:
+                json.dump(pol, f, indent=1)
     if args.pwave:
         with open(os.path.join(DATA, 'pwave.json'), 'w') as f:
             json.dump(summarize_pwave(args.pwave), f, indent=1)

@@ -32,3 +32,7 @@ C     colour factors between the projected Born amplitudes
 C     some loop holds both constituents of a bound state
       LOGICAL ONIA_THRESHOLD_LOOPS
       PARAMETER (ONIA_THRESHOLD_LOOPS=.TRUE.)
+C     the P-wave bound state (0 if none), and L of each bound state
+      INTEGER ONIA_IPW, ONIA_L(1)
+      PARAMETER (ONIA_IPW=0)
+      DATA ONIA_L/0/
