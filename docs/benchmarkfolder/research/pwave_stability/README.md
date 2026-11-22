@@ -37,6 +37,7 @@ The scripts:
 | `cost.py` | Two TIRust builds on the same points, alternating batches: time per point and QP rescues. |
 | `tail.py` | The points of a stability profile above a given estimate, in DP with several builds and in QP. |
 | `hybrid.py`, `hybrid_run.py` | QP MadLoop with TIRust's DP integrals (`ONIA_DBG_DPTIR`). |
+| `ep_retarget.py` | Phase 1 prototype of the 80-bit mode: retargets the QP path of an output copy to kind 10, with TIRust's DP entry. |
 | `qsubst.py`, `qsubst_run.py` | DP MadLoop with the doubled-line integrals at full QP precision, contracted in QP (`ONIA_DBG_QDUMP`, `ONIA_DBG_QSUBST`, `ONIA_DBG_QMODE`). |
 
 The results are in `data/`.
@@ -177,6 +178,22 @@ Lowering it needs both the integrals and the loop coefficients of the P-wave loo
 - the coefficient construction of these loops (MadLoop's polynomial updaters, its largest cost) in double-double or quadruple precision.
 
 The first would be cheap. The second costs a multiple of the double-precision time of these processes, so no further improvement is possible without slowing them down. The quadruple-precision rescue reaches the same end, at about 40 times the time for the points it rescues. At the default threshold `MLStabThres` = 10⁻³ no point needs it, and MadLoop's estimate is at least 1.8 times the true error.
+
+## An 80-bit extended-precision mode: Phase 1 prototype
+
+The user asked for an opt-in switch, off by default, that runs the P-wave loop coefficients beyond double precision. They chose x87 80-bit extended, `REAL(10)` with a 64-bit mantissa, over double-double (plan: generated like the QP path, kind `SELECTED_REAL_KIND(18)`, with a QP fallback on ARM). Before any generator work, `ep_retarget.py` measures it on copies of the 5025e12 + gate outputs:
+- It retargets the whole QP path (the phase-space improvement, Born, loop coefficients, contractions and projections; Source/DHELAS, Source/MODEL, SubProcesses) to kind 10.
+- It replaces TIRust's binary128 calls by its DP entry.
+- CTModeRun 4 of the copy is then "MadLoop in 80-bit, TIRust in DP".
+
+| 24 points, 1 TeV | 80-bit, DP integrals (hi only) | DP production | time per point: 80-bit / DP / QP |
+|---|---|---|---|
+| u ū → χ_c0 g | largest 1.3·10⁻⁵, median 3.8·10⁻⁶ | 2.7·10⁻⁵, 3.7·10⁻⁶ | 0.51 / 0.071 / 4.24 s |
+| g g → χ_c0 g | 1.3·10⁻⁶, 4.9·10⁻⁷ | 4.2·10⁻⁶, 1.3·10⁻⁶ | 4.84 / 0.90 / 42.7 s |
+
+(`data/ep80_*_hi.json`.) The 80-bit chain costs 5 to 7 times DP and is 8 to 9 times faster than QP. With DP integrals its error is that of the hybrid test, as expected: the integrals' rounding still limits. The gate (plan: well below 10⁻⁶, at an acceptable cost) waits for the TIRust session's double-double output of the raised-power integrals (`RAW_LO`). The test then:
+- 80-bit MadLoop with `RAW + RAW_LO`, at MadLoop's improved point;
+- if that is not enough, the input low words (`S_LO`, `P_LO`) as well.
 
 ## Reproducer for TIRust
 
