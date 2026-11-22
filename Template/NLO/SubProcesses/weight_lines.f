@@ -68,6 +68,10 @@
      $        ,unwgt_B(:,:),unwgt_noB(:,:)
      $        ,bias_wgt(:)
          end type
+! Stores of finished native points, kept at their grown capacity for the
+! next fresh point instead of regrowing a store from one contribution.
+         type(native_weight_lines), allocatable :: spare_lines(:)
+         integer :: nspare_lines=0
          save
       contains
          subroutine budget_weight_lines(nlegs,contributions,nweights,nprocess,folds,legacy)
@@ -238,6 +242,57 @@ c packed group lists, scale weights, and any optional legacy snapshots.
          nonfinite_history=state%nonfinite_history
          state%parked=.false.
          end subroutine
+
+         subroutine recycle_weight_lines(state)
+! Keep a finished point's parked store. Only an idle evaluator can move
+! it: the swap below passes it through the active arrays.
+         type(native_weight_lines),intent(inout) :: state
+         type(native_weight_lines),allocatable :: grown(:)
+         if(.not.state%parked.or..not.allocated(state%itype))return
+         if(allocated(itype))return
+         if(.not.allocated(spare_lines))allocate(spare_lines(16))
+         if(nspare_lines.eq.size(spare_lines))then
+            allocate(grown(2*size(spare_lines)))
+            grown(1:nspare_lines)=spare_lines(1:nspare_lines)
+            call move_alloc(grown,spare_lines)
+         endif
+         call activate_weight_lines(state)
+         nspare_lines=nspare_lines+1
+         call park_weight_lines(spare_lines(nspare_lines))
+         end subroutine recycle_weight_lines
+
+         logical function adopt_spare_weight_lines(nlegs) result(adopted)
+! Give a fresh point a recycled store with the contents of a fresh one:
+! no contributions, no optional calibration or legacy arrays. Entries
+! past icontr are never read, as for the width-one evaluator's store.
+         integer,intent(in) :: nlegs
+         adopted=.false.
+         if(nspare_lines.eq.0.or.allocated(itype))return
+         if(size(spare_lines(nspare_lines)%pdg,1).ne.nlegs)return
+         call activate_weight_lines(spare_lines(nspare_lines))
+         nspare_lines=nspare_lines-1
+         icontr=0
+         iwgt=0
+         icontr_picked=0
+         iproc_picked=0
+         mc_H_only=.false.
+         mc_S_only=.false.
+         nonfinite_contribution=.false.
+         nonfinite_type=0
+         nonfinite_sector=0
+         nonfinite_history=0
+         call release_born_spread_lines
+         if(allocated(parton_pdf))deallocate(parton_pdf)
+         if(allocated(icontr_sum))deallocate(icontr_sum)
+         if(allocated(icolour_con))deallocate(icolour_con)
+         call budget_weight_lines(nlegs,max_contr,max_wgt,max_iproc,0,.false.)
+         adopted=.true.
+         end function adopt_spare_weight_lines
+
+         subroutine release_spare_weight_lines
+         if(allocated(spare_lines))deallocate(spare_lines)
+         nspare_lines=0
+         end subroutine release_spare_weight_lines
 
          integer function event_owner(ict)
          integer, intent(in) :: ict
@@ -654,6 +709,7 @@ c update maximum
       subroutine deallocate_weight_lines
       use weight_lines
       implicit none
+      call release_spare_weight_lines
       max_contr=0
       max_wgt=0
       max_iproc=0

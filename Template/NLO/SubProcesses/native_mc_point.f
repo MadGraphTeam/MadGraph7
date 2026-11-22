@@ -3,7 +3,8 @@
       use mc_point_state, only: native_fold_sample,native_real_emission,
      $     native_flow_cursor
       use weight_lines, only: native_weight_lines,park_weight_lines,
-     $     activate_weight_lines,itype
+     $     activate_weight_lines,itype,recycle_weight_lines,
+     $     adopt_spare_weight_lines
       use mc_native_context, only: native_provider_request,
      $     native_provider_point_state,mc_capture_provider_point,
      $     mc_activate_provider_point,mc_restore_provider_model,
@@ -69,6 +70,7 @@ c Live COMMONs with readers after the real return or during closing.
          double precision,allocatable :: coordinates(:,:)
       end type
       public :: park_native_point,activate_native_point,native_flow_cursor
+      public :: recycle_native_point
       contains
 
       subroutine park_native_point(point)
@@ -181,7 +183,10 @@ c when the previous point has taken the active store (notably in FxFx).
          native_mapping=.false.
          shared_real_active=.false.
          call mc_set_history(0)
-         if(.not.allocated(itype))call weight_lines_allocated(nexternal,1,1,1)
+         if(.not.allocated(itype))then
+            if(.not.adopt_spare_weight_lines(nexternal))
+     $           call weight_lines_allocated(nexternal,1,1,1)
+         endif
          return
       endif
       iconfig=point%channel
@@ -225,5 +230,11 @@ c ordinary sector with native_mapping temporarily disabled.
       granny=point%granny
       write_granny=point%write_granny
       point%parked=.false.
+      end subroutine
+
+      subroutine recycle_native_point(point)
+c A released cohort hands its weight-line stores to the next fresh points.
+      type(native_mc_point),intent(inout) :: point
+      call recycle_weight_lines(point%lines)
       end subroutine
       end module

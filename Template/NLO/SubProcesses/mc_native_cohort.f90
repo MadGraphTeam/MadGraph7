@@ -1,6 +1,7 @@
 module mc_native_cohort
   use mint_module, only: mint_draw, activate_mint_draw, park_mint_draw, finish_mint_fold, imode
-  use mc_native_points, only: native_mc_point, activate_native_point, park_native_point, mc_fold_complete, mc_wait_real
+  use mc_native_points, only: native_mc_point, activate_native_point, park_native_point, mc_fold_complete, mc_wait_real, &
+       recycle_native_point
   use mc_native_context, only: native_provider_request, mc_dispatch_provider_wave
   use iso_fortran_env, only: int64
   use mc_context_memory, only: enter_context,release_contexts
@@ -147,7 +148,13 @@ contains
   end subroutine
 
   subroutine release_native_cohort()
-    if (allocated(lanes)) deallocate(lanes)
+    integer :: i
+    if (allocated(lanes)) then
+       do i=1,size(lanes)
+          call recycle_native_point(lanes(i)%physics)
+       enddo
+       deallocate(lanes)
+    endif
     call release_contexts()
   end subroutine
 end module

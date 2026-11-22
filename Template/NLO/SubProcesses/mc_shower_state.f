@@ -240,8 +240,10 @@ c Global scale array extents encode the actual delta/folding choices.
       end function
 
       subroutine park_native_shower(state)
-      type(native_shower_state),intent(out) :: state
-      integer i
+c Assign into the lane's buffers: same-shaped arrays keep their storage
+c across the lane's waves instead of being freed and reallocated.
+      type(native_shower_state),intent(inout) :: state
+      integer i,n
       call park_mc_kernel(state%kernel)
       state%next_n=next_n
       state%next_n1=next_n1
@@ -284,6 +286,12 @@ c Global scale array extents encode the actual delta/folding choices.
          state%valid_dipole_n1=valid_dipole_n1
          state%qed_dipole_n=qed_dipole_n
          state%qed_dipole_n1=qed_dipole_n1
+      elseif (allocated(state%mass_n)) then
+         deallocate(state%mass_n,state%mass_n1,state%charge_n,
+     $        state%charge_n1,state%colour_n,state%colour_n1,state%iRtoB,
+     $        state%iBtoR,state%pdg_n,state%pdg_n1,state%valid_dipole_n,
+     $        state%valid_dipole_n1,state%qed_dipole_n,
+     $        state%qed_dipole_n1)
       endif
       if (allocated(emsca_S)) then
          state%shower_scale_nbody=shower_scale_nbody
@@ -296,9 +304,17 @@ c Global scale array extents encode the actual delta/folding choices.
          state%emsca_H=emsca_H
          state%emsca_S_hard=emsca_S_hard
          state%event_colour_H=event_colour_H
+      elseif (allocated(state%emsca_S)) then
+         deallocate(state%shower_scale_nbody,
+     $        state%shower_scale_nbody_min,state%shower_scale_nbody_max,
+     $        state%shower_scale_n1body,state%showerscaleS,
+     $        state%showerscaleH,state%emsca_S,state%emsca_H,
+     $        state%emsca_S_hard,state%event_colour_H)
       endif
+      if (ickkw_mod.ne.3.and.allocated(state%matching))
+     $     deallocate(state%matching)
       if (ickkw_mod.eq.3) then
-         allocate(state%matching)
+         if (.not.allocated(state%matching)) allocate(state%matching)
          state%matching%p_last_izero=p_last_izero
          state%matching%p_last_mohdr=p_last_mohdr
          state%matching%fxfx_ren_scales_izero=fxfx_ren_scales_izero
@@ -322,7 +338,13 @@ c Global scale array extents encode the actual delta/folding choices.
          state%matching%need_matching_H=need_matching_H
          state%matching%need_matching_cuts=need_matching_cuts
          state%matching%ptclus=trim(ptclusstring)
-         allocate(state%matching%cluster(0:min(fks_configs,maxfksloc)))
+         n=min(fks_configs,maxfksloc)
+         if (allocated(state%matching%cluster)) then
+            if (ubound(state%matching%cluster,1).ne.n)
+     $           deallocate(state%matching%cluster)
+         endif
+         if (.not.allocated(state%matching%cluster))
+     $        allocate(state%matching%cluster(0:n))
          do i=0,ubound(state%matching%cluster,1)
             state%matching%cluster(i)%text=trim(clusterstrings(i))
          enddo

@@ -28,6 +28,56 @@ class TestNativeWeightLines(unittest.TestCase):
                         self.assertNotEqual(result.returncode, 0)
                         self.assertIn('native weight lines', result.stderr.lower())
 
+    def test_finished_stores_are_reused_at_their_capacity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            work = Path(temp)
+            (work/'check.f90').write_text(RECYCLE)
+            subprocess.run(['gfortran', '-O3', '-fno-fast-math', '-fcheck=all', '-ffixed-line-length-132',
+                            str(TEMPLATE/'mc_context_memory.f90'), str(TEMPLATE/'weight_lines.f'), 'check.f90', '-o', 'check'],
+                           cwd=work, check=True, text=True, capture_output=True)
+            result = subprocess.run(['./check'], cwd=work, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('reused finished stores', result.stdout)
+
+
+RECYCLE = """
+program check
+  use weight_lines
+  implicit none
+  type(native_weight_lines) a,b
+  ! A finished point leaves a grown store with contributions and the
+  ! optional calibration and legacy arrays.
+  call weight_lines_allocated(5,40,3,2)
+  call allocate_legacy_weight_snapshots(5)
+  call allocate_born_spread_lines(3)
+  icontr=37; iwgt=3; icontr_picked=5; mc_H_only=.true.
+  nonfinite_contribution=.true.; nonfinite_sector=2
+  call park_weight_lines(a)
+  ! Nothing to adopt yet; an active store is never recycled or replaced.
+  if(adopt_spare_weight_lines(5))error stop 1
+  call weight_lines_allocated(5,1,1,1)
+  call recycle_weight_lines(a)
+  if(nspare_lines/=0)error stop 2
+  if(adopt_spare_weight_lines(5))error stop 3
+  call park_weight_lines(b)
+  call recycle_weight_lines(a)
+  call recycle_weight_lines(a)
+  if(nspare_lines/=1)error stop 4
+  ! A store for a different leg count is not handed out.
+  if(adopt_spare_weight_lines(6))error stop 5
+  ! The adopted store keeps its capacity and looks like a fresh one.
+  if(.not.adopt_spare_weight_lines(5))error stop 6
+  if(nspare_lines/=0.or..not.allocated(itype))error stop 7
+  if(max_contr/=40.or.size(itype)/=40.or.max_wgt/=3.or.max_iproc/=2)error stop 8
+  if(icontr/=0.or.iwgt/=0.or.icontr_picked/=0.or.mc_H_only)error stop 9
+  if(nonfinite_contribution.or.nonfinite_sector/=0)error stop 10
+  if(allocated(unwgt_B).or.allocated(parton_pdf).or.allocated(icontr_sum))error stop 11
+  if(born_spread_fold_capacity/=0)error stop 12
+  call deallocate_weight_lines
+  if(nspare_lines/=0.or.allocated(spare_lines))error stop 13
+  print *, 'reused finished stores'
+end program
+"""
 
 CHECK = """
 program check

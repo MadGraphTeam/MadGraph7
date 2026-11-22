@@ -52,8 +52,14 @@ module mc_native_points
      logical :: has_chart=.true.
      type(native_provider_request) :: provider
   end type
-  integer :: active=0,closed=0
+  integer :: active=0,closed=0,recycled=0
 contains
+  subroutine recycle_native_point(point)
+    type(native_mc_point) :: point
+    ! Weight-line stores move through the active arrays: no point may be live.
+    if (active/=0) error stop 'Recycled a point while another is active'
+    recycled=recycled+1
+  end subroutine
   subroutine activate_native_point(point)
     type(native_mc_point) :: point
     if (active/=0) error stop 'Interfering active point'
@@ -160,6 +166,7 @@ program check
      call park_generation_draw(i)
   enddo
   call release_native_cohort()
+  if (recycled/=3) error stop 'Released lanes kept their stores'
   if (generation_stream('novi',2)==generation_stream('virt',2)) error stop 'Envelope conflated with stream'
   if (generation_stream('born',3)/=4) error stop 'Born stream'
   call take_event(queues(2),event)
