@@ -163,9 +163,17 @@ at a time. The pieces are:
   its QP integrand in QP.
 
 Status:
-- At zero relative momentum every TIRust integral is served except one. The
-  exception is the Coulomb box with its gluon line doubled (TIRust phase 2),
-  so quarkonium P-wave results are not complete yet.
+- At zero relative momentum, TIRust 48958d1 (huashengshao/TIRust PR #50,
+  stacked on #47 to #49, not yet in the pinned revision) serves every
+  integral of the 2 -> 1 processes, the Coulomb box with its gluon line
+  doubled included. Earlier revisions refuse that box, and the point is then
+  reported unstable. With 48958d1 the one-loop literature values are
+  reproduced to 1e-12 or better (`research/pwave_fd/README.md`):
+  - `a a > chic0/chic2` (Barbieri et al.);
+  - `g g > chic0/chic2` (Petrelli et al.), and their octets with the
+    corrected colour factor;
+  - `a g > Jpsi(1|3P08)/(1|3P28)`;
+  - `g g > etac(1|1P18)` (the `onia_fks` constant, P->S pole included).
 - When TIRust refuses an integral with a doubled line, its contribution is
   missing: the point is reported unstable (`H=4`) in every mode
   (`CTModeRun`), with a warning on the first such point.
@@ -179,7 +187,12 @@ Status:
 **IR poles.** `ONIA_IR_POLES` predicts the poles from the colour-linked
 projected Borns (Catani-Dittmaier-Trocsanyi; arXiv:2402.19221, eqs.
 (216)-(217)). An octet is a massive adjoint particle with the colour charge
-`T_Q + T_Qbar`, and a singlet is colourless.
+`T_Q + T_Qbar`, and a singlet is colourless. For a P-wave state the
+prediction lacks the P->S single pole of appendix B, which the computed
+virtual contains. It vanishes when the Born of the S-wave state reached by a
+soft gluon vanishes, as for `g g > chic0/chic2`. It is non-zero otherwise:
+for `g g > etac(1|1P18)`, the computed 1/eps coefficient is -18, the
+prediction -12.
 
 ## Validation
 

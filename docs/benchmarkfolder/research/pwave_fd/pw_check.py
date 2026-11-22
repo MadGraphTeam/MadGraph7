@@ -19,6 +19,14 @@ CASES = {
                       ref=(CF * (PI2 - 8), -3 * CF, -2 * CF)),
     'aa_chic0': dict(process='a a > chic0(1|3P01) [virt=QCD]', ref=None),
     'gg_chic0': dict(process='g g > chic0(1|3P01) [virt=QCD]', ref=None),
+    'aa_chic2': dict(process='a a > chic2(1|3P21) [virt=QCD]', ref=None),
+    'gg_chic2': dict(process='g g > chic2(1|3P21) [virt=QCD]', ref=None),
+    'gg_3p08': dict(process='g g > Jpsi(1|3P08) [virt=QCD]', ref=(11.7597173, -12., -6.)),
+    'gg_3p28': dict(process='g g > Jpsi(1|3P28) [virt=QCD]', ref=(15.1829174, -12., -6.)),
+    'ag_3p08': dict(process='a g > Jpsi(1|3P08) [virt=QCD]', ref=(3.3575140, -7.5, -3.)),
+    'ag_3p28': dict(process='a g > Jpsi(1|3P28) [virt=QCD]', ref=(10.7171815, -7.5, -3.)),
+    'gg_1p18': dict(process='g g > etac(1|1P18) [virt=QCD]', ref=None),
+    'gg_chic0g': dict(process='g g > chic0(1|3P01) g [virt=QCD]', ref=None),
 }
 
 def main(names, npoints=4, regenerate=os.environ.get('REGEN', '1') == '1', ctmode=None):
@@ -36,7 +44,7 @@ def main(names, npoints=4, regenerate=os.environ.get('REGEN', '1') == '1', ctmod
         olc.build_driver(pdir)
         masses = olc.driver_masses(pdir)
         final = masses[2:]
-        energy = 1000. if len(final) > 1 else final[0]
+        energy = float(os.environ.get('ENERGY', 1000.)) if len(final) > 1 else final[0]
         points = olc.points_lib.generate_points(final, count=npoints, energy=energy,
                                                 incoming_masses=tuple(masses[:2]))
         extra = {'CTModeRun': ctmode} if ctmode is not None else None
@@ -51,7 +59,7 @@ def main(names, npoints=4, regenerate=os.environ.get('REGEN', '1') == '1', ctmod
         if case['ref']:
             f, s, d = case['ref']
             print('%-10s reference   fin %.12f c1 %.12f c2 %.12f' % (name, f, s, d), flush=True)
-    json.dump(out, open(SP + '/pw/pw_check_%s.json' % '_'.join(names), 'w'), indent=1)
+    json.dump(out, open(os.path.join(work, 'pw_check_%s.json' % '_'.join(names)), 'w'), indent=1)
 
 if __name__ == '__main__':
     args = sys.argv[1:]

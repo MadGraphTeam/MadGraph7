@@ -41,3 +41,24 @@ The patches add the test modes to the double- and quadruple-precision routines a
 | g g > chic0(1\|3P01) | 6e-13, 7e-13, 9e-14 | 2e-14, 4e-13, 7e-14 |
 
 At the same q0 with on-shell constituents, the full virtual (`pw_modes.py`) agrees between double and quadruple precision to 4e-13. The rescue with a forced `MLStabThres` returns code 323.
+
+## Threshold values against the literature (TIRust 48958d1)
+
+With TIRust 48958d1 (PR #50, built by `build.sh` with `REV=48958d1` and `FOLLOWUP=0001-followup-pwave-collinear.patch`), every integral of the 2 → 1 processes is served at zero relative momentum, the Coulomb box with a doubled gluon included. `pw_check.py` gives these values at μ = M = 2 m_c = 3.1 GeV, n_l = 3, in units of Born·α_s/2π. Every point is stable in double precision (code 213):
+
+| Process | 1/ε² | 1/ε | Finite | Reference | Relative difference |
+|---|---|---|---|---|---|
+| a a > chic0(1\|3P01) | 0 | 0 | 0.357514045171 | 2 C_F(π²/4 − 7/3) (Barbieri et al.) | 9e-13 |
+| a a > chic2(1\|3P21) | 0 | 0 | −10.666666666667 | −8 C_F | 3e-14 |
+| g g > chic0(1\|3P01) | −6 | −9 | 17.161920646805 | Petrelli B^[1](3P0) | 2e-14 |
+| g g > chic2(1\|3P21) | −6 | −9 | −1.735194861067 | Petrelli B^[1](3P2) | 1e-13 |
+| g g > Jpsi(1\|3P08) | −6 | −12 | 11.759717345988 | corrected B^[8](3P0) (`onia_fks` RECOMPUTED_GG) | 1e-13 |
+| g g > Jpsi(1\|3P28) | −6 | −12 | 15.182917379447 | corrected B^[8](3P2) | 1e-13 |
+| a g > Jpsi(1\|3P08) | −3 | −7.5 | 3.357514045171 | Ozcelik H^(1) | all 8 printed digits |
+| a g > Jpsi(1\|3P28) | −3 | −7.5 | 10.717181476647 | Ozcelik H^(1) | all 8 printed digits |
+| g g > etac(1\|1P18) | −6 | −18 | 2.591452358839 | `onia_fks` ONIA_GG_1P18 (CDR, Larin γ5) | 1.5e-13 |
+
+- **Conversions.** The references are those of `research/literature.md`, converted to MadLoop's normalisation by its section B.5.
+- **Octet colour factor.** The octets confirm the corrected colour factor of the four-gluon-vertex diagram. Petrelli et al. print 15.0397510 and 11.2057601.
+- **¹P₁[8] pole.** For `g g > etac(1|1P18)`, −18 includes the P → S pole −2C_A of arXiv:2402.19221 (appendix B). `ONIA_IR_POLES` does not include that term yet and predicts −12.
+- **Earlier TIRust revisions.** They refuse the doubled-gluon Coulomb box. The point is then reported unstable, and the 1/ε coefficient misses −2C_F: γγ → χ_c0 gave −8.6838 and −8/3.
