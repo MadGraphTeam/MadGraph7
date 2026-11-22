@@ -12,6 +12,10 @@ module mc_born_types
   ! Scoped caller basis for the learned zero mask; numerical cache keys keep
   ! their exact momentum/model semantics. Raw callers retain the zero key.
   integer, save :: born_active_helicity_frame(2)=0
+  ! Lanes of the caller's native MC cohort. Each provider keeps an LRU of
+  ! Born points per lane, up to born_cache_bytes of entries per provider.
+  integer, save :: born_cache_lanes=1
+  integer(8), parameter :: born_cache_bytes=67108864_8
   ! A configured fixed snapshot is immutable; configure again after editing.
   type BornModelConfiguration
     real(8), allocatable :: real_values(:)
@@ -74,6 +78,20 @@ module mc_born_types
     complex(8), allocatable :: counterterms(:,:), split_counterterms(:,:,:), extra(:,:)
   end type
 contains
+  subroutine born_set_cache_lanes(lanes)
+    integer, intent(in) :: lanes
+    if (lanes<1) error stop 'Invalid Born cache lane count'
+    born_cache_lanes=lanes
+  end subroutine
+
+  integer function born_cache_slots(per_lane,slot_bytes) result(slots)
+    integer, intent(in) :: per_lane
+    integer(8), intent(in) :: slot_bytes
+    integer(8) :: affordable
+    affordable=born_cache_bytes/max(1_8,slot_bytes)
+    slots=int(max(int(per_lane,8),min(int(per_lane,8)*born_cache_lanes,affordable)))
+  end function
+
   elemental logical function born_is_finite(x) result(finite)
     use, intrinsic :: iso_fortran_env, only: int64
     real(8), intent(in) :: x

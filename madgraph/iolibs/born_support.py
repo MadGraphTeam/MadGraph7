@@ -1455,8 +1455,10 @@ def provider_adapter(r, source, members, cache_model_installation=False):
              'logical calculatedBorn', 'common/ccalculatedBorn/calculatedBorn',
              'type(BornModelState),save::cached_state',
              # A small LRU retains the Born point while soft/collinear points
-             # intervene, including across folds. Storage stays bounded.
-             'integer,parameter::cache_size=4',
+             # intervene, including across folds. A native MC cohort
+             # interleaves its lanes, so each lane gets these slots; the
+             # byte cap in born_cache_slots keeps the storage bounded.
+             'integer,parameter::lane_slots=4',
              'type CachedBornPoint',
              'type(BornModelState) state',
              # Provider dimensions are fixed. Copying a BornResult here would
@@ -1471,8 +1473,8 @@ def provider_adapter(r, source, members, cache_model_installation=False):
         lines += ['double precision density(%d,%d)' % (nc*(nc+1)//2,ns)]
     lines += ['integer::context=0,sector=0', 'integer(8)::age=0',
              'logical::valid=.false.', 'end type',
-             'type(CachedBornPoint),save::points(cache_size)',
-             'integer,save::active_slot=0,model_epoch=0',
+             'type(CachedBornPoint),allocatable,save::points(:)',
+             'integer,save::active_slot=0,model_epoch=0,sized_lanes=0',
              'integer(8),save::clock=0',
              'integer born_model_epoch', 'common/c_born_model_epoch/born_model_epoch',
              'integer born_helicity_frame(2)',
@@ -1535,6 +1537,13 @@ def provider_adapter(r, source, members, cache_model_installation=False):
     same_sector = ('.and.request%sector.eq.points(active_slot)%sector'
                    '.and.context.eq.points(active_slot)%context') if r.get('physical_fks_classes') else ''
     lines += ['model_changed=.not.born_model_state_equal(state,cached_state)',
+              # Size the cache for the caller's lane count. A resize starts
+              # empty; the model and helicity keys below are unaffected.
+              'if(sized_lanes.ne.born_cache_lanes)then',
+              'if(allocated(points))deallocate(points)',
+              'allocate(points(born_cache_slots(lane_slots,storage_size(points,kind=8)/8'
+              '+8*size(state%real_values,kind=8)+16*size(state%complex_values,kind=8))))',
+              'sized_lanes=born_cache_lanes', 'active_slot=0', 'endif',
               'if(model_changed)then',
               'if(.not.born_helicity_state_equal(state,cached_state,model_changed))then',
               'model_epoch=model_epoch+1', 'points%valid=.false.',
@@ -1548,7 +1557,7 @@ def provider_adapter(r, source, members, cache_model_installation=False):
               'slot=0', 'scaled=.false.',
               'if(.not.model_changed.and.active_slot.gt.0)then',
               'if(all(p.eq.points(active_slot)%p)' + same_sector + ')slot=active_slot', 'endif',
-              'if(slot.eq.0)then', 'do i=1,cache_size',
+              'if(slot.eq.0)then', 'do i=1,size(points)',
               'if(.not.points(i)%valid)cycle',
               *(['if(request%sector.ne.points(i)%sector)cycle'] if r.get('physical_fks_classes') else []),
               *(['if(context.ne.points(i)%context)cycle'] if r.get('physical_fks_classes') else []),

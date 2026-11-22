@@ -15,6 +15,7 @@ c**************************************************************************
       use mc_event_queues, only: event_queue_base_bytes
       use mc_shower_state, only: shower_heap_bound
       use mc_born_support, only: born_model_dimensions
+      use mc_born_types, only: born_set_cache_lanes
       use mc_native_context, only: real_cache_size
       use mc_native_generation, only: write_requested_event,
      $     finish_native_generation
@@ -224,6 +225,9 @@ c     Prepare the MINT folding
       call init_scale_module(nexternal,shower_scale_factor,fks_configs
      $     ,product(ifold(1:ndim)))
       if(native_mc_capacity.gt.1)then
+c The cohort interleaves its lanes between real-emission waves. Give
+c each lane its own Born cache slots so a resumed lane finds its Born.
+         call born_set_cache_lanes(native_mc_capacity)
          nleg=nexternal
          nfolds=product(int(ifold(1:ndim),int64))
          call born_model_dimensions(nr_compact,nc_compact)

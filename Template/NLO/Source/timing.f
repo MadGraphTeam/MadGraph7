@@ -11,6 +11,8 @@
       common/timing_clocks/elapsed,last_clock
       common/timing_stack/stack,depth,sample_position
       common/timing_counts/points,samples,sampler_state
+      double precision wave_start,wave_share
+      common/timing_real_wave/wave_start,wave_share
       clock_reads=0_8
       resume_reads=0_8
       elapsed=0d0
@@ -22,6 +24,7 @@
       sampler_state=104729_8
       sample_position=-1
       timing_sampled=.false.
+      wave_share=0d0
       end
 
       subroutine timing_begin_point()
@@ -111,6 +114,37 @@ c draws and stop charging its active category while another draw runs.
       timing_sampled=.true.
       resume_reads=resume_reads+1_8
       call cpu_time(last_clock)
+      end
+
+      subroutine timing_begin_real_wave(sampled,lanes)
+c A batched real-emission wave serves several suspended draws at once.
+c Each sampled draw is charged its share of the wave, so the x100
+c estimate stays unbiased. Waves without a sampled draw read no clock.
+      implicit none
+      include 'timing_variables.inc'
+      integer sampled,lanes
+      double precision wave_start,wave_share
+      common/timing_real_wave/wave_start,wave_share
+      if(timing_sampled)error stop 'Real wave inside a timing point'
+      wave_share=0d0
+      if(sampled.le.0)return
+      if(sampled.gt.lanes)error stop 'Invalid real wave sample count'
+      wave_share=dble(sampled)/dble(lanes)
+      call cpu_time(wave_start)
+      end
+
+      subroutine timing_end_real_wave()
+      implicit none
+      include 'timing_variables.inc'
+      double precision elapsed(timing_ncategories),last_clock,now
+      common/timing_clocks/elapsed,last_clock
+      double precision wave_start,wave_share
+      common/timing_real_wave/wave_start,wave_share
+      if(wave_share.eq.0d0)return
+      call cpu_time(now)
+      elapsed(timing_real)=elapsed(timing_real)
+     $     +wave_share*(now-wave_start)
+      wave_share=0d0
       end
 
       subroutine timing_enter(category)

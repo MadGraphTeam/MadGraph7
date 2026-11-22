@@ -23,6 +23,11 @@ module mc_native_cohort
      subroutine timing_resume_point(categories)
        integer,allocatable,intent(inout) :: categories(:)
      end subroutine
+     subroutine timing_begin_real_wave(sampled,lanes)
+       integer,intent(in) :: sampled,lanes
+     end subroutine
+     subroutine timing_end_real_wave()
+     end subroutine
   end interface
 contains
 
@@ -78,7 +83,7 @@ contains
 
   subroutine evaluate_native_cohort(draws)
     type(mint_draw),intent(inout) :: draws(:)
-    integer :: i,j,count,status
+    integer :: i,j,count,status,sampled
     if (allocated(lanes)) error stop 'Previous native cohort is still owned'
     if (allocated(waiting)) then
        if (size(waiting)<size(draws)) deallocate(waiting,owners)
@@ -104,7 +109,14 @@ contains
           waiting(count)=lanes(i)%physics%provider
        enddo
        if (count==0) exit
+       ! A suspended sampled draw keeps its timing stack until it resumes.
+       sampled=0
+       do j=1,count
+          if (allocated(lanes(owners(j))%timing_stack)) sampled=sampled+1
+       enddo
+       call timing_begin_real_wave(sampled,count)
        call mc_dispatch_provider_wave(waiting(:count))
+       call timing_end_real_wave()
        do j=1,count
           lanes(owners(j))%physics%provider=waiting(j)
        enddo

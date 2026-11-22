@@ -91,6 +91,14 @@ class TestSampledTiming(unittest.TestCase):
     def test_mint_sampling_covers_the_complete_point(self):
         self.check_mode('mint')
 
+    def test_batched_real_wave_charges_each_sampled_draw_its_share(self):
+        result = self.run_mode('wave')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('STOP 1', result.stdout + result.stderr)
+        self.assertIn('Real wave inside a timing point', result.stdout + result.stderr)
+        for code in ('STOP 2', 'STOP 3', 'STOP 4'):
+            self.assertNotIn(code, result.stdout + result.stderr)
+
     def test_bad_nesting_is_detected(self):
         for mode, message in [('mismatch', 'Mismatched timing category'),
                               ('unclosed', 'Unclosed timing category')]:

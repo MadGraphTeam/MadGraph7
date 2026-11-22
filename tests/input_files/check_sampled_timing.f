@@ -114,6 +114,25 @@
          call timing_end_point()
          if(elapsed(timing_born).ne.6d0)stop 6
          if(elapsed(timing_weights).ne.4d0)stop 7
+      elseif(arg.eq.'wave')then
+c A wave serving no sampled draw reads no clock and charges nothing.
+         reads=0
+         call timing_begin_real_wave(0,16)
+         clock=50d0
+         call timing_end_real_wave()
+         if(reads.ne.0.or.elapsed(timing_real).ne.0d0)stop 1
+c One sampled draw among four lanes is charged a quarter of the wave.
+         clock=10d0
+         call timing_begin_real_wave(1,4)
+         clock=18d0
+         call timing_end_real_wave()
+         if(elapsed(timing_real).ne.2d0)stop 2
+         if(sum(elapsed).ne.2d0)stop 3
+         if(reads.ne.2)stop 4
+c The wave runs between draws, never inside a sampled one.
+         call select_point()
+         call timing_begin_real_wave(1,4)
+         stop 'Failed to reject a wave inside a point'
       elseif(arg.eq.'empty')then
          call timing_enter(-1)
          call timing_leave(-1)
