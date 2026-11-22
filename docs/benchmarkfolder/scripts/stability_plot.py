@@ -29,9 +29,11 @@ import numpy as np
 # family -> processes in plotting order; the reference ttg is drawn in every row
 FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
-     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'chic0g56', 'ggchic0g', 'ggchic0g56']),
+     ['etacg', 'jpsig', 'etac8g', 'chic0g', 'ggchic0g', 'jpsig08',
+      'etacg56', 'jpsig56', 'etac8g56', 'chic0g56', 'ggchic0g56']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
-     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'chib0g56', 'ggchib0g', 'ggchib0g56']),
+     ['etabg', 'upsg', 'etab8g', 'chib0g', 'ggchib0g', 'upsg08',
+      'etabg56', 'upsg56', 'etab8g56', 'chib0g56', 'ggchib0g56']),
 ]
 # the P-wave colour octets, in a figure of their own
 OCTET_FAMILIES = [
@@ -42,8 +44,8 @@ OCTET_FAMILIES = [
      ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g', 'bb3p08g56', 'bb3p18g56', 'bb3p28g56',
       'bb1p18g56']),
 ]
-# (file suffix, families, legend columns, legend keyed by colour = process and line style = build)
-FIGURES = [('', FAMILIES, 3, False), ('_octets', OCTET_FAMILIES, 4, True)]
+# (file suffix, families, legend columns); colour = process, line style = TIRust build
+FIGURES = [('', FAMILIES, 3), ('_octets', OCTET_FAMILIES, 4)]
 ALL_FAMILIES = FAMILIES + OCTET_FAMILIES
 REFERENCE = 'ttg'
 ORDER = [c for _, _, cases in ALL_FAMILIES for c in cases] + [REFERENCE]
@@ -92,14 +94,31 @@ COLOR = {'etacg': BLUE, 'jpsig': ORANGE, 'jpsig08': ORANGE, 'etac8g': AQUA, 'chi
 for q in 'cb':
     COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
                   q * 2 + '1p18g': YELLOW})
-STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
-# TIRust 5025e12, the head of PR #56, with relation tiers (suffix 56): the colour of the process, dotted
+# line style = TIRust build: the builds of the base cases (pinned for the S waves, 48958d1 and
+# 370b632 for the P waves) solid, 08edee3 with the gate patch 0006 (suffix 08) dash-dotted,
+# 5025e12, the head of PR #56 with relation tiers (suffix 56), dotted
 CANDIDATE = '5025e12'
-for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if c.endswith('56')]:
+BUILD_STYLE = {'': '-', '08': '-.', '56': ':'}
+BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s (PR #56)' % CANDIDATE}
+STYLE = {'ttg': '--'}
+
+
+def build_of(case):
+    # no base case ends in 08 or 56 (they end in g)
+    return case[-2:] if case[-2:] in ('08', '56') else ''
+
+
+def base_of(case):
+    return case[:-2] if build_of(case) else case
+
+
+for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if build_of(c) == '56']:
     base = c[:-2]
     LABEL[c] = LABEL[base].replace(', TIRust 370b632', '').replace(')', ', TIRust %s)' % CANDIDATE) \
         if base in ('chic0g', 'ggchic0g', 'chib0g', 'ggchib0g') else LABEL[base] + ', TIRust ' + CANDIDATE
-    TYPST[c], COLOR[c], STYLE[c] = TYPST[base], COLOR[base], ':'
+    TYPST[c], COLOR[c] = TYPST[base], COLOR[base]
+for c in list(LABEL):
+    STYLE.setdefault(c, BUILD_STYLE[build_of(c)])
 INK, INK2, GRID = '#0b0b0b', '#52514e', '#e4e3df'
 SETUP_TITLE = {'A': r'$\sqrt{s}=1$ TeV, $p_T>50$ GeV', 'B': r'$\sqrt{s}=20$ GeV, $p_T>2$ GeV'}
 THRESHOLD = 1e-3
@@ -153,7 +172,7 @@ def summary(runs):
     return rows
 
 
-def plot(runs, out, family_list, ncol=3, style_key=False):
+def plot(runs, out, family_list, ncol=3):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 8, 'axes.edgecolor': INK2,
                          'axes.labelcolor': INK, 'xtick.color': INK2, 'ytick.color': INK2,
                          'mathtext.fontset': 'dejavusans'})
@@ -193,20 +212,26 @@ def plot(runs, out, family_list, ncol=3, style_key=False):
                     handles.append(h)
                     labels.append(l)
         sub.suptitle(title, fontsize=8.5, color=INK, x=0.06, ha='left')
-        if style_key:
-            # one entry per process (its colour), then the line styles and the reference;
-            # legends fill column by column, two rows
-            from matplotlib.lines import Line2D
-            base = [c for c in cases if not c.endswith('56')]
-            m = next(runs[(c, s)][0] for c in base for s in setups if (c, s) in runs)
-            procs = [Line2D([], [], color=COLOR[c], lw=1.4, label=LABEL[c]) for c in base]
-            keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label=reducer(m)),
-                    Line2D([], [], color=INK2, lw=1.4, ls=':', label='TIRust ' + CANDIDATE)]
-            ref = [h for h, l in zip(handles, labels) if l == LABEL[REFERENCE]]
-            rest = keys + ref
-            rest += [Line2D([], [], alpha=0, label=' ')] * (len(procs) - len(rest))
-            handles = [h for pair in zip(procs, rest) for h in pair]
-            labels = [h.get_label() for h in handles]
+        # the legend: one entry per process (its colour, its label without the build), the
+        # reference, then one key per line style; laid out row by row, ncol per row
+        from matplotlib.lines import Line2D
+        base = [c for c in cases if not build_of(c)]
+        procs = [Line2D([], [], color=COLOR[c], lw=1.4, label=LABEL[c].replace(', TIRust 370b632', ''))
+                 for c in base]
+        ref = [h for h, l in zip(handles, labels) if l == LABEL[REFERENCE]]
+        builds = sorted(set(reducer(runs[(c, s)][0]).replace('TIRust ', '').replace('(pinned)', 'pinned')
+                            for c in base for s in setups if (c, s) in runs),
+                        key=lambda b: (b != 'pinned', b))
+        keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label='TIRust ' + ', '.join(builds))]
+        keys += [Line2D([], [], color=INK2, lw=1.4, ls=BUILD_STYLE[b], label=BUILD_KEY[b])
+                 for b in ('08', '56') if any(build_of(c) == b for c in cases)]
+        blank = Line2D([], [], alpha=0, label=' ')
+        cells = procs + ref
+        cells += [blank] * (-len(cells) % ncol) + keys
+        cells += [blank] * (-len(cells) % ncol)
+        nrows = len(cells) // ncol
+        handles = [cells[r * ncol + col] for col in range(ncol) for r in range(nrows)]
+        labels = [h.get_label() for h in handles]
         sub.legend(handles, labels, loc='lower center', ncol=ncol, frameon=False, fontsize=7.5,
                    bbox_to_anchor=(0.5, 0.0))
         sub.subplots_adjust(left=0.09, right=0.98, top=0.84, bottom=0.33, wspace=0.08)
@@ -217,9 +242,9 @@ if __name__ == '__main__':
     folder, out = sys.argv[1], sys.argv[2]
     runs = load(folder)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    for suffix, family_list, ncol, style_key in FIGURES:
+    for suffix, family_list, ncol in FIGURES:
         stem, ext = os.path.splitext(out)
-        plot(runs, stem + suffix + ext, family_list, ncol, style_key)
+        plot(runs, stem + suffix + ext, family_list, ncol)
     data = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(out))), 'data', 'stability.json')
     json.dump(summary(runs), open(data, 'w'), indent=1)
     print('wrote', ', '.join(os.path.splitext(out)[0] + f[0] + os.path.splitext(out)[1] for f in FIGURES), data)

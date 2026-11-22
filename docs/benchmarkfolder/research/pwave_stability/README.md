@@ -35,6 +35,7 @@ The scripts:
 | `mixed.py` | The `ONIA_DBG_MIXED` prototype. |
 | `qptime.py` | Call timing from the dump timestamps. |
 | `cost.py` | Two TIRust builds on the same points, alternating batches: time per point and QP rescues. |
+| `tail.py` | The points of a stability profile above a given estimate, in DP with several builds and in QP. |
 
 The results are in `data/`.
 
@@ -130,6 +131,17 @@ The relation tiers are now in PR #56. 8b436f9, its head at the time of these run
 The head of PR #56 is now 5025e12, one commit on 8b436f9. In it, a relation-tier lane that every precision tier refuses comes back unstable, where 8b436f9 kept its binary64 value. It is built the same way. Against 8b436f9, every result is bit-identical: all 24 stability profiles (estimates and return codes), the 24-point diagnosis (u ū at 1 TeV and 20 GeV, g g at 1 TeV) and the 16 P-wave checks (`data/pw_check_5025e12.json`). So no point of these samples meets a lane that every tier refuses.
 
 The report's dotted curves are the 5025e12 profiles (`data/raw/stability/*56_*.json`). The 14f2696 profiles are kept in `data/profiles_14f2696/`.
+
+## S waves on 5025e12
+
+The S-wave profiles were also run on 5025e12, with the same build. The relation-tier patch acts on raised powers only, so for the S waves this is the plain 5025e12 bridge, with TIRust's default binary64 gate of 10⁻¹².
+- 5025e12 serves every point the pinned TIRust refuses, so no S-wave point is above 10⁻³, and every point is stable.
+- The J/ψ and Υ processes keep a tail above 10⁻⁶: 1.8% and 1.7% of the points at 1 TeV, the largest at 10⁻⁴. 08edee3 with the bridge gate patch 0006 (gate 10⁻¹⁰) has no point there.
+- That tail is a true error. `tail.py` took the first 16 points of the 5025e12 profile of g g → J/ψ g at 1 TeV with an estimate of at least 10⁻⁶ (`data/tail_jpsig_A_5025e12.json`). Against QP:
+  - 5025e12 is off by 1.2·10⁻⁸ to 3.2·10⁻⁶, and MadLoop's estimate is at least twice that;
+  - the pinned build is off by the same at 10 of them, by 1.1·10⁻⁵ to 1.7·10⁻⁵ at five, and by 0.32 at one where it refuses an integral (that point is then reported unstable);
+  - 08edee3 with the gate patch is off by at most 2.3·10⁻¹⁰.
+- So it is the gate, not the TIRust revision, that removes the tail. Patch 0006 is not on onia_loop's bridge, and it does not apply on top of the relation-tier patch, because both change the same `EmbedderOptions` block.
 
 ## Reproducer for TIRust
 

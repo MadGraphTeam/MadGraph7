@@ -492,10 +492,9 @@ estimate over random phase-space points.
 
   The $u overline(u)$ P waves and the P-wave colour octets use TIRust 48958d1. The $g g$ P waves,
   $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
-  (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every P
-  wave is also run with TIRust 5025e12, the head of PR \#56, which adds
-  _relation tiers_, and a one-line bridge patch that enables them (not
-  pinned; build in `research/pwave_stability`).
+  (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every
+  process but the reference is also run with TIRust 5025e12 (head of PR \#56,
+  with _relation tiers_ and the bridge patch that enables them; not pinned).
 - *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
   $n = ""^3 P_0, ""^3 P_1, ""^3 P_2, ""^1 P_1$, the charmonium octets of the
   $2 -> 2$ pole checks (@tab:pwave22) and their bottomonium analogues, in a
@@ -503,7 +502,7 @@ estimate over random phase-space points.
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 ($u overline(u)$ P waves). Dash-dotted: $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$ with TIRust 370b632. Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch, and the P waves with TIRust 5025e12 (PR \#56) and its bridge patch. Dashed: the reference process.])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the pinned one (S waves), 48958d1 or 370b632 (P waves), dash-dotted 08edee3 with the gate patch 0006, dotted 5025e12 (PR \#56); dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
@@ -534,13 +533,25 @@ estimate over random phase-space points.
     - TIRust 08edee3 with the gate patch (not pinned) serves all of them: no
       point of $g g -> J\/psi thin g$ or $g g -> Upsilon thin g$ is then above
       $10^(-6)$, in either setup.
+    - So does TIRust 5025e12 (PR \#56): no S-wave point is above $10^(-3)$
+      with it, in either setup, and every point is stable.
   - *S waves otherwise.* Apart from the refusals, the S-wave profiles are
     steep: the median estimate is $10^(-13)$ to $10^(-8)$, and no point is
     between $10^(-3)$ and 1.
     - With the pinned TIRust, the $J\/psi$ and $Upsilon$ processes have a
       tail between $10^(-6)$ and $10^(-3)$: 1.4% and 1.3% of the points at
       1 TeV, at most 0.03% at 20 GeV.
-    - The newer TIRust removes that tail as well.
+    - The tail is a true double-precision error. At 16 of its points
+      ($g g -> J\/psi thin g$, 1 TeV), against quadruple precision,
+      5025e12 is off by $1.2 dot 10^(-8)$ to $3.2 dot 10^(-6)$ (MadLoop's
+      estimate is at least twice that). The pinned TIRust is off by as much
+      at ten of them and by $1.1$ to $1.7 dot 10^(-5)$ at five; 08edee3 with
+      the gate patch is off by at most $2.3 dot 10^(-10)$.
+    - It is the bridge's binary64 gate that removes it: patch 0006 sends
+      lanes whose conditioning is below $10^(-10)$ (TIRust's default:
+      $10^(-12)$) to the double-double tier. 5025e12 without it keeps the
+      tail: 1.8% ($J\/psi$) and 1.7% ($Upsilon$) of the points at 1 TeV are
+      above $10^(-6)$, the largest at $10^(-4)$.
   - *The P-wave singlets at 1 TeV.* At $sqrt(s) = 1$ TeV the estimate is above
     $10^(-3)$ at 75% of the $u overline(u) -> chi_(c 0) thin g$ points, 40% of the
     $g g -> chi_(c 0) thin g$ points, 8.8% of the $u overline(u) -> chi_(b 0) thin g$

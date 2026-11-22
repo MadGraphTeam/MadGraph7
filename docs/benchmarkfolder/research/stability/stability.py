@@ -61,6 +61,10 @@ CASES = {
 PWAVE = ['chic0g', 'ggchic0g', 'chib0g', 'ggchib0g', 'cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g',
          'bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g']
 CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in PWAVE})
+# and every S wave (the bridge patch acts on raised powers only, so for these it is the plain
+# 5025e12 bridge; the 08edee3 cases above also carry the binary64 gate patch 0006)
+SWAVE = ['etacg', 'jpsig', 'etac8g', 'etabg', 'upsg', 'etab8g']
+CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in SWAVE})
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)
     'A': (1000., 50.),   # the setup of arXiv:1604.01363
