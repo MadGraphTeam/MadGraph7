@@ -71,8 +71,9 @@ STATUS_LINES = [
     '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
     'bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV, '
-    'served by 08edee3); the P waves lose digits in double precision at 1 TeV, not at 20 GeV, '
-    'through TIRust\'s double-precision pentagons with a doubled line (a TIRust-side fix; @stability).',
+    'served by 08edee3); the P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, '
+    'through TIRust\'s double-precision pentagons with a doubled line (a TIRust-side fix; @stability); '
+    'the P-wave octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]

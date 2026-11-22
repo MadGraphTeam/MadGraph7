@@ -484,15 +484,19 @@ estimate over random phase-space points.
 - *Setups.* Setup A is the paper's, $sqrt(s) = 1$ TeV with $p_T > 50$ GeV;
   setup B is a quarkonium-scale one, $sqrt(s) = 20$ GeV with $p_T > 2$ GeV.
 - *Samples and models.* $10^4$ points per $2 -> 2$ process (the paper used
-  $10^5$) and $2 dot 10^3$ for each P wave, with physical masses:
+  $10^5$) and $2 dot 10^3$ for each P-wave colour singlet, with physical masses:
   - charmonium with `loop_sm_onia-c_mass` ($m_c = 1.55$ GeV, massive $b$ and
     $t$, $n_l = 3$);
   - bottomonium with `loop_sm_onia-no_tau_mass` (massless charm,
     $m_b = 4.7$ GeV, $m_t = 173$ GeV, $n_l = 4$).
 
-  The $u overline(u)$ P waves use TIRust 48958d1. The $g g$ P waves,
+  The $u overline(u)$ P waves and the P-wave colour octets use TIRust 48958d1. The $g g$ P waves,
   $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
   (PR \#56), because 48958d1 refuses their doubled-gluon pentagons.
+- *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
+  $n = ""^3 P_0, ""^3 P_1, ""^3 P_2, ""^1 P_1$, the charmonium octets of the
+  $2 -> 2$ pole checks (@tab:pwave22) and their bottomonium analogues, in a
+  figure of their own (@fig:stability-octets).
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
@@ -500,7 +504,11 @@ estimate over random phase-space points.
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
-#figure(caption: [The profiles in numbers (the table view of @fig:stability): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
+#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1, charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
+  #image("figures/stability_octets.svg", width: 100%)
+] <fig:stability-octets>
+
+#figure(caption: [The profiles in numbers (the table view of @fig:stability and @fig:stability-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
   #tstyle(table(columns: (auto, auto, 1fr, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, center, left, right, right, right, right, right),
     table.header([Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt]),
@@ -530,10 +538,10 @@ estimate over random phase-space points.
       tail between $10^(-6)$ and $10^(-3)$: 1.4% and 1.3% of the points at
       1 TeV, at most 0.03% at 20 GeV.
     - The newer TIRust removes that tail as well.
-  - *The P waves at 1 TeV.* At $sqrt(s) = 1$ TeV the estimate is above
+  - *The P-wave singlets at 1 TeV.* At $sqrt(s) = 1$ TeV the estimate is above
     $10^(-3)$ at 75% of the $u overline(u) -> chi_(c 0) thin g$ points, 40% of the
     $g g -> chi_(c 0) thin g$ points, 8.8% of the $u overline(u) -> chi_(b 0) thin g$
-    points and 0.2% of the $g g -> chi_(b 0) thin g$ points. At 20 GeV no P-wave
+    points and 0.2% of the $g g -> chi_(b 0) thin g$ points. At 20 GeV no singlet
     point is.
     - The derivative of the threshold amplitude cancels the more strongly
       the smaller $M\/sqrt(s)$ is: $3 dot 10^(-3)$ for $chi_(c 0)$ against
@@ -557,6 +565,21 @@ estimate over random phase-space points.
       $5 dot 10^(-5)$, nothing above $10^(-3)$, 0.5 s per point), but it fails for
       $g g -> chi_(c 0) g$: its threshold relations hold only to double-precision
       rounding, and that path refuses them.
+  - *The P-wave octets* (@fig:stability-octets). No point of
+    $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ has an estimate above
+    $10^(-4)$, in either setup. The largest is $2.2 dot 10^(-5)$, for
+    $c overline(c) thin [""^1 P_1^((8))]$ at 1 TeV. These processes have boxes
+    with a doubled propagator, but no pentagons.
+    - At 1 TeV the $""^3 P_0$, $""^3 P_2$ and $""^1 P_1$ octets have a median
+      estimate of $1.3$ to $1.5 dot 10^(-6)$ (charmonium) and $2.4 dot 10^(-8)$
+      (bottomonium). The $""^3 P_1$ octet stays below $10^(-10)$.
+    - Against quadruple precision (24 points of
+      $e^+ e^- -> c overline(c) thin [""^3 P_0^((8))] thin g$ at 1 TeV,
+      `research/pwave_stability`), the true error is at most
+      $7.7 dot 10^(-8)$. The estimate comes from the reversed-loop pass,
+      which is off by $1.5 dot 10^(-7)$ to $2.5 dot 10^(-6)$, so it is
+      pessimistic here as well.
+    - At 20 GeV every estimate is below $2 dot 10^(-10)$.
   - *The reference.* For $g g -> t overline(t) thin g$, 0.04% of the points are
     above $10^(-3)$, which is the steep profile of the paper's first process
     class.
@@ -615,7 +638,7 @@ confidence interval of the geometric-mean ratio.
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB08` for the scratch TIRust builds), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08` for the scratch TIRust builds), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,

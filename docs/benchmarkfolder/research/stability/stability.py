@@ -46,6 +46,15 @@ CASES = {
     'etab8g': ('loop_sm_onia-no_tau_mass', 'g g > etab(1|1S08) g [virt=QCD]', None, 10000),
     'chib0g': ('loop_sm_onia-no_tau_mass', 'u u~ > chib0(1|3P01) g [virt=QCD]', 'TIRUST_LIB48958', 2000),
     'ggchib0g': ('loop_sm_onia-no_tau_mass', 'g g > chib0(1|3P01) g [virt=QCD]', 'TIRUST_LIB370', 2000),
+    # P-wave colour octets: the e+e- -> QQbar[n(8)] g processes of the P-wave pole checks
+    'cc3p08g': ('loop_sm_onia-c_mass', 'e+ e- > Jpsi(1|3P08) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'cc3p18g': ('loop_sm_onia-c_mass', 'e+ e- > Jpsi(1|3P18) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'cc3p28g': ('loop_sm_onia-c_mass', 'e+ e- > Jpsi(1|3P28) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'cc1p18g': ('loop_sm_onia-c_mass', 'e+ e- > etac(1|1P18) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'bb3p08g': ('loop_sm_onia-no_tau_mass', 'e+ e- > Upsilon(1|3P08) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'bb3p18g': ('loop_sm_onia-no_tau_mass', 'e+ e- > Upsilon(1|3P18) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'bb3p28g': ('loop_sm_onia-no_tau_mass', 'e+ e- > Upsilon(1|3P28) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
+    'bb1p18g': ('loop_sm_onia-no_tau_mass', 'e+ e- > etab(1|1P18) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
 }
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)

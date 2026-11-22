@@ -45,8 +45,11 @@ The results are in `data/`.
    |---|---|---|---|
    | u ū → χ_c0 g | 4/24 | 3.4·10⁻² | 1.4·10⁻⁴ |
    | g g → χ_c0 g | 1/24 | 3.9·10⁻² | 1.3·10⁻⁵ |
+   | e⁺e⁻ → cc̄[³P₀⁽⁸⁾] g | 0/24 | 7.7·10⁻⁸ | 1.4·10⁻⁸ |
 
    At 20 GeV the largest u ū error is 7.6·10⁻⁸.
+
+   The colour octet (TIRust 48958d1, `data/estim_ee_3p08g_1000.json`) has no pentagons, only boxes. MadLoop's estimate for it is about 10⁻⁶ (median 1.3·10⁻⁶ over the 10⁴ points of the stability profile). That estimate comes from the reversed-loop pass, which is off by 1.5·10⁻⁷ to 2.5·10⁻⁶. The primary pass is 30 to 100 times more accurate.
 
 2. **The cause: TIRust's DP evaluation of the doubled-propagator pentagons.**
    - Replacing the arrays of the calls with powers and five lines by their QP values brings the error down:

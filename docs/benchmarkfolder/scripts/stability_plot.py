@@ -6,12 +6,14 @@ bottomonium), one column per setup.
 
     python3 scripts/stability_plot.py data/raw/stability figures/stability.svg
 
-Writes the figure and data/stability.json (the summary table). Points
-MadLoop evaluated without a stability test (return code 1xx) are dropped.
-The colours are the first five slots of the validated categorical palette
-(dataviz reference palette, light mode, checked on white). A bottomonium
-process takes the colour of its charmonium analogue; the reference process
-of the paper is a dashed neutral line in both rows."""
+Writes the figure, a second one for the P-wave colour octets next to it
+(figures/stability_octets.svg) and data/stability.json (the summary table
+of both). Points MadLoop evaluated without a stability test (return code
+1xx) are dropped. The colours are the first five slots of the validated
+categorical palette (dataviz reference palette, light mode, checked on
+white); the octet figure starts the slot order again, one slot per state. A
+bottomonium process takes the colour of its charmonium analogue; the
+reference process of the paper is a dashed neutral line in every row."""
 import glob
 import json
 import os
@@ -30,8 +32,17 @@ FAMILIES = [
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
      ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'ggchib0g']),
 ]
+# the P-wave colour octets, in a figure of their own
+OCTET_FAMILIES = [
+    ('charmonium octets', r'charmonium P-wave octets: $e^+e^-\to c\bar c[n^{(8)}]\,g$, loop_sm_onia-c_mass',
+     ['cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g']),
+    ('bottomonium octets', r'bottomonium P-wave octets: $e^+e^-\to b\bar b[n^{(8)}]\,g$, loop_sm_onia-no_tau_mass',
+     ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g']),
+]
+FIGURES = [('', FAMILIES), ('_octets', OCTET_FAMILIES)]
+ALL_FAMILIES = FAMILIES + OCTET_FAMILIES
 REFERENCE = 'ttg'
-ORDER = [c for _, _, cases in FAMILIES for c in cases] + [REFERENCE]
+ORDER = [c for _, _, cases in ALL_FAMILIES for c in cases] + [REFERENCE]
 LABEL = {
     'etacg': r'$gg\to\eta_c\,g$',
     'jpsig': r'$gg\to J/\psi\,g$',
@@ -47,6 +58,10 @@ LABEL = {
     'ggchib0g': r'$gg\to\chi_{b0}\,g$ (P wave, TIRust 370b632)',
     'ttg': r'$gg\to t\bar t\,g$ (reference, NinjaRS chain)',
 }
+for q in 'cb':
+    for key, state in (('3p08', '{}^3P_0^{(8)}'), ('3p18', '{}^3P_1^{(8)}'), ('3p28', '{}^3P_2^{(8)}'),
+                       ('1p18', '{}^1P_1^{(8)}')):
+        LABEL[q * 2 + key + 'g'] = r'$e^+e^-\to %s\bar %s[%s]\,g$' % (q, q, state)
 TYPST = {
     'etacg': r'g g -> eta_c thin g',
     'jpsig': r'g g -> J\/psi thin g',
@@ -62,10 +77,16 @@ TYPST = {
     'ggchib0g': r'g g -> chi_(b 0) thin g',
     'ttg': r'g g -> t overline(t) thin g',
 }
+for q in 'cb':
+    for key, state in (('3p08', '^3 P_0'), ('3p18', '^3 P_1'), ('3p28', '^3 P_2'), ('1p18', '^1 P_1')):
+        TYPST[q * 2 + key + 'g'] = r'e^+ e^- -> %s overline(%s) thin [""%s^((8))] thin g' % (q, q, state)
 BLUE, ORANGE, AQUA, YELLOW, MAGENTA, GREY = '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#8a8985'
 COLOR = {'etacg': BLUE, 'jpsig': ORANGE, 'jpsig08': ORANGE, 'etac8g': AQUA, 'chic0g': YELLOW, 'ggchic0g': MAGENTA,
          'etabg': BLUE, 'upsg': ORANGE, 'upsg08': ORANGE, 'etab8g': AQUA, 'chib0g': YELLOW, 'ggchib0g': MAGENTA,
          'ttg': GREY}
+for q in 'cb':
+    COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
+                  q * 2 + '1p18g': YELLOW})
 STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
 INK, INK2, GRID = '#0b0b0b', '#52514e', '#e4e3df'
 SETUP_TITLE = {'A': r'$\sqrt{s}=1$ TeV, $p_T>50$ GeV', 'B': r'$\sqrt{s}=20$ GeV, $p_T>2$ GeV'}
@@ -74,7 +95,7 @@ LIBNAMES = {'9': 'TIRust', '8': 'NinjaRS', '6': 'Ninja', '7': 'COLLIER', '1': 'C
 
 
 def family_of(case):
-    for name, _, cases in FAMILIES:
+    for name, _, cases in ALL_FAMILIES:
         if case in cases:
             return name
     return 'reference'
@@ -105,7 +126,7 @@ def reducer(meta):
 
 
 def summary(runs):
-    fam_order = [f for f, _, _ in FAMILIES] + ['reference']
+    fam_order = [f for f, _, _ in ALL_FAMILIES] + ['reference']
     rows = []
     for (case, setup), (m, pts) in sorted(
             runs.items(), key=lambda kv: (fam_order.index(family_of(kv[0][0])), kv[0][1],
@@ -120,12 +141,12 @@ def summary(runs):
     return rows
 
 
-def plot(runs, out):
+def plot(runs, out, family_list):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 8, 'axes.edgecolor': INK2,
                          'axes.labelcolor': INK, 'xtick.color': INK2, 'ytick.color': INK2,
                          'mathtext.fontset': 'dejavusans'})
     setups = sorted(set(s for _, s in runs))
-    families = [f for f in FAMILIES if any((c, s) in runs for c in f[2] for s in setups)]
+    families = [f for f in family_list if any((c, s) in runs for c in f[2] for s in setups)]
     fig = plt.figure(figsize=(7.2, 3.3 * len(families)))
     subfigs = fig.subfigures(len(families), 1, squeeze=False)[:, 0]
     grid = np.logspace(-16, 0.5, 600)
@@ -170,7 +191,9 @@ if __name__ == '__main__':
     folder, out = sys.argv[1], sys.argv[2]
     runs = load(folder)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    plot(runs, out)
+    for suffix, family_list in FIGURES:
+        stem, ext = os.path.splitext(out)
+        plot(runs, stem + suffix + ext, family_list)
     data = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(out))), 'data', 'stability.json')
     json.dump(summary(runs), open(data, 'w'), indent=1)
-    print('wrote', out, data)
+    print('wrote', ', '.join(os.path.splitext(out)[0] + s + os.path.splitext(out)[1] for s, _ in FIGURES), data)
