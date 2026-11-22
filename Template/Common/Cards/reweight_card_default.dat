@@ -27,6 +27,12 @@ change mode NLO    # Define type of Reweighting. For LO sample this command
 #change include_sudakov True
 # FxFx (ickkw=3): clustering factors xi >= 1; default 1.5.
 #change sudakov_xi 1 1.5 3
+# W, Z and top resonances with their daughters in the events: longitudinal
+# correction from the Goldstone amplitude interfered with the physical Born
+# (amplitude, default) or divided by the Goldstone Born (goldstone_relative).
+#change sudakov_density_prescription amplitude
+# Store the spin tensor with open incoming spins in each LHE event.
+#change sudakov_density_keep_initial False
 
                    
 launch

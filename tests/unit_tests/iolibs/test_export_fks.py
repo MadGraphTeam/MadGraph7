@@ -923,42 +923,42 @@ class IOExportFKSTest(IOTests.IOTestManager):
     def testIO_test_pptt_fksreal(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
         Template files identical in every subprocess directory: compare one.
-        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_ppw_fksall(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
         Template files identical in every subprocess directory: compare one.
-        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > w+ QED^2=2 QCD^2=0 [QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_tdecay_fksreal(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
         Template files identical in every subprocess directory: compare one.
-        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['t > j j b QED^2=4 QCD^2=0 [real=QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_pptt_fks_loonly(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
         Template files identical in every subprocess directory: compare one.
-        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > t t~ QED^2=0 QCD^2=4 [LOonly=QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_wprod_fksew(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
         Template files identical in every subprocess directory: compare one.
-        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QED]'], 'loop_qcd_qed_smCMS')
 
     @IOTests.createIOTest()
     def testIO_test_pptt_fksrealew(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
         Template files identical in every subprocess directory: compare one.
-        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QED]'], 'sm', 
                       multiparticles = ['p = u u~ d d~ s s~ c c~ g a'])
 

@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from madgraph import MadGraph5Error, MG5DIR
@@ -48,6 +49,14 @@ def read_config(libdir):
                 for flag in before)):
         raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
                              "in %s; run 'install ninjars --update'." % libdir)
+    # The static compiler runtime is recorded by absolute path; a compiler
+    # upgrade or a Nix garbage collection removes it behind our back.
+    missing = [flag for flag in before
+               if os.path.isabs(flag) and not os.path.isfile(flag)]
+    if missing:
+        raise MadGraph5Error("NinjaRS compiler runtime %s in %s no longer exists; "
+                             "run 'install ninjars --update'."
+                             % (', '.join(missing), libdir))
     return config
 
 
@@ -105,9 +114,27 @@ def export_files(libdir):
     return artifacts
 
 
-def pre_link_flags(libdir):
-    """Resolve the Fortran compiler runtime before Rust's builtin symbols."""
-    return read_config(libdir)['link_before']
+def pre_link_flags(libdir, fortran_compiler=None):
+    """Resolve the Fortran compiler runtime before Rust's builtin symbols.
+
+    The static runtime belongs to the compiler NinjaRS was installed with; warn
+    when the process will be linked by a compiler with a different libgcc.a.
+    """
+    flags = read_config(libdir)['link_before']
+    recorded = {os.path.realpath(flag) for flag in flags if os.path.isabs(flag)}
+    if fortran_compiler and recorded:
+        try:
+            active = subprocess.run(
+                [fortran_compiler, '-print-file-name=libgcc.a'], capture_output=True,
+                text=True, check=True, timeout=60).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            active = ''
+        if os.path.isabs(active) and os.path.realpath(active) not in recorded:
+            logger.warning(
+                "NinjaRS in %s was installed with another compiler runtime (%s) than "
+                "%s uses (%s). Run 'install ninjars --update' with this compiler.",
+                libdir, ', '.join(sorted(recorded)), fortran_compiler, active)
+    return flags
 
 
 def native_link_flags(libdir):
@@ -370,7 +397,10 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     if provenance:
         # Resolve changed path sources while retaining other locked versions.
         _run(['cargo', 'metadata', '--format-version=1'], bridge, log, environment)
-    _run(['make', 'install', 'PREFIX=' + str(installed), 'FC=' + compiler],
+    # The Makefile writes the link-order file with Python's shlex; use this
+    # interpreter rather than whichever python3 is first on PATH.
+    _run(['make', 'install', 'PREFIX=' + str(installed), 'FC=' + compiler,
+          'PYTHON=' + shlex.quote(sys.executable or 'python3')],
          bridge, log, environment)
 
     libdir = installed / 'lib'

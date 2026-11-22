@@ -184,7 +184,8 @@ jobs:
       - name: Delete pip cache
         if: inputs.reset_pip
         run: |
-          "$RUNNER_TEMP/delete_caches.sh" pip-numpy-${{ env.CACHE_KEY }}
+          "$RUNNER_TEMP/delete_caches.sh" pip-numpy-${{ env.CACHE_KEY }} \
+            pip-pyamplicol-${{ env.CACHE_KEY }}
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -200,6 +201,51 @@ jobs:
             delphes-${{ env.CACHE_KEY }}
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # pyamplicol's pip download cache (~/.cache/pip), for the pyamplicol workflows
+  # (pyamplicol.yml, pyamplicol-eager-portability.yml). Built here on main only:
+  # PR jobs restore the newest generation with the restore-pyamplicol-pip-cache
+  # action and never save. The key carries a hash of pyproject.toml, so a new
+  # dependency pin is a new generation and an unchanged one is not re-downloaded.
+  pip_cache_pyamplicol:
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    needs: delete-cache
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set cache key
+        run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages (pyamplicol)
+        id: cache-pip
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/pip
+          key: pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-${{ hashFiles('pyamplicol/pyproject.toml') }}
+          restore-keys: |
+            pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-
+
+      - name: Download pyamplicol's pinned dependencies into the pip cache
+        if: steps.cache-pip.outputs.cache-hit != 'true'
+        run: |
+          python -c "import tomllib; print('\n'.join(tomllib.load(open('pyamplicol/pyproject.toml', 'rb'))['project']['dependencies']))" > "$RUNNER_TEMP/pyamplicol-reqs.txt"
+          python -m pip download --dest "$RUNNER_TEMP/pyamplicol-wheels" -r "$RUNNER_TEMP/pyamplicol-reqs.txt"
+
+      - name: Save the new pip cache generation
+        if: steps.cache-pip.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/pip
+          key: pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-${{ hashFiles('pyamplicol/pyproject.toml') }}
 
   rebuild-numpy-cache:
     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
@@ -738,6 +784,15 @@ jobs:
           path: ~/.cache/HEPtools
           key: pythia8-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
+
+      # The check below requires the two NLO PDF sets, which only the lhapdf
+      # job unpacks. If that cache was evicted (repo over its 10 GB quota), the
+      # restored pythia8 tree lacks them: fetch them back before checking.
+      - name: Ensure the NLO PDF sets are present
+        run: |
+          bash ./.github/actions/restore_heptools_lhapdf/fetch_pdfsets.sh \
+            "$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF" \
+            cteq6l1 NNPDF23_nlo_as_0118_qed
 
       - name: Verify the core tree before saving it
         uses: ./.github/actions/check_heptools

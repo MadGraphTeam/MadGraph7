@@ -180,7 +180,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # MemoryAccess*.h family, umami.cc, etc.) are NOT linked into P* at all: they are read straight from the
     # top-level backend/<variant>/ and backend/common/ dirs via the Makefile's
     # INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). They are still compiled
-    # once per P* directory, into its own build.<BACKEND>/, and have to be:
+    # once per P* directory, into its own build.<BACKEND>_<FPTYPE>/, and have to be:
     # they include that directory's generated ProcessData.h, ColorData.h and
     # ProcessTables.h. Only files with no backend/ counterpart - genuinely
     # backend-agnostic - stay here.

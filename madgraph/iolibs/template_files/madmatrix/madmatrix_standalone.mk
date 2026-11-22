@@ -25,12 +25,13 @@ override standalone_objects = $(BUILDDIR)/RamboSamplingKernels.o \
                               $(BUILDDIR)/CommonRandomNumberKernel.o \
                               $(BUILDDIR)/check_sa.o
 
-# force relink when changing to before compiled backend
+# force relink when changing to a before compiled backend or FPTYPE (each has its own
+# build directory, whose objects can then be older than check_sa.exe)
 CHECK_SA_BACKEND_MARKER = .check_sa_backend
 check_sa.exe: $(CHECK_SA_BACKEND_MARKER)
 $(CHECK_SA_BACKEND_MARKER): FORCE
-	@if [ ! -f $(CHECK_SA_BACKEND_MARKER) ] || [ "$$(cat $(CHECK_SA_BACKEND_MARKER) 2>/dev/null)" != "$(BACKEND)" ]; then \
-		echo $(BACKEND) > $(CHECK_SA_BACKEND_MARKER); \
+	@if [ ! -f $(CHECK_SA_BACKEND_MARKER) ] || [ "$$(cat $(CHECK_SA_BACKEND_MARKER) 2>/dev/null)" != "$(BACKEND)_$(FPTYPE)" ]; then \
+		echo $(BACKEND)_$(FPTYPE) > $(CHECK_SA_BACKEND_MARKER); \
 	fi
 .PHONY: FORCE
 FORCE:

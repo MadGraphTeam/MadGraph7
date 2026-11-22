@@ -21,7 +21,7 @@ In a ``P1_*`` directory, ``make`` builds the process library and ``check_sa.exe`
 Two variables select the build; they are part of the library name, so several
 builds coexist::
 
-    make BACKEND=auto FPTYPE=m          # the defaults
+    make BACKEND=auto FPTYPE=v          # the defaults
     make BACKEND=simd_256 FPTYPE=d -j8
 
 ``BACKEND``
@@ -30,9 +30,9 @@ builds coexist::
     on Apple silicon). The resolved choice is written to ``.resolved-backend``.
 
 ``FPTYPE``
-    ``d`` (double precision everywhere), ``f`` (single), ``m`` (the default:
-    amplitudes in double precision, colour algebra in single precision), ``v``
-    (single-precision amplitudes with double-precision momenta and denominators),
+    ``d`` (double precision everywhere), ``f`` (single), ``m`` (amplitudes in
+    double precision, colour algebra in single precision), ``v`` (the default:
+    single-precision amplitudes with double-precision momenta and denominators),
     ``e`` (double-word expansion). Compare them with ``check precision``.
 
 The flags are ``-O3 -std=c++20 -ffast-math`` (``OPTFLAGS`` for the optimisation
