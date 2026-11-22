@@ -13,7 +13,7 @@ initialisation) are dropped.
 
 CASE and SETUP are keys of CASES and SETUPS. Environment: TIRUST_LIB48958
 (the TIRust build for the P-wave cases), TIRUST_LIB370 (TIRust 370b632, for
-ggchic0g), TIRUST_LIB08 (TIRust 08edee3 with the bridge gate patch, for
+ggchic0g and ggchib0g), TIRUST_LIB08 (TIRust 08edee3 with the bridge gate patch, for
 jpsig08 and upsg08), NWORKERS (16), NPOINTS (to override the
 number of points)."""
 import concurrent.futures
@@ -45,6 +45,7 @@ CASES = {
     'upsg08': ('loop_sm_onia-no_tau_mass', 'g g > Upsilon(1|3S11) g [virt=QCD]', 'TIRUST_LIB08', 10000),
     'etab8g': ('loop_sm_onia-no_tau_mass', 'g g > etab(1|1S08) g [virt=QCD]', None, 10000),
     'chib0g': ('loop_sm_onia-no_tau_mass', 'u u~ > chib0(1|3P01) g [virt=QCD]', 'TIRUST_LIB48958', 2000),
+    'ggchib0g': ('loop_sm_onia-no_tau_mass', 'g g > chib0(1|3P01) g [virt=QCD]', 'TIRUST_LIB370', 2000),
 }
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)

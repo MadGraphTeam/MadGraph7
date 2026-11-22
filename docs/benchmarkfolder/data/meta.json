@@ -1,5 +1,5 @@
 {
- "revision": "f4ef55f5b8",
+ "revision": "dffb0c510c",
  "date": "2026-11-22",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
@@ -119,6 +119,14 @@
   [
    "f4ef55f5b8",
    "docs/benchmarkfolder: reproduction note for the TIRust 370b632 row"
+  ],
+  [
+   "8a6c211357",
+   "docs/benchmarkfolder: gg -> chi_c0 g stability profile; P-wave stability diagnosis"
+  ],
+  [
+   "dffb0c510c",
+   "research/pwave_stability: TIRust reproducer for the doubled pentagons"
   ]
  ],
  "decisions": [

@@ -28,7 +28,7 @@ FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
      ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'ggchic0g']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
-     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g']),
+     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'ggchib0g']),
 ]
 REFERENCE = 'ttg'
 ORDER = [c for _, _, cases in FAMILIES for c in cases] + [REFERENCE]
@@ -44,6 +44,7 @@ LABEL = {
     'upsg08': r'$gg\to\Upsilon\,g$, TIRust 08edee3',
     'etab8g': r'$gg\to b\bar b[{}^1S_0^{(8)}]\,g$',
     'chib0g': r'$u\bar u\to\chi_{b0}\,g$ (P wave)',
+    'ggchib0g': r'$gg\to\chi_{b0}\,g$ (P wave, TIRust 370b632)',
     'ttg': r'$gg\to t\bar t\,g$ (reference, NinjaRS chain)',
 }
 TYPST = {
@@ -58,13 +59,14 @@ TYPST = {
     'upsg08': r'g g -> Upsilon thin g',
     'etab8g': r'g g -> b overline(b) thin [""^1 S_0^((8))] thin g',
     'chib0g': r'u overline(u) -> chi_(b 0) thin g',
+    'ggchib0g': r'g g -> chi_(b 0) thin g',
     'ttg': r'g g -> t overline(t) thin g',
 }
 BLUE, ORANGE, AQUA, YELLOW, MAGENTA, GREY = '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#8a8985'
 COLOR = {'etacg': BLUE, 'jpsig': ORANGE, 'jpsig08': ORANGE, 'etac8g': AQUA, 'chic0g': YELLOW, 'ggchic0g': MAGENTA,
-         'etabg': BLUE, 'upsg': ORANGE, 'upsg08': ORANGE, 'etab8g': AQUA, 'chib0g': YELLOW,
+         'etabg': BLUE, 'upsg': ORANGE, 'upsg08': ORANGE, 'etab8g': AQUA, 'chib0g': YELLOW, 'ggchib0g': MAGENTA,
          'ttg': GREY}
-STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.'}
+STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
 INK, INK2, GRID = '#0b0b0b', '#52514e', '#e4e3df'
 SETUP_TITLE = {'A': r'$\sqrt{s}=1$ TeV, $p_T>50$ GeV', 'B': r'$\sqrt{s}=20$ GeV, $p_T>2$ GeV'}
 THRESHOLD = 1e-3

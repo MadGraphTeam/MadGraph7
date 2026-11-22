@@ -306,6 +306,24 @@
   "ms": 119.0
  },
  {
+  "case": "ggchib0g",
+  "setup": "A",
+  "family": "bottomonium",
+  "label": "g g -> chi_(b 0) thin g",
+  "process": "g g > chib0(1|3P01) g [virt=QCD]",
+  "model": "loop_sm_onia-no_tau_mass",
+  "reducer": "TIRust 370b632",
+  "libs": "9",
+  "energy": 1000.0,
+  "ptmin": 50.0,
+  "npoints": 2000,
+  "frac_1e3": 0.002,
+  "frac_1e6": 0.8705,
+  "frac_1e9": 1.0,
+  "median": 6.225e-06,
+  "ms": 1900.0
+ },
+ {
   "case": "etabg",
   "setup": "B",
   "family": "bottomonium",
@@ -394,6 +412,24 @@
   "frac_1e9": 0.118,
   "median": 3.13e-11,
   "ms": 120.0
+ },
+ {
+  "case": "ggchib0g",
+  "setup": "B",
+  "family": "bottomonium",
+  "label": "g g -> chi_(b 0) thin g",
+  "process": "g g > chib0(1|3P01) g [virt=QCD]",
+  "model": "loop_sm_onia-no_tau_mass",
+  "reducer": "TIRust 370b632",
+  "libs": "9",
+  "energy": 20.0,
+  "ptmin": 2.0,
+  "npoints": 2000,
+  "frac_1e3": 0.0,
+  "frac_1e6": 0.0015,
+  "frac_1e9": 0.0395,
+  "median": 1.68e-11,
+  "ms": 1770.0
  },
  {
   "case": "ttg",

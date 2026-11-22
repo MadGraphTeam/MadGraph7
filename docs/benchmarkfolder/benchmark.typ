@@ -490,12 +490,13 @@ estimate over random phase-space points.
   - bottomonium with `loop_sm_onia-no_tau_mass` (massless charm,
     $m_b = 4.7$ GeV, $m_t = 173$ GeV, $n_l = 4$).
 
-  The $u overline(u)$ P waves use TIRust 48958d1. $g g -> chi_(c 0) thin g$ uses
-  TIRust 370b632 (PR \#56), because 48958d1 refuses its doubled-gluon pentagons.
+  The $u overline(u)$ P waves use TIRust 48958d1. The $g g$ P waves,
+  $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
+  (PR \#56), because 48958d1 refuses their doubled-gluon pentagons.
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 ($u overline(u)$ P waves). Dash-dotted: $g g -> chi_(c 0) thin g$ with TIRust 370b632. Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 ($u overline(u)$ P waves). Dash-dotted: $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$ with TIRust 370b632. Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
@@ -531,8 +532,9 @@ estimate over random phase-space points.
     - The newer TIRust removes that tail as well.
   - *The P waves at 1 TeV.* At $sqrt(s) = 1$ TeV the estimate is above
     $10^(-3)$ at 75% of the $u overline(u) -> chi_(c 0) thin g$ points, 40% of the
-    $g g -> chi_(c 0) thin g$ points and 8.8% of the $u overline(u) -> chi_(b 0) thin g$
-    points. At 20 GeV no P-wave point is.
+    $g g -> chi_(c 0) thin g$ points, 8.8% of the $u overline(u) -> chi_(b 0) thin g$
+    points and 0.2% of the $g g -> chi_(b 0) thin g$ points. At 20 GeV no P-wave
+    point is.
     - The derivative of the threshold amplitude cancels the more strongly
       the smaller $M\/sqrt(s)$ is: $3 dot 10^(-3)$ for $chi_(c 0)$ against
       $10^(-2)$ for $chi_(b 0)$.
