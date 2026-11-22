@@ -76,13 +76,13 @@ class TestHostBlasBuild(unittest.TestCase):
                 initial = self.make(directory, setting=first)
                 self.assertEqual(initial.returncode, 0, initial.stderr)
                 tag = initial.stdout.strip().splitlines()[-1].split('|')[1]
-                build = Path(directory) / 'build.scalar'
+                build = Path(directory) / 'build.scalar_d'
                 build.mkdir()
                 (build / ('.build.' + tag)).touch()
                 changed = self.make(directory, setting=second)
                 self.assertEqual(changed.returncode, 0, changed.stderr)
                 new_tag = changed.stdout.strip().splitlines()[-1].split('|')[1]
-                result = self.make(directory, 'build.scalar/.build.' + new_tag,
+                result = self.make(directory, 'build.scalar_d/.build.' + new_tag,
                                    setting=second)
                 self.assertNotEqual(result.returncode, 0,
                                     'Changing the colour implementation reused old objects')
@@ -150,13 +150,13 @@ class TestHostBlasBuild(unittest.TestCase):
             # Reusing fast-math objects must fail instead of silently relinking.
             probe = self.make(process)
             tag = probe.stdout.strip().splitlines()[-1].split('|')[1]
-            build = process/'build.scalar'
+            build = process/'build.scalar_d'
             build.mkdir()
             (build/('.build.'+tag)).touch()
             stale = subprocess.run(command[0:2] + ['-s', 'BACKEND=scalar',
                 'FPTYPE=d', 'HELINL=0', 'HRDCOD=0', 'USEBUILDDIR=1',
                 'CXX=true', 'NLO_REAL_STRICT=1',
-                'build.scalar/.build.'+tag+'_strict1'], cwd=process,
+                'build.scalar_d/.build.'+tag+'_strict1'], cwd=process,
                 capture_output=True, text=True, timeout=30)
             self.assertNotEqual(stale.returncode, 0)
             self.assertIn('old builds exist', stale.stdout + stale.stderr)
@@ -180,7 +180,7 @@ class TestHostBlasBuild(unittest.TestCase):
             result = self.make(process)
             self.assertEqual(result.returncode, 0, result.stderr)
             tag = result.stdout.strip().splitlines()[-1].split('|')[1]
-            build = process/'build.scalar'
+            build = process/'build.scalar_d'
             build.mkdir()
             marker = build/('.build.'+tag)
             marker.touch()
@@ -189,8 +189,8 @@ class TestHostBlasBuild(unittest.TestCase):
             target = build/'CPPProcess.o'
             target.touch()
             os.utime(target, (1600000010, 1600000010))
-            fresh = self.make(process, 'build.scalar/CPPProcess.o', question=True)
+            fresh = self.make(process, 'build.scalar_d/CPPProcess.o', question=True)
             self.assertEqual(fresh.returncode, 0, fresh.stderr)
             os.utime(arithmetic/'Invariant.h', (1600000020, 1600000020))
-            stale = self.make(process, 'build.scalar/CPPProcess.o', question=True)
+            stale = self.make(process, 'build.scalar_d/CPPProcess.o', question=True)
             self.assertEqual(stale.returncode, 1, stale.stderr)
