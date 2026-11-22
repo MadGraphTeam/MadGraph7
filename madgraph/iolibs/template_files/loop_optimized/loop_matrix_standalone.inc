@@ -305,6 +305,9 @@ C
       LOGICAL %(proc_prefix)sIS_HEL_SELECTED
 ## if(Onia) {
       LOGICAL %(proc_prefix)sONIA_HEL_LIVE
+C     The squared finite terms of the counterterm interference of the last
+C     double-precision evaluation, and the accuracy they imply
+      %(real_dp_format)s ONIA_CTSQ, ONIA_CTACC
 ## }
 ## if(OniaPwave) {
       LOGICAL %(proc_prefix)sONIA_PW_DIRECTION, %(proc_prefix)sONIA_PW_CT_INPUT
@@ -1216,6 +1219,7 @@ ENDIF
 ## if(Onia) {
 C The effective Born amplitudes of the bound states for this PS point
 CALL %(proc_prefix)sONIA_PREPARE(P)
+ONIA_CTSQ=0.0d0
 ## }
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
@@ -1314,6 +1318,9 @@ C goes to ANS(K,1) and ANS(K,0): they are accumulated in registers instead.
             TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
             ACC_SO(K)=ACC_SO(K)+TEMP2
             ACC_ALL(K)=ACC_ALL(K)+TEMP2
+## if(Onia) {
+            IF (K.EQ.1) ONIA_CTSQ=ONIA_CTSQ+TEMP2*TEMP2
+## }
           ENDDO
         ENDDO
       ENDDO
@@ -2016,6 +2023,27 @@ C   the result cannot be trusted at all and we hardset all accuracies to 1.0
         ACC(I)=1.0d0
       ENDDO
     ENDIF
+## if(Onia) {
+C   Bound states: the evaluations of the stability test share the
+C   counterterm interference (reversing the loop direction does not change
+C   it), so they cannot measure its rounding. Near a soft jet its terms,
+C   each of them accurate, can be large and cancel: the R2 gluon
+C   self-energy of a heavy quark carries its mass squared, and the projected
+C   sum over the constituent helicities vanishes. Their rounding, about
+C   epsilon times the root of the sum of their squares, bounds the accuracy
+C   from below; a point beyond MLStabThres is then evaluated in quadruple
+C   precision, which computes the counterterms in quadruple precision too.
+    IF (ANS(1,0).NE.0.0d0) THEN
+      ONIA_CTACC=EPSILON(1.0d0)*SQRT(ONIA_CTSQ)/ABS(ANS(1,0))
+    ELSEIF (ONIA_CTSQ.GT.0.0d0) THEN
+      ONIA_CTACC=1.0d0
+    ELSE
+      ONIA_CTACC=0.0d0
+    ENDIF
+    DO I=0,NSQUAREDSO
+      ACC(I)=MAX(ACC(I),ONIA_CTACC)
+    ENDDO
+## }
 ## if(ninjars_available) {
 C         One explicit compensated DP retry with the same stability checks.
           IF(NRS_RETRY_MODE) THEN

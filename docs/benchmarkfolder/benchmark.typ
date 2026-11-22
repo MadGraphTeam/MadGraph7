@@ -285,16 +285,27 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     - $1.7 dot 10^(-4)$ with the physical masses.
     MadLoop's default stability test (reversing the loop direction) varies
     only the loop part, not the counterterm amplitudes.
-  - *Default since this report: one rotation.* Bound-state outputs now rotate
-    the point once in the double-precision test (`NRotations_DP = 1`).
-    - At the 3.1015 GeV point, the unpolarised and longitudinal results are
-      reported unstable and rescued in quadruple precision, right to
-      $10^(-12)$.
-    - At the milder soft points the accuracy estimates become realistic.
-    - Not caught: the transverse $J\/psi$ alone at 3.1015 GeV stays 33% off
-      with an estimate of $4 dot 10^(-5)$, even with two rotations.
-    - The rotation costs one more evaluation per point, about +50% (not in
-      the timing table of @perf).
+  - *The fix: an estimate of the counterterm rounding.* Bound-state outputs
+    now add to the double-precision accuracy an estimate of the rounding of
+    the counterterm interference: $epsilon sqrt(sum t^2) \/ |c_0|$, over its
+    terms $t$.
+    - This bounds the real error at every point of the comparison (by 40 to
+      $6 dot 10^3$).
+    - It costs one multiplication per term.
+    - A point beyond `MLStabThres` is rescued in quadruple precision, which
+      computes the counterterms in quadruple precision too.
+    - With the $10^4$ GeV $b$ and $t$, the four soft points are rescued, and
+      every point and polarisation is right (Table 5).
+    - With physical masses only the 3.1015 GeV point is rescued (its
+      double-precision error is $1.7 dot 10^(-4)$); the other accuracies stay
+      near $10^(-9)$.
+  - *Also a rotation.* Bound-state outputs further rotate the point once
+    (`NRotations_DP = 1`), about +50% per point (not in the timing table of
+    @perf).
+    - The rotation alone catches the worst point, but not the transverse
+      $J\/psi$ alone there.
+    - With the counterterm estimate, the rotation is no longer needed for
+      these points.
 ]
 
 *$J\/psi$ polarisation.* `Jpsi_double_cs_NEW` gives the virtual of the
@@ -308,22 +319,24 @@ $J_z = 0$, each in units of its own Born.
 #figure(caption: [$g g -> J\/psi thin g$ per polarisation against the direct evaluation of `Jpsi_double_cs_NEW` (largest relative deviation of $c_0$, absolute of $c_1$, each in units of its own Born):
 - MadLoop with the pinned TIRust at the points it reports stable;
 - MadLoop with TIRust 08edee3 in forced quadruple precision (`CTModeRun = 4`) at all 16 points, including the soft ones;
-- the same in double precision with the stability checks, every point reported stable (code 213).])[
-  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto),
-    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right),
-    [Polarisation], [Born ratio], [pinned: stable], [$c_0$ dev.], [$c_1$ dev.], [08edee3 QP: $c_0$, $c_1$ dev.], [08edee3 DP: $c_0$ dev.],
+- the same with MadLoop's stability checks, before the counterterm estimate ("08edee3 before": every point reported stable, code 213) and with it ("now": the soft points rescued in quadruple precision, codes #mgp.at(0).ct_codes.map(str).join("/")).])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right, right),
+    [Polarisation], [Born ratio], [pinned: stable], [$c_0$ dev.], [$c_1$ dev.], [08edee3 QP: $c_0$, $c_1$ dev.], [08edee3 before: $c_0$ dev.], [now: $c_0$ dev.],
     ..mgp.map(c => (pol-label.at(c.pol), [#fixed(c.born_ratio.at(0), 9)–#fixed(c.born_ratio.at(1), 9)],
       [#c.stable/#c.npoints], dev-cell(c.pin_fin, target: 1e-5), sci(c.pin_c1),
       [#sci(c.qp_fin), #sci(c.qp_c1)],
-      table.cell(fill: acc-fill(c.dp_fin, 1e-5))[#sci(c.dp_fin)])).flatten()))
+      table.cell(fill: acc-fill(c.dp_fin, 1e-5))[#sci(c.dp_fin)],
+      dev-cell(c.ct_fin, target: 1e-5))).flatten()))
 ] <tab:jpsipol>
 
 The longitudinal Born is suppressed, so its double-precision value carries
 MadLoop's rounding of $10^(-7)$ relative to it; in quadruple precision every
 polarisation agrees to $3 dot 10^(-12)$. The red column is the double-precision
 rounding of the R2 counterterms of the $10^4$ GeV $b$ and $t$ quarks at the soft
-points (above): at $sqrt(s) = 3.1015$ GeV the longitudinal $c_0$ is off by 440%
-while reported stable.
+points (above): at $sqrt(s) = 3.1015$ GeV the longitudinal $c_0$ was off by 440%
+while reported stable. With the counterterm estimate every point is right.
+Those soft points are rescued in quadruple precision.
 
 = P-wave bound states <pwave>
 

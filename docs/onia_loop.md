@@ -130,10 +130,18 @@ modes (`CTModeRun = 1` or 4) and the initialisation points run no test.
 There the public `SLOOPMATRIX` reads the same flags and reports the point
 unstable itself, with a warning on the first such point.
 
-**Stability test.** Bound-state outputs rotate the point once in the
-double-precision stability test (`NRotations_DP = 1`). MadLoop's default
-test reverses the loop direction, which leaves the counterterm amplitudes
-unchanged.
+**Stability test.** MadLoop's default stability test reverses the loop
+direction, which leaves the counterterm amplitudes unchanged. Bound-state
+outputs therefore add two things:
+- **A counterterm rounding estimate.** The double-precision accuracy is at
+  least `epsilon sqrt(sum t^2) / |c0|`, over the terms t of the
+  counterterm interference (`ONIA_CTSQ` of `loop_matrix.f`). A point beyond
+  `MLStabThres` is rescued in quadruple precision, which computes the
+  counterterms in quadruple precision too. The estimate is conservative:
+  in the comparison below it exceeds the real error by 40 to 6e3.
+- **One rotation of the point** in the double-precision test
+  (`NRotations_DP = 1`).
+
 
 The counterterm amplitudes can lose digits near a soft jet without trace:
 - the R2 gluon self-energy terms of a heavy quark carry its mass squared;
@@ -144,14 +152,16 @@ For `g g > Jpsi(1|3S11) g` with a 1.5 MeV gluon, the double-precision result
 was off by 1.7e-4 with the physical b and t masses, and by 22% with
 m_b = m_t = 1e4 GeV. MadLoop estimated the accuracy at 1e-9 in both cases.
 
-A rotation (a permutation of the axes) changes the rounding of the
-helicity routines. That point is then reported unstable and rescued in
-quadruple precision, and the accuracy estimates at milder soft points
-become realistic. Two limits remain:
-- The rotation does not catch every case. With 1e4 GeV b and t, the
-  transverse J/psi alone (`ONIA_SELECT_JZ`) at that point stays 33% off with
-  an estimate of 4e-5, even with two rotations.
-- It costs one more double-precision evaluation per point, about +50%.
+**What each part catches.**
+- **The counterterm estimate** catches every such point. With 1e4 GeV b and
+  t, the four soft points (sqrt(s) <= 3.15) are rescued in quadruple
+  precision, and every point and J/psi polarisation is right. With physical
+  masses only the 1.5 MeV point is rescued, and the other accuracies stay
+  near 1e-9.
+- **The rotation** (a permutation of the axes) changes the rounding of the
+  helicity routines. It catches the worst point, but not the transverse
+  J/psi alone (`ONIA_SELECT_JZ`) there, which stays 33% off. It costs one
+  more double-precision evaluation per point, about +50%.
 
 A value set in `MadLoopParams.dat` is kept.
 

@@ -81,9 +81,9 @@ OPEN_ITEMS = [
     'points are reported unstable. TIRust 08edee3 serves them, and MadLoop\'s double precision '
     'is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; '
     '22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ '
-    'with physical masses), which MadLoop\'s loop-direction test does not vary. Bound-state '
-    'outputs now also rotate the point once (`NRotations_DP = 1`), which rescues the worst point '
-    '(not the transverse $J\\/psi$ alone).',
+    'with physical masses), which MadLoop\'s loop-direction test does not vary. Fixed: bound-state '
+    'outputs now estimate the rounding of the counterterm interference and rescue such points in '
+    'quadruple precision (every point right).',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
@@ -309,7 +309,9 @@ def summarize_mg255_pol(folder):
             pin_fin=dev('%s_pin_-1' % pol, stable), pin_c1=dev('%s_pin_-1' % pol, stable, 'c1'),
             qp_fin=dev('%s_4_08edee3' % pol, rows), qp_c1=dev('%s_4_08edee3' % pol, rows, 'c1'),
             dp_fin=dev('%s_-1_08edee3' % pol, rows),
-            dp_codes=sorted(set(r['ml']['%s_-1_08edee3' % pol]['code'] for r in rows))))
+            dp_codes=sorted(set(r['ml']['%s_-1_08edee3' % pol]['code'] for r in rows)),
+            ct_fin=dev('%s_-1_08edee3_ctacc' % pol, rows),
+            ct_codes=sorted(set(r['ml']['%s_-1_08edee3_ctacc' % pol]['code'] for r in rows))))
     return out
 
 
