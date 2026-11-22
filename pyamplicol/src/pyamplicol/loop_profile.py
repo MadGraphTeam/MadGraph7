@@ -89,6 +89,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
     from pyamplicol.config import RunConfig
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
 
 # The stability points of a run whose plan has none (never used: a plan
 # with the stability run asked for sets its points).
@@ -836,15 +837,16 @@ def _runtime_setup(
     rows: Sequence[Any] = (),
     truth: GroundTruth | None = None,
     lane_rescue: bool = True,
+    cuts: PhaseSpaceCuts | None = None,
 ) -> str:
     """The runtime setup line; ``checked``: the checked mode
     (``benchmark.checked``), else the optimistic pass; ``lane_rescue``: the
     timed calls rescue refused reduction lanes (``evaluation.lane_rescue``,
     in both modes); ``seed``: of the flat
-    points (None: the caller's points); ``threads``: the native threads each
-    backend's timed calls report (one: one core, ``one_core``; another count
-    is named); ``rows``: the backends' runtimes (their calls, points per
-    call, warm-ups and reference points)."""
+    points (None: the caller's points), drawn within ``cuts``;
+    ``threads``: the native threads each backend's timed calls report (one:
+    one core, ``one_core``; another count is named); ``rows``: the backends'
+    runtimes (their calls, points per call, warm-ups and reference points)."""
 
     from pyamplicol.loops.v2.reduction import NAMES
 
@@ -857,7 +859,11 @@ def _runtime_setup(
         reduction += ", refused lanes rescued"
 
     points = (
-        "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
+        "points of --momenta"
+        if seed is None
+        else f"distinct flat points (seed {seed}"
+        + ("" if cuts is None else "".join(f", {cut}" for cut in cuts.described()))
+        + ")"
     )
     counts = sorted(set(threads) - {1})
     core = (
@@ -2373,6 +2379,7 @@ def profile_loop(
             runtime_rows or (),
             truth,
             evaluation.lane_rescue,
+            evaluation.phase_space.cuts,
         )
         if want_runtime
         else None,

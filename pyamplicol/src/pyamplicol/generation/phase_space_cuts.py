@@ -49,6 +49,15 @@ class PhaseSpaceCuts:
     def record(self) -> dict[str, float | None]:
         return {"pt_min": self.pt_min, "delta_r_min": self.delta_r_min}
 
+    def described(self) -> list[str]:
+        """The cuts set, in words (none: empty)."""
+
+        return [
+            f"{name} > {value:g}"
+            for name, value in (("pT", self.pt_min), ("Delta R", self.delta_r_min))
+            if value is not None
+        ]
+
     def accepted(self, momenta: Any, legs: Sequence[int]) -> np.ndarray:
         """Which of ``momenta`` (point, leg, (E, px, py, pz); beams along
         +-z) pass the cuts on their ``legs``."""

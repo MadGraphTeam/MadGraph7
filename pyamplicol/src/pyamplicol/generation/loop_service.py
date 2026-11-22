@@ -2080,6 +2080,8 @@ def check_loop_requests(
     sqrt_s=None,
     arbitrary_digits=None,
     cuts=None,
+    kinematics_improvement=None,
+    kinematics_improvement_binary64=None,
 ):
     """``pyamplicol check`` (``loops.v2.checks``): every process the request
     serves, regenerated IN MEMORY through this service's own preparation
@@ -2117,14 +2119,16 @@ def check_loop_requests(
     carriers = probe_carriers(precision)
     memo = PreparationMemo(store_for(backend._run_config.model))
     # Each double-double / arbitrary-precision rung improves its lifted
-    # point as Runtime.evaluate does (m-lit lit-psimprove (G5)): the run
-    # card's [evaluation] kinematics settings, else the policy's defaults.
+    # point as Runtime.evaluate does (m-lit lit-psimprove (G5)): the settings
+    # given, else the run card's [evaluation] ones, else the policy's defaults.
     from pyamplicol import kinematics as _kinematics
 
     evaluation = getattr(backend._run_config, "evaluation", None)
     kinematics = _kinematics.resolve(
-        getattr(evaluation, "kinematics_improvement", None),
-        getattr(evaluation, "kinematics_improvement_binary64", None),
+        kinematics_improvement,
+        kinematics_improvement_binary64,
+        default_setting_=getattr(evaluation, "kinematics_improvement", None),
+        default_binary64_=getattr(evaluation, "kinematics_improvement_binary64", None),
     )
     checked = []
     with born_dag_scope():

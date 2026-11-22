@@ -778,6 +778,10 @@ class DefaultCliServices:
             sqrt_s=config.check.sqrt_s,
             arbitrary_digits=config.check.arbitrary_digits,
             cuts=config.evaluation.phase_space.cuts,
+            kinematics_improvement=config.evaluation.kinematics_improvement,
+            kinematics_improvement_binary64=(
+                config.evaluation.kinematics_improvement_binary64
+            ),
             source=None if self._card is None else str(self._card),
             progress=progress,
         )
