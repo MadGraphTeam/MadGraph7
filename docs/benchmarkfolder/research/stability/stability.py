@@ -36,6 +36,12 @@ CASES = {
     'jpsig08': ('loop_sm_onia-c_mass', 'g g > Jpsi(1|3S11) g [virt=QCD]', 'TIRUST_LIB08', 10000),
     'etac8g': ('loop_sm_onia-c_mass', 'g g > etac(1|1S08) g [virt=QCD]', None, 10000),
     'chic0g': ('loop_sm_onia-c_mass', 'u u~ > chic0(1|3P01) g [virt=QCD]', 'TIRUST_LIB48958', 2000),
+    # bottomonium, four-flavour scheme (massless charm, m_b = 4.7, m_t = 173)
+    'etabg': ('loop_sm_onia-no_tau_mass', 'g g > etab(1|1S01) g [virt=QCD]', None, 10000),
+    'upsg': ('loop_sm_onia-no_tau_mass', 'g g > Upsilon(1|3S11) g [virt=QCD]', None, 10000),
+    'upsg08': ('loop_sm_onia-no_tau_mass', 'g g > Upsilon(1|3S11) g [virt=QCD]', 'TIRUST_LIB08', 10000),
+    'etab8g': ('loop_sm_onia-no_tau_mass', 'g g > etab(1|1S08) g [virt=QCD]', None, 10000),
+    'chib0g': ('loop_sm_onia-no_tau_mass', 'u u~ > chib0(1|3P01) g [virt=QCD]', 'TIRUST_LIB48958', 2000),
 }
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)

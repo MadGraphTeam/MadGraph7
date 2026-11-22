@@ -65,9 +65,9 @@ STATUS_LINES = [
     'of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.',
     '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
     '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
-    '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363): S waves steep, '
-    'apart from forward jets the pinned TIRust refuses (3% at 1 TeV, served by 08edee3); the P '
-    'wave is unstable in double precision at 1 TeV, stable at 20 GeV.',
+    '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
+    'bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV, '
+    'served by 08edee3); the P waves lose digits in double precision at 1 TeV, not at 20 GeV.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]

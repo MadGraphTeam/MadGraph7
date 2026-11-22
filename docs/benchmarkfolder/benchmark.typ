@@ -468,47 +468,55 @@ estimate over random phase-space points.
 - *Setups.* Setup A is the paper's, $sqrt(s) = 1$ TeV with $p_T > 50$ GeV;
   setup B is a quarkonium-scale one, $sqrt(s) = 20$ GeV with $p_T > 2$ GeV.
 - *Samples and models.* $10^4$ points per $2 -> 2$ process (the paper used
-  $10^5$) and $2 dot 10^3$ for the P wave, with the default parameters of
-  `loop_sm_onia-c_mass` (physical $b$ and $t$).
+  $10^5$) and $2 dot 10^3$ for each P wave, with physical masses:
+  - charmonium with `loop_sm_onia-c_mass` ($m_c = 1.55$ GeV, massive $b$ and
+    $t$, $n_l = 3$);
+  - bottomonium with `loop_sm_onia-no_tau_mass` (massless charm,
+    $m_b = 4.7$ GeV, $m_t = 173$ GeV, $n_l = 4$).
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes). The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 (P wave). Dotted: $g g -> J\/psi thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 (P waves). Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
 #figure(caption: [The profiles in numbers (the table view of @fig:stability): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
   #tstyle(table(columns: (auto, auto, 1fr, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, center, left, right, right, right, right, right),
-    [Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt],
+    table.header([Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt]),
     ..stab.map(c => (text(8.4pt, font: "Libertinus Serif", eval(c.label, mode: "math")), [#c.setup], text(7pt)[#c.reducer], [#c.npoints],
       table.cell(fill: if c.frac_1e3 <= 0.01 { good } else { warm })[#fixed(100 * c.frac_1e3, 2)%],
       [#fixed(100 * c.frac_1e6, 2)%], sci(c.median), ms2(c.ms))).flatten()))
 ] <tab:stability>
 
 #box-note[
-  - *Forward jets and the pinned TIRust.* The plateaus at 3.0% (setup A)
-    and 1.2% (setup B) of the three S-wave processes are the same points,
-    reported unstable with estimate 1 because the pinned TIRust refuses
-    integrals there.
-    - They are nearly all forward jets, with $|cos theta| > 0.95$.
-    - In setup A, every point with $p_T < 100$ GeV and 44% of those between
-      100 and 150 GeV are refused, plus one other point.
-    - In setup B, 40% of the points with $p_T$ between 2 and 3 GeV are
-      refused, plus 9 other points.
-    - TIRust 08edee3 with the gate patch (not pinned) serves them: no point
-      of $g g -> J\/psi thin g$ is then above $10^(-6)$, in either setup.
+  - *Refusals of the pinned TIRust.* The plateaus of the S-wave processes
+    are the same points in all three processes of a family, reported
+    unstable with estimate 1 because the pinned TIRust refuses integrals
+    there. They are 3.0% (charmonium) and 3.0% (bottomonium) in setup A, and
+    1.2% and 1.7% in setup B.
+    - Most are forward jets, $|cos theta| > 0.95$. In setup A this means
+      every point with $p_T < 100$ GeV and 44% of those between 100 and
+      150 GeV (charmonium).
+    - In setup B, bottomonium also has refusals around $theta = 90 degree$,
+      where $t approx u$: 16% to 42% of the points with $|cos theta| < 0.05$.
+    - TIRust 08edee3 with the gate patch (not pinned) serves all of them: no
+      point of $g g -> J\/psi thin g$ or $g g -> Upsilon thin g$ is then above
+      $10^(-6)$, in either setup.
   - *S waves otherwise.* Apart from the refusals, the S-wave profiles are
     steep: the median estimate is $10^(-13)$ to $10^(-8)$, and no point is
     between $10^(-3)$ and 1.
-    - With the pinned TIRust, $g g -> J\/psi thin g$ has a tail between
-      $10^(-6)$ and $10^(-3)$: 1.4% of the points at 1 TeV and 0.03% at 20 GeV.
+    - With the pinned TIRust, the $J\/psi$ and $Upsilon$ processes have a
+      tail between $10^(-6)$ and $10^(-3)$: 1.4% and 1.3% of the points at
+      1 TeV, at most 0.03% at 20 GeV.
     - The newer TIRust removes that tail as well.
-  - *The P wave at 1 TeV.* $u overline(u) -> chi_(c 0) thin g$ has 75% of its points
-    above $10^(-3)$ at $sqrt(s) = 1$ TeV. At 20 GeV it has none.
-    - At $M\/sqrt(s) = 3 dot 10^(-3)$ the derivative of the threshold
-      amplitude cancels strongly.
-    - In a sample of six points, the pass with the shifted invariants
+  - *The P waves at 1 TeV.* At $sqrt(s) = 1$ TeV, 75% of the points of
+    $u overline(u) -> chi_(c 0) thin g$ are above $10^(-3)$, and 8.8% of those of
+    $u overline(u) -> chi_(b 0) thin g$. At 20 GeV neither has any.
+    - The derivative of the threshold amplitude cancels the more strongly
+      the smaller $M\/sqrt(s)$ is: $3 dot 10^(-3)$ for $chi_(c 0)$ against
+      $10^(-2)$ for $chi_(b 0)$.
+    - In a sample of six $chi_(c 0)$ points, the pass with the shifted invariants
       differs from the primary evaluation by up to 24%, while the primary
       one is $6 dot 10^(-5)$ to $6 dot 10^(-4)$ from quadruple precision. The
       estimate is therefore conservative.
@@ -534,7 +542,7 @@ candidate to the frozen baseline `5c5b573794` (ordinary processes) or to
 `onia_loop` before these changes (bound states), with the upper bound of the 95%
 confidence interval of the geometric-mean ratio.
 
-#figure(caption: [Time per phase-space point, baseline and candidate, and their ratio. Acceptance: upper 95% bound ≤ 1.05 and identical results.])[
+#block(breakable: false)[#figure(caption: [Time per phase-space point, baseline and candidate, and their ratio. Acceptance: upper 95% bound ≤ 1.05 and identical results.])[
   #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, left, right, right, right, right, right, center),
     [Process (`generate ...`)], [libs], [points × pairs], [baseline ms], [candidate ms], [median ratio], [upper 95%], [identical],
@@ -542,7 +550,7 @@ confidence interval of the geometric-mean ratio.
       table.cell(fill: ratio-fill(r.median_ratio))[#fixed(r.median_ratio, 3)],
       table.cell(fill: if r.upper95 <= 1.05 { good } else { bad })[#fixed(r.upper95, 3)],
       if r.identical [yes] else [#sci(r.max_relative_difference)])).flatten()))
-]
+]]
 #legend()
 
 #eval(meta.perf_note, mode: "markup")
