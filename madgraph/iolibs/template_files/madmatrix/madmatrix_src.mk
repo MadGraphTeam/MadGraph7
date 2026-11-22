@@ -47,7 +47,7 @@ endif
 # Use the build lockfile "full" tag exported from the subprocess Makefile
 ###$(info TAG=$(TAG))
 
-# Build directory for object files: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
+# Build directory for object files: current directory by default, or build.<BACKEND>_<FPTYPE> if USEBUILDDIR==1
 ###$(info Current directory is $(shell pwd))
 override BUILDDIR = $(MADMATRIX_BUILDDIR)
 
@@ -106,7 +106,7 @@ $(BUILDDIR)/.build.$(TAG):
 #-------------------------------------------------------------------------------
 
 # Generic target and build rules: objects from C++ or CUDA/HIP compilation.
-# Plain .o suffix — the BUILDDIR (e.g. build.simd_256/) provides backend separation.
+# Plain .o suffix — the BUILDDIR (e.g. build.simd_256_v/) provides backend and FPTYPE separation.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
 $(BUILDDIR)/%%.o : %%.cc *.h $(BUILDDIR)/.build.$(TAG)

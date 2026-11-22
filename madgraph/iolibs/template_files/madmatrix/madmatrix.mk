@@ -14,7 +14,8 @@ endif
 
 # Set the default FPTYPE (floating point type) choice
 ifeq ($(FPTYPE),)
-  override FPTYPE = m
+  # default denom64, consistent with precision='denom64' in run_card.toml
+  override FPTYPE = v
 endif
 
 # Set the default HELINL (inline helicities?) choice
@@ -69,10 +70,13 @@ endif
 
 #=== Configure MADMATRIX_BUILDDIR
 
-# Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
+# Build directory: build.<BACKEND>_<FPTYPE> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after the potential 'auto' resolution
+# NB: FPTYPE is part of the name, as it is of the library names: several FPTYPEs of one
+# backend coexist (an mg7 run with [run] precision_check builds its FPTYPE and FPTYPE=d),
+# and a change of FPTYPE needs no 'make clean'
 ifeq ($(USEBUILDDIR),1)
-  override MADMATRIX_BUILDDIR = build.$(BACKEND)
+  override MADMATRIX_BUILDDIR = build.$(BACKEND)_$(FPTYPE)
 else
   override MADMATRIX_BUILDDIR = .
 endif
@@ -758,7 +762,7 @@ override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
 
-# Build directory for object files: build.<BACKEND> by default, or current directory if USEBUILDDIR=0
+# Build directory for object files: build.<BACKEND>_<FPTYPE> by default, or current directory if USEBUILDDIR=0
 override BUILDDIR = $(MADMATRIX_BUILDDIR)
 
 ###override INCDIR = ../../include

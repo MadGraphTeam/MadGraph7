@@ -7386,9 +7386,19 @@ class RunCardMG7(RunCard):
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
             execution=True,
             comment="SIMD width of the phase-space sampling on cpu devices; simd_128 is ARM only")
-        self.add_toml_param('run', 'precision', "color32", gridpack=True,
+        self.add_toml_param('run', 'precision', "denom64", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
+        # The precision check (madgraph/mg7/precision_check.py): a fraction of
+        # the events evaluated again in all64, for a precision other than all64.
+        # Off by default: it builds every subprocess a second time (in all64);
+        # 'validation' below reweights the whole sample through MadtRex instead.
+        self.add_toml_param('run', 'precision_check', 0.0,
+            comment="fraction of the events evaluated again in all64 to check the precision (0: no check, the default); builds the matrix elements a second time, in all64")
+        self.add_toml_param('run', 'precision_check_max_events', 1000, hidden=True,
+            comment="the precision check evaluates at most this many events")
+        self.add_toml_param('run', 'precision_check_threshold', 1e-3, hidden=True,
+            comment="relative deviation from all64 above which the precision check warns")
         # after the generation, MadtRex reweights the events to the matrix
         # elements compiled at this FPTYPE and reports how many significant
         # digits they share with the generated weights (madtrex_driver.

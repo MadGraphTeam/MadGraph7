@@ -935,6 +935,33 @@ class LauncherTest(unittest.TestCase):
             process.compile_matrix_elements()
         self.assertNotIn('PCH=1', make.call_args[0][1])
 
+    def test_a_gpu_only_run_checks_its_own_precision(self):
+        """A cuda-only run also builds the scalar all64 library of the
+        helicity choice, last: the precision check must still get the run's
+        FPTYPE (v), not that build's d, which disabled it."""
+        from madgraph.mg7 import launch as mg7_launch
+        process = object.__new__(mg7_launch.MadgraphProcess)
+        process.run_card = {'run': {'device': ['cuda'], 'cpu_mode': 'auto',
+                                    'precision': 'denom64', 'cpu_thread_pool_size': 2,
+                                    'dummy_matrix_element': False,
+                                    'precision_check': 0.05}}
+        process.run_path = self.tmp
+        process.extra_make_args = []
+        process.subprocess_data = [
+            {'path': pjoin('SubProcesses', 'P0_x'),
+             'me_path': pjoin(self.tmp, 'libmadmatrix_P0_x_{device}_{fptype}.so')}]
+        with mock.patch.object(mg7_launch.MadgraphProcess, 'make_subprocesses') as make, \
+                mock.patch.object(mg7_launch.MadgraphProcess,
+                                  'compile_precision_check') as check:
+            process.compile_matrix_elements()
+        built = [(a for a in call[0][1]) for call in make.call_args_list]
+        built = [sorted(arg for arg in args if arg.startswith(('BACKEND=', 'FPTYPE=')))
+                 for args in built]
+        self.assertEqual(built, [['BACKEND=cuda', 'FPTYPE=v'],
+                                 ['BACKEND=scalar', 'FPTYPE=d']])
+        check.assert_called_once()
+        self.assertEqual(check.call_args[0][3], 'v')
+
     def test_an_explicit_pch_is_respected(self):
         self.assertNotIn('PCH=1', self.compile_args(10, ['PCH=0']))
         self.assertIn('PCH=0', self.compile_args(10, ['PCH=0']))
