@@ -391,6 +391,37 @@ c**************************************************************************
       end
 
 
+      subroutine sborn_amp_saved_frame(p_in,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
+c**************************************************************************
+c     sborn_amp_frame with the per-helicity Born amplitudes always filled.
+c     In outputs with the native Born provider, sborn_amp_frame takes the
+c     Born from the provider and returns no amplitudes; callers that need
+c     them (the EW Sudakov) use this routine.
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      include 'orders.inc'
+      include 'born_nhel.inc'
+      double precision p_in(0:3,nexternal-1),ans_summed
+      double precision amp2(ngraphs),jamp2(0:ncolor)
+      double precision ret_amp_split(amp_split_size)
+      double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex ans_cnt(2,nsplitorders)
+      double complex ret_saveamp(ngraphs,max_bhel)
+      double precision p_f(0:3,nexternal-1)
+      integer ids(nexternal-1)
+
+      call get_frame_mask_born(ids)
+      call boost_to_me_frame(p_in,nexternal-1,ids,p_f)
+      call sborn_amp(p_f,amp2,jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
+
+      return
+      end
+
+
       subroutine sborn_amp_vec_frame(p_in,amp2,jamp2,ret_amp_split,
      $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp,
      $     icoup,ilane,iFKS,flavour)

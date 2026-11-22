@@ -102,6 +102,7 @@ c   approximation
       double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)
       double complex ret_saveamp(ngraphs,max_bhel)
       double complex loc_saveamp(ngraphs,max_bhel)
+      double precision saved_born
 
       double precision wgt_c
       double precision wgt1
@@ -136,6 +137,10 @@ C      common /pborn/   p_born
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
       if(timing_sampled)call timing_enter(timing_ewsudakov)
+c The Born of sborn_amp_frame may come from the native provider, which
+c returns no per-helicity amplitudes; the Sudakov kernel needs them.
+      call sborn_amp_saved_frame(p_born,ret_amp2,ret_jamp2,ret_amp_split,
+     $     ret_amp_split_cnt,saved_born,ret_ans_cnt,ret_saveamp)
 
       if (cpower_pos.gt.0) then
           write(*,*)'Error, cannot compute EW sudakov with Cpower >0'

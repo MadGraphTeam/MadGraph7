@@ -645,7 +645,9 @@ c----------
           chosen_hel=0
           EWSUD_HELSELECT=chosen_hel
 
-          call sborn_amp_frame(p_born,amp2,jamp2,amp_split_local,
+c The Sudakov kernel needs the per-helicity Born amplitudes, which the
+c native provider's sborn_amp_frame does not return.
+          call sborn_amp_saved_frame(p_born,amp2,jamp2,amp_split_local,
      $         amp_split_cnt_local,born,ans_cnt_local,ret_saveamp)
           amp_split_born(:) = amp_split_local(:)
           call sudakov_wrapper_frame(p_born,ret_saveamp)

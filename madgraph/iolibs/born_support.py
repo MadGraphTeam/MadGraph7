@@ -1112,6 +1112,35 @@ def write_native_frame_bridge(path):
                                 source, flags=re.I|re.M)
         if count != 1:
             raise MadGraph5Error('Missing native frame wrapper: '+name)
+    # The explicit-argument (buffered) path takes its Born from the provider,
+    # like the scalar path: the provider also accumulates the helicity-summed
+    # colour density from which sborn_sf_store and PickHelicityMC read the
+    # colour links and helicity weights. No per-helicity amplitude is
+    # returned; sborn_amp_saved_frame still provides them where needed.
+    write(temporary, [
+        'subroutine sborn_amp_frame(p_in,amp2,jamp2,ret_amp_split,'
+        'ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)',
+        'implicit none', "include 'nexternal.inc'", "include 'genps.inc'",
+        "include 'orders.inc'", "include 'born_nhel.inc'",
+        'double precision p_in(0:3,nexternal-1),ans_summed',
+        'double precision amp2(ngraphs),jamp2(0:ncolor)',
+        'double precision ret_amp_split(amp_split_size)',
+        'double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)',
+        'double complex ans_cnt(2,nsplitorders)',
+        'double complex ret_saveamp(ngraphs,max_bhel)',
+        'double precision provider_amp2(ngraphs),provider_jamp2(0:ncolor)',
+        'common/to_amps/provider_amp2,provider_jamp2',
+        'double complex provider_ans_cnt(2,nsplitorders)',
+        'common/c_born_cnt/provider_ans_cnt',
+        'call sborn_frame(p_in,ans_summed)',
+        'amp2=provider_amp2', 'jamp2=provider_jamp2',
+        'ret_amp_split=amp_split', 'ret_amp_split_cnt=amp_split_cnt',
+        'ans_cnt=provider_ans_cnt', 'ret_saveamp=(0d0,0d0)', 'end'])
+    pattern = r'^\s{6}subroutine\s+sborn_amp_frame\b[\s\S]*?^\s{6}end\s*$'
+    source, count = re.subn(pattern, lambda _: temporary.read_text().rstrip('\n'),
+                            source, flags=re.I|re.M)
+    if count != 1:
+        raise MadGraph5Error('Missing native frame wrapper: sborn_amp_frame')
     for name, real in (('get_frame_mask_born', False), ('get_frame_mask_real', True)):
         result = []
         for line in routine(source, name):
@@ -1822,6 +1851,46 @@ def explicit_onehel_calls(source):
     return source
 
 
+def provider_helicity_sampler(lines, r, directory):
+    """Make PickHelicityMC read the helicity weights of the provider's sborn_hel.
+
+    The buffered Born now comes from the provider and returns no saved
+    amplitudes, so PickHelicityMC calls sborn_hel(p,ans) and reads
+    COMMON/C_BORN_HEL_SPLIT/ (as on main). The common block is declared by
+    sborn_hel as helicity_orders(nsqamps,nhelicity); stop if the sampler's
+    WGT_HEL has another shape or if the sampler no longer has the expected
+    call, rather than leave WGT_HEL uninitialised. The remaining
+    four-argument calls keep the saved-amplitude kernel sborn_hel_buffered.
+    """
+    if not any(re.match(r'(?i)\s*subroutine\s+pickhelicitymc\b', line) for line in lines):
+        return lines
+    sampler, replaced, shared = [], 0, 0
+    for line in lines:
+        if re.match(r'(?i)\s*call\s+sborn_hel\(\s*p\s*,\s*born_wgt_recomp_direct\s*,'
+                    r'\s*loc_saveamp\s*,\s*wgt_hel\s*\)\s*$', line):
+            line = 'call sborn_hel(p,born_wgt_recomp_direct)'
+            replaced += 1
+        sampler.append(line)
+        if re.match(r'(?i)\s*double\s+precision\s+wgt_hel\s*\(\s*nsqampso\s*,\s*max_bhel\s*\)\s*$',
+                    line):
+            sampler.append('common/c_born_hel_split/wgt_hel')
+            shared += 1
+    if (replaced, shared) != (1, 1):
+        raise MadGraph5Error('PickHelicityMC in %s no longer has the expected helicity-weight '
+                             'call and declaration (%d calls, %d declarations)'
+                             % (directory, replaced, shared))
+    nsqampso = re.findall(r'(?i)parameter\s*\(\s*nsqampso\s*=\s*(\d+)\s*\)', '\n'.join(sampler))
+    max_bhel = re.findall(r'(?i)parameter\s*\(\s*max_bhel\s*=\s*(\d+)\s*\)',
+                          (directory/'born_nhel.inc').read_text())
+    if [int(x) for x in nsqampso] != [r['nsqamps']] or \
+       [int(x) for x in max_bhel] != [r['nhelicity']]:
+        raise MadGraph5Error('PickHelicityMC in %s: WGT_HEL(%s,%s) does not match the provider '
+                             'helicity weights (%d,%d)' % (directory, nsqampso, max_bhel,
+                                                           r['nsqamps'], r['nhelicity']))
+    return [re.sub(r'(?i)\bcall sborn_hel\((?=[^)]*,[^)]*,[^)]*,)', 'call sborn_hel_buffered(', line)
+            for line in sampler]
+
+
 def write_wrappers(root, r, members, model_layout=None, full_model=None):
     directory = root/'SubProcesses'/r['directory']
     # Keep the explicit-buffer executable routines beside the native scalar
@@ -1985,8 +2054,7 @@ def write_wrappers(root, r, members, model_layout=None, full_model=None):
         'ans=sum(helicities)', 'end']
     lines += list(statements((root/'Source/BornSupport'/('p%d' % r['provider'])/
                               'helicity_sampler.f').read_text()))
-    lines = [re.sub(r'(?i)\bcall sborn_hel\b', 'call sborn_hel_buffered', line)
-             for line in lines]
+    lines = provider_helicity_sampler(lines, r, directory)
     write_fortran(directory/'born_hel.f', lines+original_hel)
     lines = ['subroutine sborn_sf(p,m,n,ans)']+declarations+[
         'integer m,n', 'logical need_color_links,need_charge_links',
@@ -1997,6 +2065,24 @@ def write_wrappers(root, r, members, model_layout=None, full_model=None):
         'request%m=m', 'request%n=n', 'call mc_born_local(p,request,result)',
         'ans=result%correlation', 'amp_split_soft=result%soft',
         'amp_split_cnt=result%split_counterterms', 'end']
+    # The buffered path's links come from the provider's helicity-summed
+    # colour density (one contraction per link), not from per-link sums over
+    # saved helicity amplitudes.
+    if any(re.match(r'(?i)\s*subroutine\s+sborn_sf_store\b', line) for line in original_sf):
+        original_sf = without_routine(original_sf, 'sborn_sf_store') + [
+            'subroutine sborn_sf_store(p_born,m,n,wgt,ans_cnt,ret_amp_split_cnt,'
+            'loc_saveamp,amp_split_soft)',
+            'implicit none', "include 'nexternal.inc'", "include 'genps.inc'",
+            "include 'born_nhel.inc'", "include 'orders.inc'",
+            'integer m,n', 'double precision p_born(0:3,nexternal-1),wgt',
+            'double complex ans_cnt(2,nsplitorders)',
+            'double complex ret_amp_split_cnt(amp_split_size,2,nsplitorders)',
+            'double complex loc_saveamp(ngraphs,max_bhel)',
+            'double precision amp_split_soft(amp_split_size)',
+            'double precision provider_soft(amp_split_size)',
+            'common/to_amp_split_soft/provider_soft',
+            'call sborn_sf_frame(p_born,m,n,wgt)',
+            'amp_split_soft=provider_soft', 'end']
     write_fortran(directory/'sborn_sf.f', lines+original_sf)
     # The extra-counterterm metadata functions remain local compatibility
     # queries, but the matrix-element implementation is in the provider.
