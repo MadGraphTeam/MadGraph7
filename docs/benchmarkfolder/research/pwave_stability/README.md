@@ -36,6 +36,8 @@ The scripts:
 | `qptime.py` | Call timing from the dump timestamps. |
 | `cost.py` | Two TIRust builds on the same points, alternating batches: time per point and QP rescues. |
 | `tail.py` | The points of a stability profile above a given estimate, in DP with several builds and in QP. |
+| `hybrid.py`, `hybrid_run.py` | QP MadLoop with TIRust's DP integrals (`ONIA_DBG_DPTIR`). |
+| `qsubst.py`, `qsubst_run.py` | DP MadLoop with the doubled-line integrals at full QP precision, contracted in QP (`ONIA_DBG_QDUMP`, `ONIA_DBG_QSUBST`, `ONIA_DBG_QMODE`). |
 
 The results are in `data/`.
 
@@ -149,6 +151,32 @@ The TIRust session merged the two bridge patches into `madloop-tirust-gate-and-r
 - **S waves.** No point is above 10⁻⁶ in any of the 12 profiles, and every point is stable. The J/ψ and Υ tail is gone, with the largest estimate 8·10⁻⁷. At the 16 tail points above (`data/tail_jpsig_A_5025e12_gate.json`), this build is off by 2·10⁻¹² to 2.3·10⁻¹⁰ against QP, exactly as 08edee3 with the gate. The 08edee3 profiles are therefore kept only in `data/profiles_08edee3_gate/`.
 - **P waves.** The octet profiles are bit-identical to those without the gate. The singlets are the same up to rounding: the largest g g estimate at 20 GeV drops from 9·10⁻⁷ to 3·10⁻⁸. The 24-point diagnosis gives the same errors (`data/estim_*_5025e12_gate.json`: u ū largest 2.7·10⁻⁵, g g 4.2·10⁻⁶), and the 16 P-wave checks are bit-identical (`data/pw_check_5025e12_gate.json`).
 - **Cost of the gate.** In production settings, alternating gate and no-gate builds on the same points (`data/cost_gate_vs_nogate_*.json`): g g → J/ψ g at 1 TeV takes 88 vs 89 ms per point, and u ū → χ_c0 g 93.5 vs 93.3 ms (1 TeV) and 92.6 vs 93.8 ms (20 GeV). None of this is measurable here.
+
+## What is left at 1 TeV: the double-precision floor
+
+With 5025e12 and the gate, the singlets at 1 TeV still have estimates of about 10⁻⁵ (u ū → χ_c0 g) and 10⁻⁶ (g g → χ_c0 g); the true errors at the 24 points have a median of 3.7·10⁻⁶ and 1.3·10⁻⁶. Two complementary tests on the 5025e12 + gate outputs locate them:
+
+| u ū → χ_c0 g, 24 points, 1 TeV, against QP | largest | median |
+|---|---|---|
+| DP, as in production | 2.7·10⁻⁵ | 3.7·10⁻⁶ |
+| QP MadLoop, DP integrals with raised powers (`hybrid.py`, 1) | 1.9·10⁻⁵ | 4.6·10⁻⁶ |
+| QP MadLoop, all integrals DP (`hybrid.py`, 2) | 1.3·10⁻⁵ | 3.8·10⁻⁶ |
+| DP MadLoop, doubled-line integrals in QP, contracted in QP (`qsubst.py`, 1) | 3.3·10⁻⁵ | 4.0·10⁻⁶ |
+| the same with their numerator formed in QP (`qsubst.py`, 2) | 1.3·10⁻⁵ | 2.3·10⁻⁶ |
+| control: the QP arrays rounded to DP, QP sum (`qsubst.py`, 3) | 3.3·10⁻⁵ | 3.9·10⁻⁶ |
+
+(`data/hybrid_*.json`, `data/qsubst_uu_chic0g_1000.json`.) For g g → χ_c0 g, the hybrid test gives 1.3·10⁻⁶ largest and 4.9·10⁻⁷ median, against 4.2·10⁻⁶ and 1.3·10⁻⁶ in production. The `qsubst.py` test is not valid for g g: even its control is off by order 1, so the DP and QP call sequences do not line up there.
+
+What this shows:
+- Rounding the integrals to double alone leaves the production error: MadLoop in quadruple precision does not help while the integrals are DP.
+- Rounding MadLoop's loop coefficients to double alone leaves it too: exact doubled-line integrals and an exact contraction do not help while the coefficients are DP.
+- Both enter the doubled-line terms, and their rounding (10⁻¹⁶) is amplified by about 10¹⁰ in the P-wave amplitude at √s/M ≈ 300. That is the double-precision floor.
+
+Lowering it needs both the integrals and the loop coefficients of the P-wave loops beyond double precision:
+- a double-double output from TIRust, which already computes these lanes in double-double;
+- the coefficient construction of these loops (MadLoop's polynomial updaters, its largest cost) in double-double or quadruple precision.
+
+The first would be cheap. The second costs a multiple of the double-precision time of these processes, so no further improvement is possible without slowing them down. The quadruple-precision rescue reaches the same end, at about 40 times the time for the points it rescues. At the default threshold `MLStabThres` = 10⁻³ no point needs it, and MadLoop's estimate is at least 1.8 times the true error.
 
 ## Reproducer for TIRust
 

@@ -602,6 +602,15 @@ estimate over random phase-space points.
       18 s to 1.2 s ($g g -> chi_(c 0) thin g$). At 20 GeV, where nothing was
       rescued, the double-double lanes add 49% ($u overline(u)$: 66 to 99 ms) and
       18% ($g g$: 0.92 to 1.08 s).
+    - *What is left* at 1 TeV is the double-precision floor. Two tests at the
+      24 points (`research/pwave_stability`) show that rounding only the
+      integrals to double, with MadLoop in quadruple precision, leaves the
+      error as it is. So does rounding only MadLoop's loop coefficients,
+      with exact doubled-line integrals and contractions. Lowering it needs
+      both beyond double precision. The coefficients are MadLoop's largest
+      cost, so it cannot be done without slowing these processes down; the
+      quadruple-precision rescue does it at about 40 times the time. At the
+      default threshold no point needs the rescue.
     - The P-wave checks of @pwave are unchanged with it: the same finite parts
       within $10^(-10)$, and the poles as predicted to $5 dot 10^(-11)$.
     - Without the gate, 5025e12, 8b436f9 and 14f2696 (the commit that
