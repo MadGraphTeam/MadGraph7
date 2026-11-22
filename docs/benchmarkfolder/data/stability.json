@@ -96,7 +96,7 @@
   "label": "u overline(u) -> chi_(c 0) thin g",
   "process": "u u~ > chic0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -105,7 +105,7 @@
   "frac_1e6": 1.0,
   "frac_1e9": 1.0,
   "median": 3.93e-05,
-  "ms": 170.0
+  "ms": 166.0
  },
  {
   "case": "ggchic0g",
@@ -132,7 +132,7 @@
   "label": "g g -> chi_(c 0) thin g",
   "process": "g g > chic0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -141,7 +141,7 @@
   "frac_1e6": 0.999,
   "frac_1e9": 1.0,
   "median": 8.06e-06,
-  "ms": 2029.9999999999998
+  "ms": 1930.0
  },
  {
   "case": "etacg",
@@ -240,7 +240,7 @@
   "label": "u overline(u) -> chi_(c 0) thin g",
   "process": "u u~ > chic0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -249,7 +249,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 3.65e-12,
-  "ms": 176.0
+  "ms": 167.0
  },
  {
   "case": "ggchic0g",
@@ -276,7 +276,7 @@
   "label": "g g -> chi_(c 0) thin g",
   "process": "g g > chic0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -285,7 +285,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.004,
   "median": 8.23e-13,
-  "ms": 2020.0
+  "ms": 2050.0
  },
  {
   "case": "etabg",
@@ -384,7 +384,7 @@
   "label": "u overline(u) -> chi_(b 0) thin g",
   "process": "u u~ > chib0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -393,7 +393,7 @@
   "frac_1e6": 0.028,
   "frac_1e9": 1.0,
   "median": 3.135e-07,
-  "ms": 169.0
+  "ms": 158.0
  },
  {
   "case": "ggchib0g",
@@ -420,7 +420,7 @@
   "label": "g g -> chi_(b 0) thin g",
   "process": "g g > chib0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -429,7 +429,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 1.0,
   "median": 8.02e-08,
-  "ms": 1860.0
+  "ms": 1870.0
  },
  {
   "case": "etabg",
@@ -528,7 +528,7 @@
   "label": "u overline(u) -> chi_(b 0) thin g",
   "process": "u u~ > chib0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -537,7 +537,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 6.67e-13,
-  "ms": 176.0
+  "ms": 158.0
  },
  {
   "case": "ggchib0g",
@@ -564,7 +564,7 @@
   "label": "g g -> chi_(b 0) thin g",
   "process": "g g > chib0(1|3P01) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -573,7 +573,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.005,
   "median": 5.31e-13,
-  "ms": 1760.0
+  "ms": 1930.0
  },
  {
   "case": "cc3p08g",
@@ -654,7 +654,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_0^((8))] thin g",
   "process": "e+ e- > Jpsi(1|3P08) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -663,7 +663,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 1.0,
   "median": 7.02e-08,
-  "ms": 55.800000000000004
+  "ms": 55.5
  },
  {
   "case": "cc3p18g56",
@@ -672,7 +672,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_1^((8))] thin g",
   "process": "e+ e- > Jpsi(1|3P18) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -681,7 +681,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 3.27e-12,
-  "ms": 58.6
+  "ms": 56.099999999999994
  },
  {
   "case": "cc3p28g56",
@@ -690,7 +690,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_2^((8))] thin g",
   "process": "e+ e- > Jpsi(1|3P28) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -699,7 +699,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 1.0,
   "median": 6.98e-08,
-  "ms": 57.2
+  "ms": 56.9
  },
  {
   "case": "cc1p18g56",
@@ -708,7 +708,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^1 P_1^((8))] thin g",
   "process": "e+ e- > etac(1|1P18) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -717,7 +717,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 1.0,
   "median": 1.04e-07,
-  "ms": 41.9
+  "ms": 41.300000000000004
  },
  {
   "case": "cc3p08g",
@@ -798,7 +798,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_0^((8))] thin g",
   "process": "e+ e- > Jpsi(1|3P08) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -807,7 +807,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 3.4e-14,
-  "ms": 56.5
+  "ms": 54.4
  },
  {
   "case": "cc3p18g56",
@@ -816,7 +816,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_1^((8))] thin g",
   "process": "e+ e- > Jpsi(1|3P18) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -825,7 +825,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 6.575e-15,
-  "ms": 57.1
+  "ms": 55.5
  },
  {
   "case": "cc3p28g56",
@@ -834,7 +834,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^3 P_2^((8))] thin g",
   "process": "e+ e- > Jpsi(1|3P28) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -843,7 +843,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 2.9e-14,
-  "ms": 56.599999999999994
+  "ms": 56.4
  },
  {
   "case": "cc1p18g56",
@@ -852,7 +852,7 @@
   "label": "e^+ e^- -> c overline(c) thin [\"\"^1 P_1^((8))] thin g",
   "process": "e+ e- > etac(1|1P18) g [virt=QCD]",
   "model": "loop_sm_onia-c_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -861,7 +861,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 7.36e-13,
-  "ms": 41.5
+  "ms": 40.9
  },
  {
   "case": "bb3p08g",
@@ -942,7 +942,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^3 P_0^((8))] thin g",
   "process": "e+ e- > Upsilon(1|3P08) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -951,7 +951,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.4856,
   "median": 9.72e-10,
-  "ms": 51.1
+  "ms": 51.3
  },
  {
   "case": "bb3p18g56",
@@ -960,7 +960,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^3 P_1^((8))] thin g",
   "process": "e+ e- > Upsilon(1|3P18) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -969,7 +969,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 3.78e-13,
-  "ms": 51.6
+  "ms": 52.400000000000006
  },
  {
   "case": "bb3p28g56",
@@ -978,7 +978,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^3 P_2^((8))] thin g",
   "process": "e+ e- > Upsilon(1|3P28) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -987,7 +987,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.4921,
   "median": 9.83e-10,
-  "ms": 52.5
+  "ms": 52.900000000000006
  },
  {
   "case": "bb1p18g56",
@@ -996,7 +996,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^1 P_1^((8))] thin g",
   "process": "e+ e- > etab(1|1P18) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 1000.0,
   "ptmin": 50.0,
@@ -1005,7 +1005,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.5144,
   "median": 1.03e-09,
-  "ms": 37.900000000000006
+  "ms": 38.699999999999996
  },
  {
   "case": "bb3p08g",
@@ -1086,7 +1086,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^3 P_0^((8))] thin g",
   "process": "e+ e- > Upsilon(1|3P08) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -1095,7 +1095,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 1.86e-14,
-  "ms": 51.1
+  "ms": 51.0
  },
  {
   "case": "bb3p18g56",
@@ -1104,7 +1104,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^3 P_1^((8))] thin g",
   "process": "e+ e- > Upsilon(1|3P18) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -1113,7 +1113,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 1.13e-14,
-  "ms": 51.8
+  "ms": 52.0
  },
  {
   "case": "bb3p28g56",
@@ -1122,7 +1122,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^3 P_2^((8))] thin g",
   "process": "e+ e- > Upsilon(1|3P28) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -1131,7 +1131,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 9.92e-15,
-  "ms": 52.6
+  "ms": 52.900000000000006
  },
  {
   "case": "bb1p18g56",
@@ -1140,7 +1140,7 @@
   "label": "e^+ e^- -> b overline(b) thin [\"\"^1 P_1^((8))] thin g",
   "process": "e+ e- > etab(1|1P18) g [virt=QCD]",
   "model": "loop_sm_onia-no_tau_mass",
-  "reducer": "TIRust 8b436f9",
+  "reducer": "TIRust 5025e12",
   "libs": "9",
   "energy": 20.0,
   "ptmin": 2.0,
@@ -1149,7 +1149,7 @@
   "frac_1e6": 0.0,
   "frac_1e9": 0.0,
   "median": 7.01e-14,
-  "ms": 38.199999999999996
+  "ms": 38.6
  },
  {
   "case": "ttg",

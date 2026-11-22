@@ -72,7 +72,7 @@ STATUS_LINES = [
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
     'bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV, '
     'served by 08edee3); the P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, '
-    'through TIRust\'s double-precision pentagons with a doubled line; TIRust 8b436f9 '
+    'through TIRust\'s double-precision pentagons with a doubled line; TIRust 5025e12 '
     '(PR \\#56: relation tiers in double-double) fixes this: no P-wave point above $10^(-3)$, no rescue at 1 TeV, '
     '18–49% more time at 20 GeV (@stability); '
     'the P-wave octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$.',
@@ -83,7 +83,7 @@ OPEN_ITEMS = [
     '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, '
     '\\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). '
     '370b632 (in \\#56) also serves $g g -> chi_(c 0) g$ (@pwave). For double precision '
-    'at high energy, the relation tiers of \\#56 (8b436f9) with their bridge patch, and the pole '
+    'at high energy, the relation tiers of \\#56 (5025e12) with their bridge patch, and the pole '
     'kernels of the bridge on the `oneloop` of that revision '
     '(@stability).',
     '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '

@@ -13,7 +13,7 @@ of both). Points MadLoop evaluated without a stability test (return code
 categorical palette (dataviz reference palette, light mode, checked on
 white); the octet figure starts the slot order again, one slot per state. A
 bottomonium process takes the colour of its charmonium analogue; a run with
-TIRust 8b436f9 (case suffix 56) takes the colour of its process, dotted;
+TIRust 5025e12 (PR #56; case suffix 56) takes the colour of its process, dotted;
 the reference process of the paper is a dashed neutral line in every row."""
 import glob
 import json
@@ -93,8 +93,8 @@ for q in 'cb':
     COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
                   q * 2 + '1p18g': YELLOW})
 STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
-# TIRust 8b436f9, in PR #56, with relation tiers (suffix 56): the colour of the process, dotted
-CANDIDATE = '8b436f9'
+# TIRust 5025e12, the head of PR #56, with relation tiers (suffix 56): the colour of the process, dotted
+CANDIDATE = '5025e12'
 for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if c.endswith('56')]:
     base = c[:-2]
     LABEL[c] = LABEL[base].replace(', TIRust 370b632', '').replace(')', ', TIRust %s)' % CANDIDATE) \
