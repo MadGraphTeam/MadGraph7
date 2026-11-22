@@ -14,7 +14,7 @@ This setup avoids two problems:
 
 | File | Role |
 |---|---|
-| `build.sh`, `fix_config.py` | scratch TIRust build (TIRust revision, 0001 and follow-up patches, `vendor/tirust` bridge) and its installation metadata |
+| `build.sh`, `fix_config.py` | scratch TIRust build (TIRust revision, 0001 and follow-up patches, `vendor/tirust` bridge, optionally patched with `BRIDGE_PATCH`) and its installation metadata |
 | `pw_check.py` | generates the outputs and evaluates them at points (`onia_loop_check.py`) |
 | `fd_patch.py`, `fd_patch2.py`, `fd_patch3.py` | add the test modes to a generated `onia_loop.f`, in double and quadruple precision |
 | `fd_setup.sh`, `pw_fd_driver.f`, `pw_fd.mk` | patch, build and run the check |

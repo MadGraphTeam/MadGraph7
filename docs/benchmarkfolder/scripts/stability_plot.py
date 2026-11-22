@@ -12,8 +12,9 @@ of both). Points MadLoop evaluated without a stability test (return code
 1xx) are dropped. The colours are the first five slots of the validated
 categorical palette (dataviz reference palette, light mode, checked on
 white); the octet figure starts the slot order again, one slot per state. A
-bottomonium process takes the colour of its charmonium analogue; the
-reference process of the paper is a dashed neutral line in every row."""
+bottomonium process takes the colour of its charmonium analogue; a run with
+the TIRust candidate (case suffix 14) takes the colour of its process, dotted;
+the reference process of the paper is a dashed neutral line in every row."""
 import glob
 import json
 import os
@@ -28,18 +29,21 @@ import numpy as np
 # family -> processes in plotting order; the reference ttg is drawn in every row
 FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
-     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'ggchic0g']),
+     ['etacg', 'jpsig', 'jpsig08', 'etac8g', 'chic0g', 'chic0g14', 'ggchic0g', 'ggchic0g14']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
-     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'ggchib0g']),
+     ['etabg', 'upsg', 'upsg08', 'etab8g', 'chib0g', 'chib0g14', 'ggchib0g', 'ggchib0g14']),
 ]
 # the P-wave colour octets, in a figure of their own
 OCTET_FAMILIES = [
     ('charmonium octets', r'charmonium P-wave octets: $e^+e^-\to c\bar c[n^{(8)}]\,g$, loop_sm_onia-c_mass',
-     ['cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g']),
+     ['cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g', 'cc3p08g14', 'cc3p18g14', 'cc3p28g14',
+      'cc1p18g14']),
     ('bottomonium octets', r'bottomonium P-wave octets: $e^+e^-\to b\bar b[n^{(8)}]\,g$, loop_sm_onia-no_tau_mass',
-     ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g']),
+     ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g', 'bb3p08g14', 'bb3p18g14', 'bb3p28g14',
+      'bb1p18g14']),
 ]
-FIGURES = [('', FAMILIES), ('_octets', OCTET_FAMILIES)]
+# (file suffix, families, legend columns, legend keyed by colour = process and line style = build)
+FIGURES = [('', FAMILIES, 3, False), ('_octets', OCTET_FAMILIES, 4, True)]
 ALL_FAMILIES = FAMILIES + OCTET_FAMILIES
 REFERENCE = 'ttg'
 ORDER = [c for _, _, cases in ALL_FAMILIES for c in cases] + [REFERENCE]
@@ -61,7 +65,8 @@ LABEL = {
 for q in 'cb':
     for key, state in (('3p08', '{}^3P_0^{(8)}'), ('3p18', '{}^3P_1^{(8)}'), ('3p28', '{}^3P_2^{(8)}'),
                        ('1p18', '{}^1P_1^{(8)}')):
-        LABEL[q * 2 + key + 'g'] = r'$e^+e^-\to %s\bar %s[%s]\,g$' % (q, q, state)
+        # the row title names the process
+        LABEL[q * 2 + key + 'g'] = r'$%s\bar %s[%s]$' % (q, q, state)
 TYPST = {
     'etacg': r'g g -> eta_c thin g',
     'jpsig': r'g g -> J\/psi thin g',
@@ -88,6 +93,13 @@ for q in 'cb':
     COLOR.update({q * 2 + '3p08g': BLUE, q * 2 + '3p18g': ORANGE, q * 2 + '3p28g': AQUA,
                   q * 2 + '1p18g': YELLOW})
 STYLE = {'ttg': '--', 'jpsig08': ':', 'upsg08': ':', 'ggchic0g': '-.', 'ggchib0g': '-.'}
+# the TIRust candidate 14f2696 (suffix 14): the colour of the process, dotted
+CANDIDATE = '14f2696'
+for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if c.endswith('14')]:
+    base = c[:-2]
+    LABEL[c] = LABEL[base].replace(', TIRust 370b632', '').replace(')', ', TIRust %s)' % CANDIDATE) \
+        if base in ('chic0g', 'ggchic0g', 'chib0g', 'ggchib0g') else LABEL[base] + ', TIRust ' + CANDIDATE
+    TYPST[c], COLOR[c], STYLE[c] = TYPST[base], COLOR[base], ':'
 INK, INK2, GRID = '#0b0b0b', '#52514e', '#e4e3df'
 SETUP_TITLE = {'A': r'$\sqrt{s}=1$ TeV, $p_T>50$ GeV', 'B': r'$\sqrt{s}=20$ GeV, $p_T>2$ GeV'}
 THRESHOLD = 1e-3
@@ -141,7 +153,7 @@ def summary(runs):
     return rows
 
 
-def plot(runs, out, family_list):
+def plot(runs, out, family_list, ncol=3, style_key=False):
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 8, 'axes.edgecolor': INK2,
                          'axes.labelcolor': INK, 'xtick.color': INK2, 'ytick.color': INK2,
                          'mathtext.fontset': 'dejavusans'})
@@ -181,7 +193,21 @@ def plot(runs, out, family_list):
                     handles.append(h)
                     labels.append(l)
         sub.suptitle(title, fontsize=8.5, color=INK, x=0.06, ha='left')
-        sub.legend(handles, labels, loc='lower center', ncol=3, frameon=False, fontsize=7.5,
+        if style_key:
+            # one entry per process (its colour), then the line styles and the reference;
+            # legends fill column by column, two rows
+            from matplotlib.lines import Line2D
+            base = [c for c in cases if not c.endswith('14')]
+            m = next(runs[(c, s)][0] for c in base for s in setups if (c, s) in runs)
+            procs = [Line2D([], [], color=COLOR[c], lw=1.4, label=LABEL[c]) for c in base]
+            keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label=reducer(m)),
+                    Line2D([], [], color=INK2, lw=1.4, ls=':', label='TIRust ' + CANDIDATE)]
+            ref = [h for h, l in zip(handles, labels) if l == LABEL[REFERENCE]]
+            rest = keys + ref
+            rest += [Line2D([], [], alpha=0, label=' ')] * (len(procs) - len(rest))
+            handles = [h for pair in zip(procs, rest) for h in pair]
+            labels = [h.get_label() for h in handles]
+        sub.legend(handles, labels, loc='lower center', ncol=ncol, frameon=False, fontsize=7.5,
                    bbox_to_anchor=(0.5, 0.0))
         sub.subplots_adjust(left=0.09, right=0.98, top=0.84, bottom=0.33, wspace=0.08)
     fig.savefig(out)
@@ -191,9 +217,9 @@ if __name__ == '__main__':
     folder, out = sys.argv[1], sys.argv[2]
     runs = load(folder)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    for suffix, family_list in FIGURES:
+    for suffix, family_list, ncol, style_key in FIGURES:
         stem, ext = os.path.splitext(out)
-        plot(runs, stem + suffix + ext, family_list)
+        plot(runs, stem + suffix + ext, family_list, ncol, style_key)
     data = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(out))), 'data', 'stability.json')
     json.dump(summary(runs), open(data, 'w'), indent=1)
-    print('wrote', ', '.join(os.path.splitext(out)[0] + s + os.path.splitext(out)[1] for s, _ in FIGURES), data)
+    print('wrote', ', '.join(os.path.splitext(out)[0] + f[0] + os.path.splitext(out)[1] for f in FIGURES), data)

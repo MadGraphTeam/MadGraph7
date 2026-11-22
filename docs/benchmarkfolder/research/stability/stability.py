@@ -14,7 +14,8 @@ initialisation) are dropped.
 CASE and SETUP are keys of CASES and SETUPS. Environment: TIRUST_LIB48958
 (the TIRust build for the P-wave cases), TIRUST_LIB370 (TIRust 370b632, for
 ggchic0g and ggchib0g), TIRUST_LIB08 (TIRust 08edee3 with the bridge gate patch, for
-jpsig08 and upsg08), NWORKERS (16), NPOINTS (to override the
+jpsig08 and upsg08), TIRUST_LIB14 (TIRust 14f2696 with the relation-tier bridge
+patch, for the P-wave cases with the suffix 14), NWORKERS (16), NPOINTS (to override the
 number of points)."""
 import concurrent.futures
 import json
@@ -56,6 +57,10 @@ CASES = {
     'bb3p28g': ('loop_sm_onia-no_tau_mass', 'e+ e- > Upsilon(1|3P28) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
     'bb1p18g': ('loop_sm_onia-no_tau_mass', 'e+ e- > etab(1|1P18) g [virt=QCD]', 'TIRUST_LIB48958', 10000),
 }
+# every P wave again with the TIRust candidate 14f2696 (relation tiers) and its bridge patch
+PWAVE = ['chic0g', 'ggchic0g', 'chib0g', 'ggchib0g', 'cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g',
+         'bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g']
+CASES.update({c + '14': CASES[c][:2] + ('TIRUST_LIB14', CASES[c][3]) for c in PWAVE})
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)
     'A': (1000., 50.),   # the setup of arXiv:1604.01363

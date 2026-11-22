@@ -492,7 +492,10 @@ estimate over random phase-space points.
 
   The $u overline(u)$ P waves and the P-wave colour octets use TIRust 48958d1. The $g g$ P waves,
   $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
-  (PR \#56), because 48958d1 refuses their doubled-gluon pentagons.
+  (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every P
+  wave is also run with the TIRust candidate 14f2696 (a local revision on
+  370b632 with _relation tiers_, and a one-line bridge patch that enables them;
+  neither pushed nor pinned).
 - *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
   $n = ""^3 P_0, ""^3 P_1, ""^3 P_2, ""^1 P_1$, the charmonium octets of the
   $2 -> 2$ pole checks (@tab:pwave22) and their bottomonium analogues, in a
@@ -500,11 +503,11 @@ estimate over random phase-space points.
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 ($u overline(u)$ P waves). Dash-dotted: $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$ with TIRust 370b632. Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch. Dashed: the reference process.])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$, against $Delta$ (cumulative, logarithmic axes), for charmonium (top) and bottomonium (bottom). Each bottomonium process has the colour of its charmonium analogue. The vertical line marks $Delta = 10^(-3)$, MadLoop's default threshold for the quadruple-precision rescue (`MLStabThres`). Solid lines: the pinned TIRust (S waves) and TIRust 48958d1 ($u overline(u)$ P waves). Dash-dotted: $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$ with TIRust 370b632. Dotted: $g g -> J\/psi thin g$ and $g g -> Upsilon thin g$ with TIRust 08edee3 and the bridge gate patch, and the P waves with the TIRust candidate 14f2696 and its bridge patch. Dashed: the reference process.])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
-#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1, charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
+#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1 (solid) and the candidate 14f2696 (dotted), charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
   #image("figures/stability_octets.svg", width: 100%)
 ] <fig:stability-octets>
 
@@ -558,13 +561,35 @@ estimate over random phase-space points.
     - The reversed-loop pass meets the same pentagons less accurately (up to
       2.3 off), so MadLoop's estimate is pessimistic as well. With accurate
       pentagons both passes agree to about $10^(-6)$.
-    - In production these points are rescued in quadruple precision. The fix
-      belongs in TIRust: these lanes evaluated in extended precision from the
-      double-precision inputs. Evaluating them through TIRust's quadruple-precision
-      path instead works for $u overline(u) -> chi_(c 0) g$ (largest error
-      $5 dot 10^(-5)$, nothing above $10^(-3)$, 0.5 s per point), but it fails for
-      $g g -> chi_(c 0) g$: its threshold relations hold only to double-precision
-      rounding, and that path refuses them.
+    - In production these points are rescued in quadruple precision. Sending
+      these lanes from MadLoop through TIRust's quadruple-precision path works
+      for $u overline(u) -> chi_(c 0) g$ (largest error $5 dot 10^(-5)$), but not
+      for $g g -> chi_(c 0) g$: its threshold relations hold only to
+      double-precision rounding, and that path refuses them.
+  - *The fix in TIRust: candidate 14f2696* (dotted in @fig:stability). Lanes
+    that TIRust serves through an affine relation (a constant identity or a
+    Coulomb partial fraction) are evaluated again in double-double, from the
+    same double-precision inputs. The bridge enables this for calls with
+    raised powers only, i.e. for the P waves.
+    - No P-wave point is then above $10^(-3)$. At 1 TeV the median estimate is
+      $3.9 dot 10^(-5)$ ($u overline(u) -> chi_(c 0) thin g$), $8.1 dot 10^(-6)$
+      ($g g -> chi_(c 0) thin g$), $3.1 dot 10^(-7)$ ($u overline(u) -> chi_(b 0) thin g$)
+      and $8.0 dot 10^(-8)$ ($g g -> chi_(b 0) thin g$); the largest is
+      $2.3 dot 10^(-4)$.
+    - Against quadruple precision at the same 24 points, the largest error
+      drops from $3.4 dot 10^(-2)$ to $2.7 dot 10^(-5)$ ($u overline(u)$) and from
+      $3.9 dot 10^(-2)$ to $4.2 dot 10^(-6)$ ($g g$), the level the
+      quadruple-precision pentagons gave above. The reversed pass agrees
+      (largest $4.3 dot 10^(-5)$), and MadLoop's estimate is at least 1.8 times
+      the true error at every one of these points.
+    - Cost (paired runs, MadLoop's default settings): at 1 TeV no point needs
+      the quadruple-precision rescue any more, and the mean time per point
+      falls from 3.5 s to 0.10 s ($u overline(u) -> chi_(c 0) thin g$) and from
+      18 s to 1.2 s ($g g -> chi_(c 0) thin g$). At 20 GeV, where nothing was
+      rescued, the double-double lanes add 49% ($u overline(u)$: 66 to 99 ms) and
+      18% ($g g$: 0.92 to 1.08 s).
+    - The P-wave checks of @pwave are unchanged with it: the same finite parts
+      within $10^(-10)$, and the poles as predicted to $5 dot 10^(-11)$.
   - *The P-wave octets* (@fig:stability-octets). No point of
     $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ has an estimate above
     $10^(-4)$, in either setup. The largest is $2.2 dot 10^(-5)$, for
@@ -580,6 +605,10 @@ estimate over random phase-space points.
       which is off by $1.5 dot 10^(-7)$ to $2.5 dot 10^(-6)$, so it is
       pessimistic here as well.
     - At 20 GeV every estimate is below $2 dot 10^(-10)$.
+    - With the candidate 14f2696 the charmonium octets at 1 TeV drop to a
+      median of $7 dot 10^(-8)$ to $10^(-7)$, with no point at or above
+      $10^(-6)$, and the bottomonium ones to $10^(-9)$. The cost is about 20%
+      ($c overline(c) thin [""^3 P_0^((8))]$: 25 to 30 ms per point).
   - *The reference.* For $g g -> t overline(t) thin g$, 0.04% of the points are
     above $10^(-3)$, which is the steep profile of the paper's first process
     class.
@@ -638,7 +667,7 @@ confidence interval of the geometric-mean ratio.
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08` for the scratch TIRust builds), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB14` for the scratch TIRust builds; 14f2696 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-relation-tiers.patch`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,

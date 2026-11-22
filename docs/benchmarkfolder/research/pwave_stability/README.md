@@ -34,6 +34,7 @@ The scripts:
 | `rev_subst.py` | The check pass with the pentagons taken from the QP check pass (`CTModeRun 5`). |
 | `mixed.py` | The `ONIA_DBG_MIXED` prototype. |
 | `qptime.py` | Call timing from the dump timestamps. |
+| `cost.py` | Two TIRust builds on the same points, alternating batches: time per point and QP rescues. |
 
 The results are in `data/`.
 
@@ -85,6 +86,39 @@ The robust fix is in TIRust's binary64 entry point. For these lanes it would:
 - evaluate in double-double or binary128 arithmetic, like the binary64 gate does for ill-conditioned lanes.
 
 The lanes are the pentagons with zero Gram determinant and a doubled line, at large s/m². The substitution tests give the expected effect. The DP errors would drop to about 10⁻⁶ in both passes, so the estimate would become honest and no point at 1 TeV would need the rescue. Only the doubled pentagons would cost extra time.
+
+## Candidate fix: TIRust 14f2696
+
+The TIRust session's answer to the reproducer below is a local revision, not yet pushed:
+- **TIRust 14f2696**, one commit on 370b632. It adds an embedder option, `relation_tiers`. Binary64 lanes that the first pass serves through an affine relation (a constant identity or a Coulomb partial fraction) are evaluated again from the double-double tier up. The inputs are still declared binary64, so the same relations are found.
+- **The bridge patch** `madloop-tirust-relation-tiers.patch`, one line: `relation_tiers: key.2 != 0`. Only calls with raised powers, i.e. the P waves, use the option.
+
+Build: `research/pwave_fd/build.sh` with `REV=14f2696`, `FOLLOWUP=0001-followup-pwave-collinear.patch` and `BRIDGE_PATCH=madloop-tirust-relation-tiers.patch`. The diagnosis below uses the same 24 points of setup A and the same QP reference, which is bit-identical between the builds.
+
+| | 48958d1 / 370b632 | 14f2696 |
+|---|---|---|
+| u ū → χ_c0 g, 1 TeV: largest error, primary / reversed pass | 3.4·10⁻² / 2.3 | 2.7·10⁻⁵ / 4.3·10⁻⁵ |
+| u ū → χ_c0 g, 1 TeV: median error, primary pass | 1.4·10⁻⁴ | 3.7·10⁻⁶ |
+| u ū → χ_c0 g, 20 GeV: largest error, primary / reversed pass | 7.6·10⁻⁸ / 4.2·10⁻⁸ | 3.3·10⁻¹¹ / 1.2·10⁻¹¹ |
+| g g → χ_c0 g, 1 TeV: largest error, primary / reversed pass | 3.9·10⁻² / 9.3·10⁻³ | 4.2·10⁻⁶ / 5.2·10⁻⁶ |
+| MadLoop's estimate ÷ true error, 1 TeV (u ū; g g) | 2.5 to 1800; 1.5 to 350 | 1.8 to 240; 2.5 to 520 |
+
+(`data/estim_*_14f2696.json`.) The errors left are those the QP-substituted pentagons gave in finding 2.
+
+Cost (`cost.py`, alternating batches of the two builds on the same points; `data/cost_*_14f2696.json`), mean time per point:
+
+| Process | Setting | Before | 14f2696 |
+|---|---|---|---|
+| u ū → χ_c0 g | production, 1 TeV (rescued 29/40 → 0/40) | 3.5 s | 0.10 s |
+| u ū → χ_c0 g | production, 20 GeV | 70 ms | 107 ms |
+| u ū → χ_c0 g | profile settings, 1 TeV / 20 GeV | 162 / 156 ms | 207 / 211 ms |
+| g g → χ_c0 g | production, 1 TeV (rescued 6/16 → 0/16) | 18 s | 1.2 s |
+| g g → χ_c0 g | production, 20 GeV | 0.92 s | 1.08 s |
+| e⁺e⁻ → cc̄[³P₀⁽⁸⁾] g | production, 1 TeV / 20 GeV | 25 / 25 ms | 31 / 30 ms |
+
+The P-wave checks of `research/pwave_fd` (`pw_check.py`, all 16 cases, the same points) give the same results with this candidate (`data/pw_check_14f2696.json`). The finite parts agree within 10⁻¹⁰ and the poles match the prediction to 5·10⁻¹¹, every point stable.
+
+"Production" means MadLoop's defaults (`MLStabThres` 10⁻³, no rotations, QP rescue). "Profile settings" means those of the stability profiles. The stability profiles of every P wave with this candidate are in the report (dotted curves, `data/raw/stability/*14_*.json`).
 
 ## Reproducer for TIRust
 

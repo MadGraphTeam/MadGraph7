@@ -9,6 +9,8 @@ mkdir -p src
 git -C /shared/external/iregi/iregi-rust archive $REV | tar -x -C src
 rsync -a --exclude target --exclude .git --exclude '*.o' --exclude '*.mod' --exclude '*.a' --exclude '*.so' --exclude smoke --exclude 'tirust-native-libs.txt' --exclude 'tirust-link-before.txt' /shared/external/madloop_onia/madgraph7_madloop_onia/vendor/tirust/ bridge/
 cp /shared/external/madloop_onia/madgraph7_madloop_onia/HEPTools/tirust/Cargo.lock bridge/Cargo.lock
+# optional patch of the bridge copy (paths a/vendor/tirust/...), e.g. madloop-tirust-relation-tiers.patch
+if [ -n "${BRIDGE_PATCH:-}" ]; then patch -p3 --batch --forward --fuzz=0 -d bridge -i "$BRIDGE_PATCH"; fi
 mkdir -p src/madloop-pole-kernels
 cp -r bridge/pole-kernels/. src/madloop-pole-kernels/
 (cd src && patch -p1 --batch --forward --fuzz=0 -i $PW/bridge/patches/0001-direct-poles-only.patch)
