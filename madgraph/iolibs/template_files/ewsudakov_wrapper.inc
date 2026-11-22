@@ -32,8 +32,6 @@ DOUBLE COMPLEX AMP_SPLIT_BORN_ONEHEL(AMP_SPLIT_SIZE)
 common /to_amp_born_onehel/amp_split_born_onehel
 DOUBLE COMPLEX AMP_SPLIT_EWSUD_PARQCD(AMP_SPLIT_SIZE)
 COMMON /TO_AMP_EWSUD_PARQCD/AMP_SPLIT_EWSUD_PARQCD
-DOUBLE PRECISION AMP_BORN_SUMHEL
-common /to_amp_born_sumhel/amp_born_sumhel
 
 integer iflist(nexternal-1)
 %(process_declarations)s
@@ -53,17 +51,6 @@ external GET_QCD_LO2
 
 integer ewsud_helselect
 common/to_ewsud_helselect/ewsud_helselect
-
-C Resonance-helicity selection: if ewsud_nres > 0, only helicity
-C configurations whose legs ewsud_res_pos have the helicities
-C ewsud_res_hel are summed, i.e. the sum runs over the spectators.
-      integer ewsud_nres
-      integer ewsud_res_pos(10)
-      integer ewsud_res_hel(10)
-      common/to_ewsud_res_sel/ewsud_nres, ewsud_res_pos, ewsud_res_hel
-      data ewsud_nres /0/
-      integer ires
-      logical res_hel_match
 
 double precision compensate_identical_factor
 external compensate_identical_factor
@@ -95,7 +82,6 @@ AMP_SPLIT_EWSUD_PAR(:) = dcmplx(0d0,0d0)
 
 AMP_SPLIT_EWSUD_QCD(:) = dcmplx(0d0,0d0)
 AMP_SPLIT_EWSUD_PARQCD(:) = dcmplx(0d0,0d0)
-AMP_BORN_SUMHEL = 0d0
 
 
 %(iflist)s
@@ -121,23 +107,11 @@ DO IHEL=hel_min, hel_max
 C if an helicity is selected, then filter it
 if (ewsud_helselect.ne.0.and.ewsud_helselect.ne.ihel) cycle
 
-if (ewsud_nres.gt.0) then
-  res_hel_match = .true.
-  do ires = 1, ewsud_nres
-    if (nhel(ewsud_res_pos(ires), ihel) .ne. ewsud_res_hel(ires)) then
-      res_hel_match = .false.
-      exit
-    endif
-  enddo
-  if (.not.res_hel_match) cycle
-endif
-
 if (.not.good_hel(ihel).and.sud_filter_hel) cycle
 
 C call the born amplitude and store the result
 call sborn_onehel(p,nhel(1,ihel),ihel,ans_summed)
 amp_split_born_onehel(:) = amp_split_ewsud(:)
-AMP_BORN_SUMHEL = AMP_BORN_SUMHEL + dble(amp_split_born_onehel(1))
 
 if (firsttime_hel(ihel)) then
     good_hel(ihel) = .false.
@@ -165,7 +139,6 @@ AMP_SPLIT_EWSUD_PAR(:) = AMP_SPLIT_EWSUD_PAR(:)/volh
 
 AMP_SPLIT_EWSUD_QCD(:) = AMP_SPLIT_EWSUD_QCD(:)/VOLH
 AMP_SPLIT_EWSUD_PARQCD(:) = AMP_SPLIT_EWSUD_PAR(:)
-AMP_BORN_SUMHEL = AMP_BORN_SUMHEL / volh
 
 DO IAMP = 1, AMP_SPLIT_SIZE
 

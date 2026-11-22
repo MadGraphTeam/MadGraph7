@@ -100,7 +100,7 @@ except ImportError:  # loaded as a plain module (gridpack bin/, tests)
 
 # Hard-set for now (see the module docstring); should become a modifiable
 # global default once MadtRex/madevent.py grow one of their own.
-DEFAULT_FPTYPE = "m"
+DEFAULT_FPTYPE = "v"
 
 # Recognized "change <NAME> <value>" preamble Driver options (see
 # DriverOptions) besides the shared "change helicity", lowercase, matched

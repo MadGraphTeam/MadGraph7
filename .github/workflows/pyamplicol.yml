@@ -116,8 +116,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: pyamplicol/pyproject.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: ${{ matrix.python-version }}
       - name: Install lightweight test dependency
         run: python -m pip install "pytest>=8.3,<9"
       - name: Check lightweight typed configuration API
@@ -162,8 +165,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: pyamplicol/pyproject.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - name: Install source-contract test dependency
         run: python -m pip install "pytest>=8.3,<9"
       - name: Prepared models
@@ -217,6 +223,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
         with:
           python-version: "3.11"
       - name: Build pyamplicol with install.py (checks the library key)
@@ -284,12 +295,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            pyamplicol/pyproject.toml
-            pyamplicol/dependencies/release-lock.toml
-            pyamplicol/dependencies/contributor-lock.toml
-            pyamplicol/dependencies/python-runtime-lock.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@1.99.1
         with:
           # rust-toolchain.toml lists them: installed here, rustup has nothing to
@@ -578,6 +588,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - name: Prepared models
         uses: ./.github/actions/pyamplicol_prepared_models
       - uses: actions/upload-artifact@v4
@@ -612,7 +627,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: actions/download-artifact@v5
         with:
           name: pyamplicol-prepared-models
@@ -662,6 +681,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - name: Install the independent oracle toolchain
         run: |
           sudo apt-get -o Acquire::Retries=5 update
@@ -700,7 +724,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@1.99.1
       - uses: actions/download-artifact@v5
         with:
@@ -769,7 +797,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@1.99.1
       - name: Install build and deployment tools
         run: python -m pip install "build>=1.2,<2" "maturin==1.15.0" "twine>=6,<7"
@@ -808,6 +840,11 @@ jobs:
           --wheel .artifacts/platform/pyamplicol-*.whl
           --no-build
       - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
         with:
           python-version: "3.14"
       - name: Test installed abi3 wheel on CPython 3.14
@@ -926,7 +963,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - name: Install artifact validation tools
         run: python -m pip install "twine>=6,<7"
       - name: Audit and collect package files

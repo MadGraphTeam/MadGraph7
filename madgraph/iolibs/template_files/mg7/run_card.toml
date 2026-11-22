@@ -12,6 +12,9 @@ cpu_mode = %(run.cpu_mode)s
 madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
+# fraction of the events evaluated again in all64 to check the precision (0: no check);
+# builds the matrix elements a second time, in all64
+precision_check = %(run.precision_check)s
 # after the generation, reweight the events to the matrix elements compiled at
 # this FPTYPE and report how many significant digits they share with the
 # generated weights (no weights are written); d (all64) is the suggested

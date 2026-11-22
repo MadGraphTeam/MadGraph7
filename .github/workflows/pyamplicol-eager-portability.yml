@@ -118,11 +118,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            pyamplicol/pyproject.toml
-            pyamplicol/dependencies/release-lock.toml
-            pyamplicol/dependencies/python-runtime-lock.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
       - name: Install pinned build tools
         run: python -m pip install "maturin==1.15.0" "packaging==26.3"
@@ -211,11 +211,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            pyamplicol/pyproject.toml
-            pyamplicol/dependencies/release-lock.toml
-            pyamplicol/dependencies/python-runtime-lock.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:

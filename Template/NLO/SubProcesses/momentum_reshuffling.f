@@ -71,6 +71,7 @@ C-----Arguments
       logical pass
 C-----Local
       integer i
+      double precision pstep(0:3,nexternal-1)
       ! the reshuffling strategy
       integer ihowresh
       parameter(ihowresh=1) ! 1-> recoil initial, 2-> recoil final
@@ -94,20 +95,25 @@ C-----Local
       if (reshuffle_two.and.iresh(1).gt.nincoming.and.iresh(2).gt.nincoming) then
         call reshuffle_final_two(p,q,iresh,pdg_old,pdg_new,pass)
       else
+        q(:,:) = p(:,:)
         do i = 2, 1, -1  ! if two particles have to be reshuffled, start
-                         ! from the second one
+                         ! from the second one; each step starts from the
+                         ! momenta of the previous one
           ! skip the case where iresh/pdg_old/pdg_new are zero
           ! (just check one, consistency has been checked above)
-          if (iresh(i).eq.0) continue
+          if (iresh(i).eq.0) cycle
+          pstep(:,:) = q(:,:)
 
           if (iresh(i).gt.nincoming) then
             ! for the reshuffling of a final-state particle, 
             ! two options exist: recoil on all other FS particles,
             ! or recoil on the initial state
             if (ihowresh.eq.1) then
-              call reshuffle_initial(p,q,iresh(i),pdg_old(i),pdg_new(i),pass)
+              call reshuffle_initial(pstep,q,iresh(i),pdg_old(i),
+     $                               pdg_new(i),pass)
             else if (ihowresh.eq.2) then
-              call reshuffle_final(p,q,iresh(i),pdg_old(i),pdg_new(i),pass)
+              call reshuffle_final(pstep,q,iresh(i),pdg_old(i),
+     $                             pdg_new(i),pass)
             else
               write(*,*) 'ERROR: reshuffle momenta, wrong option', ihowresh
               stop 1
@@ -115,7 +121,8 @@ C-----Local
           else
             ! for the reshuffling of an initial statem momentum,
             ! the only option is to recoil on all FS particles
-            call reshuffle_initial_state(p,q,iresh(i),pdg_old(i),pdg_new(i),pass)
+            call reshuffle_initial_state(pstep,q,iresh(i),pdg_old(i),
+     $                                   pdg_new(i),pass)
           endif
           ! exit and return if pass = False
           if (.not.pass) return
