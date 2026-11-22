@@ -34,6 +34,9 @@ const MP_RESCUE_BITS: u32 = 512;
 const MP_ACCURACY_BITS: u32 = 120;
 const DEFAULT_BUDGET: u64 = 268_435_456;
 const DP_ROUTE_FIELDS: usize = 10;
+/// Smallest conditioning (raised to the recursion depth) the binary64 pass
+/// accepts; lanes below it go to the precision tiers.
+const DP_GATE: f64 = 1e-10;
 const DP_ROUTE_STATS_COUNT: usize = 2 * DP_ROUTE_FIELDS;
 /// Relative shift of the invariants of MadLoop's binary64 check pass: 2^-52,
 /// the smallest relative factor that moves every binary64 value (by one or
@@ -161,11 +164,20 @@ impl State {
                 // forward e+e- > mu+mu- (scattering angle 5e-4) the matrix
                 // element was 2.8e-5 off while MadLoop reported 1e-15. The
                 // tiers' gates bound their error instead.
+                // The binary64 pass accepts a lane only if its conditioning,
+                // raised to the recursion depth, is at least 1e-10, which
+                // bounds its rounding's amplification near 1e10 (TIRust's
+                // default, 1e-12, admits 1e12). The Gram systems come from the
+                // supplied invariants, which every frame and both loop
+                // directions share, so MadLoop's checks repeat that error:
+                // with 1e-12, a near-soft triangle of g g > Upsilon g was 6e-5
+                // off and Zggg tensors up to 6e-3, all returned as successful.
                 EmbedderOptions {
                     method_choice: false,
                     precision_tiers: true,
                     tier_margin_bits: 0,
                     double_double_headroom_bits: 26,
+                    gate: Some(DP_GATE),
                     ..EmbedderOptions::default()
                 },
             ).map_err(|e| e.to_string())?;
@@ -1508,6 +1520,77 @@ mod tests {
         reference.set_input_precision(53);
         reference.set_stability_threshold(mp_threshold(1024));
         let lifted = dp_batch(4, &p, &s, &m, mu2).unwrap();
+        let batch = KinematicsBatch {
+            rows: 1,
+            components: 1,
+            values: lifted.values.iter().map(|z| Complex::new(Float::with_val(1024, z.re), Float::with_val(1024, z.im))).collect(),
+        };
+        let values = reference.reduce_batch(&batch).unwrap();
+        let exact = values.lane(0).unwrap();
+        for slot in 0..4 {
+            let at = |k: usize| (exact[k * 4 + slot].re.to_f64(), exact[k * 4 + slot].im.to_f64());
+            let scale = (0..nc).map(|k| at(k).0.hypot(at(k).1)).fold(0.0, f64::max);
+            for k in 0..nc {
+                let (re, im) = at(k);
+                let got = out[slot * nc + k];
+                let error = (got.re - re).hypot(got.im - im);
+                assert!(error <= 1e-13 * scale, "slot {slot}, coefficient {k}: error {error:e}, slot scale {scale:e}");
+            }
+        }
+        drop(state);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    // A triangle of g g > Upsilon g at sqrt(s) = 9.51 GeV (a 10 MeV gluon), as
+    // MadLoop supplied it (onia_loop, mu = 11): masses^2 (m_b^2, 0, 0) and
+    // invariants (m_b^2, m_b^2 + 0.095, s), rank 2. Its legs are nearly back to
+    // back: Gram conditioning 2.2e-6, so 4.9e-12 at depth 2.
+    const SOFT_TRIANGLE_P: [u64; 12] = [
+        0xbcd0000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0xc0130000b06aa477, 0x3f63fe1f0447ac1d, 0xbf575928c55a6639, 0x3f70e1b676d4a682,
+        0x40130a3cc0393297, 0x3f63fe1f0447ad03, 0xbf575928c55a6805, 0x3f70e1b676d4a682,
+    ];
+    const SOFT_TRIANGLE_S: [u64; 9] = [
+        0x0000000000000000, 0x4036900000000000, 0x4036a85532617c27,
+        0x4036900000000000, 0x0000000000000000, 0x40569c2a9930be12,
+        0x4036a85532617c27, 0x40569c2a9930be12, 0x0000000000000000,
+    ];
+    const SOFT_TRIANGLE_M: [u64; 6] = [
+        0x4036900000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x0000000000000000,
+    ];
+    const SOFT_TRIANGLE_MU2: u64 = 0x405e400000000000;
+
+    #[test]
+    fn ill_conditioned_soft_triangle_takes_a_precision_tier() {
+        use symbolica::domains::float::RealLike;
+        let bits = |b: &[u64]| b.iter().map(|&x| f64::from_bits(x)).collect::<Vec<_>>();
+        let (p, s) = (bits(&SOFT_TRIANGLE_P), bits(&SOFT_TRIANGLE_S));
+        let m: Vec<C64> = bits(&SOFT_TRIANGLE_M).chunks_exact(2).map(|z| C64 { re: z[0], im: z[1] }).collect();
+        let mu2 = f64::from_bits(SOFT_TRIANGLE_MU2);
+        let (key, nc) = dimensions(3, 2).unwrap();
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 3, 2) }, SUCCESS);
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            ml_tirust_evaluate_dp(
+                c, 3, 2, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), mu2,
+                out.as_mut_ptr(), out.len(), 0, 1, 0, 1,
+            )
+        };
+        assert_eq!(status, SUCCESS);
+        // Refused by the binary64 gate (4.9e-12 < 1e-10), served by the
+        // double-double tier at its first attempt. With TIRust's default gate
+        // (1e-12) the binary64 pass accepted it, 6e-5 off.
+        let mut routes = [0u64; DP_ROUTE_STATS_COUNT];
+        assert_eq!(unsafe { ml_tirust_dp_route_statistics(c, routes.as_mut_ptr(), DP_ROUTE_STATS_COUNT) }, SUCCESS);
+        assert_eq!(routes[..DP_ROUTE_FIELDS], [0, 0, 1, 0, 0, 0, 0, 1, 0, 0]);
+        // Every slot agrees with a 1024-bit evaluation of the same binary64
+        // inputs to binary64 accuracy.
+        let state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+        let mut reference = state.plans[&key].workspace(Float::new(1024)).unwrap();
+        reference.set_input_precision(53);
+        reference.set_stability_threshold(mp_threshold(1024));
+        let lifted = dp_batch(3, &p, &s, &m, mu2).unwrap();
         let batch = KinematicsBatch {
             rows: 1,
             components: 1,
