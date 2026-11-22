@@ -586,6 +586,7 @@ confidence interval of the geometric-mean ratio.
 - Validation and reducers (one campaign, `data/raw/validate.json`):
   `tools/onia_loop_validate.py --work DIR --libs 9 3 8 6 7 1 --npoints 10 --timeout 120 --json validate.json`
   (cases and references in the tool and `research/literature.md`).
+  The second $e^+ e^- -> J\/psi thin eta_c$ row: the same with `--cases ee_psi_etac --libs 9 --tirust LIB --tirust-label '370b632 (PR #56, candidate)' --json data/raw/validate_tirust370b632.json`, `LIB` a TIRust 370b632 installation (`research/pwave_fd/build.sh`).
 - Timing (`data/raw/timing/`): `tools/onia_loop_timing.py --root base=... --root cand=... --process ... --pairs 9`, settings as in @perf.
 - One process: `tools/onia_loop_check.py --model loop_sm_onia-c_mass --process "g g > etac(1|1S01) [virt=QCD]" --out DIR --libs 9`.
 - S-wave onium + jet against MG5 2.5.5 (`research/mg255_swave/data`): `build_ref.sh`,
@@ -595,7 +596,7 @@ confidence interval of the geometric-mean ratio.
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB08` for the scratch TIRust builds), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`.
-- This report: `python3 scripts/collect.py ... --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
+- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,
   0712.4220; Catani, Dittmaier, Trócsányi, hep-ph/0011222; quarkonium in
