@@ -84,6 +84,7 @@ _benchmark_factory: BenchmarkFactory | None = None
 if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
     from pyamplicol.config.runtime_options import RuntimeOptionsSource
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
     from pyamplicol.loops.v2.checks import CheckReport
     from pyamplicol.runtime.correlations import CorrelatorCatalogue, CorrelatorEvaluator
 
@@ -2216,6 +2217,7 @@ def check(
     progress: ProgressSink | None = None,
     sqrt_s: float | None = None,
     arbitrary_digits: int | None = None,
+    cuts: PhaseSpaceCuts | None = None,
 ) -> CheckReport:
     """:func:`_check`, the known, benign dependency log events it triggers
     returned in the report's ``warnings`` instead of being printed
@@ -2236,6 +2238,7 @@ def check(
             progress=progress,
             sqrt_s=sqrt_s,
             arbitrary_digits=arbitrary_digits,
+            cuts=cuts,
         )
     found = captured.warnings()
     return replace(report, warnings=report.warnings + found) if found else report
@@ -2252,6 +2255,7 @@ def _check(
     progress: ProgressSink | None = None,
     sqrt_s: float | None = None,
     arbitrary_digits: int | None = None,
+    cuts: PhaseSpaceCuts | None = None,
 ) -> CheckReport:
     """The pole and Ward checks of a one-loop request (``pyamplicol check``):
     ``target`` is a run card (its generation request), a resolved run
@@ -2281,7 +2285,9 @@ def _check(
     directory's name. ``sqrt_s`` sets the centre-of-mass energy of a
     scattering's points (None takes ``check.sqrt_s``; both None: the
     generation's validation convention, sqrt(s) = max(1000, final threshold
-    + 100) for massless beams).
+    + 100) for massless beams). ``cuts`` (``generation.phase_space_cuts.
+    PhaseSpaceCuts``; None takes ``evaluation.phase_space``'s) rejects the
+    points outside them.
     ``source`` is the run card a configuration ``target`` was read from
     (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
     process passed."""
@@ -2365,6 +2371,8 @@ def _check(
                 f"auto ladder; precision {str(carrier)!r} runs its carrier alone"
             )
     energy = run.check.sqrt_s if sqrt_s is None else float(sqrt_s)
+    if cuts is None or not cuts.active:
+        cuts = run.evaluation.phase_space.cuts
     if model is None:
         model = run.check.model
     if model is None:
@@ -2409,6 +2417,7 @@ def _check(
                     stored=stored,
                     sqrt_s=energy,
                     arbitrary_digits=digits,
+                    cuts=cuts,
                 )
         except CheckInterrupted as error:
             checked = list(error.partial)

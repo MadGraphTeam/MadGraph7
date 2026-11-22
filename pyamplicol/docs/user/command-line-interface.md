@@ -563,7 +563,28 @@ pyamplicol evaluate artifacts/loop_generate \
   --set evaluation.phase_space.points=4 --set evaluation.phase_space.sqrt_s=2000
 ```
 
-`check` draws its own points (`[check] points`, `seed`, `sqrt_s`).
+**Cuts.** `--pt-min PT` and `--delta-r-min DR` (`evaluation.phase_space.pt_min`,
+`delta_r_min`; default none; `evaluate`, `profile` and `check`) require, by
+rejection, a transverse momentum above `PT` of every massless parton, photon
+and charged lepton of the final state, and a distance (Δη² + Δφ²)^(1/2) above
+`DR` of every pair of them. The legs are found from the artifact's model (a
+massless final leg that is coloured, electrically charged or a vector);
+massive legs and neutrinos are not cut. Point i is the first of its own
+attempts that passes: the point drawn from seed + i itself when it passes,
+else attempts from seeds derived from seed + i, so a point depends on its own
+seed only and the points that pass are the same with and without the cuts.
+Cuts that cannot be met are refused; a point without a success in
+`cut_attempts` attempts (default 100000) is an error. A decay (no beams)
+refuses cuts. The stability run records them (`stability_setup.cuts`, with the
+legs; the samples file's `cuts`).
+
+```console
+pyamplicol profile artifacts/loop_gg_ggg --stability --sqrt-s 1000 \
+  --pt-min 25 --delta-r-min 0.7
+```
+
+`check` draws its own points (`[check] points`, `seed`, `sqrt_s`), within the
+same cuts.
 
 ### Saved virtual artifacts
 

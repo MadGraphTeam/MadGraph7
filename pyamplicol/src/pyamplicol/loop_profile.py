@@ -3139,6 +3139,7 @@ def _measure(
         points=DEFAULT_LANES,
         seed=space.seed,
         sqrt_s=space.sqrt_s,
+        cuts=space.cuts,
     ).as_inputs(exact=False)
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
     scales = (
@@ -4673,6 +4674,7 @@ def _stability(
     # every point's inputs (the per-point record).
     inputs: dict[int, tuple[Any, Any]] = {}
     sqrt_s: list[float] = []
+    cut_legs: list[tuple[int, ...]] = []
 
     def draw(start: int, size: int) -> tuple[list[Any], list[Any] | Any]:
         flat = draw_flat_points(
@@ -4681,9 +4683,11 @@ def _stability(
             points=size,
             seed=space.seed + start,
             sqrt_s=space.sqrt_s,
+            cuts=space.cuts,
         )
         if not sqrt_s:
             sqrt_s.append(flat.sqrt_s)
+            cut_legs.append(flat.cut_legs)
         batch = list(flat.as_inputs(exact=False))
         scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
         for k, point in enumerate(batch):
@@ -5367,6 +5371,12 @@ def _stability(
         else {**memory, "workers": int(memory.get("probed_workers", workers))},
         "seed": space.seed,
         "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
+        # The cuts of the drawn points (None: no cut) and the legs (from 0, in
+        # the process's order) they act on.
+        "cuts": {
+            **space.cuts.record(),
+            "legs": list(cut_legs[0]) if cut_legs else [],
+        },
         "generator": (
             "flat (RAMBO on diet), beams along +-z in the centre-of-mass frame"
         ),
@@ -5800,6 +5810,7 @@ def _write_samples(
         "process": process,
         "seed": setup.get("seed"),
         "sqrt_s": setup.get("sqrt_s"),
+        "cuts": setup.get("cuts"),
         "inputs": held(setup.get("samples")),
         "backends": {
             row.backend: held(row.samples) for row in rows if row.samples is not None

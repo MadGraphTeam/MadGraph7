@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
     from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
@@ -1580,18 +1581,43 @@ class EvaluationPhaseSpaceConfig:
     centre-of-mass frame of a 2 -> n scattering at ``sqrt_s`` (None: the
     artifact's own validation point's energy) or in the rest frame of a
     decaying particle (1 -> n, at its mass), with the external masses of
-    the artifact's validation point."""
+    the artifact's validation point, within ``cuts`` (also ``check``'s)."""
 
     points: int = field(default=2, metadata=_setting("int"))
     seed: int = field(default=1, metadata=_setting("int"))
     sqrt_s: float | None = field(
         default=None, metadata=_setting("float", nullable=True)
     )
+    # Cuts by rejection (``generation.phase_space_cuts``; None: no cut) on the
+    # massless partons, photons and charged leptons of the final state: the
+    # least transverse momentum and the least distance Delta R of every pair.
+    # A point is the first of its attempts that passes, at most
+    # ``cut_attempts`` of them.
+    pt_min: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+    delta_r_min: float | None = field(
+        default=None, metadata=_setting("float", nullable=True)
+    )
+    cut_attempts: int = field(default=100_000, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "points", _integer(self.points, "evaluation.phase_space.points")
         )
+        object.__setattr__(
+            self,
+            "cut_attempts",
+            _integer(self.cut_attempts, "evaluation.phase_space.cut_attempts"),
+        )
+        for name in ("pt_min", "delta_r_min"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(
+                    self,
+                    name,
+                    _finite_float(value, f"evaluation.phase_space.{name}", minimum=0.0),
+                )
         object.__setattr__(
             self,
             "seed",
@@ -1608,6 +1634,12 @@ class EvaluationPhaseSpaceConfig:
                     exclusive=True,
                 ),
             )
+
+    @property
+    def cuts(self) -> PhaseSpaceCuts:
+        from ..generation.phase_space_cuts import PhaseSpaceCuts
+
+        return PhaseSpaceCuts(self.pt_min, self.delta_r_min, self.cut_attempts)
 
 
 # The largest decimal digit count of a carrier (the native u32).
