@@ -83,7 +83,7 @@ OPEN_ITEMS = [
     '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, '
     '\\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). '
     '370b632, the head of \\#56, also serves $g g -> chi_(c 0) g$ (@pwave). For double precision '
-    'at high energy, the relation tiers of the local candidate 14f2696 with its bridge patch '
+    'at high energy, the relation tiers of 14f2696 (now in \\#56) with its bridge patch '
     '(@stability).',
     '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
     '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).',

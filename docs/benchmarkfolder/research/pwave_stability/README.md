@@ -89,7 +89,7 @@ The lanes are the pentagons with zero Gram determinant and a doubled line, at la
 
 ## Candidate fix: TIRust 14f2696
 
-The TIRust session's answer to the reproducer below is a local revision, not yet pushed:
+The TIRust session's answer to the reproducer below. The runs here use the local revision 14f2696 with `oneloop` 07fc754. It has since been pushed to PR #56, whose head 8b436f9 adds merges of TIRust's main, among them the re-pin of `oneloop` to cdbc912 (the small-momentum C0 series):
 - **TIRust 14f2696**, one commit on 370b632. It adds an embedder option, `relation_tiers`. Binary64 lanes that the first pass serves through an affine relation (a constant identity or a Coulomb partial fraction) are evaluated again from the double-double tier up. The inputs are still declared binary64, so the same relations are found.
 - **The bridge patch** `madloop-tirust-relation-tiers.patch`, one line: `relation_tiers: key.2 != 0`. Only calls with raised powers, i.e. the P waves, use the option.
 

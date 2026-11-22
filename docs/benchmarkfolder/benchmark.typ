@@ -493,9 +493,11 @@ estimate over random phase-space points.
   The $u overline(u)$ P waves and the P-wave colour octets use TIRust 48958d1. The $g g$ P waves,
   $g g -> chi_(c 0) thin g$ and $g g -> chi_(b 0) thin g$, use TIRust 370b632
   (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every P
-  wave is also run with the TIRust candidate 14f2696 (a local revision on
-  370b632 with _relation tiers_, and a one-line bridge patch that enables them;
-  neither pushed nor pinned).
+  wave is also run with the TIRust candidate 14f2696 (370b632 with _relation
+  tiers_, and a one-line bridge patch that enables them; not pinned). It is
+  now in PR \#56, whose head 8b436f9 adds merges of TIRust's main, among them
+  the re-pin of `oneloop` (cdbc912 instead of 07fc754, with which these runs
+  were made).
 - *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
   $n = ""^3 P_0, ""^3 P_1, ""^3 P_2, ""^1 P_1$, the charmonium octets of the
   $2 -> 2$ pole checks (@tab:pwave22) and their bottomonium analogues, in a
