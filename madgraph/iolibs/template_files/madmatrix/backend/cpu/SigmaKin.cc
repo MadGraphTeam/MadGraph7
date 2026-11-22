@@ -1312,13 +1312,19 @@ namespace madmatrix
       // whichever way it is paired, while a genuine parity violation shows up
       // at the relative level. One verdict for every crossing.
       // FP32 amplitudes (FPTYPE=f and the default v) round at ~1e-7 per
-      // operation, so two mirror rows of a long helicity/colour sum differ
-      // by more than 1e-6: an FP64 tolerance there switches the dedup off
-      // (all ncomb rows evaluated, the mirrored half outside the
-      // hel-recycling table: v ran 1.7x slower than d on g g > t t~ g g).
+      // operation: an FP64 tolerance there switches the dedup off (all ncomb
+      // rows evaluated, the mirrored half outside the hel-recycling table: v
+      // ran 1.7x slower than d on g g > t t~ g g). Measured on the scan
+      // points (simd_128, FP32), the mirror rows of C-symmetric processes
+      // differ by up to 7e-7 of the largest |M|^2 and 1.3e-5 of the pair
+      // (g g > t t~ g g (g), u u~ > t t~ g g), a genuine parity violation by
+      // O(1) on both (0.7 for u u~ > e+ e-, u u~ > z g g). A pair is flagged
+      // only above both FP32 tolerances (1e-5): the cut against the largest
+      // |M|^2 stays ~15x above the roundoff (as the verdict latches, one
+      // harder point of the run must not switch the dedup off).
       {
 #if defined MADMATRIX_FPTYPE_FLOAT
-        const fptype csymRel = (fptype)1e-4, csymAbs = (fptype)1e-6;
+        const fptype csymRel = (fptype)1e-5, csymAbs = (fptype)1e-5;
 #else
         const fptype csymRel = (fptype)1e-6, csymAbs = (fptype)1e-12;
 #endif
