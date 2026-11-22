@@ -2292,10 +2292,11 @@ def _check(
     scattering's points (None takes ``check.sqrt_s``; both None: the
     generation's validation convention, sqrt(s) = max(1000, final threshold
     + 100) for massless beams). ``cuts`` (``generation.phase_space_cuts.
-    PhaseSpaceCuts``; None takes ``evaluation.phase_space``'s) rejects the
-    points outside them. ``kinematics_improvement`` and
-    ``kinematics_improvement_binary64`` are ``Runtime.evaluate``'s (None takes
-    ``evaluation``'s).
+    PhaseSpaceCuts``) rejects the points outside them: each of its values
+    replaces its own one of ``evaluation.phase_space`` (an artifact's: the
+    recorded ones), None keeps that one and 0 switches that cut off.
+    ``kinematics_improvement`` and ``kinematics_improvement_binary64`` are
+    ``Runtime.evaluate``'s (None takes ``evaluation``'s).
     ``source`` is the run card a configuration ``target`` was read from
     (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
     process passed."""
@@ -2379,8 +2380,8 @@ def _check(
                 f"auto ladder; precision {str(carrier)!r} runs its carrier alone"
             )
     energy = run.check.sqrt_s if sqrt_s is None else float(sqrt_s)
-    if cuts is None or not cuts.active:
-        cuts = run.evaluation.phase_space.cuts
+    recorded = run.evaluation.phase_space.cuts
+    cuts = recorded if cuts is None else cuts.over(recorded)
     if model is None:
         model = run.check.model
     if model is None:

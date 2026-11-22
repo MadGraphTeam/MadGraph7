@@ -26,6 +26,9 @@ import numpy as np
 
 _T = TypeVar("_T")
 
+# The attempts of a point when the settings name none.
+DEFAULT_ATTEMPTS = 100_000
+
 
 class CutsError(ValueError):
     """Cuts that no point of the process can pass, or that none did."""
@@ -35,19 +38,33 @@ class CutsError(ValueError):
 class PhaseSpaceCuts:
     """``pt_min``: every cut leg's transverse momentum exceeds it;
     ``delta_r_min``: the distance (d eta^2 + d phi^2)^(1/2) of every pair of
-    cut legs does. None: no such cut. ``attempts``: the attempts per point
-    before the cuts are reported as too tight."""
+    cut legs does. None or 0: no such cut. ``attempts``: the attempts per
+    point before the cuts are reported as too tight (None:
+    ``DEFAULT_ATTEMPTS``)."""
 
     pt_min: float | None = None
     delta_r_min: float | None = None
-    attempts: int = 100_000
+    attempts: int | None = None
 
     @property
     def active(self) -> bool:
-        return self.pt_min is not None or self.delta_r_min is not None
+        return bool(self.pt_min) or bool(self.delta_r_min)
+
+    def over(self, recorded: PhaseSpaceCuts) -> PhaseSpaceCuts:
+        """These cuts, each value not given here (None) taken from
+        ``recorded``; a 0 given switches the recorded cut off."""
+
+        return PhaseSpaceCuts(
+            recorded.pt_min if self.pt_min is None else self.pt_min,
+            recorded.delta_r_min if self.delta_r_min is None else self.delta_r_min,
+            recorded.attempts if self.attempts is None else self.attempts,
+        )
 
     def record(self) -> dict[str, float | None]:
-        return {"pt_min": self.pt_min, "delta_r_min": self.delta_r_min}
+        return {
+            "pt_min": self.pt_min or None,
+            "delta_r_min": self.delta_r_min or None,
+        }
 
     def described(self) -> list[str]:
         """The cuts set, in words (none: empty)."""
@@ -55,7 +72,7 @@ class PhaseSpaceCuts:
         return [
             f"{name} > {value:g}"
             for name, value in (("pT", self.pt_min), ("Delta R", self.delta_r_min))
-            if value is not None
+            if value
         ]
 
     def accepted(self, momenta: Any, legs: Sequence[int]) -> np.ndarray:
@@ -66,9 +83,9 @@ class PhaseSpaceCuts:
         px, py, pz = (points[..., i] for i in range(1, 4))
         ok = np.ones(len(points), dtype=bool)
         pt = np.hypot(px, py)
-        if self.pt_min is not None:
+        if self.pt_min:
             ok &= (pt > self.pt_min).all(axis=1)
-        if self.delta_r_min is not None:
+        if self.delta_r_min:
             with np.errstate(divide="ignore", invalid="ignore"):
                 # Along the beam the pseudorapidity is infinite: a pair of
                 # such legs has no distance (nan) and fails.
@@ -86,7 +103,7 @@ class PhaseSpaceCuts:
         """Refuse cuts no point can pass: the cut legs' transverse momenta
         sum to at most their energies, so to less than ``sqrt_s``."""
 
-        if self.pt_min is not None and legs and legs * self.pt_min >= sqrt_s:
+        if self.pt_min and legs and legs * self.pt_min >= sqrt_s:
             raise CutsError(
                 f"evaluation.phase_space.pt_min = {self.pt_min} on {legs} "
                 f"final-state leg(s) cannot be met at sqrt(s) = {sqrt_s}"
@@ -123,7 +140,8 @@ def draw_accepted(
 
     found: dict[int, _T] = {}
     pending = list(range(len(seeds)))
-    for attempt in range(cuts.attempts):
+    attempts = DEFAULT_ATTEMPTS if cuts.attempts is None else cuts.attempts
+    for attempt in range(attempts):
         if not pending:
             break
         drawn = draw([attempt_seed(seeds[i], attempt) for i in pending])
@@ -137,13 +155,14 @@ def draw_accepted(
     if pending:
         raise CutsError(
             f"no phase-space point within the cuts ({cuts.record()}) in "
-            f"{cuts.attempts} attempts (seed {seeds[pending[0]]}); loosen them or "
+            f"{attempts} attempts (seed {seeds[pending[0]]}); loosen them or "
             "raise evaluation.phase_space.cut_attempts"
         )
     return [found[i] for i in range(len(seeds))]
 
 
 __all__ = [
+    "DEFAULT_ATTEMPTS",
     "CutsError",
     "PhaseSpaceCuts",
     "attempt_seed",

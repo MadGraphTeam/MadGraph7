@@ -888,7 +888,7 @@ def _estimate_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
         f"Estimated digits of {_measured_name(setup)} ("
         + ("the ground truth" if _truth_present(setup) else "no ground truth")
         + f"), {points} flat points "
-        f"(sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']})",
+        f"(sqrt(s) = {setup['sqrt_s']:g}, seed {setup['seed']}{_cuts(setup)})",
         color=color,
     )
     count = len(served[0].percentiles) if served else 0
@@ -1006,6 +1006,16 @@ def _measured_suffix(setup: Any) -> str:
     return f", {name}" if name else ""
 
 
+def _cuts(setup: Any) -> str:
+    """The cuts of the flat points as a title names them (none: empty)."""
+
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
+
+    record = setup.get("cuts") or {}
+    cuts = PhaseSpaceCuts(record.get("pt_min"), record.get("delta_r_min"))
+    return "".join(f", {cut}" for cut in cuts.described())
+
+
 def _cap(setup: Any) -> float | None:
     """The digits cap of the view's measured precision (None: binary64's)."""
 
@@ -1067,7 +1077,7 @@ def _stability_tables(report: Any, prettytable: Any, color: bool) -> list[str]:
     title = (
         f"Stable digits of {_measured_name(setup)} vs {_truth(report)[1]}, "
         f"{points} flat points (sqrt(s) = {setup['sqrt_s']:g}, seed "
-        f"{setup['seed']})"
+        f"{setup['seed']}{_cuts(setup)})"
         + (
             ", each point capped at what its reference certifies (the "
             "backends' agreement or its checked estimate)"

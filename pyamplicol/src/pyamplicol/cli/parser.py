@@ -957,7 +957,8 @@ def _add_cut_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "drawn points: least transverse momentum of every massless parton, "
             "photon and charged lepton of the final state (evaluation."
-            "phase_space.pt_min; default none)"
+            "phase_space.pt_min; 0 or unset: no such cut, but check of an "
+            "artifact keeps the one it records unless 0 is given)"
         ),
     )
     parser.add_argument(
@@ -968,7 +969,7 @@ def _add_cut_options(parser: argparse.ArgumentParser) -> None:
         metavar="DR",
         help=(
             "drawn points: least distance Delta R of every pair of those legs "
-            "(evaluation.phase_space.delta_r_min; default none)"
+            "(evaluation.phase_space.delta_r_min; 0 or unset as --pt-min)"
         ),
     )
 

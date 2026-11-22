@@ -187,7 +187,7 @@ def test_impossible_cuts_are_refused(tmp_path):
 
 def test_a_leg_along_the_beam_fails_and_attempts_are_counted():
     beam = [[(1.0, 0.0, 0.0, 1.0), (1.0, 0.0, 0.0, -1.0), (2.0, 2.0, 0.0, 0.0)]]
-    assert not PhaseSpaceCuts(pt_min=0.0).accepted(beam, (0, 1, 2))[0]
+    assert not PhaseSpaceCuts(pt_min=1e-9).accepted(beam, (0, 1, 2))[0]
     assert attempt_seed(3, 0) == 3
     assert len({attempt_seed(3, k) for k in range(50)}) == 50
     with pytest.raises(CutsError):
@@ -214,6 +214,125 @@ def test_settings_and_flags(tmp_path):
         space = run.effective.evaluation.phase_space
         assert (space.pt_min, space.delta_r_min) == (25.0, 0.7)
         assert space.cuts == PhaseSpaceCuts(25.0, 0.7)
+    with pytest.raises(ConfigurationError, match="cut_attempts"):
+        EvaluationPhaseSpaceConfig(cut_attempts=0)
+
+
+def test_a_configuration_without_cuts_states_none_of_their_keys():
+    """The configuration bytes a cut-free artifact stores (requested and
+    effective; an append compares them) have no key of the cuts."""
+
+    from pyamplicol.config import config_to_dict, resolve_config
+    from pyamplicol.generation.artifact_writer import _toml_bytes
+
+    run = resolve_config({"schema_version": 1, "action": "generate"})
+    for config in (run.requested, run.effective):
+        text = _toml_bytes(config_to_dict(config)).decode()
+        table = text.split("[evaluation.phase_space]\n")[1].split("\n[")[0]
+        assert table.split("\n") == ["points = 2", "seed = 1", ""]
+
+
+def test_zero_is_no_cut(tmp_path):
+    none = PhaseSpaceCuts(0.0, 0.0)
+    assert not none.active and none.described() == []
+    assert none.record() == {"pt_min": None, "delta_r_min": None}
+    assert PhaseSpaceCuts(0.0, 0.7).described() == ["Delta R > 0.7"]
+    artifact = _artifact(tmp_path / "s", "g g > g g g", [21] * 5, [0.0] * 3)
+    draw = {"process": None, "points": 5, "seed": 1, "sqrt_s": 1000.0}
+    assert draw_flat_points(artifact, cuts=none, **draw) == draw_flat_points(
+        artifact, **draw
+    )
+    assert (
+        draw_flat_points(artifact, cuts=PhaseSpaceCuts(0.0, 0.7), **draw).points
+        == draw_flat_points(
+            artifact, cuts=PhaseSpaceCuts(delta_r_min=0.7), **draw
+        ).points
+    )
+    decay = _artifact(tmp_path / "d", "t > d e-", [6, 1, 11], [0.0, 0.0], sqrt_s=TOP)
+    drawn = draw_flat_points(
+        decay, process=None, points=1, seed=1, sqrt_s=None, cuts=none
+    )
+    assert len(drawn.points) == 1
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        (None, (25.0, 0.7, 5000)),
+        (PhaseSpaceCuts(), (25.0, 0.7, 5000)),
+        (PhaseSpaceCuts(pt_min=40.0), (40.0, 0.7, 5000)),
+        (PhaseSpaceCuts(delta_r_min=1.0, attempts=9), (25.0, 1.0, 9)),
+        (PhaseSpaceCuts(pt_min=0.0), (0.0, 0.7, 5000)),
+        (PhaseSpaceCuts(0.0, 0.0), (0.0, 0.0, 5000)),
+    ],
+)
+def test_check_overrides_the_recorded_cuts_one_by_one(given, expected, monkeypatch):
+    """Each cut given to ``check`` replaces its own recorded one only; a 0
+    switches it off (the cuts that reach the generation service's check)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api import services
+    from pyamplicol.config import resolve_config
+
+    seen = {}
+
+    class Reached(Exception):
+        pass
+
+    def operation(_processes, **options):
+        seen.update(options)
+        raise Reached
+
+    monkeypatch.setattr(
+        services.Generator,
+        "_implementation",
+        lambda _self: SimpleNamespace(check=operation),
+    )
+    monkeypatch.setattr(
+        services.Generator, "_resolve_generation_resources", lambda _self: None
+    )
+    run = resolve_config(
+        {
+            "schema_version": 1,
+            "action": "check",
+            "process": {"entries": [{"expression": "g g > g g", "name": "p"}]},
+            "evaluation": {
+                "phase_space": {
+                    "pt_min": 25.0,
+                    "delta_r_min": 0.7,
+                    "cut_attempts": 5000,
+                }
+            },
+        }
+    )
+    with pytest.raises(Reached):
+        services.check(run, cuts=given)
+    assert seen["cuts"] == PhaseSpaceCuts(*expected)
+
+
+def test_check_options_left_out_or_zero_reach_the_check(tmp_path, monkeypatch):
+    """The command line distinguishes a cut left out from one switched off."""
+
+    from pyamplicol.api import services
+    from pyamplicol.cli.handlers import DefaultCliServices
+    from pyamplicol.reporting import CallbackProgressSink
+
+    artifact = _artifact(tmp_path, "g g > g g g", [21] * 5, [0.0] * 3)
+    seen = []
+    monkeypatch.setattr(
+        services, "check", lambda _target, **options: seen.append(options["cuts"])
+    )
+    for flags in ((), ("--pt-min", "0"), ("--delta-r-min", "1")):
+        run = parse_cli(("check", str(artifact), *flags)).resolve()
+        DefaultCliServices().check(
+            run.effective, CallbackProgressSink(lambda _event: None)
+        )
+    assert seen == [
+        PhaseSpaceCuts(),
+        PhaseSpaceCuts(pt_min=0.0),
+        PhaseSpaceCuts(delta_r_min=1.0),
+    ]
 
 
 def test_a_retried_point_is_a_function_of_its_own_seed(tmp_path):
@@ -390,3 +509,49 @@ def test_the_runtime_setup_names_the_cuts():
     plain = _runtime_setup(False, 3)
     assert "(seed 3)" in plain
     assert _runtime_setup(False, 3, cuts=PhaseSpaceCuts()) == plain
+
+
+@pytest.mark.parametrize("estimate_only", [False, True])
+def test_the_stability_tables_name_the_cuts(estimate_only):
+    """In the percentile table's title, and nowhere else (no line added)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.reporting import loop_profile
+
+    prettytable = pytest.importorskip("prettytable")
+
+    def tables(cuts):
+        setup = {
+            "target": 1e-5,
+            "points": 64,
+            "sqrt_s": 1000.0,
+            "seed": 3,
+            "ground_truth": {},
+        }
+        report = SimpleNamespace(
+            stability=(
+                SimpleNamespace(
+                    backend="ninjars",
+                    refusal="refused",
+                    points=0,
+                    percentiles=(),
+                    estimate_only=estimate_only,
+                ),
+            ),
+            stability_setup={**setup, **cuts},
+            ground_truth=None,
+            default_backend="ninjars",
+            failure_causes=(),
+        )
+        return loop_profile._stability_tables(report, prettytable, False)
+
+    def text(blocks):
+        return " ".join("\n".join(blocks).replace("|", " ").split())
+
+    cut = text(tables({"cuts": {"pt_min": 25.0, "delta_r_min": 0.7, "legs": [2, 3]}}))
+    plain = tables({"cuts": {"pt_min": None, "delta_r_min": None, "legs": []}})
+    assert plain == tables({})
+    assert "seed 3)" in text(plain)
+    assert "seed 3, pT > 25, Delta R > 0.7)" in cut
+    assert cut.count("Delta R") == 1

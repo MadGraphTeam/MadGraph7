@@ -518,13 +518,13 @@ seed = 1
 sqrt_s = 1000.0
 # evaluation.phase_space.pt_min: Least transverse momentum of every massless
 # parton, photon and charged lepton of the final state (by rejection; also
-# check's points). Default null: no cut.
+# check's points). Default null (or 0): no cut.
 pt_min = 25.0
 # evaluation.phase_space.delta_r_min: Least distance Delta R of every pair of
-# those legs. Default null: no cut.
+# those legs. Default null (or 0): no cut.
 delta_r_min = 0.7
 # evaluation.phase_space.cut_attempts: Attempts per point before the cuts are
-# refused as too tight. Default 100000.
+# refused as too tight. Default null: 100000.
 cut_attempts = 100000
 
 [benchmark]

@@ -1590,16 +1590,19 @@ class EvaluationPhaseSpaceConfig:
     )
     # Cuts by rejection (``generation.phase_space_cuts``; None: no cut) on the
     # massless partons, photons and charged leptons of the final state: the
-    # least transverse momentum and the least distance Delta R of every pair.
-    # A point is the first of its attempts that passes, at most
-    # ``cut_attempts`` of them.
+    # least transverse momentum and the least distance Delta R of every pair
+    # (0 as None, but ``check ARTIFACT`` takes a None from the artifact). A
+    # point is the first of its attempts that passes, at most
+    # ``cut_attempts`` of them (None: ``phase_space_cuts.DEFAULT_ATTEMPTS``).
     pt_min: float | None = field(
         default=None, metadata=_setting("float", nullable=True)
     )
     delta_r_min: float | None = field(
         default=None, metadata=_setting("float", nullable=True)
     )
-    cut_attempts: int = field(default=100_000, metadata=_setting("int"))
+    cut_attempts: int | None = field(
+        default=None, metadata=_setting("int", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1608,7 +1611,9 @@ class EvaluationPhaseSpaceConfig:
         object.__setattr__(
             self,
             "cut_attempts",
-            _integer(self.cut_attempts, "evaluation.phase_space.cut_attempts"),
+            _optional_integer(
+                self.cut_attempts, "evaluation.phase_space.cut_attempts", minimum=1
+            ),
         )
         for name in ("pt_min", "delta_r_min"):
             value = getattr(self, name)
