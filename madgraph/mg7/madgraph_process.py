@@ -2089,13 +2089,14 @@ class MadgraphProcess:
             for build_backend, build_fptype in checks:
                 if (build_backend, build_fptype) in builds:
                     continue
-                missing = [
-                    meta for meta in madmatrix_data
+                # by library, as above
+                missing = list({
+                    meta["me_path"]: meta for meta in madmatrix_data
                     if not os.path.isfile(meta["me_path"].format(
                         device=build_backend, fptype=build_fptype))
                     or self.hel_recycling_flags_changed(
                         meta["path"], build_backend, build_fptype, hr_flags)
-                ]
+                }.values())
                 if not missing:
                     continue
                 logger.info(

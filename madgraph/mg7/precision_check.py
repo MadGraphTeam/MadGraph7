@@ -283,11 +283,13 @@ def summarize(values, references, threshold):
     # section (no |M|^2 weight on top)
     usable = finite & (scale > 0)
     signed = (values[usable] - references[usable]) / references[usable]
+    # the mean |r| over the same events: one infinitely-off event (counted in
+    # non_finite / above_threshold, and in the max) does not hide the others
     return {
         "events": int(len(values)),
         "non_finite": int(np.sum(~finite)),
         "cross_section_bias": float(np.mean(signed)) if len(signed) else 0.,
-        "mean_relative_deviation": float(np.mean(rel)) if len(rel) else 0.,
+        "mean_relative_deviation": float(np.mean(np.abs(signed))) if len(signed) else 0.,
         "max_relative_deviation": float(np.max(rel)) if len(rel) else 0.,
         "above_threshold": int(np.sum(rel > threshold)),
         "threshold": float(threshold),

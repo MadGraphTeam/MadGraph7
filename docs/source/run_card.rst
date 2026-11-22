@@ -64,7 +64,7 @@ fixed parameters. Their entries are described below.
 ``precision_check`` (``0``)
     Fraction of the events evaluated again with the matrix elements in ``all64``, to check
     the precision of a run in any other precision. Off by default, because the run then
-    also builds an ``all64`` CPU library of each subprocess (``validation`` below
+    also builds an ``all64`` CPU library of each subprocess (``[run] validation``
     reweights the whole sample through MadtRex instead). Once the events are written, the
     two are compared at the momenta of events drawn at random from the output (at most
     1000 of them, hidden entry ``precision_check_max_events``). With

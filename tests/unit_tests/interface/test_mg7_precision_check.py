@@ -98,8 +98,17 @@ class TestSummarize(unittest.TestCase):
         self.assertEqual(summary['non_finite'], 2)
         self.assertEqual(summary['above_threshold'], 3)
         self.assertTrue(math.isinf(summary['max_relative_deviation']))
-        # the bias only averages finite events with a non-zero reference
+        # the bias and the mean |r| only average finite events with a
+        # non-zero reference
         self.assertEqual(summary['cross_section_bias'], 0.0)
+        self.assertEqual(summary['mean_relative_deviation'], 0.0)
+
+    def test_one_bad_event_keeps_the_mean(self):
+        summary = precision_check.summarize(
+            [1.001, 0.999, float('nan')], [1.0, 1.0, 1.0], 1e-2)
+        self.assertAlmostEqual(summary['mean_relative_deviation'], 1e-3)
+        self.assertTrue(math.isinf(summary['max_relative_deviation']))
+        self.assertEqual(summary['above_threshold'], 1)
 
     def test_bias_is_signed(self):
         summary = precision_check.summarize([1.001, 0.999], [1.0, 1.0], 1e-2)
