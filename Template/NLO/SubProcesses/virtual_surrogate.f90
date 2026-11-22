@@ -34,6 +34,10 @@ module virt_surrogate
   double precision :: vs_xtx(vs_maxfeat,vs_maxfeat,vs_maxchan)=0d0, &
        vs_xty(vs_maxfeat,vs_maxchan)=0d0, vs_yty(vs_maxchan)=0d0
   double precision :: vs_theta(vs_maxfeat,vs_maxchan)=0d0
+! Feature count of each channel's normal equations and coefficients. The
+! per-point vs_nfeat is restored with every native lane, and a draw that
+! never reached the virtual keeps the default 4, so it cannot size a fit.
+  integer :: vs_fit_nfeat(vs_maxchan)=0
   logical :: vs_fitted(vs_maxchan)=.false., vs_on(vs_maxchan)=.false.
   integer :: vs_npt(vs_maxchan)=0, vs_it_npt(vs_maxchan)=0
 ! The first fit uses its training residual. Later choices compare the two
@@ -182,6 +186,7 @@ contains
     vs_xty=0d0
     vs_yty=0d0
     vs_theta=0d0
+    vs_fit_nfeat=0
     vs_fitted=.false.
     vs_on=.false.
     vs_npt=0
@@ -197,7 +202,9 @@ contains
   double precision function vs_value(kchan)
 ! the fitted surrogate at the current point (matrix-element level)
     integer, intent(in) :: kchan
-    vs_value=dot_product(vs_theta(1:vs_nfeat,kchan),vs_feat(1:vs_nfeat))
+    integer :: nf
+    nf=vs_fit_nfeat(kchan)
+    vs_value=dot_product(vs_theta(1:nf,kchan),vs_feat(1:nf))
   end function vs_value
 
   subroutine vs_accumulate(kchan,virt,surr_grid,w)
@@ -208,6 +215,8 @@ contains
     integer :: i
     double precision :: afit
     if (kchan.lt.1 .or. kchan.gt.vs_maxchan) return
+    if (vs_fit_nfeat(kchan).eq.0) vs_fit_nfeat(kchan)=vs_nfeat
+    if (vs_nfeat.ne.vs_fit_nfeat(kchan)) error stop 'Virtual surrogate point has a different feature count than its channel fit'
     do i=1,vs_nfeat
        vs_xtx(1:vs_nfeat,i,kchan)=vs_xtx(1:vs_nfeat,i,kchan)+w*vs_feat(1:vs_nfeat)*vs_feat(i)
     enddo
@@ -235,8 +244,8 @@ contains
     integer :: i,j,k,nf
     double precision :: a(vs_maxfeat,vs_maxfeat),b(vs_maxfeat),ridge,s2fit,piv,fac
     if (kchan.lt.1 .or. kchan.gt.vs_maxchan) return
-    nf=vs_nfeat
-    if (vs_npt(kchan).ge.max(vs_minpts,3*nf)) then
+    nf=vs_fit_nfeat(kchan)
+    if (nf.gt.0 .and. vs_npt(kchan).ge.max(vs_minpts,3*nf)) then
        a(1:nf,1:nf)=vs_xtx(1:nf,1:nf,kchan)
        b(1:nf)=vs_xty(1:nf,kchan)
        ! small ridge for (nearly) degenerate features
@@ -298,10 +307,11 @@ contains
   subroutine vs_write_grids(lun,nchans)
 ! VSU records follow the grid/polynomial fallback in mint_grids.
     integer, intent(in) :: lun,nchans
-    integer :: kchan
+    integer :: kchan,nf
     do kchan=1,nchans
-       write(lun,*) 'VSU',merge(1,0,vs_on(kchan)),merge(1,0,vs_fitted(kchan)),vs_nfeat, &
-            vs_theta(1:vs_nfeat,kchan)
+       nf=max(4,vs_fit_nfeat(kchan))
+       write(lun,*) 'VSU',merge(1,0,vs_on(kchan)),merge(1,0,vs_fitted(kchan)),nf, &
+            vs_theta(1:nf,kchan)
     enddo
   end subroutine vs_write_grids
 
@@ -325,6 +335,7 @@ contains
        if (.not.all(ieee_is_finite(vs_theta(1:nfeat,kchan)))) &
             call grid_error('Nonfinite virtual surrogate in mint_grids.')
        vs_nfeat=nfeat
+       vs_fit_nfeat(kchan)=nfeat
        vs_on(kchan)=enabled.and.ion.eq.1
        vs_fitted(kchan)=ifit.eq.1
     enddo
