@@ -7,7 +7,8 @@ type real_cache_entry
    type(BornModelState) :: model
 end type
 integer,parameter :: real_cache_size=16
-type(real_cache_entry),save :: real_cache(real_cache_size)
+! A lane switch swaps the per-point cache storage (see mc_capture_provider_point).
+type(real_cache_entry),allocatable,save :: real_cache(:)
 integer,save :: real_cache_epoch=-1, real_cache_next=1
 
 type native_provider_request
@@ -25,7 +26,7 @@ type native_provider_point_state
    real(8),allocatable :: diagram_weights(:)
    type(BornResult) :: result
    type(BornLiveModel) :: model
-   type(real_cache_entry) :: cache(real_cache_size)
+   type(real_cache_entry),allocatable :: cache(:)
 end type
 
 real(8),allocatable,save,private :: wave_p(:,:,:),wave_g(:),wave_total(:),wave_components(:,:)

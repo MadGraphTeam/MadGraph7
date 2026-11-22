@@ -1,3 +1,18 @@
+subroutine mc_ensure_real_cache()
+  if(.not.allocated(real_cache)) allocate(real_cache(real_cache_size))
+end subroutine
+
+subroutine mc_swap_real_cache(point)
+  ! The point's cache becomes active and the active storage moves to the
+  ! point. A parked point keeps its cache; the active buffer it leaves is
+  ! only read after a new shared real point resets it (epoch check).
+  type(native_provider_point_state),intent(inout) :: point
+  type(real_cache_entry),allocatable :: active(:)
+  call move_alloc(real_cache,active)
+  call move_alloc(point%cache,real_cache)
+  call move_alloc(active,point%cache)
+end subroutine
+
 subroutine mc_capture_provider_point(point)
   type(native_provider_point_state),intent(inout) :: point
   point%context=active_context
@@ -10,7 +25,7 @@ subroutine mc_capture_provider_point(point)
   if(shared_real_active) point%shared_point=shared_real_point
   point%cache_epoch=real_cache_epoch
   point%cache_next=real_cache_next
-  point%cache=real_cache
+  call mc_swap_real_cache(point)
   point%result=native_result
   call mc_park_full_model(point%model)
   call mc_transfer_provider_outputs(point,.false.)
@@ -45,7 +60,7 @@ subroutine mc_activate_provider_point(point,model_is_active)
   if(shared_real_active) shared_real_point=point%shared_point
   real_cache_epoch=point%cache_epoch
   real_cache_next=point%cache_next
-  real_cache=point%cache
+  call mc_swap_real_cache(point)
   native_result=point%result
   call mc_transfer_provider_outputs(point,.true.)
 end subroutine
@@ -58,6 +73,7 @@ integer function mc_real_cache_lookup(p,evaluator,alias,need_diagrams,model) res
   integer :: j
   slot=0
   if(.not.shared_real_active) return
+  call mc_ensure_real_cache()
   if(real_cache_epoch/=shared_real_epoch) then
      real_cache%evaluator=0
      real_cache_next=1

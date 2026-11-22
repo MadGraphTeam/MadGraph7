@@ -10,7 +10,8 @@
      $     mc_activate_provider_point,mc_restore_provider_model,
      $     native_mapping,shared_real_active
       use mc_shower_state, only: native_shower_state,park_native_shower,
-     $     activate_native_shower
+     $     activate_native_shower,materialize_native_shower,
+     $     forget_parked_shower
       use fks_phase_space, only: fks_phase_space_point,
      $     capture_fks_phase_space,restore_fks_phase_space,
      $     initialize_fks_phase_space
@@ -70,7 +71,8 @@ c Live COMMONs with readers after the real return or during closing.
          double precision,allocatable :: coordinates(:,:)
       end type
       public :: park_native_point,activate_native_point,native_flow_cursor
-      public :: recycle_native_point
+      public :: recycle_native_point,settle_native_points,
+     $     release_native_points
       contains
 
       subroutine park_native_point(point)
@@ -79,7 +81,7 @@ c Live COMMONs with readers after the real return or during closing.
       implicit none
       include 'run.inc'
       include 'q_es.inc'
-      type(native_mc_point),intent(inout) :: point
+      type(native_mc_point),intent(inout),target :: point
       integer(8) result_bytes,native_provider_result_bytes
       external native_provider_result_bytes
       integer nFKSprocess,nndim,ifold_picked,nfold
@@ -180,6 +182,7 @@ c The first sector setup used to allocate the zero-index PDG scratch
 c only once per job. A fresh point also needs it before its first add_wgt
 c when the previous point has taken the active store (notably in FxFx).
       if(.not.point%parked)then
+         call materialize_native_shower()
          native_mapping=.false.
          shared_real_active=.false.
          call mc_set_history(0)
@@ -230,6 +233,16 @@ c ordinary sector with native_mapping temporarily disabled.
       granny=point%granny
       write_granny=point%write_granny
       point%parked=.false.
+      end subroutine
+
+      subroutine settle_native_points()
+c Leave the last parked point's state active, as the copying protocol did.
+      call materialize_native_shower()
+      end subroutine
+
+      subroutine release_native_points()
+c The parked states are about to be freed.
+      call forget_parked_shower()
       end subroutine
 
       subroutine recycle_native_point(point)

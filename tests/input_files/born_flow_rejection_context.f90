@@ -180,6 +180,10 @@ contains
   subroutine activate_native_shower(state)
     type(native_shower_state) state
   end subroutine
+  subroutine materialize_native_shower()
+  end subroutine
+  subroutine forget_parked_shower()
+  end subroutine
 end module
 
 integer(8) function native_provider_result_bytes()

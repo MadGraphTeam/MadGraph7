@@ -83,7 +83,8 @@ C     under their original live point before admitting subsequent draws.
 
       subroutine mc_commit_local_real(req)
       use mc_native_context, only: native_provider_request,
-     $ shared_real_active,real_cache,real_cache_size,real_cache_next
+     $ shared_real_active,real_cache,real_cache_size,real_cache_next,
+     $ mc_ensure_real_cache
       implicit none
       include 'orders.inc'
       type(native_provider_request) req
@@ -93,6 +94,7 @@ C     under their original live point before admitting subsequent draws.
       wgt_me_real=req%total
       amp_split=req%components
       if(.not.shared_real_active)return
+      call mc_ensure_real_cache()
       j=real_cache_next
       real_cache(j)%evaluator=req%evaluator
       real_cache(j)%sector=req%alias

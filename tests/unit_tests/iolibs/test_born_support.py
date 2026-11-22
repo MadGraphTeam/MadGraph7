@@ -26,6 +26,7 @@ def write_real_cache_fixture(root, legs, slots):
     types = (templates/'mc_native_provider_types.inc').read_text()
     methods = (templates/'mc_native_provider_methods.inc').read_text()
     lookup = re.search(r'(?ms)^integer function mc_real_cache_lookup\b.*?^end function', methods).group()
+    lookup = re.search(r'(?ms)^subroutine mc_ensure_real_cache\b.*?^end subroutine', methods).group()+'\n'+lookup
     (root/'mc_native_context.f90').write_text(f"""module mc_native_context
 use mc_born_types
 implicit none

@@ -364,7 +364,7 @@ def write_dispatchers(directory,outer,by_id,keys,sources):
                            for leg in process[1]) if by_id[c]['sectors'] else False
                    for c,s in keys]
     real = ['subroutine smatrix_real_native(p,wgt)',
-            'use mc_native_context, only: shared_real_active,real_cache_size,cache=>real_cache,next_entry=>real_cache_next,mc_real_cache_lookup',
+            'use mc_native_context, only: shared_real_active,real_cache_size,cache=>real_cache,next_entry=>real_cache_next,mc_real_cache_lookup,mc_ensure_real_cache',
             'use mc_born_types, only: BornModelState,born_model_state_equal',
             'use mc_decision_ledger, only: current_draw,current_fold',
             'use mc_batch_trace, only: batch_trace_unit,trace_request,trace_bind,trace_result,trace_consume',
@@ -448,7 +448,7 @@ def write_dispatchers(directory,outer,by_id,keys,sources):
              'if(trace_real)call trace_result(1,request,wgt,amp_split)',
              'nfksprocess=requested_alias','wgt_me_real=wgt',
              'if(trace_real)call trace_consume(current_draw,request,wgt_me_real,amp_split)',
-             'if(shared_real_active)then', 'j=next_entry',
+             'if(shared_real_active)then', 'call mc_ensure_real_cache()', 'j=next_entry',
              'cache(j)%evaluator=evaluator','cache(j)%sector=requested_alias','cache(j)%momenta=q',
              'cache(j)%model%real_values=state%real_values',
              'cache(j)%model%configuration_epoch=state%configuration_epoch',

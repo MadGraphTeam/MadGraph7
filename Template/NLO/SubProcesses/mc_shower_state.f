@@ -213,6 +213,17 @@ c stay in their native modules.
          integer,allocatable :: event_colour_H(:,:,:,:)
       end type
       public :: park_native_shower,activate_native_shower,shower_heap_bound
+      public :: materialize_native_shower,forget_parked_shower
+c The per-point scale arrays are only written while a point evaluates,
+c so a lane switch swaps their storage instead of copying it. After a
+c park the active arrays hold a stale buffer until the next activation;
+c a fresh point first copies the last parked point's values, which is
+c exactly what the copying protocol left active.
+      type(native_shower_state),pointer,save :: last_parked=>null()
+      logical,save :: scales_stale=.false.
+      interface swap_storage
+         module procedure swap_d2,swap_d4,swap_i4
+      end interface
       contains
       integer(8) function shower_heap_bound() result(bytes)
       use process_module, only: nr=>max_flows_n
@@ -239,10 +250,80 @@ c Global scale array extents encode the actual delta/folding choices.
      $     (storage_size(cluster,kind=8)/8+len(clusterstrings(0)))
       end function
 
+      subroutine swap_d2(a,b)
+      double precision,allocatable :: a(:,:),b(:,:),c(:,:)
+      call move_alloc(a,c)
+      call move_alloc(b,a)
+      call move_alloc(c,b)
+      end subroutine
+
+      subroutine swap_d4(a,b)
+      double precision,allocatable :: a(:,:,:,:),b(:,:,:,:),c(:,:,:,:)
+      call move_alloc(a,c)
+      call move_alloc(b,a)
+      call move_alloc(c,b)
+      end subroutine
+
+      subroutine swap_i4(a,b)
+      integer,allocatable :: a(:,:,:,:),b(:,:,:,:),c(:,:,:,:)
+      call move_alloc(a,c)
+      call move_alloc(b,a)
+      call move_alloc(c,b)
+      end subroutine
+
+      subroutine swap_scales(state)
+      type(native_shower_state),intent(inout) :: state
+      call swap_storage(shower_scale_nbody,state%shower_scale_nbody)
+      call swap_storage(shower_scale_nbody_min,
+     $     state%shower_scale_nbody_min)
+      call swap_storage(shower_scale_nbody_max,
+     $     state%shower_scale_nbody_max)
+      call swap_storage(shower_scale_n1body,state%shower_scale_n1body)
+      call swap_storage(showerscaleS,state%showerscaleS)
+      call swap_storage(showerscaleH,state%showerscaleH)
+      call swap_storage(emsca_S,state%emsca_S)
+      call swap_storage(emsca_H,state%emsca_H)
+      call swap_storage(emsca_S_hard,state%emsca_S_hard)
+      call swap_storage(event_colour_H,state%event_colour_H)
+      end subroutine
+
+      subroutine materialize_native_shower()
+c Give the active arrays the last parked point's values (fresh points and
+c readers outside the cohort).
+      if (.not.scales_stale) return
+      scales_stale=.false.
+      if (.not.associated(last_parked)) return
+      if (.not.allocated(last_parked%emsca_S)) then
+c The parked point had no scale arrays: neither has the active state.
+         if (allocated(emsca_S)) deallocate(shower_scale_nbody,
+     $        shower_scale_nbody_min,shower_scale_nbody_max,
+     $        shower_scale_n1body,showerscaleS,showerscaleH,emsca_S,
+     $        emsca_H,emsca_S_hard,event_colour_H)
+         return
+      endif
+      shower_scale_nbody=last_parked%shower_scale_nbody
+      shower_scale_nbody_min=last_parked%shower_scale_nbody_min
+      shower_scale_nbody_max=last_parked%shower_scale_nbody_max
+      shower_scale_n1body=last_parked%shower_scale_n1body
+      showerscaleS=last_parked%showerscaleS
+      showerscaleH=last_parked%showerscaleH
+      emsca_S=last_parked%emsca_S
+      emsca_H=last_parked%emsca_H
+      emsca_S_hard=last_parked%emsca_S_hard
+      event_colour_H=last_parked%event_colour_H
+      end subroutine
+
+      subroutine forget_parked_shower()
+c Before the parked states are released.
+      call materialize_native_shower()
+      nullify(last_parked)
+      end subroutine
+
       subroutine park_native_shower(state)
 c Assign into the lane's buffers: same-shaped arrays keep their storage
-c across the lane's waves instead of being freed and reallocated.
-      type(native_shower_state),intent(inout) :: state
+c across the lane's waves instead of being freed and reallocated. The
+c per-point scale arrays are swapped (see last_parked).
+      type(native_shower_state),intent(inout),target :: state
       integer i,n
       call park_mc_kernel(state%kernel)
       state%next_n=next_n
@@ -293,24 +374,10 @@ c across the lane's waves instead of being freed and reallocated.
      $        state%valid_dipole_n1,state%qed_dipole_n,
      $        state%qed_dipole_n1)
       endif
-      if (allocated(emsca_S)) then
-         state%shower_scale_nbody=shower_scale_nbody
-         state%shower_scale_nbody_min=shower_scale_nbody_min
-         state%shower_scale_nbody_max=shower_scale_nbody_max
-         state%shower_scale_n1body=shower_scale_n1body
-         state%showerscaleS=showerscaleS
-         state%showerscaleH=showerscaleH
-         state%emsca_S=emsca_S
-         state%emsca_H=emsca_H
-         state%emsca_S_hard=emsca_S_hard
-         state%event_colour_H=event_colour_H
-      elseif (allocated(state%emsca_S)) then
-         deallocate(state%shower_scale_nbody,
-     $        state%shower_scale_nbody_min,state%shower_scale_nbody_max,
-     $        state%shower_scale_n1body,state%showerscaleS,
-     $        state%showerscaleH,state%emsca_S,state%emsca_H,
-     $        state%emsca_S_hard,state%event_colour_H)
-      endif
+      if (scales_stale) error stop 'Parked a point with stale scales'
+      call swap_scales(state)
+      last_parked=>state
+      scales_stale=.true.
       if (ickkw_mod.ne.3.and.allocated(state%matching))
      $     deallocate(state%matching)
       if (ickkw_mod.eq.3) then
@@ -353,7 +420,7 @@ c across the lane's waves instead of being freed and reallocated.
       end subroutine
 
       subroutine activate_native_shower(state)
-      type(native_shower_state),intent(in) :: state
+      type(native_shower_state),intent(inout) :: state
       integer i
       if (.not.state%parked) error stop 'inactive MC shower point'
       call activate_mc_kernel(state%kernel)
@@ -399,18 +466,10 @@ c across the lane's waves instead of being freed and reallocated.
          qed_dipole_n=state%qed_dipole_n
          qed_dipole_n1=state%qed_dipole_n1
       endif
-      if (allocated(state%emsca_S)) then
-         shower_scale_nbody=state%shower_scale_nbody
-         shower_scale_nbody_min=state%shower_scale_nbody_min
-         shower_scale_nbody_max=state%shower_scale_nbody_max
-         shower_scale_n1body=state%shower_scale_n1body
-         showerscaleS=state%showerscaleS
-         showerscaleH=state%showerscaleH
-         emsca_S=state%emsca_S
-         emsca_H=state%emsca_H
-         emsca_S_hard=state%emsca_S_hard
-         event_colour_H=state%event_colour_H
-      endif
+c The parked arrays become active; the stale buffer moves to the state,
+c which its next park overwrites by the same swap.
+      call swap_scales(state)
+      scales_stale=.false.
       if (allocated(state%matching)) then
          p_last_izero=state%matching%p_last_izero
          p_last_mohdr=state%matching%p_last_mohdr

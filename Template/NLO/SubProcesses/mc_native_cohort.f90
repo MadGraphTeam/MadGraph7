@@ -1,7 +1,7 @@
 module mc_native_cohort
   use mint_module, only: mint_draw, activate_mint_draw, park_mint_draw, finish_mint_fold, imode
   use mc_native_points, only: native_mc_point, activate_native_point, park_native_point, mc_fold_complete, mc_wait_real, &
-       recycle_native_point
+       recycle_native_point, settle_native_points, release_native_points
   use mc_native_context, only: native_provider_request, mc_dispatch_provider_wave
   use iso_fortran_env, only: int64
   use mc_context_memory, only: enter_context,release_contexts
@@ -14,7 +14,8 @@ module mc_native_cohort
      logical :: started=.false.
      integer, allocatable :: timing_stack(:)
   end type
-  type(lane_state), allocatable, save :: lanes(:)
+  ! Parked lane states are referenced until release (shower scale swap).
+  type(lane_state), allocatable, save, target :: lanes(:)
   type(native_provider_request), allocatable, save :: waiting(:)
   integer,allocatable,save :: owners(:)
   interface
@@ -44,7 +45,7 @@ contains
 
   subroutine advance_to_request(draw,lane)
     type(mint_draw),intent(inout) :: draw
-    type(lane_state),intent(inout) :: lane
+    type(lane_state),intent(inout),target :: lane
     call activate_mint_draw(draw)
     call activate_native_point(lane%physics)
     if (lane%started) then
@@ -128,6 +129,7 @@ contains
        call advance_to_request(draws(i),lanes(i))
        if (.not.draws(i)%complete) error stop 'Native scheduler lost a closing call'
     enddo
+    call settle_native_points()
     if (imode/=2) call release_native_cohort()
   end subroutine
 
@@ -150,6 +152,7 @@ contains
   subroutine release_native_cohort()
     integer :: i
     if (allocated(lanes)) then
+       call release_native_points()
        do i=1,size(lanes)
           call recycle_native_point(lanes(i)%physics)
        enddo
