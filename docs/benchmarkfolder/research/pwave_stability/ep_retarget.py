@@ -13,8 +13,9 @@ precision entry in place of its binary128 one.
   the SubProcesses directories (TIRust's own kind KI_QTIR is left alone);
 - the two binary128 TIRust routines of TIRUST_interface.f become wrappers
   of the double-precision ones (inputs rounded to double, arrays widened).
-  With ONIA_EP_LOWWORDS set, the raised-power wrapper would use the
-  double-double entry once TIRust provides it (not yet: hi only).
+  If lowwords.py was applied first (TIRust with low words), the raised-
+  power wrapper takes ML5_0_TIRUST_TENSOR_POWERS_XP (RAW + RAW_LO, summed
+  in kind 10) when ONIA_EP_LOWWORDS is set at run time, else RAW only.
 
 Prototype only: the generator support comes in Phase 2."""
 import glob
@@ -84,8 +85,8 @@ C     ep_retarget.py: the double-precision TIRust entry, widened
 ''')
     src = replace(src, 'ML5_0_MP_TIRUST_TENSOR_POWERS', '''      SUBROUTINE ML5_0_MP_TIRUST_TENSOR_POWERS(CTMODE,NLOOPLINE,RANK
      $ ,POWERS,PL,M2L,TIRCOEFS,STABLE)
-C     ep_retarget.py: the double-precision TIRust entry, widened (hi only
-C     until TIRust's double-double entry exists)
+C     ep_retarget.py: the double-precision TIRust entry, widened (RAW, or
+C     RAW + RAW_LO with ONIA_EP_LOWWORDS after lowwords.py)
       IMPLICIT NONE
       INCLUDE 'loop_max_coefs.inc'
       INTEGER CTMODE,NLOOPLINE,RANK
@@ -96,8 +97,15 @@ C     until TIRust's double-double entry exists)
       LOGICAL STABLE
       REAL*8 DPL(0:3,NLOOPLINE)
       COMPLEX*16 DC(0:LOOPMAXCOEFS-1,3)
+      CHARACTER*8 LWENV
       DPL=REAL(PL,KIND=8)
-      CALL ML5_0_TIRUST_TENSOR_POWERS(CTMODE,NLOOPLINE,RANK,POWERS
+''' + ('''      CALL GET_ENVIRONMENT_VARIABLE('ONIA_EP_LOWWORDS',LWENV)
+      IF(LEN_TRIM(LWENV).GT.0) THEN
+        CALL ML5_0_TIRUST_TENSOR_POWERS_XP(CTMODE,NLOOPLINE,RANK,POWERS
+     $   ,DPL,M2L,TIRCOEFS,STABLE)
+        RETURN
+      ENDIF
+''' if 'ML5_0_TIRUST_TENSOR_POWERS_XP' in src else '') + '''      CALL ML5_0_TIRUST_TENSOR_POWERS(CTMODE,NLOOPLINE,RANK,POWERS
      $ ,DPL,M2L,DC,STABLE)
       TIRCOEFS=DC
       END

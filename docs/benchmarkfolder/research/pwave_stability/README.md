@@ -38,6 +38,7 @@ The scripts:
 | `tail.py` | The points of a stability profile above a given estimate, in DP with several builds and in QP. |
 | `hybrid.py`, `hybrid_run.py` | QP MadLoop with TIRust's DP integrals (`ONIA_DBG_DPTIR`). |
 | `ep_retarget.py` | Phase 1 prototype of the 80-bit mode: retargets the QP path of an output copy to kind 10, with TIRust's DP entry. |
+| `lowwords.py`, `lowwords_run.py` | The low-word tests: TIRust's raised-power `RAW + RAW_LO` summed in extended precision, in QP MadLoop (hybrid) and in the 80-bit copy; the route split. |
 | `qsubst.py`, `qsubst_run.py` | DP MadLoop with the doubled-line integrals at full QP precision, contracted in QP (`ONIA_DBG_QDUMP`, `ONIA_DBG_QSUBST`, `ONIA_DBG_QMODE`). |
 
 The results are in `data/`.
@@ -194,6 +195,34 @@ The user asked for an opt-in switch, off by default, that runs the P-wave loop c
 (`data/ep80_*_hi.json`.) The 80-bit chain costs 5 to 7 times DP and is 8 to 9 times faster than QP. With DP integrals its error is that of the hybrid test, as expected: the integrals' rounding still limits. The gate (plan: well below 10⁻⁶, at an acceptable cost) waits for the TIRust session's double-double output of the raised-power integrals (`RAW_LO`). The test then:
 - 80-bit MadLoop with `RAW + RAW_LO`, at MadLoop's improved point;
 - if that is not enough, the input low words (`S_LO`, `P_LO`) as well.
+
+### With TIRust's low words (RAW_LO)
+
+The TIRust session built `EmbedderOptions::low_words`: TIRust a8937ea (local branch `hs/pwave-low-words`, #56's head 5025e12 plus one commit), with the bridge patch `madloop-tirust-gate-relation-tiers-low-words.patch`. Its new raised-power entry `tirust_tensor_evaluate_powers_dd` returns:
+- `RAW`, bit for bit the binary64 result;
+- `RAW_LO`, the low words of the precision tier that served the call;
+- `ROUTE`: 0 for binary64 (with `RAW_LO` = 0), 2 for double-double, 3 and 4 for 256 and 512 bits.
+
+Scratch build `$SP/pw59` (`pwave_fd/build.sh` with `FOLLOWUP=0001-followup-pwave-collinear.patch`, `ONELOOP_REV=cdbc912`; the vendor-only part of the patch). `lowwords.py` adds an entry that sums `RAW + RAW_LO` in quadruple precision (kind 10 after `ep_retarget.py`). The data are in `data/lowwords_*_a8937ea.json`.
+
+| 24 points, 1 TeV: largest / median | u ū → χ_c0 g | g g → χ_c0 g | time per point (u ū / g g) |
+|---|---|---|---|
+| DP production | 2.7·10⁻⁵ / 3.7·10⁻⁶ | 4.2·10⁻⁶ / 1.3·10⁻⁶ | 0.071 / 0.90 s |
+| 80-bit, `RAW` | 1.3·10⁻⁵ / 3.8·10⁻⁶ | 1.3·10⁻⁶ / 4.9·10⁻⁷ | 0.52 / 5.2 s |
+| 80-bit, `RAW + RAW_LO` | 5.5·10⁻⁶ / 4.3·10⁻⁷ | 4.8·10⁻⁷ / 3.7·10⁻⁸ | 0.53 / 5.1 s |
+| QP MadLoop, `RAW + RAW_LO` | 1.1·10⁻⁵ / 1.3·10⁻⁶ | 7.0·10⁻⁷ / 5.5·10⁻⁸ | 3.9 / 39 s |
+| … only the tier-served calls (route ≥ 2) | 1.1·10⁻⁵ / 1.3·10⁻⁶ | 7.0·10⁻⁷ / 5.5·10⁻⁸ | |
+| … only the binary64-served calls (route 0) | 1.6·10⁻⁹ / 1.2·10⁻¹⁰ | 2.4·10⁻⁹ / 4.0·10⁻¹¹ | |
+
+- **Points at or above 10⁻⁶:**
+  - u ū: 22/24 in DP, 17/24 with 80-bit `RAW`, 9/24 with 80-bit `RAW + RAW_LO`;
+  - g g: 14/24 in DP, 1/24 with 80-bit `RAW`, none with 80-bit `RAW + RAW_LO`.
+- **Cost:** the low words add nothing measurable (0.525 vs 0.517 s/pt).
+- **Routes:** at point 0, 20 of the 45 raised-power calls of u ū (92 of 183 for g g) are served by binary64 (route 0). The rest take the double-double tier (route 2).
+- **The split** (`ONIA_DBG_LW=3` and `4`) puts all of what is left in the tier-served calls. The binary64-served calls contribute at most 2.4·10⁻⁹, so sending them to the tiers would not help. TIRust's `RAW + RAW_LO` is good to 10⁻²² of 512 bits at the same binary64 inputs, so the error left is that of the **inputs' rounding**: the loop momenta rounded to binary64, and the shifts and invariants formed from them in binary64 arithmetic. Binary128 cannot measure it directly: it refuses the relation lanes of binary64-rounded inputs (`ONIA_DBG_LW=2`, code 420).
+- **Consequence:**
+  - g g → χ_c0 g passes the gate (< 10⁻⁶ everywhere) at 5.7× DP;
+  - u ū → χ_c0 g needs the input low words as well: shifts and invariants in extended precision from MadLoop, consumed by TIRust's double-double tier. With 80-bit inputs, 11 more bits should take its 10⁻⁵ to about 10⁻⁸.
 
 ## Reproducer for TIRust
 
