@@ -533,6 +533,10 @@ def test_values_do_not_depend_on_the_thread_count(ggtt):  # noqa: F811
         assert values == results[None, arithmetic], (threads, arithmetic)
 
 
+# The thread-count children count every thread of their process: numpy's
+# BLAS pool (one thread per core, up to 64, started at import) is kept out.
+_ONE_BLAS_THREAD = {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"}
+
 THREADS_SCRIPT = r"""
 import json, sys
 from pyamplicol import Runtime
@@ -569,7 +573,7 @@ def _thread_run(tmp_path, env_threads: str, *counts: str):
         capture_output=True,
         text=True,
         timeout=900,
-        env={**os.environ, "RAYON_NUM_THREADS": env_threads},
+        env={**os.environ, "RAYON_NUM_THREADS": env_threads, **_ONE_BLAS_THREAD},
         check=False,
     )
     assert run.returncode == 0, run.stderr[-4000:]
@@ -728,7 +732,12 @@ def _affinity_run(tmp_path, ggtt, mode, count, limit, cores=None):  # noqa: F811
         capture_output=True,
         text=True,
         timeout=900,
-        env={**os.environ, "RAYON_NUM_THREADS": "16", "PYTHONPATH": path},
+        env={
+            **os.environ,
+            "RAYON_NUM_THREADS": "16",
+            "PYTHONPATH": path,
+            **_ONE_BLAS_THREAD,
+        },
         cwd=root,
         check=False,
     )
