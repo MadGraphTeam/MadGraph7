@@ -198,6 +198,13 @@ class TestLoopOniaGeneration(unittest.TestCase):
                          [(1, 1, 0), (1, 0, 1)])
         self.assertEqual(info['jz'], [(0, -1), (0, 0), (0, 1)])
         self.assertEqual(loop_onia.npwave(self.matrix_element('g g > chic2(1|3P21) [virt=QCD]')), 1)
+        # the rank the P-wave states add, for LOOPMAXCOEFS and the polynomial
+        # routines alike (R+2 here: tripled lines and two doubled lines)
+        self.assertEqual(loop_onia.loop_rank_increase(me), 2)
+        self.assertEqual(loop_onia.loop_rank_increase(
+            self.matrix_element('g g > chic2(1|3P21) [virt=QCD]')), 1)
+        self.assertEqual(loop_onia.loop_rank_increase(
+            self.matrix_element('g g > etac(1|1S01) [virt=QCD]')), 0)
 
     def soft_current(self, process):
         import madgraph.loop.loop_exporters as loop_exporters

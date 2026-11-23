@@ -42,6 +42,28 @@ The patches add the test modes to the double- and quadruple-precision routines a
 
 At the same q0 with on-shell constituents, the full virtual (`pw_modes.py`) agrees between double and quadruple precision to 4e-13. The rescue with a forced `MLStabThres` returns code 323.
 
+## Two P-wave states: the mixed derivative
+
+`fd2_patch.py` and `pw2_fd_driver.f` do the same check for two P-wave states (`e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]`, double precision only):
+- **Relative momenta.** Each state gets its own relative momentum (`ML5_0_PW2_SET_RELMOM`), base values q0₁ = (0.3, 0.2, 0.4) and q0₂ = (−0.25, 0.35, 0.15) GeV.
+- **Mode 1.** It keeps the frozen mixed weights W3 of the four pairs of directions perpendicular to q0₁ and q0₂, and sets W0 = W1 = W2 = 0. MadLoop then returns the ε₁ε₂ component.
+- **Mode 2.** It uses each frozen W3 as the value weight. The mixed central difference [f(+,+) − f(+,−) − f(−,+) + f(−,−)]/4h², Richardson with h = 4e-3 and 2e-3 GeV, is summed over the four pairs.
+- **Kinematics.** √s = 10.58 GeV, the bound states of mass 2 sqrt(m² + q_i²), the direction of the first one fixed.
+
+At q0 ≠ 0, TIRust (59aee45) refuses 23 single-doubled pentagons (N = 5, rank 4) per evaluation with status 1, so the full comparison has missing pieces. The driver therefore runs with the environment variable `ONIA_NRANGE='nmin nmax'` (a patch of the output's `TIRUST_interface.f`). It drops the loop groups with fewer or more lines from both modes alike, and the comparison stays exact for the groups that are left.
+
+| Loop groups | Before the rank fix (finite, 1/ε) | After |
+|---|---|---|
+| bubbles | 2e-9, 2e-8 | — |
+| triangles | 1e-7, 2e-9 | — |
+| boxes | 2.5e-3, 0.24 | 1.2e-8, 2.4e-7 |
+| N = 2–4 | 0.64, 0.75 | 8e-6, 6e-7 |
+| N = 2–4, the states in the other order | 0.50, 6.7 | 2.5e-6, 4.5e-6 |
+
+**What the check found.** The polynomial routines of two-P-wave outputs (`NCOEF_R`, `COEFTORANK_MAP`) were written for rank R+1, while `LOOPMAXCOEFS` was sized for R+2. In a rank-3 loop group, `NCOEF_R(RANK+2)` then read past the array. The tripled and two-doubled terms of every box were dropped without a message, and the virtual depended on the order of the two states. The exporter now writes both at R + npwave (`loop_onia.loop_rank_increase`).
+
+**Precision.** The N = 2–4 totals are about 700 times smaller than the box and counterterm parts, so the 1e-6 level there is the cancellation of the finite-difference error of the parts (1e-8).
+
 ## Threshold values against the literature (TIRust 48958d1)
 
 With TIRust 48958d1 (part of PR #56, built by `build.sh` with `REV=48958d1` and `FOLLOWUP=0001-followup-pwave-collinear.patch`), every integral of the 2 → 1 processes is served at zero relative momentum, the Coulomb box with a doubled gluon included. `pw_check.py` gives these values at μ = M = 2 m_c = 3.1 GeV, n_l = 3, in units of Born·α_s/2π. Every point is stable in double precision (code 213):

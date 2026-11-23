@@ -3196,12 +3196,11 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         to the optimized output and only relevant to it (the more general entries
         are set in the mother class LoopProcessExporterFortranSA."""
         
-        max_loop_rank=matrix_element.get_max_loop_rank()
-        if loop_onia.has_pwave(matrix_element):
-            # P-wave bound states: the derivative of a loop propagator gives
-            # the integral of rank R+1 with that propagator doubled, and with
-            # two P-wave states the mixed derivative ranks up to R+2
-            max_loop_rank += loop_onia.npwave(matrix_element)
+        # P-wave bound states: the derivative of a loop propagator gives the
+        # integral of rank R+1 with that propagator doubled, and with two
+        # P-wave states the mixed derivative ranks up to R+2
+        max_loop_rank = matrix_element.get_max_loop_rank() + \
+                        loop_onia.loop_rank_increase(matrix_element)
         matrix_element.rep_dict['maxrank']=max_loop_rank
         matrix_element.rep_dict['loop_max_coefs']=\
                         q_polynomial.get_number_of_coefs_for_rank(max_loop_rank)
@@ -3455,10 +3454,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         subroutines.append(dp_routine)
         subroutines.append(mp_routine)        
 
-        # Initialize the polynomial routine writer (rank R+1 for a P-wave
-        # bound state, whose doubled propagators have one more power of l)
+        # Initialize the polynomial routine writer at the rank of
+        # LOOPMAXCOEFS (rep_dict['maxrank']): R+1 for a P-wave bound state,
+        # whose doubled propagators have one more power of l, and R+2 with
+        # two P-wave states (tripled lines and two doubled lines, l^mu l^nu)
         poly_rank = matrix_element.get_max_loop_rank() + \
-                    (1 if loop_onia.has_pwave(matrix_element) else 0)
+                    loop_onia.loop_rank_increase(matrix_element)
         poly_writer=q_polynomial.FortranPolynomialRoutines(
             poly_rank,
             updater_max_rank = matrix_element.get_max_loop_vertex_rank(), 

@@ -47,9 +47,14 @@ HELAS library is in dual numbers.
 Two P-wave bound states (for example `e+ e- > chic0(1|3P01) hc(1|1P11)`) are
 generated, in double precision only (the quadruple-precision path stops with
 a message). Their predicted poles are complete, the dipole-dipole term
-included. Their virtual is reported unstable until TIRust serves two dotted
-propagators: no TIRust revision does yet. Such outputs are built with the
-medium code model on x86-64, since their loop arrays can exceed 2 GB.
+included. Their virtual needs TIRust integrals with two dotted propagators:
+- **With the pinned TIRust (1c130a81).** The virtual is reported unstable.
+- **With the TIRust candidate.** It serves them (59aee45 and later, on branch
+  hs/pwave-two-dotted, not yet in MadGraph); see Validation below.
+
+Such outputs are built with the medium code model on x86-64, since their loop
+arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the
+polynomial routines are written for that rank (`loop_onia.loop_rank_increase`).
 
 Refused with an explanatory error:
 - more than two P-wave bound states, and states with L >= 2;
@@ -306,8 +311,20 @@ of `ANS` (CT(1) finite, CT(2) the 1/eps coefficient), for the NLO layer. For
 `e+ e- > chic0 hc` the predicted 1/eps coefficient per Born reproduces the
 independent evaluation of the research folder: 0.71157569957729 at
 sqrt(s) = 10.6 GeV, 0.72155466286996 at 7 GeV and 0.67519653345551 at 30 GeV,
-to 6e-15. These numbers are checks of the prediction; MadLoop's computed
-poles need TIRust's two dotted propagators.
+to 6e-15.
+
+With the TIRust candidate (59aee45 and the bridge patch v3), every integral
+of `e+ e- > chic0 hc` is served in both passes, and the computed poles match
+the prediction:
+- the 1/eps coefficient to 3e-12 at 7 and 10.58 GeV, 1.5e-11 at 20 GeV and
+  2e-10 at 30 GeV;
+- no 1/eps^2.
+
+Two further checks:
+- **State order.** The other order of the two states gives the same virtual.
+- **Finite part.** At a relative momentum q != 0, the mixed dual derivative
+  agrees with finite differences
+  (`docs/benchmarkfolder/research/pwave_fd/README.md`).
 
 ## Validation
 

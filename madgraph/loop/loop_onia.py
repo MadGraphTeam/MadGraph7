@@ -205,6 +205,15 @@ def has_pwave(matrix_element):
     return False
 
 
+def loop_rank_increase(matrix_element):
+    """The ranks the P-wave bound states add to the loop numerators: each
+    derivative in a relative momentum can double a propagator and bring one
+    more power of the loop momentum, so R+1 for one P-wave state and R+2 for
+    two (tripled lines, two doubled lines). LOOPMAXCOEFS and the polynomial
+    routines (NCOEF_R, COEFTORANK_MAP) must both use this rank."""
+    return npwave(matrix_element) if has_pwave(matrix_element) else 0
+
+
 def complex_fraction_product(a, b):
     """(re, im) of the product of two complex numbers given as (re, im)."""
     return (a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0])

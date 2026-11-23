@@ -20,7 +20,8 @@ fi
 mkdir -p src/madloop-pole-kernels
 cp -r bridge/pole-kernels/. src/madloop-pole-kernels/
 (cd src && patch -p1 --batch --forward --fuzz=0 -i $PW/bridge/patches/0001-direct-poles-only.patch)
-(cd src && patch -p1 --batch --forward --fuzz=0 -i ${FOLLOWUP:-/shared/external/iregi/pwave-patches/0001-followup-soft-line-poles.patch})
+# FOLLOWUP=none when the bridge's poles-only patch already carries the follow-up (59aee45 and later)
+if [ "${FOLLOWUP:-}" != none ]; then (cd src && patch -p1 --batch --forward --fuzz=0 -i ${FOLLOWUP:-/shared/external/iregi/pwave-patches/0001-followup-soft-line-poles.patch}); fi
 mkdir -p bridge/.cargo
 cat > bridge/.cargo/config.toml <<CFG
 [patch."https://github.com/huashengshao/TIRust"]
