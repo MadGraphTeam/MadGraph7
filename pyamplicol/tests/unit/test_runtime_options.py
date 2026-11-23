@@ -211,6 +211,8 @@ def test_both_readers_know_the_same_keys():
     [
         EVERY_KEY,
         "",
+        "[evaluation]",
+        "[evaluation]\n",
         "[evaluation]\nprecision = 30",
         "[evaluation]\narithmetic = 'arbitrary'\nprecision = 40\npoles = 'uv'",
         "[evaluation]\nreduction_target = 1\nkinematics_improvement = 'off'",
@@ -339,9 +341,9 @@ def test_the_sdk_applies_every_key_of_a_toml_and_reads_it_back(ggtt):  # noqa: F
         assert _state(sdk, handle) == state
         # A setter after the TOML overrides its key; the others stay.
         assert sdk.rusticol_virtual_set_reduction(handle, b"auto") == 0
-        assert sdk.rusticol_virtual_set_threads(handle, 3) == 0
+        assert sdk.rusticol_virtual_set_threads(handle, 1) == 0
         after = _state(sdk, handle)
-        assert after == {**state, "reduction": "auto", "threads": 3}
+        assert after == {**state, "reduction": "auto", "threads": 1}
         # A TOML key absent keeps the setting.
         assert (
             sdk.rusticol_virtual_set_options(handle, b"[evaluation]\nprecision = 30\n")
@@ -408,7 +410,9 @@ def test_the_sdk_sets_every_key_on_its_own(ggtt):  # noqa: F811
                 (1,),
                 {"kinematics_improvement_binary64": True},
             ),
-            (sdk.rusticol_virtual_set_threads, (5,), {"threads": 5}),
+            # A count every host has: above the usable cores the read-back is
+            # the reduced count (``threads_requested`` holds the request).
+            (sdk.rusticol_virtual_set_threads, (2,), {"threads": 2}),
         ]
         expected = _state(sdk, handle)
         for setter, arguments, changed in calls:
@@ -473,7 +477,7 @@ def test_python_takes_every_key_as_a_keyword_and_reads_it_back(ggtt):  # noqa: F
         precision=40,
         kinematics_improvement="rescaling",
         kinematics_improvement_binary64=True,
-        threads=3,
+        threads=2,
     )
     assert runtime.inspect()["runtime_options"] == {
         "arithmetic": "arbitrary",
@@ -484,7 +488,7 @@ def test_python_takes_every_key_as_a_keyword_and_reads_it_back(ggtt):  # noqa: F
         "lane_rescue": False,
         "kinematics_improvement": "rescaling",
         "kinematics_improvement_binary64": True,
-        "threads": 3,
+        "threads": 2,
         "threads_requested": None,
         "poles": "all",
         "on_failure": "best-effort",
@@ -529,6 +533,10 @@ def test_values_do_not_depend_on_the_thread_count(ggtt):  # noqa: F811
         assert values == results[None, arithmetic], (threads, arithmetic)
 
 
+# The thread-count children count every thread of their process: numpy's
+# BLAS pool (one thread per core, up to 64, started at import) is kept out.
+_ONE_BLAS_THREAD = {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"}
+
 THREADS_SCRIPT = r"""
 import json, sys
 from pyamplicol import Runtime
@@ -565,7 +573,7 @@ def _thread_run(tmp_path, env_threads: str, *counts: str):
         capture_output=True,
         text=True,
         timeout=900,
-        env={**os.environ, "RAYON_NUM_THREADS": env_threads},
+        env={**os.environ, "RAYON_NUM_THREADS": env_threads, **_ONE_BLAS_THREAD},
         check=False,
     )
     assert run.returncode == 0, run.stderr[-4000:]
@@ -662,7 +670,8 @@ def threads():
     with open("/proc/self/status") as status:
         return int(next(l for l in status if l.startswith("Threads:")).split()[1])
 
-artifact, mode, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
+artifact, mode = sys.argv[1], sys.argv[2]
+count, limit = int(sys.argv[3]), int(sys.argv[4])
 point = [[180.91015625, 0, 0, 180.91015625], [180.91015625, 0, 0, -180.91015625],
          [180.91015625, 0, 31.74609375, 42.328125],
          [180.91015625, 0, -31.74609375, -42.328125]]
@@ -682,12 +691,21 @@ else:
         artifact.encode(), b"ggtt", None, None, toml, ctypes.byref(handle)) == 0
     _evaluate(sdk, handle, [point] * 8, [1e6] * 8)
     effective = None
-# Threads alive once the call's transient ones have exited (the threads of
-# a decode pool the load replaced exit asynchronously, docs "Threads"): a
-# pool, of the bound or of RAYON_NUM_THREADS, never exits.
+# Threads alive once the call's transient ones have exited: a pool, of the
+# bound or of RAYON_NUM_THREADS, never exits. The transient ones are the
+# threads of a decode pool the load replaced (docs "Threads") and
+# Symbolica's licence checks, each of which waits for its server's answer
+# (milliseconds on a near host, longer on a CI runner). The count is taken
+# once it has been steady for 0.3 s, and, while it is above `limit`, not
+# before a minute has passed.
 import time
-after, since, deadline = threads(), time.monotonic(), time.monotonic() + 2.0
-while time.monotonic() < deadline and time.monotonic() - since < 0.3:
+start = time.monotonic()
+after, since = threads(), start
+while True:
+    steady = time.monotonic() - since >= 0.3
+    waited = time.monotonic() - start
+    if steady and (after - before <= limit or waited >= 60.0):
+        break
     time.sleep(0.05)
     now = threads()
     if now != after:
@@ -696,10 +714,13 @@ print(json.dumps([before, after, effective, len(os.sched_getaffinity(0))]))
 """
 
 
-def _affinity_run(tmp_path, ggtt, mode, count, cores=None):  # noqa: F811
+def _affinity_run(tmp_path, ggtt, mode, count, limit, cores=None):  # noqa: F811
+    """The child's thread counts before and after one call; `limit` is the
+    most threads the caller accepts the call to leave alive."""
+
     script = tmp_path / "affinity.py"
     script.write_text(AFFINITY_SCRIPT)
-    command = [sys.executable, str(script), str(ggtt), mode, str(count)]
+    command = [sys.executable, str(script), str(ggtt), mode, str(count), str(limit)]
     if cores is not None:
         command = ["taskset", "-c", cores, *command]
     root = Path(__file__).resolve().parents[2]
@@ -711,7 +732,12 @@ def _affinity_run(tmp_path, ggtt, mode, count, cores=None):  # noqa: F811
         capture_output=True,
         text=True,
         timeout=900,
-        env={**os.environ, "RAYON_NUM_THREADS": "16", "PYTHONPATH": path},
+        env={
+            **os.environ,
+            "RAYON_NUM_THREADS": "16",
+            "PYTHONPATH": path,
+            **_ONE_BLAS_THREAD,
+        },
         cwd=root,
         check=False,
     )
@@ -732,10 +758,14 @@ def test_threads_above_the_affinity_mask_give_its_cores(ggtt, tmp_path):  # noqa
 
     first = sorted(os.sched_getaffinity(0))[:2]
     cores = f"{first[0]},{first[1]}"
-    before, after, effective, mask = _affinity_run(tmp_path, ggtt, "python", 64, cores)
+    before, after, effective, mask = _affinity_run(
+        tmp_path, ggtt, "python", 64, 4, cores
+    )
     assert (effective, mask) == (2, 2)
     assert after - before <= 2 * 2, (before, after)
-    before, after, _effective, mask = _affinity_run(tmp_path, ggtt, "sdk", HUGE, cores)
+    before, after, _effective, mask = _affinity_run(
+        tmp_path, ggtt, "sdk", HUGE, 4, cores
+    )
     assert mask == 2
     assert after - before <= 2 * 2, (before, after)
 
@@ -747,7 +777,9 @@ def test_the_sdk_thread_bound_counted(ggtt, tmp_path):  # noqa: F811
     after the call: at most the pool, no pool of 16)."""
 
     for count in (1, 2):
-        before, after, _effective, _mask = _affinity_run(tmp_path, ggtt, "sdk", count)
+        before, after, _effective, _mask = _affinity_run(
+            tmp_path, ggtt, "sdk", count, count + 1
+        )
         assert 1 <= after - before <= count + 1, (count, before, after)
 
 
@@ -809,22 +841,34 @@ def test_a_tree_runtime_refuses_virtual_options_at_load():
     assert runtime.contribution_kind == "tree"
 
 
-def test_a_mistyped_options_path_says_no_such_file(tmp_path):
+def test_a_one_line_options_string_is_an_existing_file_or_toml(tmp_path, monkeypatch):
+    """A one-line string is a path when it names an existing file (with or
+    without "=" in its name), else a TOML text: ``[evaluation]`` is an empty
+    table in both readers (no option set); a string that is neither (a
+    mistyped path, a bare word) is refused naming both readings. The native
+    readers take TOML texts only (a file through ``set_options_file``): they
+    read the same file's text alike and refuse the bare word as TOML."""
+
     from pyamplicol.config import ConfigurationError
     from pyamplicol.config.runtime_options import read_runtime_options
 
-    with pytest.raises(ConfigurationError, match="No such file"):
-        read_runtime_options(str(tmp_path / "no" / "opts.toml"))
+    monkeypatch.chdir(tmp_path)
+    both = "not an existing file and not valid TOML"
+    for text in ("[evaluation]", "[evaluation]\n"):
+        assert read_runtime_options(text) == {}
+        assert set(_native_options(text).values()) == {None}
+    for text in (str(tmp_path / "no" / "opts.toml"), "opts", "x=y.toml"):
+        with pytest.raises(ConfigurationError, match=both):
+            read_runtime_options(text)
+    with pytest.raises(ValueError, match="invalid TOML"):
+        _native().runtime_options("opts")
+    toml = "[evaluation]\nthreads = 3\n"
+    for name in ("opts", "a=b.toml"):
+        (tmp_path / name).write_text(toml)
+        assert read_runtime_options(name) == {"threads": 3}
+        assert read_runtime_options(str(tmp_path / name)) == {"threads": 3}
+    assert _native_options(toml)["threads"] == 3
     assert read_runtime_options("[evaluation]\nthreads = 2") == {"threads": 2}
-    # A one-line string is a path when it names a file (an "=" in the name
-    # included) or has no "="; else TOML, and a refusal names both readings.
-    named = tmp_path / "a=b.toml"
-    named.write_text("[evaluation]\nthreads = 3\n")
-    assert read_runtime_options(str(named)) == {"threads": 3}
-    with pytest.raises(
-        ConfigurationError, match="not an existing file and not valid TOML"
-    ):
-        read_runtime_options(str(tmp_path / "no" / "x=y.toml"))
     assert read_runtime_options("threads = 2") == {}
 
 
