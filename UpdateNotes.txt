@@ -4,7 +4,67 @@ ANNOUNCEMENT:
    The 2.9.X LONG TERM STABLE version is now at end of life for bug fixing/support since December 2025.
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
-0.4.0 (XX/XX/XX):
+0.3.0 (23/11/26):
+   TH: AmpliCol, a second matrix-element backend of the mg7 output: 'generate p p > j j j
+       [amplicol]' takes colour-ordered matrix elements from pyAmpliCol, alone or mixed with
+       madmatrix processes in one output (#291). pyAmpliCol is now part of the repository
+       (pyamplicol/, installed by pyamplicol/install.py, with its one-loop support), and is
+       published on PyPI as pyamplicol <MG version>.<N> (#301, #452, #507, #521). [amplicol]
+       processes learn flavour levels in MadNIS and switch flavours in the full-colour step
+       (#426).
+   TH+OM: MLM merging in mg7/madspace: the clustering, scales and vetoes follow madevent,
+       on by default for jet multiplicities in an interactive run, with Pythia8 (8.318
+       merging hook), systematics and DJR plots (#72, #332, #360 and follow-ups).
+   TH: CKKW-L merging (Pythia8, ktdurham/ptlund) for mg7, and MLM / CKKW-L for [amplicol]
+       processes (#385).
+   OM: madmatrix helicity recycling (output --hel_recycling), with the tables of the Fortran
+       recycler, a warm-up for output mg7 and the FD gauge; on by default for output
+       standalone and mg7 (#217, #351-#353, #377, #421).
+   OM: crossing symmetry: the subprocesses related by crossing share one matrix element and
+       one good-helicity list (on by default, --use_crossing=False turns it off), MadSpin
+       included (#49, #294).
+   ZW: MadtRex, reweighting of any process madmatrix can compile, and PDF reweighting
+       through the madspace PDF interpolator ('install madtrex'); madmatrix libraries are
+       tagged with their model and FPTYPE and have UMAMI parameter setters (#333, #317).
+   TH: MG7 cluster mode: the [cluster] section of run_card.toml runs the trainings of the
+       subprocesses as parallel batch jobs and merges their gridpacks (#365).
+   TH: MG7 gridpacks: far fewer files, [gridpack] compress, configurable (read-only safe)
+       output directories, use_pigz honoured (#250, #313).
+   TH: custom cuts, scales, parton densities and event biases for mg7 runs, as UMAMI
+       shared libraries or Python files (numpy/torch) called in batches by madspace (#264).
+   OM: interference processes: 'generate g g > h > t t~ [LIxtree=QCD] g g > t t~' and
+       '[treextree]' compute only 2 Re(A_left A_right^*); supported by mg7 with signed
+       weights (#243, #244).
+   OM: MadSpin density modes take their density matrices from madmatrix (C++), with a
+       faster accept/reject loop (#263).
+   LJ: EW Sudakov reweighting of FxFx (ickkw=3) samples, MadSpin decays with spin
+       correlations included (#310, #478).
+   HS: MadLoop reduction backends NinjaRS (MLReductionLib=8, the default when installed for
+       ordinary Born processes) and TIRust (MLReductionLib=9, explicit only) (#315, #437).
+   OM: dressed-lepton beams with beamstrahlung (fcce240ll, ilc500ll, ...): the momentum
+       fraction is split event by event into beamstrahlung and ISR, written in the LHE and
+       used by the Pythia8 shower, in madevent and mg7 (#410, #458).
+   TH: madspace float32 networks for MadNIS (#274); MadNIS resonance guard and reduction of
+       the electroweak channels (VBS processes) (#469).
+   OM: mg7: Ctrl-C during the generation opens a menu to stop early or to change the number
+       of events or CPU threads (#399).
+   FS: mg7 on GPU gzips the LHE output with nvCOMP when madspace is built against nvCOMP 5;
+       otherwise through pigz when available (#400).
+   OM: denom64 (FPTYPE=v) is now the default precision of madmatrix, mg7 and madevent with
+       madmatrix; two precisions of one backend can coexist in an output. New mg7
+       precision check (#497); 'check precision' takes --backend (#212).
+   OM: plugin diagram filters: --diagram_filter=PLUGINNAME, and --tree_diagram_filter /
+       --loop_diagram_filter at NLO (#309).
+   OM: mg7 launch: madevent run_card names given to 'set' (cuts, beams, PDFs, scale codes)
+       are translated to run_card.toml (#247). PDF sets are downloaded without LHAPDF
+       (#345). Delphes runs on the mg7 output (#390).
+   OM: MG5aMC_PY8_interface is removed: LO showers run Pythia8's main164, compiled when
+       missing, with a choice of HepMC2/HepMC3 at LO and NLO (#207).
+   TH: madevent: new hidden run_card option enforce_overweight_limit, enforcing
+       max_overweight_truncation on all the events of the channels (#510).
+   DM: custom UFO propagators may depend on alpha_s in madmatrix (#425).
+   FS: coloured banner and prompt (plain = True in mg7_configuration.txt or --plain to
+       turn it off) (#155).
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV
@@ -102,7 +162,7 @@ ANNOUNCEMENT:
        supported, from the LO, MadLoop and aMC@NLO interfaces alike).
    OM: standalone/mg7 with --mask=False (no flavour guard) gave wrong |M|^2 for some flavours
        of merged electroweak processes (p p > w+ w- j j QCD=0: 24 of 54, d d~ > w+ w- u u~
-       x55). This was also the root cause of the --hel_recycling bug of 0.3.0: the C++ flavoured
+       x55). This was also the root cause of the --hel_recycling flavour bug below: the C++ flavoured
        routines accepted a fermion pair in both orientations of its coupling table, which for
        a W coupling is the W of the opposite charge. They now read it in one orientation, as
        the Fortran routines do (Fortran --mask=False was right). Also:
@@ -189,7 +249,6 @@ ANNOUNCEMENT:
        $ on a massless particle is refused. check language evaluates every backend at the
        same phase-space point, and the C++ FD vxxxxx has the FD longitudinal polarisation.
 
-0.3.0 (XX/XX/XX):
    TH: [amplicol] lc_flavors = two_lines_resample (the new default): the leading-colour
        pass only samples the flavours with at most two quark lines, and the full-colour
        pass switches events to the others (all initial states and both beam
