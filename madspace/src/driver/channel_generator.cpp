@@ -101,7 +101,7 @@ std::optional<EventFile> open_event_file(
 
 ChannelEventGenerator::ChannelEventGenerator(
     const std::vector<ContextPtr>& contexts,
-    const Integrand& integrand,
+    const GeneratorIntegrand& integrand,
     const std::string& event_file,
     const std::string& weight_file,
     const GeneratorConfig& config,
@@ -128,9 +128,9 @@ ChannelEventGenerator::ChannelEventGenerator(
         .done = false
     },
     _config(config),
-    _event_layout_extra_flags(event_extra_flags(integrand.return_types().index_map())),
+    _event_layout_extra_flags(event_extra_flags(integrand.event_types().index_map())),
     _particle_layout_extra_flags(
-        particle_extra_flags(integrand.return_types().index_map())
+        particle_extra_flags(integrand.event_types().index_map())
     ),
     _event_file_layout(
         EventRecord::layout(EventRecord::f_event_data | _event_layout_extra_flags),
@@ -145,12 +145,12 @@ ChannelEventGenerator::ChannelEventGenerator(
     _weight_file_path(weight_file),
     _batch_size(config.start_batch_size),
     _particle_count(integrand.particle_count()),
-    _integrand_channel_function(IntegrandChannelPart(integrand).function()),
-    _integrand_common_function(IntegrandCommonPart(integrand).function()),
-    _integrand_concat_function(IntegrandConcatenator(integrand).function()),
+    _integrand_channel_function(integrand.channel_function()),
+    _integrand_common_function(integrand.common_function()),
+    _integrand_concat_function(integrand.concat_function()),
     _unweighter_function(
         Unweighter([&] {
-            auto& ret_types = integrand.return_types();
+            auto& ret_types = integrand.event_types();
             auto keys = ret_types.keys();
             std::size_t vegas_index = ret_types.index_map().at("random");
             return NamedVector<Type>(
@@ -159,7 +159,9 @@ ChannelEventGenerator::ChannelEventGenerator(
             );
         }())
             .function()
-    ) {
+    ),
+    _unweighted(integrand.unweighted()),
+    _iteration_state(integrand.iteration_state()) {
     if (integrand.madnis_training()) {
         throw std::invalid_argument(
             "Integrand must not be in madnis_training mode for event generation"
@@ -168,17 +170,7 @@ ChannelEventGenerator::ChannelEventGenerator(
     init_used_globals();
     init_runtimes();
     init_field_indices();
-    auto& me_outputs = integrand.diff_xs().at(0).matrix_element().outputs();
-    for (auto [provided, output] :
-         zip(_provided_indices,
-             std::array{
-                 MatrixElement::color_index_out,
-                 MatrixElement::helicity_index_out,
-                 MatrixElement::diagram_index_out
-             })) {
-        provided =
-            std::find(me_outputs.begin(), me_outputs.end(), output) != me_outputs.end();
-    }
+    _provided_indices = integrand.provided_indices();
     if (const auto& grid_name = integrand.vegas_grid_name(); grid_name) {
         _vegas_optimizer =
             VegasGridOptimizer(contexts, grid_name.value(), config.vegas_damping);
@@ -187,35 +179,18 @@ ChannelEventGenerator::ChannelEventGenerator(
             runtimes.vegas_histogram = build_runtime(hist.function(), context, false);
         }
     }
-    std::vector<std::string> prob_names;
-    std::vector<std::size_t> option_counts;
-    auto add_names = Overloaded{
-        [&](const DiscreteSampler& sampler) {
-            auto& names = sampler.prob_names();
-            prob_names.insert(prob_names.end(), names.begin(), names.end());
-            auto& opts = sampler.option_counts();
-            option_counts.insert(option_counts.end(), opts.begin(), opts.end());
-        },
-        [](auto sampler) {}
-    };
-    std::visit(add_names, integrand.discrete_sym());
-    std::visit(add_names, integrand.discrete_flavor());
-    std::optional<DiscreteOptimizer> discrete_optimizer;
-    RuntimePtr discrete_histogram = nullptr;
+    auto prob_names = integrand.discrete_prob_names();
     if (prob_names.size() > 0) {
-        discrete_optimizer = DiscreteOptimizer(contexts, prob_names);
-        DiscreteHistogram hist(option_counts);
+        _discrete_optimizer = DiscreteOptimizer(contexts, prob_names);
+        DiscreteHistogram hist(integrand.discrete_option_counts());
         for (auto [context, runtimes] : zip(contexts, _runtimes)) {
             runtimes.discrete_histogram =
                 build_runtime(hist.function(), context, false);
         }
     }
+    auto integrand_histograms = integrand.histograms();
     if (histograms) {
         _histogram_function = histograms.value().function();
-        for (auto [context, runtimes] : zip(contexts, _runtimes)) {
-            runtimes.observable_histograms =
-                build_runtime(_histogram_function.value(), context, false);
-        }
         for (auto& item : histograms.value().observables()) {
             _histograms.push_back({
                 .name = item.observable.name(),
@@ -224,6 +199,19 @@ ChannelEventGenerator::ChannelEventGenerator(
                 .bin_values = std::vector<double>(item.bin_count + 2),
                 .bin_errors = std::vector<double>(item.bin_count + 2),
             });
+        }
+    } else if (integrand_histograms) {
+        _histogram_function = integrand_histograms->first;
+        _histograms = integrand_histograms->second;
+    }
+    if (_histogram_function) {
+        auto index_map = integrand.event_types().index_map();
+        for (auto& input : integrand.histogram_inputs()) {
+            _histogram_input_indices.push_back(index_map.at(input));
+        }
+        for (auto [context, runtimes] : zip(contexts, _runtimes)) {
+            runtimes.observable_histograms =
+                build_runtime(_histogram_function.value(), context, false);
         }
     }
 }
@@ -283,11 +271,13 @@ ChannelEventGenerator::ChannelEventGenerator(
     _integrand_common_function(integrand_common_function),
     _integrand_concat_function(integrand_concat_function),
     _unweighter_function(unweighter_function),
+    _histogram_function(histogram_function),
     _histograms(histograms) {
     init_used_globals();
     init_runtimes();
     init_field_indices();
     if (histogram_function) {
+        _histogram_input_indices = {_field_indices.weight, _field_indices.momenta};
         for (auto [context, runtimes] : zip(contexts, _runtimes)) {
             runtimes.observable_histograms =
                 build_runtime(_histogram_function.value(), context, false);
@@ -330,14 +320,21 @@ void ChannelEventGenerator::init_field_indices() {
         );
     }
     auto index_map = _integrand_common_function.outputs().index_map();
+    // the fields of an event, which a fixed-order integrand does not have
+    auto event_field = [&](const std::string& name) {
+        if (!_unweighted && !index_map.contains(name)) {
+            return -1;
+        }
+        return static_cast<int>(index_map.at(name));
+    };
     _field_indices.weight = index_map.at("weight");
-    _field_indices.momenta = index_map.at("momenta");
-    _field_indices.color_index = index_map.at("color_index");
-    _field_indices.helicity_index = index_map.at("helicity_index");
-    _field_indices.diagram_index = index_map.at("diagram_index");
-    _field_indices.flavor_index = index_map.at("flavor_index");
-    _field_indices.ren_scale = index_map.at("ren_scale");
-    _field_indices.alpha_qcd = index_map.at("alpha_qcd");
+    _field_indices.momenta = event_field("momenta");
+    _field_indices.color_index = event_field("color_index");
+    _field_indices.helicity_index = event_field("helicity_index");
+    _field_indices.diagram_index = event_field("diagram_index");
+    _field_indices.flavor_index = event_field("flavor_index");
+    _field_indices.ren_scale = event_field("ren_scale");
+    _field_indices.alpha_qcd = event_field("alpha_qcd");
     if (index_map.contains("fact_scale1")) {
         _field_indices.x1 = index_map.at("x1");
         _field_indices.fact_scale1 = index_map.at("fact_scale1");
@@ -480,6 +477,9 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
     if (job.discrete_hist.size() > 0) {
         _discrete_optimizer->add_data(job.discrete_hist);
     }
+    if (_iteration_state) {
+        _iteration_state->add(job.events);
+    }
 }
 
 void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
@@ -488,6 +488,9 @@ void ChannelEventGenerator::optimize_vegas(const GeneratorBatchJob& job) {
     }
     if (_discrete_optimizer) {
         _discrete_optimizer->optimize();
+    }
+    if (_iteration_state) {
+        _iteration_state->end_iteration(_contexts);
     }
     double rsd = _abs_cross_section.rel_std_dev();
     if (rsd < _config.optimization_threshold * _best_rsd) {
@@ -645,10 +648,11 @@ void ChannelEventGenerator::start_job(
             }
             // the histogram runtimes use no random numbers and are never seeded
             if (runtimes.observable_histograms) {
-                auto hists = runtimes.observable_histograms->run(
-                    {job.events.at(_field_indices.weight),
-                     job.events.at(_field_indices.momenta)}
-                );
+                TensorVec histogram_args;
+                for (int index : _histogram_input_indices) {
+                    histogram_args.push_back(job.events.at(index));
+                }
+                auto hists = runtimes.observable_histograms->run(histogram_args);
                 for (auto& item : hists) {
                     job.hists.push_back(item.cpu());
                 }
@@ -781,6 +785,9 @@ void ChannelEventGenerator::clear_events() {
     for (auto& hist : _histograms) {
         std::fill(hist.bin_values.begin(), hist.bin_values.end(), 0.);
         std::fill(hist.bin_errors.begin(), hist.bin_errors.end(), 0.);
+    }
+    if (_iteration_state) {
+        _iteration_state->reset();
     }
 }
 

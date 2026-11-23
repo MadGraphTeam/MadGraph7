@@ -4462,6 +4462,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSCrossSection::born_luminosity")
         );
 
+    py::classh<IterationState>(m, "IterationState", pydoc::doc("IterationState"));
+    py::classh<GeneratorIntegrand>(
+        m, "GeneratorIntegrand", pydoc::doc("GeneratorIntegrand")
+    )
+        .def(
+            "unweighted",
+            &GeneratorIntegrand::unweighted,
+            pydoc::doc("GeneratorIntegrand::unweighted")
+        )
+        .def(
+            "event_types",
+            &GeneratorIntegrand::event_types,
+            pydoc::doc("GeneratorIntegrand::event_types")
+        );
+
     py::classh<FKSChannelIntegrand, FunctionGenerator>(
         m, "FKSChannelIntegrand", pydoc::doc("FKSChannelIntegrand")
     )
@@ -4666,7 +4681,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("quantile") = 0.0,
             pydoc::doc("BufferUnweighter::BufferUnweighter")
         );
-    py::classh<Integrand, FunctionGenerator>(m, "Integrand", pydoc::doc("Integrand"))
+    py::classh<Integrand, FunctionGenerator, GeneratorIntegrand>(
+        m, "Integrand", pydoc::doc("Integrand")
+    )
         .def(
             py::init<
                 const PhaseSpaceMapping&,
@@ -5815,7 +5832,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
-                const Integrand&,
+                const GeneratorIntegrand&,
                 const std::string&,
                 const std::string&,
                 const GeneratorConfig&,
@@ -5836,6 +5853,30 @@ PYBIND11_MODULE(_madspace_py, m) {
             "status",
             &ChannelEventGenerator::status,
             pydoc::doc("ChannelEventGenerator::status")
+        )
+        .def(
+            "unweighted",
+            &ChannelEventGenerator::unweighted,
+            pydoc::doc("ChannelEventGenerator::unweighted")
+        )
+        .def(
+            "iteration_state",
+            &ChannelEventGenerator::iteration_state,
+            pydoc::doc("ChannelEventGenerator::iteration_state")
+        )
+        .def(
+            "cross_section",
+            [](const ChannelEventGenerator& channel) {
+                auto& integral = channel.cross_section();
+                double error = integral.count() > 1 ? integral.error() : 0.;
+                return std::make_tuple(integral.mean(), error, integral.count());
+            },
+            pydoc::doc("ChannelEventGenerator::cross_section")
+        )
+        .def(
+            "histograms",
+            &ChannelEventGenerator::histograms,
+            pydoc::doc("ChannelEventGenerator::histograms")
         )
         .def(
             "save",
@@ -6559,6 +6600,36 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("EventHistograms::to_json")
         );
 
+    py::classh<IntegrationConfig>(
+        m, "IntegrationConfig", pydoc::doc("IntegrationConfig")
+    )
+        .def(py::init<>())
+        .def_readwrite(
+            "grid_points",
+            &IntegrationConfig::grid_points,
+            pydoc::doc("IntegrationConfig::grid_points")
+        )
+        .def_readwrite(
+            "grid_iterations",
+            &IntegrationConfig::grid_iterations,
+            pydoc::doc("IntegrationConfig::grid_iterations")
+        )
+        .def_readwrite(
+            "points",
+            &IntegrationConfig::points,
+            pydoc::doc("IntegrationConfig::points")
+        )
+        .def_readwrite(
+            "max_iterations",
+            &IntegrationConfig::max_iterations,
+            pydoc::doc("IntegrationConfig::max_iterations")
+        )
+        .def_readwrite(
+            "accuracy",
+            &IntegrationConfig::accuracy,
+            pydoc::doc("IntegrationConfig::accuracy")
+        );
+
     py::classh<EventGenerator>(m, "EventGenerator", pydoc::doc("EventGenerator"))
         .def_readonly_static("default_config", &EventGenerator::default_config)
         .def(
@@ -6587,6 +6658,13 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::call_guard<py::gil_scoped_release>(),
             py::arg("survey_pass") = 0,
             pydoc::doc("EventGenerator::survey")
+        )
+        .def(
+            "integrate",
+            &EventGenerator::integrate,
+            py::call_guard<py::gil_scoped_release>(),
+            py::arg_v("config", IntegrationConfig{}, "IntegrationConfig()"),
+            pydoc::doc("EventGenerator::integrate")
         )
         .def(
             "generate",

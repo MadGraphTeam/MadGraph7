@@ -1,5 +1,9 @@
 #pragma once
 
+#include <array>
+#include <memory>
+
+#include "madspace/driver/generator_data.hpp"
 #include "madspace/phasespace/channel_weight_network.hpp"
 #include "madspace/phasespace/channel_weights.hpp"
 #include "madspace/phasespace/cross_section.hpp"
@@ -15,6 +19,91 @@
 #include "madspace/util.hpp"
 
 namespace madspace {
+
+/**
+ * State of an integrand that adapts between the iterations of its channel
+ * besides its VEGAS grid and its discrete samplers, kept by the
+ * @ref ChannelEventGenerator that runs it.
+ *
+ * The generator passes it the outputs of every batch it commits and calls
+ * @ref end_iteration once all batches of an iteration are committed. The
+ * state writes what it adapts into globals of the contexts, which the
+ * integrand reads.
+ */
+class IterationState {
+public:
+    virtual ~IterationState() = default;
+    /// Add the outputs of the integrand for one batch, in the order of
+    /// @ref GeneratorIntegrand::event_types, on the device of the batch.
+    virtual void add(const TensorVec& events) = 0;
+    /// The end of an iteration: adapt to it and write the globals of
+    /// @p contexts.
+    virtual void end_iteration(const std::vector<ContextPtr>& contexts) = 0;
+    /// Discard the results kept so far, but not what was adapted. Called when
+    /// the generator discards its events.
+    virtual void reset() = 0;
+};
+
+/**
+ * What a @ref ChannelEventGenerator runs: an integrand split into a part per
+ * channel, a common part and a concatenation of the parts per channel (see
+ * @ref IntegrandChannelPart), with its adaptive samplers.
+ *
+ * @ref Integrand is the integrand of a leading-order calculation, whose events
+ * are unweighted. A fixed-order integrand (@ref unweighted false) is only
+ * integrated, see @ref EventGenerator::integrate, and may keep an
+ * @ref IterationState.
+ */
+class GeneratorIntegrand {
+public:
+    virtual ~GeneratorIntegrand() = default;
+    /// Number of particles of the events.
+    virtual std::size_t particle_count() const = 0;
+    /// The outputs of the common part, those of an event first, then
+    /// `random` (the inputs of the VEGAS grid) and the indices of the
+    /// discrete samplers.
+    virtual const NamedVector<Type>& event_types() const = 0;
+    /// The channel part: from `batch_size` to the inputs of the common part,
+    /// with `indices_acc`, the indices of the points that pass the cuts.
+    virtual Function channel_function() const = 0;
+    /// The common part, from the outputs of the channel part to
+    /// @ref event_types.
+    virtual Function common_function() const = 0;
+    /// The concatenation of two outputs of the channel part along the batch.
+    virtual Function concat_function() const = 0;
+    /// Global name of the VEGAS grid, if an adaptive @ref VegasMapping is used.
+    virtual std::optional<std::string> vegas_grid_name() const = 0;
+    /// Dimension of the adaptive @ref VegasMapping, or 0 if none.
+    virtual std::size_t vegas_dimension() const = 0;
+    /// Bin count of the adaptive @ref VegasMapping, or 0 if none.
+    virtual std::size_t vegas_bin_count() const = 0;
+    /// Global names of the probabilities of the adaptive
+    /// @ref DiscreteSampler instances.
+    virtual std::vector<std::string> discrete_prob_names() const = 0;
+    /// Number of options of each of them.
+    virtual std::vector<std::size_t> discrete_option_counts() const = 0;
+    /// Whether the events have the color, helicity and diagram index of the
+    /// matrix element, in this order.
+    virtual std::array<bool, 3> provided_indices() const = 0;
+    /// Whether the integrand gives the quantities of the @ref MadnisLoss
+    /// instead of events.
+    virtual bool madnis_training() const = 0;
+    /// Whether the events are unweighted. False for a fixed-order integrand.
+    virtual bool unweighted() const { return true; }
+    /// The histograms the integrand fills itself, as their function and the
+    /// empty histograms, for an integrand whose events do not fill an
+    /// @ref ObservableHistograms.
+    virtual std::optional<std::pair<Function, std::vector<Histogram>>>
+    histograms() const {
+        return std::nullopt;
+    }
+    /// The outputs passed to the function of the histograms, in its order.
+    virtual std::vector<std::string> histogram_inputs() const {
+        return {"weight", "momenta"};
+    }
+    /// A new state of the iterations of a channel, none by default.
+    virtual std::shared_ptr<IterationState> iteration_state() const { return nullptr; }
+};
 
 /**
  * The full single-channel integrand, from random numbers to a weighted event.
@@ -68,7 +157,7 @@ namespace madspace {
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
  *   https://arxiv.org/abs/2602.06895
  */
-class Integrand : public FunctionGenerator {
+class Integrand : public FunctionGenerator, public GeneratorIntegrand {
 public:
     /// The optional adaptive reparametrization of the continuous latent space.
     using AdaptiveMapping = std::variant<std::monostate, VegasMapping, Flow>;
@@ -227,11 +316,27 @@ public:
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
     inline static const std::string pdf2_prefix = "beam2";
     /// Total number of particles, incoming and outgoing.
-    std::size_t particle_count() const { return _mapping.particle_count(); }
+    std::size_t particle_count() const override { return _mapping.particle_count(); }
     /// Whether the integrand emits the @ref MadnisLoss training quantities.
-    bool madnis_training() const { return _madnis_training; }
+    bool madnis_training() const override { return _madnis_training; }
+    /// The return types, see @ref GeneratorIntegrand::event_types.
+    const NamedVector<Type>& event_types() const override { return return_types(); }
+    /// The function of @ref IntegrandChannelPart.
+    Function channel_function() const override;
+    /// The function of @ref IntegrandCommonPart.
+    Function common_function() const override;
+    /// The function of @ref IntegrandConcatenator.
+    Function concat_function() const override;
+    /// The probabilities of the permutation and flavour samplers, where they
+    /// are a @ref DiscreteSampler.
+    std::vector<std::string> discrete_prob_names() const override;
+    /// The option counts of the same samplers.
+    std::vector<std::size_t> discrete_option_counts() const override;
+    /// Whether the matrix element returns the color, helicity and diagram
+    /// index.
+    std::array<bool, 3> provided_indices() const override;
     /// Global name of the VEGAS grid, if an adaptive @ref VegasMapping is used.
-    std::optional<std::string> vegas_grid_name() const {
+    std::optional<std::string> vegas_grid_name() const override {
         if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
             return vegas->grid_name();
         } else {
@@ -239,7 +344,7 @@ public:
         }
     }
     /// Dimension of the adaptive @ref VegasMapping, or 0 if none.
-    std::size_t vegas_dimension() const {
+    std::size_t vegas_dimension() const override {
         if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
             return vegas->dimension();
         } else {
@@ -247,7 +352,7 @@ public:
         }
     }
     /// Bin count of the adaptive @ref VegasMapping, or 0 if none.
-    std::size_t vegas_bin_count() const {
+    std::size_t vegas_bin_count() const override {
         if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
             return vegas->bin_count();
         } else {

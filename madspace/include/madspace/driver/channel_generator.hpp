@@ -81,7 +81,11 @@ public:
 
     /**
      * @param contexts          One context per device to run on.
-     * @param integrand         The channel's compiled integrand.
+     * @param integrand         The channel's integrand, an @ref Integrand or
+     *                          a fixed-order one (see
+     *                          @ref GeneratorIntegrand::unweighted), whose
+     *                          channel is only integrated
+     *                          (@ref EventGenerator::integrate).
      * @param event_file        Path of the event file; empty for no file.
      * @param weight_file       Path of the file with the per-event weights, which
      *                          @ref unweight_file unweights in place; empty for
@@ -90,11 +94,13 @@ public:
      * @param subprocess_index  Index of the owning subprocess.
      * @param name              Human-readable channel name.
      * @param histograms        Optional observable histograms filled
-     *                          alongside integration.
+     *                          alongside integration. Without them, those of
+     *                          the integrand (@ref
+     *                          GeneratorIntegrand::histograms), if any.
      */
     ChannelEventGenerator(
         const std::vector<ContextPtr>& contexts,
-        const Integrand& integrand,
+        const GeneratorIntegrand& integrand,
         const std::string& event_file,
         const std::string& weight_file,
         const GeneratorConfig& config,
@@ -109,6 +115,12 @@ public:
 
     /// Current progress snapshot.
     const GeneratorStatus& status() const { return _status; }
+    /// Whether the events of the channel are unweighted, false for a
+    /// fixed-order integrand, which is only integrated.
+    bool unweighted() const { return _unweighted; }
+    /// The state of the iterations of the integrand, if it has one (see
+    /// @ref GeneratorIntegrand::iteration_state).
+    std::shared_ptr<IterationState> iteration_state() const { return _iteration_state; }
     /// Running cross-section estimate.
     const RunningIntegral& cross_section() const { return _cross_section; }
     /// Running estimate of the mean absolute weight.
@@ -444,7 +456,11 @@ private:
     Function _integrand_common_function;
     Function _integrand_concat_function;
     Function _unweighter_function;
+    bool _unweighted = true;
+    std::shared_ptr<IterationState> _iteration_state;
     std::optional<Function> _histogram_function;
+    // the outputs of the integrand passed to the histograms
+    std::vector<int> _histogram_input_indices;
     RunningIntegral _cross_section;
     RunningIntegral _abs_cross_section;
     double _max_weight = 0.;

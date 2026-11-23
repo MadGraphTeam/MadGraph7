@@ -533,6 +533,52 @@ Integrand::Integrand(
     _channel_part_ret_types = compute_channel_part_ret_types();
 }
 
+Function Integrand::channel_function() const {
+    return IntegrandChannelPart(*this).function();
+}
+
+Function Integrand::common_function() const {
+    return IntegrandCommonPart(*this).function();
+}
+
+Function Integrand::concat_function() const {
+    return IntegrandConcatenator(*this).function();
+}
+
+std::vector<std::string> Integrand::discrete_prob_names() const {
+    std::vector<std::string> names;
+    for (auto& sampler : {_discrete_sym, _discrete_flavor}) {
+        if (auto discrete = std::get_if<DiscreteSampler>(&sampler)) {
+            auto& prob_names = discrete->prob_names();
+            names.insert(names.end(), prob_names.begin(), prob_names.end());
+        }
+    }
+    return names;
+}
+
+std::vector<std::size_t> Integrand::discrete_option_counts() const {
+    std::vector<std::size_t> counts;
+    for (auto& sampler : {_discrete_sym, _discrete_flavor}) {
+        if (auto discrete = std::get_if<DiscreteSampler>(&sampler)) {
+            auto& option_counts = discrete->option_counts();
+            counts.insert(counts.end(), option_counts.begin(), option_counts.end());
+        }
+    }
+    return counts;
+}
+
+std::array<bool, 3> Integrand::provided_indices() const {
+    auto& outputs = _diff_xs.at(0).matrix_element().outputs();
+    auto provides = [&](MatrixElement::MatrixElementOutput output) {
+        return std::find(outputs.begin(), outputs.end(), output) != outputs.end();
+    };
+    return {
+        provides(MatrixElement::color_index_out),
+        provides(MatrixElement::helicity_index_out),
+        provides(MatrixElement::diagram_index_out),
+    };
+}
+
 std::tuple<std::vector<std::size_t>, std::vector<bool>> Integrand::latent_dims() const {
     std::vector<std::size_t> dims{_mapping.random_dim(), 1};
     std::vector<bool> is_float{true, false};

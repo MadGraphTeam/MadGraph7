@@ -30,6 +30,30 @@
 namespace madspace {
 
 /**
+ * The iterations of @ref EventGenerator::integrate, those of a fixed-order run
+ * of the mint integrator of MadFKS.
+ */
+struct IntegrationConfig {
+    /// Points per channel of the first grid iteration.
+    std::size_t grid_points = 2000;
+    /// Number of grid iterations, which only adapt the integrands. Their
+    /// results are discarded.
+    std::size_t grid_iterations = 4;
+    /// Points per channel of the first iteration kept for the result, and the
+    /// least per channel of every later one.
+    std::size_t points = 4000;
+    /// Largest number of iterations kept for the result.
+    std::size_t max_iterations = 50;
+    /// The relative accuracy of the sum of the channels at which the
+    /// iterations stop. Towards it the grid iterations double their points
+    /// and the points of the next iteration are those the error implies are
+    /// missing. Zero or negative runs fixed points: every grid iteration
+    /// @ref grid_points and all @ref max_iterations kept iterations
+    /// @ref points per channel.
+    double accuracy = 0.;
+};
+
+/**
  * Drives event generation across every channel of a subprocess.
  *
  * Coordinates a group of @ref ChannelEventGenerator instances that share the
@@ -118,6 +142,21 @@ public:
     /// the target to what every channel can deliver for its share of the
     /// integral; the extra events of the other channels are dropped.
     void generate();
+    /**
+     * Integrate channels of fixed-order integrands (see
+     * @ref GeneratorIntegrand::unweighted), as the mint integrator of MadFKS
+     * does: grid iterations that adapt the VEGAS grids and the
+     * @ref IterationState of each channel, whose results are discarded, then
+     * iterations kept for the result, which adapt as well, until the
+     * accuracy of @p config is reached. The points of a kept iteration go to
+     * the channels by the standard deviations of their weights, at least a
+     * tenth of an even share each. The results are those of each channel,
+     * @ref ChannelEventGenerator::cross_section and its
+     * @ref ChannelEventGenerator::iteration_state.
+     *
+     * @throws std::invalid_argument if a channel has unweighted events.
+     */
+    void integrate(const IntegrationConfig& config = {});
     /// Run only the VEGAS and channel-weight optimization of every channel
     /// that still needs it, until all are optimized. No events are kept.
     void optimize();
@@ -245,6 +284,8 @@ private:
     // What a run of the generate loop does; see run_generate().
     enum class GenerateMode { events, optimize_only, fix_max_weights };
     void run_generate(GenerateMode mode);
+    // survey and generate need channels with unweighted events
+    void check_unweighted_channels() const;
     // Channels with an optimizer, and how many of them are optimized.
     std::pair<std::size_t, std::size_t> optimized_channel_count() const;
     GenerateMode _generate_mode = GenerateMode::events;

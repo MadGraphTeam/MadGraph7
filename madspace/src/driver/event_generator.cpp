@@ -122,7 +122,21 @@ void EventGenerator::optimize() { run_generate(GenerateMode::optimize_only); }
 
 void EventGenerator::fix_max_weights() { run_generate(GenerateMode::fix_max_weights); }
 
+void EventGenerator::check_unweighted_channels() const {
+    for (auto& channel : _channels) {
+        if (!channel->unweighted()) {
+            throw std::invalid_argument(
+                std::format(
+                    "channel '{}' is integrated at fixed order, which integrate gives",
+                    channel->status().name
+                )
+            );
+        }
+    }
+}
+
 void EventGenerator::run_generate(GenerateMode mode) {
+    check_unweighted_channels();
     _generate_mode = mode;
     _survey_job = false;
     reset_start_time();
@@ -278,6 +292,7 @@ void EventGenerator::run_generate(GenerateMode mode) {
 
 // Same commit-ordering approach as generate().
 void EventGenerator::survey(std::size_t survey_pass) {
+    check_unweighted_channels();
     _survey_job = true;
     _survey_pass = survey_pass;
     reset_start_time();
@@ -451,6 +466,153 @@ void EventGenerator::survey(std::size_t survey_pass) {
     }
     print_survey_update(true, done_event_count, total_event_count, iter - 1);
     warn_invalid_step_values();
+}
+
+void EventGenerator::integrate(const IntegrationConfig& config) {
+    for (auto& channel : _channels) {
+        if (channel->unweighted()) {
+            throw std::invalid_argument(
+                std::format(
+                    "channel '{}' has unweighted events, which survey and generate "
+                    "give",
+                    channel->status().name
+                )
+            );
+        }
+    }
+    _survey_job = true;
+    _survey_pass = 0;
+    reset_start_time();
+    _commit_cursor = _job_id;
+    _ready_gen.clear();
+    std::size_t channel_count = _channels.size();
+    bool fixed_points = !(config.accuracy > 0.);
+    // the standard deviations of the weights of the channels in the last
+    // iteration, for the shares of the next
+    std::vector<double> stds(channel_count, 0.);
+
+    // one iteration of every channel with points, committed in job order
+    auto run_iteration = [&](const std::vector<std::size_t>& points) {
+        for (std::size_t i = 0; i < channel_count; ++i) {
+            if (points.at(i) > 0) {
+                _ready_jobs.push_back({
+                    .channel_index = i,
+                    .unweight = false,
+                    .batch_event_count = points.at(i),
+                    .is_vegas_batch = true,
+                });
+            }
+        }
+        std::size_t job_id_before = _job_id;
+        start_jobs();
+        std::size_t in_flight = _job_id - job_id_before;
+        while (in_flight > 0) {
+            _ready_gen.insert(wait_for_result(in_flight));
+            while (_ready_gen.erase(_commit_cursor) > 0) {
+                auto& job = _running_jobs.at(_commit_cursor);
+                auto& channel = _channels.at(job.channel_index);
+                channel->integrate(job);
+                auto& channel_job_count = _channel_job_counts.at(job.channel_index);
+                --channel_job_count;
+                --_context_job_counts.at(job.context_index);
+                _channel_gen_order.at(job.channel_index).pop_front();
+                if (channel_job_count == 0) {
+                    channel->optimize_vegas(job);
+                }
+                _running_jobs.erase(_commit_cursor);
+                ++_commit_cursor;
+            }
+            std::size_t job_id_refill = _job_id;
+            start_jobs();
+            in_flight += _job_id - job_id_refill;
+        }
+        update_integral_status();
+        for (std::size_t i = 0; i < channel_count; ++i) {
+            if (points.at(i) > 0) {
+                stds.at(i) = std::sqrt(_channels.at(i)->cross_section().variance());
+            }
+        }
+    };
+    auto total = [&] {
+        double mean = 0., variance = 0.;
+        for (auto& channel : _channels) {
+            auto& integral = channel->cross_section();
+            mean += integral.mean();
+            if (integral.count() > 1) {
+                variance += integral.variance() / integral.count();
+            }
+        }
+        return std::make_pair(mean, std::sqrt(variance));
+    };
+
+    for (std::size_t iter = 0; iter < config.grid_iterations; ++iter) {
+        std::size_t points = config.grid_points;
+        if (!fixed_points) {
+            points <<= iter;
+        }
+        for (auto& channel : _channels) {
+            channel->clear_events();
+        }
+        run_iteration(std::vector<std::size_t>(channel_count, points));
+        Logger::info(std::format("grid iteration {} done", iter + 1));
+    }
+    for (auto& channel : _channels) {
+        channel->clear_events();
+    }
+    std::size_t least = config.points * channel_count;
+    std::size_t total_points = least;
+    std::size_t min_share = std::max<std::size_t>(_config.cpu_batch_size / 10, 1);
+    for (std::size_t iter = 0; iter < config.max_iterations; ++iter) {
+        std::vector<std::size_t> points(channel_count, config.points);
+        double std_sum = 0.;
+        for (double std : stds) {
+            std_sum += std;
+        }
+        if (!fixed_points) {
+            std::vector<double> shares(channel_count, 1. / channel_count);
+            if (std_sum > 0.) {
+                double share_sum = 0.;
+                for (std::size_t i = 0; i < channel_count; ++i) {
+                    shares.at(i) = std::max(stds.at(i) / std_sum, 0.1 / channel_count);
+                    share_sum += shares.at(i);
+                }
+                for (auto& share : shares) {
+                    share /= share_sum;
+                }
+            }
+            for (std::size_t i = 0; i < channel_count; ++i) {
+                points.at(i) = std::max(
+                    static_cast<std::size_t>(std::round(shares.at(i) * total_points)),
+                    min_share
+                );
+            }
+        }
+        run_iteration(points);
+        auto [mean, error] = total();
+        Logger::info(
+            std::format("iteration {}: {:.6e} +- {:.2e}", iter + 1, mean, error)
+        );
+        if (fixed_points) {
+            continue;
+        }
+        if (std::abs(error) <= config.accuracy * std::abs(mean)) {
+            break;
+        }
+        std::size_t done = 0;
+        for (auto& channel : _channels) {
+            done += channel->cross_section().count();
+        }
+        if (mean == 0.) {
+            total_points = least;
+            continue;
+        }
+        double needed = done * std::pow(error / (config.accuracy * std::abs(mean)), 2);
+        total_points = static_cast<std::size_t>(std::round(
+            std::min(
+                std::max(1.1 * (needed - done), static_cast<double>(least)), 4. * done
+            )
+        ));
+    }
 }
 
 void EventGenerator::warn_invalid_step_values() {
