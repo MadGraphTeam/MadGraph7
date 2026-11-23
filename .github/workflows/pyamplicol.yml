@@ -449,13 +449,14 @@ jobs:
       # in source-contracts: they are loop tests, which skip without a
       # Symbolica that accepts the package key, and source-contracts installs
       # no Symbolica.
-      # The stability display, wide magnitudes and tracked-precision files
-      # are the fast new one-loop tests of the lane-rescue / runtime-options
-      # import (about 20 s together). test_loop_v2_process_history.py is not
-      # listed: its child process uses Symbolica directly, which is refused
-      # without a personal licence once pytest holds the restricted thread.
-      # The last seven files are the fastest of the restored one-loop engine
-      # tests (about 70 s together).
+      # Two groups are listed for their speed (measured locally, one pytest
+      # process per group): the stability-display, wide-magnitude and
+      # tracked-precision files of the lane-rescue / runtime-options import
+      # (about 20 s), and the last seven files, the fastest of the restored
+      # one-loop engine tests (about 30 s). test_loop_v2_process_history.py
+      # is not listed: its child process uses Symbolica directly, which is
+      # refused without a personal licence once pytest holds the restricted
+      # thread.
       - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
         env:
           PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
@@ -886,6 +887,10 @@ jobs:
           name: pyamplicol-retained-sdist
           path: pyamplicol/.artifacts/retained
       - name: Build and deploy-test in manylinux_2_28 x86_64
+        # The wheel is built from the retained sdist only (--skip-checkout-wheel),
+        # as the macOS wheels are. A second wheel from this checkout cannot be
+        # built here: its prepared models are not committed (only the sdist has
+        # them), and umami.h is a symlink into madspace/, outside the mount.
         run: |
           docker run --rm \
             -v "$PWD:/io" \
@@ -910,6 +915,7 @@ jobs:
               "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PY311" tools/release/build_release_artifacts.py \
                 --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz \
+                --skip-checkout-wheel \
                 --output-dir .artifacts/platform
               "$PY311" tools/ci/memory_watchdog.py --limit-gib 30 -- \
                 "$PY311" tools/release/test_deployment.py \

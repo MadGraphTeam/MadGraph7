@@ -208,6 +208,11 @@ where
                     )
                     .map_err(error)?,
             );
+            // Taken after a successful evaluation only, which suffices:
+            // NinjaRS's `Amplitude::evaluate_batch_with_inputs` (every
+            // `evaluate_batch*` goes through it) forgets the thread's earlier
+            // box-Gram refusals on entry (`clear_box_gram_refusals`), so those
+            // of a failed evaluation never reach the next one.
             refusals.push(super::lane_status::generic_refusals());
         }
         let mut sectors = results.into_iter();
