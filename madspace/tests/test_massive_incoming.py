@@ -6,9 +6,11 @@ mass, massive partons) on their mass shells in the partonic frame
 with the massive versions of their blocks (unclamped |t| ranges, shifted |t|
 sampling, massive rapidity and ETmin bounds, the double-t and 2 -> 3 blocks).
 Without a t-channel chain (rambo, s-channel, 2 -> 1) the final state and the
-Jacobian are those of massless incoming particles. Chili builds the final state
-against the massless pair with the same sum and puts it on its mass shells
-afterwards (incoming_on_shell), with the same final state and Jacobian too.
+Jacobian are those of massless incoming particles. Chili with beams from PDFs
+builds the final state against the massless pair with the same sum and puts it
+on its mass shells afterwards (incoming_on_shell), and chili with fixed beams
+builds it for the sum of the beams alone, with the same final state and
+Jacobian too.
 Every mode has the phase-space volume of massless beams, an inverse that takes
 the massive momenta, and s_hat from the threshold (m1 + m2)^2 on. The flux
 1/(2 sqrt(lambda(s_hat, m1^2, m2^2))) is that of DifferentialCrossSection with
@@ -43,6 +45,7 @@ MODES = [
     ("rambo", True),
     ("propagator", True),
     ("color_ordered", True),
+    ("chili", True),
 ]
 MODE_IDS = [
     f"{mode}-{'leptonic' if leptonic else 'hadronic'}" for mode, leptonic in MODES

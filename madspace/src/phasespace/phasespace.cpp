@@ -312,10 +312,12 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     // A decay has no beams to sample momentum fractions for: the root
     // virtuality is fixed at the decaying particle's mass (passed as
     // cm_energy) and there is no boost into a lab frame.
+    // chili reads x1 and x2 off its final state, except with dressed-lepton
+    // beams, whose split samples them
     _map_luminosity(
         !leptonic && !topology.is_decay() &&
         (_topology.t_propagator_count() == 0 ||
-         t_channel_mode != PhaseSpaceMapping::chili)
+         t_channel_mode != PhaseSpaceMapping::chili || lepton_sampling_power != 0.)
     ),
     _lepton_power(lepton_sampling_power),
     _two_to_one(topology.outgoing_masses().size() == 1),
@@ -326,7 +328,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     ),
     _project_incoming(
         _massive_incoming && topology.t_propagator_count() > 0 &&
-        t_channel_mode == PhaseSpaceMapping::chili
+        t_channel_mode == PhaseSpaceMapping::chili && !leptonic &&
+        lepton_sampling_power == 0.
     ),
     _t_mapping(std::monostate{}) {
     // the chain order and settings belong to the color-ordered mode only
@@ -706,9 +709,24 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             y_max.push_back(node_y_max.at(index));
         }
         if (t_channel_mode == PhaseSpaceMapping::chili) {
-            // |y| <= |eta|, so we can pass y_max = eta_max
-            _t_mapping =
-                ChiliMapping(_topology.t_propagator_count() + 1, eta_max, pt_min);
+            // |y| <= |eta|, so we can pass y_max = eta_max. Fixed beams leave
+            // the final state no longitudinal freedom (lepton chili). With
+            // dressed-lepton beams the split samples x1 and x2, and chili
+            // builds the final state for fixed beams in their partonic frame,
+            // where the cuts of the lab bound no rapidity.
+            if (_lepton_power != 0.) {
+                std::fill(
+                    eta_max.begin(),
+                    eta_max.end(),
+                    std::numeric_limits<double>::infinity()
+                );
+            }
+            _t_mapping = ChiliMapping(
+                _topology.t_propagator_count() + 1,
+                eta_max,
+                pt_min,
+                _leptonic || _lepton_power != 0.
+            );
         } else if (t_channel_mode == PhaseSpaceMapping::color_ordered) {
             // Reorder the per-pair cut matrices into the child order handed to
             // the chain. Composite children carry no pairwise cut.
@@ -1087,6 +1105,15 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                     p_ext = {t_result.at(0), t_result.at(1)};
                     result_index = 2;
                 }
+                // chili with fixed beams builds the final state in the beams'
+                // frame, and the beams are those of the collision, on their
+                // mass shells if they are massive
+                if constexpr (std::is_same_v<TMapping, ChiliMapping>) {
+                    if (t_mapping.fixed_beams()) {
+                        auto [p1, p2] = incoming(sqrt_s_hat);
+                        p_ext = {p1, p2};
+                    }
+                }
                 for (std::size_t index : decay_data.at(0).decay.child_indices) {
                     decay_data.at(index).momentum = t_result.at(result_index);
                     ++result_index;
@@ -1094,11 +1121,13 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 dets.push_back(t_result["det"]);
 
                 if constexpr (std::is_same_v<TMapping, ChiliMapping>) {
-                    auto [x1_new, x2_new] = fb.momenta_to_x1x2(
-                        fb.stack({t_result.at(0), t_result.at(1)}), _sqrt_s_lab
-                    );
-                    x1 = x1_new;
-                    x2 = x2_new;
+                    if (!t_mapping.fixed_beams()) {
+                        auto [x1_new, x2_new] = fb.momenta_to_x1x2(
+                            fb.stack({t_result.at(0), t_result.at(1)}), _sqrt_s_lab
+                        );
+                        x1 = x1_new;
+                        x2 = x2_new;
+                    }
                 }
             },
             [&](std::monostate) {
