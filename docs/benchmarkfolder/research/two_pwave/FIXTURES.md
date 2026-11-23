@@ -68,4 +68,13 @@ The 1/ε coefficient per Born is 0.72155466287 (7 GeV), 0.71167194524 (10.58), 0
 - The 80-bit switch at the 24 points of `pwave_stability` (u ū and g g → χ_c0 g, all four modes) is bit-identical to d17085a with the bridge v2.
 - One-P-wave outputs are file-identical before and after the rank fix.
 
-**g g → χ_c0 χ_c0.** On 59aee45, the driver hangs in a unit-power hexagon (N = 6, rank 4), in TIRust's relation search (`DirectExecutor::affine_relation`). It is a TIRust regression, fixed in 8305f8b (v4 patches), which refuses that lane as d17085a did.
+**g g → χ_c0 χ_c0.** On 59aee45, the driver hangs in a unit-power hexagon (N = 6, rank 4), in TIRust's relation search (`DirectExecutor::affine_relation`). It is a TIRust regression, fixed in 8305f8b, which refuses that lane as d17085a did.
+
+The run on d5442e6 (8305f8b plus a test-only commit) with the bridge v4 (845c66de) is built like v3. The rank fix brings g g's two-state families to rank 6 (R = 4), so it has lanes that no earlier fixture had. At √s = 20 GeV, fixture point 0, per pass:
+
+| Calls | Served | Refused (status 1) |
+|---|---|---|
+| raised powers | 2900 (two doubled up to rank 6: 74, tripled at rank 6: 42) | 10 two doubled at rank 6: boxes (1,1,2,2) gggg, 2; pentagons (1,1,1,2,2) ggQgg, 8 |
+| unit powers | 1671 | 87 at rank 4: boxes QQQQ, 3; pentagons QQgQQ, 4; hexagons, 80 |
+
+The unit-power refusals are the two-onium lanes that TIRust serves in quadruple precision: other outputs rescue them there, but two-P-wave outputs have no quadruple-precision path yet (Phase 3a). The point is reported unstable (410, 413 in the stability test). The 1/ε² is −2.44 per Born, where −2 C_A = −6 is predicted, so the poles cannot be tested until every group is served. The 97 refused inputs are in the scratch file `refused_gg_chic0chic0_d5442e6.txt` (sha256 221cabcc…), sent to TIRust with the results.
