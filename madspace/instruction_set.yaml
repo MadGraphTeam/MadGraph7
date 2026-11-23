@@ -3680,6 +3680,32 @@ chili_forward:
       desc: "Jacobian of the mapping"
   desc: "Chili hadron-collider mapping from the unit hypercube to external momenta. Building block of @ref ChiliMapping."
 
+chili_forward_fixed:
+  inputs:
+    - name: r
+      type: [float, 3n-4]
+      desc: "random numbers, one per phase-space degree of freedom"
+    - name: e_cm
+      type: [float]
+      desc: "center-of-mass energy of the beams"
+    - name: m_out
+      type: [float, n]
+      desc: "mass of each final-state particle"
+    - name: pt_min
+      type: [float, single, n]
+      desc: "minimum transverse momentum per final-state particle (the last two entries are not used)"
+    - name: y_max
+      type: [float, single, n]
+      desc: "maximum rapidity per final-state particle"
+  outputs:
+    - name: p_ext
+      type: [float, n+2, 4]
+      desc: "external momenta, incoming particles first"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Chili with fixed beams (lepton colliders): the first n - 2 outgoing momenta as in `chili_forward`, the last two as the two-body decay of what is left of the beams' momentum, in its rest frame. Building block of @ref ChiliMapping."
+
 chili_inverse:
   inputs:
     - name: p_ext
@@ -3705,6 +3731,32 @@ chili_inverse:
       type: [float]
       desc: "Jacobian of the mapping"
   desc: "Inverse of `chili_forward`. Building block of @ref ChiliMapping."
+
+chili_inverse_fixed:
+  inputs:
+    - name: p_ext
+      type: [float, n+2, 4]
+      desc: "external momenta, incoming particles first"
+    - name: e_cm
+      type: [float]
+      desc: "center-of-mass energy of the beams"
+    - name: m_out
+      type: [float, n]
+      desc: "mass of each final-state particle"
+    - name: pt_min
+      type: [float, single, n]
+      desc: "minimum transverse momentum per final-state particle (the last two entries are not used)"
+    - name: y_max
+      type: [float, single, n]
+      desc: "maximum rapidity per final-state particle"
+  outputs:
+    - name: r
+      type: [float, 3n-4]
+      desc: "random numbers, one per phase-space degree of freedom"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `chili_forward_fixed`. Building block of @ref ChiliMapping."
 
 ---
 title: Interface to ME and PDF

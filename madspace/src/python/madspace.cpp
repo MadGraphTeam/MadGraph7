@@ -1178,16 +1178,23 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 std::size_t,
                 const std::vector<double>&,
-                const std::vector<double>&>(),
+                const std::vector<double>&,
+                bool>(),
             py::arg("n_particles"),
             py::arg("y_max"),
             py::arg("pt_min"),
+            py::arg("fixed_beams") = false,
             pydoc::doc("ChiliMapping::ChiliMapping")
         )
         .def(
             "random_dim",
             &ChiliMapping::random_dim,
             pydoc::doc("ChiliMapping::random_dim")
+        )
+        .def(
+            "fixed_beams",
+            &ChiliMapping::fixed_beams,
+            pydoc::doc("ChiliMapping::fixed_beams")
         );
 
     py::classh<VegasHistogram, FunctionGenerator>(

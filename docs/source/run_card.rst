@@ -405,7 +405,8 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``t_channel`` (``"propagator"``)
     Parametrization of the t-channel part of the multichannel phase space. ``propagator``
     follows the diagram as a chain of :math:`2 \to 2` steps. ``rambo`` applies RAMBO to the
-    t-channel particles and ``chili`` uses collider coordinates.
+    t-channel particles and ``chili`` uses collider coordinates. With lepton beams
+    (``leptonic``) ``chili`` generates the last two particles as a two-body decay.
 
 ``flat_mode`` (``"rambo"``)
     The same choice for the flat channel.
