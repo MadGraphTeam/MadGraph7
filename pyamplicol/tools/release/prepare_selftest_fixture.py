@@ -270,15 +270,12 @@ def refresh_umami_artifact_identity(
 
 
 def _workspace_version() -> str:
-    with (ROOT / "Cargo.toml").open("rb") as stream:
-        cargo = tomllib.load(stream)
-    try:
-        version = cargo["workspace"]["package"]["version"]
-    except (KeyError, TypeError) as exc:
-        raise RuntimeError("Cargo.toml has no workspace package version") from exc
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        pyproject = tomllib.load(stream)
+    version = pyproject.get("project", {}).get("version")
     if not isinstance(version, str) or not version:
-        raise RuntimeError("Cargo workspace package version is invalid")
-    return version.replace("-dev.", ".dev")
+        raise RuntimeError("pyproject.toml has no package version")
+    return version
 
 
 def _walk_evaluator_manifests(value: object) -> Sequence[dict[str, Any]]:

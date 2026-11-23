@@ -541,11 +541,11 @@ def _package_version(root: Path) -> str:
         if isinstance(version, str) and version:
             return version
         raise RuntimeError("candidate build information has no package version")
-    with (root / "Cargo.toml").open("rb") as stream:
+    with (root / "pyproject.toml").open("rb") as stream:
         payload = tomllib.load(stream)
-    version = payload.get("workspace", {}).get("package", {}).get("version")
+    version = payload.get("project", {}).get("version")
     if not isinstance(version, str) or not version:
-        raise RuntimeError("Cargo workspace has no package version")
+        raise RuntimeError("pyproject.toml has no package version")
     return version
 
 

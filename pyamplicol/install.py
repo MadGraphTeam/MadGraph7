@@ -104,12 +104,9 @@ def default_jobs() -> int:
 
 
 def _pyamplicol_version() -> str:
-    """The MadGraph version, which pyamplicol is released in lockstep with."""
-    for line in (SCRIPT_DIR.parent / "VERSION").read_text().splitlines():
-        name, _, value = line.partition("=")
-        if name.strip() == "version":
-            return value.strip()
-    raise RuntimeError("no 'version' line in the MadGraph VERSION file")
+    """The pinned pyamplicol version, <MadGraph version>.<N>."""
+    with open(SCRIPT_DIR / "pyproject.toml", "rb") as f:
+        return tomllib.load(f)["project"]["version"]
 
 
 def _release_info() -> dict[str, str]:
@@ -410,7 +407,10 @@ def main(argv: list[str] | None = None) -> None:
         clean_install_dirs()
 
     release_version = _release_info().get("version")
-    is_release = release_version == _pyamplicol_version()
+    # A MadGraph release ships the pyamplicol published with it, <version>.1.
+    is_release = release_version is not None and (
+        _pyamplicol_version() == f"{release_version}.1"
+    )
     bin_available = is_release and _release_wheel_available()
 
     if args.bin:

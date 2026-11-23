@@ -2208,12 +2208,11 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             prefix=_PREPARED_MODEL_SDIST_PREFIX,
             mode="release",
         )
-        cargo = relative_files["Cargo.toml"].read_text(encoding="utf-8")
-        match = re.search(r'(?m)^version = "([^"]+)"$', cargo)
+        pyproject = relative_files["pyproject.toml"].read_text(encoding="utf-8")
+        match = re.search(r'(?m)^version = "([^"]+)"$', pyproject)
         if match is None:
-            raise ArtifactError("sdist Cargo.toml has no workspace version")
-        cargo_version = match.group(1)
-        if cargo_version != EXPECTED_RELEASE_VERSION:
+            raise ArtifactError("sdist pyproject.toml has no package version")
+        if match.group(1) != EXPECTED_RELEASE_VERSION:
             raise ArtifactError("release sdist contains a non-release version")
         version = EXPECTED_RELEASE_VERSION
 

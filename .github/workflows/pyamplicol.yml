@@ -174,7 +174,7 @@ jobs:
         run: python -m pip install "pytest>=8.3,<9"
       - name: Prepared models
         uses: ./.github/actions/pyamplicol_prepared_models
-      - name: Check the version follows the MadGraph VERSION file
+      - name: Check the version is <MadGraph VERSION>.<N>
         run: python tools/release/sync_version.py --check
       - name: Check public source, repository, and release contracts
         env:

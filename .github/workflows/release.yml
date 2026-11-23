@@ -2,10 +2,17 @@ name: Release
 
 # Fires once a GitHub Release is published (draft -> Publish release), never on
 # a tag push by itself. Checks that main's CI was green for the tagged commit,
-# publishes madspace and pyamplicol to PyPI with the same version as the
-# MadGraph release, and attaches the MadGraph tarball and the pyamplicol
+# publishes madspace (same version as the MadGraph release) and pyamplicol
+# (that version + ".1") to PyPI, and attaches the MadGraph tarball and the pyamplicol
 # prepared-model archive to the release. If anything fails, the release
 # is reverted to draft so a half-published version never stays public.
+#
+# Two kinds of release, told apart by the tag:
+#   v<MG>                 MadGraph release: madspace <MG> and pyamplicol <MG>.1
+#   pyamplicol-v<MG>.<N>  standalone pyamplicol release, N >= 2, on top of the
+#                         published MadGraph release v<MG>; only pyamplicol is
+#                         built and published, plus its prepared-model archive.
+# Both publish through this file so that one PyPI trusted publisher covers them.
 #
 # The test suites are deliberately NOT re-run here. Every commit on main is
 # already tested by the push-triggered workflows, and the release tag points at
@@ -27,16 +34,51 @@ permissions:
   actions: read
 
 jobs:
+  # Other releases of this repository (e.g. benchmark data) are left alone.
   check_version:
+    if: startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'pyamplicol-v')
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.value }}
+      kind: ${{ steps.version.outputs.kind }}
     steps:
       - uses: actions/checkout@v5
       - id: version
-        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-      - name: Check VERSION / madspace/pyproject.toml agree with the release tag
+        run: |
+          case "$GITHUB_REF_NAME" in
+            pyamplicol-v*) kind=pyamplicol; value=${GITHUB_REF_NAME#pyamplicol-v} ;;
+            v*) kind=madgraph; value=${GITHUB_REF_NAME#v} ;;
+            *) echo "::error::release tag $GITHUB_REF_NAME is neither v<MG> nor pyamplicol-v<MG>.<N>"; exit 1 ;;
+          esac
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+      - name: Check VERSION / madspace / pyamplicol (<MG>.1) agree with the release tag
+        if: steps.version.outputs.kind == 'madgraph'
         run: python3 bin/create_release.py --version "${{ steps.version.outputs.value }}" --check-only
+      - name: Check the standalone pyamplicol version
+        if: steps.version.outputs.kind == 'pyamplicol'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          python3 pyamplicol/tools/release/sync_version.py --check --version "$VERSION"
+          mg=${VERSION%.*}
+          if [ "${VERSION##*.}" -lt 2 ]; then
+            echo "::error::pyamplicol $mg.1 is published by the MadGraph release v$mg, not by a pyamplicol-v tag."
+            exit 1
+          fi
+          draft=$(gh release view "v$mg" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft) || {
+            echo "::error::MadGraph release v$mg does not exist; publish it before pyamplicol-v$VERSION."
+            exit 1
+          }
+          if [ "$draft" != "false" ]; then
+            echo "::error::MadGraph release v$mg is still a draft; publish it before pyamplicol-v$VERSION."
+            exit 1
+          fi
+          # Keep the MadGraph release as the repository's "latest" one.
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --latest=false \
+            || echo "::warning::could not unmark $GITHUB_REF_NAME as the latest release"
 
   # The release gate: main's CI for the exact commit being released must have
   # finished and be green. Waits if it is still running, so publishing a release
@@ -96,7 +138,8 @@ jobs:
   # have to run at release time: the CI build on main only builds the
   # smoke-test subset, and nothing on main uploads to PyPI.
   madspace:
-    needs: require_green_ci
+    needs: [check_version, require_green_ci]
+    if: needs.check_version.outputs.kind == 'madgraph'
     uses: ./.github/workflows/madspace.yml
     with:
       full_matrix: true
@@ -144,9 +187,16 @@ jobs:
 
   # Defined here for the same reason as publish_pypi; pyamplicol's PyPI trusted
   # publisher names this workflow and the same "pypi" environment.
+  # Waits for madspace on a MadGraph release; publish_pypi is skipped on a
+  # standalone pyamplicol release.
   publish_pypi_pyamplicol:
     name: Publish pyamplicol to PyPI
-    needs: [pyamplicol, publish_pypi]
+    needs: [check_version, pyamplicol, publish_pypi]
+    if: >-
+      always() && needs.pyamplicol.result == 'success'
+      && (needs.publish_pypi.result == 'success'
+          || (needs.check_version.outputs.kind == 'pyamplicol'
+              && needs.publish_pypi.result == 'skipped'))
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -188,8 +238,43 @@ jobs:
               raise SystemExit(f"unexpected wheel platform inventory: {found}")
           if any("candidate" in path.name or "dev0" in path.name for path in files):
               raise SystemExit("candidate artifacts cannot be published")
+          version = "${{ needs.check_version.outputs.kind == 'madgraph' && format('{0}.1', needs.check_version.outputs.version) || needs.check_version.outputs.version }}"
+          stale = [path.name for path in files if f"pyamplicol-{version}" not in path.name]
+          if stale:
+              raise SystemExit(f"not pyamplicol {version}: {', '.join(stale)}")
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Standalone pyamplicol release: smoke-test the published package and attach
+  # its prepared-model archive, which source installs of this version fetch.
+  pyamplicol_assets:
+    needs: [check_version, publish_pypi_pyamplicol]
+    if: needs.check_version.outputs.kind == 'pyamplicol'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Download the pyamplicol prepared-model archive
+        uses: actions/download-artifact@v5
+        with:
+          name: pyamplicol-prepared-models
+          path: dist
+      - name: Smoke-test the published package
+        env:
+          VERSION: ${{ needs.check_version.outputs.version }}
+        run: |
+          # The just-published wheel may take a little while to be installable.
+          for attempt in $(seq 10); do
+            python -m pip install "pyamplicol==$VERSION" && break
+            echo "attempt $attempt: pyamplicol==$VERSION not installable yet, retrying..."
+            sleep 15
+          done
+          python -c "import pyamplicol, sys; assert pyamplicol.__version__ == sys.argv[1], pyamplicol.__version__" "$VERSION"
+      - name: Upload the archive to the GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: gh release upload '${{ github.ref_name }}' dist/** --repo '${{ github.repository }}' --clobber
 
   tarball:
     needs:
@@ -256,7 +341,7 @@ jobs:
             if python3 pyamplicol/install.py --bin -y; then status=0; break; else status=$?; fi
             # The wheel installed, so the license check failed: retrying cannot help.
             test -d pyamplicol/install/pyamplicol && break
-            echo "attempt $attempt: pyamplicol==${{ needs.check_version.outputs.version }} not installable yet, retrying..."
+            echo "attempt $attempt: pyamplicol==${{ needs.check_version.outputs.version }}.1 not installable yet, retrying..."
             sleep 15
           done
           test "$status" -eq 0
@@ -280,15 +365,28 @@ jobs:
       - publish_pypi
       - pyamplicol
       - publish_pypi_pyamplicol
+      - pyamplicol_assets
       - tarball
-    # 'skipped' has to count as a failure here: a job whose own guard is false,
-    # or one whose dependency was skipped, is neither failure() nor cancelled(),
-    # so the old condition let a run in which nothing but check_version executed
-    # report success and leave the release published untested.
+    # A skipped job has to count as a failure here: a job whose own guard is
+    # false, or one whose dependency was skipped, is neither failure() nor
+    # cancelled(), so the old condition let a run in which nothing but
+    # check_version executed report success and leave the release published
+    # untested. Each kind of release lists the jobs it must run.
     if: >-
-      always() && (contains(needs.*.result, 'failure')
+      always()
+      && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'pyamplicol-v'))
+      && (contains(needs.*.result, 'failure')
       || contains(needs.*.result, 'cancelled')
-      || contains(needs.*.result, 'skipped'))
+      || needs.check_version.result != 'success'
+      || needs.require_green_ci.result != 'success'
+      || needs.pyamplicol.result != 'success'
+      || needs.publish_pypi_pyamplicol.result != 'success'
+      || (needs.check_version.outputs.kind == 'pyamplicol'
+          && needs.pyamplicol_assets.result != 'success')
+      || (needs.check_version.outputs.kind != 'pyamplicol'
+          && (needs.madspace.result != 'success'
+              || needs.publish_pypi.result != 'success'
+              || needs.tarball.result != 'success')))
     runs-on: ubuntu-24.04
     steps:
       - name: Revert the release to draft

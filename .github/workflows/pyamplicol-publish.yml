@@ -3,7 +3,9 @@ name: pyAmpliCol publish validated artifacts
 # Ported from pyAmpliCol's publish-pypi.yml. Manual only (never on push or
 # pull request): publishes the pyamplicol-validated-release artifact of a
 # pyAmpliCol workflow run with full_matrix (workflow_dispatch) to TestPyPI or
-# PyPI. MadGraph7 releases publish pyamplicol through release.yml; this is the
+# PyPI. MadGraph7 releases (tag v<MG>, pyamplicol <MG>.1) and standalone
+# pyamplicol releases (tag pyamplicol-v<MG>.<N>, N >= 2) publish through
+# release.yml after `sync_version.py --bump` on main; this is the
 # separate path for a TestPyPI rehearsal or a pyAmpliCol-only upload. Each
 # destination needs a Trusted Publisher entry naming this workflow file and
 # the environment of the same name (testpypi or pypi).

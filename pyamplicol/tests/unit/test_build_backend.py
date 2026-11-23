@@ -457,6 +457,7 @@ def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     package = overlay / "src/pyamplicol"
     build_info_path = package / "_build_info.json"
     build_info_path.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "pyproject.toml", overlay / "pyproject.toml")
     build_info_path.write_text(
         json.dumps(
             {
@@ -570,6 +571,7 @@ def test_ordinary_wheel_build_rejects_prepared_model_digest_drift(
     monkeypatch.delenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", raising=False)
     overlay = tmp_path / "overlay"
     overlay.mkdir()
+    shutil.copy2(ROOT / "pyproject.toml", overlay / "pyproject.toml")
     target = tmp_path / "target"
     target.mkdir()
 
@@ -697,10 +699,11 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
     temporary_directory = tmp_path / "overlay-temporary"
     temporary_directory.mkdir()
     cargo_target_directory = tmp_path / "shared-cargo-target"
-    base_version = backend.canonical_package_version(ROOT)
+    base_version = backend._cargo_workspace_version(ROOT)
     native_digest = backend._native_build_inputs_digest(ROOT)
     candidate_fingerprint = native_digest[:12]
     candidate_version = f"{base_version}-dev.0+candidate.{candidate_fingerprint}"
+    python_candidate = f"{backend.canonical_package_version(ROOT)}.dev0+candidate.{candidate_fingerprint}"
     with backend._overlay(
         "candidate",
         temporary_directory=temporary_directory,
@@ -715,6 +718,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         candidate_version_line = f'version = "{candidate_version}"'
         assert candidate_version_line in cargo
+        assert backend.python_package_version(overlay) == python_candidate
         # Every crate inheriting the workspace version, the key crate
         # ``pyamplicol`` included (maturin builds with ``--locked``).
         inheriting = backend._workspace_version_crates(overlay)
@@ -756,7 +760,7 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         assert build_info["selftest_fixture_bootstrap"] is False
         assert build_info["candidate_fingerprint"] == candidate_fingerprint
         assert build_info["native_build_inputs_sha256"] == native_digest
-        assert build_info["version"] == candidate_version.replace("-dev.", ".dev")
+        assert build_info["version"] == python_candidate
         assert build_info["source_checkout"] == str(ROOT.resolve())
         assert build_info["source_revision"] == "a" * 40
         target = "aarch64-apple-darwin"
@@ -1633,6 +1637,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
     overlay = tmp_path / "overlay"
     overlay.mkdir()
+    shutil.copy2(ROOT / "pyproject.toml", overlay / "pyproject.toml")
     target = tmp_path / "cargo-target"
     gates: list[str] = []
     sdk_stages: list[Path] = []
@@ -2202,6 +2207,7 @@ def test_pep517_backend_rejects_recursive_delegation(
     monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
     overlay = tmp_path / "overlay"
     overlay.mkdir()
+    shutil.copy2(ROOT / "pyproject.toml", overlay / "pyproject.toml")
 
     @contextlib.contextmanager
     def fake_overlay(

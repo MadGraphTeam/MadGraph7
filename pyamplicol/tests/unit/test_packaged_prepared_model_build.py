@@ -65,6 +65,7 @@ def _overlay(tmp_path: Path) -> Path:
         dependencies / "contributor-lock.toml",
     )
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
+    shutil.copy2(ROOT / "pyproject.toml", overlay / "pyproject.toml")
     # Only dependency versions are read for these synthetic bundles. Derive
     # that fixture from tracked inputs, not a developer's ignored Cargo lock.
     with (dependencies / "contributor-lock.toml").open("rb") as stream:
@@ -120,6 +121,7 @@ def _release_overlay(tmp_path: Path) -> Path:
         dependencies / "release-lock.toml",
     )
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
+    shutil.copy2(ROOT / "pyproject.toml", overlay / "pyproject.toml")
     shutil.copy2(ROOT / "Cargo.lock", overlay / "Cargo.lock")
     _write_fixture_assets(overlay, mode="release")
     return overlay
@@ -373,9 +375,10 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     assert metadata["producer"]["package_version"] == RELEASE_VERSION
     with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
         release = tomllib.load(stream)
-    assert metadata["dependencies"]["symbolica_version"] == release["symbolica"][
-        "python_version"
-    ]
+    assert (
+        metadata["dependencies"]["symbolica_version"]
+        == release["symbolica"]["python_version"]
+    )
     assert metadata["dependencies"]["symjit_version"] == "2.28.3"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 

@@ -228,7 +228,13 @@ def build(
             text=True,
         ).strip()
     )
-    env = dict(os.environ, PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256=digest)
+    with (root / "pyproject.toml").open("rb") as stream:
+        version = tomllib.load(stream)["project"]["version"]
+    env = dict(
+        os.environ,
+        PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256=digest,
+        PYAMPLICOL_PACKAGE_VERSION=version,
+    )
     for key, value in _CODEGEN_DEFAULTS.items():
         env.setdefault(key, value)
     target = _target_directory(root, env, target_dir)
@@ -279,8 +285,6 @@ def build(
         raise SystemExit("error: native build inputs changed during the build")
     (target / _C_DEPENDENCY_STAMP).write_text(json.dumps(c_settings) + "\n")
 
-    with (root / "Cargo.toml").open("rb") as stream:
-        version = tomllib.load(stream)["workspace"]["package"]["version"]
     output.mkdir(parents=True)
     for name, source in artifacts.items():
         (output / name).write_bytes(source.read_bytes())
@@ -295,7 +299,7 @@ def build(
             for key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")
             if key in env
         },
-        "version": version.replace("-dev.", ".dev"),
+        "version": version,
         "profile": {"name": "release"}
         | {key: env[key] for key in sorted(env) if key.startswith("CARGO_PROFILE_")},
         "cargo_features": {
