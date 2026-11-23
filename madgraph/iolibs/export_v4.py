@@ -2796,7 +2796,9 @@ c     quadruple precision (MP_Dual).
         """aloha_functions.f, dual_variables.f, dual_opts.inc and the makefile
         of the HELAS library of a MadLoop output with P-wave bound states (one
         or two, at first order: NPWAVE=npwave). The quadruple-precision dual
-        numbers (mp_dual_variables.f) have one direction only.
+        numbers are those of mp_dual_variables.f (one direction) or, for two
+        P-wave states, of mp_dual2_variables.f (both directions and the mixed
+        derivative), written as mp_dual_variables.f.
 
         ep: also the extended-precision routines and dual numbers, derived
         from the quadruple-precision ones (madgraph/loop/onia_ep.py), for the
@@ -2820,7 +2822,8 @@ c     quadruple precision (MP_Dual).
             stream.write('\n\n')
             stream.write(mp_dual)
         cp(pjoin(template, 'dual_variables.f'), pjoin(write_dir, 'dual_variables.f'))
-        cp(pjoin(template, 'mp_dual_variables.f'), pjoin(write_dir, 'mp_dual_variables.f'))
+        cp(pjoin(template, 'mp_dual2_variables.f' if npwave == 2 else 'mp_dual_variables.f'),
+           pjoin(write_dir, 'mp_dual_variables.f'))
         if ep:
             onia_ep.derive_dhelas(write_dir, mp_dual)
 

@@ -105,6 +105,8 @@ C     and in the extended-precision passes (#PWaveExtendedPrecision)
 C     and along the direction of the second P-wave state
       %(complex_dp_format)s PW_DPL2(0:3,NEXTERNAL)
       common/%(proc_prefix)sPW_DPL2/PW_DPL2
+      %(complex_mp_format)s MP_PW_DPL2(0:3,NEXTERNAL)
+      common/%(proc_prefix)sMP_PW_DPL2/MP_PW_DPL2
 ## }
 ## } else {
       type(mp_aloha) MP_W(NWAVEFUNCS)
@@ -159,6 +161,7 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
 ## }
 ## if(OniaPwave2){
           PW_DPL2(I,J)=(0.0D0,0.0D0)
+          MP_PW_DPL2(I,J)=(0.0E0_16,0.0E0_16)
 ## }
 ## }
 		  IF (DOING_QP) THEN
@@ -175,6 +178,9 @@ C           the dual momenta: value (component 0) and derivative
 			IF (DOING_QP) THEN
 		      MP_PL(I,J)=MP_PL(I,J)-REAL(MPPWW(WE(K))%P(I)%COMP(0),KIND=16)
 		      MP_PW_DPL(I,J)=MP_PW_DPL(I,J)-MPPWW(WE(K))%P(I)%COMP(1)
+## if(OniaPwave2){
+		      MP_PW_DPL2(I,J)=MP_PW_DPL2(I,J)-MPPWW(WE(K))%P(I)%COMP(2)
+## }
 		    ENDIF
 ## if(OniaPwaveEP){
 			IF (DOING_EP) THEN

@@ -9,8 +9,8 @@ unstable, which a refused raised-power call forces) and the time.
     acceptance.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...]
 
 The points are those of fixtures.py (seed 1). MLStabThres is set to 1d99, so
-that no point goes to quadruple precision, which two-P-wave outputs do not
-have yet (Phase 3a); the accuracy estimate of CTModeRun -1 is still MadLoop's.
+that no point goes to quadruple precision (qp_check.py tests that path); the
+accuracy estimate of CTModeRun -1 is still MadLoop's.
 """
 import json
 import os

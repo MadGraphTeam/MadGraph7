@@ -78,3 +78,26 @@ The run on d5442e6 (8305f8b plus a test-only commit) with the bridge v4 (845c66d
 | unit powers | 1671 | 87 at rank 4: boxes QQQQ, 3; pentagons QQgQQ, 4; hexagons, 80 |
 
 The unit-power refusals are the two-onium lanes that TIRust serves in quadruple precision: other outputs rescue them there, but two-P-wave outputs have no quadruple-precision path yet (Phase 3a). The point is reported unstable (410, 413 in the stability test). The 1/ε² is −2.44 per Born, where −2 C_A = −6 is predicted, so the poles cannot be tested until every group is served. The 97 refused inputs are in the scratch file `refused_gg_chic0chic0_d5442e6.txt` (sha256 221cabcc…), sent to TIRust with the results.
+
+## Quadruple precision (Phase 3a)
+
+Two-P-wave outputs now have a quadruple-precision path:
+- **Dual numbers.** `aloha/template_files/mp_dual2_variables.f` has both directions and the mixed derivative, and is written as the output's `mp_dual_variables.f`. One-P-wave outputs keep the one-direction module, and with it their extended-precision code.
+- **Routines.** The `MP_` copies of the two-state routines of `onia_loop.f` (weights, counterterm passes, the four-component coefficient construction, the raised-power families).
+- **Templates.** The extra arrays in the quadruple-precision call templates.
+
+`qp_check.py` runs CTModeRun 1, 4 and 5 with MLStabThres 1d99, and −1 with 1d-30, which sends every point to the rescue. Results are in `data/qp_ee_chic0_hc_d5442e6.json`.
+
+**e⁺e⁻ → χ_c0 h_c** (TIRust d5442e6 with the bridge v4, seed 1):
+
+| √s (GeV), point | QP 1/ε against the prediction | DP 1/ε against the prediction | finite part, QP against DP | rescue |
+|---|---|---|---|---|
+| 7, 0 | 1.1e-15 | 3.2e-12 | 2.4e-12 | 323 |
+| 10.58, 0 | 1.1e-14 | 2.8e-12 | 3.4e-13 | 323 |
+| 10.58, 1 | 1.7e-14 | 3.0e-12 | 1.1e-9 | 323 |
+| 30, 0 | 1.2e-14 | 1.7e-10 | 1.9e-11 | 323 |
+
+- **Loop directions.** CTModeRun 4 and 5 (the loop reversed) agree exactly in double precision, so MadLoop's estimate is 0.
+- **Finite part.** In QP both 10.58 GeV points give 38.381344559631 per Born·α_s/2π, so the 1.1e-9 at point 1 is the double-precision error.
+- **Cost.** A QP point takes about 180 s, against 3 s in DP. Stack samples (gdb, 30 samples) put 27 in the binary128 coefficient construction (`MP_UPDATE_WL_*`, `__multf3`, `__addtf3`) and 1 to 2 in TIRust.
+- **One-P-wave outputs.** They are unchanged: `g g > chic0`, `g g > chic0 g` (with its extended-precision code) and `e+ e- > Jpsi chic0`, generated from HEAD and from the change, have identical sources, apart from the declaration order of ALOHA routines, which varies from run to run.

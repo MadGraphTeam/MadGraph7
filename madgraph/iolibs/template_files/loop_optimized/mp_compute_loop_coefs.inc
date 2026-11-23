@@ -106,6 +106,19 @@ C     propagator derivatives
 	  common/%(proc_prefix)sMP_PW_DWL/DWL
 	  %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
 	  common/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+## if(OniaPwave2) {
+C     Two P-wave bound states: the derivatives DWL2 (second state) and D2WL
+C     (mixed) of the loop wavefunctions, and the polynomials of the
+C     propagator derivatives
+	  %(complex_mp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_mp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sMP_PW_DWL2/DWL2,D2WL
+	  %(complex_mp_format)s PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_mp_format)s PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_mp_format)s PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+	  %(complex_mp_format)s PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
+	  common/%(proc_prefix)sMP_PW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+## }
 ## }
       INTEGER %(proc_prefix)sML5SOINDEX_FOR_BORN_AMP
 	  INTEGER %(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP
@@ -267,6 +280,14 @@ DO I=0,3
 ENDDO
 DWL(:,:,:,-1:0)=(ZERO,ZERO)
 PCOEFS=(ZERO,ZERO)
+## if(OniaPwave2) {
+DWL2(:,:,:,-1:0)=(ZERO,ZERO)
+D2WL(:,:,:,-1:0)=(ZERO,ZERO)
+PW2_P1=(ZERO,ZERO)
+PW2_P2=(ZERO,ZERO)
+PW2_PX=(ZERO,ZERO)
+PW2_PT=(ZERO,ZERO)
+## }
 ## }
 
 ## if(AmplitudeReduction){
@@ -381,7 +402,12 @@ C  A constituent helicity configuration without effective Born at this point
 ## if(OniaPwave) {
 C  A P-wave bound state: the amplitudes and their derivatives along each
 C  direction eps(L_z) of the relative momentum (dual momenta MPPWPD)
+## if(OniaPwave2) {
+C  (two P-wave states: each pair of directions IDIR = ILZ1 + 3 (ILZ2-1))
+  DO ONIA_ILZ=1,9
+## } else {
   DO ONIA_ILZ=1,3
+## }
   IF (.NOT.%(proc_prefix)sMP_ONIA_PW_DIRECTION(MP_P,H,ONIA_ILZ,MPPWPD)) CYCLE
 ## }
 

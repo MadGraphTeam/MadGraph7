@@ -45,8 +45,12 @@ raised propagator powers (`raised_powers` in its metadata; `install tirust
 HELAS library is in dual numbers.
 
 Two P-wave bound states (for example `e+ e- > chic0(1|3P01) hc(1|1P11)`) are
-generated, in double precision only (the quadruple-precision path stops with
-a message). Their predicted poles are complete, the dipole-dipole term
+generated with both precisions. The quadruple-precision path takes the dual
+numbers of `aloha/template_files/mp_dual2_variables.f` (both directions and
+the mixed derivative; one-P-wave outputs keep `mp_dual_variables.f`) and the
+`MP_` copies of the two-state routines of `onia_loop.f`. It costs about 60
+times the double-precision time, nearly all of it in the binary128 loop
+numerators. Their predicted poles are complete, the dipole-dipole term
 included. Their virtual needs TIRust integrals with two dotted propagators:
 - **With the pinned TIRust (1c130a81).** The virtual is reported unstable.
 - **With the TIRust candidate.** It serves them (59aee45 and later, on branch
@@ -320,11 +324,22 @@ the prediction:
   2e-10 at 30 GeV;
 - no 1/eps^2.
 
-Two further checks:
+Three further checks:
 - **State order.** The other order of the two states gives the same virtual.
 - **Finite part.** At a relative momentum q != 0, the mixed dual derivative
   agrees with finite differences
   (`docs/benchmarkfolder/research/pwave_fd/README.md`).
+- **Quadruple precision** (`research/two_pwave/qp_check.py`, TIRust d5442e6,
+  four points at 7, 10.58 and 30 GeV):
+  - The QP 1/eps coefficient matches the prediction to 1e-15 to 2e-14, where
+    double precision gets 3e-12 to 2e-10.
+  - The finite part agrees with double precision to 3e-13 to 2e-11, and to
+    1e-9 at one point where the double-precision value is the less accurate
+    one: in QP both 10.58 GeV points give the same finite part per Born in all
+    printed digits.
+  - Both loop directions (`CTModeRun` 4, 5) agree exactly in double precision.
+  - With a forced rescue (`CTModeRun` -1, `MLStabThres` 1d-30) every point
+    returns 323.
 
 ## Validation
 

@@ -374,6 +374,54 @@ class TestPwaveCoefficientCalls(unittest.TestCase):
             'CALL MP_ML5_0_PW_CREATE_LOOP_COEFS(WL(1,0,1,2),DWL(1,0,1,2),2,4,1,2,1,92,H)')
         self.assertEqual(out[2], 'CALL MP_FFV1_0(MPPWW(4),MPPWW(3),MPPWW(5),GC_5,MPPWAMP(1))')
 
+    def test_two_pwave_mp_calls(self):
+        """Two P-wave states in quadruple precision: the MP_ routines of the
+        four-component expansion (onia_loop.f)."""
+        calls = ['CALL MP_ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,1))',
+                 'CALL MP_ML5_0_CREATE_LOOP_COEFS(WL(1,0,1,2),2,4,1,2,1,92,H)']
+        out = loop_onia.pwave_dual_names(
+            loop_onia.pwave_coef_construction_calls(calls, npwave=2), mp=True)
+        lines = out[0].split('\n')
+        self.assertEqual(len(lines), 15)
+        self.assertEqual(lines[0], 'CALL MP_ML5_0_PW_SPLIT_COEFS2(COEFS,COEFS0,COEFS1,COEFS2,COEFS3)')
+        self.assertEqual(lines[1],
+                         'CALL MP_ML5_0_UPDATE_WL_0_1(D2WL(1,0,1,0),4,COEFS0,4,4,D2WL(1,0,1,1))')
+        self.assertEqual(lines[3], 'CALL MP_ML5_0_PW_ADD_WL(TWL,1,4,4,D2WL(1,0,1,1))')
+        self.assertEqual(lines[-1],
+                         'CALL MP_ML5_0_UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS0,4,4,WL(1,0,1,1))')
+        self.assertEqual(out[1], 'CALL MP_ML5_0_PW_CREATE_LOOP_COEFS2(WL(1,0,1,2),DWL(1,0,1,2),'
+                                 'DWL2(1,0,1,2),D2WL(1,0,1,2),2,4,1,2,1,92,H)')
+
+    def test_mp_dual_modules(self):
+        """The quadruple-precision dual numbers: one direction for one P-wave
+        state (mp_dual_variables.f, also the source of the EP ones), both
+        directions and the mixed derivative for two (mp_dual2_variables.f),
+        with the same module and public names."""
+        import madgraph.iolibs.export_v4 as export_v4
+        template = os.path.join(mg_root, 'aloha', 'template_files')
+        texts = {}
+        for name in ('mp_dual_variables.f', 'mp_dual2_variables.f'):
+            with open(os.path.join(template, name)) as stream:
+                texts[name] = stream.read()
+        one, two = texts['mp_dual_variables.f'], texts['mp_dual2_variables.f']
+        self.assertIn('complex(kind=qp), dimension(0:1) :: comp', one)
+        self.assertIn('complex(kind=qp), dimension(0:3) :: comp', two)
+        public = lambda text: [l.strip() for l in text.splitlines()
+                               if l.strip().startswith('public ::')]
+        self.assertEqual(public(one), public(two))
+        for text in (one, two):
+            self.assertTrue(text.startswith('      module mp_dual_variables\n'))
+        for npwave, name in ((1, 'mp_dual_variables.f'), (2, 'mp_dual2_variables.f')):
+            tmp = tempfile.mkdtemp()
+            try:
+                export_v4.ProcessExporterFortran.write_loop_dual_aloha_functions(tmp, npwave)
+                with open(os.path.join(tmp, 'mp_dual_variables.f')) as stream:
+                    self.assertEqual(stream.read(), texts[name])
+                with open(os.path.join(tmp, 'dual_opts.inc')) as stream:
+                    self.assertIn('PARAMETER (NPWAVE=%d)' % npwave, stream.read())
+            finally:
+                shutil.rmtree(tmp)
+
     def test_unknown_updater_is_refused(self):
         self.assertRaises(loop_onia.OniaLoopError, loop_onia.pwave_coef_construction_calls,
                           ['CALL ML5_0_DP_TERMINAL_WL_1_1(WL(1,0,1,1),4,COEFS,4,4,'

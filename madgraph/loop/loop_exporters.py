@@ -3773,7 +3773,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             # terminal updaters)
             momenta = 'MPPWPD'
             coef_construction = loop_onia.pwave_dual_names(
-                loop_onia.pwave_coef_construction_calls(coef_construction), mp=True)
+                loop_onia.pwave_coef_construction_calls(
+                    coef_construction, loop_onia.npwave(matrix_element)), mp=True)
             born_ct_helas_calls = loop_onia.pwave_dual_names(born_ct_helas_calls, mp=True)
             uvct_helas_calls = loop_onia.pwave_dual_names(uvct_helas_calls, mp=True)
         else:
