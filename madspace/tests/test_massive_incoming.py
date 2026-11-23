@@ -627,14 +627,29 @@ def test_massive_etmin_bound_keeps_what_passes():
         assert np.mean((lo > t_min) | (hi < t_max)) > 0.2
 
 
-def test_massive_kernels_have_the_massless_limit():
-    """With massless beams the massive kernels give the massless ranges."""
+def rounded(p, seed):
+    """p with a relative error of 4e-16 in each component, which leaves the
+    mass^2 of a massless beam rounding of either sign, as fused multiply-adds
+    do (the scalar build on arm64)"""
+    rng = np.random.default_rng(seed)
+    return p * (1.0 + 4e-16 * rng.standard_normal(p.shape))
+
+
+ROUNDING = pytest.mark.parametrize("rounding", [False, True], ids=["exact", "rounded"])
+
+
+@ROUNDING
+def test_massive_kernels_have_the_massless_limit(rounding):
+    """With massless beams the massive kernels give the massless ranges, also
+    where the floors of the ETmin bound leave nothing."""
     m_out = [173.0, 10.0]
     mapping = PSM([0.0, 0.0] + m_out, SQRT_S, leptonic=False, mode=PSM.propagator)
     p, x1, x2, det = forward(mapping, draw(mapping, 24, 20000))
     ok = det > 0
     p, x1, x2 = p[ok], x1[ok], x2[ok]
     p = np.stack([boost_z(p[:, i], 0.5 * np.log(x1 / x2)) for i in range(4)], axis=1)
+    if rounding:
+        p = rounded(p, 32)
     n = len(x1)
     momenta = [("pa", FOUR, p[:, 0]), ("pb", FOUR, p[:, 1])]
     masses = [("m1", FLOAT, np.full(n, m_out[0])), ("m2", FLOAT, np.full(n, m_out[1]))]
@@ -836,12 +851,15 @@ def test_double_t_scattering_round_trip():
     assert det == approx(math.pi / (2.0 * np.sqrt(lam)), rel=1e-9)
 
 
-def test_double_t_kernels_have_the_massless_limit():
+@ROUNDING
+def test_double_t_kernels_have_the_massless_limit(rounding):
     """With massless beams the massive double-t kernels give the massless
     ranges, clamps and momenta."""
     pa, pb, p1, recoil, m1, mir_min, x1, x2 = double_t_events(
         [0.0, 0.0], "heavy", seed=29
     )
+    if rounding:
+        pa, pb = rounded(pa, 33), rounded(pb, 34)
     n = len(x1)
     t1 = t_abs(pa, p1)
     for et_i, et_ir in [(0.0, 0.0), (200.0, 60.0)]:

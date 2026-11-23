@@ -1100,7 +1100,8 @@ least_light_cone_product(FVal<T> pa_big, FVal<T> ma_2, FVal<T> c_lo, FVal<T> e) 
 // t_cut_etmin_range and q = p1_big = m_T(p1)^2 / c, where m_T(p1) >= eff_1 and
 // q <= P_big = piir0. The lower end is least_light_cone_product at c_lo, the
 // upper one pa_big c_hi + pa_small piir0. For ma = 0 these are the bounds of
-// t_cut_bounds_etmin.
+// t_cut_bounds_etmin. Floors that no recoil meets (rootsq = 0) give an empty
+// range, as for massless beams, also for a massless pa whose ma^2 is rounding.
 template <typename T>
 KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin_massive(
     FourMom<T> p_tot,
@@ -1122,6 +1123,7 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin_massive(
     auto c_lo = (base - rootsq) / (2. * piir0), c_hi = (base + rootsq) / (2. * piir0);
     auto lower = least_light_cone_product<T>(pa_big, ma_2, c_lo, range.fourth);
     auto upper = pa_big * c_hi + ma_2 / max(pa_big, FVal<T>(EPS)) * piir0;
+    upper = where(rootsq > 0., upper, lower);
     return {lower - offset, upper - offset};
 }
 
@@ -1838,7 +1840,8 @@ t1_inv_min_max_doublet_massive(BeamLightCone<T> lc, FVal<T> m1_2, FVal<T> mir_mi
 // doublet_etmin_light_cone and x_+ = m_T(p1)^2 / x_- <= sqrt(s), with
 // m_T(p1) >= etmin_i: least_light_cone_product below, a_big (Eimax + pzmax) +
 // a_small sqrt(s) above. For massless beams these are the bounds of
-// doublet_t1_etmin_clamp.
+// doublet_t1_etmin_clamp. Floors that no p1 meets (pzmax = 0) give an empty
+// range, as for massless beams, also for a massless pa whose ma^2 is rounding.
 template <typename T>
 KERNELSPEC Pair<FVal<T>, FVal<T>> doublet_t1_etmin_clamp_massive(
     FVal<T> t_min,
@@ -1855,6 +1858,7 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> doublet_t1_etmin_clamp_massive(
     auto offset = lc.ma_2 + m1_2;
     auto cut_min = least_light_cone_product<T>(lc.a_big, lc.ma_2, x_lo, mt) - offset;
     auto cut_max = lc.a_big * x_hi + lc.a_small * lc.sqrt_s - offset;
+    cut_max = where(light_cone.third > 0., cut_max, cut_min);
     auto active = (etmin_i > EPS) | (etmin_ir > EPS);
     auto lo = where(active, max(t_min, cut_min), t_min);
     auto hi = where(active, min(t_max, cut_max), t_max);
