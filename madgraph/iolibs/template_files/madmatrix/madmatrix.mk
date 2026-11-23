@@ -333,6 +333,11 @@ ifeq ($(BACKEND),cuda)
     GPUFLAGS += -DMADMATRIX_NO_SHARED_WF
   endif
 
+  # Amplitudes straight into the color flows (EvaluateDiagramsDirect.inc, big subprocesses only): FP32 amplitudes, FP64 slower
+  ifneq ($(and $(wildcard EvaluateDiagramsDirect.inc),$(filter f v,$(FPTYPE))),)
+    GPUFLAGS += -DMADMATRIX_DIRECT_JAMPS
+  endif
+
   # Extra build warnings
   GPUFLAGS += $(XCOMPILERFLAG) -Wunused-parameter
   ###GPUFLAGS += $(XCOMPILERFLAG) -Wall $(XCOMPILERFLAG) -Wextra $(XCOMPILERFLAG) -Wshadow
