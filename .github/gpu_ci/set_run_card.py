@@ -5,8 +5,8 @@
 
 The value is written as given (TOML syntax: quote strings). Only the key of the
 named table changes: `[systematics] enable` and `[vegas] enable` are different
-keys, which a sed on `^enable =` would not tell apart. A key that is not in its
-table is an error.
+keys, which a sed on `^enable =` would not tell apart. A key that is not in the
+card (a hidden option group, e.g. [gridpack]) is added to its table.
 """
 import re
 import sys
@@ -23,11 +23,15 @@ def set_keys(text, assignments):
             if table == section and re.match(r'^\s*%s\s*=' % re.escape(key), line):
                 lines[i] = '%s = %s' % (key, value)
                 done.add((section, key))
-    missing = set(assignments) - done
-    if missing:
-        sys.exit('set_run_card.py: no %s in the card' % ', '.join(
-            '[%s] %s' % key for key in sorted(missing)))
-    return '\n'.join(lines)
+    text = '\n'.join(lines)
+    for section, key in sorted(set(assignments) - done):
+        line = '%s = %s' % (key, assignments[(section, key)])
+        header = re.search(r'(?m)^\[%s\][ \t]*\n' % re.escape(section), text)
+        if header:
+            text = text[:header.end()] + line + '\n' + text[header.end():]
+        else:
+            text = text.rstrip('\n') + '\n\n[%s]\n%s\n' % (section, line)
+    return text
 
 
 def main(argv):
@@ -42,7 +46,6 @@ def main(argv):
         assignments[(section, key)] = value
     with open(argv[1]) as fsock:
         text = fsock.read()
-    # set_keys first: it exits on a missing key, which must leave the card as it was
     text = set_keys(text, assignments)
     with open(argv[1], 'w') as fsock:
         fsock.write(text)

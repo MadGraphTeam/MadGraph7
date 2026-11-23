@@ -2136,12 +2136,17 @@ class TestRunCardMG7(unittest.TestCase):
             card.write(output)
             return output.getvalue()
 
-        # off by default, and then left out of the card but for a hint
+        def hidden(text):
+            line = text.split('\n')[1]
+            self.assertTrue(line.startswith(card.HIDDEN_GROUPS_LINE), line)
+            return line[len(card.HIDDEN_GROUPS_LINE):].split(', ')
+
+        # off by default, and then left out of the card but for the hidden groups
         text = written()
         data = tomllib.loads(text)
         for section in ('cluster', 'cluster_train', 'cluster_deploy'):
             self.assertNotIn(section, data)
-        self.assertIn('set cluster.enable true', text)
+        self.assertIn('cluster', hidden(text))
         self.assertIn('beam', data)
         # enabled, only the main options are written out
         card.set('cluster.enable', True)
@@ -2152,7 +2157,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(section['mode'], 'full')
         self.assertNotIn('nb_retry', section)
         self.assertEqual(data['cluster_train'], {})
-        self.assertNotIn('set cluster.enable true', text)
+        self.assertNotIn('cluster', hidden(text))
         # disabled again, a setting that differs from its default keeps them
         card.set('cluster.enable', False)
         card.set('cluster.train_queue', 'gpu')
@@ -2713,13 +2718,63 @@ class TestRunCardMG7(unittest.TestCase):
         rc.set_lo_beam_param('pdlabel', 'chff')
         self.assertEqual(rc['beam']['upc_flux'], 'chff')
 
+    def test_option_groups(self):
+        """hidden option groups: left out by default, a set parameter comes
+        back alone, "update <group>" shows the whole group from then on"""
+        import tomllib
+
+        def written(card, **opts):
+            out = io.StringIO()
+            card.write(out, template=self.template, **opts)
+            return out.getvalue()
+
+        rc = bannermod.RunCardMG7()
+        text = written(rc)
+        data = tomllib.loads(text)
+        for section in ('vegas', 'gridpack', 'surrogate', 'custom_functions',
+                        'postprocessing', 'amplicol', 'cluster'):
+            self.assertNotIn(section, data)
+        self.assertEqual(set(data['madnis']), {'enable', 'train_batches'})
+        self.assertIn('update madnis', text)
+        # a set parameter of a hidden group is written on its own
+        rc.set('vegas.bins', 32, user=True)
+        rc.set('madnis.lr', 1e-3, user=True)
+        rc2 = bannermod.RunCardMG7(written(rc))
+        data = tomllib.loads(written(rc2))
+        self.assertEqual(data['vegas'], {'bins': 32})
+        self.assertEqual(set(data['madnis']), {'enable', 'train_batches', 'lr'})
+        self.assertEqual(rc2['madnis']['lr'], 1e-3)
+        # a shown group stays shown when the card is read back
+        rc2.show_group('vegas')
+        rc3 = bannermod.RunCardMG7(written(rc2))
+        self.assertEqual(rc3.display_block, ['vegas'])
+        data = tomllib.loads(written(rc3))
+        self.assertEqual(data['vegas']['bins'], 32)
+        self.assertIn('damping', data['vegas'])
+        self.assertNotIn('flow_layers', data['madnis'])
+        # update to_full: every group and hidden parameter
+        text = written(rc3, write_hidden=True)
+        data = tomllib.loads(text)
+        self.assertNotIn(rc3.HIDDEN_GROUPS_LINE, text)
+        self.assertIn('flow_layers', data['madnis'])
+        self.assertIn('jet_radius', data['beam'])
+        self.assertIn('nb_retry', data['cluster'])
+        self.assertEqual(tomllib.loads(written(rc3)), data)
+        # a card without the hidden-groups line shows the groups it has
+        rc4 = bannermod.RunCardMG7('[vegas]\nenable = false\n[madnis]\nlr = 0.01\n')
+        self.assertEqual(sorted(rc4.display_block), ['madnis', 'vegas'])
+        # custom function parameters need their section
+        rc5 = bannermod.RunCardMG7()
+        rc5.set_custom_parameter('cut_parameters', 'pt_min', 30.0)
+        self.assertIn('custom_functions', tomllib.loads(written(rc5)))
+
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""
         rc = bannermod.RunCardMG7()
         out = io.StringIO()
         rc.write(out, template=self.template)
         text = out.getvalue()
-        text = text.replace('ebeam1 = 6500.0\nebeam2 = 6500.0', 'e_cm = 1000.0')
+        text = re.sub(r'ebeam1 = .*\nebeam2 = .*', 'e_cm = 1000.0', text)
         text = re.sub(r'pdf1 = .*\npdf2 = .*', 'pdf = "NNPDF23_lo_as_0130_qed"', text)
         self.assertNotIn('ebeam1 =', text)
         self.assertNotIn('pdf1 =', text)
@@ -3423,6 +3478,8 @@ class TestRunCardMG7(unittest.TestCase):
         """write() produces valid TOML identical to the python defaults"""
         import tomllib
         rc = bannermod.RunCardMG7()
+        rc.show_group('vegas')
+        rc.show_group('madnis')
         out = io.StringIO()
         rc.write(out, template=self.template)
         data = tomllib.loads(out.getvalue())

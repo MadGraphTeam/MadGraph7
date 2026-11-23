@@ -6,7 +6,7 @@ subprocess after the other. In cluster mode, the subprocesses are trained in par
 batch system, and the events are generated in parallel as well. It is built on
 :doc:`gridpacks`, and steered by the ``[cluster]`` section of the :doc:`run card
 <run_card>`. It is off by default, and the cluster sections are then left out of
-``Cards/run_card.toml``: ``set cluster.enable true`` at the launch prompt adds them. The cluster
+``Cards/run_card.toml``: ``set cluster.enable true`` (or ``update cluster``) at the launch prompt adds them. The cluster
 setup of a site, like its batch system and queues, goes into the cluster sections of
 ``input/default_run_card_mg7.toml``: a run card without these sections takes their values
 whenever it is loaded, so they also hold for processes created before.

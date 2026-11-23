@@ -2128,7 +2128,9 @@ class TestForceLHEOutput(unittest.TestCase):
         template = os.path.join(madgraph.MG5DIR, 'madgraph', 'iolibs',
                                 'template_files', 'mg7', 'run_card.toml')
         self.assertTrue(os.path.isfile(template), template)
-        RunCardMG7().write(self.card, template=template)
+        card = RunCardMG7()
+        card.show_group('postprocessing')
+        card.write(self.card, template=template)
 
     def tearDown(self):
         os.chdir(self.cwd)

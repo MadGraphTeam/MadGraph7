@@ -88,6 +88,10 @@ are marked.
   [postprocessing]  systematics after the fact
   [gridpack]        self-contained event generation
 
+[vegas], [postprocessing], [gridpack] and most of [madnis] are hidden from
+the card by default: `update vegas` (or madnis, ...) at the launch prompt adds
+them, and `set vegas.bins 32` works either way.
+
 Start with the phase space, because a badly channelled integration cannot be
 rescued by a better integrator:
 
@@ -144,7 +148,9 @@ There is no separate training command: training is a phase inside
 `[run] device` says so and torch can see one, and the CPU otherwise.
 
 **When you do want to override it**, set `enable = true` or `false` outright,
-and then touch things in this order:
+and then touch things in this order (the card only shows `enable` and
+`train_batches`: `update madnis` at the launch prompt adds the rest, and
+`set madnis.<option>` works either way):
 
   1. `train_batches`, `batch_size_per_channel` -- how much training, and how
      much per channel. Everything else is secondary.

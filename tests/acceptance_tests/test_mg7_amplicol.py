@@ -48,11 +48,6 @@ _PDF = 'NNPDF23_lo_as_0130_qed'
 def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
                    **amplicol):
     card = open(path).read()
-    if gridpack:
-        card = re.sub(r'(?m)^save_gridpack = false', 'save_gridpack = true', card)
-        card = re.sub(r'(?m)^compress = true', 'compress = false', card)
-        # with events, for the cross section of the run
-        card = re.sub(r'(?m)^run_mode = ".*"', 'run_mode = "regular"', card)
     if output_format:
         card = re.sub(r'(?m)^output_format = ".*"', 'output_format = "%s"' %
                       output_format, card)
@@ -77,7 +72,7 @@ def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
                                     '\n[cuts]\n%s.min = 0.4\n' % key, 1)
         card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
         card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
-    card = re.sub(r'(?m)^(pdf[12]) = ".*"$', r'\1 = "%s"' % _PDF, card)
+    card = re.sub(r'(?m)^(pdf[12]) = "[^"]*"', r'\1 = "%s"' % _PDF, card)
     card = re.sub(r'(?m)^events = \d+', 'events = %d' % _EVENTS, card)
     card = re.sub(r'(?m)^seed = -1', 'seed = 7', card)
     card = re.sub(r'(?m)^make_plots = true', 'make_plots = false', card)
@@ -89,6 +84,11 @@ def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
                                  '%s = "%s"' % (key, value), section, count=1)
         assert count == 1, key
     card = head + '\n[amplicol]\n' + section
+    if gridpack:
+        # [gridpack] is a hidden option group; run_mode regular for the
+        # cross section of the run
+        card += ('\n[gridpack]\nsave_gridpack = true\ncompress = false\n'
+                 'run_mode = "regular"\n')
     open(path, 'w').write(card)
 
 

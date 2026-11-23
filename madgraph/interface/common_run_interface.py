@@ -5906,6 +5906,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     })
             
         self.update_block += [b.name for b in self.run_card.blocks]
+        # the option groups of an mg7 run_card.toml
+        self.update_block += list(getattr(self.run_card, 'option_groups', ()))
         
         return self.run_set
 

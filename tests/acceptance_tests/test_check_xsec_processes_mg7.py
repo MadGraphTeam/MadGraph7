@@ -191,8 +191,9 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
     t = t.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     t = t.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
     # one set per beam (pdf1/pdf2); a card from before the split has pdf
-    t, pinned = re.subn(r'(?m)^(pdf[12]?) = ".*"$',
-                        r'\1 = "%s"' % _REFERENCE_PDF, t)
+    t, pinned = re.subn(r'(?m)^(pdf[12]) = "[^"]*"', r'\1 = "%s"' % _REFERENCE_PDF, t)
+    if not pinned:
+        t, pinned = re.subn(r'(?m)^(pdf) = ".*"$', r'\1 = "%s"' % _REFERENCE_PDF, t)
     if not pinned:
         raise RuntimeError('no [beam] pdf entry to pin in %s' % toml_path)
     t = re.sub(r'events = \d+', 'events = %d' % events, t)

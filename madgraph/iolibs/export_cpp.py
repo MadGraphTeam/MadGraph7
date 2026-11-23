@@ -3525,6 +3525,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
                          for i, procs in enumerate(processes)]
             run_card.create_default_for_process(self.proc_characteristic,
                                                 history, processes)
+            if amplicol_procs:
+                run_card.show_group('amplicol')
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives

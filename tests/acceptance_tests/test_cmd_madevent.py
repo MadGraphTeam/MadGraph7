@@ -1579,10 +1579,10 @@ class TestMECmdShell(unittest.TestCase):
              'generate u u > u u'],
             pjoin(self.path, 'MG7_syst_legacy'), datadir,
             switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
-            toml_edits=[(r'\nenable = true\nmur', '\nenable = false\nmur'),
-                        (r'\nsystematics = false\n', '\nsystematics = true\n'),
-                        (r'systematics_pdf = \[[^\]]*\]',
-                         'systematics_pdf = ["central"]')],
+            toml_edits=[(r'(\[systematics\]\nenable = )true', r'\1false'),
+                        # [postprocessing] is a hidden option group
+                        (r'\Z', '\n[postprocessing]\nsystematics = true\n'
+                                'systematics_pdf = ["central"]\n')],
             events=100, tolerated_crashes=('*systematics*',))
 
         lhe_path = pjoin(run, 'events.lhe')
@@ -1752,7 +1752,7 @@ class TestMECmdShell(unittest.TestCase):
         toml = pjoin(self.run_dir, 'Cards', 'run_card.toml')
         t = open(toml).read()
         t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
-        t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
+        t += '\n[gridpack]\nsave_gridpack = true\n'  # a hidden option group
         open(toml, 'w').write(t)
 
         env = dict(os.environ)
@@ -4335,8 +4335,8 @@ set draw_rivet_plots True
              'generate p p > w+ z'],
             pjoin(self.path, 'MG7_tof'), datadir,
             switch_lines=None,
-            toml_edits=[(r'time_of_flight = -?[\d.eE+-]+',
-                         'time_of_flight = 4e-14')],
+            # [postprocessing] is a hidden option group
+            toml_edits=[(r'\Z', '\n[postprocessing]\ntime_of_flight = 4e-14\n')],
             events=100)
 
         event = pjoin(run, 'events.lhe')

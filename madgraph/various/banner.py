@@ -7257,9 +7257,20 @@ class RunCardMG7(RunCard):
     # the [cluster_<pass>] sections of the run card: run card settings of the
     # jobs of one pass of the cluster mode, which override the main ones
     cluster_passes = ('train', 'deploy')
-    # written in place of the cluster sections while they are left out of the card
-    CLUSTER_SECTIONS_HINT = ('# run on a batch system: "set cluster.enable true" '
-                             'adds the [cluster] settings\n')
+
+    # option groups: blocks of the template between "#@group <name>" and
+    # "#@end", left out of the card unless shown (see shown_groups())
+    GROUP_PATTERN = re.compile(r'^#@group (\w+)\n(.*?)^#@end\n', re.M | re.S)
+    # first line of a card, listing its hidden groups (read back by read())
+    HIDDEN_GROUPS_LINE = '# hidden option groups: '
+    HIDDEN_GROUPS_HELP = ('# "update <group>" at the launch prompt adds one to the card, '
+                          '"update to_full" all of them')
+    # written in place of a hidden group that is part of a section
+    GROUP_HINTS = {'madnis': '# more options (networks, optimizer, buffer, channel '
+                             'dropping): "update madnis" at the launch prompt\n'}
+    # groups shown whole once a setting differs, instead of line by line
+    WHOLE_GROUPS = ('cluster',)
+    _option_groups_cache = {}
 
     # energy units, expressed in GeV (the unit everything is stored in); the
     # typed parameters carrying an energy dimension are declared energy=True
@@ -7335,7 +7346,8 @@ class RunCardMG7(RunCard):
         # not a fortran parameter: never goes to an include file
         opts.setdefault('include', False)
         self.add_param(internal, value, **opts)
-        self.toml_defaults[internal] = copy.deepcopy(value)
+        # an auto parameter reads back as "auto" until set
+        self.toml_defaults[internal] = 'auto' if auto else copy.deepcopy(value)
         self.section_of[internal] = section
         self.toml_sections.setdefault(section, [])
         if key not in self.toml_sections[section]:
@@ -7492,11 +7504,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('gridpack', 'include_madspace_source', False,
             comment="include the madspace source code")
         self.add_toml_param('gridpack', 'include_madtrex', True,
-            comment="include the installed madtrex package (MadtRex reweighting), "
-                    "if madtrex is installed")
+            comment="include the installed madtrex package (MadtRex reweighting)")
         self.add_toml_param('gridpack', 'include_madtrex_source', False,
-            comment="include the madtrex source code (with its bundled Rex); "
-                    "bin/reweight builds it when the gridpack has no usable madtrex")
+            comment="include the madtrex source code, built by bin/reweight if needed")
         self.add_toml_param('gridpack', 'compress', False,
             comment="compress the gridpack into a tarball")
         self.add_toml_param('gridpack', 'run_mode', "minimal",
@@ -7863,7 +7873,7 @@ class RunCardMG7(RunCard):
             allowed=['propagator', 'rambo', 'chili'],
             comment="phase-space parametrization of the flat channel")
         self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01,
-            comment="in both mode, channels making up this fraction of the cross section are replaced by a flat channel")
+            comment="in both mode, channels below this fraction of the cross section go to the flat channel")
         self.add_toml_param('phasespace', 'drop_qcd_s_channel', 20,
             comment="channel count above which channels without a QCD s-channel resonance are dropped; -1 keeps all")
         self.add_toml_param('phasespace', 'ew_channel_reduction', 20,
@@ -7872,7 +7882,7 @@ class RunCardMG7(RunCard):
             allowed=['full', 'partial', 't_channel'],
             comment="full: merge off-shell boson variants and drop redundant s-channel structures; partial: merge t-channel variants, keep one more non-resonant s-channel; t_channel: only merge t-channel variants")
         self.add_toml_param('phasespace', 'channel_reduction_with_vegas', False,
-            comment="also apply ew_channel_reduction when the run is certain to use VEGAS (madnis.enable false, or auto for 2 -> 2)")
+            comment="also apply ew_channel_reduction when the run is certain to use VEGAS")
         self.add_toml_param('phasespace', 'invariant_power', 0.7,
             comment="exponent of the 1/s^p sampling of propagator invariants")
         self.add_toml_param('phasespace', 'bw_cutoff', 15,
@@ -7944,8 +7954,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('amplicol', 'first_pass_freeze_max_weight_after', 10000,
             gridpack=True, comment="freeze_max_weight_after of the leading-colour unweighting")
         self.add_toml_param('amplicol', 'prior_partner_share', True,
-            comment="divide each flavour's sampling prior by its number of "
-                    "phase-space channels, its expected share in each")
+            comment="divide each flavour's sampling prior by its number of phase-space channels")
         self.add_toml_param('amplicol', 'lc_flavors', "two_lines_resample",
             allowed=["all", "two_lines_resample", "two_lines"],
             comment="flavours at leading colour: all; those with at most two quark "
@@ -7974,8 +7983,7 @@ class RunCardMG7(RunCard):
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the discrete-dimension network")
         self.add_toml_param('madnis', 'flavor_levels', True,
-            comment="sample the flavours in three levels: initial state, final-state "
-                    "content (both learned) and flavour")
+            comment="sample the flavours in levels: initial state, final-state content, flavour")
         self.add_toml_param('madnis', 'flavor_prior_floor', 0.05,
             comment="with flavor_levels, the fraction of the learned levels sampled "
                     "from their prior")
@@ -8025,8 +8033,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000,
             comment="buffered samples needed before training on the buffer starts")
         self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8, auto=True,
-            comment="fraction of training steps done on buffered samples; 0 "
-                    "allocates no buffer; auto: 0 for [amplicol], 0.8 otherwise")
+            comment="fraction of training steps on buffered samples; auto: 0 for [amplicol], else 0.8")
         self.add_toml_param('madnis', 'buffer_skip_batches', 1000,
             comment="initial batches that are not stored in the buffer")
         self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95,
@@ -8388,12 +8395,13 @@ class RunCardMG7(RunCard):
     # reading TOML
     # ------------------------------------------------------------------
     def read(self, finput, consistency=True, unknown_warning=True,
-             from_banner=False, **opt):
+             from_banner=False, option_groups=True, **opt):
         """Read a TOML run_card from a path, a file object or a string.
 
         ``from_banner=True`` is for the card embedded in an event file
         (<MG7RunCard>): a value that is refused for a run is then only
-        reported, see __setitem__."""
+        reported, see __setitem__. ``option_groups=False`` leaves the shown
+        option groups alone (for the site default card)."""
         import tomllib
 
         self.path = None
@@ -8419,6 +8427,8 @@ class RunCardMG7(RunCard):
             self.read_data(data, unknown_warning=unknown_warning)
         finally:
             self._from_banner = False
+        if option_groups:
+            self.display_block = self.groups_shown_in(text, data)
 
         if consistency:
             try:
@@ -8428,6 +8438,51 @@ class RunCardMG7(RunCard):
                     logger.warning(str(error))
                 else:
                     raise
+
+    @classmethod
+    def option_groups_of(cls, text):
+        """{group: (sections, params)} of the option groups of a template:
+        the sections a group consists of ([] for a part of one), and the
+        internal keys of its parameters."""
+        groups = collections.OrderedDict()
+        for match in cls.GROUP_PATTERN.finditer(text):
+            body = match.group(2)
+            groups[match.group(1)] = (re.findall(r'^\[(\w+)\]', body, re.M),
+                                      set(re.findall(r'%\(([\w.]+)\)s', body)))
+        return groups
+
+    @property
+    def option_groups(self):
+        """The option groups of the shipped template, see option_groups_of()."""
+        path = self.template_run_card
+        if not path or not os.path.exists(path):
+            return collections.OrderedDict()
+        if path not in self._option_groups_cache:
+            with open(path) as fsock:
+                self._option_groups_cache[path] = self.option_groups_of(fsock.read())
+        return self._option_groups_cache[path]
+
+    def groups_shown_in(self, text, data):
+        """The option groups a card read from ``text`` shows: those missing
+        from its hidden-groups line, or without one (a card written by hand or
+        before the groups), those with an entry in the card."""
+        groups = self.option_groups
+        match = re.search(r'^%s([\w, ]*)' % re.escape(self.HIDDEN_GROUPS_LINE), text, re.M)
+        if match:
+            hidden = set(name.strip() for name in match.group(1).split(','))
+            return [name for name in groups if name not in hidden]
+        entries = set()
+        for section, content in data.items():
+            entries.add(section.lower())
+            if isinstance(content, dict):
+                entries.update('%s.%s' % (section.lower(), key.lower()) for key in content)
+        return [name for name, (sections, params) in groups.items()
+                if entries & (set(sections) | params)]
+
+    def show_group(self, name):
+        """Show the option group ``name`` in the card from now on."""
+        if name not in self.display_block:
+            self.display_block.append(name)
 
     def read_data(self, data, unknown_warning=True):
         """Fill the card from a parsed TOML mapping (section -> {key: value}).
@@ -9426,6 +9481,13 @@ class RunCardMG7(RunCard):
             with open(self.template_run_card) as fsock:
                 text = fsock.read()
 
+        if opt.get('write_hidden'):
+            # "update to_full": every group and hidden parameter, from now on
+            self.display_block = list(self.option_groups_of(text))
+            self._write_all_hidden = True
+        text, single_lines, skipped = self.apply_option_groups(text)
+        text = self.add_template_comments(text)
+
         # fixed (typed) parameters: substitute %(section.key)s placeholders
         data = {}
         for section, keys in self.toml_sections.items():
@@ -9434,20 +9496,20 @@ class RunCardMG7(RunCard):
                 data[internal] = self.format_toml_value(self[internal])
         in_template = set(re.findall(r'%\(([\w.]+)\)s', text))
         text = text % data
-        text = self.add_hidden_parameters(text, in_template)
+        text = self.add_hidden_parameters(text, in_template, single_lines, skipped)
+        # the sections of hidden groups that got no line
+        text = re.sub(r'(?m)^\[\w+\]\n#@empty\n(?=\n|\[|\Z)', '', text)
+        text = re.sub(r'(?m)^#@empty\n', '', text)
 
         # free-form sections inserted at their markers
         for section in self.dynamic_section_names:
             text = text.replace('$%s' % section,
                                 self.format_dynamic_section(section))
 
-        if not self.show_cluster_sections():
-            text = self.remove_sections(
-                text, self.cluster_section_names, self.CLUSTER_SECTIONS_HINT)
-
         text = text.replace('$custom_function_parameters\n',
                             self.format_custom_parameters() + '\n'
                             if self.custom_function_parameters else '')
+        text = re.sub(r'\n{3,}', '\n\n', text).rstrip('\n') + '\n'
 
         # preserve any unknown section read from an existing card
         for section, content in self.extra_sections.items():
@@ -9474,38 +9536,78 @@ class RunCardMG7(RunCard):
         return any(self['cluster.%s' % key] != self.toml_defaults.get('cluster.%s' % key)
                    for key in self.toml_sections['cluster'])
 
-    @staticmethod
-    def remove_sections(text, sections, hint=''):
-        """Remove the ``sections`` of a rendered card, each up to the next table
-        header, and put ``hint`` in place of the first one."""
-        for i, section in enumerate(sections):
-            header = re.search(r'^\[%s\][ \t]*\n' % re.escape(section), text, re.M)
-            if not header:
-                continue
-            following = re.search(r'^\[', text[header.end():], re.M)
-            end = header.end() + following.start() if following else len(text)
-            text = text[:header.start()] + (hint + '\n' if i == 0 and hint else '') \
-                + text[end:]
-        return text
+    def shown_groups(self, groups):
+        """The option groups the card shows: those revealed ("update <group>",
+        or shown in the card read), the cluster sections once in use and the
+        custom functions once they have parameters."""
+        shown = set(self.display_block) & set(groups)
+        if 'cluster' in groups and self.show_cluster_sections():
+            shown.add('cluster')
+        if 'custom_functions' in groups and self.custom_function_parameters:
+            shown.add('custom_functions')
+        return shown
 
-    def add_hidden_parameters(self, text, in_template):
+    def apply_option_groups(self, text):
+        """Remove the hidden option groups from the template ``text`` and the
+        group markers of the shown ones. Returns the text, the parameters of
+        the hidden groups (written line by line once set) and the sections
+        whose hidden parameters are not written at all."""
+        groups = self.option_groups_of(text)
+        shown = self.shown_groups(groups)
+        single_lines, skipped = set(), set()
+
+        def replace(match):
+            name, body = match.group(1), match.group(2)
+            if name in shown:
+                return body
+            sections, params = groups[name]
+            if name in self.WHOLE_GROUPS:
+                skipped.update(sections)
+                return ''
+            single_lines.update(params)
+            if sections:
+                # kept for the lines of set parameters, removed if none
+                return ''.join('[%s]\n#@empty\n' % section for section in sections)
+            return self.GROUP_HINTS.get(name, '')
+
+        text = self.GROUP_PATTERN.sub(replace, text)
+        hidden = [name for name in groups if name not in shown]
+        line = '%s%s\n%s\n' % (self.HIDDEN_GROUPS_LINE, ', '.join(hidden),
+                              self.HIDDEN_GROUPS_HELP) if hidden else ''
+        return text.replace('$hidden_groups\n', line), single_lines, skipped
+
+    def add_template_comments(self, text):
+        """Give a template line without a comment the parameter's description."""
+        def comment(match):
+            description = self.comments.get(match.group(2), '').split('\n')[0].strip()
+            if not description:
+                return match.group(0)
+            return '%s # %s' % (match.group(0), description.replace('%', '%%'))
+        return re.sub(r'(?m)^(\w+) = %\(([\w.]+)\)s(?=[ \t]*$)', comment, text)
+
+    def add_hidden_parameters(self, text, in_template, single_lines=(), skipped=()):
         """Add to the rendered card the hidden parameters (those with no line
-        in the template) that the user set or that no longer hold their
+        in the template) and those of the hidden option groups
+        (``single_lines``) that the user set or that no longer hold their
         default, at the end of their section, so that they survive a rewrite
-        of the card."""
+        of the card. Nothing is added to the ``skipped`` sections."""
+        write_all = getattr(self, '_write_all_hidden', False)
         missing = collections.OrderedDict()
         for section, keys in self.toml_sections.items():
+            if section in skipped:
+                continue
             for key in keys:
                 internal = '%s.%s' % (section, key)
-                if internal in in_template or internal not in self.hidden_param \
-                        or internal in self.LEGACY_ALIASES:
+                if internal in in_template or internal in self.LEGACY_ALIASES:
                     continue
-                if internal not in self.user_set and \
+                if internal not in self.hidden_param and internal not in single_lines:
+                    continue
+                if not write_all and internal not in self.user_set and \
                         self[internal] == self.toml_defaults.get(internal):
                     continue
                 line = '%s = %s' % (key, self.format_toml_value(self[internal]))
                 if self.comments.get(internal):
-                    line += ' # %s' % self.comments[internal]
+                    line += ' # %s' % self.comments[internal].split('\n')[0]
                 missing.setdefault(section, []).append(line)
         for section, lines in missing.items():
             block = '\n'.join(lines) + '\n'
@@ -9653,7 +9755,7 @@ class RunCardMG7(RunCard):
 
         # site/user defaults win (this has to be LAST, like the LO run_card)
         if self.default_run_card and os.path.exists(self.default_run_card):
-            self.read(self.default_run_card, consistency=False)
+            self.read(self.default_run_card, consistency=False, option_groups=False)
 
     # ------------------------------------------------------------------
     # [histograms]: a default set of plots for this final state

@@ -29,6 +29,28 @@ number you set explicitly always wins.
 The sections ``[multiparticles]``, ``[cuts]`` and ``[histograms]`` are lists rather than
 fixed parameters. Their entries are described below.
 
+Hidden option groups
+--------------------
+
+To keep the card short, some option groups are left out of it by default: ``[gridpack]``,
+``[cluster]`` (with ``[cluster_train]`` and ``[cluster_deploy]``), ``[postprocessing]``,
+``[vegas]``, ``[custom_functions]``, ``[surrogate]``, ``[amplicol]`` (shown for an output with
+``[amplicol]`` processes) and every ``[madnis]`` option but ``enable`` and ``train_batches``
+(the group ``madnis``). The second line of the card lists the hidden groups. They keep their
+default values, and
+
+- ``update <group>`` at the launch prompt, e.g. ``update vegas`` or ``update madnis``, adds a
+  group to the card, where it stays from then on; ``update to_full`` adds all of them, together
+  with the hidden parameters of the other sections;
+- ``set`` works on a hidden parameter as on any other: the card then shows its line alone, in
+  its section;
+- a section added to the card by hand stays, as long as its name is not in the list of hidden
+  groups of the second line. A card without that line, e.g. one written by hand, shows the
+  groups it has entries of.
+
+The ``[cluster]`` sections are shown whole once cluster mode is enabled or one of their
+settings differs from its default, and ``[custom_functions]`` once a function has parameters.
+
 [run]
 -----
 
@@ -164,8 +186,9 @@ See :doc:`gridpacks` for details.
 
 Cluster mode trains the subprocesses and generates the events in parallel batch jobs.
 It is off by default, and then this section, ``[cluster_train]`` and ``[cluster_deploy]``
-are left out of the card until ``set cluster.enable true`` (or one of their settings differs
-from the site default in ``input/default_run_card_mg7.toml``, where their defaults come from). See :doc:`cluster` for how it works.
+are a hidden option group, left out of the card until ``set cluster.enable true``,
+``update cluster``, or one of their settings differs from the site default in
+``input/default_run_card_mg7.toml``, where their defaults come from. See :doc:`cluster` for how it works.
 
 ``enable`` (``false``)
     Run on a batch system. Independent of the ``run_mode`` of the MadGraph configuration.
