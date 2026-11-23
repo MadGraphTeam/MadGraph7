@@ -55,6 +55,11 @@ included. Their virtual needs TIRust integrals with two dotted propagators:
 - **With the pinned TIRust (1c130a81).** The virtual is reported unstable.
 - **With the TIRust candidate.** It serves them (59aee45 and later, on branch
   hs/pwave-two-dotted, not yet in MadGraph); see Validation below.
+- **g g > chic0 chic0.** It also needs unit-power boxes, pentagons and
+  hexagons whose heavy-quark propagators are linearly dependent at the two
+  thresholds. TIRust (196bdcc) refuses them in both precisions, so that
+  virtual is still reported unstable
+  (`research/two_pwave/FIXTURES.md`).
 
 Such outputs are built with the medium code model on x86-64, since their loop
 arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the

@@ -101,3 +101,18 @@ Two-P-wave outputs now have a quadruple-precision path:
 - **Finite part.** In QP both 10.58 GeV points give 38.381344559631 per Born·α_s/2π, so the 1.1e-9 at point 1 is the double-precision error.
 - **Cost.** A QP point takes about 180 s, against 3 s in DP. Stack samples (gdb, 30 samples) put 27 in the binary128 coefficient construction (`MP_UPDATE_WL_*`, `__multf3`, `__addtf3`) and 1 to 2 in TIRust.
 - **One-P-wave outputs.** They are unchanged: `g g > chic0`, `g g > chic0 g` (with its extended-precision code) and `e+ e- > Jpsi chic0`, generated from HEAD and from the change, have identical sources, apart from the declaration order of ALOHA routines, which varies from run to run.
+
+**g g → χ_c0 χ_c0 in quadruple precision.** TIRust 196bdcc with the bridge v5 (c8cb1ea6) serves the 10 raised rank-6 calls of the d5442e6 run. At √s = 20 GeV, point 0:
+- **Double precision.** Both passes still return 410. The 1/ε² is −1.6424 per Born, where −2 C_A = −6 is predicted.
+- **Quadruple precision.** Both passes (CTModeRun 4 and 5) return 420, with the same 1/ε² to 12 digits. Each takes 72 minutes.
+
+The same loop groups are missing in both precisions. `replay_calls.f90` replays the 97 calls refused in DP through both entries of 196bdcc (`data/qp_replay_gg_chic0_chic0_196bdcc.txt`):
+
+| Calls | QP and DP | TIRust's message (QP, 256 and 512 bits) |
+|---|---|---|
+| 10 raised, rank 6, two doubled (boxes, pentagons) | served | |
+| 3 unit-power boxes QQQQ, rank 4 | refused | singular Gram matrix; linearly dependent propagators without a massless member |
+| 4 unit-power pentagons QQgQQ, rank 4 | refused | the same |
+| 80 unit-power hexagons, rank 4 | refused | ill-conditioned or singular Gram matrix, or six-point coordinate system (conditioning 0) |
+
+The unit-power lanes have all-massive heavy-quark propagators that are linearly dependent at the two thresholds: the constituents carry P₁/2 and P₂/2. TIRust's quadruple-precision path refuses them like its double-precision one, so they are not a matter of MadLoop's precision. A refused QP hexagon costs about 75 s, so most of the 72 minutes goes to those attempts.
