@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "madspace/phasespace/base.hpp"
 
 namespace madspace {
@@ -75,6 +77,33 @@ public:
     Invariant(
         double power = 0, double mass = 0, double width = 0, double flat_window = 0
     );
+
+    /**
+     * The forward map for a variable @f$x@f$ whose range can reach below 0,
+     * such as a momentum transfer off a massive beam. It samples
+     * @f$x - 2 \min(x_\text{min}, 0)@f$ on the range shifted alike, which is
+     * @f$x@f$ itself wherever the range stays at or above 0. Below 0 the
+     * sampled range starts at @f$|x_\text{min}|@f$, so that a power law keeps
+     * the density of about @f$|x_\text{min}|^{-\nu}@f$ that it has at a lower
+     * end above 0, rather than its pole, at the lower end.
+     *
+     * @param r      The random number, `float`, shape `(batch,)`.
+     * @param x_min  Lower end of the range of @f$x@f$.
+     * @param x_max  Upper end of the range of @f$x@f$.
+     * @return       @f$x@f$ and the Jacobian.
+     */
+    std::array<Value, 2>
+    build_forward_shifted(FunctionBuilder& fb, Value r, Value x_min, Value x_max) const;
+    /**
+     * The inverse of build_forward_shifted().
+     *
+     * @param x      The value, `float`, shape `(batch,)`.
+     * @param x_min  Lower end of the range of @f$x@f$.
+     * @param x_max  Upper end of the range of @f$x@f$.
+     * @return       The random number and the Jacobian.
+     */
+    std::array<Value, 2>
+    build_inverse_shifted(FunctionBuilder& fb, Value x, Value x_min, Value x_max) const;
 
 private:
     Result build_forward_impl(

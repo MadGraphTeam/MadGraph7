@@ -326,8 +326,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     ),
     _project_incoming(
         _massive_incoming && topology.t_propagator_count() > 0 &&
-        (t_channel_mode == PhaseSpaceMapping::chili ||
-         t_channel_mode == PhaseSpaceMapping::color_ordered)
+        t_channel_mode == PhaseSpaceMapping::chili
     ),
     _t_mapping(std::monostate{}) {
     // the chain order and settings belong to the color-ordered mode only
@@ -765,7 +764,14 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             if (!options.chain_invariant_power) {
                 options.chain_invariant_power = chain_cuts ? 1. : invariant_power;
             }
-            _t_mapping = ColorOrderedMapping(options, pt_min, m_inv_co, dr_co, y_max);
+            _t_mapping = ColorOrderedMapping(
+                options,
+                pt_min,
+                m_inv_co,
+                dr_co,
+                y_max,
+                _massive_incoming ? _topology.incoming_masses() : std::vector<double>{}
+            );
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
             // The first scattering of the chain is between the two beams in
@@ -893,9 +899,8 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     // permute, boost into the lab frame and apply the cuts
     auto finish = [&](Value p_ext_stack) -> Result {
         if (_project_incoming) {
-            // chili and the color-ordered chain build the final state against
-            // the massless pair, which goes on its mass shells with the same
-            // sum (in the partonic frame, the beams' frame for chili)
+            // chili builds the final state against the massless pair, which
+            // goes on its mass shells with the same sum (in the beams' frame)
             auto on_shell =
                 fb.incoming_on_shell(p_ext_stack, _topology.incoming_masses());
             p_ext_stack = on_shell.at(0);
@@ -1266,8 +1271,8 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         );
     }
 
-    // chili and the color-ordered chain: the massless incoming pair with the same
-    // sum, which the forward map built the final state against
+    // chili: the massless incoming pair with the same sum, which the forward map
+    // built the final state against
     if (_project_incoming) {
         p_ext_stack =
             fb.incoming_on_shell(p_ext_stack, std::vector<double>{0., 0.}).at(0);

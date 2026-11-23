@@ -145,6 +145,19 @@ private:
 };
 
 /**
+ * The absolute masses of the two incoming particles if one of them is massive,
+ * else an empty vector: the form in which the mappings that build massive
+ * incoming momenta (@ref TPropagatorMapping, @ref ColorOrderedMapping) keep
+ * them.
+ *
+ * @param masses   The incoming masses.
+ * @param mapping  Name of the mapping, for the error raised when a mass is
+ *                 nonzero but there are not two of them.
+ */
+std::vector<double>
+massive_incoming_masses(const std::vector<double>& masses, const std::string& mapping);
+
+/**
  * Base class for compute-graph functions that are not invertible mappings.
  *
  * A `FunctionGenerator` builds a `Function` from named **Arguments** to named

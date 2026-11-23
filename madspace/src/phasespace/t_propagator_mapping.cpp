@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <stdexcept>
 
 using namespace madspace;
@@ -53,21 +52,6 @@ std::array<double, 3> first_step_rapidity_bounds(
     return {recoil, y_max.at(peeled), side ? 1. : -1.};
 }
 
-// The absolute masses of massive incoming particles, empty for massless ones.
-std::vector<double> massive_incoming(const std::vector<double>& incoming_masses) {
-    if (std::none_of(incoming_masses.begin(), incoming_masses.end(), [](double m) {
-            return m != 0.;
-        })) {
-        return {};
-    }
-    if (incoming_masses.size() != 2) {
-        throw std::invalid_argument(
-            "TPropagatorMapping: incoming_masses are the masses of the two beams"
-        );
-    }
-    return {std::abs(incoming_masses.at(0)), std::abs(incoming_masses.at(1))};
-}
-
 } // namespace
 
 TPropagatorMapping::TPropagatorMapping(
@@ -82,7 +66,7 @@ TPropagatorMapping::TPropagatorMapping(
         integration_order,
         invariant_power,
         pt_min,
-        massive_incoming(incoming_masses)
+        massive_incoming_masses(incoming_masses, "TPropagatorMapping")
     ) {}
 
 TPropagatorMapping::TPropagatorMapping(

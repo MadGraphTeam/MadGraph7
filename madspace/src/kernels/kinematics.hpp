@@ -168,6 +168,23 @@ t2_inv_min_max_doublet(FVal<T> s, FVal<T> m1_2, FVal<T> mir_min_2, FVal<T> t1_ab
     return {t2_min, t2_max};
 }
 
+// The range of the light-cone component p1_- = E1 -+ pz1 of the double-t single
+// particle against either beam that the transverse-energy floors of it and its
+// recoil leave, [Eimax - pzmax, Eimax + pzmax], in the rest frame of the two
+// beams (AmpliCol double_t). Returns sqrt(s), Eimax and pzmax.
+template <typename T>
+KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>>
+doublet_etmin_light_cone(FVal<T> s, FVal<T> etmin_i, FVal<T> etmin_ir) {
+    auto sqrt_s = sqrt(max(s, EPS));
+    auto ei2 = etmin_i * etmin_i;
+    auto eir2 = etmin_ir * etmin_ir;
+    auto lam = s * s + ei2 * ei2 + eir2 * eir2 - 2.0 * s * ei2 - 2.0 * ei2 * eir2 -
+        2.0 * eir2 * s;
+    auto pzmax = sqrt(max(lam, 0.)) / (2.0 * sqrt_s);
+    auto Eimax = sqrt_s - sqrt(max(eir2 + pzmax * pzmax, 0.));
+    return {sqrt_s, Eimax, pzmax};
+}
+
 // ETmin floor on the double-t central single particle (mass^2 m1_2) and its recoil
 // system, ported from AmpliCol double_t. AmpliCol writes signed-t (lines 605-608);
 // we work in |t| = -t, so its tmin=max/tmax=min map to our |t|_min/|t|_max with both
@@ -181,13 +198,8 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> doublet_t1_etmin_clamp(
     FVal<T> etmin_i,
     FVal<T> etmin_ir
 ) {
-    auto sqrt_s = sqrt(max(s, EPS));
-    auto ei2 = etmin_i * etmin_i;
-    auto eir2 = etmin_ir * etmin_ir;
-    auto lam = s * s + ei2 * ei2 + eir2 * eir2 - 2.0 * s * ei2 - 2.0 * ei2 * eir2 -
-        2.0 * eir2 * s;
-    auto pzmax = sqrt(max(lam, 0.)) / (2.0 * sqrt_s);
-    auto Eimax = sqrt_s - sqrt(max(eir2 + pzmax * pzmax, 0.));
+    auto light_cone = doublet_etmin_light_cone<T>(s, etmin_i, etmin_ir);
+    auto sqrt_s = light_cone.first, Eimax = light_cone.second, pzmax = light_cone.third;
     auto cut_min = sqrt_s * (Eimax - pzmax) - m1_2;
     auto cut_max = sqrt_s * (Eimax + pzmax) - m1_2;
     auto active = (etmin_i > EPS) | (etmin_ir > EPS);
@@ -1021,9 +1033,11 @@ KERNELSPEC void kernel_t_inv_value(
 // offset carries the recoil mass^2 (m1).
 // The two-body range behind it, in the frame where p_tot has p_z = 0 (its
 // transverse mass piir0 as energy): the light-cone component of the recoil
-// against the beam axis lies in [base - rootsq, base + rootsq] / (2 piir0).
+// against the beam axis lies in [base - rootsq, base + rootsq] / (2 piir0), for
+// a recoil of transverse mass at least eff_1. Returns piir0, base, rootsq and
+// eff_1.
 template <typename T>
-KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>> t_cut_etmin_range(
+KERNELSPEC Quartuplet<FVal<T>, FVal<T>, FVal<T>, FVal<T>> t_cut_etmin_range(
     FourMom<T> p_tot, FVal<T> m1_2, FVal<T> m2_2, FVal<T> etmin_1, FVal<T> etmin_2
 ) {
     // squared masses recomputed from momenta (inverse direction) can be slightly
@@ -1043,7 +1057,7 @@ KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>> t_cut_etmin_range(
     auto base = piir0 * piir0 - eff_2 * eff_2 + eff_1 * eff_1;
     auto root = (piir0 - eff_2 - eff_1) * (piir0 + eff_2 - eff_1) *
         (piir0 - eff_2 + eff_1) * (piir0 + eff_2 + eff_1);
-    return {piir0, base, sqrt(max(root, 0.))};
+    return {piir0, base, sqrt(max(root, 0.)), eff_1};
 }
 
 template <typename T>
@@ -1065,16 +1079,30 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin(
     return {ratio * (base - rootsq) - m1_2, ratio * (base + rootsq) - m1_2};
 }
 
-// The lower end of the ETmin bound for a massive pa along the beam axis. With
-// light-cone components along pa (in any frame boosted along z),
-//   |t| = 2 pa.p1 - ma^2 - m1^2,  2 pa.p1 = pa_big p1_small + pa_small p1_big,
-// and pa_small = ma^2 / pa_big >= 0, so |t| >= pa_big p1_small - ma^2 - m1^2
-// with p1_small at least the lower end of t_cut_etmin_range. Dropping
-// pa_small p1_big leaves a bound that never cuts into the phase space, and is
-// the massless one for ma = 0. No upper end: pa_small p1_big is not bounded
-// by the transverse energies.
+// The least value of pa_big c + pa_small e^2 / c over c >= c_lo, the light-cone
+// part of 2 pa.p1 for a p1 of transverse mass at least e whose component
+// against pa is c: 2 e ma at c = e ma / pa_big if that lies above c_lo, else
+// its value at c_lo. For a massless pa it is pa_big c_lo.
 template <typename T>
-KERNELSPEC FVal<T> t_cut_lower_bound_etmin_massive(
+KERNELSPEC FVal<T>
+least_light_cone_product(FVal<T> pa_big, FVal<T> ma_2, FVal<T> c_lo, FVal<T> e) {
+    auto pa_small = ma_2 / max(pa_big, FVal<T>(EPS));
+    auto ma = sqrt(ma_2);
+    auto at_c_lo = pa_big * c_lo + pa_small * e * e / max(c_lo, FVal<T>(EPS));
+    return where(e * ma > pa_big * c_lo, 2. * e * ma, at_c_lo);
+}
+
+// The ETmin bounds of t_cut_bounds_etmin for a massive pa along the beam
+// axis. With light-cone components along pa, in the frame where p_tot has
+// p_z = 0,
+//   |t| = 2 pa.p1 - ma^2 - m1^2,  2 pa.p1 = pa_big c + pa_small q,
+// with c = p1_small in [c_lo, c_hi] = [base -+ rootsq] / (2 piir0) of
+// t_cut_etmin_range and q = p1_big = m_T(p1)^2 / c, where m_T(p1) >= eff_1 and
+// q <= P_big = piir0. The lower end is least_light_cone_product at c_lo, the
+// upper one pa_big c_hi + pa_small piir0. For ma = 0 these are the bounds of
+// t_cut_bounds_etmin.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> t_cut_bounds_etmin_massive(
     FourMom<T> p_tot,
     FourMom<T> pa,
     FVal<T> ma_2,
@@ -1089,7 +1117,12 @@ KERNELSPEC FVal<T> t_cut_lower_bound_etmin_massive(
     auto e_a = (p_tot[0] * pa[0] - p_tot[3] * pa[3]) / piir0;
     auto z_a = (p_tot[0] * pa[3] - p_tot[3] * pa[0]) / piir0;
     auto pa_big = e_a + fabs(z_a);
-    return pa_big * (base - rootsq) / (2. * piir0) - max(ma_2, 0.) - max(m1_2, 0.);
+    ma_2 = max(ma_2, 0.);
+    auto offset = ma_2 + max(m1_2, 0.);
+    auto c_lo = (base - rootsq) / (2. * piir0), c_hi = (base + rootsq) / (2. * piir0);
+    auto lower = least_light_cone_product<T>(pa_big, ma_2, c_lo, range.fourth);
+    auto upper = pa_big * c_hi + ma_2 / max(pa_big, FVal<T>(EPS)) * piir0;
+    return {lower - offset, upper - offset};
 }
 
 // Clamp the kinematic |t| range against the ETmin cut interval. Returns the
@@ -1466,9 +1499,9 @@ KERNELSPEC void kernel_t_inv_value_and_min_max_massive(
     t_abs = -lsquare<T>(pa1);
 }
 
-// The massive |t| range narrowed from below by the ETmin floors, where pa lies
-// along the beam axis and is not space-like (t_cut_lower_bound_etmin_massive).
-// If that leaves nothing, the kinematic range is returned.
+// The massive |t| range narrowed by the ETmin floors, where pa lies along the
+// beam axis and is not space-like (t_cut_bounds_etmin_massive). If that leaves
+// nothing, the kinematic range is returned.
 template <typename T>
 KERNELSPEC Pair<FVal<T>, FVal<T>> t_min_max_cut_massive(
     FourMom<T> pa,
@@ -1485,15 +1518,15 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> t_min_max_cut_massive(
     auto ma_2 = lsquare<T>(pa);
     auto range =
         t_inv_min_max_massive<T>(lsquare<T>(p_tot), ma_2, lsquare<T>(pb), m1_2, m2_2);
-    auto lower = t_cut_lower_bound_etmin_massive<T>(
-        p_tot, pa, ma_2, m1_2, m2_2, etmin_1, etmin_2
-    );
+    auto cut =
+        t_cut_bounds_etmin_massive<T>(p_tot, pa, ma_2, m1_2, m2_2, etmin_1, etmin_2);
     auto pa0_2 = pa[0] * pa[0];
     auto on_axis =
         (pa[1] * pa[1] + pa[2] * pa[2] <= 1e-9 * pa0_2) & (ma_2 >= -1e-12 * pa0_2);
-    auto lo = where(on_axis, max(range.first, lower), range.first);
-    auto ok = range.second > lo;
-    return {where(ok, lo, range.first), range.second};
+    auto lo = where(on_axis, max(range.first, cut.first), range.first);
+    auto hi = where(on_axis, min(range.second, cut.second), range.second);
+    auto ok = hi > lo;
+    return {where(ok, lo, range.first), where(ok, hi, range.second)};
 }
 
 template <typename T>
@@ -1741,6 +1774,422 @@ KERNELSPEC void kernel_t2_inv_value_and_min_max_doublet(
     t_min = c.first;
     t_max = c.second;
     t_abs = -lsquare<T>(pb1);
+}
+
+// Massive beams in the double-t block pa pb -> p1 X. The kernels below replace
+// the ones above when the beams are massive, chosen when the graph is built
+// (see DoubleT), which leaves the massless ones as they are.
+//
+// In the rest frame of pa + pb with pa along +z, the light-cone components
+// (x_+, x_-) = (E + p_z, E - p_z) of the beams are pa = (a_big, a_small) and
+// pb = (b_small, b_big), with big = E + |p| and small = m^2 / big, and
+// a_big b_big - a_small b_small = sqrt(lambda(s, ma^2, mb^2)) = root. For p1,
+//   ta = 2 pa.p1 = |t1| + ma^2 + m1^2 = a_big x_- + a_small x_+,
+//   tb = 2 pb.p1 = |t2| + mb^2 + m1^2 = b_big x_+ + b_small x_-,
+// which give x_+ = (a_big tb - b_small ta) / root and
+// x_- = (b_big ta - a_small tb) / root.
+template <typename T>
+struct BeamLightCone {
+    FVal<T> s, sqrt_s, ma_2, mb_2, root, a_big, a_small, b_big, b_small;
+};
+
+template <typename T>
+KERNELSPEC BeamLightCone<T> beam_light_cone(FourMom<T> pa, FourMom<T> pb) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto s = lsquare<T>(p_tot);
+    auto sqrt_s = sqrt(max(s, EPS));
+    auto ma_2 = max(lsquare<T>(pa), 0.), mb_2 = max(lsquare<T>(pb), 0.);
+    auto root = sqrt(max(kaellen<T>(s, ma_2, mb_2), 0.));
+    auto a_big = (s + ma_2 - mb_2 + root) / (2. * sqrt_s);
+    auto b_big = (s + mb_2 - ma_2 + root) / (2. * sqrt_s);
+    return {
+        s,
+        sqrt_s,
+        ma_2,
+        mb_2,
+        root,
+        a_big,
+        ma_2 / max(a_big, FVal<T>(EPS)),
+        b_big,
+        mb_2 / max(b_big, FVal<T>(EPS))
+    };
+}
+
+// The |t1| range of the double-t block off massive beams, over every recoil
+// mass m_X >= mir_min. Its upper end is that of pa pb -> p1 X at m_X = mir_min.
+// So is its lower end, unless p1 can move with the velocity of pa, where
+// pa.p1 = ma m1 is least and |t1| = -(ma - m1)^2: that needs the energy
+// m1 E_a / ma at most the largest one, (s + m1^2 - mir_min^2) / (2 sqrt(s)).
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>>
+t1_inv_min_max_doublet_massive(BeamLightCone<T> lc, FVal<T> m1_2, FVal<T> mir_min_2) {
+    auto range = t_inv_range<T>(lc.s, lc.ma_2, lc.mb_2, m1_2, mir_min_2);
+    auto ma = sqrt(lc.ma_2), m1 = sqrt(max(m1_2, 0.));
+    auto co_moving = m1 * (lc.s + lc.ma_2 - lc.mb_2) <= ma * (lc.s + m1_2 - mir_min_2);
+    auto t_min = where(co_moving, -(ma - m1) * (ma - m1), range.first);
+    return {t_min, t_max_nonempty<T>(t_min, range.second)};
+}
+
+// The ETmin bound of doublet_t1_etmin_clamp for massive beams. In ta =
+// a_big x_- + a_small x_+, x_- lies in [Eimax - pzmax, Eimax + pzmax] of
+// doublet_etmin_light_cone and x_+ = m_T(p1)^2 / x_- <= sqrt(s), with
+// m_T(p1) >= etmin_i: least_light_cone_product below, a_big (Eimax + pzmax) +
+// a_small sqrt(s) above. For massless beams these are the bounds of
+// doublet_t1_etmin_clamp.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> doublet_t1_etmin_clamp_massive(
+    FVal<T> t_min,
+    FVal<T> t_max,
+    BeamLightCone<T> lc,
+    FVal<T> m1_2,
+    FVal<T> etmin_i,
+    FVal<T> etmin_ir
+) {
+    auto light_cone = doublet_etmin_light_cone<T>(lc.s, etmin_i, etmin_ir);
+    auto x_lo = light_cone.second - light_cone.third;
+    auto x_hi = light_cone.second + light_cone.third;
+    auto mt = max(etmin_i, sqrt(max(m1_2, 0.)));
+    auto offset = lc.ma_2 + m1_2;
+    auto cut_min = least_light_cone_product<T>(lc.a_big, lc.ma_2, x_lo, mt) - offset;
+    auto cut_max = lc.a_big * x_hi + lc.a_small * lc.sqrt_s - offset;
+    auto active = (etmin_i > EPS) | (etmin_ir > EPS);
+    auto lo = where(active, max(t_min, cut_min), t_min);
+    auto hi = where(active, min(t_max, cut_max), t_max);
+    auto ok = hi > lo;
+    return {where(ok, lo, t_min), where(ok, hi, t_max)};
+}
+
+// The least and largest tb at fixed ta for a p1 of transverse mass^2 at least
+// mt_2. With x_+ x_- >= mt_2 (see above), tb lies between the roots of
+//   ma^2 tb^2 - sigma ta tb + mb^2 ta^2 + lambda mt_2 = 0,  sigma = s - ma^2 - mb^2,
+// the lower one written without cancellations, the upper one infinite for a
+// massless pa. For massless beams the lower one is s mt_2 / ta.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>>
+doublet_tb_roots(BeamLightCone<T> lc, FVal<T> ta, FVal<T> mt_2) {
+    auto sigma = lc.s - lc.ma_2 - lc.mb_2;
+    auto disc = lc.root * sqrt(max(ta * ta - 4. * lc.ma_2 * mt_2, 0.));
+    auto sum = ta * sigma + disc;
+    auto lower =
+        2. * (ta * ta * lc.mb_2 + lc.root * lc.root * mt_2) / max(sum, FVal<T>(EPS));
+    auto upper =
+        where(lc.ma_2 > 0., sum / (2. * max(lc.ma_2, FVal<T>(EPS))), FVal<T>(1e300));
+    return {lower, upper};
+}
+
+// The |t2| range of the double-t block off massive beams at fixed |t1|: tb from
+// p1 on its mass shell (doublet_tb_roots) and at most the value at which the
+// recoil has the mass mir_min, tb = s + m1^2 - mir_min^2 - ta.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> t2_inv_min_max_doublet_massive(
+    BeamLightCone<T> lc, FVal<T> m1_2, FVal<T> mir_min_2, FVal<T> t1_abs
+) {
+    auto ta = t1_abs + lc.ma_2 + m1_2;
+    auto roots = doublet_tb_roots<T>(lc, ta, m1_2);
+    auto offset = lc.mb_2 + m1_2;
+    auto t2_min = roots.first - offset;
+    auto t2_max = min(roots.second, lc.s + m1_2 - mir_min_2 - ta) - offset;
+    return {t2_min, t_max_nonempty<T>(t2_min, t2_max)};
+}
+
+// The ETmin bound of doublet_t2_etmin_clamp for massive beams at fixed ta. From
+// below, p1 has a transverse mass of at least etmin_i, which raises the lower
+// root of doublet_tb_roots. From above, the recoil P - p1 has one of at least
+// etmin_ir: with x_+-(tb) of beam_light_cone,
+//   (sqrt(s) - x_+) (sqrt(s) - x_-) root^2 = (P1 - a_big tb) (Q1 + a_small tb),
+//   P1 = sqrt(s) root + b_small ta,  Q1 = sqrt(s) root - b_big ta,
+// at least etmin_ir^2 root^2, a quadratic in tb that opens downwards: tb is
+// at most its upper root, written without cancellations. For massless beams
+// both ends are those of doublet_t2_etmin_clamp.
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> doublet_t2_etmin_clamp_massive(
+    FVal<T> t_min,
+    FVal<T> t_max,
+    BeamLightCone<T> lc,
+    FVal<T> m1_2,
+    FVal<T> t1_abs,
+    FVal<T> etmin_i,
+    FVal<T> etmin_ir
+) {
+    auto ta = t1_abs + lc.ma_2 + m1_2;
+    auto offset = lc.mb_2 + m1_2;
+    auto mt_2 = max(etmin_i * etmin_i, m1_2);
+    auto cut_min = doublet_tb_roots<T>(lc, ta, mt_2).first - offset;
+    // ma^2 tb^2 - b tb - c <= 0
+    auto sqrt_s_root = lc.sqrt_s * lc.root;
+    auto p1 = sqrt_s_root + lc.b_small * ta, q1 = sqrt_s_root - lc.b_big * ta;
+    auto b = p1 * lc.a_small - lc.a_big * q1;
+    auto c = p1 * q1 - etmin_ir * etmin_ir * lc.root * lc.root;
+    auto disc = sqrt(max(b * b + 4. * lc.ma_2 * c, 0.));
+    auto upper = where(
+        b < 0.,
+        2. * c / max(disc - b, FVal<T>(EPS)),
+        (b + disc) / (2. * max(lc.ma_2, FVal<T>(EPS)))
+    );
+    auto cut_max = upper - offset;
+    auto lo = where(etmin_i > EPS, max(t_min, cut_min), t_min);
+    auto hi = where(etmin_ir > EPS, min(t_max, cut_max), t_max);
+    auto ok = hi > lo;
+    return {where(ok, lo, t_min), where(ok, hi, t_max)};
+}
+
+template <typename T>
+KERNELSPEC void kernel_t1_inv_min_max_doublet_massive(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> etmin_i,
+    FIn<T, 0> etmin_ir,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto bounds = t1_inv_min_max_doublet_massive<T>(lc, m1_2, mir_min * mir_min);
+    auto c = doublet_t1_etmin_clamp_massive<T>(
+        bounds.first, bounds.second, lc, m1_2, etmin_i, etmin_ir
+    );
+    t_min = c.first;
+    t_max = c.second;
+}
+
+template <typename T>
+KERNELSPEC void kernel_t1_inv_value_and_min_max_doublet_massive(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 1> p1,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> etmin_i,
+    FIn<T, 0> etmin_ir,
+    FOut<T, 0> t_abs,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    FourMom<T> pa1;
+    for (int i = 0; i < 4; ++i) {
+        pa1[i] = pa[i] - p1[i];
+    }
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto bounds = t1_inv_min_max_doublet_massive<T>(lc, m1_2, mir_min * mir_min);
+    auto c = doublet_t1_etmin_clamp_massive<T>(
+        bounds.first, bounds.second, lc, m1_2, etmin_i, etmin_ir
+    );
+    t_min = c.first;
+    t_max = c.second;
+    t_abs = -lsquare<T>(pa1);
+}
+
+template <typename T>
+KERNELSPEC void kernel_t2_inv_min_max_doublet_massive(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> etmin_i,
+    FIn<T, 0> etmin_ir,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto bounds =
+        t2_inv_min_max_doublet_massive<T>(lc, m1_2, mir_min * mir_min, t1_abs);
+    auto c = doublet_t2_etmin_clamp_massive<T>(
+        bounds.first, bounds.second, lc, m1_2, t1_abs, etmin_i, etmin_ir
+    );
+    t_min = c.first;
+    t_max = c.second;
+}
+
+template <typename T>
+KERNELSPEC void kernel_t2_inv_value_and_min_max_doublet_massive(
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 1> p1,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> etmin_i,
+    FIn<T, 0> etmin_ir,
+    FOut<T, 0> t_abs,
+    FOut<T, 0> t_min,
+    FOut<T, 0> t_max
+) {
+    FourMom<T> pb1;
+    for (int i = 0; i < 4; ++i) {
+        pb1[i] = pb[i] - p1[i];
+    }
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto bounds =
+        t2_inv_min_max_doublet_massive<T>(lc, m1_2, mir_min * mir_min, t1_abs);
+    auto c = doublet_t2_etmin_clamp_massive<T>(
+        bounds.first, bounds.second, lc, m1_2, t1_abs, etmin_i, etmin_ir
+    );
+    t_min = c.first;
+    t_max = c.second;
+    t_abs = -lsquare<T>(pb1);
+}
+
+// tb on the lines of fixed rapidity in the double-t block off massive beams.
+// A rapidity y along pa in the rest frame of pa + pb gives r = e^{2y} =
+// x_+ / x_- for p1, and r = (sqrt(s) - x_+) / (sqrt(s) - x_-) for the recoil
+// P - p1, which with x_+, x_- from ta, tb (see beam_light_cone) is
+//   p1:      tb = beta ta,
+//   recoil:  tb = alpha + beta ta,
+//   beta = (b_small + r b_big) / (a_big + r a_small),
+//   alpha = sqrt(s) root (1 - r) / (a_big + r a_small).
+// tb rises with the rapidity of p1 and falls with that of the recoil. For
+// massless beams, beta = r and alpha = s (1 - r).
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> doublet_tb_line(BeamLightCone<T> lc, FVal<T> r) {
+    auto den = lc.a_big + r * lc.a_small;
+    return {lc.sqrt_s * lc.root * (1. - r) / den, (lc.b_small + r * lc.b_big) / den};
+}
+
+// kernel_t1_rapidity_clamp_doublet for massive beams. The bounds on tb at fixed
+// ta are lines (doublet_tb_line) and the kinematic ones, tb <= s + m1^2 -
+// mir_min^2 - ta and the least tb of a p1 with x_- <= sqrt(s),
+//   tb >= min over x_- of (b_big m1^2 / x_- + b_small x_-),
+// which is 2 m1 mb where p1 can move with the velocity of pb and m1^2 for
+// massless beams. The transverse-energy floors bound ta itself: ta >=
+// a_big x_- >= a_big etmin_1 e^{-y} for p1, and for the recoil,
+// s + ma^2 - mb^2 - ta = 2 pa.(P - p1) >= a_big etmin_2 e^{-y}. The rest is as
+// in kernel_t1_rapidity_clamp_doublet, in ta and then in |t1|.
+template <typename T>
+KERNELSPEC void kernel_t1_rapidity_clamp_doublet_massive(
+    FIn<T, 0> t1_min,
+    FIn<T, 0> t1_max,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> mir_min,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
+    FOut<T, 0> t1_min_out,
+    FOut<T, 0> t1_max_out
+) {
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto y_boost = beam_sign * 0.5 * log(x1 / x2);
+    auto on1 = rapidity_bound_on<T>(y_max1), on2 = rapidity_bound_on<T>(y_max2);
+    auto line_lo1 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (-y_max1 - y_boost)));
+    auto line_hi1 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (y_max1 - y_boost)));
+    auto line_lo2 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (-y_max2 - y_boost)));
+    auto line_hi2 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (y_max2 - y_boost)));
+
+    // the bounds on tb as alpha + beta ta; an inactive one is replaced by the
+    // kinematic bound of the same side
+    auto m1_abs = sqrt(max(m1_2, 0.)), mb = sqrt(lc.mb_2);
+    auto kin_lo = where(
+        m1_abs * lc.b_big <= mb * lc.sqrt_s,
+        2. * m1_abs * mb,
+        lc.b_big * m1_2 / lc.sqrt_s + lc.b_small * lc.sqrt_s
+    );
+    FVal<T> lo_alpha[3] = {
+        kin_lo, where(on1, FVal<T>(0.), kin_lo), where(on2, line_hi2.first, kin_lo)
+    };
+    FVal<T> lo_beta[3] = {
+        FVal<T>(0.),
+        where(on1, line_lo1.second, FVal<T>(0.)),
+        where(on2, line_hi2.second, FVal<T>(0.))
+    };
+    auto kin_alpha = lc.s + m1_2 - mir_min * mir_min;
+    FVal<T> hi_alpha[3] = {
+        kin_alpha,
+        where(on1, FVal<T>(0.), kin_alpha),
+        where(on2, line_lo2.first, kin_alpha)
+    };
+    FVal<T> hi_beta[3] = {
+        FVal<T>(-1.),
+        where(on1, line_hi1.second, FVal<T>(-1.)),
+        where(on2, line_lo2.second, FVal<T>(-1.))
+    };
+
+    auto offset = lc.ma_2 + m1_2;
+    FVal<T> lo = t1_min + offset, hi = t1_max + offset;
+    lo = where(
+        on1, max(lo, lc.a_big * etmin_1 * bounded_exp<T>(-(y_max1 - y_boost))), lo
+    );
+    hi = where(
+        on2,
+        min(hi,
+            lc.s + lc.ma_2 - lc.mb_2 -
+                lc.a_big * etmin_2 * bounded_exp<T>(-(y_max2 - y_boost))),
+        hi
+    );
+    auto feasible = lo <= hi;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            // lo_alpha_i + lo_beta_i ta <= hi_alpha_j + hi_beta_j ta
+            auto slope = lo_beta[i] - hi_beta[j];
+            auto rhs = hi_alpha[j] - lo_alpha[i];
+            auto bound = rhs / where(slope == 0., FVal<T>(1.), slope);
+            hi = where(slope > 0., min(hi, bound), hi);
+            lo = where(slope < 0., max(lo, bound), lo);
+            feasible = feasible & ((slope != 0.) | (rhs >= 0.));
+        }
+    }
+    // back to |t1|, inside the input range
+    auto lo_t = max(lo - offset, FVal<T>(t1_min));
+    auto hi_t = min(hi - offset, FVal<T>(t1_max));
+    auto ok = (on1 | on2) & feasible & (hi_t > lo_t);
+    t1_min_out = where(ok, lo_t, FVal<T>(t1_min));
+    t1_max_out = where(ok, hi_t, FVal<T>(t1_max));
+}
+
+// kernel_t2_rapidity_clamp_doublet for massive beams, with the lines of
+// doublet_tb_line at the sampled ta.
+template <typename T>
+KERNELSPEC void kernel_t2_rapidity_clamp_doublet_massive(
+    FIn<T, 0> t2_min,
+    FIn<T, 0> t2_max,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> m1,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FSIn<T, 0> beam_sign,
+    FSIn<T, 0> y_max1,
+    FSIn<T, 0> y_max2,
+    FOut<T, 0> t2_min_out,
+    FOut<T, 0> t2_max_out
+) {
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto ta = t1_abs + lc.ma_2 + m1_2;
+    auto offset = lc.mb_2 + m1_2;
+    auto y_boost = beam_sign * 0.5 * log(x1 / x2);
+    auto on1 = rapidity_bound_on<T>(y_max1), on2 = rapidity_bound_on<T>(y_max2);
+    auto line_lo1 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (-y_max1 - y_boost)));
+    auto line_hi1 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (y_max1 - y_boost)));
+    auto line_lo2 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (-y_max2 - y_boost)));
+    auto line_hi2 = doublet_tb_line<T>(lc, bounded_exp<T>(2. * (y_max2 - y_boost)));
+
+    FVal<T> lo = t2_min, hi = t2_max;
+    // p1, tb rising with its rapidity
+    lo = where(on1, max(lo, line_lo1.second * ta - offset), lo);
+    hi = where(on1, min(hi, line_hi1.second * ta - offset), hi);
+    // the recoil, tb falling with its rapidity
+    lo = where(on2, max(lo, line_hi2.first + line_hi2.second * ta - offset), lo);
+    hi = where(on2, min(hi, line_lo2.first + line_lo2.second * ta - offset), hi);
+
+    auto ok = hi > lo;
+    t2_min_out = where(ok, lo, FVal<T>(t2_min));
+    t2_max_out = where(ok, hi, FVal<T>(t2_max));
 }
 
 template <typename T>

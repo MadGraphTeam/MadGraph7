@@ -1147,13 +1147,20 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<double>,
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>,
+                std::vector<double>,
                 std::vector<double>>(),
             py::arg("options"),
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
             py::arg("y_max") = std::vector<double>{},
+            py::arg("incoming_masses") = std::vector<double>{},
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
+        )
+        .def(
+            "incoming_masses",
+            &ColorOrderedMapping::incoming_masses,
+            pydoc::doc("ColorOrderedMapping::incoming_masses")
         )
         .def(
             "random_dim",

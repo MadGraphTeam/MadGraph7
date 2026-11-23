@@ -1,5 +1,9 @@
 #include "madspace/phasespace/base.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
 #include "madspace/util.hpp"
 
 using namespace madspace;
@@ -197,4 +201,18 @@ Function FunctionGenerator::function() const {
     check_types(sorted_outputs, _return_types, "Output");
     fb.output_range(0, sorted_outputs.values());
     return fb.function();
+}
+
+std::vector<double> madspace::massive_incoming_masses(
+    const std::vector<double>& masses, const std::string& mapping
+) {
+    if (std::none_of(masses.begin(), masses.end(), [](double m) { return m != 0.; })) {
+        return {};
+    }
+    if (masses.size() != 2) {
+        throw std::invalid_argument(
+            std::format("{}: incoming_masses are the masses of the two beams", mapping)
+        );
+    }
+    return {std::abs(masses.at(0)), std::abs(masses.at(1))};
 }

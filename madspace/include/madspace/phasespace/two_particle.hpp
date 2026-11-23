@@ -170,10 +170,9 @@ public:
      * @f$t = (p_a - p_1)^2@f$ can then be positive near the forward
      * direction. The range of @f$|t|@f$, its ETmin bound and the rapidity
      * bounds come from the massive kernels (`t_inv_min_max_massive`, ...),
-     * and the @ref Invariant samples @f$|t| - \min(|t|_\text{min}, 0)@f$,
-     * which is @f$|t|@f$ wherever the range stays at or above 0. The massless
-     * kernels are untouched by this choice, which is made when the graph is
-     * built.
+     * and the @ref Invariant samples @f$|t|@f$ shifted where the range reaches
+     * below 0 (Invariant::build_forward_shifted). The massless kernels are
+     * untouched by this choice, which is made when the graph is built.
      */
     TwoToTwoParticleScattering(
         bool com,
@@ -323,6 +322,8 @@ public:
      * @param y_max2             The same for `momentum2` (the recoil).
      * @param beam_sign          +1 if `momentum_in1` is beam 1 (along +z), -1
      *                           if it is beam 2.
+     * @param massive_beams      If true, the incoming momenta are massive
+     *                           beams (see below).
      *
      * The incoming momenta are the beams, so pa.p1 and pb.p1 are fixed by
      * @f$|t_1|@f$ and @f$|t_2|@f$: the rapidity bounds narrow @f$|t_1|@f$ to
@@ -330,6 +331,14 @@ public:
      * @f$|t_1|@f$, both exactly. With a bound set, the
      * mapping takes the beam momentum fractions `x1`, `x2` (`float`, shape
      * `(batch,)`) as two further conditions.
+     *
+     * With @p massive_beams the scattering, the ranges of @f$|t_1|@f$ and
+     * @f$|t_2|@f$ and the rapidity bounds come from the massive kernels
+     * (`double_t_scattering_massive`, `t1_inv_min_max_doublet_massive`, ...).
+     * Off a massive beam a momentum transfer can be positive, and each
+     * @ref Invariant samples it shifted where its range reaches below 0
+     * (Invariant::build_forward_shifted). The massless kernels are untouched
+     * by this choice, which is made when the graph is built.
      */
     DoubleT(
         double t1_invariant_power = 0,
@@ -341,7 +350,8 @@ public:
         bool has_cut = false,
         double y_max1 = -1.,
         double y_max2 = -1.,
-        double beam_sign = 1.
+        double beam_sign = 1.,
+        bool massive_beams = false
     );
 
 private:
@@ -369,6 +379,21 @@ private:
         Value t2_max,
         Value t1_abs
     ) const;
+    // a momentum transfer from its random number and back, and the Jacobian
+    std::array<Value, 2> sample_t(
+        FunctionBuilder& fb,
+        const Invariant& invariant,
+        Value r,
+        Value t_min,
+        Value t_max
+    ) const;
+    std::array<Value, 2> unsample_t(
+        FunctionBuilder& fb,
+        const Invariant& invariant,
+        Value t_abs,
+        Value t_min,
+        Value t_max
+    ) const;
 
     Invariant _t1_invariant;
     Invariant _t2_invariant;
@@ -377,6 +402,7 @@ private:
     double _y_max1;
     double _y_max2;
     double _beam_sign;
+    bool _massive_beams;
 };
 
 } // namespace madspace

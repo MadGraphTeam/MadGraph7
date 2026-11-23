@@ -335,10 +335,16 @@ ColorOrderedMapping::ColorOrderedMapping(
     const std::vector<double>& pt_min,
     const std::vector<std::vector<double>>& m_inv_min,
     const std::vector<std::vector<double>>& dr_min,
-    const std::vector<double>& y_max
+    const std::vector<double>& y_max,
+    const std::vector<double>& incoming_masses
 ) :
     ColorOrderedMapping(
-        rapidity_bounds(options.color_order, y_max), options, pt_min, m_inv_min, dr_min
+        rapidity_bounds(options.color_order, y_max),
+        options,
+        pt_min,
+        m_inv_min,
+        dr_min,
+        massive_incoming_masses(incoming_masses, "ColorOrderedMapping")
     ) {}
 
 ColorOrderedMapping::ColorOrderedMapping(
@@ -346,7 +352,8 @@ ColorOrderedMapping::ColorOrderedMapping(
     const Options& options,
     const std::vector<double>& pt_min,
     const std::vector<std::vector<double>>& m_inv_min,
-    const std::vector<std::vector<double>>& dr_min
+    const std::vector<std::vector<double>>& dr_min,
+    const std::vector<double>& incoming_masses
 ) :
     Mapping(
         "ColorOrderedMapping",
@@ -408,7 +415,11 @@ ColorOrderedMapping::ColorOrderedMapping(
     _dr_min(dr_min),
     _has_cut(has_any_cut(pt_min, m_inv_min, dr_min)),
     _rapidity_window(bounds.active()),
+    _incoming_masses(incoming_masses),
     _mass_invariant(0.5),
+    // every block below scatters off a beam (the central ones and the first
+    // peels off both, the 2->3 steps off the opposite one), with the massive
+    // kernels if the beams are massive
     _com_scattering(
         true,
         chain_power(options, pt_min, m_inv_min, dr_min),
@@ -417,14 +428,19 @@ ColorOrderedMapping::ColorOrderedMapping(
         has_any_cut(pt_min, m_inv_min, dr_min),
         bounds.double_t ? -1. : bounds.central1,
         bounds.double_t ? -1. : bounds.central2,
-        1.
+        1.,
+        !incoming_masses.empty()
     ),
     _lab_scattering(
         false,
         chain_power(options, pt_min, m_inv_min, dr_min),
         0.,
         0.,
-        has_any_cut(pt_min, m_inv_min, dr_min)
+        has_any_cut(pt_min, m_inv_min, dr_min),
+        -1.,
+        -1.,
+        1.,
+        !incoming_masses.empty()
     ),
     _chain_scattering(
         false,
@@ -434,7 +450,8 @@ ColorOrderedMapping::ColorOrderedMapping(
         has_any_cut(pt_min, m_inv_min, dr_min),
         bounds.chain_rest,
         bounds.chain_peeled,
-        bounds.chain_beam_sign
+        bounds.chain_beam_sign,
+        !incoming_masses.empty()
     ),
     _two_to_three(
         chain_power(options, pt_min, m_inv_min, dr_min),
@@ -447,7 +464,8 @@ ColorOrderedMapping::ColorOrderedMapping(
         true,
         true,
         false,
-        options.cut_aware_branch
+        options.cut_aware_branch,
+        !incoming_masses.empty()
     ),
     _two_to_three_beam(
         chain_power(options, pt_min, m_inv_min, dr_min),
@@ -460,7 +478,8 @@ ColorOrderedMapping::ColorOrderedMapping(
         true,
         true,
         true,
-        options.cut_aware_branch
+        options.cut_aware_branch,
+        !incoming_masses.empty()
     ),
     _double_t(
         chain_power(options, pt_min, m_inv_min, dr_min),
@@ -472,7 +491,8 @@ ColorOrderedMapping::ColorOrderedMapping(
         has_any_cut(pt_min, m_inv_min, dr_min),
         bounds.double_t ? bounds.central1 : -1.,
         bounds.double_t ? bounds.central2 : -1.,
-        1.
+        1.,
+        !incoming_masses.empty()
     ) {
     auto [s1, s2] = split_sets_from_color_order(options.color_order);
     _set1 = s1;
@@ -514,7 +534,11 @@ Mapping::Result ColorOrderedMapping::build_forward_impl(
     //   * DoubleT: exactly one set has size 1; defers the multi-particle
     //     side's mass until after the central block.
     //   * standard: both sets non-empty -> central 2->2 scattering.
-    auto [pa, pb] = fb.com_p_in(e_cm);
+    // the beams in the partonic centre-of-mass frame, on their mass shells if
+    // they are massive
+    auto [pa, pb] = _incoming_masses.empty()
+        ? fb.com_p_in(e_cm)
+        : fb.com_p_in_massive(e_cm, _incoming_masses);
     Value m_set1, m_set2;
     Value P_set1, P_set2;
     auto masses_of = [&](const std::vector<std::size_t>& idxs) {

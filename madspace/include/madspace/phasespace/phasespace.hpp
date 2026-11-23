@@ -40,15 +40,16 @@ namespace madspace {
  * Massive incoming particles of a collision (the incoming masses of the
  * topology: W and Z beams, muons of a model with a muon mass, massive partons)
  * are built on their mass shells in the partonic centre-of-mass frame
- * (`com_p_in_massive`), as madevent's genps.f builds them (mom2cx), and the
- * t-channel chain of @ref TChannelMode::propagator scatters off them. Its |t|
- * windows from the cuts assume massless beams and are then not used. Chili and
- * the color-ordered chain are written for massless beams throughout: they
- * generate the final state against the massless pair with the same sum, which
- * then goes on its mass shells (`incoming_on_shell`). The n-body phase space
- * depends on the incoming momenta only through their sum, so that leaves the
- * Jacobian unchanged, and their inverse takes the massless pair back from the
- * sum. Sampled s_hat starts at the threshold @f$(m_1 + m_2)^2@f$, and a weight
+ * (`com_p_in_massive`), as madevent's genps.f builds them (mom2cx). The
+ * t-channel chains of @ref TChannelMode::propagator and
+ * @ref TChannelMode::color_ordered scatter off them with the massive versions
+ * of their blocks, chosen when the graph is built. Chili, whose final state
+ * fixes the incoming momenta, is written for massless beams: it generates the
+ * final state against the massless pair with the same sum, which then goes on
+ * its mass shells (`incoming_on_shell`). The n-body phase space depends on the
+ * incoming momenta only through their sum, so that leaves the Jacobian
+ * unchanged, and the inverse takes the massless pair back from the sum.
+ * Sampled s_hat starts at the threshold @f$(m_1 + m_2)^2@f$, and a weight
  * below it (chili) is zero. The flux @f$1 / (2 \sqrt{\lambda(\hat s, m_1^2,
  * m_2^2)})@f$ belongs to the cross section: see the `incoming_masses` of
  * @ref DifferentialCrossSection.
@@ -336,8 +337,8 @@ private:
     bool _two_to_one;
     // a collision with a massive incoming particle (see the class documentation)
     bool _massive_incoming;
-    // massive incoming particles put on their mass shells after a chain written
-    // for massless beams (chili, color-ordered)
+    // massive incoming particles put on their mass shells after chili, which is
+    // written for massless beams
     bool _project_incoming;
     // bound on the absolute rapidity of the partonic system, log(x1 / x2) / 2,
     // implied by the cuts; negative when they imply none

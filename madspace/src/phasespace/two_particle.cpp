@@ -206,8 +206,7 @@ std::array<Value, 2> TwoToTwoParticleScattering::rapidity_clamp(
 }
 
 // With massive beams the range can reach below |t| = 0, and the Invariant
-// samples |t| - min(|t|_min, 0) >= 0 instead, which is |t| itself wherever the
-// range stays at or above 0.
+// samples |t| shifted; see Invariant::build_forward_shifted.
 std::array<Value, 2> TwoToTwoParticleScattering::sample_t(
     FunctionBuilder& fb, Value r, Value t_min, Value t_max
 ) const {
@@ -215,10 +214,7 @@ std::array<Value, 2> TwoToTwoParticleScattering::sample_t(
         auto result = _invariant.build_forward(fb, {r}, {t_min, t_max});
         return {result["invariant"], result["det"]};
     }
-    auto shift = fb.min(t_min, 0.);
-    auto result =
-        _invariant.build_forward(fb, {r}, {fb.sub(t_min, shift), fb.sub(t_max, shift)});
-    return {fb.add(result["invariant"], shift), result["det"]};
+    return _invariant.build_forward_shifted(fb, r, t_min, t_max);
 }
 
 std::array<Value, 2> TwoToTwoParticleScattering::unsample_t(
@@ -228,11 +224,7 @@ std::array<Value, 2> TwoToTwoParticleScattering::unsample_t(
         auto result = _invariant.build_inverse(fb, {t_abs}, {t_min, t_max});
         return {result["random"], result["det"]};
     }
-    auto shift = fb.min(t_min, 0.);
-    auto result = _invariant.build_inverse(
-        fb, {fb.sub(t_abs, shift)}, {fb.sub(t_min, shift), fb.sub(t_max, shift)}
-    );
-    return {result["random"], result["det"]};
+    return _invariant.build_inverse_shifted(fb, t_abs, t_min, t_max);
 }
 
 Mapping::Result TwoToTwoParticleScattering::build_forward_impl(
@@ -332,7 +324,8 @@ DoubleT::DoubleT(
     bool has_cut,
     double y_max1,
     double y_max2,
-    double beam_sign
+    double beam_sign,
+    bool massive_beams
 ) :
     Mapping(
         "DoubleT",
@@ -364,7 +357,8 @@ DoubleT::DoubleT(
     _rapidity_window(y_max1 >= 0. || y_max2 >= 0.),
     _y_max1(y_max1),
     _y_max2(y_max2),
-    _beam_sign(beam_sign) {}
+    _beam_sign(beam_sign),
+    _massive_beams(massive_beams) {}
 
 std::array<Value, 2> DoubleT::rapidity_clamp_t1(
     FunctionBuilder& fb,
@@ -376,7 +370,10 @@ std::array<Value, 2> DoubleT::rapidity_clamp_t1(
         return {t1_min, t1_max};
     }
     std::size_t x_index = _has_cut ? 6 : 4;
-    auto [lo, hi] = fb.t1_rapidity_clamp_doublet(
+    auto clamp = _massive_beams
+        ? &FunctionBuilder::t1_rapidity_clamp_doublet_massive
+        : &FunctionBuilder::t1_rapidity_clamp_doublet;
+    auto [lo, hi] = (fb.*clamp)(
         t1_min,
         t1_max,
         conditions.at(0),
@@ -405,7 +402,10 @@ std::array<Value, 2> DoubleT::rapidity_clamp(
         return {t2_min, t2_max};
     }
     std::size_t x_index = _has_cut ? 6 : 4;
-    auto [lo, hi] = fb.t2_rapidity_clamp_doublet(
+    auto clamp = _massive_beams
+        ? &FunctionBuilder::t2_rapidity_clamp_doublet_massive
+        : &FunctionBuilder::t2_rapidity_clamp_doublet;
+    auto [lo, hi] = (fb.*clamp)(
         t2_min,
         t2_max,
         conditions.at(0),
@@ -421,6 +421,32 @@ std::array<Value, 2> DoubleT::rapidity_clamp(
     return {lo, hi};
 }
 
+// With massive beams a range can reach below |t| = 0; see
+// Invariant::build_forward_shifted.
+std::array<Value, 2> DoubleT::sample_t(
+    FunctionBuilder& fb, const Invariant& invariant, Value r, Value t_min, Value t_max
+) const {
+    if (!_massive_beams) {
+        auto result = invariant.build_forward(fb, {r}, {t_min, t_max});
+        return {result["invariant"], result["det"]};
+    }
+    return invariant.build_forward_shifted(fb, r, t_min, t_max);
+}
+
+std::array<Value, 2> DoubleT::unsample_t(
+    FunctionBuilder& fb,
+    const Invariant& invariant,
+    Value t_abs,
+    Value t_min,
+    Value t_max
+) const {
+    if (!_massive_beams) {
+        auto result = invariant.build_inverse(fb, {t_abs}, {t_min, t_max});
+        return {result["random"], result["det"]};
+    }
+    return invariant.build_inverse_shifted(fb, t_abs, t_min, t_max);
+}
+
 Mapping::Result DoubleT::build_forward_impl(
     FunctionBuilder& fb,
     const NamedVector<Value>& inputs,
@@ -433,23 +459,30 @@ Mapping::Result DoubleT::build_forward_impl(
     auto etmin_i = _has_cut ? conditions.at(4) : Value(0.);
     auto etmin_ir = _has_cut ? conditions.at(5) : Value(0.);
 
+    auto t1_range = _massive_beams
+        ? &FunctionBuilder::t1_inv_min_max_doublet_massive
+        : &FunctionBuilder::t1_inv_min_max_doublet;
     auto [t1_min_kin, t1_max_kin] =
-        fb.t1_inv_min_max_doublet(p_in1, p_in2, m1, mir_min, etmin_i, etmin_ir);
+        (fb.*t1_range)(p_in1, p_in2, m1, mir_min, etmin_i, etmin_ir);
     auto [t1_min, t1_max] = rapidity_clamp_t1(fb, conditions, t1_min_kin, t1_max_kin);
-    auto t1_result = _t1_invariant.build_forward(fb, {r_t1}, {t1_min, t1_max});
+    auto [t1_abs, det_t1] = sample_t(fb, _t1_invariant, r_t1, t1_min, t1_max);
 
-    auto [t2_min_kin, t2_max_kin] = fb.t2_inv_min_max_doublet(
-        p_in1, p_in2, m1, mir_min, t1_result["invariant"], etmin_i, etmin_ir
-    );
+    auto t2_range = _massive_beams
+        ? &FunctionBuilder::t2_inv_min_max_doublet_massive
+        : &FunctionBuilder::t2_inv_min_max_doublet;
+    auto [t2_min_kin, t2_max_kin] =
+        (fb.*t2_range)(p_in1, p_in2, m1, mir_min, t1_abs, etmin_i, etmin_ir);
     auto [t2_min, t2_max] =
-        rapidity_clamp(fb, conditions, t2_min_kin, t2_max_kin, t1_result["invariant"]);
-    auto t2_result = _t2_invariant.build_forward(fb, {r_t2}, {t2_min, t2_max});
+        rapidity_clamp(fb, conditions, t2_min_kin, t2_max_kin, t1_abs);
+    auto [t2_abs, det_t2] = sample_t(fb, _t2_invariant, r_t2, t2_min, t2_max);
 
-    auto [p1, p2, det_scatter] = fb.double_t_scattering(
-        r_phi, p_in1, p_in2, t1_result["invariant"], t2_result["invariant"], m1
-    );
+    auto scattering = _massive_beams
+        ? &FunctionBuilder::double_t_scattering_massive
+        : &FunctionBuilder::double_t_scattering;
+    auto [p1, p2, det_scatter] =
+        (fb.*scattering)(r_phi, p_in1, p_in2, t1_abs, t2_abs, m1);
 
-    auto det_inv = fb.mul(t1_result["det"], t2_result["det"]);
+    auto det_inv = fb.mul(det_t1, det_t2);
     return {{{"momentum1", p1}, {"momentum2", p2}}, fb.mul(det_inv, det_scatter)};
 }
 
@@ -465,26 +498,32 @@ Mapping::Result DoubleT::build_inverse_impl(
     auto etmin_i = _has_cut ? conditions.at(4) : Value(0.);
     auto etmin_ir = _has_cut ? conditions.at(5) : Value(0.);
 
-    auto [r_phi, det_scatter] = fb.double_t_scattering_inverse(p1, p2, p_in1, p_in2);
+    auto scattering_inverse = _massive_beams
+        ? &FunctionBuilder::double_t_scattering_inverse_massive
+        : &FunctionBuilder::double_t_scattering_inverse;
+    auto [r_phi, det_scatter] = (fb.*scattering_inverse)(p1, p2, p_in1, p_in2);
 
-    auto [t1_abs, t1_min_kin, t1_max_kin] = fb.t1_inv_value_and_min_max_doublet(
-        p_in1, p_in2, p1, m1, mir_min, etmin_i, etmin_ir
-    );
+    auto t1_value_and_range = _massive_beams
+        ? &FunctionBuilder::t1_inv_value_and_min_max_doublet_massive
+        : &FunctionBuilder::t1_inv_value_and_min_max_doublet;
+    auto [t1_abs, t1_min_kin, t1_max_kin] =
+        (fb.*t1_value_and_range)(p_in1, p_in2, p1, m1, mir_min, etmin_i, etmin_ir);
     auto [t1_min, t1_max] = rapidity_clamp_t1(fb, conditions, t1_min_kin, t1_max_kin);
-    auto t1_result = _t1_invariant.build_inverse(fb, {t1_abs}, {t1_min, t1_max});
+    auto [r_t1, det_t1] = unsample_t(fb, _t1_invariant, t1_abs, t1_min, t1_max);
 
-    auto [t2_abs, t2_min_kin, t2_max_kin] = fb.t2_inv_value_and_min_max_doublet(
+    auto t2_value_and_range = _massive_beams
+        ? &FunctionBuilder::t2_inv_value_and_min_max_doublet_massive
+        : &FunctionBuilder::t2_inv_value_and_min_max_doublet;
+    auto [t2_abs, t2_min_kin, t2_max_kin] = (fb.*t2_value_and_range)(
         p_in1, p_in2, p1, m1, mir_min, t1_abs, etmin_i, etmin_ir
     );
     auto [t2_min, t2_max] =
         rapidity_clamp(fb, conditions, t2_min_kin, t2_max_kin, t1_abs);
-    auto t2_result = _t2_invariant.build_inverse(fb, {t2_abs}, {t2_min, t2_max});
+    auto [r_t2, det_t2] = unsample_t(fb, _t2_invariant, t2_abs, t2_min, t2_max);
 
-    auto det_inv = fb.mul(t1_result["det"], t2_result["det"]);
+    auto det_inv = fb.mul(det_t1, det_t2);
     return {
-        {{"random_phi", r_phi},
-         {"random_t1", t1_result["random"]},
-         {"random_t2", t2_result["random"]}},
+        {{"random_phi", r_phi}, {"random_t1", r_t1}, {"random_t2", r_t2}},
         fb.mul(det_inv, det_scatter)
     };
 }

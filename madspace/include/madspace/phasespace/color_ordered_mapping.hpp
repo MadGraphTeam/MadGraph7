@@ -46,6 +46,12 @@ namespace madspace {
  * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
  *
+ * With massive incoming particles (see the constructor) the beams are built on
+ * their mass shells in the partonic centre-of-mass frame, and the blocks of
+ * the chain, which scatter off them, use their massive kernels
+ * (@ref TwoToTwoParticleScattering, @ref DoubleT and
+ * @ref TwoToThreeParticleScattering with `massive_beams`).
+ *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
  *   https://arxiv.org/abs/2602.06895 (Sec. 2.2.5)
@@ -104,13 +110,18 @@ public:
      *                          takes the beam momentum fractions `x1`, `x2`
      *                          (`float`, shape `(batch,)`) as two further
      *                          conditions.
+     * @param incoming_masses   Masses of the two incoming particles, empty (or
+     *                          all zero) for massless ones. With a massive
+     *                          one, `momentum0` and `momentum1` are on their
+     *                          mass shells.
      */
     ColorOrderedMapping(
         const Options& options,
         const std::vector<double>& pt_min = {},
         const std::vector<std::vector<double>>& m_inv_min = {},
         const std::vector<std::vector<double>>& dr_min = {},
-        const std::vector<double>& y_max = {}
+        const std::vector<double>& y_max = {},
+        const std::vector<double>& incoming_masses = {}
     );
 
     /// Number of continuous unit-hypercube inputs consumed by the forward map.
@@ -120,6 +131,9 @@ public:
     /// Whether rapidity bounds narrow a block (and the mapping therefore takes
     /// `x1`, `x2` as conditions).
     bool has_rapidity_window() const { return _rapidity_window; }
+    /// The absolute masses of the incoming particles, empty if both are
+    /// massless.
+    const std::vector<double>& incoming_masses() const { return _incoming_masses; }
 
 private:
     // Rapidity bounds of the blocks that scatter the two beams (negative:
@@ -138,13 +152,15 @@ private:
     static RapidityBounds rapidity_bounds(
         const std::vector<std::size_t>& color_order, const std::vector<double>& y_max
     );
-    // The public constructor with the rapidity bounds worked out once.
+    // The public constructor with the rapidity bounds worked out once and the
+    // incoming masses as massive_incoming_masses gives them.
     ColorOrderedMapping(
         const RapidityBounds& bounds,
         const Options& options,
         const std::vector<double>& pt_min,
         const std::vector<std::vector<double>>& m_inv_min,
-        const std::vector<std::vector<double>>& dr_min
+        const std::vector<std::vector<double>>& dr_min,
+        const std::vector<double>& incoming_masses
     );
 
     Result build_forward_impl(
@@ -206,6 +222,7 @@ private:
     std::vector<std::vector<double>> _dr_min;
     bool _has_cut;
     bool _rapidity_window;
+    std::vector<double> _incoming_masses;
 
     Invariant _mass_invariant;
     TwoToTwoParticleScattering _com_scattering;

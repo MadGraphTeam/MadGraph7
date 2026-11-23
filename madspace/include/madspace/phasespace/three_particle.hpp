@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/invariants.hpp"
 
@@ -191,6 +193,21 @@ public:
      *                          when both pass. The weight assumes
      *                          `discrete_choice` is sampled uniformly; with a
      *                          learned distribution of it, leave this off.
+     * @param massive_beams     If true, `momentum_in1` (pa) is a massive beam,
+     *                          and with @p incoming_recoil so is k (see
+     *                          below).
+     *
+     * With @p massive_beams the range of @f$|t_1|@f$ comes from the massive
+     * kernels of @ref TwoToTwoParticleScattering (`t_inv_min_max_massive`,
+     * ...), and its @ref Invariant samples @f$|t_1|@f$ shifted where its
+     * range reaches below 0 (Invariant::build_forward_shifted), since
+     * @f$t_1@f$ can be positive off a massive beam. The ETmin bound of
+     * @f$\tilde s@f$ takes the mass of pa into account
+     * (`s23_min_max_cut_massive`). With @p incoming_recoil,
+     * @f$(p_2 - k)^2@f$ can be positive too: its bound from `etmin_2` is that
+     * of `recoil_v_min_massive`, and its negative is sampled shifted in the
+     * same way. The massless kernels are untouched by this choice, which is
+     * made when the graph is built.
      */
     TwoToThreeParticleScattering(
         double t_invariant_power = 0,
@@ -203,7 +220,8 @@ public:
         bool arcsine_s23 = true,
         bool p12_condition = false,
         bool incoming_recoil = false,
-        bool cut_aware_branch = false
+        bool cut_aware_branch = false,
+        bool massive_beams = false
     );
 
     /// Number of discrete inputs (1): which of the two two-body solutions.
@@ -223,15 +241,40 @@ private:
 
     std::array<Value, 3>
     split_conditions(FunctionBuilder& fb, const NamedVector<Value>& conditions) const;
-    // Sampled and kinematic range of the second invariant: s23 itself, or
-    // |(p2 - k)^2| for an incoming recoil. Arguments: the kinematic range of
-    // s23, the squared mass of p2 and the conditions.
-    std::array<Value, 4> sampling_ranges(
+    // The sampled and the kinematic range of the second invariant, and with
+    // massive beams the shift that takes its value into the sampled range
+    // (none: no shift).
+    struct Ranges {
+        Value min, max, phys_min, phys_max;
+        std::optional<Value> shift;
+    };
+    // The ranges of -(p2 - k)^2 for an incoming recoil. Arguments: the
+    // kinematic range of s23 = (p2 - k)^2, the squared mass of p2 and the
+    // conditions.
+    Ranges recoil_ranges(
         FunctionBuilder& fb,
         Value s23_min,
         Value s23_max,
         Value m2_squared,
         const NamedVector<Value>& conditions
+    ) const;
+    // the |t1| range, with the ETmin bound of the cuts if there are any
+    std::array<Value, 2> t1_range(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& conditions,
+        Value p_a,
+        Value p_c,
+        Value m1,
+        Value m2
+    ) const;
+    // |t1| and its range from the outgoing momenta
+    std::array<Value, 3> t1_value_and_range(
+        FunctionBuilder& fb,
+        const NamedVector<Value>& conditions,
+        Value p_a,
+        Value p_c,
+        Value p1,
+        Value p2
     ) const;
     Invariant _t_invariant;
     Invariant _s_invariant;
@@ -241,6 +284,7 @@ private:
     bool _p12_condition;
     bool _incoming_recoil;
     bool _cut_aware_branch;
+    bool _massive_beams;
 };
 
 } // namespace madspace

@@ -50,3 +50,21 @@ Mapping::Result Invariant::build_inverse_impl(
         : fb.stable_invariant_nu_inverse(s, _mass, _power, s_min, s_max);
     return {{{"random", r}}, det};
 }
+
+std::array<Value, 2> Invariant::build_forward_shifted(
+    FunctionBuilder& fb, Value r, Value x_min, Value x_max
+) const {
+    auto shift = fb.mul(fb.min(x_min, 0.), 2.);
+    auto result = build_forward(fb, {r}, {fb.sub(x_min, shift), fb.sub(x_max, shift)});
+    return {fb.add(result["invariant"], shift), result["det"]};
+}
+
+std::array<Value, 2> Invariant::build_inverse_shifted(
+    FunctionBuilder& fb, Value x, Value x_min, Value x_max
+) const {
+    auto shift = fb.mul(fb.min(x_min, 0.), 2.);
+    auto result = build_inverse(
+        fb, {fb.sub(x, shift)}, {fb.sub(x_min, shift), fb.sub(x_max, shift)}
+    );
+    return {result["random"], result["det"]};
+}
