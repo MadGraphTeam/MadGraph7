@@ -776,8 +776,9 @@ level); the compiler is <code class="docutils literal notranslate"><span class="
 <code class="docutils literal notranslate"><span class="pre">--hel_recycling=True</span></code> at output time builds each wavefunction once per copy
 (a wavefunction depends only on the helicities of the external legs it descends
 from), skips the amplitudes that vanish at a helicity and folds the others into
-per-helicity tables, as the helicity recycling of madevent does. It is off by
-default in the standalone and <code class="docutils literal notranslate"><span class="pre">mg7</span></code> outputs, on in <code class="docutils literal notranslate"><span class="pre">madevent</span></code>:</p>
+per-helicity tables, as the helicity recycling of madevent does. It is on by
+default in the <code class="docutils literal notranslate"><span class="pre">standalone</span></code>, <code class="docutils literal notranslate"><span class="pre">mg7</span></code> and <code class="docutils literal notranslate"><span class="pre">madevent</span></code> outputs (<code class="docutils literal notranslate"><span class="pre">--hel_recycling=False</span></code>
+keeps the plain code) and off in <code class="docutils literal notranslate"><span class="pre">standalone_fortran</span></code>:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">output</span> <span class="n">standalone</span> <span class="n">my_ttxg</span> <span class="o">--</span><span class="n">hel_recycling</span><span class="o">=</span><span class="kc">True</span>
 </pre></div>
 </div>
@@ -893,7 +894,7 @@ includes the good-helicity scan. The RAMBO seed is fixed, so two builds of the s
 process see the same points. Per-event files (<code class="docutils literal notranslate"><span class="pre">--dump-me</span></code>, <code class="docutils literal notranslate"><span class="pre">--dump-momenta</span></code>,
 <code class="docutils literal notranslate"><span class="pre">--momenta</span></code>, <code class="docutils literal notranslate"><span class="pre">-e</span> <span class="pre">&lt;file.lhe&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">--alphas</span></code>, <code class="docutils literal notranslate"><span class="pre">--flavors</span></code>, <code class="docutils literal notranslate"><span class="pre">--rnd-hel</span></code>) read
 or write one raw <code class="docutils literal notranslate"><span class="pre">double</span></code> (or <code class="docutils literal notranslate"><span class="pre">int</span></code>) per event; <code class="docutils literal notranslate"><span class="pre">./check_sa.exe</span> <span class="pre">--help</span></code>
-lists them. <code class="docutils literal notranslate"><span class="pre">MG_DUMP_GOODHEL=1</span></code> in the environment prints the good helicities.</p>
+lists them. <code class="docutils literal notranslate"><span class="pre">MG_DUMP_GOODHEL=1</span></code> in the environment prints the good helicities of the warm-up probe build (<code class="docutils literal notranslate"><span class="pre">HRPROBE=1</span></code>).</p>
 </section>
 </section>
 

@@ -22,7 +22,7 @@ installed in the same way with ``install pyamplicol``; see the
 :doc:`pyAmpliCol installation instructions <pyamplicol/user/installation>`.
 
 NinjaRS for MadLoop
-------------------
+-------------------
 
 The optional NinjaRS reduction backend uses oneloopmaster for scalar integrals.
 From the MadGraph7 prompt, run::

@@ -781,7 +781,9 @@ section is run on the result.</p></li>
 <p>With <code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;gridpack_only&quot;</span></code>, the run stops after the merging and the merged
 gridpack is written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN/gridpack</span></code>. It is a normal gridpack, see
 <a class="reference internal" href="gridpacks.html"><span class="doc">Gridpacks</span></a>.</p>
-<p>Everything of the jobs is kept in <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN/cluster</span></code>, including their logs.</p>
+<p>The logs and results of the jobs are kept in <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN/cluster</span></code>. The gridpacks
+of the training jobs and the event files of the generation jobs are removed once they are
+merged or combined.</p>
 </section>
 <section id="settings-of-the-passes">
 <h2>Settings of the passes<a class="headerlink" href="#settings-of-the-passes" title="Link to this heading">¶</a></h2>

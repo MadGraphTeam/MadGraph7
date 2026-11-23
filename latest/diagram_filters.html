@@ -852,7 +852,8 @@ The options also work with <code class="docutils literal notranslate"><span clas
 <li><p><strong>NLO real emissions.</strong> The FKS subtraction pairs every real-emission diagram in a
 soft or collinear limit with a Born diagram. A tree filter must keep the
 real-emission diagrams that match the kept Born diagrams. Otherwise the generation
-stops with <code class="docutils literal notranslate"><span class="pre">Cannot</span> <span class="pre">map</span> <span class="pre">born/real</span> <span class="pre">configurations</span></code>.</p></li>
+stops with an error such as <code class="docutils literal notranslate"><span class="pre">Linking</span> <span class="pre">...</span> <span class="pre">no</span> <span class="pre">real</span> <span class="pre">configuration</span> <span class="pre">with</span> <span class="pre">the</span>
+<span class="pre">splitting</span></code>.</p></li>
 <li><p><strong>No Born diagram left.</strong> If <code class="docutils literal notranslate"><span class="pre">--tree_diagram_filter</span></code> removes all the Born diagrams,
 the generation stops. A <code class="docutils literal notranslate"><span class="pre">[QCD]</span></code> process that has no Born diagram at all, such as
 <code class="docutils literal notranslate"><span class="pre">g</span> <span class="pre">g</span> <span class="pre">&gt;</span> <span class="pre">h</span> <span class="pre">QED=1</span> <span class="pre">[QCD]</span></code>, is generated in the loop-induced mode. There, use

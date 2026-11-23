@@ -45,8 +45,9 @@ The plain code evaluates every wavefunction once per helicity configuration.
 ``--hel_recycling=True`` at output time builds each wavefunction once per copy
 (a wavefunction depends only on the helicities of the external legs it descends
 from), skips the amplitudes that vanish at a helicity and folds the others into
-per-helicity tables, as the helicity recycling of madevent does. It is off by
-default in the standalone and ``mg7`` outputs, on in ``madevent``::
+per-helicity tables, as the helicity recycling of madevent does. It is on by
+default in the ``standalone``, ``mg7`` and ``madevent`` outputs (``--hel_recycling=False``
+keeps the plain code) and off in ``standalone_fortran``::
 
     output standalone my_ttxg --hel_recycling=True
 
@@ -166,4 +167,4 @@ includes the good-helicity scan. The RAMBO seed is fixed, so two builds of the s
 process see the same points. Per-event files (``--dump-me``, ``--dump-momenta``,
 ``--momenta``, ``-e <file.lhe>``, ``--alphas``, ``--flavors``, ``--rnd-hel``) read
 or write one raw ``double`` (or ``int``) per event; ``./check_sa.exe --help``
-lists them. ``MG_DUMP_GOODHEL=1`` in the environment prints the good helicities.
+lists them. ``MG_DUMP_GOODHEL=1`` in the environment prints the good helicities of the warm-up probe build (``HRPROBE=1``).

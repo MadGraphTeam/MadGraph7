@@ -1217,11 +1217,11 @@ for an output that has them.</p>
 <dt><code class="docutils literal notranslate"><span class="pre">color_accuracy</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;full&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;full&quot;</span></code> corrects the events to full colour in the second pass. <code class="docutils literal notranslate"><span class="pre">&quot;lc&quot;</span></code> keeps the
 leading-colour events and skips the second pass.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;reweight&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;reweight&quot;</span></code> keeps the full- to leading-colour ratio in the event weights.
+<dt><code class="docutils literal notranslate"><span class="pre">mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;unweight&quot;</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">&quot;reweight&quot;</span></code> keeps the full- to leading-colour ratio in the event weights.
 <code class="docutils literal notranslate"><span class="pre">&quot;unweight&quot;</span></code> unweights the events a second time with respect to that ratio. The
 events then have unit weights apart from overweights.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">first_pass_max_overweight_truncation</span></code> (<code class="docutils literal notranslate"><span class="pre">0.01</span></code>), <code class="docutils literal notranslate"><span class="pre">first_pass_freeze_max_weight_after</span></code> (<code class="docutils literal notranslate"><span class="pre">10000</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">max_overweight_truncation</span></code> and <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> of the first,
+<dt><code class="docutils literal notranslate"><span class="pre">first_pass_max_overweight_truncation</span></code> (<code class="docutils literal notranslate"><span class="pre">0.001</span></code>), <code class="docutils literal notranslate"><span class="pre">first_pass_freeze_max_weight_after</span></code> (<code class="docutils literal notranslate"><span class="pre">10000</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">max_overweight_truncation</span></code> and <code class="docutils literal notranslate"><span class="pre">freeze_max_weight_after</span></code> of the first,
 leading-colour unweighting, in unweight mode. The ones of <code class="docutils literal notranslate"><span class="pre">[generation]</span></code> set the
 second unweighting, to full colour, which gives the final events. In reweight mode, the
 events are unweighted once, at leading colour, as set by <code class="docutils literal notranslate"><span class="pre">[generation]</span></code>.</p>
@@ -1373,7 +1373,7 @@ constant.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">adam_beta1</span></code> (<code class="docutils literal notranslate"><span class="pre">0.9</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_beta2</span></code> (<code class="docutils literal notranslate"><span class="pre">0.999</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_eps</span></code> (<code class="docutils literal notranslate"><span class="pre">1e-8</span></code>), <code class="docutils literal notranslate"><span class="pre">adam_weight_decay</span></code> (<code class="docutils literal notranslate"><span class="pre">1e-4</span></code>)</dt><dd><p>Adam parameters.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">grad_clip_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.003</span></code>)</dt><dd><p>Maximum gradient norm. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">grad_clip_threshold</span></code> (<code class="docutils literal notranslate"><span class="pre">0.03</span></code>)</dt><dd><p>Maximum gradient norm. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables clipping.</p>
 </dd>
 </dl>
 </section>
@@ -1385,7 +1385,8 @@ constant.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">minimum_buffer_size</span></code> (<code class="docutils literal notranslate"><span class="pre">10000</span></code>)</dt><dd><p>Number of buffered samples needed before training on the buffer starts.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">buffered_steps_fraction</span></code> (<code class="docutils literal notranslate"><span class="pre">0.8</span></code>)</dt><dd><p>Fraction of the training steps done on buffered samples.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">buffered_steps_fraction</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Fraction of the training steps done on buffered samples. <code class="docutils literal notranslate"><span class="pre">auto</span></code> is 0 for
+<code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses and 0.8 otherwise.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">buffer_skip_batches</span></code> (<code class="docutils literal notranslate"><span class="pre">1000</span></code>)</dt><dd><p>Number of initial batches that are not stored.</p>
 </dd>

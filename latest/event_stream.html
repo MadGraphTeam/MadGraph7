@@ -840,10 +840,10 @@ weight. The exception are overweight events, whose weight exceeded the fixed max
 of their channel. They keep the ratio of their weight to the maximum weight, so their weight
 is larger than <code class="docutils literal notranslate"><span class="pre">1</span></code>. Treating them as <code class="docutils literal notranslate"><span class="pre">1</span></code> would bias the distributions in the phase-space
 regions where they occur.</p>
-<p>The events of <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses are then reweighted to full colour in the default
-<code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;reweight&quot;</span></code>: their weight is multiplied by the ratio of the full-colour to the
-leading-colour matrix element, so it is not <code class="docutils literal notranslate"><span class="pre">1</span></code>. With <code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;unweight&quot;</span></code>, they are
-unweighted a second time and have unit weights apart from overweights.</p>
+<p>The events of <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses are unweighted a second time to full colour in the
+default <code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;unweight&quot;</span></code>, so they have unit weights apart from overweights. With
+<code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;reweight&quot;</span></code>, their weight is multiplied by the ratio of the full-colour to the
+leading-colour matrix element, so it is not <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p>
 <p>In all cases, to normalize a sample to the cross section, scale its weights by
 <code class="docutils literal notranslate"><span class="pre">stream.integral</span> <span class="pre">/</span> <span class="pre">sum(weights)</span></code>. The cross section estimate improves while events are
 generated: it combines the integrals stored in the gridpack with the weighted events
