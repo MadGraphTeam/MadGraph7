@@ -1,6 +1,1 @@
-
-      INTEGER MAX_SPIN_CONNECTED_TO_LOOP
-      PARAMETER(MAX_SPIN_CONNECTED_TO_LOOP=3)
-      INTEGER MAX_SPIN_EXTERNAL_PARTICLE
-      PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=2)
-
+../../_shared/IOExportFKSTest%test_wprod_fksew%%SubProcesses%P0_dxu_veep%V0_dxu_veep%process_info.inc

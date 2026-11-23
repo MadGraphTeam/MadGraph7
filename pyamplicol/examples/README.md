@@ -90,6 +90,12 @@ These three showcase cards print colorized terminal tables by default. Add
 | `loop_gg_epemmpmm_profile.toml` | Loop-induced: time per point and per stage on both reduction backends; `--stability` for the stable-digit statistics |
 | `all_options.toml` | Every current schema field, active and commented |
 
+A runtime-options file (`data/runtime_options.toml`) holds only an
+`[evaluation]` table: the runtime settings of a loaded loop runtime, read by
+the CLI (`--card`), Python (`Runtime.load(..., options=)`) and the native SDKs
+(`rusticol_virtual_set_options`) alike (`docs/user/configuration.md`, "Runtime
+options").
+
 ## Generate Pure Gluons With Adjoint FFT
 
 This is the primary FFT example for certified pure Yang–Mills trees; the card
@@ -411,7 +417,7 @@ What each action does:
 | --- | --- | --- |
 | `generate` | writes the artifact to `--output` (default `generation.output`) | `[model]`, `[process]`, `[loop]`, `[generation]` |
 | `check` | regenerates the artifact's request in memory and checks the poles (Catani; loop-induced: finiteness) and Ward identities at seeded points; exit code 0 iff every check passed | `[check]` |
-| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles and a rotation stability estimate | `[evaluation]` |
+| `evaluate` | evaluates the virtual (Born-interfered: 2 Re(B* V) per squared-order sector, with the Born; loop-induced: \|A_loop\|^2) with poles (no stability estimate unless `[evaluation.stability_checks]` is set; the card shows the recommended set) | `[evaluation]` |
 | `profile` | times batches of points per stage (trees, dressing, scatter, reduction) | `[benchmark]` |
 
 Steering:
@@ -478,11 +484,15 @@ double-double by default), at the percentiles 1 per mil,
 1 %, 10 % and 50 % (a point a backend refuses in binary64 is measured with its
 best-effort value at its true digits; only a point with no binary64 value
 counts 0 digits), and
-how well the default rotation estimate predicts them
+how well the default estimate predicts them (one rotation; on TIRust's
+points also the rescaled reduction-direction check)
 ([the command-line guide](../docs/user/command-line-interface.md#profile)).
-Every card draws 1000 points (the default), evaluated on 10 worker processes
-(`[benchmark] n_core`, `--n_core`); the progress display shows the estimated
-time to completion (`loop_gg_zgg` is the slow one: NinjaRS's double-double
+The cards set no counts: the stability run draws as many points as one
+minute per worker affords, on up to 10 worker processes (`--n_core`, at most
+the usable cores and what the memory holds); on an expensive process the
+profile may time the default backend alone (`--all-backends` keeps both).
+The progress display shows the estimated time to completion
+(`loop_gg_zgg` is the slow one: NinjaRS's double-double
 reference costs about 30 s per point), and Ctrl-C prints the tables of the
 points evaluated so far. `--stability-points` and `--n_core` change both.
 The tables come alone; `--fields-description-help` adds a plain-words

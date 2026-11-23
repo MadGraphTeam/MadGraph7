@@ -7,7 +7,6 @@
 #                                   (or timed out, or failed) before that, scancel the runner job
 #   build_madspace  cluster runner  madspace with the CUDA/HIP backend (cached on the cluster)
 #   pp_ttx          cluster runner  p p > t t~ with mg7 on the GPU
-#   pp_jj           cluster runner  p p > j j with mg7 on the GPU (cuts on several jets)
 #   crossing_folding cluster runner p p > w+ j, j j, w+ j j folded (--use_crossing=True) vs
 #                                   expanded, on the GPU and on cpu; cpu-made gridpacks (w+ j)
 #   madspace_tests  cluster runner  the madspace unit tests on the GPU, .github/gpu_ci/madspace_tests_gpu.sh
@@ -77,13 +76,21 @@ on:
         description: 'Extra sbatch options, space separated, no quotes'
         type: string
         default: ''
+      tiers:
+        description: >-
+          Instead of time_limit and extra_sbatch: several allocations, separated by ";", each
+          "HH:MM:SS [sbatch options]" (e.g. 30 minutes on the fast GPUs; 60 on the others).
+          One runner job is submitted per tier; the first that starts runs the CI and cancels
+          the others (.github/gpu_ci/runner_batch.sh)
+        type: string
+        default: ''
       gpu_arch:
         description: 'CUDA compute capability (e.g. 80) or HIP target (e.g. gfx942); empty = the GPU of the node'
         type: string
         default: ''
       nevents:
         type: string
-        default: '10000'
+        default: '1000'
       pdf_set:
         type: string
         default: 'NNPDF23_lo_as_0130_qed'
@@ -118,6 +125,7 @@ jobs:
       MEM: ${{ inputs.mem }}
       TIME_LIMIT: ${{ inputs.time_limit }}
       EXTRA_SBATCH: ${{ inputs.extra_sbatch }}
+      TIERS: ${{ inputs.tiers }}
     outputs:
       # the attempt that started the runner. A re-run of failed jobs (or of one job) does not
       # re-run this job, and reuses this output: the other jobs compare it with github.run_attempt
@@ -128,9 +136,15 @@ jobs:
       - name: start the runner in a Slurm job and wait until it is online
         id: start
         run: |
+          # one --tier per ";"-separated tier; without tiers, one allocation: time_limit, extra_sbatch
+          ALLOC=()
+          IFS=';' read -r -a TIER_LIST <<< "$TIERS"
+          for TIER in "${TIER_LIST[@]}"; do
+            if [ -n "${TIER// }" ]; then ALLOC+=("--tier=$TIER"); fi
+          done
+          if [ "${#ALLOC[@]}" -eq 0 ]; then ALLOC=(--time="$TIME_LIMIT" --extra="$EXTRA_SBATCH"); fi
           sudo -n -u ceci /usr/local/sbin/ceci-gate start-runner "$CLUSTER" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
-            --partition="$PARTITION" --gres="$GRES" --cpus="$CPUS" --mem="$MEM" --time="$TIME_LIMIT" \
-            --extra="$EXTRA_SBATCH"
+            --partition="$PARTITION" --gres="$GRES" --cpus="$CPUS" --mem="$MEM" "${ALLOC[@]}"
       # The run was cancelled, or this job timed out or failed, before the runner was online:
       # stop_runner will not run, and the runner job could stay queued for hours (the partition
       # is full), holding back every later run of the cluster (--dependency=singleton). Once the
@@ -311,58 +325,6 @@ jobs:
           path: results/
           if-no-files-found: warn
 
-  pp_jj:
-    # p p > j j: cuts on several objects (the jets), which p p > t t~ does not have
-    needs: [start_runner, build_madspace]
-    if: needs.start_runner.outputs.attempt == github.run_attempt
-    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
-    timeout-minutes: 90
-    defaults:
-      run:
-        shell: bash -l -eo pipefail {0}
-    env:
-      BACKEND: ${{ inputs.backend }}
-      MODULES: ${{ inputs.modules }}
-      GPU_ARCH: ${{ inputs.gpu_arch }}
-      NEVENTS: ${{ inputs.nevents }}
-      PROCESS: p p > j j
-      TAG: pp_jj
-      PDF_SET: ${{ inputs.pdf_set }}
-      VENV: ${{ needs.build_madspace.outputs.venv }}
-      MADSPACE_PREFIX: ${{ needs.build_madspace.outputs.madspace_prefix }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: run directory
-        run: echo "WORKDIR=${GLOBALSCRATCH:-$HOME}/mg7-gpu-ci/runs/$RUN_TAG/pp_jj" >> "$GITHUB_ENV"
-      - name: p p > j j on the GPU
-        run: .github/gpu_ci/pp_ttx_mg7.sh
-      - name: collect logs and cards
-        if: always()
-        run: |
-          mkdir -p results
-          (cd "$WORKDIR" && tar -cf - --ignore-failed-read summary.txt pp_jj.mg7 output.log generate_events.log \
-              PROC_pp_jj/Cards PROC_pp_jj/Events/*/info.json PROC_pp_jj/Events/*/*.log 2> /dev/null) | tar -xf - -C results || true
-          find results -type f | sort
-      - name: job summary
-        if: always()
-        run: |
-          {
-            echo "### p p > j j on ${{ inputs.cluster }} ($BACKEND)"
-            if [ -f results/summary.txt ]; then
-              echo "| | |"
-              echo "|---|---|"
-              sed 's/^\([^=]*\)=\(.*\)$/| \1 | \2 |/' results/summary.txt
-            else
-              echo "No summary.txt: the job stopped early, see the log of the 'p p > j j on the GPU' step."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: gpu-pp_jj-${{ inputs.cluster }}-${{ inputs.backend }}
-          path: results/
-          if-no-files-found: warn
-
   crossing_folding:
     needs: [start_runner, build_madspace]
     if: needs.start_runner.outputs.attempt == github.run_attempt
@@ -513,7 +475,7 @@ jobs:
 
   stop_runner:
     # must list every job that runs on the self-hosted runner
-    needs: [start_runner, build_madspace, pp_ttx, pp_jj, crossing_folding, madspace_tests, interference, madmatrix, acceptance]
+    needs: [start_runner, build_madspace, pp_ttx, crossing_folding, madspace_tests, interference, madmatrix, acceptance]
     if: always() && needs.start_runner.result == 'success'
     # In an attempt that did not start the runner (a re-run of failed jobs, or of one job), a job
     # for the runner label would wait 24 hours, holding the concurrency group of the cluster.
@@ -607,7 +569,7 @@ jobs:
           done
           echo "early=true" >> "$GITHUB_OUTPUT"
           # only this log keeps it: the force-cancel drops the annotations and summaries of the run
-          echo "::error::the Slurm allocation of the runner ended before stop_runner ran ($ENDED): cancelling the run, whose jobs left would wait 24 hours for the runner. If the state is TIMEOUT, raise time_limit."
+          echo "::error::the Slurm allocation of the runner ended before stop_runner ran ($ENDED): cancelling the run, whose jobs left would wait 24 hours for the runner. If the state is TIMEOUT, raise time_limit (or the time of the tier that ran, see start_runner)."
           exit 1
       - name: cancel the run
         if: failure() && steps.watch.outputs.early == 'true'

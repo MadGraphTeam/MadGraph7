@@ -52,10 +52,23 @@ struct WeightingStep {
     /// elements is only written if neither the integrand nor an earlier step
     /// provides it.
     std::vector<MatrixElement::MatrixElementOutput> override_outputs;
+    /// Number of flavours a single matrix element with `flavor_index_out` can
+    /// switch an event to; its output k >= 0 is written as the flavour index
+    /// `flavor_offset + k`, with its color and helicity. 0 without a switch.
+    std::size_t flavor_target_count = 0;
+    /// Flavour index of the first switch target in the events' flavour list.
+    me_int_t flavor_offset = 0;
+    /// Per switch target, the diagram index replacing each diagram index of a
+    /// switched event. Empty keeps the diagram.
+    nested_vector2<me_int_t> switch_diagram_map;
 
     /// Whether the matrix elements return the ratio to the previous step
     /// instead of the matrix element.
     bool returns_ratio() const;
+    /// Whether the step can switch the flavour of an event.
+    bool switches_flavor() const { return flavor_target_count > 0; }
+    /// Whether the matrix elements take the parton densities of the events.
+    bool needs_parton_densities() const;
 };
 
 /**
@@ -71,22 +84,28 @@ struct WeightingStep {
  *   call, only with several matrix elements.
  * - `color_index`, `helicity_index`, `diagram_index` – `int`, shape `(batch,)`
  *   – the indices of the earlier steps.
- * - `random` – `float`, shape `(batch, 4 step_count)` – four random numbers
- *   per step: for the color, helicity and diagram sampling of the matrix
- *   element and for the unweighting.
+ * - `flavor_index` – `int`, shape `(batch,)` – flavour index of the event.
+ * - `parton_densities` – `float`, shape `(batch, 2, 13)` – only if
+ *   WeightingStep::needs_parton_densities().
+ * - `random` – `float`, shape `(batch, 5 step_count)` – five random numbers
+ *   per step: for the color, helicity, diagram and flavour sampling of the
+ *   matrix element and for the unweighting.
  *
  * **Returns**
  * - `matrix_element` – `float`, shape `(batch,)` – the matrix element, or the
  *   ratio to the previous step if the step returns ratios.
  * - `color_index`, `helicity_index`, `diagram_index` – `int`, shape `(batch,)`
  *   – the indices the step writes, otherwise the input values.
+ * - `flavor_index` – `int`, shape `(batch,)` – the switched flavour, otherwise
+ *   the input value.
  * - `unweight_random` – `float`, shape `(batch,)` – the random number of this
  *   step for the unweighting.
  */
 class WeightingStepFunction : public FunctionGenerator {
 public:
-    /// Random numbers per event and step: color, helicity, diagram, unweighting.
-    static constexpr std::size_t random_count = 4;
+    /// Random numbers per event and step: color, helicity, diagram, flavour,
+    /// unweighting.
+    static constexpr std::size_t random_count = 5;
 
     /**
      * @param step            The step.
@@ -112,6 +131,9 @@ private:
     std::vector<MatrixElement> _matrix_elements;
     std::array<bool, 3> _write_indices;
     std::size_t _step_index;
+    std::size_t _flavor_target_count;
+    me_int_t _flavor_offset;
+    nested_vector2<me_int_t> _switch_diagram_map;
 };
 
 } // namespace madspace

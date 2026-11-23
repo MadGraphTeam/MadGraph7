@@ -7,13 +7,12 @@
 #ifndef MemoryAccessMatrixElements_H
 #define MemoryAccessMatrixElements_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
@@ -26,7 +25,6 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessMatrixElementsBase>;
-    friend class KernelAccessHelper<MemoryAccessMatrixElementsBase, true>;
     friend class KernelAccessHelper<MemoryAccessMatrixElementsBase, false>;
 
     //--------------------------------------------------------------------------
@@ -107,7 +105,7 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const, SCALAR) ===> fptype& kernelAccess_s( fptype* buffer ) <===]
     static constexpr auto kernelAccess_s =
-      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessField<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessField<>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (non const, SCALAR OR VECTOR) ===> fptype_sv& kernelAccess( const fptype* buffer ) <===]
@@ -117,20 +115,19 @@ namespace madmatrix
       fptype& out = kernelAccess_s( buffer );
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
       static_assert( madmatrix::HostBufferMatrixElements::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const) ===> const fptype& kernelAccessConst( const fptype* buffer ) <===]
     static constexpr auto kernelAccessConst =
-      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessFieldConst<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessMatrixElementsBase, onDevice>::template kernelAccessFieldConst<>;
   };
 
   //----------------------------------------------------------------------------
 
   typedef KernelAccessMatrixElements<false> HostAccessMatrixElements;
-  typedef KernelAccessMatrixElements<true> DeviceAccessMatrixElements;
 
   //----------------------------------------------------------------------------
 

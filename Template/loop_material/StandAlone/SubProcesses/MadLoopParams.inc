@@ -4,12 +4,12 @@
 !  See their definitions in the file MadLoopParams.dat
 !
 !====================================================================
-! Eight library entries plus the terminating zero used during fallback.
+! Nine library entries plus the terminating zero used during fallback.
 !
 	  integer CTModeInit,CTModeRun,CheckCycle,MaxAttempts,
      &CTLoopLibrary,NRotations_DP,NRotations_QP,ImprovePSPoint,
-     &MLReductionLib(9),IREGIMODE,HelicityFilterLevel,COLLIERMode,
-     &COLLIERGlobalCache,LoopPoleMode
+     &MLReductionLib(10),IREGIMODE,HelicityFilterLevel,COLLIERMode,
+     &COLLIERGlobalCache,LoopPoleMode,TIRustGlobalCache
 
       real*8 MLStabThres,CTStabThres,ZeroThres,OSThres,COLLIERRequiredAccuracy
 
@@ -17,11 +17,13 @@
      &COLLIERComputeIRpoles,COLLIERComputeUVpoles,COLLIERCanOutput
 	  logical HelInitStartOver,IREGIRECY,WriteOutFilters
       logical UseQPIntegrandForNinja, UseQPIntegrandForCutTools
+      integer*8 TIRustCacheMaxBytes
+      logical TIRustComputeFinite,UseQPIntegrandForTIRust
       logical UseQPIntegrandForNinjaRS
 	  logical COLLIERUseCacheForPoles,COLLIERUseInternalStabilityTest
 
       common /MADLOOP/CTModeInit,CTModeRun,NRotations_DP,NRotations_QP,
-     &COLLIERMode,COLLIERGlobalCache,LoopPoleMode,
+     &COLLIERMode,COLLIERGlobalCache,LoopPoleMode,TIRustGlobalCache,
      &ImprovePSPoint,CheckCycle, MaxAttempts,UseLoopFilter,MLStabThres,
      &COLLIERRequiredAccuracy,
      &CTStabThres,CTLoopLibrary,LoopInitStartOver,
@@ -30,4 +32,5 @@
      &DoubleCheckHelicityFilter,ZeroThres,OSThres,HelInitStartOver,
      &MLReductionLib,IREGIMODE,HelicityFilterLevel,IREGIRECY,
      &WriteOutFilters,UseQPIntegrandForNinja,UseQPIntegrandForCutTools,
-     &UseQPIntegrandForNinjaRS
+     &UseQPIntegrandForNinjaRS,TIRustComputeFinite,
+     &UseQPIntegrandForTIRust,TIRustCacheMaxBytes

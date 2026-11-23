@@ -33,7 +33,7 @@ namespace madmatrix
     , m_masses()
   {
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }

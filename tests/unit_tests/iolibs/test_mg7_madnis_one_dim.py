@@ -41,7 +41,7 @@ MADNIS_AUTO = {
     key: 'auto' for key in [
         'flow_layers', 'flow_hidden_dim', 'discrete_hidden_dim',
         'cwnet_hidden_dim', 'lr', 'fixed_cwnet_fraction',
-        'batch_size_per_channel',
+        'batch_size_per_channel', 'buffered_steps_fraction',
     ]
 }
 
@@ -57,7 +57,8 @@ def run_card(enable):
     }
 
 
-def subprocess_stub(subproc_id, n_out, card):
+def subprocess_stub(subproc_id, n_out, card, cls=None):
+    cls = cls or launch.MadgraphSubprocess
     stub = types.SimpleNamespace(
         subproc_id=subproc_id,
         meta={'outgoing': [None] * n_out},
@@ -66,7 +67,32 @@ def subprocess_stub(subproc_id, n_out, card):
     )
     stub.set_madnis_auto_settings = types.MethodType(
         launch.MadgraphSubprocess.set_madnis_auto_settings, stub)
+    stub.auto_buffered_steps_fraction = types.MethodType(
+        cls.auto_buffered_steps_fraction, stub)
     return stub
+
+
+@unittest.skipIf(launch is None, 'madspace not available')
+class TestMadnisBufferedStepsFraction(unittest.TestCase):
+
+    def test_auto_buffers_a_madmatrix_subprocess(self):
+        subproc = subprocess_stub(0, 3, run_card(True))
+        subproc.set_madnis_auto_settings(100., 5)
+        self.assertEqual(subproc.madnis_settings['buffered_steps_fraction'], 0.8)
+
+    def test_auto_does_not_buffer_an_amplicol_subprocess(self):
+        from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess
+        subproc = subprocess_stub(0, 3, run_card(True), AmplicolSubprocess)
+        subproc.set_madnis_auto_settings(100., 5)
+        self.assertEqual(subproc.madnis_settings['buffered_steps_fraction'], 0.0)
+
+    def test_an_explicit_fraction_wins(self):
+        from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess
+        card = run_card(True)
+        card['madnis']['buffered_steps_fraction'] = 0.5
+        subproc = subprocess_stub(0, 3, card, AmplicolSubprocess)
+        subproc.set_madnis_auto_settings(100., 5)
+        self.assertEqual(subproc.madnis_settings['buffered_steps_fraction'], 0.5)
 
 
 @unittest.skipIf(launch is None, 'madspace not available')

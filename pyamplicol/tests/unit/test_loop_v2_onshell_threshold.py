@@ -420,9 +420,16 @@ def test_light_lanes_beyond_the_binary64_masters_fail_closed(executors):
     box's conditioning (m^2/s ~ 1e-18): within 1e-17 of MPFR (measured
     2.05e-18; the 32-digit reference is within 2.9e-35 of 64 digits)."""
 
+    from pyamplicol.loops.v2.reduction import lane_rescue
+
     executor = executors("gg_gg")
     light = _parameters("gg_gg", LIGHT_MT)
-    with pytest.raises(FailedPoints, match="D0, failure: NonFiniteResult"):
+    # The mechanism behind the lane rescue (on by default, which reduces
+    # the refused lane again in double-double): without it the point fails.
+    with (
+        lane_rescue(False),
+        pytest.raises(FailedPoints, match="D0, failure: NonFiniteResult"),
+    ):
         _evaluate(executor, POINT, SCALE, light)
     reference = _evaluate(executor, POINT, SCALE, light, Precision.arbitrary(32))
     double_double = _evaluate(executor, POINT, SCALE, light, Precision.double_double())

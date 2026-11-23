@@ -27,7 +27,6 @@ use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
 use symbolica::atom::{Atom, AtomCore, UserData};
-use symbolica::parser::ParseSettings;
 
 use crate::{RusticolError, RusticolResult};
 
@@ -102,7 +101,7 @@ fn read_entry(source: &mut impl Read) -> RusticolResult<(String, Vec<u8>)> {
 
 /// This crate's export header: (format version, entry bytes of `symbol`).
 fn own_entry(name: &str) -> RusticolResult<(u16, Vec<u8>)> {
-    let atom = Atom::parse(name, "python", ParseSettings::default())
+    let atom = crate::symbol_order::parse(name, "python")
         .map_err(|e| invalid(format!("cannot parse the symbol {name:?}: {e}")))?;
     let Atom::Var(var) = &atom else {
         return Err(invalid(format!("{name:?} is not a symbol")));
@@ -212,6 +211,7 @@ pub fn rename_export(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use symbolica::parser::ParseSettings;
 
     #[test]
     fn renamed_entries_import_as_their_targets() {

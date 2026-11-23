@@ -216,7 +216,7 @@ Matrix elements
     .. code-block:: bash
 
         cd SubProcesses
-        make -j8 BACKEND=simd_128 FPTYPE=m USEBUILDDIR=1
+        make -j8 BACKEND=simd_128 FPTYPE=v USEBUILDDIR=1
 
     ``BACKEND`` is the ``cpu_mode`` in ``Cards/grid_run_card.toml`` for a ``cpu`` device, and
     ``cuda`` or ``hip`` for a GPU. ``FPTYPE`` follows the ``precision`` of the card:

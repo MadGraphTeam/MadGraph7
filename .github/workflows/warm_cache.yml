@@ -6,7 +6,7 @@ permissions:
   contents: read
 on:
   push:
-    # Only these two branches warm the caches automatically. Every warm run
+    # Only main warms the caches automatically. Every warm run
     # rebuilds ~3.5GB of intermediate caches across both images against a 10GB
     # per-repo quota, so letting a push to any feature branch that happens to
     # touch one of the paths below start one is how the quota gets exhausted
@@ -16,9 +16,8 @@ on:
     # The schedule trigger needs no equivalent filter: GitHub only ever runs
     # cron workflows on the default branch, which is main here (3.x upstream).
     branches:
-      - 'main'
-      - 'test_ci'
-    # NB both filters must match: a push to main/test_ci that touches none of
+      - main
+    # NB both filters must match: a push to main that touches none of
     # these paths does not warm anything either.
     paths:
       - '.github/workflows/warm_cache.yml'
@@ -185,21 +184,68 @@ jobs:
       - name: Delete pip cache
         if: inputs.reset_pip
         run: |
-          "$RUNNER_TEMP/delete_caches.sh" pip-numpy-${{ env.CACHE_KEY }}
+          "$RUNNER_TEMP/delete_caches.sh" pip-numpy-${{ env.CACHE_KEY }} \
+            pip-pyamplicol-${{ env.CACHE_KEY }}
         env:
           GH_TOKEN: ${{ github.token }}
 
       # ROOT/Delphes are deliberately NOT reset on the weekly schedule (they are
       # large and stable). They are only rebuilt on explicit request, so the
-      # cache can be cleaned independently of the heptools one.
+      # cache can be cleaned independently of the heptools one. Main only, like
+      # the root_cache/delphes_cache jobs that rebuild them.
       - name: Delete root/delphes cache
-        if: inputs.reset_delphes
+        if: inputs.reset_delphes && github.ref == 'refs/heads/main'
         run: |
           "$RUNNER_TEMP/delete_caches.sh" \
             root-${{ env.CACHE_KEY }} \
             delphes-${{ env.CACHE_KEY }}
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # pyamplicol's pip download cache (~/.cache/pip), for the pyamplicol workflows
+  # (pyamplicol.yml, pyamplicol-eager-portability.yml). Built here on main only:
+  # PR jobs restore the newest generation with the restore-pyamplicol-pip-cache
+  # action and never save. The key carries a hash of pyproject.toml, so a new
+  # dependency pin is a new generation and an unchanged one is not re-downloaded.
+  pip_cache_pyamplicol:
+    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    needs: delete-cache
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set cache key
+        run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages (pyamplicol)
+        id: cache-pip
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.cache/pip
+          key: pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-${{ hashFiles('pyamplicol/pyproject.toml') }}
+          restore-keys: |
+            pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-
+
+      - name: Download pyamplicol's pinned dependencies into the pip cache
+        if: steps.cache-pip.outputs.cache-hit != 'true'
+        run: |
+          python -c "import tomllib; print('\n'.join(tomllib.load(open('pyamplicol/pyproject.toml', 'rb'))['project']['dependencies']))" > "$RUNNER_TEMP/pyamplicol-reqs.txt"
+          python -m pip download --dest "$RUNNER_TEMP/pyamplicol-wheels" -r "$RUNNER_TEMP/pyamplicol-reqs.txt"
+
+      - name: Save the new pip cache generation
+        if: steps.cache-pip.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/pip
+          key: pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-${{ hashFiles('pyamplicol/pyproject.toml') }}
 
   rebuild-numpy-cache:
     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
@@ -739,6 +785,15 @@ jobs:
           key: pythia8-v2-${{ env.CACHE_KEY }}-${{ github.run_id }}
           fail-on-cache-miss: true
 
+      # The check below requires the two NLO PDF sets, which only the lhapdf
+      # job unpacks. If that cache was evicted (repo over its 10 GB quota), the
+      # restored pythia8 tree lacks them: fetch them back before checking.
+      - name: Ensure the NLO PDF sets are present
+        run: |
+          bash ./.github/actions/restore_heptools_lhapdf/fetch_pdfsets.sh \
+            "$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF" \
+            cteq6l1 NNPDF23_nlo_as_0118_qed
+
       - name: Verify the core tree before saving it
         uses: ./.github/actions/check_heptools
         with:
@@ -1005,8 +1060,13 @@ jobs:
   # (idle >7 days or repo size pressure), the cache-miss branch below rebuilds it
   # automatically. Use the reset_delphes input to force a rebuild, e.g. when
   # bumping the ROOT version.
+  #
+  # Main only, whatever the trigger: a dispatch from another branch (test_ci
+  # included) neither installs ROOT/Delphes nor writes these caches. Every
+  # branch and PR reads main's entries (restore_root/restore_delphes).
   # ---------------------------------------------------------------------------
   root_cache:
+     if: github.ref == 'refs/heads/main'
      runs-on: ${{ matrix.os }}
      needs: delete-cache
      strategy:
@@ -1074,6 +1134,7 @@ jobs:
            key: root-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
   delphes_cache:
+     if: github.ref == 'refs/heads/main'
      runs-on: ${{ matrix.os }}
      needs: root_cache
      strategy:
@@ -1103,6 +1164,8 @@ jobs:
          if: steps.cache-delphes.outputs.cache-matched-key == ''
          uses: ./.github/actions/restore_root
 
+       # NOTE: the same install logic is duplicated in the cache-miss fallback
+       # of .github/actions/restore_delphes/action.yml - keep them in sync.
        - name: Install Delphes into the dedicated cache dir
          if: steps.cache-delphes.outputs.cache-matched-key == ''
          env:

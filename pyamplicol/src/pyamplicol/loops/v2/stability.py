@@ -57,6 +57,15 @@ which understates either one's error by up to about 2, and the floor covers
 roundings no check samples (couplings, kernel constants, the final sums, and
 the master integrals unless the rescaled check runs).
 
+In arbitrary precision the sizes of an estimate (budgets, E, S, the unit
+roundoff) are exponent-safe ``loops.v2.wide.Wide`` magnitudes: at the default
+500 digits they lie far below binary64's range (u ~ 5e-500), so as floats
+every estimate read 0.0 and an integrated zero (|A|^2 ~ 1e-1039) "met" its
+target through 0 / 0. Every ratio (``relative``, ``coefficients``, the
+checks, E / S) is formed exactly and rounded to binary64 last: a ratio below
+its range is 0.0, one above it inf, both right against a target. Binary64
+and double-double keep their floats, bitwise.
+
 Calibration against Float(256) (DESIGN §10.4, O15: 2000 binary64 and 400
 double-double points each of gg -> ggg and uu~ -> e-e+dd~g) gives the rate at
 which the true error exceeds E in binary64: about 2.5 % for the cached
@@ -99,6 +108,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
+
+from .wide import Wide, is_wide, magnitude, ratio
 
 SAFETY = 2
 FLOOR_UNITS = 16
@@ -475,6 +486,8 @@ def __getattr__(name: str) -> Any:
         from pyamplicol.loops.v2.reduction import default_target
 
         return default_target()
+    if name == "DEFAULT_RESCUE":
+        return default_rescue()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -484,18 +497,60 @@ def __getattr__(name: str) -> Any:
 # 1e-5 with the one rotation ``euler_angles(0.1, 0.2, 0.3)``). Deviations:
 # every level adds the rescaled reduction check (rotations keep every master
 # invariant and cannot see a master integral's own rounding, module
-# docstring); the last level is 57 digits (O15's truth carrier) instead of
-# 1000 bits; the target applies to pyAmpliCol's estimate E. The levels'
-# default target, ``RESCUE_TARGET``, is the call's default target accuracy
-# (m-lit F3 (a): one definition, the native policy's
+# docstring); the target applies to pyAmpliCol's estimate E; the
+# arbitrary-precision part is two levels:
+#
+# * the last level has the default arbitrary-precision digits (USER
+#   2026-11-18: 500, the native policy's one definition
+#   ``reduction_policy::DEFAULT_ARBITRARY_DIGITS``, read on first use by
+#   ``loops.v2.reduction.default_arbitrary_digits``): it serves the points
+#   57 digits gets wrong (HC05 points 29 and 60 of TIRust #40, a nearly
+#   vanishing box Gram: right at 150 / 100 digits, NinjaRS #15);
+# * an intermediate level at ``RESCUE_INTERMEDIATE_DIGITS`` (57, the
+#   previous last level, O15's truth carrier) serves every other point that
+#   reaches arbitrary precision at a fraction of the cost (measured
+#   2026-11-18, one core, NinjaRS): one evaluation at 500 digits costs 1.7x
+#   one at 57 on u u~ > d d~, 2.4x on HC05 g g > x0 g g, 4.8x on g g > g g g
+#   and 10x on g g > h h; 25 of the 27 HC05 points (of 200) that leave
+#   double-double are served at 57, so the ladder with it takes 770 s on
+#   those 200 points, without it 1489 s (57 alone, today's: 619 s).
+#
+# The levels' default target, ``RESCUE_TARGET``, is the call's default
+# target accuracy (m-lit F3 (a): one definition, the native policy's
 # ``reduction_policy::DEFAULT_TARGET``, 1e-5, read on first use by
-# ``loops.v2.reduction.default_target``; module ``__getattr__`` below).
+# ``loops.v2.reduction.default_target``). ``DEFAULT_RESCUE`` (module
+# ``__getattr__`` above) is ``default_rescue()``, formed on use: importing
+# this module loads no native extension. It is read-only: assigning
+# ``DEFAULT_RESCUE`` (here or in ``api.virtual_results``) changes nothing;
+# pass a ``VirtualRescuePolicy`` with the levels wanted instead.
 RESCUE_ROTATION = "euler:0.1,0.2,0.3"
-DEFAULT_RESCUE: tuple[tuple[str, int | None], ...] = (
-    ("double", None),
-    ("double-double", None),
-    ("arbitrary", 57),
-)
+RESCUE_INTERMEDIATE_DIGITS = 57
+DEFAULT_RESCUE: tuple[tuple[str, int | None], ...]
+
+
+def default_rescue() -> tuple[tuple[str, int | None], ...]:
+    """The default ladder's (arithmetic, digits) levels: binary64,
+    double-double, ``RESCUE_INTERMEDIATE_DIGITS`` and the default
+    arbitrary-precision digits (``loops.v2.reduction.
+    default_arbitrary_digits``)."""
+
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+    return (
+        ("double", None),
+        ("double-double", None),
+        ("arbitrary", RESCUE_INTERMEDIATE_DIGITS),
+        ("arbitrary", default_arbitrary_digits()),
+    )
+
+
+def relative_text(value: float, spec: str = ".2e") -> str:
+    """A relative uncertainty or stability estimate as shown to a human: the
+    number formatted by ``spec``, or ``">1"`` above 1, where its size says no
+    more than that no digit is known (USER 2026-11-18: a display rule only;
+    returned values, JSON and samples keep the number)."""
+
+    return ">1" if value > 1 else format(value, spec)
 
 
 def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float:
@@ -510,8 +565,17 @@ def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float
 
     worst = 0.0
     for sector, laurent in reference.items():
-        scale = max(abs(float(x)) for x in laurent.coefficients)
         errors = absolute[sector].coefficients
+        if is_wide(errors):
+            # Arbitrary precision (``loops.v2.wide``): sizes and their ratio
+            # exponent-safe, rounded to binary64 last.
+            scale = max(magnitude(x, True) for x in laurent.coefficients)
+            if scale:
+                worst = max(
+                    worst, float(max(magnitude(x, True) for x in errors) / scale)
+                )
+            continue
+        scale = max(abs(float(x)) for x in laurent.coefficients)
         if scale:
             worst = max(worst, max(abs(float(x)) for x in errors) / scale)
     return worst
@@ -526,9 +590,16 @@ def per_coefficient(
     width = len(next(iter(reference.values())).coefficients)
     worst = [0.0] * width
     for sector, laurent in reference.items():
+        errors = absolute[sector].coefficients
+        wide = is_wide(errors)
         for k, (value, error) in enumerate(
-            zip(laurent.coefficients, absolute[sector].coefficients, strict=True)
+            zip(laurent.coefficients, errors, strict=True)
         ):
+            if wide:
+                value, error = magnitude(value, True), magnitude(error, True)
+                if error:
+                    worst[k] = max(worst[k], ratio(error, value))
+                continue
             value, error = abs(float(value)), abs(float(error))
             if error:
                 worst[k] = max(worst[k], error / value if value else math.inf)
@@ -938,8 +1009,10 @@ def _native_induced_estimate(
     )
 
 
-def _at(budget: Any, k: int) -> float:
-    return abs(float(budget.coefficients[k]))
+def _at(budget: Any, k: int) -> Any:
+    found = budget.coefficients[k]
+    # A ``Wide`` magnitude (arbitrary precision) stays exponent-safe.
+    return abs(found) if isinstance(found, Wide) else abs(float(found))
 
 
 __all__ = [
@@ -952,6 +1025,7 @@ __all__ = [
     "RECOMMENDED_CHECKS",
     "REDUCTION",
     "RESCALED",
+    "RESCUE_INTERMEDIATE_DIGITS",
     "RESCUE_ROTATION",
     "ROTATION",
     "SAFETY",
@@ -962,10 +1036,12 @@ __all__ = [
     "StabilityChecks",
     "StabilityEstimate",
     "cross_check",
+    "default_rescue",
     "default_rotation",
     "deviation",
     "differences",
     "native_estimate",
     "per_coefficient",
     "relative",
+    "relative_text",
 ]

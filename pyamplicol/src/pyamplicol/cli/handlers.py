@@ -557,11 +557,14 @@ class DefaultCliServices:
             or evaluation.reduction is not None
             or evaluation.reduction_target is not None
             or evaluation.reduction_unchecked
+            or not evaluation.lane_rescue
+            or evaluation.threads is not None
             or v2_options
         ):
             raise ConfigurationError(
                 "arithmetic, mu_r2, r2_strategy, poles, stability checks, "
-                "reduction and on_failure options require a virtual artifact; "
+                "reduction, --no-lane-rescue, threads and on_failure options "
+                "require a virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None
@@ -626,6 +629,12 @@ class DefaultCliServices:
                         {"reduction_unchecked": True}
                         if evaluation.reduction_unchecked
                         else {}
+                    ),
+                    **({} if evaluation.lane_rescue else {"lane_rescue": False}),
+                    **(
+                        {}
+                        if evaluation.threads is None
+                        else {"threads": evaluation.threads}
                     ),
                     **kinematics,
                 )

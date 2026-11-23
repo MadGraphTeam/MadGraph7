@@ -108,11 +108,12 @@ use rusticol_core::VerifiedArtifact;
 pub use rusticol_core::kinematics_improvement;
 use rusticol_core::loop_artifact::{
     LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact,
-    LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, load_loop_v2_artifact,
-    read_loop_v2_native_inputs, read_loop_v2_observables,
+    LoopV2ExecutionMetadata, LoopV2NativeTrees, is_loop_v2_manifest, read_loop_v2_native_inputs,
+    read_loop_v2_observables,
 };
 use rusticol_core::loop_execution::v2::{
-    Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, V2Executor, V2Options,
+    Contraction, LaneKey, LaneMeasure, MeasureKind, PointResult, Poles, RescueInputs, V2Executor,
+    V2Options,
 };
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{LiveRows, LoopProgramV4};
@@ -596,7 +597,7 @@ impl V2Precision {
     /// NinjaRS, or TIRust (its plans built for `plan`'s (propagators, rank)
     /// histogram at the carrier's precision, the other plans' on first use;
     /// its acceptance from the target accuracy `target`).
-    fn backend(
+    pub(crate) fn backend(
         self,
         reduction: Reduction,
         plan: &LoopProgramV4,
@@ -613,10 +614,10 @@ impl V2Precision {
             }
         }
         .map_err(|e| invalid(e.to_string()))?;
-        Ok(V2Backends::NinjaRs(V2ReductionBackend {
+        Ok(V2Backends::NinjaRs(V2ReductionBackend::new(
             reducer,
-            masters: PoleSelection::BOTH,
-        }))
+            PoleSelection::BOTH,
+        )))
     }
 }
 
@@ -696,6 +697,37 @@ impl Runner {
             executors: BTreeMap::new(),
             runtimes: HashMap::new(),
         })
+    }
+
+    /// The pools the runner's executors need for `threads` threads, built
+    /// and not installed (`V2Runtime::set_threads`: every pool is built
+    /// first, so that a failure changes nothing).
+    pub(crate) fn prepare_threads(
+        &self,
+        threads: Option<usize>,
+    ) -> RusticolResult<Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>> {
+        let mut pools = Vec::new();
+        for (lanes, executor) in &self.executors {
+            if let Some(pool) = executor.pool_for(threads)? {
+                pools.push((*lanes, pool));
+            }
+        }
+        Ok(pools)
+    }
+
+    /// Install the pools of [`Self::prepare_threads`] and the bound of the
+    /// executors formed later.
+    pub(crate) fn commit_threads(
+        &mut self,
+        threads: Option<usize>,
+        pools: Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>,
+    ) {
+        self.threads = threads;
+        for (lanes, pool) in pools {
+            if let Some(executor) = self.executors.get_mut(&lanes) {
+                executor.set_pool(pool);
+            }
+        }
     }
 
     fn executor(&mut self, lanes: usize) -> RusticolResult<&V2Executor> {
@@ -1176,6 +1208,12 @@ pub struct V2Runtime {
     target: f64,
     /// The unchecked mode of every evaluation ([`V2Runtime::set_unchecked`]).
     unchecked: bool,
+    /// The lane rescue of every evaluation ([`V2Runtime::set_lane_rescue`]).
+    lane_rescue: bool,
+    /// Per point of the last executor call of a batch, whether the lane
+    /// rescue served one of its lanes (`PointResult::rescued`; read by the
+    /// stability monitor, `monitor::rescued_estimates`).
+    pub(crate) rescued_last: Vec<bool>,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -1221,15 +1259,32 @@ pub fn is_v2_artifact(path: impl AsRef<Path>) -> RusticolResult<bool> {
 impl V2Runtime {
     /// Open one process (`process`: its id or expression; none: the only
     /// one) of a plan v4 artifact with native point inputs. `threads` bounds
-    /// the executor's threads (none: every core).
+    /// the threads of the load and of every later evaluation (none: rayon's
+    /// default, `RAYON_NUM_THREADS` else every core; [`Self::set_threads`]).
     pub fn open(
         path: impl AsRef<Path>,
         process: Option<&str>,
         threads: Option<usize>,
     ) -> RusticolResult<Self> {
         let path = path.as_ref().to_path_buf();
+        // The effective bound (clamped to the threads the process may use).
+        let threads = threads.map(rusticol_core::loop_artifact::effective_threads);
+        rusticol_core::loop_artifact::on_load_threads(threads, || {
+            Self::open_bounded(path, process, threads)
+        })
+    }
+
+    fn open_bounded(
+        path: std::path::PathBuf,
+        process: Option<&str>,
+        threads: Option<usize>,
+    ) -> RusticolResult<Self> {
         let verified = VerifiedArtifact::open(&path)?;
-        let artifact = load_loop_v2_artifact(&verified, process)?;
+        // The load on the runtime's thread bound (the program is the same
+        // for any count: `load_loop_v2_artifact_threads`).
+        let artifact = rusticol_core::loop_artifact::load_loop_v2_artifact_threads(
+            &verified, process, threads,
+        )?;
         let externals = model_externals(&verified)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
             invalid("the process has no native point inputs; regenerate the artifact")
@@ -1404,6 +1459,8 @@ impl V2Runtime {
             reduction,
             target,
             unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
+            lane_rescue: crate::reduction_policy::DEFAULT_LANE_RESCUE,
+            rescued_last: Vec::new(),
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1890,6 +1947,30 @@ impl V2Runtime {
         Ok((points, records))
     }
 
+    /// The lane rescue's kinematic inputs (`V2Options::rescue`): the point
+    /// improved in the rescue carrier, the initial states first in label
+    /// order as the kinematics improvement takes them; the exact inputs when
+    /// the legs do not put them first.
+    pub(crate) fn rescue_inputs(&self) -> RescueInputs {
+        if !self.lane_rescue {
+            return RescueInputs::Off;
+        }
+        let initial = self
+            .record
+            .legs
+            .iter()
+            .take_while(|&&(_, initial, _)| initial)
+            .count();
+        let ordered = !self.record.legs[initial..]
+            .iter()
+            .any(|&(_, initial, _)| initial);
+        if ordered && initial > 0 && initial < self.record.legs.len() {
+            RescueInputs::Improved { n_initial: initial }
+        } else {
+            RescueInputs::Exact
+        }
+    }
+
     /// All-incoming momenta: final legs negated.
     pub(crate) fn incoming(&self, momenta: &[Vec<Rational>]) -> Vec<Vec<Rational>> {
         momenta
@@ -1914,6 +1995,46 @@ impl V2Runtime {
             self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
+    }
+
+    /// Bound the threads of the following evaluations to `threads` (None:
+    /// rayon's default, `RAYON_NUM_THREADS` else every core): the pools of
+    /// every executor of the runtime (the process's, its companion's, the
+    /// observable column sets') are built again at that size, the ones
+    /// formed later take it. The values do not depend on the count.
+    ///
+    /// A requested count is clamped to the threads the process may use
+    /// (`loop_artifact::effective_threads`); [`Self::threads`] is the
+    /// effective count. Every new pool is built before any is installed: on
+    /// an error (the system refusing threads) nothing changes.
+    pub fn set_threads(&mut self, threads: Option<usize>) -> RusticolResult<()> {
+        let threads = threads.map(rusticol_core::loop_artifact::effective_threads);
+        let process = self.process.prepare_threads(threads)?;
+        let scaleless = self
+            .scaleless
+            .as_ref()
+            .map(|runner| runner.prepare_threads(threads))
+            .transpose()?;
+        let observables = self
+            .observables
+            .as_ref()
+            .map(|observables| observables.prepare_threads(threads))
+            .transpose()?;
+        self.threads = threads;
+        self.process.commit_threads(threads, process);
+        if let (Some(runner), Some(pools)) = (&mut self.scaleless, scaleless) {
+            runner.commit_threads(threads, pools);
+        }
+        if let (Some(stored), Some(pools)) = (&mut self.observables, observables) {
+            stored.commit_threads(threads, pools);
+        }
+        Ok(())
+    }
+
+    /// The effective thread bound of the following evaluations (None:
+    /// rayon's default).
+    pub fn threads(&self) -> Option<usize> {
+        self.threads
     }
 
     /// The reduction backend of the following evaluations: NinjaRS (the
@@ -2000,6 +2121,19 @@ impl V2Runtime {
         self.unchecked
     }
 
+    /// The lane rescue of the following evaluations (on by default,
+    /// `reduction_policy::DEFAULT_LANE_RESCUE`; the Python API's
+    /// `lane_rescue=`): a reduction lane a backend refuses is reduced again
+    /// in a higher carrier (`V2Options::rescue`); off, it fails its point.
+    pub fn set_lane_rescue(&mut self, on: bool) {
+        self.lane_rescue = on;
+    }
+
+    /// The lane rescue of the following evaluations.
+    pub fn lane_rescue(&self) -> bool {
+        self.lane_rescue
+    }
+
     /// One batch through the tree program, the executor and the assembly in
     /// the carrier of `zero` and the arithmetic `arith`
     /// (`plan_export.NativeExecutor.reduce`, `assemble._PointEvaluation.
@@ -2061,6 +2195,7 @@ impl V2Runtime {
             poles: mode.lanes(),
             contraction: contraction(&self.artifact.metadata.color_contraction),
             check,
+            rescue: self.rescue_inputs(),
             ..V2Options::default()
         };
         self.backend(precision)?;
@@ -2136,6 +2271,20 @@ impl V2Runtime {
         let zero_c = C::new(arith.zero(), arith.zero());
         // `numbers.real(0)`: the default of an absent component.
         let real_zero = arith.real_int(0);
+        // Which points the lane rescue served, the companion's lanes included
+        // (`V2Runtime::rescued_last`).
+        self.rescued_last = results
+            .iter()
+            .enumerate()
+            .map(|(index, result)| {
+                let served =
+                    |r: &PointResult<T>| !r.rescued.is_empty() || !r.rescued_moments.is_empty();
+                served(result)
+                    || twin_results
+                        .as_ref()
+                        .is_some_and(|twin| served(&twin[index]))
+            })
+            .collect();
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);

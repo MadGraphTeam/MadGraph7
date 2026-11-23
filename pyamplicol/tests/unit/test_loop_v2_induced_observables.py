@@ -76,6 +76,20 @@ def artifacts(loop_sm_ufo, loop_native, tmp_path_factory):
     }
 
 
+@pytest.fixture
+def without_lane_rescue(monkeypatch):
+    """The tests of the mechanisms behind the lane rescue (the per-point
+    NinjaRS fallback of a TIRust refusal, the loop-induced default stack's
+    climb, the calibration of the both-backends rule on the points it was
+    written for) need TIRust's refusals, which the lane rescue (on by
+    default) serves in TIRust binary64: they run without it
+    (``reduction.default_lane_rescue``), as test_loop_v2_best_effort's."""
+
+    from pyamplicol.loops.v2 import reduction
+
+    monkeypatch.setattr(reduction, "default_lane_rescue", lambda: False)
+
+
 def _runtime(artifacts, name):
     from pyamplicol import Runtime
 
@@ -795,6 +809,7 @@ def test_correlated_outputs_in_double_double_and_with_estimates(artifacts):
 
 
 @pytest.mark.loop_physics
+@pytest.mark.usefixtures("without_lane_rescue")
 def test_the_both_backends_checks_cover_the_amplitude_basis_anchors(artifacts):
     """The binary64 rule of the both-backends check (L6,
     ``tools/loop_v2_observables_backends.py``) reads the estimates of its
@@ -803,7 +818,9 @@ def test_the_both_backends_checks_cover_the_amplitude_basis_anchors(artifacts):
     ten times its estimate of the double-double value. The numerical-zero
     anchor amplitude-0 of h11 at point 0 is 14.7 times off the estimate of
     the recommended checks (one rotation, which moves it by 3 % of its
-    error)."""
+    error). The calibration of points served as TIRust refused them or on
+    the per-point fallback (without the lane rescue: with it, point 1's
+    rescued anchor (5, 1) is 10.25 times off, accepted, USER 2026-11-19)."""
 
     from tools.loop_v2_observables_backends import checks
 
@@ -965,6 +982,7 @@ def _per_point(auto, explicit, other):
 
 
 @pytest.mark.loop_physics
+@pytest.mark.usefixtures("without_lane_rescue")
 def test_auto_serves_a_point_tirust_refuses_on_ninjars(artifacts, loop_native):
     """F3 (c) at a stated target: LI-O1 u u~ > h g g point 0 has
     method-choice lanes whose two frames deviate by r ~ 1.2e-9 of their
@@ -1018,6 +1036,7 @@ def test_auto_serves_a_point_tirust_refuses_on_ninjars(artifacts, loop_native):
 
 
 @pytest.mark.loop_physics
+@pytest.mark.usefixtures("without_lane_rescue")
 def test_auto_serves_a_point_the_monitoring_fails_on_ninjars(artifacts):
     """F3 (c): with the recommended stability checks at the default target,
     TIRust's re-test rows refuse some fixture points of u u~ > h g g (the
@@ -1142,10 +1161,11 @@ def test_auto_serves_every_point_when_tirust_refuses_the_plans(artifacts, monkey
 
 
 @pytest.mark.loop_physics
+@pytest.mark.usefixtures("without_lane_rescue")
 def test_the_loop_induced_default_stack_records_level_and_backend(artifacts):
     """F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call is the
     loop-induced default stack, TIRust binary64 -> NinjaRS binary64 ->
-    double-double -> 57 digits; every point records the level and the
+    double-double -> 57 digits -> 500 digits; every point records the level and the
     backend that served it, a point TIRust fails at level 0 is recorded at a
     later level (the NinjaRS level when NinjaRS meets the target there).
     ``reduction="ninjars"`` with the same policy runs NinjaRS at every level
