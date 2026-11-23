@@ -8,9 +8,9 @@ include vectorization and GPU support for matrix element evaluation and phase-sp
 sampling, machine-learning-accelerated phase-space integration and sampling through
 MadNIS, and more accurate handling of spin correlations in MadSpin.
 
-## Alpha release
+## Beta release
 
-This is an **alpha release**, meant for testing and feedback, **not for production**.
+This is a **beta release**, meant for testing and feedback, **not for production**.
 The MadGraph7 workflow currently covers leading-order event generation. The LO
 workflow from MG5_aMC@NLO is still reachable through the `output madevent` mode.
 The NLO workflow is also available (with only minor updates).
