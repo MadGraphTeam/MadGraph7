@@ -14,12 +14,13 @@
 ################################################################################
 """Massive incoming particles in mg7, as madevent has them (genps.f).
 
-The phase-space mappings of madspace build the incoming momenta massless. The
-Integrand puts massive ones on their mass shell, with the same sum, and the
-flux 1/(2 sqrt(lambda(s, m1^2, m2^2))) instead of 1/(2 s) (the
-incoming_on_shell kernel); for monochromatic beams the run's s and beam
-rapidity are those of the massive beam momenta (MadgraphProcess._massive_beams).
-Without this, w+ w- > t t~ with 2 x 500 GeV W beams was 10% low.
+The phase-space mapping of madspace builds massive incoming particles on their
+mass shells (madspace/tests/test_massive_incoming.py), and
+DifferentialCrossSection takes the flux 1/(2 sqrt(lambda(s, m1^2, m2^2)))
+instead of 1/(2 s) from the same incoming_masses. For monochromatic beams the
+run's s and beam rapidity are those of the massive beam momenta
+(MadgraphProcess._massive_beams). Without this, w+ w- > t t~ with 2 x 500 GeV
+W beams was 10% low.
 """
 import math
 import os
@@ -48,7 +49,7 @@ class TestIncomingOnShell(unittest.TestCase):
         vec = ms.batch_four_vec_array(p.shape[1])
         fb = ms.FunctionBuilder(
             ms.NamedTypes([('p', vec)]),
-            ms.NamedTypes([('p_out', vec), ('flux_ratio', ms.batch_float)]))
+            ms.NamedTypes([('p_out', vec), ('above_threshold', ms.batch_float)]))
         out = fb.incoming_on_shell(fb.input(0), ms.Value(list(masses)))
         fb.output(0, out[0])
         fb.output(1, out[1])
@@ -69,7 +70,7 @@ class TestIncomingOnShell(unittest.TestCase):
         p[:, 1, 0], p[:, 1, 3] = e2, np.where(mirror, e2, -e2)
         p[:, 2] = [500., 30., -40., 100.]
         p[:, 3] = [400., -30., 40., -50.]
-        p_out, flux = self.on_shell(p, masses)
+        p_out, above_threshold = self.on_shell(p, masses)
         p_in = p_out[:, :2]
         s = (p[:, 0, 0] + p[:, 1, 0]) ** 2 - (p[:, 0, 3] + p[:, 1, 3]) ** 2
         above = s > sum(masses) ** 2
@@ -91,13 +92,8 @@ class TestIncomingOnShell(unittest.TestCase):
         np.testing.assert_allclose(p_in[a].sum(axis=1), p[a, :2].sum(axis=1),
                                    rtol=1e-12, atol=1e-9)
         np.testing.assert_array_equal(p_out[:, 2:], p[:, 2:])
-        # the flux ratio s / sqrt(lambda)
-        m1, m2 = masses
-        lam = (s - (m1 + m2) ** 2) * (s - (m1 - m2) ** 2)
-        np.testing.assert_allclose(flux[a], s[a] / np.sqrt(lam[a]), rtol=1e-12)
-        # below threshold: no weight, momenta as they were
-        self.assertTrue(np.all(flux[~a] == 0.))
-        np.testing.assert_array_equal(p_out[~a], p[~a])
+        # below threshold: flagged, as no weight in the mapping
+        np.testing.assert_array_equal(above_threshold, np.where(a, 1., 0.))
 
     def test_monochromatic_beams_come_out_as_madevent_has_them(self):
         """With the run's s and rapidity from _massive_beams, the mapping's
@@ -117,7 +113,7 @@ class TestIncomingOnShell(unittest.TestCase):
             p[0, leg] = [half * math.cosh(y) + sign * half * math.sinh(y), 0., 0.,
                          sign * half * math.cosh(y) + half * math.sinh(y)]
         p[0, 2] = p[0, 0] + p[0, 1]
-        p_out, flux = self.on_shell(p, (mw, mw))
+        p_out, _ = self.on_shell(p, (mw, mw))
         np.testing.assert_allclose(p_out[0, 0], [400., 0., 0., p1], rtol=1e-12)
         np.testing.assert_allclose(p_out[0, 1], [600., 0., 0., -p2], rtol=1e-12)
         # massless beams keep s = 4 E1 E2
