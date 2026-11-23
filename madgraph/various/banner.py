@@ -7261,8 +7261,10 @@ class RunCardMG7(RunCard):
     # option groups: blocks of the template between "#@group <name>" and
     # "#@end", left out of the card unless shown (see shown_groups())
     GROUP_PATTERN = re.compile(r'^#@group (\w+)\n(.*?)^#@end\n', re.M | re.S)
-    # first line of a card, listing its hidden groups (read back by read())
+    # header lines of a card: its hidden groups, for the user, and the groups
+    # revealed with "update <group>", which read() keeps shown
     HIDDEN_GROUPS_LINE = '# hidden option groups: '
+    REVEALED_GROUPS_LINE = '# revealed option groups: '
     HIDDEN_GROUPS_HELP = ('# "update <group>" at the launch prompt adds one to the card, '
                           '"update to_full" all of them')
     # written in place of a hidden group that is part of a section
@@ -8463,14 +8465,17 @@ class RunCardMG7(RunCard):
         return self._option_groups_cache[path]
 
     def groups_shown_in(self, text, data):
-        """The option groups a card read from ``text`` shows: those missing
-        from its hidden-groups line, or without one (a card written by hand or
-        before the groups), those with an entry in the card."""
+        """The option groups revealed in a card read from ``text``: those of
+        its revealed-groups line, or for a card without the group header lines
+        (written by hand or before the groups), those with an entry in it."""
         groups = self.option_groups
-        match = re.search(r'^%s([\w, ]*)' % re.escape(self.HIDDEN_GROUPS_LINE), text, re.M)
-        if match:
-            hidden = set(name.strip() for name in match.group(1).split(','))
-            return [name for name in groups if name not in hidden]
+        lines = dict((prefix, re.search(r'^%s([\w, ]*)' % re.escape(prefix), text, re.M))
+                     for prefix in (self.HIDDEN_GROUPS_LINE, self.REVEALED_GROUPS_LINE))
+        if any(lines.values()):
+            match = lines[self.REVEALED_GROUPS_LINE]
+            revealed = set(name.strip() for name in match.group(1).split(',')) \
+                if match else set()
+            return [name for name in groups if name in revealed]
         entries = set()
         for section, content in data.items():
             entries.add(section.lower())
@@ -9574,6 +9579,10 @@ class RunCardMG7(RunCard):
         hidden = [name for name in groups if name not in shown]
         line = '%s%s\n%s\n' % (self.HIDDEN_GROUPS_LINE, ', '.join(hidden),
                               self.HIDDEN_GROUPS_HELP) if hidden else ''
+        # those shown only by their own rule (cluster, ...) are not revealed
+        revealed = [name for name in groups if name in self.display_block]
+        if revealed:
+            line += '%s%s\n' % (self.REVEALED_GROUPS_LINE, ', '.join(revealed))
         return text.replace('$hidden_groups\n', line), single_lines, skipped
 
     def add_template_comments(self, text):

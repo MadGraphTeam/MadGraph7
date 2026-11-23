@@ -6,10 +6,21 @@
 The value is written as given (TOML syntax: quote strings). Only the key of the
 named table changes: `[systematics] enable` and `[vegas] enable` are different
 keys, which a sed on `^enable =` would not tell apart. A key that is not in the
-card (a hidden option group, e.g. [gridpack]) is added to its table.
+card (a hidden option group, e.g. [gridpack]) is added to its table if the
+run_card template has it, and is an error otherwise.
 """
+import os
 import re
 import sys
+
+TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'madgraph',
+                        'iolibs', 'template_files', 'mg7', 'run_card.toml')
+
+
+def template_keys():
+    with open(TEMPLATE) as fsock:
+        return set(tuple(key.split('.', 1))
+                   for key in re.findall(r'%\(([\w.]+)\)s', fsock.read()))
 
 
 def set_keys(text, assignments):
@@ -24,7 +35,12 @@ def set_keys(text, assignments):
                 lines[i] = '%s = %s' % (key, value)
                 done.add((section, key))
     text = '\n'.join(lines)
-    for section, key in sorted(set(assignments) - done):
+    missing = set(assignments) - done
+    unknown = missing - template_keys()
+    if unknown:
+        sys.exit('set_run_card.py: no %s in the card or its template' % ', '.join(
+            '[%s] %s' % key for key in sorted(unknown)))
+    for section, key in sorted(missing):
         line = '%s = %s' % (key, assignments[(section, key)])
         header = re.search(r'(?m)^\[%s\][ \t]*\n' % re.escape(section), text)
         if header:
@@ -46,6 +62,7 @@ def main(argv):
         assignments[(section, key)] = value
     with open(argv[1]) as fsock:
         text = fsock.read()
+    # set_keys first: it exits on an unknown key, which must leave the card as it was
     text = set_keys(text, assignments)
     with open(argv[1], 'w') as fsock:
         fsock.write(text)

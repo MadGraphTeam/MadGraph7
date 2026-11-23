@@ -37,6 +37,7 @@ import unittest
 
 import madgraph.interface.master_interface as MGCmd
 import madgraph.various.misc as misc
+from madgraph.various.banner import RunCardMG7
 
 pjoin = os.path.join
 
@@ -84,12 +85,14 @@ def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
                                  '%s = "%s"' % (key, value), section, count=1)
         assert count == 1, key
     card = head + '\n[amplicol]\n' + section
-    if gridpack:
-        # [gridpack] is a hidden option group; run_mode regular for the
-        # cross section of the run
-        card += ('\n[gridpack]\nsave_gridpack = true\ncompress = false\n'
-                 'run_mode = "regular"\n')
     open(path, 'w').write(card)
+    if gridpack:
+        # run_mode regular for the cross section of the run
+        rc = RunCardMG7(path)
+        for key, value in (('save_gridpack', True), ('compress', False),
+                           ('run_mode', 'regular')):
+            rc.set('gridpack.%s' % key, value, user=True)
+        rc.write(path)
 
 
 def _color_balanced(lhe_path):

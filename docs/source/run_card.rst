@@ -40,13 +40,12 @@ To keep the card short, some option groups are left out of it by default: ``[gri
 default values, and
 
 - ``update <group>`` at the launch prompt, e.g. ``update vegas`` or ``update madnis``, adds a
-  group to the card, where it stays from then on; ``update to_full`` adds all of them, together
-  with the hidden parameters of the other sections;
+  group to the card, where it stays from then on (the card lists it as a revealed option group);
+  ``update to_full`` adds all of them, together with the hidden parameters of the other sections;
 - ``set`` works on a hidden parameter as on any other: the card then shows its line alone, in
-  its section;
-- a section added to the card by hand stays, as long as its name is not in the list of hidden
-  groups of the second line. A card without that line, e.g. one written by hand, shows the
-  groups it has entries of.
+  its section, and so do the entries of a hidden group added to the card by hand;
+- a card without the group lines at its top, e.g. one written by hand, shows the groups it has
+  entries of.
 
 The ``[cluster]`` sections are shown whole once cluster mode is enabled or one of their
 settings differs from its default, and ``[custom_functions]`` once a function has parameters.

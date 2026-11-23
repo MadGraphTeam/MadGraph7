@@ -2752,6 +2752,12 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(data['vegas']['bins'], 32)
         self.assertIn('damping', data['vegas'])
         self.assertNotIn('flow_layers', data['madnis'])
+        # a group shown by its own rule is not revealed: cluster mode on and off
+        rc3.set('cluster.enable', True, user=True)
+        rc4 = bannermod.RunCardMG7(written(rc3))
+        self.assertIn('cluster', tomllib.loads(written(rc4)))
+        rc4.set('cluster.enable', False, user=True)
+        self.assertNotIn('cluster', tomllib.loads(written(rc4)))
         # update to_full: every group and hidden parameter
         text = written(rc3, write_hidden=True)
         data = tomllib.loads(text)

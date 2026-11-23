@@ -94,8 +94,9 @@ def _set_toml_key(text, section, key, value):
     `value`, whatever it was; the same key of any other table (the `enable`
     of [vegas] next to the one of [systematics]) is left alone. A regex
     spanning from the section header to the next `key = ...` would not stop
-    at the end of the table."""
-    lines, current = text.split('\n'), None
+    at the end of the table. A key missing from the card (in a hidden option
+    group) is added to its table, which is created if needed."""
+    lines, current, found = text.split('\n'), None, False
     for i, line in enumerate(lines):
         header = re.match(r'^\s*\[+\s*([^\]]+?)\s*\]+\s*(#.*)?$', line)
         if header:
@@ -103,7 +104,15 @@ def _set_toml_key(text, section, key, value):
         elif current == section and \
                 re.match(r'^\s*%s\s*=' % re.escape(key), line):
             lines[i] = '%s = %s' % (key, value)
-    return '\n'.join(lines)
+            found = True
+    text = '\n'.join(lines)
+    if found:
+        return text
+    line = '%s = %s' % (key, value)
+    header = re.search(r'(?m)^\[%s\][ \t]*\n' % re.escape(section), text)
+    if header:
+        return text[:header.end()] + line + '\n' + text[header.end():]
+    return text.rstrip('\n') + '\n\n[%s]\n%s\n' % (section, line)
 
 
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
@@ -251,8 +260,9 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
     t = re.sub(r'events = \d+', 'events = %d' % events, t)
-    for pat, repl in (toml_edits or []):
-        t = re.sub(pat, repl, t)
+    for edit in (toml_edits or []):
+        # a (pattern, replacement) pair, or a function of the card text
+        t = edit(t) if callable(edit) else re.sub(edit[0], edit[1], t)
     open(toml, 'w').write(t)
 
     env = dict(os.environ)
@@ -1580,9 +1590,9 @@ class TestMECmdShell(unittest.TestCase):
             pjoin(self.path, 'MG7_syst_legacy'), datadir,
             switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
             toml_edits=[(r'(\[systematics\]\nenable = )true', r'\1false'),
-                        # [postprocessing] is a hidden option group
-                        (r'\Z', '\n[postprocessing]\nsystematics = true\n'
-                                'systematics_pdf = ["central"]\n')],
+                        lambda t: _set_toml_key(t, 'postprocessing', 'systematics', 'true'),
+                        lambda t: _set_toml_key(t, 'postprocessing', 'systematics_pdf',
+                                                '["central"]')],
             events=100, tolerated_crashes=('*systematics*',))
 
         lhe_path = pjoin(run, 'events.lhe')
@@ -1752,7 +1762,7 @@ class TestMECmdShell(unittest.TestCase):
         toml = pjoin(self.run_dir, 'Cards', 'run_card.toml')
         t = open(toml).read()
         t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
-        t += '\n[gridpack]\nsave_gridpack = true\n'  # a hidden option group
+        t = _set_toml_key(t, 'gridpack', 'save_gridpack', 'true')
         open(toml, 'w').write(t)
 
         env = dict(os.environ)
@@ -4335,8 +4345,8 @@ set draw_rivet_plots True
              'generate p p > w+ z'],
             pjoin(self.path, 'MG7_tof'), datadir,
             switch_lines=None,
-            # [postprocessing] is a hidden option group
-            toml_edits=[(r'\Z', '\n[postprocessing]\ntime_of_flight = 4e-14\n')],
+            toml_edits=[lambda t: _set_toml_key(t, 'postprocessing', 'time_of_flight',
+                                                '4e-14')],
             events=100)
 
         event = pjoin(run, 'events.lhe')
