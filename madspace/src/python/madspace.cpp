@@ -4532,6 +4532,137 @@ PYBIND11_MODULE(_madspace_py, m) {
             "nlo_order_count",
             &FKSChannelIntegrand::nlo_order_count,
             pydoc::doc("FKSChannelIntegrand::nlo_order_count")
+        )
+        .def(
+            "born_particle_count",
+            &FKSChannelIntegrand::born_particle_count,
+            pydoc::doc("FKSChannelIntegrand::born_particle_count")
+        );
+
+    py::classh<FKSIterationState, IterationState>(
+        m, "FKSIterationState", pydoc::doc("FKSIterationState")
+    )
+        .def(
+            py::init<
+                const NamedVector<Type>&,
+                const std::string&,
+                const std::string&,
+                const std::string&,
+                std::size_t,
+                double,
+                double,
+                double>(),
+            py::arg("event_types"),
+            py::arg("probability_name"),
+            py::arg("fraction_name"),
+            py::arg("ratio_name"),
+            py::arg("configuration_count"),
+            py::arg("virtual_fraction"),
+            py::arg("min_virtual_fraction"),
+            py::arg("floor"),
+            pydoc::doc("FKSIterationState::FKSIterationState")
+        )
+        .def(
+            "add",
+            [](FKSIterationState& state, const std::vector<py::object>& events) {
+                TensorVec tensors;
+                for (std::size_t i = 0; auto& event : events) {
+                    tensors.push_back(
+                        dlpack_to_tensor(event, state.event_types().at(i), i + 1)
+                    );
+                    ++i;
+                }
+                state.add(tensors);
+            },
+            py::arg("events"),
+            pydoc::doc("FKSIterationState::add")
+        )
+        .def(
+            "end_iteration",
+            &FKSIterationState::end_iteration,
+            py::arg("contexts"),
+            pydoc::doc("FKSIterationState::end_iteration")
+        )
+        .def("reset", &FKSIterationState::reset, pydoc::doc("FKSIterationState::reset"))
+        .def("count", &FKSIterationState::count, pydoc::doc("FKSIterationState::count"))
+        .def(
+            "value_count",
+            &FKSIterationState::value_count,
+            pydoc::doc("FKSIterationState::value_count")
+        )
+        .def(
+            "combination",
+            &FKSIterationState::combination,
+            py::arg("coefficients"),
+            pydoc::doc("FKSIterationState::combination")
+        )
+        .def(
+            "virtual_fraction",
+            &FKSIterationState::virtual_fraction,
+            pydoc::doc("FKSIterationState::virtual_fraction")
+        )
+        .def(
+            "virtual_ratios",
+            &FKSIterationState::virtual_ratios,
+            pydoc::doc("FKSIterationState::virtual_ratios")
+        )
+        .def(
+            "configuration_probabilities",
+            &FKSIterationState::configuration_probabilities,
+            pydoc::doc("FKSIterationState::configuration_probabilities")
+        )
+        .def(
+            "iteration_std",
+            &FKSIterationState::iteration_std,
+            pydoc::doc("FKSIterationState::iteration_std")
+        );
+
+    py::classh<FKSIntegrand, FunctionGenerator, GeneratorIntegrand>(
+        m, "FKSIntegrand", pydoc::doc("FKSIntegrand")
+    )
+        .def(
+            py::init<
+                const FKSChannelIntegrand&,
+                const std::optional<VegasMapping>&,
+                const std::string&,
+                double,
+                double,
+                const std::optional<FKSObservableHistograms>&,
+                double>(),
+            py::arg("integrand"),
+            py::arg("vegas"),
+            py::arg("prefix"),
+            py::arg("virtual_fraction") = 1.,
+            py::arg("min_virtual_fraction") = 0.005,
+            py::arg("histograms") = std::nullopt,
+            py::arg("floor") = 0.1,
+            pydoc::doc("FKSIntegrand::FKSIntegrand")
+        )
+        .def(
+            "initialize_globals",
+            &FKSIntegrand::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("FKSIntegrand::initialize_globals")
+        )
+        .def(
+            "random_dim",
+            &FKSIntegrand::random_dim,
+            pydoc::doc("FKSIntegrand::random_dim")
+        )
+        .def(
+            "probability_name",
+            &FKSIntegrand::probability_name,
+            pydoc::doc("FKSIntegrand::probability_name")
+        )
+        .def(
+            "fraction_name",
+            &FKSIntegrand::fraction_name,
+            pydoc::doc("FKSIntegrand::fraction_name")
+        )
+        .def(
+            "ratio_name",
+            &FKSIntegrand::ratio_name,
+            pydoc::doc("FKSIntegrand::ratio_name")
         );
 
     py::classh<EnergyScale, FunctionGenerator> scale(

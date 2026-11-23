@@ -377,6 +377,36 @@ class SubprocessIntegrand:
             tagged_alpha=float(tagged.get("alpha", 1.0)),
         )
 
+    def generator_integrand(
+        self, channel, context, prefix, fraction, min_fraction, bins, histograms, jets
+    ):
+        """The FKSIntegrand of a channel for the C++ event generator (see
+        nlo.core): channel_integrand with a VEGAS grid of bins bins, the
+        virtual trick from fraction down to min_fraction and the histograms
+        (with the jets of the run card), its globals with the prefix defined
+        in the context."""
+        ms = madspace()
+        integrand = self.channel_integrand(channel, context)
+        dimension = self.channel_dimension(channel)
+        vegas = ms.VegasMapping(dimension, bins, prefix)
+        observables = None
+        if histograms:
+            from madspace.nlo.fks import fks_histograms
+
+            observables = fks_histograms(
+                self.born, self.configurations, histograms, **jets
+            )
+        generator = ms.FKSIntegrand(
+            integrand,
+            vegas,
+            prefix,
+            virtual_fraction=fraction,
+            min_virtual_fraction=min_fraction,
+            histograms=observables,
+        )
+        generator.initialize_globals(context)
+        return generator
+
     def close(self):
         self.provider.close()
 
@@ -599,6 +629,14 @@ def main(argv=None):
     parser.add_argument("--max-iterations", type=int, help="integration iterations")
     parser.add_argument("--seed", type=int, help="the seed (iseed of the run card)")
     parser.add_argument(
+        "--generator",
+        action="store_true",
+        help="run the iterations in the C++ event generator of madspace",
+    )
+    parser.add_argument(
+        "--threads", type=int, default=-1, help="threads of the event generator"
+    )
+    parser.add_argument(
         "--histograms", help="a TOML file with [histograms] as run_card.toml"
     )
     args = parser.parse_args(argv)
@@ -613,6 +651,8 @@ def main(argv=None):
         max_iterations=args.max_iterations,
         seed=args.seed,
         histograms=args.histograms,
+        generator=args.generator,
+        threads=args.threads,
     )
     result = run.run()
     unit = result["unit"]

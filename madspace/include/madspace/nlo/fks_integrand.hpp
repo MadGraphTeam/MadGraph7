@@ -4,12 +4,15 @@
 #include <vector>
 
 #include "madspace/nlo/cuts.hpp"
+#include "madspace/nlo/fks_histograms.hpp"
 #include "madspace/nlo/fks_limits.hpp"
 #include "madspace/nlo/fks_mapping.hpp"
 #include "madspace/nlo/fks_subtraction.hpp"
 #include "madspace/nlo/scale.hpp"
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/integrand.hpp"
 #include "madspace/phasespace/matrix_element.hpp"
+#include "madspace/phasespace/vegas.hpp"
 
 namespace madspace {
 
@@ -170,6 +173,8 @@ public:
     std::size_t born_order_count() const { return _born_orders; }
     /// Number of NLO orders.
     std::size_t nlo_order_count() const { return _nlo_orders; }
+    /// Number of particles of the Born.
+    std::size_t born_particle_count() const { return _born_particles; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -198,6 +203,221 @@ private:
     std::vector<double> _tagged_nlo, _tagged_born;
     double _tagged_alpha;
     std::size_t _born_orders, _nlo_orders, _born_particles;
+};
+
+/**
+ * What the iterations of an @ref FKSIntegrand adapt besides its VEGAS grid,
+ * and the results of the iterations kept, as the fixed-order driver of
+ * MadGraph7 keeps them per channel (Channel of madgraph/mg7/nlo/core.py).
+ *
+ * Per iteration of the channel:
+ * - the choice of the FKS configuration takes the probabilities
+ *   @f$p_k \propto \sqrt{\langle (w p_k)^2 \rangle_k}@f$ over the points of
+ *   configuration @f$k@f$, mixed with the uniform choice by @p floor, as
+ *   MC_integer of MadFKS;
+ * - the virtual trick takes @f$r_o@f$ as the sum of the virtual of NLO order
+ *   @f$o@f$ over the sum of the Born orders where the virtual is evaluated, and
+ *   multiplies its fraction @f$f@f$ by @f$2 \sigma_V / \sigma@f$ clamped to
+ *   @f$[1/4, 2]@f$, @f$f@f$ in @f$[f_\text{min}, 1]@f$, with @f$\sigma_V@f$
+ *   and @f$\sigma@f$ the errors of the virtual residual and of the cross
+ *   section in the iteration.
+ *
+ * The results are the sums of the cross section, its LO part, its virtual
+ * residual, the scale and PDF variations and the modes of the Sudakov
+ * approximation, in this order, over the points of the iterations since
+ * @ref reset, each iteration with its own variance.
+ */
+class FKSIterationState : public IterationState {
+public:
+    /**
+     * @param event_types           The outputs of the @ref FKSIntegrand.
+     * @param probability_name      Global of the probabilities of the
+     *                              configurations.
+     * @param fraction_name         Global of the fraction of the virtual.
+     * @param ratio_name            Global of the ratios of the virtual.
+     * @param configuration_count   Number of FKS configurations.
+     * @param virtual_fraction      The fraction of the first iteration.
+     * @param min_virtual_fraction  The smallest fraction.
+     * @param floor                 The weight of the uniform choice.
+     */
+    FKSIterationState(
+        const NamedVector<Type>& event_types,
+        const std::string& probability_name,
+        const std::string& fraction_name,
+        const std::string& ratio_name,
+        std::size_t configuration_count,
+        double virtual_fraction,
+        double min_virtual_fraction,
+        double floor
+    );
+    /// Add the outputs of the @ref FKSIntegrand for one batch.
+    void add(const TensorVec& events) override;
+    /// Adapt to the iteration, keep its results and write the globals of
+    /// @p contexts.
+    void end_iteration(const std::vector<ContextPtr>& contexts) override;
+    /// Discard the results of the iterations so far.
+    void reset() override;
+    /// The outputs of the @ref FKSIntegrand the state takes.
+    const NamedVector<Type>& event_types() const { return _event_types; }
+    /// Write the globals of the state into @p context.
+    void write_globals(ContextPtr context) const;
+    /// Number of points of the kept iterations.
+    std::size_t count() const { return _count; }
+    /// Number of sums: three, the scale and PDF variations and the modes.
+    std::size_t value_count() const { return _sums.size(); }
+    /// The estimate and its error of the linear combination of the sums with
+    /// @p coefficients, missing ones zero.
+    std::pair<double, double>
+    combination(const std::vector<double>& coefficients) const;
+    /// The fraction of the virtual trick.
+    double virtual_fraction() const { return _fraction; }
+    /// The ratios of the virtual trick, per NLO order.
+    const std::vector<double>& virtual_ratios() const { return _ratios; }
+    /// The probabilities of the FKS configurations.
+    const std::vector<double>& configuration_probabilities() const {
+        return _probabilities;
+    }
+    /// The standard deviation of the cross section in the last iteration.
+    double iteration_std() const { return _iteration_std; }
+
+private:
+    NamedVector<Type> _event_types;
+    std::string _probability_name, _fraction_name, _ratio_name;
+    double _fraction, _min_fraction, _floor;
+    std::vector<double> _ratios, _probabilities;
+    // the outputs per point summed for the results, (index, width)
+    std::vector<std::pair<std::size_t, std::size_t>> _value_fields;
+    std::size_t _virtual, _born, _evaluated, _configuration_weight, _fks_index;
+    // the kept iterations
+    std::size_t _count = 0;
+    std::vector<double> _sums;
+    std::vector<double> _covariance;
+    // the current iteration
+    std::size_t _iteration_count = 0;
+    std::vector<double> _iteration_sums, _iteration_products;
+    double _residual_sum = 0., _residual_square_sum = 0.;
+    std::vector<double> _virtual_sums;
+    double _born_sum = 0.;
+    std::vector<double> _choice_squares, _choice_counts;
+    double _iteration_std = 0.;
+};
+
+/**
+ * The FKS integrand of a channel as a @ref ChannelEventGenerator runs it at
+ * fixed order (see @ref EventGenerator::integrate): @ref FKSChannelIntegrand
+ * at random numbers through an optional @ref VegasMapping, with the FKS
+ * configuration and the points with the virtual drawn per point from the
+ * probabilities, fraction and ratios that its @ref FKSIterationState adapts.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `batch_size` – the number of points.
+ *
+ * **Returns**
+ * - `weight` – `float`, shape `(batch,)` – the cross section with the virtual
+ *   trick, times the Jacobian of the VEGAS grid, as all weights here.
+ * - `lo_weight`, `virtual_residual` and, where the cross section gives them,
+ *   `scale_variations`, `pdf_variations` and `ew_sudakov_weights` – those of
+ *   @ref FKSChannelIntegrand.
+ * - `virtual`, `born`, `evaluated`, `configuration_weight` – those of
+ *   @ref FKSChannelIntegrand, the last the inverse probability of the
+ *   configuration.
+ * - `momenta`, `event_weight`, `soft_momenta`, `soft_weight`,
+ *   `collinear_momenta`, `collinear_weight`, `soft_collinear_momenta`,
+ *   `soft_collinear_weight`, `born_momenta`, `nbody_weight` – the kinematics
+ *   and their weights for the histograms.
+ * - `fks_index` – `int`, shape `(batch,)` – the FKS configuration.
+ * - `random` – `float`, shape `(batch, d)` – the inputs of the VEGAS grid.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] R. Frederix, S. Frixione, F. Maltoni, T. Stelzer, "Automation of
+ *   next-to-leading order computations in QCD: the FKS subtraction",
+ *   https://arxiv.org/abs/0908.4272
+ */
+class FKSIntegrand : public FunctionGenerator, public GeneratorIntegrand {
+public:
+    /**
+     * @param integrand             The integrand of the channel.
+     * @param vegas                 The VEGAS grid of its random numbers, none
+     *                              for uniform ones.
+     * @param prefix                Prefix of the globals of the state.
+     * @param virtual_fraction      The fraction of the points with the virtual
+     *                              in the first iteration.
+     * @param min_virtual_fraction  The smallest fraction.
+     * @param histograms            The histograms the points fill.
+     * @param floor                 The weight of the uniform choice of the FKS
+     *                              configuration.
+     * @throws std::invalid_argument if the VEGAS grid has another dimension
+     *         than the random numbers, or the histograms are those of other
+     *         particles.
+     */
+    FKSIntegrand(
+        const FKSChannelIntegrand& integrand,
+        const std::optional<VegasMapping>& vegas,
+        const std::string& prefix,
+        double virtual_fraction = 1.,
+        double min_virtual_fraction = 0.005,
+        const std::optional<FKSObservableHistograms>& histograms = std::nullopt,
+        double floor = 0.1
+    );
+    /// Define the globals of the integrand on @p context: the VEGAS grid
+    /// uniform, the configurations equally likely, the fraction of the first
+    /// iteration and zero ratios.
+    void initialize_globals(ContextPtr context) const;
+    /// Number of random numbers of the kinematics.
+    std::size_t random_dim() const { return _random_dim; }
+    /// Global of the probabilities of the configurations.
+    const std::string& probability_name() const { return _probability_name; }
+    /// Global of the fraction of the virtual.
+    const std::string& fraction_name() const { return _fraction_name; }
+    /// Global of the ratios of the virtual.
+    const std::string& ratio_name() const { return _ratio_name; }
+
+    std::size_t particle_count() const override { return _particle_count; }
+    const NamedVector<Type>& event_types() const override { return return_types(); }
+    Function channel_function() const override;
+    Function common_function() const override;
+    Function concat_function() const override;
+    std::optional<std::string> vegas_grid_name() const override;
+    std::size_t vegas_dimension() const override {
+        return _vegas ? _vegas->dimension() : 0;
+    }
+    std::size_t vegas_bin_count() const override {
+        return _vegas ? _vegas->bin_count() : 0;
+    }
+    std::vector<std::string> discrete_prob_names() const override { return {}; }
+    std::vector<std::size_t> discrete_option_counts() const override { return {}; }
+    std::array<bool, 3> provided_indices() const override {
+        return {false, false, false};
+    }
+    bool madnis_training() const override { return false; }
+    bool unweighted() const override { return false; }
+    std::optional<std::pair<Function, std::vector<Histogram>>>
+    histograms() const override;
+    std::vector<std::string> histogram_inputs() const override;
+    std::shared_ptr<IterationState> iteration_state() const override;
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+    NamedVector<Value>
+    build_channel_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
+    NamedVector<Value>
+    build_common_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
+
+    FKSChannelIntegrand _integrand;
+    std::optional<VegasMapping> _vegas;
+    std::optional<FKSObservableHistograms> _histograms;
+    std::string _probability_name, _fraction_name, _ratio_name;
+    double _virtual_fraction, _min_virtual_fraction, _floor;
+    std::size_t _random_dim, _particle_count, _configuration_count, _nlo_orders;
+    NamedVector<Type> _channel_types;
+
+    friend class FKSIntegrandPart;
 };
 
 } // namespace madspace

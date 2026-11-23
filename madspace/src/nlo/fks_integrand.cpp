@@ -574,3 +574,571 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     }
     return out;
 }
+
+namespace {
+
+// the results per point of FKSIntegrand, in the order of the sums of the state
+const std::vector<std::string> value_names{
+    "weight",
+    "lo_weight",
+    "virtual_residual",
+    "scale_variations",
+    "pdf_variations",
+    "ew_sudakov_weights",
+};
+
+// the kinematics and their weights for the histograms
+const std::vector<std::pair<std::string, std::string>> histogram_kinematics{
+    {"momenta", "event_weight"},
+    {"soft_momenta", "soft_weight"},
+    {"collinear_momenta", "collinear_weight"},
+    {"soft_collinear_momenta", "soft_collinear_weight"},
+    {"born_momenta", "nbody_weight"},
+};
+
+NamedVector<Type> fks_event_types(const FKSChannelIntegrand& integrand) {
+    auto types = integrand.return_types();
+    auto index_map = types.index_map();
+    NamedVector<Type> out;
+    out.push_back("weight", batch_float);
+    for (auto& name : value_names) {
+        if (name != "weight" && index_map.contains(name)) {
+            out.push_back(name, types.at(name));
+        }
+    }
+    for (std::string name : {"virtual", "born", "evaluated"}) {
+        out.push_back(name, types.at(name));
+    }
+    out.push_back("configuration_weight", batch_float);
+    for (auto& [momenta, weight] : histogram_kinematics) {
+        out.push_back(momenta, types.at(momenta));
+        out.push_back(weight, types.at(weight));
+    }
+    out.push_back("fks_index", batch_int);
+    out.push_back("random", integrand.arg_types().at("random"));
+    return out;
+}
+
+NamedVector<Type> fks_channel_types(std::size_t random_dim) {
+    auto dim = static_cast<int>(random_dim);
+    return {
+        {"random", batch_float_array(dim)},
+        {"x", batch_float_array(dim)},
+        {"vegas_det", batch_float},
+        {"fks_index", batch_int},
+        {"configuration_weight", batch_float},
+        {"virtual_random", batch_float},
+        {"indices_acc", batch_int},
+    };
+}
+
+Tensor cpu_tensor(const Tensor& tensor) { return tensor.cpu(); }
+
+} // namespace
+
+namespace madspace {
+
+// The channel part, the common part and the concatenation of FKSIntegrand.
+class FKSIntegrandPart : public FunctionGenerator {
+public:
+    enum Part { channel, common, concat };
+
+    FKSIntegrandPart(const FKSIntegrand& integrand, Part part) :
+        FunctionGenerator(
+            "FKSIntegrandPart",
+            [&] {
+                if (part == channel) {
+                    return NamedVector<Type>{{"batch_size", Type({batch_size})}};
+                }
+                if (part == common) {
+                    return integrand._channel_types;
+                }
+                NamedVector<Type> args;
+                auto keys = integrand._channel_types.keys();
+                for (std::string prefix : {"arg1_", "arg2_"}) {
+                    for (auto [key, type] : zip(keys, integrand._channel_types)) {
+                        args.push_back(prefix + key, type);
+                    }
+                }
+                return args;
+            }(),
+            part == common ? integrand.return_types() : integrand._channel_types
+        ),
+        _integrand(integrand),
+        _part(part) {}
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override {
+        if (_part == channel) {
+            return _integrand.build_channel_part(fb, args);
+        }
+        if (_part == common) {
+            return _integrand.build_common_part(fb, args);
+        }
+        auto keys = return_types().keys();
+        std::size_t half = args.size() / 2;
+        Value sizes = fb.stack_sizes(
+            {fb.batch_size({args.at("arg1_random")}),
+             fb.batch_size({args.at("arg2_random")})}
+        );
+        ValueVec outputs;
+        for (std::size_t i = 0; i < half; ++i) {
+            auto [cat, cat_sizes] = fb.batch_cat({args.at(i), args.at(half + i)});
+            if (keys.at(i) == "indices_acc") {
+                outputs.push_back(fb.add_int(fb.offset_indices(sizes, cat_sizes), cat));
+            } else {
+                outputs.push_back(cat);
+            }
+        }
+        return {keys, outputs};
+    }
+
+    const FKSIntegrand& _integrand;
+    Part _part;
+};
+
+} // namespace madspace
+
+FKSIterationState::FKSIterationState(
+    const NamedVector<Type>& event_types,
+    const std::string& probability_name,
+    const std::string& fraction_name,
+    const std::string& ratio_name,
+    std::size_t configuration_count,
+    double virtual_fraction,
+    double min_virtual_fraction,
+    double floor
+) :
+    _event_types(event_types),
+    _probability_name(probability_name),
+    _fraction_name(fraction_name),
+    _ratio_name(ratio_name),
+    _fraction(virtual_fraction),
+    _min_fraction(min_virtual_fraction),
+    _floor(floor),
+    _probabilities(configuration_count, 1. / configuration_count) {
+    auto index_map = event_types.index_map();
+    std::size_t width = 0;
+    for (auto& name : value_names) {
+        if (!index_map.contains(name)) {
+            continue;
+        }
+        auto& shape = event_types.at(name).shape;
+        std::size_t size = shape.empty() ? 1 : static_cast<std::size_t>(shape.at(0));
+        _value_fields.push_back({index_map.at(name), shape.empty() ? 0 : size});
+        width += size;
+    }
+    _virtual = index_map.at("virtual");
+    _born = index_map.at("born");
+    _evaluated = index_map.at("evaluated");
+    _configuration_weight = index_map.at("configuration_weight");
+    _fks_index = index_map.at("fks_index");
+    _ratios.assign(event_types.at("virtual").shape.at(0), 0.);
+    _sums.assign(width, 0.);
+    _covariance.assign(width * width, 0.);
+    _iteration_sums.assign(width, 0.);
+    _iteration_products.assign(width * width, 0.);
+    _virtual_sums.assign(_ratios.size(), 0.);
+    _choice_squares.assign(configuration_count, 0.);
+    _choice_counts.assign(configuration_count, 0.);
+}
+
+void FKSIterationState::add(const TensorVec& events) {
+    std::vector<Tensor> values;
+    for (auto [index, width] : _value_fields) {
+        values.push_back(cpu_tensor(events.at(index)));
+    }
+    Tensor virtual_tensor = cpu_tensor(events.at(_virtual));
+    Tensor born_tensor = cpu_tensor(events.at(_born));
+    Tensor evaluated_tensor = cpu_tensor(events.at(_evaluated));
+    Tensor choice_tensor = cpu_tensor(events.at(_configuration_weight));
+    Tensor index_tensor = cpu_tensor(events.at(_fks_index));
+    auto virtuals = virtual_tensor.view<double, 2>();
+    auto borns = born_tensor.view<double, 2>();
+    auto evaluated = evaluated_tensor.view<double, 1>();
+    auto choice_weights = choice_tensor.view<double, 1>();
+    auto indices = index_tensor.view<me_int_t, 1>();
+    std::size_t count = indices.size();
+    std::size_t width = _sums.size();
+    std::vector<double> point(width);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::size_t k = 0;
+        for (auto [field, tensor] : zip(_value_fields, values)) {
+            if (field.second == 0) {
+                point[k++] = tensor.view<double, 1>()[i];
+            } else {
+                auto row = tensor.view<double, 2>()[i];
+                for (std::size_t j = 0; j < field.second; ++j) {
+                    point[k++] = row[j];
+                }
+            }
+        }
+        for (std::size_t a = 0; a < width; ++a) {
+            _iteration_sums[a] += point[a];
+            for (std::size_t b = 0; b < width; ++b) {
+                _iteration_products[a * width + b] += point[a] * point[b];
+            }
+        }
+        // the residual is the third value
+        _residual_sum += point[2];
+        _residual_square_sum += point[2] * point[2];
+        if (evaluated[i] != 0.) {
+            for (std::size_t o = 0; o < _virtual_sums.size(); ++o) {
+                _virtual_sums[o] += virtuals[i][o];
+            }
+            for (std::size_t b = 0; b < borns.size(1); ++b) {
+                _born_sum += borns[i][b];
+            }
+        }
+        // the integrand of the configuration, w p_k
+        double integrand = point[0] / choice_weights[i];
+        auto index = static_cast<std::size_t>(indices[i]);
+        _choice_squares.at(index) += integrand * integrand;
+        _choice_counts.at(index) += 1.;
+    }
+    _iteration_count += count;
+}
+
+void FKSIterationState::end_iteration(const std::vector<ContextPtr>& contexts) {
+    std::size_t n = _iteration_count;
+    std::size_t width = _sums.size();
+    if (n > 0) {
+        _count += n;
+        for (std::size_t a = 0; a < width; ++a) {
+            _sums[a] += _iteration_sums[a];
+            for (std::size_t b = 0; b < width; ++b) {
+                _covariance[a * width + b] += _iteration_products[a * width + b] -
+                    _iteration_sums[a] * _iteration_sums[b] / n;
+            }
+        }
+        // the standard deviations of the cross section and of the residual
+        double mean = _iteration_sums[0] / n;
+        double variance = std::max(_iteration_products[0] / n - mean * mean, 0.);
+        double residual_mean = _residual_sum / n;
+        double residual_variance =
+            std::max(_residual_square_sum / n - residual_mean * residual_mean, 0.);
+        _iteration_std = std::sqrt(variance);
+        double error_total = std::sqrt(variance / n);
+        double error_virtual = std::sqrt(residual_variance / n);
+        if (_born_sum != 0.) {
+            for (std::size_t o = 0; o < _ratios.size(); ++o) {
+                _ratios[o] = _virtual_sums[o] / _born_sum;
+            }
+        }
+        if (error_total > 0.) {
+            double factor = std::clamp(2. * error_virtual / error_total, 0.25, 2.);
+            _fraction = std::max(std::min(_fraction * factor, 1.), _min_fraction);
+        }
+        double target_sum = 0.;
+        std::vector<double> target(_probabilities.size(), 0.);
+        for (std::size_t k = 0; k < target.size(); ++k) {
+            if (_choice_counts[k] > 0.) {
+                target[k] = std::sqrt(_choice_squares[k] / _choice_counts[k]);
+                target_sum += target[k];
+            }
+        }
+        if (target_sum > 0.) {
+            double uniform = 1. / target.size();
+            for (std::size_t k = 0; k < target.size(); ++k) {
+                _probabilities[k] =
+                    (1. - _floor) * target[k] / target_sum + _floor * uniform;
+            }
+        }
+    }
+    _iteration_count = 0;
+    std::fill(_iteration_sums.begin(), _iteration_sums.end(), 0.);
+    std::fill(_iteration_products.begin(), _iteration_products.end(), 0.);
+    _residual_sum = 0.;
+    _residual_square_sum = 0.;
+    std::fill(_virtual_sums.begin(), _virtual_sums.end(), 0.);
+    _born_sum = 0.;
+    std::fill(_choice_squares.begin(), _choice_squares.end(), 0.);
+    std::fill(_choice_counts.begin(), _choice_counts.end(), 0.);
+    for (auto& context : contexts) {
+        write_globals(context);
+    }
+}
+
+void FKSIterationState::reset() {
+    _count = 0;
+    std::fill(_sums.begin(), _sums.end(), 0.);
+    std::fill(_covariance.begin(), _covariance.end(), 0.);
+}
+
+void FKSIterationState::write_globals(ContextPtr context) const {
+    auto write = [&](const std::string& name, const std::vector<double>& values) {
+        auto global = context->global(name);
+        Tensor tensor(DataType::dt_float64, global.shape());
+        auto view = tensor.view<double, 2>()[0];
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            view[i] = values[i];
+        }
+        global.copy_from(tensor);
+    };
+    write(_probability_name, _probabilities);
+    write(_ratio_name, _ratios);
+    auto global = context->global(_fraction_name);
+    Tensor tensor(DataType::dt_float64, global.shape());
+    tensor.view<double, 1>()[0] = _fraction;
+    global.copy_from(tensor);
+}
+
+std::pair<double, double>
+FKSIterationState::combination(const std::vector<double>& coefficients) const {
+    if (_count == 0) {
+        return {0., 0.};
+    }
+    std::size_t width = _sums.size();
+    if (coefficients.size() > width) {
+        throw std::invalid_argument(
+            std::format(
+                "FKSIterationState: {} coefficients for {} sums",
+                coefficients.size(),
+                width
+            )
+        );
+    }
+    double mean = 0., variance = 0.;
+    for (std::size_t a = 0; a < coefficients.size(); ++a) {
+        mean += coefficients[a] * _sums[a];
+        for (std::size_t b = 0; b < coefficients.size(); ++b) {
+            variance += coefficients[a] * _covariance[a * width + b] * coefficients[b];
+        }
+    }
+    double count = static_cast<double>(_count);
+    return {mean / count, std::sqrt(std::max(variance, 0.)) / count};
+}
+
+FKSIntegrand::FKSIntegrand(
+    const FKSChannelIntegrand& integrand,
+    const std::optional<VegasMapping>& vegas,
+    const std::string& prefix,
+    double virtual_fraction,
+    double min_virtual_fraction,
+    const std::optional<FKSObservableHistograms>& histograms,
+    double floor
+) :
+    FunctionGenerator(
+        "FKSIntegrand", {{"batch_size", Type({batch_size})}}, fks_event_types(integrand)
+    ),
+    _integrand(integrand),
+    _vegas(vegas),
+    _histograms(histograms),
+    _probability_name(prefixed_name(prefix, "fks_probabilities")),
+    _fraction_name(prefixed_name(prefix, "virtual_fraction")),
+    _ratio_name(prefixed_name(prefix, "virtual_ratio")),
+    _virtual_fraction(virtual_fraction),
+    _min_virtual_fraction(min_virtual_fraction),
+    _floor(floor),
+    _random_dim(integrand.arg_types().at("random").shape.at(0)),
+    _particle_count(integrand.born_particle_count() + 1),
+    _configuration_count(integrand.configuration_count()),
+    _nlo_orders(integrand.nlo_order_count()),
+    _channel_types(fks_channel_types(_random_dim)) {
+    if (vegas && vegas->dimension() != _random_dim) {
+        throw std::invalid_argument(
+            "FKSIntegrand: the VEGAS grid needs the dimension of the random numbers"
+        );
+    }
+    if (!(virtual_fraction > 0. && virtual_fraction <= 1.) ||
+        !(min_virtual_fraction > 0. && min_virtual_fraction <= 1.)) {
+        throw std::invalid_argument(
+            "FKSIntegrand: the fractions of the virtual are in (0, 1]"
+        );
+    }
+    if (!(floor >= 0. && floor <= 1.)) {
+        throw std::invalid_argument("FKSIntegrand: the floor is in [0, 1]");
+    }
+    if (histograms) {
+        auto index_map = return_types().index_map();
+        auto arg_types = histograms->arg_types();
+        for (auto [name, type] : zip(arg_types.keys(), arg_types)) {
+            if (!index_map.contains(name) ||
+                return_types().at(name).shape != type.shape ||
+                return_types().at(name).dtype != type.dtype) {
+                throw std::invalid_argument(
+                    std::format(
+                        "FKSIntegrand: the histograms take {}, which the integrand "
+                        "does not give",
+                        name
+                    )
+                );
+            }
+        }
+    }
+}
+
+void FKSIntegrand::initialize_globals(ContextPtr context) const {
+    if (_vegas) {
+        _vegas->initialize_globals(context);
+    }
+    if (!context->global_exists(_probability_name)) {
+        context->define_global(
+            _probability_name, DataType::dt_float64, {_configuration_count}
+        );
+    }
+    if (!context->global_exists(_ratio_name)) {
+        context->define_global(_ratio_name, DataType::dt_float64, {_nlo_orders});
+    }
+    if (!context->global_exists(_fraction_name)) {
+        context->define_global(_fraction_name, DataType::dt_float64, {});
+    }
+    FKSIterationState(
+        return_types(),
+        _probability_name,
+        _fraction_name,
+        _ratio_name,
+        _configuration_count,
+        _virtual_fraction,
+        _min_virtual_fraction,
+        _floor
+    )
+        .write_globals(context);
+}
+
+Function FKSIntegrand::channel_function() const {
+    return FKSIntegrandPart(*this, FKSIntegrandPart::channel).function();
+}
+
+Function FKSIntegrand::common_function() const {
+    return FKSIntegrandPart(*this, FKSIntegrandPart::common).function();
+}
+
+Function FKSIntegrand::concat_function() const {
+    return FKSIntegrandPart(*this, FKSIntegrandPart::concat).function();
+}
+
+std::optional<std::string> FKSIntegrand::vegas_grid_name() const {
+    if (_vegas) {
+        return _vegas->grid_name();
+    }
+    return std::nullopt;
+}
+
+std::optional<std::pair<Function, std::vector<Histogram>>>
+FKSIntegrand::histograms() const {
+    if (!_histograms) {
+        return std::nullopt;
+    }
+    std::vector<Histogram> empty;
+    for (auto& item : _histograms->histograms()) {
+        empty.push_back({
+            .name = item.observable.name(),
+            .min = item.min,
+            .max = item.max,
+            .bin_values = std::vector<double>(item.bin_count + 2),
+            .bin_errors = std::vector<double>(item.bin_count + 2),
+        });
+    }
+    return std::make_pair(_histograms->function(), empty);
+}
+
+std::vector<std::string> FKSIntegrand::histogram_inputs() const {
+    if (!_histograms) {
+        return {};
+    }
+    return _histograms->arg_types().keys();
+}
+
+std::shared_ptr<IterationState> FKSIntegrand::iteration_state() const {
+    return std::make_shared<FKSIterationState>(
+        return_types(),
+        _probability_name,
+        _fraction_name,
+        _ratio_name,
+        _configuration_count,
+        _virtual_fraction,
+        _min_virtual_fraction,
+        _floor
+    );
+}
+
+NamedVector<Value> FKSIntegrand::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    return build_common_part(fb, build_channel_part(fb, args));
+}
+
+NamedVector<Value> FKSIntegrand::build_channel_part(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value batch = args.at("batch_size");
+    Value r = fb.random(batch, static_cast<me_int_t>(_random_dim + 2));
+    auto [r_choice_rest, virtual_random] = fb.pop(r);
+    auto [random, choice_random] = fb.pop(r_choice_rest);
+    Value x = random;
+    Value vegas_det = fb.full({1., batch});
+    if (_vegas) {
+        auto result = _vegas->build_forward(fb, {random}, {});
+        x = result.at("data");
+        vegas_det = result.at("det");
+    }
+    auto probabilities = fb.global(
+        _probability_name,
+        DataType::dt_float64,
+        {static_cast<int>(_configuration_count)}
+    );
+    auto [fks_index, configuration_weight] =
+        fb.sample_discrete_probs(choice_random, probabilities);
+    Value indices = fb.nonzero(fb.full({1., batch}));
+    return {
+        _channel_types.keys(),
+        {random, x, vegas_det, fks_index, configuration_weight, virtual_random, indices}
+    };
+}
+
+NamedVector<Value> FKSIntegrand::build_common_part(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value x = args.at("x");
+    Value det = args.at("vegas_det");
+    Value batch = fb.batch_size({x});
+    auto fraction = fb.global(_fraction_name, DataType::dt_float64, {});
+    auto ratios =
+        fb.global(_ratio_name, DataType::dt_float64, {static_cast<int>(_nlo_orders)});
+    Value virtual_mask = fb.cut_one(args.at("virtual_random"), 0., fraction);
+    Value virtual_fraction = fb.mul(fb.full({1., batch}), fraction);
+    Value virtual_ratio =
+        fb.mul(fb.full({1., batch, static_cast<me_int_t>(_nlo_orders)}), ratios);
+    auto out = _integrand.build_function(
+        fb,
+        {x,
+         args.at("fks_index"),
+         args.at("configuration_weight"),
+         virtual_mask,
+         virtual_ratio,
+         virtual_fraction}
+    );
+    NamedVector<Value> result;
+    auto weighted = [&](const std::string& name) {
+        auto& value = out.at(name);
+        if (value.type.shape.empty()) {
+            return fb.mul(value, det);
+        }
+        ValueVec columns;
+        for (auto& column : fb.unstack(value)) {
+            columns.push_back(fb.mul(column, det));
+        }
+        return fb.stack(columns);
+    };
+    result.push_back("weight", weighted("cross_section"));
+    auto index_map = out.index_map();
+    for (auto& name : value_names) {
+        if (name != "weight" && index_map.contains(name)) {
+            result.push_back(name, weighted(name));
+        }
+    }
+    for (std::string name : {"virtual", "born", "evaluated"}) {
+        result.push_back(name, out.at(name));
+    }
+    result.push_back("configuration_weight", args.at("configuration_weight"));
+    for (auto& [momenta, weight] : histogram_kinematics) {
+        result.push_back(momenta, out.at(momenta));
+        result.push_back(weight, weighted(weight));
+    }
+    result.push_back("fks_index", args.at("fks_index"));
+    result.push_back("random", args.at("random"));
+    return result;
+}

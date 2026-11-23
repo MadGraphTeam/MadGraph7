@@ -38,6 +38,13 @@ deviations. Towards req_acc_FO the grid iterations double their points and
 each integration iteration has the points the errors so far imply are
 missing (at most four times those before). Where req_acc_FO is -1 the run
 takes niters_FO iterations of npoints_FO points per channel.
+
+With generator the run goes through the C++ event generator of madspace
+instead (EventGenerator.integrate): an integrand of a scheme then also gives
+generator_integrand(index, context, prefix, fraction, min_fraction, bins,
+histograms, jets), a GeneratorIntegrand of madspace with its VEGAS grid, its
+discrete choice and its virtual trick as globals of the context, which the
+iterations adapt in C++ (FKSIntegrand for FKS).
 """
 
 import json
@@ -139,11 +146,15 @@ class Runtime:
         return self(*args, fks_index=fks_index, layout_index=layout_index)
 
 
+# the damping exponent of the VEGAS grids, as of the classic VEGAS
+VEGAS_ALPHA = 1.5
+
+
 class Vegas:
     """A separable VEGAS grid on the unit hypercube with bin_count bins per
     dimension, adapted to the squares of the weights (alpha the damping)."""
 
-    def __init__(self, dimension, bin_count=50, alpha=1.5):
+    def __init__(self, dimension, bin_count=50, alpha=VEGAS_ALPHA):
         self.edges = np.tile(np.linspace(0.0, 1.0, bin_count + 1), (dimension, 1))
         self.bin_count, self.alpha = bin_count, alpha
         self.sums = np.zeros((dimension, bin_count))
@@ -758,6 +769,49 @@ class Channel:
         return c @ self.sums / self.count, math.sqrt(variance)
 
 
+class GeneratorChannel:
+    """A channel of a run through the C++ event generator, with the
+    interface of Channel that the outputs of NLORun read: its results from
+    the FKSIterationState of its ChannelEventGenerator, its histograms from
+    the sums of the generator."""
+
+    class Trick:
+        def __init__(self, fraction):
+            self.fraction = fraction
+
+    class Choice:
+        def __init__(self, probabilities):
+            self.probabilities = np.asarray(probabilities)
+
+    def __init__(self, channel, generator):
+        self.integrand, self.index = channel.integrand, channel.index
+        self.name = channel.name
+        self.state = generator.iteration_state()
+        self.count = self.state.count()
+        self.trick = self.Trick(self.state.virtual_fraction())
+        self.choice = self.Choice(self.state.configuration_probabilities())
+        self.std = self.state.iteration_std()
+        histograms = generator.histograms()
+        self.histograms = None
+        if histograms:
+            self.histograms = []
+            for histogram in histograms:
+                self.histograms.append(np.asarray(histogram.bin_values))
+                self.histograms.append(np.asarray(histogram.bin_errors))
+
+    def result(self, k):
+        coefficients = np.zeros(k + 1)
+        coefficients[k] = 1.0
+        return self.combination(coefficients)
+
+    def combination(self, coefficients):
+        if self.count == 0:
+            return 0.0, 0.0
+        width = self.state.value_count()
+        c = [float(v) for v in coefficients][:width]
+        return tuple(self.state.combination(c))
+
+
 def parse_observable(name, order_observable, multiparticles):
     """The keyword arguments of the Observable of madspace of a histogram of
     the run_card.toml of MG7 by its name, as MadgraphProcess.parse_observable
@@ -906,6 +960,8 @@ class NLORun:
             it).
         run_path: the directory of info.json and the HwU file, the run in
             Events by default.
+        generator: run the iterations in the C++ event generator of madspace
+            (see the module), on threads threads (all cores by default).
     """
 
     scheme = None
@@ -927,8 +983,12 @@ class NLORun:
         run_card=None,
         param_card=None,
         run_path=None,
+        generator=False,
+        threads=-1,
     ):
         self.output = os.path.realpath(output)
+        self.generator = generator
+        self.threads = threads
         self.run_card = read_run_card(self.output, run_card)
         check_run_card(self.run_card)
         self.param_card = param_card or read_param_card(
@@ -970,7 +1030,9 @@ class NLORun:
         ms = madspace()
         # a context of its own, so that its globals (the PDF and alpha_s
         # grids) stay out of the default context of madspace
-        self.context = ms.Context(ms.cpu_device())
+        self.context = ms.Context(
+            ms.cpu_device(), self.threads if self.generator else -1
+        )
         self.couplings = Couplings(
             os.path.join(self.output, "SubProcesses", self.work_directory),
             self.run_card,
@@ -1009,12 +1071,7 @@ class NLORun:
             )
         self.histogram_runtimes = {}
         if self.histograms:
-            jets = {
-                key: real(self.run_card[key])
-                for key in ("jetalgo", "jetradius", "ptj", "etaj", "maxjetflavor")
-            }
-            jets["jetalgo"] = integer(jets["jetalgo"])
-            jets["maxjetflavor"] = integer(jets["maxjetflavor"])
+            jets = self.jets()
             try:
                 for integrand in self.integrands:
                     self.histogram_runtimes[integrand.name] = (
@@ -1062,6 +1119,8 @@ class NLORun:
     def run(self):
         """The grid iterations, then the integration iterations to the
         accuracy, then the outputs of the run. Returns the result."""
+        if self.generator:
+            return self.run_generator()
         self.setup()
         try:
             self.write_status("survey")
@@ -1094,6 +1153,86 @@ class NLORun:
             return self.result()
         finally:
             self.close()
+
+    def run_generator(self):
+        """The run of run through the C++ event generator of madspace: the
+        GeneratorIntegrand of every channel in a ChannelEventGenerator, all of
+        them integrated by EventGenerator.integrate. The channels of the run
+        then read their results from the generator (GeneratorChannel)."""
+        ms = madspace()
+        self.setup()
+        try:
+            for integrand in self.integrands:
+                if not hasattr(integrand, "generator_integrand"):
+                    raise NotImplementedError(
+                        f"the event generator of madspace does not run the "
+                        f"{self.scheme} integrands yet"
+                    )
+            self.write_status("survey")
+            config = ms.GeneratorConfig()
+            config.cpu_batch_size = self.batch
+            # the grids adapt as those of the Python iterations
+            config.vegas_damping = VEGAS_ALPHA
+            jets = self.jets() if self.histograms else None
+            generators = []
+            for number, channel in enumerate(self.channels):
+                integrand = channel.integrand.generator_integrand(
+                    channel.index,
+                    self.context,
+                    f"nlo{number}",
+                    self.fks_params["VirtualFraction"],
+                    self.fks_params["MinVirtualFraction"],
+                    self.bins,
+                    self.histograms,
+                    jets,
+                )
+                generators.append(
+                    ms.ChannelEventGenerator(
+                        contexts=[self.context],
+                        integrand=integrand,
+                        event_file="",
+                        weight_file="",
+                        config=config,
+                        subprocess_index=self.integrands.index(channel.integrand),
+                        name=channel.name,
+                        histograms=None,
+                    )
+                )
+            event_generator = ms.EventGenerator(
+                contexts=[self.context],
+                channels=generators,
+                seed=self.seed,
+                config=config,
+            )
+            integration = ms.IntegrationConfig()
+            integration.grid_points = self.grid_points
+            integration.grid_iterations = self.grid_iterations
+            integration.points = self.points
+            integration.max_iterations = self.max_iterations
+            integration.accuracy = 0.0 if self.fixed_points else self.accuracy
+            event_generator.integrate(integration)
+            self.channels = [
+                GeneratorChannel(channel, generator)
+                for channel, generator in zip(self.channels, generators)
+            ]
+            self.iterations = max(
+                generator.status().iterations for generator in generators
+            ) - self.grid_iterations
+            self.write_status("done")
+            self.write_hwu()
+            return self.result()
+        finally:
+            self.close()
+
+    def jets(self):
+        """The jet parameters of the run card for the histograms."""
+        jets = {
+            key: real(self.run_card[key])
+            for key in ("jetalgo", "jetradius", "ptj", "etaj", "maxjetflavor")
+        }
+        jets["jetalgo"] = integer(jets["jetalgo"])
+        jets["maxjetflavor"] = integer(jets["maxjetflavor"])
+        return jets
 
     def next_points(self, mean, error):
         """The points of the next iteration towards the accuracy: those the
