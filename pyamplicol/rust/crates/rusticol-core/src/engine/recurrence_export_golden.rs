@@ -1135,10 +1135,11 @@ fn evaluate_case(file: &GoldenFile, input: &GoldenInput) -> GoldenExpected {
                     amplitude_scale: term.amplitude_scale,
                     apply_amplitude_scale: term.apply_amplitude_scale,
                     weight: term.weight,
+                    pattern_terms: None,
                 })
                 .collect::<Vec<_>>();
             let mut output = vec![0.0; POINTS * helicity_count];
-            machine.reduce(&reduction, *helicity_count, &mut output);
+            machine.reduce(&reduction, None, *helicity_count, &mut output);
             apply_export_group_factor(
                 &mut output,
                 NativeRationalFactor {
