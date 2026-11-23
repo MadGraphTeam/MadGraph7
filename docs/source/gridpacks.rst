@@ -143,7 +143,8 @@ gridpack is created.
       - ``output_format``
       - ``--output_format``
     * -
-      - ``cpu_mode``, ``precision``, ``combine_thread_pool_size``
+      - ``cpu_mode``, ``precision``, ``combine_thread_pool_size``, ``use_pigz``,
+        ``lhe_compression``, ``lhe_gzip_algorithm``
       - Card only.
     * - ``[generation]``
       - ``events``
@@ -164,7 +165,7 @@ gridpack is created.
       - ``output_dir``, ``temp_output_dir``
       - ``--output_dir``, ``--temp_output_dir``
     * - ``[systematics]``
-      - ``enable``, ``mur``, ``muf``, ``together``, ``dynamical_scale``, ``pdf``,
+      - ``enable``, ``mur``, ``muf``, ``alps``, ``together``, ``dynamical_scale``, ``pdf``,
         ``write_inputs``
       - Card only.
 
