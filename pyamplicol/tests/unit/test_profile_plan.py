@@ -1346,3 +1346,41 @@ def test_a_stream_takes_the_warm_entry_by_its_costs():
     ) == pytest.approx(200.0 - 0.5 + 6000.0 - 70.0)
     counts = runtime_counts(warmed, 0.0, lanes=LANES, batch_max=128)
     assert counts.expected == pytest.approx(10.0 + 0.5 + call + 70.0 + 6000.0)
+
+
+def test_the_lower_bound_counts_the_measured_precisions():
+    """``lower_bound`` with --measured-precisions: binary64's calls only
+    when listed (``binary64``), every other precision's stream at least two
+    binary64 points in the runtime timing (its measuring call and one timed
+    call) and one per stability point (``extra``); the scope rules pass
+    them through, so a rule drops no earlier than the bound allows."""
+
+    from pyamplicol.profile_plan import Known, lower_bound, rule_a_drops, rule_b_drops
+
+    a = Known(point=0.8, chunk=0.3, start=3.0)
+    alone = lower_bound(a, lanes=LANES, reference=False)
+    assert alone == pytest.approx(16 * 0.3 + 0.3)
+    two = lower_bound(a, lanes=LANES, reference=False, extra=2)
+    assert two == pytest.approx(alone + 2 * 2 * 0.3)
+    unlisted = lower_bound(a, lanes=LANES, reference=False, binary64=False, extra=1)
+    assert unlisted == pytest.approx(2 * 0.3)
+    stability = lower_bound(
+        a, lanes=LANES, reference=False, stability_workers=1, runtime=False
+    )
+    more = lower_bound(
+        a, lanes=LANES, reference=False, stability_workers=1, runtime=False, extra=1
+    )
+    assert more == pytest.approx(stability + STABILITY_MINIMUM * 0.3)
+    known = {"ninjars": a, "tirust": Known(point=1.0)}
+    bound = two * (1 - 1e-9)
+    assert not rule_a_drops(
+        known, "ninjars", lambda n: bound, lanes=LANES, reference=False
+    )
+    assert rule_a_drops(
+        known, "ninjars", lambda n: bound, lanes=LANES, reference=False, extra=2
+    )
+    total = sum(
+        lower_bound(k, lanes=LANES, reference=True, extra=1) for k in known.values()
+    )
+    assert rule_b_drops(known, lambda n: total * (1 - 1e-9), lanes=LANES, extra=1)
+    assert not rule_b_drops(known, lambda n: total * (1 - 1e-9), lanes=LANES)

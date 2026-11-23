@@ -542,6 +542,62 @@ def _ground_truth(value: object) -> str:
     )
 
 
+# The precisions a loop profile's stability run measures by default
+# (``benchmark.measured_precisions``, ``--measured-precisions``): this one
+# line sets the default.
+DEFAULT_MEASURED_PRECISIONS: tuple[str, ...] = ("binary64",)
+
+
+def _measured_precision(value: object) -> str:
+    """A ``benchmark.measured_precisions`` entry in its canonical spelling:
+    "binary64" (also "double", "b64"), or a reference precision as
+    ``_ground_truth`` spells it ("double-double", "arbitrary",
+    "arbitrary:DIGITS"; "none" is no precision)."""
+
+    text = value.strip().lower() if isinstance(value, str) else ""
+    if text in ("binary64", "double", "b64"):
+        return "binary64"
+    try:
+        canonical = _ground_truth(text)
+    except ConfigurationError:
+        canonical = "none"
+    if canonical == "none":
+        raise ConfigurationError(
+            "benchmark.measured_precisions entries must be binary64 (double, "
+            "b64), double-double (dd), arbitrary (arb) or arbitrary:DIGITS "
+            f"(arb:DIGITS); got {value!r}"
+        )
+    return canonical
+
+
+def _measured_precisions(value: object) -> tuple[str, ...]:
+    """``benchmark.measured_precisions`` canonical, in the order given: at
+    least one entry, no duplicate."""
+
+    if isinstance(value, str):
+        value = [value]
+    if isinstance(value, (list, tuple)):
+        # An entry may hold several, comma-separated (``--measured-precisions
+        # b64,dd``).
+        value = [
+            part
+            for entry in value
+            for part in (entry.split(",") if isinstance(entry, str) else [entry])
+            if not isinstance(part, str) or part.strip()
+        ]
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ConfigurationError(
+            "benchmark.measured_precisions must be a non-empty list of precisions"
+        )
+    canonical = tuple(_measured_precision(entry) for entry in value)
+    for position, entry in enumerate(canonical):
+        if entry in canonical[:position]:
+            raise ConfigurationError(
+                f"benchmark.measured_precisions lists {entry} twice"
+            )
+    return canonical
+
+
 def _finite_float(
     value: float, name: str, *, minimum: float, exclusive: bool = False
 ) -> float:
@@ -1816,6 +1872,15 @@ class BenchmarkConfig:
     ground_truth: str = field(
         default=DefaultStr("double-double"), metadata=_setting("str")
     )
+    # The precisions whose stability the stability run measures
+    # (``--measured-precisions``), each its own pair of tables in this
+    # order: binary64 (the default, ``DEFAULT_MEASURED_PRECISIONS``) and
+    # the reference precisions up to the ground truth's (the ground truth's
+    # own: its estimates only); "dd", "arb[:DIGITS]", "double", "b64"
+    # accepted.
+    measured_precisions: tuple[str, ...] = field(
+        default=DEFAULT_MEASURED_PRECISIONS, metadata=_setting("list_str")
+    )
     # The runtime timing of a loop profile in the checked mode (``--checked``):
     # the backends' own acceptance checks, a refused point served best-effort
     # and the default backend as "auto". False (the default): one fully
@@ -1866,6 +1931,11 @@ class BenchmarkConfig:
             self,
             "ground_truth",
             DefaultStr(truth) if isinstance(self.ground_truth, DefaultStr) else truth,
+        )
+        object.__setattr__(
+            self,
+            "measured_precisions",
+            _measured_precisions(self.measured_precisions),
         )
         if self.all_backends is not None and type(self.all_backends) is not bool:
             raise ConfigurationError("benchmark.all_backends must be a boolean")
