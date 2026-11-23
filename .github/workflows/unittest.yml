@@ -48,7 +48,7 @@ jobs:
         run: ./tests/test_manager.py -t0 TestMCEventQueue
       - name: "Native MINT scheduling and real-provider ownership"
         if: ${{ !cancelled() }}
-        run: ./tests/test_manager.py -t0 TestMintChannels TestNativeScheduler TestNativeRealContinuation TestNativeWeightLines TestNativeContextMemory TestMCDecisionLedger NativeDispatchGate NativeProviderWave TestProviderPacking TestVirtualFiniteCommon TestNLOModelReload TestFlavourCouplingVectorScope TestLoopCheckFlavourDependencies TestBornHelicitySnapshot TestVirtualFoldCache TestNLOCouplingTimer TestHostBlasBuild TestNLORealDiagramRouting TestNLOAlphasWrapper
+        run: ./tests/test_manager.py -t0 TestMintChannels TestNativeScheduler TestNativeRealContinuation TestNativeWeightLines TestNativeContextMemory TestMCDecisionLedger NativeDispatchGate NativeProviderWave TestProviderPacking TestVirtualFiniteCommon TestNLOModelReload TestFlavourCouplingVectorScope TestLoopCheckFlavourDependencies TestBornHelicitySnapshot TestVirtualFoldCache TestNLOCouplingTimer TestHostBlasBuild TestNLORealDiagramRouting TestNLOAlphasWrapper TestProviderBufferedBorn TestProviderHelicitySampler
 
   unittest_bundle_1:
     # former jobs, run one after the other: test_additional_unittest unittest_0
@@ -86,7 +86,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -t0 TestMintChannels TestNativeScheduler TestNativeRealContinuation TestNativeWeightLines TestNativeContextMemory TestMCDecisionLedger NativeDispatchGate NativeProviderWave TestProviderPacking TestVirtualFiniteCommon TestNLOModelReload TestFlavourCouplingVectorScope TestLoopCheckFlavourDependencies TestBornHelicitySnapshot TestVirtualFoldCache TestNLOCouplingTimer TestHostBlasBuild TestNLORealDiagramRouting TestNLOAlphasWrapper
+            ./tests/test_manager.py -t0 TestMintChannels TestNativeScheduler TestNativeRealContinuation TestNativeWeightLines TestNativeContextMemory TestMCDecisionLedger NativeDispatchGate NativeProviderWave TestProviderPacking TestVirtualFiniteCommon TestNLOModelReload TestFlavourCouplingVectorScope TestLoopCheckFlavourDependencies TestBornHelicitySnapshot TestVirtualFoldCache TestNLOCouplingTimer TestHostBlasBuild TestNLORealDiagramRouting TestNLOAlphasWrapper TestProviderBufferedBorn TestProviderHelicitySampler
       - name: "MadLoop NinjaRS interfaces, defaults, and reporting"
         if: ${{ !cancelled() }}
         run: |

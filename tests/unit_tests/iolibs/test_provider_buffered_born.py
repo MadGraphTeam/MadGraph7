@@ -125,6 +125,56 @@ end program
 @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
 class TestProviderBufferedBorn(unittest.TestCase):
 
+    @unittest.skipUnless(shutil.which('make'), 'requires make')
+    def test_standalone_link_drops_unused_native_frame_entry(self):
+        # The native SBORN_SF_STORE entry shares sborn_sf.o with the scalar
+        # provider facade. check_fks uses only the latter and must not pull in
+        # SBORN_SF_FRAME and the rest of the native integration runtime.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            work = root/'SubProcesses/P0_test'
+            work.mkdir(parents=True)
+            (root/'Source').mkdir()
+            (root/'lib').mkdir()
+            (root/'Source/make_opts').write_text(
+                'FC = %s\nFFLAGS = -O0 -ffixed-line-length-none\n'
+                % shutil.which('gfortran'))
+            for path in ('SubProcesses/proc_characteristics',
+                         'SubProcesses/analyse_opts',
+                         'lib/mc_born_types.mod', 'lib/mc_born_support.mod'):
+                (root/path).touch()
+            (work/'born_support.f').touch()
+            support.write_fortran(work/'sborn_sf.f', [
+                'subroutine sborn_sf(p,m,n,wgt)', 'implicit none',
+                'integer m,n', 'double precision p(0:3,4),wgt',
+                'wgt=p(0,1)+m+n', 'end',
+                'subroutine sborn_sf_store(p,m,n,wgt)', 'implicit none',
+                'integer m,n', 'double precision p(0:3,4),wgt',
+                'call sborn_sf_frame(p,m,n,wgt)', 'end'])
+            support.write_fortran(work/'check_sa_fks.f', [
+                'program check', 'implicit none',
+                'double precision p(0:3,4),wgt', 'p=7d0',
+                'call sborn_sf(p,1,2,wgt)',
+                "if(wgt.ne.10d0)error stop 'wrong Born link'",
+                "print*,'PASS'", 'end'])
+            command = [shutil.which('make'), '-f',
+                       str(SUBPROCESSES/'makefile_fks_dir'), 'check_fks',
+                       'FKSSA=check_sa_fks.o sborn_sf.o', 'LINKLIBSSUD=',
+                       'BORN_SUPPORT_LIB=', 'BORN_SUPPORT_LINK=', 'LDFLAGS=']
+            built = subprocess.run(command, cwd=work, capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stdout+built.stderr)
+            checked = subprocess.run([str(work/'check_fks')], cwd=work,
+                                     capture_output=True, text=True)
+            self.assertEqual(checked.returncode, 0, checked.stdout+checked.stderr)
+            self.assertIn('PASS', checked.stdout)
+            # Retaining the unused entry reproduces the real link failure;
+            # this control also rejects a fixture that accidentally defines it.
+            (work/'check_fks').unlink()
+            retained = subprocess.run(command+['BORN_SUPPORT_GC='], cwd=work,
+                                      capture_output=True, text=True)
+            self.assertNotEqual(retained.returncode, 0)
+            self.assertIn('sborn_sf_frame', retained.stdout+retained.stderr)
+
     def test_frame_born_returns_provider_buffers_without_saved_amplitudes(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)

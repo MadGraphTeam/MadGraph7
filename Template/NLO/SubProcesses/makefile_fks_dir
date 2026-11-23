@@ -46,9 +46,9 @@ ifneq ("$(wildcard born_support.f)","")
     BORN_SUPPORT_EWSUD_OBJECTS = born_support.o
     BORN_SUPPORT_REWEIGHT_OBJECTS = boost_to_frame.o
     ifeq ($(shell uname -s),Darwin)
-        BORN_SUPPORT_REWEIGHT_GC = -Wl,-dead_strip
+        BORN_SUPPORT_GC = -Wl,-dead_strip
     else
-        BORN_SUPPORT_REWEIGHT_GC = -Wl,--gc-sections
+        BORN_SUPPORT_GC = -Wl,--gc-sections
     endif
 endif
 
@@ -184,7 +184,7 @@ ewsudakov_sa: $(EWSUDSA)
 	strip ewsudakov_sa
 
 check_fks: $(FKSSA) $(BORN_SUPPORT_LIB)
-	$(FC) $(FFLAGS) -o check_fks $(FKSSA) $(LINKLIBSSUD) $(BORN_SUPPORT_LINK) $(LDFLAGS)
+	$(FC) $(FFLAGS) -o check_fks $(FKSSA) $(LINKLIBSSUD) $(BORN_SUPPORT_LINK) $(LDFLAGS) $(BORN_SUPPORT_GC)
 
 $(LIBDIR)/libdhelas.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS" shared
@@ -218,7 +218,7 @@ madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
 	strip madevent_mintFO
 
 reweight_xsec_events: $(RWGFILES) makefile $(LIBS)
-	$(FC) -o reweight_xsec_events $(RWGFILES) $(LINKLIBS) $(FJLIBS) $(LDFLAGS) $(BORN_SUPPORT_REWEIGHT_GC)
+	$(FC) -o reweight_xsec_events $(RWGFILES) $(LINKLIBS) $(FJLIBS) $(LDFLAGS) $(BORN_SUPPORT_GC)
 	rm handling_lhe_events.o
 	strip reweight_xsec_events
 
@@ -310,9 +310,10 @@ $(LIBDIR)aloha_object.mod: ../../Source/DHELAS/aloha_functions.f
 	@test -f ../../Source/DHELAS/aloha_object.mod || $(MAKE) -B -C ../../Source/DHELAS aloha_functions.o
 	cp -f ../../Source/DHELAS/aloha_object.mod $@
 
-# Offline reweighting uses the framed Born helper. Separate the other frame,
-# helicity and colour-linked routines so the native reweight link can drop
-# their references to the virtual, Sudakov and subtraction matrix elements.
+# Lightweight Born checks and offline reweighting need only some entry points
+# from these objects. Separate the other frame, helicity and colour-linked
+# routines so those links can drop references to the native runtime, virtual,
+# Sudakov and subtraction matrix elements.
 boost_to_frame.o born.o sborn_sf.o: FFLAGS += -ffunction-sections
 
 clean:

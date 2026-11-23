@@ -1727,8 +1727,13 @@ C     batched one reuses, as set_goodhel does in a run
         resets = scales = 0
         for line in born_support.statements((provider/'adapter.f').read_text()):
             if line.lower().startswith('model_changed='):
-                adapter += ['if(born_test_fresh)then', 'points%valid=.false.',
-                            'points%age=0', 'active_slot=0',
+                # The lane-sized cache is allocated on the first request,
+                # below MODEL_CHANGED. A fresh first call has no entries to
+                # invalidate; later calls still clear every cached point.
+                adapter += ['if(born_test_fresh)then',
+                            'if(allocated(points))then',
+                            'points%valid=.false.', 'points%age=0', 'endif',
+                            'active_slot=0',
                             'born_test_fresh=.false.', 'endif']
                 resets += 1
             if line.lower() == 'saveamp(:,i)=saveamp(:,i)*factors':
@@ -1796,9 +1801,11 @@ C     batched one reuses, as set_goodhel does in a run
         (Path(born_dir)/'makefile_gscale').write_text(makefile)
         misc.compile(['-f', 'makefile_gscale', 'test_born_gscale'],
                      cwd=born_dir)
-        out = subprocess.check_output(
+        checked = subprocess.run(
             [pjoin(born_dir, 'test_born_gscale')], cwd=born_dir,
-            stderr=subprocess.STDOUT).decode(errors='replace')
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = checked.stdout.decode(errors='replace')
+        self.assertEqual(checked.returncode, 0, out)
 
         npoints = int(re.search(r'GSCALE NPOINTS\s+(\d+)', out).group(1))
         self.assertGreater(npoints, 1, out)
