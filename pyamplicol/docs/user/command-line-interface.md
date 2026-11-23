@@ -561,7 +561,34 @@ pyamplicol evaluate artifacts/loop_generate \
   --set evaluation.phase_space.points=4 --set evaluation.phase_space.sqrt_s=2000
 ```
 
-`check` draws its own points (`[check] points`, `seed`, `sqrt_s`).
+**Cuts.** `--pt-min PT` and `--delta-r-min DR` (`evaluation.phase_space.pt_min`,
+`delta_r_min`; unset or 0: none; `evaluate`, `profile` and `check`) require,
+by rejection, a transverse momentum above `PT` of every massless parton, photon
+and charged lepton of the final state, and a distance (Δη² + Δφ²)^(1/2) above
+`DR` of every pair of them (pseudorapidity η; azimuth difference Δφ in
+[0, π]). The legs are found from the artifact's model (a massless final leg
+that is coloured, electrically charged or a vector); massive legs and
+neutrinos are not cut. Point i is the first of its own attempts that
+passes: the point drawn from seed + i itself when it passes,
+else attempts from seeds derived from seed + i, so a point depends on its own
+seed only and the points that pass are the same with and without the cuts.
+A `pt_min` that the legs' energies cannot give is refused at once; other cuts
+without a success in `cut_attempts` attempts of a point (default 100000) are an
+error, found only after all those attempts of every such point: lower
+`cut_attempts` when trying tight cuts. A decay (no beams) refuses cuts, also as one of the
+processes of a `check`. The stability run records them (`stability_setup.cuts`,
+with the legs; the samples file's `cuts`); the runtime setup line and the
+stability tables' titles name them.
+
+```console
+pyamplicol profile artifacts/loop_gg_ggg --stability --sqrt-s 1000 \
+  --pt-min 25 --delta-r-min 0.7
+```
+
+`check` draws its own points (`[check] points`, `seed`, `sqrt_s`), within the
+same cuts. `check ARTIFACT` takes the cuts the artifact's configuration records
+(the generating card's); each option given replaces its own cut only, and a 0
+switches that cut off (`--pt-min 0 --delta-r-min 0`: no cut).
 
 ### Saved virtual artifacts
 
@@ -1413,8 +1440,8 @@ against `stability_setup.target`).
 `--samples-output PATH` (`benchmark.samples_output`) writes the same records
 to their own file instead, as its own phase: one JSON document with
 `schema` `"pyamplicol.profile-samples/1"`, `process`, `seed`, `sqrt_s`,
-`inputs` (the setup's table) and `backends` (each backend's table). The
-report's `samples` then name it (`{"output": PATH, "points": N}`); this also
+`cuts`, `inputs` (the setup's tables) and `backends` (each backend's table).
+The report's `samples` then name it (`{"output": PATH, "points": N}`); this also
 works with the human tables. Without `--json` or `--samples-output` no
 per-sample record is built.
 
@@ -1548,7 +1575,10 @@ counts as a failure (1). `--json` returns the
 arbitrary-precision carrier's digit count); `carriers` ends with `arbitrary`
 under `auto`; `source` names the run card or artifact checked. Python:
 `pyamplicol.api.check(target, points=..., seed=..., precision=..., model=...,
-sqrt_s=..., arbitrary_digits=...)`.
+sqrt_s=..., arbitrary_digits=..., cuts=..., kinematics_improvement=...,
+kinematics_improvement_binary64=...)` (`cuts`: a
+`pyamplicol.generation.phase_space_cuts.PhaseSpaceCuts`; its None values keep
+the configuration's, its zeros switch that cut off).
 
 Cost: one probe-slice generation per process (about the generation's own
 cost: the request-model preparation included) plus a few evaluations per

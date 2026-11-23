@@ -3021,6 +3021,7 @@ class _PointBatches:
             points=count,
             seed=space.seed + len(self.source),
             sqrt_s=space.sqrt_s,
+            cuts=space.cuts,
         ).as_inputs(exact=False)
 
     def __call__(self, k: int, size: int | None = None) -> Momenta:

@@ -2103,6 +2103,9 @@ runtime_threads = 1      # --runtime-threads: native threads of each runtime tim
 [evaluation.phase_space]
 seed = 1                 # --seed: point i from seed + i
 sqrt_s = 1000.0          # --sqrt-s (null: the artifact's validation-point energy)
+# pt_min = 25.0          # --pt-min: cuts on the massless partons, photons and
+# delta_r_min = 0.7      # --delta-r-min: charged leptons (unset or 0: none)
+# cut_attempts = 100000  # attempts per point before the cuts are refused (unset: 100000)
 ```
 
 The flat points (the timed points without a momenta file, and the stability

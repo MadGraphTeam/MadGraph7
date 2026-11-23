@@ -522,6 +522,16 @@ seed = 1
 # evaluation.phase_space.sqrt_s: Centre-of-mass energy of a 2 -> n scattering.
 # Default null: the artifact's validation-point energy.
 sqrt_s = 1000.0
+# evaluation.phase_space.pt_min: Least transverse momentum of every massless
+# parton, photon and charged lepton of the final state (by rejection; also
+# check's points). Default null (or 0): no cut.
+pt_min = 25.0
+# evaluation.phase_space.delta_r_min: Least distance Delta R of every pair of
+# those legs. Default null (or 0): no cut.
+delta_r_min = 0.7
+# evaluation.phase_space.cut_attempts: Attempts per point before the cuts are
+# refused as too tight. Default null: 100000.
+cut_attempts = 100000
 
 [benchmark]
 # benchmark.target_runtime: Positive target duration in seconds. Default 10.0.

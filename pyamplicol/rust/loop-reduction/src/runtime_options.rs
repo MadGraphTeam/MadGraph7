@@ -188,6 +188,9 @@ pub const OTHER_KEYS: &[&str] = &[
     "phase_space.points",
     "phase_space.seed",
     "phase_space.sqrt_s",
+    "phase_space.pt_min",
+    "phase_space.delta_r_min",
+    "phase_space.cut_attempts",
 ];
 
 /// The sub-tables of `[evaluation]`.
@@ -538,6 +541,21 @@ mod tests {
                 .unwrap()
                 .stability_checks,
             Some(StabilityChecksOptions::default())
+        );
+    }
+
+    #[test]
+    fn the_run_cards_other_keys_are_accepted_and_not_read() {
+        let options = RuntimeOptions::from_toml(
+            "[evaluation]\nresolved = true\n[evaluation.phase_space]\npoints = 64\nseed = 3\n\
+             sqrt_s = 1000.0\npt_min = 25.0\ndelta_r_min = 0.7\ncut_attempts = 100000\n",
+        )
+        .unwrap();
+        assert_eq!(options, RuntimeOptions::default());
+        assert_eq!(
+            RuntimeOptions::from_toml("[evaluation.phase_space]\npt_mim = 25.0\n").unwrap_err(),
+            "unknown configuration field 'evaluation.phase_space.pt_mim'; \
+             did you mean 'evaluation.phase_space.pt_min'?"
         );
     }
 

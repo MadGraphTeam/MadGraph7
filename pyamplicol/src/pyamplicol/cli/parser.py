@@ -917,6 +917,7 @@ def _add_evaluation_options(
         ),
     )
     _add_kinematics_options(parser)
+    _add_cut_options(parser)
     parser.add_argument(
         "--resolved",
         dest="evaluation.resolved",
@@ -955,6 +956,35 @@ def _add_evaluation_options(
         dest="evaluation.momenta",
         type=Path,
         default=argparse.SUPPRESS,
+    )
+
+
+def _add_cut_options(parser: argparse.ArgumentParser) -> None:
+    """The cuts of the drawn phase-space points (``evaluation.phase_space``)."""
+
+    parser.add_argument(
+        "--pt-min",
+        dest="evaluation.phase_space.pt_min",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="PT",
+        help=(
+            "drawn points: least transverse momentum of every massless parton, "
+            "photon and charged lepton of the final state (evaluation."
+            "phase_space.pt_min; 0 or unset: no such cut, but check of an "
+            "artifact keeps the one it records unless 0 is given)"
+        ),
+    )
+    parser.add_argument(
+        "--delta-r-min",
+        dest="evaluation.phase_space.delta_r_min",
+        type=float,
+        default=argparse.SUPPRESS,
+        metavar="DR",
+        help=(
+            "drawn points: least distance Delta R of every pair of those legs "
+            "(evaluation.phase_space.delta_r_min; 0 or unset as --pt-min)"
+        ),
     )
 
 
@@ -1046,6 +1076,7 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     _add_kinematics_options(parser)
+    _add_cut_options(parser)
     parser.add_argument(
         "--mu-r2",
         dest="evaluation.mu_r2",
@@ -1231,6 +1262,7 @@ def build_parser() -> argparse.ArgumentParser:
     # The rungs' kinematics improvement (m-lit lit-psimprove (G5)): the
     # evaluation keys, as Runtime.evaluate's.
     _add_kinematics_options(check)
+    _add_cut_options(check)
     check.add_argument(
         "--points",
         dest="check.points",

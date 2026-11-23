@@ -89,6 +89,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
     from pyamplicol.config import RunConfig
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
 
 # The stability points of a run whose plan has none (never used: a plan
 # with the stability run asked for sets its points).
@@ -836,15 +837,16 @@ def _runtime_setup(
     rows: Sequence[Any] = (),
     truth: GroundTruth | None = None,
     lane_rescue: bool = True,
+    cuts: PhaseSpaceCuts | None = None,
 ) -> str:
     """The runtime setup line; ``checked``: the checked mode
     (``benchmark.checked``), else the optimistic pass; ``lane_rescue``: the
     timed calls rescue refused reduction lanes (``evaluation.lane_rescue``,
     in both modes); ``seed``: of the flat
-    points (None: the caller's points); ``threads``: the native threads each
-    backend's timed calls report (one: one core, ``one_core``; another count
-    is named); ``rows``: the backends' runtimes (their calls, points per
-    call, warm-ups and reference points)."""
+    points (None: the caller's points), drawn within ``cuts``;
+    ``threads``: the native threads each backend's timed calls report (one:
+    one core, ``one_core``; another count is named); ``rows``: the backends'
+    runtimes (their calls, points per call, warm-ups and reference points)."""
 
     from pyamplicol.loops.v2.reduction import NAMES
 
@@ -857,7 +859,11 @@ def _runtime_setup(
         reduction += ", refused lanes rescued"
 
     points = (
-        "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
+        "points of --momenta"
+        if seed is None
+        else f"distinct flat points (seed {seed}"
+        + ("" if cuts is None else "".join(f", {cut}" for cut in cuts.described()))
+        + ")"
     )
     counts = sorted(set(threads) - {1})
     core = (
@@ -2373,6 +2379,7 @@ def profile_loop(
             runtime_rows or (),
             truth,
             evaluation.lane_rescue,
+            evaluation.phase_space.cuts,
         )
         if want_runtime
         else None,
@@ -3139,6 +3146,7 @@ def _measure(
         points=DEFAULT_LANES,
         seed=space.seed,
         sqrt_s=space.sqrt_s,
+        cuts=space.cuts,
     ).as_inputs(exact=False)
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
     scales = (
@@ -4673,6 +4681,7 @@ def _stability(
     # every point's inputs (the per-point record).
     inputs: dict[int, tuple[Any, Any]] = {}
     sqrt_s: list[float] = []
+    cut_legs: list[tuple[int, ...]] = []
 
     def draw(start: int, size: int) -> tuple[list[Any], list[Any] | Any]:
         flat = draw_flat_points(
@@ -4681,9 +4690,11 @@ def _stability(
             points=size,
             seed=space.seed + start,
             sqrt_s=space.sqrt_s,
+            cuts=space.cuts,
         )
         if not sqrt_s:
             sqrt_s.append(flat.sqrt_s)
+            cut_legs.append(flat.cut_legs)
         batch = list(flat.as_inputs(exact=False))
         scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
         for k, point in enumerate(batch):
@@ -5367,6 +5378,12 @@ def _stability(
         else {**memory, "workers": int(memory.get("probed_workers", workers))},
         "seed": space.seed,
         "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
+        # The cuts of the drawn points (None: no cut) and the legs (from 0, in
+        # the process's order) they act on.
+        "cuts": {
+            **space.cuts.record(),
+            "legs": list(cut_legs[0]) if cut_legs else [],
+        },
         "generator": (
             "flat (RAMBO on diet), beams along +-z in the centre-of-mass frame"
         ),
@@ -5800,6 +5817,7 @@ def _write_samples(
         "process": process,
         "seed": setup.get("seed"),
         "sqrt_s": setup.get("sqrt_s"),
+        "cuts": setup.get("cuts"),
         "inputs": held(setup.get("samples")),
         "backends": {
             row.backend: held(row.samples) for row in rows if row.samples is not None
