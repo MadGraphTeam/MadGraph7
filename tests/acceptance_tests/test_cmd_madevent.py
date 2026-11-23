@@ -144,11 +144,9 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
     t = re.sub(r'events = \d+', 'events = 50000', t)
-    # Switch both systematics paths off: [postprocessing] systematics (the
-    # legacy systematics.py pass) and the native [systematics] enable, which
-    # defaults to true and is the one that actually costs the time here. The
-    # cross-section these callers read does not depend on either.
-    t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
+    # Switch the systematics off: [systematics] enable defaults to true and
+    # costs the time here; the cross-section these callers read does not
+    # depend on it.
     t = _set_toml_key(t, 'systematics', 'enable', 'false')
     open(toml, 'w').write(t)
     env = dict(os.environ)
@@ -1538,8 +1536,6 @@ class TestMECmdShell(unittest.TestCase):
         for lo, nom, hi in zip(env['low'], hist['bin_values'], env['high']):
             self.assertLessEqual(lo, nom + 1e-12)
             self.assertGreaterEqual(hi, nom - 1e-12)
-        # no legacy systematics.py run happened
-        self.assertFalse(glob.glob(pjoin(run, '*systematics*crash.log')))
 
     def test_systematics_mixed_order_mg7(self):
         """A process whose |M|^2 mixes several alpha_s powers (u u~ > d d~ with
@@ -1575,34 +1571,6 @@ class TestMECmdShell(unittest.TestCase):
                abs(rwgt['7'] - evt.wgt) > 1e-6 * abs(evt.wgt):
                 moved += 1
         self.assertGreater(moved, 0, 'the mu_R weights equal the nominal weight')
-
-    def test_systematics_mg7_legacy(self):
-        """The legacy path ([postprocessing] systematics = true, systematics.py
-        + the LHAPDF python module) still works when the native computation is
-        switched off, and reads the reweighting inputs from the LHE (the
-        single alpha_s power recorded at output time, single_qcd_order)."""
-        datadir = _mg7_datadir_or_skip(self)
-        run = _run_mg7_postproc(
-            self,
-            ['set automatic_html_opening False --no_save',
-             'import model sm',
-             'generate u u > u u'],
-            pjoin(self.path, 'MG7_syst_legacy'), datadir,
-            switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
-            toml_edits=[(r'(\[systematics\]\nenable = )true', r'\1false'),
-                        lambda t: _set_toml_key(t, 'postprocessing', 'systematics', 'true'),
-                        lambda t: _set_toml_key(t, 'postprocessing', 'systematics_pdf',
-                                                '["central"]')],
-            events=100, tolerated_crashes=('*systematics*',))
-
-        lhe_path = pjoin(run, 'events.lhe')
-        if not os.path.exists(lhe_path):
-            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
-        crash = glob.glob(pjoin(run, '*systematics*crash.log'))
-        if crash:
-            self.skipTest('legacy systematics.py could not run (LHAPDF python '
-                          'module?): %s' % open(crash[0]).read()[-500:])
-        self._check_systematics_weights(lhe_path)
 
     def test_relaunch_switch_defaults_mg7(self):
         """Re-launching an mg7 output must not turn every tool on.

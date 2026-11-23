@@ -1337,12 +1337,9 @@ class MG7ReweightingTest(unittest.TestCase):
                 '-f --reweight=%s --reweight-backend=classic' % card)
         self.assertEqual(seen, [({'reweight': 'ON'}, 'classic')])
 
-    def run_card(self, output_format='lhe', time_of_flight=-1.0, legacy=False,
-                 native=True):
+    def run_card(self, output_format='lhe', time_of_flight=-1.0):
         return {'run': {'output_format': output_format},
-                'postprocessing': {'time_of_flight': time_of_flight,
-                                   'systematics': legacy},
-                'systematics': {'enable': native}}
+                'postprocessing': {'time_of_flight': time_of_flight}}
 
     def test_madtrex_lhe_run_is_generated_as_npy(self):
         """An "lhe" run MadtRex reweights is generated as npy, unless an
@@ -1355,13 +1352,9 @@ class MG7ReweightingTest(unittest.TestCase):
         self.assertFalse(via_binary(process, classic))
         self.assertFalse(via_binary(process, None))
         for card in (self.run_card('lhe_npy'), self.run_card('compact_npy'),
-                     self.run_card(time_of_flight=1.0),
-                     self.run_card(legacy=True, native=False)):
+                     self.run_card(time_of_flight=1.0)):
             process.run_card = card
             self.assertFalse(via_binary(process, madtrex), card)
-        # the legacy systematics.py only runs without madspace's systematics
-        process.run_card = self.run_card(legacy=True, native=True)
-        self.assertTrue(via_binary(process, madtrex))
         process.run_card, process.gridpack_run_mode = self.run_card(), 'minimal'
         self.assertFalse(via_binary(process, madtrex))
 
@@ -2166,20 +2159,6 @@ class TestForceLHEOutput(unittest.TestCase):
 
     def test_time_of_flight_forces_lhe(self):
         self.edit('time_of_flight = -1.0', 'time_of_flight = 0.5')
-        self.launch.force_lhe_output_if_needed({})
-        self.assertEqual(self.output_format(), 'lhe')
-
-    def test_legacy_systematics_forces_lhe_only_without_native(self):
-        self.edit('\nsystematics = false', '\nsystematics = true')
-        self.launch.force_lhe_output_if_needed({})
-        # madspace computes the weights itself: systematics.py never runs
-        self.assertEqual(self.output_format(), 'lhe_npy')
-        with open(self.card) as f:
-            text = f.read()
-        start = text.index('[systematics]')
-        end = text.index('enable = true', start)
-        with open(self.card, 'w') as f:
-            f.write(text[:end] + 'enable = false' + text[end + 13:])
         self.launch.force_lhe_output_if_needed({})
         self.assertEqual(self.output_format(), 'lhe')
 

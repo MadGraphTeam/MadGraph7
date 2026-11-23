@@ -54,7 +54,6 @@ class MG7QCDBackgroundTest(unittest.TestCase):
                 'generation.events': 100,
                 'madnis.enable': False,
                 'systematics.enable': False,
-                'postprocessing.systematics': False,
                 'run.postprocessing_histograms': False,
                 'run.make_plots': False}.items():
             card.set(key, value, user=True)

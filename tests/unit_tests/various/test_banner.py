@@ -2774,6 +2774,21 @@ class TestRunCardMG7(unittest.TestCase):
         rc5.set_custom_parameter('cut_parameters', 'pt_min', 30.0)
         self.assertIn('custom_functions', tomllib.loads(written(rc5)))
 
+    def test_legacy_systematics_entries_are_dropped(self):
+        """the [postprocessing] entries of the removed systematics.py run are
+        ignored, with a warning when it was on, and not written back"""
+        text = ('[postprocessing]\nsystematics = true\nsystematics_mur = [1.0]\n'
+                'time_of_flight = 0.5\n')
+        with self.assertLogs(bannermod.logger, level='WARNING') as logs:
+            rc = bannermod.RunCardMG7(text)
+        self.assertEqual(len(logs.output), 1, logs.output)
+        self.assertIn('no longer supported', logs.output[0])
+        self.assertEqual(rc['postprocessing']['time_of_flight'], 0.5)
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        self.assertNotIn('systematics_mur', out.getvalue())
+        self.assertNotIn('\nsystematics = ', out.getvalue())
+
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""
         rc = bannermod.RunCardMG7()

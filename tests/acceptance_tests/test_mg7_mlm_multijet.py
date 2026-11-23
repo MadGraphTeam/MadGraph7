@@ -127,7 +127,7 @@ class MG7MLMMultijetTest(unittest.TestCase):
             'generation.cpu_batch_size': 256, 'generation.survey_min_iters': 1,
             'generation.survey_max_iters': 1, 'vegas.start_batch_size': 256,
             'vegas.max_batch_size': 256, 'madnis.enable': False,
-            'systematics.enable': False, 'postprocessing.systematics': False,
+            'systematics.enable': False,
         }
         summaries = []
         union_events = None

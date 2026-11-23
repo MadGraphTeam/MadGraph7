@@ -7826,16 +7826,6 @@ class RunCardMG7(RunCard):
         # ------------------------- [postprocessing] -------------------
         self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
             comment="threshold in mm below which the lifetime is not written; -1 disables")
-        self.add_toml_param('postprocessing', 'systematics', False,
-            comment="legacy systematics.py run on the lhe file; use [systematics] instead")
-        self.add_toml_param('postprocessing', 'systematics_muf', [0.5, 1.0, 2.0], typelist=float,
-            comment="factorization scale factors for systematics.py")
-        self.add_toml_param('postprocessing', 'systematics_mur', [0.5, 1.0, 2.0], typelist=float,
-            comment="renormalization scale factors for systematics.py")
-        self.add_toml_param('postprocessing', 'systematics_pdf', ['errorset'], typelist=str,
-            comment="PDF variations for systematics.py")
-        self.add_toml_param('postprocessing', 'systematics_str_options', "",
-            comment="extra options passed to systematics.py, e.g. '--together=mur,muf'")
 
         # ----------------------------- [vegas] ------------------------
         self.add_toml_param('vegas', 'enable', True,
@@ -8512,7 +8502,13 @@ class RunCardMG7(RunCard):
             elif sl in self.toml_sections:
                 for key, value in content.items():
                     internal = '%s.%s' % (sl, key.lower())
-                    if sl == 'custom_functions' and isinstance(value, dict):
+                    if internal in self.REMOVED_ENTRIES:
+                        if internal == 'postprocessing.systematics' and value:
+                            logger.warning(
+                                "[postprocessing] systematics is no longer supported "
+                                "and is ignored: the [systematics] section computes "
+                                "the scale and PDF variations")
+                    elif sl == 'custom_functions' and isinstance(value, dict):
                         for name, parameter in value.items():
                             self.set_custom_parameter(key.lower(), name, parameter)
                     elif internal in self.derived_beam_keys:
@@ -9464,6 +9460,11 @@ class RunCardMG7(RunCard):
 
     # hidden parameters that are read from old cards but never written back
     LEGACY_ALIASES = {'generation.systematics'}
+    # entries of old cards that are dropped: the legacy systematics.py run,
+    # replaced by the madspace [systematics]
+    REMOVED_ENTRIES = ('postprocessing.systematics', 'postprocessing.systematics_mur',
+                       'postprocessing.systematics_muf', 'postprocessing.systematics_pdf',
+                       'postprocessing.systematics_str_options')
 
     def write(self, output_file, template=None, python_template=True, **opt):
         """Write a valid ``run_card.toml``.

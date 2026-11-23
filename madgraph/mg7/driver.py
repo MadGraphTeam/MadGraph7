@@ -394,7 +394,7 @@ def lhe_via_binary(process, reweight) -> bool:
     (deliver_lhe_from_binary()): MadtRex reads and extends the npy events
     much faster than an LHE file, which it would decompress, parse and
     rewrite in full. Not when an LHE-only step runs before the reweighting:
-    the run_card [postprocessing] time_of_flight or legacy systematics (see
+    the run_card [postprocessing] time_of_flight (see
     run_lhe_postprocessing()), nor for a validation MadtRex cannot run (see
     madtrex_unavailable())."""
     if reweight is None:
@@ -414,8 +414,6 @@ def lhe_via_binary(process, reweight) -> bool:
         if float(cfg.get("time_of_flight", -1.0)) >= 0:
             return False
     except (TypeError, ValueError):
-        return False
-    if cfg.get("systematics") and not process.run_card["systematics"]["enable"]:
         return False
     return True
 
@@ -720,11 +718,6 @@ def _lhe_needed_by(switch, card, reweight=None) -> "str | None":
             return "time_of_flight"
     except (TypeError, ValueError):
         pass
-    # the legacy systematics.py path only runs when madspace did not compute
-    # the weights itself (see run_lhe_postprocessing)
-    if cfg.get("systematics") \
-            and not card.get("systematics", {}).get("enable", True):
-        return "systematics"
     return None
 
 

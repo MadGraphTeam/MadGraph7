@@ -62,7 +62,6 @@ class MG7PrecisionCheckTest(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % run_dir)
         defaults = {
             'generation.events': _EVENTS,
-            'postprocessing.systematics': False,
             'run.seed': 4242,
         }
         defaults.update(settings)

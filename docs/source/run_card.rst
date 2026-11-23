@@ -367,23 +367,15 @@ as ``<rwgt>`` blocks in LHE files and as ``rwgt_<id>`` columns in the npy files.
 [postprocessing]
 ----------------
 
-This section drives the older post-processing steps of MadEvent. They work on the LHE
-file, so enabling one switches ``output_format`` to ``"lhe"``.
+This section drives a post-processing step of MadEvent that works on the LHE file, so
+enabling it switches ``output_format`` to ``"lhe"``.
 
 ``time_of_flight`` (``-1.0``)
     Threshold in mm below which the invariant livetime is not written. ``-1`` disables the
     step.
 
-``systematics`` (``false``)
-    Recompute the uncertainties with ``systematics.py`` after the run. This only runs if
-    ``enable`` in ``[systematics]`` is false, since the native computation replaces it.
-
-``systematics_mur`` (``[0.5, 1.0, 2.0]``), ``systematics_muf`` (``[0.5, 1.0, 2.0]``), ``systematics_pdf`` (``["errorset"]``)
-    Scale factors and PDF variations for ``systematics.py``.
-
-``systematics_str_options`` (``""``)
-    Extra command-line options passed to ``systematics.py``, for example
-    ``"--together=mur,muf"``.
+The scale and PDF variations of ``systematics.py`` are computed by ``[systematics]``
+instead. The ``systematics*`` entries of this section in older cards are ignored.
 
 [vegas]
 -------

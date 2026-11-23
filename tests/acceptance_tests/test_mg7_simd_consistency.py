@@ -100,7 +100,6 @@ class MG7SimdConsistencyTest(unittest.TestCase):
             'beam.pdf': 'NNPDF23_lo_as_0130_qed',
             'generation.events': _EVENTS,
             'systematics.enable': False,
-            'postprocessing.systematics': False,
         }, **settings)
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         rc = RunCardMG7(toml)

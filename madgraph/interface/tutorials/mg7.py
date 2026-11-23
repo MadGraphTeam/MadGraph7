@@ -85,7 +85,7 @@ are marked.
   [madnis]          the trainable one                                   <-
   [multiparticles]  labels, as in the process line
   [histograms]      what to plot
-  [postprocessing]  systematics after the fact
+  [postprocessing]  lifetimes in the LHE file (time_of_flight)
   [gridpack]        self-contained event generation
 
 [vegas], [postprocessing], [gridpack] and most of [madnis] are hidden from

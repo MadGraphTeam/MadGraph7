@@ -90,7 +90,6 @@ class MG7ClusterModeTest(unittest.TestCase):
             'beam.pdf': 'NNPDF23_lo_as_0130_qed',
             'generation.events': _EVENTS,
             'systematics.enable': False,
-            'postprocessing.systematics': False,
             'madnis.enable': False,
             'cluster.enable': False,
             'cluster.type': 'local_parallel',

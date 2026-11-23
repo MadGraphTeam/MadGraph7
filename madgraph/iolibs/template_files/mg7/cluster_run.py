@@ -573,9 +573,7 @@ class ClusterRun:
         self.deploy(gridpack_path)
         self.set_stage("combine")
         info = self.combine()
-        # the steering process has no systematics calculator: the jobs' weights
-        launch.run_lhe_postprocessing(self.process, native_weight_count=len(
-            info.get("systematics", {}).get("variations", [])))
+        launch.run_lhe_postprocessing(self.process)
         self.set_stage("done")
         self.clean_deploy_data()
         process = info["process"]

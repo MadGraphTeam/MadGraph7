@@ -206,11 +206,6 @@ $cluster_deploy
 #@group postprocessing
 [postprocessing]
 time_of_flight = %(postprocessing.time_of_flight)s
-systematics = %(postprocessing.systematics)s
-systematics_muf = %(postprocessing.systematics_muf)s
-systematics_mur = %(postprocessing.systematics_mur)s
-systematics_pdf = %(postprocessing.systematics_pdf)s
-systematics_str_options = %(postprocessing.systematics_str_options)s
 #@end
 
 #@group vegas
