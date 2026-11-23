@@ -212,6 +212,23 @@ at a time. The pieces are:
   binary128 path, and the effective Born and counterterm interference are
   `MP_ONIA_PREPARE` and `MP_ONIA_PW_CT`. A P-wave output always computes
   its QP integrand in QP.
+- **Extended precision (optional).** With `#PWaveExtendedPrecision .TRUE.`
+  in `Cards/MadLoopParams.dat` (off by default), the double-precision passes
+  (`CTModeRun` -1, 1, 2) run in extended precision. That is the x87 80-bit
+  format, or binary128 on hosts without it (kind
+  `EPK = SELECTED_REAL_KIND(18)`). The PS point, the dual wavefunctions, the
+  loop coefficients, the projections and the contractions are all computed in
+  this format. The tensor integrals come from TIRust's double-precision entry,
+  with shifts and invariants passed as binary64 hi + lo words
+  (`tirust_tensor_evaluate_powers_ext`, unit powers included). The EP code is
+  the QP code with its names (MP_ -> EP_) and kind changed, derived when the
+  output is written (`madgraph/loop/onia_ep.py`). Only the dispatch and the
+  TIRust routines are in the templates. The quadruple-precision rescue is
+  unchanged. The code is written for one P-wave state with TIRust from an
+  installation with `raised_power_extended_inputs` in its metadata. Other
+  P-wave outputs print a warning and ignore the switch; non-P-wave outputs
+  ignore it silently. See
+  `research/pwave_stability/README.md` for its accuracy and cost.
 
 Status:
 - At zero relative momentum, TIRust 48958d1 (part of huashengshao/TIRust PR #56,

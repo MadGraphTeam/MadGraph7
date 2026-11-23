@@ -56,6 +56,17 @@
 !.TRUE.
 ! Default :: .TRUE.
 
+#PWaveExtendedPrecision
+!.FALSE.
+! Default :: .FALSE.
+!     Outputs with one P-wave bound state and TIRust (MLReductionLib=9) with
+!     extended inputs only: .TRUE. computes the double-precision evaluations
+!     (CTModeRun -1, 1, 2) in extended precision, the x87 80-bit format
+!     (binary128 where it does not exist), with TIRust's integrals from
+!     extended inputs. It costs 5 to 6 times double precision and gains one
+!     to three digits at high energy (docs/onia_loop.md). The quadruple-
+!     precision rescue (4, 5) is unchanged. Other outputs ignore it.
+
 !     When using quadruple precision with Ninja, NinjaRS, TIRust or CutTools, the reduction will
 !     always be done in quadruple precision, but the parameters below allow you to
 !     chose if you want to also recompute the *integrand* in quadruple precision.

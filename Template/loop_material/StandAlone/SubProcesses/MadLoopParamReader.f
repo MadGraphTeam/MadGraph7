@@ -44,6 +44,8 @@
              read(666,*,end=999) TIRustComputeFinite
            else if (buff .eq. '#UseQPIntegrandForTIRust') then
              read(666,*,end=999) UseQPIntegrandForTIRust
+           else if (buff .eq. '#PWaveExtendedPrecision') then
+             read(666,*,end=999) PWaveExtendedPrecision
            else if (buff .eq. '#TIRustGlobalCache') then
              read(666,*,end=999) TIRustGlobalCache
              if (TIRustGlobalCache.lt.-1) then
@@ -305,6 +307,8 @@ C     than the uninitialized local string used only while parsing that entry.
      &UseQPIntegrandForTIRust
       write(*,*) ' > TIRustGlobalCache         = ',TIRustGlobalCache
       write(*,*) ' > TIRustCacheMaxBytes       = ',TIRustCacheMaxBytes
+      write(*,*) ' > PWaveExtendedPrecision    = ',
+     &PWaveExtendedPrecision
       write(*,*) ' > MLStabThres               = ',MLStabThres
       write(*,*) ' > NRotations_DP             = ',NRotations_DP
       write(*,*) ' > NRotations_QP             = ',NRotations_QP
@@ -366,6 +370,7 @@ C     than the uninitialized local string used only while parsing that entry.
       UseQPIntegrandForTIRust=.True.
       TIRustGlobalCache=-1
       TIRustCacheMaxBytes=268435456_8
+      PWaveExtendedPrecision=.FALSE.
       IREGIMODE=2
       IREGIRECY=.TRUE.
       COLLIERComputeIRpoles = .TRUE.
@@ -499,4 +504,5 @@ C     as a request for partial tensors or replace caller-selected old values.
       DATA TIRustComputeFinite,UseQPIntegrandForTIRust/.TRUE.,.TRUE./
       DATA TIRustGlobalCache/-1/
       DATA TIRustCacheMaxBytes/268435456_8/
+      DATA PWaveExtendedPrecision/.FALSE./
       END

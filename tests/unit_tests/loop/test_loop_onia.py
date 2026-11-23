@@ -424,3 +424,155 @@ class TestOniaMadLoopDefaults(unittest.TestCase):
         self.assertEqual(str(card['MLReductionLib']), '7')
         self.assertEqual(card['HelicityFilterLevel'], 2)
 
+
+    def test_extended_precision_default(self):
+        # off by default (#PWaveExtendedPrecision, onia_ep.py)
+        self.assertIs(self.card()['PWaveExtendedPrecision'], False)
+
+
+import madgraph.loop.onia_ep as onia_ep
+
+
+class TestOniaExtendedPrecision(unittest.TestCase):
+    """The extended-precision (EP) code of a P-wave output, derived from its
+    quadruple-precision (MP) code (madgraph/loop/onia_ep.py)."""
+
+    MIXED = '\n'.join([
+        '      SUBROUTINE ML5_0_ONIA_PREPARE(P)',
+        '      REAL*8 P(0:3,5)',
+        '      END',
+        'C     The MP version',
+        '      SUBROUTINE ML5_0_MP_ONIA_PREPARE(P)',
+        '      USE ML5_0_PW_DUAL, ONLY: MPPWAMP, ML5_0_PW_DUAL_INIT',
+        '      IMPLICIT NONE',
+        '      REAL*16 P(0:3,5), X',
+        '      COMPLEX*32 C',
+        "      INCLUDE 'mp_coupl.inc'",
+        '      COMMON/ML5_0_MP_PW_EPS/C',
+        '      X=1.0E0_16+REAL(C,KIND=16)+1.0E',
+        '     $ -8_16',
+        '      CALL MP_UPDATE_AS_PARAM()',
+        '      CALL ML5_0_MP_ONIA_CG(1,X)',
+        '      END',
+        '      REAL*16 FUNCTION ML5_0_MP_MDOT(P1,P2)',
+        '      REAL*16 P1(0:3),P2(0:3)',
+        '      ML5_0_MP_MDOT=P1(0)*P2(0)',
+        '      CONTAINS',
+        '      ELEMENTAL LOGICAL FUNCTION FINITE(X)',
+        '      REAL*16, INTENT(IN) :: X',
+        '      FINITE=X.EQ.X',
+        '      END FUNCTION',
+        '      END',
+        '      SUBROUTINE ML5_0_MP_TIRUST_LOOP(N)',
+        '      END',
+        '      SUBROUTINE MP_ML5_0_UPDATE_WL_0_1(A)',
+        '      COMPLEX*32 A',
+        '      A=(0Q0,1Q0)',
+        '      END'])
+
+    def test_renaming(self):
+        text = onia_ep.to_ep('      CALL ML5_0_MP_ONIA_CG(1,MPPWW,mp_dual,SET_MP_PS)\n'
+                             '      X=1.0E0_16+REAL(Y,KIND=16)*2Q0\n'
+                             '      REAL*16 MP__ZERO\n      COMPLEX*32 COUP\n'
+                             '      Z=qcmplx(1)+qreal(2)\n'
+                             '      CALL MP_UPDATE_AS_PARAM()\n', 'ML5_0_')
+        self.assertEqual(text,
+                         '      CALL ML5_0_EP_ONIA_CG(1,EPPWW,ep_dual,SET_EP_PS)\n'
+                         '      X=1.0E0_EPK+REAL(Y,KIND=EPK)*2E0_EPK\n'
+                         '      REAL(EPK) EP__ZERO\n      COMPLEX(EPK) COUP\n'
+                         '      Z=ecmplx(1)+ereal(2)\n'
+                         '      CALL ML5_0_EP_UPDATE_AS_PARAM()\n')
+        # names that only contain MP, and DP names, are kept
+        same = '      CALL ML5_0_COMPUTE_ACCURACY(COMP_X,DP_AMP,ML5_0_MPLOOPNUM)\n'
+        self.assertEqual(onia_ep.to_ep(same), same)
+
+    def test_mp_units(self):
+        # the MP routines with an EP version: not the DP ones, nor TIRust's
+        # (the template has its own EP routines); internal procedures stay
+        # with their host
+        names = [name for name, _ in onia_ep.mp_units(self.MIXED)]
+        self.assertEqual(names, ['ML5_0_MP_ONIA_PREPARE', 'ML5_0_MP_MDOT',
+                                 'MP_ML5_0_UPDATE_WL_0_1'])
+        units = dict(onia_ep.mp_units(self.MIXED))
+        self.assertTrue(units['ML5_0_MP_ONIA_PREPARE'].startswith('C     The MP version\n'))
+        self.assertTrue(units['ML5_0_MP_MDOT'].endswith('      END FUNCTION\n      END'))
+
+    def test_ep_source(self):
+        text = '\n'.join(unit for _, unit in onia_ep.mp_units(self.MIXED))
+        ep = onia_ep.ep_source(text, 'test', 'ML5_0_')
+        lines = ep.split('\n')
+        # the kind module in each top-level unit, not in internal procedures
+        self.assertEqual(lines.count('      USE EP_PRECISION'), 3)
+        self.assertEqual(lines[lines.index('      SUBROUTINE ML5_0_EP_ONIA_PREPARE(P)') + 1],
+                         '      USE EP_PRECISION')
+        self.assertEqual(lines[lines.index('      REAL(EPK) FUNCTION ML5_0_EP_MDOT(P1,P2)') + 1],
+                         '      USE EP_PRECISION')
+        self.assertIn('      USE ML5_0_PW_DUAL, ONLY: EPPWAMP, ML5_0_PW_DUAL_INIT', lines)
+        self.assertIn("      INCLUDE 'ep_coupl.inc'", lines)
+        self.assertIn('      COMMON/ML5_0_EP_PW_EPS/C', lines)
+        self.assertIn('     $ -8_EPK', lines)
+        self.assertIn('      A=(0E0_EPK,1E0_EPK)', lines)
+        self.assertIn('      CALL ML5_0_EP_UPDATE_AS_PARAM()', lines)
+
+    def test_leftover_is_refused(self):
+        # a construct the renaming misses: an integer literal of kind 16
+        self.assertRaises(onia_ep.OniaEPError, onia_ep.ep_source,
+                          '      SUBROUTINE MP_X()\n      I=1_16\n      END\n', 'test')
+        # comments and strings are not checked
+        onia_ep.check_ep("C     REAL*16\n      WRITE(*,*) 'MP_X'\n", 'test')
+
+    def test_aloha_object(self):
+        import madgraph.iolibs.export_v4 as export_v4
+        text = onia_ep.ep_aloha_object(export_v4.ProcessExporterFortran.LOOP_DUAL_ALOHA_OBJECT)
+        self.assertIn('      use mp_dual_variables\n      use ep_dual_variables\n', text)
+        for name in ('EP_ALOHA', 'EP_ALOHA2D'):
+            self.assertIn('TYPE %s\n' % name, text)
+            self.assertIn('END TYPE %s\n' % name, text)
+        self.assertEqual(text.count('type(EP_Dual)'), 4)
+        self.assertTrue(text.rstrip().endswith('end module ALOHA_OBJECT'))
+
+    def test_dual_variables(self):
+        path = os.path.join(mg_root, 'aloha', 'template_files', 'mp_dual_variables.f')
+        with open(path) as stream:
+            text = onia_ep.ep_dual_variables(stream.read())
+        self.assertTrue(text.startswith(onia_ep.KIND_MODULE))
+        self.assertIn('      module ep_dual_variables\n      use ep_precision, only: epk\n', text)
+        self.assertIn('      integer, parameter :: qp = epk\n', text)
+        self.assertIn('public :: size, ecmplx, ereal', text)
+        self.assertNotIn('mp_', text.lower().replace('mp_dual_variables', ''))
+
+    def test_aloha_functions(self):
+        # the EP external wavefunctions, from the MP ones of the template
+        path = os.path.join(mg_root, 'aloha', 'template_files', 'aloha_functions_mp_dual.f')
+        with open(path) as stream:
+            ep = onia_ep.ep_source(stream.read(), 'aloha_functions_mp_dual.f')
+        for name in ('ixxxxx', 'oxxxxx', 'vxxxxx'):
+            self.assertIn('      subroutine ep_%s(' % name, ep)
+
+    def test_tirust_without_extended_inputs(self):
+        self.assertFalse(onia_ep.tirust_supports_extended_inputs(''))
+        tmp = tempfile.mkdtemp()
+        try:
+            self.assertFalse(onia_ep.tirust_supports_extended_inputs(tmp))
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_subprocesses_makefile(self):
+        path = os.path.join(mg_root, 'Template', 'loop_material', 'StandAlone',
+                            'SubProcesses', 'makefile')
+        tmp = tempfile.mkdtemp()
+        try:
+            target = os.path.join(tmp, 'makefile')
+            shutil.copy(path, target)
+            onia_ep.patch_subprocesses_makefile(target)
+            with open(target) as stream:
+                text = stream.read()
+            self.assertIn('$(wildcard ep_*.f)', text)
+            self.assertIn('$(wildcard $(LOOP_PREFIX)*/ep_*.f)', text)
+            self.assertIn('ep_polynomial.o : polynomial.o\n', text)
+            # once only
+            onia_ep.patch_subprocesses_makefile(target)
+            with open(target) as stream:
+                self.assertEqual(stream.read(), text)
+        finally:
+            shutil.rmtree(tmp)

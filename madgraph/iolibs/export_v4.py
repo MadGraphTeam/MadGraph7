@@ -2792,11 +2792,15 @@ c     quadruple precision (MP_Dual).
 """
 
     @classmethod
-    def write_loop_dual_aloha_functions(cls, write_dir, npwave=1):
+    def write_loop_dual_aloha_functions(cls, write_dir, npwave=1, ep=False):
         """aloha_functions.f, dual_variables.f, dual_opts.inc and the makefile
         of the HELAS library of a MadLoop output with P-wave bound states (one
         or two, at first order: NPWAVE=npwave). The quadruple-precision dual
-        numbers (mp_dual_variables.f) have one direction only."""
+        numbers (mp_dual_variables.f) have one direction only.
+
+        ep: also the extended-precision routines and dual numbers, derived
+        from the quadruple-precision ones (madgraph/loop/onia_ep.py), for the
+        #PWaveExtendedPrecision passes of one P-wave bound state."""
 
         template = pjoin(MG5DIR, 'aloha', 'template_files')
         with open(pjoin(template, 'aloha_functions_dual.f')) as stream:
@@ -2806,13 +2810,19 @@ c     quadruple precision (MP_Dual).
         marker = re.search(r'(?im)^\s*end module ALOHA_OBJECT\s*$', dual)
         if not marker:
             raise MadGraph5Error('Unexpected aloha_functions_dual.f')
+        aloha_object = cls.LOOP_DUAL_ALOHA_OBJECT
+        if ep:
+            import madgraph.loop.onia_ep as onia_ep
+            aloha_object = onia_ep.ep_aloha_object(aloha_object)
         with open(pjoin(write_dir, 'aloha_functions.f'), 'w') as stream:
-            stream.write(cls.LOOP_DUAL_ALOHA_OBJECT)
+            stream.write(aloha_object)
             stream.write(dual[marker.end():])
             stream.write('\n\n')
             stream.write(mp_dual)
         cp(pjoin(template, 'dual_variables.f'), pjoin(write_dir, 'dual_variables.f'))
         cp(pjoin(template, 'mp_dual_variables.f'), pjoin(write_dir, 'mp_dual_variables.f'))
+        if ep:
+            onia_ep.derive_dhelas(write_dir, mp_dual)
 
         class OnePWave(object):
             """write_dual_opts_file of npwave P-wave bound states"""
@@ -2841,11 +2851,16 @@ c     quadruple precision (MP_Dual).
         makefile += ('\n# aloha_functions.o (module ALOHA_OBJECT) uses the modules of\n'
                      '# dual_variables.o and mp_dual_variables.o\n'
                      'aloha_functions.o: dual_variables.o mp_dual_variables.o\n')
+        if ep:
+            for old, new in onia_ep.DHELAS_MAKEFILE_EDITS:
+                if makefile.count(old) != 1:
+                    raise MadGraph5Error('Unexpected loop dual makefile')
+                makefile = makefile.replace(old, new)
         with open(pjoin(write_dir, 'makefile'), 'w') as stream:
             stream.write(makefile)
 
     def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
-                            loop_dual=False, loop_npwave=1):
+                            loop_dual=False, loop_npwave=1, loop_ep=False):
         """The ALOHA routines of the matrix elements and their helper file:
         Source/DHELAS, Source/DHELAS<n> for P-wave onia, and for the other
         gauge of an output that mixes gauges Source/DHELAS_<GAUGE> (called
@@ -2917,7 +2932,7 @@ c     quadruple precision (MP_Dual).
                 f.write(text.replace('libdhelas', 'libdhelas' +
                                      self.gauge_libraries[gauge][1]))
         if loop_dual:
-            self.write_loop_dual_aloha_functions(write_dir, loop_npwave)
+            self.write_loop_dual_aloha_functions(write_dir, loop_npwave, ep=loop_ep)
             aloha_model.loop_mode = False
         elif any([any([tag.startswith('L') for tag in d[1]]) for d in wanted_lorentz]):
             cp(MG5DIR + '/aloha/template_files/aloha_functions_loop.f',

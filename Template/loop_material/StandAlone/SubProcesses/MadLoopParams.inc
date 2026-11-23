@@ -19,6 +19,7 @@
       logical UseQPIntegrandForNinja, UseQPIntegrandForCutTools
       integer*8 TIRustCacheMaxBytes
       logical TIRustComputeFinite,UseQPIntegrandForTIRust
+      logical PWaveExtendedPrecision
       logical UseQPIntegrandForNinjaRS
 	  logical COLLIERUseCacheForPoles,COLLIERUseInternalStabilityTest
 
@@ -33,4 +34,4 @@
      &MLReductionLib,IREGIMODE,HelicityFilterLevel,IREGIRECY,
      &WriteOutFilters,UseQPIntegrandForNinja,UseQPIntegrandForCutTools,
      &UseQPIntegrandForNinjaRS,TIRustComputeFinite,
-     &UseQPIntegrandForTIRust,TIRustCacheMaxBytes
+     &UseQPIntegrandForTIRust,TIRustCacheMaxBytes,PWaveExtendedPrecision

@@ -36,6 +36,7 @@ import madgraph.core.color_algebra as color
 import madgraph.core.helas_objects as helas_objects
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_onia as loop_onia
+import madgraph.loop.onia_ep as onia_ep
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
@@ -621,7 +622,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     'output separately: their HELAS libraries differ.')
             return super(LoopProcessExporterFortranSA, self).write_aloha_library(
                 model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual,
-                loop_npwave=max(counts))
+                loop_npwave=max(counts), loop_ep=bool(getattr(self, 'onia_ep_dirs', {})))
         return super(LoopProcessExporterFortranSA, self).write_aloha_library(
             model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual)
 
@@ -963,7 +964,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                 'UseDensity': UseDensity,
                 'Onia': loop_onia.has_onia(matrix_element),
                 'OniaPwave': loop_onia.has_pwave(matrix_element),
-                'OniaPwave2': loop_onia.npwave(matrix_element) == 2}
+                'OniaPwave2': loop_onia.npwave(matrix_element) == 2,
+                'OniaPwaveEP': False}
 
 
     #===========================================================================
@@ -2431,6 +2433,17 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.tir_available_dict.get('tirust', False) and
             tirust_install.supports_raised_powers(getattr(self, 'tirust_dir', '')))
 
+        # The extended-precision passes of one P-wave bound state
+        # (#PWaveExtendedPrecision, onia_ep.py): standalone output, TIRust
+        # with extended inputs (the EP integrals) and quadruple precision
+        # (the MP code the EP code is derived from)
+        context['OniaPwaveEP'] = bool(
+            type(self) is LoopProcessOptimizedExporterFortranSA and
+            context['OniaPwave'] and not context['OniaPwave2'] and
+            not context['AmplitudeReduction'] and
+            context['tirust_supports_quad_prec'] and context['tirust_raised_powers'] and
+            onia_ep.tirust_supports_extended_inputs(getattr(self, 'tirust_dir', '')))
+
         for tir in self.all_tir:
             context['%s_available'%tir]=self.tir_available_dict[tir]
             # safety check
@@ -2753,6 +2766,20 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         # Model, ALOHA and shared include sources now exist. Until this final
         # rendered proof succeeds, every DP batch retains the ordinary call.
         self.finalize_dp_terminal_updates()
+        self.write_onia_ep_files()
+
+    def write_onia_ep_files(self):
+        """The extended-precision passes of the processes with a P-wave bound
+        state (#PWaveExtendedPrecision): their EP files, derived from the MP
+        ones now that all are written (onia_ep.py), and their build."""
+        ep_dirs = getattr(self, 'onia_ep_dirs', {})
+        if not ep_dirs:
+            return
+        for pdir, proc_prefix in sorted(ep_dirs.items()):
+            onia_ep.derive_subprocess(pdir, proc_prefix)
+        onia_ep.patch_subprocesses_makefile(pjoin(self.dir_path, 'SubProcesses', 'makefile'))
+        logger.info('Extended-precision passes of the P-wave bound state written '
+                    '(off by default: #PWaveExtendedPrecision in MadLoopParams.dat).')
     
 
     
@@ -3334,6 +3361,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             mp_prefix='')
         # Write the polynomial constant module common to all
         writer.writelines(poly_writer.write_polynomial_constant_module()+'\n')
+        ep = self.get_context(matrix_element).get('OniaPwaveEP', False)
         if loop_onia.has_pwave(matrix_element):
             # A P-wave bound state: the dual numbers have default
             # initialisation and type-bound procedures, so cannot be in COMMON
@@ -3355,14 +3383,22 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 'C     the same in quadruple precision',
                 'TYPE(MP_ALOHA), ALLOCATABLE :: MPPWW(:)',
                 'TYPE(MP_DUAL), ALLOCATABLE :: MPPWAMP(:), MPPWAMPL(:,:)',
-                'TYPE(MP_DUAL), ALLOCATABLE :: MPPWPL(:,:), MPPWPD(:,:)',
+                'TYPE(MP_DUAL), ALLOCATABLE :: MPPWPL(:,:), MPPWPD(:,:)'] +
+                (['C     and in extended precision (#PWaveExtendedPrecision)',
+                  'TYPE(EP_ALOHA), ALLOCATABLE :: EPPWW(:)',
+                  'TYPE(EP_DUAL), ALLOCATABLE :: EPPWAMP(:), EPPWAMPL(:,:)',
+                  'TYPE(EP_DUAL), ALLOCATABLE :: EPPWPL(:,:), EPPWPD(:,:)']
+                 if ep else []) + [
                 'CONTAINS',
                 'SUBROUTINE %(proc_prefix)sPW_DUAL_INIT()',
                 'IF (ALLOCATED(PWW)) RETURN',
                 'ALLOCATE(PWW(%(nwavefuncs)d), PWAMP(%(nbornamps)d), PWAMPL(3,%(nctamps)d))',
                 'ALLOCATE(PWPL(0:3,-1:%(nloopwavefuncs)d), PWPD(0:3,%(nexternal)d))',
                 'ALLOCATE(MPPWW(%(nwavefuncs)d), MPPWAMP(%(nbornamps)d), MPPWAMPL(3,%(nctamps)d))',
-                'ALLOCATE(MPPWPL(0:3,-1:%(nloopwavefuncs)d), MPPWPD(0:3,%(nexternal)d))',
+                'ALLOCATE(MPPWPL(0:3,-1:%(nloopwavefuncs)d), MPPWPD(0:3,%(nexternal)d))'] +
+                (['ALLOCATE(EPPWW(%(nwavefuncs)d), EPPWAMP(%(nbornamps)d), EPPWAMPL(3,%(nctamps)d))',
+                  'ALLOCATE(EPPWPL(0:3,-1:%(nloopwavefuncs)d), EPPWPD(0:3,%(nexternal)d))']
+                 if ep else []) + [
                 'END SUBROUTINE %(proc_prefix)sPW_DUAL_INIT',
                 'END MODULE %(proc_prefix)sPW_DUAL']) % replace_dict + '\n')
 
@@ -4147,6 +4183,11 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         self.onia_pwave_processes.append(bool(context.get('OniaPwave')))
         if not hasattr(self, 'onia_npwave'):
             self.onia_npwave = set()
+        if context.get('OniaPwaveEP'):
+            # the EP files are derived from the MP ones at finalize (onia_ep.py)
+            if not hasattr(self, 'onia_ep_dirs'):
+                self.onia_ep_dirs = {}
+            self.onia_ep_dirs[os.path.abspath('.')] = matrix_element.rep_dict['proc_prefix']
         if context.get('OniaPwave'):
             self.onia_npwave.add(loop_onia.npwave(matrix_element))
             momenta = 'PWPD'

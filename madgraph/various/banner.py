@@ -10489,6 +10489,9 @@ class MadLoopParam(ConfigFile):
         self.add_param("TIRustComputeFinite", True)
         self.add_param("TIRustGlobalCache", -1)
         self.add_param("TIRustCacheMaxBytes", 268435456)
+        # outputs with a P-wave bound state: the double-precision passes in
+        # extended precision (madgraph/loop/onia_ep.py)
+        self.add_param("PWaveExtendedPrecision", False)
         self.add_param("UseQPIntegrandForCutTools", True)
         self.add_param("COLLIERMode", 1)
         self.add_param("COLLIERComputeUVpoles", True)

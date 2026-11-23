@@ -49,6 +49,9 @@ C
 ## if(OniaPwave) {
       USE %(proc_prefix)sPW_DUAL, ONLY: PWPL, PWPD, %(proc_prefix)sPW_DUAL_INIT
 ## }
+## if(OniaPwaveEP) {
+      USE EP_PRECISION
+## }
 C
 ## if(ninjars_available) {
       USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
@@ -388,6 +391,17 @@ C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHE
 C     AGAIN BELOW, MP_PS IS THE FIXED (POSSIBLY IMPROVED) MP PS POINT AND MP_P IS THE ONE WHICH CAN BE MODIFIED (I.E. ROTATED ETC.) FOR STABILITY PURPOSE
 	  %(real_mp_format)s MP_PS(0:3,NEXTERNAL),MP_P(0:3,NEXTERNAL)
 	  common/%(proc_prefix)sMP_PSPOINT/MP_PS,MP_P
+## if(OniaPwaveEP) {
+C     A P-wave bound state with #PWaveExtendedPrecision: the PS point of the
+C     extended-precision (EP) passes, fixed (EP_PS) and rotated (EP_P), and
+C     whether the current pass is one (ONIA_EP_PASS, for the loop lines)
+	  REAL(EPK) EP_PS(0:3,NEXTERNAL),EP_P(0:3,NEXTERNAL)
+	  common/%(proc_prefix)sEP_PSPOINT/EP_PS,EP_P
+	  LOGICAL EP_PS_SET
+	  DATA EP_PS_SET/.FALSE./
+	  LOGICAL ONIA_EP_PASS
+	  common/%(proc_prefix)sONIA_EP/ONIA_EP_PASS
+## }
 
 	  %(real_dp_format)s LSCALE
 	  INTEGER CTMODE	  
@@ -824,6 +838,15 @@ C The starting loop wavefunctions do not depend on the relative momentum
 	  ENDDO
 	ENDDO
   ENDDO
+## if(OniaPwaveEP) {
+  IF (PWaveExtendedPrecision.AND.MLReductionLib(1).NE.9) THEN
+    WRITE(*,*) 'WARNING:: #PWaveExtendedPrecision: the extended-precision passes need TIRust (MLReductionLib=9); the passes of other libraries stay in double precision.'
+  ENDIF
+## } else {
+  IF (PWaveExtendedPrecision) THEN
+    WRITE(*,*) 'WARNING:: #PWaveExtendedPrecision is ignored: this output has no extended-precision code (it needs one P-wave bound state and a TIRust installation with extended inputs, raised_power_extended_inputs).'
+  ENDIF
+## }
 ## }
   IF(BOOTANDSTOP) THEN
     WRITE(*,*) '##Stopped by user request.'
@@ -966,6 +989,9 @@ FPE_IN_QP_REDUCTION=.FALSE.
 MP_DONE=.FALSE.
 MP_DONE_ONCE=.FALSE.
 MP_PS_SET=.FALSE.
+## if(OniaPwaveEP) {
+EP_PS_SET=.FALSE.
+## }
 STAB_INDEX=0
 DOING_QP_EVALS=.FALSE.
 EVAL_DONE(1)=.TRUE.
@@ -1240,6 +1266,26 @@ C We must skip the double precision computation of both loop amplitudes and CT a
   goto 301
 ## }
 ENDIF
+## if(OniaPwaveEP) {
+
+C A P-wave bound state with #PWaveExtendedPrecision: the double-precision
+C passes (CTMODE 1, 2) are computed in extended precision, as the
+C quadruple-precision ones (EP_COMPUTE_LOOP_COEFS, then EP_TIRUST_LOOP for
+C each loop). The counterterm interference is then in extended precision:
+C its rounding does not limit the accuracy (ONIA_CTSQ).
+ONIA_EP_PASS=PWaveExtendedPrecision.AND.(CTMODE.EQ.1.OR.CTMODE.EQ.2).AND.MLReductionLib(I_LIB).EQ.9
+IF (ONIA_EP_PASS) THEN
+  IF (.NOT.EP_PS_SET) THEN
+C   the EP parameters (masses) of the improvement of the PS point
+    CALL %(proc_prefix)sEP_UPDATE_AS_PARAM()
+    CALL %(proc_prefix)sSET_EP_PS(P_USER)
+    EP_PS_SET=.TRUE.
+  ENDIF
+  ONIA_CTSQ=0.0d0
+  CALL %(proc_prefix)sEP_COMPUTE_LOOP_COEFS(EP_P,BUFFR_BIS)
+  goto 300
+ENDIF
+## }
 
 ## if(Onia) {
 C The effective Born amplitudes of the bound states for this PS point
@@ -1961,6 +2007,9 @@ C     If some TIR library would not support the loop direction test (they all do
 	EVAL_DONE(3)=.TRUE.
 	CALL %(proc_prefix)sROTATE_PS(PS,P,1)
 	IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS(MP_PS,MP_P,1)
+## if(OniaPwaveEP) {
+	IF (.NOT.DOING_QP_EVALS.AND.EP_PS_SET) CALL %(proc_prefix)sEP_ROTATE_PS(EP_PS,EP_P,1)
+## }
 	goto 200
   ENDIF
 
@@ -1968,11 +2017,17 @@ C     If some TIR library would not support the loop direction test (they all do
 	EVAL_DONE(4)=.TRUE.
 	CALL %(proc_prefix)sROTATE_PS(PS,P,2)
 	IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS(MP_PS,MP_P,2)
+## if(OniaPwaveEP) {
+	IF (.NOT.DOING_QP_EVALS.AND.EP_PS_SET) CALL %(proc_prefix)sEP_ROTATE_PS(EP_PS,EP_P,2)
+## }
 	goto 200
   ENDIF
 
   CALL %(proc_prefix)sROTATE_PS(PS,P,0)
   IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS(MP_PS,MP_P,0)
+## if(OniaPwaveEP) {
+  IF (EP_PS_SET) CALL %(proc_prefix)sEP_ROTATE_PS(EP_PS,EP_P,0)
+## }
 
 C END OF THE DEFINITIONS OF THE DIFFERENT EVALUATION METHODS
 

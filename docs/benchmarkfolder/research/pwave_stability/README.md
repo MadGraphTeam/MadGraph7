@@ -248,6 +248,29 @@ A call with nonzero low words always goes to the precision tiers. `lowwords.py -
 - **No refusals:** over the 24 points every call took route 2 (u ū: 1080 raised-power, 1896 unit-power calls; g g: 4392 and 7176); every return code is 120.
 - **Cost** (`lowwords_cost.py`, four alternating pairs of 24-point batches, median time per point): every call on extended inputs is +3% against `RAW + RAW_LO` for u ū (0.543 vs 0.522 s) and +0% for g g (5.44 vs 5.45 s). Raised powers alone: +1% and −0.4%. The 80-bit mode as a whole stays at 7.6× (u ū) and 6.0× (g g) DP.
 
+## The generated switch (Phase 2)
+
+MadLoop now generates the 80-bit mode. It is off by default and switched on with `#PWaveExtendedPrecision .TRUE.` in `Cards/MadLoopParams.dat`:
+- **EP code:** `madgraph/loop/onia_ep.py` derives it from the quadruple-precision (MP) code when the output is written. It renames `MP_` to `EP_` and changes the kind to `EPK = SELECTED_REAL_KIND(18)`: 10 on x86, 16 where there is no x87 format.
+- **Templates:** they hold the dispatch of the double-precision passes (CTMODE 1, 2) and the 80-bit TIRust routines. Every call, unit powers included, goes to `tirust_tensor_evaluate_powers_ext` with 64-bit inputs.
+- **When the code is written:** P-wave outputs with one P-wave state, whose TIRust installation has `raised_power_extended_inputs` in its metadata. Other P-wave outputs warn when the switch is on and ignore it.
+
+Outputs without the EP code are unchanged, apart from the new card parameter and the warning in P-wave outputs. `ep_switch.py` measures the switch on generated outputs (TIRust d17085a with the bridge patch, `$SP/pw61`, with the metadata flag added). The data are in `data/ep_switch_*_chic0g_1000_d17085a.json`.
+
+| 24 points, 1 TeV: largest / median (s per point) | u ū → χ_c0 g | g g → χ_c0 g |
+|---|---|---|
+| off, `CTModeRun 1` | 2.7·10⁻⁵ / 3.7·10⁻⁶ (0.078) | 4.2·10⁻⁶ / 1.3·10⁻⁶ (0.97) |
+| off, `CTModeRun -1` (the default stability test) | 2.9·10⁻⁵ / 5.3·10⁻⁶ (0.102) | 4.1·10⁻⁶ / 1.1·10⁻⁶ (1.03) |
+| **on, `CTModeRun 1`** | **2.2·10⁻⁸ / 4.1·10⁻⁹** (0.495) | **2.2·10⁻⁹ / 6.0·10⁻¹⁰** (5.28) |
+| on, `CTModeRun 2` (loop direction reversed) | 3.2·10⁻⁶ / 2.0·10⁻⁷ (0.545) | 3.4·10⁻⁷ / 8.4·10⁻⁸ (5.62) |
+| on, `CTModeRun -1` | 1.6·10⁻⁶ / 9.8·10⁻⁸ (0.539) | 1.7·10⁻⁷ / 4.1·10⁻⁸ (5.45) |
+
+- **One 80-bit pass reproduces the prototype to the digit**, at 6.3× (u ū) and 5.4× (g g) the double-precision time.
+- **The reversed pass loses about two digits to TIRust's check pass.** For `CTModeRun 2` (and 5) MadLoop asks TIRust for its check pass. That pass moves every invariant by the relative factor 1 ± 2⁻⁵² (`CHECK_INVARIANT_SHIFT = f64::EPSILON` of the bridge, one binary64 unit), so the stability test sees the sensitivity to the rounding of binary64 inputs. The extended entry keeps that shift with 64-bit inputs. The reversed pass then has the error of a binary64-rounded input, the level of the 80-bit test with binary64 inputs above.
+- **The stability test returns the mean of the two passes**, so with the switch on it gains 18× (u ū) and 24× (g g) in the worst point and 54× and 27× in the median, instead of three digits, at 5.3× the double-precision time for both. It stays conservative: its estimate is below the true error at 1 of 24 u ū points (1.3·10⁻⁹ against 1.2·10⁻⁹).
+- **Without the check pass** in the reversed 80-bit pass (a diagnostic, not the generated code), that pass is as accurate as the forward one: u ū 2.4·10⁻⁸ / 2.7·10⁻⁹, and the stability test returns 2.1·10⁻⁸ / 2.2·10⁻⁹. But the two passes then agree too well. The estimate falls below the true error at 7 of 24 points, 4 of them with an estimate of 0. The check pass is needed; its shift should follow the input precision, 2⁻⁶³ for 64-bit inputs.
+- **No refusals:** every return code is 110 (`CTModeRun 1, 2`) or 213 (`-1`).
+
 ## Reproducer for TIRust
 
 `data/repro_doubled_pentagons.json.gz` is written by `repro.py` (`python3 repro.py OUTDIR OUT.json.gz 0 7`, on an output patched by `instrument.py`). It holds the ten DP calls with powers and five lines of u ū → χ_c0 g at points 0 and 7 of setup A, in both passes. For each call it records:
