@@ -319,6 +319,16 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     ),
     _lepton_power(lepton_sampling_power),
     _two_to_one(topology.outgoing_masses().size() == 1),
+    _massive_incoming(
+        topology.incoming_masses().size() == 2 &&
+        (topology.incoming_masses().at(0) != 0. ||
+         topology.incoming_masses().at(1) != 0.)
+    ),
+    _project_incoming(
+        _massive_incoming && topology.t_propagator_count() > 0 &&
+        (t_channel_mode == PhaseSpaceMapping::chili ||
+         t_channel_mode == PhaseSpaceMapping::color_ordered)
+    ),
     _t_mapping(std::monostate{}) {
     // the chain order and settings belong to the color-ordered mode only
     if ((t_channel_mode == PhaseSpaceMapping::color_ordered) !=
@@ -604,6 +614,22 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             _topology.raise_decay_e_min(0, transverse_mass_sum);
         }
     }
+    // Massive incoming particles need sqrt(s_hat) above m1 + m2: a floor on the
+    // root of the luminosity mapping. Fixed beams (leptonic) and a 2 -> 1
+    // process fix s_hat, which is either above the threshold or leaves nothing.
+    if (_massive_incoming) {
+        double threshold = std::abs(_topology.incoming_masses().at(0)) +
+            std::abs(_topology.incoming_masses().at(1));
+        double sqrt_s_hat_max =
+            _two_to_one ? _topology.outgoing_masses().at(0) : _sqrt_s_lab;
+        auto& root = _topology.decays().at(0);
+        if (sqrt_s_hat_max <= threshold ||
+            (root.e_max > 0. && root.e_max <= threshold)) {
+            _empty = true;
+        } else if (_map_luminosity && !_two_to_one) {
+            _topology.raise_decay_e_min(0, threshold);
+        }
+    }
     for (auto [decay, info] :
          zip(std::views::reverse(_topology.decays()),
              std::views::reverse(decay_info))) {
@@ -746,7 +772,11 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             // the partonic centre-of-mass frame, so the rapidity bounds of the
             // particle it peels and of the recoil narrow its |t| range.
             _t_mapping = TPropagatorMapping(
-                _topology.t_integration_order(), invariant_power, pt_min, y_max
+                _topology.t_integration_order(),
+                invariant_power,
+                pt_min,
+                y_max,
+                _massive_incoming ? _topology.incoming_masses() : std::vector<double>{}
             );
         } else if (t_channel_mode == PhaseSpaceMapping::rambo) {
             // TODO: add massless special case
@@ -852,8 +882,25 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
     Value x1 = 1.0, x2 = 1.0;
     Value omx1, omx2;
 
+    // the incoming momenta in the partonic centre-of-mass frame, on the mass
+    // shells of massive incoming particles
+    auto incoming = [&](Value e_cm) {
+        return _massive_incoming && !_project_incoming
+            ? fb.com_p_in_massive(e_cm, _topology.incoming_masses())
+            : fb.com_p_in(e_cm);
+    };
+
     // permute, boost into the lab frame and apply the cuts
     auto finish = [&](Value p_ext_stack) -> Result {
+        if (_project_incoming) {
+            // chili and the color-ordered chain build the final state against
+            // the massless pair, which goes on its mass shells with the same
+            // sum (in the partonic frame, the beams' frame for chili)
+            auto on_shell =
+                fb.incoming_on_shell(p_ext_stack, _topology.incoming_masses());
+            p_ext_stack = on_shell.at(0);
+            dets.push_back(on_shell.at(1));
+        }
         if (_permutations.size() > 1) {
             p_ext_stack = fb.permute_momenta(
                 p_ext_stack, _permutations, conditions.at("permutation_index")
@@ -896,7 +943,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         x1 = x1_new;
         x2 = x2_new;
         dets.push_back(det_x);
-        auto [p1, p2] = fb.com_p_in(mass);
+        auto [p1, p2] = incoming(mass);
         return finish(fb.stack({p1, p2, fb.add(p1, p2)}));
     }
 
@@ -1028,7 +1075,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 auto t_result = t_mapping.build_forward(fb, args, conds);
                 std::size_t result_index;
                 if constexpr (std::is_same_v<TMapping, FastRamboMapping>) {
-                    auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
+                    auto [p1, p2] = incoming(sqrt_s_hat);
                     p_ext = {p1, p2};
                     result_index = 0;
                 } else {
@@ -1050,7 +1097,7 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
                 }
             },
             [&](std::monostate) {
-                auto [p1, p2] = fb.com_p_in(sqrt_s_hat);
+                auto [p1, p2] = incoming(sqrt_s_hat);
                 if (_topology.is_decay()) {
                     // Single incoming particle at rest: p_in = (M, 0, 0, 0) is
                     // the sum of the beam momenta com_p_in builds for M.
@@ -1217,6 +1264,13 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         p_ext_stack = fb.permute_momenta(
             p_ext_stack, invert_permutations(_permutations), static_cast<me_int_t>(0)
         );
+    }
+
+    // chili and the color-ordered chain: the massless incoming pair with the same
+    // sum, which the forward map built the final state against
+    if (_project_incoming) {
+        p_ext_stack =
+            fb.incoming_on_shell(p_ext_stack, std::vector<double>{0., 0.}).at(0);
     }
 
     // initialize momenta, masses and square masses

@@ -22,6 +22,12 @@ namespace madspace {
  * momentum on the chosen side by subtraction (Sec. 2.2.8 of [1], following
  * [2]).
  *
+ * The incoming momenta are those of the beams in their centre-of-mass frame, on
+ * the mass shells of the incoming particles (`com_p_in_massive`), so that each
+ * |t| is the momentum transfer from a massive beam, as in madevent's genps.f.
+ * The blocks of the chain then use the massive kernels of
+ * @ref TwoToTwoParticleScattering.
+ *
  * `batch` is the leading batch dimension. `kappa` is the number of `t`-channel
  * propagators, `len(integration_order)`.
  *
@@ -69,12 +75,15 @@ public:
      *                          the |t| range exactly. The mapping then takes
      *                          the beam momentum fractions `x1`, `x2` (`float`,
      *                          shape `(batch,)`) as two further conditions.
+     * @param incoming_masses   Masses of the two incoming particles, empty or
+     *                          zero for massless ones.
      */
     TPropagatorMapping(
         const std::vector<std::size_t>& integration_order,
         double invariant_power = 0.8,
         const std::vector<double>& pt_min = {},
-        const std::vector<double>& y_max = {}
+        const std::vector<double>& y_max = {},
+        const std::vector<double>& incoming_masses = {}
     );
     /// Number of uniform random inputs consumed by the forward mapping,
     /// equal to `3 * len(integration_order) - 1`.
@@ -82,6 +91,9 @@ public:
     /// Whether the first scattering is narrowed by rapidity bounds (and the
     /// mapping therefore takes `x1`, `x2` as conditions).
     bool has_rapidity_window() const { return _rapidity_window; }
+    /// Masses of the incoming particles (absolute values), two for massive ones,
+    /// empty for massless ones.
+    const std::vector<double>& incoming_masses() const { return _incoming_masses; }
 
 private:
     // The public constructor with the first scattering's rapidity bounds
@@ -90,7 +102,8 @@ private:
         const std::array<double, 3>& first_step_bounds,
         const std::vector<std::size_t>& integration_order,
         double invariant_power,
-        const std::vector<double>& pt_min
+        const std::vector<double>& pt_min,
+        const std::vector<double>& incoming_masses
     );
 
     Result build_forward_impl(
@@ -115,6 +128,7 @@ private:
     Invariant _uniform_invariant;
     TwoToTwoParticleScattering _com_scattering;
     TwoToTwoParticleScattering _lab_scattering;
+    std::vector<double> _incoming_masses;
 };
 
 } // namespace madspace

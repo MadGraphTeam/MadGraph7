@@ -156,6 +156,8 @@ public:
      * @param y_max2          The same for `momentum2`.
      * @param beam_sign       +1 if `momentum_in1` is beam 1 (along +z), -1
      *                        if it is beam 2.
+     * @param massive_beams   If true, the block is part of a chain off massive
+     *                        beams (see below).
      *
      * The rapidity bounds are only valid when the two incoming momenta are
      * the beams in the partonic centre-of-mass frame (the first step of a
@@ -163,6 +165,15 @@ public:
      * each bound becomes an interval of @f$|t|@f$. With a bound set, the
      * mapping takes the beam momentum fractions `x1`, `x2` (`float`, shape
      * `(batch,)`) as two further conditions.
+     *
+     * With @p massive_beams an incoming momentum can be a massive beam, and
+     * @f$t = (p_a - p_1)^2@f$ can then be positive near the forward
+     * direction. The range of @f$|t|@f$, its ETmin bound and the rapidity
+     * bounds come from the massive kernels (`t_inv_min_max_massive`, ...),
+     * and the @ref Invariant samples @f$|t| - \min(|t|_\text{min}, 0)@f$,
+     * which is @f$|t|@f$ wherever the range stays at or above 0. The massless
+     * kernels are untouched by this choice, which is made when the graph is
+     * built.
      */
     TwoToTwoParticleScattering(
         bool com,
@@ -172,7 +183,8 @@ public:
         bool has_cut = false,
         double y_max1 = -1.,
         double y_max2 = -1.,
-        double beam_sign = 1.
+        double beam_sign = 1.,
+        bool massive_beams = false
     );
 
     /**
@@ -227,6 +239,15 @@ private:
         Value m1,
         Value m2
     ) const;
+    // |t| from its random number and back, and the Jacobian
+    std::array<Value, 2>
+    sample_t(FunctionBuilder& fb, Value r, Value t_min, Value t_max) const;
+    std::array<Value, 2>
+    unsample_t(FunctionBuilder& fb, Value t_abs, Value t_min, Value t_max) const;
+    // the |t| range, with the ETmin bound of the cuts if there are any
+    std::array<Value, 2> t_range(
+        FunctionBuilder& fb, const NamedVector<Value>& conditions, Value m1, Value m2
+    ) const;
 
     bool _com;
     Invariant _invariant;
@@ -235,6 +256,7 @@ private:
     double _y_max1;
     double _y_max2;
     double _beam_sign;
+    bool _massive_beams;
 };
 
 /**

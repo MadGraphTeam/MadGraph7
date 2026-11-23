@@ -1087,12 +1087,19 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::vector<std::size_t>,
                 double,
                 std::vector<double>,
+                std::vector<double>,
                 std::vector<double>>(),
             py::arg("integration_order"),
             py::arg("invariant_power") = 0.8,
             py::arg("pt_min") = std::vector<double>{},
             py::arg("y_max") = std::vector<double>{},
+            py::arg("incoming_masses") = std::vector<double>{},
             pydoc::doc("TPropagatorMapping::TPropagatorMapping")
+        )
+        .def(
+            "incoming_masses",
+            &TPropagatorMapping::incoming_masses,
+            pydoc::doc("TPropagatorMapping::incoming_masses")
         )
         .def(
             "random_dim",
@@ -1799,6 +1806,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "mirror_beams",
             &PhaseSpaceMapping::mirror_beams,
             pydoc::doc("PhaseSpaceMapping::mirror_beams")
+        )
+        .def(
+            "incoming_masses",
+            &PhaseSpaceMapping::incoming_masses,
+            pydoc::doc("PhaseSpaceMapping::incoming_masses")
+        )
+        .def(
+            "massive_incoming",
+            &PhaseSpaceMapping::massive_incoming,
+            pydoc::doc("PhaseSpaceMapping::massive_incoming")
         )
         .def("cuts", &PhaseSpaceMapping::cuts, pydoc::doc("PhaseSpaceMapping::cuts"))
         .def(
@@ -2946,7 +2963,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 bool,
                 const std::optional<EvaFlux>&,
-                const nested_vector3<me_int_t>&>(),
+                const nested_vector3<me_int_t>&,
+                const std::vector<double>&>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
             py::arg("running_coupling"),
@@ -2959,9 +2977,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("return_matrix_element") = false,
             py::arg("eva") = std::nullopt,
             py::arg("eva_helicities") = nested_vector3<me_int_t>{},
+            py::arg("incoming_masses") = std::vector<double>{},
             pydoc::doc("DifferentialCrossSection::DifferentialCrossSection")
         )
         .def("eva", &DifferentialCrossSection::eva, pydoc::doc("DifferentialCrossSection::eva"))
+        .def(
+            "incoming_masses",
+            &DifferentialCrossSection::incoming_masses,
+            pydoc::doc("DifferentialCrossSection::incoming_masses")
+        )
         .def(
             "pid_options",
             &DifferentialCrossSection::pid_options,
