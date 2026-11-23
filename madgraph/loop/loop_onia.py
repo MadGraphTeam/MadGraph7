@@ -462,11 +462,64 @@ def _to_amplitude_space(mat, amp_p, amp_s, nborn):
     return res
 
 
-def pwave_soft_current(matrix_element, info, amp_to_jamp):
-    """The colour data of the soft current of the P-wave bound state of a
-    loop matrix element, for its P -> S pole (ONIA_PW_SOFT_POLE): a list
-    with one dict per S-wave state S' of pwave_aux_states that the colour
-    allows, with
+def _swave_colour_basis(matrix_element, basis, col_obj, onia_numbers, colours, amp_to_jamp):
+    """The Born colour basis with the pairs of the quarks n_q of `colours`
+    ({n_q: C'}) projected on the colours C' instead of their own: (keys,
+    amplitude-to-colour-flow map, colour matrix between Born amplitudes),
+    or None if the colour forbids it."""
+    import madgraph.core.color_amp as color_amp
+    nborn = matrix_element.get_number_of_born_amplitudes()
+    numbers = [[charges, numbers_, next((c for n_q, c in colours.items() if n_q in numbers_),
+                                        charge)]
+               for charges, numbers_, charge in onia_numbers]
+    projected = []
+    for old in col_obj:
+        new = dict((key, string.create_copy()) for key, string in old.items())
+        basis.OniaColorProjection(new, numbers)
+        projected.append(new)
+    basis_s = color_amp.ColorBasis()
+    for index, new in enumerate(projected):
+        basis_s.update_color_basis(new, index)
+    if not len(basis_s):
+        return None
+    keys_s = sorted(basis_s.keys())
+    amp_s = amp_to_jamp(matrix_element.generate_color_amplitudes(
+        basis_s, matrix_element.get_born_diagrams()), nborn)
+    cm = color_amp.ColorMatrix(basis_s)
+    mat = {}
+    for (i, j), (m_val, m_imag) in cm.col_matrix_fixed_Nc.items():
+        if m_val:
+            mat[(i, j)] = (fractions.Fraction(0), fractions.Fraction(m_val)) if m_imag \
+                else (fractions.Fraction(m_val), fractions.Fraction(0))
+    return keys_s, amp_s, _to_amplitude_space(mat, amp_s, amp_s, nborn)
+
+
+def _qeff_insertion(label, kind, n_q, a, c_new, repl_p, repl_s):
+    """Q_eff^a of a P-wave pair (quark n_q) between its P-wave colour and
+    that of its S-wave state of `label` (pwave_aux_states), for the colour
+    structure `kind` (Delta, D, T), without mass factors: the index renames
+    of the two colour strings (added to repl_p, repl_s) and the colour string
+    inserted, or None."""
+    import madgraph.core.color_algebra as color_algebra
+    if label == '18':
+        repl_s[n_q] = a
+        return None
+    if label == '81':
+        repl_p[n_q] = a
+        return None
+    repl_s[n_q] = c_new
+    if kind == 'D':
+        return color_algebra.ColorString([color_algebra.d(a, n_q, c_new)])
+    return _colour_charge_string(8, n_q, a, c_new)
+
+
+def pwave_soft_current(matrix_element, info, amp_to_jamp, ipw=None):
+    """The colour data of the soft current of the P-wave bound state number
+    ipw (in info['onia'], 1-based; by default the first P-wave state) of a
+    loop matrix element, for its P -> S pole (ONIA_PW_SOFT_POLE). The other
+    bound states keep their colour; with two P-wave states, the other one is
+    a coloured leg if it is an octet. A list with one dict per S-wave state
+    S' of pwave_aux_states that the colour allows, with
       colour, label   C' and the label of Q_eff
       cnorm           n_C'/n_C, the ratio of the squared normalisations of
                       the colour projectors (1/3 for a singlet, 2 for an
@@ -485,7 +538,7 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp):
     import madgraph.core.color_amp as color_amp
     import madgraph.loop.loop_color_amp as loop_color_amp
 
-    pw = info['onia'][info['ipwave'] - 1]
+    pw = info['onia'][(ipw or info['ipwave']) - 1]
     process = matrix_element.get('processes')[0]
     model = process.get('model')
     legs = process.get('legs')
@@ -503,11 +556,6 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp):
     for o in info['onia']:
         octet_index[o['q1']] = o
     a, fresh, c_new, m_new = -4001, -4002, -4003, -4004
-
-    def qeff(kind, b, c):
-        if kind == 'D':
-            return color_algebra.ColorString([color_algebra.d(a, b, c)])
-        return _colour_charge_string(8, b, a, c)
 
     # the coloured physical legs other than the P-wave state: (number of
     # the colour index, representation of the colour charge, physical leg)
@@ -532,41 +580,20 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp):
     norm = {1: fractions.Fraction(1, 3), 8: fractions.Fraction(2)}
     result = []
     for colour, label in pwave_aux_states(pw):
-        numbers = [[charges, numbers_, (colour if n_q in numbers_ else charge)]
-                   for charges, numbers_, charge in onia_numbers]
-        projected = []
-        for old in col_obj:
-            new = dict((key, string.create_copy()) for key, string in old.items())
-            basis.OniaColorProjection(new, numbers)
-            projected.append(new)
-        basis_s = color_amp.ColorBasis()
-        for index, new in enumerate(projected):
-            basis_s.update_color_basis(new, index)
-        if not len(basis_s):
+        projected = _swave_colour_basis(matrix_element, basis, col_obj, onia_numbers,
+                                        {n_q: colour}, amp_to_jamp)
+        if projected is None:
             # colour forbidden: this S-wave state has no Born
             continue
-        keys_s = sorted(basis_s.keys())
-        amp_s = amp_to_jamp(matrix_element.generate_color_amplitudes(
-            basis_s, matrix_element.get_born_diagrams()), nborn)
-        cm = color_amp.ColorMatrix(basis_s)
-        mat = {}
-        for (i, j), (m_val, m_imag) in cm.col_matrix_fixed_Nc.items():
-            if m_val:
-                mat[(i, j)] = (fractions.Fraction(0), fractions.Fraction(m_val)) if m_imag \
-                    else (fractions.Fraction(m_val), fractions.Fraction(0))
-        cs = _to_amplitude_space(mat, amp_s, amp_s, nborn)
+        keys_s, amp_s, cs = projected
         links = {}
         for num, rep, phys in charged:
             for kind in (['Delta'] if label in ('18', '81') else ['D', 'T']):
                 repl_p, repl_s = {}, {num: fresh}
                 insertion = _colour_charge_string(rep, num, a, fresh)
-                if label == '18':
-                    repl_s[n_q] = a
-                elif label == '81':
-                    repl_p[n_q] = a
-                else:
-                    repl_s[n_q] = c_new
-                    insertion.product(qeff(kind, n_q, c_new))
+                qeff = _qeff_insertion(label, kind, n_q, a, c_new, repl_p, repl_s)
+                if qeff is not None:
+                    insertion.product(qeff)
                 xmat = {}
                 for ib, ks in enumerate(keys_s):
                     for ia, kp in enumerate(keys_p):
@@ -578,6 +605,71 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp):
                         _to_amplitude_space(xmat, amp_p, amp_s, nborn)
         result.append(dict(colour=colour, label=label, cnorm=norm[colour] / norm[pw['C']],
                            cs=cs, links=links))
+    return result
+
+
+def pwave_dipole_dipole(matrix_element, info, amp_to_jamp):
+    """The colour data of the dipole-dipole exchange between the two P-wave
+    bound states of a loop matrix element (term 3 of the poles,
+    research/two_pwave/README.md sect. 4.3): a list with one dict per pair of
+    S-wave states (S1', S2') of pwave_aux_states and colour structures
+    (k1, k2) that the colour allows, with
+      label1, label2   the labels of Q_eff of the two states
+      kind1, kind2     1 for Delta (18, 81) or D (88), 2 for T (88)
+      cnorm1, cnorm2   n_C'/n_C of each state
+      x                X[a][b] = sum_colours conj(c_a) Q_eff1^e Q_eff2^e c'_b
+                       without the mass factors of Q_eff
+    c (c') are the colour strings of the Born amplitudes projected on the
+    colours of the two P-wave states (of S1', S2'), as (re, im) Fractions."""
+    import madgraph.loop.loop_color_amp as loop_color_amp
+
+    pw1, pw2 = [info['onia'][i - 1] for i in info['ipwaves']]
+    process = matrix_element.get('processes')[0]
+    model = process.get('model')
+    nborn = matrix_element.get_number_of_born_amplitudes()
+    born_diagrams = matrix_element.get('base_amplitude').get('born_diagrams')
+    basis = loop_color_amp.LoopColorBasis()
+    col_obj = [basis.colorize(d, model) for d in born_diagrams]
+    onia_numbers = basis.get_onia_color_numbers(process)
+    keys_p = sorted(matrix_element.get('born_color_basis').keys())
+    amp_p = amp_to_jamp(matrix_element.get_born_color_amplitudes(), nborn)
+    e, c_new1, c_new2 = -4101, -4102, -4103
+    norm = {1: fractions.Fraction(1, 3), 8: fractions.Fraction(2)}
+    result = []
+    for colour1, label1 in pwave_aux_states(pw1):
+        for colour2, label2 in pwave_aux_states(pw2):
+            projected = _swave_colour_basis(matrix_element, basis, col_obj, onia_numbers,
+                                            {pw1['q1']: colour1, pw2['q1']: colour2},
+                                            amp_to_jamp)
+            if projected is None:
+                continue
+            keys_s, amp_s, _ = projected
+            for kind1 in (['Delta'] if label1 in ('18', '81') else ['D', 'T']):
+                for kind2 in (['Delta'] if label2 in ('18', '81') else ['D', 'T']):
+                    repl_p, repl_s = {}, {}
+                    insertion = None
+                    for label, kind, pw, c_new in ((label1, kind1, pw1, c_new1),
+                                                   (label2, kind2, pw2, c_new2)):
+                        qeff = _qeff_insertion(label, kind, pw['q1'], e, c_new, repl_p, repl_s)
+                        if qeff is None:
+                            continue
+                        if insertion is None:
+                            insertion = qeff
+                        else:
+                            insertion.product(qeff)
+                    xmat = {}
+                    for ib, ks in enumerate(keys_s):
+                        for ia, kp in enumerate(keys_p):
+                            value = _colour_contract(kp, ks, repl_p, repl_s, insertion)
+                            if value != (0, 0):
+                                xmat[(ia, ib)] = value
+                    if not xmat:
+                        continue
+                    result.append(dict(
+                        label1=label1, label2=label2,
+                        kind1=2 if kind1 == 'T' else 1, kind2=2 if kind2 == 'T' else 1,
+                        cnorm1=norm[colour1] / norm[pw1['C']], cnorm2=norm[colour2] / norm[pw2['C']],
+                        x=_to_amplitude_space(xmat, amp_p, amp_s, nborn)))
     return result
 
 

@@ -44,8 +44,15 @@ raised propagator powers (`raised_powers` in its metadata; `install tirust
 --update`), and must be output alone or with other P-wave processes: its
 HELAS library is in dual numbers.
 
+Two P-wave bound states (for example `e+ e- > chic0(1|3P01) hc(1|1P11)`) are
+generated, in double precision only (the quadruple-precision path stops with
+a message). Their predicted poles are complete, the dipole-dipole term
+included. Their virtual is reported unstable until TIRust serves two dotted
+propagators: no TIRust revision does yet. Such outputs are built with the
+medium code model on x86-64, since their loop arrays can exceed 2 GB.
+
 Refused with an explanatory error:
-- more than one P-wave bound state, and states with L >= 2;
+- more than two P-wave bound states, and states with L >= 2;
 - the FKS modes `[QCD]` and `[real=QCD]` (developed on the `onia_fks` branch);
 - loop-induced processes (`[sqrvirt=QCD]`);
 - `[virt=QED]`;
@@ -280,6 +287,27 @@ every S' vanishes, as for `g g > chic0/chic2`. It also vanishes when the
 bound state has a single coloured partner, as in `e+ e- > Jpsi(1|3PJ8) g`.
 For `g g > etac(1|1P18)` it is -2 C_A, and the prediction is the computed
 1/eps coefficient, -18.
+
+**Two P-wave states.** The single pole has three parts
+(`docs/benchmarkfolder/research/two_pwave/README.md`):
+- the colour-linked Borns of the mixed derivative, as for one state;
+- the P->S term of each state, with the other one still differentiated
+  (`ONIA_PW2_SOFT_TERM`). The other state counts as a coloured leg if it is an
+  octet;
+- the dipole-dipole exchange between the two states
+  (`ONIA_PW2_DIPOLE_DIPOLE`), which needs the eight-quark operators of He,
+  Kniehl and Wang (arXiv:1809.07993). It takes their kernel f1, f2 of
+  w = v1.v2, with its series near w = 1, and the colour data of
+  `loop_onia.pwave_dipole_dipole`.
+
+The virtual stays the plain QCD one. `ONIA_NRQCD_CT(P_PHYS, MU_L, CT)` returns
+the MS-bar NRQCD counterterm, `-PDD [1/eps + ln(mu_R^2/mu_L^2)]`, in the units
+of `ANS` (CT(1) finite, CT(2) the 1/eps coefficient), for the NLO layer. For
+`e+ e- > chic0 hc` the predicted 1/eps coefficient per Born reproduces the
+independent evaluation of the research folder: 0.71157569957729 at
+sqrt(s) = 10.6 GeV, 0.72155466286996 at 7 GeV and 0.67519653345551 at 30 GeV,
+to 6e-15. These numbers are checks of the prediction; MadLoop's computed
+poles need TIRust's two dotted propagators.
 
 ## Validation
 

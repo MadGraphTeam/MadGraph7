@@ -245,6 +245,30 @@ class TestLoopOniaGeneration(unittest.TestCase):
         me, aux = self.soft_current('e+ e- > Jpsi(1|3P08) g [virt=QCD]')
         self.assertEqual([a['label'] for a in aux], ['88'])
 
+    def test_two_pwave_soft_colour(self):
+        """Two P-wave bound states: the soft current of each state (the other
+        one keeps its colour) and the dipole-dipole colour data (term 3 of
+        the poles). e+ e- > chic0 hc: the P -> S transitions are colour
+        forbidden (8 x 1 has no singlet), the S'S' = 3S1[8] 1S0[8] exchange
+        is allowed with the Delta x Delta structure."""
+        import madgraph.loop.loop_exporters as loop_exporters
+        exporter = loop_exporters.LoopProcessOptimizedExporterFortranSA.__new__(
+            loop_exporters.LoopProcessOptimizedExporterFortranSA)
+        me = self.matrix_element('e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]')
+        info = loop_onia.onia_loop_info(me)
+        nborn = me.get_number_of_born_amplitudes()
+        for ipw in info['ipwaves']:
+            self.assertEqual(loop_onia.pwave_soft_current(
+                me, info, exporter.get_amp_to_jamp_map, ipw), [])
+        dd = loop_onia.pwave_dipole_dipole(me, info, exporter.get_amp_to_jamp_map)
+        self.assertEqual([(d['label1'], d['label2'], d['kind1'], d['kind2'], d['cnorm1'],
+                           d['cnorm2']) for d in dd], [('18', '18', 1, 1, 6, 6)])
+        x = dd[0]['x']
+        self.assertTrue(any(c != (0, 0) for row in x for c in row))
+        # real (no f) and Hermitian-free: X[a][b] = sum conj(c_a) c'_b
+        self.assertTrue(all(c[1] == 0 for row in x for c in row))
+        self.assertEqual(len(x), nborn)
+
     def test_triplet_polarisations(self):
         """A spin triplet has three J_z, a colour octet the norm 2."""
         me = self.matrix_element('u u~ > Jpsi(1|3S18) [virt=QCD]')

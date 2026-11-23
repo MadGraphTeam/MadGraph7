@@ -2270,7 +2270,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             lines.append('DATA ONIA_LINK_J/0/, ONIA_LINK_K/0/')
             lines.append('DATA ONIA_CL_RE/%d*0D0/, ONIA_CL_IM/%d*0D0/' % ((nborn * nborn,) * 2))
         writers.FortranWriter('onia_loop_links.inc').writelines(lines)
-        if info['ipwave']:
+        if info['npwave'] == 2:
+            self.write_onia_loop_pwsoft2(matrix_element, info)
+        elif info['ipwave']:
             self.write_onia_loop_pwsoft(matrix_element, info)
 
     def write_onia_loop_pwsoft(self, matrix_element, info):
@@ -2319,6 +2321,84 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         else:
             lines.append('DATA PWS_AUX/0/, PWS_LEG/0/, PWS_KIND/0/')
             lines.append('DATA PWS_X_RE/%d*0D0/, PWS_X_IM/%d*0D0/' % ((nborn * nborn,) * 2))
+        writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
+
+    def write_onia_loop_pwsoft2(self, matrix_element, info):
+        """onia_loop_pwsoft.inc of two P-wave bound states: the colour of the
+        soft current of each state (loop_onia.pwave_soft_current, the other
+        state keeping its colour), indexed by the state (1: ONIA_IPW, 2:
+        ONIA_IPW2), and of the dipole-dipole exchange between them
+        (loop_onia.pwave_dipole_dipole), for ONIA_PW_SOFT_POLE."""
+
+        nborn = matrix_element.get_number_of_born_amplitudes()
+        nb2 = nborn * nborn
+        auxs = [loop_onia.pwave_soft_current(matrix_element, info, self.get_amp_to_jamp_map, ipw)
+                for ipw in info['ipwaves']]
+        links = [[(ia + 1, k, kind, x) for ia, a in enumerate(aux)
+                  for (k, kind), x in sorted(a['links'].items())] for aux in auxs]
+        dd = loop_onia.pwave_dipole_dipole(matrix_element, info, self.get_amp_to_jamp_map)
+        naux = max([len(a) for a in auxs] + [1])
+        nlinks = max([len(l) for l in links] + [1])
+        ndd = max(len(dd), 1)
+        zero = (0, 0)
+        zmat = [[zero] * nborn for _ in range(nborn)]
+
+        def col(values):
+            return ','.join(loop_onia.fortran_double(v) for v in values)
+
+        def mats(matrices, part):
+            # column-major: (I, J, slot)
+            return col(m[i][j][part] for m in matrices for j in range(nborn) for i in range(nborn))
+
+        def padded(rows, size, fill):
+            return [r + [fill] * (size - len(r)) for r in rows]
+
+        lines = ['C     Two P-wave bound states: the S-wave states of the soft current of',
+                 'C     each state and their colour (index 1: ONIA_IPW, 2: ONIA_IPW2), and',
+                 'C     the colour of the dipole-dipole exchange between the two',
+                 'C     (ONIA_PW_SOFT_POLE)',
+                 'INTEGER PWS_NAUXMAX, PWS_NLINKSMAX, PDD_N, PDD_NMAX',
+                 'PARAMETER (PWS_NAUXMAX=%d, PWS_NLINKSMAX=%d, PDD_N=%d, PDD_NMAX=%d)'
+                 % (naux, nlinks, len(dd), ndd),
+                 'INTEGER PWS_NAUX(2), PWS_NLINKS(2)',
+                 'CHARACTER*2 PWS_LABEL(PWS_NAUXMAX,2)',
+                 'REAL*8 PWS_CNORM(PWS_NAUXMAX,2)',
+                 'REAL*8 PWS_CS_RE(%d,%d,PWS_NAUXMAX,2), PWS_CS_IM(%d,%d,PWS_NAUXMAX,2)'
+                 % (nborn, nborn, nborn, nborn),
+                 'INTEGER PWS_AUX(PWS_NLINKSMAX,2), PWS_LEG(PWS_NLINKSMAX,2)',
+                 'INTEGER PWS_KIND(PWS_NLINKSMAX,2)',
+                 'REAL*8 PWS_X_RE(%d,%d,PWS_NLINKSMAX,2), PWS_X_IM(%d,%d,PWS_NLINKSMAX,2)'
+                 % (nborn, nborn, nborn, nborn),
+                 'CHARACTER*2 PDD_LABEL1(PDD_NMAX), PDD_LABEL2(PDD_NMAX)',
+                 'INTEGER PDD_KIND1(PDD_NMAX), PDD_KIND2(PDD_NMAX)',
+                 'REAL*8 PDD_CNORM1(PDD_NMAX), PDD_CNORM2(PDD_NMAX)',
+                 'REAL*8 PDD_X_RE(%d,%d,PDD_NMAX), PDD_X_IM(%d,%d,PDD_NMAX)'
+                 % (nborn, nborn, nborn, nborn),
+                 'DATA PWS_NAUX/%s/' % ','.join('%d' % len(a) for a in auxs),
+                 'DATA PWS_NLINKS/%s/' % ','.join('%d' % len(l) for l in links)]
+        aux_rows = padded([list(a) for a in auxs], naux, None)
+        lines.append('DATA PWS_LABEL/%s/' % ','.join(
+            "'%s'" % (a['label'] if a else '  ') for row in aux_rows for a in row))
+        lines.append('DATA PWS_CNORM/%s/' % col(a['cnorm'] if a else 0 for row in aux_rows for a in row))
+        for part, name in ((0, 'RE'), (1, 'IM')):
+            lines.append('DATA PWS_CS_%s/%s/' % (name, mats(
+                [a['cs'] if a else zmat for row in aux_rows for a in row], part)))
+        link_rows = padded(links, nlinks, (0, 0, 0, zmat))
+        for field, name in ((0, 'AUX'), (1, 'LEG'), (2, 'KIND')):
+            lines.append('DATA PWS_%s/%s/' % (name, ','.join('%d' % l[field] for row in link_rows
+                                                            for l in row)))
+        for part, name in ((0, 'RE'), (1, 'IM')):
+            lines.append('DATA PWS_X_%s/%s/' % (name, mats([l[3] for row in link_rows for l in row],
+                                                          part)))
+        ddp = dd or [dict(label1='  ', label2='  ', kind1=0, kind2=0, cnorm1=0, cnorm2=0, x=zmat)]
+        lines.append('DATA PDD_LABEL1/%s/' % ','.join("'%s'" % d['label1'] for d in ddp))
+        lines.append('DATA PDD_LABEL2/%s/' % ','.join("'%s'" % d['label2'] for d in ddp))
+        lines.append('DATA PDD_KIND1/%s/' % ','.join('%d' % d['kind1'] for d in ddp))
+        lines.append('DATA PDD_KIND2/%s/' % ','.join('%d' % d['kind2'] for d in ddp))
+        lines.append('DATA PDD_CNORM1/%s/' % col(d['cnorm1'] for d in ddp))
+        lines.append('DATA PDD_CNORM2/%s/' % col(d['cnorm2'] for d in ddp))
+        for part, name in ((0, 'RE'), (1, 'IM')):
+            lines.append('DATA PDD_X_%s/%s/' % (name, mats([d['x'] for d in ddp], part)))
         writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
 
     def onia_public_entries(self, file, matrix_element):
@@ -2767,6 +2847,32 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         # rendered proof succeeds, every DP batch retains the ordinary call.
         self.finalize_dp_terminal_updates()
         self.write_onia_ep_files()
+        if 2 in getattr(self, 'onia_npwave', set()):
+            self.set_onia_pw2_code_model()
+
+    ONIA_PW2_CODE_MODEL = (
+        '# Two P-wave bound states: the loop polynomials of their derivatives can\n'
+        '# exceed the 2 GB of static data of the default x86-64 code model\n'
+        'ifeq ($(shell uname -m),x86_64)\n'
+        'FFLAGS += -mcmodel=medium\n'
+        'endif\n')
+
+    def set_onia_pw2_code_model(self):
+        """The subprocesses of two P-wave bound states are built with the
+        medium code model on x86-64: their loop wavefunctions and those of
+        their derivatives (four polynomials of rank R+2 per wavefunction, in
+        double and in quadruple precision) can exceed 2 GB of static data,
+        e.g. for g g > chic0 chic0."""
+        path = pjoin(self.dir_path, 'SubProcesses', 'makefile')
+        with open(path) as stream:
+            text = stream.read()
+        old = 'include $(ROOT)/Source/make_opts\n'
+        if self.ONIA_PW2_CODE_MODEL in text:
+            return
+        if text.count(old) != 1:
+            raise MadGraph5Error('Unexpected SubProcesses makefile')
+        with open(path, 'w') as stream:
+            stream.write(text.replace(old, old + self.ONIA_PW2_CODE_MODEL))
 
     def write_onia_ep_files(self):
         """The extended-precision passes of the processes with a P-wave bound
