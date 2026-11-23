@@ -76,8 +76,10 @@ class GenerationControl:
 
     MENU_TIMEOUT = 60
 
-    def __init__(self, event_generator, run_path):
+    def __init__(self, event_generator, run_path, pretty=False):
         self.event_generator = event_generator
+        # log lines would break the progress boxes and the menu
+        self.pretty = pretty
         self.control_path = os.path.join(run_path, "control")
         self.armed = False
         self.installed = False
@@ -154,12 +156,15 @@ class GenerationControl:
     def set_events(self, count):
         self.event_generator.set_target_count(count)
         self.pending_events = count
-        logger.info("requested events set to %d (from the end of the running batches)", count)
+        if not self.pretty:
+            logger.info("requested events set to %d (from the end of the running batches)",
+                        count)
 
     def set_threads(self, count):
         self.event_generator.set_thread_count(count)
         self.pending_threads = count
-        logger.info("CPU threads set to %d (from the end of the running batches)", count)
+        if not self.pretty:
+            logger.info("CPU threads set to %d (from the end of the running batches)", count)
 
     def run_control_file(self):
         with open(self.control_path) as f:
@@ -2515,7 +2520,8 @@ class MadgraphProcess:
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
-        with GenerationControl(self.event_generator, self.run_path) as control:
+        pretty = self.event_generator_config.verbosity == ms.Verbosity.pretty
+        with GenerationControl(self.event_generator, self.run_path, pretty) as control:
             control.armed = True
             self.event_generator.generate()
             control.armed = False
