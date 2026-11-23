@@ -991,8 +991,8 @@ jobs:
   # On the scheduled run the heptools rebuild chain is skipped (the *_cache jobs
   # are guarded with github.event_name != 'schedule'). Restore the combined
   # heptools cache here so its 7-day eviction timer is reset and it stays warm
-  # without recompiling anything. ufo/numpy/root/delphes already keep themselves
-  # warm via their own restores on the scheduled run.
+  # without recompiling anything. ufo/numpy/root/delphes/madtrex already keep
+  # themselves warm via their own restores on the scheduled run.
   keep-warm-heptools:
     if: github.event_name == 'schedule'
     runs-on: ${{ matrix.os }}
@@ -1191,3 +1191,83 @@ jobs:
          with:
            path: ~/.cache/Delphes
            key: delphes-${{ env.CACHE_KEY }}-${{ github.run_id }}
+
+  # ---------------------------------------------------------------------------
+  # MadtRex install prefix (madtrex/install), read by the
+  # acceptancetest_mg7_madtrex job of acceptancetest_mg7.yml. Unlike the caches
+  # above its key is content-addressed (hash of the madtrex and madspace
+  # sources), not generation-suffixed: the same sources always give the same
+  # build, so an exact-key restore is both the "already cached?" test and the
+  # keep-warm touch on the scheduled run, and a rebuild only happens on a real
+  # miss (new sources on main, or eviction).
+  #
+  # Main only, whatever the trigger, like root_cache/delphes_cache: the
+  # acceptance job saves it on a main push only too, so no branch or PR ever
+  # writes a madtrex entry. A PR whose madtrex/madspace sources equal main's
+  # restores this one (a PR can read its base branch's caches).
+  #
+  # The madspace install it is built against comes from the build_madspace
+  # action, which restores (and so keeps warm) main's madspace entry, or
+  # rebuilds and saves it on a miss.
+  # ---------------------------------------------------------------------------
+  madtrex_cache:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      # Must match the key of acceptancetest_mg7.yml (acceptancetest_mg7_madtrex)
+      # exactly. Computed before anything is built, so no build tree can leak
+      # into the madspace/** hash; madspace/install is excluded as it is there.
+      - name: madtrex cache key
+        run: |
+          echo "MADTREX_KEY=madtrex-${{ runner.os }}-py$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')-${{ hashFiles('madtrex/**', 'madspace/**', '!madspace/install/**') }}" >> $GITHUB_ENV
+
+      - name: Restore (touch) the madtrex install
+        id: cache-madtrex
+        uses: actions/cache/restore@v5
+        with:
+          path: madtrex/install
+          key: ${{ env.MADTREX_KEY }}
+
+      - name: Build (or restore) madspace
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        uses: ./.github/actions/build_madspace
+
+      - name: Put madspace on PYTHONPATH
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE/madspace/install:$PYTHONPATH" >> "$GITHUB_ENV"
+
+      # numpy from the pip cache, as in the acceptance job, so install.py finds
+      # it importable and does not put its own copy into madtrex/install.
+      - name: Restore the pip cache (numpy)
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        uses: ./.github/actions/restore-pip-cache
+
+      - name: Install madtrex
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          python3 madtrex/install.py --yes -j 4
+
+      # Check the result with the same tests MadGraph uses to accept an
+      # installed madtrex before publishing it (the acceptance tests skip, and
+      # so fail, without a usable one).
+      - name: Verify madtrex landed in the install prefix
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        run: |
+          cd $GITHUB_WORKSPACE
+          python3 - <<'EOF'
+          from madgraph.various import reweight_backend as rb
+          assert rb.madtrex_is_installed(), 'no madtrex/install/madtrex'
+          problem = rb.madtrex_build_problem()
+          assert not problem, problem
+          print('madtrex install OK')
+          EOF
+
+      - name: Save the madtrex install
+        if: steps.cache-madtrex.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: madtrex/install
+          key: ${{ env.MADTREX_KEY }}

@@ -714,6 +714,10 @@ impl FastEngine {
                 &mut self.statuses,
             )
             .map_err(error)?;
+        // Taken after a successful evaluation only, which suffices: NinjaRS's
+        // `FastAmplitude::evaluate` forgets the thread's earlier records on
+        // entry (`clear_instabilities`), so those of a failed evaluation
+        // never reach the next one.
         let records = super::lane_status::fast_instabilities(lanes);
         Ok(self
             .statuses

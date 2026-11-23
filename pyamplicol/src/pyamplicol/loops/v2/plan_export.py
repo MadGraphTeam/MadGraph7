@@ -2197,6 +2197,11 @@ class NativeExecutor:
     Born-interfered slice refuses a route.
     """
 
+    # The always-on report of the last native call; None before the first
+    # one (present from the start, so that a reader attached before the
+    # first call, ``runtime.virtual.collected_stage_seconds``, sees it).
+    last_report: Any = None
+
     def __init__(
         self,
         slice_: Any,

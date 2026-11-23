@@ -91,4 +91,3 @@ runs:
           NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 NNPDF40_nlo_as_01180_nf_4 \
           NNPDF40_nlo_as_01180_qed cteq6l1 NNPDF23_nlo_as_0118_qed
       shell: bash
-      shell: bash

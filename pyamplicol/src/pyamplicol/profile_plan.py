@@ -388,6 +388,8 @@ def lower_bound(
     stability_workers: int | None = None,
     start: bool = False,
     runtime: bool = True,
+    binary64: bool = True,
+    extra: int = 0,
 ) -> float:
     """A true lower bound of a backend's minimal profile from what is known
     (``Known``; nothing known: 0), valid whenever it is taken: with
@@ -405,8 +407,13 @@ def lower_bound(
     at least one binary64 point, the cold one for the first point of each
     worker, at most ``STABILITY_MINIMUM`` of them, where the workers leave a
     dear stream cold, above ``MEASURE_REPEAT_SECONDS``); with ``start`` the
-    start-up. A binary64 point is the cheaper of the known point and chunk
-    costs."""
+    start-up. ``binary64``: binary64's runtime calls and stability points
+    run (False: not a listed precision); ``extra``: the other measured
+    precisions' streams (``--measured-precisions``), each at least two
+    binary64 points in the runtime timing (its measuring call and one timed
+    call, a wider carrier costing at least the binary64 pass) and one
+    binary64 point per stability point. A binary64 point is the cheaper of
+    the known point and chunk costs."""
 
     points = [x for x in (known.chunk, known.point) if x is not None]
     point = min(points) if points else 0.0
@@ -414,7 +421,9 @@ def lower_bound(
     if runtime:
         call = lanes * known.chunk if known.chunk is not None else point
         warm = 0.0 if known.warm_entry else point
-        seconds += call + (known.warm if known.warm is not None else warm)
+        if binary64:
+            seconds += call + (known.warm if known.warm is not None else warm)
+        seconds += extra * 2 * point
         if reference:
             # Through the entry the cold point never runs (m-4).
             if known.reference_entry:
@@ -433,9 +442,10 @@ def lower_bound(
         mean = (
             colds * stream + (STABILITY_MINIMUM - colds) * point
         ) / STABILITY_MINIMUM
+        checked = (int(binary64) + extra) * point
         seconds += max(
             stability_wall(
-                [Costs(point, None, point, mean, 0.0)], STABILITY_MINIMUM, workers
+                [Costs(point, None, checked, mean, 0.0)], STABILITY_MINIMUM, workers
             ),
             stream,
         )
@@ -449,6 +459,8 @@ def rule_b_bound(
     *,
     lanes: int,
     start: bool = False,
+    binary64: bool = True,
+    extra: int = 0,
 ) -> float:
     """What ``rule_b_drops`` leaves the ``decider``'s own lower bound:
     ``bound`` of the backends of ``known`` minus the other backends' lower
@@ -456,7 +468,9 @@ def rule_b_bound(
     re-calls rule B on its own numbers against it)."""
 
     return bound(len(known)) - sum(
-        lower_bound(k, lanes=lanes, reference=True, start=start)
+        lower_bound(
+            k, lanes=lanes, reference=True, start=start, binary64=binary64, extra=extra
+        )
         for name, k in known.items()
         if name != decider
     )
@@ -468,6 +482,8 @@ def rule_b_drops(
     *,
     lanes: int,
     start: bool = False,
+    binary64: bool = True,
+    extra: int = 0,
 ) -> bool:
     """Rule B, the runtime timing alone: its reference is
     left out, for every backend (all multipliers or none), when the sum of
@@ -478,7 +494,10 @@ def rule_b_drops(
     nothing un-drops it, and every bound was valid when it fired."""
 
     return bool(known) and sum(
-        lower_bound(k, lanes=lanes, reference=True, start=start) for k in known.values()
+        lower_bound(
+            k, lanes=lanes, reference=True, start=start, binary64=binary64, extra=extra
+        )
+        for k in known.values()
     ) > bound(len(known))
 
 
@@ -492,6 +511,8 @@ def rule_a_drops(
     stability_workers: int | None = None,
     start: bool = False,
     runtime: bool = True,
+    binary64: bool = True,
+    extra: int = 0,
 ) -> bool:
     """Rule A: the other backends of ``known`` are left out
     when a lower bound of the ``default`` backend's minimum for everything
@@ -511,6 +532,8 @@ def rule_a_drops(
         stability_workers=stability_workers,
         start=start,
         runtime=runtime,
+        binary64=binary64,
+        extra=extra,
     )
     return alone > bound(1)
 
