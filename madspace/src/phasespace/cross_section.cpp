@@ -14,7 +14,8 @@ DifferentialCrossSection::DifferentialCrossSection(
     bool decay,
     bool return_matrix_element,
     const std::optional<EvaFlux>& eva,
-    const nested_vector3<me_int_t>& eva_helicities
+    const nested_vector3<me_int_t>& eva_helicities,
+    const std::vector<double>& incoming_masses
 ) :
     FunctionGenerator(
         "DifferentialCrossSection",
@@ -126,6 +127,26 @@ DifferentialCrossSection::DifferentialCrossSection(
         }
         _eva_tables = EvaLegTables(eva.value(), pid_options, eva_helicities);
     }
+    if (std::any_of(incoming_masses.begin(), incoming_masses.end(), [](double m) {
+            return m != 0.;
+        })) {
+        if (decay || incoming_masses.size() != 2) {
+            throw std::invalid_argument(
+                "incoming_masses are the masses of the two incoming particles of a "
+                "collision"
+            );
+        }
+        if (!input_momentum_fraction) {
+            // momenta_to_x1x2 reads x off the energies of massless beams
+            throw std::invalid_argument(
+                "massive incoming particles need input momentum fractions"
+            );
+        }
+        // a mass of the param card can be negative
+        _incoming_masses = {
+            std::abs(incoming_masses.at(0)), std::abs(incoming_masses.at(1))
+        };
+    }
 }
 
 NamedVector<Value> DifferentialCrossSection::build_function_impl(
@@ -232,6 +253,16 @@ NamedVector<Value> DifferentialCrossSection::build_function_impl(
         // dGamma = |M|^2 dPhi_n / (2 M), in GeV; no GeV^-2 -> pb conversion
         // since a width is not a cross section.
         me_result.at(me_index) = fb.mul(me_result.at(me_index), 1. / (2. * _e_cm));
+    } else if (!_incoming_masses.empty()) {
+        me_result.at(me_index) = fb.diff_cross_section_massive(
+            x1x2.at(0),
+            x1x2.at(1),
+            pdf_outputs.at(0),
+            pdf_outputs.at(1),
+            me_result.at(me_index),
+            _e_cm * _e_cm,
+            _incoming_masses
+        );
     } else {
         me_result.at(me_index) = fb.diff_cross_section(
             x1x2.at(0),

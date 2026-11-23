@@ -725,6 +725,23 @@ com_p_in:
       desc: "incoming momentum along -z"
   desc: "Builds the two incoming momenta for a given center-of-mass energy."
 
+com_p_in_massive:
+  inputs:
+    - name: e_cm
+      type: [float]
+      desc: "center-of-mass energy"
+    - name: masses
+      type: [float, single, 2]
+      desc: "masses of the two incoming particles"
+  outputs:
+    - name: p1
+      type: [float, 4]
+      desc: "incoming momentum along +z"
+    - name: p2
+      type: [float, 4]
+      desc: "incoming momentum along -z"
+  desc: "`com_p_in` for massive incoming particles: the two incoming momenta in their center-of-mass frame on their mass shells, as madevent's mom2cx (genps.f). Below the threshold (m1 + m2)^2 they are at rest. See @ref PhaseSpaceMapping."
+
 incoming_on_shell:
   inputs:
     - name: p_ext
@@ -732,16 +749,15 @@ incoming_on_shell:
       desc: "external momenta, the two incoming ones first, along the beam axis"
     - name: masses
       type: [float, single, 2]
-      desc: "masses of the two incoming particles"
+      desc: "masses to put the two incoming particles on"
   outputs:
     - name: p_out
       type: [float, n, 4]
-      desc: "the same momenta with the incoming ones on their mass shell"
-    - name: flux_ratio
+      desc: "the same momenta with the incoming ones on these mass shells"
+    - name: above_threshold
       type: [float]
-      desc: "s_hat / sqrt(lambda(s_hat, m1^2, m2^2)), zero below threshold"
-  vectorized: False
-  desc: "Puts the two incoming momenta on their mass shell, with the same sum (so the same s_hat and rapidity) and the same directions, and returns the ratio of the massive flux 1/(2 sqrt(lambda)) to the massless 1/(2 s_hat), as madevent's genps.f has them for massive partons. Below the threshold (m1 + m2)^2 the momenta are unchanged and the ratio is zero."
+      desc: "1 for s > (m1 + m2)^2, 0 otherwise"
+  desc: "Puts the two incoming momenta on the mass shells `masses`, along the beam axis, with the same sum (so the same s and rapidity) and each in the direction it had in the rest frame of the pair, as madevent's mom2cx builds massive incoming particles (genps.f). Built in light-cone components, so that the momenta keep their relative precision at any rapidity. With masses 0 it turns a massive pair back into the massless one with the same sum. See @ref PhaseSpaceMapping."
 
 r_to_x1x2:
   inputs:
@@ -912,6 +928,35 @@ diff_cross_section:
       type: [float]
       desc: "differential cross section"
   desc: "Differential cross section in pb: matrix_element * pdf1 * pdf2 / (2 e_cm2 x1^2 x2^2), with the unit conversion from GeV^-2. See @ref DifferentialCrossSection."
+
+diff_cross_section_massive:
+  inputs:
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: pdf1
+      type: [float]
+      desc: "PDF value for beam 1"
+    - name: pdf2
+      type: [float]
+      desc: "PDF value for beam 2"
+    - name: matrix_element
+      type: [float]
+      desc: "matrix element value"
+    - name: e_cm2
+      type: [float, single]
+      desc: "squared center-of-mass energy"
+    - name: masses
+      type: [float, single, 2]
+      desc: "masses of the two incoming particles"
+  outputs:
+    - name: result
+      type: [float]
+      desc: "differential cross section"
+  desc: "`diff_cross_section` with massive incoming particles: the flux 1/(2 sqrt(lambda(s_hat, m1^2, m2^2))), s_hat = x1 x2 e_cm2, in place of 1/(2 s_hat), zero at and below the threshold (m1 + m2)^2. See @ref DifferentialCrossSection."
 
 two_body_decay_com:
   inputs:
@@ -1394,6 +1439,38 @@ double_t_scattering:
       desc: "Jacobian of the mapping"
   desc: "Scattering step with two t-channel momentum transfers. Building block of @ref DoubleT."
 
+double_t_scattering_massive:
+  inputs:
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuthal angle"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: t2_abs
+      type: [float]
+      desc: "absolute value of the second momentum transfer"
+    - name: m1
+      type: [float]
+      desc: "mass of the outgoing particle"
+  outputs:
+    - name: p1
+      type: [float, 4]
+      desc: "first outgoing momentum"
+    - name: p2
+      type: [float, 4]
+      desc: "second outgoing momentum"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "`double_t_scattering` off massive beams, with the Jacobian pi / (2 sqrt(lambda(s, ma^2, mb^2))). Building block of @ref DoubleT."
+
 double_t_scattering_inverse:
   inputs:
     - name: p1
@@ -1416,6 +1493,29 @@ double_t_scattering_inverse:
       type: [float]
       desc: "Jacobian of the mapping"
   desc: "Inverse of `double_t_scattering`. Building block of @ref DoubleT."
+
+double_t_scattering_inverse_massive:
+  inputs:
+    - name: p1
+      type: [float, 4]
+      desc: "first outgoing momentum"
+    - name: p2
+      type: [float, 4]
+      desc: "second outgoing momentum"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+  outputs:
+    - name: r_phi
+      type: [float]
+      desc: "random number for the azimuthal angle"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `double_t_scattering_massive`. Building block of @ref DoubleT."
 
 three_body_decay_com:
   inputs:
@@ -1797,6 +1897,56 @@ t1_rapidity_clamp_doublet:
       desc: "narrowed upper bound of |t1|"
   desc: "Narrows |t1| of the double-t central block to the values that leave some |t2| for the rapidity bounds of both outgoing momenta. Building block of @ref DoubleT."
 
+t1_rapidity_clamp_doublet_massive:
+  inputs:
+    - name: t1_min
+      type: [float]
+      desc: "lower bound of |t1|"
+    - name: t1_max
+      type: [float]
+      desc: "upper bound of |t1|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the single outgoing particle p1"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the recoil system"
+    - name: etmin_1
+      type: [float]
+      desc: "lower bound on the transverse energy of p1 (0 for none)"
+    - name: etmin_2
+      type: [float]
+      desc: "lower bound on the transverse energy of the recoil p2 (0 for none)"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float, single]
+      desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
+    - name: y_max2
+      type: [float, single]
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
+  outputs:
+    - name: t1_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t1|"
+    - name: t1_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t1|"
+  desc: "`t1_rapidity_clamp_doublet` with the kinematics of massive beams. Building block of @ref DoubleT."
+
 t2_rapidity_clamp_doublet:
   inputs:
     - name: t2_min
@@ -1841,6 +1991,50 @@ t2_rapidity_clamp_doublet:
       desc: "narrowed upper bound of |t2|"
   desc: "Narrows |t2| of the double-t central block, at fixed |t1|, to the values for which both outgoing momenta can satisfy their rapidity bounds. Building block of @ref DoubleT."
 
+t2_rapidity_clamp_doublet_massive:
+  inputs:
+    - name: t2_min
+      type: [float]
+      desc: "lower bound of |t2|"
+    - name: t2_max
+      type: [float]
+      desc: "upper bound of |t2|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the single outgoing particle p1"
+    - name: t1_abs
+      type: [float]
+      desc: "the sampled |t1| = -(pa - p1)^2"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float, single]
+      desc: "bound on the absolute lab rapidity of p1, negative or 100 and above for none"
+    - name: y_max2
+      type: [float, single]
+      desc: "bound on the absolute lab rapidity of the recoil p2, negative or 100 and above for none"
+  outputs:
+    - name: t2_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t2|"
+    - name: t2_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t2|"
+  desc: "`t2_rapidity_clamp_doublet` with the kinematics of massive beams. Building block of @ref DoubleT."
+
 t_inv_value_and_min_max_cut:
   inputs:
     - name: pa
@@ -1873,6 +2067,160 @@ t_inv_value_and_min_max_cut:
       desc: "upper limit of the momentum transfer"
   desc: "Momentum transfer and its cut-restricted limits for a given final state. Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
 
+t_inv_min_max_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing particle"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing particle"
+  outputs:
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the momentum transfer"
+  desc: "Range of the momentum transfer |t| of a 2 -> 2 scattering with a massive beam among the incoming momenta: as `t_inv_min_max`, without its clamp at |t| = 0, since t > 0 is reached near the forward direction. Building block of @ref TwoToTwoParticleScattering."
+
+t_inv_value_and_min_max_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: p1
+      type: [float, 4]
+      desc: "first outgoing momentum"
+    - name: p2
+      type: [float, 4]
+      desc: "second outgoing momentum"
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc: "absolute value of the momentum transfer"
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the momentum transfer"
+  desc: "`t_inv_value_and_min_max` with a massive beam among the incoming momenta (the range of `t_inv_min_max_massive`). Building block of @ref TwoToTwoParticleScattering."
+
+t_inv_min_max_cut_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing particle"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing particle"
+    - name: etmin_1
+      type: [float]
+      desc: "minimum transverse energy of the first outgoing particle"
+    - name: etmin_2
+      type: [float]
+      desc: "minimum transverse energy of the second outgoing particle"
+  outputs:
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the momentum transfer"
+  desc: "`t_inv_min_max_cut` with a massive beam among the incoming momenta: the range of `t_inv_min_max_massive`, narrowed by the ETmin bounds for a massive pa where it lies along the beam axis. Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
+
+t_inv_value_and_min_max_cut_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: p1
+      type: [float, 4]
+      desc: "first outgoing momentum"
+    - name: p2
+      type: [float, 4]
+      desc: "second outgoing momentum"
+    - name: etmin_1
+      type: [float]
+      desc: "minimum transverse energy of the first outgoing particle"
+    - name: etmin_2
+      type: [float]
+      desc: "minimum transverse energy of the second outgoing particle"
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc: "absolute value of the momentum transfer"
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the momentum transfer"
+  desc: "`t_inv_value_and_min_max_cut` with a massive beam among the incoming momenta (the range of `t_inv_min_max_cut_massive`). Building block of @ref TwoToTwoParticleScattering; see @ref Cuts."
+
+t_rapidity_clamp_massive:
+  inputs:
+    - name: t_min
+      type: [float]
+      desc: "lower bound of |t|"
+    - name: t_max
+      type: [float]
+      desc: "upper bound of |t|"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum (a beam, in the partonic centre-of-mass frame)"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum (the other beam)"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing momentum (the recoil)"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing momentum (the peeled particle)"
+    - name: x1
+      type: [float]
+      desc: "momentum fraction of beam 1"
+    - name: x2
+      type: [float]
+      desc: "momentum fraction of beam 2"
+    - name: beam_sign
+      type: [float, single]
+      desc: "+1 if pa is beam 1, -1 if it is beam 2"
+    - name: y_max1
+      type: [float, single]
+      desc: "bound on the absolute lab rapidity of the recoil, negative or 100 and above for none"
+    - name: y_max2
+      type: [float, single]
+      desc: "bound on the absolute lab rapidity of the peeled particle, negative or 100 and above for none"
+  outputs:
+    - name: t_min_out
+      type: [float]
+      desc: "narrowed lower bound of |t|"
+    - name: t_max_out
+      type: [float]
+      desc: "narrowed upper bound of |t|"
+  desc: "`t_rapidity_clamp` for massive beams: narrows the |t| range of a beam-beam 2 -> 2 scattering to the values for which both outgoing momenta can satisfy their rapidity bounds, with the kinematics of massive beams in their rest frame. Building block of @ref TwoToTwoParticleScattering."
+
 t1_inv_min_max_doublet:
   inputs:
     - name: pa
@@ -1901,6 +2249,35 @@ t1_inv_min_max_doublet:
       type: [float]
       desc: "upper limit of the first momentum transfer"
   desc: "Limits of the first momentum transfer in a double-t configuration. Building block of @ref DoubleT."
+
+t1_inv_min_max_doublet_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: m1
+      type: [float]
+      desc: "mass of the outgoing particle"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the i-r system"
+    - name: etmin_i
+      type: [float]
+      desc: "minimum transverse energy of particle i"
+    - name: etmin_ir
+      type: [float]
+      desc: "minimum transverse energy of the i-r system"
+  outputs:
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the first momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the first momentum transfer"
+  desc: "`t1_inv_min_max_doublet` with massive beams: the range over every recoil mass from mir_min on, which reaches |t1| = -(ma - m1)^2 where p1 can move with the velocity of pa, narrowed by the ETmin bounds for massive beams. Building block of @ref DoubleT."
 
 t1_inv_value_and_min_max_doublet:
   inputs:
@@ -1937,6 +2314,41 @@ t1_inv_value_and_min_max_doublet:
       desc: "upper limit of the first momentum transfer"
   desc: "First momentum transfer and its limits in a double-t configuration. Building block of @ref DoubleT."
 
+t1_inv_value_and_min_max_doublet_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: p1
+      type: [float, 4]
+      desc: "outgoing momentum"
+    - name: m1
+      type: [float]
+      desc: "mass of the outgoing particle"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the i-r system"
+    - name: etmin_i
+      type: [float]
+      desc: "minimum transverse energy of particle i"
+    - name: etmin_ir
+      type: [float]
+      desc: "minimum transverse energy of the i-r system"
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the first momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the first momentum transfer"
+  desc: "`t1_inv_value_and_min_max_doublet` with massive beams (the range of `t1_inv_min_max_doublet_massive`). Building block of @ref DoubleT."
+
 t2_inv_min_max_doublet:
   inputs:
     - name: pa
@@ -1968,6 +2380,38 @@ t2_inv_min_max_doublet:
       type: [float]
       desc: "upper limit of the second momentum transfer"
   desc: "Limits of the second momentum transfer in a double-t configuration. Building block of @ref DoubleT."
+
+t2_inv_min_max_doublet_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: m1
+      type: [float]
+      desc: "mass of the outgoing particle"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the i-r system"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: etmin_i
+      type: [float]
+      desc: "minimum transverse energy of particle i"
+    - name: etmin_ir
+      type: [float]
+      desc: "minimum transverse energy of the i-r system"
+  outputs:
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the second momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the second momentum transfer"
+  desc: "`t2_inv_min_max_doublet` with massive beams: |t2| at fixed |t1| between the two values where p1 lies along the beam axis and at most the one where the recoil has the mass mir_min, narrowed by the ETmin bounds for massive beams. Building block of @ref DoubleT."
 
 t2_inv_value_and_min_max_doublet:
   inputs:
@@ -2006,6 +2450,44 @@ t2_inv_value_and_min_max_doublet:
       type: [float]
       desc: "upper limit of the second momentum transfer"
   desc: "Second momentum transfer and its limits in a double-t configuration. Building block of @ref DoubleT."
+
+t2_inv_value_and_min_max_doublet_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: pb
+      type: [float, 4]
+      desc: "second incoming momentum"
+    - name: p1
+      type: [float, 4]
+      desc: "outgoing momentum"
+    - name: m1
+      type: [float]
+      desc: "mass of the outgoing particle"
+    - name: mir_min
+      type: [float]
+      desc: "minimum invariant mass of the i-r system"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: etmin_i
+      type: [float]
+      desc: "minimum transverse energy of particle i"
+    - name: etmin_ir
+      type: [float]
+      desc: "minimum transverse energy of the i-r system"
+  outputs:
+    - name: t_abs
+      type: [float]
+      desc: "absolute value of the second momentum transfer"
+    - name: t_min
+      type: [float]
+      desc: "lower limit of the second momentum transfer"
+    - name: t_max
+      type: [float]
+      desc: "upper limit of the second momentum transfer"
+  desc: "`t2_inv_value_and_min_max_doublet` with massive beams (the range of `t2_inv_min_max_doublet_massive`). Building block of @ref DoubleT."
 
 s23_min_max:
   inputs:
@@ -2106,6 +2588,47 @@ s23_min_max_cut:
       desc: "upper limit of the 2-3 invariant mass squared"
   desc: "Cut-restricted limits of the 2-3 invariant mass squared. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
 
+s23_min_max_cut_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: p12
+      type: [float, 4]
+      desc: "momentum of the system of the first and second outgoing particles"
+    - name: p3
+      type: [float, 4]
+      desc: "momentum of the third particle"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing particle"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing particle"
+    - name: etmin_1
+      type: [float]
+      desc: "minimum transverse energy of the first outgoing particle"
+    - name: etmin_2
+      type: [float]
+      desc: "minimum transverse energy of the second outgoing particle"
+    - name: drcut
+      type: [float]
+      desc: "minimum angular separation between the outgoing particles"
+    - name: s23_min_cut
+      type: [float]
+      desc: "explicit lower cut on the 2-3 invariant mass squared"
+  outputs:
+    - name: s23_min
+      type: [float]
+      desc: "lower limit of the 2-3 invariant mass squared"
+    - name: s23_max
+      type: [float]
+      desc: "upper limit of the 2-3 invariant mass squared"
+  desc: "`s23_min_max_cut` with a massive pa: the transverse-energy floor of the recoil that bounds s23 from above takes the mass of pa into account. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
+
 s23_value_and_min_max_cut:
   inputs:
     - name: pa
@@ -2146,6 +2669,67 @@ s23_value_and_min_max_cut:
       type: [float]
       desc: "upper limit of the 2-3 invariant mass squared"
   desc: "The 2-3 invariant mass squared and its cut-restricted limits. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
+
+s23_value_and_min_max_cut_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: p3
+      type: [float, 4]
+      desc: "momentum of the third particle"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: p1
+      type: [float, 4]
+      desc: "first outgoing momentum"
+    - name: p2
+      type: [float, 4]
+      desc: "second outgoing momentum"
+    - name: etmin_1
+      type: [float]
+      desc: "minimum transverse energy of the first outgoing particle"
+    - name: etmin_2
+      type: [float]
+      desc: "minimum transverse energy of the second outgoing particle"
+    - name: drcut
+      type: [float]
+      desc: "minimum angular separation between the outgoing particles"
+    - name: s23_min_cut
+      type: [float]
+      desc: "explicit lower cut on the 2-3 invariant mass squared"
+  outputs:
+    - name: s_23
+      type: [float]
+      desc: "the 2-3 invariant mass squared"
+    - name: s23_min
+      type: [float]
+      desc: "lower limit of the 2-3 invariant mass squared"
+    - name: s23_max
+      type: [float]
+      desc: "upper limit of the 2-3 invariant mass squared"
+  desc: "`s23_value_and_min_max_cut` with a massive pa (the range of `s23_min_max_cut_massive`). Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
+
+recoil_v_min_massive:
+  inputs:
+    - name: pa
+      type: [float, 4]
+      desc: "incoming beam on the side of the two outgoing particles"
+    - name: k
+      type: [float, 4]
+      desc: "the other incoming beam, the recoil of the step"
+    - name: m2_2
+      type: [float]
+      desc: "squared mass of the second outgoing particle p2"
+    - name: etmin_2
+      type: [float]
+      desc: "minimum transverse energy of p2"
+  outputs:
+    - name: v_min
+      type: [float]
+      desc: "lower bound on v = -(p2 - k)^2"
+  desc: "Lower bound on v = -(p2 - k)^2 of the 2 -> 3 step with an incoming recoil off a massive beam k, from the transverse-energy floor of p2. Building block of @ref TwoToThreeParticleScattering; see @ref Cuts."
 
 s23_position:
   inputs:
@@ -3096,6 +3680,32 @@ chili_forward:
       desc: "Jacobian of the mapping"
   desc: "Chili hadron-collider mapping from the unit hypercube to external momenta. Building block of @ref ChiliMapping."
 
+chili_forward_fixed:
+  inputs:
+    - name: r
+      type: [float, 3n-4]
+      desc: "random numbers, one per phase-space degree of freedom"
+    - name: e_cm
+      type: [float]
+      desc: "center-of-mass energy of the beams"
+    - name: m_out
+      type: [float, n]
+      desc: "mass of each final-state particle"
+    - name: pt_min
+      type: [float, single, n]
+      desc: "minimum transverse momentum per final-state particle (the last two entries are not used)"
+    - name: y_max
+      type: [float, single, n]
+      desc: "maximum rapidity per final-state particle"
+  outputs:
+    - name: p_ext
+      type: [float, n+2, 4]
+      desc: "external momenta, incoming particles first"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Chili with fixed beams (lepton colliders): the first n - 2 outgoing momenta as in `chili_forward`, the last two as the two-body decay of what is left of the beams' momentum, in its rest frame. Building block of @ref ChiliMapping."
+
 chili_inverse:
   inputs:
     - name: p_ext
@@ -3121,6 +3731,32 @@ chili_inverse:
       type: [float]
       desc: "Jacobian of the mapping"
   desc: "Inverse of `chili_forward`. Building block of @ref ChiliMapping."
+
+chili_inverse_fixed:
+  inputs:
+    - name: p_ext
+      type: [float, n+2, 4]
+      desc: "external momenta, incoming particles first"
+    - name: e_cm
+      type: [float]
+      desc: "center-of-mass energy of the beams"
+    - name: m_out
+      type: [float, n]
+      desc: "mass of each final-state particle"
+    - name: pt_min
+      type: [float, single, n]
+      desc: "minimum transverse momentum per final-state particle (the last two entries are not used)"
+    - name: y_max
+      type: [float, single, n]
+      desc: "maximum rapidity per final-state particle"
+  outputs:
+    - name: r
+      type: [float, 3n-4]
+      desc: "random numbers, one per phase-space degree of freedom"
+    - name: det
+      type: [float]
+      desc: "Jacobian of the mapping"
+  desc: "Inverse of `chili_forward_fixed`. Building block of @ref ChiliMapping."
 
 ---
 title: Interface to ME and PDF

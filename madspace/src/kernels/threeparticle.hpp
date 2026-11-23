@@ -428,7 +428,17 @@ KERNELSPEC void kernel_s23_value_and_min_max(
 // the sampled s-channel mass s23 = (peeled + im1)^2 using the recoil's ETmin
 // floor (upper bound, smax) and the peeled particle's ETmin + dR cut (lower
 // bound, smin -- only for a massless peeled particle).
-template <typename T>
+//
+// The recoil floor is the least energy of the recoil p1 in the frame below at
+// fixed d = 2 pa.p1 = m1^2 + |t1| + ma^2 and transverse mass at least etmin_1.
+// With the light-cone components of p1 along the beam axis, q against pa and
+// q' along it, E1 = (q + q') / 2, q q' >= etmin_1^2 and d = pa_big q +
+// pa_small q'. E1 falls with q along that line, so its least value is at the
+// larger root of pa_big q^2 - d q + pa_small etmin_1^2 = 0,
+//   q = (d + sqrt(d^2 - 4 ma^2 etmin_1^2)) / (2 pa_big),
+// which for a massless pa (pa_big = 2 E_a, massive = false) is d / (2 E_a),
+// AmpliCol's floor.
+template <typename T, bool massive = false>
 KERNELSPEC Pair<FVal<T>, FVal<T>> s23_etmin_clamp(
     FVal<T> smn,
     FVal<T> smx,
@@ -456,9 +466,21 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_etmin_clamp(
     auto pim1_1 = sqrt(pim1[1] * pim1[1] + pim1[2] * pim1[2]);
     auto pib_0 = max((pib[0] * Eim1 - pib[3] * pzim1) / mT_im1, EPS);
     // Block-B recoil ET floor (t-dependent): invm(ir)-invm(ir+ib) = m1_2 + t1_abs.
-    auto denom = max(m1_2 + t1_abs, EPS);
-    auto etminir_b =
-        max(etmin_1, pib_0 * etmin_1 * etmin_1 / denom + denom / (4. * pib_0));
+    FVal<T> etminir_b = etmin_1;
+    if constexpr (massive) {
+        auto pib_z = (pib[3] * Eim1 - pib[0] * pzim1) / mT_im1;
+        auto pa_big = max(pib_0 + fabs(pib_z), EPS);
+        auto ma_2 = max(lsquare<T>(pib), 0.);
+        auto e1_2 = etmin_1 * etmin_1;
+        auto d = m1_2 + t1_abs + ma_2;
+        auto q =
+            max((d + sqrt(max(d * d - 4. * ma_2 * e1_2, 0.))) / (2. * pa_big), EPS);
+        etminir_b = max(etmin_1, 0.5 * (q + e1_2 / q));
+    } else {
+        auto denom = max(m1_2 + t1_abs, EPS);
+        etminir_b =
+            max(etmin_1, pib_0 * etmin_1 * etmin_1 / denom + denom / (4. * pib_0));
+    }
     // smax: the recoil's ETmin caps the s-channel mass from above.
     auto e_eff = piir_0 - etminir_b;
     auto disc = e_eff * e_eff - m2_2;
@@ -479,8 +501,8 @@ KERNELSPEC Pair<FVal<T>, FVal<T>> s23_etmin_clamp(
 // Clamp the s23 range against the lower bound s23_min_cut (minimum mass^2 of the
 // (2,3) system implied by the pt / m_inv_min / dR cuts, gen23's invm_min) and
 // the ETmin refinement of s23_etmin_clamp.
-template <typename T>
-KERNELSPEC void kernel_s23_min_max_cut(
+template <typename T, bool massive>
+KERNELSPEC void s23_min_max_cut_impl(
     FIn<T, 1> pa,
     FIn<T, 1> p12,
     FIn<T, 1> p3,
@@ -510,7 +532,7 @@ KERNELSPEC void kernel_s23_min_max_cut(
     smx = where(smx > smn, smx, smn + s23_min_width<T>(smn));
 
     // Block-B ETmin refinement: piir = p_12 (recoil system), pim1 = p3, pib = pa.
-    auto sb = s23_etmin_clamp<T>(
+    auto sb = s23_etmin_clamp<T, massive>(
         smn,
         smx,
         p_12,
@@ -530,7 +552,69 @@ KERNELSPEC void kernel_s23_min_max_cut(
 }
 
 template <typename T>
-KERNELSPEC void kernel_s23_value_and_min_max_cut(
+KERNELSPEC void kernel_s23_min_max_cut(
+    FIn<T, 1> pa,
+    FIn<T, 1> p12,
+    FIn<T, 1> p3,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> m1,
+    FIn<T, 0> m2,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    FIn<T, 0> drcut,
+    FIn<T, 0> s23_min_cut,
+    FOut<T, 0> s23_min,
+    FOut<T, 0> s23_max
+) {
+    s23_min_max_cut_impl<T, false>(
+        pa,
+        p12,
+        p3,
+        t1_abs,
+        m1,
+        m2,
+        etmin_1,
+        etmin_2,
+        drcut,
+        s23_min_cut,
+        s23_min,
+        s23_max
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_min_max_cut_massive(
+    FIn<T, 1> pa,
+    FIn<T, 1> p12,
+    FIn<T, 1> p3,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> m1,
+    FIn<T, 0> m2,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    FIn<T, 0> drcut,
+    FIn<T, 0> s23_min_cut,
+    FOut<T, 0> s23_min,
+    FOut<T, 0> s23_max
+) {
+    s23_min_max_cut_impl<T, true>(
+        pa,
+        p12,
+        p3,
+        t1_abs,
+        m1,
+        m2,
+        etmin_1,
+        etmin_2,
+        drcut,
+        s23_min_cut,
+        s23_min,
+        s23_max
+    );
+}
+
+template <typename T, bool massive>
+KERNELSPEC void s23_value_and_min_max_cut_impl(
     FIn<T, 1> pa,
     FIn<T, 1> p3,
     FIn<T, 0> t1_abs,
@@ -571,7 +655,7 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
 
     // Block-B ETmin refinement (must mirror the forward kernel exactly so the
     // sampled s23 range is identical and the round-trip stays invertible).
-    auto sb = s23_etmin_clamp<T>(
+    auto sb = s23_etmin_clamp<T, massive>(
         smn,
         smx,
         p_12,
@@ -589,6 +673,101 @@ KERNELSPEC void kernel_s23_value_and_min_max_cut(
     s23_min = sb.first;
     s23_max = sb.second;
     s_23 = lsquare<T>(p_23);
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_value_and_min_max_cut(
+    FIn<T, 1> pa,
+    FIn<T, 1> p3,
+    FIn<T, 0> t1_abs,
+    FIn<T, 1> p1,
+    FIn<T, 1> p2,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    FIn<T, 0> drcut,
+    FIn<T, 0> s23_min_cut,
+    FOut<T, 0> s_23,
+    FOut<T, 0> s23_min,
+    FOut<T, 0> s23_max
+) {
+    s23_value_and_min_max_cut_impl<T, false>(
+        pa,
+        p3,
+        t1_abs,
+        p1,
+        p2,
+        etmin_1,
+        etmin_2,
+        drcut,
+        s23_min_cut,
+        s_23,
+        s23_min,
+        s23_max
+    );
+}
+
+template <typename T>
+KERNELSPEC void kernel_s23_value_and_min_max_cut_massive(
+    FIn<T, 1> pa,
+    FIn<T, 1> p3,
+    FIn<T, 0> t1_abs,
+    FIn<T, 1> p1,
+    FIn<T, 1> p2,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    FIn<T, 0> drcut,
+    FIn<T, 0> s23_min_cut,
+    FOut<T, 0> s_23,
+    FOut<T, 0> s23_min,
+    FOut<T, 0> s23_max
+) {
+    s23_value_and_min_max_cut_impl<T, true>(
+        pa,
+        p3,
+        t1_abs,
+        p1,
+        p2,
+        etmin_1,
+        etmin_2,
+        drcut,
+        s23_min_cut,
+        s_23,
+        s23_min,
+        s23_max
+    );
+}
+
+// Lower bound on v = -(p2 - k)^2 in the 2->3 step with an incoming recoil (see
+// TwoToThreeParticleScattering) off a massive beam k, against the other beam pa,
+// for a p2 of mass^2 m2_2 and transverse energy at least etmin_2. With the
+// light-cone components along k,
+//   v = k_big p2_small + k_small p2_big - m2^2 - mk^2,  p2_small = m_T^2 / p2_big,
+// and p2_big is at most what comes in along k, Q = k_big + pa_small. As a
+// function of p2_big, k_big e^2 / p2_big + k_small p2_big with e = etmin_2 is
+// least at p2_big = e k_big / mk, where it is 2 e mk, or else at Q. For
+// massless beams the bound is etmin_2^2 - m2^2, that of the massless step.
+template <typename T>
+KERNELSPEC void kernel_recoil_v_min_massive(
+    FIn<T, 1> pa, FIn<T, 1> k, FIn<T, 0> m2_2, FIn<T, 0> etmin_2, FOut<T, 0> v_min
+) {
+    auto p_a = load_mom<T>(pa), p_k = load_mom<T>(k);
+    auto sign = where(p_k[3] < 0., FVal<T>(-1.), FVal<T>(1.));
+    auto k_big = p_k[0] + fabs(p_k[3]);
+    auto mk_2 = max(lsquare<T>(p_k), 0.);
+    auto k_small = mk_2 / max(k_big, FVal<T>(EPS));
+    // pa against k: E - |p_z| as m^2 / (E + |p_z|)
+    auto pa_z = sign * p_a[3];
+    auto pa_small = where(
+        pa_z < 0.,
+        max(lsquare<T>(p_a), 0.) / max(p_a[0] - pa_z, FVal<T>(EPS)),
+        p_a[0] + pa_z
+    );
+    auto q = max(k_big + pa_small, FVal<T>(EPS));
+    FVal<T> e = etmin_2;
+    auto mk = sqrt(mk_2);
+    auto least =
+        where(e * k_big < q * mk, 2. * e * mk, k_big * e * e / q + k_small * q);
+    v_min = least - m2_2 - mk_2;
 }
 
 // Arcsine map of the s23 sampling variable.

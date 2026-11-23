@@ -37,6 +37,26 @@ namespace madspace {
  * @ref Topology and is used for the topology-free @ref TChannelMode::rambo and
  * @ref TChannelMode::chili modes.
  *
+ * Massive incoming particles of a collision (the incoming masses of the
+ * topology: W and Z beams, muons of a model with a muon mass, massive partons)
+ * are built on their mass shells in the partonic centre-of-mass frame
+ * (`com_p_in_massive`), as madevent's genps.f builds them (mom2cx). The
+ * t-channel chains of @ref TChannelMode::propagator and
+ * @ref TChannelMode::color_ordered scatter off them with the massive versions
+ * of their blocks, chosen when the graph is built. Chili, whose final state
+ * fixes the incoming momenta, is written for massless beams: it generates the
+ * final state against the massless pair with the same sum, which then goes on
+ * its mass shells (`incoming_on_shell`). With fixed beams (leptonic) and
+ * with dressed-lepton beams, whose split samples x1 and x2, chili builds the
+ * final state for fixed beams in the partonic frame (see @ref ChiliMapping),
+ * and massive ones are built directly. The n-body phase space depends on the
+ * incoming momenta only through their sum, so that leaves the Jacobian
+ * unchanged, and the inverse takes the massless pair back from the sum.
+ * Sampled s_hat starts at the threshold @f$(m_1 + m_2)^2@f$, and a weight
+ * below it (chili) is zero. The flux @f$1 / (2 \sqrt{\lambda(\hat s, m_1^2,
+ * m_2^2)})@f$ belongs to the cross section: see the `incoming_masses` of
+ * @ref DifferentialCrossSection.
+ *
  * `batch` is the leading batch dimension. `n_out` is the number of outgoing
  * particles.
  *
@@ -55,7 +75,7 @@ namespace madspace {
  *
  * **Outputs**
  * - `momenta` – `float`, shape `(batch, n_out + 2, 4)` – all momenta (incoming
- *   beams first, then outgoing).
+ *   beams first, on their mass shells, then outgoing).
  * - `x1` – `float`, shape `(batch,)` – first parton momentum fraction (1 for
  *   every event if `leptonic` and for a decay).
  * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction (1 for
@@ -259,12 +279,14 @@ public:
     double beam_rapidity() const { return _beam_rapidity; }
     /// Whether the mapping takes the `mirror_index` condition.
     bool mirror_beams() const { return _mirror_beams; }
-    /// Masses of the incoming particles. The mapping hands them out massless
-    /// (along the beams, at the sampled s_hat); @ref Integrand puts massive
-    /// ones on their mass shell, with the massive flux.
+    /// Masses of the incoming particles, on whose mass shells the mapping puts
+    /// them. A @ref DifferentialCrossSection of a collision with massive ones
+    /// needs the same `incoming_masses` for its flux.
     const std::vector<double>& incoming_masses() const {
         return _topology.incoming_masses();
     }
+    /// Whether this is a collision with a massive incoming particle.
+    bool massive_incoming() const { return _massive_incoming; }
     /// The cuts, applied to the lab-frame momenta.
     const Cuts& cuts() const { return _cuts; }
     /// True when the cuts exclude the whole region this mapping samples: a
@@ -316,6 +338,11 @@ private:
     bool _map_luminosity;
     double _lepton_power;
     bool _two_to_one;
+    // a collision with a massive incoming particle (see the class documentation)
+    bool _massive_incoming;
+    // massive incoming particles put on their mass shells after chili that
+    // reads x1 and x2 off its final state, which is written for massless beams
+    bool _project_incoming;
     // bound on the absolute rapidity of the partonic system, log(x1 / x2) / 2,
     // implied by the cuts; negative when they imply none
     double _y_max_lab = -1.;

@@ -445,5 +445,76 @@ KERNELSPEC void kernel_double_t_scattering_inverse(
     det = 2. * max(s, EPS) / PI;
 }
 
+// kernel_double_t_scattering for massive beams pa, pb. With the light-cone
+// components of beam_light_cone, ta = |t1| + ma^2 + m1^2, tb = |t2| + mb^2 + m1^2,
+// p1 in the rest frame of pa + pb with pa along +z has
+//   E1 +- pz1 = x_+-,  x_+ = (a_big tb - b_small ta) / root,
+//   x_- = (b_big ta - a_small tb) / root,  pt^2 = x_+ x_- - m1^2,
+// and d^3p1 / (2 E1) = dx_+ dx_- dphi / 4 = dt1 dt2 dphi / (4 root), so the
+// Jacobian is pi / (2 root) per unit of r_phi, with root = sqrt(lambda(s, ma^2,
+// mb^2)). For massless beams these are the formulas above.
+template <typename T>
+KERNELSPEC void kernel_double_t_scattering_massive(
+    FIn<T, 0> r_phi,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> t2_abs,
+    FIn<T, 0> m1,
+    FOut<T, 1> p1,
+    FOut<T, 1> p2,
+    FOut<T, 0> det
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto pa_com = boost<T>(load_mom<T>(pa), p_tot, -1.);
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    auto m1_2 = m1 * m1;
+    auto ta = t1_abs + lc.ma_2 + m1_2;
+    auto tb = t2_abs + lc.mb_2 + m1_2;
+    auto root = max(lc.root, FVal<T>(EPS));
+    auto x_plus = (lc.a_big * tb - lc.b_small * ta) / root;
+    auto x_minus = (lc.b_big * ta - lc.a_small * tb) / root;
+    auto pt = sqrt(max(x_plus * x_minus - m1_2, 0.));
+    auto phi = PI * (2. * r_phi - 1.);
+
+    FourMom<T> p1_canon{
+        0.5 * (x_plus + x_minus), pt * cos(phi), pt * sin(phi), 0.5 * (x_plus - x_minus)
+    };
+
+    auto p1_rot = rotate<T>(p1_canon, pa_com);
+    auto p1_lab = boost<T>(p1_rot, p_tot, 1.);
+    store_mom<T>(p1, p1_lab);
+    for (int i = 0; i < 4; ++i) {
+        p2[i] = p_tot[i] - p1_lab[i];
+    }
+
+    det = PI / (2. * root);
+}
+
+template <typename T>
+KERNELSPEC void kernel_double_t_scattering_inverse_massive(
+    FIn<T, 1> p1,
+    FIn<T, 1> p2,
+    FIn<T, 1> pa,
+    FIn<T, 1> pb,
+    FOut<T, 0> r_phi,
+    FOut<T, 0> det
+) {
+    FourMom<T> p_tot;
+    for (int i = 0; i < 4; ++i) {
+        p_tot[i] = pa[i] + pb[i];
+    }
+    auto pa_com = boost<T>(load_mom<T>(pa), p_tot, -1.);
+    auto p1_com = boost<T>(load_mom<T>(p1), p_tot, -1.);
+    auto p1_canon = rotate_inverse<T>(p1_com, pa_com);
+    auto phi = atan2(p1_canon[2], p1_canon[1]);
+    r_phi = phi / PI / 2. + 0.5;
+    auto lc = beam_light_cone<T>(load_mom<T>(pa), load_mom<T>(pb));
+    det = 2. * max(lc.root, FVal<T>(EPS)) / PI;
+}
+
 } // namespace kernels
 } // namespace madspace

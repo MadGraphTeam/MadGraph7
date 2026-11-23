@@ -1696,6 +1696,10 @@ class MadgraphSubprocess:
                     ),
                     eva=eva,
                     eva_helicities=eva_helicities,
+                    # the flux of massive incoming particles, which the
+                    # phase-space mapping puts on their mass shells
+                    incoming_masses=(
+                        [] if self.process.is_decay else self.incoming_masses),
                 )
             )
         partial_weights = self.process.systematics_enabled()

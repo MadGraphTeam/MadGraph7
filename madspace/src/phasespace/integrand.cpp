@@ -391,6 +391,20 @@ Integrand::Integrand(
                 "EVA beams need EVA differential cross sections, and vice versa"
             );
         }
+        // the mapping puts massive incoming particles on their mass shells, and
+        // the flux of the cross sections has to be that of the same masses
+        std::vector<double> mapping_masses;
+        if (_mapping.massive_incoming()) {
+            for (double mass : _mapping.incoming_masses()) {
+                mapping_masses.push_back(std::abs(mass));
+            }
+        }
+        if (xs.incoming_masses() != mapping_masses) {
+            throw std::invalid_argument(
+                "the differential cross sections need the incoming_masses of the "
+                "phase-space mapping"
+            );
+        }
     }
     if (_eva && energy_scale && energy_scale->is_mlm()) {
         throw std::invalid_argument("EVA beams cannot be combined with MLM merging");
@@ -881,16 +895,6 @@ NamedVector<Value> Integrand::build_channel_part(
     );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
-    // The mapping hands out massless incoming momenta. Massive ones (EVA's W
-    // and Z, monochromatic W or muon beams, massive partons) go on their mass
-    // shell, with the same sum, and the flux 1/(2 sqrt(lambda)) replaces the
-    // massless 1/(2 s_hat) of diff_cross_section, as in madevent.
-    if (auto& masses = _mapping.incoming_masses();
-        masses.size() == 2 && (masses.at(0) > 0. || masses.at(1) > 0.)) {
-        auto on_shell = fb.incoming_on_shell(momenta, masses);
-        momenta = on_shell.at(0);
-        weights_before_cuts.push_back(on_shell.at(1));
-    }
     Value x0 = mapping_result["x1"];
     Value x1 = mapping_result["x2"];
     // A dressed-lepton mapping also hands back 1-x. It has to: it samples x

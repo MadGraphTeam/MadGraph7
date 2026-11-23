@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
 
 using namespace madspace;
 
@@ -57,20 +58,23 @@ TPropagatorMapping::TPropagatorMapping(
     const std::vector<std::size_t>& integration_order,
     double invariant_power,
     const std::vector<double>& pt_min,
-    const std::vector<double>& y_max
+    const std::vector<double>& y_max,
+    const std::vector<double>& incoming_masses
 ) :
     TPropagatorMapping(
         first_step_rapidity_bounds(integration_order, y_max),
         integration_order,
         invariant_power,
-        pt_min
+        pt_min,
+        massive_incoming_masses(incoming_masses, "TPropagatorMapping")
     ) {}
 
 TPropagatorMapping::TPropagatorMapping(
     const std::array<double, 3>& first_step_bounds,
     const std::vector<std::size_t>& integration_order,
     double invariant_power,
-    const std::vector<double>& pt_min
+    const std::vector<double>& pt_min,
+    const std::vector<double>& incoming_masses
 ) :
     Mapping(
         "TPropagatorMapping",
@@ -112,9 +116,23 @@ TPropagatorMapping::TPropagatorMapping(
         has_pt_cut(pt_min),
         first_step_bounds.at(0),
         first_step_bounds.at(1),
-        first_step_bounds.at(2)
+        first_step_bounds.at(2),
+        !incoming_masses.empty()
     ),
-    _lab_scattering(false, invariant_power, 0., 0., has_pt_cut(pt_min)) {
+    // a later step can still have an untouched massive beam as an incoming
+    // momentum, so all steps take the massive kernels
+    _lab_scattering(
+        false,
+        invariant_power,
+        0.,
+        0.,
+        has_pt_cut(pt_min),
+        -1.,
+        -1.,
+        1.,
+        !incoming_masses.empty()
+    ),
+    _incoming_masses(incoming_masses) {
     std::size_t next_index_low = 0;
     std::size_t next_index_high = integration_order.size() - 1;
     for (std::size_t index : integration_order) {
@@ -175,8 +193,10 @@ Mapping::Result TPropagatorMapping::build_forward_impl(
     }
     mass_sum_invariants.push_back(m_out.at(_integration_order.back()));
 
-    // construct initial state momenta
-    auto [p1, p2] = fb.com_p_in(e_cm);
+    // construct initial state momenta, on the mass shells of massive beams
+    auto [p1, p2] = _incoming_masses.empty()
+        ? fb.com_p_in(e_cm)
+        : fb.com_p_in_massive(e_cm, _incoming_masses);
     ValueVec p_ext(_integration_order.size() + 3);
     p_ext.at(0) = p1;
     p_ext.at(1) = p2;

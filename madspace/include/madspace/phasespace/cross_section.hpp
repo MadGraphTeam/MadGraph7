@@ -32,6 +32,12 @@ namespace madspace {
  * @f$\sum_h f_{\lambda_1(h)} f_{\lambda_2(h)} |M_h|^2@f$. Leg @f$i@f$
  * comes from beam @f$i@f$, or from the other one for `mirror_index` 1.
  *
+ * With massive @p incoming_masses (those of the @ref PhaseSpaceMapping, which
+ * puts the incoming particles on their mass shells) the flux is
+ * @f$1 / (2 \sqrt{\lambda(\hat s, m_1^2, m_2^2)})@f$ with
+ * @f$\hat s = x_1 x_2 s@f$ instead of @f$1 / (2 \hat s)@f$, as in madevent,
+ * and zero at and below the threshold @f$(m_1 + m_2)^2@f$.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**
@@ -91,6 +97,10 @@ public:
      *                                 helicity table of the matrix element
      *                                 (rows of the particles' helicities,
      *                                 indexed by its helicity index).
+     * @param incoming_masses          Masses of the two incoming particles of a
+     *                                 collision, for the flux, empty or zero
+     *                                 for massless ones. Needs
+     *                                 @p input_momentum_fraction.
      */
     DifferentialCrossSection(
         const MatrixElement& matrix_element,
@@ -105,7 +115,8 @@ public:
         bool decay = false,
         bool return_matrix_element = false,
         const std::optional<EvaFlux>& eva = std::nullopt,
-        const nested_vector3<me_int_t>& eva_helicities = {}
+        const nested_vector3<me_int_t>& eva_helicities = {},
+        const std::vector<double>& incoming_masses = {}
     );
 
     /// The allowed initial-parton flavour combinations.
@@ -123,6 +134,9 @@ public:
     /// Whether the beams are effective vector bosons (then the arguments end
     /// with `fact_scale1`, `fact_scale2` and `mirror_index`).
     bool eva() const { return _eva_tables.has_value(); }
+    /// Masses of the incoming particles the flux is computed with (absolute
+    /// values): two for a collision with a massive one, empty otherwise.
+    const std::vector<double>& incoming_masses() const { return _incoming_masses; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -140,6 +154,7 @@ private:
     bool _decay;
     bool _return_matrix_element;
     std::optional<EvaLegTables> _eva_tables;
+    std::vector<double> _incoming_masses;
 };
 
 } // namespace madspace

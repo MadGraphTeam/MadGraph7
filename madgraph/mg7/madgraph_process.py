@@ -1108,8 +1108,8 @@ class MadgraphProcess:
         # Monochromatic beams of massive particles (W/Z without EVA, muons of
         # a model with a muon mass): s and the rapidity of the beams are those
         # of the massive beam momenta, as madevent's stot (genps.f, lpp = 0),
-        # not 4 E1 E2, for each subprocess (beam_kinematics). The incoming
-        # momenta are then put on their mass shell by the Integrand.
+        # not 4 E1 E2, for each subprocess (beam_kinematics). The phase-space
+        # mapping then puts the incoming momenta on their mass shells.
         self.massive_beams = (
             self.leptonic and not self.is_decay and not self.eva
             and not self.upc_flux
