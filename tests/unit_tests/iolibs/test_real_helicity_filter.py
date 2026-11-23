@@ -1,5 +1,6 @@
 """Numerical checks of the generated real-emission helicity loop."""
 
+import ast
 import copy
 from pathlib import Path
 import re
@@ -7,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from madgraph.iolibs import born_support as support
 from madgraph.core.base_objects import ModelVariable, ParamCardVariable
@@ -140,6 +142,19 @@ class TestRealHelicityFilter(unittest.TestCase):
             for name, degree in couplings.items():
                 with self.subTest(model=model_name, coupling=name):
                     self.assertEqual(degrees[name], degree)
+
+    def test_coupling_degrees_without_removed_ast_aliases(self):
+        # Python 3.14 removed ast.Num and the other literal aliases of
+        # ast.Constant. Using one made every coupling degree unknown, so no
+        # output certified G scaling. Hide them here on any Python version.
+        class Python314Ast:
+            def __getattr__(self, name):
+                if name in ('Num', 'Str', 'Bytes', 'NameConstant', 'Ellipsis'):
+                    raise AttributeError(name)
+                return getattr(ast, name)
+
+        with mock.patch.object(support, 'ast', Python314Ast()):
+            self.test_sm_and_heft_coupling_degrees()
 
     def run_driver(self, ncomb, nsqamps, driver, members=None, signature=None,
                    include_real=True, diagram_weights=False):

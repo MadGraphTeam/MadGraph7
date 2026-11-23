@@ -378,9 +378,15 @@ def helicity_coupling_degrees(model):
         finally:
             visiting.remove(name)
 
+    def number(node):
+        # Numeric literals are ast.Constant nodes; ast.Num, its deprecated
+        # alias, no longer exists in Python 3.14, where every coupling then
+        # came out of unknown degree and no output certified G scaling.
+        return (isinstance(node, ast.Constant) and not isinstance(node.value, bool)
+                and isinstance(node.value, (int, float, complex)))
+
     def expression(node):
-        # Num also recognizes numeric Constant nodes on Python >= 3.8.
-        if isinstance(node, ast.Num):
+        if number(node):
             return Fraction(0)
         if isinstance(node, ast.Name):
             return variable(node.id)
@@ -397,8 +403,9 @@ def helicity_coupling_degrees(model):
                 return left-right
             if isinstance(node.op, (ast.Add, ast.Sub)) and left == right:
                 return left
-            if isinstance(node.op, ast.Pow) and isinstance(node.right, ast.Num):
-                return left*Fraction(node.right.n)
+            if (isinstance(node.op, ast.Pow) and number(node.right)
+                    and not isinstance(node.right.value, complex)):
+                return left*Fraction(node.right.value)
         if isinstance(node, ast.Call):
             name = node.func.id if isinstance(node.func, ast.Name) else (
                 node.func.attr if isinstance(node.func, ast.Attribute) and

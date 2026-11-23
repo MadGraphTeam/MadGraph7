@@ -5,6 +5,11 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: NLO outputs made with Python 3.14 never certified the G scaling of the helicity
+       masks (helicity_signature.json mode exact_compact_state instead of homogeneous_G):
+       the coupling-degree analysis used ast.Num, removed in Python 3.14, so every coupling
+       came out of unknown degree. With a dynamical scale each Born and real-emission call
+       then relearned its helicity mask, summing all helicities, at every change of alpha_s.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV
