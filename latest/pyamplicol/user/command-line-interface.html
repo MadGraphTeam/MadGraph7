@@ -1877,6 +1877,91 @@ the estimated digits at the percentiles and the default checks’ flagged and
 best-effort counts with the binary64 time, without the truth-based columns;
 the header says <code class="docutils literal notranslate"><span class="pre">none</span> <span class="pre">(estimates</span> <span class="pre">only)</span></code> and the JSON’s <code class="docutils literal notranslate"><span class="pre">ground_truth</span></code>
 <code class="docutils literal notranslate"><span class="pre">{&quot;arithmetic&quot;:</span> <span class="pre">&quot;none&quot;,</span> <span class="pre">&quot;label&quot;:</span> <span class="pre">&quot;none&quot;}</span></code>.</p>
+<p><strong>Measured precisions.</strong> <code class="docutils literal notranslate"><span class="pre">--measured-precisions</span></code> (<code class="docutils literal notranslate"><span class="pre">benchmark.measured_precisions</span></code>,
+a list; on the command line space- or comma-separated,
+<code class="docutils literal notranslate"><span class="pre">--measured-precisions</span> <span class="pre">double</span> <span class="pre">dd</span> <span class="pre">arb:60</span></code>) names the precisions whose
+stability the stability run measures, each its own pair of tables in the
+order given; the default is <code class="docutils literal notranslate"><span class="pre">binary64</span></code> alone (today’s tables). An entry is
+<code class="docutils literal notranslate"><span class="pre">binary64</span></code> (<code class="docutils literal notranslate"><span class="pre">double</span></code>, <code class="docutils literal notranslate"><span class="pre">b64</span></code>) or what <code class="docutils literal notranslate"><span class="pre">--ground-truth</span></code> accepts
+(<code class="docutils literal notranslate"><span class="pre">double-double</span></code>/<code class="docutils literal notranslate"><span class="pre">dd</span></code>, <code class="docutils literal notranslate"><span class="pre">arbitrary</span></code>/<code class="docutils literal notranslate"><span class="pre">arb</span></code>, <code class="docutils literal notranslate"><span class="pre">arbitrary:DIGITS</span></code>/<code class="docutils literal notranslate"><span class="pre">arb:DIGITS</span></code>).
+Each entry’s points are evaluated as binary64’s are, in its arithmetic: the
+default checks (one default rotation; on TIRust’s points also the rescaled
+reduction-direction check), a refused point served best-effort, lane rescue
+as that arithmetic has it (<code class="docutils literal notranslate"><span class="pre">--no-lane-rescue</span></code> turns it off). An entry below
+the ground truth is read against it (“Stable digits of double-double vs
+arb(60)”): its true and estimated digits capped to its own range
+(double-double -log10(2^-106) = 31.91, arbitrary precision its digits) and
+to what the ground truth certifies (its range; an arbitrary-precision truth
+its cross-check’s 2^-106, or on a point where the backends’ references agree
+closer the agreement they reach), the title adding “capped at what the ground
+truth certifies (at least D digits)” when that is the lower. The ground truth’s own precision
+has its estimates-only tables (“Estimated digits of arb(60) (the ground
+truth)” and “Default checks, estimates only, arb(60)”): its points are
+evaluated in it once, with the default checks, and that evaluation is also
+the reference of the lower precisions (its unrotated value is the plain
+reference evaluation’s bit for bit, verified on g g &gt; g g g in
+double-double and arb(60); a best-effort or failed point has no reference,
+as before; the certification of an arbitrary-precision truth is unchanged;
+with one backend and an arbitrary-precision truth its references stay the
+checked evaluations). A ground truth not listed gets no table and no checks
+beyond its certification above (with an arbitrary-precision truth the
+cross-check between the backends and the checked re-run of a reference it
+does not certify; with one backend one checked evaluation per point). An
+entry above the ground truth (or listed twice) is refused before any work;
+with <code class="docutils literal notranslate"><span class="pre">--ground-truth</span> <span class="pre">none</span></code> every entry is estimates-only. A precision not
+listed is not evaluated: without binary64 in the list the stability run has
+no binary64 stream (<code class="docutils literal notranslate"><span class="pre">stability</span></code> is then empty in <code class="docutils literal notranslate"><span class="pre">--json</span></code>) and the runtime
+no binary64 calls, except binary64’s runtime worker when another listed
+precision’s table shows the ground truth’s multiplier and the truth itself
+is not listed (the multiplier pass runs in that worker); binary64’s counts
+are still the start of the other precisions’ calls. Each precision’s
+failure causes are under its own tables. The precisions given are
+honoured; the stability plan and its ETA count each extra stream at a lower
+bound of its point (a checked binary64 point below the ground truth, the
+plain reference point for the ground truth’s own) until the run measures it,
+and the default budget’s deadline admits points at the measured costs of
+every stream. The scope rules (A and B above) count them by lower bounds
+too: binary64’s calls only when listed, every other precision’s stream at
+least two binary64 points in the runtime timing (its measuring call and
+one timed call) and one binary64 point per stability point, a listed
+ground truth as the reference it is (in the runtime timing its stream runs
+after binary64’s rows, so until then rule A sees it at one binary64 point
+per call and rarely leaves a backend out for it, more output than asked,
+never less); the stability plan prices a listed ground truth’s stream at
+its checks’ evaluations per point (the point and each rotation of a plain
+reference point); the whole command’s ETA counts each
+precision’s runtime calls (its measuring point and its budget) until they
+run, and <code class="docutils literal notranslate"><span class="pre">--completion-time</span></code> keeps their estimates out of binary64’s share
+and gives each the time left when it starts. With <code class="docutils literal notranslate"><span class="pre">--runtime</span></code>, every entry other than binary64 also gets
+its own “Runtime per reduction backend, <precision>” and “Time per point and
+stage, <precision>” tables, in the order given (the
+ground truth’s own precision too: timing needs no truth; with a list given,
+binary64’s runtime and checks tables are titled “, binary64” as well): per backend the
+same optimistic pass as binary64’s in that arithmetic, in a process of its
+own (one core, or <code class="docutils literal notranslate"><span class="pre">--runtime-threads</span></code>), its stage groups from the native
+stage reports of those calls and its peak RAM. It starts from binary64’s
+counts and budget for that backend (<code class="docutils literal notranslate"><span class="pre">--target-runtime</span></code> is each backend’s
+timed budget per measured precision); its one-point warm-up call (untimed)
+measures its cost, and its batch falls to the largest power of two that
+its calls fit in that budget, down to one point, that call its warm-up (a
+<code class="docutils literal notranslate"><span class="pre">--batch-size</span></code> given is honoured: every call holds that many points). A
+wider carrier’s time per point depends on the points per call
+(double-double on g g &gt; g g g, NinjaRS: 0.69 s at one point, 0.57 s at
+two, 0.45 s at 16), so it compares with the multiplier pass’s (one point
+per call where it is dear) at the same batch. Its time carries the ground
+truth’s multiplier against it, <code class="docutils literal notranslate"><span class="pre">(arb(60)</span> <span class="pre">x1.1)</span></code>, none on the ground truth’s
+own table. When the ground truth is listed its stream is timed once: it is
+the multiplier of binary64’s table and of the others (no separate
+multiplier pass), and rule B leaves it in (a precision given). In <code class="docutils literal notranslate"><span class="pre">--json</span></code> its rows are <code class="docutils literal notranslate"><span class="pre">runtime_measured</span></code> (each its
+<code class="docutils literal notranslate"><span class="pre">precision</span></code> record and <code class="docutils literal notranslate"><span class="pre">runtime</span></code> rows as <code class="docutils literal notranslate"><span class="pre">runtime</span></code>), absent by default. In
+<code class="docutils literal notranslate"><span class="pre">--json</span></code> the other precisions’ rows are under <code class="docutils literal notranslate"><span class="pre">stability_setup.measured_precisions</span></code>
+(each entry its precision, <code class="docutils literal notranslate"><span class="pre">estimates_only</span></code>, <code class="docutils literal notranslate"><span class="pre">digits_cap</span></code>,
+<code class="docutils literal notranslate"><span class="pre">capped_by_truth</span></code> and <code class="docutils literal notranslate"><span class="pre">stability</span></code>, the same rows as <code class="docutils literal notranslate"><span class="pre">stability</span></code>; binary64’s
+entry <code class="docutils literal notranslate"><span class="pre">stability:</span> <span class="pre">null</span></code>, its rows where they always are); the key is absent
+with the default. The per-sample records (<code class="docutils literal notranslate"><span class="pre">--json</span></code>, <code class="docutils literal notranslate"><span class="pre">--samples-output</span></code>: its
+<code class="docutils literal notranslate"><span class="pre">measured_precisions</span></code>) of a wider precision hold its value and sectors as
+the exact decimal text of its carrier’s value; every precision’s records
+also carry <code class="docutils literal notranslate"><span class="pre">estimate_digits_uncapped</span></code> and <code class="docutils literal notranslate"><span class="pre">true_digits_uncapped</span></code>.</p>
 <p><strong>Stability.</strong> Over N flat points (<code class="docutils literal notranslate"><span class="pre">benchmark.stability_points</span></code> /
 <code class="docutils literal notranslate"><span class="pre">--stability-points</span></code>; by default as many as one minute per worker affords,
 at least five; with <code class="docutils literal notranslate"><span class="pre">--completion-time</span></code> what is left of it; drawn with
@@ -1928,15 +2013,19 @@ an estimate above 1e-5, 3 above 1). A point with no binary64 value at all (“no
 reference failed has an unknown truth and is left out (shown as
 “no ref.”). The measured points (N in what follows) are all others.</p>
 <p>The measured points are sorted by true digits from worst to best. At the
-percentiles 1 per mil, 1 %, 10 % and 50 % the table shows the true digits of
-the point of rank floor(p N) (1-based; the 50 % row is the median, the lower
-middle point for an even N), and over the class of points of rank
-floor(p’ N) &lt; rank &lt;= floor(p N) (p’ the previous percentile, 0 for the
-first) the point count (with its failed points), the min, median and max of
-|estimated - true| and the median of estimated - true (positive: the
-estimate is optimistic), both over the class’s points with an estimate. At
+percentiles 1 per mil, 1 %, 10 %, 50 % and 100 % the table shows the true
+digits of the point of rank floor(p N) (1-based; the 50 % row is the median,
+the lower middle point for an even N; the 100 % row the best point), and
+over the class of points of rank floor(p’ N) &lt; rank &lt;= floor(p N) (p’ the
+previous percentile, 0 for the first; the classes add up to N) the min,
+median and max of |estimated - true| and the median of estimated - true
+(positive: the estimate is optimistic), both over the class’s points with
+an estimate. A class holds floor(p N) - floor(p’ N) points, so the table
+shows no count (<code class="docutils literal notranslate"><span class="pre">--json</span></code> keeps each class’s <code class="docutils literal notranslate"><span class="pre">count</span></code> and <code class="docutils literal notranslate"><span class="pre">failed</span></code>); a class
+with points without a value says so after its digits, <code class="docutils literal notranslate"><span class="pre">0.00</span> <span class="pre">(2</span> <span class="pre">failed)</span></code>. At
 small N a class can be empty (<code class="docutils literal notranslate"><span class="pre">-</span></code>; the table prints the N a populated class
-needs: 1000 measured points for the 1 per mil class, 2 for the median).</p>
+needs: 1000 measured points for the 1 per mil class, 2 for the median, 1
+for the 100 % row).</p>
 <p>A second table compares the default checks with the truth, per backend: the
 measured points, those served best-effort / without a value in binary64, the points flagged unstable
 (estimate above the default target 1e-5, per sector, the metric the rescue

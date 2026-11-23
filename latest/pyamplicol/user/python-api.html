@@ -1028,8 +1028,9 @@ effect by its run-card name, as plain data (the stability checks as
 <code class="docutils literal notranslate"><span class="pre">{&quot;rotations&quot;:</span> <span class="pre">[exact</span> <span class="pre">matrices],</span> <span class="pre">&quot;reduction_direction&quot;,</span> <span class="pre">&quot;rescaled&quot;,</span> <span class="pre">&quot;cross_backend&quot;}</span></code> or None, as the SDKs’ <code class="docutils literal notranslate"><span class="pre">options_json</span></code>); <code class="docutils literal notranslate"><span class="pre">threads</span></code> is the
 effective count and <code class="docutils literal notranslate"><span class="pre">threads_requested</span></code> the requested one when it was
 clamped. A tree runtime refuses, at load, every virtual option the TOML
-names. A one-line <code class="docutils literal notranslate"><span class="pre">options</span></code> string without <code class="docutils literal notranslate"><span class="pre">=</span></code> is a path (a mistyped path
-says that no such file exists).</p>
+names. A one-line <code class="docutils literal notranslate"><span class="pre">options</span></code> string that names an existing file is a path,
+else a TOML text (<code class="docutils literal notranslate"><span class="pre">&quot;[evaluation]&quot;</span></code>: an empty table, no option set); one that
+is neither (a mistyped path) is refused naming both readings.</p>
 <p><code class="docutils literal notranslate"><span class="pre">threads=N</span></code> bounds every native thread pool of the runtime, its load and
 every evaluation in every carrier, to <code class="docutils literal notranslate"><span class="pre">N</span></code> workers (clamped to the cores the
 process may use: <a class="reference internal" href="configuration.html#threads"><span class="std std-ref">Configuration</span></a>); unset, rayon’s rule

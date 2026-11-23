@@ -297,8 +297,9 @@ effect by its run-card name, as plain data (the stability checks as
 "cross_backend"}` or None, as the SDKs' `options_json`); `threads` is the
 effective count and `threads_requested` the requested one when it was
 clamped. A tree runtime refuses, at load, every virtual option the TOML
-names. A one-line `options` string without `=` is a path (a mistyped path
-says that no such file exists).
+names. A one-line `options` string that names an existing file is a path,
+else a TOML text (`"[evaluation]"`: an empty table, no option set); one that
+is neither (a mistyped path) is refused naming both readings.
 
 `threads=N` bounds every native thread pool of the runtime, its load and
 every evaluation in every carrier, to `N` workers (clamped to the cores the

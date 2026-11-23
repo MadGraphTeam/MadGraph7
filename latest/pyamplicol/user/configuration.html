@@ -1672,7 +1672,7 @@ in a short <strong>runtime-options TOML</strong>, a file with an <code class="do
 <td><p>its flag (table below)</p></td>
 </tr>
 <tr class="row-odd"><td><p>Python</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">Runtime.load(artifact,</span> <span class="pre">options=...)</span></code>: a path, a TOML text or a parsed mapping</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Runtime.load(artifact,</span> <span class="pre">options=...)</span></code>: a path, a TOML text or a parsed mapping (a one-line string is a path when it names an existing file, else TOML; neither: refused naming both)</p></td>
 <td><p>its keyword</p></td>
 </tr>
 <tr class="row-even"><td><p>C SDK</p></td>
