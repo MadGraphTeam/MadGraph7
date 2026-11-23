@@ -17,7 +17,8 @@ namespace madspace {
 /**
  * MadNIS training loop for one subprocess's channels [1, 2, 3].
  *
- * Alternates sampling batches from the channels' @ref Integrand /
+ * Alternates sampling batches from the channels' integrands (an
+ * @ref Integrand or another @ref GeneratorIntegrand in training mode) /
  * @ref ChannelWeightNetwork (online) or a replay buffer of past samples
  * (buffered) with @ref AdamOptimizer steps on the stratified variance loss,
  * periodically drops underperforming channels, and tracks progress in a
@@ -111,7 +112,10 @@ public:
      * @param optimizer_context     Context the trained globals and optimizer
      *                              live on.
      * @param config                Training configuration.
-     * @param integrands            One integrand per channel to train.
+     * @param integrands            One integrand per channel to train, with
+     *                              @ref GeneratorIntegrand::madnis_training.
+     *                              On a GPU they are @ref Integrand
+     *                              instances.
      * @param cwnet                 Optional shared channel-weight network.
      * @param seed                  Top-level run seed.
      * @param channel_index_offset  Offset added to this subprocess's local
@@ -128,7 +132,7 @@ public:
         ContextPtr generator_context,
         ContextPtr optimizer_context,
         const Config& config,
-        const std::vector<std::shared_ptr<Integrand>>& integrands,
+        const std::vector<std::shared_ptr<GeneratorIntegrand>>& integrands,
         const std::optional<ChannelWeightNetwork>& cwnet,
         std::optional<std::uint64_t> seed = std::nullopt,
         std::size_t channel_index_offset = 0,
@@ -201,8 +205,8 @@ private:
         std::vector<std::tuple<std::size_t, double, double>> integration_history;
         std::size_t history_index = 0;
         std::size_t sample_count = 0;
-        std::shared_ptr<Integrand> integrand;
-        std::shared_ptr<IntegrandProbability> integrand_prob;
+        std::shared_ptr<GeneratorIntegrand> integrand;
+        std::shared_ptr<FunctionGenerator> integrand_prob;
         std::vector<std::size_t> resonances;
         RuntimePtr generator_runtime = nullptr;
         RuntimePtr unweighter_runtime = nullptr;
@@ -302,7 +306,7 @@ public:
     /// assigns itself.
     struct TrainingArgs {
         MadnisTraining::Config config;
-        std::vector<std::shared_ptr<Integrand>> integrands;
+        std::vector<std::shared_ptr<GeneratorIntegrand>> integrands;
         std::optional<ChannelWeightNetwork> cwnet;
         /// Per integrand, ids of the resonances it maps; see the
         /// `channel_resonances` argument of @ref MadnisTraining.

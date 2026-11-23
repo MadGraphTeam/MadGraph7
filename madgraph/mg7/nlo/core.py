@@ -45,6 +45,13 @@ generator_integrand(index, context, prefix, fraction, min_fraction, bins,
 histograms, jets), a GeneratorIntegrand of madspace with its VEGAS grid, its
 discrete choice and its virtual trick as globals of the context, which the
 iterations adapt in C++ (FKSIntegrand for FKS).
+
+With madnis_batches as well, the grid iterations adapt the VEGAS grids, the
+discrete choice and the virtual trick, a MadNIS training of that many
+batches per subprocess turns each grid into a Flow and the configurations
+into a DiscreteFlow with the probabilities of the grid iterations as its
+prior, and the integration iterations run with the flows (generator_integrand
+with flow, discrete and madnis_training).
 """
 
 import json
@@ -962,6 +969,9 @@ class NLORun:
             Events by default.
         generator: run the iterations in the C++ event generator of madspace
             (see the module), on threads threads (all cores by default).
+        madnis_batches: with generator, the batches of a MadNIS training per
+            subprocess between the grid and the integration iterations, none
+            by default.
     """
 
     scheme = None
@@ -985,10 +995,12 @@ class NLORun:
         run_path=None,
         generator=False,
         threads=-1,
+        madnis_batches=0,
     ):
         self.output = os.path.realpath(output)
         self.generator = generator
         self.threads = threads
+        self.madnis_batches = madnis_batches
         self.run_card = read_run_card(self.output, run_card)
         check_run_card(self.run_card)
         self.param_card = param_card or read_param_card(
@@ -1174,42 +1186,31 @@ class NLORun:
             # the grids adapt as those of the Python iterations
             config.vegas_damping = VEGAS_ALPHA
             jets = self.jets() if self.histograms else None
-            generators = []
-            for number, channel in enumerate(self.channels):
-                integrand = channel.integrand.generator_integrand(
-                    channel.index,
-                    self.context,
-                    f"nlo{number}",
-                    self.fks_params["VirtualFraction"],
-                    self.fks_params["MinVirtualFraction"],
-                    self.bins,
-                    self.histograms,
-                    jets,
-                )
-                generators.append(
-                    ms.ChannelEventGenerator(
-                        contexts=[self.context],
-                        integrand=integrand,
-                        event_file="",
-                        weight_file="",
-                        config=config,
-                        subprocess_index=self.integrands.index(channel.integrand),
-                        name=channel.name,
-                        histograms=None,
-                    )
-                )
-            event_generator = ms.EventGenerator(
-                contexts=[self.context],
-                channels=generators,
-                seed=self.seed,
-                config=config,
-            )
             integration = ms.IntegrationConfig()
             integration.grid_points = self.grid_points
             integration.grid_iterations = self.grid_iterations
             integration.points = self.points
             integration.max_iterations = self.max_iterations
             integration.accuracy = 0.0 if self.fixed_points else self.accuracy
+            integrands, generators, event_generator = self.generators(config, jets)
+            if self.madnis_batches:
+                grid = ms.IntegrationConfig()
+                grid.grid_points = self.grid_points
+                grid.grid_iterations = self.grid_iterations
+                grid.max_iterations = 0
+                grid.accuracy = integration.accuracy
+                event_generator.integrate(grid)
+                fractions = [
+                    generator.iteration_state().virtual_fraction()
+                    for generator in generators
+                ]
+                self.write_status("madnis")
+                flows = self.train_madnis(integrands, fractions)
+                # other random numbers than those the flows learnt from
+                integrands, generators, event_generator = self.generators(
+                    config, jets, flows, fractions, self.seed + 1
+                )
+                integration.grid_iterations = 0
             event_generator.integrate(integration)
             self.channels = [
                 GeneratorChannel(channel, generator)
@@ -1217,12 +1218,118 @@ class NLORun:
             ]
             self.iterations = max(
                 generator.status().iterations for generator in generators
-            ) - self.grid_iterations
+            ) - integration.grid_iterations
             self.write_status("done")
             self.write_hwu()
             return self.result()
         finally:
             self.close()
+
+    def generators(self, config, jets, flows=None, fractions=None, seed=None):
+        """The generator integrands of the channels, their ChannelEventGenerators
+        and the EventGenerator of them all: with the VEGAS grids, or with the
+        flows (Flow, DiscreteFlow or None) of train_madnis and the fractions of
+        the virtual the grid iterations reached."""
+        ms = madspace()
+        integrands, generators = [], []
+        for number, channel in enumerate(self.channels):
+            flow, discrete = (None, None) if flows is None else flows[number]
+            fraction = self.fks_params["VirtualFraction"]
+            if fractions is not None:
+                fraction = fractions[number]
+            integrand = channel.integrand.generator_integrand(
+                channel.index,
+                self.context,
+                f"nlo{number}",
+                fraction,
+                self.fks_params["MinVirtualFraction"],
+                self.bins,
+                self.histograms,
+                jets,
+                flow,
+                discrete,
+            )
+            integrands.append(integrand)
+            generators.append(
+                ms.ChannelEventGenerator(
+                    contexts=[self.context],
+                    integrand=integrand,
+                    event_file="",
+                    weight_file="",
+                    config=config,
+                    subprocess_index=self.integrands.index(channel.integrand),
+                    name=channel.name,
+                    histograms=None,
+                )
+            )
+        event_generator = ms.EventGenerator(
+            contexts=[self.context],
+            channels=generators,
+            seed=self.seed if seed is None else seed,
+            config=config,
+        )
+        return integrands, generators, event_generator
+
+    def train_madnis(self, integrands, fractions):
+        """The MadNIS training of the channels after the grid iterations: per
+        channel a Flow from its VEGAS grid (integrands of generators) and,
+        with several FKS configurations, a DiscreteFlow of them conditioned
+        on the random numbers with their probabilities as its prior, trained
+        per subprocess for madnis_batches batches. Gives (flow, discrete) per
+        channel."""
+        ms = madspace()
+        flows = []
+        training = {}
+        for number, (channel, integrand) in enumerate(zip(self.channels, integrands)):
+            prefix = f"nlo{number}"
+            vegas = integrand.adaptive_map()
+            dimension = vegas.dimension()
+            flow = ms.Flow(input_dim=dimension, prefix=f"{prefix}.flow")
+            flow.initialize_from_vegas(self.context, vegas.grid_name(), self.seed)
+            discrete = None
+            count = integrand.configuration_count()
+            if count > 1:
+                discrete = ms.DiscreteFlow(
+                    option_counts=[count],
+                    prefix=f"{prefix}.discrete_flow",
+                    dims_with_prior=[0],
+                    condition_dim=dimension,
+                )
+                discrete.initialize_globals(self.context, self.seed)
+            flows.append((flow, discrete))
+            subprocess = self.integrands.index(channel.integrand)
+            training.setdefault(subprocess, []).append(
+                channel.integrand.generator_integrand(
+                    channel.index,
+                    self.context,
+                    prefix,
+                    fractions[number],
+                    self.fks_params["MinVirtualFraction"],
+                    self.bins,
+                    None,
+                    None,
+                    flow,
+                    discrete,
+                    madnis_training=True,
+                )
+            )
+        config = ms.MadnisConfig()
+        config.batches = self.madnis_batches
+        config.cpu_generator_batch_size = self.batch
+        optimizer_context = ms.Context(ms.cpu_device(), self.threads)
+        optimizer_context.copy_globals_from(self.context)
+        madnis = ms.MultiMadnisTraining(
+            generator_context=self.context,
+            optimizer_context=optimizer_context,
+            training_args=[
+                ms.TrainingArgs(config=config, integrands=items, cwnet=None)
+                for _, items in sorted(training.items())
+            ],
+            verbosity="log",
+            seed=self.seed,
+        )
+        madnis.train()
+        return flows
 
     def jets(self):
         """The jet parameters of the run card for the histograms."""

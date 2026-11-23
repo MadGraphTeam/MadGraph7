@@ -88,6 +88,21 @@ public:
     /// Whether the integrand gives the quantities of the @ref MadnisLoss
     /// instead of events.
     virtual bool madnis_training() const = 0;
+    /// The integrand as a function generator. With @ref madnis_training its
+    /// function samples a batch of a @ref MadnisTraining, with the outputs
+    /// `weight` (the integrand in the latent space of the adaptive samplers),
+    /// `adaptive_prob` (their density) and the arguments of
+    /// @ref probability.
+    virtual const FunctionGenerator& function_generator() const = 0;
+    /// The density of the adaptive samplers at a sampled point, from its
+    /// arguments, for the @ref MadnisLoss.
+    virtual std::shared_ptr<FunctionGenerator> probability() const = 0;
+    /// The flavour indices the integrand covers, for the channel dropping of
+    /// a @ref MadnisTraining.
+    virtual const std::vector<std::size_t>& active_flavors() const = 0;
+    /// Global indices of the channels of the integrand, for the channel
+    /// dropping of a @ref MadnisTraining.
+    virtual const std::vector<me_int_t>& channel_indices() const = 0;
     /// Whether the events are unweighted. False for a fixed-order integrand.
     virtual bool unweighted() const { return true; }
     /// The histograms the integrand fills itself, as their function and the
@@ -390,9 +405,17 @@ public:
     /// float (true) or an integer index (false).
     std::tuple<std::vector<std::size_t>, std::vector<bool>> latent_dims() const;
     /// Global indices of this integrand's channels.
-    const std::vector<me_int_t>& channel_indices() const { return _channel_indices; }
+    const std::vector<me_int_t>& channel_indices() const override {
+        return _channel_indices;
+    }
     /// Flavour indices this integrand covers.
-    const std::vector<std::size_t>& active_flavors() const { return _active_flavors; }
+    const std::vector<std::size_t>& active_flavors() const override {
+        return _active_flavors;
+    }
+    /// The integrand itself.
+    const FunctionGenerator& function_generator() const override { return *this; }
+    /// An @ref IntegrandProbability of the integrand.
+    std::shared_ptr<FunctionGenerator> probability() const override;
 
 private:
     NamedVector<Value> build_function_impl(

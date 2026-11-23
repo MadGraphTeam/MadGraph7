@@ -4551,7 +4551,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 double,
                 double,
-                double>(),
+                double,
+                bool>(),
             py::arg("event_types"),
             py::arg("probability_name"),
             py::arg("fraction_name"),
@@ -4560,7 +4561,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("virtual_fraction"),
             py::arg("min_virtual_fraction"),
             py::arg("floor"),
+            py::arg("adapt_probabilities") = true,
             pydoc::doc("FKSIterationState::FKSIterationState")
+        )
+        .def(
+            "read_globals",
+            &FKSIterationState::read_globals,
+            py::arg("context"),
+            pydoc::doc("FKSIterationState::read_globals")
         )
         .def(
             "add",
@@ -4623,20 +4631,40 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const FKSChannelIntegrand&,
-                const std::optional<VegasMapping>&,
+                const FKSIntegrand::AdaptiveMapping&,
                 const std::string&,
                 double,
                 double,
                 const std::optional<FKSObservableHistograms>&,
-                double>(),
+                double,
+                const FKSIntegrand::AdaptiveDiscrete&,
+                bool>(),
             py::arg("integrand"),
-            py::arg("vegas"),
+            py::arg("adaptive_map"),
             py::arg("prefix"),
             py::arg("virtual_fraction") = 1.,
             py::arg("min_virtual_fraction") = 0.005,
             py::arg("histograms") = std::nullopt,
             py::arg("floor") = 0.1,
+            py::arg("discrete") = std::monostate{},
+            py::arg("madnis_training") = false,
             pydoc::doc("FKSIntegrand::FKSIntegrand")
+        )
+        .def(
+            "adaptive_map",
+            &FKSIntegrand::adaptive_map,
+            pydoc::doc("FKSIntegrand::adaptive_map")
+        )
+        .def("discrete", &FKSIntegrand::discrete, pydoc::doc("FKSIntegrand::discrete"))
+        .def(
+            "configuration_count",
+            &FKSIntegrand::configuration_count,
+            pydoc::doc("FKSIntegrand::configuration_count")
+        )
+        .def(
+            "probability",
+            &FKSIntegrand::probability,
+            pydoc::doc("FKSIntegrand::probability")
         )
         .def(
             "initialize_globals",
@@ -5161,7 +5189,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 ContextPtr,
                 ContextPtr,
                 const MadnisTraining::Config&,
-                const std::vector<std::shared_ptr<Integrand>>&,
+                const std::vector<std::shared_ptr<GeneratorIntegrand>>&,
                 const std::optional<ChannelWeightNetwork>&,
                 std::optional<std::uint64_t>,
                 std::size_t,
@@ -5208,7 +5236,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             py::init<
                 const MadnisTraining::Config&,
-                const std::vector<std::shared_ptr<Integrand>>&,
+                const std::vector<std::shared_ptr<GeneratorIntegrand>>&,
                 const std::optional<ChannelWeightNetwork>&,
                 const nested_vector2<std::size_t>&>(),
             py::arg("config"),

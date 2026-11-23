@@ -1,6 +1,8 @@
 #pragma once
 
+#include <memory>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "madspace/nlo/cuts.hpp"
@@ -10,6 +12,8 @@
 #include "madspace/nlo/fks_subtraction.hpp"
 #include "madspace/nlo/scale.hpp"
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/discrete_flow.hpp"
+#include "madspace/phasespace/flow.hpp"
 #include "madspace/phasespace/integrand.hpp"
 #include "madspace/phasespace/matrix_element.hpp"
 #include "madspace/phasespace/vegas.hpp"
@@ -222,6 +226,10 @@ private:
  *   and @f$\sigma@f$ the errors of the virtual residual and of the cross
  *   section in the iteration.
  *
+ * The state starts from the probabilities, ratios and fraction in the globals
+ * of the first context at its first iteration, so that it continues the
+ * adaptation of an earlier state of the channel.
+ *
  * The results are the sums of the cross section, its LO part, its virtual
  * residual, the scale and PDF variations and the modes of the Sudakov
  * approximation, in this order, over the points of the iterations since
@@ -239,6 +247,9 @@ public:
      * @param virtual_fraction      The fraction of the first iteration.
      * @param min_virtual_fraction  The smallest fraction.
      * @param floor                 The weight of the uniform choice.
+     * @param adapt_probabilities   Whether the iterations adapt the
+     *                              probabilities of the configurations, not
+     *                              when a @ref DiscreteFlow chooses them.
      */
     FKSIterationState(
         const NamedVector<Type>& event_types,
@@ -248,7 +259,8 @@ public:
         std::size_t configuration_count,
         double virtual_fraction,
         double min_virtual_fraction,
-        double floor
+        double floor,
+        bool adapt_probabilities = true
     );
     /// Add the outputs of the @ref FKSIntegrand for one batch.
     void add(const TensorVec& events) override;
@@ -261,6 +273,9 @@ public:
     const NamedVector<Type>& event_types() const { return _event_types; }
     /// Write the globals of the state into @p context.
     void write_globals(ContextPtr context) const;
+    /// Take the probabilities, ratios and fraction from the globals of
+    /// @p context.
+    void read_globals(ContextPtr context);
     /// Number of points of the kept iterations.
     std::size_t count() const { return _count; }
     /// Number of sums: three, the scale and PDF variations and the modes.
@@ -284,6 +299,9 @@ private:
     NamedVector<Type> _event_types;
     std::string _probability_name, _fraction_name, _ratio_name;
     double _fraction, _min_fraction, _floor;
+    bool _adapt_probabilities;
+    // whether the state has taken the globals of the contexts
+    bool _started = false;
     std::vector<double> _ratios, _probabilities;
     // the outputs per point summed for the results, (index, width)
     std::vector<std::pair<std::size_t, std::size_t>> _value_fields;
@@ -305,18 +323,30 @@ private:
 /**
  * The FKS integrand of a channel as a @ref ChannelEventGenerator runs it at
  * fixed order (see @ref EventGenerator::integrate): @ref FKSChannelIntegrand
- * at random numbers through an optional @ref VegasMapping, with the FKS
- * configuration and the points with the virtual drawn per point from the
- * probabilities, fraction and ratios that its @ref FKSIterationState adapts.
+ * at random numbers through an optional @ref VegasMapping or @ref Flow, with
+ * the FKS configuration and the points with the virtual drawn per point from
+ * the probabilities, fraction and ratios that its @ref FKSIterationState
+ * adapts. A @ref DiscreteFlow can choose the configuration instead, from the
+ * random numbers of the kinematics and with the probabilities of the state as
+ * its prior.
  *
- * `batch` is the leading batch dimension.
+ * With @p madnis_training, the integrand gives the quantities of the
+ * @ref MadnisLoss instead, without the virtual (the virtual trick then takes
+ * @f$r_o@f$ times the Born at all points). The integrand of the training in
+ * the latent space of the adaptive samplers is
+ * @f$f(x, k) = \sigma(x, k) \, p_k@f$, with @f$\sigma@f$ the cross section of
+ * @ref FKSChannelIntegrand, whose real part is divided by the probability
+ * @f$p_k@f$ of the configuration @f$k@f$ and whose n-body part is not.
+ *
+ * `batch` is the leading batch dimension, `d` the number of random numbers of
+ * @ref FKSChannelIntegrand.
  *
  * **Arguments**
  * - `batch_size` – the number of points.
  *
- * **Returns**
+ * **Returns** (without @p madnis_training)
  * - `weight` – `float`, shape `(batch,)` – the cross section with the virtual
- *   trick, times the Jacobian of the VEGAS grid, as all weights here.
+ *   trick, times the Jacobian of the adaptive mapping, as all weights here.
  * - `lo_weight`, `virtual_residual` and, where the cross section gives them,
  *   `scale_variations`, `pdf_variations` and `ew_sudakov_weights` – those of
  *   @ref FKSChannelIntegrand.
@@ -328,7 +358,19 @@ private:
  *   `soft_collinear_weight`, `born_momenta`, `nbody_weight` – the kinematics
  *   and their weights for the histograms.
  * - `fks_index` – `int`, shape `(batch,)` – the FKS configuration.
- * - `random` – `float`, shape `(batch, d)` – the inputs of the VEGAS grid.
+ * - `random` – `float`, shape `(batch, d)` – the inputs of the adaptive
+ *   mapping.
+ *
+ * **Returns** (with @p madnis_training)
+ * - `full_weight` – `float`, shape `(batch,)` – the weight of the point, the
+ *   cross section times the Jacobian of the adaptive mapping.
+ * - `weight` – `float`, shape `(batch,)` – @f$f(x, k)@f$.
+ * - `latent` – `float`, shape `(batch, d)` – @f$x@f$, the random numbers of
+ *   @ref FKSChannelIntegrand.
+ * - `adaptive_prob` – `float`, shape `(batch,)` – the density of the adaptive
+ *   samplers at the point, the density of the adaptive mapping times
+ *   @f$p_k@f$.
+ * - `fks_index` – `int`, shape `(batch,)` – @f$k@f$.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -339,10 +381,16 @@ private:
  */
 class FKSIntegrand : public FunctionGenerator, public GeneratorIntegrand {
 public:
+    /// The optional adaptive reparametrization of the random numbers.
+    using AdaptiveMapping = std::variant<std::monostate, VegasMapping, Flow>;
+    /// The optional adaptive choice of the FKS configuration, by default the
+    /// probabilities of the state.
+    using AdaptiveDiscrete = std::variant<std::monostate, DiscreteFlow>;
+
     /**
      * @param integrand             The integrand of the channel.
-     * @param vegas                 The VEGAS grid of its random numbers, none
-     *                              for uniform ones.
+     * @param adaptive_map          The adaptive mapping of its random numbers,
+     *                              none for uniform ones.
      * @param prefix                Prefix of the globals of the state.
      * @param virtual_fraction      The fraction of the points with the virtual
      *                              in the first iteration.
@@ -350,23 +398,40 @@ public:
      * @param histograms            The histograms the points fill.
      * @param floor                 The weight of the uniform choice of the FKS
      *                              configuration.
-     * @throws std::invalid_argument if the VEGAS grid has another dimension
-     *         than the random numbers, or the histograms are those of other
-     *         particles.
+     * @param discrete              The adaptive choice of the configuration,
+     *                              a @ref DiscreteFlow with one dimension of
+     *                              the configurations, conditioned on the
+     *                              random numbers of the kinematics and with
+     *                              a prior.
+     * @param madnis_training       Whether the integrand gives the quantities
+     *                              of the @ref MadnisLoss.
+     * @throws std::invalid_argument if the adaptive mapping has another
+     *         dimension than the random numbers, the discrete flow does not
+     *         fit, the training has no @ref Flow, or the histograms are those
+     *         of other particles.
      */
     FKSIntegrand(
         const FKSChannelIntegrand& integrand,
-        const std::optional<VegasMapping>& vegas,
+        const AdaptiveMapping& adaptive_map,
         const std::string& prefix,
         double virtual_fraction = 1.,
         double min_virtual_fraction = 0.005,
         const std::optional<FKSObservableHistograms>& histograms = std::nullopt,
-        double floor = 0.1
+        double floor = 0.1,
+        const AdaptiveDiscrete& discrete = std::monostate{},
+        bool madnis_training = false
     );
-    /// Define the globals of the integrand on @p context: the VEGAS grid
-    /// uniform, the configurations equally likely, the fraction of the first
-    /// iteration and zero ratios.
+    /// Define the globals of the state on @p context and those of a VEGAS
+    /// grid: the grid uniform, the configurations equally likely, the
+    /// fraction of the first iteration and zero ratios. The globals of a
+    /// @ref Flow and a @ref DiscreteFlow are left to them.
     void initialize_globals(ContextPtr context) const;
+    /// The adaptive mapping.
+    const AdaptiveMapping& adaptive_map() const { return _adaptive_map; }
+    /// The adaptive choice of the configuration.
+    const AdaptiveDiscrete& discrete() const { return _discrete; }
+    /// Number of FKS configurations.
+    std::size_t configuration_count() const { return _configuration_count; }
     /// Number of random numbers of the kinematics.
     std::size_t random_dim() const { return _random_dim; }
     /// Global of the probabilities of the configurations.
@@ -382,18 +447,22 @@ public:
     Function common_function() const override;
     Function concat_function() const override;
     std::optional<std::string> vegas_grid_name() const override;
-    std::size_t vegas_dimension() const override {
-        return _vegas ? _vegas->dimension() : 0;
-    }
-    std::size_t vegas_bin_count() const override {
-        return _vegas ? _vegas->bin_count() : 0;
-    }
+    std::size_t vegas_dimension() const override;
+    std::size_t vegas_bin_count() const override;
     std::vector<std::string> discrete_prob_names() const override { return {}; }
     std::vector<std::size_t> discrete_option_counts() const override { return {}; }
     std::array<bool, 3> provided_indices() const override {
         return {false, false, false};
     }
-    bool madnis_training() const override { return false; }
+    bool madnis_training() const override { return _madnis_training; }
+    /// The integrand itself.
+    const FunctionGenerator& function_generator() const override { return *this; }
+    /// An @ref FKSIntegrandProbability of the integrand.
+    std::shared_ptr<FunctionGenerator> probability() const override;
+    /// None, the integrand has no flavours to drop.
+    const std::vector<std::size_t>& active_flavors() const override;
+    /// None, the integrand has no channel weights.
+    const std::vector<me_int_t>& channel_indices() const override;
     bool unweighted() const override { return false; }
     std::optional<std::pair<Function, std::vector<Histogram>>>
     histograms() const override;
@@ -410,14 +479,50 @@ private:
     build_common_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
 
     FKSChannelIntegrand _integrand;
-    std::optional<VegasMapping> _vegas;
+    AdaptiveMapping _adaptive_map;
+    AdaptiveDiscrete _discrete;
     std::optional<FKSObservableHistograms> _histograms;
     std::string _probability_name, _fraction_name, _ratio_name;
     double _virtual_fraction, _min_virtual_fraction, _floor;
+    bool _madnis_training;
     std::size_t _random_dim, _particle_count, _configuration_count, _nlo_orders;
     NamedVector<Type> _channel_types;
 
     friend class FKSIntegrandPart;
+    friend class FKSIntegrandProbability;
+};
+
+/**
+ * The density of the adaptive samplers of an @ref FKSIntegrand at a point, for
+ * the @ref MadnisLoss of its training.
+ *
+ * `batch` is the leading batch dimension, `d` the number of random numbers of
+ * @ref FKSChannelIntegrand.
+ *
+ * **Arguments**
+ * - `latent` – `float`, shape `(batch, d)` – the random numbers of
+ *   @ref FKSChannelIntegrand.
+ * - `fks_index` – `int`, shape `(batch,)` – the FKS configuration.
+ *
+ * **Returns**
+ * - `prob` – `float`, shape `(batch,)` – the density of the adaptive mapping
+ *   at `latent` times the probability of the configuration, from the
+ *   @ref DiscreteFlow or the probabilities of the state.
+ */
+class FKSIntegrandProbability : public FunctionGenerator {
+public:
+    /// @param integrand  The integrand to take the density of.
+    FKSIntegrandProbability(const FKSIntegrand& integrand);
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    FKSIntegrand::AdaptiveMapping _adaptive_map;
+    FKSIntegrand::AdaptiveDiscrete _discrete;
+    std::string _probability_name;
+    std::size_t _configuration_count;
 };
 
 } // namespace madspace

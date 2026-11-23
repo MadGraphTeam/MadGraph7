@@ -16,7 +16,7 @@ MadnisTraining::MadnisTraining(
     ContextPtr generator_context,
     ContextPtr optimizer_context,
     const Config& config,
-    const std::vector<std::shared_ptr<Integrand>>& integrands,
+    const std::vector<std::shared_ptr<GeneratorIntegrand>>& integrands,
     const std::optional<ChannelWeightNetwork>& cwnet,
     std::optional<std::uint64_t> seed,
     std::size_t channel_index_offset,
@@ -33,9 +33,10 @@ MadnisTraining::MadnisTraining(
          auto [integrand, channel] : zip(integrands, _channels)) {
         channel.index = index;
         channel.integrand = integrand;
-        channel.integrand_prob = std::make_shared<IntegrandProbability>(*integrand);
+        channel.integrand_prob = integrand->probability();
         if (_arg_permutation.size() == 0) {
-            auto& integ_args = channel.integrand->return_types().index_map();
+            auto integ_args =
+                channel.integrand->function_generator().return_types().index_map();
             _arg_permutation.push_back(integ_args.at("weight"));
             _arg_permutation.push_back(integ_args.at("adaptive_prob"));
             if (cwnet) {
@@ -254,12 +255,15 @@ void MadnisTraining::build_runtimes_and_optimizer() {
         _generator_context->reallocate_globals_contiguously(_optimizer->param_names());
     if (_generator_context->device()->device_type() == DeviceType::cpu) {
         for (auto& channel : _channels) {
-            channel.generator_runtime =
-                build_runtime(channel.integrand->function(), _generator_context, false);
+            channel.generator_runtime = build_runtime(
+                channel.integrand->function_generator().function(),
+                _generator_context,
+                false
+            );
             if (_config.buffer_capacity > 0) {
                 channel.unweighter_runtime = build_runtime(
                     BufferUnweighter(
-                        channel.integrand->return_types(),
+                        channel.integrand->function_generator().return_types(),
                         _config.buffer_unweighting_quantile
                     )
                         .function(),
@@ -272,7 +276,14 @@ void MadnisTraining::build_runtimes_and_optimizer() {
         std::vector<std::shared_ptr<Integrand>> integrands;
         integrands.reserve(_channels.size());
         for (auto& channel : _channels) {
-            integrands.push_back(channel.integrand);
+            auto integrand = std::dynamic_pointer_cast<Integrand>(channel.integrand);
+            if (!integrand) {
+                throw std::invalid_argument(
+                    "MadNIS training on a GPU samples the channels of an Integrand "
+                    "only"
+                );
+            }
+            integrands.push_back(integrand);
         }
         _multi_channel_generator = build_runtime(
             MultiChannelIntegrand(integrands, true).function(),
@@ -284,7 +295,7 @@ void MadnisTraining::build_runtimes_and_optimizer() {
             for (auto& channel : _channels) {
                 buf_unw_funcs.push_back(
                     std::make_shared<BufferUnweighter>(
-                        channel.integrand->return_types(),
+                        channel.integrand->function_generator().return_types(),
                         _config.buffer_unweighting_quantile
                     )
                 );
@@ -300,7 +311,8 @@ void MadnisTraining::build_runtimes_and_optimizer() {
         std::vector<NamedVector<Type>> types;
         for (auto& channel : _channels) {
             auto& chan_types = types.emplace_back();
-            auto& ret_types_named = channel.integrand->return_types();
+            auto& ret_types_named =
+                channel.integrand->function_generator().return_types();
             auto ret_keys = ret_types_named.keys();
             auto& ret_types = ret_types_named.values();
             bool buffer_needs_init = channel.buffer.tensors.size() == 0;

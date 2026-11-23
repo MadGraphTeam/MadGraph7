@@ -378,19 +378,37 @@ class SubprocessIntegrand:
         )
 
     def generator_integrand(
-        self, channel, context, prefix, fraction, min_fraction, bins, histograms, jets
+        self,
+        channel,
+        context,
+        prefix,
+        fraction,
+        min_fraction,
+        bins,
+        histograms,
+        jets,
+        flow=None,
+        discrete=None,
+        madnis_training=False,
     ):
         """The FKSIntegrand of a channel for the C++ event generator (see
         nlo.core): channel_integrand with a VEGAS grid of bins bins, the
         virtual trick from fraction down to min_fraction and the histograms
         (with the jets of the run card), its globals with the prefix defined
-        in the context."""
+        in the context. With a flow (and a DiscreteFlow of the
+        configurations), the integrand takes them instead of the VEGAS grid
+        and the probabilities of the configurations, and keeps the globals
+        of the integrand before it, for the MadNIS training with
+        madnis_training."""
         ms = madspace()
         integrand = self.channel_integrand(channel, context)
-        dimension = self.channel_dimension(channel)
-        vegas = ms.VegasMapping(dimension, bins, prefix)
+        adaptive_map = flow
+        if flow is None:
+            adaptive_map = ms.VegasMapping(
+                self.channel_dimension(channel), bins, prefix
+            )
         observables = None
-        if histograms:
+        if histograms and not madnis_training:
             from madspace.nlo.fks import fks_histograms
 
             observables = fks_histograms(
@@ -398,13 +416,16 @@ class SubprocessIntegrand:
             )
         generator = ms.FKSIntegrand(
             integrand,
-            vegas,
+            adaptive_map,
             prefix,
             virtual_fraction=fraction,
             min_virtual_fraction=min_fraction,
             histograms=observables,
+            discrete=discrete,
+            madnis_training=madnis_training,
         )
-        generator.initialize_globals(context)
+        if flow is None:
+            generator.initialize_globals(context)
         return generator
 
     def close(self):
@@ -637,6 +658,12 @@ def main(argv=None):
         "--threads", type=int, default=-1, help="threads of the event generator"
     )
     parser.add_argument(
+        "--madnis-batches",
+        type=int,
+        default=0,
+        help="batches of a MadNIS training per subprocess, with --generator",
+    )
+    parser.add_argument(
         "--histograms", help="a TOML file with [histograms] as run_card.toml"
     )
     args = parser.parse_args(argv)
@@ -653,6 +680,7 @@ def main(argv=None):
         histograms=args.histograms,
         generator=args.generator,
         threads=args.threads,
+        madnis_batches=args.madnis_batches,
     )
     result = run.run()
     unit = result["unit"]

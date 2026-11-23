@@ -596,7 +596,17 @@ const std::vector<std::pair<std::string, std::string>> histogram_kinematics{
     {"born_momenta", "nbody_weight"},
 };
 
-NamedVector<Type> fks_event_types(const FKSChannelIntegrand& integrand) {
+NamedVector<Type>
+fks_event_types(const FKSChannelIntegrand& integrand, bool madnis_training) {
+    if (madnis_training) {
+        return {
+            {"full_weight", batch_float},
+            {"weight", batch_float},
+            {"latent", integrand.arg_types().at("random")},
+            {"adaptive_prob", batch_float},
+            {"fks_index", batch_int},
+        };
+    }
     auto types = integrand.return_types();
     auto index_map = types.index_map();
     NamedVector<Type> out;
@@ -624,7 +634,7 @@ NamedVector<Type> fks_channel_types(std::size_t random_dim) {
     return {
         {"random", batch_float_array(dim)},
         {"x", batch_float_array(dim)},
-        {"vegas_det", batch_float},
+        {"map_det", batch_float},
         {"fks_index", batch_int},
         {"configuration_weight", batch_float},
         {"virtual_random", batch_float},
@@ -709,7 +719,8 @@ FKSIterationState::FKSIterationState(
     std::size_t configuration_count,
     double virtual_fraction,
     double min_virtual_fraction,
-    double floor
+    double floor,
+    bool adapt_probabilities
 ) :
     _event_types(event_types),
     _probability_name(probability_name),
@@ -718,6 +729,7 @@ FKSIterationState::FKSIterationState(
     _fraction(virtual_fraction),
     _min_fraction(min_virtual_fraction),
     _floor(floor),
+    _adapt_probabilities(adapt_probabilities),
     _probabilities(configuration_count, 1. / configuration_count) {
     auto index_map = event_types.index_map();
     std::size_t width = 0;
@@ -802,6 +814,10 @@ void FKSIterationState::add(const TensorVec& events) {
 }
 
 void FKSIterationState::end_iteration(const std::vector<ContextPtr>& contexts) {
+    if (!_started && !contexts.empty()) {
+        read_globals(contexts.at(0));
+    }
+    _started = true;
     std::size_t n = _iteration_count;
     std::size_t width = _sums.size();
     if (n > 0) {
@@ -839,7 +855,7 @@ void FKSIterationState::end_iteration(const std::vector<ContextPtr>& contexts) {
                 target_sum += target[k];
             }
         }
-        if (target_sum > 0.) {
+        if (_adapt_probabilities && target_sum > 0.) {
             double uniform = 1. / target.size();
             for (std::size_t k = 0; k < target.size(); ++k) {
                 _probabilities[k] =
@@ -885,6 +901,20 @@ void FKSIterationState::write_globals(ContextPtr context) const {
     global.copy_from(tensor);
 }
 
+void FKSIterationState::read_globals(ContextPtr context) {
+    auto read = [&](const std::string& name, std::vector<double>& values) {
+        Tensor tensor = context->global(name).cpu();
+        auto view = tensor.view<double, 2>()[0];
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            values[i] = view[i];
+        }
+    };
+    read(_probability_name, _probabilities);
+    read(_ratio_name, _ratios);
+    Tensor tensor = context->global(_fraction_name).cpu();
+    _fraction = tensor.view<double, 1>()[0];
+}
+
 std::pair<double, double>
 FKSIterationState::combination(const std::vector<double>& coefficients) const {
     if (_count == 0) {
@@ -913,18 +943,23 @@ FKSIterationState::combination(const std::vector<double>& coefficients) const {
 
 FKSIntegrand::FKSIntegrand(
     const FKSChannelIntegrand& integrand,
-    const std::optional<VegasMapping>& vegas,
+    const AdaptiveMapping& adaptive_map,
     const std::string& prefix,
     double virtual_fraction,
     double min_virtual_fraction,
     const std::optional<FKSObservableHistograms>& histograms,
-    double floor
+    double floor,
+    const AdaptiveDiscrete& discrete,
+    bool madnis_training
 ) :
     FunctionGenerator(
-        "FKSIntegrand", {{"batch_size", Type({batch_size})}}, fks_event_types(integrand)
+        "FKSIntegrand",
+        {{"batch_size", Type({batch_size})}},
+        fks_event_types(integrand, madnis_training)
     ),
     _integrand(integrand),
-    _vegas(vegas),
+    _adaptive_map(adaptive_map),
+    _discrete(discrete),
     _histograms(histograms),
     _probability_name(prefixed_name(prefix, "fks_probabilities")),
     _fraction_name(prefixed_name(prefix, "virtual_fraction")),
@@ -932,15 +967,41 @@ FKSIntegrand::FKSIntegrand(
     _virtual_fraction(virtual_fraction),
     _min_virtual_fraction(min_virtual_fraction),
     _floor(floor),
+    _madnis_training(madnis_training),
     _random_dim(integrand.arg_types().at("random").shape.at(0)),
     _particle_count(integrand.born_particle_count() + 1),
     _configuration_count(integrand.configuration_count()),
     _nlo_orders(integrand.nlo_order_count()),
     _channel_types(fks_channel_types(_random_dim)) {
-    if (vegas && vegas->dimension() != _random_dim) {
+    std::size_t map_dim = std::visit(
+        Overloaded{
+            [&](std::monostate) { return _random_dim; },
+            [](const VegasMapping& vegas) { return vegas.dimension(); },
+            [](const Flow& flow) { return flow.input_dim(); }
+        },
+        adaptive_map
+    );
+    if (map_dim != _random_dim) {
         throw std::invalid_argument(
-            "FKSIntegrand: the VEGAS grid needs the dimension of the random numbers"
+            "FKSIntegrand: the adaptive mapping needs the dimension of the random "
+            "numbers"
         );
+    }
+    if (auto flow = std::get_if<Flow>(&adaptive_map); flow && flow->condition_dim()) {
+        throw std::invalid_argument("FKSIntegrand: the flow takes no condition");
+    }
+    if (auto flow = std::get_if<DiscreteFlow>(&discrete)) {
+        if (flow->option_counts() != std::vector<std::size_t>{_configuration_count} ||
+            flow->condition_dim() != _random_dim ||
+            flow->condition_types().size() != 2) {
+            throw std::invalid_argument(
+                "FKSIntegrand: the discrete flow needs one dimension of the "
+                "configurations, the random numbers as its condition and a prior"
+            );
+        }
+    }
+    if (madnis_training && !std::holds_alternative<Flow>(adaptive_map)) {
+        throw std::invalid_argument("FKSIntegrand: the training needs a flow");
     }
     if (!(virtual_fraction > 0. && virtual_fraction <= 1.) ||
         !(min_virtual_fraction > 0. && min_virtual_fraction <= 1.)) {
@@ -971,8 +1032,8 @@ FKSIntegrand::FKSIntegrand(
 }
 
 void FKSIntegrand::initialize_globals(ContextPtr context) const {
-    if (_vegas) {
-        _vegas->initialize_globals(context);
+    if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
+        vegas->initialize_globals(context);
     }
     if (!context->global_exists(_probability_name)) {
         context->define_global(
@@ -985,8 +1046,9 @@ void FKSIntegrand::initialize_globals(ContextPtr context) const {
     if (!context->global_exists(_fraction_name)) {
         context->define_global(_fraction_name, DataType::dt_float64, {});
     }
+    // the outputs of the integration, also for the training
     FKSIterationState(
-        return_types(),
+        fks_event_types(_integrand, false),
         _probability_name,
         _fraction_name,
         _ratio_name,
@@ -1011,10 +1073,34 @@ Function FKSIntegrand::concat_function() const {
 }
 
 std::optional<std::string> FKSIntegrand::vegas_grid_name() const {
-    if (_vegas) {
-        return _vegas->grid_name();
+    if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
+        return vegas->grid_name();
     }
     return std::nullopt;
+}
+
+std::size_t FKSIntegrand::vegas_dimension() const {
+    auto vegas = std::get_if<VegasMapping>(&_adaptive_map);
+    return vegas ? vegas->dimension() : 0;
+}
+
+std::size_t FKSIntegrand::vegas_bin_count() const {
+    auto vegas = std::get_if<VegasMapping>(&_adaptive_map);
+    return vegas ? vegas->bin_count() : 0;
+}
+
+std::shared_ptr<FunctionGenerator> FKSIntegrand::probability() const {
+    return std::make_shared<FKSIntegrandProbability>(*this);
+}
+
+const std::vector<std::size_t>& FKSIntegrand::active_flavors() const {
+    static const std::vector<std::size_t> none;
+    return none;
+}
+
+const std::vector<me_int_t>& FKSIntegrand::channel_indices() const {
+    static const std::vector<me_int_t> none;
+    return none;
 }
 
 std::optional<std::pair<Function, std::vector<Histogram>>>
@@ -1043,6 +1129,9 @@ std::vector<std::string> FKSIntegrand::histogram_inputs() const {
 }
 
 std::shared_ptr<IterationState> FKSIntegrand::iteration_state() const {
+    if (_madnis_training) {
+        return nullptr;
+    }
     return std::make_shared<FKSIterationState>(
         return_types(),
         _probability_name,
@@ -1051,7 +1140,8 @@ std::shared_ptr<IterationState> FKSIntegrand::iteration_state() const {
         _configuration_count,
         _virtual_fraction,
         _min_virtual_fraction,
-        _floor
+        _floor,
+        std::holds_alternative<std::monostate>(_discrete)
     );
 }
 
@@ -1069,23 +1159,48 @@ NamedVector<Value> FKSIntegrand::build_channel_part(
     auto [r_choice_rest, virtual_random] = fb.pop(r);
     auto [random, choice_random] = fb.pop(r_choice_rest);
     Value x = random;
-    Value vegas_det = fb.full({1., batch});
-    if (_vegas) {
-        auto result = _vegas->build_forward(fb, {random}, {});
-        x = result.at("data");
-        vegas_det = result.at("det");
-    }
+    Value map_det = fb.full({1., batch});
+    std::visit(
+        Overloaded{
+            [](std::monostate) {},
+            [&](const auto& mapping) {
+                auto result = mapping.build_forward(fb, {random}, {});
+                x = result.at("data");
+                map_det = result.at("det");
+            }
+        },
+        _adaptive_map
+    );
     auto probabilities = fb.global(
         _probability_name,
         DataType::dt_float64,
         {static_cast<int>(_configuration_count)}
     );
-    auto [fks_index, configuration_weight] =
-        fb.sample_discrete_probs(choice_random, probabilities);
+    Value fks_index, configuration_weight;
+    std::visit(
+        Overloaded{
+            [&](std::monostate) {
+                auto [index, weight] =
+                    fb.sample_discrete_probs(choice_random, probabilities);
+                fks_index = index;
+                configuration_weight = weight;
+            },
+            [&](const DiscreteFlow& flow) {
+                Value prior = fb.mul(
+                    fb.full({1., batch, static_cast<me_int_t>(_configuration_count)}),
+                    probabilities
+                );
+                auto result = flow.build_forward(fb, {choice_random}, {x, prior});
+                fks_index = result.at(0);
+                configuration_weight = result.at("det");
+            }
+        },
+        _discrete
+    );
     Value indices = fb.nonzero(fb.full({1., batch}));
     return {
         _channel_types.keys(),
-        {random, x, vegas_det, fks_index, configuration_weight, virtual_random, indices}
+        {random, x, map_det, fks_index, configuration_weight, virtual_random, indices}
     };
 }
 
@@ -1093,25 +1208,41 @@ NamedVector<Value> FKSIntegrand::build_common_part(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     Value x = args.at("x");
-    Value det = args.at("vegas_det");
+    Value det = args.at("map_det");
     Value batch = fb.batch_size({x});
     auto fraction = fb.global(_fraction_name, DataType::dt_float64, {});
     auto ratios =
         fb.global(_ratio_name, DataType::dt_float64, {static_cast<int>(_nlo_orders)});
-    Value virtual_mask = fb.cut_one(args.at("virtual_random"), 0., fraction);
+    // the training takes no virtual
+    Value virtual_mask = _madnis_training
+        ? fb.full({0., batch})
+        : fb.cut_one(args.at("virtual_random"), 0., fraction);
     Value virtual_fraction = fb.mul(fb.full({1., batch}), fraction);
     Value virtual_ratio =
         fb.mul(fb.full({1., batch, static_cast<me_int_t>(_nlo_orders)}), ratios);
+    Value configuration_weight = args.at("configuration_weight");
     auto out = _integrand.build_function(
         fb,
         {x,
          args.at("fks_index"),
-         args.at("configuration_weight"),
+         configuration_weight,
          virtual_mask,
          virtual_ratio,
          virtual_fraction}
     );
     NamedVector<Value> result;
+    if (_madnis_training) {
+        Value cross_section = out.at("cross_section");
+        result.push_back("full_weight", fb.mul(cross_section, det));
+        result.push_back("weight", fb.div(cross_section, configuration_weight));
+        result.push_back("latent", x);
+        result.push_back(
+            "adaptive_prob",
+            fb.div(fb.full({1., batch}), fb.mul(det, configuration_weight))
+        );
+        result.push_back("fks_index", args.at("fks_index"));
+        return result;
+    }
     auto weighted = [&](const std::string& name) {
         auto& value = out.at(name);
         if (value.type.shape.empty()) {
@@ -1141,4 +1272,59 @@ NamedVector<Value> FKSIntegrand::build_common_part(
     result.push_back("fks_index", args.at("fks_index"));
     result.push_back("random", args.at("random"));
     return result;
+}
+
+FKSIntegrandProbability::FKSIntegrandProbability(const FKSIntegrand& integrand) :
+    FunctionGenerator(
+        "FKSIntegrandProbability",
+        {{"latent", batch_float_array(static_cast<int>(integrand._random_dim))},
+         {"fks_index", batch_int}},
+        {{"prob", batch_float}}
+    ),
+    _adaptive_map(integrand._adaptive_map),
+    _discrete(integrand._discrete),
+    _probability_name(integrand._probability_name),
+    _configuration_count(integrand._configuration_count) {}
+
+NamedVector<Value> FKSIntegrandProbability::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value latent = args.at("latent");
+    Value fks_index = args.at("fks_index");
+    Value batch = fb.batch_size({latent});
+    ValueVec probs;
+    std::visit(
+        Overloaded{
+            [](std::monostate) {},
+            [&](const auto& mapping) {
+                probs.push_back(mapping.build_inverse(fb, {latent}, {}).at("det"));
+            }
+        },
+        _adaptive_map
+    );
+    auto probabilities = fb.global(
+        _probability_name,
+        DataType::dt_float64,
+        {static_cast<int>(_configuration_count)}
+    );
+    std::visit(
+        Overloaded{
+            [&](std::monostate) {
+                auto [random, prob] =
+                    fb.sample_discrete_probs_inverse(fks_index, probabilities);
+                probs.push_back(prob);
+            },
+            [&](const DiscreteFlow& flow) {
+                Value prior = fb.mul(
+                    fb.full({1., batch, static_cast<me_int_t>(_configuration_count)}),
+                    probabilities
+                );
+                probs.push_back(
+                    flow.build_inverse(fb, {fks_index}, {latent, prior}).at("det")
+                );
+            }
+        },
+        _discrete
+    );
+    return {{"prob", fb.product(probs)}};
 }

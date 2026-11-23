@@ -533,6 +533,10 @@ Integrand::Integrand(
     _channel_part_ret_types = compute_channel_part_ret_types();
 }
 
+std::shared_ptr<FunctionGenerator> Integrand::probability() const {
+    return std::make_shared<IntegrandProbability>(*this);
+}
+
 Function Integrand::channel_function() const {
     return IntegrandChannelPart(*this).function();
 }
