@@ -721,8 +721,20 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             'NLO_REAL_BRIDGE_SONAME :=',
             'endif',
             '',
-            '.PHONY: all libraries bridge clean',
+            '.PHONY: all libraries bridge clean commonlib',
             'all: libraries bridge',
+            '',
+            '# The common library (../../src) is shared by every P* directory.',
+            '# The run interface builds it once with this target, before',
+            '# compiling the P* directories in parallel with',
+            '# MADMATRIX_COMMONLIB_EXTERNAL=1, so that they do not all rebuild',
+            '# it at the same time. Any real-emission directory can build it.',
+            'commonlib:',
+            '\t@set -e; for directory in $(firstword $(NLO_REAL_BUILD_DIRS)); do \\',
+            '\t  $(MAKE) -C ../$$directory USEBUILDDIR=1 BACKEND=$(BACKEND) '
+            'FPTYPE=$(FPTYPE) LIBTAG=$(LIBTAG) HELINL=$(HELINL) HRDCOD=$(HRDCOD) '
+            'NLO_REAL_STRICT=1 commonlib; \\',
+            '\tdone',
             '',
             'libraries:',
             '\t@set -e; for directory in $(NLO_REAL_BUILD_DIRS); do \\',
@@ -1338,6 +1350,11 @@ C     component result does not carry this native scalar side effect.
             '\t$(MAKE) -f nlo_real.mk BACKEND=$(NLO_REAL_BACKEND) '
             'FPTYPE=$(NLO_REAL_FPTYPE) LIBTAG=$(NLO_REAL_LIBTAG) all',
             '\ttouch $@',
+            '',
+            '.PHONY: nlo_real_commonlib',
+            'nlo_real_commonlib:',
+            '\t$(MAKE) -f nlo_real.mk BACKEND=$(NLO_REAL_BACKEND) '
+            'FPTYPE=$(NLO_REAL_FPTYPE) LIBTAG=$(NLO_REAL_LIBTAG) commonlib',
             '',
             '.PHONY: nlo_real_backend_force',
             'nlo_real_backend.inc: nlo_real_backend_force',

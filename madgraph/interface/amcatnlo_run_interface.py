@@ -170,6 +170,23 @@ def check_pythia8_fxfx_plugin(pythia8_path, reference_header):
                            'See http://cern.ch/amcatnlo/FxFx_merging.htm')
 
 
+def nlo_real_commonlib_dir(subprocesses, p_dirs, backend):
+    """The first P* directory of a --me_exporter=mg7 output that builds a
+    MadMatrix real-emission library for this run-card backend (GPU backends
+    build only the GPU-capable ones), or None if no directory builds one."""
+    key = 'NLO_REAL_GPU_DIRS' if backend in ('cuda', 'hip') else 'NLO_REAL_DIRS'
+    for p_dir in p_dirs:
+        path = pjoin(subprocesses, p_dir, 'nlo_real.mk')
+        if not os.path.isfile(path):
+            continue
+        with open(path) as stream:
+            for line in stream:
+                name, separator, value = line.partition(':=')
+                if separator and name.strip() == key and value.split():
+                    return p_dir
+    return None
+
+
 def compile_dir(*arguments):
     """compile the directory p_dir
     arguments is the tuple (me_dir, p_dir, mode, options, tests, exe, run_mode)
@@ -185,6 +202,12 @@ def compile_dir(*arguments):
     logger.info(' Compiling %s...' % p_dir)
 
     this_dir = pjoin(me_dir, 'SubProcesses', p_dir) 
+    # The run interface built the MadMatrix common library shared by every
+    # P* directory (see nlo_real_commonlib_dir): directories compiled in
+    # parallel must not all rebuild it at the same time.
+    external = []
+    if os.path.isfile(pjoin(this_dir, 'nlo_real_offload.mk')):
+        external = ['MADMATRIX_COMMONLIB_EXTERNAL=1']
 
     try:
         #compile everything
@@ -200,7 +223,7 @@ def compile_dir(*arguments):
                 test_exe='test_soft_col_limits'
             else:
                 test_exe=test
-            misc.compile([test_exe], cwd = this_dir, job_specs = False)
+            misc.compile([test_exe] + external, cwd = this_dir, job_specs = False)
             input = pjoin(me_dir, '%s_input.txt' % test)
             log = pjoin(this_dir, '%s.log' % test)
             with open(input) as stdin, open(log, 'w') as stdout:
@@ -228,16 +251,16 @@ def compile_dir(*arguments):
                 for path in (marker, executable_marker):
                     with open(path, 'w') as stream:
                         stream.write('compilation incomplete\n')
-            misc.compile(['gensym'], cwd=this_dir, job_specs = False)
+            misc.compile(['gensym'] + external, cwd=this_dir, job_specs = False)
             #compile madevent_mintMC/mintFO
-            misc.compile([exe], cwd=this_dir, job_specs = False)
+            misc.compile([exe] + external, cwd=this_dir, job_specs = False)
             misc.call(['./gensym', mode],cwd= this_dir,
                      stdout=open(pjoin(this_dir, 'gensym.log'), 'w'),
                      close_fds=True) 
             if has_real_channels:
                 shutil.copyfile(marker, executable_marker)
         if mode in ['aMC@NLO', 'aMC@LO', 'noshower', 'noshowerLO']:
-            misc.compile(['reweight_xsec_events'], cwd=this_dir, job_specs = False)
+            misc.compile(['reweight_xsec_events'] + external, cwd=this_dir, job_specs = False)
 
         logger.info('    %s done.' % p_dir) 
         return 0
@@ -6244,6 +6267,18 @@ RESTART = %(mint_mode)s
                  " seems to have been compiled with a different compiler than"+\
                     " the one specified in MadGraph7. Please recompile it by typing"+\
                     " 'install cuttools_iregi' in the MadGraph7 interface.")
+
+        # Every P* directory of a --me_exporter=mg7 output links the same
+        # MadMatrix common library (src/). Build it once here: the P*
+        # directories compiled in parallel below would otherwise all rebuild
+        # it at the same time and link half-written objects.
+        commonlib_dir = nlo_real_commonlib_dir(
+            pjoin(self.me_dir, 'SubProcesses'), p_dirs,
+            self.run_card['nlo_real_backend'])
+        if commonlib_dir:
+            logger.info('Compiling the MadMatrix common library...')
+            misc.compile(['nlo_real_commonlib'],
+                         cwd=pjoin(self.me_dir, 'SubProcesses', commonlib_dir))
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \
