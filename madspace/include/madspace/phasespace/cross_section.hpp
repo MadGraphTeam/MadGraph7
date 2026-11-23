@@ -1,5 +1,6 @@
 #pragma once
 
+#include "madspace/phasespace/eva.hpp"
 #include "madspace/phasespace/matrix_element.hpp"
 #include "madspace/phasespace/pdf.hpp"
 #include "madspace/phasespace/scale.hpp"
@@ -20,6 +21,17 @@ namespace madspace {
  * @f$M@f$ = @p cm_energy, in GeV, rather than a hadronic cross section in pb.
  * There are no beams, hence no PDFs; declared `x1`, `x2` inputs are ignored.
  *
+ * With @p eva the beams are effective vector bosons (@ref EvaFlux), whose
+ * densities depend on their helicity. The cached `pdf1`, `pdf2` (helicity
+ * sums) are then replaced, after the matrix element picked the helicity row
+ * of the event with a probability proportional to its @f$|M_h|^2@f$, by
+ * @f$x_i n_i f_{\lambda_i}(x_i, \mu_i)@f$ with @f$\lambda_i@f$ the
+ * helicity of incoming leg @f$i@f$ in that row of @p eva_helicities and
+ * @f$n_i@f$ its number of helicity states: the helicity-averaged
+ * @f$|M|^2@f$ times these is an unbiased estimate of
+ * @f$\sum_h f_{\lambda_1(h)} f_{\lambda_2(h)} |M_h|^2@f$. Leg @f$i@f$
+ * comes from beam @f$i@f$, or from the other one for `mirror_index` 1.
+ *
  * `batch` is the leading batch dimension.
  *
  * **Arguments**
@@ -31,6 +43,10 @@ namespace madspace {
  *   `CachedPdf` argument).
  * - `alpha_s` – `float`, shape `(batch,)` – cached coupling (with a
  *   `CachedScale` argument).
+ * - `fact_scale1`, `fact_scale2` – `float`, shape `(batch,)` – factorisation
+ *   scales of the two legs (with @p eva).
+ * - `mirror_index` – `int`, shape `(batch,)` – 1 for an event whose legs come
+ *   from the other beams (with @p eva).
  *
  * **Returns**
  * - the return values of @p matrix_element, scaled to the differential cross
@@ -67,6 +83,14 @@ public:
      *                                 incoming particle instead of a collision.
      * @param return_matrix_element    If true, also return the squared matrix
      *                                 element itself as `raw_matrix_element`.
+     * @param eva                      Effective-vector-boson beams; needs
+     *                                 `CachedPdf` on both beams, a
+     *                                 `CachedScale`, @p pid_options and a
+     *                                 matrix element returning its helicity.
+     * @param eva_helicities           With @p eva, per flavour option, the
+     *                                 helicity table of the matrix element
+     *                                 (rows of the particles' helicities,
+     *                                 indexed by its helicity index).
      */
     DifferentialCrossSection(
         const MatrixElement& matrix_element,
@@ -79,7 +103,9 @@ public:
         const std::variant<std::monostate, PdfGrid, CachedPdf>& pdf2 = std::monostate{},
         bool input_momentum_fraction = true,
         bool decay = false,
-        bool return_matrix_element = false
+        bool return_matrix_element = false,
+        const std::optional<EvaFlux>& eva = std::nullopt,
+        const nested_vector3<me_int_t>& eva_helicities = {}
     );
 
     /// The allowed initial-parton flavour combinations.
@@ -94,6 +120,9 @@ public:
     }
     /// Whether the squared matrix element is returned as `raw_matrix_element`.
     bool returns_matrix_element() const { return _return_matrix_element; }
+    /// Whether the beams are effective vector bosons (then the arguments end
+    /// with `fact_scale1`, `fact_scale2` and `mirror_index`).
+    bool eva() const { return _eva_tables.has_value(); }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -110,6 +139,7 @@ private:
     bool _input_momentum_fraction;
     bool _decay;
     bool _return_matrix_element;
+    std::optional<EvaLegTables> _eva_tables;
 };
 
 } // namespace madspace

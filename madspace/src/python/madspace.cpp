@@ -2647,6 +2647,67 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("PdfGrid::initialize_globals")
         );
 
+    py::classh<EvaFlux>(m, "EvaFlux", pydoc::doc("EvaFlux"))
+        .def(
+            py::init<
+                const std::array<int, 2>&,
+                const std::array<double, 2>&,
+                double,
+                double,
+                double,
+                const std::array<double, 2>&,
+                int,
+                bool,
+                bool>(),
+            py::arg("beam_leptons"),
+            py::arg("beam_energies"),
+            py::arg("w_mass"),
+            py::arg("z_mass"),
+            py::arg("e2"),
+            py::arg("left_fractions") = std::array<double, 2>{0.5, 0.5},
+            py::arg("order") = 0,
+            py::arg("pt_evolution") = false,
+            py::arg("xcut") = true,
+            pydoc::doc("EvaFlux::EvaFlux")
+        )
+        .def_readonly_static("helicity_sum", &EvaFlux::helicity_sum)
+        .def(
+            "has_density",
+            &EvaFlux::has_density,
+            py::arg("vector_pid"),
+            py::arg("beam"),
+            pydoc::doc("EvaFlux::has_density")
+        )
+        .def(
+            "parameters",
+            &EvaFlux::parameters,
+            py::arg("vector_pid"),
+            py::arg("beam"),
+            pydoc::doc("EvaFlux::parameters")
+        )
+        .def(
+            "density",
+            &EvaFlux::density,
+            py::arg("vector_pid"),
+            py::arg("beam"),
+            py::arg("helicity"),
+            py::arg("x"),
+            py::arg("q"),
+            pydoc::doc("EvaFlux::density")
+        )
+        .def("beam_leptons", &EvaFlux::beam_leptons, pydoc::doc("EvaFlux::beam_leptons"))
+        .def(
+            "beam_energies", &EvaFlux::beam_energies, pydoc::doc("EvaFlux::beam_energies")
+        )
+        .def(
+            "left_fractions",
+            &EvaFlux::left_fractions,
+            pydoc::doc("EvaFlux::left_fractions")
+        )
+        .def("order", &EvaFlux::order, pydoc::doc("EvaFlux::order"))
+        .def("pt_evolution", &EvaFlux::pt_evolution, pydoc::doc("EvaFlux::pt_evolution"))
+        .def("xcut", &EvaFlux::xcut, pydoc::doc("EvaFlux::xcut"));
+
     py::classh<PartonDensity, FunctionGenerator>(
         m, "PartonDensity", pydoc::doc("PartonDensity")
     )
@@ -2669,6 +2730,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("beam_index"),
             py::arg("dynamic_pid") = false,
             pydoc::doc("PartonDensity::PartonDensity#2")
+        )
+        .def(
+            py::init<const EvaFlux&, const std::vector<int>&, int, bool>(),
+            py::arg("eva"),
+            py::arg("pids"),
+            py::arg("beam_index"),
+            py::arg("dynamic_pid") = false,
+            pydoc::doc("PartonDensity::PartonDensity#3")
         );
 
     py::classh<EEPartonDensity, FunctionGenerator>(
@@ -2875,7 +2944,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                     DifferentialCrossSection::CachedPdf>&,
                 bool,
                 bool,
-                bool>(),
+                bool,
+                const std::optional<EvaFlux>&,
+                const nested_vector3<me_int_t>&>(),
             py::arg("matrix_element"),
             py::arg("cm_energy"),
             py::arg("running_coupling"),
@@ -2886,8 +2957,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("input_momentum_fraction") = true,
             py::arg("decay") = false,
             py::arg("return_matrix_element") = false,
+            py::arg("eva") = std::nullopt,
+            py::arg("eva_helicities") = nested_vector3<me_int_t>{},
             pydoc::doc("DifferentialCrossSection::DifferentialCrossSection")
         )
+        .def("eva", &DifferentialCrossSection::eva, pydoc::doc("DifferentialCrossSection::eva"))
         .def(
             "pid_options",
             &DifferentialCrossSection::pid_options,

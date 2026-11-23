@@ -284,6 +284,7 @@ add_library(
     src/phasespace/mlm_clustering.cpp
     src/phasespace/merging_scale.cpp
     src/phasespace/cross_section.cpp
+    src/phasespace/eva.cpp
     src/phasespace/scale.cpp
     src/phasespace/weighting_step.cpp
     include/madspace/util.hpp

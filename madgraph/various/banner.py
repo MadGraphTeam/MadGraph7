@@ -7574,6 +7574,36 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'lepton_density', "",
             comment="dressed-lepton density (a directory of Source/PDF/lep_densities) "
                     "or \"\" for none: ISR and, for the collider-specific sets, beamstrahlung")
+        # EVA (madevent: pdlabel = eva on e/mu beams, lpp = +-3/+-4): the W, Z
+        # and photon content of the lepton beams lepton1/lepton2. No PDF and
+        # alpha_s from the param card, as a lepton collider, but x is sampled,
+        # and the density of an incoming vector boson depends on the helicity
+        # its matrix element picks (madspace EvaFlux).
+        self.add_toml_param('beam', 'eva', False,
+            comment="effective vector bosons (W, Z, photon) from the lepton beams "
+                    "lepton1/lepton2, as madevent's pdlabel = eva",
+            hidden=True)
+        for i, lepton in ((1, -11), (2, 11)):
+            self.add_toml_param('beam', 'lepton%d' % i, lepton,
+                comment="lepton of beam %d with eva: +-11 (e) or +-13 (mu), "
+                        "madevent's lpp%d = +-3 / +-4" % (i, i),
+                allowed=[11, -11, 13, -13], hidden=True)
+            self.add_toml_param('beam', 'polarization%d' % i, 0.0,
+                comment="polarisation of the beam-%d lepton with eva, in %%: "
+                        "-100 left-handed, 0 unpolarised, 100 right-handed "
+                        "(madevent's polbeam%d)" % (i, i),
+                hidden=True)
+        self.add_toml_param('beam', 'eva_order', 0,
+            comment="eva: 0 = leading log (LLA), 1 = full leading power, "
+                    "2 = next-to-leading power (madevent's evaorder)",
+            allowed=[0, 1, 2], hidden=True)
+        self.add_toml_param('beam', 'eva_evolution', "q2",
+            comment="eva: evolution of the densities in q2 or pt (pt^2, which "
+                    "lowers the scale floor by 1-x; madevent's ievo_eva = 1)",
+            allowed=['q2', 'pt'], hidden=True)
+        self.add_toml_param('beam', 'eva_xcut', True,
+            comment="eva: no W/Z below x = M_V / E_beam (madevent's eva_xcut)",
+            hidden=True)
         # gamma-UPC (madevent: lpp = 2 on both beams with an 'ed*'/'ch*'
         # pdlabel): the coherent photons of two protons or ions, with the
         # probability that the beams do not break up. Like a dressed-lepton
@@ -9047,6 +9077,7 @@ class RunCardMG7(RunCard):
     # madevent beam settings understood by set_lo_beam_param
     lo_beam_params = ('ebeam', 'ebeam1', 'ebeam2', 'lpp', 'lpp1', 'lpp2',
                       'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid',
+                      'polbeam1', 'polbeam2', 'ievo_eva', 'evaorder', 'eva_xcut',
                       'nb_proton', 'nb_proton1', 'nb_proton2',
                       'nb_neutron', 'nb_neutron1', 'nb_neutron2')
 
@@ -9063,7 +9094,13 @@ class RunCardMG7(RunCard):
           'none' on both beams is a lepton collider.
         * lpp: mg7 has one switch for both beams, beam.leptonic, true for
           0 (no PDF) and +-3/+-4 (e/mu), false for +-1 and +-2 (elastic
-          photons, only through a gamma-UPC pdlabel: beam.upc_flux).
+          photons, only through a gamma-UPC pdlabel: beam.upc_flux). +-3/+-4
+          also sets the lepton of the beam (beam.lepton1/2), which EVA uses.
+        * pdlabel eva: beam.eva, on both beams (mg7 has no EVA on one beam
+          only); any other label, and lpp 0, +-1 or +-2, switches it off, with
+          the beam polarisations (_switch_eva_off).
+        * polbeam1/2, ievo_eva, evaorder, eva_xcut: the EVA settings
+          beam.polarization1/2, eva_evolution, eva_order, eva_xcut.
         * a gamma-UPC pdlabel (edff, chff, ...) sets beam.upc_flux, for both
           beams; any other pdlabel clears it.
         * nb_proton / nb_neutron: the ions of a gamma-UPC run.
@@ -9073,6 +9110,39 @@ class RunCardMG7(RunCard):
         beams = (name[-1],) if name[-1] in '12' else ('1', '2')
         which = 'beam ' + beams[0] if len(beams) == 1 else 'both beams'
         value = str(value).strip()
+
+        if name in ('polbeam1', 'polbeam2', 'ievo_eva', 'evaorder', 'eva_xcut'):
+            try:
+                number = float(value)
+            except ValueError:
+                raise InvalidRunCard('%s = %s: not a number' % (name, value))
+            if name.startswith('polbeam'):
+                if not -100. <= number <= 100.:
+                    raise InvalidRunCard('%s = %s: not in [-100, 100]' % (name, value))
+                self.set('beam.polarization' + beams[0], number, user=True)
+                if number != 0. and not self['beam']['eva']:
+                    logger.warning('%s: mg7 polarises the lepton beams of an EVA '
+                                   'run only: the card is invalid until '
+                                   'pdlabel eva (beam.eva) is set', name)
+                return 'beam.polarization%s = %s' % (beams[0], number)
+            if number != int(number):
+                raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            number = int(number)
+            if name == 'ievo_eva':
+                if number not in (0, 1):
+                    raise InvalidRunCard('ievo_eva = %s: 0 or 1' % value)
+                evolution = 'pt' if number else 'q2'
+                self.set('beam.eva_evolution', evolution, user=True)
+                return 'beam.eva_evolution = %s' % evolution
+            if name == 'evaorder':
+                if number not in (0, 1, 2):
+                    raise InvalidRunCard('evaorder = %s: 0, 1 or 2' % value)
+                self.set('beam.eva_order', number, user=True)
+                return 'beam.eva_order = %s' % number
+            if number not in (0, 1):
+                raise InvalidRunCard('eva_xcut = %s: 0 or 1' % value)
+            self.set('beam.eva_xcut', bool(number), user=True)
+            return 'beam.eva_xcut = %s' % bool(number)
 
         if name.startswith('ebeam'):
             energy = self.evaluate(value, masses)
@@ -9111,8 +9181,10 @@ class RunCardMG7(RunCard):
                         'gamma-UPC pdlabel chooses another flux',
                         name, lpp, self.default_upc_flux)
                 self.set('beam.leptonic', False, user=True)
-                return ('beam.leptonic = False, beam.upc_flux = %s (elastic '
-                        'photons from gamma-UPC)' % self['beam']['upc_flux'])
+                eva_off = self._switch_eva_off('%s = %s' % (name, lpp))
+                return ', '.join(filter(None, [
+                    eva_off, 'beam.leptonic = False, beam.upc_flux = %s (elastic '
+                    'photons from gamma-UPC)' % self['beam']['upc_flux']]))
             if abs(lpp) not in (0, 1, 3, 4):
                 raise InvalidRunCard('%s = %s: beam type not representable in mg7'
                                      % (name, lpp))
@@ -9130,7 +9202,18 @@ class RunCardMG7(RunCard):
                 logger.warning('%s = -1: mg7 has no antiproton beam and keeps '
                                'the proton PDF', name)
             self.set('beam.leptonic', leptonic, user=True)
-            return 'beam.leptonic = %s' % leptonic
+            if abs(lpp) in (3, 4):
+                # the beam lepton, which only EVA needs to know (madevent: an
+                # electron for lpp = 3, a positron for -3)
+                lepton = (11 if abs(lpp) == 3 else 13) * (1 if lpp > 0 else -1)
+                for beam in beams:
+                    self.set('beam.lepton' + beam, lepton, user=True)
+                return 'beam.leptonic = True, beam.lepton%s = %s' % (
+                    '/'.join(beams), lepton)
+            # proton beams, or fixed-energy beams of the incoming particles
+            # (lpp = 0, madevent ignores pdlabel then): no EVA
+            eva_off = self._switch_eva_off('%s = %s' % (name, lpp))
+            return ', '.join(filter(None, [eva_off, 'beam.leptonic = %s' % leptonic]))
 
         if name == 'lhaid':
             label, lhaid = 'lhapdf', value.split()[0] if value else value
@@ -9140,10 +9223,21 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard('lhaid = %s: not an integer' % value)
         else:
             label, lhaid = value, None
+            if label.lower() == 'eva':
+                if len(beams) == 1 and self['beam']['eva'] is not True:
+                    logger.info('%s = eva: mg7 has EVA on both beams only; '
+                                'beam.eva applies to both' % name)
+                self.set('beam.eva', True, user=True)
+                self.set('beam.leptonic', True, user=True)
+                return 'beam.eva = True (both beams, leptons %s, %s)' % (
+                    self['beam']['lepton1'], self['beam']['lepton2'])
             if is_upc_label(label.lower()):
                 # one label for both beams (PDLabelBlock does the same)
+                eva_off = self._switch_eva_off('%s = %s' % (name, value))
                 self.set('beam.upc_flux', label.lower(), user=True)
-                return 'beam.upc_flux = %s (gamma-UPC, both beams)' % label.lower()
+                return ', '.join(filter(None, [
+                    eva_off,
+                    'beam.upc_flux = %s (gamma-UPC, both beams)' % label.lower()]))
         if self['beam']['upc_flux']:
             # lpp = 2: madevent also has the EPA (iww) and replaces any other
             # pdlabel by chff; mg7 refuses it rather than guess, and leaving
@@ -9155,6 +9249,10 @@ class RunCardMG7(RunCard):
                 % (name, value, self['beam']['upc_flux']))
         if name != 'lhaid':
             if label.lower() == 'lhapdf':
+                eva_off = self._switch_eva_off('%s = %s' % (name, value))
+                if eva_off:
+                    return eva_off + ' (the PDF set is chosen with lhaid or ' \
+                        'beam.pdf1/pdf2)'
                 return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
                         'with lhaid or beam.pdf1/pdf2')
             if label.lower() in ('none', 'no'):
@@ -9162,14 +9260,42 @@ class RunCardMG7(RunCard):
                     raise InvalidRunCard('%s = none: only a lepton collider has '
                                          'no PDF in mg7, on both beams' % name)
                 self.set('beam.leptonic', True, user=True)
-                return 'beam.leptonic = True'
+                eva_off = self._switch_eva_off('%s = %s' % (name, value))
+                return ', '.join(filter(None, [eva_off, 'beam.leptonic = True']))
         pdf = self._resolve_pdf_label(label, lhaid, [], data_paths)
         if pdf is None:
             raise UnknownPDFSet('%s = %s: unknown %s' % (
                 name, value, 'LHAPDF id' if name == 'lhaid' else 'PDF label'))
         for beam in beams:
             self.set('beam.pdf' + beam, pdf, user=True)
-        return 'PDF of %s: %s' % (which, pdf)
+        # a PDF label (not an lhaid, which only picks the set) is no EVA
+        eva_off = '' if name == 'lhaid' else \
+            self._switch_eva_off('%s = %s' % (name, value))
+        return ', '.join(filter(None, [eva_off, 'PDF of %s: %s' % (which, pdf)]))
+
+    def _switch_eva_off(self, setting):
+        """Switch beam.eva off, as the madevent setting `setting` asks, and
+        return what changed ('' if EVA was off). The beam polarisations,
+        which only an EVA run has (check_eva_validity), go back to 0. A card
+        still leptonic then has monochromatic beams of the incoming particles
+        themselves (W beams for w+ w- > X), which is said as a warning."""
+        if not self['beam']['eva']:
+            return ''
+        self.set('beam.eva', False, user=True)
+        changes = ['beam.eva = False']
+        for i in (1, 2):
+            key = 'polarization%d' % i
+            if float(self['beam'][key]) != 0.:
+                self.set('beam.' + key, 0.0, user=True)
+                changes.append('beam.%s = 0' % key)
+        if self['beam']['leptonic']:
+            logger.warning(
+                '%s: EVA switched off, so the beams are now monochromatic beams '
+                'of the incoming particles (beam.leptonic = true); set lpp 1 for '
+                'proton beams, or pdlabel eva to go back to EVA', setting)
+        else:
+            logger.info('%s: EVA switched off', setting)
+        return ', '.join(changes)
 
     def set_fixed_scale(self, value, masses=None):
         """``set fixed_scale X``: switch to fixed scales and set them all to X
@@ -9243,6 +9369,42 @@ class RunCardMG7(RunCard):
         card.check_devices(card['run']['device'], '[%s] run.device' % section)
         return card
 
+    def check_eva_validity(self):
+        """beam.eva: lepton beams (leptonic = true) without another density
+        replacing the PDFs, polarisations in [-100, 100] that only an EVA run
+        uses, and no merging (the MLM/CKKW-L clustering assumes hadron beams
+        or no beam density)."""
+        beam = self['beam']
+        for i in (1, 2):
+            pol = float(beam['polarization%d' % i])
+            if not -100. <= pol <= 100.:
+                raise InvalidRunCard(
+                    "beam.polarization%d = %s is not in [-100, 100]" % (i, pol))
+            if pol != 0. and not beam['eva']:
+                raise InvalidRunCard(
+                    "beam.polarization%d = %s: mg7 polarises the beam leptons "
+                    "of an EVA run only (beam.eva); for a polarised lepton "
+                    "beam, generate the process with polarised leptons, e.g. "
+                    "e-{L}" % (i, pol))
+        if not beam['eva']:
+            return
+        if not beam['leptonic']:
+            raise InvalidRunCard(
+                "beam.eva needs lepton beams: set beam.leptonic = true (and "
+                "beam.lepton1/lepton2)")
+        if beam['lepton_density']:
+            raise InvalidRunCard(
+                "beam.eva and beam.lepton_density both replace the PDFs: set "
+                "only one of them")
+        if beam.get('upc_flux'):
+            raise InvalidRunCard(
+                "beam.eva and beam.upc_flux both replace the PDFs: set only one "
+                "of them")
+        if beam['dynamical_scale_choice'] in ('mlm', 'ckkwl'):
+            raise InvalidRunCard(
+                "beam.eva cannot be combined with MLM/CKKW-L merging "
+                "(dynamical_scale_choice = %s)" % beam['dynamical_scale_choice'])
+
     # beam.upc_flux of 'set lpp 2' before any gamma-UPC pdlabel
     default_upc_flux = 'chff'
 
@@ -9305,6 +9467,7 @@ class RunCardMG7(RunCard):
         beam = self['beam']
         if float(beam['scale_factor']) <= 0.:
             raise InvalidRunCard("scale_factor must be strictly positive")
+        self.check_eva_validity()
         self.check_upc_validity()
         self.check_ckkwl_validity()
         if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
@@ -9558,6 +9721,25 @@ class RunCardMG7(RunCard):
     # multiplicities, madevent's
     default_mlm_xqcut = 30.0
 
+    @staticmethod
+    def eva_beams(proc_def):
+        """Whether the processes of proc_def collide W/Z on both beams
+        (madevent's condition for EVA beams by default: a W or Z among the
+        particles of each incoming leg), with only W, Z and photons there."""
+        beams = [set(), set()]
+        try:
+            for proc in proc_def:
+                for oneproc in proc:
+                    initial = [leg for leg in oneproc['legs'] if not leg['state']]
+                    if len(initial) != 2:
+                        return False
+                    for ids, leg in zip(beams, initial):
+                        ids.update(leg['ids'] if 'ids' in leg else [leg['id']])
+        except (TypeError, KeyError, IndexError):
+            return False
+        return all(any(abs(i) in (23, 24) for i in ids) and
+                   all(abs(i) in (22, 23, 24) for i in ids) for ids in beams)
+
     def create_default_for_process(self, proc_characteristic, history, proc_def):
         """Adjust default values depending on the process, then read the
         site/user default file (``input/default_run_card_mg7.toml``)."""
@@ -9590,7 +9772,22 @@ class RunCardMG7(RunCard):
             # particle
             self._sync_jet_group(old, self['beam']['max_jet_flavor'])
 
-        if beam_id and beam_id <= leptons:
+        if beam_id and self.eva_beams(proc_def):
+            # W/Z (and photons) on both beams: effective vector bosons from
+            # e+ e- beams, as madevent sets it up (lpp1 = -3, lpp2 = 3,
+            # pdlabel = eva, 15 TeV beams, a fixed factorisation scale). Not
+            # monochromatic W/Z beams, which would run without a word.
+            self['beam']['leptonic'] = True
+            self['beam']['eva'] = True
+            self['beam']['ebeam1'] = 15000.0
+            self['beam']['ebeam2'] = 15000.0
+            self['beam']['fixed_fact_scale'] = True
+            # written out, so that the card shows the EVA settings
+            for key in ('eva', 'lepton1', 'lepton2', 'polarization1',
+                        'polarization2', 'eva_order', 'eva_evolution',
+                        'eva_xcut'):
+                self.user_set.add('beam.' + key)
+        elif beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy. The jet cuts stay,
             # as in madevent's run_card (ptj/etaj/drjj are not hadron-collider
             # specific): without them e+ e- > j j j (j) is infrared divergent,
@@ -10255,6 +10452,36 @@ class RunCardMG7(RunCard):
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
+        # EVA: pdlabel eva, or pdlabel1/2 eva, on two e/mu beams (pdlabel1/2
+        # follow pdlabel only once the LO card is checked, so both are read);
+        # one EVA beam only has no mg7 equivalent
+        eva_labels = [
+            (str(lo['pdlabel']).lower() if 'pdlabel' in lo else '') == 'eva'
+            or (str(lo['pdlabel%d' % i]).lower()
+                if 'pdlabel%d' % i in lo else '') == 'eva'
+            for i in (1, 2)]
+        eva = all(eva_labels) and all(is_lep(l) for l in lpps)
+        eva_keys = set()
+        if eva:
+            mg7.set('beam.eva', True)
+            for i, lpp in ((1, lpps[0]), (2, lpps[1])):
+                mg7.set('beam.lepton%d' % i,
+                        (11 if abs(lpp) == 3 else 13) * (1 if lpp > 0 else -1))
+                if 'polbeam%d' % i in lo:
+                    mg7.set('beam.polarization%d' % i, float(lo['polbeam%d' % i]))
+            if 'ievo_eva' in lo:
+                mg7.set('beam.eva_evolution', 'pt' if int(lo['ievo_eva']) else 'q2')
+            if 'evaorder' in lo:
+                mg7.set('beam.eva_order', int(lo['evaorder']))
+            if 'eva_xcut' in lo:
+                mg7.set('beam.eva_xcut', bool(int(lo['eva_xcut'])))
+            eva_keys = {'polbeam1', 'polbeam2', 'ievo_eva', 'evaorder', 'eva_xcut'}
+        elif any(eva_labels):
+            dropped.append(
+                'pdlabel1=%s, pdlabel2=%s with lpp1=%s, lpp2=%s (mg7 has EVA on '
+                'two electron/muon beams only)' % (
+                    'eva' if eva_labels[0] else 'other',
+                    'eva' if eva_labels[1] else 'other', lpps[0], lpps[1]))
         # gamma-UPC: |lpp| = 2 on both beams with a gamma-UPC pdlabel (the
         # PDLabelBlock makes it the same on both)
         upc_keys = set()
@@ -10275,7 +10502,7 @@ class RunCardMG7(RunCard):
             # the ion masses only enter madevent's LHE header
             upc_keys.update(('mass_ion1', 'mass_ion2'))
         for i, lpp in ((1, lpps[0]), (2, lpps[1])):
-            if upc_keys:
+            if eva or upc_keys:
                 continue
             if isinstance(lpp, int) and abs(lpp) not in (0, 1, 3, 4):
                 dropped.append('lpp%d=%s (beam type not representable in mg7)' % (i, lpp))
@@ -10332,7 +10559,7 @@ class RunCardMG7(RunCard):
         # clustering scales are used whatever dynamical_scale_choice said.
         ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
         # unsupported LO names transferred all the same in this context
-        transferred = set(upc_keys)
+        transferred = set(eva_keys) | set(upc_keys)
         if ickkw == 1:
             xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
             if xqcut > 0:
@@ -10405,10 +10632,10 @@ class RunCardMG7(RunCard):
             mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
-        # a gamma-UPC label, like a dressed-lepton one, is no PDF set: it was
-        # carried as beam.upc_flux above
-        pdf_names = cls._resolve_pdf(lo, dropped,
-                                     dressed=bool(dressed) or bool(upc_keys))
+        # an EVA or gamma-UPC label, like a dressed-lepton one, is no PDF set:
+        # it was carried as beam.eva or beam.upc_flux above
+        pdf_names = cls._resolve_pdf(
+            lo, dropped, dressed=bool(dressed) or eva or bool(upc_keys))
         for beam, pdf_name in zip((1, 2), pdf_names):
             if pdf_name:
                 mg7.set('beam.pdf%d' % beam, pdf_name)

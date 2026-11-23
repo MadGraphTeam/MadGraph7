@@ -259,6 +259,12 @@ public:
     double beam_rapidity() const { return _beam_rapidity; }
     /// Whether the mapping takes the `mirror_index` condition.
     bool mirror_beams() const { return _mirror_beams; }
+    /// Masses of the incoming particles. The mapping hands them out massless
+    /// (along the beams, at the sampled s_hat); @ref Integrand puts massive
+    /// ones on their mass shell, with the massive flux.
+    const std::vector<double>& incoming_masses() const {
+        return _topology.incoming_masses();
+    }
     /// The cuts, applied to the lab-frame momenta.
     const Cuts& cuts() const { return _cuts; }
     /// True when the cuts exclude the whole region this mapping samples: a
