@@ -30,4 +30,15 @@ TIRust 5025e12 + gate + relation tiers, √s = 10.58 and 20 GeV, two points each
 | one line tripled | N = 2–4, rank 4 | 272 | 0 |
 | two lines doubled | N = 3, 4, rank 4 | 0 | 368, by the capability check (`max_dotted_propagators = 1`) |
 
-Every one of the 8 (point, pass) records has the same pattern (46 capability refusals and 7 status refusals each). The fixture file (1.9 MB) is kept out of the repository until the TIRust request is decided.
+Every one of the 8 (point, pass) records has the same pattern (46 capability refusals and 7 status refusals each).
+
+## Files (sent to TIRust on 2026-11-23)
+
+- `data/fixtures_ee_chic0_hc.json.gz` (1.9 MB): e⁺e⁻ → χ_c0 h_c, every raised-power call, as above.
+- `data/fixtures_gg_chic0_chic0_refused.json.gz` (23 kB): `g g > chic0(1|3P01) chic0(1|3P01) [virt=QCD]` at √s = 20 GeV, one point, both passes. Only the refused calls are kept, with `served_counts` per (n, rank, powers) for the others. That is 277 distinct inputs, from `fixtures.py OUTDIR OUT.json.gz 20:1` on the same TIRust.
+
+| g g → χ_c0 χ_c0, per pass | Served | Refused |
+|---|---|---|
+| one line doubled | 1608 | 32 with status 1 |
+| one line tripled | 519 | 1 with status 1 |
+| two lines doubled (N = 3–5, rank 3–5) | 0 | 634, by the capability check |
