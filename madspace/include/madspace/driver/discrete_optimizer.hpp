@@ -13,8 +13,15 @@ namespace madspace {
  * Counterpart of @ref DiscreteHistogram: @ref add_data feeds in the
  * per-category weight sums and counts it accumulates, and @ref optimize
  * writes the probability tensor of every `prob_names` global to every context
- * in `contexts`. The probability update itself is unfinished (see the TODO in
- * `optimize`).
+ * in `contexts`.
+ *
+ * The weights of the events of category @f$i@f$, sampled with probability
+ * @f$p_i@f$, average to @f$I_i / p_i@f$, with @f$I_i@f$ the contribution of
+ * the category to the integral. @ref optimize takes the new probabilities as
+ * the running average of the old ones and of @f$|I_i| / \sum_j |I_j|@f$,
+ * weighted by the number of events of the update against those of the
+ * updates before, which start at 7000. A category without events keeps a
+ * share of its old probability, so that it is never dropped.
  */
 class DiscreteOptimizer {
 public:
@@ -31,16 +38,17 @@ public:
     /// Accumulate one batch of `values` and `counts` for each dimension of
     /// `prob_names`, interleaved as `[values_0, counts_0, values_1, ...]`.
     void add_data(const std::vector<Tensor>& values_and_counts);
-    /// Write the probabilities back to every context and reset the accumulated
-    /// data.
+    /// Update the probabilities from the accumulated data, write them back to
+    /// every context and reset the accumulated data. Without data the
+    /// probabilities are left as they are.
     void optimize();
 
 private:
     std::vector<ContextPtr> _contexts;
     std::vector<std::string> _prob_names;
-    double _damping;
     std::size_t _sample_count;
-    std::vector<std::tuple<std::vector<std::size_t>, std::vector<double>>> _data;
+    // per discrete dimension the weight sums and counts of its categories
+    std::vector<std::tuple<std::vector<double>, std::vector<std::size_t>>> _data;
 };
 
 } // namespace madspace

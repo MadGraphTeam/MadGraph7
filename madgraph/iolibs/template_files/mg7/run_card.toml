@@ -179,6 +179,7 @@ systematics_str_options = %(postprocessing.systematics_str_options)s
 enable = %(vegas.enable)s
 bins = %(vegas.bins)s
 damping = %(vegas.damping)s
+adaptive_discrete = %(vegas.adaptive_discrete)s
 optimization_patience = %(vegas.optimization_patience)s
 optimization_threshold = %(vegas.optimization_threshold)s
 start_batch_size = %(vegas.start_batch_size)s

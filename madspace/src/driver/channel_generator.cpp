@@ -200,10 +200,8 @@ ChannelEventGenerator::ChannelEventGenerator(
     };
     std::visit(add_names, integrand.discrete_sym());
     std::visit(add_names, integrand.discrete_flavor());
-    std::optional<DiscreteOptimizer> discrete_optimizer;
-    RuntimePtr discrete_histogram = nullptr;
-    if (prob_names.size() > 0) {
-        discrete_optimizer = DiscreteOptimizer(contexts, prob_names);
+    if (config.adaptive_discrete && prob_names.size() > 0) {
+        _discrete_optimizer = DiscreteOptimizer(contexts, prob_names);
         DiscreteHistogram hist(option_counts);
         for (auto [context, runtimes] : zip(contexts, _runtimes)) {
             runtimes.discrete_histogram =

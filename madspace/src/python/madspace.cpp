@@ -2479,9 +2479,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "add_data",
             [](VegasGridOptimizer& opt, py::object values, py::object counts) {
+                // the outputs of VegasHistogram, shape (1, dims, bins)
                 opt.add_data(
-                    dlpack_to_tensor(values, batch_float, 0),
-                    dlpack_to_tensor(counts, batch_float_array(opt.input_dim()), 1)
+                    dlpack_to_tensor(values, std::nullopt, 0),
+                    dlpack_to_tensor(counts, std::nullopt, 1)
                 );
             },
             py::arg("values"),
@@ -2507,11 +2508,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "add_data",
             [](DiscreteOptimizer& opt, std::vector<py::object> values_and_counts) {
+                // the outputs of DiscreteHistogram, shape (1, options)
                 TensorVec input_tensors;
-                for (std::size_t i = 1; auto& input : values_and_counts) {
-                    input_tensors.push_back(
-                        dlpack_to_tensor(input, i % 2 == 0 ? batch_int : batch_float, i)
-                    );
+                for (std::size_t i = 0; auto& input : values_and_counts) {
+                    input_tensors.push_back(dlpack_to_tensor(input, std::nullopt, i));
                     ++i;
                 }
                 opt.add_data(input_tensors);
@@ -3383,6 +3383,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "vegas_damping",
             &GeneratorConfig::vegas_damping,
             pydoc::doc("GeneratorConfig::vegas_damping")
+        )
+        .def_readwrite(
+            "adaptive_discrete",
+            &GeneratorConfig::adaptive_discrete,
+            pydoc::doc("GeneratorConfig::adaptive_discrete")
         )
         .def_readwrite(
             "max_overweight_truncation",

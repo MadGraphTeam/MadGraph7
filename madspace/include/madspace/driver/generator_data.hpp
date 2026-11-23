@@ -63,6 +63,11 @@ struct GeneratorConfig {
     std::size_t target_count = 10000;
     /// Damping factor of the VEGAS grid updates; see @ref VegasGridOptimizer.
     double vegas_damping = 0.2;
+    /// Whether the survey adapts the probabilities of the discrete samplers
+    /// (@ref DiscreteSampler, the flavour and permutation choices) with the
+    /// VEGAS grids; see @ref DiscreteOptimizer. Off by default until it is
+    /// shown to pay off.
+    bool adaptive_discrete = false;
     /// Overweight tolerated when choosing the maximum weight, as a fraction of
     /// the smaller of the target count and `freeze_max_weight_after`.
     double max_overweight_truncation = 0.01;
