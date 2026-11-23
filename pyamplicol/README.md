@@ -105,7 +105,7 @@ pyamplicol examples copy ./pyamplicol-examples     # editable example cards
 cd pyamplicol-examples
 pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output  # generate
 pyamplicol loop_generate.toml check --output=./my_loop_output     # poles and Ward identities
-pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points, poles, stability
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output  # flat points and poles (estimates: the card's stability_checks)
 pyamplicol loop_generate.toml profile --output=./my_loop_output   # time per point and stage
 pyamplicol loop_generate.toml profile --output=./my_loop_output --runtime --stability  # both backends: runtime and stable digits
 ```

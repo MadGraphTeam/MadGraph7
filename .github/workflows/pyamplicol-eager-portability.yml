@@ -5,6 +5,7 @@ name: pyAmpliCol eager JIT pack architecture transfer
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - .github/workflows/pyamplicol-eager-portability.yml
       - pyamplicol/Cargo.lock
@@ -64,6 +65,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
 
 defaults:
@@ -76,6 +78,7 @@ concurrency:
 
 jobs:
   produce-architecture-packs:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Produce prepared JIT pack (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     # The macOS arm64 pack builds the release extension with the default tir
@@ -115,11 +118,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            pyamplicol/pyproject.toml
-            pyamplicol/dependencies/release-lock.toml
-            pyamplicol/dependencies/python-runtime-lock.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
       - name: Install pinned build tools
         run: python -m pip install "maturin==1.15.0" "packaging==26.3"
@@ -147,8 +150,23 @@ jobs:
           path: pyamplicol/.artifacts/eager-portability-transfer/${{ matrix.pack_architecture }}/
           if-no-files-found: error
           retention-days: 14
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   consume-matching-architecture-pack:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Consume portable pack (${{ matrix.target }})
     needs: produce-architecture-packs
     runs-on: ${{ matrix.runner }}
@@ -193,11 +211,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            pyamplicol/pyproject.toml
-            pyamplicol/dependencies/release-lock.toml
-            pyamplicol/dependencies/python-runtime-lock.toml
+      - name: Restore the pyamplicol pip cache (built by warm_cache.yml)
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
@@ -229,3 +247,17 @@ jobs:
           path: pyamplicol/.artifacts/eager-portability-results/${{ matrix.target }}.json
           if-no-files-found: error
           retention-days: 14
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true

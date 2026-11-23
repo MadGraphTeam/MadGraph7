@@ -153,10 +153,11 @@ C       Set up process information from file symfact
             NFACT=IFACT
           ENDIF
         ENDDO
-        DSIG = NFACT
  10     CLOSE(LUN)
+        DSIG = NFACT
         RETURN
  20     WRITE(*,*)'Error opening symfact.dat. No symmetry factor used.'
+        DSIG = NFACT
         RETURN
       ENDIF
 C     Continue only if IMODE is 0, 4 or 5

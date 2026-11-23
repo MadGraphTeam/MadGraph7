@@ -22,7 +22,7 @@ extra-dimensional spin components are supplied.
 The correlated path supports **LC, NLC and full colour** through Python and
 the native C/C++/Fortran/Rust SDKs, with the approximation selected at generation.
 The strict accuracies `strict-lc` and `strict-nlc` (the formal 1/N_c expansion,
-[Correlation Conventions](correlator-conventions.md#strict-colour-the-formal-1nc-expansion))
+[Correlation Conventions](correlator-conventions.md#strict-colour-the-formal-1n_c-expansion))
 are graded: `Runtime.evaluate_correlated_graded` and the Rust
 `NativeRuntime::evaluate_correlated_graded_f64` split each correlation by N_c
 degree, as does full colour generated with `color.graded = true`. It retains the

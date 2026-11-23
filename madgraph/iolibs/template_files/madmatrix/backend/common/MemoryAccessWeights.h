@@ -7,11 +7,10 @@
 #ifndef MemoryAccessWeights_H
 #define MemoryAccessWeights_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------

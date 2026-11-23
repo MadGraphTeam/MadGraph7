@@ -50,9 +50,7 @@ namespace
   // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
   // std::numeric_limits<double>::min(), which is a host function and cannot be
   // called from device code.
-#ifdef MGONGPUCPP_GPUIMPL
   __host__ __device__
-#endif
     inline double
     channel_amp2( double numerator, double denominator )
   {
@@ -81,8 +79,8 @@ namespace
 
   __device__ bool selectable_diagram( const int diagram )
   {
-    return diagram >= 0 && static_cast<unsigned int>( diagram ) < mgOnGpu::nchannels &&
-      mgOnGpu::channel2iconfig[diagram] > 0;
+    return diagram >= 0 && static_cast<unsigned int>( diagram ) < madmatrix::nchannels &&
+      madmatrix::channel2iconfig[diagram] > 0;
   }
 
   __global__ void copy_inputs(
@@ -176,9 +174,9 @@ namespace
     if( amp2_out )
     {
       double denominator = denominators[i_event];
-      for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
+      for( int i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[i_event * ProcessData::ndiagrams + i_diag], denominator );
+        amp2_out[stride * i_diag + i_event + offset] = channel_amp2( numerators[numeratorsIndex( i_event, i_diag )], denominator );
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -775,14 +773,14 @@ extern "C"
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor_flow * sizeof( fptype_amp )},
         // The numerators are accumulated in place over all helicities via atomicAdd (no helicity dimension),
         // and the denominators are derived from them, so neither buffer carries the ncomb factor anymore.
-        {reinterpret_cast<void**>(&numerators), rounded_count * ProcessData::ndiagrams * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&numerators), numeratorsBufferSize( rounded_count ) * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&denominators), rounded_count * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&helicity_given), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
         // njampso = ncolor per amplitude split order (just ncolor without split orders)
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::njampso * madmatrix::nx2 * sizeof( fptype_amp )},
     }};
     std::size_t total_size = 0;
     constexpr std::size_t ALIGNMENT = std::max( { sizeof( double ), sizeof( fptype ), sizeof( fptype_momenta ), sizeof( int ) } );

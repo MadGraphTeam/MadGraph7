@@ -12,6 +12,9 @@ import pytest
 
 import madspace as ms
 
+# docstrings only, nothing runs on a device
+pytestmark = pytest.mark.cpu_only
+
 # One representative keyword-argument set per in-scope class. Every key here is
 # a parameter the class comment documents; the call must accept all of them.
 CASES = {
@@ -23,6 +26,24 @@ CASES = {
         invariant_power=1.0,
         mass=0.0,
         width=0.0,
+    ),
+    "LeptonLuminosity": dict(
+        s_lab=1.0e6,
+        s_hat_min=1.0e4,
+        sampling_power=0.975,
+        reduced_density=False,
+        s_hat_min_condition=False,
+    ),
+    "LeptonLuminosityInvariant": dict(
+        s_lab=1.0e6,
+        s_hat_min=1.0e4,
+        s_hat_max=1.0e6,
+        sampling_power=0.975,
+        mass=91.0,
+        width=2.5,
+        invariant_power=1.0,
+        reduced_density=False,
+        s_hat_min_condition=True,
     ),
     "TwoBodyDecay": dict(com=True),
     "TwoToTwoParticleScattering": dict(
@@ -77,6 +98,17 @@ CASES = {
         prefix="",
         dims_with_prior=[],
         condition_dim=0,
+        subnet_hidden_dim=32,
+        subnet_layers=3,
+        subnet_activation=ms.MLP.Activation.leaky_relu,
+    ),
+    "DiscreteFlavorLevels": dict(
+        flavor_initials=[0, 0, 1],
+        flavor_contents=[0, 1, 2],
+        flavor_weights=[1.0, 2.0, 1.0],
+        prefix="",
+        condition_dim=2,
+        prior_floor=0.05,
         subnet_hidden_dim=32,
         subnet_layers=3,
         subnet_activation=ms.MLP.Activation.leaky_relu,

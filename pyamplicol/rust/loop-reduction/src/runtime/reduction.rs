@@ -11,7 +11,7 @@ use crate::{
     AmplitudeInput, EvaluationStatus, FourMomentum, Lane, Laurent, PolynomialReducer,
     SamplingScaleProvider, SamplingScaleSource, SamplingScaleStatus, SymbolicaSamplingScales,
 };
-use symbolica::{atom::Atom, domains::float::Real, evaluate::EvaluationDomain};
+use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
 pub type DecimalMomentum = [DecimalComplex; 4];
 pub type RawLane = (u64, String, Option<[DecimalComplex; 3]>);
 
@@ -43,7 +43,7 @@ where
         // before parsing (the extension's import no longer does).
         super::register_scalar_primitives();
         let parse =
-            |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
+            |text: &str| rusticol_core::symbol_order::parse(text, "pyamplicol_loop").map_err(error);
         let variables = [
             parse("q0")?,
             parse("q1")?,
@@ -174,8 +174,10 @@ where
                 .map_err(error)?;
         }
         let mut results = Vec::with_capacity(3);
+        let mut refusals = Vec::with_capacity(3);
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if !self.active[index] {
+                refusals.push(Vec::new());
                 results.push(
                     ids.iter()
                         .map(|&id| Lane {
@@ -206,6 +208,12 @@ where
                     )
                     .map_err(error)?,
             );
+            // Taken after a successful evaluation only, which suffices:
+            // NinjaRS's `Amplitude::evaluate_batch_with_inputs` (every
+            // `evaluate_batch*` goes through it) forgets the thread's earlier
+            // box-Gram refusals on entry (`clear_box_gram_refusals`), so those
+            // of a failed evaluation never reach the next one.
+            refusals.push(super::lane_status::generic_refusals());
         }
         let mut sectors = results.into_iter();
         let zero = sectors.next().unwrap();
@@ -230,7 +238,11 @@ where
                     .iter()
                     .enumerate()
                     .find(|(_, status)| **status != EvaluationStatus::Success)
-                    .map(|(sector, status)| format!("epsilon sector {sector}: {status:?}"));
+                    .map(|(sector, status)| {
+                        let text =
+                            super::lane_status::generic_status(status, row, &refusals[sector]);
+                        format!("epsilon sector {sector}: {text}")
+                    });
                 let value = match (zero.value, one.value, two.value) {
                     (Some(a), Some(b), Some(c)) => Some(Laurent::epsilon_sectors(a, b, c)),
                     _ => None,

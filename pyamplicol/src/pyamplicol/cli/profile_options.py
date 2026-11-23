@@ -30,8 +30,9 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "loop artifacts: stable-digit statistics of each reduction backend "
             "over flat phase-space points (binary64 against a re-run in the "
-            "--ground-truth precision) and the accuracy of the default rotation "
-            "estimate"
+            "--ground-truth precision) and the accuracy of the default estimate "
+            "(one default rotation; on TIRust's points also the rescaled "
+            "reduction-direction check)"
         ),
     )
     parser.add_argument(
@@ -76,6 +77,35 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--all-backends",
+        dest="benchmark.all_backends",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: time every reduction backend whatever the "
+            "runtime budget (benchmark.all_backends; default: every one "
+            "unless the process's default backend alone exceeds the budget "
+            "at its minimal counts; --no-all-backends: the default only)"
+        ),
+    )
+    parser.add_argument(
+        "--measured-precisions",
+        dest="benchmark.measured_precisions",
+        action="extend",
+        nargs="+",
+        default=argparse.SUPPRESS,
+        metavar="PRECISION",
+        help=(
+            "loop artifacts: the precisions whose stability --stability "
+            "measures (benchmark.measured_precisions), each its own pair of "
+            "tables in the order given: binary64 (double, b64; the default), "
+            "double-double (dd), arbitrary (arb) or arbitrary:DIGITS, at most "
+            "the --ground-truth precision (that one: its estimates only, with "
+            "the default checks); with --runtime each also its own runtime "
+            "tables (--target-runtime per precision); space- or comma-separated"
+        ),
+    )
+    parser.add_argument(
         "--ground-truth",
         dest="benchmark.ground_truth",
         default=argparse.SUPPRESS,
@@ -85,8 +115,10 @@ def add_profile_mode_options(parser: argparse.ArgumentParser) -> None:
             "ground_truth): the stability run's true values and the "
             "reference-precision time multipliers; double-double (dd, the "
             "default), arbitrary precision (arb) at DIGITS decimal digits "
-            "(default: the built-in rescue's, 57), or none: no reference "
-            "pass, the stability run reports its estimates only"
+            "(default: 500, the default arbitrary-precision digits), or none: "
+            "no reference pass, the stability run reports its estimates only. "
+            "Given (any value), the runtime timing measures the multiplier "
+            "even when its minimal counts exceed the runtime budget"
         ),
     )
     parser.add_argument(

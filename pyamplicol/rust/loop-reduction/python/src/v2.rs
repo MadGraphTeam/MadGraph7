@@ -102,6 +102,22 @@ impl V2Reducer {
     fn precision_bits(&self) -> u32 {
         self.0.precision_bits()
     }
+    /// The point-level tracked-precision test of the lanes,
+    /// `(working bits, required tracked bits)`
+    /// (`runtime::V2Reducer::tracked_precision`), or None.
+    #[getter]
+    fn tracked_precision(&self) -> Option<(u32, u32)> {
+        self.0
+            .tracked_precision()
+            .map(|rule| (rule.working, rule.required))
+    }
+    /// The tracked-precision test of one point's direct batches of
+    /// [`Self::reduce`] (`runtime::V2Reducer::tracked_refusal`): the point's
+    /// failure text, or None.
+    fn tracked_refusal(&self, direct: Vec<PyRef<'_, ReductionBatch>>) -> Option<String> {
+        let _unlock = pyamplicol::unlock();
+        self.0.tracked_refusal(direct.iter().map(|batch| &batch.0))
+    }
     #[getter]
     fn cached_masters(&self) -> usize {
         self.0.cached_masters()
@@ -374,6 +390,18 @@ impl V2TirReducer {
     fn plans(&self) -> Vec<(usize, usize)> {
         let _unlock = pyamplicol::unlock();
         self.0.plans()
+    }
+    /// None: TIRust's lanes take no tracked-precision test
+    /// (`V2Reducer.tracked_precision`; `runtime::V2Backends`).
+    #[getter]
+    fn tracked_precision(&self) -> Option<(u32, u32)> {
+        None
+    }
+    /// None (`tracked_precision`).
+    fn tracked_refusal(&self, direct: Vec<PyRef<'_, ReductionBatch>>) -> Option<String> {
+        let _unlock = pyamplicol::unlock();
+        let _ = direct;
+        None
     }
     #[pyo3(signature = (groups, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false))]
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]

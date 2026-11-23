@@ -13,6 +13,7 @@ from madgraph.various.banner import RunCardMG7
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
 from madgraph.mg7.driver import (
+    run_cluster_job,
     ExistingRun,
     REWEIGHT_CARD,
     compute_decay_widths,
@@ -508,12 +509,18 @@ def build_selector_cmd(mother=None):
                         self.modified_card.add("run")
                         return
 
+                    # the "set mlm madevent|mg7" shortcut needs its mode
+                    if nlow == 'mlm' and not rest:
+                        self.invalid_set("set mlm: %s" % run_card.MLM_MODE_HELP)
+                        return
+
                     # madevent parameters that are not a plain rename: the
                     # value is translated ("set dynamical_scale_choice 3") or
                     # several of them make one mg7 entry (fixed_fac_scale1 +
-                    # fixed_fac_scale2 -> beam.fixed_fact_scale). mg7 values
-                    # ("set sde_strategy denominators") come back as None and
-                    # go on to the generic editor.
+                    # fixed_fac_scale2 -> beam.fixed_fact_scale), and the mg7
+                    # shortcut "set mlm <mode>". mg7 values ("set sde_strategy
+                    # denominators") come back as None and go on to the
+                    # generic editor.
                     if rest and nlow in run_card._LO_SET_PARAMS:
                         try:
                             done = run_card.set_lo_param(nlow, rest, masses)
@@ -743,6 +750,8 @@ def main() -> None:
         "--make-arg", action="append", default=[],
         help="extra argument of the matrix element build (--decay-widths)")
     parser.add_argument(
+        "--cluster-job", metavar="DIR", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
         "--reweight", dest="reweight_card", default=None,
         help="reweight the events after generation with this reweight card "
              "(it becomes Cards/reweight_card.dat and switches reweighting on)",
@@ -758,6 +767,12 @@ def main() -> None:
         help="read the answers to the questions piped or redirected into stdin, "
              "as an interactive session: invalid \"set\" commands then only warn")
     args = parser.parse_args()
+
+    # A cluster job asks nothing, whatever stdin of the submitting process is.
+    if args.cluster_job:
+        _raise_open_file_limit()
+        run_cluster_job(os.path.abspath(args.cluster_job))
+        return
 
     # The answers to the questions are read from stdin as in an interactive
     # session, where a command that cannot be applied (e.g. an invalid "set")

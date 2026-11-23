@@ -55,11 +55,25 @@ fixed parameters. Their entries are described below.
     ``auto`` picks ``simd_512``, then ``simd_256`` on x86. On ARM it picks ``scalar``,
     because the vectorized mode is currently slower there.
 
-``precision`` (``"color32"``)
+``precision`` (``"denom64"``)
     Floating-point precision of the matrix elements. ``all64`` and ``all32`` use double and
     single precision throughout. ``color32`` evaluates the color algebra in single precision
-    and everything else in double precision. ``denom64`` keeps the momenta and propagator
-    denominators in double precision and uses single precision elsewhere.
+    and everything else in double precision. ``denom64``, the default, keeps the momenta and
+    propagator denominators in double precision and uses single precision elsewhere.
+
+``precision_check`` (``0``)
+    Fraction of the events evaluated again with the matrix elements in ``all64``, to check
+    the precision of a run in any other precision. Off by default, because the run then
+    also builds an ``all64`` CPU library of each subprocess (``[run] validation``
+    reweights the whole sample through MadtRex instead). Once the events are written, the
+    two are compared at the momenta of events drawn at random from the output (at most
+    1000 of them, hidden entry ``precision_check_max_events``). With
+    ``r = |M|^2 / |M|^2_all64 - 1`` per event, the mean of ``r`` (the relative change of the
+    cross section, since unweighted events already follow ``|M|^2``), the mean and the
+    maximum of ``|r|`` are logged and written to ``Events/<run>/precision_check.json``; the
+    run warns when an event deviates by more than ``1e-3`` (hidden entry
+    ``precision_check_threshold``) or is not finite, in which case ``all64`` or ``color32``
+    is the safer choice for that process.
 
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)
@@ -143,6 +157,72 @@ See :doc:`gridpacks` for details.
 ``output_dir`` (``""``)
     Directory for the output files. ``""`` creates a new run folder
     ``Events/<run_name>_NN``. If set, no run folder is created.
+
+
+[cluster]
+---------
+
+Cluster mode trains the subprocesses and generates the events in parallel batch jobs.
+It is off by default, and then this section, ``[cluster_train]`` and ``[cluster_deploy]``
+are left out of the card until ``set cluster.enable true`` (or one of their settings differs
+from the site default in ``input/default_run_card_mg7.toml``, where their defaults come from). See :doc:`cluster` for how it works.
+
+``enable`` (``false``)
+    Run on a batch system. Independent of the ``run_mode`` of the MadGraph configuration.
+
+``mode`` (``"full"``)
+    ``full`` runs both passes and combines the events. ``gridpack_only`` only trains, and
+    the merged gridpack is the result.
+
+``type`` (``"auto"``)
+    The batch system: ``condor``, ``pbs``, ``sge``, ``lsf``, ``ge``, ``slurm``,
+    ``htcaas``, ``htcaas2``, the batch system of a plugin (``new_cluster``), or
+    ``local_parallel`` to run the jobs on this machine. ``auto`` takes ``cluster_type`` of
+    the MadGraph configuration.
+
+``parallel_jobs`` (``-1``)
+    Jobs running at once with ``local_parallel``. ``-1`` uses every core. The threads of
+    each job are divided accordingly if ``cpu_thread_pool_size`` is ``-1``.
+
+``train_queue`` (``""``), ``deploy_queue`` (``""``)
+    The queue (partition) of the jobs. ``""`` takes ``cluster_queue`` of the MadGraph
+    configuration.
+
+``train_walltime`` (``""``), ``deploy_walltime`` (``""``)
+    The walltime of the jobs, in the format of the batch system. Used for ``slurm`` and
+    ``condor``.
+
+``train_extra_args`` (``""``), ``deploy_extra_args`` (``""``)
+    Further arguments of the submit command, for example ``"--gres=gpu:1"`` for
+    ``slurm``, or ``"-l select=1:ngpus=1"`` for ``pbs``. For ``condor`` they are lines of
+    the submit file separated by ``;``, for example ``"request_gpus = 1; request_memory =
+    8GB"``.
+
+``subprocesses_per_job`` (``1``)
+    The number of subprocesses (merge groups with ``merge_subprocesses``) that are
+    trained together in one job. Raise it for a process with many small subprocesses.
+
+``fix_max_weight`` (``true``)
+    ``true``: the training jobs store the maximum weight of every channel, as for a
+    gridpack with ``run_mode = "fix_max_weight"``, and all generation jobs unweight
+    against it. This is the statistically correct choice. ``false``: every generation job
+    estimates the maximum weights on its own, which saves time in the training.
+
+``events_per_job`` (``100000``)
+    The events of one generation job. The ``[generation]`` ``events`` are split into
+    ``ceil(events / events_per_job)`` jobs of almost equal size.
+
+A few more options are hidden: ``nb_retry`` (``1``, how often a failed job is submitted
+again), ``retry_wait`` (``300``, seconds a job is given to deliver its output),
+``status_update`` (``[600, 30]``, seconds between status checks), ``temp_path`` (the
+``cluster_temp_path`` of the configuration) and ``keep_job_files`` (``false``, keep the
+gridpacks of the training jobs once merged, and the event files of the generation
+jobs once combined; their logs and info.json are always kept).
+
+The devices, threads and batch sizes of the training and of the generation jobs are set
+in the ``[cluster_train]`` and ``[cluster_deploy]`` sections, for example
+``run.device = ["cuda"]`` in ``[cluster_train]`` and ``run.device = ["cpu"]`` in
+``[cluster_deploy]`` to train on GPUs and generate on CPUs. See :doc:`cluster`.
 
 
 [beam]

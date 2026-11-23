@@ -105,6 +105,11 @@ def main() -> None:
         help="run even if the madspace version differs from the one used to "
              "generate the gridpack (can lead to errors or incorrect results)"
     )
+    parser.add_argument(
+        "--done_file", type=str, default=None,
+        help="create this file once the run has finished, which a batch job "
+             "can be told from a killed one by"
+    )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
         "--madspace_cpu_mode",
@@ -137,7 +142,7 @@ def main() -> None:
     parser.add_argument("--freeze_max_weight_after", type=int, default=gen_args["freeze_max_weight_after"])
     parser.add_argument(
         "--first_pass_max_overweight_truncation", type=float,
-        default=amplicol_args.get("first_pass_max_overweight_truncation", 0.01),
+        default=amplicol_args.get("first_pass_max_overweight_truncation", 0.001),
         help="max_overweight_truncation of the leading-colour unweighting of "
              "[amplicol] processes unweighted to full colour"
     )
@@ -298,6 +303,9 @@ def main() -> None:
         data["columns"] = ["rwgt_%d" % i for i in systematics.weight_ids]
         with open(os.path.join(run_path, "events.weights.json"), "w") as f:
             json.dump(data, f, indent=1)
+    if args.done_file:
+        with open(os.path.join(_INVOCATION_DIR, args.done_file), "w") as f:
+            f.write("done\n")
 
 
 if __name__ == '__main__':

@@ -76,9 +76,9 @@ class ProcessGroupAnalysis(StrEnum):
 
 class LoopInducedPolicy(StrEnum):
     """How a one-loop request serves processes without a Born amplitude
-    within their coupling-order limits (loop-induced, |A_loop|^2; m-lit
-    PLAN Q2 (b)): ``auto`` (the default) serves a request none of whose
-    concrete processes has a Born loop-induced and skips the Born-less
+    within their coupling-order limits (loop-induced, |A_loop|^2): ``auto``
+    (the default) serves a request none of whose concrete processes has a
+    Born loop-induced and skips the Born-less
     members of a mixed multiparticle request with a typed record; ``skip``
     serves nothing loop-induced (a purely loop-induced request is refused);
     ``only`` serves only the members without a Born (the others are skipped
@@ -164,9 +164,9 @@ class R2Strategy(StrEnum):
 
 
 class ReductionBackend(StrEnum):
-    """The reduction backend of a v2 one-loop evaluation (m-lit PLAN §2.b.4,
-    RULED Q17 / Q18, F3): ``auto`` (the default) takes the per-type default,
-    TIRust (tensor-integral reduction) for a loop-induced process and
+    """The reduction backend of a v2 one-loop evaluation: ``auto`` (the
+    default) takes the per-type default, TIRust (tensor-integral reduction)
+    for a loop-induced process and
     NinjaRS (integrand reduction) for a Born-interfered one, and falls back
     to NinjaRS with a recorded reason where TIRust cannot serve the call; on
     TIRust a point it refuses or fails is evaluated again on NinjaRS (the
@@ -204,7 +204,7 @@ def reduction_request(value: object) -> Literal["auto", "ninjars", "tirust"]:
 def reduction_target(value: object) -> float:
     """The value of a target accuracy (``evaluation.reduction_target``, the
     CLI's ``--reduction-target``, ``Runtime.load`` / ``evaluate(...,
-    reduction_target=)``; m-lit F3 (a)): the relative accuracy of each
+    reduction_target=)``): the relative accuracy of each
     point's result. The validator of every Python surface: a Python number
     (a bool or another type is refused), checked by the native policy's one
     rule (``reduction_policy::target``: finite and positive, the SDKs'
@@ -247,9 +247,9 @@ DEFAULT_ON_FAILURE = "best-effort"
 def reduction_unchecked(value: object) -> bool:
     """The value of the unchecked reduction setting (``evaluation.
     reduction_unchecked``, the CLI's ``--reduction-unchecked``,
-    ``Runtime.load`` / ``evaluate(..., reduction_unchecked=)``; m-lit
-    lit-unchecked): True reduces without the reduction backends' own
-    acceptance and refusal checks, False (the default) with them. The
+    ``Runtime.load`` / ``evaluate(..., reduction_unchecked=)``): True
+    reduces without the reduction backends' own acceptance and refusal
+    checks, False (the default) with them. The
     validator of every Python surface: a Python bool (any other type, 0 and
     1 included, is refused) with the native policy's one refusal text
     (``reduction_policy::UNCHECKED_REFUSAL``; the SDKs' C ABI takes 1 or 0,
@@ -260,6 +260,20 @@ def reduction_unchecked(value: object) -> bool:
     from pyamplicol.loops.v2.reduction import policy
 
     raise ValueError(policy()["unchecked"]["refusal"])
+
+
+def lane_rescue(value: object) -> bool:
+    """The value of the lane rescue setting (``evaluation.lane_rescue``, the
+    CLI's ``--lane-rescue`` / ``--no-lane-rescue``, ``Runtime.load`` /
+    ``evaluate(..., lane_rescue=)``): True (the default)
+    reduces a reduction lane the backend refuses again in a higher carrier,
+    in the checked and the unchecked mode; False leaves a refused lane to
+    fail its point (a pure binary64 evaluation, e.g. for timing). A Python
+    bool; any other type is refused."""
+
+    if isinstance(value, bool):
+        return value
+    raise ValueError("lane_rescue takes True or False")
 
 
 class PoleSelection(StrEnum):
@@ -435,8 +449,8 @@ def _enum(value: object, enum_type: type[_EnumT], name: str) -> _EnumT:
 
 def _integer(value: int, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        qualifier = "positive" if minimum == 1 else f">= {minimum}"
-        raise ConfigurationError(f"{name} must be an integer {qualifier}")
+        kind = "a positive integer" if minimum == 1 else f"an integer >= {minimum}"
+        raise ConfigurationError(f"{name} must be {kind}")
     return value
 
 
@@ -461,11 +475,19 @@ class DefaultFloat(float):
     __slots__ = ()
 
 
-def is_default(value: object) -> bool:
-    """Whether a ``BenchmarkConfig`` count or duration was left at its
-    default rather than given."""
+class DefaultStr(str):
+    """A setting left at its default (``DefaultInt``): ``benchmark.
+    ground_truth``, which a loop profile on an expensive process may leave
+    out of its runtime timing unless it was given."""
 
-    return isinstance(value, (DefaultInt, DefaultFloat))
+    __slots__ = ()
+
+
+def is_default(value: object) -> bool:
+    """Whether a ``BenchmarkConfig`` count, duration or setting was left at
+    its default rather than given."""
+
+    return isinstance(value, (DefaultInt, DefaultFloat, DefaultStr))
 
 
 _DURATION = re.compile(
@@ -518,6 +540,62 @@ def _ground_truth(value: object) -> str:
         "arbitrary:DIGITS (arb:DIGITS, positive decimal digits) or none; got "
         f"{value!r}"
     )
+
+
+# The precisions a loop profile's stability run measures by default
+# (``benchmark.measured_precisions``, ``--measured-precisions``): this one
+# line sets the default.
+DEFAULT_MEASURED_PRECISIONS: tuple[str, ...] = ("binary64",)
+
+
+def _measured_precision(value: object) -> str:
+    """A ``benchmark.measured_precisions`` entry in its canonical spelling:
+    "binary64" (also "double", "b64"), or a reference precision as
+    ``_ground_truth`` spells it ("double-double", "arbitrary",
+    "arbitrary:DIGITS"; "none" is no precision)."""
+
+    text = value.strip().lower() if isinstance(value, str) else ""
+    if text in ("binary64", "double", "b64"):
+        return "binary64"
+    try:
+        canonical = _ground_truth(text)
+    except ConfigurationError:
+        canonical = "none"
+    if canonical == "none":
+        raise ConfigurationError(
+            "benchmark.measured_precisions entries must be binary64 (double, "
+            "b64), double-double (dd), arbitrary (arb) or arbitrary:DIGITS "
+            f"(arb:DIGITS); got {value!r}"
+        )
+    return canonical
+
+
+def _measured_precisions(value: object) -> tuple[str, ...]:
+    """``benchmark.measured_precisions`` canonical, in the order given: at
+    least one entry, no duplicate."""
+
+    if isinstance(value, str):
+        value = [value]
+    if isinstance(value, (list, tuple)):
+        # An entry may hold several, comma-separated (``--measured-precisions
+        # b64,dd``).
+        value = [
+            part
+            for entry in value
+            for part in (entry.split(",") if isinstance(entry, str) else [entry])
+            if not isinstance(part, str) or part.strip()
+        ]
+    if not isinstance(value, (list, tuple)) or not value:
+        raise ConfigurationError(
+            "benchmark.measured_precisions must be a non-empty list of precisions"
+        )
+    canonical = tuple(_measured_precision(entry) for entry in value)
+    for position, entry in enumerate(canonical):
+        if entry in canonical[:position]:
+            raise ConfigurationError(
+                f"benchmark.measured_precisions lists {entry} twice"
+            )
+    return canonical
 
 
 def _finite_float(
@@ -1538,13 +1616,21 @@ class EvaluationPhaseSpaceConfig:
             )
 
 
+# The largest decimal digit count of a carrier (the native u32).
+_MAX_DIGITS = 2**32 - 1
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
     process: str | None = field(default=None, metadata=_setting("str", nullable=True))
-    precision: int = field(default=16, metadata=_setting("int"))
+    # Decimal digits; None (unset) is the carrier's default: binary64's 16,
+    # or with ``arithmetic = "arbitrary"`` on a virtual artifact the default
+    # arbitrary-precision digits (500, ``loops.v2.reduction.
+    # default_arbitrary_digits``). A number given is never overridden.
+    precision: int | None = field(default=None, metadata=_setting("int", nullable=True))
     arithmetic: Literal["double", "double-double", "arbitrary"] | None = field(
         default=None,
         metadata=_setting(
@@ -1585,6 +1671,17 @@ class EvaluationConfig:
     # lit-unchecked): true drops the reduction backends' own acceptance and
     # refusal checks; false, the default, keeps them.
     reduction_unchecked: bool = field(default=False, metadata=_setting("bool"))
+    # The lane rescue (``lane_rescue``; USER 2026-11-18): true (the default)
+    # reduces a refused reduction lane again in a higher carrier (checked and
+    # unchecked mode alike); false leaves it to fail its point.
+    lane_rescue: bool = field(default=True, metadata=_setting("bool"))
+    # The native threads of the runtime's load and of its evaluations
+    # (``Runtime.load(threads=)``, the CLI's ``--threads``, the SDKs'
+    # ``rusticol_virtual_set_threads``; USER 2026-11-19): every native pool
+    # of the runtime at that many threads, clamped to the cores the process
+    # may use (the native ``effective_threads``). None (the default): rayon's rule,
+    # ``RAYON_NUM_THREADS`` else every core, as before the option.
+    threads: int | None = field(default=None, metadata=_setting("int", nullable=True))
     # The kinematics improvement of the input points (m-lit lit-psimprove;
     # ``pyamplicol.kinematics``): "z-shift" (MadLoop's ImprovePSPoint 2 with
     # its fallback to 1, finished by the projection where MadLoop leaves the
@@ -1620,8 +1717,17 @@ class EvaluationConfig:
         if self.process is not None and not isinstance(self.process, str):
             raise ConfigurationError("evaluation.process must be a string or null")
         object.__setattr__(
-            self, "precision", _integer(self.precision, "evaluation.precision")
+            self,
+            "precision",
+            _optional_integer(self.precision, "evaluation.precision", minimum=1),
         )
+        if self.precision is not None and self.precision > _MAX_DIGITS:
+            # The native carriers' digit count is an unsigned 32-bit integer
+            # (the SDKs' and the runtime-options reader's limit, one text).
+            raise ConfigurationError(
+                f"evaluation.precision must be at most {_MAX_DIGITS}; "
+                f"got {self.precision}"
+            )
         if self.arithmetic is not None and (
             not isinstance(self.arithmetic, str)
             or self.arithmetic not in {"double", "double-double", "arbitrary"}
@@ -1678,6 +1784,15 @@ class EvaluationConfig:
             reduction_unchecked(self.reduction_unchecked)
         except ValueError as exc:
             raise ConfigurationError(f"evaluation.reduction_unchecked: {exc}") from exc
+        try:
+            lane_rescue(self.lane_rescue)
+        except ValueError as exc:
+            raise ConfigurationError(f"evaluation.lane_rescue: {exc}") from exc
+        object.__setattr__(
+            self,
+            "threads",
+            _optional_integer(self.threads, "evaluation.threads", minimum=1),
+        )
         if self.kinematics_improvement is not None:
             from pyamplicol import kinematics
 
@@ -1749,12 +1864,23 @@ class BenchmarkConfig:
     # the usable cores; 1 runs it in-process. The result does not depend on
     # it. The runtime timing always runs on one core (one process, every
     # native pool at one thread).
-    n_core: int = field(default=10, metadata=_setting("int"))
+    n_core: int = field(default=DefaultInt(10), metadata=_setting("int"))
     # The reference ("ground truth") of a loop profile (``--ground-truth``):
     # "double-double" or "arbitrary[:DIGITS]" (decimal digits; without them
-    # the built-in rescue's arbitrary-precision level's), "dd" and "arb"
+    # the default arbitrary-precision digits, 500), "dd" and "arb"
     # accepted; read by both tables (``loop_profile.ground_truth``).
-    ground_truth: str = field(default="double-double", metadata=_setting("str"))
+    ground_truth: str = field(
+        default=DefaultStr("double-double"), metadata=_setting("str")
+    )
+    # The precisions whose stability the stability run measures
+    # (``--measured-precisions``), each its own pair of tables in this
+    # order: binary64 (the default, ``DEFAULT_MEASURED_PRECISIONS``) and
+    # the reference precisions up to the ground truth's (the ground truth's
+    # own: its estimates only); "dd", "arb[:DIGITS]", "double", "b64"
+    # accepted.
+    measured_precisions: tuple[str, ...] = field(
+        default=DEFAULT_MEASURED_PRECISIONS, metadata=_setting("list_str")
+    )
     # The runtime timing of a loop profile in the checked mode (``--checked``):
     # the backends' own acceptance checks, a refused point served best-effort
     # and the default backend as "auto". False (the default): one fully
@@ -1778,6 +1904,14 @@ class BenchmarkConfig:
     # core, a Monte Carlo worker's. The stability workers stay at one
     # thread each (``n_core`` is their count).
     runtime_threads: int = field(default=1, metadata=_setting("int"))
+    # Whether a loop profile times every reduction backend
+    # (``--all-backends``): None (the default) times every one unless the
+    # process's default backend alone exceeds the runtime budget at its
+    # minimal counts (then the default only, ``loop_profile``); True every
+    # one whatever the budget; False the default only.
+    all_backends: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         for name in ("runtime", "stability", "checked"):
@@ -1792,7 +1926,19 @@ class BenchmarkConfig:
                 "benchmark.runtime_threads must be a positive thread count "
                 "(1: one core, the default)"
             )
-        object.__setattr__(self, "ground_truth", _ground_truth(self.ground_truth))
+        truth = _ground_truth(self.ground_truth)
+        object.__setattr__(
+            self,
+            "ground_truth",
+            DefaultStr(truth) if isinstance(self.ground_truth, DefaultStr) else truth,
+        )
+        object.__setattr__(
+            self,
+            "measured_precisions",
+            _measured_precisions(self.measured_precisions),
+        )
+        if self.all_backends is not None and type(self.all_backends) is not bool:
+            raise ConfigurationError("benchmark.all_backends must be a boolean")
         if self.completion_time is not None:
             object.__setattr__(
                 self, "completion_time", parse_duration(self.completion_time)

@@ -519,7 +519,7 @@ U(1)-subtraction piece counts as a power `1/N_c`, LC keeps the leading degree
 the truncation, so SU(N_c) identities such as colour conservation hold degree
 by degree. For example the colour factor of `u d > u d` is `(N^2 - 1)/4`
 exactly, `(N^2 + 1)/4` at inherited LC and `N^2/4` at strict LC; see
-[Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1nc-expansion).
+[Correlation Conventions](../correlator-conventions.md#strict-colour-the-formal-1n_c-expansion).
 Since a tree request defaults to `lc`, compare a tree with a full-colour
 reference (MadGraph standalone, an analytic formula, a loop-induced |A|^2)
 at `accuracy = "full"`: at `lc` the gluon pair of `g g > h` (HEFT) carries
@@ -880,6 +880,176 @@ stability estimates instead and leave escalating the arithmetic to the caller
 (`evaluate(..., stability=VirtualRescuePolicy())`,
 [Python API](python-api.md#stability-rescue-one-loop-virtuals)).
 
+### Runtime options
+
+The settings of a loaded one-loop runtime (its reduction backend, carrier,
+pole selection, failure policy, stability checks, threads, ...) are supplied
+the same way in every interface: as keywords or flags one by one, or together
+in a short **runtime-options TOML**, a file with an `[evaluation]` table
+(example: [`examples/data/runtime_options.toml`](../../examples/data/runtime_options.toml)):
+
+```toml
+[evaluation]
+reduction = "tirust"
+lane_rescue = true
+arithmetic = "double"
+poles = "none"
+on_failure = "return"
+threads = 4
+
+[evaluation.stability_checks]
+rotation_count = 1
+reduction_direction = true
+rescaled = true
+```
+
+| Interface | The TOML | One setting |
+| --- | --- | --- |
+| CLI | `pyamplicol evaluate ARTIFACT --card options.toml` (the run card) | its flag (table below) |
+| Python | `Runtime.load(artifact, options=...)`: a path, a TOML text or a parsed mapping (a one-line string is a path when it names an existing file, else TOML; neither: refused naming both) | its keyword |
+| C SDK | `rusticol_virtual_set_options(handle, toml_text)`; `rusticol_virtual_open_with_options(path, process, parameters_json, r2_strategy, toml_text, &handle)` | its setter |
+| C++ / Fortran / Rust SDK | `VirtualRuntime::set_options` / `set_options_file` / `with_options`; `runtime%set_options`, `runtime%load(..., options_toml=)`; `Runtime::set_options` / `set_options_file` / `open_with_options` | its setter |
+
+The keys read, every one also settable on its own:
+
+| Key (`[evaluation]`) | SDK setter (`rusticol_virtual_...`) | Python keyword | CLI flag (`evaluate`) |
+| --- | --- | --- | --- |
+| `reduction` | `set_reduction` | `Runtime.load` / `evaluate(reduction=)` | `--loop-reduction` |
+| `reduction_target` | `set_reduction_target` | `Runtime.load` / `evaluate(reduction_target=)` | `--reduction-target` |
+| `reduction_unchecked` | `set_reduction_unchecked` | `Runtime.load` / `evaluate(reduction_unchecked=)` | `--reduction-unchecked` |
+| `lane_rescue` | `set_lane_rescue` | `Runtime.load` / `evaluate(lane_rescue=)` | `--lane-rescue` / `--no-lane-rescue` |
+| `arithmetic` | `set_arithmetic` (its name) | `Runtime.load` / `evaluate(arithmetic=)` | `--arithmetic` |
+| `precision` | `set_arithmetic` (its digits) | `Runtime.load` / `evaluate(precision=)` | `--precision` |
+| `poles` | `set_poles` | `evaluate(poles=)` | `--poles` |
+| `on_failure` | `set_on_failure` | `evaluate(on_failure=)` | `--on-failure` |
+| `kinematics_improvement` | `set_kinematics_improvement` | `Runtime.load` / `evaluate(kinematics_improvement=)` | `--kinematics-improvement` |
+| `kinematics_improvement_binary64` | `set_kinematics_improvement_binary64` | `Runtime.load` / `evaluate(kinematics_improvement_binary64=)` | `--kinematics-improvement-binary64` |
+| `stability_checks.rotations` | `set_stability_checks` (`rotations`) | `evaluate(stability_checks=VirtualStabilityChecks(rotations))` | `--stability-rotation` |
+| `stability_checks.rotation_count` | `set_stability_checks` (`rotation_count`) | `evaluate(stability_checks=VirtualStabilityChecks(count))` | `--stability-rotations` |
+| `stability_checks.reduction_direction` | `set_stability_checks` (`reduction_direction`) | `evaluate(stability_checks=VirtualStabilityChecks(..., True))` | `--stability-reduction-direction` |
+| `stability_checks.rescaled` | `set_stability_checks` (`rescaled`) | `evaluate(stability_checks=VirtualStabilityChecks(..., rescaled=True))` | `--stability-rescaled` |
+| `threads` | `set_threads` | `Runtime.load(threads=)` | `--threads` |
+
+Rules, the same in every interface:
+
+- Only `[evaluation]` is read: a full run card can be passed, its other
+  tables are ignored. The run card's other `[evaluation]` keys (`artifact`,
+  `process`, `momenta`, `mu_r2`, `mu_r2_file`, `model_parameters`,
+  `resolved`, `orders`, `correlated_requests`, `helicity_ids`,
+  `color_flow_ids`, `[evaluation.stability]`, `[evaluation.phase_space]`)
+  are the inputs of a command-line run, not runtime settings: the SDK
+  ignores them (accepted, not read, not checked); `Runtime.load(options=)`
+  reads the table with the run card's rules, so it checks them as a run card
+  always did (a bad value there is refused) and then uses only the runtime
+  options. The model
+  parameters keep their own route (the parameters JSON at open and
+  `rusticol_virtual_update_parameters`; Python `model_parameters=` and
+  `set_model_parameters`), the scale is an input of each call (`mu_r2`).
+- A key that is no `[evaluation]` key at all is refused by name, with the run
+  card's text ("unknown configuration field 'evaluation.redution'; did you
+  mean 'evaluation.reduction'?"); a bad value is refused with the run card's
+  text too ("evaluation.poles must be one of 'all', 'none', 'uv', 'ir'; got
+  'x'"). Python's configuration and the native reader
+  (`rusticol_loop_reduction::runtime_options`) are held equal key by key
+  (`tests/unit/test_runtime_options.py`): the same keys, the same accepted
+  values and defaults, and the same texts for an unknown key and for a bad
+  value of a listed key. Both read TOML integers as signed 64-bit (an
+  integer beyond that range, e.g. `threads = 1000000000000000000000`, is
+  invalid TOML in both; a count within it but above the usable cores is
+  clamped, below). They are two TOML parsers: a TOML syntax error is
+  worded by each parser (Python's `tomllib`, the `toml` crate), a file with
+  several errors lists them in file order in Python and in key order in the
+  SDK, and the parsers' own limits differ (a UTF-8 byte-order mark is read by
+  the SDK only; a C string ends at its first NUL byte; very deep nesting is
+  refused by the `toml` crate).
+- A key absent keeps its setting (the default, or what was set before).
+  `[evaluation.stability_checks]` given replaces the checks as a whole (its
+  absent keys at their defaults; an empty table: no check).
+- The SDKs check every key first and then apply them together: on an error
+  nothing changes (`rusticol_virtual_last_error_message` holds the refusal).
+- Precedence: an explicit keyword, flag or setter > the TOML > the default.
+  In Python, `Runtime.load` keywords override the TOML's values, a call's
+  keyword overrides both; the TOML's `poles`, `on_failure` and stability
+  checks are the defaults of every call that names none (the checks of a
+  call that names no `stability=` policy either; refused together with a
+  load-time `stability=` policy). In the SDKs, a setter called after
+  `rusticol_virtual_set_options` overrides the key it sets.
+- `arithmetic` and `precision` select the carrier as `Runtime.load` does: an
+  arithmetic given is that carrier (`"arbitrary"` at the digits given, else
+  the default 500), `"double"` and `"double-double"` take no digits; without
+  an arithmetic, 16 digits are binary64 and other digits arbitrary precision.
+- Out of scope by design: the built-in stability rescue
+  (`evaluate(..., stability=VirtualRescuePolicy())`) is the Python API's
+  alone; the SDKs return estimates and leave escalating to the caller.
+  `rusticol_virtual_set_stability_checks`'s `cross_backend` check has no run
+  card key (Python: `VirtualStabilityChecks(..., cross_backend=True)`).
+
+The tree C API (`rusticol_runtime_set_options`, `rusticol.h`) reads the same
+TOML; a tree runtime takes its two evaluation-time settings,
+`kinematics_improvement` and `kinematics_improvement_binary64`, and refuses
+every virtual runtime option it names, by name (so a virtual run card is not
+accepted there). `Runtime.load(tree_artifact, options=)` does the same, at
+load.
+
+#### Threads
+
+`threads` (CLI `--threads N`, Python `Runtime.load(..., threads=N)`, SDK
+`rusticol_virtual_set_threads(handle, N)`) is the number of native threads a
+one-loop runtime uses: every native pool of the runtime (the load's parallel
+plan decode and every executor of its evaluations, in every carrier, the
+lane rescue's and the extended carriers' reductions included) runs on at most
+`N` workers. Unset (the default), nothing changes from before the option:
+rayon's rule, `RAYON_NUM_THREADS` when set, else every core the process may
+use (its affinity mask and its cgroup CPU quota,
+`std::thread::available_parallelism`). Precedence: `threads` >
+`RAYON_NUM_THREADS` > every usable core.
+
+- A count above the cores the process may use is **clamped**, never
+  refused: the effective count is `min(threads, available)`, where
+  `available` is what an unset `threads` uses on this machine without
+  `RAYON_NUM_THREADS` (`std::thread::available_parallelism`: the affinity
+  mask, e.g. `taskset`, and the cgroup CPU quota). A run card written on a
+  large machine works on a small one, and no pool exceeds the usable cores.
+  One native rule computes it (`rusticol_core::loop_artifact::
+  effective_threads`) for the SDKs, the pools, the load and Python. The
+  read-backs show the effective count (`threads`) and, when the clamp
+  lowered it, the requested one (`threads_requested`; null otherwise):
+  `rusticol_virtual_options_json` and `Runtime.inspect()["runtime_options"]`.
+  0 and negative counts stay refused.
+
+- Values do not depend on the count: they are bitwise the same at 1, 2, 8 or
+  every core.
+- Each runtime keeps its own count: two runtimes with different counts in one
+  process each use theirs.
+- The bound covers the work of one call at a time (a runtime's calls are
+  sequential); the runtime's executors keep their idle pool workers between
+  calls.
+- The load is bounded too where the count is known before it: Python's
+  `Runtime.load(threads=)` (or `options=` with `threads`), the CLI's
+  `--threads`, the SDK's `rusticol_virtual_open_with_options` with a TOML
+  that has `threads` (else the load takes rayon's rule, `RAYON_NUM_THREADS`
+  else every core). A load starts only the threads its work uses, up to that
+  count: a small plan loads on the calling thread alone, a large one derives
+  its families and decodes its lists in parallel, starting workers as the
+  work asks for them (with a count of 2 its families load on the calling
+  thread, only the decode may use the second). At most the count work at once; while the load's
+  decode pool grows, the threads of the pool it replaces exit
+  asynchronously, so up to about twice the count may be alive for a moment.
+  The loaded program is the same for every count.
+  `rusticol_virtual_set_threads` and
+  `rusticol_virtual_set_options` on an open handle bound its later
+  evaluations (its pools are rebuilt at the new size). Back to the default
+  (unset): the C, C++ and Fortran `set_threads(0)`, the Rust wrapper's
+  `set_threads(None)`; a runtime-options TOML cannot express it (a TOML
+  without `threads` keeps the handle's count, and TOML has no null). In
+  Python the bound is the runtime's from its load: load it again without
+  `threads` (or with `threads=None`); on the CLI, leave out `--threads`.
+- `profile`: `--runtime-threads N` is this bound of the timed runtimes (their
+  load and every timed call; default 1; above the usable cores, the affinity
+  mask or the CPU quota, it is reduced with a notice), `--n_core` the number of worker
+  processes of a stability run; `evaluation.threads` of a run card does not
+  change a profile.
+
 ### The v2 loop engine
 
 One-loop requests (`process.loop_coupling_orders`) generate virtual processes
@@ -952,6 +1122,7 @@ reduction = "auto"             # generation default: auto, ninjars, tirust
 reduction = "ninjars"          # override for this evaluation (default: the artifact's)
 reduction_target = 1e-5        # TIRust's target accuracy (relative, per point; default 1e-5)
 reduction_unchecked = false    # true: no backend acceptance or refusal checks (default false)
+lane_rescue = true             # false: a refused reduction lane fails its point (default true)
 ```
 
 `"auto"` takes the per-type default, TIRust for a loop-induced and NinjaRS
@@ -1037,7 +1208,8 @@ master failure, a NinjaRS lane whose tested quantity is exactly zero or NaN
 or that its box mu-expansion's conditioning bound refuses, which no setting
 turns off) still fail; `"auto"` keeps its choice of backend and its per-point fallback
 acts only on those. pyAmpliCol's stability checks and rescue stack stay
-their own settings and check the unchecked values when enabled. It is a
+their own settings and check the unchecked values when enabled; the lane
+rescue (below) still serves the lanes the unchecked backend refuses. It is a
 timing and benchmark mode with **no accuracy certificate**: a served value
 can be off (measured per process up to 1.4e-2 on TIRust and 1e64 on NinjaRS
 against a 256-bit truth; the table in [Python API](python-api.md),
@@ -1046,6 +1218,20 @@ target accuracy. TIRust's qualified domain is up to six
 loop propagators at numerator rank six (reported, never enforced: beyond it
 the achieved precision is measured, as everywhere). `loop.reduction` other
 than `"auto"` needs a one-loop request (`process.loop_coupling_orders`).
+
+`evaluation.lane_rescue` (CLI `--lane-rescue` / `--no-lane-rescue`,
+Python `Runtime.load` / `evaluate(..., lane_rescue=)`; default true) is the
+lane rescue: a reduction lane (one family and Laurent column of one point)
+that the backend refuses is reduced again in double-double, then in
+arbitrary precision, from its binary64 coefficients and its kinematics
+rebuilt in that carrier, in the checked and the unchecked mode alike
+([Python API](python-api.md), "Lane rescue of refused reduction lanes").
+`false` leaves such a lane to fail its point: pure binary64 evaluations,
+bitwise and failure for failure as before (e.g. to time binary64 alone over
+the points that survive it). The standalone SDKs rescue by default too, and
+`rusticol_virtual_set_lane_rescue(handle, 0)` turns it off
+([native APIs](native-apis.md)). Lanes a backend accepts are never rescued,
+however inaccurate (the stability estimate reports them).
 
 **Rank beyond N+2 (TIR-only artifacts; open, untested for correctness).**
 NinjaRS reduces loop numerators of rank at most N+2 over N propagators;
@@ -1895,8 +2081,9 @@ reduction, rest, from the native executor's stage report of the timed
 calls, each on a new batch of `batch_size` distinct flat points;
 `batch_size`, `warmup_runs`, `minimum_samples` and `target_runtime` apply;
 timed on one core, one fully optimistic pass per point: the backend's
-unchecked reduction alone, no checks) and/or as stable-digit statistics over
-flat points. `[benchmark] checked = true` times the checked mode instead;
+unchecked reduction alone, no checks, refused lanes rescued) and/or as
+stable-digit statistics over flat points. `[evaluation] lane_rescue = false`
+times and measures pure binary64 calls. `[benchmark] checked = true` times the checked mode instead;
 `[evaluation] reduction_unchecked` also makes the stability run's binary64
 calls unchecked (not with `checked`), and `mu_r2` sets the scale (default:
 per point the squared invariant mass of its initial state). The loop settings of
@@ -1906,10 +2093,12 @@ per point the squared invariant mass of its initial state). The loop settings of
 [benchmark]
 runtime = false          # --runtime: time per point and stage
 stability = true         # --stability (neither set: the runtime only)
-stability_points = 1000  # --stability-points: flat (RAMBO on diet) points (default 1000)
+stability_points = 1000  # --stability-points: flat (RAMBO on diet) points (unset: what the budget affords)
 n_core = 10              # --n_core / --n-core: worker processes of --stability only
-ground_truth = "double-double"  # --ground-truth: dd, arb (57 digits) or arb:DIGITS
+ground_truth = "double-double"  # --ground-truth: dd, arb (500 digits), arb:DIGITS or none
 checked = false          # --checked: time the checked mode, not the optimistic pass
+runtime_threads = 1      # --runtime-threads: native threads of each runtime timing call
+# all_backends = true    # --all-backends: every backend whatever the budget (unset: only the default one on an expensive process)
 
 [evaluation.phase_space]
 seed = 1                 # --seed: point i from seed + i

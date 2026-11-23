@@ -2036,6 +2036,75 @@ def point_measures(
     return tuple(found)
 
 
+def rescue_options(slice_: Any) -> dict[str, int]:
+    """The native ``evaluate`` option of the lane rescue: the process's
+    initial states (first in leg order, ``kinematics.initial_count``), so
+    that a refused lane's kinematic inputs are rebuilt from the point
+    improved in the rescue carrier; empty when the legs do not say (the
+    lane rescue then takes the point's exact inputs)."""
+
+    from pyamplicol.kinematics import initial_count
+
+    try:
+        return {"initial_states": initial_count(slice_.blocks.process.legs)}
+    except (AttributeError, ValueError):
+        return {}
+
+
+def point_rescued(
+    output: Mapping[str, Any], extra: Mapping[str, Any] | None, index: int
+) -> tuple[tuple[str, int], ...]:
+    """The lane rescue of point ``index`` of a native executor output
+    (``"rescued"``: its rescued lanes and their carriers;
+    ``"rescued_moments"``: its rescued term-scale moments, counted apart,
+    their carrier prefixed ``virtual_results.MOMENTS``) and of its
+    companion's (``extra``): per carrier the lanes (and moments) it served."""
+
+    from pyamplicol.api.virtual_results import MOMENTS
+
+    counts: dict[str, int] = {}
+    for part in (output, extra):
+        for name, prefix in (("rescued", ""), ("rescued_moments", MOMENTS)):
+            rescued = None if part is None else part.get(name)
+            if rescued is not None:
+                for _lane, carrier in rescued[index]:
+                    key = prefix + carrier
+                    counts[key] = counts.get(key, 0) + 1
+    return tuple(sorted(counts.items()))
+
+
+class RescuedOutputs(dict):  # type: ignore[type-arg]
+    """The outputs of one point of a mapping route (resolved, correlated and
+    selected evaluations: output key -> ``PointResult``) with the point's
+    lane rescue (``lane_rescue``: ``merged_rescue`` over its reference and
+    rotated evaluations; review B1), read by the lane diagnostics and the
+    estimate extension (``reduction._rescued_estimates``)."""
+
+    __slots__ = ("lane_rescue",)
+
+    def __init__(
+        self, items: Any = (), lane_rescue: tuple[tuple[str, int], ...] = ()
+    ) -> None:
+        super().__init__(items)
+        self.lane_rescue = tuple(lane_rescue)
+
+    def __reduce__(self) -> Any:
+        return (RescuedOutputs, (dict(self), self.lane_rescue))
+
+
+def merged_rescue(
+    evaluations: Iterable[Any],
+) -> tuple[tuple[str, int], ...]:
+    """The lane rescue of one point over its native evaluations (the
+    reference and its rotated evaluations, ``point_rescued``)."""
+
+    counts: dict[str, int] = {}
+    for evaluation in evaluations:
+        for carrier, count in getattr(evaluation, "lane_rescue", ()):
+            counts[carrier] = counts.get(carrier, 0) + count
+    return tuple(sorted(counts.items()))
+
+
 class FailedPoints(ArithmeticError):
     """Some points of a native batch failed (a reduction lane's status, an
     ``ImpreciseResult`` master or a non-finite numerator, also in a rotation
@@ -2128,6 +2197,11 @@ class NativeExecutor:
     Born-interfered slice refuses a route.
     """
 
+    # The always-on report of the last native call; None before the first
+    # one (present from the start, so that a reader attached before the
+    # first call, ``runtime.virtual.collected_stage_seconds``, sees it).
+    last_report: Any = None
+
     def __init__(
         self,
         slice_: Any,
@@ -2146,6 +2220,7 @@ class NativeExecutor:
         contraction: Literal["auto", "direct", "fft"] | None = None,
         catani: bool = False,
         route: Literal["R1", "R2"] | None = None,
+        program: Callable[[], Any] | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -2195,6 +2270,14 @@ class NativeExecutor:
         # process's compressed stored member of either (``StoredMember``,
         # inflated by the native executor itself: M-FINAL MF-8G-2 item 2).
         self._plan_json = self.exported.stored() if plan_json is None else plan_json
+        # ``program``: the getter of the native program of ``plan_json`` as
+        # an artifact's admission loaded it (``native_process.AdmittedPlan.
+        # get``: a ``V2AdmittedPlan``, the rule kernel forms, or None once
+        # released): the first native executor takes it instead of loading
+        # the plan again.
+        if program is not None and plan_json is None:
+            raise ValueError("an admitted program needs its stored plan")
+        self._program = program
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: list[NativeExecutor | None] = []
         # (exported plan, its JSON) of the companion when the caller holds it
@@ -2268,8 +2351,16 @@ class NativeExecutor:
                     )
                     return found
             trees = self.exported.trees.executor_argument() if native_trees else None
+            admitted = (
+                self._program()
+                if self._program is not None and self.forms == "rule"
+                else None
+            )
+            plan = (
+                admitted if admitted is not None else executor_program(self._plan_json)
+            )
             found = self._native[key] = self.slice.native.V2Executor(
-                executor_program(self._plan_json),
+                plan,
                 arithmetic,
                 digits,
                 lanes=lanes,
@@ -2323,6 +2414,34 @@ class NativeExecutor:
                 )
             self._scaleless.append(built)
         return self._scaleless[0]
+
+    def prepare(
+        self,
+        precision: Any,
+        reduction: str,
+        *,
+        unchecked: bool = False,
+        scaleless: bool = False,
+    ) -> None:
+        """Build most of what this executor's first call in ``precision``'s
+        carrier with ``reduction`` ("ninjars" or "tirust") would build
+        lazily, without evaluating a point (``V2Executor.warm``): its native
+        executor of the carrier, the carrier's tree runtime, the families' walk
+        data, the backend and, through one synthetic lane per (propagators,
+        rank) class its lanes reach, what the backend's first reductions
+        build, in the ``unchecked`` mode; with ``scaleless`` also the
+        certified-scaleless companion's (which the "uv" and "ir" pole
+        selections run). Left lazy: NinjaRS's lower class of a lane whose top
+        coefficients vanish at its point, and the binary64 fast engine's exact
+        fallback (lanes at its absolute thresholds). Kept for the executor's
+        lifetime; later values are unchanged."""
+
+        arithmetic, digits = self._arithmetic(precision, False)
+        executors = [self]
+        if scaleless and self.scaleless is not None:
+            executors.append(self.scaleless)
+        for executor in executors:
+            executor.native(arithmetic, digits).warm(reduction, unchecked=unchecked)
 
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
         """Lanes per chunk: the configured count in every carrier and for
@@ -2640,16 +2759,18 @@ class NativeExecutor:
             if index in failures:
                 out.append(None)
                 continue
+            turned = [runs[index] for runs in rotated]
+            rescue = merged_rescue([reference, *turned])
+            result = reference.result
+            if rescue:
+                result = replace(result, lane_rescue=rescue)
             if not stability.enabled:
-                out.append(reference.result)
+                out.append(result)
                 continue
             estimate = point_estimate(
-                reference,
-                [runs[index] for runs in rotated],
-                stability,
-                precision.unit_roundoff,
+                reference, turned, stability, precision.estimate_roundoff
             )
-            out.append(replace(reference.result, stability=estimate))
+            out.append(replace(result, stability=estimate))
         if failures:
             raise FailedPoints(out, failures)
         return out
@@ -3105,6 +3226,7 @@ class NativeExecutor:
         # for NinjaRS, the executor's default), its TIRust plans built before
         # the first point (``reduction.prepare``).
         options.update(executor_options())
+        options.update(rescue_options(self.slice))
         prepare(native)
         catani = self.inputs == "native" and any(
             getattr(evaluation, "catani", False) for evaluation in evaluations
@@ -3163,6 +3285,7 @@ class NativeExecutor:
                     point_measures(output, extra, index),
                 )
                 continue
+            evaluation.lane_rescue = point_rescued(output, extra, index)
             numbers = evaluation.numbers
 
             carrier = _double_pairs if numbers.double else _carrier_pairs(numbers)

@@ -166,10 +166,9 @@ backward_kernel_log(FIn<T, 0> in, FIn<T, 0> out_grad, FOut<T, 0> in_grad) {
 
 template <typename T>
 KERNELSPEC void kernel_pow(FIn<T, 0> in1, FIn<T, 0> in2, FOut<T, 0> out) {
-    // A non-positive base is clamped away rather than handed to pow(): with a
-    // fractional exponent that is a NaN, and one NaN in a SIMD lane is enough
-    // to spoil the whole batch. Same convention as kernel_sqrt above.
-    out = where(in1 > 0., pow(where(in1 > 0., in1, 1.), in2), 0.);
+    // A non-positive base gives zero (see positive_pow). Same convention as
+    // kernel_sqrt above.
+    out = positive_pow<T>(in1, in2);
 }
 
 template <typename T>

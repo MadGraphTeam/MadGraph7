@@ -20,8 +20,11 @@ classifiers = [
 # madspace provides MatrixElementApi/Context/LHEMeta (and libmadspace, which
 # _madtrex_py links against); pyrex is the Python package of the Rex fork
 # bundled in Rex/ (pip install ./Rex), providing the REX::tea types that
-# TupperWare/WareHouse build and consume.
-dependencies = ["madspace", "pyrex"]
+# TupperWare/WareHouse build and consume. numpy: the MadtRex driver
+# (madgraph/iolibs/template_files/mg7/madtrex_driver.py) reads and writes npy
+# events and weights with it; install.py installs it into the environment
+# when it is missing (install_runtime_deps()).
+dependencies = ["madspace", "pyrex", "numpy"]
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

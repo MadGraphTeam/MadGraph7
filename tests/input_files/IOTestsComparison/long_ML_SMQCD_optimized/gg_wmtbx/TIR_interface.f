@@ -32,7 +32,7 @@ C
       INTEGER NLOOPLINE, RANK
       REAL*8 PL(0:3,NLOOPLINE)
       REAL*8 PCT(0:3,0:NLOOPLINE-1),ABSPCT(0:3)
-      REAL*8 REF_P
+      REAL*8 REF_P,PREFIX_SUM
       REAL*8 PDEN(0:3,NLOOPLINE-1)
       COMPLEX*16 M2L(NLOOPLINE)
       COMPLEX*16 M2LCT(0:NLOOPLINE-1)
@@ -60,6 +60,9 @@ C      used so as to force the reset of the TIR filter.
       COMPLEX*16 TIRCOEFS(0:LOOPMAXCOEFS-1,3)
      $ ,TIRCOEFSERRORS(0:LOOPMAXCOEFS-1,3)
       COMPLEX*16 PJCOEFS(0:LOOPMAXCOEFS-1,3)
+      LOGICAL FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+      COMMON/ML5_0_FPE_IN_REDUCTION/FPE_IN_DP_REDUCTION
+     $ ,FPE_IN_QP_REDUCTION
 C     
 C     EXTERNAL FUNCTIONS
 C     
@@ -94,6 +97,10 @@ C      coefficients.
       SELECT CASE(MLREDUCTIONLIB(I_LIB))
       CASE(3,4,7)
         CONTINUE
+      CASE(9)
+        WRITE(*,*) 'TIRust unavailable: install tirust, regenerate and'
+     $   //' rebuild.'
+        STOP 1
       CASE(2)
         WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
         WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another'
@@ -140,63 +147,67 @@ C       Golem95 not available
         STOP
       ENDIF
 
-C     INITIALIZE TIR IF NEEDED
-      IF (TIRINIT) THEN
-        TIRINIT=.FALSE.
-        CALL ML5_0_INITTIR()
-      ENDIF
-
-C     CONVERT THE MASSES TO BE COMPLEX
-      DO I=1,NLOOPLINE
-        M2LCT(I-1)=M2L(I)
-      ENDDO
-
-C     CONVERT THE MOMENTA FLOWING IN THE LOOP LINES TO CT CONVENTIONS
-      DO I=0,3
-        ABSPCT(I) = 0.D0
-        DO J=0,(NLOOPLINE-1)
-          PCT(I,J)=0.D0
-        ENDDO
-      ENDDO
-      DO I=0,3
-        DO J=1,NLOOPLINE
-          PCT(I,0)=PCT(I,0)+PL(I,J)
-          ABSPCT(I)=ABSPCT(I)+ABS(PL(I,J))
-        ENDDO
-      ENDDO
-      REF_P = MAX(ABSPCT(0), ABSPCT(1),ABSPCT(2),ABSPCT(3))
-      DO I=0,3
-        ABSPCT(I) = MAX(REF_P*1E-6, ABSPCT(I))
-      ENDDO
-
-      IF (CHECKPCONSERVATION.AND.REF_P.GT.1D-8) THEN
-        IF ((PCT(0,0)/ABSPCT(0)).GT.1.D-6) THEN
-          WRITE(*,*) 'energy is not conserved (flag: TIR)',PCT(0,0)
-          STOP 'energy is not conserved (flag: TIR)'
-        ELSEIF ((PCT(1,0)/ABSPCT(1)).GT.1.D-6) THEN
-          WRITE(*,*) 'px is not conserved (flag: TIR)',PCT(1,0)
-          STOP 'px is not conserved (flag: TIR)'
-        ELSEIF ((PCT(2,0)/ABSPCT(2)).GT.1.D-6) THEN
-          WRITE(*,*) 'py is not conserved (flag: TIR)',PCT(2,0)
-          STOP 'py is not conserved (flag: TIR)'
-        ELSEIF ((PCT(3,0)/ABSPCT(3)).GT.1.D-6) THEN
-          WRITE(*,*) 'pz is not conserved (flag: TIR)',PCT(3,0)
-          STOP 'pz is not conserved (flag: TIR)'
+      IF(MLREDUCTIONLIB(I_LIB).NE.9) THEN
+C       INITIALIZE TIR IF NEEDED
+        IF (TIRINIT) THEN
+          TIRINIT=.FALSE.
+          CALL ML5_0_INITTIR()
         ENDIF
-      ENDIF
-      DO I=0,3
-        DO J=1,(NLOOPLINE-1)
-          DO K=1,J
-            PCT(I,J)=PCT(I,J)+PL(I,K)
+
+C       CONVERT THE MASSES TO BE COMPLEX
+        DO I=1,NLOOPLINE
+          M2LCT(I-1)=M2L(I)
+        ENDDO
+
+C       CONVERT THE MOMENTA FLOWING IN THE LOOP LINES TO CT CONVENTIONS
+        DO I=0,3
+          ABSPCT(I) = 0.D0
+          DO J=0,(NLOOPLINE-1)
+            PCT(I,J)=0.D0
           ENDDO
         ENDDO
-      ENDDO
-
-      DO I=0,3
-        DO J=1,(NLOOPLINE-1)
-          PDEN(I,J)=PCT(I,J)
+        DO I=0,3
+          DO J=1,NLOOPLINE
+            PCT(I,0)=PCT(I,0)+PL(I,J)
+            ABSPCT(I)=ABSPCT(I)+ABS(PL(I,J))
+          ENDDO
         ENDDO
-      ENDDO
+        REF_P = MAX(ABSPCT(0), ABSPCT(1),ABSPCT(2),ABSPCT(3))
+        DO I=0,3
+          ABSPCT(I) = MAX(REF_P*1E-6, ABSPCT(I))
+        ENDDO
+
+        IF (CHECKPCONSERVATION.AND.REF_P.GT.1D-8) THEN
+          IF ((PCT(0,0)/ABSPCT(0)).GT.1.D-6) THEN
+            WRITE(*,*) 'energy is not conserved (flag: TIR)',PCT(0,0)
+            STOP 'energy is not conserved (flag: TIR)'
+          ELSEIF ((PCT(1,0)/ABSPCT(1)).GT.1.D-6) THEN
+            WRITE(*,*) 'px is not conserved (flag: TIR)',PCT(1,0)
+            STOP 'px is not conserved (flag: TIR)'
+          ELSEIF ((PCT(2,0)/ABSPCT(2)).GT.1.D-6) THEN
+            WRITE(*,*) 'py is not conserved (flag: TIR)',PCT(2,0)
+            STOP 'py is not conserved (flag: TIR)'
+          ELSEIF ((PCT(3,0)/ABSPCT(3)).GT.1.D-6) THEN
+            WRITE(*,*) 'pz is not conserved (flag: TIR)',PCT(3,0)
+            STOP 'pz is not conserved (flag: TIR)'
+          ENDIF
+        ENDIF
+C       Accumulate ordered prefixes once, preserving the zero-seeded
+C        sum.
+        DO I=0,3
+          PREFIX_SUM=0.D0
+          DO J=1,(NLOOPLINE-1)
+            PREFIX_SUM=PREFIX_SUM+PL(I,J)
+            PCT(I,J)=PREFIX_SUM
+          ENDDO
+        ENDDO
+
+        DO I=0,3
+          DO J=1,(NLOOPLINE-1)
+            PDEN(I,J)=PCT(I,J)
+          ENDDO
+        ENDDO
+      ENDIF
 C     NUMBER OF INDEPENDENT LOOPCOEFS FOR RANK=RANK
       NLOOPCOEFS=0
       DO I=0,RANK
@@ -216,6 +227,10 @@ C       IREGI
 C       COLLIER
         WRITE(*,*) 'ERROR:: COLLIER is not interfaced.'
         STOP
+      CASE(9)
+        WRITE(*,*) 'TIRust unavailable: install tirust, regenerate and'
+     $   //' rebuild.'
+        STOP 1
       END SELECT
       DO I=1,3
         RES(I)=(0.0D0,0.0D0)
@@ -400,9 +415,10 @@ C
 C     CONSTANTS
 C     
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=8)
-      INTEGER QP_NLOOPLIB
-      PARAMETER (QP_NLOOPLIB=2)
+      PARAMETER (NLOOPLIB=9)
+      INTEGER QP_NLOOPLIB,TIRUST_QP_COUNT
+      PARAMETER (TIRUST_QP_COUNT=0)
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
 
       INTEGER NLOOPGROUPS
       PARAMETER (NLOOPGROUPS=106)
@@ -462,8 +478,9 @@ C     ----------
       IF(DOING_QP)THEN
 C       QP EVALUATION, ONLY CUTTOOLS
         IF(.NOT.QP_TOOLS_AVAILABLE)THEN
-          STOP 'No qp tools available, please make sure MLReductionLib'
-     $     //' is correct'
+          WRITE(*,*) 'No qp tools available, please make sure'
+     $     //' MLReductionLib is correct'
+          STOP 1
         ENDIF
         J_LIB=0
         SELECT_LIBINDEX=LIBINDEX
@@ -488,11 +505,12 @@ C       QP EVALUATION, ONLY CUTTOOLS
      $   ,HAS_AN_HEFT_VERTEX(LOOP_ID),MAX_SPIN_CONNECTED_TO_LOOP,LPASS)
         IF(LPASS)EXIT
         I=I+1
-        IF(I.GT.QP_NLOOPLIB.AND.INDEX_QP_TOOLS(I).EQ.0)THEN
+        IF(I.GT.QP_NLOOPLIB.OR.INDEX_QP_TOOLS(I).EQ.0)THEN
           I=1
         ENDIF
         IF(I.EQ.J_LIB)THEN
-          STOP 'No qp loop library can deal with this integral'
+          WRITE(*,*) 'No qp loop library can deal with this integral'
+          STOP 1
         ENDIF
         I_LIB=INDEX_QP_TOOLS(I)
         LIBNUM=MLREDUCTIONLIB(I_LIB)
@@ -510,7 +528,8 @@ C       DP EVALUATION
           I_LIB=1
         ENDIF
         IF(I_LIB.EQ.LIBINDEX)THEN
-          STOP 'No dp loop library can deal with this integral'
+          WRITE(*,*) 'No dp loop library can deal with this integral'
+          STOP 1
         ENDIF
         LIBNUM=MLREDUCTIONLIB(I_LIB)
         ENDDO

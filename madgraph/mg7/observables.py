@@ -60,7 +60,8 @@ _SIGNED_OBSERVABLES = {"sfos_pair_mass"}
 def _flavor_options(meta: dict, unmerged_meta: dict | None = None) -> list[list[int]]:
     """Every flavour assignment (signed pdg ids, incoming then outgoing) a
     subprocess evaluates with the same momenta."""
-    if "flavors" in meta:
+    # a merged subprocess's flavours only reference those of its members
+    if "flavors" in meta and all("options" in flavor for flavor in meta["flavors"]):
         return [
             option for flavor in meta["flavors"] for option in flavor["options"]
         ]
@@ -72,7 +73,10 @@ def _flavor_options(meta: dict, unmerged_meta: dict | None = None) -> list[list[
 
 
 def observable_pids(
-    meta: dict, observable_kwargs: dict, unmerged_meta: dict | None = None
+    meta: dict,
+    observable_kwargs: dict,
+    unmerged_meta: dict | None = None,
+    strict: bool = False,
 ) -> list[int]:
     """The pdg ids an observable of this subprocess is built with.
 
@@ -84,7 +88,11 @@ def observable_pids(
     """
     all_pids = clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
     if observable_kwargs.get("observable") not in _SIGNED_OBSERVABLES:
-        return all_pids
+        if not any(abs(pid) >= 81 and abs(pid) <= 99 for pid in meta["outgoing"]):
+            return all_pids
+        return _merged_group_pids(
+            meta, observable_kwargs, unmerged_meta, all_pids, strict
+        )
     options = _flavor_options(meta, unmerged_meta)
     if not options:
         raise ValueError(
@@ -115,6 +123,39 @@ def observable_pids(
             "'set apply_flavor_grouping False'"
         )
     return list(options[0])
+
+
+def _merged_group_pids(
+    meta: dict,
+    observable_kwargs: dict,
+    unmerged_meta: dict | None,
+    all_pids: list[int],
+    strict: bool,
+) -> list[int]:
+    """The pdg ids of a flavour-merged subprocess, taken from its flavours: a
+    merged quark can be a b quark (sm-no_b_mass), which the representative of
+    its group would put among the jets. The flavours share the momenta the
+    observable sees, so they must select the same outgoing particles; if they
+    do not, a cut (strict) raises and a histogram keeps the representatives."""
+    options = _flavor_options(meta, unmerged_meta)
+    if not options:
+        return all_pids
+    n_in = len(meta["incoming"])
+    groups = [set(map(abs, group)) for group in observable_kwargs["select_pids"]]
+
+    def selection(pids):
+        return [tuple(abs(pid) in group for group in groups) for pid in pids[n_in:]]
+
+    if any(selection(option) != selection(options[0]) for option in options[1:]):
+        if not strict:
+            return all_pids
+        raise ValueError(
+            f"{observable_kwargs.get('name')}: the flavours grouped into subprocess "
+            f"{meta['incoming']} > {meta['outgoing']} are not in the same groups "
+            "of the run card, so the observable cannot be applied to their common "
+            "momenta; regenerate the process after 'set apply_flavor_grouping False'"
+        )
+    return all_pids[:n_in] + [abs(pid) for pid in options[0][n_in:]]
 
 
 def build_observable(pids: list[int], n_in: int, observable_kwargs: dict):

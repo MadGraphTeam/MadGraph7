@@ -3680,6 +3680,7 @@ Beware that this can be dangerous for local multicore runs.""")
         args = self.split_arg(line)
         # Check argument's validity
         self.check_survey(args)
+        gen_ximprove.ow_clear_marker(self.me_dir)
         # initialize / remove lhapdf mode
 
         if os.path.exists(pjoin(self.me_dir,'error')):
@@ -3816,7 +3817,8 @@ Beware that this can be dangerous for local multicore runs.""")
                     break
         # Check argument's validity
         self.check_refine(args)
-        
+        gen_ximprove.ow_clear_marker(self.me_dir)
+
         refine_opt = {'err_goal': args[0], 'split_channels': True}   
         precision = args[0]
         if len(args) == 2:
@@ -3917,8 +3919,14 @@ Beware that this can be dangerous for local multicore runs.""")
             # for split runs. (and partly in store_events).
             combine_runs.CombineRuns(self.me_dir)
             self.refine_mode = "old"
+            if self.run_card['enforce_overweight_limit'] and x_improve.gen_events:
+                self.update_status("Enforcing the overweight limit", level='parton')
+                x_improve.enforce_overweight_limit()
         else:
             self.refine_mode = "new"
+            if self.run_card['enforce_overweight_limit']:
+                logger.warning('enforce_overweight_limit is not supported with this refine '
+                               'mode (loop-induced or job_strategy=2): not applied')
             
         cross, error, across = self.make_make_all_html_results(get_attr=('xsec','xerru','axsec'))
         
@@ -4147,7 +4155,8 @@ Beware that this can be dangerous for local multicore runs.""")
                           proc_charac=self.proc_characteristic,
                           keep_overshoot=self.run_card['allow_overshoot_events'],
                           nb_output=self.run_card['nb_unweight_output'],
-                          keep_overweight_weight=True)
+                          keep_overweight_weight=True,
+                          max_overweight_fraction=self.overweight_limit_fraction())
             self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                              "unweighted_events.lhe"), start)
 
@@ -4191,7 +4200,8 @@ Beware that this can be dangerous for local multicore runs.""")
                                 proc_charac=self.proc_characteristic,
                                 keep_overshoot=self.run_card['allow_overshoot_events'],
                                 nb_output=self.run_card['nb_unweight_output'],
-                                keep_overweight_weight=True)
+                                keep_overweight_weight=True,
+                                max_overweight_fraction=self.overweight_limit_fraction())
                 self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                                  "unweighted_events.lhe"), start)
 
@@ -4215,6 +4225,17 @@ Beware that this can be dangerous for local multicore runs.""")
         logger.info("combination of events done in %s s ", time.time()-start)
         
         self.to_store.append('event')
+
+    def overweight_limit_fraction(self):
+        """overweight fraction below which the event combination keeps the
+        maximum weight (enforce_overweight_limit), 0 otherwise"""
+        # only when the refine of these events enforced it (not loop-induced/job_strategy=2)
+        if self.run_card['enforce_overweight_limit'] and \
+                self.run_card['max_overweight_truncation'] > 0 and \
+                os.path.exists(gen_ximprove.ow_marker_path(self.me_dir,
+                                                           getattr(self, 'readonly', False))):
+            return self.run_card['max_overweight_truncation']
+        return 0
 
     ############################################################################ 
     def do_combine_events_partial(self, line, preprocess_only=False):
@@ -4267,7 +4288,8 @@ Beware that this can be dangerous for local multicore runs.""")
         get_wgt = lambda event: event.wgt   
         AllEvent.unweight(output,
                           get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event,
-                          keep_overweight_weight=True)  
+                          keep_overweight_weight=True,
+                          max_overweight_fraction=self.overweight_limit_fraction())  
         return output, sum_xsec, math.sqrt(sum(x**2 for x in sum_xerru)), sum_axsec
 
     ############################################################################ 
@@ -4707,14 +4729,28 @@ already exists and is not a fifo file."""%fifo_path)
             ' the run_card parameter (=%f)\n'%self.run_card['xqcut']+
             'It would be better/safer to use a larger qCut or a smaller xqcut.')
                 
-            # Specific MLM settings
-            PY8_Card.MadGraphSet('JetMatching:merge',True)
-            PY8_Card.MadGraphSet('JetMatching:scheme',1)
+            # Specific MLM settings. A value the pythia8 card sets is kept
+            # (MadGraphSet would refuse to change it and stop the shower),
+            # with a warning when it is not the one the events need.
+            def set_mlm_matching(name, value, why):
+                if name.lower() not in PY8_Card.user_set:
+                    PY8_Card.MadGraphSet(name, value)
+                elif PY8_Card[name] != value:
+                    logger.warning('%s = %s in the pythia8 card differs from %s, '
+                                   '%s.' % (name, PY8_Card[name], value, why))
+            set_mlm_matching('JetMatching:merge', True,
+                             'needed for the MLM matching of this sample')
+            set_mlm_matching('JetMatching:scheme', 1,
+                             'the MadGraph matching scheme of this sample')
             # Use the parameter maxjetflavor for JetMatching:nQmatch which specifies
             # up to which parton must be matched.Merging:nQuarksMerge
-            PY8_Card.MadGraphSet('JetMatching:nQmatch',self.run_card['maxjetflavor'])
-            # For MLM, a cone radius of 1.0 is to be preferred.
-            PY8_Card.MadGraphSet('JetMatching:coneRadius',1.0)
+            set_mlm_matching('JetMatching:nQmatch', self.run_card['maxjetflavor'],
+                             'the heaviest quark the events were clustered as a jet')
+            # The matching clusters the showered event with the D the events
+            # were clustered with at generation (the hidden run_card d of
+            # madevent, beam.jet_radius of mg7; 1.0 by default in both)
+            set_mlm_matching('JetMatching:coneRadius', float(self.run_card['d']),
+                             'the jet radius D the events were clustered with')
             # And the value of etaj_max is already infinity by default.
             # PY8_Card.MadGraphSet('JetMatching:etaJetMax',1000.0)
             if not hasattr(self,'proc_characteristic'):
@@ -7790,6 +7826,7 @@ class GridPackCmd(MadEventCmd):
         refine_opt = {'err_goal': nb_event, 'split_channels': True,
                       'ngran':self.granularity, 'readonly': self.readonly,
                       'nprocs': self.nprocs, 'maxevts': self.maxevts}
+        gen_ximprove.ow_clear_marker(self.me_dir, self.readonly)
         x_improve = gen_ximprove.gen_ximprove_gridpack(self, refine_opt)
         x_improve.launch() # create the ajob for the refinement and run those!
         self.gscalefact = x_improve.gscalefact #store jacobian associate to the gridpack 
@@ -7938,7 +7975,8 @@ class GridPackCmd(MadEventCmd):
                     AllEvent.unweight(pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
                           get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event, 
                           keep_overshoot=self.run_card['allow_overshoot_events'],
-                          keep_overweight_weight=keep_ow)
+                          keep_overweight_weight=keep_ow,
+                          max_overweight_fraction=self.overweight_limit_fraction())
                     AllEvent = lhe_parser.MultiEventFile()
                     AllEvent.banner = self.banner
                     partials_info.append((pjoin(outdir, self.run_name, "partials%s.lhe.gz" % partials),
@@ -7961,7 +7999,8 @@ class GridPackCmd(MadEventCmd):
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic,
                           keep_overshoot=self.run_card['allow_overshoot_events'],
-                          keep_overweight_weight=keep_ow)
+                          keep_overweight_weight=keep_ow,
+                          max_overweight_fraction=self.overweight_limit_fraction())
         
         
         if partials:
@@ -8016,16 +8055,15 @@ class MadLoopInitializer(object):
                 ptimer.execute()
                 #poll as often as possible; otherwise the subprocess might 
                 # "sneak" in some extra memory usage while you aren't looking
-                # Accuracy of .2 seconds is enough for the timing.
+                # Wake when the child exits, independently of RSS sampling.
                 while ptimer.poll():
-                    time.sleep(.2)
+                    ptimer.wait(.2)
             finally:
                 #make sure that we don't leave the process dangling.
                 ptimer.close()
             # Notice that ptimer.max_vms_memory is also available if needed.
             ram_usage = ptimer.max_rss_memory
-            # Unfortunately the running time is less precise than with the
-            # above version
+            # The waiter records completion independently of RSS sampling.
             run_time = (ptimer.t1 - ptimer.t0)
             retcode = ptimer.p.returncode
 

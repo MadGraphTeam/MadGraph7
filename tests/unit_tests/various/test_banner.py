@@ -19,6 +19,7 @@ import unittest
 import copy
 import json
 import shutil
+from unittest import mock
 import tempfile
 import madgraph.various.banner as bannermod
 import madgraph.various.misc as misc
@@ -2111,6 +2112,148 @@ class TestRunCardMG7(unittest.TestCase):
             self.assertEqual(
                 tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
 
+    def test_subprocess_selection(self):
+        card = bannermod.RunCardMG7()
+        self.assertEqual(card['phasespace']['subprocess_selection'], [])
+        card.set("phasespace.subprocess_selection", [3, 1])
+        card.check_validity()
+        self.assertEqual(card['phasespace']['subprocess_selection'], [3, 1])
+        for invalid in ([1, 1], [-1]):
+            card.set("phasespace.subprocess_selection", invalid)
+            with self.assertRaises(bannermod.InvalidRunCard):
+                card.check_validity()
+
+    def test_cluster_section(self):
+        import io
+        import tomllib
+        from unittest import mock
+        # without cluster settings of the site
+        with mock.patch.object(bannermod.RunCardMG7, 'default_run_card', None):
+            card = bannermod.RunCardMG7()
+
+        def written():
+            output = io.StringIO()
+            card.write(output)
+            return output.getvalue()
+
+        # off by default, and then left out of the card but for a hint
+        text = written()
+        data = tomllib.loads(text)
+        for section in ('cluster', 'cluster_train', 'cluster_deploy'):
+            self.assertNotIn(section, data)
+        self.assertIn('set cluster.enable true', text)
+        self.assertIn('beam', data)
+        # enabled, only the main options are written out
+        card.set('cluster.enable', True)
+        text = written()
+        data = tomllib.loads(text)
+        section = data['cluster']
+        self.assertTrue(section['enable'])
+        self.assertEqual(section['mode'], 'full')
+        self.assertNotIn('nb_retry', section)
+        self.assertEqual(data['cluster_train'], {})
+        self.assertNotIn('set cluster.enable true', text)
+        # disabled again, a setting that differs from its default keeps them
+        card.set('cluster.enable', False)
+        card.set('cluster.train_queue', 'gpu')
+        self.assertEqual(tomllib.loads(written())['cluster']['train_queue'], 'gpu')
+        # the gridpack card of a gridpack run knows nothing of the cluster
+        output = io.StringIO()
+        card.write_gridpack_card(output)
+        self.assertNotIn('cluster', tomllib.loads(output.getvalue()))
+
+    def test_cluster_site_defaults(self):
+        """The cluster sections take their defaults from the site default
+        card, which alone does not put them into the card."""
+        import io
+        import tempfile
+        import tomllib
+        from unittest import mock
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        site = os.path.join(tmp.name, 'default_run_card_mg7.toml')
+        with open(site, 'w') as fsock:
+            fsock.write('[generation]\nevents = 5000\n[cluster]\ntype = "slurm"\n'
+                        'train_queue = "gpu"\n[cluster_train]\nrun.device = ["cuda"]\n')
+
+        def written(card):
+            output = io.StringIO()
+            card.write(output)
+            return tomllib.loads(output.getvalue())
+
+        with mock.patch.object(bannermod.RunCardMG7, 'default_run_card', site):
+            card = bannermod.RunCardMG7()
+            self.assertEqual(card['cluster.type'], 'slurm')
+            # other sections are left to create_default_for_process
+            self.assertNotEqual(card['generation.events'], 5000)
+            self.assertNotIn('cluster', written(card))
+            # a card without the sections gets the site values when enabled
+            path = os.path.join(tmp.name, 'run_card.toml')
+            card.write(path)
+            card = bannermod.RunCardMG7(path)
+            card.set('cluster.enable', True)
+            data = written(card)
+            self.assertEqual(data['cluster']['type'], 'slurm')
+            self.assertEqual(data['cluster']['train_queue'], 'gpu')
+            self.assertEqual(data['cluster_train'], {'run': {'device': ['cuda']}})
+            # a value of its own keeps the sections, the card's values win
+            card.set('cluster.enable', False)
+            card.set('cluster.train_queue', 'short')
+            card.write(path)
+            card = bannermod.RunCardMG7(path)
+            self.assertEqual(card['cluster.train_queue'], 'short')
+            self.assertEqual(written(card)['cluster']['type'], 'slurm')
+
+    def test_cluster_pass_overrides(self):
+        import io
+        import tomllib
+        card = bannermod.RunCardMG7()
+        card.read_data(tomllib.loads(
+            '[cluster_train]\nrun.device = ["cuda:1"]\nrun.gpu_thread_pool_size = 4\n'
+            '[cluster_deploy]\nrun.cpu_thread_pool_size = 8\n'))
+        card.check_validity()
+        train = card.cluster_pass_card('train')
+        self.assertEqual(train['run']['device'], ['cuda:1'])
+        self.assertEqual(train['run']['gpu_thread_pool_size'], 4)
+        self.assertEqual(card.cluster_pass_card('deploy')['run']['cpu_thread_pool_size'], 8)
+        # the card itself keeps its settings, and writes the overrides back
+        self.assertEqual(card['run']['device'], ['cpu'])
+        output = io.StringIO()
+        card.write(output)
+        self.assertEqual(tomllib.loads(output.getvalue())['cluster_deploy'],
+                         {'run': {'cpu_thread_pool_size': 8}})
+
+    def test_cluster_pass_overrides_refused(self):
+        import tomllib
+        for text, message in (
+                ('[cluster_train]\nbeam.ebeam1 = 7000\n', 'can not set beam.ebeam1'),
+                ('[cluster_deploy]\nmadnis.gpu_generator_batch_granularity = 10\n',
+                 'does not use it'),
+                ('[cluster_train]\nrun.device = ["tpu"]\n', 'tpu'),
+                ('[cluster_deploy]\nrun.device = ["cuda:x"]\n', 'cuda:x'),
+                ('[cluster_train]\nrun.cpu_thread_pool_size = "x"\n', 'cpu_thread_pool_size'),
+                ('[cluster_train]\nthreads = 1\n', '<section>.<key>')):
+            card = bannermod.RunCardMG7()
+            card.read_data(tomllib.loads(text))
+            with self.assertRaisesRegex(bannermod.InvalidRunCard, message, msg=text):
+                card.check_validity()
+
+    def test_cluster_validity(self):
+        card = bannermod.RunCardMG7()
+        card.set("cluster.enable", True)
+        card.check_validity()
+        # the batch system of a plugin, only known when the run starts
+        card.set("cluster.type", "site_batch")
+        self.assertEqual(card["cluster.type"], "site_batch")
+        for key, value in (("cluster.events_per_job", 0),
+                           ("cluster.subprocesses_per_job", 0),
+                           ("phasespace.subprocess_selection", [1])):
+            card = bannermod.RunCardMG7()
+            card.set("cluster.enable", True)
+            card.set(key, value)
+            with self.assertRaises(bannermod.InvalidRunCard, msg=key):
+                card.check_validity()
+
     def test_gzip_configuration(self):
         card = bannermod.RunCardMG7()
         card.set("run.use_pigz", "auto")
@@ -2553,7 +2696,7 @@ class TestRunCardMG7(unittest.TestCase):
             shutil.rmtree(index_dir)
         self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
         for name, value in (('lhaid', '999999'), ('pdlabel2', 'isronlyll'),
-                            ('pdlabel2', 'none'), ('lpp1', '2'), ('lpp', 'p')):
+                            ('pdlabel2', 'none'), ('lpp1', '5'), ('lpp', 'p')):
             self.assertRaises(bannermod.InvalidRunCard,
                               rc.set_lo_beam_param, name, value)
         self.assertEqual(beams('pdf'), ('NNPDF23_nlo_as_0119_qed',) * 2)
@@ -2564,6 +2707,11 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse(rc['beam']['leptonic'])
         rc.set_lo_beam_param('pdlabel', 'none')
         self.assertTrue(rc['beam']['leptonic'])
+        # lpp 2 (elastic photons) is a gamma-UPC beam: beam.upc_flux
+        rc.set_lo_beam_param('lpp', '2')
+        self.assertFalse(rc['beam']['leptonic'])
+        rc.set_lo_beam_param('pdlabel', 'chff')
+        self.assertEqual(rc['beam']['upc_flux'], 'chff')
 
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""
@@ -2964,6 +3112,78 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(card['beam']['mlm_shower_start'], 'hardest_scale')
         card.set('beam.mlm_shower_start', 'collider_energy')
         self.assertEqual(card['beam']['mlm_shower_start'], 'collider_energy')
+
+    def test_set_mlm_modes(self):
+        """set mlm madevent: MLM merging with every clustering option at
+        madevent's choice; set mlm mg7: back to mg7's defaults"""
+        default = bannermod.RunCardMG7()
+        rc = bannermod.RunCardMG7()
+        # options moved away from madevent's beforehand
+        rc.set('beam.min_scale', 5.0)
+        rc.set('beam.alphas_reweighting', 'none')
+        changes, warnings = rc.set_lo_param('mlm', 'madevent')
+        self.assertEqual(warnings, [])
+        self.assertTrue(rc.is_mlm_merged())
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(rc['phasespace']['xqcut'], rc.default_mlm_xqcut)
+        expected = {'beam.scale_scheme': 'madevent',
+                    'beam.clustering_measure': 'madevent',
+                    'beam.clustering_history': 'madevent',
+                    'beam.jet_scale_scheme': 'production',
+                    'beam.parton_line_scheme': 'goodjet',
+                    'beam.alphas_reweighting': 'per_vertex',
+                    'beam.pdf_reweighting': True,
+                    'beam.min_scale': 2.0}
+        for key, val in expected.items():
+            self.assertEqual(rc[key], val, key)
+            self.assertEqual(changes[key], val, key)
+        # mg7 mode: every option the madevent mode sets goes back to the
+        # card's default
+        rc.set('phasespace.xqcut', 20.0)
+        rc.set('beam.clustering_mean_pdf_ladder', False)
+        rc.set_lo_param('mlm', 'mg7')
+        self.assertEqual(rc['beam']['dynamical_scale_choice'], 'mlm')
+        for key in list(expected) + ['beam.clustering_mean_pdf_ladder']:
+            self.assertEqual(rc[key], default[key], key)
+        # a merging cut already set is kept
+        self.assertEqual(rc['phasespace']['xqcut'], 20.0)
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'mlm', 'ckkw')
+
+    def test_set_mlm_on_lepton_beams_warns(self):
+        rc = bannermod.RunCardMG7()
+        rc.set('beam.leptonic', True)
+        changes, warnings = rc.set_lo_param('mlm', 'madevent')
+        self.assertEqual(len(warnings), 1)
+        self.assertFalse(rc.is_mlm_merged())
+
+    def test_from_LO_jet_radius(self):
+        """madevent's hidden d is the D of the MLM clustering: beam.jet_radius,
+        which the shower also reports as JetMatching:coneRadius"""
+        lo = bannermod.RunCardLO()
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['jet_radius'], 1.0)
+        lo['d'] = 0.7
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['jet_radius'], 0.7)
+        self.assertEqual(mg7['d'], 0.7)
+
+    def test_from_LO_mlm_is_the_madevent_mode(self):
+        """ickkw = 1 converts to the same clustering as "set mlm madevent",
+        with madevent's pdfwgt switch carried over"""
+        lo = bannermod.RunCardLO()
+        lo['ickkw'] = 1
+        lo['xqcut'] = 20
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        for key, val in mg7._MLM_MADEVENT.items():
+            self.assertEqual(mg7[key], val, key)
+        lo['pdfwgt'] = False
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertFalse(mg7['beam']['pdf_reweighting'])
+        self.assertFalse([d for d in dropped if 'pdfwgt' in d], dropped)
+        # without MLM merging pdfwgt has nothing to act on
+        lo['ickkw'] = 0
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertTrue([d for d in dropped if 'pdfwgt' in d], dropped)
 
     def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
         rc = bannermod.RunCardMG7()
@@ -3768,6 +3988,40 @@ class TestRunCardMG7Histograms(unittest.TestCase):
         rc.create_default_for_process(self.PC(), '', [])
         self.assertEqual(dict(rc['histograms']), {})
 
+
+class TestRunCardLOResetSimd(unittest.TestCase):
+    """RunCardLO.reset_simd"""
+
+    def test_reset_simd_cleans_compiled_code(self):
+        """changing vector_size/nb_warp must remove the compiled code
+        (VECSIZE_MEMMAX is shared by Source and SubProcesses but not
+        tracked by the makefiles)"""
+
+        source_dir = tempfile.mkdtemp(prefix='mg_simd_')
+        try:
+            with open(pjoin(source_dir, 'makefile'), 'w') as fsock:
+                fsock.write('clean:\n\techo cleaned >> clean_calls\n')
+            marker = pjoin(source_dir, 'clean_calls')
+            run_card = bannermod.RunCardLO()
+            run_card.include_output_dir = source_dir
+            run_card.simd_reset_done = False
+
+            env = dict(os.environ)
+            env.pop('MAKELEVEL', None)
+            # called from make (run_card.inc rule): no clean
+            env_make = dict(env, MAKELEVEL='1')
+            with mock.patch.dict(os.environ, env_make, clear=True):
+                run_card.reset_simd(1, 16, 'vector_size')
+            self.assertFalse(os.path.exists(marker))
+
+            with mock.patch.dict(os.environ, env, clear=True):
+                run_card.reset_simd(1, 16, 'vector_size')
+                # nb_warp changed in the same write: a single clean
+                run_card.reset_simd(1, 2, 'nb_warp')
+            with open(marker) as fsock:
+                self.assertEqual(fsock.read().split(), ['cleaned'])
+        finally:
+            shutil.rmtree(source_dir)
 
 MadLoopParam = bannermod.MadLoopParam
 class TestMadLoopParam(unittest.TestCase):

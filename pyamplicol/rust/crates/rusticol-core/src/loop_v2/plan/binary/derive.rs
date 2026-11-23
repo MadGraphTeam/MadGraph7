@@ -131,6 +131,12 @@ pub struct DeriveBound {
     pub allocated: u64,
     /// Iterations of the scalar-driven loops.
     pub work: u64,
+    /// The most one family holds while a parallel load has it in flight
+    /// (derived, not yet merged): its temporaries and, as an upper bound of
+    /// its derived records and the recorded copies of its link lists, what
+    /// it keeps. A load with `w` families in flight needs `w` times this
+    /// beyond [`Self::memory`] ([`Self::in_flight_memory`]).
+    pub in_flight: u64,
 }
 
 impl DeriveBound {
@@ -143,6 +149,12 @@ impl DeriveBound {
     /// [`margin`].
     pub fn reserved(&self) -> u64 {
         margin(self.memory)
+    }
+
+    /// The peak of a load with `families` families in flight at once.
+    pub fn in_flight_memory(&self, families: u64) -> u64 {
+        self.memory
+            .saturating_add(self.in_flight.saturating_mul(families))
     }
 }
 
@@ -221,6 +233,7 @@ struct Tally {
     growth: u64,
     allocated: u64,
     work: u64,
+    in_flight: u64,
 }
 
 impl Tally {
@@ -410,6 +423,7 @@ impl Tally {
                 .saturating_add(self.growth),
             allocated: self.allocated,
             work: self.work,
+            in_flight: self.in_flight,
         }
     }
 }
@@ -652,7 +666,7 @@ fn content(
     named: &mut Vec<u64>,
     largest_rank: usize,
 ) -> RusticolResult<(u64, u64)> {
-    for e in &c.fused {
+    for e in c.fused.iter() {
         let degree: u64 = e[2..].iter().map(|&x| u64::from(x)).sum();
         require(
             degree <= c.degree as u64 && degree <= largest_rank as u64,
@@ -689,7 +703,7 @@ fn content(
         tally.keep(t.slots.len() as u64, size_of::<u64>());
         tally.keep(t.dimensions.len() as u64, size_of::<usize>());
         tally.keep(t.rows.len() as u64, size_of::<(usize, Vec<usize>)>());
-        for (_, blocks) in &t.rows {
+        for (_, blocks) in t.rows.iter() {
             tally.keep(blocks.len() as u64, size_of::<usize>());
         }
         if t.vertex >= 0 {
@@ -724,8 +738,8 @@ fn content(
     named.clear();
     named.resize(c.row_helicities.len(), 0);
     for t in &c.terms {
-        for (row, _) in &t.rows {
-            if let Some(count) = named.get_mut(*row) {
+        for (row, _) in t.rows.iter() {
+            if let Some(count) = named.get_mut(row) {
                 *count += 1;
             }
         }
@@ -820,6 +834,16 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     let most_rows = file.contents.iter().map(|c| c.row_helicities.len());
     let mut named = buffer::<u64>(most_rows.max().unwrap_or(0))?;
     tally.keep(file.contents.len() as u64, size_of::<Content>());
+    // The contents' shared layouts (`from_file`): at most one pair per
+    // content, each in its own `Arc`, and their index by key.
+    tally.keep(
+        (file.contents.len() as u64).saturating_mul(2),
+        size_of::<crate::loop_v2::poly::SegmentLayout>() + 2 * size_of::<usize>(),
+    );
+    tally.map_grown(
+        file.contents.len() as u64,
+        size_of::<((usize, usize, usize), (usize, usize))>(),
+    );
     for c in &file.contents {
         let (rows_here, most) = content(&mut tally, c, vertex_terms, &mut named, admitted_rank)?;
         term_rows.push(rows_here);
@@ -864,6 +888,14 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     }
     let contents = file.contents.len() as u64;
     tally.keep_grown(contents, size_of::<HashMap<Row, u32>>());
+    // The shared row maps (`from_file`): at most one `Arc` per content, the
+    // list of them and their index by key.
+    tally.keep(
+        contents,
+        size_of::<HashMap<Row, u32>>() + 2 * size_of::<usize>(),
+    );
+    tally.keep(contents, size_of::<usize>());
+    tally.map_grown(contents, size_of::<((u64, usize, usize), usize)>());
     for c in &file.contents {
         tally.map(c.row_helicities.len() as u64, size_of::<(Row, u32)>());
     }
@@ -921,11 +953,14 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     // index by text.
     let leaves: u64 = file.families.iter().map(|f| f.leaves.len() as u64).sum();
     tally.keep_grown(leaves, size_of::<Rational>());
-    tally.map_grown(leaves, size_of::<(&str, u32)>());
+    // The index owns its texts (the family records are dropped as loaded).
+    tally.map_grown(leaves, size_of::<(String, u32)>());
     for f in &file.families {
+        let kept_before = tally.kept;
         tally.keep_grown(f.leaves.len() as u64, size_of::<Leaf>());
         for leaf in &f.leaves {
             tally.weight(&leaf.weight)?;
+            tally.keep(leaf.weight.len() as u64, 1);
         }
         tally.keep(f.sequence.len() as u64, size_of::<(u64, usize)>());
         tally.keep(f.orders.len() as u64, size_of::<usize>());
@@ -1033,7 +1068,11 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         tally.keep_grown(edges_here, size_of::<usize>());
         tally.keep_grown(parts_here, size_of::<usize>());
         tally.keep_grown(parts_here, size_of::<usize>());
-        tally.alive(family.saturating_add(most_map.max(most_step)));
+        let transient = family.saturating_add(most_map.max(most_step));
+        tally.alive(transient);
+        tally.in_flight = tally
+            .in_flight
+            .max(transient.saturating_add(tally.kept.saturating_sub(kept_before)));
         if file.column_rows.is_some() && !dressed {
             // The live-row pruning of the family (`live.rs`, after every
             // family is derived, with the plan's flag per seeded object

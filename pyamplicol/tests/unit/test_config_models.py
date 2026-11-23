@@ -80,9 +80,16 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # (`profile --ground-truth`); 153: benchmark.checked (`profile --checked`).
     # 154: benchmark.completion_time (`profile --completion-time`); 155:
     # benchmark.samples_output (`profile --samples-output`); 156:
-    # benchmark.runtime_threads (`profile --runtime-threads`). MadGraph7 adds
-    # process.flavor_blind_strict and generation.pack_payloads.
-    assert len(FIELD_REGISTRY) == 158
+    # benchmark.runtime_threads (`profile --runtime-threads`); 157:
+    # evaluation.lane_rescue (`--lane-rescue`, USER 2026-11-18); 158:
+    # evaluation.threads (`--threads`, USER 2026-11-19); 159:
+    # benchmark.all_backends (`profile --all-backends`); 160:
+    # benchmark.measured_precisions (`profile --measured-precisions`).
+    # MadGraph7 adds process.flavor_blind_strict and generation.pack_payloads.
+    assert len(FIELD_REGISTRY) == 162
+    assert FIELD_REGISTRY["benchmark.measured_precisions"].default == ("binary64",)
+    assert FIELD_REGISTRY["evaluation.threads"].default is None
+    assert FIELD_REGISTRY["evaluation.threads"].nullable
     assert FIELD_REGISTRY["process.squared_coupling_orders"].default == ()
     assert FIELD_REGISTRY["loop.external_widths"].default == "model"
     assert FIELD_REGISTRY["evaluation.phase_space.points"].default == 2
@@ -120,6 +127,8 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     # (off by default).
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].default is False
     assert FIELD_REGISTRY["evaluation.reduction_unchecked"].kind == "bool"
+    assert FIELD_REGISTRY["evaluation.lane_rescue"].default is True
+    assert FIELD_REGISTRY["evaluation.lane_rescue"].kind == "bool"
     # m-lit lit-psimprove: the kinematics improvement, runtime options (None:
     # the native defaults, MadLoop's variant above binary64, off in binary64).
     assert FIELD_REGISTRY["evaluation.kinematics_improvement"].default is None

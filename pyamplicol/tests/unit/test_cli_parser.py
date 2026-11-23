@@ -882,6 +882,40 @@ def test_profile_takes_the_loop_settings() -> None:
     checked = parse_cli(("profile", "artifact", "--checked")).resolve().effective
     assert checked.benchmark.checked is True
     assert checked.evaluation.reduction_unchecked is False
+    assert checked.evaluation.lane_rescue is True
+    for command in ("profile", "evaluate"):
+        off = parse_cli((command, "artifact", "--no-lane-rescue")).resolve().effective
+        assert off.evaluation.lane_rescue is False
+
+
+def test_evaluate_takes_the_thread_bound_and_a_runtime_options_card(tmp_path) -> None:
+    """``evaluate --threads N`` (``evaluation.threads``; default None: rayon's
+    rule) and a runtime-options file as the run card (only ``[evaluation]``):
+    a flag overrides the card's key."""
+
+    default = parse_cli(("evaluate", "artifact")).resolve().effective
+    assert default.evaluation.threads is None
+    given = parse_cli(("evaluate", "artifact", "--threads", "3")).resolve().effective
+    assert given.evaluation.threads == 3
+    with pytest.raises(
+        ConfigurationError, match=r"evaluation\.threads must be a positive integer"
+    ):
+        parse_cli(("evaluate", "artifact", "--threads", "0")).resolve()
+    card = tmp_path / "options.toml"
+    card.write_text(
+        "[evaluation]\nthreads = 2\nreduction = 'ninjars'\npoles = 'none'\n"
+        "[evaluation.stability_checks]\nrotation_count = 1\n"
+    )
+    read = parse_cli(("evaluate", "artifact", "--card", str(card))).resolve().effective
+    assert read.evaluation.threads == 2
+    assert read.evaluation.reduction == "ninjars"
+    assert read.evaluation.stability_checks.rotation_count == 1
+    flag = (
+        parse_cli(("evaluate", "artifact", "--card", str(card), "--threads", "5"))
+        .resolve()
+        .effective
+    )
+    assert flag.evaluation.threads == 5
 
 
 def test_evaluate_profile_and_check_take_the_kinematics_improvement() -> None:
@@ -923,3 +957,67 @@ def test_fields_description_help_and_n_core_options():
         invocation = parse_cli(["profile", "artifact", spelling, "3"])
         assert invocation.resolve().effective.benchmark.n_core == 3
     assert parse_cli(["profile", "artifact"]).resolve().effective.benchmark.n_core == 10
+
+
+def test_profile_takes_the_measured_precisions(tmp_path, monkeypatch) -> None:
+    """``--measured-precisions``: space- or comma-separated, the long names
+    and the short ones (double, dd, arb:DIGITS), the default binary64 alone;
+    the card-action form with --output and --ground-truth after it."""
+
+    from pyamplicol.config.models import DEFAULT_MEASURED_PRECISIONS
+
+    default = parse_cli(("profile", "artifact")).resolve().effective
+    assert default.benchmark.measured_precisions == DEFAULT_MEASURED_PRECISIONS
+    spaced = (
+        parse_cli(
+            ("profile", "artifact", "--measured-precisions", "double", "dd", "arb:60")
+        )
+        .resolve()
+        .effective
+    )
+    assert spaced.benchmark.measured_precisions == (
+        "binary64",
+        "double-double",
+        "arbitrary:60",
+    )
+    commas = (
+        parse_cli(("profile", "artifact", "--measured-precisions", "b64,double-double"))
+        .resolve()
+        .effective
+    )
+    assert commas.benchmark.measured_precisions == ("binary64", "double-double")
+    root = Path(__file__).resolve().parents[2]
+    (tmp_path / "loop.toml").write_text(
+        (root / "examples" / "loop_generate.toml").read_text()
+    )
+    monkeypatch.chdir(tmp_path)
+    card = (
+        parse_cli(
+            [
+                "loop.toml",
+                "profile",
+                "--output=./out",
+                "--measured-precisions",
+                "double",
+                "dd",
+                "arb:60",
+                "--ground-truth",
+                "arb:60",
+            ]
+        )
+        .resolve()
+        .effective
+    )
+    assert str(card.action) == "benchmark"
+    assert card.evaluation.artifact == tmp_path / "out"
+    assert card.benchmark.measured_precisions == (
+        "binary64",
+        "double-double",
+        "arbitrary:60",
+    )
+    assert card.benchmark.ground_truth == "arbitrary:60"
+    for wrong in (("quad",), ("dd", "double-double"), ("none",)):
+        with pytest.raises(ConfigurationError, match="measured_precisions"):
+            parse_cli(
+                ("profile", "artifact", "--measured-precisions", *wrong)
+            ).resolve()

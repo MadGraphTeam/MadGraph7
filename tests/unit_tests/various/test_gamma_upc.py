@@ -118,7 +118,7 @@ class TestGammaUPCRunCard(unittest.TestCase):
         self.assertEqual(card['pdlabel2'], 'chp0nxn')
 
     def test_upc_pdlabel_lpp_compat(self):
-        """gamma-UPC labels need lpp=2; lpp=2 falls back to edff"""
+        """gamma-UPC labels need lpp=2; lpp=2 falls back to chff (as mg7)"""
 
         card = upc_card(bannermod.RunCardLO, 'edfinin', beam1=PROTON, beam2=PROTON, lpp=1)
         with self.assertRaises(bannermod.InvalidRunCard):
@@ -127,8 +127,8 @@ class TestGammaUPCRunCard(unittest.TestCase):
         card = upc_card(bannermod.RunCardLO, 'nn23lo1', beam1=PROTON, beam2=PROTON)
         with misc.MuteLogger(['madevent.cards'], [50]):
             card.check_validity()
-        self.assertEqual(card['pdlabel1'], 'edff')
-        self.assertEqual(card['pdlabel2'], 'edff')
+        self.assertEqual(card['pdlabel1'], 'chff')
+        self.assertEqual(card['pdlabel2'], 'chff')
 
     def test_upc_neutron_tagging_nuclei(self):
         """the nucleus x neutron-tag matrix, at LO (card check and helper)"""
@@ -430,6 +430,30 @@ end program check_pbreak
       end
 """
 
+    # Woods-Saxon T_B of beam B (args: nucleus A, nucleus B) from its grid
+    # (IMETH=2) and from the direct integration (IMETH=0), after beam A made
+    # its grid (IMETH=1); grids in memory, at s = 0, R_B/4, ..., 2 R_B
+    tahat_driver = """
+program check_tahat
+  USE OpticalGlauber_Geometry
+  implicit none
+  character(len=7)::nameA,nameB
+  real(kind(1d0))::A1,Z1,R1,aa1,w1,A2,Z2,R2,aa2,w2,t,tb,s
+  integer::i
+  call get_command_argument(1,nameA)
+  call get_command_argument(2,nameB)
+  call GetNuclearInfo(nameA,A1,Z1,R1,aa1,w1)
+  call GetNuclearInfo(nameB,A2,Z2,R2,aa2,w2)
+  t=TAhat_WoodsSaxon(0d0,0d0,R1,w1,aa1,A1,1,.FALSE.)
+  do i=0,8
+     s=0.25d0*i*R2
+     tb=TAhat_WoodsSaxon(s,0d0,R2,w2,aa2,A2,2,.FALSE.)
+     t=TAhat_WoodsSaxon(s,0d0,R2,w2,aa2,A2,0)
+     write(*,'(a,3es24.15)') 'T', s, tb, t
+  enddo
+end program check_tahat
+"""
+
     @classmethod
     def setUpClass(cls):
         cls.fc = misc.which('gfortran')
@@ -453,6 +477,9 @@ end program check_pbreak
             fsock.write(cls.pbreak_driver)
         cls.compile(src, ['-ffixed-line-length-132', '-o', 'check_labels', 'check_labels.f'] + objects)
         cls.compile(src, ['-o', 'check_pbreak', 'check_pbreak.f90'] + objects)
+        with open(pjoin(src, 'check_tahat.f90'), 'w') as fsock:
+            fsock.write(cls.tahat_driver)
+        cls.compile(src, ['-o', 'check_tahat', 'check_tahat.f90'] + objects)
         with open(pjoin(src, 'check_dummy.f'), 'w') as fsock:
             fsock.write(cls.dummy_driver)
         cls.compile(src, ['-o', 'check_dummy', 'check_dummy.f', 'gammaUPC_dummy.f'])
@@ -562,3 +589,226 @@ end program check_pbreak
                     self.assertAlmostEqual(P(y, I), P(I, y), places=14)  # symmetric beams
                     self.assertGreater(P(y, I), 0.)
                 self.assertLess(sum(P(k, I) for k in range(1, 5)), P(X, I))
+
+    def test_woods_saxon_beam_b_grid(self):
+        """TAhat_WoodsSaxon with IMETH=2 interpolates the grid of beam B, which
+        can be another nucleus than beam A: it agrees with the direct
+        integration (IMETH=0) up to the spline error. It used to interpolate
+        the grid of beam A, which was only right for identical beams."""
+
+        for beams in [('Pb208', 'O16'), ('O16', 'Pb208'), ('Pb208', 'Pb208')]:
+            out = self.run_exe('check_tahat', beams)
+            self.assertEqual(out.returncode, 0, out.stdout)
+            rows = [[float(x) for x in l.split()[1:]] for l in out.stdout.split('\n')
+                    if l.startswith('T ')]
+            self.assertEqual(len(rows), 9, out.stdout)
+            for s, grid, direct in rows:
+                self.assertGreater(direct, 0.)
+                self.assertLess(abs(grid / direct - 1.), 1e-3, (beams, s, grid, direct))
+
+
+class TestGammaUPCMG7RunCard(unittest.TestCase):
+    """beam.upc_flux of the mg7 run_card.toml: madevent 'set' translation,
+    checks and the run_card.dat conversion"""
+
+    def ion_card(self, label='chff', ion=PB208):
+        card = bannermod.RunCardMG7()
+        for name, value in (('lpp', '2'), ('pdlabel', label), ('nb_proton', ion[0]),
+                            ('nb_neutron', ion[1]), ('ebeam', '522080')):
+            card.set_lo_beam_param(name, str(value))
+        return card
+
+    def test_set_translation(self):
+        """lpp 2 + a gamma-UPC pdlabel + nb_proton/nb_neutron give upc_flux and
+        the ions, written to (and read back from) the card; any other pdlabel
+        switches gamma-UPC off"""
+        card = self.ion_card('chf0n0n')
+        card.check_validity()
+        self.assertEqual(card['beam']['upc_flux'], 'chf0n0n')
+        self.assertEqual(card.upc_ions(), (PB208, PB208))
+        self.assertFalse(card['beam']['leptonic'])
+        tmpdir = tempfile.mkdtemp(prefix='upc_mg7card')
+        try:
+            path = pjoin(tmpdir, 'run_card.toml')
+            card.write(path)
+            again = bannermod.RunCardMG7(path)
+            self.assertEqual(again['beam']['upc_flux'], 'chf0n0n')
+            self.assertEqual(again.upc_ions(), (PB208, PB208))
+        finally:
+            shutil.rmtree(tmpdir)
+        # madevent's view of the run (legacy keys)
+        self.assertEqual(card['lpp1'], 2)
+        self.assertEqual(card['pdlabel'], 'chf0n0n')
+        self.assertEqual((card['nb_proton2'], card['nb_neutron2']), PB208)
+
+    def test_set_leave_upc(self):
+        """lpp 2 alone is gamma-UPC (ChFF), never the proton PDFs; another
+        pdlabel or an lhaid (madevent's EPA photon) is refused while lpp = 2;
+        another lpp leaves gamma-UPC and resets the ions"""
+        card = bannermod.RunCardMG7()
+        card.set_lo_beam_param('lpp', '2')
+        self.assertEqual(card['beam']['upc_flux'], 'chff')
+        self.assertFalse(card['beam']['leptonic'])
+        card = self.ion_card('chf0n0n')
+        for name, value in (('pdlabel', 'nn23lo1'), ('lhaid', '331700'),
+                            ('pdlabel', 'none')):
+            with self.assertRaises(bannermod.InvalidRunCard):
+                card.set_lo_beam_param(name, value)
+            self.assertEqual(card['beam']['upc_flux'], 'chf0n0n')
+        card.set_lo_beam_param('lpp', '1')
+        self.assertEqual(card['beam']['upc_flux'], '')
+        self.assertEqual(card.upc_ions(), (PROTON, PROTON))
+        self.assertFalse(card['beam']['leptonic'])
+        self.assertEqual(card['lpp1'], 1)
+        card.check_validity()
+        card.set_lo_beam_param('pdlabel', 'nn23lo1')
+
+    def test_validity(self):
+        """invalid labels, unavailable neutron tags, ions without upc_flux and
+        upc_flux with a dressed-lepton density are refused"""
+        card = self.ion_card('chf0n0n', ion=(92, 146))
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        card = self.ion_card('chf4n4n', ion=O16)
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        self.ion_card('chf2n2n', ion=O16).check_validity()
+        card = bannermod.RunCardMG7()
+        card.set('beam.upc_flux', 'chff0n0n', user=True)  # 8 characters
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        card = bannermod.RunCardMG7()
+        card.set('beam.nb_proton1', 82, user=True)
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+        card = self.ion_card()
+        card.set('beam.lepton_density', 'isronlyll', user=True)
+        with self.assertRaises(bannermod.InvalidRunCard):
+            card.check_validity()
+
+    def test_from_LO(self):
+        """a madevent gamma-UPC run_card converts without dropped settings"""
+        lo = upc_card(bannermod.RunCardLO, 'edff', beam1=AU197, beam2=PROTON)
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['upc_flux'], 'edff')
+        self.assertEqual(mg7.upc_ions(), (AU197, PROTON))
+        self.assertEqual(dropped, [])
+
+
+class TestGammaUPCMG7Luminosity(unittest.TestCase):
+    """madgraph/mg7/upc_luminosity.py: beams, table range, and the tabulation
+    by Source/PDF/gammaUPC/upc_luminosity_table.f"""
+
+    def test_beams(self):
+        """per-nucleon energies and madevent's LHE beam ids"""
+        from madgraph.mg7 import upc_luminosity as upc
+        self.assertEqual(upc.nucleon_energies((522080., 4000.), (PB208, PROTON)),
+                         (2510., 4000.))
+        self.assertEqual(upc.lhe_beam_id(PROTON), 2212)
+        self.assertEqual(upc.lhe_beam_id(PB208), 1000822080)
+        self.assertEqual(upc.lhe_beam_id(O16), 1000080160)
+
+    def test_table_xmin(self):
+        """the table starts at gamma-UPC's 1e-8, or the decade below tau_min"""
+        from madgraph.mg7 import upc_luminosity as upc
+        self.assertEqual(upc.table_xmin(1e-4), 1e-8)
+        self.assertAlmostEqual(upc.table_xmin(3e-10) / 1e-10, 1.)
+        self.assertAlmostEqual(upc.table_xmin(0.) / 1e-10, 1.)
+
+    def test_tabulation(self):
+        """a pp table: lhagrid1 layout (x1 knots, x2 knots, pid 22, x2 fastest),
+        symmetric for identical beams, finite and non-negative, and cached"""
+        if not misc.which('gfortran'):
+            raise unittest.SkipTest('gfortran not available')
+        from madgraph.mg7 import upc_luminosity as upc
+        tmpdir = tempfile.mkdtemp(prefix='upc_table')
+        try:
+            pdf_dir = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF')
+            gamma_dir = pjoin(tmpdir, 'PDF', 'gammaUPC')
+            shutil.copytree(pjoin(pdf_dir, 'gammaUPC'), gamma_dir)
+            shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(tmpdir, 'PDF'))
+            args = (gamma_dir, 'chff', (PROTON, PROTON), (6500., 6500.), 1e-2)
+            path = upc.tabulate(*args, knots=4)
+            with open(path) as fsock:
+                lines = [l for l in fsock if not l.startswith(('#', 'PdfType', 'Format'))]
+            self.assertEqual(lines[0].strip(), '---')
+            xs = [float(v) for v in lines[1].split()]
+            self.assertEqual(xs, [float(v) for v in lines[2].split()])
+            self.assertEqual(len(xs), 9)
+            self.assertAlmostEqual(xs[0], 1e-2)
+            self.assertEqual(xs[-1], 1.)
+            self.assertEqual(lines[3].strip(), '22')
+            values = [float(l) for l in lines[4:4 + len(xs) ** 2]]
+            self.assertEqual(lines[4 + len(xs) ** 2].strip(), '---')
+            n = len(xs)
+            for i in range(n):
+                for j in range(n):
+                    v = values[i * n + j]
+                    self.assertTrue(v >= 0. and v == v, v)
+                    self.assertAlmostEqual(v, values[j * n + i], delta=1e-10 * max(v, 1e-30))
+            self.assertGreater(values[0], 0.)
+            mtime = os.path.getmtime(path)
+            self.assertEqual(upc.tabulate(*args, knots=4), path)
+            self.assertEqual(os.path.getmtime(path), mtime)
+        finally:
+            shutil.rmtree(tmpdir)
+
+    def test_parallel_tabulation(self):
+        """jobs tabulating the same table at once wait for each other: one
+        compilation, one table, no temporary file left behind"""
+        if not misc.which('gfortran'):
+            raise unittest.SkipTest('gfortran not available')
+        import threading
+        from madgraph.mg7 import upc_luminosity as upc
+        tmpdir = tempfile.mkdtemp(prefix='upc_table')
+        try:
+            pdf_dir = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF')
+            gamma_dir = pjoin(tmpdir, 'PDF', 'gammaUPC')
+            shutil.copytree(pjoin(pdf_dir, 'gammaUPC'), gamma_dir)
+            shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(tmpdir, 'PDF'))
+            args = (gamma_dir, 'chff', (PROTON, PROTON), (6500., 6500.), 1e-2)
+            paths, errors = [], []
+
+            def job():
+                try:
+                    paths.append(upc.tabulate(*args, knots=2))
+                except Exception as error:  # reported by the main thread
+                    errors.append(error)
+            threads = [threading.Thread(target=job) for _ in range(3)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            self.assertEqual(errors, [])
+            self.assertEqual(len(set(paths)), 1)
+            tables = os.listdir(pjoin(gamma_dir, 'tables'))
+            self.assertEqual([t for t in tables if t.endswith('.tmp')], [])
+            self.assertEqual(len([t for t in tables if t.endswith('.dat')]), 1)
+            # a changed pdf.inc makes another table (and rebuilds the driver)
+            with open(pjoin(tmpdir, 'PDF', 'pdf.inc'), 'a') as fsock:
+                fsock.write('c touched\n')
+            self.assertNotEqual(upc.table_path(*args, knots=2), paths[0])
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+class TestGammaUPCMG7Subprocess(unittest.TestCase):
+    """a gamma-UPC run refuses the subprocesses with another incoming parton"""
+
+    def test_non_photon_incoming(self):
+        try:
+            from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess
+        except ImportError as error:
+            raise unittest.SkipTest('mg7 not importable: %s' % error)
+        import types
+        photons = types.SimpleNamespace(
+            meta={'incoming': [22, 22], 'outgoing': [15, -15],
+                  'flavors': [{'options': [[22, 22, 15, -15]]}]},
+            unmerged_meta=None)
+        self.assertEqual(MadgraphSubprocess.non_photon_incoming(photons), [])
+        quarks = types.SimpleNamespace(
+            meta={'incoming': [2, -2], 'outgoing': [13, -13],
+                  'flavors': [{'options': [[2, -2, 13, -13], [-2, 2, 13, -13],
+                                           [22, 22, 13, -13]]}]},
+            unmerged_meta=None)
+        self.assertEqual(MadgraphSubprocess.non_photon_incoming(quarks), [-2, 2])
