@@ -271,6 +271,36 @@ Outputs without the EP code are unchanged, apart from the new card parameter and
 - **Without the check pass** in the reversed 80-bit pass (a diagnostic, not the generated code), that pass is as accurate as the forward one: u ū 2.4·10⁻⁸ / 2.7·10⁻⁹, and the stability test returns 2.1·10⁻⁸ / 2.2·10⁻⁹. But the two passes then agree too well. The estimate falls below the true error at 7 of 24 points, 4 of them with an estimate of 0. The check pass is needed; its shift should follow the input precision, 2⁻⁶³ for 64-bit inputs.
 - **No refusals:** every return code is 110 (`CTModeRun 1, 2`) or 213 (`-1`).
 
+### With the check-pass shift at the input precision (bridge v2)
+
+TIRust then changed its bridge only, keeping TIRust at d17085a. For a check pass with nonzero low words, the extended entry now shifts hi + lo by 1 ± 2^-(input_bits-1), 2⁻⁶³ at 64 bits. The binary64 check pass (2⁻⁵²) and the other entries are unchanged.
+- **Patches:** `madloop-tirust-ext-check-shift.patch` on top of 84e94158, or all together `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch`, both in `/shared/external/iregi/pwave-patches`.
+- **Build:** scratch `$SP/pw62`. Its bridge source is that of `$SP/pw61` plus the incremental patch, file for file.
+- **Data:** the outputs were regenerated without any MadLoop change; the results are in `data/ep_switch_*_chic0g_1000_d17085a_v2.json`.
+
+| 24 points, 1 TeV: largest / median (s per point) | u ū → χ_c0 g | g g → χ_c0 g |
+|---|---|---|
+| off, `CTModeRun -1` | 2.9·10⁻⁵ / 5.3·10⁻⁶ (0.109) | 4.1·10⁻⁶ / 1.1·10⁻⁶ (1.01) |
+| on, `CTModeRun 1` | 2.2·10⁻⁸ / 4.1·10⁻⁹ (0.499) | 2.2·10⁻⁹ / 6.0·10⁻¹⁰ (5.10) |
+| on, `CTModeRun 2` | 2.6·10⁻⁸ / 2.1·10⁻⁹ (0.528) | 2.5·10⁻⁹ / 8.5·10⁻¹⁰ (5.34) |
+| **on, `CTModeRun -1`** | **2.0·10⁻⁸ / 2.5·10⁻⁹** (0.536) | **2.3·10⁻⁹ / 6.2·10⁻¹⁰** (5.32) |
+
+- **The reversed pass is now as accurate as the forward one,** and the stability test keeps the full gain: 1450× (u ū) and 1800× (g g) in the worst point, about three digits, at 4.9× and 5.2× its double-precision time. Before the change it gained 18× and 24×.
+- **Unchanged otherwise:** the double-precision passes and the forward 80-bit pass give the same numbers as before. The cost does not change (0.536 against 0.539 s, 5.32 against 5.45 s), and there are no refusals (codes 110 and 213).
+- **MadLoop's accuracy estimate behaves as in double precision.** It is an estimate, not a bound, and it is never 0:
+
+| ratio of MadLoop's estimate to the true error | points below 1 | lowest | median |
+|---|---|---|---|
+| u ū, double precision | 3/24 | 0.32 | 3.3 |
+| u ū, 80-bit, shift 2⁻⁵² | 1/24 | 0.96 | 5.5 |
+| u ū, 80-bit, no check pass | 7/24 | 0 | 2.9 |
+| u ū, 80-bit, shift 2⁻⁶³ | 5/24 | 0.23 | 1.9 |
+| g g, double precision | 1/24 | 0.10 | 3.0 |
+| g g, 80-bit, shift 2⁻⁵² | 1/24 | 0.80 | 9.2 |
+| g g, 80-bit, shift 2⁻⁶³ | 5/24 | 0.32 | 2.0 |
+
+  With the 2⁻⁵² shift the estimate was larger only because it measured the error that the shift itself added.
+
 ## Reproducer for TIRust
 
 `data/repro_doubled_pentagons.json.gz` is written by `repro.py` (`python3 repro.py OUTDIR OUT.json.gz 0 7`, on an output patched by `instrument.py`). It holds the ten DP calls with powers and five lines of u ū → χ_c0 g at points 0 and 7 of setup A, in both passes. For each call it records:

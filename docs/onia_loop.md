@@ -227,8 +227,11 @@ at a time. The pieces are:
   unchanged. The code is written for one P-wave state with TIRust from an
   installation with `raised_power_extended_inputs` in its metadata. Other
   P-wave outputs print a warning and ignore the switch; non-P-wave outputs
-  ignore it silently. See
-  `research/pwave_stability/README.md` for its accuracy and cost.
+  ignore it silently. At 1 TeV (u u~ > chic0 g, g g > chic0 g) the stability
+  test then gains about three digits at about 5 times the double-precision
+  time. This needs TIRust's check pass to shift extended inputs at their own
+  precision (bridge v2); with the earlier bridge, whose shift is 2^-52, the
+  gain is about one digit. Details in `research/pwave_stability/README.md`.
 
 Status:
 - At zero relative momentum, TIRust 48958d1 (part of huashengshao/TIRust PR #56,
