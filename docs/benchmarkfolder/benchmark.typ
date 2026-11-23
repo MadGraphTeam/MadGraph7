@@ -495,6 +495,10 @@ estimate over random phase-space points.
   (PR \#56), because 48958d1 refuses their doubled-gluon pentagons. Every
   process but the reference is also run with TIRust 5025e12 (head of PR \#56;
   not pinned) and a bridge patch for its _relation tiers_ and a binary64 gate.
+  Every P wave is run a third time with the _80-bit switch_ on
+  (`#PWaveExtendedPrecision`, @ep): TIRust d17085a (PR \#56) with the
+  bridge patch v2, which adds low words and extended inputs to the gate and
+  the relation tiers. Neither is in MadGraph yet.
 - *P-wave colour octets.* $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ for
   $n = ""^3 P_0, ""^3 P_1, ""^3 P_2, ""^1 P_1$, the charmonium octets of the
   $2 -> 2$ pole checks (@tab:pwave22) and their bottomonium analogues, in a
@@ -502,11 +506,11 @@ estimate over random phase-space points.
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the pinned one (S waves), 48958d1 or 370b632 (P waves), dotted 5025e12 (PR \#56) with the bridge's gate and relation tiers; dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the pinned one (S waves), 48958d1 or 370b632 (P waves), dotted 5025e12 (PR \#56) with the bridge's gate and relation tiers, dash-dotted the P waves with the 80-bit switch (@ep); dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
-#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1 (solid) and 5025e12 with the bridge's gate and relation tiers (dotted, PR \#56), charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
+#figure(caption: [As @fig:stability, for the P-wave colour octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ with TIRust 48958d1 (solid), 5025e12 with the bridge's gate and relation tiers (dotted, PR \#56) and with the 80-bit switch (dash-dotted, @ep), charmonium (top) and bottomonium (bottom). The colours here mark the state; at 1 TeV the $""^3 P_0^((8))$ and $""^3 P_2^((8))$ curves lie on top of each other. Dashed: the reference process.])[
   #image("figures/stability_octets.svg", width: 100%)
 ] <fig:stability-octets>
 
@@ -607,10 +611,9 @@ estimate over random phase-space points.
       integrals to double, with MadLoop in quadruple precision, leaves the
       error as it is. So does rounding only MadLoop's loop coefficients,
       with exact doubled-line integrals and contractions. Lowering it needs
-      both beyond double precision. The coefficients are MadLoop's largest
-      cost, so it cannot be done without slowing these processes down; the
-      quadruple-precision rescue does it at about 40 times the time. At the
-      default threshold no point needs the rescue.
+      both beyond double precision. The quadruple-precision rescue does it
+      at about 40 times the time; the opt-in 80-bit switch of @ep does it at
+      5 to 6 times. At the default threshold no point needs the rescue.
     - The P-wave checks of @pwave are unchanged with it: the same finite parts
       within $10^(-10)$, and the poles as predicted to $5 dot 10^(-11)$.
     - Without the gate, 5025e12, 8b436f9 and 14f2696 (the commit that
@@ -641,6 +644,82 @@ estimate over random phase-space points.
   - *The reference.* For $g g -> t overline(t) thin g$, 0.04% of the points are
     above $10^(-3)$, which is the steep profile of the paper's first process
     class.
+]
+
+== The 80-bit switch <ep>
+
+`#PWaveExtendedPrecision .TRUE.` in `MadLoopParams.dat` (off by default)
+runs the double-precision passes of an output with one P-wave state in
+extended precision. That is the x87 80-bit format, 64 bits of mantissa
+(binary128 on hosts without it). The PS point, the dual wavefunctions, the
+loop coefficients, the projections and the contractions are computed in it.
+TIRust's double-precision entry takes the integral inputs (shifts and
+invariants) as binary64 hi + lo words and returns the result as hi + lo.
+- *Generated code.* The extended code is MadLoop's quadruple-precision code
+  with its names and kind changed. `madgraph/loop/onia_ep.py` derives it
+  when the output is written; only the dispatch and the TIRust routines are
+  in the templates. Outputs without a P-wave state are unchanged but for the
+  card parameter.
+- *TIRust.* The code is written only for an installation whose metadata
+  has `raised_power_extended_inputs`. Here that is TIRust d17085a (PR \#56)
+  with the bridge patch v2 (gate, relation tiers, low words, extended
+  inputs). The bridge is not in MadGraph yet.
+- *Check pass.* In its check pass (the reversed loop of MadLoop's
+  stability test) TIRust moves the invariants by $2^(-52)$, one binary64
+  unit. With extended inputs the bridge v2 moves them by
+  $2^(-(b-1))$, $2^(-63)$ for $b = 64$ bits. With $2^(-52)$ the reversed
+  pass kept a binary64 input error. MadLoop's mean of the two passes then
+  gained only about one digit: 18 times ($u overline(u)$) and 24 times
+  ($g g$) in the worst point.
+
+#figure(caption: [The 80-bit switch at the 24 points of `research/pwave_stability` ($sqrt(s) = 1$ TeV), against quadruple precision: the largest and the median error of the finite part and the time per point, with `CTModeRun -1` (MadLoop's stability test, no rescue) or `CTModeRun 1` (one pass).])[
+  #tstyle(table(columns: (1fr, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right),
+    table.header([Mode], [$u overline(u) -> chi_(c 0) thin g$], [s/pt], [$g g -> chi_(c 0) thin g$], [s/pt]),
+    [double precision, `CTModeRun -1`], [$2.9 dot 10^(-5)$ / $5.3 dot 10^(-6)$], [0.11], [$4.1 dot 10^(-6)$ / $1.1 dot 10^(-6)$], [1.01],
+    [80-bit, one pass (`CTModeRun 1`)], [$2.2 dot 10^(-8)$ / $4.1 dot 10^(-9)$], [0.50], [$2.2 dot 10^(-9)$ / $6.0 dot 10^(-10)$], [5.10],
+    [80-bit, `CTModeRun -1`], [$2.0 dot 10^(-8)$ / $2.5 dot 10^(-9)$], [0.54], [$2.3 dot 10^(-9)$ / $6.2 dot 10^(-10)$], [5.32],
+    [80-bit, `CTModeRun -1`, check pass $2^(-52)$], [$1.6 dot 10^(-6)$ / $9.8 dot 10^(-8)$], [0.54], [$1.7 dot 10^(-7)$ / $4.1 dot 10^(-8)$], [5.45]))
+] <tab:ep-accuracy>
+
+#figure(caption: [Cost of the 80-bit switch: paired alternating runs of two copies of one output (TIRust d17085a with the bridge patch v2), off and on, in MadLoop's default settings (`CTModeRun -1`, rescue at $10^(-3)$, no rotation); median of the batch medians of the time per point, four pairs.])[
+  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, center, right, right, right, right),
+    table.header([Process], [$sqrt(s)$], [points], [off, ms], [on, ms], [ratio]),
+    [$u overline(u) -> chi_(c 0) thin g$], [1 TeV], [200], [94.6], [548], [5.8],
+    [$u overline(u) -> chi_(c 0) thin g$], [20 GeV], [200], [94.3], [544], [5.8],
+    [$g g -> chi_(c 0) thin g$], [1 TeV], [48], [1029], [5519], [5.4],
+    [$g g -> chi_(c 0) thin g$], [20 GeV], [48], [1036], [5508], [5.3]))
+] <tab:ep-cost>
+
+#box-note[
+  - *Accuracy* (@tab:ep-accuracy). One 80-bit pass reproduces the prototype
+    of `research/pwave_stability` to the digit. MadLoop's stability test
+    keeps it: about three digits more than double precision at 1 TeV.
+  - *MadLoop's estimate* behaves as in double precision: an estimate, not a
+    bound, and never 0. At the 24 points it is below the true error at 5
+    points of each process, by at most a factor 4 ($u overline(u)$) and 3
+    ($g g$). In double precision that happens at 3 and 1 points, by up to
+    3 and 10.
+  - *Cost* (@tab:ep-cost). 5.3 to 5.8 times double precision, at both
+    energies, with no point rescued in quadruple precision. The quadruple
+    precision rescue of the whole point costs about 40 times.
+  - *Profiles* (dash-dotted in @fig:stability and @fig:stability-octets, all
+    P waves, both setups): no P-wave point has an estimate at or above $10^(-7)$; the largest is
+    $9.9 dot 10^(-8)$, for $u overline(u) -> chi_(c 0) thin g$ at 1 TeV.
+    - At 1 TeV the median estimate falls by a factor of about 2000 against
+      5025e12: $3.9 dot 10^(-5)$ to $1.9 dot 10^(-8)$
+      ($u overline(u) -> chi_(c 0) thin g$), $8.1 dot 10^(-6)$ to $3.8 dot 10^(-9)$
+      ($g g -> chi_(c 0) thin g$), $3.1 dot 10^(-7)$ to $1.5 dot 10^(-10)$
+      ($u overline(u) -> chi_(b 0) thin g$) and $8.0 dot 10^(-8)$ to
+      $3.7 dot 10^(-11)$ ($g g -> chi_(b 0) thin g$).
+    - The charmonium octets go from $10^(-7)$ to $5 dot 10^(-11)$, the
+      bottomonium ones from $10^(-9)$ to $5 dot 10^(-13)$.
+    - At 20 GeV every estimate is below $2 dot 10^(-11)$.
+    - In these settings (three evaluations per point, the rotation included)
+      the median time per point is 4.7 to 6.4 times that of the 5025e12 runs.
+      Those runs were made on another day, so the ratio is not paired;
+      @tab:ep-cost has the paired cost.
 ]
 
 = Performance <perf>
@@ -696,7 +775,8 @@ confidence interval of the geometric-mean ratio.
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56` for the scratch TIRust builds; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
+- The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,

@@ -16,8 +16,10 @@ CASE and SETUP are keys of CASES and SETUPS. Environment: TIRUST_LIB48958
 ggchic0g and ggchib0g), TIRUST_LIB08 (TIRust 08edee3 with the bridge gate patch, for
 jpsig08 and upsg08), TIRUST_LIB56 (TIRust 5025e12, the head of PR #56,
 with the bridge patch for the binary64 gate 0006 and the relation tiers, for the cases with the
-suffix 56), NWORKERS (16), NPOINTS (to override the
-number of points)."""
+suffix 56), TIRUST_LIBEP (TIRust d17085a with the bridge patch v2 for the gate, the relation
+tiers, the low words and the extended inputs, whose metadata has raised_power_extended_inputs:
+the cases with the suffix ep, which run with #PWaveExtendedPrecision .TRUE.), NWORKERS (16),
+NPOINTS (to override the number of points)."""
 import concurrent.futures
 import json
 import math
@@ -65,6 +67,10 @@ CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in PW
 # and every S wave (the relation tiers act on raised powers only, the gate on every call)
 SWAVE = ['etacg', 'jpsig', 'etac8g', 'etabg', 'upsg', 'etab8g']
 CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in SWAVE})
+# every P wave with the 80-bit switch (#PWaveExtendedPrecision, madgraph/loop/onia_ep.py): its
+# double-precision passes in extended precision, TIRust with the extended inputs
+EXTENDED = [c + 'ep' for c in PWAVE]
+CASES.update({c + 'ep': CASES[c][:2] + ('TIRUST_LIBEP', CASES[c][3]) for c in PWAVE})
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)
     'A': (1000., 50.),   # the setup of arXiv:1604.01363
@@ -127,8 +133,10 @@ def run_case(work, outjson, case, setup, nworkers):
     pdir = olc.subprocess_dir(outdir)
     olc.build_driver(pdir)
     libs = card_libs(outdir)
-    olc.set_reduction(outdir, libs, extra={'CTModeRun': '-1', 'MLStabThres': '1.0d99',
-                                           'NRotations_DP': '1', 'NRotations_QP': '0'})
+    settings = {'CTModeRun': '-1', 'MLStabThres': '1.0d99', 'NRotations_DP': '1', 'NRotations_QP': '0'}
+    if case in EXTENDED:
+        settings['PWaveExtendedPrecision'] = '.TRUE.'
+    olc.set_reduction(outdir, libs, extra=settings)
     masses = olc.driver_masses(pdir)
     points = make_points(masses, npts, energy, ptmin)
     # initialisation (filters, caches) before the parallel chunks
@@ -146,7 +154,8 @@ def run_case(work, outjson, case, setup, nworkers):
                          single_norm=r['single_norm'], time=r['time']))
     meta = dict(case=case, setup=setup, model=model, process=process, libs='|'.join(libs),
                 tirust=tirust or 'pinned', energy=energy, ptmin=ptmin, dr_min=DR_MIN, npoints=npts,
-                settings='CTModeRun -1, MLStabThres 1e99, NRotations_DP 1', wall=wall)
+                settings='CTModeRun -1, MLStabThres 1e99, NRotations_DP 1' +
+                (', PWaveExtendedPrecision' if case in EXTENDED else ''), wall=wall)
     # compact: per point the accuracy estimate, return code and time (3 digits)
     json.dump(dict(meta=meta, accuracy=[float('%.3g' % r['accuracy']) for r in rows],
                    ret_code=[r['ret_code'] for r in rows],

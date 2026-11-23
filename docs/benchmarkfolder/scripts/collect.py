@@ -78,6 +78,16 @@ STATUS_LINES = [
     'process above $10^(-3)$, no S wave above $10^(-6)$, no rescue at 1 TeV, 18–49% more time '
     'for the P waves at 20 GeV (@stability). The P-wave octets '
     '$e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1.',
+    '*80-bit switch for the P waves* (@ep): `#PWaveExtendedPrecision` (off by default) '
+    'computes the double-precision passes in extended precision. At 1 TeV it gains about three '
+    'digits ($u overline(u) -> chi_(c 0) thin g$: $2 dot 10^(-8)$ worst instead of '
+    '$3 dot 10^(-5)$) for 5 to 6 times the time. It needs TIRust d17085a (PR \\#56) with the '
+    'bridge patch v2, not yet in MadGraph.',
+    '*Two P-wave bound states* ($e^+ e^- -> chi_(c 0) thin h_c$): generated in double '
+    'precision. The predicted poles are complete, the dipole-dipole exchange of He, Kniehl and '
+    'Wang included, and reproduce the independent reference of `research/two_pwave` to '
+    '$6 dot 10^(-15)$. `ONIA_NRQCD_CT` gives the MS-bar counterterm of that exchange. The '
+    'virtual waits for TIRust\'s two dotted propagators.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]
@@ -104,6 +114,11 @@ OPEN_ITEMS = [
     'quadruple precision (every point right).',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
+    '*80-bit switch:* the bridge patch v2 (inputs as hi + lo words, check pass at the input '
+    'precision) into MadGraph, then the TIRust pin with it (@ep).',
+    '*Two P-wave bound states:* TIRust with two dotted propagators and the doubled boxes and '
+    'pentagons it refuses at the two thresholds (fixtures in `research/two_pwave`), the '
+    'quadruple-precision path, and the comparison of the computed poles with the prediction.',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
     '(it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.',
 ]

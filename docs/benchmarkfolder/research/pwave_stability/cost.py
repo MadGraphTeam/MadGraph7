@@ -8,8 +8,11 @@ number of points MadLoop rescues in quadruple precision.
 MODE 'profile' uses the settings of the stability profiles (CTModeRun -1,
 MLStabThres 1e99, NRotations_DP 1); 'production' MadLoop's defaults
 (CTModeRun -1, MLStabThres 1e-3, no rotations, quadruple-precision rescue).
-Each batch is split over NWORKERS drivers (1 by default). Writes
-cost_CASE_SETUP_MODE.json next to NEW_OUTDIR."""
+With the suffix '+ep' (profile+ep, production+ep) NEW_OUTDIR runs with the
+80-bit switch (#PWaveExtendedPrecision .TRUE.) and OLD_OUTDIR without it: the
+cost of the switch, for two copies of one output. Each batch is split over
+NWORKERS drivers (1 by default). Writes cost_CASE_SETUP_MODE.json next to
+NEW_OUTDIR."""
 import concurrent.futures
 import json
 import os
@@ -25,14 +28,18 @@ case, setup, old, new, npts, pairs, mode = sys.argv[1:8]
 npts, pairs = int(npts), int(pairs)
 nw = int(sys.argv[8]) if len(sys.argv) > 8 else 1
 energy, ptmin = st.SETUPS[setup]
+switch = mode.endswith('+ep')
 SETTINGS = {
     'profile': {'CTModeRun': '-1', 'MLStabThres': '1.0d99', 'NRotations_DP': '1', 'NRotations_QP': '0'},
     'production': {'CTModeRun': '-1', 'MLStabThres': '1.0d-3', 'NRotations_DP': '0', 'NRotations_QP': '0'},
-}[mode]
+}[mode[:-3] if switch else mode]
 pdirs = {}
 for name, outdir in (('old', old), ('new', new)):
     pdirs[name] = olc.subprocess_dir(outdir)
-    olc.set_reduction(outdir, ['9'], extra=SETTINGS)
+    extra = dict(SETTINGS)
+    if switch:
+        extra['PWaveExtendedPrecision'] = '.TRUE.' if name == 'new' else '.FALSE.'
+    olc.set_reduction(outdir, ['9'], extra=extra)
 masses = olc.driver_masses(pdirs['new'])
 points = st.make_points(masses, npts, energy, ptmin)
 

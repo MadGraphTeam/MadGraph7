@@ -14,7 +14,8 @@ categorical palette (dataviz reference palette, light mode, checked on
 white); the octet figure starts the slot order again, one slot per state. A
 bottomonium process takes the colour of its charmonium analogue; a run with
 TIRust 5025e12 with the bridge's binary64 gate and relation tiers (PR #56; case suffix 56)
-takes the colour of its process, dotted;
+takes the colour of its process, dotted; a P-wave run with the 80-bit switch
+(#PWaveExtendedPrecision; TIRust d17085a with the bridge v2; suffix ep) dash-dotted;
 the reference process of the paper is a dashed neutral line in every row."""
 import glob
 import json
@@ -31,19 +32,23 @@ import numpy as np
 FAMILIES = [
     ('charmonium', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
      ['etacg', 'jpsig', 'etac8g', 'chic0g', 'ggchic0g',
-      'etacg56', 'jpsig56', 'etac8g56', 'chic0g56', 'ggchic0g56']),
+      'etacg56', 'jpsig56', 'etac8g56', 'chic0g56', 'ggchic0g56',
+      'chic0gep', 'ggchic0gep']),
     ('bottomonium', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
      ['etabg', 'upsg', 'etab8g', 'chib0g', 'ggchib0g',
-      'etabg56', 'upsg56', 'etab8g56', 'chib0g56', 'ggchib0g56']),
+      'etabg56', 'upsg56', 'etab8g56', 'chib0g56', 'ggchib0g56',
+      'chib0gep', 'ggchib0gep']),
 ]
 # the P-wave colour octets, in a figure of their own
 OCTET_FAMILIES = [
     ('charmonium octets', r'charmonium P-wave octets: $e^+e^-\to c\bar c[n^{(8)}]\,g$, loop_sm_onia-c_mass',
      ['cc3p08g', 'cc3p18g', 'cc3p28g', 'cc1p18g', 'cc3p08g56', 'cc3p18g56', 'cc3p28g56',
-      'cc1p18g56']),
+      'cc1p18g56', 'cc3p08gep', 'cc3p18gep', 'cc3p28gep',
+      'cc1p18gep']),
     ('bottomonium octets', r'bottomonium P-wave octets: $e^+e^-\to b\bar b[n^{(8)}]\,g$, loop_sm_onia-no_tau_mass',
      ['bb3p08g', 'bb3p18g', 'bb3p28g', 'bb1p18g', 'bb3p08g56', 'bb3p18g56', 'bb3p28g56',
-      'bb1p18g56']),
+      'bb1p18g56', 'bb3p08gep', 'bb3p18gep', 'bb3p28gep',
+      'bb1p18gep']),
 ]
 # (file suffix, families, legend columns); colour = process, line style = TIRust build
 FIGURES = [('', FAMILIES, 3), ('_octets', OCTET_FAMILIES, 4)]
@@ -100,20 +105,25 @@ for q in 'cb':
 # dash-dotted, 5025e12, the head of PR #56, with the bridge patch for the binary64 gate 0006 and
 # the relation tiers (suffix 56), dotted
 CANDIDATE = '5025e12'
-BUILD_STYLE = {'': '-', '08': '-.', '56': ':'}
-BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s + gate (PR #56)' % CANDIDATE}
+BUILD_STYLE = {'': '-', '08': '-.', '56': ':', 'ep': '-.'}
+BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s + gate (PR #56)' % CANDIDATE,
+             'ep': '80-bit switch, TIRust d17085a + bridge v2'}
 STYLE = {'ttg': '--'}
 
 
 def build_of(case):
-    # no base case ends in 08 or 56 (they end in g)
-    return case[-2:] if case[-2:] in ('08', '56') else ''
+    # no base case ends in 08, 56 or ep (they end in g)
+    return case[-2:] if case[-2:] in ('08', '56', 'ep') else ''
 
 
 def base_of(case):
     return case[:-2] if build_of(case) else case
 
 
+for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if build_of(c) == 'ep']:
+    base = c[:-2]
+    LABEL[c] = LABEL[base].replace(', TIRust 370b632', '') + ', 80-bit'
+    TYPST[c], COLOR[c] = TYPST[base], COLOR[base]
 for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if build_of(c) == '56']:
     base = c[:-2]
     LABEL[c] = LABEL[base].replace(', TIRust 370b632', '').replace(')', ', TIRust %s)' % CANDIDATE) \
@@ -226,7 +236,7 @@ def plot(runs, out, family_list, ncol=3):
                         key=lambda b: (b != 'pinned', b))
         keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label='TIRust ' + ', '.join(builds))]
         keys += [Line2D([], [], color=INK2, lw=1.4, ls=BUILD_STYLE[b], label=BUILD_KEY[b])
-                 for b in ('08', '56') if any(build_of(c) == b for c in cases)]
+                 for b in ('08', '56', 'ep') if any(build_of(c) == b for c in cases)]
         blank = Line2D([], [], alpha=0, label=' ')
         cells = procs + ref
         cells += [blank] * (-len(cells) % ncol) + keys
