@@ -78,7 +78,7 @@ class GenerationControl:
 
     def __init__(self, event_generator, run_path, pretty=False):
         self.event_generator = event_generator
-        # log lines would break the progress boxes and the menu
+        # the menu shows the changes, a log line would break it
         self.pretty = pretty
         self.control_path = os.path.join(run_path, "control")
         self.armed = False
@@ -130,6 +130,8 @@ class GenerationControl:
         try:
             if os.path.exists(self.control_path):
                 self.run_control_file()
+                # below its log lines
+                self.event_generator.redraw_progress()
                 return
             tty = self.open_tty()
             if tty is None:
@@ -156,14 +158,14 @@ class GenerationControl:
     def set_events(self, count):
         self.event_generator.set_target_count(count)
         self.pending_events = count
-        if not self.pretty:
+        if not (self.pretty and self.in_menu):
             logger.info("requested events set to %d (from the end of the running batches)",
                         count)
 
     def set_threads(self, count):
         self.event_generator.set_thread_count(count)
         self.pending_threads = count
-        if not self.pretty:
+        if not (self.pretty and self.in_menu):
             logger.info("CPU threads set to %d (from the end of the running batches)", count)
 
     def run_control_file(self):

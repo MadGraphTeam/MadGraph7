@@ -219,7 +219,8 @@ void EventGenerator::run_generate(GenerateMode mode) {
             if (stopping()) {
                 // no new batches; the ones in flight still commit and unweight
                 _ready_jobs.clear();
-            } else if (mode == GenerateMode::events && _pending_target_count) {
+            } else if (mode == GenerateMode::events && _pending_target_count &&
+                       *_pending_target_count != _config.target_count) {
                 // end the round early, the new target applies after it
                 drop_ready_jobs();
             }
