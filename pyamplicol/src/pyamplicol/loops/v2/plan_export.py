@@ -2124,6 +2124,7 @@ def uncertified_bound(
     is not formed here). Empty when no lane is uncertified."""
 
     import math
+    import sys
 
     from .conventions import LOOP_FACTOR_DENOMINATOR
 
@@ -2148,7 +2149,12 @@ def uncertified_bound(
         bound = bounds.get((family, order, column))
         label = columns[column]
         before = out.get(label, (0.0, 0.0, 0.0))
-        if bound is None or not all(math.isfinite(float(b)) for b in bound):
+        # A bound is credible as a budget only finite, normal and positive
+        # (the reducer exports no other; checked again here): an exact or
+        # underflowed zero cannot be told from one whose terms are nonzero.
+        if bound is None or not all(
+            math.isfinite(float(b)) and float(b) >= sys.float_info.min for b in bound
+        ):
             out[label] = unbounded
         else:
             out[label] = tuple(

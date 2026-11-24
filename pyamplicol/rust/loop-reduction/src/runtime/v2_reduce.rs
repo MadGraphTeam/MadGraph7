@@ -341,12 +341,15 @@ pub struct V2Output {
     /// Of the lanes of [`Self::uncertified`], those whose served value comes
     /// with an absolute error bound per Laurent coefficient `[finite, 1/eps,
     /// 1/eps^2]` (the largest over the frames that served the lane
-    /// uncertified): the re-reduction's own absolute estimate of a lane
-    /// consistent with zero (the fast engine's rescue, the generic engine's
-    /// ladder). An uncertified lane absent here has no finite bound (a lane
-    /// outside NinjaRS's rescue domain keeps its binary64 value). A check
-    /// that reads such a lane's value tests its residue together with these
-    /// bounds.
+    /// uncertified): the fast engine's double-double re-reduction's own
+    /// absolute estimate of a lane consistent with zero, where credible
+    /// (finite, normal and positive). An uncertified lane absent here has
+    /// no bound a check may use: one outside NinjaRS's rescue domain keeps
+    /// its binary64 value, and the generic engine's ladder records give none
+    /// (their rung bound is formed in f64, can overflow to a reported zero
+    /// and can belong to another rung than the value served). A check that
+    /// reads such a lane's value tests its residue together with these
+    /// bounds, and is inconclusive where one is missing.
     pub uncertified_bounds: Vec<(usize, usize, [f64; 3])>,
 }
 
@@ -1000,8 +1003,11 @@ impl FastEngine {
                                 unrefined_outside.then_some(UNCERTIFIED_OUTSIDE_DOMAIN)
                             },
                             // NinjaRS states one absolute estimate, of the
-                            // finite part's terms: taken for every coefficient.
-                            bound: refused_bound.filter(|_| vanishing).map(|b| [b; 3]),
+                            // finite part's terms: taken for every coefficient,
+                            // where credible (`credible_bound`).
+                            bound: refused_bound
+                                .filter(|&b| vanishing && credible_bound(b))
+                                .map(|b| [b; 3]),
                         }
                     } else {
                         Outcome {
@@ -1017,6 +1023,14 @@ impl FastEngine {
             )
             .collect())
     }
+}
+
+/// Whether an absolute bound is credible as a check budget: finite, and a
+/// normal positive number (a bound that underflowed to zero or into the
+/// subnormal range cannot be told from one whose terms are nonzero; an exact
+/// zero is not proven to come from exactly zero terms here).
+fn credible_bound(bound: f64) -> bool {
+    bound.is_finite() && bound >= f64::MIN_POSITIVE
 }
 
 /// Whether a refused lane's re-reduced Laurent coefficients are all
@@ -1293,10 +1307,7 @@ where
             let mut rescued: Vec<Option<(RescueCarrier, f64)>> = vec![None; end - start];
             let mut best: Vec<Option<[Complex<T>; 3]>> = vec![None; end - start];
             let mut rescued_vanishing: Vec<Option<(RescueCarrier, f64)>> = vec![None; end - start];
-            let mut zero_reason: Vec<Option<(&'static str, [f64; 3])>> = vec![None; end - start];
-            // A below-resolution lane's absolute bound, where its record
-            // states one (`zero_bound`).
-            let mut below_bound: Vec<Option<[f64; 3]>> = vec![None; end - start];
+            let mut zero_reason: Vec<Option<&'static str>> = vec![None; end - start];
             for record in reductions.take_ladder_records() {
                 let Ok(row) = usize::try_from(record.id) else {
                     continue;
@@ -1331,21 +1342,20 @@ where
                     // rounding of its terms) is served at its rung value, not
                     // refused: a lane that cancels to zero by symmetry would
                     // otherwise fail at every carrier. Recorded as a rescue.
-                    below_bound[row] = zero_bound(&record);
                     best[row] = record.best;
                     let carrier = rescue_carrier(record.precision_bits);
                     rescued_vanishing[row] = Some((carrier, record.estimate));
                 } else if let Some(reason) = vanishing
                     && !record.served
                     && record.sector == 0
-                    && let Some(bound) = consistent_with_zero(&record)
+                    && consistent_with_zero(&record).is_some()
                 {
                     // Refused by the fast rescue and every earlier carrier of
                     // the lane rescue, and here at the highest precision
                     // tried, with a best value within its own absolute bound
                     // of zero: returned, its accuracy not established.
                     best[row] = record.best;
-                    zero_reason[row] = Some((reason, bound));
+                    zero_reason[row] = Some(reason);
                 } else if !record.served && serve_best && record.sector == 0 {
                     // The engine's numerators live in epsilon sector 0 (the
                     // others are zero, `template`): its best value is the lane's.
@@ -1359,36 +1369,33 @@ where
                     .zip(best)
                     .zip(rescued_vanishing)
                     .zip(zero_reason)
-                    .zip(below_bound)
-                    .map(
-                        |(((((lane, rescued), best), vanishing), zero), below)| match best {
-                            Some(value) if lane.value.is_none() => Outcome {
-                                status: "success".into(),
-                                value: Some(value),
-                                uv: None,
-                                uncertified: vanishing
-                                    .map(|_| UNCERTIFIED_BELOW_RESOLUTION)
-                                    .or(zero.map(|(reason, _)| reason)),
-                                bound: match (vanishing, zero) {
-                                    (Some(_), _) => below,
-                                    (None, Some((_, bound))) => Some(bound),
-                                    (None, None) => None,
-                                },
-                                rescued: vanishing,
-                            },
-                            _ => Outcome {
-                                status: lane
-                                    .status
-                                    .strip_prefix("epsilon sector 0: ")
-                                    .map_or(lane.status.clone(), str::to_owned),
-                                value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
-                                uv: None,
-                                rescued,
-                                uncertified: None,
-                                bound: None,
-                            },
+                    .map(|((((lane, rescued), best), vanishing), zero)| match best {
+                        Some(value) if lane.value.is_none() => Outcome {
+                            status: "success".into(),
+                            value: Some(value),
+                            uv: None,
+                            uncertified: vanishing.map(|_| UNCERTIFIED_BELOW_RESOLUTION).or(zero),
+                            // No check budget from the generic ladder's records:
+                            // its rung bound is formed in f64 (a term modulus
+                            // times 256 can overflow and read as zero) and can
+                            // belong to another rung than the value served.
+                            // The lane is served, its bound unavailable
+                            // (`V2Output::uncertified_bounds`).
+                            bound: None,
+                            rescued: vanishing,
                         },
-                    ),
+                        _ => Outcome {
+                            status: lane
+                                .status
+                                .strip_prefix("epsilon sector 0: ")
+                                .map_or(lane.status.clone(), str::to_owned),
+                            value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
+                            uv: None,
+                            rescued,
+                            uncertified: None,
+                            bound: None,
+                        },
+                    }),
             );
         }
         Ok(outcomes)
@@ -2398,6 +2405,68 @@ mod tests {
             let error = (value.re - truth.re).hypot(value.im - truth.im);
             assert!(error <= bound, "error {error:e} above the bound {bound:e}");
         }
+    }
+
+    /// The external reviewer's generic double-double case: the bubble
+    /// `N = 2^1018 (1 + 2 q0) + i` (true finite part -1.3435472012813139 i)
+    /// comes back from the generic double-double engine at or near zero as
+    /// an uncertified lane, its ladder having reached a rung where a single
+    /// cut's term modulus (4.3e306) times 256 overflows in f64 and the
+    /// record's bound reads zero. No bound is exported for it: a check that
+    /// depends on the lane is inconclusive.
+    #[test]
+    fn a_generic_ladder_lane_exports_no_bound() {
+        let _unlock = pyamplicol::unlock();
+        let dd = |x: f64| DoubleFloat::from(x);
+        let mut generic = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        let bits = generic.precision_bits();
+        let c = |x: f64| Complex::new(dd(x), dd(0.0));
+        let batch = |values: Vec<Complex<DoubleFloat>>, columns| {
+            Batch::typed(values, vec![0], columns, bits).unwrap()
+        };
+        let mut shifts = vec![c(0.0); 8];
+        shifts[4] = c(1.0);
+        let shifts = batch(shifts, 8);
+        let masses = batch(vec![c(4.0), c(4.0)], 2);
+        let scales = batch(vec![c(1.0)], 1);
+        let s_matrix = batch(vec![c(0.0), c(1.0), c(1.0), c(0.0)], 4);
+        let big = 2f64.powi(1018);
+        let mut numerator = vec![c(0.0); ncoeff(1)];
+        numerator[0] = Complex::new(dd(big), dd(1.0));
+        numerator[1] = c(2.0 * big);
+        let coefficients = batch(numerator, ncoeff(1));
+        let group = FamilyGroup {
+            propagators: 2,
+            shifts: &shifts,
+            masses_squared: &masses,
+            scales_squared: &scales,
+            s_matrix: &s_matrix,
+            coefficients: &coefficients,
+        };
+        let options = ReduceOptions {
+            poles: Poles::None,
+            ..ReduceOptions::default()
+        };
+        let output = generic.reduce(&[group], options).unwrap();
+        let status = output.direct[0].statuses()[0].1.clone();
+        let uncertified = output.uncertified.iter().any(|&(g, r, _)| (g, r) == (0, 0));
+        // Whatever the ladder decides, an uncertified lane of the generic
+        // engine carries no check budget, and a served value is never a
+        // certified success unless it is right.
+        assert!(
+            output.uncertified_bounds.is_empty(),
+            "{:?}",
+            output.uncertified_bounds
+        );
+        if status == "success" && !uncertified {
+            let value = dd_finite(output.direct[0].values().unwrap().data());
+            assert!(
+                (value.im + 1.3435472012813139).abs() <= 1e-12 && value.re.abs() <= 1e-12,
+                "a certified success {value:?}"
+            );
+        }
+        assert!(credible_bound(1e-300) && !credible_bound(0.0));
+        assert!(!credible_bound(f64::INFINITY) && !credible_bound(1e-310));
     }
 
     #[test]
