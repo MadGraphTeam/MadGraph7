@@ -1538,7 +1538,7 @@ of the initial state, on NinjaRS at every carrier:
 | Check | Born-interfered | Loop-induced | Criterion |
 | --- | --- | --- | --- |
 | poles | every squared-order sector's 1/eps and 1/eps^2 against Catani's operator of the requested corrections (QCD; QED where requested), formed natively | the finiteness probe: the amplitude's poles against the row term floor S_k(h) (the pre-cancellation scale) | binary64 with the recommended checks: \|pole - Catani\| <= 10 E + 1e-12 \|Catani\|; double-double: 1e-12 relative; finiteness: within 10 x its own estimate |
-| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 E with E <= 1e-9 S (scope); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
+| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 max(E, n u S) with E <= 1e-9 S (scope; n u S: the binary64 resolution of a sum of the evaluation's n reduction lanes, u = 2^-53, since the reduction-direction estimate does not see the binary64 numerators' rounding); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
 | goldstone | not applicable (the probe is amplitude-level) | k.A(V) = eta M_V A(G) on one leg of every massive-vector species with a Goldstone partner, in 't Hooft-Feynman gauge | within 10 x its estimate |
 
 `--precision auto` (default) runs binary64 first and double-double only for a

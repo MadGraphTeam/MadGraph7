@@ -66,7 +66,16 @@ the largest physical component magnitude over the sectors
   Ward evaluation itself from the reduction-direction check
   (``REDUCTION``), is within O1's binary64 scope, E_k <= 1e-9 x scale_k;
   |V_k| <= max(1e-12 x scale_k, E_k) (rule 2, ``BINARY64_FLOOR``); and
-  |V_k| <= 10 E_k (rule 3, the 10x rule). A gauge violation does not
+  |V_k| <= 10 max(E_k, F_k) (rule 3, the 10x rule), with F_k = n u x
+  scale_k the binary64 resolution of the checked quantity: the standard
+  bound of a sum of the evaluation's n reduction lanes, formed from binary64
+  inputs of at most the physical scale, at the unit roundoff u = 2^-53
+  (``RESOLUTION_UNITS``). The direction check compares two reductions of the
+  SAME binary64 numerator coefficients, so it never sees their rounding;
+  where NinjaRS's cancellation rescue re-reduces the vanishing Ward lanes in
+  double-double in both frames, E_k falls to ~1e-30 x scale_k while the
+  residue keeps the inputs' ~1e-16 to 3e-15 x scale_k, as before the rescue
+  (g g > g g); below F_k the estimate is not read. A gauge violation does not
   depend on the reduction frame, so the estimate does not cover it. A
   rotation check is no rounding estimate here: the substituted leg's bra
   sums over its helicities against a helicity-independent ket, so each
@@ -100,6 +109,9 @@ VIRTUAL_BOUNDS = {"double-double": 1e-25}
 ESTIMATE_FACTOR = 10
 BINARY64_SCOPE = 1e-9
 BINARY64_FLOOR = 1e-12
+# The unit roundoff per carrier of rule 3's resolution floor F_k (module
+# docstring).
+RESOLUTION_UNITS = {"double": 2.0**-53, "double-double": 2.0**-104}
 # The stability check the binary64 criterion reads.
 WARD_CHECKS = StabilityChecks(reduction_direction=True)
 
@@ -278,7 +290,8 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
     the Ward value, ``carrier`` "double" or "double-double". Returns the
     ratios to the physical scale (per Laurent coefficient, the largest over
     the sectors), the binary64 estimate's (E_k / scale_k, None without
-    checks) with |V_k| / E_k (``estimate_over``, rule 3) and, in binary64,
+    checks) with |V_k| / max(E_k, F_k) (``estimate_over``, rule 3; F_k /
+    scale_k is ``resolution``) and, in binary64,
     |V_k| / max(1e-12 scale_k, E_k) (``o1_over``, rule 2), the Born ratio
     and ``passed`` (None: binary64 without checks)."""
 
@@ -315,19 +328,25 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
             "rotation check is no rounding estimate of a Ward evaluation)"
         )
     if estimate is not None:
-        # Per coefficient, the largest E_k / scale_k and |V_k| / E_k over the
-        # sectors.
+        # Per coefficient, the largest E_k / scale_k and |V_k| / max(E_k,
+        # F_k) over the sectors (F_k: the resolution floor of rule 3).
         absolute = {
             sector: [abs(float(x)) for x in estimate.absolute[sector].coefficients]
             for sector in virtual
         }
+        lanes = max(1, len(getattr(result, "families", None) or ()))
+        floor = [lanes * RESOLUTION_UNITS[carrier] * scale[k] for k in range(width)]
         row["estimate"] = [
             _ratio(max(absolute[sector][k] for sector in virtual), scale[k])
             for k in range(width)
         ]
+        row["resolution"] = [_ratio(floor[k], scale[k]) for k in range(width)]
         row["estimate_over"] = [
             max(
-                _ratio(abs(complex(laurent.coefficients[k])), absolute[sector][k])
+                _ratio(
+                    abs(complex(laurent.coefficients[k])),
+                    max(absolute[sector][k], floor[k]),
+                )
                 for sector, laurent in virtual.items()
             )
             for k in range(width)
@@ -428,6 +447,7 @@ __all__ = [
     "BORN_BOUNDS",
     "ESTIMATE_FACTOR",
     "PARTS",
+    "RESOLUTION_UNITS",
     "VIRTUAL_BOUNDS",
     "WARD_CHECKS",
     "WARD_FACTORS",
