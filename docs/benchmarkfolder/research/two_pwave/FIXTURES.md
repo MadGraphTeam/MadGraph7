@@ -161,4 +161,40 @@ Up to N = 4 the two loop directions agree to 1e-12. With the cache off the range
 - **Results depend on earlier calls**, also with `cache_enabled=.false.`. `replay_arrays.f90` replays records through the DP entry and prints their arrays. In `data/pairs_gg_chic0_chic0_632ed10.txt`, record 13 (a QQgQgg hexagon, rank 6, powers (1,1,1,2,1,2)) gives an array 0.77 away from its result alone when record 9 (a ggQgQQ hexagon with the same powers) runs before it. In MadLoop, six of the eight calls sampled there return arrays O(1) away from the same inputs replayed alone.
 - **Results depend on the line order.** Records 5 and 7 are the same six lines (shifts, masses and powers) in the order of each pass: a QQQgQg hexagon, rank 5, powers (1,1,1,1,1,2). Replayed alone, they differ by 1.5, with either check-pass flag.
 
-Over the whole point, 97 calls of CTModeRun 1 differ by more than 1e-6 from the CTModeRun 2 call with the same set of lines, and 79 by more than 0.1. All have five or six lines, which matches the split by N. The scalar coefficient (rank 0, all four slots) agrees between the passes and between repeats for all 719 distinct integrals; only the higher tensor coefficients differ. The lists are in `data/state_gg_chic0_chic0_632ed10.json`. Reported to TIRust on 2026-11-24. Which arrays are right, and whether 1/ε reaches 23.232 once they are consistent, is not checked.
+Over the whole point, 97 calls of CTModeRun 1 differ by more than 1e-6 from the CTModeRun 2 call with the same set of lines, and 79 by more than 0.1. All have five or six lines, which matches the split by N. The scalar coefficient (rank 0, all four slots) agrees between the passes and between repeats for all 719 distinct integrals; only the higher tensor coefficients differ. The lists are in `data/state_gg_chic0_chic0_632ed10.json`. Reported to TIRust on 2026-11-24. On 08cca00 all three problems are gone (next paragraph).
+
+**g g → χ_c0 χ_c0 on TIRust 08cca00** (bridge v8 28f89b1f, poles-only patch cd6a21c1, local on 632ed10, not pushed). 08cca00 fixes two defects of TIRust's direct engine that the dumps above showed:
+- **A missing term.** A partial fraction that holds a line raised by another set dropped that line's term at nonzero Taylor order. A hexagon takes the first set it holds, so the result followed the line order.
+- **Stale orders.** A lightlike bubble that holds one of several jet variables kept the other variables' orders from the previous call.
+
+At 20 GeV, point 0, in DP (`data/qp_gg_chic0_chic0_08cca00.json`):
+
+| | CTModeRun 1 | CTModeRun 2 | predicted |
+|---|---|---|---|
+| 1/ε² per Born | −5.99999999997 | −6.0000000001 | −6 |
+| 1/ε per Born | 23.23247964008 | 23.23247953233 | 23.23247950875 |
+| relative error of 1/ε | 5.7e-9 | 1.0e-9 | |
+| finite part per Born·α_s/2π | 259.45055952 | 259.45055414 | |
+
+Both passes return code 110 with no refusal. The finite parts agree to 2.1e-8. By loop size (1/ε per Born against the counterterm-only run, which gives −23.3653283640):
+
+| N | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|
+| CTModeRun 1 | +6.248957622 | +0.402553115 | +134.158987771 | −63.303770804 | −30.908919700 |
+| CTModeRun 2 | +6.248957622 | +0.402553115 | +134.158987770 | −63.303770806 | −30.908919805 |
+
+The numbers are the same with TIRust's cache on and off, and the ranges add up to the full result. On 632ed10, CTModeRun 2 already had the right N = 5 sum, and both passes were wrong at N = 6.
+
+The dumps of `fixtures.py` (with and without the cache) give:
+- **Cache.** The two dumps are identical for all 6960 raised-power calls.
+- **Passes.** Each CTModeRun 1 call was compared with the CTModeRun 2 call with the same set of lines. They agree to at most 1.2e-8, and none is above 1e-6 (97 on 632ed10).
+- **Changes from 632ed10.** Against its dump without the cache, 100 arrays changed: 56 in CTModeRun 1 and 44 in CTModeRun 2, by 8.6e-5 to 1.4e4 relative to their largest entry. All of them have five or six lines, with two raised lines or a doubled hexagon. The scalars agree, as before.
+
+`replay_arrays.f90` on `data/pairs_gg_chic0_chic0_632ed10.txt`:
+- All 32 records give the same array in sequence as alone.
+- Record 13 after record 9 equals record 13 alone.
+- The two passes of each pair agree to 3.2e-9 or better (records 5 and 7: 4.2e-14).
+
+The 97 and 52 replays are byte for byte those of 632ed10. e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) is bit-identical to 632ed10, and the 16 `pw_check.py` cases are bit-identical too. The lists are in `data/state_gg_chic0_chic0_08cca00.json`. Reported to TIRust on 2026-11-24.
+
+Not yet checked for g g: other points and energies, quadruple precision (CTModeRun 4 and 5, about 73 minutes a pass), and the stability test (CTModeRun −1).

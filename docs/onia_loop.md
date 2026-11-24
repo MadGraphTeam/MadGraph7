@@ -57,12 +57,12 @@ included. Their virtual needs TIRust integrals with two dotted propagators:
   hs/pwave-two-dotted, not yet in MadGraph); see Validation below.
 - **g g > chic0 chic0.** It also needs unit-power boxes, pentagons and
   hexagons whose heavy-quark propagators are linearly dependent at the two
-  thresholds. The TIRust candidate 632ed10 serves every integral of that
-  process, and the 1/eps^2 is as predicted. The 1/eps is still wrong, and
-  the two loop directions disagree. In that candidate the tensor
-  coefficients of five- and six-line raised-power integrals depend on the
-  cache, on earlier calls and on the order of the lines
-  (`research/two_pwave/FIXTURES.md`).
+  thresholds. The TIRust candidate 08cca00 serves every integral of that
+  process. At 20 GeV, both poles are as predicted: 1/eps to 6e-9 in either
+  loop direction. The finite parts of the two directions agree to 2e-8
+  (`research/two_pwave/FIXTURES.md`). Earlier candidates gave tensor
+  coefficients of five- and six-line raised-power integrals that depended
+  on the cache, on earlier calls and on the order of the lines.
 
 Such outputs are built with the medium code model on x86-64, since their loop
 arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the

@@ -1,0 +1,1925 @@
+{
+ "point": {
+  "sqrt_s": 20.0,
+  "index": 0,
+  "seed": 1,
+  "momenta_hex": [
+   [
+    "0x1.4000000000000p+3",
+    "0x0.0p+0",
+    "0x0.0p+0",
+    "0x1.4000000000000p+3"
+   ],
+   [
+    "0x1.4000000000000p+3",
+    "0x0.0p+0",
+    "0x0.0p+0",
+    "-0x1.4000000000000p+3"
+   ],
+   [
+    "0x1.3ffffffffffffp+3",
+    "0x1.e2fb56247673bp+2",
+    "-0x1.2541aee163b5ap+2",
+    "-0x1.c384084d604c8p+1"
+   ],
+   [
+    "0x1.3ffffffffffffp+3",
+    "-0x1.e2fb56247673bp+2",
+    "0x1.2541aee163b5ap+2",
+    "0x1.c384084d604c8p+1"
+   ]
+  ]
+ },
+ "build": "TIRust 08cca00 (08cca0085f1e2ca31eaf48d5fe8cfc3722dbf12a) + bridge v8 (28f89b1f), poles-only 0001 cd6a21c1, oneloop cdbc912",
+ "prediction": {
+  "single_per_born": 23.23247950875483,
+  "double_per_born": -6.0
+ },
+ "dumps": {
+  "cache_on": "/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/twop9/fx/fx_gg_08cca00.json.gz",
+  "cache_off": "/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/twop9/fx/fx_gg_08cca00_nocache.json.gz",
+  "calls_per_pass": 3480,
+  "refused": 0
+ },
+ "cache_on_vs_off_arrays_differing": 0,
+ "pass1_vs_pass2_same_lines_cache_off": {
+  "paired": 3480,
+  "max_rel": 1.1579849022800114e-08,
+  "above": {
+   "1e-14": 989,
+   "1e-12": 167,
+   "1e-10": 81,
+   "1e-08": 8,
+   "1e-06": 0
+  }
+ },
+ "arrays_changed_from_632ed10_cache_off": {
+  "count": 100,
+  "by_pass": {
+   "1": 56,
+   "2": 44
+  },
+  "all_n5_or_n6": true,
+  "calls": [
+   {
+    "call": 2932,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 14356.123596573712,
+    "pass": 1
+   },
+   {
+    "call": 2958,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 14356.123596573712,
+    "pass": 1
+   },
+   {
+    "call": 2933,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 5247.927786896306,
+    "pass": 2
+   },
+   {
+    "call": 2959,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 5247.927786896306,
+    "pass": 2
+   },
+   {
+    "call": 2920,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 3910.951273839137,
+    "pass": 1
+   },
+   {
+    "call": 3035,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 3910.951273839137,
+    "pass": 1
+   },
+   {
+    "call": 2974,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 1008.50924444916,
+    "pass": 1
+   },
+   {
+    "call": 3056,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 1008.50924444916,
+    "pass": 1
+   },
+   {
+    "call": 3041,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 617.181804815285,
+    "pass": 2
+   },
+   {
+    "call": 2552,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 389.69000454111165,
+    "pass": 2
+   },
+   {
+    "call": 2524,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "QQggg",
+    "rel": 323.24555738301797,
+    "pass": 1
+   },
+   {
+    "call": 2614,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "QQggg",
+    "rel": 323.24555738301797,
+    "pass": 1
+   },
+   {
+    "call": 2925,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 249.42339399715271,
+    "pass": 2
+   },
+   {
+    "call": 2936,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 198.98084314452,
+    "pass": 2
+   },
+   {
+    "call": 2927,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 134.95297678251555,
+    "pass": 2
+   },
+   {
+    "call": 2953,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 134.95297678251555,
+    "pass": 2
+   },
+   {
+    "call": 2915,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 128.51233517440195,
+    "pass": 2
+   },
+   {
+    "call": 3030,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 128.51233517440195,
+    "pass": 2
+   },
+   {
+    "call": 1950,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "gQgQQg",
+    "rel": 110.2393985800027,
+    "pass": 2
+   },
+   {
+    "call": 1768,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQQQ",
+    "rel": 90.6861987407975,
+    "pass": 1
+   },
+   {
+    "call": 1867,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQQQ",
+    "rel": 90.6861987407975,
+    "pass": 1
+   },
+   {
+    "call": 2523,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgggQ",
+    "rel": 80.7495669517228,
+    "pass": 2
+   },
+   {
+    "call": 1961,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "ggQgQQ",
+    "rel": 66.05118087646576,
+    "pass": 1
+   },
+   {
+    "call": 1951,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     2,
+     1,
+     1
+    ],
+    "lines": "gQgQQg",
+    "rel": 51.50820190071351,
+    "pass": 2
+   },
+   {
+    "call": 1785,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "ggQgQQ",
+    "rel": 42.15145533177073,
+    "pass": 1
+   },
+   {
+    "call": 1742,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "ggQQg",
+    "rel": 41.96044812852573,
+    "pass": 2
+   },
+   {
+    "call": 1809,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "ggQQgQ",
+    "rel": 33.46008780036025,
+    "pass": 1
+   },
+   {
+    "call": 2966,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 31.753881584400148,
+    "pass": 2
+   },
+   {
+    "call": 3048,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQQgQ",
+    "rel": 31.753881584400148,
+    "pass": 2
+   },
+   {
+    "call": 2551,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 29.04257103361769,
+    "pass": 2
+   },
+   {
+    "call": 1806,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "gQgQQg",
+    "rel": 21.868265530757593,
+    "pass": 2
+   },
+   {
+    "call": 2925,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 19.750099912067654,
+    "pass": 1
+   },
+   {
+    "call": 1946,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "gQgQQg",
+    "rel": 19.175019842386828,
+    "pass": 2
+   },
+   {
+    "call": 1957,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "ggQgQQ",
+    "rel": 16.310606101481905,
+    "pass": 1
+   },
+   {
+    "call": 1767,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "gQQQg",
+    "rel": 12.024694997783344,
+    "pass": 2
+   },
+   {
+    "call": 1866,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "gQQQg",
+    "rel": 12.024694997783344,
+    "pass": 2
+   },
+   {
+    "call": 2962,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 11.3411711808081,
+    "pass": 1
+   },
+   {
+    "call": 2565,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 8.349219830708156,
+    "pass": 2
+   },
+   {
+    "call": 2598,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QggQgQ",
+    "rel": 7.195193480435294,
+    "pass": 2
+   },
+   {
+    "call": 2601,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QggQgQ",
+    "rel": 6.355435495035468,
+    "pass": 2
+   },
+   {
+    "call": 3040,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 5.762643068430819,
+    "pass": 1
+   },
+   {
+    "call": 2936,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 5.608640066529613,
+    "pass": 1
+   },
+   {
+    "call": 2933,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 4.943268470053831,
+    "pass": 1
+   },
+   {
+    "call": 2959,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 4.943268470053831,
+    "pass": 1
+   },
+   {
+    "call": 2609,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QggQgQ",
+    "rel": 3.8293083730003192,
+    "pass": 2
+   },
+   {
+    "call": 2973,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 3.247370067306022,
+    "pass": 1
+   },
+   {
+    "call": 3055,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 3.247370067306022,
+    "pass": 1
+   },
+   {
+    "call": 2918,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 3.0782775572111767,
+    "pass": 1
+   },
+   {
+    "call": 2651,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QggQgQ",
+    "rel": 3.070869191028722,
+    "pass": 2
+   },
+   {
+    "call": 2659,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QggQgQ",
+    "rel": 3.070869191028722,
+    "pass": 2
+   },
+   {
+    "call": 2549,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 2.4954173861675937,
+    "pass": 2
+   },
+   {
+    "call": 1808,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "ggQQgQ",
+    "rel": 1.8933004278657155,
+    "pass": 1
+   },
+   {
+    "call": 1789,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "ggQgQQ",
+    "rel": 1.8733141776223712,
+    "pass": 1
+   },
+   {
+    "call": 1743,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQQg",
+    "rel": 1.6289570421092117,
+    "pass": 1
+   },
+   {
+    "call": 1889,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQQg",
+    "rel": 1.6289570421092117,
+    "pass": 1
+   },
+   {
+    "call": 2546,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "QQggQ",
+    "rel": 1.5569855827359507,
+    "pass": 1
+   },
+   {
+    "call": 2631,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "QQggQ",
+    "rel": 1.5569855827359507,
+    "pass": 1
+   },
+   {
+    "call": 2896,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQQgQg",
+    "rel": 1.5038963116568504,
+    "pass": 1
+   },
+   {
+    "call": 2902,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQQgQg",
+    "rel": 1.5038963116568504,
+    "pass": 1
+   },
+   {
+    "call": 2905,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQQgQg",
+    "rel": 1.4980335921761903,
+    "pass": 1
+   },
+   {
+    "call": 2908,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQQgQg",
+    "rel": 1.4980335921761903,
+    "pass": 1
+   },
+   {
+    "call": 1785,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     1,
+     1
+    ],
+    "lines": "gQQgQg",
+    "rel": 0.8109328311425323,
+    "pass": 2
+   },
+   {
+    "call": 1852,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQQg",
+    "rel": 0.6997143895066816,
+    "pass": 1
+   },
+   {
+    "call": 2589,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "QQggQg",
+    "rel": 0.6111193243469113,
+    "pass": 1
+   },
+   {
+    "call": 1789,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "gQQgQg",
+    "rel": 0.5850163890105996,
+    "pass": 2
+   },
+   {
+    "call": 2567,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "QQggQg",
+    "rel": 0.42785124388211576,
+    "pass": 1
+   },
+   {
+    "call": 2588,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.42412079581852974,
+    "pass": 2
+   },
+   {
+    "call": 2904,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQgQQ",
+    "rel": 0.31825264959495125,
+    "pass": 2
+   },
+   {
+    "call": 2907,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQgQQ",
+    "rel": 0.31825264959495125,
+    "pass": 2
+   },
+   {
+    "call": 1957,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     1,
+     1
+    ],
+    "lines": "gQQgQg",
+    "rel": 0.3101810770348329,
+    "pass": 2
+   },
+   {
+    "call": 2895,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQgQQ",
+    "rel": 0.29674530734492666,
+    "pass": 2
+   },
+   {
+    "call": 2901,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQgQQ",
+    "rel": 0.29674530734492666,
+    "pass": 2
+   },
+   {
+    "call": 2930,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.24316170595894915,
+    "pass": 1
+   },
+   {
+    "call": 1816,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     1,
+     2
+    ],
+    "lines": "ggQQgQ",
+    "rel": 0.2012638282499703,
+    "pass": 1
+   },
+   {
+    "call": 2557,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.13676316782572753,
+    "pass": 2
+   },
+   {
+    "call": 2575,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.13676316782572753,
+    "pass": 2
+   },
+   {
+    "call": 2566,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.09762622053222174,
+    "pass": 2
+   },
+   {
+    "call": 1794,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "gQggQg",
+    "rel": 0.08191413982661672,
+    "pass": 2
+   },
+   {
+    "call": 2540,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "QQggQ",
+    "rel": 0.06938130488357168,
+    "pass": 1
+   },
+   {
+    "call": 2619,
+    "n": 5,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "QQggQ",
+    "rel": 0.06938130488357168,
+    "pass": 1
+   },
+   {
+    "call": 2558,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "QQggQg",
+    "rel": 0.026815769277952158,
+    "pass": 1
+   },
+   {
+    "call": 2576,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "QQggQg",
+    "rel": 0.026815769277952158,
+    "pass": 1
+   },
+   {
+    "call": 2568,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.016828245038467898,
+    "pass": 2
+   },
+   {
+    "call": 1966,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     2,
+     2,
+     1
+    ],
+    "lines": "gQggQg",
+    "rel": 0.012366642830147627,
+    "pass": 2
+   },
+   {
+    "call": 2915,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.009243668558110218,
+    "pass": 1
+   },
+   {
+    "call": 3030,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.009243668558110218,
+    "pass": 1
+   },
+   {
+    "call": 1973,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQggQ",
+    "rel": 0.008815538764419845,
+    "pass": 1
+   },
+   {
+    "call": 2927,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.007950688645562712,
+    "pass": 1
+   },
+   {
+    "call": 2953,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.007950688645562712,
+    "pass": 1
+   },
+   {
+    "call": 1793,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "ggQggQ",
+    "rel": 0.007349836402924216,
+    "pass": 1
+   },
+   {
+    "call": 1965,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     2
+    ],
+    "lines": "ggQggQ",
+    "rel": 0.007062261299311445,
+    "pass": 1
+   },
+   {
+    "call": 2582,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     1,
+     2,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.003569909763195079,
+    "pass": 2
+   },
+   {
+    "call": 2966,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.0030233825108444672,
+    "pass": 1
+   },
+   {
+    "call": 3048,
+    "n": 6,
+    "rank": 5,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     1
+    ],
+    "lines": "QQgQQg",
+    "rel": 0.0030233825108444672,
+    "pass": 1
+   },
+   {
+    "call": 1801,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     1,
+     1,
+     2,
+     2
+    ],
+    "lines": "ggQggQ",
+    "rel": 0.0028298461613274492,
+    "pass": 1
+   },
+   {
+    "call": 2583,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     2,
+     1,
+     2,
+     1,
+     1
+    ],
+    "lines": "QgQggQ",
+    "rel": 0.0017236228120899007,
+    "pass": 2
+   },
+   {
+    "call": 2700,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQgQgg",
+    "rel": 0.00023816730316300407,
+    "pass": 1
+   },
+   {
+    "call": 2705,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     1,
+     2
+    ],
+    "lines": "QQgQgg",
+    "rel": 0.00023816730316300407,
+    "pass": 1
+   },
+   {
+    "call": 2699,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQgg",
+    "rel": 8.57848705008829e-05,
+    "pass": 1
+   },
+   {
+    "call": 2704,
+    "n": 6,
+    "rank": 6,
+    "powers": [
+     1,
+     1,
+     2,
+     1,
+     2,
+     1
+    ],
+    "lines": "QQgQgg",
+    "rel": 8.57848705008829e-05,
+    "pass": 1
+   }
+  ]
+ },
+ "nrange_split": {
+  "cache_on_m1_0_0": {
+   "mode": "1",
+   "nrange": "0 0",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_on_m1_0_99": {
+   "mode": "1",
+   "nrange": "0 99",
+   "single_norm": 23.23247964007972,
+   "double_norm": -5.999999999974394,
+   "finite_norm": 259.450559522873,
+   "ret_code": 110
+  },
+  "cache_on_m1_1_1": {
+   "mode": "1",
+   "nrange": "1 1",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_on_m1_2_2": {
+   "mode": "1",
+   "nrange": "2 2",
+   "single_norm": -17.116370741805014,
+   "double_norm": 0.0,
+   "finite_norm": -27.833871811756882,
+   "ret_code": 110
+  },
+  "cache_on_m1_3_3": {
+   "mode": "1",
+   "nrange": "3 3",
+   "single_norm": -22.962775248589313,
+   "double_norm": -1.1954373827427278,
+   "finite_norm": 1854.2967206802514,
+   "ret_code": 110
+  },
+  "cache_on_m1_4_4": {
+   "mode": "1",
+   "nrange": "4 4",
+   "single_norm": 110.79365940649878,
+   "double_norm": -1.2241525084589195,
+   "finite_norm": 2553.9203182041747,
+   "ret_code": 110
+  },
+  "cache_on_m1_5_5": {
+   "mode": "1",
+   "nrange": "5 5",
+   "single_norm": -86.66909916852526,
+   "double_norm": 0.7772146977054506,
+   "finite_norm": 1488.5120938227797,
+   "ret_code": 110
+  },
+  "cache_on_m1_6_6": {
+   "mode": "1",
+   "nrange": "6 6",
+   "single_norm": -54.2742480636096,
+   "double_norm": -4.3576248064782,
+   "finite_norm": 1800.6115046289217,
+   "ret_code": 110
+  },
+  "cache_on_m2_0_0": {
+   "mode": "2",
+   "nrange": "0 0",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_on_m2_0_99": {
+   "mode": "2",
+   "nrange": "0 99",
+   "single_norm": 23.232479532332192,
+   "double_norm": -6.000000000129506,
+   "finite_norm": 259.4505541449542,
+   "ret_code": 110
+  },
+  "cache_on_m2_1_1": {
+   "mode": "2",
+   "nrange": "1 1",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_on_m2_2_2": {
+   "mode": "2",
+   "nrange": "2 2",
+   "single_norm": -17.116370741805024,
+   "double_norm": 0.0,
+   "finite_norm": -27.83387181175672,
+   "ret_code": 110
+  },
+  "cache_on_m2_3_3": {
+   "mode": "2",
+   "nrange": "3 3",
+   "single_norm": -22.96277524859178,
+   "double_norm": -1.1954373827427294,
+   "finite_norm": 1854.2967206802584,
+   "ret_code": 110
+  },
+  "cache_on_m2_4_4": {
+   "mode": "2",
+   "nrange": "4 4",
+   "single_norm": 110.79365940626579,
+   "double_norm": -1.2241525084588578,
+   "finite_norm": 2553.9203180052896,
+   "ret_code": 110
+  },
+  "cache_on_m2_5_5": {
+   "mode": "2",
+   "nrange": "5 5",
+   "single_norm": -86.66909917041049,
+   "double_norm": 0.7772146977064315,
+   "finite_norm": 1488.512094092291,
+   "ret_code": 110
+  },
+  "cache_on_m2_6_6": {
+   "mode": "2",
+   "nrange": "6 6",
+   "single_norm": -54.274248169236515,
+   "double_norm": -4.357624806634353,
+   "finite_norm": 1800.6114991803693,
+   "ret_code": 110
+  },
+  "cache_off_m1_0_0": {
+   "mode": "1",
+   "nrange": "0 0",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_off_m1_0_99": {
+   "mode": "1",
+   "nrange": "0 99",
+   "single_norm": 23.23247964007972,
+   "double_norm": -5.999999999974394,
+   "finite_norm": 259.450559522873,
+   "ret_code": 110
+  },
+  "cache_off_m1_1_1": {
+   "mode": "1",
+   "nrange": "1 1",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_off_m1_2_2": {
+   "mode": "1",
+   "nrange": "2 2",
+   "single_norm": -17.116370741805014,
+   "double_norm": 0.0,
+   "finite_norm": -27.833871811756882,
+   "ret_code": 110
+  },
+  "cache_off_m1_3_3": {
+   "mode": "1",
+   "nrange": "3 3",
+   "single_norm": -22.962775248589313,
+   "double_norm": -1.1954373827427278,
+   "finite_norm": 1854.2967206802514,
+   "ret_code": 110
+  },
+  "cache_off_m1_4_4": {
+   "mode": "1",
+   "nrange": "4 4",
+   "single_norm": 110.79365940649878,
+   "double_norm": -1.2241525084589195,
+   "finite_norm": 2553.9203182041747,
+   "ret_code": 110
+  },
+  "cache_off_m1_5_5": {
+   "mode": "1",
+   "nrange": "5 5",
+   "single_norm": -86.66909916852526,
+   "double_norm": 0.7772146977054506,
+   "finite_norm": 1488.5120938227797,
+   "ret_code": 110
+  },
+  "cache_off_m1_6_6": {
+   "mode": "1",
+   "nrange": "6 6",
+   "single_norm": -54.2742480636096,
+   "double_norm": -4.3576248064782,
+   "finite_norm": 1800.6115046289217,
+   "ret_code": 110
+  },
+  "cache_off_m2_0_0": {
+   "mode": "2",
+   "nrange": "0 0",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_off_m2_0_99": {
+   "mode": "2",
+   "nrange": "0 99",
+   "single_norm": 23.232479532332192,
+   "double_norm": -6.000000000129506,
+   "finite_norm": 259.4505541449542,
+   "ret_code": 110
+  },
+  "cache_off_m2_1_1": {
+   "mode": "2",
+   "nrange": "1 1",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "cache_off_m2_2_2": {
+   "mode": "2",
+   "nrange": "2 2",
+   "single_norm": -17.116370741805024,
+   "double_norm": 0.0,
+   "finite_norm": -27.83387181175672,
+   "ret_code": 110
+  },
+  "cache_off_m2_3_3": {
+   "mode": "2",
+   "nrange": "3 3",
+   "single_norm": -22.96277524859178,
+   "double_norm": -1.1954373827427294,
+   "finite_norm": 1854.2967206802584,
+   "ret_code": 110
+  },
+  "cache_off_m2_4_4": {
+   "mode": "2",
+   "nrange": "4 4",
+   "single_norm": 110.79365940626579,
+   "double_norm": -1.2241525084588578,
+   "finite_norm": 2553.9203180052896,
+   "ret_code": 110
+  },
+  "cache_off_m2_5_5": {
+   "mode": "2",
+   "nrange": "5 5",
+   "single_norm": -86.66909917041049,
+   "double_norm": 0.7772146977064315,
+   "finite_norm": 1488.512094092291,
+   "ret_code": 110
+  },
+  "cache_off_m2_6_6": {
+   "mode": "2",
+   "nrange": "6 6",
+   "single_norm": -54.274248169236515,
+   "double_norm": -4.357624806634353,
+   "finite_norm": 1800.6114991803693,
+   "ret_code": 110
+  }
+ },
+ "pair_replay": {
+  "file": "pairs_gg_chic0_chic0_632ed10.txt",
+  "in_sequence_equals_alone": "32/32 exactly",
+  "record13_after_record9_equals_alone": true,
+  "pass1_vs_pass2_rel": {
+   "2546/2546": 2.52e-15,
+   "2896/2896": 4.19e-14,
+   "1789/1789": 1.12e-10,
+   "2601/2601": 6.26e-16,
+   "1806/1806": 2.82e-15,
+   "1946/1946": 3.19e-09,
+   "1888/1742": 1.39e-15,
+   "2631/2546": 2.52e-15
+  },
+  "note": "check flag 0; with flag 1 the same to within a factor 5"
+ }
+}
