@@ -1409,6 +1409,12 @@ class ProbeResult:
     relative: Mapping[tuple[Orders, rx.Row], tuple[float, float]] = field(
         default_factory=lambda: MappingProxyType({})
     )
+    # Whether a run of the probe (its evaluation or a rotated one) served a
+    # reduction lane without accuracy evidence (``PointResult.
+    # uncertified_bound``): |A|^2 and the amplitude-level residue are not
+    # covered by the lane's bound here (the bound of a product is not formed),
+    # so ``pyamplicol check`` reads such a probe as inconclusive, never a pass.
+    uncertified: bool = False
 
     @property
     def worst(self) -> float:
@@ -1728,12 +1734,16 @@ def probe_results(
                         estimate / size if size else float("inf"),
                     )
             ratios[key] = ratio
+        runs = [evaluation, *rotated[index * stride : (index + 1) * stride]]
         out.append(
             ProbeResult(
                 "ward" if ward is not None else "finiteness",
                 ratios,
                 MappingProxyType(physical),
                 MappingProxyType(relative),
+                uncertified=any(
+                    getattr(run, "uncertified_bound", None) for run in runs
+                ),
             )
         )
     return out
@@ -1967,7 +1977,10 @@ def _fallback(result: Any) -> dict[str, Any]:
 
 
 def _decided(
-    entries: list[dict[str, Any]], outcomes: Sequence[Any], carriers: Sequence[Any]
+    entries: list[dict[str, Any]],
+    outcomes: Sequence[Any],
+    carriers: Sequence[Any],
+    uncertified_fails: bool = False,
 ) -> list[Any]:
     """The verdict of each probe: its result in the first carrier that gave
     a passing one, else in the last carrier that ran it (a refusal text
@@ -1983,7 +1996,13 @@ def _decided(
             entry["refused"] = result
         else:
             entry["worst"] = _short(result.worst)
-            entry["passed"] = result.passed
+            # ``pyamplicol check``: never a pass on a run that served a lane
+            # without accuracy evidence (``ProbeResult.uncertified``).
+            entry["passed"] = result.passed and not (
+                uncertified_fails and result.uncertified
+            )
+            if uncertified_fails and result.uncertified:
+                entry["uncertified"] = True
         fallbacks = [
             {"carrier": carriers[i].arithmetic, **_fallback(run)}
             for i, run in enumerate(runs[:-1])
@@ -2017,6 +2036,7 @@ def point_probes(
     floors: Mapping,
     seconds: dict[str, Any] | None = None,
     improve: Callable[[Any, Any, Any], tuple[Any, str | None]] | None = None,
+    uncertified_escalates: bool = False,
 ) -> tuple[list[dict[str, Any]], list[Any]]:
     """The finiteness probe and the Ward probe of every leg of ``legs``
     (``probe_legs``) at one lifted point (``probe_point``) of a probe
@@ -2031,7 +2051,12 @@ def point_probes(
     finiteness first. ``improve`` (``pyamplicol check``'s rungs only, m-lit
     lit-psimprove (G5); None at generation, whose records are unchanged):
     the point a carrier evaluates and its record's short form, per carrier
-    from the lifted point (each entry's ``"kinematics"``, by carrier)."""
+    from the lifted point (each entry's ``"kinematics"``, by carrier).
+    ``uncertified_escalates`` (``pyamplicol check``): a probe whose run served
+    a reduction lane without accuracy evidence (``ProbeResult.uncertified``)
+    also runs again in the next carrier, and is never recorded as passed
+    (its entry marked ``"uncertified"``); the generation-time probes and
+    their records are unchanged."""
 
     from .ward import gauge_ward
 
@@ -2066,12 +2091,16 @@ def point_probes(
             outcomes[i].append(result)
             # The probes of one pass share its native batches.
             entries[i]["seconds"] = _seconds(entries[i].get("seconds", 0.0) + elapsed)
+        # A probe that served a lane without accuracy evidence is run again
+        # in the next carrier (``ProbeResult.uncertified``).
         pending = [
             i
             for i in pending
-            if isinstance(outcomes[i][-1], str) or not outcomes[i][-1].passed
+            if isinstance(outcomes[i][-1], str)
+            or not outcomes[i][-1].passed
+            or (uncertified_escalates and outcomes[i][-1].uncertified)
         ]
-    return entries, _decided(entries, outcomes, carriers)
+    return entries, _decided(entries, outcomes, carriers, uncertified_escalates)
 
 
 def generation_probes(

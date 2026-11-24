@@ -1218,6 +1218,13 @@ pub struct V2Runtime {
     /// rescue served one of its lanes (`PointResult::rescued`; read by the
     /// stability monitor, `monitor::rescued_estimates`).
     pub(crate) rescued_last: Vec<bool>,
+    /// Per point of the evaluations since [`V2Runtime::take_uncertified`],
+    /// the reasons of its lanes served without accuracy evidence
+    /// (`PointResult::uncertified`, the companion's included), merged over
+    /// every executor call of the same points (a stability check's rotated
+    /// evaluations) and placed at the call's point index across the scale
+    /// partition (`partitioned`).
+    uncertified: Vec<BTreeSet<&'static str>>,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -1467,6 +1474,7 @@ impl V2Runtime {
             rescue_kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
             lane_rescue: crate::reduction_policy::DEFAULT_LANE_RESCUE,
             rescued_last: Vec::new(),
+            uncertified: Vec::new(),
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1741,6 +1749,33 @@ impl V2Runtime {
         }
     }
 
+    /// Merge one executor call's per-point uncertified reasons
+    /// ([`V2Runtime::uncertified`]) at the call's point indices.
+    pub(crate) fn merge_uncertified<'a>(
+        &mut self,
+        points: impl Iterator<Item = impl Iterator<Item = &'static str> + 'a>,
+    ) {
+        for (index, reasons) in points.enumerate() {
+            if self.uncertified.len() <= index {
+                self.uncertified.resize_with(index + 1, BTreeSet::new);
+            }
+            self.uncertified[index].extend(reasons);
+        }
+    }
+
+    /// Per point of the evaluations since the last call (one entry per point
+    /// of the batch; empty: none of its lanes was served without accuracy
+    /// evidence), the reasons of its lanes served without accuracy evidence,
+    /// sorted and distinct: such a point's accuracy is not established (the
+    /// Python API's `VirtualLaneDiagnostic.uncertified`). Taken: the next
+    /// call starts empty.
+    pub fn take_uncertified(&mut self) -> Vec<Vec<&'static str>> {
+        std::mem::take(&mut self.uncertified)
+            .into_iter()
+            .map(|reasons| reasons.into_iter().collect())
+            .collect()
+    }
+
     /// The input checks of a batch and its evaluation, per exact `mu_R²`
     /// where the model needs it (`partitions`).
     fn partitioned<P>(
@@ -1770,15 +1805,25 @@ impl V2Runtime {
             parts[part].1.push(index);
         }
         let mut out: Vec<Option<P>> = (0..momenta.len()).map(|_| None).collect();
+        // The parts' uncertified lanes at the call's point indices.
+        let mut uncertified = std::mem::take(&mut self.uncertified);
         for (scale, indices) in parts {
             let part_momenta: Vec<Vec<Rational>> =
                 indices.iter().map(|&i| momenta[i].clone()).collect();
             let part_scales = vec![scale.clone(); indices.len()];
             let points = batch(self, &part_momenta, &part_scales)?;
+            let part = std::mem::take(&mut self.uncertified);
+            for (&index, reasons) in indices.iter().zip(part) {
+                if uncertified.len() <= index {
+                    uncertified.resize_with(index + 1, BTreeSet::new);
+                }
+                uncertified[index].extend(reasons);
+            }
             for (index, point) in indices.into_iter().zip(points) {
                 out[index] = Some(point);
             }
         }
+        self.uncertified = uncertified;
         Ok(out
             .into_iter()
             .map(|point| point.expect("every point is in one part"))
@@ -2355,6 +2400,13 @@ impl V2Runtime {
                         .is_some_and(|twin| served(&twin[index]))
             })
             .collect();
+        self.merge_uncertified(results.iter().enumerate().map(|(index, result)| {
+            result.uncertified.iter().map(|(_, reason)| *reason).chain(
+                twin_results
+                    .iter()
+                    .flat_map(move |twin| twin[index].uncertified.iter().map(|(_, r)| *r)),
+            )
+        }));
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);

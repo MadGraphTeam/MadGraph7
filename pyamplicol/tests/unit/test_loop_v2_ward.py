@@ -115,7 +115,11 @@ def test_ward_identity_on_native_inputs(slices, name):
     the first legacy point: the binary64 virtual at most 1.6e-15 (g g > g g)
     and 6.0e-13 (u u~ > g g g) of the physical scale, within 1.5 and 0.8
     times its estimate; double-double 1.8e-31 and 1.7e-28; the Born ratio
-    below 3e-17 (binary64) and 3e-33 (double-double)."""
+    below 3e-17 (binary64) and 3e-33 (double-double). In double-double the
+    generic engine serves some vanishing Ward lanes below the resolution of
+    their own terms, uncertified and with no bound (its ladder's records
+    give no check budget): such a row is INCONCLUSIVE, never a pass, and
+    every other row passes; binary64 decides every row."""
 
     slice_ = slices(name)
     legs = DEFAULT[name][3]
@@ -129,7 +133,15 @@ def test_ward_identity_on_native_inputs(slices, name):
         assert [(row["leg"], row["factor"]) for row in check["rows"]] == [
             (leg, factor) for leg in legs for factor in ward.WARD_FACTORS
         ]
-        assert check["passed"] is True, (carrier, check["rows"])
+        if carrier == "double":
+            assert check["passed"] is True, (carrier, check["rows"])
+            continue
+        for row in check["rows"]:
+            assert row["passed"] is True or (
+                row["passed"] is None
+                and "without accuracy evidence" in row["inconclusive"]
+            ), (carrier, row)
+        assert any(row["passed"] is True for row in check["rows"]), check["rows"]
 
 
 @pytest.mark.parametrize("name", tuple(DEFAULT))
@@ -323,6 +335,97 @@ def test_ward_criterion_applies_the_o1_rule():
         result = point(virtual, scale=(1.0, 0.0))
         row = ward.ward_row(unscaled, result, "double-double")
         assert row["passed"] is passed
+
+
+def test_ward_criterion_reads_the_uncertified_lanes_bound():
+    """``ward.ward_row`` with lanes served without accuracy evidence
+    (``PointResult.uncertified_bound``, scale 1, one sector):
+
+    * the external reviewer's case: the fast engine's bubble
+      ``N = 2^400 (1 + 2 q0) + i`` serves an exact zero, uncertified, in the
+      direct and the reversed frame (estimate 1e-30) while its true finite
+      part has |Im| = 1.3435472012813139; its bound (2^300 of the bubble's
+      terms, ``v2_reduce::tests::a_vanishing_lane_carries_a_bound_that_
+      covers_its_true_value``) makes the row inconclusive, never a pass,
+      while the true value fails it;
+    * a physical vanishing Ward lane, bound 1e-30 of the scale: passes;
+    * a bound straddling the criterion, or infinite (a lane of the generic
+      engine's ladder, which exports no bound: the reviewer's k = 1018
+      bubble, ``v2_reduce::tests::a_generic_ladder_lane_exports_no_bound``):
+      inconclusive;
+    * the physical normalization's own uncertified bound gives the scale an
+      interval: a row passes only if it passes at every scale in it, fails
+      only if it fails at every one (the reviewer's scale 1 +- 2 with a
+      2e-12 residue, 1,000 lanes and E = 1e-30: inconclusive);
+    * double-double keeps its rule 3 (10 E) with no resolution floor."""
+
+    import math
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.stability import REDUCTION
+
+    sector = ("QCD", 6)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def point(virtual, estimate=(1e-30,), bound=None, scale=(1.0,)):
+        components = {name: {sector: laurent(*scale)} for name in COMPONENTS}
+        components["virtual"] = {sector: laurent(*virtual)}
+        stability = SimpleNamespace(
+            budgets={REDUCTION: {}}, absolute={sector: laurent(*estimate)}
+        )
+        return SimpleNamespace(
+            components=components,
+            born={sector: 1.0},
+            loop_born={sector: 0.0},
+            stability=stability,
+            uncertified_bound={} if bound is None else {sector: bound},
+        )
+
+    physical = point((1.0,))
+    wrong = point((0.0,), bound=(2.0**300,))
+    row = ward.ward_row(physical, wrong, "double")
+    assert row["passed"] is None and "inconclusive" in row, row
+    truth = point((1.3435472012813139,))
+    assert ward.ward_row(physical, truth, "double")["passed"] is False
+    # Without the bound the same two matching zeros would pass: the case.
+    assert ward.ward_row(physical, point((0.0,)), "double")["passed"] is True
+    vanishing = point((3e-17,), bound=(1e-30,))
+    assert ward.ward_row(physical, vanishing, "double")["passed"] is True
+    straddling = point((5e-17,), bound=(1e-12,))
+    assert ward.ward_row(physical, straddling, "double")["passed"] is None
+    unbounded = point((0.0,), bound=(math.inf,))
+    assert ward.ward_row(physical, unbounded, "double")["passed"] is None
+    # A violation far above the bound fails whatever the uncertified lanes.
+    violated = point((1e-3,), bound=(1e-10,))
+    assert ward.ward_row(physical, violated, "double")["passed"] is False
+    # The physical normalization's interval (its own uncertified lanes'
+    # bound): the reviewer's case, scale 1 +- 2, residue 2e-12, 1,000 lanes,
+    # E = 1e-30, fails at scale 1 but passes at scale 3: inconclusive.
+    uncertain_scale = point((1.0,), bound=(2.0,))
+    loose = point((2e-12,))
+    loose.families = {k: None for k in range(1000)}
+    assert ward.ward_row(physical, loose, "double")["passed"] is False
+    row = ward.ward_row(uncertain_scale, loose, "double")
+    assert row["passed"] is None and "normalization" in row["inconclusive"], row
+    # A normalization uncertainty that changes no verdict decides it.
+    tight = point((1.0,), bound=(1e-6,))
+    assert ward.ward_row(tight, vanishing, "double")["passed"] is True
+    assert ward.ward_row(tight, violated, "double")["passed"] is False
+    # Double-double: |V| <= 1e-25 and rule 3 at 10 E, no floor.
+    assert (
+        ward.ward_row(physical, point((5e-27,), estimate=(1e-28,)), "double-double")[
+            "passed"
+        ]
+        is False
+    )
+    assert (
+        ward.ward_row(physical, point((5e-27,), estimate=(1e-27,)), "double-double")[
+            "passed"
+        ]
+        is True
+    )
 
 
 # ------------------------------------------------------------ nightly ladder

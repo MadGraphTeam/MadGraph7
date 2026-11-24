@@ -2048,6 +2048,11 @@ pub(crate) struct FallbackPoint {
 pub(crate) struct Fallbacks {
     fallback: Option<String>,
     points: BTreeMap<usize, FallbackPoint>,
+    /// Per index in the batch, the reasons of the point's lanes served
+    /// without accuracy evidence (`V2Runtime::take_uncertified`, of the
+    /// evaluation whose outcome the point keeps: the fallback's for a point
+    /// it served); points without one are absent.
+    uncertified: BTreeMap<usize, Vec<&'static str>>,
 }
 
 impl Fallbacks {
@@ -2072,6 +2077,33 @@ impl Fallbacks {
                 })
                 .collect(),
         )
+    }
+    /// The record of the uncertified points (diagnostics "uncertified"):
+    /// per successful point id with a lane served without accuracy evidence,
+    /// its reasons (sorted, distinct). Such a point has a value and status
+    /// "success", but its accuracy is not established.
+    fn uncertified_record(&self, ids: &[u64], successful: &[u64]) -> serde_json::Value {
+        serde_json::Value::Object(
+            self.uncertified
+                .iter()
+                .filter(|(index, reasons)| {
+                    !reasons.is_empty() && successful.contains(&ids[**index])
+                })
+                .map(|(&index, reasons)| (ids[index].to_string(), serde_json::json!(reasons)))
+                .collect(),
+        )
+    }
+    /// Keep the uncertified reasons of `found` (one entry per point of an
+    /// evaluation) at the batch indices `indices` (None: the point's own).
+    fn keep_uncertified(&mut self, found: Vec<Vec<&'static str>>, indices: Option<&[usize]>) {
+        for (local, reasons) in found.into_iter().enumerate() {
+            let index = indices.map_or(local, |indices| indices[local]);
+            if reasons.is_empty() {
+                self.uncertified.remove(&index);
+            } else {
+                self.uncertified.insert(index, reasons);
+            }
+        }
     }
     /// The indices of the points the fallback served.
     fn served(&self) -> impl Iterator<Item = (usize, &str)> {
@@ -2130,7 +2162,15 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     arithmetic: Arithmetic,
     mut evaluate: impl FnMut(&mut V2Runtime, Option<&[usize]>) -> RusticolResult<Vec<P>>,
 ) -> RusticolResult<(Vec<P>, Fallbacks)> {
-    let mut points = match evaluate(native, None) {
+    let _ = native.take_uncertified();
+    let first = evaluate(native, None);
+    let mut record = Fallbacks {
+        fallback: choice.fallback.clone(),
+        points: BTreeMap::new(),
+        uncertified: BTreeMap::new(),
+    };
+    record.keep_uncertified(native.take_uncertified(), None);
+    let mut points = match first {
         Ok(points) => points,
         Err(error)
             if choice.fallback.is_some()
@@ -2142,10 +2182,6 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                 .collect()
         }
         Err(error) => return Err(error),
-    };
-    let mut record = Fallbacks {
-        fallback: choice.fallback.clone(),
-        points: BTreeMap::new(),
     };
     let Some(fallback) = choice.fallback.as_deref() else {
         return Ok((points, record));
@@ -2160,10 +2196,14 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     // with the fallback's own evaluation of the served points (its outcome
     // carries the estimate of the outputs the call returns).
     let checking = reduction_policy::fallback_guarded(arithmetic.name());
-    let again = native.on_other(|native| evaluate(native, Some(&failed)))?;
+    let (again, again_uncertified) = native.on_other(|native| {
+        let again = evaluate(native, Some(&failed))?;
+        Ok((again, native.take_uncertified()))
+    })?;
     if again.len() != failed.len() {
         return Err(invalid("the fallback evaluation lost points"));
     }
+    record.keep_uncertified(again_uncertified, Some(&failed));
     let guarded: Vec<Option<f64>> = again
         .iter()
         .map(|point| match point.reasons() {
@@ -2720,6 +2760,7 @@ impl Evaluation {
                 let mut fallbacks = Fallbacks {
                     fallback: request.reduction.fallback.clone(),
                     points: BTreeMap::new(),
+                    uncertified: BTreeMap::new(),
                 };
                 for (rows, members) in &groups {
                     let call = InducedCall::Selection {
@@ -2746,6 +2787,9 @@ impl Evaluation {
                     )?;
                     for (local, record) in part.points {
                         fallbacks.points.insert(members[local], record);
+                    }
+                    for (local, reasons) in part.uncertified {
+                        fallbacks.uncertified.insert(members[local], reasons);
                     }
                     for (&point, value) in members.iter().zip(found) {
                         points[point] = Some(summed(value.into_point()));
@@ -2848,6 +2892,7 @@ impl Evaluation {
                 let mut fallbacks = Fallbacks {
                     fallback: request.reduction.fallback.clone(),
                     points: BTreeMap::new(),
+                    uncertified: BTreeMap::new(),
                 };
                 for (rows, members) in &groups {
                     let kept: BTreeSet<usize> = rows.iter().copied().collect();
@@ -2871,6 +2916,9 @@ impl Evaluation {
                     )?;
                     for (local, record) in part.points {
                         fallbacks.points.insert(members[local], record);
+                    }
+                    for (local, reasons) in part.uncertified {
+                        fallbacks.uncertified.insert(members[local], reasons);
                     }
                     for (&point, value) in members.iter().zip(found) {
                         points[point] = Some(one(value));
@@ -3219,6 +3267,14 @@ pub(crate) fn diagnostics(
         // reasons in "failures") and the reason. Every other point is the
         // call's effective backend's.
         "fallbacks": fallbacks.record(requested),
+        // Per successful point id whose value includes a reduction lane
+        // served without accuracy evidence (a lane that vanishes within the
+        // resolution of its own terms, one outside NinjaRS's rescue domain
+        // without refined kinematics): the reasons. Such a point has status
+        // "success" and a value, but its accuracy is not established (the
+        // Python API's `VirtualLaneDiagnostic.uncertified`). Points without
+        // one are absent. Additive: no other field changes.
+        "uncertified": fallbacks.uncertified_record(requested, successful),
         "requested_point_ids":requested,
         "successful_point_ids":successful,
         "failures": failures

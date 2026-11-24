@@ -1430,7 +1430,9 @@ best-effort value, or none); `best_effort` and its `uncertainty` (relative);
 of the reference's total finite part at its precision; null when it failed
 or with `--ground-truth none`), `reference_reason` and `reference_certified`
 (an arbitrary-precision reference's certification: `"agreement"` with another
-backend's reference, `"checks"` from its checked evaluation; null for a
+backend's reference, `"checks"` from its checked evaluation; `false` for a
+reference served with lanes without accuracy evidence, see
+`reference_uncertified`; null for a
 reference that failed and in every run without an arbitrary-precision
 ground truth, whose records carry the column all the same: every run's
 table has the same fields); `true_relative_error` and `true_digits` (null
@@ -1449,12 +1451,18 @@ call and its rotated evaluations, and the highest precision it used,
 `VirtualLaneDiagnostic.uncertified` joined by "; ": a lane below the
 resolution of its own terms, a vanishing lane, a lane outside NinjaRS's
 rescue domain without refined kinematics; the point's value is kept, its
-accuracy is not established; null otherwise). `per_point` carries the same
-fields, and each backend's stability row the totals
-`reduction_rescued_points`, `reduction_rescued_lanes`,
-`reduction_rescue_carriers` (per precision its lanes) and
-`uncertified_points`; the text report lists such points under the kind
-`reduction rescue`.
+accuracy is not established; null otherwise); `reference_uncertified` (the
+same for the point's REFERENCE: the reasons of its lanes served without
+accuracy evidence; such a reference is not certified, its
+`reference_certified` is `false` whatever its estimate or agreement, and the
+true digits are measured against it all the same; null otherwise).
+`per_point` carries the same fields, and each backend's stability row (per
+measured precision) the totals `reduction_rescued_points`,
+`reduction_rescued_lanes`, `reduction_rescue_carriers` (per precision its
+lanes), `uncertified_points` and `uncertified_reference_points` (the measured
+points whose reference is not certified for that reason); the text report
+lists such points under the kind `reduction rescue`. Points whose reference
+carries no such lane are unchanged.
 Values, sectors, momenta and the reference are
 exact; the relative errors and scales carry 4 significant digits, the
 digits 3 decimals, the task seconds microseconds. Non-finite numbers are the
@@ -1538,7 +1546,7 @@ of the initial state, on NinjaRS at every carrier:
 | Check | Born-interfered | Loop-induced | Criterion |
 | --- | --- | --- | --- |
 | poles | every squared-order sector's 1/eps and 1/eps^2 against Catani's operator of the requested corrections (QCD; QED where requested), formed natively | the finiteness probe: the amplitude's poles against the row term floor S_k(h) (the pre-cancellation scale) | binary64 with the recommended checks: \|pole - Catani\| <= 10 E + 1e-12 \|Catani\|; double-double: 1e-12 relative; finiteness: within 10 x its own estimate |
-| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 E with E <= 1e-9 S (scope); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
+| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 max(E, n u S) with E <= 1e-9 S (scope; n u S: the binary64 resolution of a sum of the evaluation's n reduction lanes, u = 2^-53, since the reduction-direction estimate does not see the binary64 numerators' rounding); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
 | goldstone | not applicable (the probe is amplitude-level) | k.A(V) = eta M_V A(G) on one leg of every massive-vector species with a Goldstone partner, in 't Hooft-Feynman gauge | within 10 x its estimate |
 
 `--precision auto` (default) runs binary64 first and double-double only for a
@@ -1593,10 +1601,25 @@ bound: <= 1 passes), the deviation and E over the row's scale where formed
 (`dev / scale`, `E / scale`: a binary64 pole row's pre-cancellation scale S;
 a double-double pole row's |Catani|, its criterion being relative; a
 Born-interfered Ward row's physical scale; a probe's row term floor
-S_k(h)), the fallback's reason and the verdict. The exit code is 0 iff
-every applicable check passed, 1 on any failure, and 3 when a process had
-nothing to check (or an applicable check did not run); an "undecided" row
-counts as a failure (1). `--json` returns the
+S_k(h)), the fallback's reason and the verdict. A row whose residual
+includes reduction lanes served without accuracy evidence is judged with their
+reducer-stated absolute bound B (propagated to the row's quantity with each
+lane's contraction weight; only the fast engine's double-double re-reduction
+states a bound, when finite, normal and positive: a lane of the generic
+engine's ladder has none): residual + B within the bound passes, residual - B
+above it fails, anything between (or a lane without a bound) is
+`inconclusive`, never a pass. A Ward row's physical scale takes the interval
+its own such lanes give it: the row passes only if it passes at every scale
+in the interval and fails only if it fails at every one; the next carrier of the ladder evaluates it
+again and the deciding carrier is recorded. Loop-induced probes that served
+such a lane are inconclusive (the bound of |A|^2, a product, is not formed).
+A process's status is a closed aggregate: `failed` if a row failed or is
+undecided; else `inconclusive` if a row is inconclusive or carries an
+unrecognized verdict; else `nothing checked` if no row passed or an
+applicable check did not run; else `passed`. The exit code is 0 iff every
+process passed, 1 on any failure, 4 when a process is inconclusive (and none
+failed), and 3 when a process had nothing to check (or an applicable check
+did not run); an "undecided" row counts as a failure (1). `--json` returns the
 `CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
 `carriers`, `regeneration`, `seconds`, `exit_code`, and per process `process`,
 `expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,

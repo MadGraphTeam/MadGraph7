@@ -2195,7 +2195,9 @@ where
 /// NinjaRS's defaults with `stability_threshold` and `relative_tolerance` 0
 /// (the routing `infrared_eps` kept). On T1's generic families and the
 /// near-forward boxes down to tiny angles, every lane the checked reducer
-/// serves keeps its value bitwise (a threshold only refuses), a lane it
+/// serves with accuracy evidence keeps its value bitwise (a threshold only
+/// refuses; a lane it serves uncertified under the vanishing rule has its
+/// re-reduced value), a lane it
 /// refuses is served finite or fails with a residual class (`NonFinite`,
 /// `MasterFailed`, or `Unstable` for an exact zero or NaN); the same reducer
 /// set back to checked is the checked default again, bitwise (its amplitudes
@@ -2206,7 +2208,15 @@ fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
     use ninjars::fast::FastOptions;
     use rusticol_loop_reduction::runtime::fast_options;
     let defaults = FastOptions::default();
-    assert_eq!(fast_options(false), defaults);
+    // The checked default: NinjaRS's defaults with its cancellation rescue on
+    // (off in NinjaRS for callers without a test of their own).
+    assert_eq!(
+        fast_options(false),
+        FastOptions {
+            cancellation_rescue: true,
+            ..defaults
+        }
+    );
     assert_eq!(
         fast_options(true),
         FastOptions {
@@ -2233,6 +2243,12 @@ fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
     let V2Backends::NinjaRs(inner) = &mut backend else {
         unreachable!("a NinjaRS backend")
     };
+    // The lanes the checked reduction served without accuracy evidence
+    // (the reducer's vanishing rule: a lane the rescue refused, served at
+    // its re-reduced value consistent with zero within that re-reduction's
+    // bound, uncertified): their value is not the unchecked one.
+    let uncertified: Vec<(usize, usize)> =
+        inner.uncertified.iter().map(|&(g, r, _)| (g, r)).collect();
     inner.reducer.set_unchecked(true);
     assert!(backend.unchecked());
     let (found, _) = reduce(&mut backend, &groups, Poles::All, None);
@@ -2240,6 +2256,10 @@ fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
     for (g, group) in checked.iter().enumerate() {
         for (lane, value) in group.iter().enumerate() {
             match (value, &found[g][lane]) {
+                (Ok(a), Ok(b)) if uncertified.contains(&(g, lane)) => {
+                    eprintln!("family {g} lane {lane}: served uncertified {a:?}, unchecked {b:?}");
+                    assert!(a.iter().all(|z| z.re.is_finite() && z.im.is_finite()));
+                }
                 (Ok(a), Ok(b)) => assert_eq!(a, b, "family {g} lane {lane}"),
                 (Err(reason), Ok(b)) => {
                     refused += 1;

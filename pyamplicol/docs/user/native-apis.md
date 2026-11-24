@@ -910,6 +910,21 @@ or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
 (NinjaRS refused typed); a library built without TIRust takes NinjaRS under
 `"auto"`, with the reason, and refuses `"tirust"`.
 
+Lanes served without accuracy evidence. The diagnostics record
+`"uncertified"` maps the id of every successful point whose value includes a
+reduction lane served without accuracy evidence to its reasons (sorted,
+distinct), in the Python API's words (`VirtualLaneDiagnostic.uncertified`,
+[Python API](python-api.md), "Lanes served without accuracy evidence"): a
+lane that vanishes within the resolution of its own terms (for example the
+Born-zero helicity rows of a resolved g g > g g, whose reduction lanes vanish
+identically), or one outside NinjaRS's rescue domain without refined
+kinematics. Such a point keeps its value and its status, but its accuracy is
+not established; points without such a lane are absent (`{}` when there is
+none). The field is additive (the ABI version is unchanged and no other field
+changes meaning), and the C++ (`diagnostics_json()`), Fortran
+(`diagnostics_json`), packaged Rust and Rust SDK (`diagnostics_json`)
+wrappers hand out the same record.
+
 At near-planar 2 -> 3 points of pentagon families whose rank equals their
 propagator count (all-vector quark loops: measured on loop-induced
 g g > z z z, z z g, z g g, a a g, a g g and W+ W- g) NinjaRS's reduction can

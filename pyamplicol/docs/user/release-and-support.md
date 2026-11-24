@@ -71,8 +71,21 @@ own terms at the highest precision tried, vanishing within their own bound at
 every carrier, or outside the rescue's domain without refined kinematics)
 keep their value and status `"success"`, but are marked: Python
 `VirtualLaneDiagnostic.uncertified` and `accuracy_established` false,
-`profile`'s `uncertified` column and `uncertified_points` total (the native
-SDKs' diagnostics do not carry the marking yet). Each point records what the
+`profile`'s `uncertified` column and `uncertified_points` total, the CLI's
+`evaluate --json` diagnostics and the native SDKs' diagnostics record
+"uncertified" (per point id, its reasons). A binary64 lane the rescue refuses
+whose re-reduced value is consistent with zero within the re-reduction's own
+bound is served that way by the reduction itself, without the lane rescue (a
+configuration that vanishes identically needs no Symbolica state, as in
+1.0.3); given up: a lane that loses more than about 100 bits and is in truth
+not zero comes back ~0 uncertified instead of being recovered at arbitrary
+precision; a rescue policy (never met on an uncertified result) escalates
+such a point to a higher carrier or returns it uncertified with the reason
+(its stall rule can keep an uncertified level). The checks that read such
+lanes (`pyamplicol check`'s Ward and pole rows and probes, the stored-process
+checks) test their residue together with the lanes' reducer-stated absolute
+bounds: a row the bounds cannot decide is `inconclusive` (exit code 4), never
+a pass. Each point records what the
 reduction rescued (`VirtualLaneDiagnostic.reduction_rescue`; `profile`'s
 `reduction_rescue_lanes`, `reduction_rescue_carrier` and the backend totals
 `reduction_rescued_*`).

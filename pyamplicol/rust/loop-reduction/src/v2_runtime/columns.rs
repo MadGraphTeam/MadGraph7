@@ -1139,6 +1139,21 @@ impl V2Runtime {
         } else {
             None
         };
+        // The points' lanes served without accuracy evidence, the
+        // companion's included (`V2Runtime::take_uncertified`).
+        let uncertified: Vec<Vec<&'static str>> = results
+            .iter()
+            .enumerate()
+            .map(|(index, result)| {
+                let twin = twin_results.as_ref().map(|twin| &twin[index]);
+                result
+                    .uncertified
+                    .iter()
+                    .chain(twin.into_iter().flat_map(|twin| twin.uncertified.iter()))
+                    .map(|(_, reason)| *reason)
+                    .collect()
+            })
+            .collect();
         let width = if poles { 3 } else { 1 };
         let lane_width = mode.lanes().width();
         let factor = loop_factor(arith, self.record.average);
@@ -1375,6 +1390,7 @@ impl V2Runtime {
             }
             out.push(Ok(point));
         }
+        self.merge_uncertified(uncertified.into_iter().map(Vec::into_iter));
         Ok(out)
     }
 }
