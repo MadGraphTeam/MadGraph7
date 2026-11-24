@@ -8,7 +8,9 @@
  ],
  "modes": [
   "1",
-  "2"
+  "2",
+  "4",
+  "5"
  ],
  "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
  "records": [
@@ -72,6 +74,38 @@
     "finite_norm": -5017134.0170899015,
     "single_norm": -510348.778519298,
     "double_norm": -6.000000000129506
+   },
+   "ctmode4": {
+    "born": 2.692409351698538e-10,
+    "finite": -1.849152650719039e-06,
+    "single": -4.9807049802780865e-08,
+    "double": -3.033852620619643e-11,
+    "accuracy": 1.0,
+    "ret_code": 420,
+    "ao2pi": 0.01878028328484365,
+    "mu": 20.0,
+    "time": 4410.582,
+    "predicted_single_norm": 23.232479508754828,
+    "predicted_double_norm": -5.999999999999995,
+    "finite_norm": -365703.85222101404,
+    "single_norm": -9850.257615864293,
+    "double_norm": -5.999999999999992
+   },
+   "ctmode5": {
+    "born": 2.692409351698538e-10,
+    "finite": -2.5383182696493456e-05,
+    "single": -2.5816434899065617e-06,
+    "double": -3.033852620619643e-11,
+    "accuracy": 1.0,
+    "ret_code": 420,
+    "ao2pi": 0.01878028328484365,
+    "mu": 20.0,
+    "time": 4418.698,
+    "predicted_single_norm": 23.232479508754828,
+    "predicted_double_norm": -5.999999999999995,
+    "finite_norm": -5019989.934377713,
+    "single_norm": -510567.35037694924,
+    "double_norm": -5.999999999999992
    }
   }
  ]

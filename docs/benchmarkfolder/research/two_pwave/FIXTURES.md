@@ -115,7 +115,7 @@ The same loop groups are missing in both precisions. `replay_calls.f90` replays 
 | 4 unit-power pentagons QQgQQ, rank 4 | refused | the same |
 | 80 unit-power hexagons, rank 4 | refused | ill-conditioned or singular Gram matrix, or six-point coordinate system (conditioning 0) |
 
-The unit-power lanes have all-massive heavy-quark propagators that are linearly dependent at the two thresholds: the constituents carry P₁/2 and P₂/2. TIRust's quadruple-precision path refuses them like its double-precision one, so they are not a matter of MadLoop's precision. A refused QP hexagon costs about 75 s, so most of the 72 minutes goes to those attempts.
+The unit-power lanes have all-massive heavy-quark propagators that are linearly dependent at the two thresholds: the constituents carry P₁/2 and P₂/2. TIRust's quadruple-precision path refuses them like its double-precision one, so they are not a matter of MadLoop's precision. A refused QP hexagon cost about 75 s in the replay. Those attempts are not where the 72 minutes go, though: on eb363d6, where refusals are fast, the passes take as long (next section).
 
 **g g → χ_c0 χ_c0 on TIRust eb363d6** (bridge v6, local on 196bdcc, not pushed). eb363d6 raises a heavy line of a linearly dependent all-massive set, and reduces a hexagon whose points span three dimensions by its relations. The 97 records of `data/refused_gg_chic0chic0_d5442e6.txt` are all served in DP (`data/qp_replay_gg_chic0_chic0_eb363d6.txt`). In QP, with the binary64 records widened, 63 are served and 34 hexagons are refused ("ill-conditioned Gram matrix"): widened, those inputs are off the thresholds by binary64's rounding, and TIRust serves the exact kinematics in binary128. The replay takes 6 s, so refusals are fast now. e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) is bit-identical to d5442e6, and so are the 16 one-P-wave `pw_check.py` cases against 59aee45.
 
@@ -131,4 +131,34 @@ The two finite parts differ by a factor of 13. With the unit-power calls served,
 - CTModeRun 1: 6 boxes QQQQ (1,1,2,2), 8 pentagons QQgQQ (1,1,1,2,2), 12 hexagons QQgQQg (1,1,1,2,2,1);
 - CTModeRun 2: the same on the reversed lines.
 
-TIRust refuses them in both precisions with "lightlike bubble [i, j] with massive lines, both differentiated (two jet variables)". Here [i, j] is the doubled pair: two heavy lines whose offsets differ by a lightlike momentum. The inputs are in `data/refused_gg_chic0chic0_eb363d6.txt` (both passes) and the replay in `data/qp_replay_gg_chic0_chic0_refused_eb363d6.txt`. These are the only refusals left at this point. Whether they account for the whole 1/ε is not checked yet.
+TIRust refuses them in both precisions with "lightlike bubble [i, j] with massive lines, both differentiated (two jet variables)". Here [i, j] is the doubled pair: two heavy lines whose offsets differ by a lightlike momentum. The inputs are in `data/refused_gg_chic0chic0_eb363d6.txt` (both passes) and the replay in `data/qp_replay_gg_chic0_chic0_refused_eb363d6.txt`. These are the only refusals left at this point. They do not account for the whole 1/ε: the next section has them served, and 1/ε is still wrong.
+
+In quadruple precision (CTModeRun 4 and 5, the same file), both passes return 420 with 1/ε² = −5.999999999999992. CTModeRun 4 gives 1/ε = −9850.2576 and agrees with CTModeRun 1 to 1e-11 (finite part to 1e-12). CTModeRun 5 gives −510567.4, 4e-4 from CTModeRun 2. Each pass takes 73.5 minutes (4411 and 4419 s), against 72 on 196bdcc and 82 to 88 s in DP.
+
+**g g → χ_c0 χ_c0 on TIRust 632ed10** (bridge v7 f453cd7a, local on eb363d6, not pushed). 632ed10 evaluates the equal-mass lightlike bubble with both heavy lines as jet variables in closed form. Its acceptance:
+- **Replays.** The 52 records of `data/refused_gg_chic0chic0_eb363d6.txt` are all served, in QP (widened) and DP. The 97 d5442e6 records give the same statuses and messages as on eb363d6.
+- **Other checks.** e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) and the 16 `pw_check.py` cases are bit-identical to eb363d6.
+- **g g.** At 20 GeV, point 0, `fixtures.py` finds no refusal: 3480 raised-power calls per pass, code 110.
+
+The virtual is still wrong (`data/qp_gg_chic0_chic0_632ed10.json`):
+
+| | CTModeRun 1 | CTModeRun 2 | predicted |
+|---|---|---|---|
+| 1/ε² per Born | −5.99999999997 | −6.0000000001 | −6 |
+| 1/ε per Born | +39355 | −517385 | 23.232 |
+
+The 1/ε² is bit-identical to eb363d6; the finite parts differ by a factor of 130. To split the 1/ε by loop size, a patch of the DP wrappers returns zero integrals for loops with a number of lines N outside `ONIA_NRANGE`, and each range is taken against the counterterm-only run (no loops). The table gives 1/ε per Born with TIRust's cache off (`TIRustGlobalCache` 0):
+
+| N | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|
+| CTModeRun 1 | +6.249 | +0.403 | +134.159 | +214.03 | +46218.5 |
+| CTModeRun 2 | +6.249 | +0.403 | +134.159 | −63.30 | −517439.5 |
+
+Up to N = 4 the two loop directions agree to 1e-12. With the cache off the ranges add up to the full result. With the cache on (the default), CTModeRun 1 changes to +519.6 at N = 5 and +38757.8 at N = 6, and the ranges no longer add up. CTModeRun 2 does not depend on the cache.
+
+`fixtures.py`, run once with the cache and once without, dumps every raised-power call with its inputs and binary64 array. The dumps (26 MB each) are not kept in the repository. Three problems show in them, all in TIRust:
+- **The cache changes results.** 11 calls of CTModeRun 1 get different arrays with the cache on, by 0.22 to 34 relative to their largest entry. All are pentagons and hexagons at rank 5 and 6 with a doubled heavy line.
+- **Results depend on earlier calls**, also with `cache_enabled=.false.`. `replay_arrays.f90` replays records through the DP entry and prints their arrays. In `data/pairs_gg_chic0_chic0_632ed10.txt`, record 13 (a QQgQgg hexagon, rank 6, powers (1,1,1,2,1,2)) gives an array 0.77 away from its result alone when record 9 (a ggQgQQ hexagon with the same powers) runs before it. In MadLoop, six of the eight calls sampled there return arrays O(1) away from the same inputs replayed alone.
+- **Results depend on the line order.** Records 5 and 7 are the same six lines (shifts, masses and powers) in the order of each pass: a QQQgQg hexagon, rank 5, powers (1,1,1,1,1,2). Replayed alone, they differ by 1.5, with either check-pass flag.
+
+Over the whole point, 97 calls of CTModeRun 1 differ by more than 1e-6 from the CTModeRun 2 call with the same set of lines, and 79 by more than 0.1. All have five or six lines, which matches the split by N. The scalar coefficient (rank 0, all four slots) agrees between the passes and between repeats for all 719 distinct integrals; only the higher tensor coefficients differ. The lists are in `data/state_gg_chic0_chic0_632ed10.json`. Reported to TIRust on 2026-11-24. Which arrays are right, and whether 1/ε reaches 23.232 once they are consistent, is not checked.

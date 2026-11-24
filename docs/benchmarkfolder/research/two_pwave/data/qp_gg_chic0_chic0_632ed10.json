@@ -1,0 +1,78 @@
+{
+ "output": "P0_gg_chic013P01chic013P01",
+ "masses": [
+  0.0,
+  0.0,
+  3.1,
+  3.1
+ ],
+ "modes": [
+  "1",
+  "2"
+ ],
+ "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+ "records": [
+  {
+   "energy": 20.0,
+   "point": 0,
+   "momenta": [
+    [
+     "0x1.4000000000000p+3",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "0x1.4000000000000p+3"
+    ],
+    [
+     "0x1.4000000000000p+3",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "-0x1.4000000000000p+3"
+    ],
+    [
+     "0x1.3ffffffffffffp+3",
+     "0x1.e2fb56247673bp+2",
+     "-0x1.2541aee163b5ap+2",
+     "-0x1.c384084d604c8p+1"
+    ],
+    [
+     "0x1.3ffffffffffffp+3",
+     "-0x1.e2fb56247673bp+2",
+     "0x1.2541aee163b5ap+2",
+     "0x1.c384084d604c8p+1"
+    ]
+   ],
+   "ctmode1": {
+    "born": 2.692409351698538e-10,
+    "finite": -1.9952011586507437e-07,
+    "single": 1.989942078057066e-07,
+    "double": -3.033852620606699e-11,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 20.0,
+    "time": 83.2622,
+    "predicted_single_norm": 23.232479508754828,
+    "predicted_double_norm": -5.999999999999995,
+    "finite_norm": -39458.76233585602,
+    "single_norm": 39354.75437137019,
+    "double_norm": -5.999999999974394
+   },
+   "ctmode2": {
+    "born": 2.692409351698538e-10,
+    "finite": -2.5607678906501554e-05,
+    "single": -2.6161181222118774e-06,
+    "double": -3.033852620685131e-11,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 20.0,
+    "time": 102.0321,
+    "predicted_single_norm": 23.232479508754828,
+    "predicted_double_norm": -5.999999999999995,
+    "finite_norm": -5064388.177420036,
+    "single_norm": -517385.34121889225,
+    "double_norm": -6.000000000129506
+   }
+  }
+ ]
+}
