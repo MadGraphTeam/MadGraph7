@@ -113,6 +113,23 @@ class TestFKSOniaGeneration(unittest.TestCase):
             else:
                 self.assertTrue(dm['parallel'])
 
+    def test_identical_onia_partition(self):
+        """Two identical P-wave onia as the only coloured particles: one
+        sector survives (the other is equivalent), and both onia stay in the
+        partition of fks_Sij, so that the kept sector times its orbit
+        factor FKS_FAC_J_D = 2 counts the real once; with elementary
+        coloured partons the onia own no sector and are left out."""
+        born, = self.generate('e+ e- > Jpsi(1|3P08) Jpsi(1|3P08) / z h QED=2 QCD=2 [real=QCD]')
+        real, = born.real_amps
+        infos, _, _, _, _ = fks_onia.to_physical_fks(
+            real.process['legs'], real.process['model'], real.fks_infos, real.fks_j_from_i,
+            real.colors, real.particle_tags, real.charges)
+        self.assertEqual(len(infos), 1)
+        is_onium = [False, False, True, True, False]
+        self.assertEqual(fks_onia.partition_nosector(is_onium, infos), [False] * 5)
+        self.assertEqual(fks_onia.partition_nosector(is_onium, [{'j': 1}, {'j': 2}]),
+                         is_onium)
+
     def test_leg_identity_keeps_fock_state(self):
         """Constituents of different onia are not interchangeable FKS legs;
         those of identical onia are (the position 'index' is ignored)."""

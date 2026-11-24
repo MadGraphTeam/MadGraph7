@@ -168,6 +168,17 @@ def onium_emission_split(leg, model):
     return [j, i]
 
 
+def partition_nosector(is_onium, fks_infos):
+    """For each physical leg of a real emission (is_onium: list of booleans),
+    whether fks_Sij leaves it out of the partition (FKS_ONIA_NOSECTOR): an
+    onium, unless onia are the FKS sisters j of sectors of this real (onia
+    the only coloured particles, onium_emission_split). Then every onium is
+    in the partition, also one whose equivalent sector was dropped for
+    identical onia (the kept sector counts it through its FKS_FAC_J_D)."""
+    owns = any(is_onium[i['j'] - 1] for i in fks_infos)
+    return [x and not owns for x in is_onium]
+
+
 def aux_states(onium):
     """The S-wave states of the soft current of a P-wave quarkonium, as
     (colour of the S wave, effective generator): P[1] -> S[8] (Q_eff(18));

@@ -2900,12 +2900,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             legs = real.matrix_element.get('processes')[0].get('legs')
             row = [bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)]
             rows.append(row)
-            # when onia are FKS sisters j of sectors of this real (onia the
-            # only coloured particles), every onium is part of its partition:
-            # also those whose equivalent sector was dropped for identical
-            # onia (the kept one counts it through FKS_FAC_J_D)
-            owns = any(row[i['j'] - 1] for i in real.fks_infos)
-            nosector.append([x and not owns for x in row])
+            nosector.append(fks_onia.partition_nosector(row, real.fks_infos))
         if not rows:
             # LOonly: one fake configuration, the Born legs and a gluon
             legs = matrix_element.born_me.get('processes')[0].get('legs')
