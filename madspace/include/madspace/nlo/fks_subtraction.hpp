@@ -584,7 +584,8 @@ private:
  *   n-body part and of the UPC scheme), `fact_scale1` and `fact_scale2` the
  *   factorization scales of the Born for the n-body part and
  *   `collinear_fact_scale1` and `collinear_fact_scale2` those of the
- *   collinear remnants.
+ *   collinear remnants. With cuts `soft_xi` before `soft_xi_max`, the xi of
+ *   the soft counter-event.
  * - those of the weights that the subtraction does not take: `born_momenta`,
  *   `born_weight`, `virtual` (at `ren_scale`), the couplings, the
  *   luminosities, `channel_weight` and `configuration_weight`. The Born of
@@ -607,6 +608,12 @@ private:
  * with per configuration the real process of its n-body configuration with
  * the soft parton at the position of that of the configuration, the n-body
  * part takes them at the soft counter-event of the event, else the cuts.
+ * The soft counter-event passes only where it exists, at `soft_xi` = 0, as
+ * genps_fks.f generates it. Below the lower bound on @f$\hat{s}@f$ of the
+ * emission off an incoming parton the mapping puts it at
+ * @f$\xi_{\min} > 0@f$ without a weight, where the Born fails the cuts, but
+ * at a Born near @f$\hat{s} = 0@f$ its momenta, boosted with
+ * @f$1 / \sqrt{1 - \xi_{\min}}@f$, can pass them by rounding.
  *
  * With @ref NLOScale, a @ref RunningCoupling and the @ref NLOLuminosity of
  * the real emission and of the Born, the integrand takes the scales, the

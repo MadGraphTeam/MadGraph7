@@ -780,6 +780,7 @@ NamedVector<Type> cross_section_args(
     const FKSSubtraction& subtraction,
     const FKSSoftVirtual& soft_virtual,
     const FKSWeights& weights,
+    bool cuts,
     bool couplings = false,
     bool flavor = false,
     bool lepton = false,
@@ -810,6 +811,10 @@ NamedVector<Type> cross_section_args(
                 args.push_back(scale, batch_float);
             }
             continue;
+        }
+        if (cuts && name == "soft_xi_max") {
+            // where the soft counter-event exists, for its cuts
+            args.push_back("soft_xi", batch_float);
         }
         args.push_back(name, type);
     }
@@ -891,7 +896,7 @@ FKSCrossSection::FKSCrossSection(
 ) :
     FunctionGenerator(
         "FKSCrossSection",
-        cross_section_args(subtraction, soft_virtual, weights),
+        cross_section_args(subtraction, soft_virtual, weights, cuts.has_value()),
         weights.return_types()
     ),
     _subtraction(subtraction),
@@ -922,6 +927,7 @@ FKSCrossSection::FKSCrossSection(
             subtraction,
             soft_virtual,
             weights,
+            cuts.has_value(),
             true,
             !luminosity.sum_flavors(),
             luminosity.lepton(),
@@ -1144,14 +1150,20 @@ NamedVector<Value> FKSCrossSection::build_function_impl(
             return _cuts->build_function(fb, {args.at(momenta), args.at("fks_index")})
                 .at("mask");
         };
-        Value event = mask("momenta"), soft = mask("soft_momenta"), nbody = soft;
+        // the soft counter-event only where it exists, at xi = 0 (below the
+        // lower bound on s_hat it lies at xi_min without a weight)
+        Value exists = fb.cut_one(args.at("soft_xi"), 0., 0.);
+        Value event = mask("momenta");
+        Value soft = fb.mul(mask("soft_momenta"), exists), nbody = soft;
         if (_nbody_cuts) {
-            nbody =
+            nbody = fb.mul(
                 _nbody_cuts
                     ->build_function(
                         fb, {args.at("soft_momenta"), args.at("fks_index")}
                     )
-                    .at("mask");
+                    .at("mask"),
+                exists
+            );
         }
         bool projected = true;
         for (const auto& name : _subtraction.arg_types().keys()) {

@@ -159,3 +159,50 @@ def test_against_driver(name):
                 np.testing.assert_array_equal(ours["virtual"], theirs["virtual"])
                 checked += int((np.asarray(ours["cross_section"]) != 0).sum())
         assert checked > 0
+
+
+@pytest.mark.parametrize("name", ["pp_epem", "pp_epemj"])
+def test_degenerate_born(name):
+    """Where the first random number of the Born comes close to zero, the
+    Born of an initial-state emitter, which no cut bounds, has a momentum
+    fraction down to 1e-17. Its soft counter-event lies below the lower
+    bound on s_hat at xi_min > 0, boosted with 1 / sqrt(1 - xi_min), where
+    its momenta can pass the cuts by rounding. The n-body part and the
+    virtual take its cuts only where it exists, at xi = 0, and the weights
+    are finite: the contribution weight takes s_hat from the product of the
+    incoming momenta, which the square of their sum loses, and is zero where
+    the cuts leave no luminosity, also where the coefficients of such a Born
+    are not finite. (VEGAS had concentrated its grids on these points, with
+    not-a-number weights and n-body weights up to 1e42 pb, and the loop
+    stopped on their momenta.)"""
+    with fks_setup(name) as run:
+        rng = np.random.default_rng(5)
+        below = 0
+        for integrand in run.integrands:
+            for channel in range(integrand.channel_count):
+                runtime = Runtime(
+                    integrand.channel_integrand(channel, run.context), run.context
+                )
+                x = rng.random((POINTS, integrand.dimension))
+                x[:, 0] = np.geomspace(1e-15, 1e-6, POINTS)
+                fks_index = rng.integers(0, integrand.configuration_count, POINTS)
+                fks_index = fks_index.astype(np.int32)
+                ours = runtime(
+                    x,
+                    fks_index,
+                    np.full(POINTS, float(integrand.configuration_count)),
+                    np.ones(POINTS),
+                    np.zeros((POINTS, integrand.nlo_count)),
+                    np.ones(POINTS),
+                )
+                for key, value in ours.items():
+                    value = np.asarray(value)
+                    if value.dtype.kind == "f":
+                        assert np.isfinite(value).all(), (integrand.name, key)
+                kinematics = integrand.kinematics[channel](x, fks_index=fks_index)
+                soft_below = np.asarray(kinematics["soft_xi"]) > 0
+                below += soft_below.sum()
+                for key in ("nbody_weight", "evaluated"):
+                    value = np.asarray(ours[key])[soft_below]
+                    assert (value == 0).all(), (integrand.name, key)
+        assert below > 0

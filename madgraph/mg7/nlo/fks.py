@@ -475,6 +475,9 @@ class SubprocessIntegrand:
             name: self.pass_cuts(out[name], layout_index=fks_index)["mask"] != 0
             for name in ("momenta", "soft_momenta", "collinear_momenta")
         }
+        # the soft counter-event only where it exists, at xi = 0, as
+        # FKSCrossSection
+        passes["soft_momenta"] &= out["soft_xi"] == 0
         born_mask = passes["momenta"] | passes["soft_momenta"]
         born_mask |= passes["collinear_momenta"]
         count = len(fks_index)

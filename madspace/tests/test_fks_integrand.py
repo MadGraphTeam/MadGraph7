@@ -963,19 +963,17 @@ def test_cross_section_nbody_cuts():
     index = rng.integers(len(configurations["configurations"]), size=count)
     names = list(mapping.counter_event_types().keys())
     inputs = dict(zip(names, evaluate(kinematics, r, fks_index=index)))
-    args = []
+    values = dict(inputs)
     for name in types.keys():
-        if name == "fks_index":
-            continue
-        if name in inputs:
-            args.append(inputs[name])
-        else:
-            shape = [count, *types[name].shape]
-            args.append(rng.random(shape) + 0.5)
-    outputs = [
-        dict(zip(f.return_types().keys(), evaluate(f, *args, fks_index=index)))
-        for f in (plain, function)
-    ]
+        if name != "fks_index" and name not in values:
+            values[name] = rng.random([count, *types[name].shape]) + 0.5
+    outputs = []
+    for f in (plain, function):
+        # with cuts also soft_xi
+        args = [values[name] for name in f.arg_types().keys() if name != "fks_index"]
+        outputs.append(
+            dict(zip(f.return_types().keys(), evaluate(f, *args, fks_index=index)))
+        )
     (own,) = evaluate(
         fks_cuts(born, configurations, **cuts),
         inputs["soft_momenta"],

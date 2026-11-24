@@ -37,6 +37,20 @@ KERNELSPEC FourMom<T> fks_incoming_sum(FIn<T, 2> p, std::size_t incoming) {
     return {p1[0] + p2[0], p1[1] + p2[1], p1[2] + p2[2], p1[3] + p2[3]};
 }
 
+// the invariant mass squared of the incoming momenta of p, from the masses
+// and the product of the two incoming momenta, which for two incoming
+// partons along the beams does not cancel as the square of their sum does
+// (an x1 of 1e-17 leaves the sum at the other momentum)
+template <typename T>
+KERNELSPEC FVal<T> fks_incoming_s(FIn<T, 2> p, std::size_t incoming) {
+    auto p1 = load_mom<T>(p[0]);
+    if (incoming == 1) {
+        return lsquare<T>(p1);
+    }
+    auto p2 = load_mom<T>(p[1]);
+    return lsquare<T>(p1) + lsquare<T>(p2) + 2. * ldot<T>(p1, p2);
+}
+
 // d_kl of get_dkl_Sij for the momenta q1, q2 with energies e1, e2 (for the
 // energy factor; q1 can be the momentum of i per unit xi with the energy of
 // i), masses m1, m2 and color octets o1, o2. With both, the energy of 1 is
@@ -1572,7 +1586,7 @@ KERNELSPEC void kernel_fks_contribution_weight(
     constexpr double pi = 3.14159265358979323846;
     std::size_t n_in = single_index(incoming);
     bool decay = n_in == 1;
-    FVal<T> s = lsquare<T>(fks_incoming_sum<T>(momenta, n_in));
+    FVal<T> s = fks_incoming_s<T>(momenta, n_in);
     FVal<T> g_s = sqrt(4. * pi * FVal<T>(alpha_s));
     FVal<T> sum = 0.;
     for (std::size_t o = 0; o < coefficients.size(); ++o) {
@@ -1583,10 +1597,14 @@ KERNELSPEC void kernel_fks_contribution_weight(
         sum = sum + coupling * FVal<T>(coefficients[o]);
     }
     FVal<T> d = det;
-    FVal<T> safe_s = where(d == 0., FVal<T>(1.), s);
-    FVal<T> product = FVal<T>(luminosity) * FVal<T>(factor) * d * sum;
+    FVal<T> lum = luminosity;
+    // zero without phase space or luminosity (a point the cuts remove), even
+    // where the coefficients are not finite there, as at a degenerate Born
+    auto zero = (d == 0.) | (lum == 0.);
+    FVal<T> safe_s = where(zero, FVal<T>(1.), s);
+    FVal<T> product = lum * FVal<T>(factor) * d * sum;
     weight = where(
-        d == 0.,
+        zero,
         FVal<T>(0.),
         decay ? FVal<T>(product / (2. * sqrt(safe_s)))
               : FVal<T>(INV_GEV2_TO_PB * product / (2. * safe_s))

@@ -379,7 +379,10 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         return _cuts.build_function(fb, {values.at(momenta), fks_index}).at("mask");
     };
     Value event_cut = passes("momenta");
-    Value soft_cut = passes("soft_momenta");
+    // the soft counter-event only where it exists, at xi = 0 (see
+    // FKSCrossSection)
+    Value soft_cut =
+        fb.mul(passes("soft_momenta"), fb.cut_one(values.at("soft_xi"), 0., 0.));
     Value collinear_cut = passes("collinear_momenta");
     Value born_cut = fb.max(fb.max(event_cut, soft_cut), collinear_cut);
 
