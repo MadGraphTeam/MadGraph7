@@ -35,8 +35,9 @@ namespace madspace {
  * isolated (all of them with `gamma_is_j`) take part in the jets as QCD
  * partons do. The cuts per PDG code of cuts.f are not part of it.
  * Kinematics with a first incoming energy that is not positive, with momenta
- * that are not finite or that do not conserve momentum to 5e-3 of the sum of
- * the absolute energies (as phspncheck_nocms of MadFKS) fail.
+ * that are not finite or that do not conserve momentum to 1e-8 of the sum of
+ * the absolute energies fail (phspncheck_nocms of MadFKS takes 5e-3, MadLoop
+ * stops above 1e-6).
  * @ref FKSCrossSection applies the cuts to the event and the counter-events of
  * the FKS integrand.
  *

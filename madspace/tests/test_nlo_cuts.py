@@ -176,7 +176,7 @@ def madfks_cuts(p, pdgs, cuts, isolated_photons=-1):
     # momentum conservation on the scale of the energies, as phspncheck_nocms
     p = np.asarray(p, dtype=float)
     total = p[2:].sum(0) - p[:2].sum(0)
-    if np.any(np.abs(total) > 5e-3 * np.abs(p[:, 0]).sum()):
+    if np.any(np.abs(total) > 1e-8 * np.abs(p[:, 0]).sum()):
         return False
     p = [np.array(q, dtype=float) for q in p]
     pdgs = list(pdgs)
@@ -689,11 +689,12 @@ def test_layouts_per_event():
 def test_unphysical_kinematics():
     """Kinematics fail with a first incoming energy that is not positive,
     with momenta that are not finite or where momentum is not conserved to
-    5e-3 of the sum of the energies, as kinematics lose it by rounding at
+    1e-8 of the sum of the energies, as kinematics lose it by rounding at
     momentum fractions near 1e-17 (the soft counter-event below the lower
     bound on s_hat, boosted with 1 / sqrt(1 - xi_min), and a Born boosted
-    with a rapidity near 20). A component that vanishes up to rounding, as
-    the transverse momentum of a 2 > 1 Born, passes."""
+    with a rapidity near 20) or a light lepton pair boosted from its rest
+    frame. A component that vanishes up to rounding, as the transverse
+    momentum of a 2 > 1 Born, passes."""
     good = np.array(
         [
             [50.0, 0.0, 0.0, 50.0],
@@ -706,7 +707,7 @@ def test_unphysical_kinematics():
     rounded = good.copy()
     rounded[2, 2] = 4e-16
     rows.append(rounded)
-    for factor in (1.01, 1.03, 1e10):
+    for factor in (1 + 1e-9, 1 + 1e-7, 1e10):
         moved = good.copy()
         moved[3, 0] *= factor
         rows.append(moved)

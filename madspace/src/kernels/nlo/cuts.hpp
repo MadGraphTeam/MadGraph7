@@ -337,8 +337,9 @@ KERNELSPEC bool nlo_is_lepton(int pdg) {
 // below 1e-8 of the first incoming energy) and all but at most u must make
 // jets, as passcuts_jets for u = 1 on the real emission. Kinematics with a
 // first incoming energy that is not positive, with momenta that are not
-// finite or that do not conserve momentum to 5e-3 of the sum of the absolute
-// energies (as phspncheck_nocms of MadFKS) fail.
+// finite or that do not conserve momentum to 1e-8 of the sum of the absolute
+// energies fail (phspncheck_nocms of MadFKS takes 5e-3, MadLoop stops above
+// 1e-6, the mappings of madspace keep it to 1e-11 and better).
 template <typename T>
 KERNELSPEC void kernel_nlo_cuts(
     FIn<T, 2> p,
@@ -381,8 +382,9 @@ KERNELSPEC void kernel_nlo_cuts(
         momenta[i] = load_mom<T>(p[i]);
     }
     // momentum conservation, which kinematics lose by rounding at momentum
-    // fractions near 1e-17 and boosts of a rapidity near 20, on the scale of
-    // the energies (a component can vanish up to rounding)
+    // fractions near 1e-17, boosts of a rapidity near 20 and a light pair
+    // boosted from its rest frame, on the scale of the energies (a component
+    // can vanish up to rounding)
     FVal<T> energies = 0.;
     for (std::size_t i = 0; i < n; ++i) {
         energies = energies + fabs(FVal<T>(p[i][0]));
@@ -393,7 +395,7 @@ KERNELSPEC void kernel_nlo_cuts(
             FVal<T> p_ik = p[i][k];
             sum = i < n_in ? sum - p_ik : sum + p_ik;
         }
-        valid = valid & !(fabs(sum) > 5e-3 * energies);
+        valid = valid & !(fabs(sum) > 1e-8 * energies);
     }
     FourMom<T> zero{0., 0., 0., 0.};
     for_each_value(IVal<T>(index), [&](std::size_t c, BVal<T> lanes) {

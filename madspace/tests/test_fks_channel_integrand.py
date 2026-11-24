@@ -174,10 +174,14 @@ def test_degenerate_born(name):
     the cuts leave no luminosity, also where the coefficients of such a Born
     are not finite. (VEGAS had concentrated its grids on these points, with
     not-a-number weights and n-body weights up to 1e42 pb, and the loop
-    stopped on their momenta.)"""
+    stopped on their momenta.) In the channels where the first random number
+    is the mass of the lepton pair, the Born mapping boosts a pair of
+    1e-6 GeV from its rest frame and the Born loses momentum conservation
+    (up to 4e-3). The cuts take kinematics that keep it to 1e-8 only, so the
+    loop gets Borns that pass its check (1e-6, where MadLoop stops)."""
     with fks_setup(name) as run:
         rng = np.random.default_rng(5)
-        below = 0
+        below = bad_borns = 0
         for integrand in run.integrands:
             for channel in range(integrand.channel_count):
                 runtime = Runtime(
@@ -205,4 +209,13 @@ def test_degenerate_born(name):
                 for key in ("nbody_weight", "evaluated"):
                     value = np.asarray(ours[key])[soft_below]
                     assert (value == 0).all(), (integrand.name, key)
+                born = np.asarray(ours["born_momenta"])
+                total = born[:, 2:].sum(1) - born[:, :2].sum(1)
+                scale = np.abs(born[:, :, 0]).sum(1)[:, None]
+                violation = (np.abs(total) / scale).max(1)
+                evaluated = np.asarray(ours["evaluated"]) != 0
+                assert (violation[evaluated] < 1e-6).all(), integrand.name
+                bad_borns += (violation > 1e-6).sum()
         assert below > 0
+        if name == "pp_epemj":
+            assert bad_borns > 0
