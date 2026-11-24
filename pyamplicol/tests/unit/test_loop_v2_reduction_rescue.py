@@ -230,15 +230,17 @@ def test_profile_records_carry_the_reductions_own_rescue():
     ]
     assert out.uncertified_points == 1
     table = out.cli_json()["per_point"]
-    assert table["fields"][-3:] == [
+    assert table["fields"][-4:] == [
         "reduction_rescue_lanes",
         "reduction_rescue_carrier",
         "uncertified",
+        "reference_uncertified",
     ]
-    assert lp.SAMPLE_FIELDS[-3:] == (
+    assert lp.SAMPLE_FIELDS[-4:] == (
         "reduction_rescue_lanes",
         "reduction_rescue_carrier",
         "uncertified",
+        "reference_uncertified",
     )
     causes, _ = lp._stability_causes([out])
     assert (
@@ -247,6 +249,77 @@ def test_profile_records_carry_the_reductions_own_rescue():
         "reduction rescue",
         "lanes re-reduced in double-double within the reduction",
     ) in causes
+
+
+@pytest.mark.loop_fast
+def test_a_reference_with_uncertified_lanes_is_not_certified():
+    """``profile --stability``: a reference served with lanes without
+    accuracy evidence (its record's sixth entry, ``harvest``) is not
+    certified: the sample's ``reference_certified`` is False whatever its
+    estimate or agreement said, ``reference_uncertified`` keeps the reason,
+    the true digits are reported all the same, ``per_point`` flags it and
+    the backend counts it (``uncertified_reference_points``); a point whose
+    reference is clean is unchanged bit for bit in the record."""
+
+    import json
+    from fractions import Fraction
+
+    from pyamplicol import loop_profile as lp
+
+    reason = "a reduction lane vanishes within the resolution of its own terms"
+
+    def b64(index):
+        # index, value (per sector [finite]), summary, reason, status, ...
+        return (index, [[1.0 + 1e-14]], None, None, "success")
+
+    def reference(index, unsure=None):
+        exact = Fraction(1)
+        head = (index, [[exact]], None, "1", "agreement")
+        return head if unsure is None else (*head, unsure)
+
+    records = {0: b64(0), 1: b64(1)}
+    clean = {0: reference(0), 1: reference(1)}
+    marked = {0: reference(0), 1: reference(1, reason)}
+
+    def rows(references):
+        found = lp._sample_records(
+            "ninjars",
+            [0, 1],
+            records,
+            references,
+            1e-5,
+            {},
+            lp.GroundTruth("arbitrary", 40),
+        )
+        return found["fields"], json.loads(found["rows"].text)
+
+    fields, before = rows(clean)
+    _fields, after = rows(marked)
+    at = {name: k for k, name in enumerate(fields)}
+    assert after[0] == before[0]
+    assert before[1][at["reference_certified"]] == "agreement"
+    assert after[1][at["reference_certified"]] is False
+    assert after[1][at["reference_uncertified"]] == reason
+    assert before[1][at["reference_uncertified"]] is None
+    assert after[1][at["true_digits"]] == before[1][at["true_digits"]] is not None
+    changed = {at["reference_certified"], at["reference_uncertified"]}
+    assert [x for k, x in enumerate(after[1]) if k not in changed] == [
+        x for k, x in enumerate(before[1]) if k not in changed
+    ]
+    row = lp.BackendStability(
+        "ninjars",
+        per_point=(
+            lp.StabilityPoint(0, "measured", 14.0, None),
+            lp.StabilityPoint(1, "measured", 14.0, None),
+        ),
+    )
+    assert lp._with_reference_uncertified(row, clean) is row
+    out = lp._with_reference_uncertified(row, marked)
+    assert [p.reference_uncertified for p in out.per_point] == [None, reason]
+    assert out.uncertified_reference_points == 1
+    assert out.per_point[0] == row.per_point[0]
+    table = out.cli_json()["per_point"]
+    assert table["fields"][-1] == "reference_uncertified"
 
 
 from tests.unit.test_loop_v2_best_effort import aag  # noqa: E402,F401  (fixture)
