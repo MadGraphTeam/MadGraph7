@@ -26,6 +26,9 @@ on:
       - '.github/actions/check_heptools/**'
       - '.github/actions/restore_root/**'
       - '.github/actions/restore_delphes/**'
+      - 'pyamplicol/**'
+      - '.github/actions/build_pyamplicol/**'
+      - '.github/actions/install_pyamplicol/**'
   schedule:
     - cron: '0 3 * * 0,3'  # twice a week (Sun & Wed 3am): keep caches warm
   workflow_dispatch:
@@ -287,6 +290,82 @@ jobs:
         with:
           path: ~/.cache/pip-packages
           key: pip-numpy-${{ env.CACHE_KEY }}-${{ github.run_id }}
+
+  # pyamplicol's build caches, written only here: the install prefix and the
+  # Cargo build tree (both built by .github/actions/build_pyamplicol, which
+  # never saves), and the Cargo download cache that pyamplicol.yml restores.
+  # The job gate is strict (a workflow_dispatch from a branch does not count)
+  # and every save is gated on main again. PR and branch jobs restore these
+  # entries and never save one: an entry saved from a branch is readable only
+  # by that ref and eats the shared 10 GB quota.
+  pyamplicol_cache:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    needs: delete-cache
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Restore the pyamplicol pip cache
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: clippy, rustfmt
+
+      # Same key and paths as the "Cache Cargo downloads" step of pyamplicol.yml.
+      - name: Restore the Cargo download cache
+        id: cache-cargo-dl
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.99.1-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.99.1-
+
+      - name: Build pyamplicol (restore or build)
+        id: pac
+        uses: ./.github/actions/build_pyamplicol
+
+      - name: Save the Cargo download cache
+        if: steps.cache-cargo-dl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.99.1-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/dependencies/contributor-lock.toml') }}
+
+      - name: Save the pyamplicol install
+        if: steps.pac.outputs.install-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: pyamplicol/install
+          key: ${{ steps.pac.outputs.install-key }}
+
+      # The du listing records what the Cargo entry holds, for whoever trims it next.
+      - name: Size of the Cargo build tree
+        if: steps.pac.outputs.install-hit != 'true' && steps.pac.outputs.cargo-hit != 'true'
+        run: du -h --max-depth=3 pyamplicol/build/cache | sort -h | tail -n 15
+        shell: bash
+
+      - name: Save the Cargo build tree
+        if: steps.pac.outputs.install-hit != 'true' && steps.pac.outputs.cargo-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: pyamplicol/build/cache
+          key: ${{ steps.pac.outputs.cargo-key }}
 
   ufo_cache:
     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
