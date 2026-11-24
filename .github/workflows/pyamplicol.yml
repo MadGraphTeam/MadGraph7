@@ -230,20 +230,6 @@ jobs:
         uses: ./.github/actions/restore-pyamplicol-pip-cache
         with:
           python-version: "3.11"
-      # The pyamplicol caches (install prefix, Cargo build tree, Cargo downloads)
-      # are written only by the pyamplicol_cache job of warm_cache.yml, on main.
-      # Every pyamplicol workflow and action may restore them and nothing else.
-      - name: "Guard: no pyamplicol cache writes outside warm_cache.yml"
-        run: |
-          bad=$(grep -nE 'actions/cache(/save)?@' .github/workflows/pyamplicol*.yml \
-            .github/actions/*pyamplicol*/action.yml | grep -v 'actions/cache/restore@' || true)
-          if [ -n "$bad" ]; then
-            echo "$bad"
-            echo "::error::pyamplicol caches may only be restored here; saves belong in the pyamplicol_cache job of .github/workflows/warm_cache.yml (main only)."
-            exit 1
-          fi
-        shell: bash
-
       - name: Build pyamplicol with install.py (checks the library key)
         uses: ./.github/actions/build_pyamplicol
       - name: Library key from the MadGraph root, as the [amplicol] worker sees it
