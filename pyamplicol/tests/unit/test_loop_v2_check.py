@@ -167,6 +167,75 @@ def test_statuses_and_exit_codes_follow_the_rows():
 
 
 @pytest.mark.loop_fast
+def test_the_aggregate_is_closed_and_an_inconclusive_row_never_passes():
+    """A process's status is a closed aggregate (``checks.status_of``): a
+    pass next to an inconclusive row, or next to a verdict outside
+    ``VERDICTS``, is INCONCLUSIVE (exit code 4), never PASSED; a failure
+    wins over it; every row passing (with reasoned neutral rows) is PASSED;
+    the text report names the status."""
+
+    import prettytable
+
+    from pyamplicol.loops.v2 import checks
+    from pyamplicol.reporting.checks import check_report_summary
+
+    def process(*verdicts):
+        rows = tuple(
+            checks.CheckRow("ward", "leg 1", 0, "double", verdict)
+            for verdict in verdicts
+        )
+        return checks.ProcessCheck(
+            "p", "a > b", "virtual", "zero", (), "ninjars", rows, 0.0
+        )
+
+    def report(*processes):
+        return checks.CheckReport(
+            "x", "card", 1, 0, "auto", ("double",), processes, "", 0.0
+        )
+
+    inconclusive = process(checks.PASS, checks.INCONCLUSIVE)
+    unknown = process(checks.PASS, "maybe")
+    passed = process(checks.PASS, checks.PASS, checks.NOT_APPLICABLE)
+    assert inconclusive.status == checks.INCONCLUSIVE_STATUS == "inconclusive"
+    assert unknown.status == checks.INCONCLUSIVE_STATUS
+    assert passed.status == checks.PASSED
+    assert process(checks.FAIL, checks.INCONCLUSIVE).status == checks.FAILED
+    assert report(passed, inconclusive).exit_code == checks.EXIT_INCONCLUSIVE == 4
+    assert report(passed, unknown).exit_code == checks.EXIT_INCONCLUSIVE
+    assert report(inconclusive, process(checks.FAIL)).exit_code == checks.EXIT_FAILED
+    assert report(passed).exit_code == checks.EXIT_PASSED
+    assert not report(passed, inconclusive).passed
+
+    text = check_report_summary(
+        report(passed, inconclusive), prettytable=prettytable, color=False
+    )
+    assert "check INCONCLUSIVE (exit code 4)" in text
+    assert ": inconclusive" in text
+
+
+@pytest.mark.loop_fast
+def test_a_criterion_with_uncertified_lanes_is_three_way():
+    """``ward.judged`` / ``checks.uncertified_verdict``: a residual with
+    lanes served without accuracy evidence of bound B passes only when
+    residual + B is within the bound, fails only when residual - B is
+    above it, is inconclusive between and for an infinite B; without such
+    lanes (B = 0) it is the plain criterion."""
+
+    import math
+
+    from pyamplicol.loops.v2 import checks
+    from pyamplicol.loops.v2.ward import judged
+
+    assert judged(0.5, 1.0, 0.0) is True and judged(1.5, 1.0, 0.0) is False
+    assert judged(0.5, 1.0, 0.4) is True
+    assert judged(0.5, 1.0, 0.6) is None
+    assert judged(2.0, 1.0, 0.5) is False
+    assert judged(0.0, 1.0, math.inf) is None
+    assert checks.uncertified_verdict(0.5, 1.0, 0.6) == checks.INCONCLUSIVE
+    assert checks.uncertified_verdict(0.5, 1.0, 0.0) == checks.PASS
+
+
+@pytest.mark.loop_fast
 def test_the_catani_criterion_is_the_harness_rule():
     """|pole - Catani| <= 10 E + 1e-12 |Catani| per coefficient (binary64)
     and 1e-12 relative in double-double, as stored_checks.py applied it."""

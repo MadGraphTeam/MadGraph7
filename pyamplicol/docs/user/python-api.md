@@ -1131,8 +1131,10 @@ before the rescue existed. What this gives up: a lane that loses more than
 about 100 bits to cancellation and is in truth not zero is returned at its ~0
 re-reduced value, uncertified, instead of being recovered by the lane rescue's
 arbitrary-precision carrier; a caller who wants that recovery asks for it with
-a rescue policy, whose levels are never met by an uncertified result and so
-escalate to the higher carriers. A refused lane whose re-reduced value is not
+a rescue policy: a level whose result has such a lane is never met, so the
+policy either escalates to a higher carrier or, where its stall rule keeps
+that level's result (a level that gains nothing over the one before), returns
+it uncertified, with the reason. A refused lane whose re-reduced value is not
 consistent with zero keeps the lane rescue, then best effort. The
 status stays `"success"` so that generation and every consumer keep working
 (the previous release returned the same number without saying so); nothing of
@@ -1149,8 +1151,9 @@ the native SDKs: the C ABI's diagnostics record "uncertified" (per successful
 point id with such a lane, its reasons; points without one absent), which the
 C++, Fortran, packaged Rust and Rust SDK wrappers hand out unchanged
 ([Native APIs](native-apis.md)). Under a rescue policy a level whose result has such a lane is never met:
-the policy escalates, and at its last level the point stays not established,
-with the reason.
+the policy escalates, or returns the point not established with the reason
+(at its last level, or where its stall rule keeps an earlier level's result);
+never as met.
 
 Limits. Lane results of subnormal magnitude (below about 2.2e-308) from the
 binary64 fast engine are outside the rescue's accuracy coverage; the generic

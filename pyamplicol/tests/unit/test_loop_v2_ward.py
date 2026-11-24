@@ -325,6 +325,83 @@ def test_ward_criterion_applies_the_o1_rule():
         assert row["passed"] is passed
 
 
+def test_ward_criterion_reads_the_uncertified_lanes_bound():
+    """``ward.ward_row`` with lanes served without accuracy evidence
+    (``PointResult.uncertified_bound``, scale 1, one sector):
+
+    * the external reviewer's case: the fast engine's bubble
+      ``N = 2^400 (1 + 2 q0) + i`` serves an exact zero, uncertified, in the
+      direct and the reversed frame (estimate 1e-30) while its true finite
+      part has |Im| = 1.3435472012813139; its bound (2^300 of the bubble's
+      terms, ``v2_reduce::tests::a_vanishing_lane_carries_a_bound_that_
+      covers_its_true_value``) makes the row inconclusive, never a pass,
+      while the true value fails it;
+    * a physical vanishing Ward lane, bound 1e-30 of the scale: passes;
+    * a bound straddling the criterion, or infinite: inconclusive;
+    * a physical normalization resting on uncertified lanes beyond the
+      tolerance: inconclusive;
+    * double-double keeps its rule 3 (10 E) with no resolution floor."""
+
+    import math
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.stability import REDUCTION
+
+    sector = ("QCD", 6)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def point(virtual, estimate=(1e-30,), bound=None, scale=(1.0,)):
+        components = {name: {sector: laurent(*scale)} for name in COMPONENTS}
+        components["virtual"] = {sector: laurent(*virtual)}
+        stability = SimpleNamespace(
+            budgets={REDUCTION: {}}, absolute={sector: laurent(*estimate)}
+        )
+        return SimpleNamespace(
+            components=components,
+            born={sector: 1.0},
+            loop_born={sector: 0.0},
+            stability=stability,
+            uncertified_bound={} if bound is None else {sector: bound},
+        )
+
+    physical = point((1.0,))
+    wrong = point((0.0,), bound=(2.0**300,))
+    row = ward.ward_row(physical, wrong, "double")
+    assert row["passed"] is None and "inconclusive" in row, row
+    truth = point((1.3435472012813139,))
+    assert ward.ward_row(physical, truth, "double")["passed"] is False
+    # Without the bound the same two matching zeros would pass: the case.
+    assert ward.ward_row(physical, point((0.0,)), "double")["passed"] is True
+    vanishing = point((3e-17,), bound=(1e-30,))
+    assert ward.ward_row(physical, vanishing, "double")["passed"] is True
+    straddling = point((5e-17,), bound=(1e-12,))
+    assert ward.ward_row(physical, straddling, "double")["passed"] is None
+    unbounded = point((0.0,), bound=(math.inf,))
+    assert ward.ward_row(physical, unbounded, "double")["passed"] is None
+    # A violation far above the bound fails whatever the uncertified lanes.
+    violated = point((1e-3,), bound=(1e-10,))
+    assert ward.ward_row(physical, violated, "double")["passed"] is False
+    # The physical normalization must be certified.
+    uncertain_scale = point((1.0,), bound=(1e-6,))
+    row = ward.ward_row(uncertain_scale, vanishing, "double")
+    assert row["passed"] is None and "normalization" in row["inconclusive"]
+    # Double-double: |V| <= 1e-25 and rule 3 at 10 E, no floor.
+    assert (
+        ward.ward_row(physical, point((5e-27,), estimate=(1e-28,)), "double-double")[
+            "passed"
+        ]
+        is False
+    )
+    assert (
+        ward.ward_row(physical, point((5e-27,), estimate=(1e-27,)), "double-double")[
+            "passed"
+        ]
+        is True
+    )
+
+
 # ------------------------------------------------------------ nightly ladder
 
 LADDER = (
