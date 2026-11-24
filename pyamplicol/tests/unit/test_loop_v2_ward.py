@@ -115,7 +115,11 @@ def test_ward_identity_on_native_inputs(slices, name):
     the first legacy point: the binary64 virtual at most 1.6e-15 (g g > g g)
     and 6.0e-13 (u u~ > g g g) of the physical scale, within 1.5 and 0.8
     times its estimate; double-double 1.8e-31 and 1.7e-28; the Born ratio
-    below 3e-17 (binary64) and 3e-33 (double-double)."""
+    below 3e-17 (binary64) and 3e-33 (double-double). In double-double the
+    generic engine serves some vanishing Ward lanes below the resolution of
+    their own terms, uncertified and with no bound (its ladder's records
+    give no check budget): such a row is INCONCLUSIVE, never a pass, and
+    every other row passes; binary64 decides every row."""
 
     slice_ = slices(name)
     legs = DEFAULT[name][3]
@@ -129,7 +133,15 @@ def test_ward_identity_on_native_inputs(slices, name):
         assert [(row["leg"], row["factor"]) for row in check["rows"]] == [
             (leg, factor) for leg in legs for factor in ward.WARD_FACTORS
         ]
-        assert check["passed"] is True, (carrier, check["rows"])
+        if carrier == "double":
+            assert check["passed"] is True, (carrier, check["rows"])
+            continue
+        for row in check["rows"]:
+            assert row["passed"] is True or (
+                row["passed"] is None
+                and "without accuracy evidence" in row["inconclusive"]
+            ), (carrier, row)
+        assert any(row["passed"] is True for row in check["rows"]), check["rows"]
 
 
 @pytest.mark.parametrize("name", tuple(DEFAULT))

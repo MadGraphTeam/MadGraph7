@@ -506,6 +506,9 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
         scope_high = all(
             e <= BINARY64_SCOPE * size for e, size in zip(largest_e, high, strict=True)
         )
+    # Demonstrably out of the binary64 scope: at every scale the physical
+    # normalization allows (the stored checks skip only such a point).
+    row["scope_excluded"] = not scope_high
     if "none" in verdicts:
         virtual_passed = None
     elif not scope_high or False in verdicts:

@@ -250,6 +250,68 @@ def test_the_stored_checks_never_scale_a_violation_away():
 
 
 @pytest.mark.loop_fast
+def test_a_normalization_uncertain_ward_point_stays_asserted():
+    """The stored Ward stage (the external reviewer's inputs): a row whose
+    physical scale is 1 +- 2 with E = 2e-9 and residue 0 is inconclusive and
+    nominally out of the binary64 scope, but in scope at the true scale 3:
+    it is not ``scope_excluded``, its point stays asserted, and with one
+    clean passing point the stage is NOT a pass (one inconclusive)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2 import ward
+    from pyamplicol.loops.v2.assemble import COMPONENTS
+    from pyamplicol.loops.v2.stability import REDUCTION
+    from tools.loop_benchmark import stored_checks
+
+    sector = ("QCD", 6)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def point(virtual, estimate=(1e-30,), bound=None):
+        components = {name: {sector: laurent(1.0)} for name in COMPONENTS}
+        components["virtual"] = {sector: laurent(*virtual)}
+        return SimpleNamespace(
+            components=components,
+            born={sector: 1.0},
+            loop_born={sector: 0.0},
+            stability=SimpleNamespace(
+                budgets={REDUCTION: {}}, absolute={sector: laurent(*estimate)}
+            ),
+            uncertified_bound={} if bound is None else {sector: bound},
+        )
+
+    uncertain = ward.ward_row(
+        point((1.0,), bound=(2.0,)), point((0.0,), (2e-9,)), "double"
+    )
+    assert uncertain["passed"] is None and uncertain["inconclusive"]
+    assert uncertain["in_scope"] is False and uncertain["scope_excluded"] is False
+    clean = ward.ward_row(point((1.0,)), point((0.0,)), "double")
+    assert clean["passed"] is True
+
+    def record(index, row):
+        asserted = not row["scope_excluded"]
+        found_passed = row["passed"]
+        return {
+            "index": index,
+            "carrier": "double",
+            "asserted": asserted,
+            "passed": found_passed if asserted else None,
+            "rows": [
+                {k: v for k, v in row.items() if k in stored_checks._WARD_ROW_KEYS}
+            ],
+        }
+
+    stage = stored_checks.ward_stage([record(0, clean), record(1, uncertain)])
+    assert stage == {"asserted": 2, "passed": False, "inconclusive": 1}
+    assert stored_checks.ward_stage([record(0, clean)])["passed"] is True
+    # Demonstrably out of scope at every scale: excluded, as before.
+    far = ward.ward_row(point((1.0,)), point((0.0,), (2e-9,)), "double")
+    assert far["scope_excluded"] is True
+
+
+@pytest.mark.loop_fast
 def test_the_stored_rescue_stages_never_meet_an_uncertified_level():
     """``stored_checks.rescue_level0`` / ``rescue_level1`` (the stored
     rescue stages, as the production policy): a binary64 point with a lane
