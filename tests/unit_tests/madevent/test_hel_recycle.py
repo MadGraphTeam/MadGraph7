@@ -1671,7 +1671,7 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
         exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
         with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize') as base, \
              mock.patch.object(self.output.ProcessExporterMadMatrix,
-                               '_run_hel_recycling_warmups') as warmup:
+                               '_defer_hel_recycling') as warmup:
             exporter.finalize()
         base.assert_called_once_with()
         warmup.assert_called_once_with()
@@ -1694,24 +1694,17 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
              mock.patch.object(hrf.subprocess, 'run', side_effect=run):
             exporter.finalize()
         self.assertEqual(self.warmups, [])
-        probe = os.path.join(os.path.realpath(exporter.dir_path), hrf.PROBE_TREE,
-                             'SubProcesses', 'P1_gg_ggg')
-        self.assertEqual(set(cwd for _cmd, cwd, _ls in calls), set([probe]))
-        # the probe build ran in the probe tree, on the lent standalone driver
-        build, _cwd, listing = calls[0]
-        self.assertEqual(build[:3], ['make', '-f', 'hrprobe.mk'])
-        self.assertIn('HRPROBE=1', build)
-        for name in ['check_sa.cc', 'hrprobe.mk', 'madmatrix.mk', 'timer.h']:
-            self.assertIn(name, listing)
-        # which the output keeps for the launch
+        # generation builds nothing: the probe is for the launch
+        self.assertEqual(calls, [])
+        # the output keeps the probe driver for the launch to build from
         self.assertEqual(sorted(os.listdir(os.path.join(exporter.dir_path, 'SubProcesses',
                                                         hrf.PROBE_SOURCES))),
                          ['check_sa.cc', 'hrprobe.mk', 'nvtx.h', 'timer.h', 'timermap.h'])
-        # nothing was lent to, or built in, the P* directory itself: it only
-        # records that it is the plain code (the probe failed)
+        # nothing is measured or built in the P* directory: it records that its
+        # filter is not measured yet, and is the plain code until a launch
         self.assertEqual(os.listdir(own), [hrf.STATE])
-        self.assertEqual(hrf.read_state(own)['recycled'], False)
-        self.assertEqual(hrf.read_state(own)['output'], {'recycled': False})
+        self.assertEqual(hrf.read_state(own), {'cards': None, 'recycled': False,
+                                               'output': {'recycled': False}})
         self.assertEqual(os.listdir(foreign), [])
 
     def test_a_new_output_drops_what_an_earlier_one_left(self):

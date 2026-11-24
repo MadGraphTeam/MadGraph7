@@ -6,10 +6,11 @@ The recycled build of a P* directory is generated for one filter: the rows
 it builds are the good helicities, and the amplitudes it drops are the ones
 that vanish at them. Both depend on the parameters -- a coupling set to zero
 kills its diagrams, a helicity can open up with a mass -- so the filter is
-measured at generation time (madmatrix/output.py, at the output's own
-param_card) and again whenever a run is launched at other parameters
-(update(), from madgraph/mg7/madgraph_process.py, and before a MadtRex
-reweighting evaluates the libraries at the cards of its launches).
+not measured at generation time: an output keeps the plain code until a run
+measures it at its own parameters (update(), from
+madgraph/mg7/madgraph_process.py, once per scan point, and before a MadtRex
+reweighting evaluates the libraries at the cards of its launches). Each
+launch point gets the filter of its own card, never one measured at another.
 
 What is kept in the output:
   - P*/HelRecyclingRecipe.json: what the exporter knows of the matrix element
@@ -377,33 +378,22 @@ def strip_tag(name):
 
 # -- the two passes ----------------------------------------------------------
 
-def measure_at_output(root, exporters, card):
-    """The generation-time pass (madmatrix/output.py): measure every
-    --hel_recycling P* directory of `exporters` at `card` and write its
-    recycled build, or leave the plain code. Its filter is the output's own:
-    the one whose library carries no tag."""
-    tree = ProbeTree(root)
-    tree.reset()
-    key = cards_key([card])
+def defer_at_output(root, exporters):
+    """The generation-time pass (madmatrix/output.py): nothing is measured
+    here. Every --hel_recycling P* directory of `exporters` keeps the plain
+    code, with its recipe, and records that its filter is not measured yet
+    (cards None). The first launch measures it at its own parameters
+    (update()), and every scan point of a launch does the same at its own.
+
+    The plain code is the output's own build: its library carries no tag, so
+    an untagged library is always the plain code and a tagged one a filter."""
+    ProbeTree(root).reset()
     for exporter in exporters:
         pdir = exporter.path
-        name = os.path.basename(pdir)
-        recipe = exporter.write_hr_recipe()
-        state = {'cards': key, 'recycled': False}
-        try:
-            good, zeros = tree.measure(pdir, [card])
-            nrows = write_build(pdir, recipe, good, zeros)
-            if nrows is not None:
-                state.update(recycled=True, good_hels=good, zero_perhel=zeros)
-                logger.info('hel_recycling: %s builds %d helicity rows of %d, '
-                            'dropping %d (helicity, amplitude) pairs that vanish',
-                            name, nrows, len(recipe['helicities']), len(zeros))
-        except Exception as error:
-            remove_recycled(pdir)
-            logger.warning('hel_recycling warm-up error in %s (%s); it is '
-                           'written without recycling.', name, error)
-        state['output'] = signature(state)
-        write_state(pdir, state)
+        exporter.write_hr_recipe()
+        remove_recycled(pdir)
+        write_state(pdir, {'cards': None, 'recycled': False,
+                           'output': {'recycled': False}})
 
 
 def update(root, cards, pdirs, nb_core=None, subprocesses_json=None, log=None):

@@ -227,9 +227,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # say here, once per output, if the FD gauge drops it
         helas_call_writers.axial_gauge_requested(
                             self.opt.get('output_options'), warn=True)
-        # --hel_recycling: a new output starts with no warm-up of its own; what
-        # an earlier one left registered (one that died before its finalize)
-        # must never be built into this one
+        # --hel_recycling: a new output starts with nothing deferred of its own;
+        # what an earlier one left registered (one that died before its
+        # finalize) must never be recorded for this one
         del model_handling.OneProcessExporterMadMatrix._hr_warmups[:]
 
     def _parse_flavor_mask_option(self):
@@ -369,15 +369,15 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     def finalize(self, *args, **kwargs):
         super().finalize(*args, **kwargs)
-        # --hel_recycling: the warm-up runs once every P* directory is complete
-        # and buildable (CPU/SIMD only: the GPU backend ignores the tables)
-        self._run_hel_recycling_warmups()
+        # --hel_recycling: the P* directories are recorded as unmeasured once
+        # complete (the filter is measured at launch, CPU/SIMD only)
+        self._defer_hel_recycling()
 
     # The --hel_recycling probe runs through the standalone driver check_sa.exe,
     # which only `output standalone` ships. Any other output keeps a copy of it
     # (with the standalone makefile, under another name) in SubProcesses/hrprobe,
-    # which the probe tree lends each P* directory it measures -- at generation
-    # here, and again at launch (madmatrix/hel_recycling_filter.py).
+    # which the probe tree lends each P* directory it measures at launch
+    # (madmatrix/hel_recycling_filter.py).
     _hr_probe_files = ['check_sa.cc', 'nvtx.h', 'timer.h', 'timermap.h']
     _hr_probe_makefile = hel_recycling_filter.PROBE_MAKEFILE
 
@@ -392,21 +392,17 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         with open(pjoin(target, self._hr_probe_makefile), 'w') as fsock:
             fsock.write(rendered)
 
-    def _run_hel_recycling_warmups(self):
-        """For each --hel_recycling P* directory: build a probe of the ordinary
-        code (BACKEND=scalar FPTYPE=d HRPROBE=1), run it once to have its own
-        good-helicity scan print the good helicities and the amplitudes that are
-        only a cancellation zero at each, and write the recycled build for those
-        (hel_recycling_filter.measure_at_output).
+    def _defer_hel_recycling(self):
+        """For each --hel_recycling P* directory of this output: keep the plain
+        code and record that its filter is not measured yet
+        (hel_recycling_filter.defer_at_output). Nothing is probed or built at
+        generation: the first launch measures the filter at its own parameters,
+        and each scan point of a launch at its own
+        (hel_recycling_filter.update, from MadgraphProcess.update_hel_recycling).
 
-        The probe is built in a mirror of the output (.hrprobe), never in the
-        P* directory itself, and kept: a launch at other parameters measures the
-        filter again by running it (hel_recycling_filter.update).
-
-        The scan is the very sigmaKin_getGoodHel the helicity loop uses at run
-        time, so the rows built can never be short of one it asks for (at these
-        parameters). On any failure the directory keeps the ordinary code: correct
-        but not recycled, which is the right way round to fail."""
+        The probe driver is written here, since the launch builds the probe
+        from it. Until a launch, the directory is the plain matrix element,
+        which is correct at any parameters."""
         exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
         # only this output's directories, whatever happens: the list is shared
         # by every exporter of the session
@@ -415,8 +411,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         if not mine:
             return
         self._write_hr_probe_sources()
-        hel_recycling_filter.measure_at_output(
-            self.dir_path, mine, pjoin(self.dir_path, 'Cards', 'param_card.dat'))
+        hel_recycling_filter.defer_at_output(self.dir_path, mine)
 
     def _is_own_dir(self, path):
         """Whether path lies in this output's directory."""
@@ -580,10 +575,10 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     def finalize(self, *args, **kwargs):
         # no subprocesses.json (nor anything else the mg7 launcher needs), only
-        # the --hel_recycling warm-up, which can only run once every P* directory
-        # is complete and buildable, and the process table of the standalone
+        # the --hel_recycling deferral, which can only run once every P*
+        # directory is complete, and the process table of the standalone
         # libraries
-        self._run_hel_recycling_warmups()
+        self._defer_hel_recycling()
         self.write_processes_file()
 
     def _write_hr_probe_sources(self):
