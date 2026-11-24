@@ -17,7 +17,7 @@ The installer builds pinned dependencies, applies the repository's checked
 pole-evaluation patches to isolated copies, and tests the installed Fortran
 interface before publishing it. The supported build environment is GNU
 Fortran on Linux with binary128 support, Rust/Cargo 1.96 or later, C/C++
-compilers, GNU make, patch, and the GMP/MPFR build dependencies. The pinned
+compilers, GNU make, Git, patch, and the GMP/MPFR build dependencies. The pinned
 Nix development environment supplies these tools. macOS builds the same bridge
 as a ``.dylib``; that build is not yet qualified. The installer checks the
 platform, GNU Fortran and the Rust version before it builds anything.
@@ -123,7 +123,7 @@ has a different workload; its configured single helicity can contribute zero
 and is labeled unverified. This reproduction example implies no measured timing.
 
 Stock timing uses fixed-DP MadLoop mode. TIRust may internally retry DP-input
-tensors at 106-bit DD, 256 or 512 bits, so accepted 219 is a transport code, not
+tensors at 106-bit DD, 256 or 512 bits, so accepted 213 is a transport code, not
 proof of native-DP-only arithmetic. Genuine QP-input transport 323 remains
 separate from recomputing a QP numerator, which also requires the effective
 ``UseQPIntegrandForTIRust`` card. The stock driver does not emit optional route
