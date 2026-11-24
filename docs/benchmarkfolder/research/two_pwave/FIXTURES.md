@@ -77,7 +77,7 @@ The run on d5442e6 (8305f8b plus a test-only commit) with the bridge v4 (845c66d
 | raised powers | 2900 (two doubled up to rank 6: 74, tripled at rank 6: 42) | 10 two doubled at rank 6: boxes (1,1,2,2) gggg, 2; pentagons (1,1,1,2,2) ggQgg, 8 |
 | unit powers | 1671 | 87 at rank 4: boxes QQQQ, 3; pentagons QQgQQ, 4; hexagons, 80 |
 
-The unit-power refusals are the two-onium lanes that TIRust serves in quadruple precision: other outputs rescue them there, but two-P-wave outputs have no quadruple-precision path yet (Phase 3a). The point is reported unstable (410, 413 in the stability test). The 1/ε² is −2.44 per Born, where −2 C_A = −6 is predicted, so the poles cannot be tested until every group is served. The 97 refused inputs are in the scratch file `refused_gg_chic0chic0_d5442e6.txt` (sha256 221cabcc…), sent to TIRust with the results.
+The unit-power refusals were then taken to be lanes that TIRust serves in quadruple precision, but the replay in the next section shows that it refuses them in both precisions. The point is reported unstable (410, 413 in the stability test). The 1/ε² is −2.44 per Born, where −2 C_A = −6 is predicted, so the poles cannot be tested until every group is served. The 97 refused inputs are in `data/refused_gg_chic0chic0_d5442e6.txt` (sha256 221cabcc…), sent to TIRust with the results and with the request of 2026-11-24 to serve the 87 unit-power calls.
 
 ## Quadruple precision (Phase 3a)
 
