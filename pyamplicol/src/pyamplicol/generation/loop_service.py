@@ -2082,6 +2082,7 @@ def check_loop_requests(
     cuts=None,
     kinematics_improvement=None,
     kinematics_improvement_binary64=None,
+    reduction_target=None,
 ):
     """``pyamplicol check`` (``loops.v2.checks``): every process the request
     serves, regenerated IN MEMORY through this service's own preparation
@@ -2130,8 +2131,18 @@ def check_loop_requests(
         default_setting_=getattr(evaluation, "kinematics_improvement", None),
         default_binary64_=getattr(evaluation, "kinematics_improvement_binary64", None),
     )
+    # The reduction's target accuracy (TIRust's acceptance, NinjaRS's
+    # cancellation rescue): the one given, else the run card's
+    # [evaluation] reduction_target, else the default.
+    from pyamplicol.loops.v2.reduction import targeting
+
+    target = (
+        reduction_target
+        if reduction_target is not None
+        else getattr(evaluation, "reduction_target", None)
+    )
     checked = []
-    with born_dag_scope():
+    with born_dag_scope(), targeting(target):
         context = _prepare(
             backend,
             processes,

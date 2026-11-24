@@ -23,8 +23,8 @@
       ],
       "url": "https://github.com/alphal00p/ninjars.git",
       "ref": "main",
-      "revision": "a2546170c400956d9aaffd3151e6b0d6c7edf475",
-      "note": "a2546170 = main after PR #20 (merge of f7f5e165 and the feat/reserve-symbols head 07730ba9, the same tree): main f7f5e165 (PR #16 box-Gram conditioning bound, PR #19 Unstable-cause and box-Gram refusal records) + ninjars_symbolica::reserve (positional slot pool checked, master-integral symbols registered by name, nothing built); pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f"
+      "revision": "e1d94412dd44bb18059471edb0a84310cbaebafd",
+      "note": "e1d94412 = main after PR #23 (local cancellation rescue: measured-cancellation trigger against a caller-supplied target relative accuracy, local re-reduction of the lane in a higher precision, typed outcomes and per-lane records; FastOptions::cancellation_rescue, rescue_target, evaluate_refined_with; the generic engine's cancellation_ladder) and PR #22 on top of a2546170; a2546170 = main after PR #20 (merge of f7f5e165 and the feat/reserve-symbols head 07730ba9, the same tree): main f7f5e165 (PR #16 box-Gram conditioning bound, PR #19 Unstable-cause and box-Gram refusal records) + ninjars_symbolica::reserve (positional slot pool checked, master-integral symbols registered by name, nothing built); pins on Symbolica community d0424f9e, the gammaloop fork ea3faaae and oneloopmaster 07fc754f"
     },
     {
       "name": "oneloopmaster",

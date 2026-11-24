@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import functools
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
@@ -97,6 +99,35 @@ class KinematicsSettings:
         native key, ``kinematics_reaches``)."""
 
         return bool(_native().kinematics_reaches(self.binary64, carrier))
+
+
+# The variant setting of the current call (``calling``).
+_CALL_SETTING: ContextVar[str | None] = ContextVar(
+    "pyamplicol_kinematics_call_setting", default=None
+)
+
+
+@contextmanager
+def calling(setting: str | None) -> Iterator[None]:
+    """Within this context the current call's resolved variant setting is
+    ``setting`` (``"z-shift"``, ``"rescaling"``, ``"projection"`` or
+    ``"off"``; None: none recorded), which the rescues' improved points
+    follow (``plan_export.rescue_options``), as the call's double-double and
+    arbitrary-precision evaluations do; reset on exit.
+    """
+
+    token = _CALL_SETTING.set(setting)
+    try:
+        yield
+    finally:
+        _CALL_SETTING.reset(token)
+
+
+def call_setting() -> str | None:
+    """The current call's variant setting (``calling``), None outside a
+    call."""
+
+    return _CALL_SETTING.get()
 
 
 def resolve(

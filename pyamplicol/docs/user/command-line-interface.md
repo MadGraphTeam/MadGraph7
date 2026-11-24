@@ -625,10 +625,11 @@ hazard"); a binary64 fallback point is served unguarded; `ninjars` and `tirust` 
 without a fallback or guard (`tirust` serves every arithmetic; `ninjars`
 without stability checks was exposed to that hazard until NinjaRS's
 conditioning bound, 71eddb15); an explicit backend that cannot serve the call is refused.
-`--reduction-target X` sets TIRust's target accuracy (the relative accuracy
+`--reduction-target X` sets the target accuracy (the relative accuracy
 of each point's result, default 1e-5; it sets the calibrated acceptance of
-TIRust's checked method choice and, never below 1e-5, is the fallback
-guard's threshold).
+TIRust's checked method choice, NinjaRS's cancellation rescue per lane at
+X / 64, and, never below 1e-5, is the fallback guard's threshold;
+`evaluate`, `profile` and `check` read it).
 `--kinematics-improvement VARIANT` (`z-shift`, `rescaling`, `projection` or `off`; default
 `z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1, finished by
 the projection where MadLoop leaves the point inexact) and
@@ -1015,7 +1016,11 @@ fallback), no stability checks, no rescue, no best-effort re-evaluation of a
 refused point (a point without a value is counted `failed`); a reduction lane
 the unchecked backend still refuses is rescued inside the timed call (the
 header says "refused lanes rescued"; `--no-lane-rescue` times pure binary64
-calls, such points then without a value). `--checked`
+calls, such points then without a value). The unchecked reduction also has
+NinjaRS's cancellation rescue off (no trigger, no re-reduction: python-api.md,
+"NinjaRS's cancellation rescue"), so the default runtime pass is the most
+optimistic baseline, its values and time those of the reduction without the
+rescue, bit for bit. `--checked`
 (`benchmark.checked = true`) times the checked mode instead: the backends'
 own acceptance checks, a refused point returned with its best-effort value
 and timed as such (its unchecked re-evaluation and its uncertainty's checks
@@ -1272,7 +1277,12 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default
+The runtime timing runs before the pool, one process per backend. The
+stability run's evaluations are CHECKED (unless `--reduction-unchecked`): the
+precision it reports for an input arithmetic includes NinjaRS's cancellation
+rescue of the lanes whose binary64 reduction cancels beyond the target
+(python-api.md, "NinjaRS's cancellation rescue"), and each point's records
+say how many lanes it re-reduced and in which precision (below). Each backend evaluates every point in pure binary64 with the default
 checks: one default rotation on a point NinjaRS serves, one default rotation
 and the rescaled reduction-direction check on a point TIRust serves (per
 point under `--loop-reduction auto`: a per-point NinjaRS fallback point keeps
@@ -1428,7 +1438,21 @@ first evaluation: plain, or checked with one backend) and
 into the table's `tasks` list of `[seconds, points]` of the task that
 evaluated the point (inside a batched call there is no per-sample time);
 `lane_rescue` (the point's lane rescue, e.g. `"reduction lanes rescued in
-double-double"`; null without one).
+double-double"`; null without one); `reduction_rescue_lanes` and
+`reduction_rescue_carrier` (the lanes NinjaRS's cancellation rescue
+re-reduced within the reduction, over the point's evaluations: the reference
+call and its rotated evaluations, and the highest precision it used,
+`"double-double"` or `"arbitrary"`; 0 and null without one); `uncertified`
+(why lanes of the point were served without accuracy evidence, the reasons of
+`VirtualLaneDiagnostic.uncertified` joined by "; ": a lane below the
+resolution of its own terms, a vanishing lane, a lane outside NinjaRS's
+rescue domain without refined kinematics; the point's value is kept, its
+accuracy is not established; null otherwise). `per_point` carries the same
+fields, and each backend's stability row the totals
+`reduction_rescued_points`, `reduction_rescued_lanes`,
+`reduction_rescue_carriers` (per precision its lanes) and
+`uncertified_points`; the text report lists such points under the kind
+`reduction rescue`.
 Values, sectors, momenta and the reference are
 exact; the relative errors and scales carry 4 significant digits, the
 digits 3 decimals, the task seconds microseconds. Non-finite numbers are the
@@ -1472,7 +1496,10 @@ on the loaded runtime's own pools.
 
 ## Check
 
-`pyamplicol check` runs the pole and Ward checks of a one-loop request:
+`pyamplicol check` runs the pole and Ward checks of a one-loop request
+(checked reduction, at `evaluation.reduction_target` / `--reduction-target`,
+default 1e-5, which drives TIRust's acceptance and NinjaRS's cancellation
+rescue; the checks' own pass criteria do not depend on it):
 
 ```console
 pyamplicol check loop_gg_zgg_generate.toml              # a run card's request

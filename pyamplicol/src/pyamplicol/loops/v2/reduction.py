@@ -359,6 +359,41 @@ def running(
         _EFFECTIVE.reset(token)
 
 
+@contextmanager
+def targeting(target: float | None) -> Iterator[None]:
+    """Run the native executor calls of this context at the target
+    accuracy ``target`` (None: the default), whatever their backend
+    (``running`` keeps it when it is not given): ``pyamplicol check``'s
+    ``evaluation.reduction_target``."""
+
+    token = _TARGET.set(target)
+    try:
+        yield
+    finally:
+        _TARGET.reset(token)
+
+
+# The failure policy's best-effort pass (``best_effort_pass``).
+_BEST_EFFORT_PASS: ContextVar[bool] = ContextVar(
+    "pyamplicol_v2_best_effort_pass", default=False
+)
+
+
+@contextmanager
+def best_effort_pass() -> Iterator[None]:
+    """The native executor calls of this context are the failure policy's
+    best-effort pass (``_best_effort``): with the unchecked reduction,
+    NinjaRS keeps its cancellation rescue and serves a lane whose rescue
+    misses its target from its best value (the executor's ``best_effort``)
+    instead of refusing it."""
+
+    token = _BEST_EFFORT_PASS.set(True)
+    try:
+        yield
+    finally:
+        _BEST_EFFORT_PASS.reset(token)
+
+
 def current() -> str:
     """The effective backend of the current context (``running``)."""
 
@@ -444,6 +479,13 @@ def executor_options() -> dict[str, object]:
     options: dict[str, object] = {} if backend == "ninjars" else {"reduction": backend}
     if _UNCHECKED.get():
         options["unchecked"] = True
+    if _BEST_EFFORT_PASS.get():
+        options["best_effort"] = True
+    target = _TARGET.get()
+    if target is not None and float(target) != default_target():
+        # NinjaRS's cancellation rescue follows the call's target (its
+        # per-lane threshold, ``reduction_policy::rescue_lane_target``).
+        options["target"] = float(target)
     if not _LANE_RESCUE.get():
         options["lane_rescue"] = False
     return options
@@ -553,6 +595,15 @@ def _without_checks(result: Any) -> Any:
             result, {key: _without_checks(item) for key, item in result.items()}
         )
     return replace(result, stability=None, finiteness=None)
+
+
+def served_by_lane_rescue(counts: Any) -> bool:
+    """``virtual_results.served_by_lane_rescue``: whether a point's merged
+    counts include a lane or moment pyAmpliCol's lane rescue served."""
+
+    from pyamplicol.api.virtual_results import served_by_lane_rescue as served
+
+    return served(counts)
 
 
 def _like(result: Mapping[Any, Any], items: Mapping[Any, Any]) -> Any:
@@ -991,7 +1042,7 @@ def _rescued_estimates(
         if (
             result is None
             or index in failures
-            or not getattr(result, "lane_rescue", ())
+            or not served_by_lane_rescue(getattr(result, "lane_rescue", ()))
         ):
             continue
         record = records.get(index)
@@ -1107,16 +1158,18 @@ def _best_effort(
         )
 
     unchecked = replace(choice, unchecked=True)
-    values, still, served = _with_fallback(
-        again, unchecked, len(indices), runs[0], carrier
-    )
+    with best_effort_pass():
+        values, still, served = _with_fallback(
+            again, unchecked, len(indices), runs[0], carrier
+        )
     estimates = [
         _point_estimate(value) if value is not None else math.nan for value in values
     ]
     for extra in runs[1:]:
         # The call's checks and the recommended ones do not combine into one
         # set (two reduction checks): the larger of the two estimates.
-        more, _, _ = _with_fallback(again, unchecked, len(indices), extra, carrier)
+        with best_effort_pass():
+            more, _, _ = _with_fallback(again, unchecked, len(indices), extra, carrier)
         for local, value in enumerate(more):
             other = _point_estimate(value) if value is not None else math.nan
             # A run without an estimate leaves none (NaN), as in the SDK.

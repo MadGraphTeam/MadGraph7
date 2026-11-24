@@ -838,7 +838,9 @@ def test_the_cxx_fortran_and_rust_wrappers_set_the_checks(
             lines.append(" ".join([text(c) for p in floats for c in p] + [text(scale)]))
         return "\n".join(lines) + "\n"
 
-    runtime = Runtime.load(artifacts[name], process=name)
+    # The clients set the target accuracy to 1e-7 (it drives NinjaRS's
+    # cancellation rescue, whose re-reduced lanes enter the estimates).
+    runtime = Runtime.load(artifacts[name], process=name, reduction_target=1e-7)
     expected = []
     for checks in (
         VirtualStabilityChecks(1, True, rescaled=True),

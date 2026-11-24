@@ -2008,6 +2008,8 @@ impl TirReductionBackend {
         Ok(V2Output {
             direct: batches(direct)?,
             check: again.map(batches).transpose()?,
+            rescued: Vec::new(),
+            uncertified: Vec::new(),
         })
     }
 }

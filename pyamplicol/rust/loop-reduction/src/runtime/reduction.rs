@@ -92,6 +92,40 @@ where
         })
     }
 
+    /// NinjaRS's cancellation ladder in every epsilon sector
+    /// (`PolynomialReducer::enable_cancellation_ladder`).
+    pub(super) fn enable_cancellation_ladder(&mut self) -> ExecutionResult<()> {
+        for sector in &mut self.sectors {
+            sector.enable_cancellation_ladder().map_err(error)?;
+        }
+        Ok(())
+    }
+
+    /// The cancellation ladder's lane target in every epsilon sector.
+    pub(super) fn set_cancellation_target(&mut self, target: Option<f64>) {
+        for sector in &mut self.sectors {
+            sector.set_cancellation_target(target);
+        }
+    }
+
+    /// The cancellation ladder's per-lane records of every epsilon sector
+    /// since the last call (`PolynomialReducer::take_ladder_records`).
+    pub(super) fn take_ladder_records(&mut self) -> Vec<crate::LadderLaneRecord<T>> {
+        self.sectors
+            .iter_mut()
+            .enumerate()
+            .flat_map(|(index, sector)| {
+                sector
+                    .take_ladder_records()
+                    .into_iter()
+                    .map(move |mut record| {
+                        record.sector = index;
+                        record
+                    })
+            })
+            .collect()
+    }
+
     /// Pole residues the masters of every epsilon sector keep.
     pub(super) fn set_pole_selection(&mut self, selection: crate::PoleSelection) {
         for sector in &mut self.sectors {

@@ -413,6 +413,8 @@ pub struct Runtime {
     /// (`reduction_policy::DEFAULT_UNCHECKED`, off, until
     /// [`Runtime::set_reduction_unchecked`]).
     unchecked: bool,
+    /// The failure policy's best-effort pass is running (`best_effort`).
+    best_effort_pass: bool,
     /// The lane rescue of later evaluations
     /// (`reduction_policy::DEFAULT_LANE_RESCUE`, on, until
     /// [`Runtime::set_lane_rescue`]).
@@ -565,6 +567,7 @@ impl Runtime {
             reduction,
             target,
             unchecked: reduction_policy::DEFAULT_UNCHECKED,
+            best_effort_pass: false,
             lane_rescue: reduction_policy::DEFAULT_LANE_RESCUE,
             on_failure: OnFailure::default(),
             checks: StabilityChecks::default(),
@@ -975,6 +978,10 @@ impl Runtime {
         native.set_reduction(Reduction::parse(&choice.effective)?)?;
         native.set_target(self.target)?;
         native.set_unchecked(self.unchecked);
+        native.set_best_effort_pass(self.best_effort_pass);
+        // The rescues' points follow the call's kinematics improvement, as
+        // its double-double and arbitrary-precision evaluations do.
+        native.set_rescue_kinematics(self.kinematics);
         native.set_lane_rescue(self.lane_rescue);
         Ok(Choice {
             unchecked: self.unchecked,
@@ -1143,6 +1150,49 @@ impl Runtime {
             .iter()
             .map(|&v| exact_double(v))
             .collect::<RusticolResult<_>>()?;
+        let exact_scales = scales
+            .iter()
+            .map(|&v| exact_double(v))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        self.evaluate_decimal(
+            exact_momenta,
+            point_ids.to_vec(),
+            exact_scales,
+            resolved,
+            strategy,
+        )
+    }
+    /// [`Runtime::evaluate`] at caller-supplied higher-accuracy kinematics
+    /// (the C ABI's `rusticol_virtual_evaluate_refined`): component `i` of
+    /// the point is `momenta[i] + Σ_w corrections[w * momenta.len() + i]`
+    /// exactly (`words` binary64 correction words per component: one gives a
+    /// double-double point, more any precision). Every `momenta[i]` must be
+    /// the binary64 value nearest to its refined component (round to
+    /// nearest, ties to even): the binary64 evaluation reads the point the
+    /// refinement refines; otherwise the call is refused, naming the point,
+    /// leg and component, and nothing is evaluated. The refined point is
+    /// then the call's exact input ([`Runtime::evaluate_decimal`]): every
+    /// carrier, the kinematics improvement, the lane rescue and the
+    /// reduction's own rescue start from it. `words` 0 is
+    /// [`Runtime::evaluate`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_refined(
+        &mut self,
+        momenta: &[f64],
+        corrections: &[f64],
+        words: usize,
+        point_ids: &[u64],
+        scales: &[f64],
+        resolved: bool,
+        strategy: Option<&str>,
+    ) -> RusticolResult<Evaluation> {
+        let exact_momenta = refined_momenta(
+            momenta,
+            corrections,
+            words,
+            point_ids,
+            self.shape.external_count,
+        )?;
         let exact_scales = scales
             .iter()
             .map(|&v| exact_double(v))
@@ -1663,6 +1713,87 @@ fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>>
             }
         })
         .collect()
+}
+
+/// The exact decimal literals of refined momenta
+/// ([`Runtime::evaluate_refined`]): `momenta[i]` plus its `words` correction
+/// words, exactly; refused unless `momenta[i]` is the binary64 rounding of
+/// that sum.
+pub fn refined_momenta(
+    momenta: &[f64],
+    corrections: &[f64],
+    words: usize,
+    point_ids: &[u64],
+    external_count: usize,
+) -> RusticolResult<Vec<String>> {
+    use rusticol_core::loop_v2::dress::cast;
+    if corrections.len() != product(&[words, momenta.len()])? {
+        return Err(invalid(
+            "refined momenta need words * momentum_count correction words",
+        ));
+    }
+    let exact = |value: f64, what: &str| -> RusticolResult<Rational> {
+        Rational::try_from(value)
+            .map_err(|_| invalid(format!("SDK binary64 inputs must be finite ({what})")))
+    };
+    momenta
+        .iter()
+        .enumerate()
+        .map(|(i, &hi)| {
+            if words == 0 {
+                return exact_double(hi);
+            }
+            let mut value = exact(hi, "momenta")?;
+            for w in 0..words {
+                value = &value + &exact(corrections[w * momenta.len() + i], "correction words")?;
+            }
+            if cast(&0f64, &value) != hi {
+                let width = 4 * external_count.max(1);
+                let point = point_ids
+                    .get(i / width)
+                    .copied()
+                    .unwrap_or((i / width) as u64);
+                return Err(invalid(format!(
+                    "refined momenta: point {point}, leg {}, component {}: the binary64 momentum \
+                     {hi:e} is not the binary64 rounding of its refined value {:e}; momenta must \
+                     hold the nearest binary64 values of the refined point",
+                    (i % width) / 4,
+                    ["E", "px", "py", "pz"][i % 4],
+                    cast(&0f64, &value),
+                )));
+            }
+            Ok(dyadic_decimal(&value))
+        })
+        .collect()
+}
+
+/// The exact decimal literal of a dyadic rational (a finite sum of binary64
+/// values): `n / 2^k = n 5^k / 10^k`, scaled by ten until integral.
+fn dyadic_decimal(value: &Rational) -> String {
+    let sign = if value.is_negative() { "-" } else { "" };
+    let mut scaled = if value.is_negative() {
+        -value.clone()
+    } else {
+        value.clone()
+    };
+    let ten = Rational::from(10);
+    let mut k = 0usize;
+    while !scaled.is_integer() {
+        scaled = &scaled * &ten;
+        k += 1;
+    }
+    let digits = scaled.to_string();
+    if k == 0 {
+        return format!("{sign}{digits}");
+    }
+    let padded = format!("{digits:0>width$}", width = k + 1);
+    let (whole, fraction) = padded.split_at(padded.len() - k);
+    let fraction = fraction.trim_end_matches('0');
+    if fraction.is_empty() {
+        format!("{sign}{whole}")
+    } else {
+        format!("{sign}{whole}.{fraction}")
+    }
 }
 
 fn exact_double(value: f64) -> RusticolResult<String> {
@@ -3125,6 +3256,57 @@ pub(crate) fn diagnostics(
 mod tests {
     use super::*;
     use symbolica::domains::rational::Rational;
+
+    /// `evaluate_refined`'s inputs: a double-double point (one word) round
+    /// trips exactly as decimal literals, words 0 is the binary64 input,
+    /// and momenta that are not the binary64 roundings of the refined point
+    /// are refused naming the point, leg and component.
+    #[test]
+    fn refined_momenta_are_exact_and_consistent() {
+        use rusticol_core::loop_v2::dress::parse_rational;
+        let hi = [1.0, -0.1, 3.0e2, 0.0, 1.0, 2.0, 3.0, 4.0];
+        let lo = [
+            2f64.powi(-60),
+            -1.0e-20,
+            1.0e-15,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -2f64.powi(-80),
+        ];
+        let texts = refined_momenta(&hi, &lo, 1, &[7], 2).unwrap();
+        for ((text, &h), &l) in texts.iter().zip(&hi).zip(&lo) {
+            let exact = &Rational::try_from(h).unwrap() + &Rational::try_from(l).unwrap();
+            assert_eq!(parse_rational(text).unwrap(), exact, "{text}");
+        }
+        assert_eq!(
+            texts[0],
+            "1.000000000000000000867361737988403547205962240695953369140625"
+        );
+        let plain = refined_momenta(&hi, &[], 0, &[7], 2).unwrap();
+        assert_eq!(plain[1], exact_double(-0.1).unwrap());
+        // Two words: any precision.
+        let two =
+            refined_momenta(&hi[..1], &[2f64.powi(-60), 2f64.powi(-120)], 2, &[7], 1).unwrap();
+        let exact = &(&Rational::from(1) + &Rational::try_from(2f64.powi(-60)).unwrap())
+            + &Rational::try_from(2f64.powi(-120)).unwrap();
+        assert_eq!(parse_rational(&two[0]).unwrap(), exact);
+        let mut far = lo;
+        far[6] = 1e-9; // 3 + 1e-9 does not round to 3
+        let refusal = refined_momenta(&hi, &far, 1, &[7], 2)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains("point 7, leg 1, component py")
+                && refusal.contains("binary64 rounding"),
+            "{refusal}"
+        );
+        assert!(
+            refined_momenta(&hi, &lo[..4], 1, &[7], 2).is_err(),
+            "whole words only"
+        );
+    }
 
     #[test]
     fn pole_selection_parses_every_selection_of_the_api() {

@@ -868,16 +868,7 @@ def _add_evaluation_options(
             "'tirust' request one backend, without a fallback"
         ),
     )
-    parser.add_argument(
-        "--reduction-target",
-        dest="evaluation.reduction_target",
-        type=float,
-        default=argparse.SUPPRESS,
-        help=(
-            "v2 virtuals: the target accuracy (relative, per point) that "
-            "TIRust's method-choice acceptance follows; default 1e-5"
-        ),
-    )
+    _add_reduction_target(parser)
     parser.add_argument(
         "--reduction-unchecked",
         dest="evaluation.reduction_unchecked",
@@ -988,6 +979,23 @@ def _add_cut_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_reduction_target(parser: argparse.ArgumentParser) -> None:
+    """``--reduction-target`` (``evaluation.reduction_target``) of
+    ``evaluate``, ``profile`` and ``check``."""
+
+    parser.add_argument(
+        "--reduction-target",
+        dest="evaluation.reduction_target",
+        type=float,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: the target accuracy (relative, per point) that "
+            "TIRust's method-choice acceptance and NinjaRS's cancellation "
+            "rescue (per lane, the target / 1000) follow; default 1e-5"
+        ),
+    )
+
+
 def _add_kinematics_options(parser: argparse.ArgumentParser) -> None:
     """The kinematics improvement options (m-lit lit-psimprove;
     ``pyamplicol.kinematics``)."""
@@ -1076,6 +1084,7 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     _add_kinematics_options(parser)
+    _add_reduction_target(parser)
     _add_cut_options(parser)
     parser.add_argument(
         "--mu-r2",
@@ -1262,6 +1271,7 @@ def build_parser() -> argparse.ArgumentParser:
     # The rungs' kinematics improvement (m-lit lit-psimprove (G5)): the
     # evaluation keys, as Runtime.evaluate's.
     _add_kinematics_options(check)
+    _add_reduction_target(check)
     _add_cut_options(check)
     check.add_argument(
         "--points",

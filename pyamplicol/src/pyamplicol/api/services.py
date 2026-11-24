@@ -2220,6 +2220,7 @@ def check(
     cuts: PhaseSpaceCuts | None = None,
     kinematics_improvement: str | None = None,
     kinematics_improvement_binary64: bool | None = None,
+    reduction_target: float | None = None,
 ) -> CheckReport:
     """:func:`_check`, the known, benign dependency log events it triggers
     returned in the report's ``warnings`` instead of being printed
@@ -2243,6 +2244,7 @@ def check(
             cuts=cuts,
             kinematics_improvement=kinematics_improvement,
             kinematics_improvement_binary64=kinematics_improvement_binary64,
+            reduction_target=reduction_target,
         )
     found = captured.warnings()
     return replace(report, warnings=report.warnings + found) if found else report
@@ -2262,6 +2264,7 @@ def _check(
     cuts: PhaseSpaceCuts | None = None,
     kinematics_improvement: str | None = None,
     kinematics_improvement_binary64: bool | None = None,
+    reduction_target: float | None = None,
 ) -> CheckReport:
     """The pole and Ward checks of a one-loop request (``pyamplicol check``):
     ``target`` is a run card (its generation request), a resolved run
@@ -2295,8 +2298,10 @@ def _check(
     PhaseSpaceCuts``) rejects the points outside them: each of its values
     replaces its own one of ``evaluation.phase_space`` (an artifact's: the
     recorded ones), None keeps that one and 0 switches that cut off.
-    ``kinematics_improvement`` and ``kinematics_improvement_binary64`` are
-    ``Runtime.evaluate``'s (None takes ``evaluation``'s).
+    ``kinematics_improvement``, ``kinematics_improvement_binary64`` and
+    ``reduction_target`` are ``Runtime.evaluate``'s (None takes
+    ``evaluation``'s; the target drives TIRust's acceptance and NinjaRS's
+    cancellation rescue, not the check's own pass criteria).
     ``source`` is the run card a configuration ``target`` was read from
     (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
     process passed."""
@@ -2429,6 +2434,7 @@ def _check(
                     cuts=cuts,
                     kinematics_improvement=kinematics_improvement,
                     kinematics_improvement_binary64=kinematics_improvement_binary64,
+                    reduction_target=reduction_target,
                 )
         except CheckInterrupted as error:
             checked = list(error.partial)

@@ -70,6 +70,7 @@ from pyamplicol.api.virtual_results import (
     VirtualRescuePolicy,
     VirtualRescueRecord,
     splits_poles,
+    uncertified_detail,
 )
 from pyamplicol.loops.v2.stability import relative_text
 
@@ -200,8 +201,12 @@ def rescue(
                 diagnostic = evaluation.diagnostics[lane]
                 attempt = _attempt(evaluation, lane, level)
                 attempts[index].append(attempt)
+                # A level whose result carries lanes served without accuracy
+                # evidence (``VirtualLaneDiagnostic.uncertified``) is never
+                # met: the policy escalates, or keeps it not established.
                 met = (
                     diagnostic.valid
+                    and not getattr(diagnostic, "uncertified", ())
                     and attempt.estimate is not None
                     and attempt.estimate <= level.target
                 )
@@ -412,8 +417,9 @@ def _merged(
             diagnostic = replace(
                 original,
                 status="success" if item.level == 0 else "rescued",
-                accuracy_established=item.met,
-                detail=_detail(record, level.metric, item.stalled),
+                accuracy_established=item.met and not original.uncertified,
+                detail=_detail(record, level.metric, item.stalled)
+                + uncertified_detail(original.uncertified),
             )
         else:
             reasons = "; ".join(

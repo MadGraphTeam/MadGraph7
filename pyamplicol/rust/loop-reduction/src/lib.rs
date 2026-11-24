@@ -37,6 +37,10 @@ pub use ninjars::{
 use ninjars_graph::{CoefficientEvaluator, PolynomialCoefficientPlan, TensorCoefficientPlan};
 pub use ninjars_symbolica::PoleSelection;
 pub use ninjars_symbolica::SymbolicaSamplingScales;
+pub use ninjars_symbolica::cancellation_ladder::LadderOutcome;
+use ninjars_symbolica::cancellation_ladder::{
+    LadderCarrier, LadderCounts, LadderRule, LaneRescue, PolynomialLadder,
+};
 use ninjars_symbolica::{
     OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
     SymbolicaHighCuts, SymbolicaMasters,
@@ -310,6 +314,163 @@ where
     cuts: SymbolicaCuts<T>,
     high_cuts: Option<SymbolicaHighCuts<T>>,
     masters: SymbolicaMasters<T>,
+    /// NinjaRS's cancellation ladder ([`Self::enable_cancellation_ladder`]).
+    ladder: Option<Box<dyn LadderHook<T> + Send + Sync>>,
+    /// The ladder's per-lane records since the last
+    /// [`Self::take_ladder_records`].
+    ladder_records: Vec<LadderLaneRecord<T>>,
+    prototype: T,
+}
+
+/// One lane the generic engine's cancellation ladder handled
+/// ([`PolynomialReducer::take_ladder_records`]), the shape of the fast
+/// engine's `ninjars::fast::take_rescues()` records.
+#[derive(Clone, Debug)]
+pub struct LadderLaneRecord<T: NativeFloat>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    /// The caller's lane id (`ids` of [`PolynomialReducer::evaluate`]).
+    pub id: u64,
+    /// The epsilon sector of the reducer that produced the record (set by
+    /// the caller that owns several sector reducers, `Reductions`; 0
+    /// otherwise). A lane's Laurent value combines its sectors
+    /// (`Laurent::epsilon_sectors`): a refused lane's best value is the
+    /// combination of its successful sectors' values and its refused sectors'
+    /// `best`, never one sector's `best` alone.
+    pub sector: usize,
+    /// `Accepted` (served from a rung), `WithinTarget` (served at its base
+    /// value), `BelowResolution` / `Missed` / `Failed` (refused `Unstable`,
+    /// `best` carried; `BelowResolution`: the lane vanishes below the base
+    /// carrier's resolution, only an absolute accuracy exists).
+    pub outcome: LadderOutcome,
+    /// Whether the lane's value was served (its status is then success).
+    pub served: bool,
+    /// Bits of the carrier of the served (else of the best) value: the last
+    /// rung, or the base carrier for `WithinTarget`.
+    pub precision_bits: u32,
+    /// The estimated relative error of that value (`2^(L - p)`, MPFR tracked
+    /// precision included).
+    pub estimate: f64,
+    /// The target the lane was judged against.
+    pub target: f64,
+    /// Bits of every rung tried, in order (empty for `WithinTarget`).
+    pub rungs: Vec<u32>,
+    /// For a refused lane, its best available Laurent coefficients (the
+    /// smallest estimate among the base pass and the rungs), rounded to the
+    /// carrier, with `precision_bits` and `estimate` describing it; `None`
+    /// for a served lane (its value is the lane's) or when nothing is finite.
+    pub best: Option<[Complex<T>; 3]>,
+    /// The last rung's finite absolute bound of its value per Laurent
+    /// coefficient (its resolution of its own terms) and the term moduli:
+    /// for `BelowResolution`, the numbers a point-level absolute budget is
+    /// tested against.
+    pub absolute_bound: Option<[f64; 3]>,
+    pub term_moduli: Option<[f64; 3]>,
+}
+
+/// The cancellation ladder of one [`PolynomialReducer`], typed by its carrier.
+trait LadderHook<T: NativeFloat>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    fn rescue(
+        &mut self,
+        amplitude: &Amplitude<Complex<T>, SymbolicaAmplitudeKernels<T>>,
+        input: &AmplitudeInput<'_, Complex<T>>,
+        parameters: &[Complex<T>],
+    ) -> Result<Vec<LaneRescue<T>>>;
+    fn set_pole_selection(&mut self, selection: PoleSelection);
+    fn set_target(&mut self, target: Option<f64>);
+    fn take_counts(&mut self) -> LadderCounts;
+}
+
+impl<T: LadderCarrier> LadderHook<T> for PolynomialLadder
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    fn rescue(
+        &mut self,
+        amplitude: &Amplitude<Complex<T>, SymbolicaAmplitudeKernels<T>>,
+        input: &AmplitudeInput<'_, Complex<T>>,
+        parameters: &[Complex<T>],
+    ) -> Result<Vec<LaneRescue<T>>> {
+        PolynomialLadder::rescue(self, amplitude, input, parameters, None)
+    }
+    fn set_pole_selection(&mut self, selection: PoleSelection) {
+        PolynomialLadder::set_pole_selection(self, selection)
+    }
+    fn set_target(&mut self, target: Option<f64>) {
+        let rule = LadderRule {
+            target,
+            ..*self.rule()
+        };
+        self.set_rule(rule);
+    }
+    fn take_counts(&mut self) -> LadderCounts {
+        PolynomialLadder::take_counts(self)
+    }
+}
+
+thread_local! {
+    /// What NinjaRS's cancellation ladder did on this thread since the last
+    /// [`take_ladder_counts`].
+    static LADDER_COUNTS: std::cell::RefCell<LadderCounts> =
+        std::cell::RefCell::new(LadderCounts::default());
+}
+
+/// What the generic engine's cancellation ladder did on this thread since
+/// the last call: lanes served (accepted, below resolution), refused, and
+/// re-reductions per precision.
+pub fn take_ladder_counts() -> LadderCounts {
+    LADDER_COUNTS.with(|c| std::mem::take(&mut *c.borrow_mut()))
+}
+
+impl<T: LadderCarrier> PolynomialReducer<T>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    /// Enable NinjaRS's cancellation ladder
+    /// (`ninjars_symbolica::cancellation_ladder`): the amplitude measures
+    /// every lane's cancellation (its stability test) and a lane that keeps
+    /// fewer than half the carrier's bits is reduced again in the carrier the
+    /// ladder's rule picks from the measured loss; one it cannot serve is
+    /// refused `Unstable` (for the lane rescue). pyAmpliCol's checked mode
+    /// (`V2Reducer::set_unchecked(false)`); nothing is measured without it.
+    pub fn enable_cancellation_ladder(&mut self) -> Result<()> {
+        if self.ladder.is_some() {
+            return Ok(());
+        }
+        let n = self.amplitude.topology().propagators();
+        let prototype = self.prototype.clone();
+        self.amplitude = SymbolicaAmplitudeKernels::new(n, self.numerator.rank(), prototype)?
+            .with_stability_test()
+            .into_amplitude(0)?;
+        let mut ladder = PolynomialLadder::new(n, &self.numerator);
+        ladder.set_pole_selection(self.masters.pole_selection());
+        self.ladder = Some(Box::new(ladder));
+        Ok(())
+    }
+}
+
+impl<T: NativeFloat> PolynomialReducer<T>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    /// The ladder's per-lane records of the evaluations since the last call
+    /// (every lane it re-reduced, served `WithinTarget` or refused), in
+    /// evaluation order. Empty without the ladder.
+    pub fn take_ladder_records(&mut self) -> Vec<LadderLaneRecord<T>> {
+        std::mem::take(&mut self.ladder_records)
+    }
+
+    /// The ladder's target relative accuracy per lane (`None`: NinjaRS's
+    /// default for the carrier, half its bits). No effect without the ladder.
+    pub fn set_cancellation_target(&mut self, target: Option<f64>) {
+        if let Some(ladder) = &mut self.ladder {
+            ladder.set_target(target);
+        }
+    }
 }
 
 impl<T: NativeFloat> PolynomialReducer<T>
@@ -341,7 +502,11 @@ where
             } else {
                 None
             },
-            masters: SymbolicaMasters::new(prototype).with_onshell_threshold(onshell_threshold),
+            masters: SymbolicaMasters::new(prototype.clone())
+                .with_onshell_threshold(onshell_threshold),
+            ladder: None,
+            ladder_records: Vec::new(),
+            prototype,
         })
     }
 
@@ -351,6 +516,9 @@ where
     /// unchanged.
     pub fn set_pole_selection(&mut self, selection: PoleSelection) {
         self.masters.set_pole_selection(selection);
+        if let Some(ladder) = &mut self.ladder {
+            ladder.set_pole_selection(selection);
+        }
     }
 
     pub fn pole_selection(&self) -> PoleSelection {
@@ -371,6 +539,7 @@ where
         // Ninja's generic API accumulates, while its fast API overwrites. This
         // boundary deliberately gives both paths identical replacement semantics.
         self.amplitude.reset_batch(lanes);
+        let ladder_input = AmplitudeInput { ..input };
         if let Some(high) = &mut self.high_cuts {
             self.amplitude.evaluate_batch_with_inputs(
                 input,
@@ -387,16 +556,71 @@ where
                 &mut self.masters,
             )?;
         }
+        let mut rescued: Vec<Option<Option<ninjars::Laurent<Complex<T>>>>> = vec![None; lanes];
+        if let Some(ladder) = &mut self.ladder {
+            for record in ladder.rescue(&self.amplitude, &ladder_input, parameters)? {
+                let served = record.value.is_some();
+                let base_bits = self.prototype.get_precision();
+                let (precision_bits, estimate, best) = match (&record.value, record.best) {
+                    (Some(_), _) => (
+                        record.rungs.last().copied().unwrap_or(base_bits),
+                        record.rung_estimate.unwrap_or(record.estimate),
+                        None,
+                    ),
+                    (None, Some(best)) => (best.bits, best.estimate, Some(best.value)),
+                    (None, None) => (base_bits, record.estimate, None),
+                };
+                self.ladder_records.push(LadderLaneRecord {
+                    id: ids[record.lane],
+                    sector: 0,
+                    outcome: record.outcome,
+                    served,
+                    precision_bits,
+                    estimate,
+                    target: record.target,
+                    rungs: record.rungs.clone(),
+                    best,
+                    absolute_bound: record.absolute_bound,
+                    term_moduli: record.term_moduli,
+                });
+                rescued[record.lane] = Some(record.value);
+            }
+            let counts = ladder.take_counts();
+            LADDER_COUNTS.with(|c| {
+                let mut c = c.borrow_mut();
+                c.accepted += counts.accepted;
+                c.below_resolution += counts.below_resolution;
+                c.refused += counts.refused;
+                c.within_target += counts.within_target;
+                for (bits, count) in counts.reductions_by_bits {
+                    *c.reductions_by_bits.entry(bits).or_default() += count;
+                }
+            });
+        }
         Ok(ids
             .iter()
             .enumerate()
-            .map(|(row, &id)| {
-                let status = self.amplitude.statuses()[row];
-                Lane {
+            .map(|(row, &id)| match rescued[row].take() {
+                // The ladder's value replaces the lane's; a lane it could not
+                // serve is refused for the caller's lane rescue.
+                Some(Some(value)) => Lane {
                     id,
-                    status,
-                    value: (status == EvaluationStatus::Success)
-                        .then(|| self.amplitude.laurent(row).unwrap().clone().into()),
+                    status: EvaluationStatus::Success,
+                    value: Some(value.into()),
+                },
+                Some(None) => Lane {
+                    id,
+                    status: EvaluationStatus::Unstable,
+                    value: None,
+                },
+                None => {
+                    let status = self.amplitude.statuses()[row];
+                    Lane {
+                        id,
+                        status,
+                        value: (status == EvaluationStatus::Success)
+                            .then(|| self.amplitude.laurent(row).unwrap().clone().into()),
+                    }
                 }
             })
             .collect())
@@ -422,9 +646,21 @@ pub struct FastReducer<N: FastNumerator> {
     profile: FastProfile,
 }
 
+/// The fast engine's options of this facade: pyAmpliCol's, as the v2
+/// executor sets them (`runtime::fast_options_at`), at the default checked
+/// mode and the default target accuracy (NinjaRS's cancellation rescue at
+/// `reduction_policy::rescue_lane_target(DEFAULT_TARGET)`), so that no path
+/// reduces with another behaviour.
+fn facade_options() -> FastOptions {
+    runtime::fast_options_at(
+        reduction_policy::DEFAULT_UNCHECKED,
+        reduction_policy::rescue_lane_target(reduction_policy::DEFAULT_TARGET),
+    )
+}
+
 impl<N: FastNumerator> FastReducer<N> {
     pub fn new(propagators: usize, numerator: N) -> Result<Self> {
-        let amplitude = FastAmplitude::new(propagators, numerator.rank(), FastOptions::default())?;
+        let amplitude = FastAmplitude::new(propagators, numerator.rank(), facade_options())?;
         Self::with_amplitude(numerator, amplitude)
     }
 
@@ -580,7 +816,7 @@ impl FastTensorPolynomialReducer {
             PolynomialCoefficientPlan::new(expression, variables, parameters).map_err(error)?;
         // Reject unsupported rank/topology through the owner before allocating
         // a dense tensor layout, whose size grows quickly with rank.
-        let amplitude = FastAmplitude::new(propagators, plan.rank(), FastOptions::default())?;
+        let amplitude = FastAmplitude::new(propagators, plan.rank(), facade_options())?;
         let layout = TensorCoefficientPlan::with_mu_squared(&plan, None).map_err(error)?;
         let numerator = MuTensorNumerator::new(layout.rank(), layout.mu_powers(), 0)?;
         Ok(Self {

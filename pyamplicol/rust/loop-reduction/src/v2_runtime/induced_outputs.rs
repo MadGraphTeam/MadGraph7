@@ -1325,6 +1325,7 @@ impl V2Runtime {
             check: monitoring.check,
             term_scale: monitoring.term_scale,
             rescue: self.rescue_inputs(),
+            refinement: self.refinement_inputs(),
             ..V2Options::default()
         };
         // A row mask's liveness (the Python binding's `evaluate(rows=...)`:
