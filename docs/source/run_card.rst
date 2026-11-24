@@ -584,12 +584,12 @@ for an output that has them.
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
     leading-colour events and skips the second pass.
 
-``mode`` (``"reweight"``)
+``mode`` (``"unweight"``)
     ``"reweight"`` keeps the full- to leading-colour ratio in the event weights.
     ``"unweight"`` unweights the events a second time with respect to that ratio. The
     events then have unit weights apart from overweights.
 
-``first_pass_max_overweight_truncation`` (``0.01``), ``first_pass_freeze_max_weight_after`` (``10000``)
+``first_pass_max_overweight_truncation`` (``0.001``), ``first_pass_freeze_max_weight_after`` (``10000``)
     ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the first,
     leading-colour unweighting, in unweight mode. The ones of ``[generation]`` set the
     second unweighting, to full colour, which gives the final events. In reweight mode, the
@@ -779,7 +779,7 @@ Optimizer
 ``adam_beta1`` (``0.9``), ``adam_beta2`` (``0.999``), ``adam_eps`` (``1e-8``), ``adam_weight_decay`` (``1e-4``)
     Adam parameters.
 
-``grad_clip_threshold`` (``0.003``)
+``grad_clip_threshold`` (``0.03``)
     Maximum gradient norm. ``0`` disables clipping.
 
 Replay buffer
@@ -793,8 +793,9 @@ Training can reuse earlier samples. This saves matrix element evaluations.
 ``minimum_buffer_size`` (``10000``)
     Number of buffered samples needed before training on the buffer starts.
 
-``buffered_steps_fraction`` (``0.8``)
-    Fraction of the training steps done on buffered samples.
+``buffered_steps_fraction`` (``"auto"``)
+    Fraction of the training steps done on buffered samples. ``auto`` is 0 for
+    ``[amplicol]`` subprocesses and 0.8 otherwise.
 
 ``buffer_skip_batches`` (``1000``)
     Number of initial batches that are not stored.

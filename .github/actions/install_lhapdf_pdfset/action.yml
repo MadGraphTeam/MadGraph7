@@ -5,7 +5,9 @@ description: >
   (mg7/launch.py: ms.PdfGrid on $LHAPDF_DATA_PATH/<set>/<set>_0000.dat), so it
   only needs the grid data -- not the LHAPDF C++ library and not a pre-baked
   HEPTools cache. The set is installed with the lhapdf-management pip package
-  into a cached, writable directory, so the download happens at most once.
+  into a writable directory. This action NEVER saves a cache: the grid entry is
+  written only by the lhapdf_data_cache job of warm_cache.yml, on main. A miss
+  here downloads the set into the job and is not kept.
 
 inputs:
   pdfset:
@@ -18,6 +20,11 @@ inputs:
     # NNPDF40MC_lo_as_01180 and comes from the heptools cache.
     default: NNPDF23_lo_as_0130_qed
 
+outputs:
+  cache-hit:
+    description: "'true' when the grid was restored from the warm_cache entry."
+    value: ${{ steps.cache-pdf.outputs.cache-hit }}
+
 runs:
   using: composite
   steps:
@@ -28,11 +35,11 @@ runs:
       shell: bash
       run: echo "LHAPDF_DATA_PATH=$HOME/.cache/lhapdf_data" >> "$GITHUB_ENV"
 
-    # Cache the downloaded grid (~26 MB for NNPDF23) so we only hit the CERN
-    # server on the first run for a given set.
-    - name: Cache PDF grid
+    # Restore the downloaded grid (~26 MB for NNPDF23) written by warm_cache.yml.
+    # The key must match the lhapdf_data_cache job exactly.
+    - name: Restore PDF grid cache
       id: cache-pdf
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         path: ~/.cache/lhapdf_data
         key: lhapdf-data-${{ inputs.pdfset }}

@@ -52,7 +52,9 @@ With ``mode = "gridpack_only"``, the run stops after the merging and the merged
 gridpack is written to ``Events/<run_name>_NN/gridpack``. It is a normal gridpack, see
 :doc:`gridpacks`.
 
-Everything of the jobs is kept in ``Events/<run_name>_NN/cluster``, including their logs.
+The logs and results of the jobs are kept in ``Events/<run_name>_NN/cluster``. The gridpacks
+of the training jobs and the event files of the generation jobs are removed once they are
+merged or combined.
 
 Settings of the passes
 ----------------------
