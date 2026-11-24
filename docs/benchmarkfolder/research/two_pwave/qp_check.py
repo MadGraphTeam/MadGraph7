@@ -4,11 +4,13 @@ precision: the virtual at points in CTModeRun 1 (double precision), 4
 with MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that
 MadLoop's stability test sends every point to quadruple precision (the
 rescue: return code 2xx when the two quadruple-precision passes agree).
+`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default
+is 1.0d-3).
 Each point prints the poles in units of Born * alpha_s/(2 pi) against
 ONIA_IR_POLES, the finite parts, the differences between the passes, the
 return codes and the times.
 
-    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1]
+    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]
 
 The points are those of fixtures.py and acceptance.py (seed 1).
 """
@@ -27,12 +29,16 @@ if '--modes' in args:
     i = args.index('--modes')
     modes = args[i + 1].split(',')
     del args[i:i + 2]
+THRES = {'-1': '1.0d-30'}
+if '--thres' in args:
+    i = args.index('--thres')
+    THRES['-1'] = args[i + 1]
+    del args[i:i + 2]
 outdir, out = os.path.abspath(args[0]), args[1]
 runs = [(float(a.split(':')[0]), int(a.split(':')[1])) for a in args[2:]]
 pdir = olc.subprocess_dir(outdir)
 olc.build_driver(pdir)
 masses = olc.driver_masses(pdir)
-THRES = {'-1': '1.0d-30'}
 
 records = []
 for energy, npts in runs:

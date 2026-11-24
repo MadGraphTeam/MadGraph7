@@ -163,7 +163,7 @@ Up to N = 4 the two loop directions agree to 1e-12. With the cache off the range
 
 Over the whole point, 97 calls of CTModeRun 1 differ by more than 1e-6 from the CTModeRun 2 call with the same set of lines, and 79 by more than 0.1. All have five or six lines, which matches the split by N. The scalar coefficient (rank 0, all four slots) agrees between the passes and between repeats for all 719 distinct integrals; only the higher tensor coefficients differ. The lists are in `data/state_gg_chic0_chic0_632ed10.json`. Reported to TIRust on 2026-11-24. On 08cca00 all three problems are gone (next paragraph).
 
-**g g → χ_c0 χ_c0 on TIRust 08cca00** (bridge v8 28f89b1f, poles-only patch cd6a21c1, local on 632ed10, not pushed). 08cca00 fixes two defects of TIRust's direct engine that the dumps above showed:
+**g g → χ_c0 χ_c0 on TIRust 08cca00** (bridge v8 28f89b1f, poles-only patch cd6a21c1, on 632ed10; pushed as hs/pwave-two-dotted in huashengshao/TIRust#58, stacked on #56). 08cca00 fixes two defects of TIRust's direct engine that the dumps above showed:
 - **A missing term.** A partial fraction that holds a line raised by another set dropped that line's term at nonzero Taylor order. A hexagon takes the first set it holds, so the result followed the line order.
 - **Stale orders.** A lightlike bubble that holds one of several jet variables kept the other variables' orders from the previous call.
 
@@ -197,4 +197,62 @@ The dumps of `fixtures.py` (with and without the cache) give:
 
 The 97 and 52 replays are byte for byte those of 632ed10. e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) is bit-identical to 632ed10, and the 16 `pw_check.py` cases are bit-identical too. The lists are in `data/state_gg_chic0_chic0_08cca00.json`. Reported to TIRust on 2026-11-24.
 
-Not yet checked for g g: other points and energies, quadruple precision (CTModeRun 4 and 5, about 73 minutes a pass), and the stability test (CTModeRun −1).
+**g g → χ_c0 χ_c0 on 08cca00: more points, quadruple precision and the stability test.** `qp_check.py` ran at 8, 12, 20, 50 and 200 GeV, with its new option `--thres`, at the points of seed 1. These points have the same angles at every energy: cos θ of a χ_c0 is −0.371, −0.986, 0.420 and −0.604 for points 0 to 3. Point 1 is 9.7° from the beam. The runs:
+- CTModeRun 1 and 2 with MLStabThres 1d99;
+- CTModeRun −1 with MadLoop's default threshold, 1.0d-3.
+
+The data are in `data/more_gg_chic0_chic0_08cca00.json`.
+
+| √s (GeV), point | Born | 1/ε error, CTModeRun 1 / 2 | finite parts, 1 against 2 | code 1 / 2 / −1 |
+|---|---|---|---|---|
+| 8, 0 | 1.3e-8 | 5.6e-12 / 1.4e-11 | 1.9e-13 | 110 / 110 / 213 |
+| 8, 1 | 1.2e-6 | 4.4e-12 / 1.5e-11 | 2.7e-9 | 110 / 110 / 213 |
+| 12, 0 | 3.2e-9 | 1.4e-11 / 1.8e-11 | 2.5e-8 | 110 / 110 / 213 |
+| 12, 1 | 1.5e-5 | 5.6e-11 / 6.2e-11 | 1.9e-11 | 110 / 110 / 213 |
+| 20, 0 | 2.7e-10 | 5.7e-9 / 1.0e-9 | 2.1e-8 | 110 / 110 / 213 |
+| 20, 1 | 8.0e-5 | 0.78 / 0.78 (49 / 50 calls fail) | | 410 / 410 / 420 |
+| 20, 2 | 4.2e-10 | 1.1e-9 / 4.2e-11 | 1.1e-8 | 110 / 110 / 213 |
+| 20, 3 | 2.4e-9 | 9.7e-10 / 0.29 (0 / 12 calls fail) | 7.8e-4 | 110 / 410 / 423 |
+| 50, 0 | 5.2e-12 | 8.4e-6 / 1.4e-5 | 7.3e-6 | 110 / 110 / 213 |
+| 50, 1 | 3.3e-5 | 25 / 25 (49 / 50 calls fail) | | 410 / 410 / 420 |
+| 200, 0 | 2.0e-14 | 13 / 31 (no call fails) | 0.52 | 110 / 110 / 323 |
+| 200, 1 | 9.6e-8 | 0.62 / 0.87 (49 / 50 calls fail) | | 410 / 410 / 420 |
+
+The failing calls were counted with `fixtures.py` at the same points.
+
+**Served points.** Wherever no call fails, the poles are as predicted, except at 200 GeV, point 0 (below):
+- 1/ε² = −6 to 1e-10 (8.5e-8 at 50 GeV);
+- 1/ε to 6e-11 at 8 and 12 GeV, to 6e-9 at 20 GeV and to 1.4e-5 at 50 GeV.
+
+The stability test calls these points stable (213), with accuracy estimates from 6.5e-11 to 2.2e-5 (the largest at 50 GeV).
+
+**Point 1 from 20 GeV on.** TIRust accepts some raised-power calls and then returns status 1. These are 49 calls in CTModeRun 1 and 50 in CTModeRun 2, all with five or six lines and rank 5 or 6. The counts and the power patterns are the same at 20, 50 and 200 GeV. At 8 and 12 GeV the same angle is served.
+- **In MadLoop.** PW_REFUSED reports the point unstable (410). The rescue fails as well, since quadruple precision refuses the same calls (420).
+- **Replayed alone.** `replay_calls.f90` replays the 171 distinct inputs in `data/refused_gg_chic0chic0_08cca00.txt` (the CTModeRun 2 records carry the check-pass flag). All 171 fail in both precisions. TIRust's messages:
+  - 147: "dotted massless line k in a collinear pair of pentagon […]: its (D + 2)-dimensional term is not reduced";
+  - 24: "ill-conditioned Gram matrix for […]": conditioning 0 at 256 bits in 20 cases, and 7e-159 or 1e-34 at 512 bits in 4.
+
+**Point 3 at 20 GeV.** Twelve calls of the reversed pass fail with the first message. These are six-line integrals with line 2 or 3 doubled: rank 5, or rank 6 with line 4 doubled as well. The stability test sends the point to quadruple precision. There, 1/ε is right to 6.7e-15, and the finite part equals CTModeRun 1 to 2.2e-9. The return code is still 423 (unstable). Replayed in quadruple precision with the check-pass flag, the 12 calls fail too, so the reversed QP pass (CTModeRun 5) cannot confirm the result.
+
+**Point 0 at 200 GeV.** No call fails, but double precision is wrong:
+- 1/ε is −399.5 and −1002 against 32.97, and 1/ε² is −6.005 and −6.032;
+- both passes return 110.
+
+The raised-power tensors of the two passes agree to 5e-8 (none above 1e-6; `tensors.py` pairing as above), as they do at 20 and 50 GeV. So the difference between the passes does not come from those integrals. It comes from the unit-power integrals or from MadLoop's double-precision numerator. At this angle the Born falls from 2.7e-10 at 20 GeV to 5.2e-12 at 50 GeV and 2.0e-14 at 200 GeV, and the 1/ε error grows with it: 6e-9, 1e-5, then of order 1.
+
+The stability test sees the two passes disagree. Its quadruple-precision rescue gives:
+- 1/ε to 1.8e-11 and 1/ε² to 2e-12;
+- a finite part of 527.029 per Born·α_s/2π;
+- code 323.
+
+**Quadruple precision at 20 GeV, point 0.** CTModeRun 4 and 5 agree to all printed digits:
+- 1/ε = 23.23247950875515, 1.4e-14 from the prediction, and 1/ε² = −6;
+- a finite part of 259.4505590323. This is the CTModeRun 1 value to 1.9e-9 and the CTModeRun 2 value to 2.1e-8.
+
+The passes took 4452 s and 4476 s. The forced rescue (MLStabThres 1d-30) gives the same numbers, with code 323, in 4873 s. A rescue at the other points took 4730 to 4940 s.
+
+**Summary.** At the default threshold, MadLoop's return code flags every wrong result on 08cca00. The points with failing calls are 410 or 420, and the stability test catches the 200 GeV loss and rescues it. What TIRust still lacks, at forward angles from 20 GeV:
+- the (D + 2)-dimensional term of a dotted massless line in a collinear pair of a pentagon;
+- the degenerate Gram cases.
+
+Not yet reported to TIRust.

@@ -57,12 +57,20 @@ included. Their virtual needs TIRust integrals with two dotted propagators:
   hs/pwave-two-dotted, not yet in MadGraph); see Validation below.
 - **g g > chic0 chic0.** It also needs unit-power boxes, pentagons and
   hexagons whose heavy-quark propagators are linearly dependent at the two
-  thresholds. The TIRust candidate 08cca00 serves every integral of that
-  process. At 20 GeV, both poles are as predicted: 1/eps to 6e-9 in either
-  loop direction. The finite parts of the two directions agree to 2e-8
-  (`research/two_pwave/FIXTURES.md`). Earlier candidates gave tensor
-  coefficients of five- and six-line raised-power integrals that depended
-  on the cache, on earlier calls and on the order of the lines.
+  thresholds. With the TIRust candidate 08cca00, at 20 GeV, both poles are
+  as predicted: 1/eps to 6e-9 in either loop direction, and 1e-14 in
+  quadruple precision. The finite parts of the two directions agree to
+  2e-8. Between 8 and 200 GeV, MadLoop's stability test (default threshold)
+  flags every point whose result is wrong:
+  - At 10 degrees from the beam, from 20 GeV on, TIRust fails on some five-
+    and six-line integrals with a dotted massless line, in both precisions.
+    The point is reported unstable.
+  - At 200 GeV, double precision loses the poles, and the quadruple-precision
+    rescue restores them.
+
+  Details are in `research/two_pwave/FIXTURES.md`. Earlier candidates gave
+  tensor coefficients of five- and six-line raised-power integrals that
+  depended on the cache, on earlier calls and on the order of the lines.
 
 Such outputs are built with the medium code model on x86-64, since their loop
 arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the
