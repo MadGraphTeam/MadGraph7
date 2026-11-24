@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: output warns when zerowidth_external (on by default) drops the width of an internal
+       propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
+       p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the
+       cross section is then infinite unless a cut removes that invariant-mass region (mmjj),
+       and was 1e2-1e9 pb instead of 0.03 pb for u d~ > w+ w+ d u~ without one. The check
+       covers the crossings folded into a matrix element; t a > t a and g g > t t~ g, whose
+       top pole sits only at the edge of phase space, are not flagged.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV
