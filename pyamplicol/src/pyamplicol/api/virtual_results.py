@@ -997,6 +997,43 @@ def rescue_text(rescue: VirtualLaneRescue, added: bool) -> str:
     )
 
 
+# The prefix of the precision of a lane the reduction backend rescued within
+# its own reduction (NinjaRS's cancellation rescue) in the merged per-carrier
+# counts of a point (``plan_export.point_rescued``), and the key of the
+# largest relative error estimate of those re-reductions (merged by maximum,
+# ``plan_export.merged_rescue``); ``VirtualReductionRescue.of`` reads both,
+# ``VirtualLaneRescue.of`` neither.
+LOCAL = "reduction:"
+LOCAL_ESTIMATE = "reduction-estimate"
+# The prefix of the reason a point's lane was served without accuracy
+# evidence (``PointResult::uncertified``: a lane below the resolution of its
+# own terms, a lane outside NinjaRS's rescue domain without refined
+# kinematics) in the same merged counts: the point's accuracy is not
+# established (``uncertified_reasons``); neither rescue record reads it.
+UNCERTIFIED = "uncertified:"
+
+
+def uncertified_detail(reasons: Sequence[str]) -> str:
+    """The detail clause of a point served with lanes without accuracy
+    evidence (``uncertified_reasons``); empty without one. Every route that
+    builds a lane diagnostic from the native records appends it."""
+
+    return "; accuracy not established: " + "; ".join(reasons) if reasons else ""
+
+
+def uncertified_reasons(counts: Iterable[tuple[str, object]] | None) -> tuple[str, ...]:
+    """The reasons, sorted, why lanes of a point were served without
+    accuracy evidence (its merged counts, ``plan_export.point_rescued``)."""
+
+    return tuple(
+        sorted(
+            str(key)[len(UNCERTIFIED) :]
+            for key, _count in counts or ()
+            if str(key).startswith(UNCERTIFIED)
+        )
+    )
+
+
 # The prefix of a term-scale moment's carrier in the merged per-carrier
 # counts of a point (``plan_export.point_rescued``; ``VirtualLaneRescue.of``).
 MOMENTS = "moments:"
@@ -1050,8 +1087,9 @@ class VirtualLaneRescue:
         (``plan_export.point_rescued``: a moment's carrier prefixed
         ``"moments:"``)."""
 
-        lanes = [(c, n) for c, n in counts if not c.startswith(MOMENTS)]
-        moments = [(c[len(MOMENTS) :], n) for c, n in counts if c.startswith(MOMENTS)]
+        kept = [(c, n) for c, n in counts if not _reduction_entry(c)]
+        lanes = [(c, n) for c, n in kept if not c.startswith(MOMENTS)]
+        moments = [(c[len(MOMENTS) :], n) for c, n in kept if c.startswith(MOMENTS)]
         return cls(tuple(lanes), tuple(moments))
 
     @property
@@ -1069,6 +1107,103 @@ class VirtualLaneRescue:
             if any(c == "arbitrary" for c, _ in (*self.lanes, *self.moments))
             else ("double-double")
         )
+
+
+def _reduction_entry(key: str) -> bool:
+    """Whether a merged count's key is the reduction's own rescue's
+    (``LOCAL``, ``LOCAL_ESTIMATE``), not pyAmpliCol's lane rescue's."""
+
+    return key.startswith((LOCAL, UNCERTIFIED)) or key == LOCAL_ESTIMATE
+
+
+def served_by_lane_rescue(counts: Iterable[tuple[str, object]] | None) -> bool:
+    """Whether a point's merged counts (``plan_export.point_rescued``)
+    include a lane or moment pyAmpliCol's lane rescue served (the reduction
+    backend's own rescue does not count: its lanes were never refused)."""
+
+    return any(not _reduction_entry(str(key)) for key, _count in counts or ())
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualReductionRescue:
+    """The reduction backend's own rescue of one point (docs/user/
+    python-api.md, "NinjaRS's cancellation rescue"): reduction lanes whose
+    binary64 reduction cancelled beyond the call's lane target and that
+    NinjaRS re-reduced in a higher precision within its own reduction, in
+    the checked mode, and served. ``lanes`` gives per precision
+    (``"double-double"``) the lanes it served, counted over the point's
+    evaluations (the reference and its rotated evaluations); ``estimate`` the
+    largest relative error estimate of those re-reductions (NinjaRS's own,
+    each at most the lane target), None when not recorded. These lanes were
+    never refused: pyAmpliCol's lane rescue (``VirtualLaneRescue``) is
+    another record."""
+
+    lanes: tuple[tuple[str, int], ...]
+    estimate: float | None = None
+
+    def __post_init__(self) -> None:
+        found = tuple(
+            (str(precision), int(count))
+            for precision, count in cast(Iterable[tuple[str, int]], self.lanes)
+        )
+        if not found or any(
+            precision not in {"double-double", "arbitrary"} or count < 1
+            for precision, count in found
+        ):
+            raise ValueError(
+                "a reduction rescue names double-double or arbitrary with at "
+                "least one lane each"
+            )
+        object.__setattr__(self, "lanes", found)
+        if self.estimate is not None:
+            _nonnegative(self.estimate, "estimate")
+
+    @classmethod
+    def of(
+        cls, counts: Iterable[tuple[str, object]] | None
+    ) -> VirtualReductionRescue | None:
+        """The record of a point's merged counts (``LOCAL`` entries and
+        the ``LOCAL_ESTIMATE``), None without a lane."""
+
+        entries = tuple(counts or ())
+        lanes = tuple(
+            (str(key)[len(LOCAL) :], int(cast(int, count)))
+            for key, count in entries
+            if str(key).startswith(LOCAL)
+        )
+        if not lanes:
+            return None
+        estimates = [
+            float(cast(float, count)) for key, count in entries if key == LOCAL_ESTIMATE
+        ]
+        return cls(lanes, max(estimates) if estimates else None)
+
+    @property
+    def count(self) -> int:
+        """The re-reduced lanes over every precision."""
+
+        return sum(count for _precision, count in self.lanes)
+
+    @property
+    def precision(self) -> str:
+        """The highest precision of a re-reduction."""
+
+        return (
+            "arbitrary"
+            if any(p == "arbitrary" for p, _ in self.lanes)
+            else "double-double"
+        )
+
+
+def reduction_rescue_text(rescue: VirtualReductionRescue) -> str:
+    """A lane diagnostic's text of the reduction's own rescue (the
+    "detail" column): "reduction's own rescue: N lanes in <precision>"."""
+
+    parts = [
+        f"{count} lane{'' if count == 1 else 's'} in {precision}"
+        for precision, count in rescue.lanes
+    ]
+    return "reduction's own rescue: " + ", ".join(parts)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1121,6 +1256,17 @@ class VirtualLaneDiagnostic:
     # lanes the backend refused in this carrier and a higher carrier served;
     # None when no lane was rescued.
     lane_rescue: VirtualLaneRescue | None = None
+    # The reduction backend's own rescue of the point
+    # (``VirtualReductionRescue``: NinjaRS's cancellation rescue in the
+    # checked mode); None when it re-reduced no lane.
+    reduction_rescue: VirtualReductionRescue | None = None
+    # Why lanes of the point were served without accuracy evidence
+    # (``uncertified_reasons``: a lane below the resolution of its own terms,
+    # no symmetry proof; a lane outside NinjaRS's rescue domain without
+    # refined kinematics): the value is returned, its accuracy is not
+    # established (``accuracy_established`` False, the reasons in ``detail``)
+    # whatever the point's stability estimate says. Empty otherwise.
+    uncertified: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.status not in {
@@ -1166,6 +1312,17 @@ class VirtualLaneDiagnostic:
             _nonnegative(self.finiteness, "finiteness")
             if not self.has_value:
                 raise ValueError("failed lanes carry no finiteness ratio")
+        if self.reduction_rescue is not None and not isinstance(
+            self.reduction_rescue, VirtualReductionRescue
+        ):
+            raise TypeError(
+                "a lane's reduction rescue is a VirtualReductionRescue record"
+            )
+        object.__setattr__(self, "uncertified", tuple(str(r) for r in self.uncertified))
+        if self.uncertified and self.accuracy_established:
+            raise ValueError(
+                "a lane served without accuracy evidence cannot establish accuracy"
+            )
 
     @property
     def valid(self) -> bool:

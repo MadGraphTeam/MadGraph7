@@ -382,6 +382,31 @@ public:
         virtual_detail::check(rusticol_virtual_evaluate(handle_.get(), &request, &p));
         return VirtualEvaluation(p);
     }
+    // rusticol_virtual_evaluate_refined: evaluate at caller-supplied
+    // higher-accuracy kinematics, momenta[i] + sum_w corrections[w * momenta.size() + i]
+    // exactly (words = corrections.size() / momenta.size(); one word: a
+    // double-double point). momenta must hold the binary64 roundings of the
+    // refined components (VirtualError otherwise).
+    VirtualEvaluation evaluate_refined(const std::vector<double> &momenta,
+                                       const std::vector<double> &corrections,
+                                       std::size_t point_count, const std::vector<double> &mu_r2,
+                                       const std::vector<std::uint64_t> &point_ids = {},
+                                       bool resolved = false,
+                                       const std::optional<std::string> &r2_strategy = std::nullopt) {
+        if (!point_ids.empty() && point_ids.size() != point_count)
+            throw VirtualError("point_ids must have one entry per input point");
+        if (momenta.empty() ? !corrections.empty() : corrections.size() % momenta.size() != 0)
+            throw VirtualError("corrections must hold whole words of momenta.size() values");
+        const std::size_t words = momenta.empty() ? 0 : corrections.size() / momenta.size();
+        rusticol_virtual_batch_request request{
+            momenta.data(), momenta.size(), point_count,
+            point_ids.empty() ? nullptr : point_ids.data(), mu_r2.data(), mu_r2.size(),
+            resolved ? 1u : 0u, virtual_detail::optional_string(r2_strategy)};
+        rusticol_virtual_result *p = nullptr;
+        virtual_detail::check(rusticol_virtual_evaluate_refined(
+            handle_.get(), &request, words ? corrections.data() : nullptr, words, &p));
+        return VirtualEvaluation(p);
+    }
     // rusticol_virtual_evaluate_selected: the selected helicity rows of a
     // loop-induced process (resolved = false: their sum per point;
     // resolved = true: per selected row its colour components in the

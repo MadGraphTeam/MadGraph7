@@ -1235,8 +1235,6 @@ fn method_choice_rows_are_checked() {
                 (Ok(x), Ok(y)) => {
                     served += 1;
                     let z = truth[g][lane].as_ref().unwrap();
-                    let n = ninja[g][lane].as_ref().unwrap();
-                    let n_check = ninja_check[g][lane].as_ref().unwrap();
                     let scale = z.iter().map(size).fold(0., f64::max);
                     let spread = |p: &[C], q: &[C]| {
                         p.iter()
@@ -1245,13 +1243,22 @@ fn method_choice_rows_are_checked() {
                             .fold(0., f64::max)
                     };
                     let truth_error = spread(x, z) / scale;
-                    eprintln!(
-                        "family {g} lane {lane}: vs 80 digits {truth_error:e}, TIR estimate {:e}, \
-                         NinjaRS {:e} (estimate {:e})",
-                        spread(x, y) / scale,
-                        spread(n, z) / scale,
-                        spread(n, n_check) / scale
-                    );
+                    // NinjaRS's lane is recorded when it serves it (its
+                    // checked cancellation rescue may refuse it, typed).
+                    match (&ninja[g][lane], &ninja_check[g][lane]) {
+                        (Ok(n), Ok(n_check)) => eprintln!(
+                            "family {g} lane {lane}: vs 80 digits {truth_error:e}, TIR estimate \
+                             {:e}, NinjaRS {:e} (estimate {:e})",
+                            spread(x, y) / scale,
+                            spread(n, z) / scale,
+                            spread(n, n_check) / scale
+                        ),
+                        (Err(reason), _) | (_, Err(reason)) => eprintln!(
+                            "family {g} lane {lane}: vs 80 digits {truth_error:e}, TIR estimate \
+                             {:e}, NinjaRS refused: {reason}",
+                            spread(x, y) / scale
+                        ),
+                    }
                     assert!(
                         truth_error < 1e-12,
                         "family {g} lane {lane}: {truth_error:e}"
@@ -2205,6 +2212,8 @@ fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
         FastOptions {
             stability_threshold: 0.0,
             relative_tolerance: 0.0,
+            // No cancellation trigger and no rescue in the unchecked mode.
+            cancellation_rescue: false,
             ..defaults
         }
     );

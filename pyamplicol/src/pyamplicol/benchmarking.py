@@ -3869,6 +3869,19 @@ def lane_rescue_reason(diagnostic: Any) -> str | None:
     return f"reduction lanes rescued in {rescue.carrier}"
 
 
+def reduction_rescue(diagnostic: Any) -> tuple[int, str] | None:
+    """A point's rescue within the reduction backend from its
+    ``VirtualLaneDiagnostic`` (``reduction_rescue``: NinjaRS's cancellation
+    rescue in the checked mode): the lanes it re-reduced in a higher
+    precision over the point's evaluations, and the highest such precision;
+    None without one."""
+
+    rescue = getattr(diagnostic, "reduction_rescue", None)
+    if rescue is None:
+        return None
+    return int(rescue.count), str(rescue.precision)
+
+
 def failure_reason(diagnostic: Any) -> str:
     """A failed point's reason from its ``VirtualLaneDiagnostic``: the status
     and the first failed channel's stage and first message (else the lane's

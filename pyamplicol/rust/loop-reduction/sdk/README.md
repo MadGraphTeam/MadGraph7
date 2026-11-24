@@ -43,6 +43,13 @@ vectors. Binary64 values are bitwise the Python API's (the same Rust code:
 binary64 outputs call), double-double and arbitrary precision equal `Decimal`
 values.
 
+**Higher-accuracy input kinematics.** `rusticol_virtual_evaluate_refined(handle, request, corrections,
+words, &result)` (C++ `evaluate_refined(momenta, corrections, point_count, mu_r2, ...)`, Fortran `evaluate(...,
+corrections=c)` with `c(4, leg, point, word)`, the packaged Rust wrapper's `Runtime::evaluate_refined`, the Rust
+crate's `Runtime::evaluate_refined` and `evaluate_decimal`) evaluates at `momenta[i] + sum_w corrections[w *
+momentum_count + i]`, exactly; the momenta must be the binary64 roundings of the refined point (an invalid
+argument otherwise, naming the point, leg and component). Examples: `examples/refined_v4.{cpp,f90}`.
+
 **Selections (loop-induced, F1; Born-interfered, lit-fc-hel).** `rusticol_virtual_evaluate_selected(handle,
 request, selection, &result)` (C++ `evaluate_selected` with a
 `VirtualSelection`, Fortran `evaluate_selected`, the packaged Rust wrapper's
