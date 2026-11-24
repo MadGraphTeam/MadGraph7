@@ -8,3 +8,15 @@ c**************************************************************************
       fks_onia_leg=.false.
       return
       end
+
+
+      logical function fks_onia_nosector(i)
+c**************************************************************************
+c     No bound state in this process: no leg is left out of the FKS
+c     partition (see onia_legs.f).
+c**************************************************************************
+      implicit none
+      integer i
+      fks_onia_nosector=.false.
+      return
+      end

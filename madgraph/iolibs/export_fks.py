@@ -854,9 +854,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             fks_onia.OniaRecord.write(matrix_element.born_me, 'onia_fks.json')
             # which legs are onia, for the FKS partition (fks_Sij.f)
             self.write_onia_legs_file('onia_legs.f', matrix_element)
-            if matrix_element.real_processes:
-                # the soft current of a P-wave quarkonium (fks_onia_soft.f)
-                self.write_born_onia_file('born_onia.f', matrix_element, fortran_model)
+            # the soft currents of the P-wave quarkonia (fks_onia_soft.f):
+            # also without a real emission, for the dipole-dipole pole of the
+            # virtual and its eight-quark counterterm (parallel class)
+            self.write_born_onia_file('born_onia.f', matrix_element, fortran_model)
 
         #copy the makefile 
         os.system("ln -s ../makefile_fks_dir ./makefile")
@@ -2378,6 +2379,13 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
 
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
+        if not matrix_element.get('color_matrix') and matrix_element.get_nonia() > 0 \
+                and proc_type == 'real':
+            # a real emission with bound states forbidden by colour (e+ e- >
+            # chi_c0 h_c g): it vanishes; CF of the real template has
+            # NCOLOR*(NCOLOR+1) entries (the Born templates NCOLOR*(NCOLOR+1)/2),
+            # set them all
+            color_data_lines = ["DATA DENOM/1/", "DATA CF/%d*0/" % (ncolor * (ncolor + 1))]
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': ''}
 
         if self.opt['export_format']=='standalone_msP':
@@ -2638,10 +2646,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         and helicities, with the constituents of each onium at q = 0
         (numerical derivative for P waves).
 
-        aux = (onium index, colour) gives instead the S-wave amplitudes of the
-        same diagrams for that P-wave onium: L = 0, J = S, the given colour
-        projector, and its J_z entry of NHEL read as S_z (the auxiliary
-        S-wave Borns of the P-wave soft current, born_onia.f).
+        aux = (onium index, colour), or a list of them, gives instead the
+        amplitudes of the same diagrams with these P-wave onia in S waves:
+        L = 0, J = S, the given colour projector, and their J_z entries of
+        NHEL read as S_z (the S-wave daughters of the P-wave soft currents,
+        born_onia.f); the other onia keep their Fock states.
 
         flush = (colour basis, onium state override): the kernel tests each
         helicity amplitude it returns against rounding noise (get_onia_flush)
@@ -2701,8 +2710,11 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
              kernel_dict['onia_flush_init'], kernel_dict['onia_flush_acc'], flush_routines) = \
                 self.get_onia_flush(matrix_element, kname, flush[0], flush[1], pwave)
         if aux is not None:
-            kernel_dict['onia_data'] = self.onia_data_as_s_wave(
-                kernel_dict['onia_data'], aux[0], aux[1])
+            if isinstance(aux, tuple):
+                aux = [aux]
+            for index, colour in aux:
+                kernel_dict['onia_data'] = self.onia_data_as_s_wave(
+                    kernel_dict['onia_data'], index, colour)
             template = 'onia_amp_kernel_fks_pwave.inc'
         text = open(pjoin(_file_path, 'iolibs', 'template_files', template)).read()
         return text % kernel_dict + flush_routines
@@ -2873,22 +2885,33 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         """onia_legs.f: FKS_ONIA_LEG(I) is true when leg I (physical numbering)
         of the real emission of the current FKS configuration is a bound state.
         The onium is a soft partner of the gluons (it is in fks_j_from_i, for
-        the colour links and the P-wave soft current) but owns no FKS sector,
-        so fks_Sij leaves it out of the partition: the soft region is then
+        the colour links and the P-wave soft current). When the gluon has
+        elementary sisters the onium owns no FKS sector, and FKS_ONIA_NOSECTOR
+        makes fks_Sij leave it out of the partition: the soft region is then
         shared among the sectors that are integrated. Without the exclusion
         the share of the pairs (gluon, onium) would be dropped while the
-        integrated soft counterterm keeps it."""
+        integrated soft counterterm keeps it. When the onia are the only
+        coloured particles they are the sisters (fks_onia.onium_emission_split)
+        and all of them are in the partition."""
         fks_info_list = matrix_element.get_fks_info_list()
-        rows = []
+        rows, nosector = [], []
         for info in fks_info_list:
             real = matrix_element.real_processes[info['n_me'] - 1]
             legs = real.matrix_element.get('processes')[0].get('legs')
-            rows.append([bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)])
+            row = [bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)]
+            rows.append(row)
+            # when onia are FKS sisters j of sectors of this real (onia the
+            # only coloured particles), every onium is part of its partition:
+            # also those whose equivalent sector was dropped for identical
+            # onia (the kept one counts it through FKS_FAC_J_D)
+            owns = any(row[i['j'] - 1] for i in real.fks_infos)
+            nosector.append([x and not owns for x in row])
         if not rows:
             # LOonly: one fake configuration, the Born legs and a gluon
             legs = matrix_element.born_me.get('processes')[0].get('legs')
             rows.append([bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)]
                         + [False])
+            nosector.append(rows[-1])
         nexternal = len(rows[0])
         if any(len(r) != nexternal for r in rows):
             raise fks_onia.OniaNLOError('inconsistent numbers of legs in the FKS configurations')
@@ -2911,24 +2934,49 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                   '      IF (NFKSPROCESS.LT.1 .OR. NFKSPROCESS.GT.NCONF) RETURN',
                   '      IF (I.LT.1 .OR. I.GT.NEXT) RETURN',
                   '      FKS_ONIA_LEG = ONIUM(NFKSPROCESS,I)',
+                  '      END', '', '',
+                  '      LOGICAL FUNCTION FKS_ONIA_NOSECTOR(I)',
+                  'C     True if leg I (physical numbering) of the real emission of',
+                  'C     the current FKS configuration is a bound state that owns no',
+                  'C     FKS sector of that real: it is left out of the partition',
+                  'C     (fks_Sij). Onia that are the FKS sisters of the gluon (the',
+                  'C     only coloured particles) are part of it.',
+                  '      IMPLICIT NONE',
+                  '      INTEGER I, IPOS',
+                  '      INTEGER NCONF, NEXT',
+                  '      PARAMETER (NCONF=%d, NEXT=%d)' % (len(rows), nexternal),
+                  '      LOGICAL NOSEC(NCONF,NEXT)',
+                  '      INTEGER NFKSPROCESS',
+                  '      COMMON/C_NFKSPROCESS/NFKSPROCESS']
+        for n, row in enumerate(nosector):
+            lines.append('      DATA (NOSEC(%d,IPOS),IPOS=1,NEXT) / %s /'
+                         % (n + 1, ', '.join(tf[x] for x in row)))
+        lines += ['      FKS_ONIA_NOSECTOR = .FALSE.',
+                  '      IF (NFKSPROCESS.LT.1 .OR. NFKSPROCESS.GT.NCONF) RETURN',
+                  '      IF (I.LT.1 .OR. I.GT.NEXT) RETURN',
+                  '      FKS_ONIA_NOSECTOR = NOSEC(NFKSPROCESS,I)',
                   '      END']
         writer = writers.FortranWriter(filename)
         writer.writelines('\n'.join(lines) + '\n')
         writer.close()
 
     def write_born_onia_file(self, filename, matrix_element, fortran_model):
-        """born_onia.f: the soft current of the P-wave quarkonium of the Born
-        (arXiv:2402.19221, sect. 3.2), for sbornsoft_onia (fks_onia_soft.f).
-        BORN_ONIA_SOFT returns at the Born momenta the cross vectors of every
-        coloured Born leg (the onium included) summed over the S-wave states
-        S' of fks_onia.aux_states, the self tensor sum_S' C_eff(S')
-        M_J^{mu nu}(S') and -g_{mu nu} M_J^{mu nu}(S') per S', with the LDME
-        and average factors of the P-wave Born. Its amplitudes are those of
-        the Born diagrams: the P-wave kernel, and S-wave kernels with the
-        colour of S' (get_onia_kernel), with colour flows from the colour
-        bases of fks_onia.soft_current_data. Returns False without a P-wave
-        quarkonium (and then writes no file: the makefile links the dummy
-        sbornsoft_onia when born_onia.f is absent)."""
+        """born_onia.f (and born_onia.inc): the soft currents of the P-wave
+        quarkonia of the Born (arXiv:2402.19221, sect. 3.2; JHEP_2Pwave,
+        sects. 3-5 for several P waves), for fks_onia_soft.f.
+        BORN_ONIA_SOFT returns at the Born momenta, per P-wave quarkonium,
+        the cross vectors of every coloured Born leg (the onia included)
+        summed over the S-wave daughters S' of fks_onia.aux_states, the self
+        tensor sum_S' C_eff(S') M_J^{mu nu}(S') and -g_{mu nu} M_J^{mu nu}(S')
+        per S', and per pair of P-wave quarkonia the dipole-dipole tensors of
+        the cross and parallel classes, with the LDME and average factors of
+        the P-wave Born. Its amplitudes are those of the Born diagrams: the
+        P-wave kernel, the kernels with one onium in a daughter (and the
+        others in their own Fock states), and the kernels with the two onia
+        of a pair in daughters (parallel class), with colour flows from the
+        colour bases of fks_onia.soft_current_data. Returns False without a
+        P-wave quarkonium (and then writes no file: the makefile links the
+        dummy routines of fks_onia_soft_dummy.f when born_onia.f is absent)."""
         born_me = matrix_element.born_me
         data = fks_onia.soft_current_data(born_me)
         if data is None:
@@ -2979,64 +3027,118 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             out += lines + ['      END', '']
             return out
 
-        def fortran_number(value):
+        def fnum(value):
             return ('%.17e' % float(value)).replace('e', 'D')
 
-        naux = len(data['aux'])
+        def kind_index(kind):
+            # 1 = Delta ([18], [81]) or d_abc ([88]), 2 = -i f_abc ([88])
+            return 2 if kind == 'T' else 1
+
+        pwaves, pairs = data['pwaves'], data['pairs']
+        npq, npair = len(pwaves), len(pairs)
         ncolp = max(1, data['ncolor_p'])
-        ncols = [max(1, len(a['keys'])) for a in data['aux']]
-        maxcols = max(ncols)
-        # transition matrices: kind 1 = Delta (18, 81) or D (88), kind 2 = T (88)
-        xlines, cflines = [], []
-        linked = set()
-        for ia_aux, aux in enumerate(data['aux']):
-            for (k, kind), mat in sorted(aux['matrices'].items()):
-                ikind = 2 if kind == 'T' else 1
-                for (ia, ib), (re_, im_) in sorted(mat.items()):
-                    linked.add((k, ia_aux + 1))
-                    xlines.append('        XR(%d,%d,%d,%d,%d) = %s' % (ia + 1, ib + 1, k, ia_aux + 1,
-                                  ikind, fortran_number(re_)))
+        maxcols = 1
+        for pw in pwaves:
+            for aux in pw['aux']:
+                maxcols = max(maxcols, len(aux['keys']))
+        for pr in pairs:
+            for (_, keys) in pr['double'].values():
+                maxcols = max(maxcols, len(keys))
+        xlines, cflines, linked, decl = [], [], set(), []
+        for h, pw in enumerate(pwaves, 1):
+            decl += ['      DATA QQ(%d), SPIN(%d), JTOT(%d), NAUX(%d) /%d, %d, %d, %d/'
+                     % (h, h, h, h, pw['onium'], pw['S'], pw['J'], len(pw['aux'])),
+                     '      DATA IQ(%d), IQBAR(%d) /%d, %d/' % (h, h, pw['quark'], pw['antiquark'])]
+            for a, aux in enumerate(pw['aux'], 1):
+                decl += ["      DATA LABEL(%d,%d), NCOLS(%d,%d) /'%s', %d/"
+                         % (a, h, a, h, aux['label'], max(1, len(aux['keys'])))]
+                for (k, kind), mat in sorted(aux['matrices'].items()):
+                    for (ia, ib), (re_, im_) in sorted(mat.items()):
+                        linked.add((k, a, h))
+                        idx = '%d,%d,%d,%d,%d,%d' % (ia + 1, ib + 1, k, a, kind_index(kind), h)
+                        xlines.append('        XR(%s) = %s' % (idx, fnum(re_)))
+                        if im_:
+                            xlines.append('        XI(%s) = %s' % (idx, fnum(im_)))
+                for (i, j), (re_, im_) in sorted(aux['cf'].items()):
                     if im_:
-                        xlines.append('        XI(%d,%d,%d,%d,%d) = %s' % (ia + 1, ib + 1, k,
-                                      ia_aux + 1, ikind, fortran_number(im_)))
-            for (i, j), (re_, im_) in sorted(aux['cf'].items()):
-                if im_:
-                    raise MadGraph5Error('Bound states: complex colour matrix')
-                cflines.append('        CFS(%d,%d,%d) = %s' % (i + 1, j + 1, ia_aux + 1,
-                                                              fortran_number(re_)))
-            if not aux['cf'] and not has_colour:
-                cflines.append('        CFS(1,1,%d) = 1D0' % (ia_aux + 1))
-        linklines = ['        LINKED(%d,%d) = .TRUE.' % kv for kv in sorted(linked)]
+                        raise MadGraph5Error('Bound states: complex colour matrix')
+                    cflines.append('        CFS(%d,%d,%d,%d) = %s' % (i + 1, j + 1, a, h, fnum(re_)))
+                if not aux['cf'] and not has_colour:
+                    cflines.append('        CFS(1,1,%d,%d) = 1D0' % (a, h))
+            for a in range(len(pw['aux']) + 1, 3):
+                decl += ["      DATA LABEL(%d,%d), NCOLS(%d,%d) /'  ', 1/" % (a, h, a, h)]
+        linklines = ['        LINKED(%d,%d,%d) = .TRUE.' % kah for kah in sorted(linked)]
+        ylines, zlines = [], []
+        if not pairs:
+            decl += ['      DATA IPAIR(1,1), IPAIR(2,1) /0, 0/',
+                     '      DATA NCOLD /%d*1/' % 4]
+        for ip, pr in enumerate(pairs, 1):
+            decl += ['      DATA IPAIR(1,%d), IPAIR(2,%d) /%d, %d/' % (ip, ip, pr['h1'] + 1,
+                                                                    pr['h2'] + 1)]
+            for a1 in range(2):
+                for a2 in range(2):
+                    basis_keys = pr['double'].get((a1, a2))
+                    decl += ['      DATA NCOLD(%d,%d,%d) /%d/' % (
+                        a1 + 1, a2 + 1, ip, max(1, len(basis_keys[1])) if basis_keys else 1)]
+            for (a1, a2, kind1, kind2), mat in sorted(pr['cross'].items()):
+                for (ig, ib), (re_, im_) in sorted(mat.items()):
+                    idx = '%d,%d,%d,%d,%d,%d,%d' % (ig + 1, ib + 1, a1 + 1, a2 + 1,
+                                                    kind_index(kind1), kind_index(kind2), ip)
+                    ylines.append('        YR(%s) = %s' % (idx, fnum(re_)))
+                    if im_:
+                        ylines.append('        YI(%s) = %s' % (idx, fnum(im_)))
+            nonzero = set()
+            for (a1, a2, kind1, kind2), mat in sorted(pr['parallel'].items()):
+                nonzero.add((a1, a2))
+                for (ia, ib), (re_, im_) in sorted(mat.items()):
+                    idx = '%d,%d,%d,%d,%d,%d,%d' % (ia + 1, ib + 1, a1 + 1, a2 + 1,
+                                                    kind_index(kind1), kind_index(kind2), ip)
+                    zlines.append('        ZR(%s) = %s' % (idx, fnum(re_)))
+                    if im_:
+                        zlines.append('        ZI(%s) = %s' % (idx, fnum(im_)))
+            pr['nonzero'] = sorted(nonzero)
+            zlines += ['        ZNZ(%d,%d,%d) = .TRUE.' % (a1 + 1, a2 + 1, ip)
+                       for (a1, a2) in sorted(nonzero)]
         helicities = list(born_me.get_helicity_matrix())
         hel_lines = []
         for ic, hel in enumerate(helicities):
             hel_lines.append('      DATA (NHELS(I,%d),I=1,%d) /%s/' % (
-                ic + 1, nb, ','.join('%d' % h for h in hel)))
-        aux_labels = ','.join("'%s'" % a['label'] for a in data['aux'])
-        dispatch = []
-        for ia_aux in range(naux):
-            dispatch += ['      %s (A.EQ.%d) THEN' % ('IF' if ia_aux == 0 else 'ELSE IF', ia_aux + 1),
-                         '        CALL ONIA_SOFT_AMPS%d(P,NHEL,AMP)' % (ia_aux + 1),
-                         '        CALL ONIA_SOFT_JAMPS%d(AMP,JS)' % (ia_aux + 1)]
+                ic + 1, nb, ','.join('%d' % hh for hh in hel)))
+        dispatch, first = [], True
+        for h, pw in enumerate(pwaves, 1):
+            for a in range(1, len(pw['aux']) + 1):
+                dispatch += ['      %s (H.EQ.%d .AND. A.EQ.%d) THEN' % ('IF' if first else 'ELSE IF',
+                                                                    h, a),
+                             '        CALL ONIA_SOFT_AMPS%d_%d(P,NHEL,AMP)' % (h, a),
+                             '        CALL ONIA_SOFT_JAMPS%d_%d(AMP,JS)' % (h, a)]
+                first = False
         dispatch.append('      ENDIF')
-        # constituent masses: positions among the constituent legs (onia.inc order)
+        dispatch_d, first = [], True
+        for ip, pr in enumerate(pairs, 1):
+            for (a1, a2) in pr['nonzero']:
+                dispatch_d += ['      %s (IP.EQ.%d .AND. A1.EQ.%d .AND. A2.EQ.%d) THEN'
+                               % ('IF' if first else 'ELSE IF', ip, a1 + 1, a2 + 1),
+                               '        CALL ONIA_SOFT_AMPD%d_%d_%d(P,NHEL,AMP)' % (ip, a1 + 1, a2 + 1),
+                               '        CALL ONIA_SOFT_JAMPD%d_%d_%d(AMP,JD)' % (ip, a1 + 1, a2 + 1)]
+                first = False
+        if dispatch_d:
+            dispatch_d.append('      ENDIF')
         main = open(pjoin(_file_path, 'iolibs', 'template_files',
                           'born_onia_soft_fks.inc')).read() % {
             'info_lines': rdict['info_lines'],
             'process_lines': rdict['process_lines'],
-            'nb': nb, 'ncomb': len(helicities), 'ncolp': ncolp, 'naux': naux,
+            'nb': nb, 'ncomb': len(helicities), 'ncolp': ncolp,
             'maxcols': maxcols, 'ngraphs': ngraphs,
-            'ionium': data['onium'], 'spin': data['S'], 'jtot': data['J'],
-            'nq': data['quark'], 'nqbar': data['antiquark'],
             'nconst': len(born_me.get('processes')[0].get('legs')),
-            'ncols': ','.join(str(n) for n in ncols),
-            'aux_colours': ','.join(str(a['colour']) for a in data['aux']),
-            'aux_labels': aux_labels,
+            'data_decl_lines': '\n'.join(decl),
             'helicity_lines': '\n'.join(hel_lines),
             'x_lines': '\n'.join(xlines),
             'cf_lines': '\n'.join(cflines),
             'link_lines': '\n'.join(linklines),
+            'y_lines': '\n'.join(ylines),
+            'z_lines': '\n'.join(zlines),
             'dispatch_lines': '\n'.join(dispatch),
+            'dispatch_d_lines': '\n'.join(dispatch_d),
             'den_line': 'DATA IDEN/%d/' % born_me.get_denominator_factor(),
             'pmassonia_lines': self.get_pmassonia_lines(born_me)}
         text = [main]
@@ -3044,18 +3146,42 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                                          fortran_model=fortran_model,
                                          flush=(born_me['color_basis'], None)))
         text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPP', born_me['color_basis'], ncolp)))
-        for ia_aux, aux in enumerate(data['aux']):
-            aux_state = {data['index']: {'L': 0, 'S': data['S'], 'C': aux['colour']}}
-            text.append(self.get_onia_kernel(born_me, rdict, 'ONIA_SOFT_AMPS%d' % (ia_aux + 1),
-                                             aux=(data['index'], aux['colour']),
-                                             fortran_model=fortran_model,
-                                             flush=(aux['basis'], aux_state)))
-            text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPS%d' % (ia_aux + 1),
-                                                aux['basis'], ncols[ia_aux],
-                                                state={data['index']: {
-                                                    'L': 0, 'S': data['S'],
-                                                    'C': aux['colour']}})))
+
+        def daughter(pw, aux):
+            return {'L': 0, 'S': pw['S'], 'C': aux['colour']}
+
+        for h, pw in enumerate(pwaves, 1):
+            for a, aux in enumerate(pw['aux'], 1):
+                state = {pw['index']: daughter(pw, aux)}
+                text.append(self.get_onia_kernel(born_me, rdict, 'ONIA_SOFT_AMPS%d_%d' % (h, a),
+                                                 aux=[(pw['index'], aux['colour'])],
+                                                 fortran_model=fortran_model,
+                                                 flush=(aux['basis'], state)))
+                text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPS%d_%d' % (h, a), aux['basis'],
+                                                    max(1, len(aux['keys'])), state=state)))
+        for ip, pr in enumerate(pairs, 1):
+            pw1, pw2 = pwaves[pr['h1']], pwaves[pr['h2']]
+            for (a1, a2) in pr['nonzero']:
+                aux1, aux2 = pw1['aux'][a1], pw2['aux'][a2]
+                basis, keys = pr['double'][(a1, a2)]
+                state = {pw1['index']: daughter(pw1, aux1), pw2['index']: daughter(pw2, aux2)}
+                name = '%d_%d_%d' % (ip, a1 + 1, a2 + 1)
+                text.append(self.get_onia_kernel(born_me, rdict, 'ONIA_SOFT_AMPD' + name,
+                                                 aux=[(pw1['index'], aux1['colour']),
+                                                      (pw2['index'], aux2['colour'])],
+                                                 fortran_model=fortran_model,
+                                                 flush=(basis, state)))
+                text.append('\n'.join(jamp_routine('ONIA_SOFT_JAMPD' + name, basis,
+                                                    max(1, len(keys)), state=state)))
         writers.FortranWriter(filename).writelines('\n'.join(text))
+        inc = os.path.join(os.path.dirname(os.path.abspath(filename)), 'born_onia.inc')
+        with open(inc, 'w') as f:
+            f.write('C     the P-wave quarkonia of born_onia.f (export_fks.write_born_onia_file):\n'
+                    'C     NPQ P-wave quarkonia, NPAIR pairs of them, at most NAUXMAX\n'
+                    'C     S-wave daughters each\n'
+                    '      INTEGER NPQ, NPAIR, NPAIRX, NAUXMAX\n'
+                    '      PARAMETER (NPQ=%d, NPAIR=%d, NPAIRX=%d, NAUXMAX=2)\n'
+                    % (npq, npair, max(1, npair)))
         return True
 
     def get_pmassonia_lines(self, matrix_element):

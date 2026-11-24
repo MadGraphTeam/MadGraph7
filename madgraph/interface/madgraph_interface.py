@@ -7019,9 +7019,10 @@ This implies that with decay chains:
             else:
                 raise self.InvalidCmd("No particle %s in model" % part_name)
 
-        # Bound states at NLO: FKS subtraction (arXiv:2402.19221) for the
-        # category of fks_onia.check_nlo_onia (QCD corrections, final-state
-        # onia, at most one P-wave quarkonium); everything else is refused.
+        # Bound states at NLO: FKS subtraction (arXiv:2402.19221, and its
+        # extension to several P-wave pairs) for the category of
+        # fks_onia.check_nlo_onia (QCD corrections, final-state onia, any
+        # number of S- and P-wave onia); everything else is refused.
         if onium_index and perturbation_couplings.strip():
             pert_list = perturbation_couplings.split()
             if perturbation_couplings.strip().lower() in ['all', 'loonly']:

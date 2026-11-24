@@ -228,3 +228,174 @@ c**************************************************************************
      &        -15d0*lb*b**4)/b**5
       endif
       end
+
+
+      subroutine onia_eik_dd(k1,k2,e11,shat,qes2,xicut,p1,fin)
+c**************************************************************************
+c     The dipole-dipole tensor of two massive momenta (JHEP_2Pwave,
+c     eq. Dbar), upper indices,
+c       Dbar^{mu nu}(K1,K2) = g^{mu nu}/(K1.K2) E({1,1},{K1,K2})
+c                - K2^mu/(K1.K2) E^nu({1,2},{K1,K2})
+c                - K1^nu/(K1.K2) E^mu({1,2},{K2,K1})
+c                + E^{mu nu}({2,2},{K1,K2})
+c                = d^2 E({1,1},{K1,K2})/dK1_mu dK2_nu,
+c     mu belonging to K1. E11 is the finite part of E({1,1},{K1,K2})
+c     (eikonal_Ireg), the rank-1 integrals are the closed forms of
+c     onia_eik_r1, and the rank 2 the Feynman-parameter representation
+c     (eq. E22fin)
+c       E^{mu nu}({2,2},{K1,K2}) = 6 K1.K2 int_0^1 dx x(1-x)/P_x^2
+c                                  E^{mu nu}({2,2},{P_x,P_x}),
+c     P_x = x K1 + (1-x) K2, with the massive self tensor onia_eik_r2_self
+c     and a 64-point Gauss-Legendre rule (smooth integrand). P1 is the
+c     coefficient of 1/eps (no 1/eps^2 pole), with that of E({1,1}) equal
+c     to -W(omega), W(omega) = omega log(omega+sqrt(omega^2-1))
+c     /sqrt(omega^2-1); FIN the finite part.
+c**************************************************************************
+      implicit none
+      double precision k1(0:3),k2(0:3),e11,shat,qes2,xicut
+      double precision p1(0:3,0:3),fin(0:3,0:3)
+      integer ngl
+      parameter (ngl=64)
+      double precision xgl(ngl),wgl(ngl)
+      logical firsttime
+      data firsttime /.true./
+      save firsttime,xgl,wgl
+      double precision onia_dot
+      external onia_dot
+      double precision x12,m1,m2,omega,t,wom,pp(0:3),px2,wt,g(0:3)
+      double precision p2a(0:3),p1a(0:3),fina(0:3)
+      double precision p2b(0:3),p1b(0:3),finb(0:3)
+      double precision t1(0:3,0:3),t2(0:3,0:3),e22p(0:3,0:3)
+      double precision e22f(0:3,0:3)
+      integer i,mu,nu
+      data g /1d0,-1d0,-1d0,-1d0/
+      if (firsttime) then
+         call onia_gauleg(ngl,xgl,wgl)
+         firsttime=.false.
+      endif
+      x12=onia_dot(k1,k2)
+      m1=dsqrt(onia_dot(k1,k1))
+      m2=dsqrt(onia_dot(k2,k2))
+      omega=x12/(m1*m2)
+      t=omega**2-1d0
+      if (t.lt.1d-6) then
+         wom=1d0+t/3d0-2d0*t**2/15d0
+      else
+         wom=omega*dlog(omega+dsqrt(t))/dsqrt(t)
+      endif
+      call onia_eik_r1(k1,k2,.false.,shat,qes2,xicut,p2a,p1a,fina)
+      call onia_eik_r1(k2,k1,.false.,shat,qes2,xicut,p2b,p1b,finb)
+      e22p(:,:)=0d0
+      e22f(:,:)=0d0
+      do i=1,ngl
+         pp(0:3)=xgl(i)*k1(0:3)+(1d0-xgl(i))*k2(0:3)
+         px2=onia_dot(pp,pp)
+         call onia_eik_r2_self(pp,shat,qes2,xicut,t1,t2)
+         wt=6d0*x12*wgl(i)*xgl(i)*(1d0-xgl(i))/px2
+         e22p(:,:)=e22p(:,:)+wt*t1(:,:)
+         e22f(:,:)=e22f(:,:)+wt*t2(:,:)
+      enddo
+      do mu=0,3
+         do nu=0,3
+            p1(mu,nu)=-k2(mu)*p1a(nu)/x12-k1(nu)*p1b(mu)/x12
+     &           +e22p(mu,nu)
+            fin(mu,nu)=-k2(mu)*fina(nu)/x12-k1(nu)*finb(mu)/x12
+     &           +e22f(mu,nu)
+            if (mu.eq.nu) then
+               p1(mu,nu)=p1(mu,nu)-g(mu)*wom/x12
+               fin(mu,nu)=fin(mu,nu)+g(mu)*e11/x12
+            endif
+         enddo
+      enddo
+      end
+
+
+      subroutine onia_f12(omega,f1,f2,f1i,f2i)
+c**************************************************************************
+c     The dipole-dipole kernels of two P-wave pairs (JHEP_2Pwave,
+c     eqs. f1f2, f1f2c; He, Kniehl and Wang, eq. 8), f1 = -W'/2 and
+c     f2 = -W''/2 of omega = v1.v2, and the imaginary parts f1i, f2i of
+c     f1c, f2c for two outgoing pairs (sigma = 1). For t = omega^2 - 1 <
+c     0.1 the Taylor series in t (eq. f1f2series, 18 terms: the closed
+c     forms cancel as t -> 0; f1(1) = -1/3, f2(1) = 1/5). The imaginary
+c     parts (the Coulomb phase) are singular at t = 0 and are set to zero
+c     there.
+c**************************************************************************
+      implicit none
+      double precision omega,f1,f2,f1i,f2i
+      double precision pi
+      parameter (pi=3.1415926535897932385d0)
+      double precision t,st,lg,ak,tk
+      integer k
+      t=omega**2-1d0
+      if (t.lt.0.1d0) then
+         f1=0d0
+         ak=1d0
+         tk=1d0
+         do k=0,17
+            if (k.gt.0) ak=ak*dble(2*k-1)/dble(2*k)
+            f1=f1-ak*tk*(-1d0)**k/dble(2*k+3)
+            tk=tk*t
+         enddo
+         f2=0d0
+         ak=1d0
+         tk=1d0
+         do k=1,18
+            ak=ak*dble(2*k-1)/dble(2*k)
+            f2=f2+2d0*omega*dble(k)*ak*(-1d0)**(k+1)*tk/dble(2*k+3)
+            tk=tk*t
+         enddo
+      else
+         st=dsqrt(t)
+         lg=dlog(omega+st)
+         f1=(lg-omega*st)/(2d0*t*st)
+         f2=((omega**2+2d0)*st-3d0*omega*lg)/(2d0*t**2*st)
+      endif
+      if (t.gt.0d0) then
+         f1i=-pi/(2d0*t*dsqrt(t))
+         f2i=3d0*pi*omega/(2d0*t**2*dsqrt(t))
+      else
+         f1i=0d0
+         f2i=0d0
+      endif
+      end
+
+
+      subroutine onia_gauleg(n,x,w)
+c     the nodes and weights of the n-point Gauss-Legendre rule on [0,1]
+      implicit none
+      integer n,i,j,m,k
+      double precision x(n),w(n),z,z1,p1,p2,p3,pp,pi
+      parameter (pi=3.1415926535897932385d0)
+      m=(n+1)/2
+      do i=1,m
+         z=dcos(pi*(i-0.25d0)/(n+0.5d0))
+c        Newton iterations (quadratic convergence), and one more
+         do k=1,100
+            p1=1d0
+            p2=0d0
+            do j=1,n
+               p3=p2
+               p2=p1
+               p1=((2d0*j-1d0)*z*p2-(j-1d0)*p3)/j
+            enddo
+            pp=n*(z*p1-p2)/(z*z-1d0)
+            z1=z
+            z=z1-p1/pp
+            if (dabs(z-z1).lt.1d-14) goto 10
+         enddo
+ 10      continue
+         p1=1d0
+         p2=0d0
+         do j=1,n
+            p3=p2
+            p2=p1
+            p1=((2d0*j-1d0)*z*p2-(j-1d0)*p3)/j
+         enddo
+         pp=n*(z*p1-p2)/(z*z-1d0)
+         x(i)=0.5d0*(1d0-z)
+         x(n+1-i)=0.5d0*(1d0+z)
+         w(i)=1d0/((1d0-z*z)*pp*pp)
+         w(n+1-i)=w(i)
+      enddo
+      end

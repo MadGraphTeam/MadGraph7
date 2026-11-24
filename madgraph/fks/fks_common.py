@@ -45,8 +45,13 @@ def external_leg_identity(leg):
     exchanged just because their PDGs agree. Ignore number and the i/j flag.
     Statistical factors still come from the generated matrix elements.
     """
+    # a constituent of a bound state carries the Fock state of its onium
+    # (not its position 'index'): constituents of different onia are not
+    # interchangeable, those of identical onia are
+    onium = dict.get(leg, 'onium', None) or {}
+    onium = tuple(sorted((k, v) for k, v in onium.items() if k != 'index'))
     return (leg['id'], leg['state'], MG.canonical_polarization(leg['polarization']),
-            dict.get(leg, 'is_tagged', False), leg['onshell'])
+            dict.get(leg, 'is_tagged', False), leg['onshell'], onium)
 
 
 def external_process_identity(process, particle_tags=None):

@@ -28,9 +28,14 @@ needs them), adjacent, with the FIRST constituent standing for the bound
 state; the exporter maps constituent numbers onto physical ones
 (physical_number) for everything written to Fortran.
 
-Supported (arXiv:2402.19221): at most one P-wave quarkonium, any number of
-S-wave quarkonia and of S- and P-wave leptonia, final-state onia only, QCD
-corrections only.
+Supported (arXiv:2402.19221 and its extension to several P-wave pairs,
+JHEP_2Pwave): any number of P-wave quarkonia, of S-wave quarkonia, of S- and
+P-wave leptonia and of elementary particles, final-state onia only, QCD
+corrections only. Every pair of P-wave quarkonia adds its dipole-dipole terms:
+the interference of the dipole emissions of the two pairs in the real emission
+(cross class), the dipole-dipole exchange in the one-loop amplitude (parallel
+class), and the MS-bar counterterms of the eight-quark operators that absorb
+their poles.
 """
 
 import fractions
@@ -137,6 +142,32 @@ def onium_is_soft_partner(leg, model):
     return onium.get('C') == 8 or is_pwave(onium)
 
 
+def onia_only_coloured(legs, model):
+    """True when no elementary particle of the process is coloured: the
+    final-state gluons of its reals then have only onia as soft sisters."""
+    return not any(abs(model.get('particle_dict')[l.get('id')].get_color()) > 1
+                   for l in legs if not onium_of(l))
+
+
+def is_onium_emitter(legs, leg, model):
+    """True for the first constituent of a final-state onium that is a soft
+    partner of the gluons (onium_is_soft_partner)."""
+    if not leg.get('state') or not onium_is_soft_partner(leg, model):
+        return False
+    return any(leg.get('number') == legs[a].get('number') for a, _ in onium_pairs(legs))
+
+
+def onium_emission_split(leg, model):
+    """The 'splitting' onium -> onium + g of a soft-only sister: the first
+    constituent unchanged as FKS parton j, a final-state gluon as i."""
+    import copy
+    import madgraph.fks.fks_common as fks_common
+    j = copy.deepcopy(leg)
+    j['fks'] = 'j'
+    i = fks_common.to_fks_leg({'state': True, 'id': 21, 'fks': 'i'}, model)
+    return [j, i]
+
+
 def aux_states(onium):
     """The S-wave states of the soft current of a P-wave quarkonium, as
     (colour of the S wave, effective generator): P[1] -> S[8] (Q_eff(18));
@@ -186,15 +217,6 @@ def check_nlo_onia(legs, perturbation_couplings, loop_option, model):
                     "The constituents of %s are massless in this model (%s): at NLO a bound state "
                     "needs massive constituents (M = m1 + m2), e.g. 'import model "
                     "sm_onia-c_mass' for charmonia." % (onium_of(leg)['name'], part.get('name')))
-    npwave_q = [onium for (leg, onium) in onia.values()
-                if is_pwave(onium) and _multileg_is_quarkonium(leg, model)]
-    if len(npwave_q) > 1:
-        raise OniaNLOError(
-            "The FKS counterterms of processes with more than one P-wave quarkonium (%s) are not "
-            "implemented: their soft limit needs Born interferences with two Fock states changed at "
-            "once (arXiv:2402.19221 covers one P-wave quarkonium). One P-wave quarkonium with any "
-            "number of S-wave quarkonia and of leptonia is supported."
-            % ', '.join(o['name'] for o in npwave_q))
 
 
 def _multileg_is_quarkonium(leg, model):
@@ -306,7 +328,13 @@ def to_physical_fks(real_legs, model, fks_infos, fks_j_from_i, colors, particle_
     new_infos = []
     for info in fks_infos:
         orig_i, orig_j = info['i'], info['j']
-        if orig_i - 1 in constituents or orig_j - 1 in constituents:
+        # an onium (its first constituent) may be the soft-only sister j of
+        # a gluon when the onia are the only coloured particles
+        # (onium_emission_split); a constituent is never i, and never j
+        # otherwise
+        if orig_i - 1 in constituents or orig_j - 1 in hidden or \
+                (orig_j - 1 in constituents and not onia_only_coloured(
+                    [l for l in legs if l.get('number') != orig_i], model)):
             raise OniaNLOError('a constituent of a bound state as FKS parton i or j')
         info = copy.copy(info)
         info['i'] = physical_number(legs, orig_i)
@@ -421,20 +449,22 @@ class OniaRecord(object):
 # run time). Colour charges (eq. 3.2): t^a for a final quark or an initial
 # antiquark, -t^aT for a final antiquark or an initial quark, T^a for an octet.
 
-def aux_color_basis(amplitude, onium_index, colour):
-    """The colour basis of the diagrams of amplitude with the onium of index
-    onium_index projected onto colour (1 or 8) instead of its own."""
+def aux_color_basis(amplitude, onium_index, colour=None):
+    """The colour basis of the diagrams of amplitude with onia projected onto
+    other colours: onium_index and colour (1 or 8) for one onium, or a dict
+    {onium index: colour} as onium_index (colour None) for several."""
     import copy
     import madgraph.core.color_amp as color_amp
     import madgraph.core.diagram_generation as diagram_generation
+    swaps = onium_index if colour is None else {onium_index: colour}
     amp = diagram_generation.Amplitude()
     process = copy.copy(amplitude.get('process'))
     legs = copy.deepcopy(process.get('legs'))
     for leg in legs:
         onium = onium_of(leg)
-        if onium and onium['index'] == onium_index:
+        if onium and onium['index'] in swaps:
             onium = dict(onium)
-            onium['C'] = colour
+            onium['C'] = swaps[onium['index']]
             leg.set('onium', onium)
     process.set('legs', legs)
     amp.set('process', process)
@@ -443,6 +473,13 @@ def aux_color_basis(amplitude, onium_index, colour):
     basis.create_color_dict_list(amp)
     basis.build()
     return basis
+
+
+def pwave_quarkonia(legs, model):
+    """The P-wave quarkonia of a process, as the legs of their first
+    constituents, in the order of the legs (leptonia have no soft current)."""
+    return [l for l in physical_legs(legs) if onium_of(l) and is_pwave(onium_of(l))
+            and is_quarkonium(l, model)]
 
 
 def leg_colour_rep(leg, model):
@@ -500,46 +537,109 @@ def contract(struct_p, struct_s, repl_p, repl_s, insertion, Nc=3):
     return fractions.Fraction(re), fractions.Fraction(im)
 
 
-def transition_matrices(born_amplitude, model, basis_p=None):
-    """The colour transition matrices of a Born with one P-wave quarkonium, for
-    its soft current: {'onium': physical number of the onium, 'basis_p',
-    'keys_p', 'aux': [ {'colour': C', 'label': '18'|'81'|'88', 'basis',
-    'keys', 'matrices': {(k, kind): {(alpha, beta): (re, im)}}} ]} with
+# indices of the colour algebra of the soft currents (below those of the bases)
+_ADJ, _FRESH, _MNEW = -4001, -4002, -4004
+_SIDX = (-4011, -4012)
+
+
+def _qeff_kind_string(kind, a, row, col):
+    """(Q_eff^a)_{row col} of [88] without its mass factor: d(a,row,col)
+    (kind 'D') or -i f(a,row,col) (kind 'T')."""
+    import madgraph.core.color_algebra as color_algebra
+    if kind == 'D':
+        return color_algebra.ColorString([color_algebra.d(a, row, col)])
+    return colour_charge_string(8, row, a, col)      # -i f(a, row, col)
+
+
+def qeff_kinds(label):
+    """The colour kinds of Q_eff(label): Delta for [18] and [81], D (d_abc)
+    and T (-i f_abc) for [88], each with its own mass factor."""
+    return ['Delta'] if label in ('18', '81') else ['D', 'T']
+
+
+def _apply_qeff(label, kind, o, sidx, s_repl, p_repl, conj=False):
+    """Q_eff^a(label, kind) of the onium of octet label o (its first
+    constituent number) mapping its S-wave daughter (the string renamed by
+    s_repl) onto its P-wave state (the string renamed by p_repl), in a
+    product sum conj(P side) [insertion] (S side) when conj is False. With
+    conj True the roles are those of conj(Q_eff^a c_S) . c_P: the S side is
+    the conjugated string and the insertion is the hermitian transpose,
+    (Q_eff^a)_{S index, P index}. The adjoint index is _ADJ. Returns the
+    insertion (None for the Delta of [18], [81])."""
+    if label == '18':
+        s_repl[o] = _ADJ              # Delta^a: the S-wave octet index is a
+        return None
+    if label == '81':
+        p_repl[o] = _ADJ              # Delta^aT: the P-wave octet index is a
+        return None
+    s_repl[o] = sidx
+    if conj:
+        return _qeff_kind_string(kind, _ADJ, sidx, o)
+    return _qeff_kind_string(kind, _ADJ, o, sidx)
+
+
+def _product(*strings):
+    out = None
+    for s in strings:
+        if s is None:
+            continue
+        if out is None:
+            out = s.create_copy()
+        else:
+            out.product(s.create_copy())
+    return out
+
+
+def _sorted_keys(basis):
+    return sorted(basis.keys())
+
+
+def _matrix(keys_p, keys_s, repl_p, repl_s, insertion):
+    mat = {}
+    for ib, ks in enumerate(keys_s):
+        for ia, kp in enumerate(keys_p):
+            value = contract(kp, ks, repl_p, repl_s, insertion)
+            if value != (0, 0):
+                mat[(ia, ib)] = value
+    return mat
+
+
+def transition_matrices(born_amplitude, model, basis_p=None, pleg=None):
+    """The colour transition matrices of the soft current of the P-wave
+    quarkonium pleg of a Born (the first constituent leg; by default the only
+    P-wave quarkonium): {'onium': physical number of the onium, 'index': its
+    onium index, 'basis_p', 'keys_p', 'aux': [ {'colour': C', 'label':
+    '18'|'81'|'88', 'basis', 'keys', 'matrices': {(k, kind): {(alpha, beta):
+    (re, im)}}} ]} with
         X^(k)_{alpha beta} = sum_colours conj(c_P_alpha) Q_k^a Q_eff^a c_S_beta
     for every coloured physical leg k (the onium too when it is an octet:
-    then Q_k = T^a acts on the P-wave index, after Q_eff), kind 'Delta' for
-    [18] and [81], 'D' (d_abc) and 'T' (-i f_abc) for [88]; the mass factors
-    (2+r+1/r)/sqrt(2N_c), (2+r+1/r)/2 and (1/r-r)/2 are left out. alpha (beta)
-    runs over the sorted colour basis of the P (S) wave."""
+    then Q_k = T^a acts on the P-wave index, after Q_eff; other onia, P waves
+    included, are spectators in their own Fock states, octets linked as
+    massive octets), kind 'Delta' for [18] and [81], 'D' (d_abc) and 'T'
+    (-i f_abc) for [88]; the mass factors (2+r+1/r)/sqrt(2N_c), (2+r+1/r)/2
+    and (1/r-r)/2 are left out. alpha (beta) runs over the sorted colour
+    basis of the P (S) wave."""
     import madgraph.core.color_amp as color_amp
-    import madgraph.core.color_algebra as color_algebra
     process = born_amplitude.get('process')
     legs = process.get('legs')
-    pwaves = [l for l in physical_legs(legs) if onium_of(l) and is_pwave(onium_of(l))
-              and is_quarkonium(l, model)]
-    if len(pwaves) != 1:
-        raise OniaNLOError('transition_matrices needs exactly one P-wave quarkonium')
-    pleg = pwaves[0]
+    if pleg is None:
+        pwaves = pwave_quarkonia(legs, model)
+        if len(pwaves) != 1:
+            raise OniaNLOError('transition_matrices: name the P-wave quarkonium (pleg) of a Born '
+                               'with %d of them' % len(pwaves))
+        pleg = pwaves[0]
     onium = onium_of(pleg)
     n_q = pleg.get('number')                 # the octet label of the onium
     if basis_p is None:
         basis_p = color_amp.ColorBasis()
         basis_p.create_color_dict_list(born_amplitude)
         basis_p.build()
-    keys_p = sorted(basis_p.keys())
-    a, fresh, c_new, m_new = -4001, -4002, -4003, -4004
-
-    def qeff(kind, b, c):
-        """(Q_eff^a)_{bc} of [88] without its mass factor."""
-        if kind == 'D':
-            return color_algebra.ColorString([color_algebra.d(a, b, c)])
-        return colour_charge_string(8, b, a, c)      # -i f(a, b, c)
-
-    result = {'onium': physical_number(legs, n_q), 'basis_p': basis_p, 'keys_p': keys_p,
-              'aux': []}
+    keys_p = _sorted_keys(basis_p)
+    result = {'onium': physical_number(legs, n_q), 'index': onium['index'],
+              'basis_p': basis_p, 'keys_p': keys_p, 'aux': []}
     for colour, label in aux_states(onium):
         basis_s = aux_color_basis(born_amplitude, onium['index'], colour)
-        keys_s = sorted(basis_s.keys())
+        keys_s = _sorted_keys(basis_s)
         matrices = {}
         for leg in physical_legs(legs):
             rep = leg_colour_rep(leg, model)
@@ -547,37 +647,74 @@ def transition_matrices(born_amplitude, model, basis_p=None):
                 continue
             num = leg.get('number')
             k = physical_number(legs, num)
-            kinds = ['Delta'] if label in ('18', '81') else ['D', 'T']
-            for kind in kinds:
+            for kind in qeff_kinds(label):
                 repl_p, repl_s = {}, {}
                 if num != n_q:
                     # Q_k^a on the index of leg k (of the S wave)
-                    repl_s[num] = fresh
-                    insertion = colour_charge_string(rep, num, a, fresh)
-                    if label == '18':
-                        repl_s[n_q] = a          # Delta^a: S octet index = a
-                    elif label == '81':
-                        repl_p[n_q] = a          # Delta^aT: P octet index = a
-                    else:
-                        repl_s[n_q] = c_new
-                        insertion.product(qeff(kind, n_q, c_new))
+                    repl_s[num] = _FRESH
+                    charge = colour_charge_string(rep, num, _ADJ, _FRESH)
+                    insertion = _product(charge, _apply_qeff(label, kind, n_q, _SIDX[0],
+                                                             repl_s, repl_p))
                 else:
                     # the onium (a P-wave octet): T^a_{b' m} Q_eff^a_{m c}
                     if label == '81':
                         continue                 # T^a_{b' a} = -i f(a b' a) = 0
-                    repl_s[n_q] = c_new
-                    insertion = colour_charge_string(8, n_q, a, m_new)
-                    insertion.product(qeff(kind, m_new, c_new))
-                mat = {}
-                for ib, ks in enumerate(keys_s):
-                    for ia, kp in enumerate(keys_p):
-                        value = contract(kp, ks, repl_p, repl_s, insertion)
-                        if value != (0, 0):
-                            mat[(ia, ib)] = value
-                matrices[(k, kind)] = mat
+                    repl_s[n_q] = _SIDX[0]
+                    insertion = colour_charge_string(8, n_q, _ADJ, _MNEW)
+                    insertion.product(_qeff_kind_string(kind, _ADJ, _MNEW, _SIDX[0]))
+                matrices[(k, kind)] = _matrix(keys_p, keys_s, repl_p, repl_s, insertion)
         result['aux'].append({'colour': colour, 'label': label, 'basis': basis_s,
                               'keys': keys_s, 'matrices': matrices})
     return result
+
+
+def dipole_matrices(born_amplitude, model, pleg1, pleg2, tm1, tm2):
+    """The colour matrices of the dipole-dipole terms of the P-wave quarkonia
+    pleg1 and pleg2 (first constituent legs, pleg1 first), with tm1, tm2
+    their transition_matrices:
+
+    cross (real emission, eq. Mdipdip of JHEP_2Pwave), {(a1, a2, kind1,
+    kind2): {(gamma, beta): (re, im)}},
+        Y_{gamma beta} = sum_colours conj(Q_eff,2^a c^(2)_gamma) Q_eff,1^a c^(1)_beta
+    with c^(1) (c^(2)) the colour basis of daughter a1 (a2) of onium 1 (2),
+    the other onium in its own colour, both mapped onto the colour space of
+    the Born by the effective generators;
+
+    parallel (virtual, eq. MV), {(a1, a2, kind1, kind2): {(alpha, beta):
+    (re, im)}},
+        Z_{alpha beta} = sum_colours conj(c_P_alpha) Q_eff,1^a Q_eff,2^a c^(12)_beta
+    with c^(12) the colour basis with both onia in their daughters, whose
+    bases are returned too: 'double': {(a1, a2): (basis, keys)}.
+
+    Mass factors are left out, as in transition_matrices."""
+    o1, o2 = pleg1.get('number'), pleg2.get('number')
+    keys_p = tm1['keys_p']
+    cross, parallel, double = {}, {}, {}
+    for a1, aux1 in enumerate(tm1['aux']):
+        for a2, aux2 in enumerate(tm2['aux']):
+            basis12 = aux_color_basis(born_amplitude, {tm1['index']: aux1['colour'],
+                                                       tm2['index']: aux2['colour']})
+            keys12 = _sorted_keys(basis12)
+            double[(a1, a2)] = (basis12, keys12)
+            for kind1 in qeff_kinds(aux1['label']):
+                for kind2 in qeff_kinds(aux2['label']):
+                    # cross: struct_p = c^(2) (conjugated), struct_s = c^(1)
+                    repl_p, repl_s = {}, {}
+                    ins1 = _apply_qeff(aux1['label'], kind1, o1, _SIDX[0], repl_s, repl_p)
+                    ins2 = _apply_qeff(aux2['label'], kind2, o2, _SIDX[1], repl_p, repl_s,
+                                       conj=True)
+                    mat = _matrix(aux2['keys'], aux1['keys'], repl_p, repl_s,
+                                  _product(ins1, ins2))
+                    if mat:
+                        cross[(a1, a2, kind1, kind2)] = mat
+                    # parallel: struct_p = c_P, struct_s = c^(12)
+                    repl_p, repl_s = {}, {}
+                    ins1 = _apply_qeff(aux1['label'], kind1, o1, _SIDX[0], repl_s, repl_p)
+                    ins2 = _apply_qeff(aux2['label'], kind2, o2, _SIDX[1], repl_s, repl_p)
+                    mat = _matrix(keys_p, keys12, repl_p, repl_s, _product(ins1, ins2))
+                    if mat:
+                        parallel[(a1, a2, kind1, kind2)] = mat
+    return {'cross': cross, 'parallel': parallel, 'double': double}
 
 
 def colour_matrix(basis):
@@ -600,30 +737,44 @@ def colour_matrix(basis):
 
 
 def soft_current_data(born_me):
-    """What the generated born_onia.f needs for the soft current of the
-    P-wave quarkonium of a Born matrix element (None without one): the
-    physical position of the onium, its S, J and index, the constituent
-    numbers of the quark and the antiquark, and per S-wave state S' of
-    aux_states its colour, label, colour basis, colour matrix and transition
-    matrices (transition_matrices, P basis = the colour basis of born_me)."""
+    """What the generated born_onia.f needs for the soft currents of the
+    P-wave quarkonia of a Born matrix element (None without one):
+    {'ncolor_p', 'pwaves': [...], 'pairs': [...]}. Per P-wave quarkonium
+    (in the order of the legs): its physical position, S, J, C and onium
+    index, the constituent numbers of the quark and the antiquark, and per
+    S-wave daughter of aux_states its colour, label, colour basis, colour
+    matrix and transition matrices (transition_matrices, P basis = the colour
+    basis of born_me). Per pair (h1 < h2, positions in 'pwaves'): the cross
+    and parallel colour matrices and the double-daughter bases of
+    dipole_matrices."""
     amplitude = born_me.get('base_amplitude')
     process = amplitude.get('process')
     model = process.get('model')
     legs = process.get('legs')
-    pwaves = [l for l in physical_legs(legs) if onium_of(l) and is_pwave(onium_of(l))
-              and is_quarkonium(l, model)]
+    pwaves = pwave_quarkonia(legs, model)
     if not pwaves:
         return None
-    tm = transition_matrices(amplitude, model, basis_p=born_me.get('color_basis'))
-    onium = onium_of(pwaves[0])
-    constituents = [l for l in legs if onium_of(l) and onium_of(l)['index'] == onium['index']]
-    quark = [l for l in constituents if l.get('id') > 0][0]
-    antiquark = [l for l in constituents if l.get('id') < 0][0]
-    for aux in tm['aux']:
-        aux['cf'] = colour_matrix(aux['basis'])
-    return dict(onium=tm['onium'], index=onium['index'], S=onium['S'], J=onium['J'],
-                C=onium['C'], quark=quark.get('number'), antiquark=antiquark.get('number'),
-                ncolor_p=len(tm['keys_p']), aux=tm['aux'])
+    out = {'pwaves': [], 'pairs': []}
+    tms = []
+    for pleg in pwaves:
+        tm = transition_matrices(amplitude, model, basis_p=born_me.get('color_basis'), pleg=pleg)
+        tms.append(tm)
+        onium = onium_of(pleg)
+        constituents = [l for l in legs if onium_of(l) and onium_of(l)['index'] == onium['index']]
+        quark = [l for l in constituents if l.get('id') > 0][0]
+        antiquark = [l for l in constituents if l.get('id') < 0][0]
+        for aux in tm['aux']:
+            aux['cf'] = colour_matrix(aux['basis'])
+        out['ncolor_p'] = len(tm['keys_p'])
+        out['pwaves'].append(dict(onium=tm['onium'], index=onium['index'], S=onium['S'],
+                                  J=onium['J'], C=onium['C'], quark=quark.get('number'),
+                                  antiquark=antiquark.get('number'), aux=tm['aux']))
+    for h1 in range(len(pwaves)):
+        for h2 in range(h1 + 1, len(pwaves)):
+            dm = dipole_matrices(amplitude, model, pwaves[h1], pwaves[h2], tms[h1], tms[h2])
+            dm.update(h1=h1, h2=h2)
+            out['pairs'].append(dm)
+    return out
 
 
 # ----------------------------------------------------- built-in virtuals ----

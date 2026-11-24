@@ -52,9 +52,78 @@ class TestFKSOniaGeneration(unittest.TestCase):
 
     def test_refusals(self):
         """Outside the category of arXiv:2402.19221: clear messages."""
-        self.assertRefused('g g > chic0(1|3P01) chic2(1|3P21) [QCD]',
-                           'more than one P-wave quarkonium')
         self.assertRefused('g g > Jpsi(1|3S18) g [QED]', 'QCD corrections only')
+
+    def test_two_pwaves_onia_as_sisters(self):
+        """Several P-wave quarkonia are supported (JHEP_2Pwave). When the
+        onia are the only coloured particles (e+ e- > two P waves), the
+        gluon of the real is emitted by the onia, which are its FKS sisters
+        (soft only): one sector per onium, j = its first constituent."""
+        born, = self.generate('e+ e- > Jpsi(1|3P08) chic2(1|3P21) / z h QED=2 QCD=2 [real=QCD]')
+        self.assertEqual(len(born.real_amps), 1)
+        real = born.real_amps[0]
+        self.assertEqual([l['id'] for l in real.process['legs']], [-11, 11, 4, -4, 4, -4, 21])
+        self.assertEqual(sorted((i['i'], i['j']) for i in real.fks_infos), [(7, 3), (7, 5)])
+        self.assertEqual(sorted(real.fks_j_from_i[7]), [3, 5])
+        infos, j_from_i, _, _, _ = fks_onia.to_physical_fks(
+            real.process['legs'], real.process['model'], real.fks_infos, real.fks_j_from_i,
+            real.colors, real.particle_tags, real.charges)
+        self.assertEqual(sorted((i['i'], i['j']) for i in infos), [(5, 3), (5, 4)])
+        self.assertEqual(j_from_i[5], [3, 4])
+        # with an elementary coloured parton the onia own no sector
+        born, = self.generate('u u~ > chic0(1|3P01) chic2(1|3P21) QED=0 [real=QCD]')
+        for real in born.real_amps:
+            constituents = set(n + 1 for pair in fks_onia.onium_pairs(real.process['legs'])
+                               for n in pair)
+            self.assertFalse(constituents & set(i['j'] for i in real.fks_infos))
+
+    def test_dipole_matrices(self):
+        """The dipole-dipole colour matrices of two P-wave octets (all
+        kinds [81], [88] on both sides): exchanging the two onia conjugates
+        and transposes the cross matrices and leaves the parallel ones
+        unchanged; HKW's 3P[8] + 3P[1] has the [81][18] cross term only (the
+        [88] daughter with the singlet spectator is colour forbidden), with
+        the daughters 3S1[1] + 3P[1] and 3P[8] + 3S1[8] of JHEP_2Pwave, and no
+        parallel term (colour-forbidden Born)."""
+        for line in ('e+ e- > Jpsi(1|3P28) psi(2|3P08) / z h QED=2 QCD=2',
+                     'e+ e- > Jpsi(1|3P08) chic2(1|3P21) / z h QED=2 QCD=2'):
+            born, = self.generate(line + ' [real=QCD]')
+            amp = born.born_amp
+            model = amp['process']['model']
+            p1, p2 = fks_onia.pwave_quarkonia(amp['process']['legs'], model)
+            tm1 = fks_onia.transition_matrices(amp, model, pleg=p1)
+            tm2 = fks_onia.transition_matrices(amp, model, pleg=p2)
+            dm = fks_onia.dipole_matrices(amp, model, p1, p2, tm1, tm2)
+            rev = fks_onia.dipole_matrices(amp, model, p2, p1, tm2, tm1)
+            self.assertTrue(dm['cross'])
+            for (a1, a2, k1, k2), mat in dm['cross'].items():
+                other = rev['cross'][(a2, a1, k2, k1)]
+                self.assertEqual(sorted(other), sorted((b, g) for (g, b) in mat))
+                for (g, b), (re, im) in mat.items():
+                    self.assertEqual(other[(b, g)], (re, -im))
+            self.assertEqual(set(dm['parallel']),
+                             set((a1, a2, k1, k2) for (a2, a1, k2, k1) in rev['parallel']))
+            for (a1, a2, k1, k2), mat in dm['parallel'].items():
+                self.assertEqual(rev['parallel'][(a2, a1, k2, k1)], mat)
+            if 'chic2' in line:
+                labels = [(tm1['aux'][a1]['label'], tm2['aux'][a2]['label'])
+                          for (a1, a2, _, _) in dm['cross']]
+                self.assertEqual(sorted(set(labels)), [('81', '18')])
+                self.assertFalse(dm['parallel'])
+            else:
+                self.assertTrue(dm['parallel'])
+
+    def test_leg_identity_keeps_fock_state(self):
+        """Constituents of different onia are not interchangeable FKS legs;
+        those of identical onia are (the position 'index' is ignored)."""
+        import madgraph.fks.fks_common as fks_common
+        born, = self.generate('e+ e- > Jpsi(1|3P08) chic2(1|3P21) / z h QED=2 QCD=2 [real=QCD]')
+        legs = born.real_amps[0].process['legs']
+        ident = fks_common.external_leg_identity
+        self.assertNotEqual(ident(legs[2]), ident(legs[4]))
+        born, = self.generate('e+ e- > Jpsi(1|3P08) Jpsi(1|3P08) / z h QED=2 QCD=2 [real=QCD]')
+        legs = born.real_amps[0].process['legs']
+        self.assertEqual(ident(legs[2]), ident(legs[4]))
 
     def test_massless_constituents_refused(self):
         cmd = MGCmd.MasterCmd()

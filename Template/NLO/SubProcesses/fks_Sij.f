@@ -70,10 +70,12 @@ c      include "fks.inc"
 
       logical setsijzero
 c Bound states (onia_legs.f): an onium is a soft partner of the gluons
-c (colour links, P-wave soft current) but owns no FKS sector, so it is
-c not part of the partition
-      logical fks_onia_leg
-      external fks_onia_leg
+c (colour links, P-wave soft current); when it owns no FKS sector (the
+c gluon has elementary sisters) it is not part of the partition. When the
+c onia are the only coloured particles they are the FKS sisters of the
+c gluon and are part of it.
+      logical fks_onia_nosector
+      external fks_onia_nosector
 
       double precision tiny,zero,one
       parameter (tiny=1.d-6)
@@ -195,7 +197,7 @@ c         firsttime=.false.
          kk = i
          ll = fks_j_from_i(i,j)
          if (nincoming.ne.2 .and. ll.le.nincoming) cycle
-         if (fks_onia_leg(kk) .or. fks_onia_leg(ll)) cycle
+         if (fks_onia_nosector(kk) .or. fks_onia_nosector(ll)) cycle
          if(ijskip(kk,ll).ne.1)goto 222
          if(is_aorg(ll).and..not.is_aorg(kk).and.
      #      ll.gt.nincoming)then

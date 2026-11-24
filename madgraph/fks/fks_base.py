@@ -1110,11 +1110,23 @@ class FKSProcess(object):
         # split, and the onium counts as one particle
         nphysical = len(fks_onia.physical_legs(leglist)) if \
                     fks_onia.has_onia(leglist) else len(leglist)
+        # bound states that are the only coloured particles (e+ e- > onia):
+        # the gluon is emitted by the onia, which are then its FKS sisters
+        # (soft-only, massive j; JHEP_2Pwave, sect. 6.1)
+        onium_emitters = fks_onia.has_onia(leglist) and 'QCD' in pert_orders and \
+            not (nphysical == 3 and not decay_process) and \
+            fks_onia.onia_only_coloured(leglist, model)
         for i in leglist:
             i_i = i['number'] - 1
             self.reals.append([])
 
             if fks_onia.onium_of(i):
+                if onium_emitters and fks_onia.is_onium_emitter(leglist, i, model):
+                    self.reals[i_i].append({
+                        'leglist': fks_common.insert_legs(
+                            leglist, i, fks_onia.onium_emission_split(i, model), pert='QCD'),
+                        'perturbation': ['QCD'],
+                        'extra_mothers': {'QCD': []}})
                 continue
             # for 2->1 processes, map only the initial-state singularities
             # this is because final-state mapping preserves shat, which
