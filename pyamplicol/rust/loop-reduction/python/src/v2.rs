@@ -212,6 +212,7 @@ impl V2Reducer {
     /// either frame; empty when every served lane is certified. Taken: a
     /// second call returns nothing until the next reduction.
     fn take_uncertified(&mut self) -> Vec<(usize, usize, &'static str)> {
+        let _unlock = pyamplicol::unlock();
         std::mem::take(&mut self.1)
     }
 }
