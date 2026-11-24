@@ -20,6 +20,7 @@ This setup avoids two problems:
 | `fd_setup.sh`, `pw_fd_driver.f`, `pw_fd.mk` | patch, build and run the check |
 | `pw_modes.py` | the full virtual of an output in the given `CTModeRun` modes (`1,4,-1:1.0d-40`), optionally at a relative momentum with on-shell constituents |
 | `psi_chic.py`, `psi_chic_ref.py` | e+ e- > J/psi chi_cJ (an S-wave and a P-wave state) against the closed form of Wang, Ma and Chao and the helicity tables of Dong, Feng and Jia (below) |
+| `qp_floor.py` | the floor of quadruple precision: the loop groups summed in quadruple precision against MadLoop's sum, for several b and t masses (below) |
 
 The paths are those of the scratch workspace in which the scripts ran.
 
@@ -121,4 +122,16 @@ The pinned TIRust installation has no raised powers, and MadGraph refuses the ou
 - **The floor of quadruple precision.** `--exact` evaluates the virtual at √s = 18.5 GeV, where the momenta are exact in binary64.
   - The QP averages deviate by 2.7e-9, 3.0e-8 and 1.4e-8, and the QP virtual departs from the form α + β cos²θ by up to 1.6e-8. The Born keeps that form to 2e-15.
   - CTModeRun 4 and 5 are identical bit for bit. `MP_TIRUST_LOOP` returns each loop group as a double-precision number, so the two directions round alike.
-  - The source of the 1e-8 has not been traced.
+
+**The cause** (`qp_floor.py`, which patches an output to sum the loop groups in quadruple precision and prints both sums). The b and t quarks are decoupled at 10 and 100 TeV to match the n_l = 3 reference. Their counterterms and loop groups grow like M² and cancel: |counterterms| + Σ|loop group| is 8.8e8 times the total for χ_c2, and 5.9e7 for J/ψ η_c. MadLoop stores every loop group as a double-precision number (`LOOPRES`; `MP_TIRUST_LOOP` rounds the quadruple-precision value), so the result keeps 1e-16 times the parts, and both directions round alike. χ_c2 at √s = 10.58 GeV, against the reference:
+
+| m_b, m_t (GeV) | Parts / total | MadLoop (rounded) | Quadruple-precision sum |
+|---|---|---|---|
+| 1e3, 1e3 | 1.8e5 | 3.0e-7 | 3.0e-7 |
+| 1e4, 1e4 | 1.7e7 | 3.7e-9 | 3.0e-9 |
+| 1e4, 1e5 (the benchmark) | 8.8e8 | 1.2e-7 | 1.5e-9 |
+| 1e5, 1e5 | 1.7e9 | 3.2e-8 | 3.0e-11 |
+
+- **Summed in quadruple precision.** What is left is the decoupling remainder of the heavy quarks, which falls like 1/M².
+- **Physical masses.** With m_b = 4.75 and m_t = 173 GeV, the parts are 2.7e3 times the total, and the rounding is 1e-12.
+- **J/ψ η_c.** The same rounding is 6e-9 at the benchmark masses. Its remaining 4e-8 against Gong–Wang is the seventh digit of that reference.

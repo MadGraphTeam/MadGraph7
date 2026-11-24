@@ -185,8 +185,9 @@ $alpha_s\/2pi$; literature values in units of $alpha_s\/pi$ doubled (sources in
   serves them: every point stable in double precision (code 213), poles zero to
   $1.3 dot 10^(-7)$, the finite part within $3.1 dot 10^(-7)$ of Gong and Wang.
   Forced quadruple precision gives poles of $10^(-15)$ and the finite part
-  within $6 dot 10^(-8)$, inside the 7 published digits; what is left comes from
-  the double-precision momenta, whose onium masses sit a few ulp off $2 m_c$.
+  within $6 dot 10^(-8)$, inside the 7 published digits. MadLoop's own floor there
+  is the rounding of its loop groups against the counterterms of the heavy $b$
+  and $t$ quarks: $6 dot 10^(-9)$ (@tab:qpfloor).
 ]
 
 = 2 → 2 processes: poles and an independent check of the finite parts <twotwo>
@@ -496,22 +497,48 @@ MadGraph refuses the P-wave output.
     backward nodes, double precision differs from quadruple precision by up to
     $5 dot 10^(-6)$, while MadLoop's loop-reversal estimate there is
     $5 dot 10^(-7)$. This is far inside the stability threshold.
-  - *Quadruple precision.* It is not better than $10^(-8)$–$10^(-7)$:
-    - The effect is not the double-precision momenta. At $sqrt(s) = 18.5$ GeV,
-      with momenta exact in binary64 (`psi_chic.py --exact`), the averages
-      deviate by #spx.map(c => sci(sp-qp(c).c0_relative_deviation)).join(", "),
-      and the virtual departs from the form $alpha + beta cos^2 theta$ by up to
-      #sci(calc.max(..spx.map(c => sp-qp(c).form_residual_virtual))). The Born
-      keeps the form to $2 dot 10^(-15)$.
-    - The two quadruple-precision directions (`CTModeRun` 4 and 5) are
-      identical bit for bit, so the rescue's accuracy estimate is 0.
-    - `MP_TIRUST_LOOP` returns each loop group to MadLoop as a double-precision
-      number. Both directions round to the same values, so the comparison
-      cannot see an error common to both.
-    - Where the $10^(-8)$ comes from has not been traced further.
+  - *Quadruple precision.* It stops at $10^(-8)$–$10^(-7)$. The two
+    directions (`CTModeRun` 4 and 5) are identical bit for bit, so the
+    rescue's accuracy estimate is 0. The cause is below (@tab:qpfloor).
   - *Helicities.* The LO shares equal the helicity amplitudes of Dong et al. to
     $2 dot 10^(-15)$. Their table's NLO corrections agree within its rounding.
 ]
+
+#let qf = pw.at("qp_floor", default: (:))
+#block(breakable: false)[#figure(caption: [The floor of quadruple precision against the masses of the $b$ and $t$ quarks (`research/pwave_fd/qp_floor.py`, `CTModeRun` 4).
+- "parts" is the largest over the nodes of $(|"counterterms"| + sum |"loop group"|) \/ |"total"|$.
+- "rounded" is MadLoop's angular average, with every loop group rounded to double precision.
+- "QP sum" adds the same loop groups in quadruple precision (a patch of the output).
+- For $chi_(c 2)$, both are compared with the reference. For $J\/psi thin eta_c$, whose reference has seven digits, the last column is the difference between the two.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right),
+    [$m_b$, $m_t$ (TeV)], [$chi_(c 2)$: parts], [rounded], [QP sum], [$J\/psi thin eta_c$: parts], [rounded − QP sum],
+    ..range(qf.at("chic2", default: ()).len()).map(i => {
+      let a = qf.chic2.at(i)
+      let b = qf.at("etac", default: ()).at(i, default: none)
+      (fixed(a.m_b / 1000, 0) + ", " + fixed(a.m_t / 1000, 0), sci(a.max_cancellation), sci(a.dev_madloop), sci(a.dev_qp_sum),
+       if b == none [—] else { sci(b.max_cancellation) }, if b == none [—] else { sci(b.rounding_average) })
+    }).flatten()))
+] <tab:qpfloor>]
+
+*The floor of quadruple precision.*
+- *Where it comes from.* The $b$ and $t$ quarks are decoupled at 10 and 100 TeV
+  to match the $n_l = 3$ references. Their counterterms and loop groups grow
+  like $M^2$ and cancel to $10^(-9)$ of their size (@tab:qpfloor). MadLoop
+  stores every loop group as a double-precision number (`LOOPRES`; in the
+  quadruple-precision passes, `MP_TIRUST_LOOP` rounds it). The result
+  therefore keeps $10^(-16)$ times the size of the parts, and both directions
+  round alike.
+- *Summed in quadruple precision.* The averages then agree with the reference
+  up to the decoupling remainder of the heavy quarks, which falls like
+  $1\/M^2$: $3 dot 10^(-11)$ with both quarks at 100 TeV.
+- *Not the momenta.* With momenta exact in binary64 (`psi_chic.py --exact`,
+  $sqrt(s) = 18.5$ GeV) the averages keep the same floor:
+  #spx.map(c => sci(sp-qp(c).c0_relative_deviation)).join(", ").
+- *With physical masses.* With $m_b = 4.75$ and $m_t = 173$ GeV, the parts are
+  $2.7 dot 10^3$ times the total, and the rounding is $10^(-12)$.
+- *In double precision.* The same rounding adds about $10^(-7)$ to the errors
+  of the integrals.
 
 = Reduction libraries at threshold <reducers>
 
@@ -866,7 +893,7 @@ confidence interval of the geometric-mean ratio.
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
 - $e^+ e^- -> J\/psi thin chi_(c J)$ (`data/raw/pwave/psi_chic_<J>.json`,
-  `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`.
+  `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The floor of quadruple precision (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on a copy of the $chi_(c 2)$ output, and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]` generated with the same TIRust.
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.

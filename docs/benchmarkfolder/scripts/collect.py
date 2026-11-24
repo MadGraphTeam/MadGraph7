@@ -70,7 +70,8 @@ STATUS_LINES = [
     '*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust '
     '08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the '
     'finite part reproduces the closed form of Wang, Ma and Chao to $10^(-6)$ in double '
-    'precision and $10^(-7)$ in quadruple precision.',
+    'precision and $10^(-7)$ in quadruple precision, limited by MadLoop\'s rounding of the loop '
+    'groups against the heavy-quark counterterms ($3 dot 10^(-11)$ when summed in quadruple precision).',
     '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
     '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
@@ -104,6 +105,11 @@ OPEN_ITEMS = [
     '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
     '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).',
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
+    '*Quadruple-precision sum:* MadLoop rounds every loop group to double precision, in the '
+    'quadruple-precision passes too. Against counterterms that grow like $M^2$ (the $b$, $t$ '
+    'decoupled at 10–100 TeV of the $e^+ e^-$ references) this limits quadruple precision to '
+    '$10^(-8)$–$10^(-7)$, and `CTModeRun` 4 and 5 come out identical (@tab:qpfloor). '
+    'Summing the groups in quadruple precision removes it.',
     '*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes '
     'the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge '
     'patch with the gate and the relation tiers together exists; neither is on `onia_loop`\'s '
@@ -453,7 +459,27 @@ def summarize_pwave(folder):
     two_two = [dict(name=name, label=label, **common(name, load(name)))
                for name, label in PWAVE_22]
     return dict(two_one=two_one, two_two=two_two, sp=summarize_psi_chic(folder),
-                sp_exact=summarize_psi_chic(folder, 'psi_chic_exact_%d.json'))
+                sp_exact=summarize_psi_chic(folder, 'psi_chic_exact_%d.json'),
+                qp_floor=summarize_qp_floor(folder))
+
+
+def summarize_qp_floor(folder):
+    """research/pwave_fd/qp_floor.py (qp_floor_<case>.json): per (m_b, m_t),
+    the cancellation between counterterms and loop groups, and the angular
+    average of the finite part from MadLoop (groups rounded to double
+    precision) and from the quadruple-precision sum."""
+    out = {}
+    for case in ('chic2', 'etac'):
+        path = os.path.join(folder, 'qp_floor_%s.json' % case)
+        if not os.path.exists(path):
+            continue
+        r = json.load(open(path))
+        out[case] = [dict({k: row[k] for k in ('m_b', 'm_t', 'c0_madloop', 'c0_qp_sum', 'max_cancellation',
+                                              'max_rounding')},
+                          rounding_average=abs(row['c0_madloop'] - row['c0_qp_sum']) / abs(row['c0_qp_sum']),
+                          dev_madloop=row.get('dev_madloop'), dev_qp_sum=row.get('dev_qp_sum'))
+                     for row in r['rows']]
+    return out
 
 
 def summarize_psi_chic(folder, pattern='psi_chic_%d.json'):
