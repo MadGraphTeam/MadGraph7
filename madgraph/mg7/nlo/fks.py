@@ -664,6 +664,11 @@ def main(argv=None):
         help="batches of a MadNIS training per subprocess, with --generator",
     )
     parser.add_argument(
+        "--madnis-discrete",
+        action="store_true",
+        help="train a DiscreteFlow of the FKS configurations as well",
+    )
+    parser.add_argument(
         "--histograms", help="a TOML file with [histograms] as run_card.toml"
     )
     args = parser.parse_args(argv)
@@ -681,6 +686,7 @@ def main(argv=None):
         generator=args.generator,
         threads=args.threads,
         madnis_batches=args.madnis_batches,
+        madnis_discrete=args.madnis_discrete,
     )
     result = run.run()
     unit = result["unit"]

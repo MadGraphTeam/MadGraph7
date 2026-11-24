@@ -48,10 +48,16 @@ iterations adapt in C++ (FKSIntegrand for FKS).
 
 With madnis_batches as well, the grid iterations adapt the VEGAS grids, the
 discrete choice and the virtual trick, a MadNIS training of that many
-batches per subprocess turns each grid into a Flow and the configurations
-into a DiscreteFlow with the probabilities of the grid iterations as its
-prior, and the integration iterations run with the flows (generator_integrand
-with flow, discrete and madnis_training).
+batches per subprocess turns each grid into a Flow, and the integration
+iterations run with the flows (generator_integrand with flow and
+madnis_training). The configurations keep the discrete choice of the state,
+which goes on adapting. With madnis_discrete a DiscreteFlow with the
+probabilities of the grid iterations as its prior chooses them instead. Its
+training integrand sigma p_k holds the n-body part times the probability the
+flow itself learns, so the flow chases its own probabilities: it lowers p_k
+where the real part of configuration k is negative and makes the weights
+negative there (e+ e- -> j j: the spread of the weights back at that of
+VEGAS after 3000 batches).
 """
 
 import json
@@ -972,6 +978,8 @@ class NLORun:
         madnis_batches: with generator, the batches of a MadNIS training per
             subprocess between the grid and the integration iterations, none
             by default.
+        madnis_discrete: train a DiscreteFlow of the configurations as well
+            (see the module), off by default.
     """
 
     scheme = None
@@ -996,11 +1004,13 @@ class NLORun:
         generator=False,
         threads=-1,
         madnis_batches=0,
+        madnis_discrete=False,
     ):
         self.output = os.path.realpath(output)
         self.generator = generator
         self.threads = threads
         self.madnis_batches = madnis_batches
+        self.madnis_discrete = madnis_discrete
         self.run_card = read_run_card(self.output, run_card)
         check_run_card(self.run_card)
         self.param_card = param_card or read_param_card(
@@ -1273,10 +1283,10 @@ class NLORun:
     def train_madnis(self, integrands, fractions):
         """The MadNIS training of the channels after the grid iterations: per
         channel a Flow from its VEGAS grid (integrands of generators) and,
-        with several FKS configurations, a DiscreteFlow of them conditioned
-        on the random numbers with their probabilities as its prior, trained
-        per subprocess for madnis_batches batches. Gives (flow, discrete) per
-        channel."""
+        with madnis_discrete and several FKS configurations, a DiscreteFlow
+        of them conditioned on the random numbers with their probabilities as
+        its prior, trained per subprocess for madnis_batches batches. Gives
+        (flow, discrete) per channel."""
         ms = madspace()
         flows = []
         training = {}
@@ -1288,7 +1298,7 @@ class NLORun:
             flow.initialize_from_vegas(self.context, vegas.grid_name(), self.seed)
             discrete = None
             count = integrand.configuration_count()
-            if count > 1:
+            if self.madnis_discrete and count > 1:
                 discrete = ms.DiscreteFlow(
                     option_counts=[count],
                     prefix=f"{prefix}.discrete_flow",
