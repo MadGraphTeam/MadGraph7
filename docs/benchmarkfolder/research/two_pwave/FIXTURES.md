@@ -255,4 +255,4 @@ The passes took 4452 s and 4476 s. The forced rescue (MLStabThres 1d-30) gives t
 - the (D + 2)-dimensional term of a dotted massless line in a collinear pair of a pentagon;
 - the degenerate Gram cases.
 
-Not yet reported to TIRust.
+Reported to TIRust on 2026-11-24, with the 171 inputs.
