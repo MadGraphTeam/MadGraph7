@@ -67,6 +67,10 @@ STATUS_LINES = [
     '*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ '
     'literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term '
     'of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.',
+    '*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust '
+    '08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the '
+    'finite part reproduces the closed form of Wang, Ma and Chao to $10^(-6)$ in double '
+    'precision and $10^(-7)$ in quadruple precision.',
     '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
     '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
@@ -448,7 +452,37 @@ def summarize_pwave(folder):
         two_one.append(entry)
     two_two = [dict(name=name, label=label, **common(name, load(name)))
                for name, label in PWAVE_22]
-    return dict(two_one=two_one, two_two=two_two)
+    return dict(two_one=two_one, two_two=two_two, sp=summarize_psi_chic(folder),
+                sp_exact=summarize_psi_chic(folder, 'psi_chic_exact_%d.json'))
+
+
+def summarize_psi_chic(folder, pattern='psi_chic_%d.json'):
+    """e+ e- -> J/psi chi_cJ (research/pwave_fd/psi_chic.py, psi_chic_<J>.json;
+    psi_chic_exact_<J>.json: --exact, momenta exact in binary64):
+    the cross-section average of the finite part against Wang, Ma and Chao,
+    the poles, the LO helicity shares and the helicity groups against Dong,
+    Feng and Jia, per CTModeRun mode."""
+    rows = []
+    for J in (0, 1, 2):
+        path = os.path.join(folder, pattern % J)
+        if not os.path.exists(path):
+            continue
+        r = json.load(open(path))
+        case = r['cases'][str(J)]
+        modes = {}
+        for mode, a in case['modes'].items():
+            modes[mode] = {k: a[k] for k in (
+                'c0', 'c0_reference', 'c0_relative_deviation', 'form_residual_born',
+                'form_residual_virtual', 'lo_shares', 'lo_shares_reference', 'lo_share_deviation',
+                'group_A_nf4', 'group_A_dfj_table2', 'max_pole', 'max_pole_deviation',
+                'max_predicted_pole', 'codes', 'max_accuracy', 'ms_per_point')}
+            modes[mode]['npoints'] = len(a['points'])
+            modes[mode]['stable'] = sum(1 for p in a['points'] if p['ret_code'] // 100 in (1, 2, 3))
+        rows.append(dict(J=J, label=r'e^+ e^- -> J\/psi thin chi_(c %d)' % J, process=case['process'],
+                         energy=r['energy'], mu=r['mu'], mc=r['mc'], tirust=r['tirust'],
+                         nodes=len(r['nodes']), exact=r.get('exact', False), modes=modes,
+                         qp_directions_max_difference=case.get('qp_directions_max_difference')))
+    return rows
 
 
 def main():

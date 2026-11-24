@@ -400,7 +400,41 @@ NNLO: Feng-Jia-Mo-Sang 1901.08447.
 
 - **e+ e- -> J/psi J/psi** (QED Born via two photons; many form factors, angle dependent). Gong-Wang arXiv:0801.0648 (PRL 100 (2008) 181803), eq. (6) and the text below it: **integrated** K(s^ = 12.484) = **-11.190** (alpha_s/pi), m = 1.5 GeV, sqrt(s) = 10.6. It is mu-independent (no gluon at LO); the differential K is only plotted.
 - **gamma gamma -> J/psi J/psi.** Yang, Chen, Qiao arXiv:2006.05351: only WW/LBS-convoluted cross sections, with different |R(0)|^2 at LO/NLO and pT cuts. Not usable pointwise.
-- **e+ e- -> J/psi chi_cJ.** Dong-Feng-Jia 1107.4351; Wang-Ma-Chao 1107.2646. Helicity K-factors exist; not extracted here `[UNVERIFIED]`.
+- **e+ e- -> J/psi chi_cJ.** See C.6.
+
+### C.6 e+ e- -> J/psi chi_cJ, J = 0, 1, 2 (an S-wave and a P-wave state; integrated and per helicity group) `[VERIFIED + eval.]`
+
+Sources:
+- **Wang, Ma, Chao, arXiv:1107.2646** (PRD 84 (2011) 034022), appendix: the full analytic NLO cross sections. Only their real parts are claimed.
+
+      sigma_NLO = sigma_LO (1 + alpha_s Re M_J^NLO / (72 a^3 b d^3 e pi M_J^LO)),   a = sqrt(s)/(4 m_c)
+
+  `M_J^LO`, `M_J^NLO` and the dilogarithm combinations `l_1 ... l_7` are in the appendix.
+- **Dong, Feng, Jia, arXiv:1107.4351 v3** (JHEP 10 (2011) 141): the helicity decomposition, eq. (2.6), and the LO helicity amplitudes, eq. (3.3). Table 2 has the single-helicity LO and NLO cross sections at sqrt(s) = 10.58, m_c = 1.5, mu = 2m_c, alpha_s = 0.259. Eqs. (4.5)-(4.7) give the asymptotic forms only.
+- **Zhang, Ma, Chao, 0802.3655** (chi_c0 only): K = 2.8. Both later papers find K = 1.57 with the same inputs; Wang et al. note a numerical error in it. Not used.
+
+Scheme of both: on-shell charm mass and wave function, **MSbar alpha_s with n_f = 4 (charm active, beta_0 = 25/3)**, photon exchange only, no QED fragmentation. The Coulomb terms are absorbed into the wave functions (Wang et al.) or absent through the threshold expansion (Dong et al.). The virtual is **UV and IR finite** for every helicity amplitude, since the S-wave J/psi removes the non-factorisable soft term. The exclusive final state has no real emission, so the NLO correction is the virtual alone. Born and virtual have the angular form alpha + beta cos^2(theta): lambda = lambda_psi - lambda_chi = 0 gives sin^2(theta), and |lambda| = 1 gives (1 + cos^2(theta))/2 per amplitude.
+
+Implementation (`research/pwave_fd/psi_chic_ref.py`): the appendix expressions of M_J^NLO converted mechanically (sympy) from the arXiv LaTeX source, and evaluated with mpmath (real parts of Li_2).
+
+Checks of the transcription:
+- K factors: 1.573 / 0.911 / 0.784 at mu = 2m_c and 1.785 / 1.246 / 1.142 at mu = sqrt(s)/2 (sqrt(s) = 10.6), against Wang et al.'s table 1: 1.57 / 0.91 / 0.78 and 1.79 / 1.25 / 1.14.
+- At 10.58: 1.573 / 0.910 / 0.784 against Dong et al.'s table 2 (11.43/7.26, 1.11/1.22, 1.38/1.76).
+- The LO ratios M_1^LO/M_0^LO = 0.1681467735 and M_2^LO/M_0^LO = 0.2421104202 equal those of Dong et al.'s eq. (3.3) to all digits.
+
+Conversion to the implementation's scheme `[DERIVED]` (n_l = 3, heavy quarks decoupled; 0.4; Born of order alpha_s^2):
+
+    c0 = 2 (A_J + (2 T_F/3) ln(mu^2/m_c^2)),   sigma_NLO = sigma_LO (1 + (alpha_s/pi) A_J)  (n_f = 4)
+
+c0 is the cross-section average of MadLoop's finite part, int B c0 dcos / int B dcos. Values (eval.) at sqrt(s) = 10.58, m_c = 1.5, mu = 2m_c:
+
+| J | A_J (n_f = 4) | c0 (n_l = 3, decoupled) |
+|---|---|---|
+| 0 | 6.9466468960 | **14.8174900328** |
+| 1 | -1.0897154170 | **-1.2552345934** |
+| 2 | -2.6173891669 | **-4.3105820930** |
+
+The LO shares of lambda = 0, from Dong et al.'s eq. (3.3), are 0.2301389 (chi_c0), 0.0820391 (chi_c1) and 0.4269518 (chi_c2). Table 2 gives, per group lambda = 0 / |lambda| = 1, A (n_f = 4) = 6.03 / 7.19 (chi_c0), -7.3 / -0.60 (chi_c1) and -4.33 / -1.43 (chi_c2), to the two or three digits of the table.
 
 ---
 

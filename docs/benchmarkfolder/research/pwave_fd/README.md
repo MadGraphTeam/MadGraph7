@@ -19,6 +19,7 @@ This setup avoids two problems:
 | `fd_patch.py`, `fd_patch2.py`, `fd_patch3.py` | add the test modes to a generated `onia_loop.f`, in double and quadruple precision |
 | `fd_setup.sh`, `pw_fd_driver.f`, `pw_fd.mk` | patch, build and run the check |
 | `pw_modes.py` | the full virtual of an output in the given `CTModeRun` modes (`1,4,-1:1.0d-40`), optionally at a relative momentum with on-shell constituents |
+| `psi_chic.py`, `psi_chic_ref.py` | e+ e- > J/psi chi_cJ (an S-wave and a P-wave state) against the closed form of Wang, Ma and Chao and the helicity tables of Dong, Feng and Jia (below) |
 
 The paths are those of the scratch workspace in which the scripts ran.
 
@@ -99,3 +100,25 @@ With TIRust 48958d1 (part of PR #56, built by `build.sh` with `REV=48958d1` and 
 
 - **Why it vanishes.** For equal masses the self term and the LDME counterterm cancel for every S-wave state S'. What is left are the cross vectors, which vanish by colour conservation when the bound state has a single coloured partner, as in the e+e- cases. In the 2 → 1 cases other than ¹P₁[8], every S' Born vanishes.
 - **2 → 2 processes.** TIRust 48958d1 serves every integral of `u u~ > chic0 g` and `g u > chic0 u` at these points, but not those of `g g > chic0 g` (doubled-gluon pentagons). TIRust 370b632 (in PR #56) serves them: all four points stable (213), poles as predicted (P → S term +6.9 to +9.9) to 1.3e-9, finite parts equal to forced QP within 4e-12. The finite parts of these processes have no reference.
+
+## An S-wave and a P-wave state: e+ e- > J/psi chi_cJ (TIRust 08cca00)
+
+`psi_chic.py` generates `e+ e- > Jpsi(1|3S11) chicJ(1|3PJ1) / z QED=2 [virt=QCD]` for J = 0, 1, 2:
+- **Setup.** m_c = 1.5 GeV, b and t decoupled, √s = 10.58 GeV, μ = 2 m_c.
+- **Points.** The virtual is evaluated at the four Gauss–Legendre nodes in cos θ.
+- **Comparison.** The cross-section average of the finite part is compared with `psi_chic_ref.py`. That is the NLO cross section of arXiv:1107.2646 (appendix), converted from its LaTeX source and from n_f = 4 to MadLoop's n_l = 3 scheme (`research/literature.md`, C.6). The exclusive process has no real emission, and the virtual is UV and IR finite.
+
+The pinned TIRust installation has no raised powers, and MadGraph refuses the output. With TIRust 08cca00 (`build.sh`, bridge v8 of the two-P-wave work):
+
+| J | Reference ⟨c0⟩ | DP (CTModeRun −1) | QP (CTModeRun 4) | Poles DP, QP |
+|---|---|---|---|---|
+| 0 | 14.8174900328 | 1.1e-8 | 1.8e-8 | 2.6e-7, 4.8e-15 |
+| 1 | −1.2552345934 | 1.0e-6 | 9.8e-9 | 4.1e-7, 3.7e-15 |
+| 2 | −4.3105820930 | 1.0e-6 | 1.2e-7 | 1.0e-6, 4.4e-15 |
+
+- **Double precision.** Every node returns 213, at 0.2 s per point. Quadruple precision takes 13 s per point.
+- **Helicities.** The LO shares of λ = 0 and |λ| = 1 equal those of the helicity amplitudes of arXiv:1107.4351 (eq. (3.3)) to 2e-15. Its table 2 agrees within its two to three digits.
+- **The floor of quadruple precision.** `--exact` evaluates the virtual at √s = 18.5 GeV, where the momenta are exact in binary64.
+  - The QP averages deviate by 2.7e-9, 3.0e-8 and 1.4e-8, and the QP virtual departs from the form α + β cos²θ by up to 1.6e-8. The Born keeps that form to 2e-15.
+  - CTModeRun 4 and 5 are identical bit for bit. `MP_TIRUST_LOOP` returns each loop group as a double-precision number, so the two directions round alike.
+  - The source of the 1e-8 has not been traced.

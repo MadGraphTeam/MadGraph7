@@ -423,6 +423,96 @@ vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]
     within $4 dot 10^(-12)$, at 0.9 s per point.
 ]
 
+== An S-wave and a P-wave state: $e^+ e^- -> J\/psi thin chi_(c J)$ <sp>
+
+#let sp = pw.at("sp", default: ())
+#let spx = pw.at("sp_exact", default: ())
+#let sp-dp(c) = c.modes.at("-1")
+#let sp-qp(c) = c.modes.at("4")
+#let sp-lbl(c) = text(8.4pt, font: "Libertinus Serif", $J\/psi thin chi_(c #c.J)$)
+A process may have one P-wave state together with S-wave states.
+$e^+ e^- -> J\/psi thin chi_(c J)$ ($J = 0, 1, 2$; photon exchange only, no QED
+fragmentation, $b$ and $t$ decoupled) has a published one-loop reference.
+- *Its NLO correction is the virtual alone.* The final state is exclusive.
+- *The virtual is UV and IR finite.* The S-wave $J\/psi$ removes the
+  non-factorisable soft exchange of the P wave, so `ONIA_IR_POLES` predicts
+  zero poles.
+- *Wang, Ma and Chao* (arXiv:1107.2646) give the NLO cross sections in closed
+  form.
+- *Dong, Feng and Jia* (arXiv:1107.4351) give the helicity amplitudes and the
+  cross section of each helicity. Both papers agree with each other and
+  correct the earlier $K = 2.8$ for $chi_(c 0)$.
+
+Born and virtual have the form $alpha + beta cos^2 theta$ (one photon), so
+four Gauss–Legendre nodes in $cos theta$ give the exact angular average of the
+finite part, $chevron.l c_0 chevron.r = integral B c_0 \/ integral B$.
+
+The references are in the $n_f = 4$ scheme with the charm active. In
+MadLoop's scheme ($n_l = 3$, charm decoupled) the average is
+$2 (A_J + 2 T_F\/3 ln(mu^2\/m_c^2))$, where
+$sigma_"NLO" = sigma_"LO" (1 + alpha_s A_J\/pi)$ (`research/literature.md`,
+C.6).
+
+The closed form is converted mechanically from the paper's LaTeX source
+(`research/pwave_fd/psi_chic_ref.py`). It reproduces:
+- the K factors of both papers, e.g. 1.573, 0.911 and 0.784 at $mu = 2 m_c$
+  against 1.57, 0.91 and 0.78;
+- the LO ratios between the $J$ to all digits.
+
+The settings are $sqrt(s) = 10.58$ GeV, $m_c = 1.5$ GeV and $mu = 2 m_c$,
+with TIRust 08cca00 (huashengshao/TIRust\#58, stacked on \#56, not yet
+pinned). The installation of the pinned TIRust has no raised powers, and
+MadGraph refuses the P-wave output.
+
+#block(breakable: false)[#figure(caption: [The angular average of the finite part against Wang, Ma and Chao, in double precision with MadLoop's stability test (`CTModeRun` −1, threshold $10^(-3)$; every node returns 213) and in quadruple precision (`CTModeRun` 4; 120). "dev." is relative, green within $10^(-6)$, the target of the other $e^+ e^-$ references (in double precision: or MadLoop's accuracy estimate, "acc.", the largest over the nodes, when that is larger). "poles" is the largest $|c_1|$, $|c_2|$ over the nodes in double (top) and quadruple precision; the prediction is 0.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
+    column-gutter: 3pt,
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right, right, right),
+    [$e^+ e^- ->$], [$chevron.l c_0 chevron.r$ ref.], [DP], [dev.], [acc.], [QP], [dev.], [poles], [s/pt DP, QP],
+    ..sp.map(c => (sp-lbl(c), dec(sp-dp(c).c0_reference, 8), dec(sp-dp(c).c0, 8),
+      table.cell(fill: acc-fill(sp-dp(c).c0_relative_deviation, calc.max(1e-6, sp-dp(c).max_accuracy)))[#sci(sp-dp(c).c0_relative_deviation, d: 2)],
+      sci(sp-dp(c).max_accuracy), dec(sp-qp(c).c0, 8),
+      table.cell(fill: acc-fill(sp-qp(c).c0_relative_deviation, 1e-6))[#sci(sp-qp(c).c0_relative_deviation, d: 2)],
+      [#sci(sp-dp(c).max_pole) #linebreak() #sci(sp-qp(c).max_pole)],
+      [#fixed(sp-dp(c).ms_per_point / 1000, 2) #linebreak() #fixed(sp-qp(c).ms_per_point / 1000, 1)])).flatten()))
+] <tab:sp>]
+
+#block(breakable: false)[#figure(caption: [Helicity content. $lambda = lambda_(J\/psi) - lambda_chi$: $lambda = 0$ goes with $sin^2 theta$ and $|lambda| = 1$ with $1 + cos^2 theta$. The LO share of $lambda = 0$ is compared with the helicity amplitudes of Dong et al. (their eq. (3.3)). The coefficient $A$ of each group ($n_f = 4$, units of $alpha_s\/pi$) is compared with their table 2, which has two to three digits; the MadLoop value is from quadruple precision.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right, right),
+    [$e^+ e^- ->$], [LO share $lambda = 0$], [Dong et al.], [dev.], [$A(lambda = 0)$], [Dong et al.], [$A(|lambda| = 1)$], [Dong et al.],
+    ..sp.map(c => (sp-lbl(c), dec(sp-qp(c).lo_shares.at(0), 8), dec(sp-qp(c).lo_shares_reference.at(0), 8),
+      dev-cell(sp-qp(c).lo_share_deviation, target: 1e-12),
+      dec(sp-qp(c).group_A_nf4.at(0), 3), dec(sp-qp(c).group_A_dfj_table2.at(0), 2),
+      dec(sp-qp(c).group_A_nf4.at(1), 3), dec(sp-qp(c).group_A_dfj_table2.at(1), 2))).flatten()))
+] <tab:sphel>]
+
+#box-note[
+  - *Poles.* Both poles vanish, as predicted: at most
+    #sci(calc.max(..sp.map(c => sp-dp(c).max_pole))) in double precision and
+    #sci(calc.max(..sp.map(c => sp-qp(c).max_pole))) in quadruple precision.
+  - *Double precision.* Every node is stable (code 213), and the averages are
+    within $1.1 dot 10^(-6)$ of the reference. For $chi_(c 2)$ at the forward and
+    backward nodes, double precision differs from quadruple precision by up to
+    $5 dot 10^(-6)$, while MadLoop's loop-reversal estimate there is
+    $5 dot 10^(-7)$. This is far inside the stability threshold.
+  - *Quadruple precision.* It is not better than $10^(-8)$–$10^(-7)$:
+    - The effect is not the double-precision momenta. At $sqrt(s) = 18.5$ GeV,
+      with momenta exact in binary64 (`psi_chic.py --exact`), the averages
+      deviate by #spx.map(c => sci(sp-qp(c).c0_relative_deviation)).join(", "),
+      and the virtual departs from the form $alpha + beta cos^2 theta$ by up to
+      #sci(calc.max(..spx.map(c => sp-qp(c).form_residual_virtual))). The Born
+      keeps the form to $2 dot 10^(-15)$.
+    - The two quadruple-precision directions (`CTModeRun` 4 and 5) are
+      identical bit for bit, so the rescue's accuracy estimate is 0.
+    - `MP_TIRUST_LOOP` returns each loop group to MadLoop as a double-precision
+      number. Both directions round to the same values, so the comparison
+      cannot see an error common to both.
+    - Where the $10^(-8)$ comes from has not been traced further.
+  - *Helicities.* The LO shares equal the helicity amplitudes of Dong et al. to
+    $2 dot 10^(-15)$. Their table's NLO corrections agree within its rounding.
+]
+
 = Reduction libraries at threshold <reducers>
 
 #let caught = rgb("#f8d4cc")
@@ -775,6 +865,8 @@ confidence interval of the geometric-mean ratio.
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
+- $e^+ e^- -> J\/psi thin chi_(c J)$ (`data/raw/pwave/psi_chic_<J>.json`,
+  `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`.
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
@@ -783,4 +875,5 @@ confidence interval of the geometric-mean ratio.
   0712.4220; Catani, Dittmaier, Trócsányi, hep-ph/0011222; quarkonium in
   MadGraph: arXiv:2510.26773, arXiv:2607.26739 (tree level), arXiv:2402.19221
   (NLO, FKS and poles); 1511.06288 and 2501.04188 ($chi_(c J) -> gamma gamma$,
-  $gamma g$). Style after the pyAmpliCol one-loop report.
+  $gamma g$); Wang, Ma, Chao, 1107.2646 and Dong, Feng, Jia, 1107.4351
+  ($e^+ e^- -> J\/psi thin chi_(c J)$). Style after the pyAmpliCol one-loop report.

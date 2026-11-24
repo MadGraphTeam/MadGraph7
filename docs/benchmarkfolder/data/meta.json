@@ -1,6 +1,6 @@
 {
- "revision": "809886b9f0",
- "date": "2026-11-23",
+ "revision": "f3a8290f29",
+ "date": "2026-11-24",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
  "commits": [
@@ -199,6 +199,54 @@
   [
    "809886b9f0",
    "research/two_pwave: TIRust fixtures of e+e- > chic0 hc and g g > chic0 chic0"
+  ],
+  [
+   "3fe52a8be1",
+   "docs/benchmarkfolder: the 80-bit switch in the stability profiles and the report"
+  ],
+  [
+   "3e78819bf2",
+   "loop_onia: polynomial routines at rank R+npwave for two P-wave states"
+  ],
+  [
+   "d494f6e711",
+   "research/two_pwave: g g > chic0 chic0 on TIRust d5442e6 + bridge v4"
+  ],
+  [
+   "fa97a080df",
+   "loop onia: quadruple precision for two P-wave bound states"
+  ],
+  [
+   "e9387b298b",
+   "research/two_pwave: g g > chic0 chic0 in quadruple precision on TIRust 196bdcc"
+  ],
+  [
+   "773b2d002e",
+   "research/two_pwave: keep the refused g g > chic0 chic0 inputs in the repo"
+  ],
+  [
+   "766ba39a9f",
+   "research/two_pwave: g g > chic0 chic0 on TIRust eb363d6"
+  ],
+  [
+   "7fcdfa3ce2",
+   "research/two_pwave: g g > chic0 chic0 on TIRust 632ed10"
+  ],
+  [
+   "57edf79943",
+   "research/two_pwave: where the quadruple-precision g g pass spends its time"
+  ],
+  [
+   "b59539ca64",
+   "research/two_pwave: g g > chic0 chic0 passes its poles on TIRust 08cca00"
+  ],
+  [
+   "ffa86c9ec7",
+   "research/two_pwave: g g > chic0 chic0 at more points, in QP and with the stability test"
+  ],
+  [
+   "f3a8290f29",
+   "research/two_pwave: the g g forward-angle failures are reported to TIRust"
   ]
  ],
  "decisions": [
@@ -221,6 +269,7 @@
   "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes and the points are reported exceptional; TIRust 370b632 (PR \\#56, not yet pinned) serves them, stable, Gong\u2013Wang reproduced to $3 dot 10^(-7)$ (@analytic).",
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
   "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
+  "*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust 08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the finite part reproduces the closed form of Wang, Ma and Chao to $10^(-6)$ in double precision and $10^(-7)$ in quadruple precision.",
   "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.",
   "*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV) and a tail of true double-precision errors in 1\u20132% of the $J\\/psi$, $Upsilon$ points; the P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, through TIRust's pentagons with a doubled line. TIRust 5025e12 (PR \\#56) with the bridge patch for its relation tiers and a binary64 gate (MadGraph7\\#528) fixes all three: no point of any process above $10^(-3)$, no S wave above $10^(-6)$, no rescue at 1 TeV, 18\u201349% more time for the P waves at 20 GeV (@stability). The P-wave octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1.",
   "*80-bit switch for the P waves* (@ep): `#PWaveExtendedPrecision` (off by default) computes the double-precision passes in extended precision. At 1 TeV it gains about three digits ($u overline(u) -> chi_(c 0) thin g$: $2 dot 10^(-8)$ worst instead of $3 dot 10^(-5)$) for 5 to 6 times the time. It needs TIRust d17085a (PR \\#56) with the bridge patch v2, not yet in MadGraph.",
