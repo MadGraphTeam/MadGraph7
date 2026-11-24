@@ -91,12 +91,14 @@ def make_clustering(diagrams, **kwargs):
     )
 
 
-def sample_momenta(diagrams, batch_size=BATCH_SIZE, seed=SEED):
+def sample_momenta(diagrams, batch_size=BATCH_SIZE, seed=SEED, **mapping_options):
     """Phase-space points for the first topology of the process."""
     rng = np.random.default_rng(seed)
     topology = make_topologies(diagrams)[0]
     permutations = diagrams[0]["permutations"]
-    mapping = ms.PhaseSpaceMapping(topology, CM_ENERGY, permutations=permutations)
+    mapping = ms.PhaseSpaceMapping(
+        topology, CM_ENERGY, permutations=permutations, **mapping_options
+    )
     r = rng.random((batch_size, mapping.random_dim()))
     condition = (
         []
@@ -1667,9 +1669,18 @@ def t_channel_clustering(**kwargs):
     )
 
 
+# s_hat of the t-channel process spread up to the TeV as 1/s_hat^0.8, where the
+# pdf reweighting has a ladder to walk down. The default for the massive b
+# quarks, 1/s_hat^1.5, puts most points just above the Z, where fewer
+# clusterings fall below the factorisation scale and more events are vetoed.
+T_CHANNEL_S_HAT_POWER = 0.8
+
+
 @pytest.fixture(scope="module")
 def t_channel_momenta():
-    return sample_momenta(t_channel_diagram(), batch_size=2000)
+    return sample_momenta(
+        t_channel_diagram(), batch_size=2000, s_hat_power=T_CHANNEL_S_HAT_POWER
+    )
 
 
 def test_alphas_scales_are_clustering_scales_or_zero(process):
@@ -1965,6 +1976,7 @@ def t_channel_integrand_outputs(
         make_topologies(diagrams)[0],
         CM_ENERGY,
         permutations=diagrams[0]["permutations"],
+        s_hat_power=T_CHANNEL_S_HAT_POWER,
     )
     # 0xBADCAFE: the built-in flat test matrix element, no library needed
     matrix_element = ms.MatrixElement(

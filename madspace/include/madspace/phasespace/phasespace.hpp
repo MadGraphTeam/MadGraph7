@@ -111,11 +111,12 @@ public:
      *                         beams' frame (leg 1 from beam 2, leg 2 from beam 1)
      *                         before the lab boost and the cuts. With identical
      *                         beams that is a rotation of the lab event too.
-     * @param s_hat_power      Exponent of the `1/s_hat^p` sampling of the
-     *                         partonic invariant s_hat in the PDF convolution
-     *                         (see @ref Luminosity), in every mode. Unset, it is
-     *                         1.2 for @ref TChannelMode::color_ordered when
-     *                         masses or cuts bound s_hat from below (as
+     * @param s_hat_power      Exponent of the `1/(s_hat + s_hat_shift)^p`
+     *                         sampling of the partonic invariant s_hat in the
+     *                         PDF convolution (see @ref Luminosity), in every
+     *                         mode. Unset, it is 1.5 when masses or cuts bound
+     *                         s_hat from below or @p s_hat_shift is set (1.2
+     *                         for @ref TChannelMode::color_ordered, as
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
@@ -131,6 +132,17 @@ public:
      *                         and the inverse map is not available. Not
      *                         compatible with @p mirror_beams or a 2 -> 1
      *                         topology.
+     * @param s_hat_shift      Shift @f$\delta@f$ of the pole of the s_hat
+     *                         sampling below zero, in GeV^2: the density
+     *                         falls as @f$(\hat s + \delta)^{-p}@f$ (see
+     *                         @ref Invariant). Unset, it is 0.01 GeV^2 as for
+     *                         the propagators. A scale of the order of the
+     *                         threshold of the process, where no masses or
+     *                         cuts give s_hat a lower bound, lets the density
+     *                         fall as 1/s_hat^p above it with p > 1, flat
+     *                         below. Must be positive.
+     * @throws std::invalid_argument for an @p s_hat_shift that is not
+     *                         positive.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -144,7 +156,8 @@ public:
         double beam_rapidity = 0.,
         bool mirror_beams = false,
         std::optional<double> s_hat_power = std::nullopt,
-        double lepton_sampling_power = 0.
+        double lepton_sampling_power = 0.,
+        std::optional<double> s_hat_shift = std::nullopt
     );
 
     /**
@@ -178,11 +191,12 @@ public:
      *                         beams' frame (leg 1 from beam 2, leg 2 from beam 1)
      *                         before the lab boost and the cuts. With identical
      *                         beams that is a rotation of the lab event too.
-     * @param s_hat_power      Exponent of the `1/s_hat^p` sampling of the
-     *                         partonic invariant s_hat in the PDF convolution
-     *                         (see @ref Luminosity), in every mode. Unset, it is
-     *                         1.2 for @ref TChannelMode::color_ordered when
-     *                         masses or cuts bound s_hat from below (as
+     * @param s_hat_power      Exponent of the `1/(s_hat + s_hat_shift)^p`
+     *                         sampling of the partonic invariant s_hat in the
+     *                         PDF convolution (see @ref Luminosity), in every
+     *                         mode. Unset, it is 1.5 when masses or cuts bound
+     *                         s_hat from below or @p s_hat_shift is set (1.2
+     *                         for @ref TChannelMode::color_ordered, as
      *                         AmpliCol), and @p invariant_power otherwise. A
      *                         resonant s_hat is sampled with its Breit-Wigner
      *                         either way.
@@ -198,6 +212,17 @@ public:
      *                         and the inverse map is not available. Not
      *                         compatible with @p mirror_beams or a 2 -> 1
      *                         topology.
+     * @param s_hat_shift      Shift @f$\delta@f$ of the pole of the s_hat
+     *                         sampling below zero, in GeV^2: the density
+     *                         falls as @f$(\hat s + \delta)^{-p}@f$ (see
+     *                         @ref Invariant). Unset, it is 0.01 GeV^2 as for
+     *                         the propagators. A scale of the order of the
+     *                         threshold of the process, where no masses or
+     *                         cuts give s_hat a lower bound, lets the density
+     *                         fall as 1/s_hat^p above it with p > 1, flat
+     *                         below. Must be positive.
+     * @throws std::invalid_argument for an @p s_hat_shift that is not
+     *                         positive.
      */
     PhaseSpaceMapping(
         const std::vector<double>& external_masses,
@@ -210,7 +235,8 @@ public:
         double beam_rapidity = 0.,
         bool mirror_beams = false,
         std::optional<double> s_hat_power = std::nullopt,
-        double lepton_sampling_power = 0.
+        double lepton_sampling_power = 0.,
+        std::optional<double> s_hat_shift = std::nullopt
     );
 
     /**
