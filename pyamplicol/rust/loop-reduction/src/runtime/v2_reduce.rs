@@ -893,11 +893,20 @@ impl FastEngine {
         // and whether it met the target (a miss is the lane's `Unstable`
         // status, typed).
         let mut rescued = vec![None; lanes];
+        // Per refused lane whose slot holds its re-reduced value, that
+        // re-reduction's absolute error estimate (the vanishing rule below).
+        let mut refused_bound = vec![None; lanes];
         for (lane, rescue) in ninjars::fast::take_rescues() {
             if rescue.served
                 && let Some(slot) = rescued.get_mut(lane)
             {
                 *slot = Some((rescue_carrier(rescue.precision_bits), rescue.estimate));
+            } else if !rescue.served
+                && rescue.outcome == ninjars::fast::RescueOutcome::Missed
+                && rescue.held_bits == rescue.precision_bits
+                && let Some(slot) = refused_bound.get_mut(lane)
+            {
+                *slot = Some(rescue.absolute);
             }
         }
         // NinjaRS's own count (lanes re-reduced, with or without a
@@ -916,53 +925,94 @@ impl FastEngine {
             .zip(&self.results)
             .zip(&records)
             .zip(&rescued)
-            .map(|(((&status, result), record), &rescued)| {
-                // The best-effort pass serves a lane the rescue refused from
-                // its result slot: the value NinjaRS keeps there for a refused
-                // lane (`CancellationRescue`: the better of the binary64 and
-                // the re-reduced values; `RescueOutsideDomain`, a flagged lane
-                // the rescue cannot take: the binary64 value).
-                let missed = status == FastStatus::Unstable
-                    && record.as_ref().is_some_and(|r| {
-                        matches!(
-                            r.test,
-                            ninjars::fast::InstabilityTest::CancellationRescue
-                                | ninjars::fast::InstabilityTest::RescueOutsideDomain
-                        )
-                    })
-                    && result.laurent.iter().all(|z| z.is_finite());
-                // A caller that supplies no refined kinematics (the Python
-                // reference executor, the slice evaluation, a call without
-                // initial states) cannot give NinjaRS's rescue the point it
-                // needs for a lane outside its domain (an on-shell massive
-                // leg): such a lane keeps its binary64 value and status, as
-                // before the rescue existed, instead of failing there.
-                let unrefined_outside = !refined
-                    && status == FastStatus::Unstable
-                    && record.as_ref().is_some_and(|r| {
-                        matches!(r.test, ninjars::fast::InstabilityTest::RescueOutsideDomain)
-                    })
-                    && result.laurent.iter().all(|z| z.is_finite());
-                if status == FastStatus::Success || (best_effort && missed) || unrefined_outside {
-                    Outcome {
-                        status: "success".into(),
-                        value: Some(result.laurent.map(|z| Complex::new(z.re, z.im))),
-                        uv: None,
-                        rescued,
-                        uncertified: unrefined_outside.then_some(UNCERTIFIED_OUTSIDE_DOMAIN),
+            .zip(&refused_bound)
+            .map(
+                |((((&status, result), record), &rescued), &refused_bound)| {
+                    // The best-effort pass serves a lane the rescue refused from
+                    // its result slot: the value NinjaRS keeps there for a refused
+                    // lane (`CancellationRescue`: the better of the binary64 and
+                    // the re-reduced values; `RescueOutsideDomain`, a flagged lane
+                    // the rescue cannot take: the binary64 value).
+                    let missed = status == FastStatus::Unstable
+                        && record.as_ref().is_some_and(|r| {
+                            matches!(
+                                r.test,
+                                ninjars::fast::InstabilityTest::CancellationRescue
+                                    | ninjars::fast::InstabilityTest::RescueOutsideDomain
+                            )
+                        })
+                        && result.laurent.iter().all(|z| z.is_finite());
+                    // A caller that supplies no refined kinematics (the Python
+                    // reference executor, the slice evaluation, a call without
+                    // initial states) cannot give NinjaRS's rescue the point it
+                    // needs for a lane outside its domain (an on-shell massive
+                    // leg): such a lane keeps its binary64 value and status, as
+                    // before the rescue existed, instead of failing there.
+                    let unrefined_outside = !refined
+                        && status == FastStatus::Unstable
+                        && record.as_ref().is_some_and(|r| {
+                            matches!(r.test, ninjars::fast::InstabilityTest::RescueOutsideDomain)
+                        })
+                        && result.laurent.iter().all(|z| z.is_finite());
+                    // A lane the rescue refused whose re-reduced (double-double)
+                    // value, held in its slot, is consistent with zero within
+                    // that re-reduction's own absolute error estimate in every
+                    // Laurent coefficient (`vanishes_within`): served at that
+                    // value, uncertified, without pyAmpliCol's lane rescue (whose
+                    // higher carriers could only confirm a zero or, for a lane
+                    // that loses more than about 100 bits and is in truth not
+                    // zero, recover it; a rescue policy escalates such a point,
+                    // its levels never met by an uncertified result).
+                    let vanishing = !best_effort
+                        && missed
+                        && record.as_ref().is_some_and(|r| {
+                            matches!(r.test, ninjars::fast::InstabilityTest::CancellationRescue)
+                        })
+                        && refused_bound
+                            .is_some_and(|bound| vanishes_within(&result.laurent, bound));
+                    if status == FastStatus::Success
+                        || (best_effort && missed)
+                        || unrefined_outside
+                        || vanishing
+                    {
+                        Outcome {
+                            status: "success".into(),
+                            value: Some(result.laurent.map(|z| Complex::new(z.re, z.im))),
+                            uv: None,
+                            rescued,
+                            uncertified: if vanishing {
+                                Some(UNCERTIFIED_VANISHING_DD)
+                            } else {
+                                unrefined_outside.then_some(UNCERTIFIED_OUTSIDE_DOMAIN)
+                            },
+                        }
+                    } else {
+                        Outcome {
+                            status: super::lane_status::fast_status(status, record.as_ref()),
+                            value: None,
+                            uv: None,
+                            rescued: None,
+                            uncertified: None,
+                        }
                     }
-                } else {
-                    Outcome {
-                        status: super::lane_status::fast_status(status, record.as_ref()),
-                        value: None,
-                        uv: None,
-                        rescued: None,
-                        uncertified: None,
-                    }
-                }
-            })
+                },
+            )
             .collect())
     }
+}
+
+/// Whether a refused lane's re-reduced Laurent coefficients are all
+/// consistent with zero within `bound`, that re-reduction's own absolute
+/// error estimate (NinjaRS's `Rescue::absolute`: the moduli of its terms at
+/// their carriers' units, at least the box-Gram and mu-expansion losses).
+/// All three coefficients are tested, whatever the pole selection (the fast
+/// engine computes all three): a finite bound and finite values only.
+fn vanishes_within(laurent: &[C64; 3], bound: f64) -> bool {
+    bound.is_finite()
+        && laurent.iter().all(|z| {
+            let modulus = z.re.hypot(z.im);
+            modulus.is_finite() && modulus <= bound
+        })
 }
 
 /// A [`GroupRefinementSource`] as NinjaRS's `FastRefinementSource` for one
@@ -2144,6 +2194,82 @@ mod tests {
             status != "success" || (!uncertified && estimate.is_none_or(|e| e <= 1e-25)),
             "{status}, estimate {estimate:?}"
         );
+    }
+
+    /// The fast engine's vanishing rule (`vanishes_within`): in binary64 a
+    /// lane zero by symmetry (`N = 1 + 2 q0` on the bubble above) that
+    /// NinjaRS's rescue refuses is served at its re-reduced value,
+    /// uncertified, by the reducer itself (no `set_vanishing`: the lane rescue
+    /// is not involved). The reviewer's lane `N = 2^k (1 + 2 q0) + i`, in
+    /// truth the `N = i` lane's value for every k, is never a certified
+    /// success with a wrong value: certified and right (small k), served
+    /// uncertified, or refused (large k: beyond double-double's resolution of
+    /// its own terms, the case the rule gives up to an explicit rescue
+    /// policy); and the double-double generic engine, the next level of
+    /// such a policy, recovers it.
+    #[test]
+    fn the_fast_engine_serves_a_vanishing_lane_uncertified_and_never_certifies_a_wrong_one() {
+        let f64_finite = |data: &super::super::batch::Data| match data {
+            super::super::batch::Data::Double(v) => v[0],
+            _ => panic!("a binary64 batch"),
+        };
+        let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+        let (status, uncertified, _, value) =
+            bubble(&mut fast, 0.0_f64, Complex::new(1.0, 0.0), 2.0, f64_finite);
+        assert_eq!(status, "success");
+        assert!(
+            uncertified,
+            "a vanishing lane served as a certified success"
+        );
+        let value = value.unwrap();
+        assert!(value.re.hypot(value.im) < 1e-14, "{value:?}");
+        let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+        let (status, uncertified, _, reference) =
+            bubble(&mut fast, 0.0_f64, Complex::new(0.0, 1.0), 0.0, f64_finite);
+        assert_eq!(status, "success");
+        assert!(!uncertified);
+        let reference = reference.unwrap();
+        let size = reference.re.hypot(reference.im);
+        let mut outcomes = Vec::new();
+        for k in [20, 60, 120, 400] {
+            let big = 2f64.powi(k);
+            let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+            let (status, uncertified, _, value) = bubble(
+                &mut fast,
+                0.0_f64,
+                Complex::new(big, 1.0),
+                2.0 * big,
+                f64_finite,
+            );
+            if status == "success" && !uncertified {
+                let value = value.unwrap();
+                let error = (value.re - reference.re).hypot(value.im - reference.im);
+                assert!(
+                    error <= 1e-6 * size,
+                    "k {k}: certified success {value:?} against {reference:?}"
+                );
+            }
+            outcomes.push((k, status, uncertified));
+        }
+        // The next carrier recovers a lane the binary64 rule gives up: the
+        // double-double generic engine, whose cancellation ladder climbs
+        // (a policy's double-double level).
+        let dd = |x: f64| DoubleFloat::from(x);
+        let big = dd(2f64.powi(120));
+        let mut generic = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        let (status, uncertified, _, value) = bubble(
+            &mut generic,
+            dd(0.0),
+            Complex::new(big.clone(), dd(1.0)),
+            big.clone() + big,
+            dd_finite,
+        );
+        assert_eq!(status, "success", "{outcomes:?}");
+        assert!(!uncertified, "{outcomes:?}");
+        let value = value.unwrap();
+        let error = (value.re - reference.re).hypot(value.im - reference.im);
+        assert!(error <= 1e-12 * size, "{value:?} against {reference:?}");
+        eprintln!("fast-engine outcomes of N = 2^k (1 + 2 q0) + i: {outcomes:?}");
     }
 
     #[test]

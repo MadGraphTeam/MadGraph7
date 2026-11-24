@@ -779,3 +779,57 @@ def test_the_umami_provider_returns_a_best_effort_point(aag, loop_native, tmp_pa
         expected = [float(order.finite) for order in truth.values[event]]
         for got, want in zip(values, expected, strict=True):
             assert abs(got - want) <= 1e-9 * max(abs(want), 1e-300), (event, got, want)
+
+
+def _bubble(native, coefficients):
+    """One bubble lane (shifts 0 and (1, 0, 0, 0), squared masses 4, mu^2 = 1)
+    with the rank-1 numerator ``c0 + c1 q0`` (``coefficients`` = (c0, c1),
+    complex), as a ``V2Reducer.reduce`` group in binary64."""
+
+    def batch(values, columns):
+        return native.NativeBatch.from_decimal(
+            [(str(complex(v).real), str(complex(v).imag)) for v in values],
+            1,
+            columns,
+            "double",
+            None,
+            [0],
+        )
+
+    c0, c1 = coefficients
+    return (
+        2,
+        batch([0, 0, 0, 0, 1, 0, 0, 0], 8),
+        batch([4, 4], 2),
+        batch([1], 1),
+        batch([0, 1, 1, 0], 4),
+        batch([c0, c1, 0, 0, 0], 5),
+    )
+
+
+@pytest.mark.loop_fast
+def test_the_python_binding_reports_the_reductions_uncertified_lanes(loop_native):
+    """``V2Reducer.take_uncertified`` (the Python binding of
+    ``V2Output::uncertified``): a lane zero by symmetry (``N = 1 + 2 q0`` on
+    the bubble, whose integral is exactly 0), which NinjaRS's rescue refuses
+    in binary64 and whose re-reduced value is consistent with zero within the
+    re-reduction's own bound, is served with status "success" and its
+    reason; an ordinary lane (``N = i``) carries none; the record is taken."""
+
+    vanishing = (
+        "a reduction lane vanishes within the resolution of its own terms at "
+        "double-double; no symmetry proof"
+    )
+    reducer = loop_native.V2Reducer("double", None, "fast")
+    (direct,), check = reducer.reduce([_bubble(loop_native, (1, 2))])
+    assert check is None
+    assert [status for _row, status in direct.statuses] == ["success"]
+    (value,) = [complex(float(re), float(im)) for re, im in direct.values.to_decimal()][
+        :1
+    ]
+    assert abs(value) < 1e-14
+    assert reducer.take_uncertified() == [(0, 0, vanishing)]
+    assert reducer.take_uncertified() == []
+    (direct,), _check = reducer.reduce([_bubble(loop_native, (1j, 0))])
+    assert [status for _row, status in direct.statuses] == ["success"]
+    assert reducer.take_uncertified() == []

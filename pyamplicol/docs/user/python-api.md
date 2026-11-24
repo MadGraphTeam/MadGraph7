@@ -1119,7 +1119,21 @@ by every carrier of the lane rescue whose best value at the highest precision
 tried is consistent with zero within its own absolute bound in every Laurent
 coefficient ("a reduction lane vanishes within the resolution of its own terms
 at double-double | arbitrary precision; no symmetry proof"); a refused lane
-whose best value is not consistent with zero stays refused (best effort). The
+whose best value is not consistent with zero stays refused (best effort). A
+binary64 lane that NinjaRS's fast-engine rescue refuses, and whose re-reduced
+(double-double) value is consistent with zero within that re-reduction's own
+absolute error estimate in every Laurent coefficient, is served the same way
+(reason "... at double-double; no symmetry proof") by the reduction itself,
+without going to the lane rescue: a default binary64 evaluation of a
+configuration that vanishes identically (the Born-zero helicity rows of a
+resolved g g > g g, say) touches no Symbolica state and needs no licence, as
+before the rescue existed. What this gives up: a lane that loses more than
+about 100 bits to cancellation and is in truth not zero is returned at its ~0
+re-reduced value, uncertified, instead of being recovered by the lane rescue's
+arbitrary-precision carrier; a caller who wants that recovery asks for it with
+a rescue policy, whose levels are never met by an uncertified result and so
+escalate to the higher carriers. A refused lane whose re-reduced value is not
+consistent with zero keeps the lane rescue, then best effort. The
 status stays `"success"` so that generation and every consumer keep working
 (the previous release returned the same number without saying so); nothing of
 this certifies a value.
@@ -1130,8 +1144,11 @@ proven at generation (colour and fold zeros) are named as such already.
 `profile --stability` carries the marking (per point and sample
 `uncertified`, the backend total `uncertified_points`), and the
 helicity-selected, resolved and correlated outputs carry the same reasons;
-the CLI's JSON and the native SDKs (C ABI, C++, Fortran, Rust, UMAMI) do not
-yet. Under a rescue policy a level whose result has such a lane is never met:
+so do the CLI's JSON (`diagnostics[].uncertified` of `evaluate --json`) and
+the native SDKs: the C ABI's diagnostics record "uncertified" (per successful
+point id with such a lane, its reasons; points without one absent), which the
+C++, Fortran, packaged Rust and Rust SDK wrappers hand out unchanged
+([Native APIs](native-apis.md)). Under a rescue policy a level whose result has such a lane is never met:
 the policy escalates, and at its last level the point stays not established,
 with the reason.
 
