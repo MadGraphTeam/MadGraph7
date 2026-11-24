@@ -122,10 +122,10 @@ of their channel. They keep the ratio of their weight to the maximum weight, so 
 is larger than ``1``. Treating them as ``1`` would bias the distributions in the phase-space
 regions where they occur.
 
-The events of ``[amplicol]`` subprocesses are then reweighted to full colour in the default
-``mode = "reweight"``: their weight is multiplied by the ratio of the full-colour to the
-leading-colour matrix element, so it is not ``1``. With ``mode = "unweight"``, they are
-unweighted a second time and have unit weights apart from overweights.
+The events of ``[amplicol]`` subprocesses are unweighted a second time to full colour in the
+default ``mode = "unweight"``, so they have unit weights apart from overweights. With
+``mode = "reweight"``, their weight is multiplied by the ratio of the full-colour to the
+leading-colour matrix element, so it is not ``1``.
 
 In all cases, to normalize a sample to the cross section, scale its weights by
 ``stream.integral / sum(weights)``. The cross section estimate improves while events are
