@@ -322,6 +322,43 @@ def test_a_reference_with_uncertified_lanes_is_not_certified():
     assert table["fields"][-1] == "reference_uncertified"
 
 
+@pytest.mark.loop_fast
+def test_a_flagged_reference_certifies_no_other_backend():
+    """``profile --stability``'s agreement (``_agreement_dispositions``): a
+    clean backend's reference is certified by agreement only with another
+    CLEAN reference; a reference served with lanes without accuracy
+    evidence is no comparator, so a clean one that only matches it goes to
+    its checked re-run, and the agreement's spread is formed over clean
+    references only; with every reference clean nothing changes."""
+
+    from fractions import Fraction
+
+    from pyamplicol import loop_profile as lp
+
+    one, near = Fraction(1), Fraction(1) + Fraction(1, 10**40)
+    clean, spread = lp._agreement_dispositions({"ninjars": one, "tirust": near}, set())
+    assert clean == {"ninjars": "agreement", "tirust": "agreement"}
+    assert spread == Fraction(1, 10**40) / near
+    flagged, spread = lp._agreement_dispositions(
+        {"ninjars": one, "tirust": near}, {"tirust"}
+    )
+    assert flagged["ninjars"] == "check"
+    assert spread is None
+    # The flagged one may agree with the clean one; its own sample reads
+    # reference_certified False all the same (``_sample_records``).
+    assert flagged["tirust"] == "agreement"
+    three, _ = lp._agreement_dispositions(
+        {"ninjars": one, "tirust": near, "other": one}, {"tirust"}
+    )
+    assert three == {
+        "ninjars": "agreement",
+        "tirust": "agreement",
+        "other": "agreement",
+    }
+    none, _ = lp._agreement_dispositions({"ninjars": None, "tirust": one}, set())
+    assert none == {"ninjars": "none", "tirust": "check"}
+
+
 from tests.unit.test_loop_v2_best_effort import aag  # noqa: E402,F401  (fixture)
 
 

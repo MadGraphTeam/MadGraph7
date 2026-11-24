@@ -79,7 +79,7 @@ import os
 import re
 import statistics
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -4125,6 +4125,51 @@ def _stability_records(
     return records
 
 
+def _agreement_dispositions(
+    totals: Mapping[str, Any], flagged: Container[str]
+) -> tuple[dict[str, str], Fraction | None]:
+    """How the backends' plain references of one point are certified
+    (``decide``): per backend "none" (no value), "agreement" (it agrees with
+    another backend's reference that is NOT flagged: a reference served
+    with lanes without accuracy evidence is never certification evidence
+    for anything) or "check" (its checked re-run decides); and the spread
+    of the agreeing clean references (``agreed``: the agreement's
+    resolution), None unless at least two references, none of them
+    flagged, all agree."""
+
+    valued = [b for b, total in totals.items() if total is not None]
+    clean = [b for b in valued if b not in flagged]
+    out: dict[str, str] = {}
+    for backend, total in totals.items():
+        if total is None:
+            out[backend] = "none"
+        elif any(
+            _references_agree(total, totals[other])
+            for other in clean
+            if other != backend
+        ):
+            out[backend] = "agreement"
+        else:
+            out[backend] = "check"
+    spread = None
+    values = [totals[b] for b in valued]
+    if (
+        len(values) > 1
+        and len(clean) == len(valued)
+        and all(
+            _references_agree(a, b)
+            for k, a in enumerate(values)
+            for b in values[k + 1 :]
+        )
+    ):
+        spread = max(
+            abs(a - b) / max(abs(a), abs(b)) if a or b else Fraction(0)
+            for k, a in enumerate(values)
+            for b in values[k + 1 :]
+        )
+    return out, spread
+
+
 class _ReferenceUncertified(str):
     """The reasons of a reference point's lanes served without accuracy
     evidence, appended to its worker record (``_stability_records``) and
@@ -4891,27 +4936,17 @@ def _stability(
         if any(index not in plain[b] for b in alive):
             return
         found = {b: plain[b].pop(index) for b in alive}
-        valued = [b for b in alive if found[b][1] is not None]
-        totals = [found[b][1][0][0] for b in valued]
-        if len(totals) > 1 and all(
-            _references_agree(a, b)
-            for k, a in enumerate(totals)
-            for b in totals[k + 1 :]
-        ):
-            agreed[index] = max(
-                abs(a - b) / max(abs(a), abs(b)) if a or b else Fraction(0)
-                for k, a in enumerate(totals)
-                for b in totals[k + 1 :]
-            )
+        disposition, spread = _agreement_dispositions(
+            {b: None if found[b][1] is None else found[b][1][0][0] for b in alive},
+            {b for b in alive if index in reference_unsure[b]},
+        )
+        if spread is not None:
+            agreed[index] = spread
         for backend in alive:
             record = found[backend]
-            if record[1] is None:
+            if disposition[backend] == "none":
                 dd[backend][index] = (*record, None)
-            elif any(
-                _references_agree(record[1][0][0], found[other][1][0][0])
-                for other in valued
-                if other != backend
-            ):
+            elif disposition[backend] == "agreement":
                 dd[backend][index] = (*record, "agreement")
             else:
                 checking.append((backend, index))
