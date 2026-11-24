@@ -172,8 +172,10 @@ class TestMainSourceBuildCommand(unittest.TestCase):
             mock.patch.object(install, '_LEGACY_SETTINGS_FILE',
                               self.build_dir / 'install_settings.json'),
             mock.patch.object(install, '_release_version', return_value=None),
+            mock.patch.object(install, 'require_cmake',
+                              return_value='/usr/bin/cmake'),
             mock.patch.object(install, 'install_build_deps',
-                              side_effect=lambda system=False: {}),
+                              side_effect=lambda cmake, system=False: {}),
             mock.patch.object(install, 'set_build_parallelism',
                               side_effect=lambda env, jobs: env),
             mock.patch.object(install, 'run',
@@ -350,6 +352,69 @@ class TestCleanAndSettingsFile(unittest.TestCase):
 
     def test_no_settings_anywhere(self):
         self.assertEqual(install.load_settings(), {})
+
+
+class TestMissingCmake(unittest.TestCase):
+    """Without a usable cmake the source build stops before doing anything,
+    with exit status EXIT_NO_CMAKE and a message on how to get one."""
+
+    def run_require(self, which=None, version=None, heptools=None, env=None):
+        def fake_version(path):
+            return version
+        patches = [
+            mock.patch.object(install.shutil, 'which', return_value=which),
+            mock.patch.object(install, '_cmake_version', side_effect=fake_version),
+            mock.patch.object(install, 'find_heptools_cmake', return_value=heptools),
+            mock.patch.dict(install.os.environ, env or {}, clear=False),
+        ]
+        err, out = io.StringIO(), io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for patch in patches:
+                stack.enter_context(patch)
+            if not env:  # restored by patch.dict on exit
+                install.os.environ.pop('MADGRAPH_CMAKE', None)
+            stack.enter_context(contextlib.redirect_stderr(err))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            try:
+                return install.require_cmake(), err.getvalue()
+            except SystemExit as exit_:
+                return exit_.code, err.getvalue()
+
+    def test_no_cmake_at_all(self):
+        code, err = self.run_require()
+        self.assertEqual(code, install.EXIT_NO_CMAKE)
+        self.assertIn('install cmake', err)
+        self.assertIn('system-wide', err)
+
+    def test_too_old_cmake_on_path_is_reported(self):
+        code, err = self.run_require(which='/usr/bin/cmake', version=(3, 10))
+        self.assertEqual(code, install.EXIT_NO_CMAKE)
+        self.assertIn('/usr/bin/cmake: version 3.10 is too old', err)
+
+    def test_recent_cmake_on_path(self):
+        cmake, _ = self.run_require(which='/usr/bin/cmake', version=(3, 28))
+        self.assertEqual(cmake, '/usr/bin/cmake')
+
+    def test_heptools_cmake_is_the_fallback(self):
+        cmake, _ = self.run_require(heptools='/mg/HEPTools/cmake/bin/cmake')
+        self.assertEqual(cmake, '/mg/HEPTools/cmake/bin/cmake')
+
+    def test_madgraph_cmake_wins(self):
+        cmake, _ = self.run_require(which='/usr/bin/cmake', version=(3, 28),
+                                    env={'MADGRAPH_CMAKE': '/opt/cmake'})
+        self.assertEqual(cmake, '/opt/cmake')
+
+    def test_source_build_stops_before_installing_anything(self):
+        with mock.patch.object(install, 'find_cmake', return_value=(None, [])), \
+             mock.patch.object(install, '_release_version', return_value=None), \
+             mock.patch.object(install, 'load_settings', return_value={}), \
+             mock.patch.object(install, 'run',
+                               side_effect=AssertionError('ran a command')), \
+             contextlib.redirect_stderr(io.StringIO()), \
+             contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                install.main(['--source', '--yes'])
+        self.assertEqual(caught.exception.code, install.EXIT_NO_CMAKE)
 
 
 if __name__ == '__main__':

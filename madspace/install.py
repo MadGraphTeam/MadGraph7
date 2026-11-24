@@ -350,14 +350,8 @@ CMAKE_MIN_VERSION = (3, 15)
 
 
 def _cmake_version_ok(path, minimum=CMAKE_MIN_VERSION) -> bool:
-    try:
-        out = subprocess.run(
-            [str(path), "--version"], capture_output=True, text=True, timeout=30
-        ).stdout
-    except Exception:
-        return False
-    m = re.search(r"(\d+)\.(\d+)", out)
-    return bool(m) and (int(m.group(1)), int(m.group(2))) >= minimum
+    version = _cmake_version(path)
+    return version is not None and version >= minimum
 
 
 def _heptools_dir_from_config() -> str | None:
@@ -388,11 +382,8 @@ def _heptools_dir_from_config() -> str | None:
     return None
 
 
-def find_heptools_cmake() -> str | None:
-    """find cmake installed via MadGraph's HEPTools installer. The HEPTools
-    location is configurable in MG5 (heptools_install_dir); MG5 passes it
-    down as MADGRAPH_HEPTOOLS_DIR. Fall back to the default <MG5>/HEPTools.
-    """
+def _heptools_dirs() -> list[Path]:
+    """Candidate HEPTools directories, most specific first."""
     hep_dirs = []
     env_hep = os.environ.get("MADGRAPH_HEPTOOLS_DIR")
     if env_hep:
@@ -401,8 +392,16 @@ def find_heptools_cmake() -> str | None:
     if cfg_hep:
         hep_dirs.append(Path(cfg_hep))
     hep_dirs.append(SCRIPT_DIR.parent / "HEPTools")
+    return hep_dirs
+
+
+def find_heptools_cmake() -> str | None:
+    """find cmake installed via MadGraph's HEPTools installer. The HEPTools
+    location is configurable in MG5 (heptools_install_dir); MG5 passes it
+    down as MADGRAPH_HEPTOOLS_DIR. Fall back to the default <MG5>/HEPTools.
+    """
     seen = set()
-    for heptools in hep_dirs:
+    for heptools in _heptools_dirs():
         for pattern in (
             "cmake/bin/cmake",
             "bin/cmake",
@@ -420,29 +419,111 @@ def find_heptools_cmake() -> str | None:
     return None
 
 
-def add_cmake_to_path(env: dict) -> dict:
-    """Ensure a suitable cmake (and co-located tools such as ninja) is on the
-    PATH of the build environment."""
-    cmake = shutil.which("cmake")
-    if cmake and _cmake_version_ok(cmake):
-        print(f"Using cmake: {cmake}")
-        return env
+def _cmake_version(path) -> tuple[int, int] | None:
+    """(major, minor) reported by ``<path> --version``, or None."""
+    try:
+        out = subprocess.run(
+            [str(path), "--version"], capture_output=True, text=True, timeout=30
+        ).stdout
+    except Exception:
+        return None
+    m = re.search(r"(\d+)\.(\d+)", out)
+    return (int(m.group(1)), int(m.group(2))) if m else None
 
-    cmake = find_heptools_cmake()
+
+def find_cmake() -> tuple[str | None, list[str]]:
+    """Locate a cmake recent enough for the source build.
+
+    Looks, in order, at $MADGRAPH_CMAKE, the cmake on PATH and one installed
+    through MG5's 'install cmake'. Returns the path found (or None) and a list
+    of notes about candidates that were rejected, for the error message.
+    """
+    rejected = []
+
+    env_cmake = os.environ.get("MADGRAPH_CMAKE")
+    if env_cmake:
+        if _cmake_version_ok(env_cmake):
+            return env_cmake, rejected
+        rejected.append(_describe_rejected("MADGRAPH_CMAKE=" + env_cmake, env_cmake))
+
+    on_path = shutil.which("cmake")
+    if on_path:
+        if _cmake_version_ok(on_path):
+            return on_path, rejected
+        rejected.append(_describe_rejected(on_path, on_path))
+
+    found = find_heptools_cmake()
+    if not found:
+        for heptools in _heptools_dirs():
+            log = heptools / "cmake" / "cmake_install.log"
+            if log.is_file():
+                rejected.append(
+                    f"a previous 'install cmake' did not produce a working cmake, "
+                    f"see {log}"
+                )
+                break
+    return found, rejected
+
+
+def _describe_rejected(label: str, path: str) -> str:
+    version = _cmake_version(path)
+    if version is None:
+        return f"{label}: not a working cmake executable"
+    return f"{label}: version {version[0]}.{version[1]} is too old"
+
+
+# Exit status of this script when no suitable cmake is available. MadGraph
+# (madgraph/mg7/bootstrap.py and the 'install madspace' command) recognises it
+# and turns it into a short user error instead of a generic failure.
+EXIT_NO_CMAKE = 3
+
+
+def require_cmake() -> str:
+    """Return the cmake to build with, or stop with an explanation of how to
+    get one. Called before anything is downloaded or compiled, so a missing
+    cmake fails within seconds rather than at the end of the pip install."""
+    cmake, rejected = find_cmake()
     if cmake:
-        cmake_dir = os.path.dirname(os.path.abspath(cmake))
-        parts = [cmake_dir]
-        if existing := env.get("PATH"):
-            parts.append(existing)
-        env["PATH"] = os.pathsep.join(parts)
         print(f"Using cmake: {cmake}")
-        return env
+        return cmake
 
-    print(
-        "WARNING: no cmake >= %d.%d found. The source build will likely fail.\n"
-        "  Install one with MG5 ('install cmake'), via your package manager,\n"
-        "  or point to it with MADGRAPH_CMAKE=/path/to/cmake." % CMAKE_MIN_VERSION
-    )
+    minimum = "%d.%d" % CMAKE_MIN_VERSION
+    if platform.system() == "Darwin":
+        system_hint = "brew install cmake"
+    else:
+        system_hint = "sudo apt install cmake   (or dnf/yum/pacman/... install cmake)"
+    lines = [
+        "",
+        "ERROR: madspace has to be compiled, which requires cmake >= " + minimum + ",",
+        "       but no suitable cmake was found.",
+    ]
+    for note in rejected:
+        lines.append("         - " + note)
+    lines += [
+        "",
+        "  You can either:",
+        "    1. install it from the MadGraph prompt (installed inside MadGraph,",
+        "       no root access needed):",
+        "           install cmake",
+        "    2. or install it system-wide, for example:",
+        "           " + system_hint,
+        "",
+        "  then run the madspace installation again. An existing cmake that is",
+        "  not on your PATH can be used with MADGRAPH_CMAKE=/path/to/cmake.",
+        "",
+    ]
+    print("\n".join(lines), file=sys.stderr)
+    sys.exit(EXIT_NO_CMAKE)
+
+
+def add_cmake_to_path(env: dict, cmake: str) -> dict:
+    """Put *cmake*'s directory (and co-located tools such as ninja) first on
+    the PATH of the build environment."""
+    cmake_dir = os.path.dirname(os.path.abspath(cmake))
+    parts = [cmake_dir]
+    if existing := env.get("PATH"):
+        parts.append(existing)
+    env["PATH"] = os.pathsep.join(parts)
     return env
 
 
@@ -489,7 +570,7 @@ def run(cmd: list, env: dict | None = None) -> None:
         sys.exit(result.returncode)
 
 
-def install_build_deps(system: bool = False) -> dict:
+def install_build_deps(cmake: str, system: bool = False) -> dict:
     """Install build-system dependencies and return an updated env.
 
     Reads the list from pyproject.toml's [build-system] requires, which includes
@@ -520,8 +601,8 @@ def install_build_deps(system: bool = False) -> dict:
         if existing := env.get("PYTHONPATH"):
             pythonpath_parts.append(existing)
         env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
-    # make sure the source build can find a recent-enough cmake
-    env = add_cmake_to_path(env)
+    # make sure the source build uses the cmake found by require_cmake
+    env = add_cmake_to_path(env, cmake)
     return env
 
 
@@ -850,7 +931,11 @@ def main(argv: list[str] | None = None) -> None:
             print(f"\nInstalled to: {INSTALL_DIR}")
         return
 
-    # Source build — compile options (see resolve_compile_options)
+    # Source build. Check for cmake first, before any question is asked or
+    # anything is downloaded.
+    cmake = require_cmake()
+
+    # Compile options (see resolve_compile_options)
     options = resolve_compile_options(args, saved)
     if options is not None:
         enable_cuda = options["cuda"]
@@ -953,7 +1038,7 @@ def main(argv: list[str] | None = None) -> None:
         cmd.append("-Ccmake.define.ENABLE_DOCS=ON")
     cmd.append(f"-Ccmake.build-type={build_type}")
 
-    env = install_build_deps(system=args.system)
+    env = install_build_deps(cmake, system=args.system)
     env = set_build_parallelism(env, args.jobs)
     run(cmd, env=env)
     save_settings(

@@ -1086,6 +1086,34 @@ def detect_if_cpp_compiler_is_clang(cpp_compiler):
     return 'LLVM' in str(output) or "clang" in str(output)
 
 
+def cpp_compiler_works(cpp_compiler):
+    """Whether *cpp_compiler* can compile and link a small C++11 program.
+
+    Being on PATH is not enough: an old GCC installed as 'g++' on a recent
+    macOS, for instance, rejects every compilation ("unknown value ... of
+    -mmacosx-version-min").
+    """
+    if not cpp_compiler or not which(cpp_compiler):
+        return False
+    source = (
+        "#include <memory>\n"
+        "#include <iostream>\n"
+        "int main() { auto p = std::unique_ptr<int>(new int(1));\n"
+        "  std::cout << *p << std::endl; return 0; }\n")
+    with tempfile.TemporaryDirectory(prefix='mg_cpp_test_') as tmp:
+        src = os.path.join(tmp, 'test.cxx')
+        with open(src, 'w') as f:
+            f.write(source)
+        try:
+            result = subprocess.run(
+                [cpp_compiler, '-std=c++11', src, '-o',
+                 os.path.join(tmp, 'test')],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        except Exception:
+            return False
+        return result.returncode == 0
+
+
 def detect_cpp_std_lib_dependence(cpp_compiler):
     """ Detects if the specified c++ compiler will normally link against the C++
     standard library -lc++ or -libstdc++."""

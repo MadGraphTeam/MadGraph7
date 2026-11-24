@@ -84,6 +84,12 @@ def installed_pyamplicol() -> dict:
     return {"version": dist.version if dist else None, "source_hash": source_hash}
 
 
+# Exit status of madspace/install.py when no suitable cmake is available (see
+# EXIT_NO_CMAKE there; the installer is a standalone script, so the value is
+# repeated rather than imported).
+INSTALLER_EXIT_NO_CMAKE = 3
+
+
 def _run_installer(name, source_dir, interactive, jobs) -> None:
     """Run ``<source_dir>/install.py`` as the first-use bootstrap does."""
     if interactive is None:
@@ -112,6 +118,13 @@ def _run_installer(name, source_dir, interactive, jobs) -> None:
         + ([install_env["PYTHONPATH"]] if install_env.get("PYTHONPATH") else [])
     )
     result = subprocess.run(install_cmd, env=install_env, stdin=install_stdin)
+    if name == "madspace" and result.returncode == INSTALLER_EXIT_NO_CMAKE:
+        # The installer already explained how to get cmake: report it as a
+        # user error (no traceback/crash report) rather than a bug.
+        raise _mg_pkg.InvalidCmd(
+            f"{name} could not be installed: cmake is missing (see above). "
+            "Run 'install cmake' from this prompt, or install cmake "
+            "system-wide, then launch again.")
     if result.returncode != 0:
         raise RuntimeError(f"{name} installation failed — see output above")
 

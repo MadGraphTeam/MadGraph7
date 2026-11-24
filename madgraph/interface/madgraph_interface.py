@@ -9720,6 +9720,27 @@ This implies that with decay chains:
             logger.warning('main164 of Pythia8 could not be compiled for HepMC%d, ' % other +
                 'so that Pythia8 will only write HepMC%d events:\n%s' % (native, error))
 
+    @staticmethod
+    def find_working_cpp_compiler():
+        """C++ compiler to bootstrap CMake with, when cpp_compiler is not set.
+
+        The environment default ($CXX, else the 'g++' HEPToolInstaller uses)
+        is kept whenever it works. Only if it cannot build a test program is
+        another compiler on PATH tried, since otherwise CMake's bootstrap
+        fails (e.g. an old GCC installed as 'g++' on a recent macOS).
+        Returns None to keep HEPToolInstaller's default.
+        """
+        default = os.environ.get('CXX') or 'g++'
+        if misc.cpp_compiler_works(default):
+            return None if default == 'g++' else default
+        for candidate in ('c++', 'clang++', 'g++'):
+            if candidate != default and misc.cpp_compiler_works(candidate):
+                logger.warning("The C++ compiler '%s' cannot build a test "
+                               "program; using '%s' to build cmake instead.",
+                               default, candidate)
+                return candidate
+        return None
+
     def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
@@ -9778,11 +9799,13 @@ This implies that with decay chains:
      
         # Compiler options
         compiler_options = []
-        if self.options['cpp_compiler'] is not None:
-            compiler_options.append('--cpp_compiler=%s'%
-                                                   self.options['cpp_compiler'])
+        cpp_compiler = self.options['cpp_compiler']
+        if cpp_compiler is None and tool == 'cmake':
+            cpp_compiler = self.find_working_cpp_compiler()
+        if cpp_compiler is not None:
+            compiler_options.append('--cpp_compiler=%s' % cpp_compiler)
             compiler_options.append('--cpp_standard_lib=%s'%
-               misc.detect_cpp_std_lib_dependence(self.options['cpp_compiler']))
+               misc.detect_cpp_std_lib_dependence(cpp_compiler))
         elif misc.which('g++'):
             compiler_options.append('--cpp_standard_lib=%s'%
                misc.detect_cpp_std_lib_dependence('g++'))
@@ -9884,6 +9907,15 @@ This implies that with decay chains:
             return_code = misc.call([sys.executable, pjoin(MG5DIR,'HEPTools',
               'HEPToolsInstallers', 'HEPToolInstaller.py'), tool,'--prefix=%s'%
               prefix] + compiler_options + add_options)
+        if return_code in [0,11] and tool == 'cmake' and \
+                not os.path.isfile(pjoin(prefix, 'cmake', 'bin', 'cmake')):
+            # installCMAKE.sh ignores failures of configure/make and always
+            # exits 0, so check that the executable is really there.
+            raise self.InvalidCmd(
+                "Installation of cmake failed: no executable was produced in "
+                "%s. See %s for details, or install cmake system-wide "
+                "instead." % (pjoin(prefix, 'cmake', 'bin'),
+                              pjoin(prefix, 'cmake', 'cmake_install.log')))
         if return_code in [0,11]:
             if tool_to_install not in self.install_plugin:
                 logger.info("%s successfully installed in %s."%(
@@ -10167,6 +10199,11 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                        for a in install_args):
                 install_args = install_args + ['-j', str(self.options['nb_core'])]
             result = subprocess.run([sys.executable, install_script] + install_args)
+            from madgraph.mg7.bootstrap import INSTALLER_EXIT_NO_CMAKE
+            if args[0] == 'madspace' and result.returncode == INSTALLER_EXIT_NO_CMAKE:
+                raise self.InvalidCmd('install madspace failed: cmake is missing (see '
+                                      'above). Run \'install cmake\' from this prompt, '
+                                      'or install cmake system-wide, then retry.')
             if result.returncode != 0:
                 raise self.InvalidCmd('install %s failed (%s exited with code %d): see '
                                       'its output above' % (args[0], install_script,
