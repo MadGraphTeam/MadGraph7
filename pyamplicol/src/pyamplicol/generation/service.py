@@ -3456,6 +3456,7 @@ class GenerationBackend:
         cuts=None,
         kinematics_improvement=None,
         kinematics_improvement_binary64=None,
+        reduction_target=None,
     ):
         """``pyamplicol check`` of a one-loop request (``loop_service.
         check_loop_requests``; ``stored``: an artifact input's manifest, the
@@ -3484,6 +3485,7 @@ class GenerationBackend:
             cuts=cuts,
             kinematics_improvement=kinematics_improvement,
             kinematics_improvement_binary64=kinematics_improvement_binary64,
+            reduction_target=reduction_target,
         )
 
     def generate(

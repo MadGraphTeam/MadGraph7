@@ -948,6 +948,33 @@ the caller's inputs in the caller's leg order, before anything is evaluated
 `diagnostics_json` records it per point (`"kinematics"`: the Python API's
 `VirtualKinematics` fields); another value is an invalid argument
 ([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Higher-accuracy input kinematics:
+`rusticol_virtual_evaluate_refined(handle, request, corrections, words,
+&result)` (C++ `evaluate_refined(momenta, corrections, point_count, mu_r2,
+...)`, Fortran `evaluate(..., corrections=c)` with `c(4,leg,point,word)`, the
+packaged Rust wrapper's `evaluate_refined`, the Rust SDK crate's
+`Runtime::evaluate_refined` and `evaluate_decimal`) evaluates at
+`momenta[i] + Σ_w corrections[w * momentum_count + i]`, exactly (one word: a
+double-double point; more words: any precision). Every `momenta[i]` must be
+the binary64 rounding of its refined component (round to nearest, ties to
+even), else the call returns `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` naming the
+point, leg and component, and evaluates nothing. The refined point is the
+call's exact input: every carrier, the kinematics improvement, the lane
+rescue and NinjaRS's cancellation rescue start from it
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Additive symbol, ABI version 2 kept. The target accuracy
+(`rusticol_virtual_set_reduction_target`) also sets NinjaRS's cancellation
+rescue in the checked reduction (per lane `target / 64`; [Python
+API](python-api.md), "NinjaRS's cancellation rescue"); the unchecked setting
+turns that rescue off. A point a lane refused by that rescue leaves without a
+value (lane rescue off, or refusing too) is, under the default failure policy
+`"best-effort"`, returned as `RUSTICOL_VIRTUAL_BEST_EFFORT` with its best value
+(its best-effort evaluation is the unchecked reduction with NinjaRS's rescue
+kept on, which serves the refused lane its better value), the refusal and the uncertainty in `diagnostics_json`
+(`"best_effort"`) and `rusticol_virtual_result_copy_uncertainties`; the UMAMI
+provider returns its value with status 5 (BEST_EFFORT). The rescues' improved
+points follow `rusticol_virtual_set_kinematics_improvement` (as the
+double-double and arbitrary-precision calls do; `"off"`: the given point).
 The lane rescue `rusticol_virtual_set_lane_rescue(handle, on)` (C++
 `set_lane_rescue(bool)`, Fortran `set_lane_rescue(logical)`, the packaged
 Rust wrapper's `set_lane_rescue(bool)`; 1 or 0, default 1, as the Python

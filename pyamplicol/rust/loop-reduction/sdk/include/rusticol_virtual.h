@@ -380,6 +380,23 @@ int rusticol_virtual_capabilities_json(const rusticol_virtual_handle *handle,
  */
 int rusticol_virtual_evaluate(rusticol_virtual_handle *handle,
   const rusticol_virtual_batch_request *request, rusticol_virtual_result **output);
+/* rusticol_virtual_evaluate at caller-supplied higher-accuracy kinematics
+ * (additive, ABI version 2 kept): `corrections` holds `words` binary64
+ * correction words per momentum component, word-major
+ * (corrections[w * momentum_count + i]); component i of the point is
+ * request->momenta[i] + sum_w corrections[w * momentum_count + i], exactly
+ * (words = 1: a double-double point, hi + lo; more words: any precision).
+ * Every request->momenta[i] must be the binary64 value nearest to its refined
+ * component (round to nearest, ties to even), so that the binary64 evaluation
+ * reads the point the refinement refines; otherwise
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT names the point, leg and component, and
+ * nothing is evaluated. The refined point is then the call's exact input:
+ * every carrier evaluates its rounding, the kinematics improvement (and with
+ * it the lane rescue and the reduction's own local rescue) starts from it.
+ * corrections may be NULL only with words = 0 (rusticol_virtual_evaluate). */
+int rusticol_virtual_evaluate_refined(rusticol_virtual_handle *handle,
+  const rusticol_virtual_batch_request *request, const double *corrections,
+  size_t words, rusticol_virtual_result **output);
 int rusticol_virtual_result_free(rusticol_virtual_result *result);
 int rusticol_virtual_result_shape(const rusticol_virtual_result *result,
   rusticol_virtual_result_shape_info *output);

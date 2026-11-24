@@ -468,6 +468,17 @@ class StabilityPoint:
     # The point's lane rescue (``benchmarking.lane_rescue_reason``:
     # "reduction lanes rescued in <carrier>"), None without one.
     lane_rescue: str | None = None
+    # The reduction's own rescue of the point (NinjaRS's cancellation
+    # rescue in the checked mode, ``VirtualLaneRescue.local``): the lanes it
+    # re-reduced in a higher precision, over the point's evaluations (the
+    # reference and its rotated evaluations), and the highest such
+    # precision ("double-double", "arbitrary"; None: no lane).
+    reduction_rescue_lanes: int = 0
+    reduction_rescue_carrier: str | None = None
+    # Why lanes of the point were served without accuracy evidence
+    # (``VirtualLaneDiagnostic.uncertified``, joined by "; "): its value is
+    # returned, its accuracy is not established. None otherwise.
+    uncertified: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,6 +517,15 @@ class BackendStability:
     # Measured points served with a lane rescue (``StabilityPoint.
     # lane_rescue``).
     lane_rescued: int = 0
+    # The reduction's own rescue (``StabilityPoint.reduction_rescue_lanes``):
+    # the points with a lane it re-reduced, those lanes, and per precision
+    # its lanes (``_with_reduction_rescues``).
+    reduction_rescued_points: int = 0
+    reduction_rescued_lanes: int = 0
+    reduction_rescue_carriers: tuple[tuple[str, int], ...] = ()
+    # The points served with lanes without accuracy evidence
+    # (``StabilityPoint.uncertified``).
+    uncertified_points: int = 0
     # The evaluations of the run per precision: "binary64" (the checked call
     # with its stability estimate) and the reference's arithmetic
     # ("double-double", or "arbitrary" with its "digits"), each
@@ -546,6 +566,9 @@ class BackendStability:
                         point.reason,
                         _rounded(point.uncertainty_digits, 3),
                         point.lane_rescue,
+                        point.reduction_rescue_lanes,
+                        point.reduction_rescue_carrier,
+                        point.uncertified,
                     ]
                     for point in self.per_point
                 ),
@@ -564,6 +587,9 @@ PER_POINT_FIELDS = (
     "reason",
     "uncertainty_digits",
     "lane_rescue",
+    "reduction_rescue_lanes",
+    "reduction_rescue_carrier",
+    "uncertified",
 )
 # The columns of a backend's per-sample records (``_sample_records``).
 SAMPLE_FIELDS = (
@@ -594,6 +620,11 @@ SAMPLE_FIELDS = (
     # exact agreement: "inf").
     "estimate_digits_uncapped",
     "true_digits_uncapped",
+    # The reduction's own rescue of the point (``StabilityPoint``).
+    "reduction_rescue_lanes",
+    "reduction_rescue_carrier",
+    # Lanes served without accuracy evidence (``StabilityPoint``).
+    "uncertified",
 )
 # The columns of the points' inputs (``stability_setup.samples``).
 INPUT_FIELDS = ("index", "momenta", "mu_r2")
@@ -3964,7 +3995,7 @@ def _stability_records(
                 **common,
             )
         records: list[tuple[Any, ...]] = []
-        from pyamplicol.benchmarking import lane_rescue_reason
+        from pyamplicol.benchmarking import lane_rescue_reason, reduction_rescue
 
         for index, value, estimate, reason, status, uncertainty, lane in zip(
             indices,
@@ -4010,11 +4041,11 @@ def _stability_records(
                     ],
                     lane_rescue_reason(lane),
                     # A wider precision's total as its exact decimal text.
-                    *(
-                        (None if value is None else _exact_text(value),)
-                        if measured
-                        else ()
-                    ),
+                    None if value is None or not measured else _exact_text(value),
+                    # The reduction's own rescue: (lanes, precision) or None.
+                    reduction_rescue(lane),
+                    # Lanes served without accuracy evidence: the reasons.
+                    "; ".join(getattr(lane, "uncertified", ()) or ()) or None,
                 )
             )
     else:
@@ -5292,6 +5323,7 @@ def _stability(
                     samples=samples,
                 )
             )
+            rows[-1] = _with_reduction_rescues(rows[-1], b64[backend])
             continue
         rows.append(
             replace(
@@ -5314,6 +5346,7 @@ def _stability(
                 samples=samples,
             )
         )
+        rows[-1] = _with_reduction_rescues(rows[-1], b64[backend])
 
     measured_rows = {
         m.stream: _measured_rows(
@@ -5578,7 +5611,7 @@ def _measured_rows(
         )
         rows.append(
             replace(
-                row,
+                _with_reduction_rescues(row, own),
                 samples=samples,
                 precision_timing={
                     precision.arithmetic: {
@@ -5692,6 +5725,16 @@ def _stability_causes(
                         "stability",
                         "lane rescue",
                         point.lane_rescue,
+                    )
+                )
+            if point.reduction_rescue_lanes:
+                causes.append(
+                    (
+                        stability_row.backend,
+                        "stability",
+                        "reduction rescue",
+                        "lanes re-reduced in "
+                        f"{point.reduction_rescue_carrier} within the reduction",
                     )
                 )
             kind = _CAUSE_KINDS.get(point.status)
@@ -6023,6 +6066,53 @@ def _stop_pool(executor: Any) -> None:
         raise
 
 
+def _reduction_rescue_of(record: Sequence[Any]) -> tuple[int, str] | None:
+    """A binary64 stability record's reduction rescue (its tenth entry:
+    ``(lanes, precision)``; absent in a shorter record)."""
+
+    return record[9] if len(record) > 9 else None
+
+
+def _with_reduction_rescues(
+    row: BackendStability, records: Mapping[int, Sequence[Any]]
+) -> BackendStability:
+    """``row`` with the reduction's own rescue of each of its points (its
+    record's, ``_reduction_rescue_of``) and their totals."""
+
+    per_point: list[StabilityPoint] = []
+    points = lanes = uncertain = 0
+    carriers: dict[str, int] = {}
+    for point in row.per_point:
+        record = records.get(point.index)
+        local = None if record is None else _reduction_rescue_of(record)
+        reasons = None if record is None or len(record) <= 10 else record[10]
+        if reasons:
+            uncertain += 1
+            point = replace(point, uncertified=reasons)
+        if local is None:
+            per_point.append(point)
+            continue
+        count, carrier = local
+        points += 1
+        lanes += count
+        carriers[carrier] = carriers.get(carrier, 0) + count
+        per_point.append(
+            replace(
+                point,
+                reduction_rescue_lanes=count,
+                reduction_rescue_carrier=carrier,
+            )
+        )
+    return replace(
+        row,
+        per_point=tuple(per_point),
+        reduction_rescued_points=points,
+        reduction_rescued_lanes=lanes,
+        reduction_rescue_carriers=tuple(sorted(carriers.items())),
+        uncertified_points=uncertain,
+    )
+
+
 def _rescue_of(record: Sequence[Any]) -> str | None:
     """A binary64 stability record's lane rescue (its eighth entry, absent
     in a shorter record)."""
@@ -6208,9 +6298,11 @@ def _sample_records(
             if record is None:
                 continue
             point_cap = cap if isinstance(cap, (int, float)) else cap[index]
-            padded: tuple[Any, ...] = (*record, *(None,) * (9 - len(record)))
+            padded: tuple[Any, ...] = (*record, *(None,) * (11 - len(record)))
             _, value, summary, reason, status, uncertainty, sectors, rescue = padded[:8]
             text = padded[8]
+            local = padded[9]
+            uncertified = padded[10]
             exact_total = None if value is None else _total_finite(value)
             total = None if exact_total is None else float(exact_total)
             estimate: list[object] = [None] * 6
@@ -6271,6 +6363,9 @@ def _sample_records(
                 rescue,
                 uncapped_estimate,
                 uncapped_true,
+                0 if local is None else local[0],
+                None if local is None else local[1],
+                uncertified,
             ]
 
     encoded = encode_rows(rows(), len(indices), progress)

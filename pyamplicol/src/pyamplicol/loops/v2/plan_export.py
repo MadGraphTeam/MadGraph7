@@ -2036,19 +2036,23 @@ def point_measures(
     return tuple(found)
 
 
-def rescue_options(slice_: Any) -> dict[str, int]:
+def rescue_options(slice_: Any) -> dict[str, object]:
     """The native ``evaluate`` option of the lane rescue: the process's
     initial states (first in leg order, ``kinematics.initial_count``), so
     that a refused lane's kinematic inputs are rebuilt from the point
     improved in the rescue carrier; empty when the legs do not say (the
     lane rescue then takes the point's exact inputs)."""
 
-    from pyamplicol.kinematics import initial_count
+    from pyamplicol.kinematics import call_setting, initial_count
 
+    setting = call_setting()
+    # The call's kinematics improvement, which the rescues' points follow
+    # (none: the executor's default variant).
+    variant = {} if setting is None else {"kinematics_improvement": setting}
     try:
-        return {"initial_states": initial_count(slice_.blocks.process.legs)}
+        return {"initial_states": initial_count(slice_.blocks.process.legs), **variant}
     except (AttributeError, ValueError):
-        return {}
+        return variant
 
 
 def point_rescued(
@@ -2057,12 +2061,19 @@ def point_rescued(
     """The lane rescue of point ``index`` of a native executor output
     (``"rescued"``: its rescued lanes and their carriers;
     ``"rescued_moments"``: its rescued term-scale moments, counted apart,
-    their carrier prefixed ``virtual_results.MOMENTS``) and of its
+    their carrier prefixed ``virtual_results.MOMENTS``; ``"local_rescued"``:
+    the lanes the reduction backend rescued within its own reduction,
+    NinjaRS's cancellation rescue, prefixed ``virtual_results.LOCAL``) and of its
     companion's (``extra``): per carrier the lanes (and moments) it served."""
 
-    from pyamplicol.api.virtual_results import MOMENTS
+    from pyamplicol.api.virtual_results import (
+        LOCAL,
+        LOCAL_ESTIMATE,
+        MOMENTS,
+        UNCERTIFIED,
+    )
 
-    counts: dict[str, int] = {}
+    counts: dict[str, Any] = {}
     for part in (output, extra):
         for name, prefix in (("rescued", ""), ("rescued_moments", MOMENTS)):
             rescued = None if part is None else part.get(name)
@@ -2070,6 +2081,23 @@ def point_rescued(
                 for _lane, carrier in rescued[index]:
                     key = prefix + carrier
                     counts[key] = counts.get(key, 0) + 1
+        # The reduction's own rescue: its lanes per precision and their
+        # largest estimate.
+        local = None if part is None else part.get("local_rescued")
+        if local is not None:
+            for _lane, carrier, estimate in local[index]:
+                key = LOCAL + carrier
+                counts[key] = counts.get(key, 0) + 1
+                counts[LOCAL_ESTIMATE] = max(
+                    counts.get(LOCAL_ESTIMATE, 0.0), float(estimate)
+                )
+        # Lanes served without accuracy evidence: the point's accuracy is
+        # not established (``virtual_results.uncertified_reasons``).
+        uncertified = None if part is None else part.get("uncertified")
+        if uncertified is not None:
+            for _lane, reason in uncertified[index]:
+                key = UNCERTIFIED + reason
+                counts[key] = counts.get(key, 0) + 1
     return tuple(sorted(counts.items()))
 
 
@@ -2098,10 +2126,17 @@ def merged_rescue(
     """The lane rescue of one point over its native evaluations (the
     reference and its rotated evaluations, ``point_rescued``)."""
 
-    counts: dict[str, int] = {}
+    from pyamplicol.api.virtual_results import LOCAL_ESTIMATE
+
+    counts: dict[str, Any] = {}
     for evaluation in evaluations:
         for carrier, count in getattr(evaluation, "lane_rescue", ()):
-            counts[carrier] = counts.get(carrier, 0) + count
+            # The reduction's own estimate is a maximum, the others counts.
+            counts[carrier] = (
+                max(counts.get(carrier, 0.0), count)
+                if carrier == LOCAL_ESTIMATE
+                else counts.get(carrier, 0) + count
+            )
     return tuple(sorted(counts.items()))
 
 

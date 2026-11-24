@@ -83,6 +83,11 @@ PROFILE_GROUPS = (
 # The lane detail of an evaluation without stability checks (the same text
 # as ``loops.v2.artifact``'s).
 _NO_CHECK_DETAIL = "no stability check was requested, so the accuracy is not estimated"
+# The uncertified reason of every NinjaRS-reduced point of the Python
+# reference executor (``V2ObservablesRuntime._diagnostic``).
+PYTHON_REFERENCE_UNCERTIFIED = (
+    "the Python reference executor does not report the reduction's certification"
+)
 
 
 def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
@@ -243,6 +248,16 @@ def _parameters(mapping: ModelParameters | None) -> dict[str, list[str]] | None:
             _number(imaginary, f"parameter {name!r} imaginary part"),
         ]
     return result
+
+
+def _setting_text(setting: str | None, binary64: bool | None) -> str:
+    """A call's resolved kinematics improvement setting (``"z-shift"``,
+    ``"rescaling"``, ``"projection"`` or ``"off"``), as its evaluations in
+    the carriers above binary64 apply it."""
+
+    from pyamplicol.kinematics import resolve
+
+    return resolve(setting, binary64).setting
 
 
 def _inputs(
@@ -773,6 +788,7 @@ class V2ObservablesRuntime:
         options: Mapping[str, Any],
         reduction: VirtualReduction | None = None,
         best_effort: bool = False,
+        kinematics: tuple[str | None, bool | None] | None = None,
     ) -> tuple[list[Any], dict[int, list[str]], dict[int, VirtualReduction]]:
         """Per-point outputs (``None`` for a failed point), the failures and
         the per-point fallback's records; ``reduction`` is the call's backend
@@ -785,7 +801,42 @@ class V2ObservablesRuntime:
         record of each such point (by point index) is returned for the call's
         lane diagnostics and estimates (``_evaluation``, ``_diagnostic``,
         ``_estimate``; per call, never runtime state, so concurrent calls on
-        one runtime keep their own records)."""
+        one runtime keep their own records). ``kinematics``: the call's
+        kinematics improvement settings (setting, binary64 switch), whose
+        resolved variant the rescues' improved points follow
+        (``kinematics.calling``), for this call only."""
+
+        from pyamplicol.kinematics import calling
+
+        text = (
+            _setting_text(*kinematics)
+            if kinematics is not None and self._executor == "native"
+            else None
+        )
+        with calling(text):
+            return self._run_in(
+                native_key,
+                python,
+                points,
+                scales,
+                spins,
+                options,
+                reduction,
+                best_effort,
+            )
+
+    def _run_in(
+        self,
+        native_key: tuple[Any, ...],
+        python: Callable[[Any, Any, Any], Any],
+        points: Sequence[Any],
+        scales: Sequence[Any],
+        spins: Sequence[Any],
+        options: Mapping[str, Any],
+        reduction: VirtualReduction | None,
+        best_effort: bool,
+    ) -> tuple[list[Any], dict[int, list[str]], dict[int, VirtualReduction]]:
+        """``_run`` within the call's kinematics setting."""
 
         from pyamplicol.loops.v2.plan_export import FailedPoints
         from pyamplicol.loops.v2.reduction import current, running, with_fallback
@@ -1071,7 +1122,30 @@ class V2ObservablesRuntime:
                 ),
                 reduction=reduction,
             )
-        rescue = VirtualLaneRescue.of(lane_rescue) if lane_rescue else None
+        from pyamplicol.api.virtual_results import (
+            VirtualReductionRescue,
+            reduction_rescue_text,
+            served_by_lane_rescue,
+            uncertified_detail,
+            uncertified_reasons,
+        )
+
+        rescue = (
+            VirtualLaneRescue.of(lane_rescue)
+            if served_by_lane_rescue(lane_rescue)
+            else None
+        )
+        own_rescue = VirtualReductionRescue.of(lane_rescue)
+        # Lanes served without accuracy evidence, as on the summed route
+        # (``artifact._result``): the reasons kept, accuracy not established.
+        uncertified = uncertified_reasons(lane_rescue)
+        if self._executor != "native" and (
+            reduction is None or reduction.effective == "ninjars"
+        ):
+            # The Python reference executor's NinjaRS reductions do not carry
+            # the reduction's own record of lanes served without accuracy
+            # evidence: its values are returned, never certified.
+            uncertified = (*uncertified, PYTHON_REFERENCE_UNCERTIFIED)
         return VirtualLaneDiagnostic(
             "success",
             arithmetic,  # type: ignore[arg-type]
@@ -1083,9 +1157,13 @@ class V2ObservablesRuntime:
                 if checked
                 else _NO_CHECK_DETAIL
             )
-            + ("" if rescue is None else "; " + rescue_text(rescue, added)),
+            + ("" if rescue is None else "; " + rescue_text(rescue, added))
+            + ("" if own_rescue is None else "; " + reduction_rescue_text(own_rescue))
+            + uncertified_detail(uncertified),
             reduction=reduction,
             lane_rescue=rescue,
+            reduction_rescue=own_rescue,
+            uncertified=uncertified,
         )
 
     def _failed(self, failures: Mapping[int, Sequence[str]], on_failure: str) -> None:
@@ -1527,6 +1605,7 @@ class V2ObservablesRuntime:
             settings,
             None if reductions is None else reductions[arithmetic],
             best_effort=on_failure == "best-effort",
+            kinematics=(kinematics_improvement, kinematics_improvement_binary64),
         )
         self._failed(failures, on_failure)
         return with_kinematics(
@@ -1607,6 +1686,7 @@ class V2ObservablesRuntime:
                 settings,
                 reduction,
                 best_effort=on_failure == "best-effort",
+                kinematics=(kinematics_improvement, kinematics_improvement_binary64),
             )
             self._failed(failures, on_failure)
             for label, output in labels:
@@ -1786,6 +1866,7 @@ class V2ObservablesRuntime:
             settings,
             None if reductions is None else reductions[arithmetic],
             best_effort=on_failure == "best-effort",
+            kinematics=(kinematics_improvement, kinematics_improvement_binary64),
         )
         self._failed(failures, on_failure)
         born_orders = self._default_born_orders()

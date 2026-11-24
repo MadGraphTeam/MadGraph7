@@ -48,10 +48,13 @@ static void *array(size_t count, size_t element_size) {
     return bytes ? malloc(bytes) : NULL;
 }
 /* Every status but FAILED has a numerical row (plan v4 returns
- * ACCURACY_NOT_ESTABLISHED for a computed point). */
+ * ACCURACY_NOT_ESTABLISHED for a computed point; BEST_EFFORT for a point no
+ * configured alternative accepted, served with its best value under the
+ * default failure policy). */
 static int successful(uint32_t status) {
     return status == RUSTICOL_VIRTUAL_SUCCESS || status == RUSTICOL_VIRTUAL_VERIFIED ||
-        status == RUSTICOL_VIRTUAL_RESCUED || status == RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED;
+        status == RUSTICOL_VIRTUAL_RESCUED || status == RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED ||
+        status == RUSTICOL_VIRTUAL_BEST_EFFORT;
 }
 
 static UmamiStatus evaluate_bulk(int correlated,
@@ -319,7 +322,7 @@ static UmamiStatus evaluate_bulk(int correlated,
     if (copy_error) { status=native_failure(); goto done; }
     size_t row=0;
     for (size_t p=0;p<count;p++) {
-        if (statuses[p]>RUSTICOL_VIRTUAL_ACCURACY_NOT_ESTABLISHED ||
+        if (statuses[p]>RUSTICOL_VIRTUAL_BEST_EFFORT ||
             (successful(statuses[p]) && (row>=result_shape.successful_points || success_ids[row++]!=ids[p]))) {
             status=fail(UMAMI_ERROR,"native compact rows do not match physical point statuses"); goto done;
         }

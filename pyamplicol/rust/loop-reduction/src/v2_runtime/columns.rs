@@ -1029,6 +1029,7 @@ impl V2Runtime {
         let options = V2Options {
             poles: mode.lanes(),
             rescue: self.rescue_inputs(),
+            refinement: self.refinement_inputs(),
             ..V2Options::default()
         };
         let observables = self.observables.as_mut().expect("the observables");

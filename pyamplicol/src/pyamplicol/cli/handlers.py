@@ -782,6 +782,7 @@ class DefaultCliServices:
             kinematics_improvement_binary64=(
                 config.evaluation.kinematics_improvement_binary64
             ),
+            reduction_target=config.evaluation.reduction_target,
             source=None if self._card is None else str(self._card),
             progress=progress,
         )

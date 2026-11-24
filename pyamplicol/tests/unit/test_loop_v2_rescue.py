@@ -561,15 +561,28 @@ def test_a_mixed_batch_escalates_only_the_worse_points(artifact, poles):
     target = math.sqrt(low * high)
     policy = _to_dd(VirtualRescueLevel("double", target=target))
     result = runtime.evaluate(points, mu_r2=scales, poles=poles, stability=policy)
+    # The references at the level's target, which drives NinjaRS's
+    # cancellation rescue too (its lane target is the level's target / 64).
+    plain = runtime.evaluate(
+        points,
+        mu_r2=scales,
+        poles=poles,
+        stability_checks=CHECKS,
+        reduction_target=target,
+    )
+    estimates = [item.relative for item in plain.stability]
     direct = runtime.evaluate(
         points,
         mu_r2=scales,
         poles=poles,
         arithmetic="double-double",
         stability_checks=CHECKS,
+        reduction_target=target,
     )
     escalated = [index for index, e in enumerate(estimates) if e > target]
-    assert 0 < len(escalated) < len(points)
+    # At the level's target the rescue may lift every point below it: the
+    # policy escalates exactly the points whose estimate there exceeds it.
+    assert len(escalated) < len(points)
     for index in range(len(points)):
         reference = direct if index in escalated else plain
         assert _lane(result, index) == _lane(reference, index)
@@ -768,3 +781,130 @@ def test_an_arbitrary_call_without_digits_runs_at_the_default_digits(artifact):
     kept = _load(artifact, "gg", arithmetic="arbitrary", precision=40)
     assert kept._call_precision(None, "arbitrary") == 40
     assert kept.evaluate(points, mu_r2=scales).diagnostics[0].precision_bits == 133
+
+
+# ------------------------------------- lanes served without accuracy evidence
+
+BELOW = (
+    "a reduction lane vanishes within the resolution of its own terms"
+    " (no symmetry proof)"
+)
+
+
+class _Uncertified(_Fake):
+    """``_Fake`` whose diagnostics at the (level, point) pairs of
+    ``uncertified`` carry a lane served without accuracy evidence."""
+
+    def __init__(self, policy, table, uncertified):
+        super().__init__(policy, table)
+        self.uncertified = set(uncertified)
+
+    def __call__(self, indices, level):
+        from dataclasses import replace
+
+        result = super().__call__(indices, level)
+        k = self.policy.levels.index(level)
+        diagnostics = tuple(
+            replace(item, uncertified=(BELOW,))
+            if (k, point) in self.uncertified and item.valid
+            else item
+            for item, point in zip(result.diagnostics, indices, strict=True)
+        )
+        return replace(result, diagnostics=diagnostics)
+
+
+@pytest.mark.loop_fast
+def test_an_uncertified_level_is_never_met_and_escalates():
+    """A level whose point carries an uncertified lane is not met even when
+    its estimate passes: the policy escalates, and the point is met at the
+    next, clean level; at a last level it stays not established with the
+    reason, and nothing raises."""
+
+    table = ((1e-12, 1e-12), (1e-20, None), (None, None))
+    fake = _Uncertified(THREE, table, {(0, 0)})
+    result = rescue(THREE, 2, fake)
+    assert fake.calls[:2] == [(0, (0, 1)), (1, (0,))]
+    assert [record.level for record in result.rescue] == [1, 0]
+    assert [record.met for record in result.rescue] == [True, True]
+    assert result.diagnostics[0].status == "rescued"
+    assert result.diagnostics[0].accuracy_established
+    assert result.diagnostics[0].uncertified == ()
+    # A single-level policy: the uncertified point is kept, not established.
+    one = VirtualRescuePolicy((VirtualRescueLevel("double"),))
+    result = rescue(one, 1, _Uncertified(one, ((1e-12,),), {(0, 0)}))
+    (diagnostic,) = result.diagnostics
+    assert result.rescue[0].met is False
+    assert diagnostic.has_value and not diagnostic.accuracy_established
+    assert diagnostic.uncertified == (BELOW,)
+    assert "accuracy not established: " + BELOW in diagnostic.detail
+
+
+@pytest.mark.loop_fast
+def test_the_selected_helicity_diagnostic_keeps_the_uncertified_reasons():
+    """The diagnostic of the selected-helicity, resolved and correlated
+    routes (``V2ObservablesRuntime._diagnostic``) keeps the native
+    uncertified reasons as the summed route does, and a rescue policy with a
+    passing rotation metric does not establish its accuracy."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.virtual_results import UNCERTIFIED
+    from pyamplicol.runtime.virtual import V2ObservablesRuntime
+
+    owner = SimpleNamespace(_executor="native")
+    diagnostic = V2ObservablesRuntime._diagnostic(
+        owner, "double", None, True, lane_rescue=((UNCERTIFIED + BELOW, 1),)
+    )
+    assert diagnostic.status == "success" and diagnostic.uncertified == (BELOW,)
+    assert not diagnostic.accuracy_established
+    assert "accuracy not established: " + BELOW in diagnostic.detail
+    one = VirtualRescuePolicy((VirtualRescueLevel("double"),))
+    fake = _Fake(one, ((1e-12,),))
+
+    def evaluate(indices, level):
+        result = fake(indices, level)
+        return replace(result, diagnostics=(diagnostic,))
+
+    result = rescue(one, 1, evaluate)
+    assert result.rescue[0].met is False
+    assert not result.diagnostics[0].accuracy_established
+    assert result.diagnostics[0].uncertified == (BELOW,)
+
+
+@pytest.mark.loop_fast
+def test_the_python_reference_executor_never_certifies_ninjars_levels():
+    """The Python reference executor (``executor="python"``) does not carry
+    the reduction's record of lanes served without accuracy evidence: its
+    NinjaRS-reduced points are returned with the reason and a one-level
+    NinjaRS policy whose estimate passes is not met; a TIRust point keeps
+    its evidence."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.virtual_results import VirtualReduction
+    from pyamplicol.runtime.virtual import (
+        PYTHON_REFERENCE_UNCERTIFIED,
+        V2ObservablesRuntime,
+    )
+
+    owner = SimpleNamespace(_executor="python")
+    ninjars = V2ObservablesRuntime._diagnostic(owner, "double", None, True)
+    assert ninjars.uncertified == (PYTHON_REFERENCE_UNCERTIFIED,)
+    assert "accuracy not established: " in ninjars.detail
+    tirust = VirtualReduction("tirust", "tirust", "requested")
+    other = V2ObservablesRuntime._diagnostic(
+        owner, "double", None, True, reductions={"double": tirust}
+    )
+    assert other.uncertified == ()
+    one = VirtualRescuePolicy((VirtualRescueLevel("double", target=1e-5),))
+    fake = _Fake(one, ((3.3069954e-8,),))
+
+    def evaluate(indices, level):
+        return replace(fake(indices, level), diagnostics=(ninjars,))
+
+    result = rescue(one, 1, evaluate)
+    assert result.rescue[0].met is False
+    assert not result.diagnostics[0].accuracy_established
+    assert result.diagnostics[0].uncertified == (PYTHON_REFERENCE_UNCERTIFIED,)

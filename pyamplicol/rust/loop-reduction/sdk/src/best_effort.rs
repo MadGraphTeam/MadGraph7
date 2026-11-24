@@ -468,6 +468,9 @@ impl Runtime {
             let (runs, source) = self.best_effort_checks()?;
             let saved = (self.unchecked, self.checks.clone());
             self.unchecked = true;
+            // NinjaRS keeps its cancellation rescue in this pass and serves
+            // a lane it refused for missing its target from its best value.
+            self.best_effort_pass = true;
             let mut results = Vec::with_capacity(runs.len());
             for checks in runs {
                 self.checks = checks;
@@ -480,6 +483,7 @@ impl Runtime {
                 }
             }
             (self.unchecked, self.checks) = saved;
+            self.best_effort_pass = false;
             let mut runs = results.into_iter().collect::<RusticolResult<Vec<R>>>()?;
             // Per run, each served point's estimate (the larger counts).
             let mut estimates: HashMap<u64, Option<f64>> = HashMap::new();
