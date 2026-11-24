@@ -1541,18 +1541,24 @@ def test_the_accuracy_check_evaluates_with_the_o1_estimate_and_dd_beyond_it(
 
 
 @pytest.mark.loop_physics
-def test_the_gg_gggg_accuracy_check_asserts_double_double_at_point_1(
+def test_the_gg_gggg_accuracy_check_asserts_the_carrier_of_each_estimate(
     tmp_path, loop_native
 ):
-    """E1 (g g > g g g g, native inputs, full colour; about 1.5 min): point 1
-    is a pinched two-mass triangle whose binary64 estimate exceeds 1e-9, so
-    its double-double value is asserted, and it equals MadLoop's
-    quadruple-precision one (m-qcd PLAN §1.4 rule 1); every point's carrier
-    follows its estimate, and the binary64 values evaluated with the checks
-    are the timed configuration's (bitwise those without checks)."""
+    """E1 (g g > g g g g, native inputs, full colour; about 1.5 min): every
+    point's asserted carrier follows its binary64 estimate (double-double
+    above ``O1_CAP``, m-qcd PLAN §1.4 rule 2) and the check passes against
+    the providers; the binary64 values evaluated with the checks are the
+    timed configuration's (bitwise those without checks). Point 1, a pinched
+    two-mass triangle whose binary64 estimate exceeded 1e-9 before NinjaRS's
+    local cancellation rescue (so its double-double value was asserted), is
+    now re-reduced within the binary64 call: its estimate is below the cap,
+    binary64 is asserted, and the binary64 value agrees with the
+    point's double-double value within that estimate (O1 rule 3, the 10x
+    rule) and with MadLoop's quadruple-precision value."""
 
     import types
 
+    from pyamplicol.loops.v2.assemble import Precision
     from tools.loop_benchmark import pyamplicol_v2
 
     options = types.SimpleNamespace(
@@ -1578,6 +1584,14 @@ def test_the_gg_gggg_accuracy_check_asserts_double_double_at_point_1(
             parameters=run.parameters,
             poles=pyamplicol_v2._finite_only(),
         )
+        one, one_scale = pyamplicol_v2.fixture_batch(fixture, [1])
+        (precise,) = run.executor.evaluate(
+            one,
+            one_scale,
+            parameters=run.parameters,
+            poles=pyamplicol_v2._finite_only(),
+            precision=Precision.double_double(),
+        )
     finally:
         run.close()
     rows = check["rows"]
@@ -1587,10 +1601,22 @@ def test_the_gg_gggg_accuracy_check_asserts_double_double_at_point_1(
     for row in rows:
         estimate = row["estimate"]["finite"]
         assert row["asserted"]["finite"] == pyamplicol_v2.asserted_carrier(estimate)
+        assert ("double_double" in row) is (
+            row["asserted"]["finite"] == pyamplicol_v2.DOUBLE_DOUBLE
+        )
+    assert check["double_double_points"] == [
+        row["index"]
+        for row in rows
+        if row["asserted"]["finite"] == pyamplicol_v2.DOUBLE_DOUBLE
+    ]
     point = rows[1]
-    assert point["estimate"]["finite"] > pyamplicol_v2.O1_CAP
-    assert 1 in check["double_double_points"]
-    assert point["double_double"]["errors"]["madloop"]["finite"] <= 1e-12
+    estimate = point["estimate"]["finite"]
+    assert estimate <= pyamplicol_v2.O1_CAP
+    assert point["asserted"]["finite"] == pyamplicol_v2.BINARY64
+    assert 1 not in check["double_double_points"]
+    reference = pyamplicol_v2._totals(precise)[1]
+    assert abs(point["finite"] - reference) <= 10 * estimate * abs(reference)
+    assert point["errors"]["madloop"]["finite"] <= pyamplicol_v2.O1_CAP
     assert check["passed"] is True and check["max_error"] <= check["tolerance"]
     assert check["max_error_binary64"] >= max(
         e["finite"] for e in point["errors"].values()
