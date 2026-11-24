@@ -447,7 +447,7 @@
   {
    "J": 0,
    "label": "e^+ e^- -> J\\/psi thin chi_(c 0)",
-   "process": "e+ e- > Jpsi(1|3S11) chic0(1|3P01) / z QED=2 [virt=QCD]",
+   "process": "e+ e- > Jpsi(1|3S11) chic0(1|3P01) / z t t~ b b~ QED=2 [virt=QCD]",
    "energy": 10.58,
    "mu": 3.0,
    "mc": 1.5,
@@ -456,11 +456,11 @@
    "exact": false,
    "modes": {
     "-1": {
-     "c0": 14.817489867107843,
+     "c0": 14.817490053647925,
      "c0_reference": 14.817490032842038,
-     "c0_relative_deviation": 1.118503835676918e-08,
+     "c0_relative_deviation": 1.4041438020267741e-09,
      "form_residual_born": 4.61937663968527e-16,
-     "form_residual_virtual": 2.8653728125497694e-07,
+     "form_residual_virtual": 8.162409279594751e-15,
      "lo_shares": [
       0.23013886374994233,
       0.7698611362500577
@@ -471,30 +471,30 @@
      ],
      "lo_share_deviation": 1.582067810090848e-15,
      "group_A_nf4": [
-      6.041553036777674,
-      7.217211520866898
+      6.041552972804308,
+      7.217211661142582
      ],
      "group_A_dfj_table2": [
       6.02853421145245,
       7.19118009508971
      ],
-     "max_pole": 2.554276601258428e-07,
-     "max_pole_deviation": 2.554276601258428e-07,
+     "max_pole": 3.4799037560732604e-13,
+     "max_pole_deviation": 3.4799037560732604e-13,
      "max_predicted_pole": 0.0,
      "codes": [
       213
      ],
-     "max_accuracy": 7.6611e-09,
-     "ms_per_point": 210.551075,
+     "max_accuracy": 1.7589e-09,
+     "ms_per_point": 186.786275,
      "npoints": 4,
      "stable": 4
     },
     "4": {
-     "c0": 14.817490296515848,
+     "c0": 14.817490032842036,
      "c0_reference": 14.817490032842038,
-     "c0_relative_deviation": 1.7794768838224096e-08,
+     "c0_relative_deviation": 1.1988243862240278e-16,
      "form_residual_born": 4.61937663968527e-16,
-     "form_residual_virtual": 2.436539959519533e-16,
+     "form_residual_virtual": 2.4365400827468186e-16,
      "lo_shares": [
       0.23013886374994233,
       0.7698611362500577
@@ -505,21 +505,21 @@
      ],
      "lo_share_deviation": 1.582067810090848e-15,
      "group_A_nf4": [
-      6.041551725269423,
-      7.217212191810004
+      6.041552897008277,
+      7.2172116702879565
      ],
      "group_A_dfj_table2": [
       6.02853421145245,
       7.19118009508971
      ],
-     "max_pole": 4.7501295411804805e-15,
-     "max_pole_deviation": 4.7501295411804805e-15,
+     "max_pole": 7.704561802692015e-15,
+     "max_pole_deviation": 7.704561802692015e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 12763.570000000002,
+     "ms_per_point": 11524.5875,
      "npoints": 4,
      "stable": 4
     }
@@ -529,7 +529,7 @@
   {
    "J": 1,
    "label": "e^+ e^- -> J\\/psi thin chi_(c 1)",
-   "process": "e+ e- > Jpsi(1|3S11) chic1(1|3P11) / z QED=2 [virt=QCD]",
+   "process": "e+ e- > Jpsi(1|3S11) chic1(1|3P11) / z t t~ b b~ QED=2 [virt=QCD]",
    "energy": 10.58,
    "mu": 3.0,
    "mc": 1.5,
@@ -538,11 +538,11 @@
    "exact": false,
    "modes": {
     "-1": {
-     "c0": -1.2552358917831683,
+     "c0": -1.2552341663596858,
      "c0_reference": -1.255234593351927,
-     "c0_relative_deviation": 1.0344132069568406e-06,
+     "c0_relative_deviation": 3.401692748143901e-07,
      "form_residual_born": 7.633895374905795e-16,
-     "form_residual_virtual": 2.268169130989076e-06,
+     "form_residual_virtual": 1.9739041322667094e-13,
      "lo_shares": [
       0.08203906125918935,
       0.9179609387408106
@@ -553,30 +553,30 @@
      ],
      "lo_share_deviation": 1.887379141862766e-15,
      "group_A_nf4": [
-      -7.192623164307625,
-      -0.5442933275127717
+      -7.192647326138772,
+      -0.5442902283333112
      ],
      "group_A_dfj_table2": [
       -7.2778208191269345,
       -0.5981711372910103
      ],
-     "max_pole": 4.145349922114612e-07,
-     "max_pole_deviation": 4.145349922114612e-07,
+     "max_pole": 1.9805603409832954e-13,
+     "max_pole_deviation": 1.9805603409832954e-13,
      "max_predicted_pole": 0.0,
      "codes": [
       213
      ],
-     "max_accuracy": 3.2221e-06,
-     "ms_per_point": 220.9255,
+     "max_accuracy": 2.6865e-06,
+     "ms_per_point": 201.44107499999998,
      "npoints": 4,
      "stable": 4
     },
     "4": {
-     "c0": -1.2552346055988874,
+     "c0": -1.2552345933519242,
      "c0_reference": -1.255234593351927,
-     "c0_relative_deviation": 9.756710338938253e-09,
+     "c0_relative_deviation": 2.2996337730919304e-15,
      "form_residual_born": 7.633895374905795e-16,
-     "form_residual_virtual": 3.542751876907269e-16,
+     "form_residual_virtual": 4.72366977040284e-16,
      "lo_shares": [
       0.08203906125918935,
       0.9179609387408106
@@ -587,21 +587,21 @@
      ],
      "lo_share_deviation": 1.887379141862766e-15,
      "group_A_nf4": [
-      -7.192651561323201,
-      -0.5442900890779808
+      -7.192649169378224,
+      -0.5442902961776848
      ],
      "group_A_dfj_table2": [
       -7.2778208191269345,
       -0.5981711372910103
      ],
-     "max_pole": 3.7275256916885465e-15,
-     "max_pole_deviation": 3.7275256916885465e-15,
+     "max_pole": 1.90936599760082e-15,
+     "max_pole_deviation": 1.90936599760082e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 12893.7575,
+     "ms_per_point": 11560.1125,
      "npoints": 4,
      "stable": 4
     }
@@ -611,7 +611,7 @@
   {
    "J": 2,
    "label": "e^+ e^- -> J\\/psi thin chi_(c 2)",
-   "process": "e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]",
+   "process": "e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z t t~ b b~ QED=2 [virt=QCD]",
    "energy": 10.58,
    "mu": 3.0,
    "mc": 1.5,
@@ -620,11 +620,11 @@
    "exact": false,
    "modes": {
     "-1": {
-     "c0": -4.310577595715374,
+     "c0": -4.3105819789055655,
      "c0_reference": -4.310582093017303,
-     "c0_relative_deviation": 1.0433166175793761e-06,
+     "c0_relative_deviation": 2.6472465985871762e-08,
      "form_residual_born": 7.488116397599756e-16,
-     "form_residual_virtual": 2.1255577388691518e-06,
+     "form_residual_virtual": 3.756709539277313e-14,
      "lo_shares": [
       0.42695181037487134,
       0.5730481896251286
@@ -635,30 +635,30 @@
      ],
      "lo_share_deviation": 1.4988010832439613e-15,
      "group_A_nf4": [
-      -4.265585505126006,
-      -1.3893900703699444
+      -4.265595259043147,
+      -1.3893866276272178
      ],
      "group_A_dfj_table2": [
       -4.334346621168929,
       -1.4274513694524695
      ],
-     "max_pole": 1.048931660807216e-06,
-     "max_pole_deviation": 1.048931660807216e-06,
+     "max_pole": 5.413118637252689e-13,
+     "max_pole_deviation": 5.413118637252689e-13,
      "max_predicted_pole": 0.0,
      "codes": [
       213
      ],
-     "max_accuracy": 5.2858e-07,
-     "ms_per_point": 237.93605000000002,
+     "max_accuracy": 1.3934e-07,
+     "ms_per_point": 216.39079999999998,
      "npoints": 4,
      "stable": 4
     },
     "4": {
-     "c0": -4.310581559979112,
+     "c0": -4.310582093017311,
      "c0_reference": -4.310582093017303,
-     "c0_relative_deviation": 1.2365805356710652e-07,
+     "c0_relative_deviation": 1.854414463014158e-15,
      "form_residual_born": 7.488116397599756e-16,
-     "form_residual_virtual": 4.0178713855038495e-16,
+     "form_residual_virtual": 4.0178710043977713e-16,
      "lo_shares": [
       0.42695181037487134,
       0.5730481896251286
@@ -669,21 +669,21 @@
      ],
      "lo_share_deviation": 1.4988010832439613e-15,
      "group_A_nf4": [
-      -4.265595415023191,
-      -1.3893861458890433
+      -4.265595527464035,
+      -1.3893865272047539
      ],
      "group_A_dfj_table2": [
       -4.334346621168929,
       -1.4274513694524695
      ],
-     "max_pole": 4.412941327757763e-15,
-     "max_pole_deviation": 4.412941327757763e-15,
+     "max_pole": 2.4059625198500234e-15,
+     "max_pole_deviation": 2.4059625198500234e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 12925.7575,
+     "ms_per_point": 11675.789999999999,
      "npoints": 4,
      "stable": 4
     }
@@ -695,7 +695,7 @@
   {
    "J": 0,
    "label": "e^+ e^- -> J\\/psi thin chi_(c 0)",
-   "process": "e+ e- > Jpsi(1|3S11) chic0(1|3P01) / z QED=2 [virt=QCD]",
+   "process": "e+ e- > Jpsi(1|3S11) chic0(1|3P01) / z t t~ b b~ QED=2 [virt=QCD]",
    "energy": 18.5,
    "mu": 3.0,
    "mc": 1.5,
@@ -704,11 +704,11 @@
    "exact": true,
    "modes": {
     "-1": {
-     "c0": 17.19008518246123,
+     "c0": 17.19008258512179,
      "c0_reference": 17.190082584909767,
-     "c0_relative_deviation": 1.5110756168615127e-07,
+     "c0_relative_deviation": 1.2333995406354706e-11,
      "form_residual_born": 8.43688587112273e-16,
-     "form_residual_virtual": 5.666911913952073e-08,
+     "form_residual_virtual": 2.717424982616626e-13,
      "lo_shares": [
       0.28658946910356425,
       0.7134105308964358
@@ -719,30 +719,30 @@
      ],
      "lo_share_deviation": 3.4416913763379853e-15,
      "group_A_nf4": [
-      5.442019440835136,
-      9.21393604913205
+      5.442021315790456,
+      9.213933475561724
      ],
      "group_A_dfj_table2": [
       6.02853421145245,
       7.19118009508971
      ],
-     "max_pole": 1.569785037784437e-07,
-     "max_pole_deviation": 1.569785037784437e-07,
+     "max_pole": 1.0183307442767543e-12,
+     "max_pole_deviation": 1.0183307442767543e-12,
      "max_predicted_pole": 0.0,
      "codes": [
       213
      ],
-     "max_accuracy": 1.8551e-09,
-     "ms_per_point": 188.74949999999998,
+     "max_accuracy": 1.4083e-10,
+     "ms_per_point": 185.36842,
      "npoints": 5,
      "stable": 5
     },
     "4": {
-     "c0": 17.190082631458086,
+     "c0": 17.190082584909863,
      "c0_reference": 17.190082584909767,
-     "c0_relative_deviation": 2.7078589499019814e-09,
+     "c0_relative_deviation": 5.580151744693729e-15,
      "form_residual_born": 8.43688587112273e-16,
-     "form_residual_virtual": 3.4232550599506756e-09,
+     "form_residual_virtual": 2.963386022553189e-16,
      "lo_shares": [
       0.28658946910356425,
       0.7134105308964358
@@ -753,30 +753,30 @@
      ],
      "lo_share_deviation": 3.4416913763379853e-15,
      "group_A_nf4": [
-      5.442021247772476,
-      9.213933535360933
+      5.44202131624985,
+      9.213933475228647
      ],
      "group_A_dfj_table2": [
       6.02853421145245,
       7.19118009508971
      ],
-     "max_pole": 3.676411342533063e-15,
-     "max_pole_deviation": 3.676411342533063e-15,
+     "max_pole": 4.518739478292428e-15,
+     "max_pole_deviation": 4.518739478292428e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 7883.392600000001,
+     "ms_per_point": 7034.8966,
      "npoints": 5,
      "stable": 5
     },
     "5": {
-     "c0": 17.190082631458086,
+     "c0": 17.190082584909863,
      "c0_reference": 17.190082584909767,
-     "c0_relative_deviation": 2.7078589499019814e-09,
+     "c0_relative_deviation": 5.580151744693729e-15,
      "form_residual_born": 8.43688587112273e-16,
-     "form_residual_virtual": 3.4232550599506756e-09,
+     "form_residual_virtual": 2.963386022553189e-16,
      "lo_shares": [
       0.28658946910356425,
       0.7134105308964358
@@ -787,21 +787,21 @@
      ],
      "lo_share_deviation": 3.4416913763379853e-15,
      "group_A_nf4": [
-      5.442021247772476,
-      9.213933535360933
+      5.44202131624985,
+      9.213933475228647
      ],
      "group_A_dfj_table2": [
       6.02853421145245,
       7.19118009508971
      ],
-     "max_pole": 3.676411342533063e-15,
-     "max_pole_deviation": 3.676411342533063e-15,
+     "max_pole": 4.518739478292428e-15,
+     "max_pole_deviation": 4.518739478292428e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 7830.3326,
+     "ms_per_point": 7040.7,
      "npoints": 5,
      "stable": 5
     }
@@ -811,7 +811,7 @@
   {
    "J": 1,
    "label": "e^+ e^- -> J\\/psi thin chi_(c 1)",
-   "process": "e+ e- > Jpsi(1|3S11) chic1(1|3P11) / z QED=2 [virt=QCD]",
+   "process": "e+ e- > Jpsi(1|3S11) chic1(1|3P11) / z t t~ b b~ QED=2 [virt=QCD]",
    "energy": 18.5,
    "mu": 3.0,
    "mc": 1.5,
@@ -820,11 +820,11 @@
    "exact": true,
    "modes": {
     "-1": {
-     "c0": 4.048879680926693,
+     "c0": 4.0488783979576315,
      "c0_reference": 4.048878264790606,
-     "c0_relative_deviation": 3.497601051188178e-07,
+     "c0_relative_deviation": 3.2889856681762584e-08,
      "form_residual_born": 1.6612799689997832e-15,
-     "form_residual_virtual": 3.354989547467562e-07,
+     "form_residual_virtual": 1.887519419151081e-12,
      "lo_shares": [
       0.02634516544297067,
       0.9736548345570294
@@ -835,30 +835,30 @@
      ],
      "lo_share_deviation": 1.4432899320127035e-15,
      "group_A_nf4": [
-      -6.55270752473136,
-      1.7819188303192006
+      -6.552720166496383,
+      1.7819185135384186
      ],
      "group_A_dfj_table2": [
       -7.2778208191269345,
       -0.5981711372910103
      ],
-     "max_pole": 1.5721086276568517e-07,
-     "max_pole_deviation": 1.5721086276568517e-07,
+     "max_pole": 2.2907020410436566e-12,
+     "max_pole_deviation": 2.2907020410436566e-12,
      "max_predicted_pole": 0.0,
      "codes": [
       213
      ],
-     "max_accuracy": 2.1441e-07,
-     "ms_per_point": 203.02236000000002,
+     "max_accuracy": 2.1337e-07,
+     "ms_per_point": 194.37294,
      "npoints": 5,
      "stable": 5
     },
     "4": {
-     "c0": 4.048878145117996,
+     "c0": 4.048878264790633,
      "c0_reference": 4.048878264790606,
-     "c0_relative_deviation": 2.95569789391936e-08,
+     "c0_relative_deviation": 6.8002862052282086e-15,
      "form_residual_born": 1.6612799689997832e-15,
-     "form_residual_virtual": 8.036667224813535e-09,
+     "form_residual_virtual": 1.7201489827207443e-15,
      "lo_shares": [
       0.02634516544297067,
       0.9736548345570294
@@ -869,30 +869,30 @@
      ],
      "lo_share_deviation": 1.4432899320127035e-15,
      "group_A_nf4": [
-      -6.552715613542564,
-      1.781918260504047
+      -6.5527201553249235,
+      1.781918444851025
      ],
      "group_A_dfj_table2": [
       -7.2778208191269345,
       -0.5981711372910103
      ],
-     "max_pole": 1.7661030744145602e-15,
-     "max_pole_deviation": 1.7661030744145602e-15,
+     "max_pole": 5.013891143853776e-15,
+     "max_pole_deviation": 5.013891143853776e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 9550.115,
+     "ms_per_point": 8574.8304,
      "npoints": 5,
      "stable": 5
     },
     "5": {
-     "c0": 4.048878145117996,
+     "c0": 4.048878264790633,
      "c0_reference": 4.048878264790606,
-     "c0_relative_deviation": 2.95569789391936e-08,
+     "c0_relative_deviation": 6.8002862052282086e-15,
      "form_residual_born": 1.6612799689997832e-15,
-     "form_residual_virtual": 8.036667224813535e-09,
+     "form_residual_virtual": 1.7201489827207443e-15,
      "lo_shares": [
       0.02634516544297067,
       0.9736548345570294
@@ -903,21 +903,21 @@
      ],
      "lo_share_deviation": 1.4432899320127035e-15,
      "group_A_nf4": [
-      -6.552715613542564,
-      1.781918260504047
+      -6.5527201553249235,
+      1.781918444851025
      ],
      "group_A_dfj_table2": [
       -7.2778208191269345,
       -0.5981711372910103
      ],
-     "max_pole": 1.7661030744145602e-15,
-     "max_pole_deviation": 1.7661030744145602e-15,
+     "max_pole": 5.013891143853776e-15,
+     "max_pole_deviation": 5.013891143853776e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 9585.8508,
+     "ms_per_point": 8622.1118,
      "npoints": 5,
      "stable": 5
     }
@@ -927,7 +927,7 @@
   {
    "J": 2,
    "label": "e^+ e^- -> J\\/psi thin chi_(c 2)",
-   "process": "e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]",
+   "process": "e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z t t~ b b~ QED=2 [virt=QCD]",
    "energy": 18.5,
    "mu": 3.0,
    "mc": 1.5,
@@ -936,11 +936,11 @@
    "exact": true,
    "modes": {
     "-1": {
-     "c0": -8.95462151736964,
+     "c0": -8.954620749083208,
      "c0_reference": -8.954620759267298,
-     "c0_relative_deviation": 8.466046325934311e-08,
+     "c0_relative_deviation": 1.1372999805939942e-09,
      "form_residual_born": 1.804023465969793e-15,
-     "form_residual_virtual": 2.3220988734543618e-07,
+     "form_residual_virtual": 9.045832605164676e-13,
      "lo_shares": [
       0.6392280183524617,
       0.36077198164753826
@@ -951,30 +951,30 @@
      ],
      "lo_share_deviation": 2.55351295663786e-15,
      "group_A_nf4": [
-      -7.124553613804307,
-      -1.0676954155393394
+      -7.124552058369072,
+      -1.0676971067310017
      ],
      "group_A_dfj_table2": [
       -4.334346621168929,
       -1.4274513694524695
      ],
-     "max_pole": 2.2531744739206835e-07,
-     "max_pole_deviation": 2.2531744739206835e-07,
+     "max_pole": 4.0244517276294905e-12,
+     "max_pole_deviation": 4.0244517276294905e-12,
      "max_predicted_pole": 0.0,
      "codes": [
       213
      ],
-     "max_accuracy": 7.2568e-09,
-     "ms_per_point": 214.68037999999996,
+     "max_accuracy": 1.162e-08,
+     "ms_per_point": 208.01104,
      "npoints": 5,
      "stable": 5
     },
     "4": {
-     "c0": -8.954620881928319,
+     "c0": -8.954620759267415,
      "c0_reference": -8.954620759267298,
-     "c0_relative_deviation": 1.3698069878507297e-08,
+     "c0_relative_deviation": 1.3092631676119082e-14,
      "form_residual_born": 1.804023465969793e-15,
-     "form_residual_virtual": 1.5774995264950535e-08,
+     "form_residual_virtual": 7.290826495494143e-16,
      "lo_shares": [
       0.6392280183524617,
       0.36077198164753826
@@ -985,30 +985,30 @@
      ],
      "lo_share_deviation": 2.55351295663786e-15,
      "group_A_nf4": [
-      -7.1245522605411615,
-      -1.0676969326279355
+      -7.124552076901594,
+      -1.067697088008917
      ],
      "group_A_dfj_table2": [
       -4.334346621168929,
       -1.4274513694524695
      ],
-     "max_pole": 5.8593948323502816e-15,
-     "max_pole_deviation": 5.8593948323502816e-15,
+     "max_pole": 7.938932844124482e-15,
+     "max_pole_deviation": 7.938932844124482e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 10505.592,
+     "ms_per_point": 9420.435599999999,
      "npoints": 5,
      "stable": 5
     },
     "5": {
-     "c0": -8.954620881928319,
+     "c0": -8.954620759267415,
      "c0_reference": -8.954620759267298,
-     "c0_relative_deviation": 1.3698069878507297e-08,
+     "c0_relative_deviation": 1.3092631676119082e-14,
      "form_residual_born": 1.804023465969793e-15,
-     "form_residual_virtual": 1.5774995264950535e-08,
+     "form_residual_virtual": 7.290826495494143e-16,
      "lo_shares": [
       0.6392280183524617,
       0.36077198164753826
@@ -1019,21 +1019,21 @@
      ],
      "lo_share_deviation": 2.55351295663786e-15,
      "group_A_nf4": [
-      -7.1245522605411615,
-      -1.0676969326279355
+      -7.124552076901594,
+      -1.067697088008917
      ],
      "group_A_dfj_table2": [
       -4.334346621168929,
       -1.4274513694524695
      ],
-     "max_pole": 5.8593948323502816e-15,
-     "max_pole_deviation": 5.8593948323502816e-15,
+     "max_pole": 7.938932844124482e-15,
+     "max_pole_deviation": 7.938932844124482e-15,
      "max_predicted_pole": 0.0,
      "codes": [
       120
      ],
      "max_accuracy": -1.0,
-     "ms_per_point": 10563.686,
+     "ms_per_point": 9411.7048,
      "npoints": 5,
      "stable": 5
     }

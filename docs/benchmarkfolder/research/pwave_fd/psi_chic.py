@@ -6,9 +6,10 @@ Jia (arXiv:1107.4351).
     psi_chic.py --work DIR --json OUT.json [--J 0,1,2] [--tirust LIB --tirust-label REV]
                 [--energy 10.58] [--mu 3.0] [--modes -1,4] [--exact]
 
-For each J, the process e+ e- > Jpsi(1|3S11) chicJ(1|3PJ1) / z QED=2
-[virt=QCD] of loop_sm_onia-c_mass (m_c = 1.5 GeV, b and t decoupled at 10
-and 100 TeV, photon exchange only, no QED fragmentation) is evaluated at the
+For each J, the process e+ e- > Jpsi(1|3S11) chicJ(1|3PJ1) / z t t~ b b~ QED=2
+[virt=QCD] of loop_sm_onia-c_mass (m_c = 1.5 GeV; b and t excluded from the
+loops, the limit m_b, m_t -> infinity of the n_l = 3 reference; photon
+exchange only, no QED fragmentation) is evaluated at the
 four Gauss-Legendre nodes in cos(theta) (azimuth 0.7) in each CTModeRun mode
 (-1: MadLoop's stability test at its default threshold 1.0d-3; 4: quadruple
 precision). Born and virtual are of the form alpha + beta cos^2(theta) (one
@@ -44,8 +45,8 @@ NODES = ((-0.8611363115940526, 0.3478548451374538), (-0.3399810435848563, 0.6521
          (0.3399810435848563, 0.6521451548625461), (0.8611363115940526, 0.3478548451374538))
 PHI = 0.7
 EXACT = ((-0.8, 0.6), (-0.6, 0.8), (0., 1.), (0.6, 0.8), (0.8, 0.6))
-PROCESS = 'e+ e- > Jpsi(1|3S11) chic%d(1|3P%d1) / z QED=2 [virt=QCD]'
-MASSES = {4: 1.5, 5: 1.e4, 6: 1.e5}
+PROCESS = 'e+ e- > Jpsi(1|3S11) chic%d(1|3P%d1) / z t t~ b b~ QED=2 [virt=QCD]'
+MASSES = {4: 1.5}
 
 
 def momenta(masses, energy, cos):

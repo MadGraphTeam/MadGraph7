@@ -104,34 +104,43 @@ With TIRust 48958d1 (part of PR #56, built by `build.sh` with `REV=48958d1` and 
 
 ## An S-wave and a P-wave state: e+ e- > J/psi chi_cJ (TIRust 08cca00)
 
-`psi_chic.py` generates `e+ e- > Jpsi(1|3S11) chicJ(1|3PJ1) / z QED=2 [virt=QCD]` for J = 0, 1, 2:
-- **Setup.** m_c = 1.5 GeV, b and t decoupled, √s = 10.58 GeV, μ = 2 m_c.
+`psi_chic.py` generates `e+ e- > Jpsi(1|3S11) chicJ(1|3PJ1) / z t t~ b b~ QED=2 [virt=QCD]` for J = 0, 1, 2:
+- **Setup.** m_c = 1.5 GeV, √s = 10.58 GeV, μ = 2 m_c. The b and t quarks are excluded from the loops, which is the limit m_b, m_t → ∞ of the n_l = 3 reference.
 - **Points.** The virtual is evaluated at the four Gauss–Legendre nodes in cos θ.
 - **Comparison.** The cross-section average of the finite part is compared with `psi_chic_ref.py`. That is the NLO cross section of arXiv:1107.2646 (appendix), converted from its LaTeX source and from n_f = 4 to MadLoop's n_l = 3 scheme (`research/literature.md`, C.6). The exclusive process has no real emission, and the virtual is UV and IR finite.
 
-The pinned TIRust installation has no raised powers, and MadGraph refuses the output. With TIRust 08cca00 (`build.sh`, bridge v8 of the two-P-wave work):
+The pinned TIRust installation has no raised powers, and MadGraph refuses the output. With TIRust 08cca00 (`build.sh`, bridge v8 of the two-P-wave work), relative to the reference:
 
 | J | Reference ⟨c0⟩ | DP (CTModeRun −1) | QP (CTModeRun 4) | Poles DP, QP |
 |---|---|---|---|---|
-| 0 | 14.8174900328 | 1.1e-8 | 1.8e-8 | 2.6e-7, 4.8e-15 |
-| 1 | −1.2552345934 | 1.0e-6 | 9.8e-9 | 4.1e-7, 3.7e-15 |
-| 2 | −4.3105820930 | 1.0e-6 | 1.2e-7 | 1.0e-6, 4.4e-15 |
+| 0 | 14.8174900328 | 1.4e-9 | 1.2e-16 | 3.5e-13, 7.7e-15 |
+| 1 | −1.2552345934 | 3.4e-7 | 2.3e-15 | 2.0e-13, 1.9e-15 |
+| 2 | −4.3105820930 | 2.6e-8 | 1.9e-15 | 5.4e-13, 2.4e-15 |
 
-- **Double precision.** Every node returns 213, at 0.2 s per point. Quadruple precision takes 13 s per point.
+- **Speed and codes.** Every node returns 213 in double precision, at 0.2 s per point. Quadruple precision takes 12 s per point.
+- **Exact momenta.** `--exact` evaluates the virtual at √s = 18.5 GeV, where the momenta are exact in binary64. There quadruple precision agrees to 5.6e-15, 6.8e-15 and 1.3e-14.
+- **Double precision against quadruple, per node.** The difference is at most 4.5e-7 (χ_c1). MadLoop's loop-reversal estimate is within a factor 5 of it, sometimes below.
+- **The two quadruple-precision directions.** CTModeRun 4 and 5 are identical bit for bit, because MadLoop rounds each loop group to double precision before the sum.
 - **Helicities.** The LO shares of λ = 0 and |λ| = 1 equal those of the helicity amplitudes of arXiv:1107.4351 (eq. (3.3)) to 2e-15. Its table 2 agrees within its two to three digits.
-- **The floor of quadruple precision.** `--exact` evaluates the virtual at √s = 18.5 GeV, where the momenta are exact in binary64.
-  - The QP averages deviate by 2.7e-9, 3.0e-8 and 1.4e-8, and the QP virtual departs from the form α + β cos²θ by up to 1.6e-8. The Born keeps that form to 2e-15.
-  - CTModeRun 4 and 5 are identical bit for bit. `MP_TIRUST_LOOP` returns each loop group as a double-precision number, so the two directions round alike.
+- **J/ψ η_c with the same exclusion.** Quadruple precision gives 24.53642097 at every point, Gong–Wang's 24.53642 to its seven digits.
 
-**The cause** (`qp_floor.py`, which patches an output to sum the loop groups in quadruple precision and prints both sums). The b and t quarks are decoupled at 10 and 100 TeV to match the n_l = 3 reference. Their counterterms and loop groups grow like M² and cancel: |counterterms| + Σ|loop group| is 8.8e8 times the total for χ_c2, and 5.9e7 for J/ψ η_c. MadLoop stores every loop group as a double-precision number (`LOOPRES`; `MP_TIRUST_LOOP` rounds the quadruple-precision value), so the result keeps 1e-16 times the parts, and both directions round alike. χ_c2 at √s = 10.58 GeV, against the reference:
+### Heavy quarks instead of their exclusion
+
+The first runs decoupled b and t by giving them masses of 10 and 100 TeV (`/ z` only, as the e+ e- cases of `tools/onia_loop_validate.py` do). Quadruple precision then stopped at 1e-8 to 1e-7, also with exact momenta.
+
+`qp_floor.py` patches such an output to sum the loop groups in quadruple precision, and prints both sums. The cause:
+- The counterterms and loop groups of the heavy quarks grow like M² and cancel. |counterterms| + Σ|loop group| is 8.8e8 times the total for χ_c2, and 5.9e7 for J/ψ η_c.
+- MadLoop stores every loop group as a double-precision number (`LOOPRES`; `MP_TIRUST_LOOP` rounds the quadruple-precision value). The result therefore keeps 1e-16 times the parts.
+
+χ_c2 at √s = 10.58 GeV, against the reference:
 
 | m_b, m_t (GeV) | Parts / total | MadLoop (rounded) | Quadruple-precision sum |
 |---|---|---|---|
 | 1e3, 1e3 | 1.8e5 | 3.0e-7 | 3.0e-7 |
 | 1e4, 1e4 | 1.7e7 | 3.7e-9 | 3.0e-9 |
-| 1e4, 1e5 (the benchmark) | 8.8e8 | 1.2e-7 | 1.5e-9 |
+| 1e4, 1e5 | 8.8e8 | 1.2e-7 | 1.5e-9 |
 | 1e5, 1e5 | 1.7e9 | 3.2e-8 | 3.0e-11 |
 
 - **Summed in quadruple precision.** What is left is the decoupling remainder of the heavy quarks, which falls like 1/M².
 - **Physical masses.** With m_b = 4.75 and m_t = 173 GeV, the parts are 2.7e3 times the total, and the rounding is 1e-12.
-- **J/ψ η_c.** The same rounding is 6e-9 at the benchmark masses. Its remaining 4e-8 against Gong–Wang is the seventh digit of that reference.
+- **J/ψ η_c.** The rounding is 6e-9 at 10 and 100 TeV.

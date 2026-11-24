@@ -426,7 +426,7 @@ Conversion to the implementation's scheme `[DERIVED]` (n_l = 3, heavy quarks dec
 
     c0 = 2 (A_J + (2 T_F/3) ln(mu^2/m_c^2)),   sigma_NLO = sigma_LO (1 + (alpha_s/pi) A_J)  (n_f = 4)
 
-c0 is the cross-section average of MadLoop's finite part, int B c0 dcos / int B dcos. Values (eval.) at sqrt(s) = 10.58, m_c = 1.5, mu = 2m_c:
+c0 is the cross-section average of MadLoop's finite part, int B c0 dcos / int B dcos. In MadLoop the b and t quarks are excluded from the loops (`/ t t~ b b~`), which is the limit m_b, m_t -> infinity of the decoupling scheme; heavy masses (10, 100 TeV) instead leave a rounding floor of 1e-7 (`research/pwave_fd/README.md`). Values (eval.) at sqrt(s) = 10.58, m_c = 1.5, mu = 2m_c:
 
 | J | A_J (n_f = 4) | c0 (n_l = 3, decoupled) |
 |---|---|---|

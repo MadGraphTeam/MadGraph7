@@ -1,5 +1,5 @@
 {
- "revision": "37a82ca125",
+ "revision": "4296743eb0",
  "date": "2026-11-24",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
@@ -251,6 +251,10 @@
   [
    "37a82ca125",
    "docs/benchmarkfolder: e+ e- -> J/psi chi_cJ, an S-wave and a P-wave state, against the literature"
+  ],
+  [
+   "4296743eb0",
+   "docs/benchmarkfolder: the floor of quadruple precision is the rounding of the loop groups"
   ]
  ],
  "decisions": [
@@ -273,7 +277,7 @@
   "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes and the points are reported exceptional; TIRust 370b632 (PR \\#56, not yet pinned) serves them, stable, Gong\u2013Wang reproduced to $3 dot 10^(-7)$ (@analytic).",
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
   "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
-  "*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust 08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the finite part reproduces the closed form of Wang, Ma and Chao to $10^(-6)$ in double precision and $10^(-7)$ in quadruple precision, limited by MadLoop's rounding of the loop groups against the heavy-quark counterterms ($3 dot 10^(-11)$ when summed in quadruple precision).",
+  "*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust 08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the finite part reproduces the closed form of Wang, Ma and Chao to $10^(-7)$ in double precision and $10^(-15)$ in quadruple precision ($b$, $t$ excluded from the loops; as heavy quarks at 10\u2013100 TeV they left a floor of $10^(-7)$, @tab:qpfloor).",
   "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.",
   "*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV) and a tail of true double-precision errors in 1\u20132% of the $J\\/psi$, $Upsilon$ points; the P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, through TIRust's pentagons with a doubled line. TIRust 5025e12 (PR \\#56) with the bridge patch for its relation tiers and a binary64 gate (MadGraph7\\#528) fixes all three: no point of any process above $10^(-3)$, no S wave above $10^(-6)$, no rescue at 1 TeV, 18\u201349% more time for the P waves at 20 GeV (@stability). The P-wave octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1.",
   "*80-bit switch for the P waves* (@ep): `#PWaveExtendedPrecision` (off by default) computes the double-precision passes in extended precision. At 1 TeV it gains about three digits ($u overline(u) -> chi_(c 0) thin g$: $2 dot 10^(-8)$ worst instead of $3 dot 10^(-5)$) for 5 to 6 times the time. It needs TIRust d17085a (PR \\#56) with the bridge patch v2, not yet in MadGraph.",
@@ -284,7 +288,6 @@
   "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, \\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). 370b632 (in \\#56) also serves $g g -> chi_(c 0) g$ (@pwave). For double precision at high energy, the relation tiers of \\#56 (5025e12) with their bridge patch, and the pole kernels of the bridge on the `oneloop` of that revision (@stability).",
   "*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 (threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).",
   "*Quadruple-precision rescue:* the degenerate lanes in TIRust's binary128 path.",
-  "*Quadruple-precision sum:* MadLoop rounds every loop group to double precision, in the quadruple-precision passes too. Against counterterms that grow like $M^2$ (the $b$, $t$ decoupled at 10\u2013100 TeV of the $e^+ e^-$ references) this limits quadruple precision to $10^(-8)$\u2013$10^(-7)$, and `CTModeRun` 4 and 5 come out identical (@tab:qpfloor). Summing the groups in quadruple precision removes it.",
   "*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge patch with the gate and the relation tiers together exists; neither is on `onia_loop`'s bridge yet.",
   "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, and MadLoop's double precision is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; 22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ with physical masses), which MadLoop's loop-direction test does not vary. Fixed: bound-state outputs now estimate the rounding of the counterterm interference and rescue such points in quadruple precision (every point right).",
   "*Loop-induced processes* with bound states; the FKS integration on `onia_fks` (its `BinothLHA` can call this virtual).",

@@ -186,8 +186,10 @@ $alpha_s\/2pi$; literature values in units of $alpha_s\/pi$ doubled (sources in
   $1.3 dot 10^(-7)$, the finite part within $3.1 dot 10^(-7)$ of Gong and Wang.
   Forced quadruple precision gives poles of $10^(-15)$ and the finite part
   within $6 dot 10^(-8)$, inside the 7 published digits. MadLoop's own floor there
-  is the rounding of its loop groups against the counterterms of the heavy $b$
-  and $t$ quarks: $6 dot 10^(-9)$ (@tab:qpfloor).
+  is the rounding of its loop groups against the counterterms of the 10 and
+  100 TeV $b$ and $t$ quarks, $6 dot 10^(-9)$ (@tab:qpfloor). With the quarks
+  excluded from the loops instead (`/ t t~ b b~`), quadruple precision gives
+  24.53642097 at every point.
 ]
 
 = 2 → 2 processes: poles and an independent check of the finite parts <twotwo>
@@ -433,7 +435,9 @@ vanishes, as in the $2 -> 1$ processes but $g g -> c overline(c)[""^1 P_1^((8))]
 #let sp-lbl(c) = text(8.4pt, font: "Libertinus Serif", $J\/psi thin chi_(c #c.J)$)
 A process may have one P-wave state together with S-wave states.
 $e^+ e^- -> J\/psi thin chi_(c J)$ ($J = 0, 1, 2$; photon exchange only, no QED
-fragmentation, $b$ and $t$ decoupled) has a published one-loop reference.
+fragmentation) has a published one-loop reference. The $b$ and $t$ quarks are
+excluded from the loops (`/ t t~ b b~`), the limit $m_b, m_t -> infinity$ of
+the references.
 - *Its NLO correction is the virtual alone.* The final state is exclusive.
 - *The virtual is UV and IR finite.* The S-wave $J\/psi$ removes the
   non-factorisable soft exchange of the P wave, so `ONIA_IR_POLES` predicts
@@ -465,7 +469,7 @@ with TIRust 08cca00 (huashengshao/TIRust\#58, stacked on \#56, not yet
 pinned). The installation of the pinned TIRust has no raised powers, and
 MadGraph refuses the P-wave output.
 
-#block(breakable: false)[#figure(caption: [The angular average of the finite part against Wang, Ma and Chao, in double precision with MadLoop's stability test (`CTModeRun` −1, threshold $10^(-3)$; every node returns 213) and in quadruple precision (`CTModeRun` 4; 120). "dev." is relative, green within $10^(-6)$, the target of the other $e^+ e^-$ references (in double precision: or MadLoop's accuracy estimate, "acc.", the largest over the nodes, when that is larger). "poles" is the largest $|c_1|$, $|c_2|$ over the nodes in double (top) and quadruple precision; the prediction is 0.])[
+#block(breakable: false)[#figure(caption: [The angular average of the finite part against Wang, Ma and Chao, in double precision with MadLoop's stability test (`CTModeRun` −1, threshold $10^(-3)$; every node returns 213) and in quadruple precision (`CTModeRun` 4; 120). "dev." is relative, green within $10^(-6)$ in double precision, the target of the other $e^+ e^-$ references (or MadLoop's accuracy estimate, "acc.", the largest over the nodes, when that is larger), and within $10^(-12)$ in quadruple precision. "poles" is the largest $|c_1|$, $|c_2|$ over the nodes in double (top) and quadruple precision; the prediction is 0.])[
   #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
     column-gutter: 3pt,
     stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right, right, right),
@@ -473,7 +477,7 @@ MadGraph refuses the P-wave output.
     ..sp.map(c => (sp-lbl(c), dec(sp-dp(c).c0_reference, 8), dec(sp-dp(c).c0, 8),
       table.cell(fill: acc-fill(sp-dp(c).c0_relative_deviation, calc.max(1e-6, sp-dp(c).max_accuracy)))[#sci(sp-dp(c).c0_relative_deviation, d: 2)],
       sci(sp-dp(c).max_accuracy), dec(sp-qp(c).c0, 8),
-      table.cell(fill: acc-fill(sp-qp(c).c0_relative_deviation, 1e-6))[#sci(sp-qp(c).c0_relative_deviation, d: 2)],
+      table.cell(fill: acc-fill(sp-qp(c).c0_relative_deviation, 1e-12))[#sci(sp-qp(c).c0_relative_deviation, d: 2)],
       [#sci(sp-dp(c).max_pole) #linebreak() #sci(sp-qp(c).max_pole)],
       [#fixed(sp-dp(c).ms_per_point / 1000, 2) #linebreak() #fixed(sp-qp(c).ms_per_point / 1000, 1)])).flatten()))
 ] <tab:sp>]
@@ -493,13 +497,18 @@ MadGraph refuses the P-wave output.
     #sci(calc.max(..sp.map(c => sp-dp(c).max_pole))) in double precision and
     #sci(calc.max(..sp.map(c => sp-qp(c).max_pole))) in quadruple precision.
   - *Double precision.* Every node is stable (code 213), and the averages are
-    within $1.1 dot 10^(-6)$ of the reference. For $chi_(c 2)$ at the forward and
-    backward nodes, double precision differs from quadruple precision by up to
-    $5 dot 10^(-6)$, while MadLoop's loop-reversal estimate there is
-    $5 dot 10^(-7)$. This is far inside the stability threshold.
-  - *Quadruple precision.* It stops at $10^(-8)$–$10^(-7)$. The two
-    directions (`CTModeRun` 4 and 5) are identical bit for bit, so the
-    rescue's accuracy estimate is 0. The cause is below (@tab:qpfloor).
+    within #sci(calc.max(..sp.map(c => sp-dp(c).c0_relative_deviation))) of the
+    reference. Per node, double precision differs from quadruple precision by
+    up to $4.5 dot 10^(-7)$ ($chi_(c 1)$). MadLoop's loop-reversal estimate is
+    within a factor 5 of that, sometimes below it.
+  - *Quadruple precision.* The averages agree with the closed form to
+    #sci(calc.max(..sp.map(c => sp-qp(c).c0_relative_deviation))). With momenta
+    exact in binary64 (`psi_chic.py --exact`, $sqrt(s) = 18.5$ GeV) they agree to
+    #sci(calc.max(..spx.map(c => sp-qp(c).c0_relative_deviation))).
+  - *The two quadruple-precision directions* (`CTModeRun` 4 and 5) are identical
+    bit for bit, so the rescue's accuracy estimate is 0. MadLoop rounds each
+    loop group to double precision before the sum, and both directions round
+    alike.
   - *Helicities.* The LO shares equal the helicity amplitudes of Dong et al. to
     $2 dot 10^(-15)$. Their table's NLO corrections agree within its rounding.
 ]
@@ -521,24 +530,24 @@ MadGraph refuses the P-wave output.
     }).flatten()))
 ] <tab:qpfloor>]
 
-*The floor of quadruple precision.*
-- *Where it comes from.* The $b$ and $t$ quarks are decoupled at 10 and 100 TeV
-  to match the $n_l = 3$ references. Their counterterms and loop groups grow
-  like $M^2$ and cancel to $10^(-9)$ of their size (@tab:qpfloor). MadLoop
+*Heavy quarks instead of their exclusion.* The first runs decoupled $b$ and
+$t$ by giving them masses of 10 and 100 TeV, as the $e^+ e^-$ rows of
+@analytic do.
+- *The floor.* Quadruple precision then stopped at $10^(-8)$–$10^(-7)$.
+- *Where it comes from.* The counterterms and loop groups of the heavy quarks
+  grow like $M^2$ and cancel to $10^(-9)$ of their size (@tab:qpfloor). MadLoop
   stores every loop group as a double-precision number (`LOOPRES`; in the
   quadruple-precision passes, `MP_TIRUST_LOOP` rounds it). The result
-  therefore keeps $10^(-16)$ times the size of the parts, and both directions
-  round alike.
-- *Summed in quadruple precision.* The averages then agree with the reference
-  up to the decoupling remainder of the heavy quarks, which falls like
-  $1\/M^2$: $3 dot 10^(-11)$ with both quarks at 100 TeV.
-- *Not the momenta.* With momenta exact in binary64 (`psi_chic.py --exact`,
-  $sqrt(s) = 18.5$ GeV) the averages keep the same floor:
-  #spx.map(c => sci(sp-qp(c).c0_relative_deviation)).join(", ").
-- *With physical masses.* With $m_b = 4.75$ and $m_t = 173$ GeV, the parts are
+  therefore keeps $10^(-16)$ times the size of the parts.
+- *Summed in quadruple precision* (a patch of the output), the averages agree
+  with the reference up to the decoupling remainder of the heavy quarks, which
+  falls like $1\/M^2$: $3 dot 10^(-11)$ with both quarks at 100 TeV.
+- *Exact momenta* (`psi_chic.py --exact`) kept the floor, so the momenta were
+  not the cause.
+- *With physical masses* ($m_b = 4.75$, $m_t = 173$ GeV), the parts are
   $2.7 dot 10^3$ times the total, and the rounding is $10^(-12)$.
-- *In double precision.* The same rounding adds about $10^(-7)$ to the errors
-  of the integrals.
+- *Excluded from the loops*, the quarks leave no such cancellation
+  (@tab:sp).
 
 = Reduction libraries at threshold <reducers>
 
@@ -893,7 +902,7 @@ confidence interval of the geometric-mean ratio.
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
   for the $P -> S$ term.
 - $e^+ e^- -> J\/psi thin chi_(c J)$ (`data/raw/pwave/psi_chic_<J>.json`,
-  `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The floor of quadruple precision (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on a copy of the $chi_(c 2)$ output, and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]` generated with the same TIRust.
+  `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The heavy-quark floor (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on `e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]` (the $b$ and $t$ in the loops), and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]`, both generated with the same TIRust.
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust370b632.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.

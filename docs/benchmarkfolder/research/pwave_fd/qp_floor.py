@@ -1,10 +1,14 @@
-"""The floor of quadruple precision in e+ e- -> J/psi chi_cJ (and J/psi eta_c):
-the counterterms and the loop groups cancel, and MadLoop rounds every loop
-group to double precision before it adds them.
+"""The floor of quadruple precision in e+ e- -> J/psi chi_cJ (and J/psi eta_c)
+with heavy b and t quarks (10 and 100 TeV) instead of their exclusion: their
+counterterms and loop groups cancel, and MadLoop rounds every loop group to
+double precision before it adds them.
 
     qp_floor.py OUTDIR OUT.json J|etac [--masses 1e4:1e5,1e3:1e3,...] [--exact]
 
-OUTDIR is a generated output (psi_chic.py), patched in place (pass a copy):
+OUTDIR is a generated output with the b and t quarks in the loops (e.g.
+e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]; psi_chic.py excludes
+them, with / t t~ b b~, and so has no such floor), patched in place (pass a
+copy):
 - MP_TIRUST_LOOP (TIRUST_interface.f) adds the quadruple-precision value of
   each loop group, before its rounding to double precision, to QF_SUM, and
   its modulus to QF_ABS;

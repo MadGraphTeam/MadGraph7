@@ -69,9 +69,9 @@ STATUS_LINES = [
     'of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.',
     '*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust '
     '08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the '
-    'finite part reproduces the closed form of Wang, Ma and Chao to $10^(-6)$ in double '
-    'precision and $10^(-7)$ in quadruple precision, limited by MadLoop\'s rounding of the loop '
-    'groups against the heavy-quark counterterms ($3 dot 10^(-11)$ when summed in quadruple precision).',
+    'finite part reproduces the closed form of Wang, Ma and Chao to $10^(-7)$ in double '
+    'precision and $10^(-15)$ in quadruple precision ($b$, $t$ excluded from the loops; as heavy '
+    'quarks at 10–100 TeV they left a floor of $10^(-7)$, @tab:qpfloor).',
     '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
     '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
@@ -105,11 +105,6 @@ OPEN_ITEMS = [
     '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
     '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).',
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
-    '*Quadruple-precision sum:* MadLoop rounds every loop group to double precision, in the '
-    'quadruple-precision passes too. Against counterterms that grow like $M^2$ (the $b$, $t$ '
-    'decoupled at 10–100 TeV of the $e^+ e^-$ references) this limits quadruple precision to '
-    '$10^(-8)$–$10^(-7)$, and `CTModeRun` 4 and 5 come out identical (@tab:qpfloor). '
-    'Summing the groups in quadruple precision removes it.',
     '*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes '
     'the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge '
     'patch with the gate and the relation tiers together exists; neither is on `onia_loop`\'s '
