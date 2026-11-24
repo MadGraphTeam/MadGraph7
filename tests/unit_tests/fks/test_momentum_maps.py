@@ -142,7 +142,8 @@ class TestMomentumMaps(unittest.TestCase):
         routines = []
         for name in ("rotate_invar", "trp_rotate_invar", "phspncheck_nocms", "xlen4",
                      "xmom_compare", "xmcompare", "xprintout",
-                     "compute_prefactors_n1body", "set_cms_stuff"):
+                     "compute_prefactors_n1body", "set_cms_stuff",
+                     "isr_bw_active", "isr_bw_factors", "isr_cdilog"):
             routines.append(fortran_routine(TEMPLATE / "fks_singular.f", name))
         for name in ("dot", "rho", "threedot"):
             routines.append(fortran_routine(

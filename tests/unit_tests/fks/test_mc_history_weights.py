@@ -63,7 +63,8 @@ class TestMCHistoryWeights(unittest.TestCase):
             routines = ('compute_native_NLOPS_weights', 'compute_real_emission',
                         'compute_soft_counter_term', 'compute_collinear_counter_term',
                         'compute_soft_collinear_counter_term', 'add_wgt',
-                        'compute_prefactors_n1body')
+                        'compute_prefactors_n1body', 'isr_bw_active',
+                        'isr_bw_factors', 'isr_cdilog')
             (work / 'weights.f').write_text('\n'.join(
                 fortran_routine(TEMPLATE / 'fks_singular.f', name) for name in routines) +
                 '\n      double precision function real_channel_soft_fraction(p)\n'
