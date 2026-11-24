@@ -415,6 +415,13 @@ int rusticol_virtual_result_copy_virtual(const rusticol_virtual_result *, double
 int rusticol_virtual_result_copy_requested_ids(const rusticol_virtual_result *, uint64_t *, size_t);
 int rusticol_virtual_result_copy_successful_ids(const rusticol_virtual_result *, uint64_t *, size_t);
 int rusticol_virtual_result_copy_statuses(const rusticol_virtual_result *, uint32_t *, size_t);
+/* The diagnostics record (JSON). Among its keys, "uncertified" maps the id of
+ * every successful point whose value includes a reduction lane served
+ * without accuracy evidence (a lane that vanishes within the resolution of
+ * its own terms; one outside NinjaRS's rescue domain without refined
+ * kinematics) to its reasons, the Python API's
+ * VirtualLaneDiagnostic.uncertified: such a point keeps its value and
+ * status, its accuracy is not established. Points without one are absent. */
 int rusticol_virtual_result_diagnostics_json(const rusticol_virtual_result *, char *, size_t, size_t *);
 /* Per requested point the relative uncertainty of a RUSTICOL_VIRTUAL_BEST_EFFORT
  * point's value; NaN for every other point and for a best-effort point
