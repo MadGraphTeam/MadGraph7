@@ -21,6 +21,7 @@ This setup avoids two problems:
 | `pw_modes.py` | the full virtual of an output in the given `CTModeRun` modes (`1,4,-1:1.0d-40`), optionally at a relative momentum with on-shell constituents |
 | `psi_chic.py`, `psi_chic_ref.py` | e+ e- > J/psi chi_cJ (an S-wave and a P-wave state) against the closed form of Wang, Ma and Chao and the helicity tables of Dong, Feng and Jia (below) |
 | `qp_floor.py` | the floor of quadruple precision: the loop groups summed in quadruple precision against MadLoop's sum, for several b and t masses (below) |
+| `unequal_mass.py` | P waves with unequal constituent masses (e+ e- > B_c b c~): the computed 1/ε against `ONIA_IR_POLES` and against it without the self term and LDME counterterm (app. B of the two-P-wave manuscript); see benchmark.pdf, sect. 5.2.1 |
 
 The paths are those of the scratch workspace in which the scripts ran.
 

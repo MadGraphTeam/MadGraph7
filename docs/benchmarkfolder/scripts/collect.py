@@ -89,11 +89,15 @@ STATUS_LINES = [
     'digits ($u overline(u) -> chi_(c 0) thin g$: $2 dot 10^(-8)$ worst instead of '
     '$3 dot 10^(-5)$) for 5 to 6 times the time. It needs TIRust d17085a (PR \\#56) with the '
     'bridge patch v2, not yet in MadGraph.',
-    '*Two P-wave bound states* ($e^+ e^- -> chi_(c 0) thin h_c$): generated in double '
-    'precision. The predicted poles are complete, the dipole-dipole exchange of He, Kniehl and '
-    'Wang included, and reproduce the independent reference of `research/two_pwave` to '
-    '$6 dot 10^(-15)$. `ONIA_NRQCD_CT` gives the MS-bar counterterm of that exchange. The '
-    'virtual waits for TIRust\'s two dotted propagators.',
+    '*Two P-wave bound states* (@twopw): the predicted poles include the dipole-dipole exchange '
+    'of He, Kniehl and Wang, whose eq. (5) the derivation reproduces (up to a factor 4 and two '
+    '$J = 1$ misprints there). With TIRust 4f1b06c (TIRust main, not yet pinned) the computed '
+    'poles are as predicted: $e^+ e^- -> chi_(c 0) thin h_c$ to $10^(-10)$, '
+    '$g g -> chi_(c 0) thin chi_(c 0)$ to $10^(-8)$ up to 20 GeV, also in quadruple precision. '
+    '`ONIA_NRQCD_CT` gives the MS-bar counterterm of the exchange. The poles are those of eq. (B.2) '
+    'of the two-P-wave manuscript (@appb): its table 2 to all seven digits, each of its terms '
+    'tested; for unequal constituent masses ($B_c$) the virtual has no self-like pole, as eq. (B.2) '
+    'says and `ONIA_IR_POLES` does not yet.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]
@@ -122,9 +126,19 @@ OPEN_ITEMS = [
     '(its `BinothLHA` can call this virtual).',
     '*80-bit switch:* the bridge patch v2 (inputs as hi + lo words, check pass at the input '
     'precision) into MadGraph, then the TIRust pin with it (@ep).',
-    '*Two P-wave bound states:* TIRust with two dotted propagators and the doubled boxes and '
-    'pentagons it refuses at the two thresholds (fixtures in `research/two_pwave`), the '
-    'quadruple-precision path, and the comparison of the computed poles with the prediction.',
+    '*Two P-wave bound states:* a TIRust pin with two dotted propagators (4f1b06c, in TIRust '
+    'main) and its bridge patch v9 in MadGraph; a quadruple-precision pass takes about 75 '
+    'minutes, nearly all in MadLoop\'s binary128 numerator. No one-loop finite part is '
+    'published to compare with (@twopw).',
+    '*P waves with unequal constituent masses* ($B_c$): `ONIA_IR_POLES` keeps the self term and '
+    'LDME counterterm of arXiv:2402.19221, which the virtual does not have (off by up to 90% for '
+    'a $B_c$ octet); they should be dropped, as in the two-P-wave manuscript\'s eq. (B.2) '
+    '(@appb). Its footnote coefficient $kappa_h$ cancels them only for transitions to or from a '
+    'colour singlet.',
+    '*Dual spinors at an improved point:* `aloha_functions_dual.f` takes the dual square root of '
+    '$p_0 + p_z = 0$ when MadLoop\'s point improvement leaves $p_x, p_y tilde 10^(-16)$ on an '
+    'incoming massless fermion, and the P-wave weights become NaN ($2 -> 3$ P-wave processes with '
+    'quark or lepton beams; @appb).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
     '(it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.',
 ]
@@ -459,6 +473,129 @@ def summarize_pwave(folder):
                 qp_floor=summarize_qp_floor(folder))
 
 
+def summarize_two_pwave(folder):
+    """Two P-wave bound states (data/raw/two_pwave): the comparison of the
+    Phase 0 derivation with He, Kniehl and Wang (hkw_phase0.json), and the
+    computed poles of e+ e- -> chic0 hc (ee_dp.json, ee_qp.json) and
+    g g -> chic0 chic0 (gg_dp_*.json, gg_qp_*.json; qp_check.py and
+    qp_point.py records) against ONIA_IR_POLES."""
+    hkw = json.load(open(os.path.join(folder, 'hkw_phase0.json')))
+    eq5 = []
+    for p in hkw['eq5_points']:
+        s3 = dict(p['sigma3_ratio'])
+        s3['1'] = p['sigma3_J1_T_over_r2_ratio'][0] if p['sigma3_J1_T_over_r2_ratio'] else None
+        eq5.append(dict(sqrts=p['sqrts'], mc=p['mc'], r=p['r'], w=p['w'],
+                        sdc_p1_over_r2=p['sdc_ratio']['3S1[1] + 3P_1[1]'] / (2 * p['mc'] / p['sqrts']) ** 2,
+                        self_terms=max(abs(x - 1) for v in p['sigma1_9sigma2'].values() for x in v),
+                        sigma3=s3, brute_force=max(abs(x - 1) for x in p['brute_force_ratio'].values())
+                        if p['brute_force_ratio'] else None))
+    pdd = {float(k): v for k, v in hkw['chic0_hc_pdd_over_born'].items()}
+
+    def row(r, modes):
+        out = dict(energy=r['energy'], point=r['point'])
+        for m in modes:
+            x = r['ctmode' + m]
+            out[m] = dict(single=x['single_norm'], predicted=x['predicted_single_norm'],
+                          single_dev=abs(x['single_norm'] - x['predicted_single_norm'])
+                          / max(abs(x['predicted_single_norm']), 1e-300),
+                          double=x['double_norm'], double_dev=abs(x['double_norm'] - x['predicted_double_norm']),
+                          finite=x['finite_norm'], code=x['ret_code'], accuracy=x['accuracy'], time=x['time'])
+        return out
+    ee = []
+    d = json.load(open(os.path.join(folder, 'ee_dp.json')))
+    q = json.load(open(os.path.join(folder, 'ee_qp.json')))
+    qrec = {(r['energy'], r['point']): r for r in q['records']}
+    for r in d['records']:
+        e = row(r, d['modes'])
+        if (r['energy'], r['point']) in qrec:
+            e.update(row(qrec[(r['energy'], r['point'])], q['modes']))
+        ref = pdd.get(r['energy'])
+        e['reference'] = ref
+        if ref is not None:
+            e['predicted_vs_reference'] = abs(e['1']['predicted'] - ref) / ref
+        ee.append(e)
+    gg = []
+    for name in sorted(n for n in os.listdir(folder) if n.startswith('gg_dp_')):
+        d = json.load(open(os.path.join(folder, name)))
+        gg += [row(r, d['modes']) for r in d['records']]
+    gg.sort(key=lambda e: (e['energy'], e['point']))
+    for e in gg:
+        e['finite_directions'] = abs(e['2']['finite'] - e['1']['finite']) / abs(e['1']['finite'])
+    ggq = []
+    for name in sorted(n for n in os.listdir(folder) if n.startswith('gg_qp_')):
+        r = json.load(open(os.path.join(folder, name)))
+        x = r['result']
+        ggq.append(dict(energy=r['energy'], point=r['point'], mode=r['mode'], single=x['single_norm'],
+                        predicted=x['predicted_single_norm'],
+                        single_dev=abs(x['single_norm'] - x['predicted_single_norm'])
+                        / abs(x['predicted_single_norm']),
+                        double_dev=abs(x['double_norm'] - x['predicted_double_norm']),
+                        finite=x['finite_norm'], code=x['ret_code'], time=x['time']))
+    ggq.sort(key=lambda e: e['energy'])
+    return dict(kernel=hkw['kernel'], eq5=eq5, eq5_fit_J1=hkw['eq5_fit_J1'], ee=ee, gg=gg, gg_qp=ggq,
+                appb=summarize_appendix_b(folder))
+
+
+# Table 2 (tab:chic0hc) of the two-P-wave manuscript,
+# Manuscript/Quarkonium_FKS/JHEP_2Pwave/paper.tex: (m_c, sqrt(s)) -> the
+# 1/eps of e+ e- -> chic0 hc per Born alpha_s/2pi, eq. (B.2), seven digits.
+PAPER_TABLE2 = {(1.5, 6.5): 0.7193285, (1.5, 10.58): 0.7099925, (1.5, 30.0): 0.6746970,
+                (1.5, 100.0): 0.6674548, (1.5, 1000.0): 0.6666747, (1.55, 10.6): 0.71157570}
+
+
+def summarize_appendix_b(folder):
+    """research/two_pwave/appendix_b.py: e+ e- -> chic0 hc at the points of
+    the manuscript's table 2 (appb_table2_*.json; per point the
+    double-precision result, or quadruple precision where it was run), and
+    the 1/eps of g g -> chic0 chic0 split into the terms of its eq. (B.2)
+    (appb_terms_gg.json)."""
+    rows = {}
+    for name in sorted(n for n in os.listdir(folder) if n.startswith('appb_table2_')):
+        for r in json.load(open(os.path.join(folder, name)))['rows']:
+            rows.setdefault((r['m_c'], r['energy'], r['point']), {})[r['mode']] = r
+    table2 = []
+    for (mc, energy, point), by_mode in sorted(rows.items()):
+        paper = PAPER_TABLE2[(mc, energy)]
+        e = dict(m_c=mc, energy=energy, point=point, omega=next(iter(by_mode.values()))['omega'], paper=paper)
+        for mode, r in by_mode.items():
+            e[mode] = dict(c1=r['c1'], predicted=r['predicted'], c2=r['c2'], code=r['code'],
+                           c1_vs_predicted=abs(r['c1'] - r['predicted']) / abs(r['predicted']),
+                           c1_vs_paper=abs(r['c1'] - paper), predicted_vs_paper=abs(r['predicted'] - paper))
+        table2.append(e)
+    path = os.path.join(folder, 'appb_terms_gg.json')
+    terms = []
+    if os.path.exists(path):
+        for r in json.load(open(path))['rows']:
+            terms.append(dict(r, c1_vs_predicted=abs(r['c1'] - r['predicted']) / abs(r['predicted']),
+                              sum_vs_predicted=abs(r['term1'] + sum(r['term2']) + r['term3'] - r['predicted'])
+                              / abs(r['predicted'])))
+    unequal = []
+    for state, label in UNEQUAL_STATES:
+        path = os.path.join(folder, 'appb_unequal_%s.json' % state)
+        if not os.path.exists(path):
+            continue
+        rows = json.load(open(path))['rows']
+        unequal.append(dict(
+            state=state, label=label, npoints=len({(r['energy'], r['point']) for r in rows}),
+            modes=sorted({r['mode'] for r in rows}), energies=sorted({r['energy'] for r in rows}),
+            daughters=sorted({d['label'] for r in rows for d in r['daughters']}),
+            max_dev_no_self=max(r['dev_no_self'] for r in rows),
+            dev_predicted=[min(r['dev_predicted'] for r in rows), max(r['dev_predicted'] for r in rows)],
+            self_ldme8=[min(r['self_ldme8'] for r in rows), max(r['self_ldme8'] for r in rows)],
+            self_ldme_kappa=max(abs(r['self_ldme_kappa']) for r in rows),
+            self_ldme_kappa_by_daughter={lab: max(abs(d['self'] + d['ldme_kappa']) for r in rows
+                                                  for d in r['daughters'] if d['label'] == lab)
+                                         for lab in {d['label'] for r in rows for d in r['daughters']}},
+            codes=sorted({r['code'] for r in rows})))
+    return dict(table2=table2, terms_gg=terms, unequal=unequal)
+
+
+# research/pwave_fd/unequal_mass.py outputs (appb_unequal_<state>.json):
+# e+ e- > STATE b c~ / z t t~ QED=2 [virt=QCD], loop_sm_onia-c_mass
+UNEQUAL_STATES = [('bc1p1', r'B_c [""^1 P_1^((1))]'), ('bc3p1', r'B_c [""^3 P_1^((1))]'),
+                  ('bc1p8', r'B_c [""^1 P_1^((8))]')]
+
+
 def summarize_qp_floor(folder):
     """research/pwave_fd/qp_floor.py (qp_floor_<case>.json): per (m_b, m_t),
     the cancellation between counterterms and loop groups, and the angular
@@ -515,6 +652,7 @@ def main():
     parser.add_argument('--reducers')
     parser.add_argument('--mg255', help='research/mg255_swave/data')
     parser.add_argument('--pwave', help='data/raw/pwave')
+    parser.add_argument('--two-pwave', help='data/raw/two_pwave')
     parser.add_argument('--git', default='')
     parser.add_argument('--date', default='')
     args = parser.parse_args()
@@ -558,6 +696,9 @@ def main():
     if args.pwave:
         with open(os.path.join(DATA, 'pwave.json'), 'w') as f:
             json.dump(summarize_pwave(args.pwave), f, indent=1)
+    if args.two_pwave:
+        with open(os.path.join(DATA, 'two_pwave.json'), 'w') as f:
+            json.dump(summarize_two_pwave(args.two_pwave), f, indent=1)
     meta = dict(
         revision=args.git, date=args.date, host='AMD EPYC 9754 (shared host)',
         baseline=BASELINE, commits=commits(BASELINE), decisions=DECISIONS,

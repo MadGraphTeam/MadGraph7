@@ -3,7 +3,7 @@ integrals of the second-order dual terms), with the inputs MadLoop passes,
 whether TIRust's capability check accepts the call, its status and, when
 served, its binary64 array.
 
-    fixtures.py OUTDIR OUT.json.gz ENERGY:NPOINTS [ENERGY:NPOINTS ...]
+    fixtures.py OUTDIR OUT.json.gz ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--unit]
 
 OUTDIR is patched in place (pass a copy):
 - onia_loop.f: a refused raised-power call no longer ends the loop group
@@ -11,6 +11,9 @@ OUTDIR is patched in place (pass a copy):
 - TIRUST_interface.f: the double-precision raised-power entry writes its
   inputs (FX_DUMP=FILE) before the capability check, then the status and the
   array.
+With --unit, the unit-power entry (TIRUST_TENSOR_DIAGNOSTIC) writes its
+calls too, in the same format with every power 1 (OUTDIR patched before is
+patched again only for the part it lacks).
 Both passes are dumped: the primary one (CTModeRun 1) and the reversed loop
 of the stability test (CTModeRun 2, inputs after SWITCH_ORDER; TIRust shifts
 the invariants of a check pass itself). All numbers are hex doubles."""
@@ -26,8 +29,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..', '..', '..', '..', 'tools'))
 import onia_loop_check as olc
 
-outdir, out = os.path.abspath(sys.argv[1]), sys.argv[2]
-runs = [(float(a.split(':')[0]), int(a.split(':')[1])) for a in sys.argv[3:]]
+argv = [a for a in sys.argv[1:] if a != '--unit']
+unit = '--unit' in sys.argv[1:]
+outdir, out = os.path.abspath(argv[0]), argv[1]
+runs = [(float(a.split(':')[0]), int(a.split(':')[1])) for a in argv[2:]]
 pdir = olc.subprocess_dir(outdir)
 
 
@@ -139,6 +144,29 @@ C     fixtures.py: the inputs of a raised-power call, as hex doubles
     open(path, 'w').write(src)
     print('TIRUST_interface.f: raised-power calls dumped')
     for f in ('onia_loop.o', 'TIRUST_interface.o', 'ml_points_driver'):
+        if os.path.exists(os.path.join(pdir, f)):
+            os.unlink(os.path.join(pdir, f))
+# TIRUST_interface.f, with --unit: the unit-power entry dumps its calls too
+path = os.path.join(pdir, 'TIRUST_interface.f')
+src = open(path).read()
+if unit and 'FX_UNIT_POW' not in src:
+    s0, e0 = routine(src, 'ML5_0_TIRUST_TENSOR_DIAGNOSTIC')
+    body = src[s0:e0]
+    body = body.replace('      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS\n',
+                        '      LOGICAL STABLE,CACHE_ENABLED,CHECK_PASS\n      INTEGER FX_UNIT_POW(NLOOPLINE)\n', 1)
+    call = '      CALL TIRUST_TENSOR_EVALUATE(NLOOPLINE,RANK,SHIFTS,INVARIANTS'
+    assert body.count(call) == 1
+    body = body.replace(call, '''      FX_UNIT_POW=1
+      CALL FX_INPUTS(CTMODE,NLOOPLINE,RANK,FX_UNIT_POW,SHIFTS,
+     $ INVARIANTS,MASSES,SCALE,.TRUE.)
+''' + call)
+    ret = '      IF(STATUS.NE.TIRUST_SUCCESS) RETURN\n      DO I=0,NC-1\n'
+    assert body.count(ret) == 1
+    body = body.replace(ret, '      CALL FX_RESULT(NC,STATUS,RAW)\n' + ret)
+    src = src[:s0] + body + src[e0:]
+    open(path, 'w').write(src)
+    print('TIRUST_interface.f: unit-power calls dumped')
+    for f in ('TIRUST_interface.o', 'ml_points_driver'):
         if os.path.exists(os.path.join(pdir, f)):
             os.unlink(os.path.join(pdir, f))
 olc.build_driver(pdir)

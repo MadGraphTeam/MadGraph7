@@ -12,6 +12,7 @@
 #let mgp = json("data/mg255_pol.json")
 #let pw = json("data/pwave.json")
 #let stab = json("data/stability.json")
+#let two = json("data/two_pwave.json")
 
 #show: report-style.with(
   title: "MadLoop for quarkonium at one loop — validation, reducers and performance",
@@ -551,6 +552,199 @@ $t$ by giving them masses of 10 and 100 TeV, as the $e^+ e^-$ rows of
 - *Excluded from the loops*, the quarks leave no such cancellation
   (@tab:sp).
 
+== Two P-wave states <twopw>
+
+#let tp1(e) = e.at("1")
+#let tp2(e) = e.at("2")
+With two P-wave states the IR pole has three parts
+(`research/two_pwave/README.md`):
+- the colour-linked Born of the coloured legs, as for S waves;
+- the $P -> S$ term of each state (@pwave), taken with the other state still a
+  P wave;
+- *the dipole-dipole exchange* between the two pairs. A soft gluon turns both
+  P waves into S waves at once.
+
+The third part is the one He, Kniehl and Wang (HKW, arXiv:1809.07993) found
+NRQCD cannot absorb. Its cure is a set of new eight-quark operators.
+`ONIA_IR_POLES` predicts all three parts, and `ONIA_NRQCD_CT` gives the MS-bar
+counterterm of the eight-quark operators.
+
+The virtual needs TIRust integrals with two dotted or one tripled
+propagator, at the thresholds of both pairs. TIRust 4f1b06c serves them; it
+is in TIRust's main branch (PR \#58), not yet pinned. It runs with the bridge
+patch v9, not yet in MadGraph.
+
+No one-loop finite part of a process with two P-wave states is published.
+HKW give the poles of the soft real emission in $e^+ e^- -> c overline(c)[""^3 P_(J_1)^((8))] + c overline(c)[""^3 P_(J_2)^((1))] + g$
+(their eq. (5)) and the soft integral behind it (their eq. (8)). The
+derivation (`research/two_pwave`) checks both:
+- *Eq. (8).* Its kernel functions $f_1(omega)$, $f_2(omega)$ agree with a
+  direct evaluation of the soft integral to #sci(two.kernel.f1_f2_vs_direct),
+  for $1.001 <= omega <= 100$.
+- *Eq. (5).* It is recomputed from tree amplitudes written from scratch
+  (@tab:hkw).
+
+#block(breakable: false)[#figure(caption: [He, Kniehl and Wang's eq. (5) recomputed, as ratios to HKW. "self" is $sigma_1$ and $9 sigma_2$, every $J_2$ (the worst). Its colour-octet and singlet short-distance factors agree too, except the $""^3 P_1$ one, which is $r^2$ times HKW's (the column). $sigma_3$, the dipole-dipole term, is given as the ratio to HKW's printed value: for $J_2 = 1$ with HKW's $T$ polynomial divided by $r^2$. "total" is $sigma_1 + 9 sigma_2 + sigma_3$ against a brute-force angular integral of the whole soft emission (the worst $J_2$).])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right, right, right, right),
+    [$sqrt(s)$ (GeV)], [$m_c$], [$omega$], [self], [$""^3 P_1$ SDC $\/ r^2$], [$sigma_3$, $J_2 = 0$], [$J_2 = 1$], [$J_2 = 2$], [total],
+    ..two.eq5.map(e => (fixed(e.sqrts, 1), fixed(e.mc, 2), fixed(e.w, 2), dec(1 + e.self_terms, 9), dec(e.sdc_p1_over_r2, 9),
+      dec(e.sigma3.at("0"), 9), if e.sigma3.at("1") == none [—] else { dec(e.sigma3.at("1"), 9) }, dec(e.sigma3.at("2"), 9),
+      if e.brute_force == none [—] else { dec(1 + e.brute_force, 9) })).flatten()))
+] <tab:hkw>]
+
+The comparison establishes:
+- *What is reproduced exactly.* $sigma_3$ has HKW's dependence on
+  $r = 2 m_c\/sqrt(s)$ for every $J_2$, and $sigma_1$, $9 sigma_2$ are HKW's.
+  This confirms the kernel, its normalisation and the colour and spin
+  structure of the dipole-dipole term.
+- *Three apparent misprints in HKW's eq. (5).* Their $sigma_3$ is 4 times
+  smaller than what their own $sigma_1$, $sigma_2$ imply. For $J_2 = 1$, one
+  power of $r^2$ is misplaced in $sigma_2$ and in the $T$ polynomial of
+  $sigma_3$.
+- *Their conclusion stands:* none of these misprints removes the uncancelled
+  pole.
+
+MadLoop's virtual is a full one-loop calculation, independent of the
+prediction. For $e^+ e^- -> chi_(c 0) thin h_c$, the whole pole is the
+dipole-dipole exchange: both states are colour singlets, and the $P -> S$
+terms are colour forbidden. The reference column is that term evaluated from
+the derivation's own tree amplitudes, with no MadLoop code.
+
+#block(breakable: false)[#figure(caption: [$e^+ e^- -> chi_(c 0) thin h_c$, $m_c = 1.55$ GeV: the 1/ε coefficient per Born times $alpha_s\/2pi$, computed in double precision (`CTModeRun` 1; the reversed loop, 2, in the next column), against the prediction of `ONIA_IR_POLES` and against the derivation's reference. The 1/ε² is 0, as predicted, to the given value. The finite part is at the driver's default scale.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right, right, right, right),
+    [$sqrt(s)$, pt], [$c_1$ MadLoop], [dev. (1, 2)], [prediction], [reference], [pred. − ref.], [$|c_2|$], [$c_0$], [QP $c_1$ dev.],
+    ..two.ee.map(e => ([#fixed(e.energy, 2), #e.point], dec(tp1(e).single, 10),
+      [#sci(tp1(e).single_dev), #sci(tp2(e).single_dev)], dec(tp1(e).predicted, 10),
+      if e.reference == none [—] else { dec(e.reference, 10) },
+      if e.reference == none [—] else { sci(e.predicted_vs_reference) },
+      sci(calc.max(tp1(e).double_dev, tp2(e).double_dev)), dec(tp1(e).finite, 6),
+      if e.at("4", default: none) == none [—] else { sci(e.at("4").single_dev) })).flatten()))
+] <tab:ee2p>]
+
+#block(breakable: false)[#figure(caption: [$g g -> chi_(c 0) thin chi_(c 0)$ (all three parts of the pole) with TIRust 4f1b06c, at the points of `qp_check.py` (seed 1, the same angles at every energy; point 1 is 9.7° from the beam): the relative deviation of the computed 1/ε from the prediction in both loop directions, the largest deviation of the 1/ε² from −6, the finite part per Born $alpha_s\/2pi$, the agreement of the two directions, and the return code and accuracy estimate of MadLoop's stability test at its default threshold $10^(-3)$.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right, center, right),
+    [$sqrt(s)$, pt], [$c_1$ prediction], [dev. (1, 2)], [$c_2 + 6$], [$c_0$], [1 vs 2], [code], [acc.],
+    ..two.gg.map(e => ([#fixed(e.energy, 0), #e.point], dec(tp1(e).predicted, 6),
+      [#sci(tp1(e).single_dev), #sci(tp2(e).single_dev)], sci(calc.max(tp1(e).double_dev, tp2(e).double_dev)),
+      dec(tp1(e).finite, 4), sci(e.finite_directions), str(e.at("-1").code), sci(e.at("-1").accuracy))).flatten()))
+] <tab:gg2p>]
+
+#box-note[
+  - *Double precision.* Every point is served. Up to 20 GeV the poles are as
+    predicted to $10^(-8)$. At 50 GeV they agree to $10^(-5)$ at point 0; at
+    point 1 the 1/ε nearly cancels (0.20 per Born) and is off by
+    $1.6 dot 10^(-4)$. The stability test calls both stable (code 213), with
+    accuracy estimates of that size. At 200 GeV double precision loses the
+    poles at both points (at point 0 the Born is $2 dot 10^(-14)$ of its size
+    at small angles). The quadruple-precision rescue restores them to
+    $lt.eq 2 dot 10^(-11)$ (code 323, about 80 minutes per point).
+  - *Quadruple precision.* At 20 GeV, point 0 (TIRust 08cca00, whose
+    raised-power integrals 4f1b06c reproduces bit for bit), the 1/ε is as
+    predicted to $1.4 dot 10^(-14)$. The forward point:
+    #two.gg_qp.map(e => [#fixed(e.energy, 0) GeV #sci(e.single_dev)]).join(", ").
+    A quadruple-precision pass takes about 75 minutes, 96% of it in MadLoop's
+    binary128 numerator.
+  - *Earlier TIRust revisions.* The forward point failed from 20 GeV on with
+    08cca00, and earlier revisions gave wrong tensors at every point
+    (`research/two_pwave/FIXTURES.md`).
+]
+
+=== The manuscript's appendix B <appb>
+
+#let ab = two.appb
+The two-P-wave manuscript (`Manuscript/Quarkonium_FKS/JHEP_2Pwave`,
+app. B, eq. (B.2)) gives the poles of the one-loop matrix element of any
+process with two quarkonia. Its normalisation,
+$alpha_s\/(2pi) thin (4pi)^epsilon\/Gamma(1-epsilon)$ at $Q_"ES" = mu$, is
+MadLoop's. `ONIA_IR_POLES` evaluates the same expression, part by part:
+- *Lines 1–4: the quarkonia as point-like particles.* A colour octet counts
+  as a massive particle of mass $M$. These are the Catani–Dittmaier–Trócsányi
+  terms of the colour-linked Borns, as for S waves, and hold all the double
+  poles.
+- *Lines 4–5: the monopole-dipole term of each P-wave state.* The other state
+  is a spectator, still a P wave. `ONIA_PW2_SOFT_TERM` evaluates it, with the
+  same kernels for massless and massive legs. It also adds the self term and
+  the LDME counterterm of arXiv:2402.19221, app. B, with the coefficient
+  $8\/(m_Q m_(overline(Q)))$. For equal constituent masses they cancel
+  identically, as eq. (B.2) has it; for unequal masses they do not (below).
+- *Line 6: the dipole-dipole term.* `ONIA_PW2_DIPOLE_DIPOLE` computes
+  $4\/(M_1 M_2) thin "Re"{[f_1^c g_(mu nu) + f_2^c v_(2,mu) v_(1,nu)] cal(M)_V^(mu nu)}$.
+  This includes the imaginary parts of $f^c_(1,2)$, which vanish for $2 -> 2$
+  processes. Here they are $lt.eq$ #sci(calc.max(..ab.terms_gg.map(r => calc.max(calc.abs(r.im_z.at(0)), calc.abs(r.im_z.at(1))))))
+  per Born.
+
+*The one difference: unequal constituent masses* (@tab:appb-bc). Eq. (B.2)
+has no self-like pole for any masses, while `ONIA_IR_POLES` keeps one when
+$m_Q != m_(overline(Q))$. Three $B_c$ P waves decide which is right, in
+$e^+ e^- -> B_c thin b thin overline(c)$ ($m_c = 1.55$, $m_b = 4.7$ GeV),
+where the S-wave daughter Borns do not vanish:
+- *The virtual has no self-like pole.* MadLoop's computed 1/ε equals the
+  prediction without the self term and the LDME counterterm to
+  $lt.eq$ #sci(calc.max(..ab.unequal.map(u => u.max_dev_no_self))), in both
+  loop directions. With them, `ONIA_IR_POLES` is off by
+  #sci(calc.min(..ab.unequal.map(u => u.dev_predicted.at(0))))–#sci(calc.max(..ab.unequal.map(u => u.dev_predicted.at(1)))).
+  Eq. (B.2) is right, and `ONIA_IR_POLES` must drop the two terms.
+- *The manuscript's $kappa_h = 2 M_h^2\/(m_Q m_(overline(Q)))^2$* (footnote of
+  its sect. 5.1) cancels the self term for the transitions to or from a
+  colour singlet, to rounding. It does not for the octet-to-octet
+  transition of an octet state, where up to
+  #calc.round(calc.max(..ab.unequal.map(u => u.self_ldme_kappa_by_daughter.at("88", default: 0))), digits: 1)
+  per Born is left. With the $C_"eff"$ of arXiv:2402.19221, that transition
+  needs $kappa_h (14\/5 - 36 m_Q m_(overline(Q))\/(5 M_h^2))$, which is
+  $kappa_h$ only for equal masses.
+- *MadLoop's point improvement is off for these points* (`ImprovePSPoint`
+  $-1$). With it, the incoming $e^-$ gets $p_x, p_y tilde 10^(-16)$ while
+  $p_0 + p_z = 0$. The dual spinor of `aloha_functions_dual.f` then takes the
+  dual square root of 0, whose derivative part is NaN, and every P-wave
+  weight of the loop becomes NaN (code 410). The $2 -> 1$ and $2 -> 2$
+  processes of this report do not reach that branch.
+
+#block(breakable: false)[#figure(caption: [P waves with unequal constituent masses, $e^+ e^- -> B_c thin b thin overline(c)$ (`research/pwave_fd/unequal_mass.py`; $sqrt(s) = 20$ and 30 GeV, two points each, `CTModeRun` 1 and 2): the relative deviation of the computed 1/ε from the prediction without the self term and LDME counterterm (eq. (B.2)) and from `ONIA_IR_POLES`, the size of those two terms per Born times $alpha_s\/2pi$, and what is left of them per daughter transition with the manuscript's $kappa_h$ in place of $8\/(m_Q m_(overline(Q)))$. The 1/ε² is 0.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, left),
+    [state], [points], [vs. eq. (B.2)], [vs. `ONIA_IR_POLES`], [self + LDME], [left with $kappa_h$],
+    ..ab.unequal.map(u => (eval(u.label, mode: "math"), [#u.npoints × #u.modes.len()], sci(u.max_dev_no_self),
+      [#sci(u.dev_predicted.at(0))–#sci(u.dev_predicted.at(1))],
+      [#dec(u.self_ldme8.at(0), 3)–#dec(u.self_ldme8.at(1), 3)],
+      u.self_ldme_kappa_by_daughter.pairs().map(((k, v)) => [#k.at(0)→#k.at(1): #sci(v)]).join(linebreak()))).flatten()))
+] <tab:appb-bc>]
+
+#block(breakable: false)[#figure(caption: [$e^+ e^- -> chi_(c 0) thin h_c$ at the points of the manuscript's table 2 (seven digits): MadLoop's computed 1/ε per Born times $alpha_s\/2pi$ in double precision (`CTModeRun` 1), its difference from the manuscript, and the difference of `ONIA_IR_POLES` and of quadruple precision (`CTModeRun` 4, where run) from the manuscript. The 1/ε² is 0.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right, right, right),
+    [$m_c$, $sqrt(s)$, pt], [$omega$], [manuscript], [$c_1$ DP], [$|$DP − ms.$|$], [$|$pred. − ms.$|$], [$|$QP − ms.$|$], [code DP],
+    ..ab.table2.map(e => ([#fixed(e.m_c, 2), #fixed(e.energy, 2), #e.point], fixed(e.omega, 4), dec(e.paper, 7),
+      dec(e.at("1").c1, 10), sci(e.at("1").c1_vs_paper), sci(e.at("1").predicted_vs_paper),
+      if e.at("4", default: none) == none [—] else { sci(e.at("4").c1_vs_paper) },
+      str(e.at("1").code))).flatten()))
+] <tab:appb-ee>]
+
+#block(breakable: false)[#figure(caption: [$g g -> chi_(c 0) thin chi_(c 0)$, double precision: MadLoop's computed 1/ε per Born times $alpha_s\/2pi$, and the parts of eq. (B.2) that `ONIA_IR_POLES` adds up (`appendix_b.py terms`). Lines 1–4 are $-2 gamma_g$ at $mu = sqrt(s)$; line 6 is split into its $f_1$ and $f_2$ parts. The last column is the relative deviation of the computed 1/ε from their sum.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right, right, right),
+    [$sqrt(s)$, pt], [$omega$], [$c_1$ MadLoop], [lines 1–4], [lines 4–5 (each state)], [line 6, $f_1$], [line 6, $f_2$], [dev.],
+    ..ab.terms_gg.map(r => ([#fixed(r.energy, 0), #r.point], fixed(r.omega, 4), dec(r.c1, 8), dec(r.term1, 8),
+      dec(r.term2.at(0), 8), dec(r.term3_f1, 8), dec(r.term3_f2, 8), sci(r.c1_vs_predicted))).flatten()))
+] <tab:appb-gg>]
+
+The numbers:
+- *$e^+ e^- -> chi_(c 0) thin h_c$* (@tab:appb-ee). Only line 6 contributes.
+  The computed 1/ε matches the manuscript's table 2 to all seven printed
+  digits, and `ONIA_IR_POLES` matches it to its rounding. That includes its
+  footnote value, $m_c = 1.55$ GeV at 10.6 GeV. At 100 and 1000 GeV double
+  precision loses the pole, and quadruple precision restores it.
+- *$g g -> chi_(c 0) thin chi_(c 0)$* (@tab:appb-gg). All of eq. (B.2)
+  contributes except the massive lines, since only the gluons are coloured.
+  Each part is at least #calc.round(calc.min(..ab.terms_gg.map(r => calc.min(calc.abs(r.term3_f1), calc.abs(r.term3_f2), r.term2.at(0)))), digits: 1) per Born, and the computed pole matches their
+  sum to $lt.eq$ #sci(calc.max(..ab.terms_gg.map(r => r.c1_vs_predicted))).
+  The $f_2$ part alone is
+  #calc.round(100 * calc.min(..ab.terms_gg.map(r => calc.abs(r.term3_f2 / r.c1))))–#calc.round(100 * calc.max(..ab.terms_gg.map(r => calc.abs(r.term3_f2 / r.c1))))%
+  of the pole, so it is tested too. The $e^+ e^-$ process cannot test it:
+  there it vanishes, as the manuscript notes.
+
 = Reduction libraries at threshold <reducers>
 
 #let caught = rgb("#f8d4cc")
@@ -905,9 +1099,10 @@ confidence interval of the geometric-mean ratio.
   for the $P -> S$ term.
 - $e^+ e^- -> J\/psi thin chi_(c J)$ (`data/raw/pwave/psi_chic_<J>.json`,
   `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The heavy-quark floor (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on `e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]` (the $b$ and $t$ in the loops), and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]`, both generated with the same TIRust.
+- Two P-wave states (`data/raw/two_pwave/`): `hkw_phase0.json` collects the outputs of `research/two_pwave/kernel_check.py` and `sigma3_check.py` (the derivation) and its $e^+ e^- -> chi_(c 0) thin h_c$ reference; `ee_dp.json`, `ee_qp.json`, `gg_dp_*.json` are `research/two_pwave/qp_check.py OUTDIR OUT ...` ($e^+ e^-$: `7:1 10.58:2 30:1 --modes 1,2` and `10.58:1 --modes 4`; $g g$: `8:2 12:2`, `20:4`, `50:2 200:2` with `--modes 1,2,-1 --thres 1.0d-3`), and `gg_qp_*.json` are `research/two_pwave/qp_point.py OUTDIR OUT E 1 4`, on outputs generated with TIRust 4f1b06c and the bridge patch v9 (`research/pwave_fd/build.sh`).
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
-- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
+- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json --two-pwave data/raw/two_pwave --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,
   0712.4220; Catani, Dittmaier, Trócsányi, hep-ph/0011222; quarkonium in

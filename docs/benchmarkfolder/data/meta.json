@@ -1,5 +1,5 @@
 {
- "revision": "344dfcaa9a",
+ "revision": "280fd476d6",
  "date": "2026-11-24",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
@@ -259,6 +259,10 @@
   [
    "344dfcaa9a",
    "docs/benchmarkfolder: J/psi chi_cJ with b and t excluded from the loops"
+  ],
+  [
+   "280fd476d6",
+   "onia_loop_validate: the e+ e- cases exclude b and t from the loops"
   ]
  ],
  "decisions": [
@@ -285,7 +289,7 @@
   "*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ ($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.",
   "*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV) and a tail of true double-precision errors in 1\u20132% of the $J\\/psi$, $Upsilon$ points; the P-wave singlets lose digits in double precision at 1 TeV, not at 20 GeV, through TIRust's pentagons with a doubled line. TIRust 5025e12 (PR \\#56) with the bridge patch for its relation tiers and a binary64 gate (MadGraph7\\#528) fixes all three: no point of any process above $10^(-3)$, no S wave above $10^(-6)$, no rescue at 1 TeV, 18\u201349% more time for the P waves at 20 GeV (@stability). The P-wave octets $e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1.",
   "*80-bit switch for the P waves* (@ep): `#PWaveExtendedPrecision` (off by default) computes the double-precision passes in extended precision. At 1 TeV it gains about three digits ($u overline(u) -> chi_(c 0) thin g$: $2 dot 10^(-8)$ worst instead of $3 dot 10^(-5)$) for 5 to 6 times the time. It needs TIRust d17085a (PR \\#56) with the bridge patch v2, not yet in MadGraph.",
-  "*Two P-wave bound states* ($e^+ e^- -> chi_(c 0) thin h_c$): generated in double precision. The predicted poles are complete, the dipole-dipole exchange of He, Kniehl and Wang included, and reproduce the independent reference of `research/two_pwave` to $6 dot 10^(-15)$. `ONIA_NRQCD_CT` gives the MS-bar counterterm of that exchange. The virtual waits for TIRust's two dotted propagators.",
+  "*Two P-wave bound states* (@twopw): the predicted poles include the dipole-dipole exchange of He, Kniehl and Wang, whose eq. (5) the derivation reproduces (up to a factor 4 and two $J = 1$ misprints there). With TIRust 4f1b06c (TIRust main, not yet pinned) the computed poles are as predicted: $e^+ e^- -> chi_(c 0) thin h_c$ to $10^(-10)$, $g g -> chi_(c 0) thin chi_(c 0)$ to $10^(-8)$ up to 20 GeV, also in quadruple precision. `ONIA_NRQCD_CT` gives the MS-bar counterterm of the exchange. The poles are those of eq. (B.2) of the two-P-wave manuscript (@appb): its table 2 to all seven digits, each of its terms tested; for unequal constituent masses ($B_c$) the virtual has no self-like pole, as eq. (B.2) says and `ONIA_IR_POLES` does not yet.",
   "*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE checks, bit-identical, faster on every benchmark process."
  ],
  "open_items": [
@@ -296,7 +300,9 @@
   "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, and MadLoop's double precision is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; 22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ with physical masses), which MadLoop's loop-direction test does not vary. Fixed: bound-state outputs now estimate the rounding of the counterterm interference and rescue such points in quadruple precision (every point right).",
   "*Loop-induced processes* with bound states; the FKS integration on `onia_fks` (its `BinothLHA` can call this virtual).",
   "*80-bit switch:* the bridge patch v2 (inputs as hi + lo words, check pass at the input precision) into MadGraph, then the TIRust pin with it (@ep).",
-  "*Two P-wave bound states:* TIRust with two dotted propagators and the doubled boxes and pentagons it refuses at the two thresholds (fixtures in `research/two_pwave`), the quadruple-precision path, and the comparison of the computed poles with the prediction.",
+  "*Two P-wave bound states:* a TIRust pin with two dotted propagators (4f1b06c, in TIRust main) and its bridge patch v9 in MadGraph; a quadruple-precision pass takes about 75 minutes, nearly all in MadLoop's binary128 numerator. No one-loop finite part is published to compare with (@twopw).",
+  "*P waves with unequal constituent masses* ($B_c$): `ONIA_IR_POLES` keeps the self term and LDME counterterm of arXiv:2402.19221, which the virtual does not have (off by up to 90% for a $B_c$ octet); they should be dropped, as in the two-P-wave manuscript's eq. (B.2) (@appb). Its footnote coefficient $kappa_h$ cancels them only for transitions to or from a colour singlet.",
+  "*Dual spinors at an improved point:* `aloha_functions_dual.f` takes the dual square root of $p_0 + p_z = 0$ when MadLoop's point improvement leaves $p_x, p_y tilde 10^(-16)$ on an incoming massless fermion, and the P-wave weights become NaN ($2 -> 3$ P-wave processes with quark or lepton beams; @appb).",
   "*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters' output (it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit."
  ],
  "perf_note": "*Where the time goes* (`research/perf_audit.md`, $g g -> t overline(t) g$ with Ninja, before these changes): the loop-numerator updaters (`UPDATE_WL` and the DP-terminal updaters) 45% of the time, the counterterm colour loop 16%, the HELAS routines 8%, the IEEE mode queries of the private updaters 3%. In the audit's full stack (these five changes and C) the colour loop takes 2% and the IEEE queries 0.2%. Not applied: C, the rank-limited clearing of the updaters' output (identical results, but it breaks tests that pin full clearing), and the opt-in `-march` builds."
