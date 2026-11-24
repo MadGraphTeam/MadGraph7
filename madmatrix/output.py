@@ -369,9 +369,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     def finalize(self, *args, **kwargs):
         super().finalize(*args, **kwargs)
-        # --hel_recycling: the P* directories are recorded as unmeasured once
-        # complete (the filter is measured at launch, CPU/SIMD only)
-        self._defer_hel_recycling()
+        # --hel_recycling: once every P* directory is complete, record it as
+        # unmeasured (the launch measures it, CPU/SIMD only)
+        self._hel_recycling_at_output()
 
     # The --hel_recycling probe runs through the standalone driver check_sa.exe,
     # which only `output standalone` ships. Any other output keeps a copy of it
@@ -392,17 +392,25 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         with open(pjoin(target, self._hr_probe_makefile), 'w') as fsock:
             fsock.write(rendered)
 
-    def _defer_hel_recycling(self):
-        """For each --hel_recycling P* directory of this output: keep the plain
-        code and record that its filter is not measured yet
-        (hel_recycling_filter.defer_at_output). Nothing is probed or built at
-        generation: the first launch measures the filter at its own parameters,
-        and each scan point of a launch at its own
-        (hel_recycling_filter.update, from MadgraphProcess.update_hel_recycling).
+    # Whether an output measures the --hel_recycling filter itself. An mg7
+    # output does not: its launch measures it at the parameters of the run
+    # (each scan point at its own card). A standalone output is never launched,
+    # so it measures at its own param_card (see ProcessExporterMadMatrixStandalone).
+    _hr_measure_at_output = False
 
-        The probe driver is written here, since the launch builds the probe
-        from it. Until a launch, the directory is the plain matrix element,
-        which is correct at any parameters."""
+    def _hel_recycling_at_output(self):
+        """For each --hel_recycling P* directory of this output, either record
+        that its filter is not measured yet and keep the plain code
+        (hel_recycling_filter.defer_at_output; the first launch measures it at
+        its own parameters, and each scan point at its own, through
+        hel_recycling_filter.update from MadgraphProcess.update_hel_recycling),
+        or, for an output that is never launched, measure it now at the
+        output's param_card and write the recycled build
+        (hel_recycling_filter.measure_at_output).
+
+        The probe is built in a mirror of the output (.hrprobe), never in the
+        P* directory itself. On any failure the directory keeps the plain
+        code: correct but not recycled."""
         exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
         # only this output's directories, whatever happens: the list is shared
         # by every exporter of the session
@@ -411,7 +419,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         if not mine:
             return
         self._write_hr_probe_sources()
-        hel_recycling_filter.defer_at_output(self.dir_path, mine)
+        if self._hr_measure_at_output:
+            hel_recycling_filter.measure_at_output(
+                self.dir_path, mine, pjoin(self.dir_path, 'Cards', 'param_card.dat'))
+        else:
+            hel_recycling_filter.defer_at_output(self.dir_path, mine)
 
     def _is_own_dir(self, path):
         """Whether path lies in this output's directory."""
@@ -575,11 +587,17 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
 
     def finalize(self, *args, **kwargs):
         # no subprocesses.json (nor anything else the mg7 launcher needs), only
-        # the --hel_recycling deferral, which can only run once every P*
-        # directory is complete, and the process table of the standalone
+        # the --hel_recycling warm-up, which can only run once every P*
+        # directory is complete and buildable (measured here: a standalone
+        # output is never launched), and the process table of the standalone
         # libraries
-        self._defer_hel_recycling()
+        self._hel_recycling_at_output()
         self.write_processes_file()
+
+    # never launched: nothing but the output would measure the filter. A user
+    # who edits the param_card relies on the build's run-time check
+    # (hr_check_stale), which falls back to the plain code
+    _hr_measure_at_output = True
 
     def _write_hr_probe_sources(self):
         # check_sa.exe is part of a standalone output already

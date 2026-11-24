@@ -1635,8 +1635,10 @@ class TestCrossingHelicityFactor(unittest.TestCase):
 
 
 class TestHelRecyclingWarmupDispatch(unittest.TestCase):
-    """Which directories an output warms up: an mg7 output its own (it has no
-    check_sa.exe of its own, so it is lent one for the probe), and never the
+    """Which directories an output records for --hel_recycling, and how: an
+    mg7 output its own, deferred to the launch (it keeps a probe driver for
+    the launch, having no check_sa.exe of its own); a standalone output
+    measures its own at generation, since it is never launched; and never the
     directory another output left registered."""
 
     def setUp(self):
@@ -1671,7 +1673,7 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
         exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
         with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize') as base, \
              mock.patch.object(self.output.ProcessExporterMadMatrix,
-                               '_defer_hel_recycling') as warmup:
+                               '_hel_recycling_at_output') as warmup:
             exporter.finalize()
         base.assert_called_once_with()
         warmup.assert_called_once_with()
@@ -1706,6 +1708,30 @@ class TestHelRecyclingWarmupDispatch(unittest.TestCase):
         self.assertEqual(hrf.read_state(own), {'cards': None, 'recycled': False,
                                                'output': {'recycled': False}})
         self.assertEqual(os.listdir(foreign), [])
+
+    def test_standalone_measures_at_output_and_mg7_defers(self):
+        """An mg7 output leaves the filter to its launch; a standalone output,
+        never launched, measures it at its own param_card."""
+        from unittest import mock
+        from madmatrix import hel_recycling_filter as hrf
+        for cls, at_output in ((self.output.ProcessExporterMadMatrix, False),
+                               (self.output.ProcessExporterMadMatrixStandalone, True)):
+            exporter = self.exporter(cls, cls.__name__)
+            self.pdir(exporter.dir_path)
+            registered = list(self.warmups)
+            with mock.patch.object(hrf, 'measure_at_output') as measure, \
+                 mock.patch.object(hrf, 'defer_at_output') as defer, \
+                 mock.patch.object(cls, '_write_hr_probe_sources'):
+                exporter._hel_recycling_at_output()
+            if at_output:
+                measure.assert_called_once_with(
+                    exporter.dir_path, registered,
+                    os.path.join(exporter.dir_path, 'Cards', 'param_card.dat'))
+                defer.assert_not_called()
+            else:
+                defer.assert_called_once_with(exporter.dir_path, registered)
+                measure.assert_not_called()
+            self.assertEqual(self.warmups, [])
 
     def test_a_new_output_drops_what_an_earlier_one_left(self):
         self.pdir(os.path.join(self.tmp, 'earlier'))
@@ -1875,6 +1901,49 @@ class TestHelRecyclingFilter(unittest.TestCase):
             self.hrf.update(root2, [self.cards['b']], ['SubProcesses/P1_x'])
         write.assert_called_once()
         self.assertIsNone(write.call_args[0][2])
+
+    def test_a_deferred_output_is_measured_at_its_first_launch(self):
+        """An mg7 output records its filter as not measured (defer_at_output)
+        and keeps the plain code: its first launch measures it, whatever the
+        card, and builds it under the name of its filter (an untagged library
+        is the plain code). A first launch that cannot measure keeps the
+        plain code under its own name."""
+        root, pdir = self.output()
+        class Registered(object):
+            path = pdir
+            def write_hr_recipe(self):
+                return {'helicities': []}
+        open(os.path.join(pdir, 'HelRecycling.inc'), 'w').close()
+        self.hrf.defer_at_output(root, [Registered()])
+        self.assertEqual(self.hrf.read_state(pdir), {'cards': None, 'recycled': False,
+                                                     'output': {'recycled': False}})
+        self.assertFalse(os.path.exists(os.path.join(pdir, 'HelRecycling.inc')))
+        # the output's own card is measured too: nothing was measured there
+        result, measured, written = self.update(root, [self.cards['a']],
+                                                ([1, 2], [[1, 3]]))
+        self.assertEqual((measured, written), (1, [([1, 2], [[1, 3]])]))
+        state = self.hrf.read_state(pdir)
+        self.assertEqual((state['recycled'], state['cards']),
+                         (True, self.hrf.cards_key([self.cards['a']])))
+        tag = self.hrf.tag_of(state)
+        self.assertRegex(tag, r'^_hr[0-9a-f]{8}$')
+        self.assertEqual(result, {'SubProcesses/P1_x':
+                                  'lib/libmadmatrix_sm_P1_x%s_{device}_{fptype}.so' % tag})
+        self.assertFalse(os.path.isdir(os.path.join(pdir, 'build.simd_128_d')))
+        # measured there now
+        self.assertEqual(self.update(root, [self.cards['a']], None), ({}, 0, []))
+
+        shutil.rmtree(root)
+        root, pdir = self.output()
+        Registered.path = pdir
+        self.hrf.defer_at_output(root, [Registered()])
+        # the probe answers nothing usable: the plain code, nothing renamed
+        result, measured, written = self.update(root, [self.cards['b']], None)
+        self.assertEqual((result, measured, written), ({}, 1, [(None, None)]))
+        state = self.hrf.read_state(pdir)
+        self.assertEqual((state['recycled'], state['cards']),
+                         (False, self.hrf.cards_key([self.cards['b']])))
+        self.assertEqual(self.me_path(root), 'lib/libmadmatrix_sm_P1_x_{device}_{fptype}.so')
 
     def test_launch_param_cards(self):
         # what mg7/madtrex.py hands update() for a MadtRex reweighting. Not

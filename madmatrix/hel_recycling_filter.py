@@ -6,11 +6,14 @@ The recycled build of a P* directory is generated for one filter: the rows
 it builds are the good helicities, and the amplitudes it drops are the ones
 that vanish at them. Both depend on the parameters -- a coupling set to zero
 kills its diagrams, a helicity can open up with a mass -- so the filter is
-not measured at generation time: an output keeps the plain code until a run
-measures it at its own parameters (update(), from
+not measured when an mg7 output is generated (defer_at_output): it keeps the
+plain code until a run measures it at its own parameters (update(), from
 madgraph/mg7/madgraph_process.py, once per scan point, and before a MadtRex
 reweighting evaluates the libraries at the cards of its launches). Each
 launch point gets the filter of its own card, never one measured at another.
+A standalone output, which is never launched, is measured at its own
+param_card when it is generated (measure_at_output); its build checks at run
+time that the amplitudes it skips still vanish.
 
 What is kept in the output:
   - P*/HelRecyclingRecipe.json: what the exporter knows of the matrix element
@@ -378,6 +381,36 @@ def strip_tag(name):
 
 # -- the two passes ----------------------------------------------------------
 
+def measure_at_output(root, exporters, card):
+    """The generation-time pass of an output that is never launched (a
+    standalone one, madmatrix/output.py): measure every --hel_recycling P*
+    directory of `exporters` at `card` and write its recycled build, or leave
+    the plain code. Its filter is the output's own: the one whose library
+    carries no tag."""
+    tree = ProbeTree(root)
+    tree.reset()
+    key = cards_key([card])
+    for exporter in exporters:
+        pdir = exporter.path
+        name = os.path.basename(pdir)
+        recipe = exporter.write_hr_recipe()
+        state = {'cards': key, 'recycled': False}
+        try:
+            good, zeros = tree.measure(pdir, [card])
+            nrows = write_build(pdir, recipe, good, zeros)
+            if nrows is not None:
+                state.update(recycled=True, good_hels=good, zero_perhel=zeros)
+                logger.info('hel_recycling: %s builds %d helicity rows of %d, '
+                            'dropping %d (helicity, amplitude) pairs that vanish',
+                            name, nrows, len(recipe['helicities']), len(zeros))
+        except Exception as error:
+            remove_recycled(pdir)
+            logger.warning('hel_recycling warm-up error in %s (%s); it is '
+                           'written without recycling.', name, error)
+        state['output'] = signature(state)
+        write_state(pdir, state)
+
+
 def defer_at_output(root, exporters):
     """The generation-time pass (madmatrix/output.py): nothing is measured
     here. Every --hel_recycling P* directory of `exporters` keeps the plain
@@ -464,6 +497,11 @@ def update(root, cards, pdirs, nb_core=None, subprocesses_json=None, log=None):
         if nrows is None:
             log.info('hel_recycling: %s is built without recycling at these parameters',
                         name)
+        elif state.get('cards') is None:
+            # the first measurement of an output that deferred it
+            log.info('hel_recycling: %s measured at these parameters: %d helicity '
+                        'rows of %d, dropping %d (helicity, amplitude) pairs that vanish',
+                        name, nrows, len(recipe['helicities']), len(zeros))
         else:
             log.info('hel_recycling: %s re-measured at these parameters: %d helicity '
                         'rows of %d, dropping %d (helicity, amplitude) pairs (it had %s); '

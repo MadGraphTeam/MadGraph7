@@ -2629,12 +2629,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if so and so['nampso'] > 1:
             return 'split amplitude orders'
         # A crossing that moves a massive leg into a slot of another mass is
-        # scanned by the warm-up on points of its own masses. One with no
-        # phase space there (a crossed decay lighter than its products) is
-        # never evaluated on shell and is not scanned, as in the fortran
-        # warm-up. When RAMBO finds no point for one that has phase space,
-        # the warm-up says so and the directory is written without recycling
-        # (hel_recycling_filter.ProbeTree.run).
+        # scanned by the filter's probe (at launch for an mg7 output, at
+        # generation for a standalone one) on points of its own masses. One
+        # with no phase space there (a crossed decay lighter than its
+        # products) is never evaluated on shell and is not scanned, as in the
+        # fortran warm-up. When RAMBO finds no point for one that has phase
+        # space, the probe says so and the directory is built without
+        # recycling (hel_recycling_filter.ProbeTree.run).
         return None
 
     @staticmethod
