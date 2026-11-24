@@ -116,3 +116,19 @@ The same loop groups are missing in both precisions. `replay_calls.f90` replays 
 | 80 unit-power hexagons, rank 4 | refused | ill-conditioned or singular Gram matrix, or six-point coordinate system (conditioning 0) |
 
 The unit-power lanes have all-massive heavy-quark propagators that are linearly dependent at the two thresholds: the constituents carry P₁/2 and P₂/2. TIRust's quadruple-precision path refuses them like its double-precision one, so they are not a matter of MadLoop's precision. A refused QP hexagon costs about 75 s, so most of the 72 minutes goes to those attempts.
+
+**g g → χ_c0 χ_c0 on TIRust eb363d6** (bridge v6, local on 196bdcc, not pushed). eb363d6 raises a heavy line of a linearly dependent all-massive set, and reduces a hexagon whose points span three dimensions by its relations. The 97 records of `data/refused_gg_chic0chic0_d5442e6.txt` are all served in DP (`data/qp_replay_gg_chic0_chic0_eb363d6.txt`). In QP, with the binary64 records widened, 63 are served and 34 hexagons are refused ("ill-conditioned Gram matrix"): widened, those inputs are off the thresholds by binary64's rounding, and TIRust serves the exact kinematics in binary128. The replay takes 6 s, so refusals are fast now. e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) is bit-identical to d5442e6, and so are the 16 one-P-wave `pw_check.py` cases against 59aee45.
+
+At √s = 20 GeV, point 0, in DP (`data/qp_gg_chic0_chic0_eb363d6.json`):
+
+| | CTModeRun 1 | CTModeRun 2 | predicted |
+|---|---|---|---|
+| 1/ε² per Born | −5.99999999997 | −6.0000000001 | −6 |
+| 1/ε per Born | −9850 | −510349 | 23.232 |
+| return code | 410 | 410 | |
+
+The two finite parts differ by a factor of 13. With the unit-power calls served, MadLoop reaches the raised calls of those loop groups, and TIRust refuses 26 of the 3480 per pass (13 in a normal run, where a refusal ends its group). All 26 are two-doubled at rank 6 with both doubled lines heavy:
+- CTModeRun 1: 6 boxes QQQQ (1,1,2,2), 8 pentagons QQgQQ (1,1,1,2,2), 12 hexagons QQgQQg (1,1,1,2,2,1);
+- CTModeRun 2: the same on the reversed lines.
+
+TIRust refuses them in both precisions with "lightlike bubble [i, j] with massive lines, both differentiated (two jet variables)". Here [i, j] is the doubled pair: two heavy lines whose offsets differ by a lightlike momentum. The inputs are in `data/refused_gg_chic0chic0_eb363d6.txt` (both passes) and the replay in `data/qp_replay_gg_chic0_chic0_refused_eb363d6.txt`. These are the only refusals left at this point. Whether they account for the whole 1/ε is not checked yet.
