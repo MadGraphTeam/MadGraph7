@@ -2206,7 +2206,15 @@ fn ninjars_zero_thresholds_keep_the_served_lanes_and_refuse_only_residuals() {
     use ninjars::fast::FastOptions;
     use rusticol_loop_reduction::runtime::fast_options;
     let defaults = FastOptions::default();
-    assert_eq!(fast_options(false), defaults);
+    // The checked default: NinjaRS's defaults with its cancellation rescue on
+    // (off in NinjaRS for callers without a test of their own).
+    assert_eq!(
+        fast_options(false),
+        FastOptions {
+            cancellation_rescue: true,
+            ..defaults
+        }
+    );
     assert_eq!(
         fast_options(true),
         FastOptions {
