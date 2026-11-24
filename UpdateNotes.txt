@@ -5,6 +5,16 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: madevent: the overweight budget is now enforced by default. The hidden run_card
+       parameters max_overweight_truncation (was -1: maximum weight at the 99% quantile of the
+       deciding iteration) and enforce_overweight_limit (was False) default to 0.001 and True,
+       as [generation] max_overweight_truncation in mg7: the events above the maximum weight
+       of a channel carry at most 0.1% of its cross-section, the channels left short of events
+       get additional jobs (PR #510), the gridpack combination keeps the overweight events'
+       weights (PR #470). The run is somewhat longer for heavy-tailed processes; for
+       u q > z u q at 13 TeV with the unsplit refine, the 0.6% deficit of the cross section
+       (the tail above sqrt(s_hat) = 2 TeV under-sampled on the survey grid) disappears.
+       The former behaviour is recovered with max_overweight_truncation = -1.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV

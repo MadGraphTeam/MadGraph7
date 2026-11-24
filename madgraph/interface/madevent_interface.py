@@ -3925,8 +3925,11 @@ Beware that this can be dangerous for local multicore runs.""")
         else:
             self.refine_mode = "new"
             if self.run_card['enforce_overweight_limit']:
-                logger.warning('enforce_overweight_limit is not supported with this refine '
-                               'mode (loop-induced or job_strategy=2): not applied')
+                # a warning only when the user asked for it (it is on by default)
+                log = logger.warning if 'enforce_overweight_limit' in getattr(self.run_card, 'user_set', ()) \
+                      else logger.info
+                log('enforce_overweight_limit is not supported with this refine '
+                    'mode (loop-induced or job_strategy=2): not applied')
             
         cross, error, across = self.make_make_all_html_results(get_attr=('xsec','xerru','axsec'))
         
