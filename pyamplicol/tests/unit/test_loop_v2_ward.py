@@ -337,9 +337,14 @@ def test_ward_criterion_reads_the_uncertified_lanes_bound():
       covers_its_true_value``) makes the row inconclusive, never a pass,
       while the true value fails it;
     * a physical vanishing Ward lane, bound 1e-30 of the scale: passes;
-    * a bound straddling the criterion, or infinite: inconclusive;
-    * a physical normalization resting on uncertified lanes beyond the
-      tolerance: inconclusive;
+    * a bound straddling the criterion, or infinite (a lane of the generic
+      engine's ladder, which exports no bound: the reviewer's k = 1018
+      bubble, ``v2_reduce::tests::a_generic_ladder_lane_exports_no_bound``):
+      inconclusive;
+    * the physical normalization's own uncertified bound gives the scale an
+      interval: a row passes only if it passes at every scale in it, fails
+      only if it fails at every one (the reviewer's scale 1 +- 2 with a
+      2e-12 residue, 1,000 lanes and E = 1e-30: inconclusive);
     * double-double keeps its rule 3 (10 E) with no resolution floor."""
 
     import math
@@ -383,10 +388,19 @@ def test_ward_criterion_reads_the_uncertified_lanes_bound():
     # A violation far above the bound fails whatever the uncertified lanes.
     violated = point((1e-3,), bound=(1e-10,))
     assert ward.ward_row(physical, violated, "double")["passed"] is False
-    # The physical normalization must be certified.
-    uncertain_scale = point((1.0,), bound=(1e-6,))
-    row = ward.ward_row(uncertain_scale, vanishing, "double")
-    assert row["passed"] is None and "normalization" in row["inconclusive"]
+    # The physical normalization's interval (its own uncertified lanes'
+    # bound): the reviewer's case, scale 1 +- 2, residue 2e-12, 1,000 lanes,
+    # E = 1e-30, fails at scale 1 but passes at scale 3: inconclusive.
+    uncertain_scale = point((1.0,), bound=(2.0,))
+    loose = point((2e-12,))
+    loose.families = {k: None for k in range(1000)}
+    assert ward.ward_row(physical, loose, "double")["passed"] is False
+    row = ward.ward_row(uncertain_scale, loose, "double")
+    assert row["passed"] is None and "normalization" in row["inconclusive"], row
+    # A normalization uncertainty that changes no verdict decides it.
+    tight = point((1.0,), bound=(1e-6,))
+    assert ward.ward_row(tight, vanishing, "double")["passed"] is True
+    assert ward.ward_row(tight, violated, "double")["passed"] is False
     # Double-double: |V| <= 1e-25 and rule 3 at 10 E, no floor.
     assert (
         ward.ward_row(physical, point((5e-27,), estimate=(1e-28,)), "double-double")[

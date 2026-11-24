@@ -214,6 +214,78 @@ def test_the_aggregate_is_closed_and_an_inconclusive_row_never_passes():
 
 
 @pytest.mark.loop_fast
+def test_the_stored_checks_never_scale_a_violation_away():
+    """``stored_checks.compare_carriers`` (the external reviewer's inputs):
+    both carriers return (finite, 1/eps, 1/eps^2) = (0, 1, 0), Catani
+    predicts (0, 0), no uncertified lane, zero direction error: the
+    double-double Catani comparison FAILS (the absolute deviation 1 against
+    the double-double tolerance with its zero-denominator convention; a
+    vanishing prediction never scales it away), and it is no inconclusive
+    row."""
+
+    from types import SimpleNamespace
+
+    from tools.loop_benchmark import stored_checks
+
+    sector = (("QCD", 4),)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def result(poles=None):
+        return SimpleNamespace(
+            born={sector: 1.0},
+            components={"virtual": {sector: laurent(0.0, 1.0, 0.0)}},
+            stability=SimpleNamespace(absolute={sector: laurent(0.0, 0.0, 0.0)}),
+            ir_poles=poles,
+            uncertified_bound={},
+        )
+
+    binary64, dd = result(), result({sector: (0.0, 0.0)})
+    out = stored_checks.compare_carriers(binary64, dd)
+    assert out["passed"] is False and out["inconclusive"] is False, out
+    # The prediction met: passes.
+    met = result({sector: (1.0, 0.0)})
+    assert stored_checks.compare_carriers(binary64, met)["passed"] is True
+
+
+@pytest.mark.loop_fast
+def test_the_stored_rescue_stages_never_meet_an_uncertified_level():
+    """``stored_checks.rescue_level0`` / ``rescue_level1`` (the stored
+    rescue stages, as the production policy): a binary64 point with a lane
+    served without accuracy evidence is sent up whatever its estimate (here
+    0); a double-double point with one is not met whatever its estimate,
+    its reasons kept; clean points as before."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.virtual_results import UNCERTIFIED
+    from tools.loop_benchmark import stored_checks
+
+    reason = "a reduction lane vanishes within the resolution of its own terms"
+    sector = (("QCD", 4),)
+
+    def result(relative, unsure):
+        return SimpleNamespace(
+            stability=SimpleNamespace(relative=relative),
+            lane_rescue=((UNCERTIFIED + reason, 1),) if unsure else (),
+            components={
+                "virtual": {sector: SimpleNamespace(coefficients=(1.0, 0.0, 0.0))}
+            },
+        )
+
+    estimates, unsure, up = stored_checks.rescue_level0(
+        {0: result(0.0, True), 1: result(1e-9, False), 2: result(1e-3, False)},
+        1e-5,
+    )
+    assert up == [0, 2] and unsure[0] == (reason,) and not unsure[1]
+    assert estimates[0] == 0.0
+    flagged = stored_checks.rescue_level1(result(0.0, True), 1e-5)
+    assert flagged["met"] is False and flagged["uncertified"] == [reason]
+    assert stored_checks.rescue_level1(result(1e-9, False), 1e-5)["met"] is True
+
+
+@pytest.mark.loop_fast
 def test_a_criterion_with_uncertified_lanes_is_three_way():
     """``ward.judged`` / ``checks.uncertified_verdict``: a residual with
     lanes served without accuracy evidence of bound B passes only when

@@ -1604,10 +1604,13 @@ Born-interfered Ward row's physical scale; a probe's row term floor
 S_k(h)), the fallback's reason and the verdict. A row whose residual
 includes reduction lanes served without accuracy evidence is judged with their
 reducer-stated absolute bound B (propagated to the row's quantity with each
-lane's contraction weight): residual + B within the bound passes, residual - B
-above it fails, anything between (or a lane without a finite bound, or a Ward
-row whose physical scale rests on such lanes beyond the tolerance) is
-`inconclusive`, never a pass; the next carrier of the ladder evaluates it
+lane's contraction weight; only the fast engine's double-double re-reduction
+states a bound, when finite, normal and positive: a lane of the generic
+engine's ladder has none): residual + B within the bound passes, residual - B
+above it fails, anything between (or a lane without a bound) is
+`inconclusive`, never a pass. A Ward row's physical scale takes the interval
+its own such lanes give it: the row passes only if it passes at every scale
+in the interval and fails only if it fails at every one; the next carrier of the ladder evaluates it
 again and the deciding carrier is recorded. Loop-induced probes that served
 such a lane are inconclusive (the bound of |A|^2, a product, is not formed).
 A process's status is a closed aggregate: `failed` if a row failed or is
