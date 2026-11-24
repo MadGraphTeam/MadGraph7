@@ -1,0 +1,36 @@
+# Caches are written by one place only: the jobs of warm_cache.yml, and those
+# jobs are gated on main. The repository's 10 GB cache quota is spent on main's
+# entries alone, so a save from a PR or a branch (readable only by that ref,
+# but counted against the quota) cannot evict the shared ROOT/Delphes/heptools
+# caches. This job fails any change that adds a cache save anywhere else. The
+# restore actions are unrestricted.
+name: Cache writers guard
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-cache-save-outside-warm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Fail on any cache save outside warm_cache.yml
+        run: |
+          bad=$(grep -rnE 'actions/cache(/save)?@' .github \
+            | grep -v '^\.github/workflows/warm_cache\.yml:' \
+            | grep -v '^\.github/workflows/cache-writers-guard\.yml:' || true)
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "::error::A cache is saved outside warm_cache.yml. Move the save into a main-gated job of .github/workflows/warm_cache.yml; the action or workflow above may only restore."
+            exit 1
+          fi
+          echo "No cache save outside warm_cache.yml."
+        shell: bash

@@ -6,12 +6,12 @@ permissions:
   contents: read
 on:
   push:
-    # Only main warms the caches automatically. Every warm run
-    # rebuilds ~3.5GB of intermediate caches across both images against a 10GB
-    # per-repo quota, so letting a push to any feature branch that happens to
-    # touch one of the paths below start one is how the quota gets exhausted
-    # and the shared heptools caches get evicted. Use the workflow_dispatch
-    # button (below) to warm from anywhere else; that is a deliberate act.
+    # Only main warms the caches, and only main writes them. Every warm run
+    # rebuilds ~3.5GB of intermediate caches against a 10GB per-repo quota, so
+    # a push to a feature branch that touches one of the paths below must not
+    # start one, and a workflow_dispatch from a branch does nothing either: each
+    # save job is gated on refs/heads/main. This file is the only place a cache
+    # is saved (see cache-writers-guard.yml).
     #
     # The schedule trigger needs no equivalent filter: GitHub only ever runs
     # cron workflows on the default branch, which is main here (3.x upstream).
@@ -26,6 +26,14 @@ on:
       - '.github/actions/check_heptools/**'
       - '.github/actions/restore_root/**'
       - '.github/actions/restore_delphes/**'
+      - 'pyamplicol/**'
+      - '.github/actions/build_pyamplicol/**'
+      - '.github/actions/install_pyamplicol/**'
+      - 'madspace/**'
+      - 'madtrex/**'
+      - '.github/actions/build_madspace/**'
+      - '.github/actions/install_madspace/**'
+      - '.github/actions/install_lhapdf_pdfset/**'
   schedule:
     - cron: '0 3 * * 0,3'  # twice a week (Sun & Wed 3am): keep caches warm
   workflow_dispatch:
@@ -49,7 +57,7 @@ env:
 jobs:
 
   delete-cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -208,7 +216,7 @@ jobs:
   # action and never save. The key carries a hash of pyproject.toml, so a new
   # dependency pin is a new generation and an unchanged one is not re-downloaded.
   pip_cache_pyamplicol:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -248,7 +256,7 @@ jobs:
           key: pip-pyamplicol-${{ env.CACHE_KEY }}-py${{ matrix.python-version }}-${{ hashFiles('pyamplicol/pyproject.toml') }}
 
   rebuild-numpy-cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -288,8 +296,134 @@ jobs:
           path: ~/.cache/pip-packages
           key: pip-numpy-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
+  # pyamplicol's build caches, written only here: the install prefix and the
+  # Cargo build tree (both built by .github/actions/build_pyamplicol, which
+  # never saves), and the Cargo download cache that pyamplicol.yml restores.
+  # The job gate is strict (a workflow_dispatch from a branch does not count)
+  # and every save is gated on main again. PR and branch jobs restore these
+  # entries and never save one: an entry saved from a branch is readable only
+  # by that ref and eats the shared 10 GB quota.
+  pyamplicol_cache:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    needs: delete-cache
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Restore the pyamplicol pip cache
+        uses: ./.github/actions/restore-pyamplicol-pip-cache
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          components: clippy, rustfmt
+
+      # Same key and paths as the "Cache Cargo downloads" step of pyamplicol.yml.
+      - name: Restore the Cargo download cache
+        id: cache-cargo-dl
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.99.1-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/dependencies/contributor-lock.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.99.1-
+
+      - name: Build pyamplicol (restore or build)
+        id: pac
+        uses: ./.github/actions/build_pyamplicol
+
+      - name: Save the Cargo download cache
+        if: steps.cache-cargo-dl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-1.99.1-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/dependencies/contributor-lock.toml') }}
+
+      - name: Save the pyamplicol install
+        if: steps.pac.outputs.install-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: pyamplicol/install
+          key: ${{ steps.pac.outputs.install-key }}
+
+      # The du listing records what the Cargo entry holds, for whoever trims it next.
+      - name: Size of the Cargo build tree
+        if: steps.pac.outputs.install-hit != 'true' && steps.pac.outputs.cargo-hit != 'true'
+        run: du -h --max-depth=3 pyamplicol/build/cache | sort -h | tail -n 15
+        shell: bash
+
+      - name: Save the Cargo build tree
+        if: steps.pac.outputs.install-hit != 'true' && steps.pac.outputs.cargo-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: pyamplicol/build/cache
+          key: ${{ steps.pac.outputs.cargo-key }}
+
+  # The madspace install (madspace/install), read by every mg7 test job through
+  # install_madspace. Built and saved here only, on main; PR jobs restore it and,
+  # on a miss, get the build from their own build_madspace job as an artifact.
+  # The key is computed by build_madspace itself (cache-key output), so it cannot
+  # drift from the key install_madspace restores.
+  madspace_cache:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    needs: delete-cache
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Build madspace (restore or build)
+        id: ms
+        uses: ./.github/actions/build_madspace
+        with:
+          handoff: 'false'
+
+      - name: Save madspace install
+        if: steps.ms.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: madspace/install
+          key: ${{ steps.ms.outputs.cache-key }}
+
+  # The LHAPDF grid that install_lhapdf_pdfset restores (check_xsec_processes_mg7).
+  lhapdf_data_cache:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    needs: delete-cache
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install the PDF set (restore or download)
+        id: pdf
+        uses: ./.github/actions/install_lhapdf_pdfset
+        with:
+          pdfset: NNPDF23_lo_as_0130_qed
+
+      - name: Save the PDF grid
+        if: steps.pdf.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.cache/lhapdf_data
+          key: lhapdf-data-NNPDF23_lo_as_0130_qed
+
   ufo_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     needs: delete-cache
 
@@ -334,7 +468,7 @@ jobs:
           key: ufomodel-${{ github.run_id }}
            
   lhapdf_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     needs: delete-cache
     runs-on: ${{ matrix.os }}
     strategy:
@@ -416,7 +550,7 @@ jobs:
          run: rm -fv /home/runner/.cache/HEPtools/lhapdf6_py3/share/LHAPDF/*.tar.gz*
 
   pythia8_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: lhapdf_cache
     strategy:
@@ -477,7 +611,7 @@ jobs:
   # eMELA itself). Giving it its own cache means a boost failure no longer
   # discards the eMELA build, and an eMELA rebuild no longer recompiles boost.
   boost_cache:
-     if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+     if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
      runs-on: ${{ matrix.os }}
      needs: lhapdf_cache
      strategy:
@@ -543,7 +677,7 @@ jobs:
            du -sh "$src"
 
   emela_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: boost_cache
     strategy:
@@ -624,7 +758,7 @@ jobs:
 #             GH_TOKEN: ${{ github.token }}
 
   contur_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     needs: pythia8_cache
     strategy:
@@ -690,7 +824,7 @@ jobs:
        #     GH_TOKEN: ${{ github.token }}
 
   looptools_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     strategy:
      matrix:
@@ -765,7 +899,7 @@ jobs:
   # generation-suffixed, key here. Must run before heptools_cache deletes the
   # sub-caches, hence its place in the needs of that job.
   heptools_core_cache:
-    if: (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -840,7 +974,7 @@ jobs:
   # their exact key when that run is re-run.
   # ---------------------------------------------------------------------------
   heptools_cache:
-    if: always() && (github.ref_name == 'main' || github.ref_name == 'test_ci' || github.event_name == 'workflow_dispatch') && github.event_name != 'schedule'
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}       
     strategy:
       matrix:
@@ -1142,8 +1276,11 @@ jobs:
          os: [ubuntu-24.04]
 
      steps:
+       # Own variable, not CACHE_KEY: the restore_root action below writes
+       # CACHE_KEY=root-<os> into GITHUB_ENV, which would otherwise rename the
+       # Delphes save to delphes-root-<os>-<run>, a key no PR ever restores.
        - name: Set cache key
-         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
+         run: echo "DELPHES_CACHE_KEY=delphes-$ImageOS" >> $GITHUB_ENV
 
        # Same generation-suffixed restore/save split as root_cache above.
        - name: Cache Delphes (stacked on top of ROOT)
@@ -1151,10 +1288,10 @@ jobs:
          uses: actions/cache/restore@v5
          with:
            path: ~/.cache/Delphes
-           key: delphes-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: ${{ env.DELPHES_CACHE_KEY }}-${{ github.run_id }}
            restore-keys: |
-             delphes-${{ env.CACHE_KEY }}-
-             delphes-${{ env.CACHE_KEY }}
+             ${{ env.DELPHES_CACHE_KEY }}-
+             ${{ env.DELPHES_CACHE_KEY }}
 
        - name: get mg5
          if: steps.cache-delphes.outputs.cache-matched-key == ''
@@ -1190,7 +1327,7 @@ jobs:
          uses: actions/cache/save@v5
          with:
            path: ~/.cache/Delphes
-           key: delphes-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: ${{ env.DELPHES_CACHE_KEY }}-${{ github.run_id }}
 
   # ---------------------------------------------------------------------------
   # MadtRex install prefix (madtrex/install), read by the
