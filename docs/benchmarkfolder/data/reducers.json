@@ -93,7 +93,7 @@
     "return_codes": [
      213
     ],
-    "time_ms": 0.507492
+    "time_ms": 0.45540200000000003
    },
    "3": {
     "status": "ok",
@@ -105,7 +105,7 @@
     "return_codes": [
      410
     ],
-    "time_ms": 2.5926500000000003
+    "time_ms": 2.5633255
    },
    "8": {
     "status": "ok",
@@ -117,7 +117,7 @@
     "return_codes": [
      420
     ],
-    "time_ms": 65.836005
+    "time_ms": 68.36236
    },
    "6": {
     "status": "ok",
@@ -129,7 +129,7 @@
     "return_codes": [
      420
     ],
-    "time_ms": 24.444779999999998
+    "time_ms": 22.266885
    },
    "7": {
     "status": "ok",
@@ -141,7 +141,7 @@
     "return_codes": [
      410
     ],
-    "time_ms": 1.2681695000000002
+    "time_ms": 1.2171455
    },
    "1": {
     "status": "ok",
@@ -153,7 +153,7 @@
     "return_codes": [
      420
     ],
-    "time_ms": 50.511395
+    "time_ms": 49.15871
    }
   },
   "against": "analytic"
@@ -245,14 +245,14 @@
    "9": {
     "status": "ok",
     "state": "flagged",
-    "max_deviation": 6.126730430008946,
-    "max_pole_deviation": 6.126730430008946,
+    "max_deviation": 6.126730430008951,
+    "max_pole_deviation": 6.126730430008951,
     "stable": 0,
     "npoints": 10,
     "return_codes": [
      420
     ],
-    "time_ms": 691.9565000000001
+    "time_ms": 632.37345
    },
    "3": {
     "status": "failed"
@@ -260,14 +260,14 @@
    "8": {
     "status": "ok",
     "state": "flagged",
-    "max_deviation": 6.126730430008947,
-    "max_pole_deviation": 6.126730430008947,
+    "max_deviation": 6.126730430008948,
+    "max_pole_deviation": 6.126730430008948,
     "stable": 0,
     "npoints": 10,
     "return_codes": [
      420
     ],
-    "time_ms": 892.83735
+    "time_ms": 834.9398500000001
    },
    "6": {
     "status": "ok",
@@ -279,7 +279,7 @@
     "return_codes": [
      420
     ],
-    "time_ms": 480.4969
+    "time_ms": 410.91044999999997
    },
    "7": {
     "status": "ok",
@@ -291,10 +291,10 @@
     "return_codes": [
      410
     ],
-    "time_ms": 20.296374999999998
+    "time_ms": 19.46651
    },
    "1": {
-    "status": "timeout"
+    "status": "failed"
    }
   },
   "against": "analytic"

@@ -60,8 +60,9 @@ STATUS_LINES = [
     'at threshold, not always detected by MadLoop\'s tests: their results are now reported '
     'unstable, and TIRust is the default chain (@reducers).',
     '*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes '
-    'and the points are reported exceptional; TIRust 370b632 (PR \\#56, not yet pinned) serves '
-    'them, stable, Gong–Wang reproduced to $3 dot 10^(-7)$ (@analytic).',
+    'and the points are reported exceptional; TIRust 08cca00 (PR \\#58 on \\#56, not yet pinned) serves '
+    'them, stable, Gong–Wang reproduced to its seven digits ($5 dot 10^(-8)$; $b$, $t$ excluded '
+    'from the loops) (@analytic).',
     '*No QP rescue yet:* TIRust\'s binary128 path refuses the threshold lanes (open TIRust '
     'item); such points are reported unstable, not wrong.',
     '*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ '
@@ -103,7 +104,7 @@ OPEN_ITEMS = [
     'at high energy, the relation tiers of \\#56 (5025e12) with their bridge patch, and the pole '
     'kernels of the bridge on the `oneloop` of that revision (@stability).',
     '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
-    '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).',
+    '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632 and 08cca00).',
     '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
     '*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes '
     'the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge '

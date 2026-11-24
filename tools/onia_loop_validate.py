@@ -89,17 +89,17 @@ CASES = {
         source='q qbar -> gamma* vertex C_F (pi^2 - 8) (Altarelli, Ellis, Martinelli); '
                'leptonium as a colourless 3S1 final state'),
     'ee_etac_a': dict(
-        process='e+ e- > etac(1|1S01) a / z [virt=QCD]', relmom=True, onium_legs=[2], colour=1,
-        masses={4: 1.5, 5: 1.e4, 6: 1.e5}, energy=10.58,
+        process='e+ e- > etac(1|1S01) a / z t t~ b b~ [virt=QCD]', relmom=True, onium_legs=[2],
+        colour=1, masses={4: 1.5}, energy=10.58,
         ref=(2 * -2.573030, 0., 0.), tolerance=1e-6,
         source='Sang & Chen 0910.4071 C(r) at sqrt(s) = 10.58, m_c = 1.5 '
-               '(literature.md C.1), b and t decoupled'),
+               '(literature.md C.1), b and t excluded from the loops'),
     'ee_psi_etac': dict(
-        process='e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]',
-        masses={4: 1.5, 5: 1.e4, 6: 1.e5}, energy=10.58, mu=3.0,
+        process='e+ e- > Jpsi(1|3S11) etac(1|1S01) / z t t~ b b~ QED=2 [virt=QCD]',
+        masses={4: 1.5}, energy=10.58, mu=3.0,
         ref=(2 * 12.268210, 0., 0.), tolerance=1e-6,
         source='Gong & Wang 0712.4220 K1, n_l = 3 decoupling scheme, mu = 2 m_c '
-               '(literature.md C.4), b and t decoupled'),
+               '(literature.md C.4), b and t excluded from the loops'),
     'gg_psi_g': dict(
         process='g g > Jpsi(1|3S11) g [virt=QCD]', energy=20.,
         relmom=True, onium_legs=[2], colour=1,

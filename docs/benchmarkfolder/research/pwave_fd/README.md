@@ -126,7 +126,7 @@ The pinned TIRust installation has no raised powers, and MadGraph refuses the ou
 
 ### Heavy quarks instead of their exclusion
 
-The first runs decoupled b and t by giving them masses of 10 and 100 TeV (`/ z` only, as the e+ e- cases of `tools/onia_loop_validate.py` do). Quadruple precision then stopped at 1e-8 to 1e-7, also with exact momenta.
+The first runs decoupled b and t by giving them masses of 10 and 100 TeV (`/ z` only, as the e+ e- cases of `tools/onia_loop_validate.py` did before 2026-11-24). Quadruple precision then stopped at 1e-8 to 1e-7, also with exact momenta.
 
 `qp_floor.py` patches such an output to sum the loop groups in quadruple precision, and prints both sums. The cause:
 - The counterterms and loop groups of the heavy quarks grow like M² and cancel. |counterterms| + Σ|loop group| is 8.8e8 times the total for χ_c2, and 5.9e7 for J/ψ η_c.

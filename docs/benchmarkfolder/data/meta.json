@@ -1,5 +1,5 @@
 {
- "revision": "4296743eb0",
+ "revision": "344dfcaa9a",
  "date": "2026-11-24",
  "host": "AMD EPYC 9754 (shared host)",
  "baseline": "5c5b573794",
@@ -255,6 +255,10 @@
   [
    "4296743eb0",
    "docs/benchmarkfolder: the floor of quadruple precision is the rounding of the loop groups"
+  ],
+  [
+   "344dfcaa9a",
+   "docs/benchmarkfolder: J/psi chi_cJ with b and t excluded from the loops"
   ]
  ],
  "decisions": [
@@ -274,7 +278,7 @@
  "status_lines": [
   "*S-wave, one bound state* (singlet or octet, any $J$) with elementary particles: the analytic $2 -> 1$ and $e^+ e^-$ results reproduced to $10^(-8)$, the published precision or MadLoop's accuracy estimate (@analytic); $2 -> 2$ poles as predicted, finite parts confirmed by the $v -> 0$ extrapolation of ordinary integrals (@twotwo).",
   "*TIRust in double precision*, stable points in every frame. The other libraries fail at threshold, not always detected by MadLoop's tests: their results are now reported unstable, and TIRust is the default chain (@reducers).",
-  "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes and the points are reported exceptional; TIRust 370b632 (PR \\#56, not yet pinned) serves them, stable, Gong\u2013Wang reproduced to $3 dot 10^(-7)$ (@analytic).",
+  "*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes and the points are reported exceptional; TIRust 08cca00 (PR \\#58 on \\#56, not yet pinned) serves them, stable, Gong\u2013Wang reproduced to its seven digits ($5 dot 10^(-8)$; $b$, $t$ excluded from the loops) (@analytic).",
   "*No QP rescue yet:* TIRust's binary128 path refuses the threshold lanes (open TIRust item); such points are reported unstable, not wrong.",
   "*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.",
   "*An S-wave and a P-wave state* ($e^+ e^- -> J\\/psi thin chi_(c J)$, @sp): with TIRust 08cca00 (not yet pinned) the poles vanish as predicted, and the angular average of the finite part reproduces the closed form of Wang, Ma and Chao to $10^(-7)$ in double precision and $10^(-15)$ in quadruple precision ($b$, $t$ excluded from the loops; as heavy quarks at 10\u2013100 TeV they left a floor of $10^(-7)$, @tab:qpfloor).",
@@ -286,7 +290,7 @@
  ],
  "open_items": [
   "*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, \\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). 370b632 (in \\#56) also serves $g g -> chi_(c 0) g$ (@pwave). For double precision at high energy, the relation tiers of \\#56 (5025e12) with their bridge patch, and the pole kernels of the bridge on the `oneloop` of that revision (@stability).",
-  "*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 (threshold bubble pinches, two Coulomb relations in one loop; served by 370b632).",
+  "*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 (threshold bubble pinches, two Coulomb relations in one loop; served by 370b632 and 08cca00).",
   "*Quadruple-precision rescue:* the degenerate lanes in TIRust's binary128 path.",
   "*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge patch with the gate and the relation tiers together exists; neither is on `onia_loop`'s bridge yet.",
   "*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of $p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such points are reported unstable. TIRust 08edee3 serves them, and MadLoop's double precision is then silently wrong at the softest: the R2 counterterms of heavy quarks ($M^2$-enhanced; 22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ with physical masses), which MadLoop's loop-direction test does not vary. Fixed: bound-state outputs now estimate the rounding of the counterterm interference and rescue such points in quadruple precision (every point right).",

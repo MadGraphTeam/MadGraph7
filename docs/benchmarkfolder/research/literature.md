@@ -390,6 +390,8 @@ Conversion to the implementation's scheme `[DERIVED]` (n_l = 3, decoupled charm,
 
 At sqrt(s) = 10.58, m = 1.5, mu = 2m: a = **12.268210**, c0 = **24.53642**. In the original n_f = 4 scheme: a = 11.806107.
 
+In MadLoop the b and t quarks are excluded from the loops (`/ t t~ b b~`), the limit m_b, m_t -> infinity of the decoupling scheme. Masses of 10 and 100 TeV instead leave a remainder of order 1e-9 and, through the cancellation of their counterterms against their loop groups, a rounding floor of about 1e-8 in quadruple precision (`research/pwave_fd/README.md`).
+
 Consistency:
 - Zhang-Gao-Chao hep-ph/0506076: K = 15.7/8.0 = 1.96 at m = 1.5, mu = 2m, alpha_s = 0.259, sqrt(s) = 10.6 (n_f = 4, same scheme).
 - Dong-Feng-Jia 1204.4128 (Sec. "Asymptotic expressions of NLO short-distance coefficients", n_f = 4, HV gamma5) give only the asymptotic (s >> m^2) form. It is about 5% off at B-factory energies, consistent with power corrections.
