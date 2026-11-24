@@ -1142,8 +1142,11 @@ jobs:
          os: [ubuntu-24.04]
 
      steps:
+       # Own variable, not CACHE_KEY: the restore_root action below writes
+       # CACHE_KEY=root-<os> into GITHUB_ENV, which would otherwise rename the
+       # Delphes save to delphes-root-<os>-<run>, a key no PR ever restores.
        - name: Set cache key
-         run: echo "CACHE_KEY=$ImageOS" >> $GITHUB_ENV
+         run: echo "DELPHES_CACHE_KEY=delphes-$ImageOS" >> $GITHUB_ENV
 
        # Same generation-suffixed restore/save split as root_cache above.
        - name: Cache Delphes (stacked on top of ROOT)
@@ -1151,10 +1154,10 @@ jobs:
          uses: actions/cache/restore@v5
          with:
            path: ~/.cache/Delphes
-           key: delphes-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: ${{ env.DELPHES_CACHE_KEY }}-${{ github.run_id }}
            restore-keys: |
-             delphes-${{ env.CACHE_KEY }}-
-             delphes-${{ env.CACHE_KEY }}
+             ${{ env.DELPHES_CACHE_KEY }}-
+             ${{ env.DELPHES_CACHE_KEY }}
 
        - name: get mg5
          if: steps.cache-delphes.outputs.cache-matched-key == ''
@@ -1190,7 +1193,7 @@ jobs:
          uses: actions/cache/save@v5
          with:
            path: ~/.cache/Delphes
-           key: delphes-${{ env.CACHE_KEY }}-${{ github.run_id }}
+           key: ${{ env.DELPHES_CACHE_KEY }}-${{ github.run_id }}
 
   # ---------------------------------------------------------------------------
   # MadtRex install prefix (madtrex/install), read by the
