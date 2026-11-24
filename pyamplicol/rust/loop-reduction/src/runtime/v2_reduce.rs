@@ -338,6 +338,16 @@ pub struct V2Output {
     /// frame, with the reason ([`UNCERTIFIED_BELOW_RESOLUTION`],
     /// [`UNCERTIFIED_OUTSIDE_DOMAIN`]).
     pub uncertified: Vec<(usize, usize, &'static str)>,
+    /// Of the lanes of [`Self::uncertified`], those whose served value comes
+    /// with an absolute error bound per Laurent coefficient `[finite, 1/eps,
+    /// 1/eps^2]` (the largest over the frames that served the lane
+    /// uncertified): the re-reduction's own absolute estimate of a lane
+    /// consistent with zero (the fast engine's rescue, the generic engine's
+    /// ladder). An uncertified lane absent here has no finite bound (a lane
+    /// outside NinjaRS's rescue domain keeps its binary64 value). A check
+    /// that reads such a lane's value tests its residue together with these
+    /// bounds.
+    pub uncertified_bounds: Vec<(usize, usize, [f64; 3])>,
 }
 
 /// Declared rank whose dense tensor has `columns` coefficients.
@@ -489,6 +499,10 @@ struct Outcome<T> {
     /// ([`UNCERTIFIED_BELOW_RESOLUTION`], [`UNCERTIFIED_OUTSIDE_DOMAIN`]):
     /// its point's accuracy is not established.
     uncertified: Option<&'static str>,
+    /// With `uncertified`, the absolute error bound of the served value per
+    /// Laurent coefficient, where the engine states one
+    /// ([`V2Output::uncertified_bounds`]).
+    bound: Option<[f64; 3]>,
 }
 
 /// The reason of a lane the generic engine serves below the resolution of
@@ -985,6 +999,9 @@ impl FastEngine {
                             } else {
                                 unrefined_outside.then_some(UNCERTIFIED_OUTSIDE_DOMAIN)
                             },
+                            // NinjaRS states one absolute estimate, of the
+                            // finite part's terms: taken for every coefficient.
+                            bound: refused_bound.filter(|_| vanishing).map(|b| [b; 3]),
                         }
                     } else {
                         Outcome {
@@ -993,6 +1010,7 @@ impl FastEngine {
                             uv: None,
                             rescued: None,
                             uncertified: None,
+                            bound: None,
                         }
                     }
                 },
@@ -1149,26 +1167,38 @@ where
     }
 }
 
-/// Whether a refused ladder record's best value is consistent with zero
-/// within its own absolute bound in every Laurent coefficient (the record's
-/// finite bound, else its estimate times its term moduli; without either the
-/// lane is not eligible).
-fn consistent_with_zero<T: NativeFloat>(record: &crate::LadderLaneRecord<T>) -> bool
+/// A ladder record's own absolute bound per Laurent coefficient (the
+/// record's finite bound, else its estimate times its term moduli), or None
+/// without either.
+fn zero_bound<T: NativeFloat>(record: &crate::LadderLaneRecord<T>) -> Option<[f64; 3]>
 where
     Complex<T>: Real + EvaluationDomain,
 {
-    let Some(best) = &record.best else {
-        return false;
-    };
     let bound = match (record.absolute_bound, record.term_moduli) {
         (Some(bound), _) if bound.iter().all(|b| b.is_finite()) => bound,
         (_, Some(moduli)) if record.estimate.is_finite() => moduli.map(|m| m * record.estimate),
-        _ => return false,
+        _ => return None,
     };
-    best.iter().zip(bound).all(|(z, b)| {
-        let modulus = z.re.to_f64().hypot(z.im.to_f64());
-        b.is_finite() && modulus.is_finite() && modulus <= b
-    })
+    bound.iter().all(|b| b.is_finite()).then_some(bound)
+}
+
+/// The bound ([`zero_bound`]) of a refused ladder record whose best value is
+/// consistent with zero within it in every Laurent coefficient; None when
+/// the lane is not eligible (no best value, no finite bound, or a value
+/// outside it).
+fn consistent_with_zero<T: NativeFloat>(record: &crate::LadderLaneRecord<T>) -> Option<[f64; 3]>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let best = record.best.as_ref()?;
+    let bound = zero_bound(record)?;
+    best.iter()
+        .zip(bound)
+        .all(|(z, b)| {
+            let modulus = z.re.to_f64().hypot(z.im.to_f64());
+            modulus.is_finite() && modulus <= b
+        })
+        .then_some(bound)
 }
 
 fn template(rank: usize) -> (String, Vec<String>) {
@@ -1263,7 +1293,10 @@ where
             let mut rescued: Vec<Option<(RescueCarrier, f64)>> = vec![None; end - start];
             let mut best: Vec<Option<[Complex<T>; 3]>> = vec![None; end - start];
             let mut rescued_vanishing: Vec<Option<(RescueCarrier, f64)>> = vec![None; end - start];
-            let mut zero_reason: Vec<Option<&'static str>> = vec![None; end - start];
+            let mut zero_reason: Vec<Option<(&'static str, [f64; 3])>> = vec![None; end - start];
+            // A below-resolution lane's absolute bound, where its record
+            // states one (`zero_bound`).
+            let mut below_bound: Vec<Option<[f64; 3]>> = vec![None; end - start];
             for record in reductions.take_ladder_records() {
                 let Ok(row) = usize::try_from(record.id) else {
                     continue;
@@ -1298,20 +1331,21 @@ where
                     // rounding of its terms) is served at its rung value, not
                     // refused: a lane that cancels to zero by symmetry would
                     // otherwise fail at every carrier. Recorded as a rescue.
+                    below_bound[row] = zero_bound(&record);
                     best[row] = record.best;
                     let carrier = rescue_carrier(record.precision_bits);
                     rescued_vanishing[row] = Some((carrier, record.estimate));
                 } else if let Some(reason) = vanishing
                     && !record.served
                     && record.sector == 0
-                    && consistent_with_zero(&record)
+                    && let Some(bound) = consistent_with_zero(&record)
                 {
                     // Refused by the fast rescue and every earlier carrier of
                     // the lane rescue, and here at the highest precision
                     // tried, with a best value within its own absolute bound
                     // of zero: returned, its accuracy not established.
                     best[row] = record.best;
-                    zero_reason[row] = Some(reason);
+                    zero_reason[row] = Some((reason, bound));
                 } else if !record.served && serve_best && record.sector == 0 {
                     // The engine's numerators live in epsilon sector 0 (the
                     // others are zero, `template`): its best value is the lane's.
@@ -1325,25 +1359,36 @@ where
                     .zip(best)
                     .zip(rescued_vanishing)
                     .zip(zero_reason)
-                    .map(|((((lane, rescued), best), vanishing), zero)| match best {
-                        Some(value) if lane.value.is_none() => Outcome {
-                            status: "success".into(),
-                            value: Some(value),
-                            uv: None,
-                            uncertified: vanishing.map(|_| UNCERTIFIED_BELOW_RESOLUTION).or(zero),
-                            rescued: vanishing,
+                    .zip(below_bound)
+                    .map(
+                        |(((((lane, rescued), best), vanishing), zero), below)| match best {
+                            Some(value) if lane.value.is_none() => Outcome {
+                                status: "success".into(),
+                                value: Some(value),
+                                uv: None,
+                                uncertified: vanishing
+                                    .map(|_| UNCERTIFIED_BELOW_RESOLUTION)
+                                    .or(zero.map(|(reason, _)| reason)),
+                                bound: match (vanishing, zero) {
+                                    (Some(_), _) => below,
+                                    (None, Some((_, bound))) => Some(bound),
+                                    (None, None) => None,
+                                },
+                                rescued: vanishing,
+                            },
+                            _ => Outcome {
+                                status: lane
+                                    .status
+                                    .strip_prefix("epsilon sector 0: ")
+                                    .map_or(lane.status.clone(), str::to_owned),
+                                value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
+                                uv: None,
+                                rescued,
+                                uncertified: None,
+                                bound: None,
+                            },
                         },
-                        _ => Outcome {
-                            status: lane
-                                .status
-                                .strip_prefix("epsilon sector 0: ")
-                                .map_or(lane.status.clone(), str::to_owned),
-                            value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
-                            uv: None,
-                            rescued,
-                            uncertified: None,
-                        },
-                    }),
+                    ),
             );
         }
         Ok(outcomes)
@@ -1709,17 +1754,33 @@ fn run<T: BatchCarrier, E: BucketEngine<T>>(
         .map(|frame| reduce_groups(engine, groups, &buckets, Some(frame), options.poles, None))
         .transpose()?;
     let mut uncertified: Vec<(usize, usize, &'static str)> = Vec::new();
+    // Per uncertified lane its bound, the largest over the frames; None once
+    // a frame served it uncertified without one.
+    let mut bounds: BTreeMap<(usize, usize), Option<[f64; 3]>> = BTreeMap::new();
     for frame in std::iter::once(&direct).chain(check.as_ref()) {
         for (group, rows) in frame.iter().enumerate() {
             for (row, outcome) in rows.iter().enumerate() {
-                if let Some(reason) = outcome.as_ref().and_then(|o| o.uncertified)
-                    && !uncertified.iter().any(|&(g, r, _)| (g, r) == (group, row))
-                {
+                let Some(outcome) = outcome.as_ref() else {
+                    continue;
+                };
+                let Some(reason) = outcome.uncertified else {
+                    continue;
+                };
+                if !uncertified.iter().any(|&(g, r, _)| (g, r) == (group, row)) {
                     uncertified.push((group, row, reason));
                 }
+                let entry = bounds.entry((group, row)).or_insert(Some([0.0; 3]));
+                *entry = match (*entry, outcome.bound) {
+                    (Some(a), Some(b)) => Some([a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])]),
+                    _ => None,
+                };
             }
         }
     }
+    let uncertified_bounds = bounds
+        .into_iter()
+        .filter_map(|((group, row), bound)| bound.map(|b| (group, row, b)))
+        .collect();
     Ok(V2Output {
         direct: output_batches(groups, direct, options.poles, bits)?,
         check: check
@@ -1727,6 +1788,7 @@ fn run<T: BatchCarrier, E: BucketEngine<T>>(
             .transpose()?,
         rescued,
         uncertified,
+        uncertified_bounds,
     })
 }
 
@@ -2270,6 +2332,72 @@ mod tests {
         let error = (value.re - reference.re).hypot(value.im - reference.im);
         assert!(error <= 1e-12 * size, "{value:?} against {reference:?}");
         eprintln!("fast-engine outcomes of N = 2^k (1 + 2 q0) + i: {outcomes:?}");
+    }
+
+    /// The bound of a vanishing lane (`V2Output::uncertified_bounds`): the
+    /// symmetry-zero bubble (`N = 1 + 2 q0`) carries one that covers its
+    /// served value and is small next to its terms; the reviewer's lane
+    /// `N = 2^400 (1 + 2 q0) + i`, served ~0 uncertified while its true
+    /// value is the `N = i` lane's, carries one that covers that true
+    /// value: a check that adds the bounds of the uncertified lanes to its
+    /// residue cannot pass on two matching wrong zeros.
+    #[test]
+    fn a_vanishing_lane_carries_a_bound_that_covers_its_true_value() {
+        let _unlock = pyamplicol::unlock();
+        let run = |c0: Complex<f64>, c1: f64| {
+            let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+            let batch = |values: Vec<Complex<f64>>, columns| {
+                Batch::typed(values, vec![0], columns, 53).unwrap()
+            };
+            let c = |x: f64| Complex::new(x, 0.0);
+            let mut shifts = vec![c(0.0); 8];
+            shifts[4] = c(1.0);
+            let shifts = batch(shifts, 8);
+            let masses = batch(vec![c(4.0), c(4.0)], 2);
+            let scales = batch(vec![c(1.0)], 1);
+            let s_matrix = batch(vec![c(0.0), c(1.0), c(1.0), c(0.0)], 4);
+            let mut numerator = vec![c(0.0); ncoeff(1)];
+            numerator[0] = c0;
+            numerator[1] = c(c1);
+            let coefficients = batch(numerator, ncoeff(1));
+            let group = FamilyGroup {
+                propagators: 2,
+                shifts: &shifts,
+                masses_squared: &masses,
+                scales_squared: &scales,
+                s_matrix: &s_matrix,
+                coefficients: &coefficients,
+            };
+            let options = ReduceOptions {
+                poles: Poles::None,
+                check: Some(ReductionFrame::REVERSED),
+                ..ReduceOptions::default()
+            };
+            fast.reduce(&[group], options).unwrap()
+        };
+        let finite = |output: &V2Output| match output.direct[0].values().unwrap().data() {
+            super::super::batch::Data::Double(v) => v[0],
+            _ => panic!("a binary64 batch"),
+        };
+        let zero = run(Complex::new(1.0, 0.0), 2.0);
+        assert_eq!(zero.uncertified.len(), 1);
+        let &(_, _, bound) = zero.uncertified_bounds.first().expect("a bound");
+        let value = finite(&zero);
+        assert!(value.re.hypot(value.im) <= bound[0], "{value:?} {bound:?}");
+        assert!(bound[0] < 1e-12, "{bound:?}");
+        let truth = finite(&run(Complex::new(0.0, 1.0), 0.0));
+        let big = 2f64.powi(400);
+        let wrong = run(Complex::new(big, 1.0), 2.0 * big);
+        if !wrong.uncertified.is_empty() {
+            let value = finite(&wrong);
+            let bound = wrong
+                .uncertified_bounds
+                .first()
+                .map(|&(_, _, b)| b[0])
+                .unwrap_or(f64::INFINITY);
+            let error = (value.re - truth.re).hypot(value.im - truth.im);
+            assert!(error <= bound, "error {error:e} above the bound {bound:e}");
+        }
     }
 
     #[test]

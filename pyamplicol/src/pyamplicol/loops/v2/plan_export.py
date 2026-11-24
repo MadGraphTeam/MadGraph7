@@ -2101,6 +2101,62 @@ def point_rescued(
     return tuple(sorted(counts.items()))
 
 
+def uncertified_bound(
+    output: Mapping[str, Any],
+    extra: Mapping[str, Any] | None,
+    index: int,
+    columns: Sequence[Any],
+    average: Any,
+    amplitude: bool,
+) -> dict[Any, tuple[float, float, float]]:
+    """The absolute bound that the reduction lanes of point ``index`` served
+    without accuracy evidence (``"uncertified"``) put on the bare component
+    of their column (``PointResult.uncertified_bound``): per column label
+    (``columns``: the plan's, a squared-order sector on the summed route) and
+    Laurent coefficient, the sum over those lanes of the reducer's absolute
+    bound of the lane (``"uncertified_bounds"``) times the lane's contraction
+    weight into the bare component, 2 / (16 pi^2 average) (the bare virtual is
+    2 Re(i / (16 pi^2 average) sum of the column's lanes), so a lane off by
+    at most b moves it by at most that weight times b). ``math.inf`` where
+    such a lane has no finite bound, for the companion's lanes (the split
+    pole selections, not propagated) and for an amplitude-mode plan
+    (loop-induced: |A|^2 is quadratic in the lanes, the bound of the product
+    is not formed here). Empty when no lane is uncertified."""
+
+    import math
+
+    from .conventions import LOOP_FACTOR_DENOMINATOR
+
+    lanes = output.get("uncertified")
+    found = [] if lanes is None else list(lanes[index])
+    twin = None if extra is None else extra.get("uncertified")
+    if not found and not (twin is not None and twin[index]):
+        return {}
+    unbounded = (math.inf, math.inf, math.inf)
+    if amplitude or (twin is not None and twin[index]):
+        return {column: unbounded for column in columns}
+    bounds = {
+        tuple(lane): tuple(bound)
+        for lane, bound in (output.get("uncertified_bounds") or [[]] * (index + 1))[
+            index
+        ]
+    }
+    weight = 2 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(average))
+    out: dict[Any, tuple[float, float, float]] = {}
+    for lane, _reason in found:
+        family, order, column = lane
+        bound = bounds.get((family, order, column))
+        label = columns[column]
+        before = out.get(label, (0.0, 0.0, 0.0))
+        if bound is None or not all(math.isfinite(float(b)) for b in bound):
+            out[label] = unbounded
+        else:
+            out[label] = tuple(
+                a + weight * abs(float(b)) for a, b in zip(before, bound, strict=True)
+            )
+    return out
+
+
 class RescuedOutputs(dict):  # type: ignore[type-arg]
     """The outputs of one point of a mapping route (resolved, correlated and
     selected evaluations: output key -> ``PointResult``) with the point's
@@ -2799,6 +2855,9 @@ class NativeExecutor:
             result = reference.result
             if rescue:
                 result = replace(result, lane_rescue=rescue)
+            bound = getattr(reference, "uncertified_bound", None)
+            if bound:
+                result = replace(result, uncertified_bound=bound)
             if not stability.enabled:
                 out.append(result)
                 continue
@@ -3321,6 +3380,14 @@ class NativeExecutor:
                 )
                 continue
             evaluation.lane_rescue = point_rescued(output, extra, index)
+            evaluation.uncertified_bound = uncertified_bound(
+                output,
+                extra,
+                index,
+                exported.columns,
+                evaluation.average,
+                exported.amplitude is not None,
+            )
             numbers = evaluation.numbers
 
             carrier = _double_pairs if numbers.double else _carrier_pairs(numbers)

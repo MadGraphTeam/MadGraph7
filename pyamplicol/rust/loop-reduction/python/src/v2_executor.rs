@@ -713,6 +713,11 @@ struct Evaluation {
     /// Per point the lanes served without accuracy evidence, `((family,
     /// order, column), reason)` (`PointResult::uncertified`).
     uncertified: Vec<Vec<((usize, usize, usize), &'static str)>>,
+    /// Per point the absolute bounds `((family, order, column), [finite,
+    /// 1/eps, 1/eps^2])` of its uncertified lanes that have one, in the
+    /// lane's own units (`PointResult::uncertified_bounds`); an uncertified
+    /// lane absent here has no finite bound.
+    uncertified_bounds: Vec<Vec<((usize, usize, usize), [f64; 3])>>,
     report: ReportObject,
 }
 
@@ -878,6 +883,15 @@ fn export_evaluation<T: Exchanged + Real>(
                 r.uncertified
                     .iter()
                     .map(|(key, reason)| ((key.family, key.order, key.column), *reason))
+                    .collect()
+            })
+            .collect(),
+        uncertified_bounds: results
+            .iter()
+            .map(|r| {
+                r.uncertified_bounds
+                    .iter()
+                    .map(|(key, bound)| ((key.family, key.order, key.column), *bound))
                     .collect()
             })
             .collect(),

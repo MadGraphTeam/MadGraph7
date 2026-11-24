@@ -414,6 +414,14 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
         self.uncertified_lanes()
     }
 
+    fn take_uncertified_bounds(&mut self) -> Vec<(usize, usize, [f64; 3])> {
+        match self {
+            Self::NinjaRs(backend) => std::mem::take(&mut backend.uncertified_bounds),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Vec::new(),
+        }
+    }
+
     /// NinjaRS's ([`V2Reducer::refinement_carrier`]); none on TIRust.
     fn refinement_carrier(&self, zero: &T) -> Option<RescueCarrier> {
         match self {
@@ -793,6 +801,9 @@ pub struct V2ReductionBackend {
     /// The lanes the last reduction served without accuracy evidence
     /// ([`V2Backend::take_uncertified`]).
     pub uncertified: Vec<(usize, usize, &'static str)>,
+    /// Their absolute bounds where the reducer states one
+    /// ([`V2Backend::take_uncertified_bounds`]).
+    pub uncertified_bounds: Vec<(usize, usize, [f64; 3])>,
 }
 
 impl V2ReductionBackend {
@@ -803,6 +814,7 @@ impl V2ReductionBackend {
             rescue: RescueBackends::default(),
             local: Vec::new(),
             uncertified: Vec::new(),
+            uncertified_bounds: Vec::new(),
         }
     }
 }
@@ -886,6 +898,10 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
 
     fn take_uncertified(&mut self) -> Vec<(usize, usize, &'static str)> {
         std::mem::take(&mut self.uncertified)
+    }
+
+    fn take_uncertified_bounds(&mut self) -> Vec<(usize, usize, [f64; 3])> {
+        std::mem::take(&mut self.uncertified_bounds)
     }
 
     fn take_local_rescues(&mut self) -> Vec<LocalRescue> {
@@ -990,6 +1006,7 @@ impl V2ReductionBackend {
             )
             .map_err(failure)?;
         self.uncertified = output.uncertified.clone();
+        self.uncertified_bounds = output.uncertified_bounds.clone();
         self.local = output
             .rescued
             .iter()

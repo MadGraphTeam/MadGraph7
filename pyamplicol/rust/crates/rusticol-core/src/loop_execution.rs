@@ -467,6 +467,14 @@ pub mod v2 {
         fn take_uncertified(&mut self) -> Vec<(usize, usize, &'static str)> {
             Vec::new()
         }
+        /// Of the lanes of [`Self::take_uncertified`], those whose served
+        /// value comes with an absolute error bound per Laurent coefficient
+        /// (`[finite, 1/eps, 1/eps^2]`, the backend's own: NinjaRS's
+        /// re-reduction of a lane consistent with zero); a lane absent here
+        /// has none ([`PointResult::uncertified_bounds`]). None by default.
+        fn take_uncertified_bounds(&mut self) -> Vec<(usize, usize, [f64; 3])> {
+            Vec::new()
+        }
         /// [`Self::reduce`] with a source of the rescue-precision low parts
         /// of every lane's inputs (`source.lane(g, row)` for lane `row` of
         /// `groups[g]`, [`LaneRefinement`]), asked for the lanes the
@@ -746,6 +754,13 @@ pub mod v2 {
         /// rescue): the point's value is returned, its accuracy is not
         /// established. Empty otherwise.
         pub uncertified: Vec<(LaneKey, &'static str)>,
+        /// Of the lanes of `uncertified`, those whose served value comes with
+        /// an absolute error bound per Laurent coefficient, in the lane's own
+        /// units ([`V2Backend::take_uncertified_bounds`]); an uncertified lane
+        /// absent here has no finite bound (one the lane rescue served, one
+        /// outside NinjaRS's rescue domain). A check reading the point tests
+        /// its residue together with these bounds.
+        pub uncertified_bounds: Vec<(LaneKey, [f64; 3])>,
         /// The term scale's moments of the point the lane rescue served
         /// (`(family, monomial, carrier)`; review m3: apart from the lanes,
         /// whose keys they would share); empty otherwise.
@@ -1711,6 +1726,9 @@ pub mod v2 {
         /// Per point its lanes served without accuracy evidence
         /// (`PointResult::uncertified`).
         uncertified: Vec<Vec<(LaneKey, &'static str)>>,
+        /// Per point the bounds of its uncertified lanes
+        /// (`PointResult::uncertified_bounds`).
+        uncertified_bounds: Vec<Vec<(LaneKey, [f64; 3])>>,
         /// Per point the term-scale moments the lane rescue served
         /// (`PointResult::rescued_moments`).
         rescued_moments: Vec<Vec<(usize, usize, RescueCarrier)>>,
@@ -1898,6 +1916,14 @@ pub mod v2 {
                         (group.points.get(lane), group.keys.get(lane))
                 {
                     self.sink.uncertified[point].push((key, reason));
+                }
+            }
+            for (g, lane, bound) in self.backend.take_uncertified_bounds() {
+                if let Some(group) = groups.get(g)
+                    && let (Some(&point), Some(&key)) =
+                        (group.points.get(lane), group.keys.get(lane))
+                {
+                    self.sink.uncertified_bounds[point].push((key, bound));
                 }
             }
             let sink = &mut *self.sink;
@@ -2443,6 +2469,7 @@ pub mod v2 {
             rescued_moments: vec![Vec::new(); points],
             local: vec![Vec::new(); points],
             uncertified: vec![Vec::new(); points],
+            uncertified_bounds: vec![Vec::new(); points],
             moments: BTreeMap::new(),
         };
         let carriers = match options.rescue {
@@ -2523,6 +2550,7 @@ pub mod v2 {
             mut rescued_moments,
             mut local,
             mut uncertified,
+            mut uncertified_bounds,
             tracked,
             tracked_sums,
             ..
@@ -2557,6 +2585,7 @@ pub mod v2 {
             rescued_moments: Vec::new(),
             local_rescued: Vec::new(),
             uncertified: Vec::new(),
+            uncertified_bounds: Vec::new(),
         };
         if plan.amplitude {
             // Amplitude-mode plans (decided once per call): the native
@@ -2584,6 +2613,7 @@ pub mod v2 {
                 result.rescued = std::mem::take(&mut rescued[point]);
                 result.local_rescued = std::mem::take(&mut local[point]);
                 result.uncertified = std::mem::take(&mut uncertified[point]);
+                result.uncertified_bounds = std::mem::take(&mut uncertified_bounds[point]);
                 result.rescued_moments = std::mem::take(&mut rescued_moments[point]);
                 results.push(result);
             }
@@ -2648,6 +2678,7 @@ pub mod v2 {
                 rescued_moments: std::mem::take(&mut rescued_moments[point]),
                 local_rescued: std::mem::take(&mut local[point]),
                 uncertified: std::mem::take(&mut uncertified[point]),
+                uncertified_bounds: std::mem::take(&mut uncertified_bounds[point]),
             });
         }
         report.count("points", points as u64);
@@ -3194,6 +3225,7 @@ pub mod v2 {
             rescued_moments: Vec::new(),
             local_rescued: Vec::new(),
             uncertified: Vec::new(),
+            uncertified_bounds: Vec::new(),
         }
     }
 

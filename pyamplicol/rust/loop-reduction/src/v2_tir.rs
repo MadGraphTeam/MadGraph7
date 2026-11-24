@@ -2010,6 +2010,7 @@ impl TirReductionBackend {
             check: again.map(batches).transpose()?,
             rescued: Vec::new(),
             uncertified: Vec::new(),
+            uncertified_bounds: Vec::new(),
         })
     }
 }
