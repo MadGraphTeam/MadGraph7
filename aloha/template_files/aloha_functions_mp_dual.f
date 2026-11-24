@@ -118,9 +118,13 @@ c     Convention for dual computations (same as loop)
          endif
 
       else
+c        sqp0p3 is 0 for a momentum along -z, as in HELAS, and so are its
+c        derivatives where p0 + p3 = 0 (the dual square root of 0 has none)
+         call sqp0p3%initZERO()
          if((p(1)%comp(0)%re.ne.0d0).or.(p(2)%comp(0)%re.ne.0d0).or.
      &      (p(3)%comp(0)%re.gt.0d0)) then
-            sqp0p3 = sqrt(p(0)+p(3))*nsf
+            if (p(0)%comp(0)%re+p(3)%comp(0)%re.gt.rZero)
+     &         sqp0p3 = sqrt(p(0)+p(3))*nsf
             sqp0p3%comp(0) = sqrt(max(p(0)%comp(0)%re+
      &                        p(3)%comp(0)%re,rZero))*nsf
          end if
@@ -256,9 +260,13 @@ c     Convention for dual computations (same as loop)
 
       else
 
+c        sqp0p3 is 0 for a momentum along -z, as in HELAS, and so are its
+c        derivatives where p0 + p3 = 0 (the dual square root of 0 has none)
+         call sqp0p3%initZERO()
          if((p(1)%comp(0)%re.ne.0d0).or.(p(2)%comp(0)%re.ne.0d0).or.
      &      (p(3)%comp(0)%re.gt.0d0)) then
-            sqp0p3 = sqrt(p(0)+p(3))*nsf
+            if (p(0)%comp(0)%re+p(3)%comp(0)%re.gt.rZero)
+     &         sqp0p3 = sqrt(p(0)+p(3))*nsf
             sqp0p3%comp(0) = sqrt(max(p(0)%comp(0)%re+
      &                        p(3)%comp(0)%re,rZero))*nsf
          end if

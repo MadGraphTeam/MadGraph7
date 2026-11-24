@@ -1078,18 +1078,21 @@ C     last ONIA_PREPARE:
 C       sum_k k.VEC(k)/(P.k)                                  (k massless)
 C     + sum_k k.VEC(k)/(P.k) m_k^2 P^2/(2 v_k^3 (P.k)^2)
 C             [2 v_k/(1-v_k^2) - log((1+v_k)/(1-v_k))]       (k massive)
-C     - 2/(3 P^2) sum_S' C_eff(S') g_mu nu M^mu nu(S')
-C     - 8/(m_Q m_Qbar) sum_S' c_S' M(r_S')
 C     with v_k = sqrt(1 - m_k^2 P^2/(P.k)^2), k the coloured legs but the
 C     P-wave state P. A soft gluon turns P into the S-wave states S' of
 C     colour C' (P[1] -> S[8]; P[8] -> S[1], S[8]) through Q_eff(CC'):
 C       VEC^mu(k) = -2 Re sum <P| T_k.Q_eff |S'^mu>,
-C       M^mu nu(S') = sum <S'^mu|S'^nu>,  M(r_S') = -g_mu nu M^mu nu (2S+1)/(2J+1),
 C     with |S'^mu> the amplitudes VS of ONIA_PREPARE in the colour of S'
 C     (onia_loop_pwsoft.inc, loop_onia.pwave_soft_current), normalised as
 C     the projected Born, with sqrt(n_C'/n_C) for the colour projector.
-C     These are minus the poles of the integrated soft current and of the
-C     LDME counterterm of the FKS subtraction.
+C     These are minus the poles of the cross terms of the integrated soft
+C     current of the FKS subtraction. The virtual has no self-like pole of
+C     P for any constituent masses (the intra-pair terms of the IR operator
+C     are O(q^2); eq. (B.2) of the two-P-wave manuscript): the self term of
+C     the soft current is cancelled by the LDME counterterm. (The self and
+C     LDME terms of arXiv:2402.19221 app. B, with 8/(m_Q m_Qbar), cancel
+C     only for equal masses; e+ e- > B_c b c~ in docs/benchmarkfolder,
+C     sect. 5.2.1.)
       IMPLICIT NONE
       INTEGER NEXTERNAL, NEXTERNAL_PHYS, NBORNAMPS
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
@@ -1103,14 +1106,12 @@ C     LDME counterterm of the FKS subtraction.
       COMMON/%(proc_prefix)sONIA_PROJECTED/BPROJ,FACT
       %(complex_dp_format)s VS(NBORNAMPS,0:3,ONIA_NOTHERS,ONIA_NJZT)
       COMMON/%(proc_prefix)sPW_SOFT/VS
-      %(real_dp_format)s NC, CF, BF
-      PARAMETER (NC=3D0, CF=4D0/3D0, BF=5D0/12D0)
-      %(real_dp_format)s METRIC(0:3)
-      DATA METRIC/1D0,-1D0,-1D0,-1D0/
+      %(real_dp_format)s NC
+      PARAMETER (NC=3D0)
       %(real_dp_format)s K(0:3), PK(0:3), KTOT2, PKK, MK2, V, FAC, F
-      %(real_dp_format)s MQ, MQB, R, MSUM, CEFF, CLDME, GMN, MR, VK
+      %(real_dp_format)s MQ, MQB, R, MSUM, VK
       %(complex_dp_format)s Z, KV(NBORNAMPS), TMP
-      INTEGER L, A, I, J, O, T, MU, KL, IPHYS
+      INTEGER L, A, I, J, O, T, KL, IPHYS
       CONTR=0D0
       IPHYS=ONIA_MAPPING(ONIA_Q1(ONIA_IPW))
       K(0:3)=P_PHYS(0:3,IPHYS)
@@ -1162,38 +1163,6 @@ C     the cross vectors k.VEC(k)
           CONTR=CONTR+VK/PKK*MK2*KTOT2/(2D0*V**3*PKK**2)
      &     *(2D0*V/(1D0-V**2)-LOG((1D0+V)/(1D0-V)))
         ENDIF
-      ENDDO
-C     the self term and the LDME counterterm of each S-wave state
-      DO A=1,PWS_NAUX
-        GMN=0D0
-        DO O=1,ONIA_NOTHERS
-          DO T=1,ONIA_NJZT
-            DO MU=0,3
-              DO I=1,NBORNAMPS
-                IF (VS(I,MU,O,T).EQ.(0D0,0D0)) CYCLE
-                TMP=(0D0,0D0)
-                DO J=1,NBORNAMPS
-                  TMP=TMP+DCMPLX(PWS_CS_RE(I,J,A),PWS_CS_IM(I,J,A))*VS(J,MU,O,T)
-                ENDDO
-                GMN=GMN+METRIC(MU)*DBLE(DCONJG(VS(I,MU,O,T))*TMP)
-              ENDDO
-            ENDDO
-          ENDDO
-        ENDDO
-        GMN=GMN*FAC*PWS_CNORM(A)
-        IF (PWS_LABEL(A).EQ.'18') THEN
-          CEFF=MSUM**2/(2D0*NC)
-          CLDME=1D0/(2D0*NC)
-        ELSEIF (PWS_LABEL(A).EQ.'81') THEN
-          CEFF=MSUM**2*CF
-          CLDME=CF
-        ELSE
-          CEFF=MSUM*(-2D0/NC+(NC**2-2D0)/(2D0*NC)*(R+1D0/R))
-          CLDME=BF
-        ENDIF
-        IF (ONIA_S(ONIA_IPW).EQ.1) CLDME=CLDME*(2D0*ONIA_J(ONIA_IPW)+1D0)/9D0
-        MR=-GMN*(2D0*ONIA_S(ONIA_IPW)+1D0)/(2D0*ONIA_J(ONIA_IPW)+1D0)
-        CONTR=CONTR-2D0/(3D0*KTOT2)*CEFF*GMN-8D0/(MQ*MQB)*CLDME*MR
       ENDDO
       END
 
@@ -1982,14 +1951,12 @@ C     other state is a coloured leg if it is an octet)
       %(real_dp_format)s PWK1(0:3), PWK2(0:3), PWM1, PWM2
       COMMON/%(proc_prefix)sPW2_SOFT/VS1,VS2,GVSS,VVSS,PWK1,PWK2,PWM1,PWM2
       %(complex_dp_format)s VS(NBORNAMPS,0:3,ONIA_NOTHERS,ONIA_NJZT)
-      %(real_dp_format)s NC, CF, BF
-      PARAMETER (NC=3D0, CF=4D0/3D0, BF=5D0/12D0)
-      %(real_dp_format)s METRIC(0:3)
-      DATA METRIC/1D0,-1D0,-1D0,-1D0/
+      %(real_dp_format)s NC
+      PARAMETER (NC=3D0)
       %(real_dp_format)s K(0:3), PK(0:3), KTOT2, PKK, MK2, V, FAC, F
-      %(real_dp_format)s MQ, MQB, R, MSUM, CEFF, CLDME, GMN, MR, VK
+      %(real_dp_format)s MQ, MQB, R, MSUM, VK
       %(complex_dp_format)s Z, KV(NBORNAMPS), TMP
-      INTEGER L, A, I, J, O, T, MU, KL, IPHYS, KS
+      INTEGER L, A, I, J, O, T, KL, IPHYS, KS
       CONTR=0D0
       IF (S.EQ.1) THEN
         KS=ONIA_IPW
@@ -2048,39 +2015,6 @@ C     the cross vectors k.VEC(k)
           CONTR=CONTR+VK/PKK*MK2*KTOT2/(2D0*V**3*PKK**2)
      &     *(2D0*V/(1D0-V**2)-LOG((1D0+V)/(1D0-V)))
         ENDIF
-      ENDDO
-C     the self term and the LDME counterterm of each S-wave state (they
-C     cancel for equal masses)
-      DO A=1,PWS_NAUX(S)
-        GMN=0D0
-        DO O=1,ONIA_NOTHERS
-          DO T=1,ONIA_NJZT
-            DO MU=0,3
-              DO I=1,NBORNAMPS
-                IF (VS(I,MU,O,T).EQ.(0D0,0D0)) CYCLE
-                TMP=(0D0,0D0)
-                DO J=1,NBORNAMPS
-                  TMP=TMP+DCMPLX(PWS_CS_RE(I,J,A,S),PWS_CS_IM(I,J,A,S))*VS(J,MU,O,T)
-                ENDDO
-                GMN=GMN+METRIC(MU)*DBLE(DCONJG(VS(I,MU,O,T))*TMP)
-              ENDDO
-            ENDDO
-          ENDDO
-        ENDDO
-        GMN=GMN*FAC*PWS_CNORM(A,S)
-        IF (PWS_LABEL(A,S).EQ.'18') THEN
-          CEFF=MSUM**2/(2D0*NC)
-          CLDME=1D0/(2D0*NC)
-        ELSEIF (PWS_LABEL(A,S).EQ.'81') THEN
-          CEFF=MSUM**2*CF
-          CLDME=CF
-        ELSE
-          CEFF=MSUM*(-2D0/NC+(NC**2-2D0)/(2D0*NC)*(R+1D0/R))
-          CLDME=BF
-        ENDIF
-        IF (ONIA_S(KS).EQ.1) CLDME=CLDME*(2D0*ONIA_J(KS)+1D0)/9D0
-        MR=-GMN*(2D0*ONIA_S(KS)+1D0)/(2D0*ONIA_J(KS)+1D0)
-        CONTR=CONTR-2D0/(3D0*KTOT2)*CEFF*GMN-8D0/(MQ*MQB)*CLDME*MR
       ENDDO
       END
 

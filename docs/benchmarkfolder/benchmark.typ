@@ -666,27 +666,34 @@ MadLoop's. `ONIA_IR_POLES` evaluates the same expression, part by part:
   poles.
 - *Lines 4–5: the monopole-dipole term of each P-wave state.* The other state
   is a spectator, still a P wave. `ONIA_PW2_SOFT_TERM` evaluates it, with the
-  same kernels for massless and massive legs. It also adds the self term and
-  the LDME counterterm of arXiv:2402.19221, app. B, with the coefficient
-  $8\/(m_Q m_(overline(Q)))$. For equal constituent masses they cancel
-  identically, as eq. (B.2) has it; for unequal masses they do not (below).
+  same kernels for massless and massive legs. Like eq. (B.2), it has no self
+  term (since the fix below).
 - *Line 6: the dipole-dipole term.* `ONIA_PW2_DIPOLE_DIPOLE` computes
   $4\/(M_1 M_2) thin "Re"{[f_1^c g_(mu nu) + f_2^c v_(2,mu) v_(1,nu)] cal(M)_V^(mu nu)}$.
   This includes the imaginary parts of $f^c_(1,2)$, which vanish for $2 -> 2$
   processes. Here they are $lt.eq$ #sci(calc.max(..ab.terms_gg.map(r => calc.max(calc.abs(r.im_z.at(0)), calc.abs(r.im_z.at(1))))))
   per Born.
 
-*The one difference: unequal constituent masses* (@tab:appb-bc). Eq. (B.2)
-has no self-like pole for any masses, while `ONIA_IR_POLES` keeps one when
-$m_Q != m_(overline(Q))$. Three $B_c$ P waves decide which is right, in
-$e^+ e^- -> B_c thin b thin overline(c)$ ($m_c = 1.55$, $m_b = 4.7$ GeV),
-where the S-wave daughter Borns do not vanish:
+*Unequal constituent masses: the difference this comparison found, now
+fixed* (@tab:appb-bc). Eq. (B.2) has no self-like pole for any masses.
+`ONIA_IR_POLES` used to add the self term and the LDME counterterm of
+arXiv:2402.19221, app. B, with the coefficient $8\/(m_Q m_(overline(Q)))$;
+they cancel only for equal masses. Three $B_c$ P waves decided which is
+right, in $e^+ e^- -> B_c thin b thin overline(c)$ ($m_c = 1.55$,
+$m_b = 4.7$ GeV), where the S-wave daughter Borns do not vanish:
 - *The virtual has no self-like pole.* MadLoop's computed 1/ε equals the
   prediction without the self term and the LDME counterterm to
   $lt.eq$ #sci(calc.max(..ab.unequal.map(u => u.max_dev_no_self))), in both
-  loop directions. With them, `ONIA_IR_POLES` is off by
+  loop directions. With them, `ONIA_IR_POLES` was off by
   #sci(calc.min(..ab.unequal.map(u => u.dev_predicted.at(0))))–#sci(calc.max(..ab.unequal.map(u => u.dev_predicted.at(1)))).
-  Eq. (B.2) is right, and `ONIA_IR_POLES` must drop the two terms.
+  Eq. (B.2) is right. `ONIA_IR_POLES` (`ONIA_PW_SOFT_POLE`,
+  `ONIA_PW2_SOFT_TERM`) now drops the two terms and matches the regenerated
+  outputs to $lt.eq$ #sci(calc.max(..ab.unequal.map(u => u.fixed.max_dev))) (last
+  column). For equal masses the computed virtual is unchanged, bit for bit,
+  in the 16 one-P-wave cases of `pw_check.py`. Their predictions change
+  only where the two terms were large: in the $2 -> 2$ cases at 1000 GeV
+  each was up to $2.6 dot 10^7$ per Born, and their cancellation had left
+  up to $8 dot 10^(-6)$ in the 1/ε.
 - *The manuscript's $kappa_h = 2 M_h^2\/(m_Q m_(overline(Q)))^2$* (footnote of
   its sect. 5.1) cancels the self term for the transitions to or from a
   colour singlet, to rounding. It does not for the octet-to-octet
@@ -695,21 +702,26 @@ where the S-wave daughter Borns do not vanish:
   per Born is left. With the $C_"eff"$ of arXiv:2402.19221, that transition
   needs $kappa_h (14\/5 - 36 m_Q m_(overline(Q))\/(5 M_h^2))$, which is
   $kappa_h$ only for equal masses.
-- *MadLoop's point improvement is off for these points* (`ImprovePSPoint`
-  $-1$). With it, the incoming $e^-$ gets $p_x, p_y tilde 10^(-16)$ while
-  $p_0 + p_z = 0$. The dual spinor of `aloha_functions_dual.f` then takes the
+- *Dual spinors, also fixed.* MadLoop's point improvement gives the
+  incoming $e^-$ of these $2 -> 3$ points $p_x, p_y tilde 10^(-16)$ while
+  $p_0 + p_z = 0$. The dual spinors of `aloha_functions_dual.f` then took the
   dual square root of 0, whose derivative part is NaN, and every P-wave
-  weight of the loop becomes NaN (code 410). The $2 -> 1$ and $2 -> 2$
-  processes of this report do not reach that branch.
+  weight of the loop became NaN (code 410); the first runs had the
+  improvement off (`ImprovePSPoint` $-1$). The spinors now take that square
+  root only where $p_0 + p_z > 0$, and set it to 0 for a momentum along
+  $-z$, as HELAS does (it was left unset there). With the improvement on,
+  every point is served and gives the same 1/ε. The $2 -> 1$ and $2 -> 2$
+  processes of this report never reached that branch.
 
-#block(breakable: false)[#figure(caption: [P waves with unequal constituent masses, $e^+ e^- -> B_c thin b thin overline(c)$ (`research/pwave_fd/unequal_mass.py`; $sqrt(s) = 20$ and 30 GeV, two points each, `CTModeRun` 1 and 2): the relative deviation of the computed 1/ε from the prediction without the self term and LDME counterterm (eq. (B.2)) and from `ONIA_IR_POLES`, the size of those two terms per Born times $alpha_s\/2pi$, and what is left of them per daughter transition with the manuscript's $kappa_h$ in place of $8\/(m_Q m_(overline(Q)))$. The 1/ε² is 0.])[
-  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto),
-    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, left),
-    [state], [points], [vs. eq. (B.2)], [vs. `ONIA_IR_POLES`], [self + LDME], [left with $kappa_h$],
+#block(breakable: false)[#figure(caption: [P waves with unequal constituent masses, $e^+ e^- -> B_c thin b thin overline(c)$ (`research/pwave_fd/unequal_mass.py`; $sqrt(s) = 20$ and 30 GeV, two points each, `CTModeRun` 1 and 2): the relative deviation of the computed 1/ε from the prediction without the self term and LDME counterterm (eq. (B.2)) and from `ONIA_IR_POLES`, the size of those two terms per Born times $alpha_s\/2pi$, and what is left of them per daughter transition with the manuscript's $kappa_h$ in place of $8\/(m_Q m_(overline(Q)))$; these with the outputs before the fix and the point improvement off. The last column: the regenerated outputs after both fixes, point improvement on, against the fixed `ONIA_IR_POLES`. The 1/ε² is 0.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, left, right),
+    [state], [points], [vs. eq. (B.2)], [vs. old `ONIA_IR_POLES`], [self + LDME], [left with $kappa_h$], [fixed],
     ..ab.unequal.map(u => (eval(u.label, mode: "math"), [#u.npoints × #u.modes.len()], sci(u.max_dev_no_self),
       [#sci(u.dev_predicted.at(0))–#sci(u.dev_predicted.at(1))],
       [#dec(u.self_ldme8.at(0), 3)–#dec(u.self_ldme8.at(1), 3)],
-      u.self_ldme_kappa_by_daughter.pairs().map(((k, v)) => [#k.at(0)→#k.at(1): #sci(v)]).join(linebreak()))).flatten()))
+      u.self_ldme_kappa_by_daughter.pairs().map(((k, v)) => [#k.at(0)→#k.at(1): #sci(v)]).join(linebreak()),
+      if u.at("fixed", default: none) == none [—] else { sci(u.fixed.max_dev) })).flatten()))
 ] <tab:appb-bc>]
 
 #block(breakable: false)[#figure(caption: [$e^+ e^- -> chi_(c 0) thin h_c$ at the points of the manuscript's table 2 (seven digits): MadLoop's computed 1/ε per Born times $alpha_s\/2pi$ in double precision (`CTModeRun` 1), its difference from the manuscript, and the difference of `ONIA_IR_POLES` and of quadruple precision (`CTModeRun` 4, where run) from the manuscript. The 1/ε² is 0.])[

@@ -97,7 +97,8 @@ STATUS_LINES = [
     '`ONIA_NRQCD_CT` gives the MS-bar counterterm of the exchange. The poles are those of eq. (B.2) '
     'of the two-P-wave manuscript (@appb): its table 2 to all seven digits, each of its terms '
     'tested; for unequal constituent masses ($B_c$) the virtual has no self-like pole, as eq. (B.2) '
-    'says and `ONIA_IR_POLES` does not yet.',
+    'says; `ONIA_IR_POLES` now has none either (it kept the self term and LDME '
+    'counterterm of arXiv:2402.19221, off by up to 90% for a $B_c$ octet).',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process.',
 ]
@@ -130,15 +131,6 @@ OPEN_ITEMS = [
     'main) and its bridge patch v9 in MadGraph; a quadruple-precision pass takes about 75 '
     'minutes, nearly all in MadLoop\'s binary128 numerator. No one-loop finite part is '
     'published to compare with (@twopw).',
-    '*P waves with unequal constituent masses* ($B_c$): `ONIA_IR_POLES` keeps the self term and '
-    'LDME counterterm of arXiv:2402.19221, which the virtual does not have (off by up to 90% for '
-    'a $B_c$ octet); they should be dropped, as in the two-P-wave manuscript\'s eq. (B.2) '
-    '(@appb). Its footnote coefficient $kappa_h$ cancels them only for transitions to or from a '
-    'colour singlet.',
-    '*Dual spinors at an improved point:* `aloha_functions_dual.f` takes the dual square root of '
-    '$p_0 + p_z = 0$ when MadLoop\'s point improvement leaves $p_x, p_y tilde 10^(-16)$ on an '
-    'incoming massless fermion, and the P-wave weights become NaN ($2 -> 3$ P-wave processes with '
-    'quark or lepton beams; @appb).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
     '(it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.',
 ]
@@ -587,6 +579,11 @@ def summarize_appendix_b(folder):
                                                   for d in r['daughters'] if d['label'] == lab)
                                          for lab in {d['label'] for r in rows for d in r['daughters']}},
             codes=sorted({r['code'] for r in rows})))
+        path = os.path.join(folder, 'appb_unequal_fixed_%s.json' % state)
+        if os.path.exists(path):
+            rows = json.load(open(path))['rows']
+            unequal[-1]['fixed'] = dict(max_dev=max(r['dev_predicted'] for r in rows),
+                                        codes=sorted({r['code'] for r in rows}), npoints=len(rows))
     return dict(table2=table2, terms_gg=terms, unequal=unequal)
 
 
