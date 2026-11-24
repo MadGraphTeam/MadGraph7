@@ -254,7 +254,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     std::optional<double> s_hat_power,
     double lepton_sampling_power,
     bool sqrt_s_hat_min_condition,
-    bool sqrt_s_hat_condition
+    bool sqrt_s_hat_condition,
+    std::optional<double> s_hat_shift
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -355,6 +356,12 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     }
     if ((_beam_rapidity != 0. || _mirror_beams) && _topology.is_decay()) {
         throw std::invalid_argument("a decay has no beams to give a rapidity");
+    }
+    if (s_hat_shift && !(*s_hat_shift > 0.)) {
+        throw std::invalid_argument(
+            "PhaseSpaceMapping: s_hat_shift, the shift of the pole of the s_hat "
+            "sampling, must be positive"
+        );
     }
     if (_lepton_power != 0. && (_mirror_beams || _two_to_one)) {
         // The dressed split draws x1 and x2 itself and returns 1-x per beam:
@@ -688,7 +695,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
                 : invariant_power;
             double power =
                 is_com_decay ? s_hat_power.value_or(s_hat_default) : invariant_power;
-            info.invariant = Invariant(power, mass, width, decay.flat_window);
+            double shift = is_com_decay ? s_hat_shift.value_or(1e-2) : 1e-2;
+            info.invariant = Invariant(power, mass, width, decay.flat_window, shift);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -806,7 +814,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     std::optional<double> s_hat_power,
     double lepton_sampling_power,
     bool sqrt_s_hat_min_condition,
-    bool sqrt_s_hat_condition
+    bool sqrt_s_hat_condition,
+    std::optional<double> s_hat_shift
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -863,7 +872,8 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         s_hat_power,
         lepton_sampling_power,
         sqrt_s_hat_min_condition,
-        sqrt_s_hat_condition
+        sqrt_s_hat_condition,
+        s_hat_shift
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(

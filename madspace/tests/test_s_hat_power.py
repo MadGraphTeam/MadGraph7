@@ -1,6 +1,7 @@
-"""The power of the s_hat sampling of PhaseSpaceMapping, separate from the
-invariant_power of the propagators, and the options of a color-ordered
-PhaseSpaceMapping. Unset, the s_hat power is invariant_power, except for a
+"""The power and the shift of the s_hat sampling of PhaseSpaceMapping,
+1/(s_hat + s_hat_shift)^s_hat_power, separate from the invariant_power of the
+propagators, and the options of a color-ordered PhaseSpaceMapping. Unset, the
+shift is 0.01 GeV^2, and the s_hat power is invariant_power, except for a
 color-ordered chain with a lower bound on s_hat, where it is AmpliCol's 1.2."""
 
 import math
@@ -99,6 +100,69 @@ def test_unset_color_ordered_bounded(masses):
         tau[power] = mapping.map_forward([r, d])[1]
     assert torch.equal(tau[None], tau[1.2])
     assert not torch.equal(tau[None], tau[0.8])
+
+
+def test_unset_shift():
+    """Unset, the shift of the s_hat sampling is 0.01 GeV^2, that of the
+    propagators."""
+    masses = [0.0, 0.0, 173.0, 173.0, 0.0, 0.0]
+    out = {}
+    for shift in (None, 1e-2, 100.0):
+        kwargs = {} if shift is None else dict(s_hat_shift=shift)
+        mapping = ms.PhaseSpaceMapping(
+            masses, CM_ENERGY, mode=ms.PhaseSpaceMapping.propagator, **kwargs
+        )
+        r = rand((1000, mapping.random_dim()), generator=generator(7))
+        out[shift] = mapping.map_forward([r])
+    assert all(torch.equal(a, b) for a, b in zip(out[None], out[1e-2]))
+    assert not torch.equal(out[None][1], out[100.0][1])
+
+
+@pytest.mark.parametrize("power", [0.8, 1.5, 2.0])
+def test_shift_density(power):
+    """Without a lower bound on s_hat the shift gives the sampling its scale:
+    s_hat follows (s_hat + shift)^-power from zero, flat below the shift."""
+    shift, n = 40.0**2, 200_000
+    mapping = ms.PhaseSpaceMapping(
+        MASSES,
+        CM_ENERGY,
+        mode=ms.PhaseSpaceMapping.propagator,
+        s_hat_power=power,
+        s_hat_shift=shift,
+    )
+    r = rand((n, mapping.random_dim()), generator=generator(8))
+    _, x1, x2, _ = mapping.map_forward([r])
+    s_hat = (x1 * x2 * CM_ENERGY**2).sort().values
+    s_max = CM_ENERGY**2
+    p = 1.0 - power
+    expected = ((s_hat + shift) ** p - shift**p) / ((s_max + shift) ** p - shift**p)
+    empirical = (torch.arange(n, dtype=s_hat.dtype) + 0.5) / n
+    assert (expected - empirical).abs().max().item() < 5.0 / math.sqrt(n)
+
+
+@pytest.mark.parametrize("mode, color_ordered", MODES, ids=IDS)
+def test_shift_keeps_the_integral(mode, color_ordered):
+    """A shifted, steeper s_hat sampling moves the points, not the integral."""
+    n = 400_000
+    _, tau_a, det_a = run(mode, color_ordered, 9, n)
+    _, tau_b, det_b = run(
+        mode, color_ordered, 10, n, s_hat_power=2.0, s_hat_shift=50.0**2
+    )
+    w_a = det_a / (tau_a * CM_ENERGY**2) ** 2
+    w_b = det_b / (tau_b * CM_ENERGY**2) ** 2
+    err = math.hypot(
+        w_a.std(correction=0).item() / math.sqrt(n),
+        w_b.std(correction=0).item() / math.sqrt(n),
+    )
+    assert abs(w_a.mean() - w_b.mean()).item() < 4.0 * err
+
+
+def test_shift_must_be_positive():
+    for shift in (0.0, -1.0):
+        with pytest.raises(ValueError):
+            ms.PhaseSpaceMapping(MASSES, CM_ENERGY, s_hat_shift=shift)
+        with pytest.raises(ValueError):
+            ms.Invariant(1.5, shift=shift)
 
 
 def jet_cuts():

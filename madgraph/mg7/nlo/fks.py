@@ -167,6 +167,13 @@ class SubprocessIntegrand:
             **{key: real(run_card[key]) for key in ("ptj", "ptl", "mll", "mll_sf")},
             maxjetflavor=integer(run_card["maxjetflavor"]),
         )
+        # s_hat of the Born flat below the bound of the cuts and falling
+        # above: the Born of an initial-state emitter has no floor, its real
+        # emission reaches the bound from below
+        s_hat_shift = None
+        if self.cuts is not None and not leptonic:
+            floor = ms.fks_sqrt_s_hat_min(self.cuts, masses[self.incoming :])
+            s_hat_shift = floor**2 if floor > 0 else None
         # the resonances of the resonance-local recoil of each channel, as
         # MadFKS installs them for its Born configuration
         self.channel_mappings, self.resonances = [], []
@@ -182,6 +189,7 @@ class SubprocessIntegrand:
                     leptonic=leptonic,
                     sqrt_s_hat_min_condition=self.cuts is not None,
                     sqrt_s_hat_condition=self.leptons is not None,
+                    s_hat_shift=s_hat_shift,
                 )
             )
         born = self.channel_mappings[0]

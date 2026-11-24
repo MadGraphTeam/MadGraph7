@@ -309,11 +309,13 @@ def born_topology(masses, nincoming, channel, order=None):
 
 
 def born_cuts(born_pdgs, run_card):
-    """The cuts of the run card on the final-state jets and leptons of the
-    Born as madspace Cuts, for the bound on sqrt(s_hat) they imply: ptj on
-    the jets (where the Born has two QCD partons or more, as cuts.f), ptl on
-    the charged leptons and mll_sf on the pairs of a lepton and its
-    antilepton. None without such cuts."""
+    """The cuts of the run card on the final-state jets, leptons and photons
+    of the Born as madspace Cuts, for the bound on sqrt(s_hat) they imply:
+    ptj on the jets (where the Born has two QCD partons or more, as cuts.f),
+    ptl on the charged leptons, mll_sf on the pairs of a lepton and its
+    antilepton and ptgmin on the photons where they are isolated (gamma_is_j
+    off, cuts.f asks for as many isolated photons as the Born has). None
+    without such cuts."""
     ms = madspace()
     observable = ms.Observable
     final = list(born_pdgs[2:])
@@ -331,6 +333,11 @@ def born_cuts(born_pdgs, run_card):
         if real(run_card["mll_sf"]) > 0 and {lepton, -lepton} <= set(final):
             cut = observable(born_pdgs, observable.obs_pair_mass, [[lepton, -lepton]])
             items.append(ms.CutItem(cut, min=real(run_card["mll_sf"])))
+    ptgmin = real(run_card.get("ptgmin", PHOTON_CUTS["ptgmin"]))
+    gamma_is_j = flag(run_card.get("gamma_is_j", PHOTON_SWITCHES["gamma_is_j"]))
+    if ptgmin > 0 and not gamma_is_j and 22 in final:
+        cut = observable(born_pdgs, observable.obs_pt, [[22]])
+        items.append(ms.CutItem(cut, min=ptgmin))
     return ms.Cuts(items) if items else None
 
 

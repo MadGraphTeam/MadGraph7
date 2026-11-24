@@ -5151,6 +5151,9 @@ stable_invariant:
     - name: mass
       type: [float, single]
       desc: "pole mass"
+    - name: shift
+      type: [float, single]
+      desc: "shift of the pole below m^2, in the units of the invariant"
     - name: s_min
       type: [float]
       desc: "lower bound of the invariant"
@@ -5164,7 +5167,7 @@ stable_invariant:
     - name: gs
       type: [float]
       desc: "Jacobian ds/dr"
-  desc: "Samples a propagator invariant with a 1/(s - m^2 + 0.01) density, the pole shifted slightly below m^2. Building block of @ref Invariant."
+  desc: "Samples a propagator invariant with a 1/(s - m^2 + shift) density, the pole shifted below m^2. Building block of @ref Invariant."
 
 stable_invariant_inverse:
   inputs:
@@ -5174,6 +5177,9 @@ stable_invariant_inverse:
     - name: mass
       type: [float, single]
       desc: "pole mass"
+    - name: shift
+      type: [float, single]
+      desc: "shift of the pole below m^2, in the units of the invariant"
     - name: s_min
       type: [float]
       desc: "lower bound of the invariant"
@@ -5197,6 +5203,9 @@ stable_invariant_nu:
     - name: mass
       type: [float, single]
       desc: "pole mass"
+    - name: shift
+      type: [float, single]
+      desc: "shift of the pole below m^2, in the units of the invariant"
     - name: nu
       type: [float, single]
       desc: "exponent of the power law"
@@ -5213,7 +5222,7 @@ stable_invariant_nu:
     - name: gs
       type: [float]
       desc: "Jacobian ds/dr"
-  desc: "Samples a propagator invariant with a (s - m^2 + 0.01)^-nu density, the pole shifted slightly below m^2. Building block of @ref Invariant."
+  desc: "Samples a propagator invariant with a (s - m^2 + shift)^-nu density, the pole shifted below m^2. Building block of @ref Invariant."
 
 stable_invariant_nu_inverse:
   inputs:
@@ -5223,6 +5232,9 @@ stable_invariant_nu_inverse:
     - name: mass
       type: [float, single]
       desc: "pole mass"
+    - name: shift
+      type: [float, single]
+      desc: "shift of the pole below m^2, in the units of the invariant"
     - name: nu
       type: [float, single]
       desc: "exponent of the power law"
