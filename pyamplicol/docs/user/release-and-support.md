@@ -101,7 +101,7 @@ rescue and its NinjaRS-reduced points are marked uncertified.
 Fixed: the UMAMI one-loop provider aborted a whole bulk call when one row was
 returned best-effort.
 
-Dependencies: NinjaRS NRSREV8 (main after alphal00p/ninjars#NRSPR); the other
+Dependencies: NinjaRS `e1d94412` (main after alphal00p/ninjars#23); the other
 pins and the Python dependencies are those of 1.0.3.
 
 ## 1.0.3 release
