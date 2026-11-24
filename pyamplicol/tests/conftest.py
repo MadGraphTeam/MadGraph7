@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from functools import cache
 from pathlib import Path
 from types import ModuleType
@@ -495,6 +496,16 @@ def _upstream_only_module(error: BaseException) -> str | None:
             return f"{package}.{error.name}"
         return None
     name = getattr(error, "name", None) or ""
+    if name in _UPSTREAM_ONLY_PACKAGES:
+        # `from tools.loop_benchmark import stored_checks` names the package,
+        # not the missing submodule: test the submodule instead.
+        missing = getattr(error, "name_from", None)
+        if missing is None:
+            match = re.match(r"cannot import name '([\w.]+)'", str(error))
+            missing = match.group(1) if match else None
+        if missing is None:
+            return None
+        name = f"{name}.{missing}"
     if name in _UPSTREAM_ONLY_TOOLS:
         return name
     if (
