@@ -176,11 +176,14 @@ c     integrals (eikonal_Ireg, fks_onia_eikonal.f), Dbar the dipole-dipole
 c     tensor (eq. Dbar, onia_eik_dd), f1, f2 (eqs. f1f2, f1f2c) of
 c     omega = v1.v2 at the Born momenta, M(r_S') = BAUX (2S+1)/(2J+1) and
 c     eta_SJ = 1 (1P1) or (2J+1)/9 (3P_J). The third line is the LDME
-c     counterterm (eq. LDMECT) with kappa c_S' = 2 C_eff(S')/M^2: this is
-c     8/(m_Q m_Qbar) {1/(2N_c), C_F, B_F} for equal masses, the coefficient
-c     of the footnote of sect. 5.1 for [18], [81], and for [88] it keeps
-c     C_eff(88), so that its pole cancels that of the self term for any
-c     masses. The last two lines are the MS-bar counterterms of the
+c     counterterm (eq. LDMECT) with kappa c_S' = 2 C_eff(S') eta_SJ/M^2
+c     (corrections to arXiv:2402.19221, item 1, 2026-11-24; JHEP_2Pwave,
+c     footnote of sect. 5.1): 8/(m_Q m_Qbar) {1/(2N_c), C_F, B_F} eta_SJ
+c     for equal masses; for m_Q /= m_Qbar, kappa = 2 M^2/(m_Q m_Qbar)^2 for
+c     [18], [81] and kappa (14/5 - 36 m_Q m_Qbar/(5 M^2)) for [88], whose
+c     C_eff(88) = 7/6 Sigma^2 - 3 Sigma (Sigma = M^2/(m_Q m_Qbar)). Its
+c     pole cancels that of the self term for any masses, transition by
+c     transition, as the virtual has no intra-pair pole. The last two lines are the MS-bar counterterms of the
 c     eight-quark operators, cross class (eq. CTcross, which cancels the
 c     pole of Dbar) and parallel class (eq. CTparallel, which cancels the
 c     dipole-dipole pole of the virtual). mu_N = mu_nrqcd_ref_fixed, or by
@@ -342,17 +345,20 @@ c
 c       sum_H { sum_k k_mu VEC^mu(k,H)/(P.k)                (k massless)
 c       + sum_k k_mu VEC^mu(k,H)/(P.k) m_k^2 P^2/(2 v_k^3 (P.k)^2)
 c             [2 v_k/(1-v_k^2) - log((1+v_k)/(1-v_k))]     (k massive)
-c       - 2/(3 P^2) g_mu nu TEN^{mu nu}(H)
-c       - 2/P^2 sum_S' C_eff(S') eta_SJ M(r_S') }
 c     + sum_IP 4/(M_1 M_2) Re{[f1c g_mu nu + f2c v2_mu v1_nu] VPAR^{mu nu}}
 c
 c     with P = P_H, v_k = sqrt(1 - m_k^2 P^2/(P.k)^2), the sums over the
 c     Born legs but onium H (the other octet onia are massive legs), and
-c     VEC, TEN, M(r_S'), C_eff, eta_SJ as in bsv_onia. The self term and
-c     the LDME pole cancel each other (no intra-pair pole, JHEP_2Pwave
-c     sect. 4.1); they are kept as minus the poles of the counterterms of
-c     bsv_onia. The cross-class poles (Dbar and its eight-quark
-c     counterterm) cancel each other and are left out. The last line is
+c     VEC as in bsv_onia. The virtual has no self-energy-like (intra-pair)
+c     pole for any masses (JHEP_2Pwave sect. 4.1; corrections to
+c     arXiv:2402.19221, item 1: the last lines of its (B.4)-(B.8) do not
+c     belong in the virtual): the pole of the integrated self term,
+c     -2/(3 P^2) g_mu nu TEN^{mu nu}, and that of the LDME counterterm,
+c     2/P^2 sum_S' C_eff eta_SJ M(r_S'), cancel each other in bsv_onia and
+c     are left out, as are the cross-class poles (Dbar and its eight-quark
+c     counterterm). The iPi parts of the massive-leg kernel, left out as in
+c     appendix B, vanish after the spin and colour sums in
+c     parity-conserving processes. The last line is
 c     the dipole-dipole pole of the virtual (eq. Vdipdip), cancelled by
 c     the parallel eight-quark counterterm of bsv_onia. There is no double
 c     pole. Born momenta p_born.
@@ -373,8 +379,8 @@ c**************************************************************************
       double precision ceff(nauxmax,npq),mq(npq),mqb(npq)
       integer h,h1,h2,ip,kb,mu,nu,a
       double precision ponium(0:3),pk(0:3)
-      double precision contr,metric(0:3),onia_dot,ktot2,pkk,mk2,v,mr
-      double precision eta,mm1,mm2,omega,f1,f2,f1i,f2i,v1l(0:3)
+      double precision contr,metric(0:3),onia_dot,ktot2,pkk,mk2,v
+      double precision mm1,mm2,omega,f1,f2,f1i,f2i,v1l(0:3)
       double precision v2l(0:3)
       double complex x1p,x2p
       external onia_dot
@@ -402,17 +408,6 @@ c the cross vectors
      &              *mk2*ktot2/(2d0*v**3*pkk**2)
      &              *(2d0*v/(1d0-v**2)-dlog((1d0+v)/(1d0-v)))
             endif
-         enddo
-c the self term
-         do mu=0,3
-            contr=contr-2d0/(3d0*ktot2)*metric(mu)*dble(ten(mu,mu,h))
-         enddo
-c the LDME counterterms
-         eta=1d0
-         if (spin(h).eq.1) eta=dble(2*jtot(h)+1)/9d0
-         do a=1,naux(h)
-            mr=baux(a,h)*dble(2*spin(h)+1)/dble(2*jtot(h)+1)
-            contr=contr-2d0*ceff(a,h)/(mq(h)+mqb(h))**2*eta*mr
          enddo
       enddo
 c the dipole-dipole pole of the virtual (parallel class)
