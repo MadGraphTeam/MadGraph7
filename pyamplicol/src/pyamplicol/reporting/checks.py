@@ -12,8 +12,14 @@ _VERDICT_COLOURS = {
     "not applicable": "YELLOW",
     "no prediction": "YELLOW",
     "not run": "YELLOW",
+    "inconclusive": "YELLOW",
 }
-_STATUS_COLOURS = {"passed": "GREEN", "failed": "RED", "nothing checked": "YELLOW"}
+_STATUS_COLOURS = {
+    "passed": "GREEN",
+    "failed": "RED",
+    "inconclusive": "YELLOW",
+    "nothing checked": "YELLOW",
+}
 
 
 def _number(value: float | None) -> str:
@@ -101,15 +107,13 @@ def check_report_summary(report: Any, *, prettytable: Any, color: bool) -> str:
                     verdict,
                     # An undecided row's reason holds both carriers' numbers.
                     row.reason
-                    if row.verdict == "undecided"
+                    if row.verdict in ("undecided", "inconclusive")
                     else row.fallback or row.reason or "",
                 )
             )
         blocks.append(table.get_string())
-    verdict = (
-        "PASSED"
-        if report.exit_code == 0
-        else ("FAILED" if report.exit_code == 1 else "NOTHING CHECKED")
+    verdict = {0: "PASSED", 1: "FAILED", 4: "INCONCLUSIVE"}.get(
+        report.exit_code, "NOTHING CHECKED"
     )
     if getattr(report, "interrupted", False):
         done = sum(

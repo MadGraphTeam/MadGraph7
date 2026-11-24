@@ -230,15 +230,17 @@ def test_profile_records_carry_the_reductions_own_rescue():
     ]
     assert out.uncertified_points == 1
     table = out.cli_json()["per_point"]
-    assert table["fields"][-3:] == [
+    assert table["fields"][-4:] == [
         "reduction_rescue_lanes",
         "reduction_rescue_carrier",
         "uncertified",
+        "reference_uncertified",
     ]
-    assert lp.SAMPLE_FIELDS[-3:] == (
+    assert lp.SAMPLE_FIELDS[-4:] == (
         "reduction_rescue_lanes",
         "reduction_rescue_carrier",
         "uncertified",
+        "reference_uncertified",
     )
     causes, _ = lp._stability_causes([out])
     assert (
@@ -247,6 +249,114 @@ def test_profile_records_carry_the_reductions_own_rescue():
         "reduction rescue",
         "lanes re-reduced in double-double within the reduction",
     ) in causes
+
+
+@pytest.mark.loop_fast
+def test_a_reference_with_uncertified_lanes_is_not_certified():
+    """``profile --stability``: a reference served with lanes without
+    accuracy evidence (its record's sixth entry, ``harvest``) is not
+    certified: the sample's ``reference_certified`` is False whatever its
+    estimate or agreement said, ``reference_uncertified`` keeps the reason,
+    the true digits are reported all the same, ``per_point`` flags it and
+    the backend counts it (``uncertified_reference_points``); a point whose
+    reference is clean is unchanged bit for bit in the record."""
+
+    import json
+    from fractions import Fraction
+
+    from pyamplicol import loop_profile as lp
+
+    reason = "a reduction lane vanishes within the resolution of its own terms"
+
+    def b64(index):
+        # index, value (per sector [finite]), summary, reason, status, ...
+        return (index, [[1.0 + 1e-14]], None, None, "success")
+
+    def reference(index, unsure=None):
+        exact = Fraction(1)
+        head = (index, [[exact]], None, "1", "agreement")
+        return head if unsure is None else (*head, unsure)
+
+    records = {0: b64(0), 1: b64(1)}
+    clean = {0: reference(0), 1: reference(1)}
+    marked = {0: reference(0), 1: reference(1, reason)}
+
+    def rows(references):
+        found = lp._sample_records(
+            "ninjars",
+            [0, 1],
+            records,
+            references,
+            1e-5,
+            {},
+            lp.GroundTruth("arbitrary", 40),
+        )
+        return found["fields"], json.loads(found["rows"].text)
+
+    fields, before = rows(clean)
+    _fields, after = rows(marked)
+    at = {name: k for k, name in enumerate(fields)}
+    assert after[0] == before[0]
+    assert before[1][at["reference_certified"]] == "agreement"
+    assert after[1][at["reference_certified"]] is False
+    assert after[1][at["reference_uncertified"]] == reason
+    assert before[1][at["reference_uncertified"]] is None
+    assert after[1][at["true_digits"]] == before[1][at["true_digits"]] is not None
+    changed = {at["reference_certified"], at["reference_uncertified"]}
+    assert [x for k, x in enumerate(after[1]) if k not in changed] == [
+        x for k, x in enumerate(before[1]) if k not in changed
+    ]
+    row = lp.BackendStability(
+        "ninjars",
+        per_point=(
+            lp.StabilityPoint(0, "measured", 14.0, None),
+            lp.StabilityPoint(1, "measured", 14.0, None),
+        ),
+    )
+    assert lp._with_reference_uncertified(row, clean) is row
+    out = lp._with_reference_uncertified(row, marked)
+    assert [p.reference_uncertified for p in out.per_point] == [None, reason]
+    assert out.uncertified_reference_points == 1
+    assert out.per_point[0] == row.per_point[0]
+    table = out.cli_json()["per_point"]
+    assert table["fields"][-1] == "reference_uncertified"
+
+
+@pytest.mark.loop_fast
+def test_a_flagged_reference_certifies_no_other_backend():
+    """``profile --stability``'s agreement (``_agreement_dispositions``): a
+    clean backend's reference is certified by agreement only with another
+    CLEAN reference; a reference served with lanes without accuracy
+    evidence is no comparator, so a clean one that only matches it goes to
+    its checked re-run, and the agreement's spread is formed over clean
+    references only; with every reference clean nothing changes."""
+
+    from fractions import Fraction
+
+    from pyamplicol import loop_profile as lp
+
+    one, near = Fraction(1), Fraction(1) + Fraction(1, 10**40)
+    clean, spread = lp._agreement_dispositions({"ninjars": one, "tirust": near}, set())
+    assert clean == {"ninjars": "agreement", "tirust": "agreement"}
+    assert spread == Fraction(1, 10**40) / near
+    flagged, spread = lp._agreement_dispositions(
+        {"ninjars": one, "tirust": near}, {"tirust"}
+    )
+    assert flagged["ninjars"] == "check"
+    assert spread is None
+    # The flagged one may agree with the clean one; its own sample reads
+    # reference_certified False all the same (``_sample_records``).
+    assert flagged["tirust"] == "agreement"
+    three, _ = lp._agreement_dispositions(
+        {"ninjars": one, "tirust": near, "other": one}, {"tirust"}
+    )
+    assert three == {
+        "ninjars": "agreement",
+        "tirust": "agreement",
+        "other": "agreement",
+    }
+    none, _ = lp._agreement_dispositions({"ninjars": None, "tirust": one}, set())
+    assert none == {"ninjars": "none", "tirust": "check"}
 
 
 from tests.unit.test_loop_v2_best_effort import aag  # noqa: E402,F401  (fixture)
@@ -779,3 +889,57 @@ def test_the_umami_provider_returns_a_best_effort_point(aag, loop_native, tmp_pa
         expected = [float(order.finite) for order in truth.values[event]]
         for got, want in zip(values, expected, strict=True):
             assert abs(got - want) <= 1e-9 * max(abs(want), 1e-300), (event, got, want)
+
+
+def _bubble(native, coefficients):
+    """One bubble lane (shifts 0 and (1, 0, 0, 0), squared masses 4, mu^2 = 1)
+    with the rank-1 numerator ``c0 + c1 q0`` (``coefficients`` = (c0, c1),
+    complex), as a ``V2Reducer.reduce`` group in binary64."""
+
+    def batch(values, columns):
+        return native.NativeBatch.from_decimal(
+            [(str(complex(v).real), str(complex(v).imag)) for v in values],
+            1,
+            columns,
+            "double",
+            None,
+            [0],
+        )
+
+    c0, c1 = coefficients
+    return (
+        2,
+        batch([0, 0, 0, 0, 1, 0, 0, 0], 8),
+        batch([4, 4], 2),
+        batch([1], 1),
+        batch([0, 1, 1, 0], 4),
+        batch([c0, c1, 0, 0, 0], 5),
+    )
+
+
+@pytest.mark.loop_fast
+def test_the_python_binding_reports_the_reductions_uncertified_lanes(loop_native):
+    """``V2Reducer.take_uncertified`` (the Python binding of
+    ``V2Output::uncertified``): a lane zero by symmetry (``N = 1 + 2 q0`` on
+    the bubble, whose integral is exactly 0), which NinjaRS's rescue refuses
+    in binary64 and whose re-reduced value is consistent with zero within the
+    re-reduction's own bound, is served with status "success" and its
+    reason; an ordinary lane (``N = i``) carries none; the record is taken."""
+
+    vanishing = (
+        "a reduction lane vanishes within the resolution of its own terms at "
+        "double-double; no symmetry proof"
+    )
+    reducer = loop_native.V2Reducer("double", None, "fast")
+    (direct,), check = reducer.reduce([_bubble(loop_native, (1, 2))])
+    assert check is None
+    assert [status for _row, status in direct.statuses] == ["success"]
+    (value,) = [complex(float(re), float(im)) for re, im in direct.values.to_decimal()][
+        :1
+    ]
+    assert abs(value) < 1e-14
+    assert reducer.take_uncertified() == [(0, 0, vanishing)]
+    assert reducer.take_uncertified() == []
+    (direct,), _check = reducer.reduce([_bubble(loop_native, (1j, 0))])
+    assert [status for _row, status in direct.statuses] == ["success"]
+    assert reducer.take_uncertified() == []

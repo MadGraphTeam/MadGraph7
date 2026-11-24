@@ -991,7 +991,7 @@ def _add_reduction_target(parser: argparse.ArgumentParser) -> None:
         help=(
             "v2 virtuals: the target accuracy (relative, per point) that "
             "TIRust's method-choice acceptance and NinjaRS's cancellation "
-            "rescue (per lane, the target / 1000) follow; default 1e-5"
+            "rescue (per lane, the target / 64) follow; default 1e-5"
         ),
     )
 

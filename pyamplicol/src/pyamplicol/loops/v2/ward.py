@@ -66,8 +66,44 @@ the largest physical component magnitude over the sectors
   Ward evaluation itself from the reduction-direction check
   (``REDUCTION``), is within O1's binary64 scope, E_k <= 1e-9 x scale_k;
   |V_k| <= max(1e-12 x scale_k, E_k) (rule 2, ``BINARY64_FLOOR``); and
-  |V_k| <= 10 E_k (rule 3, the 10x rule). A gauge violation does not
-  depend on the reduction frame, so the estimate does not cover it. A
+  |V_k| <= 10 max(E_k, F_k) (rule 3, the 10x rule), with F_k = n u x
+  scale_k the binary64 resolution of the checked quantity: the standard
+  bound of a sum of the evaluation's n reduction lanes, formed from binary64
+  inputs of at most the physical scale, at the unit roundoff u = 2^-53
+  (``RESOLUTION_UNITS``). The direction check compares two reductions of the
+  SAME binary64 numerator coefficients, so it never sees their rounding;
+  where NinjaRS's cancellation rescue re-reduces the vanishing Ward lanes in
+  double-double in both frames, E_k falls to ~1e-30 x scale_k while the
+  residue keeps the inputs' ~1e-16 to 3e-15 x scale_k, as before the rescue
+  (g g > g g); below F_k the estimate is not read. With a negligible
+  estimate the binary64 tolerance is therefore min(1e-12, 10 n 2^-53) x
+  scale_k. Double-double keeps its rule 3 as before, |V_k| <= 10 E_k without
+  a floor (its residues stay within its estimate: no rescue re-reduces a
+  double-double lane at a higher carrier in both frames). A gauge violation
+  does not depend on the reduction frame, so the estimate does not cover it.
+  LANES SERVED WITHOUT ACCURACY EVIDENCE (``PointResult.uncertified_bound``,
+  ``judged``): such a lane (one that vanishes within the resolution of its
+  own terms) carries no relative accuracy, and two frames can agree on the
+  same wrong value, so neither the residue nor the estimate covers its
+  error; its reducer-stated absolute bound, propagated to the component
+  with the lane's contraction weight, is. Per sector and coefficient, with
+  B_k the sum of those bounds and A_k the criterion's bound on |V_k| above:
+  |V_k| + B_k <= A_k passes, |V_k| - B_k > A_k fails, anything between, or
+  an infinite B_k, is INCONCLUSIVE (``passed`` None with the reason in
+  ``inconclusive``: never a pass). The physical scale has the interval its
+  own uncertified lanes' bound U_k gives it, [scale_k - U_k, scale_k + U_k]
+  (A_k grows with the scale): the row passes only if it passes at the
+  interval's lower end, fails only if it fails at its upper end, and is
+  inconclusive otherwise. Bounds are taken only where credible (finite,
+  normal, positive; never from the generic engine's ladder records,
+  ``plan_export.uncertified_bound``). A real gauge violation therefore
+  cannot pass: a pass needs |V_k| + B_k <= A_k <= max(1e-12 scale_k, E_k)
+  for every scale the physical point allows, and the served residue
+  differs from the true one by at most B_k (the uncertified lanes) plus the
+  certified lanes' rounding that E_k and F_k estimate; two matching wrong
+  zeros carry the bound of their own terms (2^300 for the reviewer's
+  bubble with k = 400), which makes the row inconclusive, while a symmetry
+  zero's bound is of order its terms' rounding. A
   rotation check is no rounding estimate here: the substituted leg's bra
   sums over its helicities against a helicity-independent ket, so each
   reduction lane changes by the helicities' little-group phases under a
@@ -79,6 +115,7 @@ the largest physical component magnitude over the sectors
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from fractions import Fraction
 from typing import Any
@@ -100,6 +137,9 @@ VIRTUAL_BOUNDS = {"double-double": 1e-25}
 ESTIMATE_FACTOR = 10
 BINARY64_SCOPE = 1e-9
 BINARY64_FLOOR = 1e-12
+# The unit roundoff per carrier of rule 3's resolution floor F_k (module
+# docstring).
+RESOLUTION_UNITS = {"double": 2.0**-53, "double-double": 2.0**-104}
 # The stability check the binary64 criterion reads.
 WARD_CHECKS = StabilityChecks(reduction_direction=True)
 
@@ -272,15 +312,56 @@ def _ratio(value: float, scale: float) -> float:
     return 0.0 if value == 0 else float("inf")
 
 
+def uncertified_bounds(result: Any, sectors: Sequence[Any], width: int) -> Any:
+    """The absolute bound of a result's lanes served without accuracy
+    evidence (``PointResult.uncertified_bound``) per sector of ``sectors``
+    and Laurent coefficient (``width`` of them): a list per sector, zeros
+    without such lanes. A bound recorded for a column that is not one of the
+    sectors (an observable column) is not attributable: every sector's bound
+    is then infinite."""
+
+    found = getattr(result, "uncertified_bound", None) or {}
+    out = {sector: [0.0] * width for sector in sectors}
+    for column, bound in found.items():
+        if column not in out:
+            return {sector: [math.inf] * width for sector in sectors}
+        out[column] = [float(b) for b in bound[:width]]
+    return out
+
+
+def judged(residual: float, allowed: float, uncertain: float) -> bool | None:
+    """THE THREE-WAY RULE of a check whose residual includes lanes served
+    without accuracy evidence, of absolute bound ``uncertain`` (0: none):
+    True iff residual + uncertain <= allowed (the criterion holds whatever
+    those lanes' true values within their bound), False iff residual -
+    uncertain > allowed (it fails whatever they are), None otherwise
+    (inconclusive: never a pass), and for an infinite bound."""
+
+    if uncertain == 0:
+        return residual <= allowed
+    if not math.isfinite(uncertain):
+        return None
+    if residual + uncertain <= allowed:
+        return True
+    if residual - uncertain > allowed:
+        return False
+    return None
+
+
 def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
     """The criterion of one Ward evaluation (module docstring): ``physical``
     and ``result`` are the ``PointResult`` of the same point without and with
     the Ward value, ``carrier`` "double" or "double-double". Returns the
     ratios to the physical scale (per Laurent coefficient, the largest over
-    the sectors), the binary64 estimate's (E_k / scale_k, None without
-    checks) with |V_k| / E_k (``estimate_over``, rule 3) and, in binary64,
-    |V_k| / max(1e-12 scale_k, E_k) (``o1_over``, rule 2), the Born ratio
-    and ``passed`` (None: binary64 without checks)."""
+    the sectors), the estimate's (E_k / scale_k, None without checks) with
+    |V_k| / max(E_k, F_k) (``estimate_over``, rule 3; F_k / scale_k is
+    ``resolution``, binary64 only) and, in binary64, |V_k| / max(1e-12
+    scale_k, E_k) (``o1_over``, rule 2), the Born ratio, the bound of the
+    lanes served without accuracy evidence over the scale (``uncertified``,
+    None without such lanes) and ``passed``: True, False, or None (binary64
+    without checks; or INCONCLUSIVE, with the reason in ``inconclusive``:
+    the uncertified lanes' bound straddles the criterion, has no finite
+    value, or the physical scale itself rests on uncertified lanes)."""
 
     if carrier not in BORN_BOUNDS:
         raise ValueError(f"no Ward criterion for the carrier {carrier!r}")
@@ -297,46 +378,69 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
         "parts": parts,
         "estimate": None,
         "estimate_over": None,
+        "uncertified": None,
     }
     virtual = result.components["virtual"]
-    if carrier in VIRTUAL_BOUNDS:
-        bound = VIRTUAL_BOUNDS[carrier]
-        virtual_passed = all(
-            abs(complex(laurent.coefficients[k])) <= bound * scale[k]
-            for laurent in virtual.values()
+    uncertain = uncertified_bounds(result, list(virtual), width)
+    if any(b for bounds in uncertain.values() for b in bounds):
+        row["uncertified"] = [
+            _ratio(max(uncertain[sector][k] for sector in virtual), scale[k])
             for k in range(width)
-        )
-    else:
-        virtual_passed = None
+        ]
+    # The physical normalization's interval: the scale of coefficient k is
+    # the largest physical component, which the physical point's uncertified
+    # lanes can move by at most U_k (their bound, the largest over sectors).
+    physical_virtual = physical.components["virtual"]
+    normalization = uncertified_bounds(physical, list(physical_virtual), width)
+    spread = [
+        max((bounds[k] for bounds in normalization.values()), default=0.0)
+        for k in range(width)
+    ]
+    low = [max(scale[k] - spread[k], 0.0) for k in range(width)]
+    high = [scale[k] + spread[k] for k in range(width)]
+    if any(spread):
+        row["scale_interval"] = [
+            (_ratio(a, s_), _ratio(b, s_))
+            for a, b, s_ in zip(low, high, scale, strict=True)
+        ]
     estimate = result.stability
     if estimate is not None and set(estimate.budgets) != {REDUCTION}:
         raise ValueError(
             "the Ward criterion reads the reduction-direction check alone (a "
             "rotation check is no rounding estimate of a Ward evaluation)"
         )
+    absolute = None
+    in_scope = True
     if estimate is not None:
-        # Per coefficient, the largest E_k / scale_k and |V_k| / E_k over the
-        # sectors.
         absolute = {
             sector: [abs(float(x)) for x in estimate.absolute[sector].coefficients]
             for sector in virtual
         }
+        # Rule 3's resolution floor F_k, binary64 only (module docstring);
+        # double-double keeps E_k alone.
+        lanes = max(1, len(getattr(result, "families", None) or ()))
+        floor = [
+            lanes * RESOLUTION_UNITS[carrier] * scale[k] if carrier == "double" else 0.0
+            for k in range(width)
+        ]
         row["estimate"] = [
             _ratio(max(absolute[sector][k] for sector in virtual), scale[k])
             for k in range(width)
         ]
+        if carrier == "double":
+            row["resolution"] = [_ratio(floor[k], scale[k]) for k in range(width)]
         row["estimate_over"] = [
             max(
-                _ratio(abs(complex(laurent.coefficients[k])), absolute[sector][k])
+                _ratio(
+                    abs(complex(laurent.coefficients[k])),
+                    max(absolute[sector][k], floor[k]),
+                )
                 for sector, laurent in virtual.items()
             )
             for k in range(width)
         ]
-        bracketed = all(x <= ESTIMATE_FACTOR for x in row["estimate_over"])
         if carrier == "double":
             in_scope = all(e <= BINARY64_SCOPE for e in row["estimate"])
-            # O1 rule 2 per sector and coefficient: |V_k| / max(1e-12
-            # scale_k, E_k), the largest over the sectors (<= 1 passes).
             row["o1_over"] = [
                 max(
                     _ratio(
@@ -348,11 +452,84 @@ def ward_row(physical: Any, result: Any, carrier: str) -> dict[str, Any]:
                 for k in range(width)
             ]
             row["in_scope"] = in_scope
-            virtual_passed = (
-                bracketed and in_scope and all(x <= 1 for x in row["o1_over"])
+
+    lanes = max(1, len(getattr(result, "families", None) or ()))
+
+    def allowed(sector: Any, k: int, size: float) -> float | None:
+        """The bound on |V_k| of one sector at the physical scale ``size``:
+        binary64 min(max(1e-12 S_k, E_k), 10 max(E_k, F_k)) with F_k = n u
+        S_k (rules 2 and 3; None without the estimate); double-double 1e-25
+        S_k, and 10 E_k with the estimate (rule 3, no floor). Monotone in
+        S_k."""
+
+        if carrier == "double":
+            if absolute is None:
+                return None
+            e = absolute[sector][k]
+            resolution = lanes * RESOLUTION_UNITS[carrier] * size
+            return min(
+                max(BINARY64_FLOOR * size, e), ESTIMATE_FACTOR * max(e, resolution)
+            )
+        bound = VIRTUAL_BOUNDS[carrier] * size
+        if absolute is not None:
+            bound = min(bound, ESTIMATE_FACTOR * absolute[sector][k])
+        return bound
+
+    # The three-way rule over the residue's interval (its uncertified lanes'
+    # bound) AND the scale's (the physical normalization's): a pass at the
+    # smallest scale passes everywhere, a failure at the largest fails
+    # everywhere (``allowed`` grows with the scale); anything else, or no
+    # finite interval, is inconclusive.
+    verdicts = []
+    for sector, laurent in virtual.items():
+        for k in range(width):
+            least = allowed(sector, k, low[k])
+            most = allowed(sector, k, high[k])
+            if least is None or most is None:
+                verdicts.append("none")
+                continue
+            value = abs(complex(laurent.coefficients[k]))
+            if judged(value, least, uncertain[sector][k]) is True:
+                verdicts.append(True)
+            elif judged(value, most, uncertain[sector][k]) is False:
+                verdicts.append(False)
+            else:
+                verdicts.append(None)
+    scope_low = scope_high = True
+    if carrier == "double" and absolute is not None:
+        largest_e = [
+            max(absolute[sector][k] for sector in virtual) for k in range(width)
+        ]
+        scope_low = all(
+            e <= BINARY64_SCOPE * size for e, size in zip(largest_e, low, strict=True)
+        )
+        scope_high = all(
+            e <= BINARY64_SCOPE * size for e, size in zip(largest_e, high, strict=True)
+        )
+    # Demonstrably out of the binary64 scope: at every scale the physical
+    # normalization allows (the stored checks skip only such a point).
+    row["scope_excluded"] = not scope_high
+    if "none" in verdicts:
+        virtual_passed = None
+    elif not scope_high or False in verdicts:
+        virtual_passed = False
+    elif None in verdicts or not scope_low:
+        virtual_passed = None
+        if any(spread):
+            row["inconclusive"] = (
+                "the physical normalization rests on reduction lanes served "
+                "without accuracy evidence: the criterion differs across its "
+                "interval"
             )
         else:
-            virtual_passed = bool(virtual_passed) and bracketed
+            row["inconclusive"] = (
+                "reduction lanes served without accuracy evidence: their absolute "
+                "bound ("
+                + ", ".join(f"{x:.3g}" for x in (row["uncertified"] or [math.inf]))
+                + " of the physical scale) straddles the criterion or is not finite"
+            )
+    else:
+        virtual_passed = True
     row["virtual_passed"] = virtual_passed
     row["passed"] = (
         None if virtual_passed is None else bool(virtual_passed and row["born_passed"])
@@ -428,18 +605,21 @@ __all__ = [
     "BORN_BOUNDS",
     "ESTIMATE_FACTOR",
     "PARTS",
+    "RESOLUTION_UNITS",
     "VIRTUAL_BOUNDS",
     "WARD_CHECKS",
     "WARD_FACTORS",
     "born_ratio",
     "gauge_legs",
     "gauge_ward",
+    "judged",
     "lane_scales",
     "largest",
     "loop_vector",
     "point_wards",
     "require_full_kernels",
     "rotated_ward",
+    "uncertified_bounds",
     "ward_check",
     "ward_leg",
     "ward_row",

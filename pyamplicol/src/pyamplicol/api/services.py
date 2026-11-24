@@ -2304,7 +2304,8 @@ def _check(
     cancellation rescue, not the check's own pass criteria).
     ``source`` is the run card a configuration ``target`` was read from
     (the report names it). Returns a ``CheckReport`` whose ``exit_code`` is 0 iff every
-    process passed."""
+    process passed (1: a failure; 4: an inconclusive process, none failed;
+    3: nothing checked)."""
 
     import time
 

@@ -1708,6 +1708,15 @@ class PointResult:
     # served, over the point's native evaluations (the reference and its
     # rotations); empty when none was rescued.
     lane_rescue: tuple[tuple[str, int], ...] = ()
+    # The reduction lanes served without accuracy evidence, as an absolute
+    # bound on the checked quantities (``plan_export.uncertified_bound``):
+    # per virtual sector and Laurent coefficient, the sum over those lanes of
+    # their reducer-stated absolute error bound propagated with the lane's
+    # contraction weight to the bare component (``math.inf`` where a lane has
+    # no finite bound, or where the propagation is not formed); empty when no
+    # lane is uncertified. A check reading the point tests its residue
+    # together with it (``ward.ward_row``, ``checks``).
+    uncertified_bound: Mapping[Orders, tuple[float, ...]] = field(default_factory=dict)
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
