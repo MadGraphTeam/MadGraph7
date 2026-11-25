@@ -142,13 +142,6 @@ def onium_is_soft_partner(leg, model):
     return onium.get('C') == 8 or is_pwave(onium)
 
 
-def onia_only_coloured(legs, model):
-    """True when no elementary particle of the process is coloured: the
-    final-state gluons of its reals then have only onia as soft sisters."""
-    return not any(abs(model.get('particle_dict')[l.get('id')].get_color()) > 1
-                   for l in legs if not onium_of(l))
-
-
 def is_onium_emitter(legs, leg, model):
     """True for the first constituent of a final-state onium that is a soft
     partner of the gluons (onium_is_soft_partner)."""
@@ -171,10 +164,11 @@ def onium_emission_split(leg, model):
 def partition_nosector(is_onium, fks_infos):
     """For each physical leg of a real emission (is_onium: list of booleans),
     whether fks_Sij leaves it out of the partition (FKS_ONIA_NOSECTOR): an
-    onium, unless onia are the FKS sisters j of sectors of this real (onia
-    the only coloured particles, onium_emission_split). Then every onium is
-    in the partition, also one whose equivalent sector was dropped for
-    identical onia (the kept sector counts it through its FKS_FAC_J_D)."""
+    onium, unless onia are the FKS sisters j of sectors of this real
+    (onium_emission_split: every soft-partner onium of a real with a
+    final-state gluon). Then every onium is in the partition, also one whose
+    equivalent sector was dropped for identical onia (the kept sector counts
+    it through its FKS_FAC_J_D)."""
     owns = any(is_onium[i['j'] - 1] for i in fks_infos)
     return [x and not owns for x in is_onium]
 
@@ -340,12 +334,12 @@ def to_physical_fks(real_legs, model, fks_infos, fks_j_from_i, colors, particle_
     for info in fks_infos:
         orig_i, orig_j = info['i'], info['j']
         # an onium (its first constituent) may be the soft-only sister j of
-        # a gluon when the onia are the only coloured particles
+        # a gluon if it is a soft partner of the gluons
         # (onium_emission_split); a constituent is never i, and never j
         # otherwise
         if orig_i - 1 in constituents or orig_j - 1 in hidden or \
-                (orig_j - 1 in constituents and not onia_only_coloured(
-                    [l for l in legs if l.get('number') != orig_i], model)):
+                (orig_j - 1 in constituents and
+                 not is_onium_emitter(legs, legs[orig_j - 1], model)):
             raise OniaNLOError('a constituent of a bound state as FKS parton i or j')
         info = copy.copy(info)
         info['i'] = physical_number(legs, orig_i)

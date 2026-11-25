@@ -71,12 +71,13 @@ class TestFKSOniaGeneration(unittest.TestCase):
             real.colors, real.particle_tags, real.charges)
         self.assertEqual(sorted((i['i'], i['j']) for i in infos), [(5, 3), (5, 4)])
         self.assertEqual(j_from_i[5], [3, 4])
-        # with an elementary coloured parton the onia own no sector
+        # next to elementary coloured partons too, each P wave is the sister
+        # of the gluon it emits (its soft cone is mapped about it)
         born, = self.generate('u u~ > chic0(1|3P01) chic2(1|3P21) QED=0 [real=QCD]')
-        for real in born.real_amps:
-            constituents = set(n + 1 for pair in fks_onia.onium_pairs(real.process['legs'])
-                               for n in pair)
-            self.assertFalse(constituents & set(i['j'] for i in real.fks_infos))
+        self.check_reals(born)
+        real = [r for r in born.real_amps if r.process['legs'][-1]['id'] == 21][0]
+        self.assertEqual([l['id'] for l in real.process['legs']], [2, -2, 4, -4, 4, -4, 21])
+        self.assertEqual(sorted((i['i'], i['j']) for i in real.fks_infos), [(7, 1), (7, 2), (7, 3), (7, 5)])
 
     def test_dipole_matrices(self):
         """The dipole-dipole colour matrices of two P-wave octets (all
@@ -179,8 +180,9 @@ class TestFKSOniaGeneration(unittest.TestCase):
         self.assertIn('massive constituents', str(ctx.exception))
 
     def check_reals(self, born):
-        """Constituents adjacent, never FKS partons, and only the onium (its
-        first constituent) as a soft partner."""
+        """Constituents adjacent, never FKS parton i, j only as the first
+        constituent of a soft-partner onium (its own soft-only sector), and
+        only the onium (its first constituent) as a soft partner."""
         model = born.born_amp['process']['model']
         for real in born.real_amps:
             legs = real.process['legs']
@@ -189,7 +191,10 @@ class TestFKSOniaGeneration(unittest.TestCase):
             seconds = set(b + 1 for _, b in pairs)
             for info in real.fks_infos:
                 self.assertNotIn(info['i'], constituents)
-                self.assertNotIn(info['j'], constituents)
+                self.assertNotIn(info['j'], seconds)
+                if info['j'] in constituents:
+                    self.assertTrue(fks_onia.onium_is_soft_partner(legs[info['j'] - 1], model))
+                    self.assertEqual(legs[info['i'] - 1]['id'], 21)
             for i, js in real.fks_j_from_i.items():
                 self.assertFalse(seconds & set(js))
                 self.assertFalse(i in constituents and js)
@@ -219,8 +224,9 @@ class TestFKSOniaGeneration(unittest.TestCase):
         real = [r for r in born.real_amps if [l['id'] for l in r.process['legs']]
                 == [5, 21, 5, 4, -4, 21]][0]
         self.assertEqual(sorted(real.fks_j_from_i[6]), [1, 2, 3, 4])
+        # the P wave (first constituent 4) owns a sector next to the b quarks
         self.assertEqual(sorted((i['i'], i['j']) for i in real.fks_infos),
-                         [(6, 1), (6, 2), (6, 3)])
+                         [(6, 1), (6, 2), (6, 3), (6, 4)])
 
     def test_zero_born_p_wave_kept(self):
         """q q~ > chi_cJ vanishes at LO, but its real emission is soft singular
@@ -397,7 +403,8 @@ class TestFKSOniaGeneration(unittest.TestCase):
             real.colors, real.particle_tags, real.charges)
         self.assertEqual(colors, [8, 8, 8, 8, 8])
         self.assertEqual(len(tags), 5)
-        self.assertEqual(sorted((i['i'], i['j']) for i in infos), [(5, 1), (5, 2), (5, 4)])
+        # the octet onium (physical leg 3) owns a soft-only sector
+        self.assertEqual(sorted((i['i'], i['j']) for i in infos), [(5, 1), (5, 2), (5, 3), (5, 4)])
         self.assertEqual(sorted(jfromi[5]), [1, 2, 3, 4])
         self.assertEqual(fks_onia.physical_pdgs(real.process['legs']), [21, 21, 9940003, 21, 21])
 

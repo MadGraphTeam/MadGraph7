@@ -1110,12 +1110,16 @@ class FKSProcess(object):
         # split, and the onium counts as one particle
         nphysical = len(fks_onia.physical_legs(leglist)) if \
                     fks_onia.has_onia(leglist) else len(leglist)
-        # bound states that are the only coloured particles (e+ e- > onia):
-        # the gluon is emitted by the onia, which are then its FKS sisters
-        # (soft-only, massive j; JHEP_2Pwave, sect. 6.1)
+        # bound states that are soft partners of the gluons (octets, P waves)
+        # emit the gluon themselves and are its FKS sisters (soft-only,
+        # massive j; JHEP_2Pwave, sect. 6.1), also next to coloured elementary
+        # partons: the radiation is then mapped about the onium, whose soft
+        # current lives in a cone of opening ~1/gamma around it. Measured from
+        # another sister (a beam, a recoiling jet) that cone is not sampled
+        # for a boosted onium, and the cross section and its xi_cut
+        # independence do not converge (onia_fks PLAN.md, 2026-11-25)
         onium_emitters = fks_onia.has_onia(leglist) and 'QCD' in pert_orders and \
-            not (nphysical == 3 and not decay_process) and \
-            fks_onia.onia_only_coloured(leglist, model)
+            not (nphysical == 3 and not decay_process)
         for i in leglist:
             i_i = i['number'] - 1
             self.reals.append([])

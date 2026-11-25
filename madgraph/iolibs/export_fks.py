@@ -2885,14 +2885,14 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         """onia_legs.f: FKS_ONIA_LEG(I) is true when leg I (physical numbering)
         of the real emission of the current FKS configuration is a bound state.
         The onium is a soft partner of the gluons (it is in fks_j_from_i, for
-        the colour links and the P-wave soft current). When the gluon has
-        elementary sisters the onium owns no FKS sector, and FKS_ONIA_NOSECTOR
-        makes fks_Sij leave it out of the partition: the soft region is then
-        shared among the sectors that are integrated. Without the exclusion
-        the share of the pairs (gluon, onium) would be dropped while the
-        integrated soft counterterm keeps it. When the onia are the only
-        coloured particles they are the sisters (fks_onia.onium_emission_split)
-        and all of them are in the partition."""
+        the colour links and the P-wave soft current). A soft-partner onium is
+        the FKS sister of the gluon it emits (fks_onia.onium_emission_split),
+        and then all onia of the real are in the partition. FKS_ONIA_NOSECTOR
+        makes fks_Sij leave out an onium of a real in which no onium owns a
+        sector: the soft region is then shared among the sectors that are
+        integrated. Without the exclusion the share of the pairs (gluon,
+        onium) would be dropped while the integrated soft counterterm keeps
+        it."""
         fks_info_list = matrix_element.get_fks_info_list()
         rows, nosector = [], []
         for info in fks_info_list:
@@ -2934,8 +2934,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                   'C     True if leg I (physical numbering) of the real emission of',
                   'C     the current FKS configuration is a bound state that owns no',
                   'C     FKS sector of that real: it is left out of the partition',
-                  'C     (fks_Sij). Onia that are the FKS sisters of the gluon (the',
-                  'C     only coloured particles) are part of it.',
+                  'C     (fks_Sij). Onia that are the FKS sisters of the gluon',
+                  'C     (soft partners, onium_emission_split) are part of it.',
                   '      IMPLICIT NONE',
                   '      INTEGER I, IPOS',
                   '      INTEGER NCONF, NEXT',
