@@ -1946,15 +1946,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
             lines.append("PARAMETER (DER_ORDER=%d)"%der_order)
 
         # Get mapping between production of bound states and open production mode
+        # ONIA, PAIRS and every per-onium array below are numbered by the
+        # onium 'index' (its slot), which need not be the order of the onia
+        # among the legs (the FKS sort may reorder them): fill them by slot.
         mapping = []
         pairs = []
-        n = []
-        s = []
-        l = []
-        j = []
-        c = []
-        incoming = []
-        jh2 = []
+        n = [0]*nonia
+        s = [0]*nonia
+        l = [0]*nonia
+        j = [0]*nonia
+        c = [0]*nonia
+        incoming = [0]*nonia
+        jh2 = [0]*nonia
         onia = [0]*nonia
         onium = -1
         onium_mass = 0
@@ -1969,15 +1972,15 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent --allow-stdin treatca
                         pairs.append(wf.get('onium').get('index')+1)
                     else:
                         pairs.append(-(wf.get('onium').get('index')+1))
-                    n.append(wf.get('onium').get('N'))
+                    n[onium] = wf.get('onium').get('N')
                     # a decaying onium, and 2J_H+1 of its hadron: the last
                     # digit of the PDG code of every Fock state
-                    incoming.append(1 if wf.get('leg_state') == False else 0)
-                    jh2.append(abs(wf.get('onium').get('id')) % 10)
-                    s.append(wf.get('onium').get('S'))
-                    l.append(wf.get('onium').get('L'))
-                    j.append(wf.get('onium').get('J'))
-                    c.append(wf.get('onium').get('C'))
+                    incoming[onium] = 1 if wf.get('leg_state') == False else 0
+                    jh2[onium] = abs(wf.get('onium').get('id')) % 10
+                    s[onium] = wf.get('onium').get('S')
+                    l[onium] = wf.get('onium').get('L')
+                    j[onium] = wf.get('onium').get('J')
+                    c[onium] = wf.get('onium').get('C')
                     onia[onium] = wf.get('number')-counter
                     counter += 1
                     continue

@@ -16,6 +16,7 @@ translation to physical numbering."""
 
 import math
 import os
+import re
 import unittest
 
 import madgraph.fks.fks_onia as fks_onia
@@ -141,6 +142,32 @@ class TestFKSOniaGeneration(unittest.TestCase):
         born, = self.generate('e+ e- > Jpsi(1|3P08) Jpsi(1|3P08) / z h QED=2 QCD=2 [real=QCD]')
         legs = born.real_amps[0].process['legs']
         self.assertEqual(ident(legs[2]), ident(legs[4]))
+
+    def test_onia_data_by_slot(self):
+        """onia.inc numbers the onia by their 'index' (ONIA, PAIRS), which
+        the FKS sort need not keep in the order of the legs: B_c- comes
+        before B_c+ here. The quantum numbers of every onium must sit in its
+        own slot (slot 1 = B_c+, the P wave)."""
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.iolibs.export_v4 as export_v4
+        born, = self.generate('e+ e- > Bc+(1|1P18) Bc-(1|1S08) / z h QED=2 QCD=2 [real=QCD]')
+        amp = born.born_amp
+        self.assertEqual([l['onium']['index'] for l in amp['process']['legs'] if l['onium']],
+                         [1, 1, 0, 0])
+        me = helas_objects.HelasMatrixElement(amp, gen_color=False)
+
+        class Lines(list):
+            def writelines(self, lines):
+                self.extend(lines.split('\n') if isinstance(lines, str) else lines)
+        lines = Lines()
+        export_v4.ProcessExporterFortran.write_onia_file(None, lines, me)
+        data = dict((m.group(1), m.group(2)) for m in
+                    (re.match(r'DATA \((\w+)\(i\),i=1,\d+\)/([^/]*)/', l) for l in lines) if m)
+        self.assertEqual(data['ONIA'], '4,3')
+        self.assertEqual(data['PAIRS'], '0,0,2,-2,1,-1')
+        self.assertEqual(data['L_ONIA'], '1,0')
+        self.assertEqual(data['J_ONIA'], '1,0')
+        self.assertEqual(data['C_ONIA'], '8,8')
 
     def test_massless_constituents_refused(self):
         cmd = MGCmd.MasterCmd()
