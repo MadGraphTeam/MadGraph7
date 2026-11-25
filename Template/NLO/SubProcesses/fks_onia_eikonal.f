@@ -7,39 +7,14 @@ c     coefficients P2 (1/eps^2) and P1 (1/eps) in front of
 c     (4 pi)^eps/Gamma(1-eps) (mu^2/Q_ES^2)^eps, and the finite part FIN.
 c     Vectors and tensors carry upper indices. Checked against
 c     finite-difference derivatives of the scalar integrals
-c     (onia_fks/docs/scripts/eikonal.py).
+c     (onia_fks/docs/scripts/eikonal.py), and over an edge scan of
+c     velocities and angles (eik_scan.py).
 c**************************************************************************
 
       double precision function onia_dot(a,b)
       implicit none
       double precision a(0:3),b(0:3)
       onia_dot=a(0)*b(0)-a(1)*b(1)-a(2)*b(2)-a(3)*b(3)
-      end
-
-
-      double precision function onia_l1p(z)
-c     log(1+z), accurate for small |z| (Goldberg: log(u) z/(u-1), u = 1+z)
-      implicit none
-      double precision z,u
-      u=1d0+z
-      if (u.eq.1d0) then
-         onia_l1p=z
-      else
-         onia_l1p=dlog(u)*z/(u-1d0)
-      endif
-      end
-
-
-      double precision function onia_l1pz(z)
-c     log(1+z)/z, 1 at z = 0
-      implicit none
-      double precision z,onia_l1p
-      external onia_l1p
-      if (z.eq.0d0) then
-         onia_l1pz=1d0
-      else
-         onia_l1pz=onia_l1p(z)/z
-      endif
       end
 
 
@@ -70,38 +45,37 @@ c     E-bar^mu({1,2},{k,l}) = k.l int q^mu/((k.q)(l.q)^2): l massive
 c     (power 2), k massless, massive, or l itself (lself). The mass of a
 c     momentum is taken from its square.
 c     The closed forms of appendix A have removable singularities when k
-c     and l are collinear in the c.m. frame, which is always the case for
-c     the two final-state particles of a 2 -> 2 Born (back to back): there
-c     the massive-massive form gives NaN and the massless-massive one a
-c     wrong finite part. The massless-massive form is evaluated here with
-c     x-a and x-c from the angle between k and l and log(1+z)/z; the
-c     massive-massive case uses Feynman parameters,
-c       1/((k.q)(l.q)^2) = int_0^1 dx 2(1-x)/(P_x.q)^3, P_x = x k+(1-x) l,
-c       E^mu({1,2},{k,l}) = k.l int_0^1 dx 2(1-x) E^mu({1,2},{P_x,P_x})/P_x^2,
-c     with the self form and a 64-point Gauss-Legendre rule (smooth
-c     integrand, P_x timelike); it equals the closed form to 1d-13 away
-c     from collinearity. A massless k exactly parallel to l (za -> 0, not
-c     a configuration of the final state of a 2 -> 2 Born) keeps a
-c     cancellation of ~1d-16/za, as the closed form.
+c     and l are collinear in the c.m. frame (always the case for the two
+c     final-state particles of a 2 -> 2 Born, back to back), and the
+c     massless-massive one also loses ~1d-16/b^2 for a slow onium and
+c     ~1d-16/(b angle^2) for k nearly parallel to l. Here:
+c     - massless k: the closed form in real*16 (onia_eik_r1_mlq), with x-a
+c       and x-c from the angle between k and l; below b = 1d-10 the at-rest
+c       limit (off by O(b));
+c     - massive k: Feynman parameters,
+c         1/((k.q)(l.q)^2) = int_0^1 dx 2(1-x)/(P_x.q)^3, P_x = x k+(1-x) l,
+c         E^mu({1,2},{k,l}) = k.l int dx 2(1-x) E^mu({1,2},{P_x,P_x})/P_x^2,
+c       with the closed self form and the graded rule of onia_fpnodes
+c       (smooth integrand, P_x timelike).
+c     Checked against the closed form at 120 digits over a scan of
+c     velocities and angles including both edges (docs/scripts/eik_scan.py).
 c**************************************************************************
       implicit none
       double precision pk(0:3),pl(0:3),shat,qes2,xicut
       logical lself
       double precision p2(0:3),p1(0:3),fin(0:3)
-      double precision onia_dot,ddilog,pi,onia_l1p,onia_l1pz
-      external onia_dot,ddilog,onia_l1p,onia_l1pz
+      double precision onia_dot,pi
+      external onia_dot
       parameter (pi=3.1415926535897932385d0)
-      integer ngl
-      parameter (ngl=64)
-      double precision xgl(ngl),wgl(ngl)
+      integer nfp
+      parameter (nfp=320)
+      double precision xfp(nfp),xmfp(nfp),wfp(nfp)
       logical firsttime
       data firsttime /.true./
-      save firsttime,xgl,wgl
-      double precision d0(0:3),bl,el,ek,x,mk2,ml2,ml,a,c,lbb,t1,t2,t3,b
-      double precision ll,pp(0:3),p1s(0:3),fins(0:3),wt,pkn,pln,sm,sp
-      double precision za,zc,lxa,lxc,fa,fc
+      save firsttime,xfp,xmfp,wfp
+      double precision el,ek,x,mk2,ml2,ml,b,ll,pp(0:3),p1s(0:3),fins(0:3)
+      double precision wt
       integer i
-      data d0 /1d0,0d0,0d0,0d0/
       ll=dlog(xicut**2*shat/qes2)
       p2(0:3)=0d0
       if (lself) then
@@ -113,71 +87,217 @@ c**************************************************************************
       x=onia_dot(pk,pl)
       ek=pk(0)
       el=pl(0)
-      bl=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)/el
       if (dabs(mk2).lt.1d-10*ek**2) then
 c        massless k
          ml=dsqrt(ml2)
-         b=bl
+         b=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)/el
          p2(0:3)=pk(0:3)/(2d0*x)
          p1(0:3)=(1d0-dlog(x/(ek*ml))-ll/2d0)/x*pk(0:3)-pl(0:3)/ml2
-         if (b.lt.3d-6) then
+         if (b.lt.1d-10) then
 c           l (nearly) at rest, as the onium of a 2 -> 1 Born: the limit
-c           b -> 0, independent of the direction (the closed form below
-c           loses ~1d-16/b^2; the limit is off by O(b))
+c           b -> 0, independent of the direction (off by O(b))
             fin(0:3)=(2d0-pi**2/12d0-ll+ll**2/4d0)/x*pk(0:3)
      &           +(ll-2d0)/ml2*pl(0:3)
             return
          endif
-         a=ek*el*(1d0-b)
-         c=ek*el*(1d0+b)
-         lbb=dlog((1d0+b)/(1d0-b))
-c        za = (x-a)/a = ek el b (1-cos)/a, zc = (x-c)/c = -ek el b (1+cos)/c,
-c        1 -/+ cos = |k^ -/+ l^|^2/2 from the unit vectors (accurate when k
-c        and l are back to back, as a parton recoiling against the onium)
-         pkn=dsqrt(pk(1)**2+pk(2)**2+pk(3)**2)
-         pln=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)
-         sm=0d0
-         sp=0d0
-         do i=1,3
-            sm=sm+(pk(i)/pkn-pl(i)/pln)**2
-            sp=sp+(pk(i)/pkn+pl(i)/pln)**2
-         enddo
-         za=ek*el*b*sm/(2d0*a)
-         zc=-ek*el*b*sp/(2d0*c)
-         lxa=onia_l1p(za)
-         lxc=onia_l1p(zc)
-         fa=onia_l1pz(za)
-         fc=onia_l1pz(zc)
-c        x/(x-a) log(x/a) = (1+za) fa, c/(x-c) log(x/c) = fc,
-c        ek el/(x-a) log(x/a) = fa/(1-b), ek el/(x-c) log(x/c) = fc/(1+b),
-c        and [ek el (log(c/x)-log(x/a)) + x lbb/(1+b)]/(x-c)
-c          = (lbb - 2 fc)/(1+b)   (log(x/a) = lbb + log(x/c))
-         t1=-pi**2/12d0-ll+ll**2/4d0+dlog(x/(ek*ml))*ll
-     &        -lxa+lxa**2/2d0-lbb**2/4d0
-     &        +ddilog(-za)-ddilog(zc/(1d0+zc))
-     &        +(1d0+za)*fa+fc
-         t2=ll+ml2/(b*el**2)*(-lbb/(1d0-b**2)
-     &        -fa/(1d0-b)+fc/(1d0+b))
-         t3=(-ek*(lxc+lxa)
-     &        +x*ml2/(el**3*b*(1d0-b**2))*lbb
-     &        +ek*(el**2*b*(1d0+b)+ml2)/el**2*(lbb-2d0*fc)/(1d0+b))
-     &        /(a*za)
-         fin(0:3)=t1/x*pk(0:3)+t2/ml2*pl(0:3)+t3*d0(0:3)
+         call onia_eik_r1_mlq(pk,pl,ll,fin)
          return
       endif
 c     two massive momenta: Feynman parameters
       if (firsttime) then
-         call onia_gauleg(ngl,xgl,wgl)
+         call onia_fpnodes(xfp,xmfp,wfp)
          firsttime=.false.
       endif
       p1(0:3)=0d0
       fin(0:3)=0d0
-      do i=1,ngl
-         pp(0:3)=xgl(i)*pk(0:3)+(1d0-xgl(i))*pl(0:3)
+      do i=1,nfp
+         pp(0:3)=xfp(i)*pk(0:3)+xmfp(i)*pl(0:3)
          call onia_eik_r1_self(pp,shat,qes2,xicut,p1s,fins)
-         wt=2d0*(1d0-xgl(i))*wgl(i)*x/onia_dot(pp,pp)
+         wt=2d0*xmfp(i)*wfp(i)*x/onia_dot(pp,pp)
          p1(0:3)=p1(0:3)+wt*p1s(0:3)
          fin(0:3)=fin(0:3)+wt*fins(0:3)
+      enddo
+      end
+
+
+      subroutine onia_eik_r1_mlq(pk,pl,ll,fin)
+c**************************************************************************
+c     The finite part of E-bar^mu({1,2},{k,l}), k massless, l massive and
+c     moving, ll = log(xicut^2 shat/Q_ES^2): the closed form of appendix A
+c     in real*16, with a = ek el (1-b), c = ek el (1+b),
+c       za = (x-a)/a = ek el b (1-cos)/a, zc = (x-c)/c = -ek el b (1+cos)/c,
+c     1 -/+ cos = |k^ -/+ l^|^2/2 from the unit vectors, and
+c       x/(x-a) log(x/a) = (1+za) log(1+za)/za,
+c       c/(x-c) log(x/c) = log(1+zc)/zc = fc,
+c       [ek el (log(c/x)-log(x/a)) + x lbb/(1+b)]/(x-c) = (lbb-2 fc)/(1+b)
+c     (log(x/a) = lbb + log(x/c)), with k made exactly null (ek = |k|).
+c     The remaining cancellations (~1d-34/b^2,
+c     ~3d-26/za) are below double precision except for k nearly parallel
+c     to l, where za is floored (below).
+c**************************************************************************
+      implicit none
+      double precision pk(0:3),pl(0:3),ll,fin(0:3)
+      real*16 k(0:3),l(0:3),q1,q2,pi,ek,el,ml2,ml,x,b,a,c,lbb,pkn,pln
+      real*16 sm,sp,za,zc,lxa,lxc,fa,fc,t1,t2,t3,lq,zmin
+      real*16 onia_li2q,onia_l1pq
+      external onia_li2q,onia_l1pq
+      integer i
+      q1=1
+      q2=2
+      pi=4*atan(q1)
+      do i=0,3
+         k(i)=pk(i)
+         l(i)=pl(i)
+      enddo
+      lq=ll
+      el=l(0)
+      pkn=sqrt(k(1)**2+k(2)**2+k(3)**2)
+      pln=sqrt(l(1)**2+l(2)**2+l(3)**2)
+c     k exactly null: k(0) and |k| of a double massless momentum differ by
+c     ~1d-16, which the 1/za of k nearly parallel to l would amplify
+      ek=pkn
+      k(0)=pkn
+      b=pln/el
+      ml2=el**2-pln**2
+      ml=sqrt(ml2)
+      x=ek*el-(k(1)*l(1)+k(2)*l(2)+k(3)*l(3))
+      a=ek*el*(q1-b)
+      c=ek*el*(q1+b)
+      lbb=log((q1+b)/(q1-b))
+      sm=0
+      sp=0
+      do i=1,3
+         sm=sm+(k(i)/pkn-l(i)/pln)**2
+         sp=sp+(k(i)/pkn+l(i)/pln)**2
+      enddo
+c     floor of za: the remaining cancellation is ~3d-26/za, and the integral
+c     is smooth in the angle (f(za) - f(0) ~ za/b), so k nearly or exactly
+c     parallel to l is evaluated at za = sqrt(1.5d-26 b): off by <~ 1d-8
+c     for b > 1d-10 (edge scan, eik_scan.py)
+      zmin=sqrt(15*(q1/10)**27*b)
+      za=ek*el*b*sm/(q2*a)
+      zc=-ek*el*b*sp/(q2*c)
+      if (za.lt.zmin) then
+c        k (nearly) parallel to l: x and zc follow the floored za
+         za=zmin
+         zc=(a*(q1+za)-c)/c
+      endif
+c     x consistent with za and zc (k null: a za - c zc = c - a, sm + sp = 4)
+      x=a*(q1+za)
+      lxa=onia_l1pq(za)
+      lxc=onia_l1pq(zc)
+      fa=lxa/za
+      if (zc.eq.0) then
+         fc=q1
+      else
+         fc=lxc/zc
+      endif
+      t1=-pi**2/12-lq+lq**2/4+log(x/(ek*ml))*lq
+     &     -lxa+lxa**2/2-lbb**2/4
+     &     +onia_li2q(-za)-onia_li2q(zc/(q1+zc))
+     &     +(q1+za)*fa+fc
+      t2=lq+ml2/(b*el**2)*(-lbb/(q1-b**2)-fa/(q1-b)+fc/(q1+b))
+      t3=(-ek*(lxc+lxa)
+     &     +x*ml2/(el**3*b*(q1-b**2))*lbb
+     &     +ek*(el**2*b*(q1+b)+ml2)/el**2*(lbb-q2*fc)/(q1+b))
+     &     /(a*za)
+c     the three terms are large and cancel for k nearly parallel to l:
+c     sum them in real*16
+      fin(0)=dble(t1/x*k(0)+t2/ml2*l(0)+t3)
+      do i=1,3
+         fin(i)=dble(t1/x*k(i)+t2/ml2*l(i))
+      enddo
+      end
+
+
+      real*16 function onia_l1pq(z)
+c     log(1+z) in real*16, accurate for small |z|
+      implicit none
+      real*16 z,u
+      u=1+z
+      if (u.eq.1) then
+         onia_l1pq=z
+      else
+         onia_l1pq=log(u)*z/(u-1)
+      endif
+      end
+
+
+      real*16 function onia_li2q(z)
+c     the dilogarithm Li2(z) in real*16 for real z <= 0:
+c       z < -1:      Li2(z) = -pi^2/6 - log(-z)^2/2 - Li2(1/z),
+c       -1 <= z < 0: Li2(z) = -Li2(w) - log(1-z)^2/2, w = z/(z-1) in (0,1/2],
+c     and the series sum w^n/n^2 (2^-n convergence)
+      implicit none
+      real*16 z,y,w,s,t,pi,q1,tiny,pre
+      integer n
+      q1=1
+      tiny=(q1/10)**36
+      pi=4*atan(q1)
+      if (z.eq.0) then
+         onia_li2q=0
+         return
+      endif
+      pre=0
+      y=z
+      if (z.lt.-q1) then
+         pre=-pi**2/6-log(-z)**2/2
+         y=q1/z
+      endif
+      w=y/(y-q1)
+      s=0
+      t=q1
+      do n=1,400
+         t=t*w
+         s=s+t/n**2
+         if (t/n**2.lt.tiny*abs(s)) goto 10
+      enddo
+ 10   continue
+      s=-s-log(q1-y)**2/2
+      if (z.lt.-q1) then
+         onia_li2q=pre-s
+      else
+         onia_li2q=s
+      endif
+      end
+
+
+      subroutine onia_fpnodes(x,xm,w)
+c**************************************************************************
+c     Nodes x (and xm = 1-x, accurate near x = 1) and weights w on [0,1]
+c     for the Feynman-parameter integrals of two massive momenta: 16-point
+c     Gauss-Legendre on 20 intervals graded geometrically towards both end
+c     points, [0,1d-8], [1d-8,1d-7], ..., [1d-2,1d-1], [0.1,0.3], [0.3,0.5]
+c     and their mirrors; the integrand of strongly boosted momenta varies
+c     on the scale m^2/(2 k.l) near the end points. 320 nodes.
+c**************************************************************************
+      implicit none
+      double precision x(320),xm(320),w(320)
+      double precision xg(16),wg(16),lo(10),hi(10)
+      integer i,j,n
+      call onia_gauleg(16,xg,wg)
+      lo(1)=0d0
+      hi(1)=1d-8
+      do i=2,8
+         lo(i)=10d0**(i-10)
+         hi(i)=10d0**(i-9)
+      enddo
+      lo(9)=0.1d0
+      hi(9)=0.3d0
+      lo(10)=0.3d0
+      hi(10)=0.5d0
+      n=0
+      do i=1,10
+         do j=1,16
+            n=n+1
+            x(n)=lo(i)+(hi(i)-lo(i))*xg(j)
+            xm(n)=1d0-x(n)
+            w(n)=(hi(i)-lo(i))*wg(j)
+c           the mirror image, x <-> 1-x
+            x(n+160)=1d0-x(n)
+            xm(n+160)=x(n)
+            w(n+160)=w(n)
+         enddo
       enddo
       end
 
@@ -291,7 +411,8 @@ c     (eq. E22fin)
 c       E^{mu nu}({2,2},{K1,K2}) = 6 K1.K2 int_0^1 dx x(1-x)/P_x^2
 c                                  E^{mu nu}({2,2},{P_x,P_x}),
 c     P_x = x K1 + (1-x) K2, with the massive self tensor onia_eik_r2_self
-c     and a 64-point Gauss-Legendre rule (smooth integrand). P1 is the
+c     and the graded Gauss-Legendre rule of onia_fpnodes (smooth
+c     integrand; strongly boosted momenta vary near x = 0, 1). P1 is the
 c     coefficient of 1/eps (no 1/eps^2 pole), with that of E({1,1}) equal
 c     to -W(omega), W(omega) = omega log(omega+sqrt(omega^2-1))
 c     /sqrt(omega^2-1); FIN the finite part.
@@ -299,12 +420,12 @@ c**************************************************************************
       implicit none
       double precision k1(0:3),k2(0:3),e11,shat,qes2,xicut
       double precision p1(0:3,0:3),fin(0:3,0:3)
-      integer ngl
-      parameter (ngl=64)
-      double precision xgl(ngl),wgl(ngl)
+      integer nfp
+      parameter (nfp=320)
+      double precision xfp(nfp),xmfp(nfp),wfp(nfp)
       logical firsttime
       data firsttime /.true./
-      save firsttime,xgl,wgl
+      save firsttime,xfp,xmfp,wfp
       double precision onia_dot
       external onia_dot
       double precision x12,m1,m2,omega,t,wom,pp(0:3),px2,wt,g(0:3)
@@ -315,7 +436,7 @@ c**************************************************************************
       integer i,mu,nu
       data g /1d0,-1d0,-1d0,-1d0/
       if (firsttime) then
-         call onia_gauleg(ngl,xgl,wgl)
+         call onia_fpnodes(xfp,xmfp,wfp)
          firsttime=.false.
       endif
       x12=onia_dot(k1,k2)
@@ -332,11 +453,11 @@ c**************************************************************************
       call onia_eik_r1(k2,k1,.false.,shat,qes2,xicut,p2b,p1b,finb)
       e22p(:,:)=0d0
       e22f(:,:)=0d0
-      do i=1,ngl
-         pp(0:3)=xgl(i)*k1(0:3)+(1d0-xgl(i))*k2(0:3)
+      do i=1,nfp
+         pp(0:3)=xfp(i)*k1(0:3)+xmfp(i)*k2(0:3)
          px2=onia_dot(pp,pp)
          call onia_eik_r2_self(pp,shat,qes2,xicut,t1,t2)
-         wt=6d0*x12*wgl(i)*xgl(i)*(1d0-xgl(i))/px2
+         wt=6d0*x12*wfp(i)*xfp(i)*xmfp(i)/px2
          e22p(:,:)=e22p(:,:)+wt*t1(:,:)
          e22f(:,:)=e22f(:,:)+wt*t2(:,:)
       enddo
