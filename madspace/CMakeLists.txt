@@ -274,6 +274,7 @@ add_library(
     src/nlo/fks_radiation.cpp
     src/nlo/fks_sector.cpp
     src/nlo/fks_subtraction.cpp
+    src/nlo/cs_integrand.cpp
     src/nlo/cs_integrated.cpp
     src/nlo/cs_mapping.cpp
     src/nlo/ew_sudakov.cpp
@@ -348,11 +349,13 @@ add_library(
     include/madspace/nlo/fks_configuration.hpp
     include/madspace/nlo/luminosity.hpp
     include/madspace/nlo/fks_histograms.hpp
+    include/madspace/nlo/fks_integrand.hpp
     include/madspace/nlo/fks_limits.hpp
     include/madspace/nlo/fks_mapping.hpp
     include/madspace/nlo/fks_radiation.hpp
     include/madspace/nlo/fks_sector.hpp
     include/madspace/nlo/fks_subtraction.hpp
+    include/madspace/nlo/cs_integrand.hpp
     include/madspace/nlo/cs_integrated.hpp
     include/madspace/nlo/cs_mapping.hpp
     include/madspace/nlo/ew_sudakov.hpp

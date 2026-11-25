@@ -4488,6 +4488,78 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("GeneratorIntegrand::event_types")
         );
 
+    py::classh<CSBornChannelIntegrand, FunctionGenerator>(
+        m, "CSBornChannelIntegrand", pydoc::doc("CSBornChannelIntegrand")
+    )
+        .def(
+            py::init<
+                const PhaseSpaceMapping&,
+                const NLOCuts&,
+                const NLOScale&,
+                const RunningCoupling&,
+                const NLOLuminosity&,
+                const MatrixElement&,
+                const std::optional<MatrixElement>&,
+                const std::vector<int>&,
+                std::size_t,
+                double,
+                double,
+                const std::vector<double>&,
+                const std::vector<double>&,
+                const std::optional<CSInsertion>&,
+                const std::optional<CSInsertion>&,
+                const std::vector<bool>&,
+                const std::vector<bool>&,
+                const std::optional<CSCollinear>&,
+                const std::optional<CSCollinear>&,
+                const std::vector<NLOLuminosity>&,
+                double,
+                const std::optional<CustomFunction>&>(),
+            py::arg("mapping"),
+            py::arg("cuts"),
+            py::arg("scale"),
+            py::arg("running_coupling"),
+            py::arg("luminosity"),
+            py::arg("born"),
+            py::arg("loop"),
+            py::arg("color_representations"),
+            py::arg("channel"),
+            py::arg("g_ew"),
+            py::arg("alpha"),
+            py::arg("born_powers"),
+            py::arg("nlo_powers"),
+            py::arg("insertion"),
+            py::arg("insertion_qed"),
+            py::arg("qcd_corrected"),
+            py::arg("qed_corrected"),
+            py::arg("collinear"),
+            py::arg("collinear_qed"),
+            py::arg("convolution"),
+            py::arg("energy"),
+            py::arg("reference_scale") = std::nullopt,
+            pydoc::doc("CSBornChannelIntegrand::CSBornChannelIntegrand")
+        )
+        .def(
+            "random_dim",
+            &CSBornChannelIntegrand::random_dim,
+            pydoc::doc("CSBornChannelIntegrand::random_dim")
+        )
+        .def(
+            "born_order_count",
+            &CSBornChannelIntegrand::born_order_count,
+            pydoc::doc("CSBornChannelIntegrand::born_order_count")
+        )
+        .def(
+            "nlo_order_count",
+            &CSBornChannelIntegrand::nlo_order_count,
+            pydoc::doc("CSBornChannelIntegrand::nlo_order_count")
+        )
+        .def(
+            "convolves",
+            &CSBornChannelIntegrand::convolves,
+            pydoc::doc("CSBornChannelIntegrand::convolves")
+        );
+
     py::classh<FKSChannelIntegrand, FunctionGenerator>(
         m, "FKSChannelIntegrand", pydoc::doc("FKSChannelIntegrand")
     )

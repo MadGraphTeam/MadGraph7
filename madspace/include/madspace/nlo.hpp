@@ -4,6 +4,7 @@
 // (cuts, jets, scales, histograms, EW Sudakov), those of the FKS subtraction
 // (prefix fks_) and those of the Catani-Seymour dipoles (prefix cs_).
 #include "nlo/common.hpp"
+#include "nlo/cs_integrand.hpp"
 #include "nlo/cs_integrated.hpp"
 #include "nlo/cs_mapping.hpp"
 #include "nlo/cuts.hpp"

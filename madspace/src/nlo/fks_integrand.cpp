@@ -15,9 +15,6 @@ namespace {
 using Input = MatrixElement::MatrixElementInput;
 using Output = MatrixElement::MatrixElementOutput;
 
-// alpha_s of the blocks without the strong coupling, g_s = 1
-constexpr double unit_alpha_s = 1. / (4. * std::numbers::pi);
-
 // the names of the arguments of the cross section that the integrand gives
 // besides the kinematics
 const std::vector<std::string> block_names{
@@ -158,6 +155,7 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     _loop(loop),
     _real_indices(real_indices),
     _spin_legs(spin_legs),
+    _color(color_representations, "FKSChannelIntegrand"),
     _channel(channel),
     _g_ew(g_ew),
     _alpha(alpha),
@@ -195,63 +193,17 @@ FKSChannelIntegrand::FKSChannelIntegrand(
         }
         _has_spin_leg.push_back(leg >= 0 ? 1. : 0.);
     }
-    // the coloured legs with the index of their Casimir
     if (color_representations.size() != _born_particles) {
         throw std::invalid_argument(
             "FKSChannelIntegrand: a colour representation per Born leg"
         );
     }
-    std::vector<std::size_t> colored;
-    std::vector<std::size_t> casimir_index;
-    for (std::size_t leg = 0; leg < _born_particles; ++leg) {
-        int representation = color_representations.at(leg);
-        if (representation == 1) {
-            continue;
-        }
-        double casimir;
-        if (std::abs(representation) == 3) {
-            casimir = QCD_CF;
-        } else if (representation == 8) {
-            casimir = QCD_CA;
-        } else {
-            throw std::invalid_argument(
-                std::format(
-                    "FKSChannelIntegrand: no Casimir of the colour representation "
-                    "{}",
-                    representation
-                )
-            );
-        }
-        auto found = std::find(_casimirs.begin(), _casimirs.end(), casimir);
-        casimir_index.push_back(static_cast<std::size_t>(found - _casimirs.begin()));
-        if (found == _casimirs.end()) {
-            _casimirs.push_back(casimir);
-        }
-        colored.push_back(leg);
-    }
-    // the rows of the colour matrix from the pairs i < j of the coloured legs,
-    // pair (a, c) at a (2 n_c - a - 1) / 2 + c - a - 1, the Casimirs times the
-    // Born after them and a zero for the colourless legs
-    std::size_t n_c = colored.size();
-    std::size_t pairs = n_c * (n_c - 1) / 2;
-    me_int_t zero = static_cast<me_int_t>(pairs + _casimirs.size());
-    _color_rows.assign(_born_particles, std::vector<me_int_t>(_born_particles, zero));
-    for (std::size_t a = 0; a < n_c; ++a) {
-        _color_rows.at(colored.at(a)).at(colored.at(a)) =
-            static_cast<me_int_t>(pairs + casimir_index.at(a));
-        for (std::size_t c = a + 1; c < n_c; ++c) {
-            auto pair = static_cast<me_int_t>(a * (2 * n_c - a - 1) / 2 + c - a - 1);
-            _color_rows.at(colored.at(a)).at(colored.at(c)) = pair;
-            _color_rows.at(colored.at(c)).at(colored.at(a)) = pair;
-        }
-    }
-    _has_color = n_c >= 2;
     std::vector<Output> born_outputs{
         MatrixElement::squared_orders_out,
         MatrixElement::diagram_amp2_out,
         MatrixElement::spin_correlated_out,
     };
-    if (_has_color) {
+    if (_color.has_color()) {
         born_outputs.push_back(MatrixElement::color_correlated_out);
     }
     check_library(
@@ -264,7 +216,7 @@ FKSChannelIntegrand::FKSChannelIntegrand(
         born_outputs,
         "Born"
     );
-    if (_has_color && born.color_pair_count() != pairs) {
+    if (_color.has_color() && born.color_pair_count() != _color.pair_count()) {
         throw std::invalid_argument(
             "FKSChannelIntegrand: the Born library has another number of colour "
             "pairs than the coloured legs"
@@ -526,7 +478,7 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
                 .build_function(
                     fb,
                     {momenta,
-                     fb.full({unit_alpha_s, real_batch}),
+                     fb.full({NLO_UNIT_ALPHA_S, real_batch}),
                      fb.full({_g_ew, real_batch})}
                 )
                 .at("squared_orders")
@@ -552,7 +504,7 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     auto born_values = _born.build_function(
         fb,
         {born_momenta,
-         fb.full({unit_alpha_s, born_batch}),
+         fb.full({NLO_UNIT_ALPHA_S, born_batch}),
          fb.full({_g_ew, born_batch}),
          spin_legs,
          spin_vectors}
@@ -568,27 +520,14 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     // the colour matrix per Born order from the pairs, the Casimirs times the
     // Born on the diagonal and zeros for the colourless legs
     Value color = fb.full({0., batch_size, b, n, n});
-    if (_has_color) {
-        ValueVec born_columns = fb.unstack(born_values.at("squared_orders"));
-        ValueVec pair_columns = fb.unstack(born_values.at("color_correlated"));
-        Value zero = fb.full({0., born_batch});
-        ValueVec matrices;
-        for (std::size_t k = 0; k < born_columns.size(); ++k) {
-            ValueVec diagonal;
-            for (double casimir : _casimirs) {
-                diagonal.push_back(
-                    fb.mul(fb.full({casimir, born_batch}), born_columns.at(k))
-                );
-            }
-            diagonal.push_back(zero);
-            Value entries = fb.cat({pair_columns.at(k), fb.stack(diagonal)});
-            ValueVec rows;
-            for (auto& row : _color_rows) {
-                rows.push_back(fb.select(entries, row));
-            }
-            matrices.push_back(fb.stack(rows));
-        }
-        color = scatter(born_points, fb.stack(matrices), {b, n, n});
+    if (_color.has_color()) {
+        color = scatter(
+            born_points,
+            _color.build(
+                fb, born_values.at("squared_orders"), born_values.at("color_correlated")
+            ),
+            {b, n, n}
+        );
     }
     Value spin = scatter(born_points, born_values.at("spin_correlated"), {b});
     // the channel weight, zero where the Born is not evaluated
@@ -614,7 +553,7 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         auto loop = _loop->build_function(
             fb,
             {loop_momenta,
-             fb.full({unit_alpha_s, loop_batch}),
+             fb.full({NLO_UNIT_ALPHA_S, loop_batch}),
              fb.full({_g_ew, loop_batch}),
              fb.batch_gather(evaluated_points, ren_scale)}
         );
@@ -673,7 +612,7 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         auto extra = _extras.at(e).build_function(
             fb,
             {momenta,
-             fb.full({unit_alpha_s, extra_batch}),
+             fb.full({NLO_UNIT_ALPHA_S, extra_batch}),
              fb.full({_g_ew, extra_batch}),
              legs,
              vectors}
@@ -695,22 +634,14 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     }
 
     // the virtual trick: r B everywhere, (V - r B) / f where evaluated
-    Value born_sum = fb.reduce_sum(born);
-    ValueVec ratios = fb.unstack(args.at("virtual_ratio"));
-    ValueVec virtual_columns = fb.unstack(virtual_value);
-    ValueVec approximations, used;
-    for (std::size_t k = 0; k < ratios.size(); ++k) {
-        Value approximation = fb.mul(ratios.at(k), born_sum);
-        Value residual = fb.mul(
-            evaluated,
-            fb.div(
-                fb.sub(virtual_columns.at(k), approximation),
-                args.at("virtual_fraction")
-            )
-        );
-        approximations.push_back(approximation);
-        used.push_back(fb.add(approximation, residual));
-    }
+    auto [used, approximations] = virtual_trick(
+        fb,
+        virtual_value,
+        born,
+        args.at("virtual_ratio"),
+        args.at("virtual_fraction"),
+        evaluated
+    );
 
     // the cross section with the virtual of the trick and with its
     // approximation alone

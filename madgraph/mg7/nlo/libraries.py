@@ -29,6 +29,8 @@ on the side of the caller.
 - scale: the reference scale of the user (user_dynamical_scale) at the
   kinematics of the real process, as ren_scale, fact_scale1 and fact_scale2,
   for a CustomFunction of type scale.
+- born_plain and born_scale: the Born without the spin inputs and output and
+  the reference scale at the Born, for the n-body stream of Catani-Seymour.
 
 The provider gives its blocks at g_s = 1, so the libraries take alpha_s =
 1 / (4 pi) and refuse other strong couplings. Its blocks carry e of the model,
@@ -207,6 +209,25 @@ class ProviderLibraries:
             particle_count=n + 1,
             name=f"reference scale of {self.name}",
         )
+        # the Born without spin correlations and the reference scale at the
+        # Born, for the n-body stream of Catani-Seymour
+        self.born_plain = PythonFunction(
+            self._born_plain,
+            ["momenta", "alpha_s", "g_ew"],
+            born_outputs[: 3 if self.has_color else 2],
+            particle_count=n,
+            diagram_count=provider.channel_count,
+            squared_order_count=self.born_orders,
+            color_representations=self.color_representations,
+            name=f"born of {self.name} without spin",
+        )
+        self.born_scale = PythonFunction(
+            self._scale,
+            ["momenta", "particle_count", "pdg_ids"],
+            ["ren_scale", "fact_scale1", "fact_scale2"],
+            particle_count=n,
+            name=f"reference scale at the Born of {self.name}",
+        )
 
     def real_indices(self):
         """Per FKS configuration its real matrix element, an index of
@@ -243,13 +264,16 @@ class ProviderLibraries:
     def add_to(self, context):
         """The MatrixElementApi of the libraries in context: born, reals (a
         list by real matrix element), loop, extras (a list by extra
-        counterterm) and scale."""
+        counterterm), scale, born_plain (the Born without the spin inputs and
+        output) and born_scale (the reference scale at the Born)."""
         return dict(
             born=context.add_matrix_element(self.born),
             reals=[context.add_matrix_element(real) for real in self.reals],
             loop=context.add_matrix_element(self.loop),
             extras=[context.add_matrix_element(extra) for extra in self.extras],
             scale=context.add_matrix_element(self.scale),
+            born_plain=context.add_matrix_element(self.born_plain),
+            born_scale=context.add_matrix_element(self.born_scale),
         )
 
     def _e_factors(self, g_ew, kind, name):
@@ -324,6 +348,13 @@ class ProviderLibraries:
             values.append(np.ascontiguousarray(color))
         values.append(np.ascontiguousarray(spin))
         return tuple(values)
+
+    def _born_plain(self, momenta, alpha_s, g_ew):
+        count = len(momenta)
+        legs = np.full((count, 2), -1, dtype=np.int32)
+        vectors = np.zeros((count, 2, 4))
+        # the outputs of _born without the spin correlation, the last one
+        return self._born(momenta, alpha_s, g_ew, legs, vectors)[:-1]
 
     def _real(self, r):
         configuration = self.real_configuration[r]

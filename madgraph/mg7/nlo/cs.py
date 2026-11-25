@@ -715,6 +715,78 @@ class CSBornIntegrand:
             evaluated=evaluated,
         )
 
+    def channel_integrand(self, channel, context):
+        """The C++ integrand of a channel (CSBornChannelIntegrand of
+        madspace) with the matrix elements of the provider as UMAMI libraries
+        in the context (ProviderLibraries of nlo/libraries.py, added once),
+        the same integrand as evaluate at the same random numbers and points
+        with the virtual. The libraries evaluate at the e of the model, so
+        that the blocks are those of the provider."""
+        from madgraph.mg7.nlo.libraries import ProviderLibraries
+
+        ms = madspace()
+        element = ms.MatrixElement
+        if getattr(self, "_libraries", None) is None:
+            self._libraries = ProviderLibraries(self.provider, self.name)
+            self._apis = self._libraries.add_to(context)
+        apis = self._apis
+        outputs = [element.squared_orders_out, element.diagram_amp2_out]
+        if self._libraries.has_color:
+            outputs.append(element.color_correlated_out)
+        born = element(
+            apis["born_plain"],
+            [element.momenta_in, element.alpha_s_in, element.g_ew_in],
+            outputs,
+        )
+        loop = element(
+            apis["loop"],
+            [
+                element.momenta_in,
+                element.alpha_s_in,
+                element.g_ew_in,
+                element.scale_in,
+            ],
+            [element.loop_out],
+        )
+        reference_scale = None
+        if self.user_scale:
+            reference_scale = ms.CustomFunction(
+                apis["born_scale"], ms.CustomFunction.scale, len(self.born_pdgs)
+            )
+
+        def corrected(group):
+            orders = self.corrections.get(group) or [None] * len(self.qcd_powers)
+            return [group in self.groups and n is not None for n in orders]
+
+        def function(runtime):
+            return None if runtime is None else runtime.function
+
+        hadrons = self.hadrons
+        return ms.CSBornChannelIntegrand(
+            self.channel_mappings[channel],
+            self.cuts.function,
+            self.scale.function,
+            self.couplings.running,
+            self.luminosity.runtime.function,
+            born,
+            loop,
+            apis["born_plain"].color_representations(),
+            channel,
+            self._libraries.e,
+            self.alpha,
+            [float(p) for p in self.qcd_powers],
+            [float(p) for p in self.nlo_powers],
+            function(self.insertion),
+            function(self.insertion_qed),
+            corrected("QCD"),
+            corrected("QED"),
+            function(self.collinear) if hadrons else None,
+            function(self.collinear_qed) if hadrons else None,
+            [lum.runtime.function for lum in self.convolution or []],
+            self.energy,
+            reference_scale=reference_scale,
+        )
+
     def histogram_runtime(self, histograms, jets):
         """The histograms with the jets of the run card, filled with the Born
         alone."""

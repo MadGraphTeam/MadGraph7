@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "madspace/nlo/common.hpp"
 #include "madspace/nlo/cuts.hpp"
 #include "madspace/nlo/fks_histograms.hpp"
 #include "madspace/nlo/fks_limits.hpp"
@@ -233,11 +234,7 @@ private:
     std::vector<me_int_t> _real_indices;
     std::vector<me_int_t> _spin_legs;
     std::vector<double> _has_spin_leg;
-    // per Born leg the indices of its row of the colour matrix in the pairs
-    // of one order followed by the Casimirs times the Born and a zero
-    nested_vector2<me_int_t> _color_rows;
-    std::vector<double> _casimirs;
-    bool _has_color;
+    ColorMatrix _color;
     std::size_t _channel;
     double _g_ew;
     double _alpha;
