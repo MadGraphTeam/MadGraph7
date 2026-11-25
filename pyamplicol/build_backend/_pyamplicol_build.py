@@ -1030,6 +1030,57 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     )
 
 
+def _stamp_virtual_selftests(overlay: Path) -> None:
+    """Stamp the package version into the shipped one-loop self-test artifacts:
+    Rusticol admits only artifacts of its own version, and a version bump
+    alone does not change their content."""
+
+    package_version = python_package_version(overlay)
+    root = overlay / "src" / "pyamplicol" / "assets" / "selftest_virtual"
+    for path in sorted(root.glob("*/artifact/artifact.json")):
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            _require_artifact_identity_contract(manifest)
+            manifest["producer"]["version"] = package_version
+            manifest["runtime"]["engine_version"] = package_version
+            compiled_payloads = [
+                payload
+                for payload in manifest["payloads"]
+                if isinstance(payload, dict) and payload.get("role") == "compiled-model"
+            ]
+            if len(compiled_payloads) != 1:
+                raise RuntimeError(f"{path} must contain one compiled model")
+            payload = compiled_payloads[0]
+            relative = Path(payload["path"])
+            if relative.is_absolute() or any(
+                part in {"", ".", ".."} for part in relative.parts
+            ):
+                raise RuntimeError(f"{path} compiled-model path is unsafe")
+            compiled_path = path.parent / relative
+            compiled_model = json.loads(compiled_path.read_text(encoding="utf-8"))
+            compiled_model["producer"]["pyamplicol"] = package_version
+            compiled_data = (
+                json.dumps(
+                    compiled_model,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                + "\n"
+            ).encode("utf-8")
+            compiled_path.write_bytes(compiled_data)
+            payload["sha256"] = hashlib.sha256(compiled_data).hexdigest()
+            payload["size_bytes"] = len(compiled_data)
+        except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"invalid self-test artifact: {path}") from error
+        manifest["artifact_id"] = _runtime_artifact_id(manifest)
+        path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            + "\n",
+            encoding="utf-8",
+        )
+
+
 def _workspace_version_crates(workspace: Path) -> tuple[str, ...]:
     """The workspace members whose package version is the workspace's own
     (``version.workspace = true``): a candidate build rewrites the workspace
@@ -1987,6 +2038,7 @@ def _from_overlay(
                             overlay,
                             str(sdk_metadata["target"]),
                         )
+                    _stamp_virtual_selftests(overlay)
                     os.environ["PYAMPLICOL_SDK_STAGING"] = str(sdk)
                 return operation(*args, **kwargs)
 

@@ -189,8 +189,8 @@ def test_packaged_prepared_model_accepts_older_package_producer(
     assert isinstance(producer, dict)
     recorded = str(producer["package_version"])
     release = recorded.split(".dev", maxsplit=1)[0].split("+", maxsplit=1)[0]
-    major, minor, patch = (int(component) for component in release.split("."))
-    active = f"{major}.{minor}.{patch + 1}"
+    *head, last = release.split(".")
+    active = ".".join([*head, str(int(last) + 1)])
     monkeypatch.setattr(versions, "package_version", lambda: active)
 
     with prepared_models.packaged_prepared_model_path(
