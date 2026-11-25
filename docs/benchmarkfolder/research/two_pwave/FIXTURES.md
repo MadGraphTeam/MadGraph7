@@ -292,7 +292,10 @@ The same output and point as the previous section, rerun on 2026-11-25 on TIRust
 
 All in units of Born × α_s/(2π); Born = 1.4778648803e-08. The two loop directions agree to 7e-11 on c1 and 1e-14 on c2, and differ by 21% on the finite part. TIRust's own time was 207 s (CTModeRun 1) and 362 s (CTModeRun 2).
 
-**Reading.** A refused loop contributes nothing: `TIR_interface` returns `RES = 0`, and `ONIA_PW_DOUBLED` gives up the loop's raised-power terms at the first refusal. Its pole parts are then missing too, which should explain c1 and c2. This is not confirmed until TIRust serves these calls. The finite part is not quotable on bb62307 either way. TIRust found that a pentagon with a doubled massless line between two on-shell legs was served without its (D − 4) term. That term is proportional to the pentagon's B, so it vanishes for the flat pentagons of 2 → 2 processes, but not for those of this 2 → 3 process.
+**Reading.** Two effects can contribute to the c1 and c2 mismatch, and neither share has been measured.
+- **Refused loops contribute nothing.** `TIR_interface` returns `RES = 0`, and `ONIA_PW_DOUBLED` gives up the loop's raised-power terms at the first refusal, so their pole parts are missing.
+- **Some served values are wrong.** TIRust found that bb62307 served pentagons with a doubled massless line between two on-shell legs without their (D − 4) term. Per TIRust, their single pole can change too, not only the finite part. The term is proportional to the pentagon's B, so it vanishes for the flat pentagons of 2 → 2 processes, but not for this 2 → 3 process. For the same reason, the finite part is not quotable on bb62307.
+- **v13.** TIRust 488cb58 (bridge v13) adds the term. It refuses the cases it cannot yet correct, among them, per TIRust, heptagons where the Coulomb partial fractions triple a gluon line next to an on-shell heavy quark.
 
 **The prediction's terms** (`appendix_b.py terms`, CTModeRun 1, 6936 s; c1 as above), per Born:
 - T1 (monopole × monopole) −18.3060919898;
