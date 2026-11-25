@@ -76,4 +76,11 @@ explicitly.
 
 The format is documented at the top of `shim.c`. Kinds 1 to 4 are unchanged
 from the original shim. Kind 5 is a QP call with its exact 64-byte ASCII
-binary128 records (`TIRUST_TRACE_MP_INPUTS=1`).
+binary128 records (`TIRUST_TRACE_MP_INPUTS=1`). Kind 6 is a DP call with
+propagator powers (`ml_tirust_evaluate_dp_powers`, the P-wave integrals): kind 1
+with the powers after the seconds. `tirust_trace.py` reads it and labels the
+calls by their raised powers (`p2`, `p3`, `p22`); the replay does not replay it.
+
+`TIRUST_TRACE_FAILED_ONLY=1` records only the evaluations the bridge refuses,
+with plan registrations and cache clears, so a trace of the calls outside the
+bridge's domain stays small for large processes.

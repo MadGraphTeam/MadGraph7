@@ -17,7 +17,7 @@ from pathlib import Path
 import struct
 import sys
 
-DP, MP, REGISTER, CLEAR, MP_INPUTS = 1, 2, 3, 4, 5
+DP, MP, REGISTER, CLEAR, MP_INPUTS, DP_POWERS = 1, 2, 3, 4, 5, 6
 _HEADER = struct.Struct("<7id")
 
 
@@ -28,6 +28,12 @@ class TraceError(ValueError):
 def coefficient_count(rank):
     """Number of symmetric tensor coefficients up to ``rank`` in four dimensions."""
     return (rank + 1) * (rank + 2) * (rank + 3) * (rank + 4) // 24
+
+
+def power_family(powers):
+    """The raised powers of a call, largest first ('1' when all are one): '2', '3', '22'."""
+    raised = sorted((p for p in powers if p != 1), reverse=True)
+    return "".join(str(p) for p in raised) or "1"
 
 
 def records(path, with_payload=True):
@@ -55,7 +61,7 @@ def _parse(data, size, with_payload):
         kind = data[i]
         start = i
         i += 1
-        if kind in (DP, MP, MP_INPUTS):
+        if kind in (DP, MP, MP_INPUTS, DP_POWERS):
             _need(i, _HEADER.size, size, kind)
             n, rank, poles, finite, check, cache, status, seconds = _HEADER.unpack_from(data, i)
             i += _HEADER.size
@@ -63,7 +69,16 @@ def _parse(data, size, with_payload):
                 raise TraceError(f"implausible n={n} rank={rank} at byte {start}")
             record = dict(kind=kind, n=n, rank=rank, poles=poles, finite=finite, check=check,
                           cache=cache, status=status, seconds=seconds, offset=start)
-            if kind == DP:
+            if kind == DP_POWERS:
+                _need(i, 4, size, kind)
+                (count,) = struct.unpack_from("<i", data, i)
+                i += 4
+                if not 0 <= count <= 64:
+                    raise TraceError(f"implausible power count {count} at byte {start}")
+                _need(i, 4 * count, size, kind)
+                record["powers"] = struct.unpack_from(f"<{count}i", data, i)
+                i += 4 * count
+            if kind in (DP, DP_POWERS):
                 _need(i, 1, size, kind)
                 record["has_inputs"] = bool(data[i])
                 i += 1
@@ -141,8 +156,10 @@ def summarize(path_or_records):
         if kind == REGISTER:
             registrations.append([record["n"], record["rank"], record["status"]])
             continue
-        label = "dp" if kind == DP else "qp"
+        label = "dp" if kind in (DP, DP_POWERS) else "qp"
         key = f"{label}:n{record['n']}:r{record['rank']}:check{record['check']}"
+        if kind == DP_POWERS:
+            key += ":p" + power_family(record["powers"])
         entry = keys[key]
         entry["calls"] += 1
         entry["failed"] += record["status"] != 0
@@ -171,7 +188,7 @@ def main(argv=None):
           f"({t.get('dp_failed', 0)} failed), {t.get('qp', 0)} QP calls ({t.get('qp_failed', 0)} failed), "
           f"{len(summary['registrations'])} plan registrations")
     for key, entry in summary["by_key"].items():
-        print(f"  {key:24s} {entry['calls']:9d} calls {entry['failed']:7d} failed {entry['seconds']:10.3f} s")
+        print(f"  {key:30s} {entry['calls']:9d} calls {entry['failed']:7d} failed {entry['seconds']:10.3f} s")
     return 0
 
 
