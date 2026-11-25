@@ -256,3 +256,24 @@ The passes took 4452 s and 4476 s. The forced rescue (MLStabThres 1d-30) gives t
 - the degenerate Gram cases.
 
 Reported to TIRust on 2026-11-24, with the 171 inputs.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust 4f1b06c + bridge v9)
+
+`g g > Jpsi(1|3P28) Jpsi(1|3P18) g [virt=QCD]`, √s = 20 GeV, seed-1 point, CTModeRun 1. The output has 786 Born amplitudes, 50862 loops and 480 heptagon loop calls, with MAXRANK 7 (base 5 + 2). The point stops after about 80 min with "No dp loop library can deal with this integral": MadLoop's `DETECT_TIRUST` admits N ≤ 6 and rank ≤ 6, so the first heptagon ends the run. This section covers the loops before that stop.
+
+**Capture.** The capture shim (`tools/tirust_capture`, kind 6 for the raised-power entry, `TIRUST_TRACE_FAILED_ONLY=1`) recorded 27868 DP calls before the stop. The bridge refused 1232 of them, all inside its domain: five or six lines, rank 4 or 5. There are 516 distinct inputs, in `data/refused_ggg_3p28_3p18_20gev_4f1b06c.txt.gz` (sha256 775966130e4905da…). The records use the format above, and `zcat … | ./replay` replays them.
+
+| Lines | Rank | Powers | Calls |
+|---|---|---|---|
+| 5 | 4 | one doubled | 306 |
+| 5 | 5 | one doubled | 432 |
+| 5 | 5 | two doubled | 14 |
+| 6 | 4 | unit | 64 |
+| 6 | 5 | one doubled | 416 |
+
+**Replay.** `replay_calls.f90` on 4f1b06c + v9 (`data/replay_ggg_3p28_3p18_20gev_4f1b06c.txt.gz`). DP refuses all 516; QP serves 14 (unit-power hexagons, rank 4) and refuses 502:
+- 448: "pentagon Gram matrix for […] decided only by the supplied invariants' mismatch … with the shifts" (512 bits; the mismatch is of order 1e-16, the binary64 rounding of the inputs);
+- 36: "dotted massless line k in a collinear pair of pentagon […]: its (D + 2)-dimensional term is not reduced";
+- 18 unit-power hexagons, rank 4: "ill-conditioned Gram matrix" (conditioning 0 in 12) or "singular Gram matrix".
+
+So, apart from the heptagons, the point would still be unstable (410) on 4f1b06c + v9. Sent to TIRust on 2026-11-25; the rerun waits for its green light.
