@@ -4503,7 +4503,11 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 const std::vector<double>&,
                 const std::vector<double>&,
-                double>(),
+                double,
+                const std::optional<CustomFunction>&,
+                const std::vector<MatrixElement>&,
+                const std::vector<me_int_t>&,
+                const std::vector<me_int_t>&>(),
             py::arg("kinematics"),
             py::arg("kernels"),
             py::arg("cuts"),
@@ -4521,7 +4525,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("tagged_nlo") = std::vector<double>{},
             py::arg("tagged_born") = std::vector<double>{},
             py::arg("tagged_alpha") = 1.,
+            py::arg("reference_scale") = std::nullopt,
+            py::arg("extras") = std::vector<MatrixElement>{},
+            py::arg("extra_indices") = std::vector<me_int_t>{},
+            py::arg("extra_spin_legs") = std::vector<me_int_t>{},
             pydoc::doc("FKSChannelIntegrand::FKSChannelIntegrand")
+        )
+        .def(
+            "born_input_count",
+            &FKSChannelIntegrand::born_input_count,
+            pydoc::doc("FKSChannelIntegrand::born_input_count")
         )
         .def(
             "configuration_count",

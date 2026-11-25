@@ -19,6 +19,16 @@ on the side of the caller.
 - loop: the virtual per NLO order (loop), its finite part and the
   coefficients of 1/eps and 1/eps^2 as MadLoop gives them at the
   renormalization scale of the input scale.
+- extra e: the Born of extra counterterm e of the mixed QCD-QED corrections
+  per order of that Born (squared_orders) and its spin correlation at the
+  mother of the configurations with the counterterm (spin_correlated), the
+  Born of MadFKS times the ratio of the identical-particle factors of the Born
+  of the subprocess and of the counterterm, which makes it the Born of the
+  counterterm with its own factor. Orders that the NLO orders do not reach
+  are zero.
+- scale: the reference scale of the user (user_dynamical_scale) at the
+  kinematics of the real process, as ren_scale, fact_scale1 and fact_scale2,
+  for a CustomFunction of type scale.
 
 The provider gives its blocks at g_s = 1, so the libraries take alpha_s =
 1 / (4 pi) and refuse other strong couplings. Its blocks carry e of the model,
@@ -33,8 +43,10 @@ photon) of an FKS configuration, one spin leg per point. The spin-correlated
 Born for a transverse vector v (orthogonal to the leg, v^2 = -1 for k_perp of
 FKS) is B / 2 + Re(e A) of FortranProvider.spin_correlated, times the square
 of the transverse part of v in general, zero for a vector along the leg.
-Without a spin leg it is zero. The Borns of the extra counterterms of mixed
-QCD-QED corrections are not covered yet.
+Without a spin leg it is zero. For the Born of an extra counterterm the spin
+leg is the mother of any configuration with the counterterm, A its
+azimuthal part at the counterterm of the second splitting type (zero for a
+quark mother).
 
 The pipes of a provider take one request at a time, while the runtime of
 madspace calls a library from several threads: a lock serializes the calls.
@@ -78,11 +90,7 @@ class ProviderLibraries:
         self.name = name or provider.directory
         self.lock = threading.Lock()
         configurations = provider.configurations
-        if provider.fks_configurations["orders"].get("extra_born"):
-            raise NotImplementedError(
-                f"{self.name}: no UMAMI libraries for the Borns of extra "
-                "counterterms yet"
-            )
+        extra_born = provider.orders.get("extra_born", [])
         n = provider.particle_count - 1
         self.born_orders = len(provider.orders["born"])
         self.nlo_orders = len(provider.orders["nlo"])
@@ -95,6 +103,7 @@ class ProviderLibraries:
             for kind, orders in (
                 ("born", provider.orders["born"]),
                 ("nlo", provider.orders["nlo"]),
+                *((("extra", e), orders) for e, orders in enumerate(extra_born)),
             )
         }
         self.color_representations = born_color_representations(provider)
@@ -155,6 +164,49 @@ class ProviderLibraries:
             squared_order_count=self.nlo_orders,
             name=f"loop of {self.name}",
         )
+        # per extra counterterm the configurations with it, which take the
+        # same columns
+        self.extra_configurations = {}
+        for c, configuration in enumerate(configurations):
+            e = configuration.get("extra_cnt_index", -1)
+            if e >= 0:
+                self.extra_configurations.setdefault(e, []).append(c)
+        self._extra_columns = {}
+        for e in range(len(extra_born)):
+            if e not in self.extra_configurations:
+                raise ValueError(
+                    f"{self.name}: no configuration of extra counterterm {e}"
+                )
+            columns = [provider.extra_columns(c) for c in self.extra_configurations[e]]
+            local = [
+                [(row, position, factor) for _, row, position, factor in column]
+                for column in columns
+            ]
+            if any(entry != local[0] for entry in local):
+                raise ValueError(
+                    f"{self.name}: the configurations of extra counterterm {e} take "
+                    "different orders of its Born"
+                )
+            self._extra_columns[e] = local[0]
+        self.extras = [
+            PythonFunction(
+                self._extra(e),
+                ["momenta", "alpha_s", "g_ew", "spin_legs", "spin_vectors"],
+                ["squared_orders", "spin_correlated"],
+                particle_count=n,
+                squared_order_count=len(extra_born[e]),
+                name=f"extra counterterm {e} of {self.name}",
+            )
+            for e in range(len(extra_born))
+        ]
+        # with the inputs that CustomFunction passes
+        self.scale = PythonFunction(
+            self._scale,
+            ["momenta", "particle_count", "pdg_ids"],
+            ["ren_scale", "fact_scale1", "fact_scale2"],
+            particle_count=n + 1,
+            name=f"reference scale of {self.name}",
+        )
 
     def real_indices(self):
         """Per FKS configuration its real matrix element, an index of
@@ -173,13 +225,31 @@ class ProviderLibraries:
             legs.append(leg if vector and leg in self.spin_configuration else -1)
         return legs
 
+    def extra_indices(self):
+        """Per FKS configuration its extra counterterm, an index of extras,
+        -1 for none."""
+        return [c.get("extra_cnt_index", -1) for c in self.provider.configurations]
+
+    def extra_spin_legs(self):
+        """Per FKS configuration with an extra counterterm the Born leg of
+        its mother (from 0), -1 for the others."""
+        legs = []
+        for configuration in self.provider.configurations:
+            i_fks, j_fks = configuration["i_fks"], configuration["j_fks"]
+            extra = configuration.get("extra_cnt_index", -1) >= 0
+            legs.append(j_fks - 1 - (j_fks > i_fks) if extra else -1)
+        return legs
+
     def add_to(self, context):
         """The MatrixElementApi of the libraries in context: born, reals (a
-        list by real matrix element) and loop."""
+        list by real matrix element), loop, extras (a list by extra
+        counterterm) and scale."""
         return dict(
             born=context.add_matrix_element(self.born),
             reals=[context.add_matrix_element(real) for real in self.reals],
             loop=context.add_matrix_element(self.loop),
+            extras=[context.add_matrix_element(extra) for extra in self.extras],
+            scale=context.add_matrix_element(self.scale),
         )
 
     def _e_factors(self, g_ew, kind, name):
@@ -272,6 +342,53 @@ class ProviderLibraries:
             return np.ascontiguousarray(orders)
 
         return real
+
+    def _extra(self, e):
+        configuration = self.extra_configurations[e][0]
+        columns = self._extra_columns[e]
+
+        def extra(momenta, alpha_s, g_ew, legs, vectors):
+            provider = self.provider
+            name = self.extras[e].name
+            check_coupling(alpha_s, name)
+            factors = self._e_factors(g_ew, ("extra", e), name)
+            momenta, y = partonic_frame(np.asarray(momenta), provider.incoming)
+            legs = np.asarray(legs)
+            if (legs[:, 1] != -1).any():
+                raise ValueError(f"{name}: one spin leg at most")
+            leg = legs[:, 0]
+            vector = boost_z(np.asarray(vectors)[:, 0], y)
+            with self.lock:
+                parts = provider.extra(momenta, np.full(len(momenta), configuration))
+            plain = np.zeros((len(momenta), len(columns)))
+            spin = np.zeros_like(plain)
+            for k, (row, position, factor) in enumerate(columns):
+                if position is not None:
+                    plain[:, k] = factor * parts[:, row, 0, position].real
+            for value in np.unique(leg[leg >= 0]):
+                points = np.flatnonzero(leg == value)
+                phase, _ = helicity_phase(momenta[points, value], vector[points])
+                if value < provider.incoming:
+                    phase = np.conj(phase)
+                transverse = transverse_square(momenta[points, value], vector[points])
+                for k, (row, position, factor) in enumerate(columns):
+                    if position is None:
+                        continue
+                    azimuthal = factor * parts[points, row, 1, position]
+                    spin[points, k] = transverse * (
+                        plain[points, k] / 2 + (phase * azimuthal).real
+                    )
+            if factors is not None:
+                plain, spin = plain * factors, spin * factors
+            return np.ascontiguousarray(plain), np.ascontiguousarray(spin)
+
+        return extra
+
+    def _scale(self, momenta, particle_count, pdg_ids):
+        with self.lock:
+            scale = self.provider.reference_scales(np.asarray(momenta))
+        scale = np.ascontiguousarray(scale)
+        return scale, scale, scale
 
     def _loop(self, momenta, alpha_s, g_ew, scale):
         provider = self.provider

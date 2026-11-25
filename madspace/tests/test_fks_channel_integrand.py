@@ -67,16 +67,23 @@ PARTS = (
 
 
 @contextlib.contextmanager
-def fks_setup(name):
-    """The run of the driver on the output of a reference, set up, and
+def fks_setup(name, output=None, **run_card):
+    """The run of the driver on the output of a reference with the entries
+    of run_card changed, or on an output with its own cards, set up, and
     closed afterwards with the processes of its providers."""
-    data = reference(os.path.join(DATA, f"{name}.json"))
+    if output is None:
+        data = reference(os.path.join(DATA, f"{name}.json"))
+        cards = dict(
+            run_card={**data["run_card"], **run_card}, param_card=data["param_card"]
+        )
+        output = data["output"]
+    else:
+        cards = dict(run_card=run_card or None)
     run = FKSRun(
-        fks_output(data["output"]),
-        run_card=data["run_card"],
-        param_card=data["param_card"],
+        fks_output(output),
         run_path=os.path.join(tempfile.gettempdir(), "madspace_fks_channel", name),
         seed=4711,
+        **cards,
     )
     run.setup()
     try:
@@ -93,72 +100,116 @@ def assert_weights(ours, theirs, scale, name):
     assert not bad.any(), (name, ours[bad][:5], theirs[bad][:5])
 
 
+def compare_with_driver(run):
+    """The integrand against the driver on two channels of every subprocess
+    of a run."""
+    checked = 0
+    for integrand in run.integrands:
+        if integrand.ew_sudakov is not None:
+            pytest.skip("no Sudakov approximation yet")
+        rng = np.random.default_rng(23)
+        for channel in range(min(integrand.channel_count, 2)):
+            function = integrand.channel_integrand(channel, run.context)
+            runtime = Runtime(function, run.context)
+            x = rng.random((POINTS, integrand.dimension))
+            fks_index = rng.integers(0, integrand.configuration_count, POINTS)
+            fks_index = fks_index.astype(np.int32)
+            configuration_weight = rng.uniform(0.5, 4.0, POINTS)
+            trick = VirtualTrick(integrand.nlo_count, FRACTION, 0.01)
+            trick.ratios = rng.normal(size=integrand.nlo_count)
+            seed = int(rng.integers(1 << 30))
+            mask = np.random.default_rng(seed).random(POINTS) < FRACTION
+            theirs = integrand.evaluate(
+                channel,
+                x,
+                fks_index,
+                configuration_weight,
+                trick,
+                np.random.default_rng(seed),
+            )
+            ours = runtime(
+                x,
+                fks_index,
+                configuration_weight,
+                mask.astype(float),
+                np.tile(trick.ratios, (POINTS, 1)),
+                np.full(POINTS, FRACTION),
+            )
+            for kinematics in (
+                "momenta",
+                "soft_momenta",
+                "collinear_momenta",
+                "soft_collinear_momenta",
+                "born_momenta",
+            ):
+                np.testing.assert_array_equal(
+                    ours[kinematics], theirs["kinematics"][kinematics], kinematics
+                )
+            np.testing.assert_array_equal(
+                ours["evaluated"] != 0, theirs["evaluated"], "evaluated"
+            )
+            scale = sum(np.abs(theirs["outputs"][part]) for part in PARTS)
+            scale = scale + np.abs(theirs["lo"]) + 1e-300
+            for part in PARTS:
+                assert_weights(ours[part], theirs["outputs"][part], scale, part)
+            assert_weights(ours["cross_section"], theirs["nlo"], scale, "nlo")
+            assert_weights(ours["lo_weight"], theirs["lo"], scale, "lo")
+            assert_weights(
+                ours["virtual_residual"], theirs["residual"], scale, "residual"
+            )
+            outputs = theirs["outputs"]
+            for name in ("scale_variations", "pdf_variations"):
+                if name in outputs:
+                    assert_weights(ours[name], outputs[name], scale, name)
+            born_scale = np.abs(theirs["born"]).max(axis=1) + 1e-300
+            assert_weights(ours["born"], theirs["born"], born_scale, "born")
+            np.testing.assert_array_equal(ours["virtual"], theirs["virtual"])
+            checked += int((np.asarray(ours["cross_section"]) != 0).sum())
+    assert checked > 0
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_against_driver(name):
     with fks_setup(name) as run:
-        checked = 0
+        compare_with_driver(run)
+
+
+def half_transverse_mass(momenta, valid=None):
+    """Half the sum of the transverse masses of the final-state particles
+    of kinematics (batch, n + 1, 4) of the real process, zero where valid is
+    false, a reference scale of the user that depends on the kinematics."""
+    momenta = np.asarray(momenta, dtype=float)
+    final = momenta[:, 2:]
+    mass2 = final[..., 0] ** 2 - (final[..., 1:] ** 2).sum(-1)
+    pt2 = final[..., 1] ** 2 + final[..., 2] ** 2
+    scale = 0.5 * np.sqrt(np.maximum(mass2 + pt2, 0.0)).sum(-1)
+    if valid is not None:
+        scale = np.where(np.asarray(valid, dtype=bool), scale, 0.0)
+    return scale
+
+
+@pytest.mark.parametrize("choice", [0, 10])
+def test_user_scale(choice):
+    """With the scale of the user the integrand calls the reference scale
+    (a scale library of the provider through CustomFunction) at the event,
+    the soft and the collinear counter-events where the driver does, and the
+    Born and the virtual take it at the soft counter-event. The provider of
+    the outputs has the fixed scale of user_dynamical_scale, so both take
+    half_transverse_mass in its place."""
+    with fks_setup("pp_epem", dynamical_scale_choice=choice) as run:
         for integrand in run.integrands:
-            if integrand.user_scale or integrand.ew_sudakov is not None:
-                pytest.skip("no scale of the user and no Sudakov approximation yet")
-            rng = np.random.default_rng(23)
-            for channel in range(min(integrand.channel_count, 2)):
-                function = integrand.channel_integrand(channel, run.context)
-                runtime = Runtime(function, run.context)
-                x = rng.random((POINTS, integrand.dimension))
-                fks_index = rng.integers(0, integrand.configuration_count, POINTS)
-                fks_index = fks_index.astype(np.int32)
-                configuration_weight = rng.uniform(0.5, 4.0, POINTS)
-                trick = VirtualTrick(integrand.nlo_count, FRACTION, 0.01)
-                trick.ratios = rng.normal(size=integrand.nlo_count)
-                seed = int(rng.integers(1 << 30))
-                mask = np.random.default_rng(seed).random(POINTS) < FRACTION
-                theirs = integrand.evaluate(
-                    channel,
-                    x,
-                    fks_index,
-                    configuration_weight,
-                    trick,
-                    np.random.default_rng(seed),
-                )
-                ours = runtime(
-                    x,
-                    fks_index,
-                    configuration_weight,
-                    mask.astype(float),
-                    np.tile(trick.ratios, (POINTS, 1)),
-                    np.full(POINTS, FRACTION),
-                )
-                for kinematics in (
-                    "momenta",
-                    "soft_momenta",
-                    "collinear_momenta",
-                    "soft_collinear_momenta",
-                    "born_momenta",
-                ):
-                    np.testing.assert_array_equal(
-                        ours[kinematics], theirs["kinematics"][kinematics], kinematics
-                    )
-                np.testing.assert_array_equal(
-                    ours["evaluated"] != 0, theirs["evaluated"], "evaluated"
-                )
-                scale = sum(np.abs(theirs["outputs"][part]) for part in PARTS)
-                scale = scale + np.abs(theirs["lo"]) + 1e-300
-                for part in PARTS:
-                    assert_weights(ours[part], theirs["outputs"][part], scale, part)
-                assert_weights(ours["cross_section"], theirs["nlo"], scale, "nlo")
-                assert_weights(ours["lo_weight"], theirs["lo"], scale, "lo")
-                assert_weights(
-                    ours["virtual_residual"], theirs["residual"], scale, "residual"
-                )
-                outputs = theirs["outputs"]
-                for name in ("scale_variations", "pdf_variations"):
-                    if name in outputs:
-                        assert_weights(ours[name], outputs[name], scale, name)
-                born_scale = np.abs(theirs["born"]).max(axis=1) + 1e-300
-                assert_weights(ours["born"], theirs["born"], born_scale, "born")
-                np.testing.assert_array_equal(ours["virtual"], theirs["virtual"])
-                checked += int((np.asarray(ours["cross_section"]) != 0).sum())
-        assert checked > 0
+            assert integrand.user_scale
+            integrand.provider.reference_scales = half_transverse_mass
+        compare_with_driver(run)
+
+
+def test_extra_counterterms():
+    """g u > u a [QCD QED] (gu_ua_mix): configurations with a quark pair from
+    a gluon and from a photon, whose extra counterterm has the Born a u > u a
+    (a library of its own), with its own cards."""
+    with fks_setup("gu_ua_mix", output="gu_ua_mix") as run:
+        assert any(i.provider.orders.get("extra_born") for i in run.integrands)
+        compare_with_driver(run)
 
 
 @pytest.mark.parametrize("name", ["pp_epem", "pp_epemj"])

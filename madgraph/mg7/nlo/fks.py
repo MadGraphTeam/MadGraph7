@@ -318,8 +318,9 @@ class SubprocessIntegrand:
         with the matrix elements of the provider as UMAMI libraries in the
         context (ProviderLibraries of nlo/libraries.py, added once), the same
         integrand as evaluate at the same random numbers, configurations and
-        points with the virtual. The libraries evaluate at the e of the
-        model, so that the blocks are those of the provider."""
+        points with the virtual, with the Borns of the extra counterterms and
+        the reference scale of the user. The libraries evaluate at the e of
+        the model, so that the blocks are those of the provider."""
         from madgraph.mg7.nlo.libraries import ProviderLibraries
 
         ms = madspace()
@@ -364,6 +365,27 @@ class SubprocessIntegrand:
             ],
             [element.loop_out],
         )
+        extras = [
+            element(
+                api,
+                [
+                    element.momenta_in,
+                    element.alpha_s_in,
+                    element.g_ew_in,
+                    element.spin_legs_in,
+                    element.spin_vectors_in,
+                ],
+                [element.squared_orders_out, element.spin_correlated_out],
+            )
+            for api in apis["extras"]
+        ]
+        reference_scale = None
+        if self.user_scale:
+            reference_scale = ms.CustomFunction(
+                apis["scale"],
+                ms.CustomFunction.scale,
+                self.provider.particle_count,
+            )
         tagged = self.tagged or {}
         return ms.FKSChannelIntegrand(
             self.kinematics[channel].function,
@@ -383,6 +405,10 @@ class SubprocessIntegrand:
             tagged_nlo=[float(v) for v in tagged.get("nlo", [])],
             tagged_born=[float(v) for v in tagged.get("born", [])],
             tagged_alpha=float(tagged.get("alpha", 1.0)),
+            reference_scale=reference_scale,
+            extras=extras,
+            extra_indices=self._libraries.extra_indices() if extras else [],
+            extra_spin_legs=self._libraries.extra_spin_legs() if extras else [],
         )
 
     def generator_integrand(

@@ -216,6 +216,35 @@ def test_against_mg5amc(name):
     assert total == pytest.approx(result["nlo"]["sigma"], rel=1e-9)
 
 
+def test_user_scale():
+    """With the scale of the user (dynamical_scale_choice 10, the fixed scale
+    of user_dynamical_scale of the output) a run through the event generator
+    agrees with one of the driver in Python at the same points."""
+    results = []
+    for generator in (False, True):
+        data = reference(os.path.join(DATA, "pp_epem.json"))
+        run = FKSRun(
+            fks_output(data["output"]),
+            run_card={**data["run_card"], "dynamical_scale_choice": 10},
+            param_card=data["param_card"],
+            run_path=os.path.join(
+                tempfile.gettempdir(), "madspace_fks_generator", f"user_{generator}"
+            ),
+            seed=4711,
+            accuracy=0.0,
+            grid_points=2000,
+            grid_iterations=3,
+            points=4000,
+            max_iterations=3,
+            generator=generator,
+            threads=2 if generator else 1,
+        )
+        results.append(run.run())
+    python, generator = results
+    for key in ("lo", "nlo"):
+        assert abs(pull(generator[key], python[key])) < SIGMAS, key
+
+
 def test_refusals():
     """The survey refuses a fixed-order channel."""
     with fks_setup("epem_jj_fixed") as run:

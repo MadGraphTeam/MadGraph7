@@ -32,6 +32,14 @@ const std::vector<std::string> block_names{
     "fks_index",
 };
 
+// the reference scales of the user at the event and the soft and collinear
+// counter-events
+const std::vector<std::string> reference_names{
+    "reference_scale",
+    "soft_reference_scale",
+    "collinear_reference_scale",
+};
+
 // the kinematics the integrand returns for the histograms
 const std::vector<std::string> kinematics_names{
     "momenta",
@@ -76,6 +84,15 @@ int real_order_count(const std::vector<MatrixElement>& reals) {
     return reals.empty() ? 1 : static_cast<int>(reals.at(0).squared_order_count());
 }
 
+std::size_t
+count_born_inputs(const MatrixElement& born, const std::vector<MatrixElement>& extras) {
+    std::size_t count = born.squared_order_count();
+    for (auto& extra : extras) {
+        count += extra.squared_order_count();
+    }
+    return count;
+}
+
 } // namespace
 
 FKSChannelIntegrand::FKSChannelIntegrand(
@@ -95,7 +112,11 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     double alpha,
     const std::vector<double>& tagged_nlo,
     const std::vector<double>& tagged_born,
-    double tagged_alpha
+    double tagged_alpha,
+    const std::optional<CustomFunction>& reference_scale,
+    const std::vector<MatrixElement>& extras,
+    const std::vector<me_int_t>& extra_indices,
+    const std::vector<me_int_t>& extra_spin_legs
 ) :
     FunctionGenerator(
         "FKSChannelIntegrand",
@@ -143,9 +164,13 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     _tagged_nlo(tagged_nlo),
     _tagged_born(tagged_born),
     _tagged_alpha(tagged_alpha),
+    _reference_scale(reference_scale),
+    _extras(extras),
+    _extra_spin_legs(extra_spin_legs),
     _born_orders(born.squared_order_count()),
     _nlo_orders(reals.empty() ? 0 : reals.at(0).squared_order_count()),
-    _born_particles(born.particle_count()) {
+    _born_particles(born.particle_count()),
+    _born_inputs(count_born_inputs(born, extras)) {
     if (reals.empty()) {
         throw std::invalid_argument("FKSChannelIntegrand: no real matrix elements");
     }
@@ -286,20 +311,97 @@ FKSChannelIntegrand::FKSChannelIntegrand(
         }
     }
     if ((!tagged_nlo.empty() && tagged_nlo.size() != _nlo_orders) ||
-        (!tagged_born.empty() && tagged_born.size() != _born_orders) ||
+        (!tagged_born.empty() && tagged_born.size() != _born_inputs) ||
         tagged_nlo.empty() != tagged_born.empty()) {
         throw std::invalid_argument(
-            "FKSChannelIntegrand: the factors of tagged photons per NLO and per Born "
-            "order"
+            "FKSChannelIntegrand: the factors of tagged photons per NLO order and "
+            "per Born input"
         );
     }
-    if (born_scale.user()) {
-        throw std::invalid_argument("FKSChannelIntegrand: no scale of the user yet");
+    // the extra counterterms
+    std::size_t configurations = real_indices.size();
+    if ((!extra_indices.empty() && extra_indices.size() != configurations) ||
+        extra_spin_legs.size() != extra_indices.size()) {
+        throw std::invalid_argument(
+            "FKSChannelIntegrand: an extra counterterm and its spin leg per "
+            "configuration"
+        );
     }
-    // every argument of the cross section from the kinematics or the blocks
+    _extra_tables.assign(extras.size(), std::vector<double>(configurations, 0.));
+    for (std::size_t c = 0; c < extra_indices.size(); ++c) {
+        auto index = extra_indices.at(c);
+        if (index < -1 || std::cmp_greater_equal(index, extras.size())) {
+            throw std::invalid_argument(
+                std::format("FKSChannelIntegrand: no extra counterterm {}", index)
+            );
+        }
+        auto leg = extra_spin_legs.at(c);
+        if ((index >= 0) != (leg >= 0) ||
+            std::cmp_greater_equal(leg, _born_particles)) {
+            throw std::invalid_argument(
+                std::format(
+                    "FKSChannelIntegrand: configuration {} needs a Born leg for its "
+                    "extra counterterm and only then",
+                    c
+                )
+            );
+        }
+        if (index >= 0) {
+            _extra_tables.at(index).at(c) = 1.;
+        }
+    }
+    for (auto& extra : extras) {
+        check_library(
+            extra,
+            {MatrixElement::momenta_in,
+             MatrixElement::alpha_s_in,
+             MatrixElement::g_ew_in,
+             MatrixElement::spin_legs_in,
+             MatrixElement::spin_vectors_in},
+            {MatrixElement::squared_orders_out, MatrixElement::spin_correlated_out},
+            "extra counterterm"
+        );
+        if (extra.particle_count() != _born_particles) {
+            throw std::invalid_argument(
+                "FKSChannelIntegrand: the Born of an extra counterterm has the "
+                "particles of the Born"
+            );
+        }
+    }
+    // the scale of the user
+    if (born_scale.user() && !reference_scale) {
+        throw std::invalid_argument(
+            "FKSChannelIntegrand: the scales take the scale of the user, which needs "
+            "the reference scale"
+        );
+    }
+    if (reference_scale) {
+        auto types = reference_scale->arg_types();
+        if (reference_scale->type() != CustomFunction::scale || types.size() != 1 ||
+            types.at(0).shape != kinematics.return_types().at("momenta").shape) {
+            throw std::invalid_argument(
+                "FKSChannelIntegrand: the reference scale is a scale of the momenta "
+                "of the real process"
+            );
+        }
+    }
+    // every argument of the cross section from the kinematics, the blocks or
+    // the reference scales
     auto kinematic_types = kinematics.return_types();
     for (auto& name : cross_section.arg_types().keys()) {
-        if (!has_key(kinematic_types, name) &&
+        bool reference =
+            std::find(reference_names.begin(), reference_names.end(), name) !=
+            reference_names.end();
+        if (reference && !reference_scale) {
+            throw std::invalid_argument(
+                std::format(
+                    "FKSChannelIntegrand: the cross section takes {}, which needs the "
+                    "reference scale",
+                    name
+                )
+            );
+        }
+        if (!has_key(kinematic_types, name) && !reference &&
             std::find(block_names.begin(), block_names.end(), name) ==
                 block_names.end()) {
             throw std::invalid_argument(
@@ -312,10 +414,10 @@ FKSChannelIntegrand::FKSChannelIntegrand(
         }
     }
     auto born_type = cross_section.arg_types().at("born");
-    if (born_type.shape != std::vector<int>{static_cast<int>(_born_orders)}) {
+    if (born_type.shape != std::vector<int>{static_cast<int>(_born_inputs)}) {
         throw std::invalid_argument(
-            "FKSChannelIntegrand: the cross section takes Borns of extra "
-            "counterterms"
+            "FKSChannelIntegrand: the cross section takes other Born inputs than the "
+            "Born orders and the Borns of the extra counterterms"
         );
     }
 }
@@ -385,6 +487,26 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         fb.mul(passes("soft_momenta"), fb.cut_one(values.at("soft_xi"), 0., 0.));
     Value collinear_cut = passes("collinear_momenta");
     Value born_cut = fb.max(fb.max(event_cut, soft_cut), collinear_cut);
+
+    // the reference scales of the user where the kinematics have a weight,
+    // at the soft counter-event also where the Born has one
+    if (_reference_scale) {
+        auto reference = [&](const std::string& momenta, Value weight) {
+            Value points = fb.nonzero(weight);
+            Value scale =
+                _reference_scale
+                    ->build_function(fb, {fb.batch_gather(points, values.at(momenta))})
+                    .at("ren_scale");
+            return scatter(points, scale, {});
+        };
+        values["reference_scale"] = reference("momenta", values.at("weight"));
+        values["soft_reference_scale"] = reference(
+            "soft_momenta",
+            fb.max(fb.abs(values.at("soft_det")), fb.abs(values.at("born_weight")))
+        );
+        values["collinear_reference_scale"] =
+            reference("collinear_momenta", values.at("collinear_det"));
+    }
 
     // the reals where the event has a weight and passes the cuts, per real
     // matrix element
@@ -484,8 +606,11 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     Value evaluated = scatter(evaluated_points, fb.full({1., loop_batch}), {});
     Value virtual_value = fb.full({0., batch_size, static_cast<me_int_t>(o)});
     if (_loop) {
-        Value ren_scale =
-            _born_scale.build_function(fb, {values.at("born_momenta")}).at("ren_scale");
+        ValueVec scale_args{values.at("born_momenta")};
+        if (_born_scale.user()) {
+            scale_args.push_back(values.at("soft_reference_scale"));
+        }
+        Value ren_scale = _born_scale.build_function(fb, scale_args).at("ren_scale");
         auto loop = _loop->build_function(
             fb,
             {loop_momenta,
@@ -500,13 +625,18 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         virtual_value = scatter(evaluated_points, fb.stack(finite), {o});
     }
 
-    // the factors of tagged photons
+    // the factors of tagged photons, of the Born orders the first ones of
+    // the Born inputs
     Value alpha = full(_alpha * _tagged_alpha);
     matrix_element = factors(matrix_element, _tagged_nlo);
     virtual_value = factors(virtual_value, _tagged_nlo);
-    born = factors(born, _tagged_born);
-    spin = factors(spin, _tagged_born);
-    color = factors(color, _tagged_born);
+    std::vector<double> tagged_orders, tagged_extras;
+    if (!_tagged_born.empty()) {
+        tagged_orders.assign(_tagged_born.begin(), _tagged_born.begin() + b);
+    }
+    born = factors(born, tagged_orders);
+    spin = factors(spin, tagged_orders);
+    color = factors(color, tagged_orders);
 
     // B / 2 for the mothers without a spin correlation, whose azimuthal
     // terms vanish
@@ -519,6 +649,49 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
             fb.mul(has_spin_leg, spin_columns.at(k)),
             fb.mul(no_spin_leg, fb.mul(full(0.5), born_columns.at(k)))
         ));
+    }
+
+    // the Borns of the extra counterterms after the Born orders, where the
+    // configuration of the point has one, with the spin correlation at its
+    // mother
+    ValueVec born_inputs{born}, spin_inputs{fb.stack(spin_correlated)};
+    std::size_t column = _born_orders;
+    for (std::size_t e = 0; e < _extras.size(); ++e) {
+        Value has_extra = fb.gather(fks_index, _extra_tables.at(e));
+        Value points =
+            fb.nonzero(fb.mul(fb.mul(values.at("born_weight"), born_cut), has_extra));
+        Value momenta = fb.batch_gather(points, values.at("born_momenta"));
+        Value extra_batch = fb.batch_size({momenta});
+        Value legs = fb.stack(
+            {fb.gather_int(fb.batch_gather(points, fks_index), _extra_spin_legs),
+             fb.full({static_cast<me_int_t>(-1), extra_batch})}
+        );
+        Value vectors = fb.stack(
+            {fb.batch_gather(points, k_perp),
+             fb.full({0., extra_batch, static_cast<me_int_t>(4)})}
+        );
+        auto extra = _extras.at(e).build_function(
+            fb,
+            {momenta,
+             fb.full({unit_alpha_s, extra_batch}),
+             fb.full({_g_ew, extra_batch}),
+             legs,
+             vectors}
+        );
+        std::size_t width = _extras.at(e).squared_order_count();
+        int k = static_cast<int>(width);
+        if (!_tagged_born.empty()) {
+            tagged_extras.assign(
+                _tagged_born.begin() + column, _tagged_born.begin() + column + width
+            );
+        }
+        born_inputs.push_back(
+            factors(scatter(points, extra.at("squared_orders"), {k}), tagged_extras)
+        );
+        spin_inputs.push_back(
+            factors(scatter(points, extra.at("spin_correlated"), {k}), tagged_extras)
+        );
+        column += width;
     }
 
     // the virtual trick: r B everywhere, (V - r B) / f where evaluated
@@ -542,9 +715,10 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     // the cross section with the virtual of the trick and with its
     // approximation alone
     values["matrix_element"] = matrix_element;
-    values["born"] = born;
+    values["born"] = _extras.empty() ? born : fb.cat(born_inputs);
     values["color_correlated"] = color;
-    values["spin_correlated"] = fb.stack(spin_correlated);
+    values["spin_correlated"] =
+        _extras.empty() ? spin_inputs.at(0) : fb.cat(spin_inputs);
     values["alpha"] = alpha;
     values["channel_weight"] = channel_weight;
     values["configuration_weight"] = args.at("configuration_weight");

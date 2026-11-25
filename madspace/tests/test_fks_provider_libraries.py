@@ -26,8 +26,13 @@ import numpy as np
 import pytest
 from fks_testing import fks_output
 from madgraph.mg7.nlo.fks import FKSRun
-from madgraph.mg7.nlo.libraries import ALPHA_S, ProviderLibraries, transverse_square
-from madgraph.mg7.nlo.provider import fks_blocks
+from madgraph.mg7.nlo.libraries import (
+    ALPHA_S,
+    ProviderLibraries,
+    partonic_frame,
+    transverse_square,
+)
+from madgraph.mg7.nlo.provider import boost_z, fks_blocks
 from test_fks_cross_section import reference
 
 import madspace as ms
@@ -48,16 +53,21 @@ ME = ms.MatrixElement
 
 
 @contextlib.contextmanager
-def fks_setup(name):
-    """The run of the driver on the output of a reference, set up, and
-    closed afterwards with the processes of its providers."""
-    data = reference(os.path.join(DATA, f"{name}.json"))
+def fks_setup(name, own_cards=False):
+    """The run of the driver on the output of a reference, or on an output
+    with its own cards, set up, and closed afterwards with the processes of
+    its providers."""
+    if own_cards:
+        output, cards = name, {}
+    else:
+        data = reference(os.path.join(DATA, f"{name}.json"))
+        output = data["output"]
+        cards = dict(run_card=data["run_card"], param_card=data["param_card"])
     run = FKSRun(
-        fks_output(data["output"]),
-        run_card=data["run_card"],
-        param_card=data["param_card"],
+        fks_output(output),
         run_path=os.path.join(tempfile.gettempdir(), "madspace_fks_libraries", name),
         seed=4711,
+        **cards,
     )
     run.setup()
     try:
@@ -248,6 +258,73 @@ def test_libraries_against_blocks(name, context):
                 vectors,
             )
             assert_close(np.asarray(unit) * libraries.e**powers, orders, RTOL)
+
+
+def test_extra_counterterm_library(context):
+    """g u > u a [QCD QED]: the library of the Born a u > u a of the extra
+    counterterm gives the columns of the Born inputs of the provider for the
+    configurations with it, the Born and B_perp at the mother of the
+    configuration, at g_ew = e and to the rounding of the transverse
+    square of k_perp."""
+    with fks_setup("gu_ua_mix", own_cards=True) as run:
+        integrand = run.integrands[0]
+        provider = integrand.provider
+        libraries = ProviderLibraries(provider, integrand.name)
+        apis = libraries.add_to(context)
+        assert len(apis["extras"]) == 1
+        rng = np.random.default_rng(5)
+        out, fks_index, k_perp, _ = kinematics(integrand, rng)
+        extra = np.asarray(libraries.extra_indices())[fks_index] >= 0
+        valid = np.flatnonzero((np.asarray(out["born_weight"]) != 0) & extra)
+        assert len(valid) > 4
+        born = np.asarray(out["born_momenta"])[valid]
+        legs = np.full((len(valid), 2), -1, dtype=np.int32)
+        legs[:, 0] = np.asarray(libraries.extra_spin_legs())[fks_index[valid]]
+        vectors = np.zeros((len(valid), 2, 4))
+        vectors[:, 0] = np.asarray(k_perp)[valid]
+        ours = call(
+            context,
+            apis["extras"][0],
+            [
+                ME.momenta_in,
+                ME.alpha_s_in,
+                ME.g_ew_in,
+                ME.spin_legs_in,
+                ME.spin_vectors_in,
+            ],
+            [ME.squared_orders_out, ME.spin_correlated_out],
+            born,
+            np.full(len(valid), ALPHA_S),
+            np.full(len(valid), libraries.e),
+            legs,
+            vectors,
+        )
+        b = len(provider.orders["born"])
+        partonic, y = partonic_frame(born, provider.incoming)
+        direction = boost_z(np.asarray(k_perp)[valid][:, None], y)[:, 0]
+        plain, perp = provider.born_inputs(partonic, direction, fks_index[valid])
+        assert np.abs(plain[:, b:]).max() > 0
+        assert_close(ours[0], plain[:, b:], RTOL)
+        assert_close(ours[1], perp[:, b:], RTOL)
+
+
+def test_scale_library(context):
+    """The reference scale of the user through CustomFunction is that of
+    the provider at the kinematics of the real process."""
+    with fks_setup("pp_epem") as run:
+        integrand = run.integrands[0]
+        libraries = ProviderLibraries(integrand.provider, integrand.name)
+        apis = libraries.add_to(context)
+        rng = np.random.default_rng(6)
+        out, _, _, _ = kinematics(integrand, rng)
+        momenta = np.asarray(out["momenta"])
+        n = integrand.provider.particle_count
+        function = ms.CustomFunction(apis["scale"], ms.CustomFunction.scale, n)
+        ours = ms.FunctionRuntime(function.function(), context)(momenta)
+        theirs = integrand.provider.reference_scales(momenta)
+        assert theirs.max() > 0
+        for value in ours:
+            np.testing.assert_array_equal(value, theirs)
 
 
 def test_refusals(context):

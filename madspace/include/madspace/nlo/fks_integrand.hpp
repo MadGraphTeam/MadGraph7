@@ -12,6 +12,7 @@
 #include "madspace/nlo/fks_subtraction.hpp"
 #include "madspace/nlo/scale.hpp"
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 #include "madspace/phasespace/discrete_flow.hpp"
 #include "madspace/phasespace/flow.hpp"
 #include "madspace/phasespace/integrand.hpp"
@@ -44,7 +45,16 @@ namespace madspace {
  *   the cuts;
  * - the virtual (`loop`, its finite part) at the renormalization scale of
  *   the Born, where the soft counter-event passes the cuts and `virtual_mask`
- *   is not zero.
+ *   is not zero;
+ * - the Born of the extra counterterm of the configuration of the point
+ *   (`squared_orders` and `spin_correlated` at the mother of the
+ *   configuration), one library per extra counterterm, where the Born has a
+ *   weight and one of the kinematics passes the cuts;
+ * - with the scale of the user, the reference scale (`ren_scale` of a
+ *   @ref CustomFunction of type scale) at the event where it has a weight, at
+ *   the soft counter-event where it or the Born has one (the Born takes it,
+ *   as MadFKS takes the scales of the Born at the soft counter-event) and at
+ *   the collinear counter-event where it has one, zero elsewhere.
  *
  * The colour-correlated Born that @ref FKSCrossSection takes is the matrix
  * of @f$\langle T_m \cdot T_n \rangle B@f$ over all Born legs: the pairs of
@@ -62,13 +72,18 @@ namespace madspace {
  * section less that with @f$r_o B@f$ everywhere, the part of the evaluated
  * virtual that adapts the fraction.
  *
+ * The Born inputs of @ref FKSCrossSection are the Born orders followed by
+ * the orders of the Born of each extra counterterm, in the order of the
+ * libraries, those of the extra counterterm of the configuration of the point
+ * and zero for the others. The colour correlations and the virtual trick take
+ * the Born orders alone.
+ *
  * With tagged photons and QED corrections, the factors of the couplings of
  * the tagged photons multiply the real and the virtual per NLO order, the
- * Born and its correlated versions per Born order and the QED coupling of the
+ * Born and its correlated versions per Born input and the QED coupling of the
  * counterterms (tagged_factors of madgraph/mg7/nlo/provider.py).
  *
- * The scale of the user, the Borns of extra counterterms and the Sudakov
- * approximation of the EW corrections are not covered yet.
+ * The Sudakov approximation of the EW corrections is not covered yet.
  *
  * `batch` is the leading batch dimension, `b` the number of Born orders and
  * `o` the number of NLO orders.
@@ -144,13 +159,28 @@ public:
      * @param alpha           The QED coupling of the counterterms.
      * @param tagged_nlo      The factors of tagged photons per NLO order, none
      *                        if empty.
-     * @param tagged_born     Those per Born order, none if empty.
+     * @param tagged_born     Those per Born input, none if empty.
      * @param tagged_alpha    That of the QED coupling.
+     * @param reference_scale The reference scale of the user, a
+     *                        @ref CustomFunction of type scale at the
+     *                        kinematics of the real process, needed when the
+     *                        scales take the scale of the user.
+     * @param extras          The libraries of the Borns of the extra
+     *                        counterterms: inputs and outputs of @p born
+     *                        without `diagram_amp2_out` and
+     *                        `color_correlated_out`.
+     * @param extra_indices   Per FKS configuration its extra counterterm, an
+     *                        index of @p extras, -1 for none. Empty for none.
+     * @param extra_spin_legs Per FKS configuration with an extra counterterm
+     *                        the Born leg of its mother, from 0, -1 for the
+     *                        others. Empty for none.
      * @throws std::invalid_argument if the pieces do not fit together, the
-     *         cross section takes the scale of the user, the Sudakov
-     *         approximation or Borns of extra counterterms, a table has
-     *         another length than the configurations or the Born legs, or a
-     *         leg has a colour representation without a Casimir here.
+     *         cross section takes the Sudakov approximation, the scales take
+     *         the scale of the user without @p reference_scale, the extra
+     *         counterterms do not give the Born inputs of the cross section, a
+     *         table has another length than the configurations or the Born
+     *         legs, or a leg has a colour representation without a Casimir
+     *         here.
      */
     FKSChannelIntegrand(
         const FKSKinematics& kinematics,
@@ -169,12 +199,19 @@ public:
         double alpha,
         const std::vector<double>& tagged_nlo = {},
         const std::vector<double>& tagged_born = {},
-        double tagged_alpha = 1.
+        double tagged_alpha = 1.,
+        const std::optional<CustomFunction>& reference_scale = std::nullopt,
+        const std::vector<MatrixElement>& extras = {},
+        const std::vector<me_int_t>& extra_indices = {},
+        const std::vector<me_int_t>& extra_spin_legs = {}
     );
     /// Number of FKS configurations.
     std::size_t configuration_count() const { return _real_indices.size(); }
     /// Number of Born orders.
     std::size_t born_order_count() const { return _born_orders; }
+    /// Number of Born inputs of the cross section: the Born orders and those
+    /// of the Borns of the extra counterterms.
+    std::size_t born_input_count() const { return _born_inputs; }
     /// Number of NLO orders.
     std::size_t nlo_order_count() const { return _nlo_orders; }
     /// Number of particles of the Born.
@@ -206,7 +243,12 @@ private:
     double _alpha;
     std::vector<double> _tagged_nlo, _tagged_born;
     double _tagged_alpha;
-    std::size_t _born_orders, _nlo_orders, _born_particles;
+    std::optional<CustomFunction> _reference_scale;
+    std::vector<MatrixElement> _extras;
+    // per extra counterterm one where a configuration has it, zero elsewhere
+    std::vector<std::vector<double>> _extra_tables;
+    std::vector<me_int_t> _extra_spin_legs;
+    std::size_t _born_orders, _nlo_orders, _born_particles, _born_inputs;
 };
 
 /**
