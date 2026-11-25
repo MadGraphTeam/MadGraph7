@@ -741,6 +741,13 @@
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>Tunable parameters of EventGenerator.</p>
 <dl class="py property">
+<dt class="sig sig-object py" id="madspace.GeneratorConfig.adaptive_discrete">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">adaptive_discrete</span></span><a class="headerlink" href="#madspace.GeneratorConfig.adaptive_discrete" title="Link to this definition">¶</a></dt>
+<dd><p>Whether the survey adapts the probabilities of the discrete samplers (DiscreteSampler, the flavour and permutation choices) with the VEGAS grids; see DiscreteOptimizer.</p>
+<p>Off by default until it is shown to pay off.</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="madspace.GeneratorConfig.batch_overshoot_sigma">
 <span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">batch_overshoot_sigma</span></span><a class="headerlink" href="#madspace.GeneratorConfig.batch_overshoot_sigma" title="Link to this definition">¶</a></dt>
 <dd><p>Number of standard deviations of headroom added when sizing a batch, to avoid overshooting the target count.</p>
@@ -956,6 +963,7 @@
             <ul>
 <li><a class="reference internal" href="#">GeneratorConfig</a><ul>
 <li><a class="reference internal" href="#madspace.GeneratorConfig"><code class="docutils literal notranslate"><span class="pre">GeneratorConfig</span></code></a><ul>
+<li><a class="reference internal" href="#madspace.GeneratorConfig.adaptive_discrete"><code class="docutils literal notranslate"><span class="pre">GeneratorConfig.adaptive_discrete</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorConfig.batch_overshoot_sigma"><code class="docutils literal notranslate"><span class="pre">GeneratorConfig.batch_overshoot_sigma</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorConfig.combine_thread_count"><code class="docutils literal notranslate"><span class="pre">GeneratorConfig.combine_thread_count</span></code></a></li>
 <li><a class="reference internal" href="#madspace.GeneratorConfig.cpu_batch_size"><code class="docutils literal notranslate"><span class="pre">GeneratorConfig.cpu_batch_size</span></code></a></li>

@@ -377,6 +377,10 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``damping`` (``0.4``)
     Damping of the grid updates. Raise it if the grid oscillates instead of settling.
 
+``adaptive_discrete`` (``false``)
+    Adapt the probabilities of the flavour and permutation choices during the survey,
+    together with the grids. Off until it is shown to pay off.
+
 ``optimization_patience`` (``5``), ``optimization_threshold`` (``0.9``)
     The grid optimization stops when this many iterations in a row fail to improve the
     result by the given relative margin.

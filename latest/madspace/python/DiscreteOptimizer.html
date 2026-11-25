@@ -740,7 +740,8 @@
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">madspace.</span></span><span class="sig-name descname"><span class="pre">DiscreteOptimizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.DiscreteOptimizer" title="madspace._madspace_py.DiscreteOptimizer"><span class="pre">madspace._madspace_py.DiscreteOptimizer</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">contexts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="Context.html#madspace.Context" title="madspace._madspace_py.Context"><span class="pre">madspace._madspace_py.Context</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prob_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">collections.abc.Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#madspace.DiscreteOptimizer" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">pybind11_object</span></code></p>
 <p>Refines the categorical probabilities of a DiscreteSampler or DiscreteFlow from accumulated per-category statistics.</p>
-<p>Counterpart of DiscreteHistogram: add_data feeds in the per-category weight sums and counts it accumulates, and optimize writes the probability tensor of every <code class="docutils literal notranslate"><span class="pre">prob_names</span></code> global to every context in <code class="docutils literal notranslate"><span class="pre">contexts</span></code>. The probability update itself is unfinished (see the TODO in <code class="docutils literal notranslate"><span class="pre">optimize</span></code>).</p>
+<p>Counterpart of DiscreteHistogram: add_data feeds in the per-category weight sums and counts it accumulates, and optimize writes the probability tensor of every <code class="docutils literal notranslate"><span class="pre">prob_names</span></code> global to every context in <code class="docutils literal notranslate"><span class="pre">contexts</span></code>.</p>
+<p>The weights of the events of category <span class="math notranslate nohighlight">\(i\)</span>, sampled with probability <span class="math notranslate nohighlight">\(p_i\)</span>, average to <span class="math notranslate nohighlight">\(I_i / p_i\)</span>, with <span class="math notranslate nohighlight">\(I_i\)</span> the contribution of the category to the integral. optimize takes the new probabilities as the running average of the old ones and of <span class="math notranslate nohighlight">\(|I_i| / \sum_j |I_j|\)</span>, weighted by the number of events of the update against those of the updates before, which start at 7000. A category without events keeps a share of its old probability, so that it is never dropped.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -758,7 +759,8 @@
 <dl class="py method">
 <dt class="sig sig-object py" id="madspace.DiscreteOptimizer.optimize">
 <span class="sig-name descname"><span class="pre">optimize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#madspace.DiscreteOptimizer" title="madspace._madspace_py.DiscreteOptimizer"><span class="pre">madspace._madspace_py.DiscreteOptimizer</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#madspace.DiscreteOptimizer.optimize" title="Link to this definition">¶</a></dt>
-<dd><p>Write the probabilities back to every context and reset the accumulated data.</p>
+<dd><p>Update the probabilities from the accumulated data, write them back to every context and reset the accumulated data.</p>
+<p>Without data the probabilities are left as they are.</p>
 </dd></dl>
 
 </dd></dl>
@@ -841,5 +843,7 @@
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     </body>
 </html>

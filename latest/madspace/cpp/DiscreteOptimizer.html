@@ -739,7 +739,8 @@
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace17DiscreteOptimizerE">
 <span id="_CPPv3N8madspace17DiscreteOptimizerE"></span><span id="_CPPv2N8madspace17DiscreteOptimizerE"></span><span id="madspace::DiscreteOptimizer"></span><span class="target" id="classmadspace_1_1DiscreteOptimizer"></span><span class="k"><span class="pre">class</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">DiscreteOptimizer</span></span></span><a class="headerlink" href="#_CPPv4N8madspace17DiscreteOptimizerE" title="Link to this definition">¶</a><br /></dt>
 <dd><p>Refines the categorical probabilities of a <a class="reference internal" href="DiscreteSampler.html#classmadspace_1_1DiscreteSampler"><span class="std std-ref">DiscreteSampler</span></a> or <a class="reference internal" href="DiscreteFlow.html#classmadspace_1_1DiscreteFlow"><span class="std std-ref">DiscreteFlow</span></a> from accumulated per-category statistics. </p>
-<p>Counterpart of DiscreteHistogram: <a class="reference internal" href="#classmadspace_1_1DiscreteOptimizer_1a03aaa3aff21716079f15c34e1d0ede7f"><span class="std std-ref">add_data</span></a> feeds in the per-category weight sums and counts it accumulates, and <a class="reference internal" href="#classmadspace_1_1DiscreteOptimizer_1a30f7d0d807dab61acd8398196d0c1d36"><span class="std std-ref">optimize</span></a> writes the probability tensor of every <code class="docutils literal notranslate"><span class="pre">prob_names</span></code> global to every context in <code class="docutils literal notranslate"><span class="pre">contexts</span></code>. The probability update itself is unfinished (see the TODO in <code class="docutils literal notranslate"><span class="pre">optimize</span></code>). </p>
+<p>Counterpart of DiscreteHistogram: <a class="reference internal" href="#classmadspace_1_1DiscreteOptimizer_1a03aaa3aff21716079f15c34e1d0ede7f"><span class="std std-ref">add_data</span></a> feeds in the per-category weight sums and counts it accumulates, and <a class="reference internal" href="#classmadspace_1_1DiscreteOptimizer_1a30f7d0d807dab61acd8398196d0c1d36"><span class="std std-ref">optimize</span></a> writes the probability tensor of every <code class="docutils literal notranslate"><span class="pre">prob_names</span></code> global to every context in <code class="docutils literal notranslate"><span class="pre">contexts</span></code>.</p>
+<p>The weights of the events of category <span class="math notranslate nohighlight">\(i\)</span>, sampled with probability <span class="math notranslate nohighlight">\(p_i\)</span>, average to <span class="math notranslate nohighlight">\(I_i / p_i\)</span>, with <span class="math notranslate nohighlight">\(I_i\)</span> the contribution of the category to the integral. <a class="reference internal" href="#classmadspace_1_1DiscreteOptimizer_1a30f7d0d807dab61acd8398196d0c1d36"><span class="std std-ref">optimize</span></a> takes the new probabilities as the running average of the old ones and of <span class="math notranslate nohighlight">\(|I_i| / \sum_j |I_j|\)</span>, weighted by the number of events of the update against those of the updates before, which start at 7000. A category without events keeps a share of its old probability, so that it is never dropped. </p>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
 <dl class="cpp function">
@@ -764,7 +765,8 @@
 <dl class="cpp function">
 <dt class="sig sig-object cpp" id="_CPPv4N8madspace17DiscreteOptimizer8optimizeEv">
 <span id="_CPPv3N8madspace17DiscreteOptimizer8optimizeEv"></span><span id="_CPPv2N8madspace17DiscreteOptimizer8optimizeEv"></span><span id="madspace::DiscreteOptimizer::optimize"></span><span class="target" id="classmadspace_1_1DiscreteOptimizer_1a30f7d0d807dab61acd8398196d0c1d36"></span><span class="kt"><span class="pre">void</span></span><span class="w"> </span><span class="sig-name descname"><span class="n"><span class="pre">optimize</span></span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N8madspace17DiscreteOptimizer8optimizeEv" title="Link to this definition">¶</a><br /></dt>
-<dd><p>Write the probabilities back to every context and reset the accumulated data. </p>
+<dd><p>Update the probabilities from the accumulated data, write them back to every context and reset the accumulated data. </p>
+<p>Without data the probabilities are left as they are. </p>
 </dd></dl>
 
 </div>
@@ -849,5 +851,7 @@
     <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script>window.MathJax = {"options": {"processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     </body>
 </html>
