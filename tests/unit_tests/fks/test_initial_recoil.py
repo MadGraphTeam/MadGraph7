@@ -50,7 +50,8 @@ class TestInitialRecoil(unittest.TestCase):
         (work / "fks_phase_space.f").write_text(fks_test_module())
         routines = []
         for name in ("rotate_invar", "trp_rotate_invar", "compute_prefactors_n1body",
-                     "phspncheck_nocms", "xlen4", "xmom_compare", "xmcompare", "xprintout"):
+                     "phspncheck_nocms", "xlen4", "xmom_compare", "xmcompare", "xprintout",
+                     "isr_bw_active", "isr_bw_factors", "isr_cdilog"):
             routines.append(fortran_routine(TEMPLATE / "fks_singular.f", name))
         for name in ("dot", "rho", "threedot"):
             routines.append(fortran_routine(ROOT / "Template/NLO/Source/kin_functions.f", name))

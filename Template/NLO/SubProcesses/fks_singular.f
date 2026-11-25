@@ -1859,7 +1859,7 @@ c Compute the multi-channel enhancement factor 'enhance_real'.
 
       subroutine compute_prefactors_n1body(vegas_wgt,jac_ev)
       use fks_phase_space_data,only: resonance_momentum,resonance_recoil,p1_cnt,jac_cnt,xi_i_fks_ev,y_ij_fks_ev,p_i_fks_cnt,
-     $     xi_i_fks_cnt,xinorm_ev,xiimax_ev,xiimax_cnt,xinorm_cnt,shat,nocntevents
+     $     xi_i_fks_cnt,xinorm_ev,xiimax_ev,xiimax_cnt,xinorm_cnt,shat,nocntevents,shat_cnt
 c Compute all relevant prefactors for the real emission and counter
 c terms.
       implicit none
@@ -1904,8 +1904,6 @@ c terms.
       ! treatment of s-channel resonances with ISR (see isr_bw_factors)
       double precision f_isrbw_kt,f_isrbw_ktl
       common/factor_isrbw/f_isrbw_kt,f_isrbw_ktl
-      double precision sqrtshat_cnt(-2:2),shat_cnt(-2:2)
-      common/parton_cms_cnt/sqrtshat_cnt,shat_cnt
       logical isrbw,isr_bw_active
       external isr_bw_active
       double precision xm_s,r_s,kt_s,ktl_s,xm_c,r_c,kt_c,ktl_c

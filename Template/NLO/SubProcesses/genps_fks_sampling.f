@@ -1293,8 +1293,8 @@ C dressed lepton stuff
       ! the two mappings (x1*x2 vs. x1*x2*(1-xi)), so that mixing them
       ! would not sum to one over the real-emission phase space, and
       ! would bias the NLO result.
-      ! use_evpr may be reset to .true. in generate_momenta_conf for
-      ! final-state j_fks
+      ! use_evpr is reset to .true. for final-state j_fks in
+      ! prepare_fks_beam_point (genps_fks.f)
       use_evpr = .false.
       ! store the resonance information for the treatment of the
       ! xi=0 counterterms (fks_singular.f) and for the importance
