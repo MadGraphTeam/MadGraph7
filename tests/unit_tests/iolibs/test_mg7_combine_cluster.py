@@ -170,7 +170,7 @@ class TestCombineCluster(unittest.TestCase):
         self.assertIn("<MG7Seed>1</MG7Seed>", text)
         self.assertNotIn("<MG7Seed>2</MG7Seed>", text)
         init = text.split("<init>\n")[1].split("</init>")[0].splitlines()
-        self.assertEqual(init[0].split()[8:], ["3", "1"])
+        self.assertEqual(init[0].split()[8:], ["4", "1"])
         mean, error, mean_abs, process = init[1].split()
         self.assertAlmostEqual(float(mean), (2 * 10. + 3 * 12.) / 5)
         self.assertAlmostEqual(float(error), math.sqrt(4 * 1 + 9 * 4) / 5)
