@@ -17,41 +17,95 @@ c**************************************************************************
       end
 
 
-      double precision function onia_ja(x,y,lam,nu)
-c     J^(A)(x,y) of appendix A
+      double precision function onia_l1p(z)
+c     log(1+z), accurate for small |z| (Goldberg: log(u) z/(u-1), u = 1+z)
       implicit none
-      double precision x,y,lam,nu,ddilog
-      external ddilog
-      onia_ja=(dlog((x-y)/(x+y))**2+4d0*ddilog(1d0-(x+y)/nu)
-     &     +4d0*ddilog(1d0-(x-y)/nu))/(2d0*lam*nu)
+      double precision z,u
+      u=1d0+z
+      if (u.eq.1d0) then
+         onia_l1p=z
+      else
+         onia_l1p=dlog(u)*z/(u-1d0)
+      endif
+      end
+
+
+      double precision function onia_l1pz(z)
+c     log(1+z)/z, 1 at z = 0
+      implicit none
+      double precision z,onia_l1p
+      external onia_l1p
+      if (z.eq.0d0) then
+         onia_l1pz=1d0
+      else
+         onia_l1pz=onia_l1p(z)/z
+      endif
+      end
+
+
+      subroutine onia_eik_r1_self(pl,shat,qes2,xicut,p1,fin)
+c**************************************************************************
+c     E-bar^mu({1,2},{l,l}) = l^2 int q^mu/(l.q)^3, l massive: the 1/eps
+c     coefficient P1 (no 1/eps^2 pole) and the finite part FIN.
+c**************************************************************************
+      implicit none
+      double precision pl(0:3),shat,qes2,xicut,p1(0:3),fin(0:3)
+      double precision onia_dot,onia_gself
+      external onia_dot,onia_gself
+      double precision d0(0:3),m2,e,b,ll
+      data d0 /1d0,0d0,0d0,0d0/
+      ll=dlog(xicut**2*shat/qes2)
+      m2=onia_dot(pl,pl)
+      e=pl(0)
+      b=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)/e
+      p1(0:3)=-pl(0:3)/m2
+      fin(0:3)=(onia_gself(1,b)+2d0*ll)/(2d0*m2)*pl(0:3)
+     &     +onia_gself(2,b)/(2d0*e)*d0(0:3)
       end
 
 
       subroutine onia_eik_r1(pk,pl,lself,shat,qes2,xicut,p2,p1,fin)
 c**************************************************************************
-c     E-bar^mu({1,2},{k,l}): l massive (power 2), k massless, massive, or
-c     l itself (lself). The mass of a momentum is taken from its square.
+c     E-bar^mu({1,2},{k,l}) = k.l int q^mu/((k.q)(l.q)^2): l massive
+c     (power 2), k massless, massive, or l itself (lself). The mass of a
+c     momentum is taken from its square.
+c     The closed forms of appendix A have removable singularities when k
+c     and l are collinear in the c.m. frame, which is always the case for
+c     the two final-state particles of a 2 -> 2 Born (back to back): there
+c     the massive-massive form gives NaN and the massless-massive one a
+c     wrong finite part. The massless-massive form is evaluated here with
+c     x-a and x-c from the angle between k and l and log(1+z)/z; the
+c     massive-massive case uses Feynman parameters,
+c       1/((k.q)(l.q)^2) = int_0^1 dx 2(1-x)/(P_x.q)^3, P_x = x k+(1-x) l,
+c       E^mu({1,2},{k,l}) = k.l int_0^1 dx 2(1-x) E^mu({1,2},{P_x,P_x})/P_x^2,
+c     with the self form and a 64-point Gauss-Legendre rule (smooth
+c     integrand, P_x timelike); it equals the closed form to 1d-13 away
+c     from collinearity. A massless k exactly parallel to l (za -> 0, not
+c     a configuration of the final state of a 2 -> 2 Born) keeps a
+c     cancellation of ~1d-16/za, as the closed form.
 c**************************************************************************
       implicit none
       double precision pk(0:3),pl(0:3),shat,qes2,xicut
       logical lself
       double precision p2(0:3),p1(0:3),fin(0:3)
-      double precision onia_dot,onia_ja,ddilog,pi,onia_gself
-      external onia_dot,onia_ja,ddilog,onia_gself
+      double precision onia_dot,ddilog,pi,onia_l1p,onia_l1pz
+      external onia_dot,ddilog,onia_l1p,onia_l1pz
       parameter (pi=3.1415926535897932385d0)
-      double precision d0(0:3),bl,el,ek,x,mk2,ml2,ml,al,lam,nu,v,lv,w
-      double precision a,c,lbb,t1,t2,t3,b,lb,e,m2,bk,ja,jb,pre,aek
-      double precision c2,c3,c6,c7,br4,br8,vec4(0:3),vec5(0:3),ll
+      integer ngl
+      parameter (ngl=64)
+      double precision xgl(ngl),wgl(ngl)
+      logical firsttime
+      data firsttime /.true./
+      save firsttime,xgl,wgl
+      double precision d0(0:3),bl,el,ek,x,mk2,ml2,ml,a,c,lbb,t1,t2,t3,b
+      double precision ll,pp(0:3),p1s(0:3),fins(0:3),wt,pkn,pln,sm,sp
+      double precision za,zc,lxa,lxc,fa,fc
+      integer i
       data d0 /1d0,0d0,0d0,0d0/
       ll=dlog(xicut**2*shat/qes2)
       p2(0:3)=0d0
       if (lself) then
-         m2=onia_dot(pl,pl)
-         e=pl(0)
-         b=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)/e
-         p1(0:3)=-pl(0:3)/m2
-         fin(0:3)=(onia_gself(1,b)+2d0*ll)/(2d0*m2)*pl(0:3)
-     &        +onia_gself(2,b)/(2d0*e)*d0(0:3)
+         call onia_eik_r1_self(pl,shat,qes2,xicut,p1,fin)
          return
       endif
       mk2=onia_dot(pk,pk)
@@ -77,63 +131,54 @@ c           loses ~1d-16/b^2; the limit is off by O(b))
          a=ek*el*(1d0-b)
          c=ek*el*(1d0+b)
          lbb=dlog((1d0+b)/(1d0-b))
+c        za = (x-a)/a = ek el b (1-cos)/a, zc = (x-c)/c = -ek el b (1+cos)/c,
+c        1 -/+ cos = |k^ -/+ l^|^2/2 from the unit vectors (accurate when k
+c        and l are back to back, as a parton recoiling against the onium)
+         pkn=dsqrt(pk(1)**2+pk(2)**2+pk(3)**2)
+         pln=dsqrt(pl(1)**2+pl(2)**2+pl(3)**2)
+         sm=0d0
+         sp=0d0
+         do i=1,3
+            sm=sm+(pk(i)/pkn-pl(i)/pln)**2
+            sp=sp+(pk(i)/pkn+pl(i)/pln)**2
+         enddo
+         za=ek*el*b*sm/(2d0*a)
+         zc=-ek*el*b*sp/(2d0*c)
+         lxa=onia_l1p(za)
+         lxc=onia_l1p(zc)
+         fa=onia_l1pz(za)
+         fc=onia_l1pz(zc)
+c        x/(x-a) log(x/a) = (1+za) fa, c/(x-c) log(x/c) = fc,
+c        ek el/(x-a) log(x/a) = fa/(1-b), ek el/(x-c) log(x/c) = fc/(1+b),
+c        and [ek el (log(c/x)-log(x/a)) + x lbb/(1+b)]/(x-c)
+c          = (lbb - 2 fc)/(1+b)   (log(x/a) = lbb + log(x/c))
          t1=-pi**2/12d0-ll+ll**2/4d0+dlog(x/(ek*ml))*ll
-     &        -dlog(x/a)+dlog(x/a)**2/2d0-lbb**2/4d0
-     &        +ddilog(1d0-x/a)-ddilog(1d0-c/x)
-     &        +x/(x-a)*dlog(x/a)+c/(x-c)*dlog(x/c)
+     &        -lxa+lxa**2/2d0-lbb**2/4d0
+     &        +ddilog(-za)-ddilog(zc/(1d0+zc))
+     &        +(1d0+za)*fa+fc
          t2=ll+ml2/(b*el**2)*(-lbb/(1d0-b**2)
-     &        -ek*el/(x-a)*dlog(x/a)+ek*el/(x-c)*dlog(x/c))
-         t3=(ek*(dlog(c/x)-dlog(x/a))
+     &        -fa/(1d0-b)+fc/(1d0+b))
+         t3=(-ek*(lxc+lxa)
      &        +x*ml2/(el**3*b*(1d0-b**2))*lbb
-     &        +ek*(el**2*b*(1d0+b)+ml2)/(el**2*(x-c))
-     &        *(ek*el*(dlog(c/x)-dlog(x/a))+x/(1d0+b)*lbb))/(x-a)
+     &        +ek*(el**2*b*(1d0+b)+ml2)/el**2*(lbb-2d0*fc)/(1d0+b))
+     &        /(a*za)
          fin(0:3)=t1/x*pk(0:3)+t2/ml2*pl(0:3)+t3*d0(0:3)
          return
       endif
-c     two massive momenta
-      v=dsqrt(1d0-mk2*ml2/x**2)
-      lv=dlog((1d0+v)/(1d0-v))
-      w=lv-2d0*v/(1d0-v**2)
-      al=(1d0+v)*x/mk2
-      lam=al*ek-el
-      nu=(al**2*mk2-ml2)/(2d0*lam)
-      bk=dsqrt(max(0d0,1d0-mk2/ek**2))
-      ja=onia_ja(al*ek,al*ek*bk,lam,nu)
-      jb=onia_ja(el,el*bl,lam,nu)
-      pre=mk2/(2d0*x**2*v**3)
-      p1(0:3)=-pre*(x/mk2*lv*v**2+ml2/x*w)*pk(0:3)+pre*w*pl(0:3)
-c     T1, T2
-      fin(0:3)=(ll*lv/(2d0*x*v)-(1d0+v)*x/(2d0*mk2)*(ja-jb))*pk(0:3)
-      c2=(mk2/(x**2*v**2)*ll*w-(ja-jb))/(2d0*v)
-      fin(0:3)=fin(0:3)+c2*ml2/x*pk(0:3)-c2*pl(0:3)
-c     T3
-      aek=al*ek
-      c3=(1d0+v)*ek*x/(lam*nu*((nu-aek)**2-(aek*bk)**2)*v*mk2)
-     &     *((nu-aek*(1d0-bk**2))*(dlog(aek*(1d0-bk)/nu)
-     &     +dlog(aek*(1d0+bk)/nu))+nu*bk*dlog((1d0+bk)/(1d0-bk)))
-      fin(0:3)=fin(0:3)-c3*(al*v+ml2/x)*pk(0:3)+c3*pl(0:3)
-c     T4 and T8 (same vector), T5
-      vec4(0:3)=-(nu*ek-al*mk2)*(al*v*x+ml2)*pk(0:3)
-     &     +x*(nu*ek-v*x-al*mk2)*pl(0:3)+nu*v*x**2*d0(0:3)
-      br4=2d0*aek*(1d0-bk)/(nu-aek*(1d0-bk))*dlog(aek*(1d0-bk)/nu)
-     &     +2d0*aek*(1d0+bk)/(nu-aek*(1d0+bk))*dlog(aek*(1d0+bk)/nu)
-     &     +lam*nu*ja
-      br8=2d0*el*(1d0-bl)/(nu-el*(1d0-bl))*dlog(el*(1d0-bl)/nu)
-     &     +2d0*el*(1d0+bl)/(nu-el*(1d0+bl))*dlog(el*(1d0+bl)/nu)
-     &     +lam*nu*jb
-      fin(0:3)=fin(0:3)+(1d0+v)/(2d0*lam**2*nu**2*v*mk2)*(br4-br8)
-     &     *vec4(0:3)
-      vec5(0:3)=ek*(al*v*x+ml2)*pk(0:3)-ek*x*pl(0:3)-v*x**2*d0(0:3)
-      fin(0:3)=fin(0:3)+(1d0+v)/(2d0*lam*v*mk2)*(ja-jb)*vec5(0:3)
-c     T6, T7
-      c6=(1d0+v)*x**2/(lam*nu*mk2*((nu-el)**2-(bl*el)**2))
-     &     *((nu-el*(1d0-bl**2))*(dlog(el*(1d0-bl)/nu)
-     &     +dlog(el*(1d0+bl)/nu))+nu*bl*dlog((1d0+bl)/(1d0-bl)))
-      c7=(1d0+v)*x**2/(lam*nu*bl*el**2*mk2)
-     &     *(dlog(el*(1d0-bl)/nu)/(nu-el*(1d0-bl))
-     &     -dlog(el*(1d0+bl)/nu)/(nu-el*(1d0+bl))
-     &     -dlog((1d0+bl)/(1d0-bl))/(el*(1d0-bl**2)))
-      fin(0:3)=fin(0:3)+c6*d0(0:3)+c7*el*pl(0:3)-c7*ml2*d0(0:3)
+c     two massive momenta: Feynman parameters
+      if (firsttime) then
+         call onia_gauleg(ngl,xgl,wgl)
+         firsttime=.false.
+      endif
+      p1(0:3)=0d0
+      fin(0:3)=0d0
+      do i=1,ngl
+         pp(0:3)=xgl(i)*pk(0:3)+(1d0-xgl(i))*pl(0:3)
+         call onia_eik_r1_self(pp,shat,qes2,xicut,p1s,fins)
+         wt=2d0*(1d0-xgl(i))*wgl(i)*x/onia_dot(pp,pp)
+         p1(0:3)=p1(0:3)+wt*p1s(0:3)
+         fin(0:3)=fin(0:3)+wt*fins(0:3)
+      enddo
       end
 
 
