@@ -258,9 +258,12 @@ private:
  *
  * Per iteration of the channel:
  * - the choice of the FKS configuration takes the probabilities
- *   @f$p_k \propto \sqrt{\langle (w p_k)^2 \rangle_k}@f$ over the points of
+ *   @f$p_k \propto \langle |w - w_n| \, p_k \rangle_k@f$ over the points of
  *   configuration @f$k@f$, mixed with the uniform choice by @p floor, as
- *   MC_integer of MadFKS;
+ *   MC_integer of MadFKS, with @f$w_n@f$ the n-body part of the weight, which
+ *   does not depend on the configuration (the root mean square of
+ *   @f$w p_k@f$ let one large weight decide the probabilities, and its n-body
+ *   part @f$w_n p_k@f$ kept them where they were);
  * - the virtual trick takes @f$r_o@f$ as the sum of the virtual of NLO order
  *   @f$o@f$ over the sum of the Born orders where the virtual is evaluated, and
  *   multiplies its fraction @f$f@f$ by @f$2 \sigma_V / \sigma@f$ clamped to
@@ -347,7 +350,8 @@ private:
     std::vector<double> _ratios, _probabilities;
     // the outputs per point summed for the results, (index, width)
     std::vector<std::pair<std::size_t, std::size_t>> _value_fields;
-    std::size_t _virtual, _born, _evaluated, _configuration_weight, _fks_index;
+    std::size_t _virtual, _born, _evaluated, _configuration_weight, _nbody_weight;
+    std::size_t _fks_index;
     // the kept iterations
     std::size_t _count = 0;
     std::vector<double> _sums;
@@ -358,7 +362,7 @@ private:
     double _residual_sum = 0., _residual_square_sum = 0.;
     std::vector<double> _virtual_sums;
     double _born_sum = 0.;
-    std::vector<double> _choice_squares, _choice_counts;
+    std::vector<double> _choice_sums, _choice_counts;
     double _iteration_std = 0.;
 };
 

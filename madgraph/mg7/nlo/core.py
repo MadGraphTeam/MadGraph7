@@ -17,7 +17,9 @@ channels of one subprocess (a P* directory of the output) and
 - evaluate(index, x, choice, choice_weight, trick, rng): the NLO weight per
   point, its LO part and its virtual residual (nlo, lo, residual), the
   virtual and the Born of the points with the virtual (virtual, born,
-  evaluated), as SubprocessIntegrand.evaluate of nlo/fks.py, and with
+  evaluated), as SubprocessIntegrand.evaluate of nlo/fks.py, optionally
+  the part of the weight that does not depend on the choice (nbody), and
+  with
   scale_variations, the pairs of factors of mu_R and mu_F of the run card
   (scale_variations of this module), and pdf_members, the number of
   members of the PDF set of reweight_PDF (0 without), the NLO weight at each
@@ -165,7 +167,11 @@ VEGAS_ALPHA = 1.5
 
 class Vegas:
     """A separable VEGAS grid on the unit hypercube with bin_count bins per
-    dimension, adapted to the squares of the weights (alpha the damping)."""
+    dimension, adapted to the absolute values of the weights (alpha the
+    damping), as MINT of MadFKS. One rare large weight dominates the sums
+    of the squares of its bins in every dimension, so that grids adapted to
+    the squares of the NLO weights sampled the bulk ever more sparsely (p p
+    > e+ e- j: errors four times larger at the same points)."""
 
     def __init__(self, dimension, bin_count=50, alpha=VEGAS_ALPHA):
         self.edges = np.tile(np.linspace(0.0, 1.0, bin_count + 1), (dimension, 1))
@@ -186,7 +192,7 @@ class Vegas:
     def add(self, bins, weights):
         for d in range(self.edges.shape[0]):
             self.sums[d] += np.bincount(
-                bins[:, d], weights=weights**2, minlength=self.bin_count
+                bins[:, d], weights=np.abs(weights), minlength=self.bin_count
             )
 
     def adapt(self):
@@ -210,39 +216,40 @@ class Vegas:
 
 
 class DiscreteChoice:
-    """The adaptive choice of one of count options (the FKS configuration, as
-    MC_integer of MadFKS): probabilities proportional to the root mean
-    square of the integrand of each option (the weight times the
-    probability of its choice), which minimizes the variance, mixed with
-    the uniform choice by floor, so that every option keeps being
-    sampled."""
+    """The adaptive choice of one of count options (the FKS configuration), as
+    MC_integer of MadFKS: probabilities proportional to the mean absolute
+    integrand of each option, mixed with the uniform choice by floor, so
+    that every option keeps being sampled. The integrand of an option is the
+    part of the weight that depends on the choice (for FKS the event and its
+    counter-events, without the n-body part) times the probability of its
+    choice."""
 
     def __init__(self, count, floor=0.1):
         self.probabilities = np.full(count, 1.0 / count)
         self.floor = floor
-        self.squares = np.zeros(count)
+        self.sums = np.zeros(count)
         self.counts = np.zeros(count)
 
     def sample(self, rng, points):
         index = rng.choice(len(self.probabilities), size=points, p=self.probabilities)
         return index, 1.0 / self.probabilities[index]
 
-    def add(self, index, weights):
+    def add(self, index, integrands):
         n = len(self.probabilities)
-        self.squares += np.bincount(index, weights=weights**2, minlength=n)
+        self.sums += np.bincount(index, weights=np.abs(integrands), minlength=n)
         self.counts += np.bincount(index, minlength=n)
 
     def adapt(self):
         seen = self.counts > 0
         if not seen.any():
             return
-        target = np.zeros_like(self.squares)
-        target[seen] = np.sqrt(self.squares[seen] / self.counts[seen])
+        target = np.zeros_like(self.sums)
+        target[seen] = self.sums[seen] / self.counts[seen]
         if target.sum() > 0:
             target /= target.sum()
             uniform = np.full_like(target, 1.0 / len(target))
             self.probabilities = (1 - self.floor) * target + self.floor * uniform
-        self.squares[:] = 0.0
+        self.sums[:] = 0.0
         self.counts[:] = 0.0
 
 
@@ -737,7 +744,9 @@ class Channel:
             residuals.append(residual)
             self.trick.add(result["virtual"], result["born"], result["evaluated"])
             self.vegas.add(bins, nlo)
-            self.choice.add(choice, nlo / choice_weight)
+            # the n-body part does not depend on the choice
+            nbody = result.get("nbody", 0.0) * jacobian
+            self.choice.add(choice, (nlo - nbody) / choice_weight)
             if not keep:
                 continue
             variations = result.get("variations", np.zeros((n, 0))) * jacobian[:, None]
@@ -1202,6 +1211,7 @@ class NLORun:
             config.cpu_batch_size = self.batch
             # the grids adapt as those of the Python iterations
             config.vegas_damping = VEGAS_ALPHA
+            config.vegas_absolute_weights = True
             jets = self.jets() if self.histograms else None
             integration = ms.IntegrationConfig()
             integration.grid_points = self.grid_points

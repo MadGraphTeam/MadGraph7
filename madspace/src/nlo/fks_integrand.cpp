@@ -923,6 +923,7 @@ FKSIterationState::FKSIterationState(
     _born = index_map.at("born");
     _evaluated = index_map.at("evaluated");
     _configuration_weight = index_map.at("configuration_weight");
+    _nbody_weight = index_map.at("nbody_weight");
     _fks_index = index_map.at("fks_index");
     _ratios.assign(event_types.at("virtual").shape.at(0), 0.);
     _sums.assign(width, 0.);
@@ -930,7 +931,7 @@ FKSIterationState::FKSIterationState(
     _iteration_sums.assign(width, 0.);
     _iteration_products.assign(width * width, 0.);
     _virtual_sums.assign(_ratios.size(), 0.);
-    _choice_squares.assign(configuration_count, 0.);
+    _choice_sums.assign(configuration_count, 0.);
     _choice_counts.assign(configuration_count, 0.);
 }
 
@@ -944,11 +945,13 @@ void FKSIterationState::add(const TensorVec& events) {
     Tensor evaluated_tensor = cpu_tensor(events.at(_evaluated));
     Tensor choice_tensor = cpu_tensor(events.at(_configuration_weight));
     Tensor index_tensor = cpu_tensor(events.at(_fks_index));
+    Tensor nbody_tensor = cpu_tensor(events.at(_nbody_weight));
     auto virtuals = virtual_tensor.view<double, 2>();
     auto borns = born_tensor.view<double, 2>();
     auto evaluated = evaluated_tensor.view<double, 1>();
     auto choice_weights = choice_tensor.view<double, 1>();
     auto indices = index_tensor.view<me_int_t, 1>();
+    auto nbody = nbody_tensor.view<double, 1>();
     std::size_t count = indices.size();
     std::size_t width = _sums.size();
     std::vector<double> point(width);
@@ -981,10 +984,11 @@ void FKSIterationState::add(const TensorVec& events) {
                 _born_sum += borns[i][b];
             }
         }
-        // the integrand of the configuration, w p_k
-        double integrand = point[0] / choice_weights[i];
+        // the n+1-body part of the integrand of the configuration, w p_k
+        // without the n-body part
+        double integrand = (point[0] - nbody[i]) / choice_weights[i];
         auto index = static_cast<std::size_t>(indices[i]);
-        _choice_squares.at(index) += integrand * integrand;
+        _choice_sums.at(index) += std::abs(integrand);
         _choice_counts.at(index) += 1.;
     }
     _iteration_count += count;
@@ -1028,7 +1032,7 @@ void FKSIterationState::end_iteration(const std::vector<ContextPtr>& contexts) {
         std::vector<double> target(_probabilities.size(), 0.);
         for (std::size_t k = 0; k < target.size(); ++k) {
             if (_choice_counts[k] > 0.) {
-                target[k] = std::sqrt(_choice_squares[k] / _choice_counts[k]);
+                target[k] = _choice_sums[k] / _choice_counts[k];
                 target_sum += target[k];
             }
         }
@@ -1047,7 +1051,7 @@ void FKSIterationState::end_iteration(const std::vector<ContextPtr>& contexts) {
     _residual_square_sum = 0.;
     std::fill(_virtual_sums.begin(), _virtual_sums.end(), 0.);
     _born_sum = 0.;
-    std::fill(_choice_squares.begin(), _choice_squares.end(), 0.);
+    std::fill(_choice_sums.begin(), _choice_sums.end(), 0.);
     std::fill(_choice_counts.begin(), _choice_counts.end(), 0.);
     for (auto& context : contexts) {
         write_globals(context);

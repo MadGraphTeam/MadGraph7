@@ -145,7 +145,10 @@ def test_adaptation():
             out = outputs_by_name(generator, values)
             state.add(values)
             state.end_iteration([context])
-            choice.add(out["fks_index"], out["weight"] / out["configuration_weight"])
+            choice.add(
+                out["fks_index"],
+                (out["weight"] - out["nbody_weight"]) / out["configuration_weight"],
+            )
             choice.adapt()
             trick.add(out["virtual"], out["born"], out["evaluated"] != 0)
             trick.adapt(
@@ -243,6 +246,20 @@ def test_user_scale():
     python, generator = results
     for key in ("lo", "nlo"):
         assert abs(pull(generator[key], python[key])) < SIGMAS, key
+
+
+def test_discrete_choice():
+    """DiscreteChoice takes probabilities proportional to the mean absolute
+    integrand of each option, mixed with the uniform choice by its floor, as
+    MC_integer of MadFKS, unseen options with the floor alone."""
+    choice = DiscreteChoice(4, floor=0.2)
+    choice.add(np.array([0, 0, 1, 1, 2]), np.array([3.0, -1.0, 0.5, -0.5, 6.0]))
+    choice.adapt()
+    target = np.array([2.0, 0.5, 6.0, 0.0]) / 8.5
+    np.testing.assert_allclose(choice.probabilities, 0.8 * target + 0.05, rtol=1e-15)
+    # without points the probabilities stay
+    choice.adapt()
+    np.testing.assert_allclose(choice.probabilities, 0.8 * target + 0.05, rtol=1e-15)
 
 
 def test_refusals():

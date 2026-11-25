@@ -17,9 +17,10 @@ mint):
   MadFKS, amp2 of its diagram over that of all Born diagrams at the Born.
 - The Born of a channel comes from the PhaseSpaceMapping of its topology and
   the radiation from FKSKinematics, with the bound on sqrt(s_hat) the cuts
-  on the Born imply, under a VEGAS grid over their random numbers. The FKS
-  configuration comes from an adaptive choice (as MC_integer), its
-  probability proportional to the root mean square of its integrand.
+  on the Born imply, under a VEGAS grid over their random numbers adapted to
+  the absolute weights (as mint). The FKS configuration comes from an
+  adaptive choice (as MC_integer), its probability proportional to the mean
+  absolute integrand of its event and counter-events.
 - The matrix elements come from the provider where the cuts let a
   contribution through. The virtual (MadLoop) is evaluated on a fraction of
   the points of a channel, with the average of V / B per NLO order times
@@ -469,8 +470,9 @@ class SubprocessIntegrand:
         """The weights of a channel at the points x (n, dimension) of its
         random numbers, the FKS configurations and the weights of their
         choice, with the virtual on the fraction of the points of trick:
-        the NLO weight per point, its LO part and its virtual residual (that
-        of the points with the virtual), the outputs of FKSKinematics and
+        the NLO weight per point, its LO part, its n-body part and its
+        virtual residual (that of the points with the virtual), the outputs
+        of FKSKinematics and
         FKSCrossSection by name, the virtual and the Born of the points with
         the virtual."""
         out = self.kinematics[channel](x, fks_index=fks_index)
@@ -576,6 +578,7 @@ class SubprocessIntegrand:
         return dict(
             nlo=result["cross_section"],
             lo=result["lo_weight"],
+            nbody=result["nbody_weight"],
             residual=residual,
             outputs=result,
             kinematics=out,
