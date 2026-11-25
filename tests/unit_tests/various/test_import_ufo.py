@@ -648,6 +648,14 @@ class TestImportUFO(unittest.TestCase):
         # a different rotation is a different coupling
         self.assertNotEqual(converter.rotate_coupling('GC_1', -1), rotated)
 
+        # each new coupling is defined once (a duplicate name is declared
+        # twice in the generated code: SMEFTatNLO p p > t t~ NP<=1 in FD gauge)
+        summed = converter.sum_couplings('GC_1', 'GC_2')
+        names = [c.name for c in converter.additional_couplings]
+        for name in (rotated, summed):
+            self.assertEqual(names.count(name), 1, name)
+        self.assertEqual(len(names), len(set(names)))
+
 
     def test_goldstone_mass_mismatches(self):
         """A goldstone coupling carries a mass, and it has to be the one the
