@@ -500,6 +500,29 @@ class TestBornBornColourFactors(unittest.TestCase):
         self.assertEqual(cfb[1][1], (F(4), F(0)))
 
 
+class TestLeptoniumPwave(unittest.TestCase):
+    """A P-wave leptonium in a QCD virtual: its constituents have no colour,
+    so it has no soft current and no colour links."""
+
+    def test_no_soft_current(self):
+        import madgraph.loop.loop_exporters as loop_exporters
+        cmd = MGCmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('import model loop_sm_onia-lepton_masses', printcmd=False)
+        cmd.exec_cmd('generate u u~ > Ps(2|3P1) [virt=QCD]', printcmd=False)
+        me = loop_helas_objects.LoopHelasProcess(
+            cmd._curr_amps, optimized_output=True).get_matrix_elements()[0]
+        info = loop_onia.onia_loop_info(me)
+        exporter = loop_exporters.LoopProcessOptimizedExporterFortranSA.__new__(
+            loop_exporters.LoopProcessOptimizedExporterFortranSA)
+        self.assertEqual((info['ipwave'], info['onia'][0]['L']), (1, 1))
+        self.assertEqual(loop_onia.pwave_soft_current(me, info, exporter.get_amp_to_jamp_map), [])
+        # the only coloured legs are the two quarks, which annihilate
+        links = loop_onia.flow_color_links(me, info)
+        self.assertEqual(sorted(links), [(1, 2), (2, 1)])
+        self.assertTrue(links[(1, 2)])
+
+
 class TestFortranData(unittest.TestCase):
     """fortran_data: one DATA statement for a small array, one per column for
     a large one."""

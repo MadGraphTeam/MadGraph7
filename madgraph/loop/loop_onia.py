@@ -599,6 +599,14 @@ def physical_color_links(info, constituent_links):
 # or an initial antiquark, -t^aT for a final antiquark or an initial quark,
 # T^a = -i f for an octet.
 
+def _coloured_pair(matrix_element, onium):
+    """Whether the constituents of a bound state (an entry of
+    onia_loop_info's 'onia') are coloured: a quarkonium, not a leptonium."""
+    process = matrix_element.get('processes')[0]
+    leg = next(l for l in process.get('legs') if l.get('number') == onium['q1'])
+    return abs(process.get('model').get_particle(leg.get('id')).get_color()) == 3
+
+
 def pwave_aux_states(onium):
     """The S-wave states of the soft current of a P-wave quarkonium, as
     (colour C', label of Q_eff): P[1] -> S[8]; P[8] -> S[1] and S[8]."""
@@ -751,6 +759,9 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp, ipw=None):
     import madgraph.loop.loop_color_amp as loop_color_amp
 
     pw = info['onia'][(ipw or info['ipwave']) - 1]
+    if not _coloured_pair(matrix_element, pw):
+        # a leptonium: the soft gluon does not couple to its constituents
+        return []
     process = matrix_element.get('processes')[0]
     model = process.get('model')
     legs = process.get('legs')
@@ -837,6 +848,9 @@ def pwave_dipole_dipole(matrix_element, info, amp_to_jamp):
     import madgraph.loop.loop_color_amp as loop_color_amp
 
     pw1, pw2 = [info['onia'][i - 1] for i in info['ipwaves']]
+    if not (_coloured_pair(matrix_element, pw1) and _coloured_pair(matrix_element, pw2)):
+        # the dipole of a leptonium has no colour charge
+        return []
     process = matrix_element.get('processes')[0]
     model = process.get('model')
     born_diagrams = matrix_element.get('base_amplitude').get('born_diagrams')

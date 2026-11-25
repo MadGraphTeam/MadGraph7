@@ -15,8 +15,10 @@ CASES = {
                       ref=(CF * (PI2 - 8), -3 * CF, -2 * CF), masses={11: 10.}),
     'uu_ps_3s1': dict(process='u u~ > Ps(1|3S1) [virt=QCD]', model='loop_sm_onia-lepton_masses',
                       ref=(CF * (PI2 - 8), -3 * CF, -2 * CF)),
+    # Born and virtual vanish: massless q q~ (J_z = +-1) make no J = 0 state
+    # through a vector boson
     'uu_ps_3p0': dict(process='u u~ > Ps(2|3P0) [virt=QCD]', model='loop_sm_onia-lepton_masses',
-                      ref=(CF * (PI2 - 8), -3 * CF, -2 * CF)),
+                      ref=None),
     'aa_chic0': dict(process='a a > chic0(1|3P01) [virt=QCD]', ref=None),
     'gg_chic0': dict(process='g g > chic0(1|3P01) [virt=QCD]', ref=None),
     'aa_chic2': dict(process='a a > chic2(1|3P21) [virt=QCD]', ref=None),
