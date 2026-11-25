@@ -2,20 +2,26 @@
 
 using namespace madspace;
 
-VegasHistogram::VegasHistogram(std::size_t dimension, std::size_t bin_count) :
+VegasHistogram::VegasHistogram(
+    std::size_t dimension, std::size_t bin_count, bool absolute
+) :
     FunctionGenerator(
         "VegasHistogram",
         {{"latent", batch_float_array(dimension)}, {"weights", batch_float}},
         {{"values", single_float_array_2d(dimension, bin_count)},
          {"counts", single_int_array_2d(dimension, bin_count)}}
     ),
-    _bin_count(bin_count) {}
+    _bin_count(bin_count),
+    _absolute(absolute) {}
 
 NamedVector<Value> VegasHistogram::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
+    // the instruction sums the squares, so the absolute weights enter as the
+    // roots of their absolute values
+    Value weights = _absolute ? fb.sqrt(fb.abs(args.at(1))) : args.at(1);
     auto [values, counts] =
-        fb.vegas_histogram(args.at(0), args.at(1), static_cast<me_int_t>(_bin_count));
+        fb.vegas_histogram(args.at(0), weights, static_cast<me_int_t>(_bin_count));
     return {{"values", values}, {"counts", counts}};
 }
 

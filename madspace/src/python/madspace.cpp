@@ -1215,10 +1215,16 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "VegasHistogram", pydoc::doc("VegasHistogram")
     )
         .def(
-            py::init<std::size_t, std::size_t>(),
+            py::init<std::size_t, std::size_t, bool>(),
             py::arg("dimension"),
             py::arg("bin_count"),
+            py::arg("absolute") = false,
             pydoc::doc("VegasHistogram::VegasHistogram")
+        )
+        .def(
+            "absolute",
+            &VegasHistogram::absolute,
+            pydoc::doc("VegasHistogram::absolute")
         );
 
     py::classh<VegasMapping, Mapping>(m, "VegasMapping", pydoc::doc("VegasMapping"))
@@ -5305,6 +5311,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "vegas_damping",
             &GeneratorConfig::vegas_damping,
             pydoc::doc("GeneratorConfig::vegas_damping")
+        )
+        .def_readwrite(
+            "vegas_absolute_weights",
+            &GeneratorConfig::vegas_absolute_weights,
+            pydoc::doc("GeneratorConfig::vegas_absolute_weights")
         )
         .def_readwrite(
             "max_overweight_truncation",

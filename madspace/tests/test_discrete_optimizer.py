@@ -1,9 +1,10 @@
 """The optimizers of the adaptive samplers: DiscreteOptimizer takes the running
 average of the old probabilities and of the contributions of the categories,
 VegasGridOptimizer and DiscreteOptimizer take the outputs of their
-histograms from Python, and the flavour choice of an integrand adapts in a
-survey without changing its cross section (e+ e- -> q q~ g with a d and a u
-flavour of different matrix elements, on the setup of test_event_stream)."""
+histograms from Python, VegasHistogram sums squared or absolute weights,
+and the flavour choice of an integrand adapts in a survey without changing
+its cross section (e+ e- -> q q~ g with a d and a u flavour of different
+matrix elements, on the setup of test_event_stream)."""
 
 import os
 
@@ -72,6 +73,28 @@ def test_vegas_optimizer_takes_its_histogram():
     assert edges[0] == 0.0 and edges[-1] == 1.0
     assert (np.diff(edges) > 0).all()
     assert edges[1] < 0.1
+
+
+def test_vegas_histogram_absolute():
+    """VegasHistogram sums the squares of the weights per bin and dimension,
+    with absolute their absolute values (MINT of MadFKS), the counts alike."""
+    context = ms.Context(ms.cpu_device(), 1)
+    rng = np.random.default_rng(2)
+    r = rng.random((3000, 3))
+    weights = rng.standard_cauchy(3000)
+    bins = (r * 7).astype(int)
+    for absolute, expected in ((False, weights**2), (True, np.abs(weights))):
+        generator = ms.VegasHistogram(3, 7, absolute=absolute)
+        assert generator.absolute() == absolute
+        histogram = ms.FunctionRuntime(generator.function(), context)
+        values, counts = (np.from_dlpack(v)[0] for v in histogram(r, weights))
+        for d in range(3):
+            np.testing.assert_allclose(
+                values[d], np.bincount(bins[:, d], expected, 7), rtol=1e-14
+            )
+            np.testing.assert_array_equal(counts[d], np.bincount(bins[:, d], None, 7))
+    assert not ms.VegasHistogram(3, 7).absolute()
+    assert not ms.GeneratorConfig().vegas_absolute_weights
 
 
 def flavor_integrand(alphas_file, context, discrete_flavor):

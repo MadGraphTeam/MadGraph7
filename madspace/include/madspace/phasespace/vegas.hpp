@@ -8,9 +8,12 @@ namespace madspace {
 /**
  * Per-bin weight accumulator that adapts a @ref VegasMapping grid.
  *
- * During the warm-up run it sums the sample weights falling in each bin of each
- * dimension. The accumulated `values` and `counts` are then used to refine the
- * VEGAS grid (Sec. 3.2.2 of [1]).
+ * During the warm-up run it sums the squared sample weights falling in each bin
+ * of each dimension, or with @p absolute their absolute values, as MINT of
+ * MadFKS [2] does. The accumulated `values` and `counts` are then used to
+ * refine the VEGAS grid (Sec. 3.2.2 of [1]). A single large weight dominates
+ * the squares of a bin far more than the absolute values, which suits the
+ * signed weights of fixed-order NLO integrands with their rare large weights.
  *
  * `batch` is the leading batch dimension.
  *
@@ -19,18 +22,26 @@ namespace madspace {
  * - `weights` – `float`, shape `(batch,)` – the per-sample weights.
  *
  * **Returns**
- * - `values` – `float`, shape `(dimension, bin_count)` – summed weight per bin.
+ * - `values` – `float`, shape `(dimension, bin_count)` – summed squared weight
+ *   per bin, or summed absolute weight with @p absolute.
  * - `counts` – `int`, shape `(dimension, bin_count)` – sample count per bin.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
  *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.2)
+ * - [2] P. Nason, "MINT: a Computer Program for Adaptive Monte Carlo
+ *   Integration and Generation of Unweighted Distributions",
+ *   https://arxiv.org/abs/0709.2085
  */
 class VegasHistogram : public FunctionGenerator {
 public:
     /// @param dimension  Number of dimensions.
     /// @param bin_count  Number of grid bins per dimension.
-    VegasHistogram(std::size_t dimension, std::size_t bin_count);
+    /// @param absolute   Whether the bins sum the absolute weights instead of
+    ///                   their squares.
+    VegasHistogram(std::size_t dimension, std::size_t bin_count, bool absolute = false);
+    /// Whether the bins sum the absolute weights.
+    bool absolute() const { return _absolute; }
 
 private:
     NamedVector<Value> build_function_impl(
@@ -38,6 +49,7 @@ private:
     ) const override;
 
     std::size_t _bin_count;
+    bool _absolute;
 };
 
 /**

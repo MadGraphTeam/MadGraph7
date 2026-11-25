@@ -63,6 +63,9 @@ struct GeneratorConfig {
     std::size_t target_count = 10000;
     /// Damping factor of the VEGAS grid updates; see @ref VegasGridOptimizer.
     double vegas_damping = 0.2;
+    /// Whether the VEGAS grids adapt to the absolute weights instead of their
+    /// squares; see @ref VegasHistogram.
+    bool vegas_absolute_weights = false;
     /// Overweight tolerated when choosing the maximum weight, as a fraction of
     /// the smaller of the target count and `freeze_max_weight_after`.
     double max_overweight_truncation = 0.01;

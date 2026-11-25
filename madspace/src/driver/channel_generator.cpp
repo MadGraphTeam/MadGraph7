@@ -174,7 +174,11 @@ ChannelEventGenerator::ChannelEventGenerator(
     if (const auto& grid_name = integrand.vegas_grid_name(); grid_name) {
         _vegas_optimizer =
             VegasGridOptimizer(contexts, grid_name.value(), config.vegas_damping);
-        VegasHistogram hist(integrand.vegas_dimension(), integrand.vegas_bin_count());
+        VegasHistogram hist(
+            integrand.vegas_dimension(),
+            integrand.vegas_bin_count(),
+            config.vegas_absolute_weights
+        );
         for (auto [context, runtimes] : zip(contexts, _runtimes)) {
             runtimes.vegas_histogram = build_runtime(hist.function(), context, false);
         }
