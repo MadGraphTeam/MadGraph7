@@ -21,6 +21,7 @@ C
     Include 'maxconfigs.inc'
     Include 'nexternal.inc'
     Include 'maxamps.inc'
+    Include '../../Source/vector.inc' ! defines VECSIZE_MEMMAX (needed by run.inc)
     include 'run.inc'
     INTEGER                 NCOMB         
     PARAMETER (             NCOMB=%(ncomb)d)
@@ -305,7 +306,8 @@ c           Include the Jacobian from helicity sampling
        ENDIF
     ENDIF
 
-   call select_color(rcol, jamp2, iconfig,%(proc_id)s,  icol, ivec)
+C   no grouping: a single matrix element per directory, so iproc=1
+   call select_color(rcol, jamp2, iconfig, 1,  icol, ivec)
 
    IF (MULTI_CHANNEL) THEN
         XTOT=0D0
@@ -370,10 +372,14 @@ C	Local variables
 C
 	real time_after
 	integer u,t,h
+	INTEGER ML_GET_RET_CODE_LIBRARY
+	EXTERNAL ML_GET_RET_CODE_LIBRARY
 c
 c	Global variables
 c
 c   To monitor MadLoop computational aspects.
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
     INTEGER U_RETURN_CODES(0:9)
@@ -404,6 +410,11 @@ c   ----
 C     Unit 2 is NinjaRS; T records whether QP was used for this point.
       IF (U.EQ.2.AND.(T.EQ.1.OR.T.EQ.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
       IF (U.EQ.2.AND.(T.EQ.2.OR.T.EQ.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+C     Unit 3 is shared by IREGI and TIRust (MLReductionLib=9).
+      IF (U.EQ.3.AND.ML_GET_RET_CODE_LIBRARY().EQ.9) THEN
+        IF (T.EQ.1.OR.T.EQ.3) TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
+        IF (T.EQ.2.OR.T.EQ.4) TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+      ENDIF
 
 	MAX_PREC = max(PREC, MAX_PREC)
 	MIN_PREC = min(PREC, MIN_PREC)

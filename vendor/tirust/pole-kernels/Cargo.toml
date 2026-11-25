@@ -1,0 +1,17 @@
+[package]
+name = "madloop-pole-kernels"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "07fc754f656c4744c9464f7c0f47d00b708b37e6", default-features = false, features = ["rust-codegen"] }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "tracing_max_level_info"] }
+
+[dev-dependencies]
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "07fc754f656c4744c9464f7c0f47d00b708b37e6", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
+
+[[example]]
+name = "generate_poles"
+

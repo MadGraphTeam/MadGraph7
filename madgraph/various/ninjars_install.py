@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from madgraph import MadGraph5Error, MG5DIR
@@ -48,6 +49,14 @@ def read_config(libdir):
                 for flag in before)):
         raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
                              "in %s; run 'install ninjars --update'." % libdir)
+    # The static compiler runtime is recorded by absolute path; a compiler
+    # upgrade or a Nix garbage collection removes it behind our back.
+    missing = [flag for flag in before
+               if os.path.isabs(flag) and not os.path.isfile(flag)]
+    if missing:
+        raise MadGraph5Error("NinjaRS compiler runtime %s in %s no longer exists; "
+                             "run 'install ninjars --update'."
+                             % (', '.join(missing), libdir))
     return config
 
 
@@ -85,9 +94,47 @@ def default_reduction_library(has_born, libdir):
     return [8] if has_born and is_available(libdir) else [6]
 
 
-def pre_link_flags(libdir):
-    """Resolve the Fortran compiler runtime before Rust's builtin symbols."""
-    return read_config(libdir)['link_before']
+def export_files(libdir):
+    """Return the installed interface and dependency notices for internal output."""
+    from madgraph.various import rust_dependency_notices
+
+    config = read_config(libdir)
+    directory = Path(libdir)
+    artifacts = ['libninjars.a', 'mninjars.mod', CONFIG_NAME,
+                 'ninjars-native-libs.txt', 'ninjars-link-before.txt']
+    if not (directory / 'mninjars.mod').is_file():
+        artifacts[1] = str((directory.parent / 'include/mninjars.mod').resolve())
+    for name in ('mninjars.f90', 'ninjars.h'):
+        for candidate in (directory / name, directory.parent / 'include' / name):
+            if candidate.is_file():
+                artifacts.append(str(candidate.resolve()))
+                break
+    artifacts.extend(rust_dependency_notices.export_files(
+        libdir, 'ninjars', expected=config.get('dependency_notices')))
+    return artifacts
+
+
+def pre_link_flags(libdir, fortran_compiler=None):
+    """Resolve the Fortran compiler runtime before Rust's builtin symbols.
+
+    The static runtime belongs to the compiler NinjaRS was installed with; warn
+    when the process will be linked by a compiler with a different libgcc.a.
+    """
+    flags = read_config(libdir)['link_before']
+    recorded = {os.path.realpath(flag) for flag in flags if os.path.isabs(flag)}
+    if fortran_compiler and recorded:
+        try:
+            active = subprocess.run(
+                [fortran_compiler, '-print-file-name=libgcc.a'], capture_output=True,
+                text=True, check=True, timeout=60).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            active = ''
+        if os.path.isabs(active) and os.path.realpath(active) not in recorded:
+            logger.warning(
+                "NinjaRS in %s was installed with another compiler runtime (%s) than "
+                "%s uses (%s). Run 'install ninjars --update' with this compiler.",
+                libdir, ', '.join(sorted(recorded)), fortran_compiler, active)
+    return flags
 
 
 def native_link_flags(libdir):
@@ -209,6 +256,8 @@ def _run(command, cwd, log, environment):
 
 def _publish(installed, destination, stage, prefix):
     """Publish the validated tree and owned aliases as one recoverable update."""
+    from madgraph.various import rust_dependency_notices
+
     backup = stage / 'previous'
     common_lib = prefix / 'lib'
     alias_stage = None
@@ -225,12 +274,13 @@ def _publish(installed, destination, stage, prefix):
         new_links = alias_stage / 'links'
         saved_links.mkdir()
         new_links.mkdir()
+        notices = tuple(rust_dependency_notices.export_files(installed / 'lib', 'ninjars'))
         if destination.exists() or destination.is_symlink():
             os.replace(destination, backup)
         os.replace(installed, destination)
         published = True
         for name in ('libninjars.a', 'mninjars.mod', CONFIG_NAME,
-                     'ninjars-native-libs.txt', 'ninjars-link-before.txt'):
+                     'ninjars-native-libs.txt', 'ninjars-link-before.txt') + notices:
             link = common_lib / name
             # Existing regular user files and directories belong to the user.
             if not link.is_symlink() and link.exists():
@@ -291,6 +341,8 @@ def _publish(installed, destination, stage, prefix):
 
 def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     """Install, smoke-test and publish NinjaRS; return its library directory."""
+    from madgraph.various import rust_dependency_notices
+
     try:
         options = build_parser().parse_args(list(arguments))
     except SystemExit as error:
@@ -345,10 +397,14 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     if provenance:
         # Resolve changed path sources while retaining other locked versions.
         _run(['cargo', 'metadata', '--format-version=1'], bridge, log, environment)
-    _run(['make', 'install', 'PREFIX=' + str(installed), 'FC=' + compiler],
+    # The Makefile writes the link-order file with Python's shlex; use this
+    # interpreter rather than whichever python3 is first on PATH.
+    _run(['make', 'install', 'PREFIX=' + str(installed), 'FC=' + compiler,
+          'PYTHON=' + shlex.quote(sys.executable or 'python3')],
          bridge, log, environment)
 
     libdir = installed / 'lib'
+    notices = rust_dependency_notices.package(bridge, libdir, 'ninjars', environment)
     try:
         native_libs = shlex.split((libdir / 'ninjars-native-libs.txt').read_text())
         link_before = shlex.split((libdir / 'ninjars-link-before.txt').read_text())
@@ -359,7 +415,8 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,
-              'compiler_runtime': 'gnu-linux-libgcc_s-before-rust',
+              'compiler_runtime': 'gnu-linux-static-libgcc-before-rust',
+              'dependency_notices': notices,
               'build_provenance': _dependency_provenance(bridge)}
     (libdir / CONFIG_NAME).write_text(json.dumps(config, indent=2) + '\n')
     # This exercises the installed Fortran module and both numerical domains.

@@ -45,10 +45,12 @@ use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use crate::{RusticolError, RusticolResult};
 
 pub mod binary;
+mod hash;
 mod links;
 mod live;
 mod packed;
 pub use binary::{read_binary, read_binary_with};
+use hash::WordMap;
 pub use live::{KEPT_SHARE, LiveRows};
 use ninjars::fast::tensor_layout::ncoeff;
 pub use packed::{LinkInterner, PackedLinks, SharedLinks};
@@ -215,8 +217,12 @@ struct ContentFile {
     rows: usize,
     /// The content's legs and, per block row, their helicities (leg order).
     mask: u64,
-    row_helicities: Vec<Vec<i32>>,
-    fused: Vec<[u32; 6]>,
+    /// Shared by the contents whose lists are equal (one per distinct list
+    /// in a decoded binary member: `binary::shared_arc`).
+    #[serde(deserialize_with = "shared_list")]
+    row_helicities: Arc<Vec<Vec<i32>>>,
+    #[serde(deserialize_with = "shared_list")]
+    fused: Arc<Vec<[u32; 6]>>,
     terms: Vec<TermFile>,
 }
 
@@ -224,39 +230,175 @@ struct ContentFile {
 #[serde(deny_unknown_fields)]
 struct TermFile {
     slots: Vec<u64>,
-    dimensions: Vec<usize>,
+    #[serde(deserialize_with = "shared_list")]
+    dimensions: Arc<Vec<usize>>,
     bindings: Vec<BindingFile>,
     vertex: i64,
     split: Vec<SplitFile>,
-    rows: Vec<(usize, Vec<usize>)>,
+    #[serde(deserialize_with = "term_rows")]
+    rows: TermRows,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SplitFile {
     kernel: usize,
-    inputs: Vec<(String, usize, usize)>,
-    entries: Vec<(usize, usize)>,
+    #[serde(deserialize_with = "shared_list")]
+    inputs: Arc<Vec<(String, usize, usize)>>,
+    #[serde(deserialize_with = "shared_list")]
+    entries: Arc<Vec<(usize, usize)>>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BindingFile {
     kernel: usize,
-    inputs: Vec<(String, usize, usize)>,
-    entries: Vec<usize>,
+    #[serde(deserialize_with = "shared_list")]
+    inputs: Arc<Vec<(String, usize, usize)>>,
+    #[serde(deserialize_with = "shared_list")]
+    entries: Arc<Vec<usize>>,
+}
+
+/// A shared list of the file model from its JSON (each record its own).
+fn shared_list<'de, D, T>(deserializer: D) -> Result<Arc<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Arc::new)
+}
+
+/// A content term's rows from their JSON (`[[row, [block, ...]], ...]`).
+fn term_rows<'de, D>(deserializer: D) -> Result<TermRows, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let rows = Vec::<(usize, Vec<usize>)>::deserialize(deserializer)?;
+    let mut out = TermRows::default();
+    for (row, blocks) in &rows {
+        out.push(*row, blocks)
+            .map_err(|error| serde::de::Error::custom(error.message()))?;
+    }
+    Ok(out)
+}
+
+/// The rows of a content term, `(content row, block row id per slot)`,
+/// stored flat (a large plan has tens of millions of term rows: one list
+/// per row was most of its decoded model and of its loaded contents).
+/// Iterated as `(&row, &[block])`; its `Debug` form is the list of pairs.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct TermRows {
+    rows: Vec<u32>,
+    /// Row `k`'s blocks are `blocks[ends[k - 1]..ends[k]]` (`0` before the
+    /// first).
+    ends: Vec<u32>,
+    blocks: Vec<u32>,
+}
+
+impl TermRows {
+    /// Append a row (its values and block count must fit `u32`, as every
+    /// row index of the loaded plan does).
+    pub(crate) fn push(&mut self, row: usize, blocks: &[usize]) -> RusticolResult<()> {
+        let narrow = |value: usize| u32::try_from(value).map_err(|_| invalid("content term row"));
+        self.rows.push(narrow(row)?);
+        for &block in blocks {
+            self.blocks.push(narrow(block)?);
+        }
+        self.ends.push(narrow(self.blocks.len())?);
+        Ok(())
+    }
+
+    /// Reserve `rows` rows and `blocks` blocks more, fallibly.
+    pub(crate) fn try_reserve(&mut self, rows: usize, blocks: usize) -> Result<(), ()> {
+        self.rows.try_reserve_exact(rows).map_err(|_| ())?;
+        self.ends.try_reserve_exact(rows).map_err(|_| ())?;
+        self.blocks.try_reserve(blocks).map_err(|_| ())
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    /// Row `k`: its content row and block row ids.
+    pub fn get(&self, k: usize) -> (usize, &[u32]) {
+        let start = if k == 0 { 0 } else { self.ends[k - 1] as usize };
+        (
+            self.rows[k] as usize,
+            &self.blocks[start..self.ends[k] as usize],
+        )
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (usize, &[u32])> + '_ {
+        (0..self.len()).map(move |k| self.get(k))
+    }
+
+    /// The heap the rows hold.
+    pub fn heap_bytes(&self) -> usize {
+        4 * (self.rows.capacity() + self.ends.capacity() + self.blocks.capacity())
+    }
+}
+
+impl std::fmt::Debug for TermRows {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SeedFile {
-    columns: Vec<Vec<(usize, String, String)>>,
+    /// Per column its `(Born component, re, im)` terms; the weights' texts
+    /// are the decoded member's string table's (`Stream::text`), shared.
+    #[serde(deserialize_with = "seed_columns")]
+    columns: Vec<Vec<(usize, Text, Text)>>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SeedKeyFile {
-    classes: Vec<(usize, String, String)>,
+    #[serde(deserialize_with = "seed_terms")]
+    classes: Vec<(usize, Text, Text)>,
+}
+
+/// An exact weight's text in the file model, shared with the decoded
+/// member's string table (a large plan holds tens of millions of weights
+/// over a few hundred distinct texts).
+pub(crate) type Text = Arc<str>;
+
+/// A text from its JSON.
+fn text<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Text, D::Error> {
+    String::deserialize(deserializer).map(Text::from)
+}
+
+/// `(index, re, im)` terms from their JSON.
+fn seed_terms<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<(usize, Text, Text)>, D::Error> {
+    let terms = Vec::<(usize, String, String)>::deserialize(deserializer)?;
+    Ok(terms
+        .into_iter()
+        .map(|(k, re, im)| (k, Text::from(re), Text::from(im)))
+        .collect())
+}
+
+/// A seed class's columns from their JSON.
+fn seed_columns<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<Vec<(usize, Text, Text)>>, D::Error> {
+    let columns = Vec::<Vec<(usize, String, String)>>::deserialize(deserializer)?;
+    Ok(columns
+        .into_iter()
+        .map(|terms| {
+            terms
+                .into_iter()
+                .map(|(k, re, im)| (k, Text::from(re), Text::from(im)))
+                .collect()
+        })
+        .collect())
 }
 
 #[derive(Deserialize)]
@@ -273,7 +415,8 @@ struct FamilyFile {
 #[serde(deny_unknown_fields)]
 struct LeafFile {
     seed: usize,
-    weight: String,
+    #[serde(deserialize_with = "text")]
+    weight: Text,
 }
 
 #[derive(Deserialize)]
@@ -482,7 +625,7 @@ pub struct ContentTerm {
     /// shift) and contracts it with each row's block components.
     pub vertex: Option<TermVertex>,
     /// (content row, block row id per slot).
-    pub rows: Vec<(usize, Vec<usize>)>,
+    pub rows: TermRows,
 }
 
 impl ContentTerm {
@@ -501,11 +644,12 @@ pub struct Content {
     pub degree: usize,
     pub rows: usize,
     pub terms: Vec<ContentTerm>,
-    /// `(d_in, d_out)` layout for open-loop inputs.
-    pub open: SegmentLayout,
+    /// `(d_in, d_out)` layout for open-loop inputs (shared by the contents
+    /// of one fused list and dimensions).
+    pub open: Arc<SegmentLayout>,
     /// `(1, d_in * d_out)` layout for seeded inputs: a seed is `δ_ab` times
     /// a scalar, so the cut index `a` becomes the incoming index `β`.
-    pub seeded: SegmentLayout,
+    pub seeded: Arc<SegmentLayout>,
 }
 
 impl Content {
@@ -524,9 +668,9 @@ impl Content {
         d_alpha: usize,
     ) -> (&SegmentLayout, usize, usize, usize) {
         if seeded {
-            (&self.seeded, 1, 1, self.d_in * self.d_out)
+            (&*self.seeded, 1, 1, self.d_in * self.d_out)
         } else {
-            (&self.open, d_alpha, self.d_in, self.d_out)
+            (&*self.open, d_alpha, self.d_in, self.d_out)
         }
     }
 
@@ -581,19 +725,20 @@ pub struct Leaf {
 
 /// The distinct leaf weights of a plan's families, each text parsed once.
 #[derive(Default)]
-struct LeafWeights<'a> {
+struct LeafWeights {
     values: Vec<Rational>,
-    index: HashMap<&'a str, u32>,
+    /// By text (owned: the family records are dropped as they are loaded).
+    index: HashMap<String, u32>,
 }
 
-impl<'a> LeafWeights<'a> {
-    fn get(&mut self, text: &'a str) -> RusticolResult<u32> {
+impl LeafWeights {
+    fn get(&mut self, text: &str) -> RusticolResult<u32> {
         if let Some(&found) = self.index.get(text) {
             return Ok(found);
         }
         let next = u32::try_from(self.values.len()).map_err(|_| invalid("leaf weights"))?;
         self.values.push(exact(text)?);
-        self.index.insert(text, next);
+        self.index.insert(text.to_owned(), next);
         Ok(next)
     }
 }
@@ -1705,7 +1850,7 @@ pub struct ReadRows {
 }
 
 struct Tables {
-    index: HashMap<(usize, usize), usize>,
+    index: WordMap<(usize, usize), usize>,
     tables: Vec<MonomialProductTable>,
     /// The split parts' distinct link lists (`plan/packed.rs`).
     links: LinkInterner,
@@ -1714,8 +1859,8 @@ struct Tables {
 /// Ids of the split inputs the chosen split steps read.
 #[derive(Default)]
 struct SplitInputs {
-    instances: HashMap<(usize, u64), usize>,
-    currents: HashMap<(usize, usize), usize>,
+    instances: WordMap<(usize, u64), usize>,
+    currents: WordMap<(usize, usize), usize>,
 }
 
 impl SplitInputs {
@@ -1729,10 +1874,173 @@ impl SplitInputs {
         *self.currents.entry((content, term)).or_insert(next)
     }
 
-    fn ordered<K: Copy>(map: &HashMap<K, usize>) -> Vec<K> {
+    fn ordered<K: Copy>(map: &WordMap<K, usize>) -> Vec<K> {
         let mut out: Vec<(usize, K)> = map.iter().map(|(&key, &id)| (id, key)).collect();
         out.sort_unstable_by_key(|&(id, _)| id);
         out.into_iter().map(|(_, key)| key).collect()
+    }
+}
+
+/// The ids a family's load draws (products tables, interned link lists,
+/// split inputs, leaf weights), each by first use. The sequential load draws
+/// them from the plan's registries ([`Registries`]); a parallel worker records
+/// its calls with ids of its own ([`Recording`]), which the merge replays on
+/// the registries in family order ([`Recording::replay`]), so every id, every
+/// shared list and every table is the sequential load's whatever the threads.
+trait Ids {
+    fn table(&mut self, rank: usize, degree: usize) -> usize;
+    fn intern(&mut self, links: PackedLinks) -> SharedLinks;
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize;
+    fn current(&mut self, content: usize, term: usize) -> usize;
+    fn leaf_weight(&mut self, text: &str) -> RusticolResult<u32>;
+}
+
+/// The plan's registries (the sequential load's [`Ids`]).
+struct Registries<'r> {
+    tables: &'r mut Tables,
+    split_inputs: &'r mut SplitInputs,
+    leaf_weights: &'r mut LeafWeights,
+}
+
+impl Ids for Registries<'_> {
+    fn table(&mut self, rank: usize, degree: usize) -> usize {
+        self.tables.get(rank, degree)
+    }
+
+    fn intern(&mut self, links: PackedLinks) -> SharedLinks {
+        self.tables.links.intern(links)
+    }
+
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize {
+        self.split_inputs.instance(vertex, shift)
+    }
+
+    fn current(&mut self, content: usize, term: usize) -> usize {
+        self.split_inputs.current(content, term)
+    }
+
+    fn leaf_weight(&mut self, text: &str) -> RusticolResult<u32> {
+        self.leaf_weights.get(text)
+    }
+}
+
+/// One recorded call of a parallel worker ([`Recording`]).
+enum Call {
+    Table(usize, usize),
+    Intern(SharedLinks),
+    Instance(usize, u64),
+    Current(usize, usize),
+    Leaf(String),
+}
+
+/// A parallel worker's [`Ids`]: per call a local id (one per distinct key,
+/// as the registries give one), and the calls in order.
+#[derive(Default)]
+struct Recording {
+    calls: Vec<Call>,
+    tables: WordMap<(usize, usize), usize>,
+    instances: WordMap<(usize, u64), usize>,
+    currents: WordMap<(usize, usize), usize>,
+    leaves: HashMap<String, u32>,
+}
+
+impl Ids for Recording {
+    fn table(&mut self, rank: usize, degree: usize) -> usize {
+        self.calls.push(Call::Table(rank, degree));
+        let next = self.tables.len();
+        *self.tables.entry((rank, degree)).or_insert(next)
+    }
+
+    fn intern(&mut self, links: PackedLinks) -> SharedLinks {
+        let links = Arc::new(links);
+        self.calls.push(Call::Intern(Arc::clone(&links)));
+        links
+    }
+
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize {
+        self.calls.push(Call::Instance(vertex, shift));
+        let next = self.instances.len();
+        *self.instances.entry((vertex, shift)).or_insert(next)
+    }
+
+    fn current(&mut self, content: usize, term: usize) -> usize {
+        self.calls.push(Call::Current(content, term));
+        let next = self.currents.len();
+        *self.currents.entry((content, term)).or_insert(next)
+    }
+
+    fn leaf_weight(&mut self, text: &str) -> RusticolResult<u32> {
+        if let Some(&found) = self.leaves.get(text) {
+            self.calls.push(Call::Leaf(text.to_owned()));
+            return Ok(found);
+        }
+        // Parsed as the registries parse a weight's first use (the same
+        // refusal at the same leaf).
+        exact(text)?;
+        let next = u32::try_from(self.leaves.len()).map_err(|_| invalid("leaf weights"))?;
+        self.leaves.insert(text.to_owned(), next);
+        self.calls.push(Call::Leaf(text.to_owned()));
+        Ok(next)
+    }
+}
+
+impl Recording {
+    /// Replay the calls on `ids` in their order and give `family` the ids
+    /// (and shared link lists) they return.
+    fn replay(self, family: &mut Family, ids: &mut impl Ids) -> RusticolResult<()> {
+        let mut tables = vec![usize::MAX; self.tables.len()];
+        let mut instances = vec![usize::MAX; self.instances.len()];
+        let mut currents = vec![usize::MAX; self.currents.len()];
+        let mut leaves = vec![u32::MAX; self.leaves.len()];
+        let mut interned: WordMap<usize, SharedLinks> = WordMap::default();
+        for call in self.calls {
+            match call {
+                Call::Table(rank, degree) => {
+                    tables[self.tables[&(rank, degree)]] = ids.table(rank, degree);
+                }
+                Call::Intern(links) => {
+                    let global = ids.intern((*links).clone());
+                    interned.insert(Arc::as_ptr(&links) as usize, global);
+                }
+                Call::Instance(vertex, shift) => {
+                    instances[self.instances[&(vertex, shift)]] = ids.instance(vertex, shift);
+                }
+                Call::Current(content, term) => {
+                    currents[self.currents[&(content, term)]] = ids.current(content, term);
+                }
+                Call::Leaf(text) => {
+                    leaves[self.leaves[text.as_str()] as usize] = ids.leaf_weight(&text)?;
+                }
+            }
+        }
+        for leaf in &mut family.leaves {
+            leaf.weight = leaves[leaf.weight as usize];
+        }
+        for step in &mut family.steps {
+            for edge in &mut step.edges {
+                edge.products = tables[edge.products];
+            }
+            if let Some(split) = &mut step.split {
+                for group in &mut split.groups {
+                    group.products = tables[group.products];
+                    group.instance = instances[group.instance];
+                }
+                for part in split.parts.iter_mut().flatten() {
+                    part.current = currents[part.current];
+                    part.links = Arc::clone(&interned[&(Arc::as_ptr(&part.links) as usize)]);
+                }
+            }
+        }
+        // The family's sets of split inputs, in the registries' ids.
+        let mut vertices = BTreeSet::new();
+        let mut used = BTreeSet::new();
+        for split in family.steps.iter().filter_map(|step| step.split.as_ref()) {
+            vertices.extend(split.groups.iter().map(|group| group.instance));
+            used.extend(split.parts.iter().flatten().map(|part| part.current));
+        }
+        family.vertices = vertices.into_iter().collect();
+        family.currents = used.into_iter().collect();
+        Ok(())
     }
 }
 
@@ -1780,6 +2088,15 @@ fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kerne
     require(flat.len().is_multiple_of(3), "row links are not triples")?;
     let columns = u32::try_from(columns).map_err(|_| invalid("too many columns"))?;
     let mut out = reserved(flat.len() / 3 * columns as usize, "row links")?;
+    if columns == 1 {
+        // Object row = helicity row: the links as they are.
+        out.extend(flat.chunks_exact(3).map(|link| super::kernels::RowLink {
+            output: link[0],
+            input: link[1],
+            block: link[2],
+        }));
+        return Ok(out);
+    }
     for link in flat.chunks_exact(3) {
         for o in 0..columns {
             let row = |r: u32| {
@@ -1869,9 +2186,9 @@ fn term_vertex(
         .collect();
     entries.sort_unstable();
     entries.dedup();
-    let index: HashMap<VertexEntry, usize> =
+    let index: WordMap<VertexEntry, usize> =
         entries.iter().enumerate().map(|(i, &e)| (e, i)).collect();
-    let fused_index: HashMap<(usize, usize, [u32; 4]), usize> = content
+    let fused_index: WordMap<(usize, usize, [u32; 4]), usize> = content
         .fused
         .iter()
         .enumerate()
@@ -1944,7 +2261,7 @@ struct Shared<'a> {
     seeds: usize,
     policy: FormPolicy,
     rows: &'a links::RowSpace,
-    content_rows: &'a [HashMap<links::Row, u32>],
+    content_rows: &'a [Arc<WordMap<links::Row, u32>>],
     /// Dressed-row plans: each content's rows in block-row order.
     dressed: Option<&'a [Vec<links::Row>]>,
 }
@@ -1985,7 +2302,7 @@ fn split_candidate(
     s: &StepShape,
     edges: &[Edge],
     shared: &Shared<'_>,
-    tables: &mut Tables,
+    ids: &mut impl Ids,
 ) -> RusticolResult<Option<(SplitStep, StepCost)>> {
     let rank_in = if s.seeded { 0 } else { s.rank_in };
     let splits = edges.iter().all(|edge| {
@@ -2000,8 +2317,13 @@ fn split_candidate(
     }
     let (cut, m_in) = step_shape(s.seeded, s.d_alpha, rank_in);
     let mut groups: Vec<SplitGroup> = Vec::new();
-    let mut group_of: HashMap<(usize, u64), usize> = HashMap::new();
-    let mut targets: Vec<BTreeSet<u32>> = Vec::new();
+    let mut group_of: WordMap<(usize, u64), usize> = WordMap::default();
+    // Per group the outputs its parts' links write (sorted and deduplicated
+    // once at the end: the B-tree set's iteration order).
+    let mut targets: Vec<Vec<u32>> = Vec::new();
+    // One part's filtered links and its block-row map (reused).
+    let mut filtered: Vec<super::kernels::RowLink> = Vec::new();
+    let mut row_of: Vec<Option<u32>> = Vec::new();
     let mut iterations = 0;
     let mut parts = Vec::with_capacity(edges.len());
     for edge in edges {
@@ -2020,24 +2342,26 @@ fn split_candidate(
                     vertex,
                     shift,
                     instance: 0,
-                    products: tables.get(rank_in, shape.degree),
+                    products: ids.table(rank_in, shape.degree),
                     targets: Vec::new(),
                 });
-                targets.push(BTreeSet::new());
+                targets.push(Vec::new());
                 groups.len() - 1
             });
-            let mut row_of = reserved(content.rows, "content rows")?;
+            row_of.clear();
+            if row_of.capacity() < content.rows {
+                row_of = reserved(content.rows, "content rows")?;
+            }
             row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
-                row_of[*row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
+                row_of[row] = Some(crate::narrow::checked::<u32>(k, "content row position")?);
             }
-            let links = PackedLinks::collect(|| {
-                edge.links.iter().filter_map(|link| {
-                    row_of[link.block as usize]
-                        .map(|block| super::kernels::RowLink { block, ..*link })
-                })
-            });
-            targets[group].extend(links.iter().map(|link| link.output));
+            filtered.clear();
+            filtered.extend(edge.links.iter().filter_map(|link| {
+                row_of[link.block as usize].map(|block| super::kernels::RowLink { block, ..*link })
+            }));
+            let links = PackedLinks::from_links(&filtered);
+            targets[group].extend(filtered.iter().map(|link| link.output));
             let incoming = if s.seeded { 1 } else { content.d_in };
             iterations += links.len() * cut * incoming * shape.width;
             edge_parts.push(SplitPart {
@@ -2045,13 +2369,16 @@ fn split_candidate(
                 term: t,
                 current: 0,
                 group,
-                links: tables.links.intern(links),
+                links: ids.intern(links),
             });
         }
         parts.push(edge_parts);
     }
-    for (group, rows) in groups.iter_mut().zip(targets) {
-        group.targets = rows.into_iter().collect();
+    for (group, mut rows) in groups.iter_mut().zip(targets) {
+        rows.sort_unstable();
+        rows.dedup();
+        rows.shrink_to_fit();
+        group.targets = rows;
         iterations += group.targets.len() * cut * shared.vertices[group.vertex].entries.len();
     }
     let cost = StepCost {
@@ -2071,11 +2398,10 @@ fn choose_form(
     shape: &StepShape,
     edges: &[Edge],
     shared: &Shared<'_>,
-    tables: &mut Tables,
-    split_inputs: &mut SplitInputs,
+    ids: &mut impl Ids,
 ) -> RusticolResult<FormChoice> {
     let fused_cost = fused_cost(shape.seeded, shape.d_alpha, edges, shared.contents);
-    let candidate = split_candidate(shape, edges, shared, tables)?;
+    let candidate = split_candidate(shape, edges, shared, ids)?;
     let split_cost = candidate.as_ref().map(|(_, cost)| *cost);
     let split = match (shared.policy, candidate) {
         (_, None) | (FormPolicy::Fused, _) => None,
@@ -2086,14 +2412,163 @@ fn choose_form(
     };
     let split = split.map(|mut split| {
         for group in &mut split.groups {
-            group.instance = split_inputs.instance(group.vertex, group.shift);
+            group.instance = ids.instance(group.vertex, group.shift);
         }
         for part in split.parts.iter_mut().flatten() {
-            part.current = split_inputs.current(part.content, part.term);
+            part.current = ids.current(part.content, part.term);
         }
         split
     });
     Ok((split, (fused_cost, split_cost)))
+}
+
+/// The thread bound of a load running on this thread ([`with_load_threads`]):
+/// the bound (0 outside such a load), the decode's pool started for it so far
+/// (`binary::Reader`), and the threads the load started.
+struct LoadThreads {
+    bound: usize,
+    pool: Option<Arc<rayon::ThreadPool>>,
+    started: usize,
+}
+
+thread_local! {
+    static LOAD: std::cell::RefCell<LoadThreads> = const {
+        std::cell::RefCell::new(LoadThreads { bound: 0, pool: None, started: 0 })
+    };
+}
+
+/// Run `run` (a plan load) on the calling thread with at most `threads`
+/// threads, without starting a thread pool for it: the load starts the
+/// threads its work uses, up to the bound and no more. The families'
+/// derivation starts its workers one by one as the families' work asks for
+/// them, on the decode's pool when it has one (`LoopProgramV4::pipeline`);
+/// a decoded list of `n` records uses one thread per [`binary`]'s parallel
+/// chunk of records (at most `n / PARALLEL_RECORDS`), on a pool started for
+/// the load at the first such list and grown when a later one uses more
+/// ([`load_pool`]). A cheap plan loads on the calling thread alone. The
+/// threads working at once never exceed the bound; while the decode's pool
+/// grows, the threads of the pool it replaces exit asynchronously (rayon
+/// does not join them), so up to about twice the bound may be alive for a
+/// moment. The program is the same for any bound.
+pub fn with_load_threads<R>(threads: usize, run: impl FnOnce() -> R) -> R {
+    struct Restore(usize, Option<Arc<rayon::ThreadPool>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            LOAD.with(|load| {
+                let mut load = load.borrow_mut();
+                load.bound = self.0;
+                load.pool = self.1.take();
+            });
+        }
+    }
+    let _restore = LOAD.with(|load| {
+        let mut load = load.borrow_mut();
+        load.started = 0;
+        Restore(
+            std::mem::replace(&mut load.bound, threads.max(1)),
+            load.pool.take(),
+        )
+    });
+    run()
+}
+
+/// The threads the last load on this thread under [`with_load_threads`]
+/// started (its decode pools' and its derivation's workers). A diagnostic.
+#[doc(hidden)]
+pub fn load_threads_started() -> usize {
+    LOAD.with(|load| load.borrow().started)
+}
+
+/// The thread bound of a load on this thread ([`with_load_threads`]).
+pub(super) fn load_bound() -> Option<usize> {
+    LOAD.with(|load| match load.borrow().bound {
+        0 => None,
+        bound => Some(bound),
+    })
+}
+
+/// Records `threads` threads started by the load on this thread.
+fn load_started(threads: usize) {
+    LOAD.with(|load| load.borrow_mut().started += threads);
+}
+
+/// A pool of at least `threads` threads for the load on this thread (its
+/// decode, [`with_load_threads`]): the load's pool when it has as many,
+/// else a new one of `threads` (at least twice the former's, within the
+/// load's bound, so a load starts at most about twice the threads its
+/// largest list uses), its threads holding pyAmpliCol's Symbolica key as an
+/// executor's do. None when the pool cannot start.
+pub(super) fn load_pool(threads: usize) -> Option<Arc<rayon::ThreadPool>> {
+    LOAD.with(|load| {
+        let mut load = load.borrow_mut();
+        if let Some(pool) = &load.pool
+            && pool.current_num_threads() >= threads
+        {
+            return Some(Arc::clone(pool));
+        }
+        let former = load
+            .pool
+            .as_ref()
+            .map_or(0, |pool| pool.current_num_threads());
+        let threads = threads.max(2 * former).min(load.bound.max(threads));
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .start_handler(|_| crate::licence::unlock_thread())
+            .build()
+            .ok()
+            .map(Arc::new)?;
+        load.started += threads;
+        load.pool = Some(Arc::clone(&pool));
+        Some(pool)
+    })
+}
+
+/// The pool the load on this thread started so far (its decode's), if any.
+fn load_pool_started() -> Option<Arc<rayon::ThreadPool>> {
+    LOAD.with(|load| load.borrow().pool.clone())
+}
+
+/// The threads a family load may use: the bound of a load on this thread
+/// ([`with_load_threads`]), else those of the pool the caller runs on, else
+/// one (a load outside both is sequential).
+pub(super) fn pool_threads() -> usize {
+    if let Some(bound) = load_bound() {
+        bound
+    } else if rayon::current_thread_index().is_some() {
+        rayon::current_num_threads()
+    } else {
+        1
+    }
+}
+
+/// The most families a parallel load on `threads` threads has in flight:
+/// one being derived and one waiting for the merge per worker (the
+/// caller merges); 0 for one thread.
+pub(super) fn family_window(threads: usize) -> usize {
+    2 * threads.saturating_sub(1)
+}
+
+/// Tests: every parallel load takes the pipeline with all its workers
+/// (`LoopProgramV4::pipeline`'s rule otherwise decides from the families'
+/// work). The program is the same either way.
+static FORCE_PIPELINE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[doc(hidden)]
+pub fn force_pipeline_for_tests(force: bool) {
+    FORCE_PIPELINE.store(force, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Tests: the parallel load's merge panics before it replays this family
+/// (`usize::MAX`: never), as a bug in the replay would.
+static PANIC_IN_MERGE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
+
+#[doc(hidden)]
+pub fn panic_in_merge_for_tests(family: Option<usize>) {
+    PANIC_IN_MERGE.store(
+        family.unwrap_or(usize::MAX),
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 impl LoopProgramV4 {
@@ -2150,6 +2625,16 @@ impl LoopProgramV4 {
     }
 
     fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
+        Self::from_file_with(file, policy, 0)
+    }
+
+    /// [`Self::from_file`] with up to `window` families in flight in a
+    /// parallel load of the families ([`Self::pipeline`]; 0: sequential).
+    fn from_file_with(
+        mut file: PlanFile,
+        policy: FormPolicy,
+        window: usize,
+    ) -> RusticolResult<Self> {
         require(admitted_schema(file.schema), "unsupported plan schema")?;
         let amplitude = file.schema == AMPLITUDE_PLAN_SCHEMA;
         if amplitude {
@@ -2231,8 +2716,22 @@ impl LoopProgramV4 {
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut contents = Vec::with_capacity(file.contents.len());
         let mut vertices: Vec<Option<Vertex>> = Vec::new();
-        for c in &file.contents {
-            let (open, seeded) = layouts(c)?;
+        // A content's layouts are a function of its fused list (shared when
+        // decoded) and dimensions: the contents of one key share them.
+        type Layouts = (Arc<SegmentLayout>, Arc<SegmentLayout>);
+        let mut layouts_of: WordMap<(usize, usize, usize), Layouts> = WordMap::default();
+        for index in 0..file.contents.len() {
+            let c = &file.contents[index];
+            let key = (Arc::as_ptr(&c.fused) as usize, c.d_in, c.d_out);
+            let (open, seeded) = match layouts_of.get(&key) {
+                Some((open, seeded)) => (Arc::clone(open), Arc::clone(seeded)),
+                None => {
+                    let (open, seeded) = layouts(c)?;
+                    let made = (Arc::new(open), Arc::new(seeded));
+                    layouts_of.insert(key, (Arc::clone(&made.0), Arc::clone(&made.1)));
+                    made
+                }
+            };
             require(
                 open.degree() <= c.degree,
                 "content kernel degree above q-degree",
@@ -2276,22 +2775,22 @@ impl LoopProgramV4 {
                         Ok(Binding {
                             kernel: b.kernel,
                             inputs,
-                            entries: b.entries.clone(),
+                            entries: b.entries.to_vec(),
                         })
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;
-                for (row, blocks) in &t.rows {
+                for (row, blocks) in t.rows.iter() {
                     require(
-                        *row < c.rows
+                        row < c.rows
                             && blocks.len() == t.slots.len()
-                            && blocks.iter().all(|&b| b < file.block_rows.len()),
+                            && blocks.iter().all(|&b| (b as usize) < file.block_rows.len()),
                         "content term row",
                     )?;
                     for binding in &bindings {
                         for input in &binding.inputs {
                             if let KernelInput::Current { slot, component } = *input {
                                 require(
-                                    component < file.block_rows[blocks[slot]],
+                                    component < file.block_rows[blocks[slot] as usize],
                                     "block current component",
                                 )?;
                             }
@@ -2339,13 +2838,13 @@ impl LoopProgramV4 {
                                 _ => {}
                             }
                         }
-                        Ok((b.kernel, inputs, b.entries.clone()))
+                        Ok((b.kernel, inputs, b.entries.to_vec()))
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;
-                for (_row, blocks) in &t.rows {
+                for (_row, blocks) in t.rows.iter() {
                     for (slot, &block) in blocks.iter().enumerate() {
                         require(
-                            file.block_rows[block] == t.dimensions[slot],
+                            file.block_rows[block as usize] == t.dimensions[slot],
                             "block row dimension",
                         )?;
                     }
@@ -2376,17 +2875,23 @@ impl LoopProgramV4 {
                 };
                 terms.push(ContentTerm {
                     slots: t.slots.clone(),
-                    dimensions: t.dimensions.clone(),
+                    dimensions: t.dimensions.to_vec(),
                     bindings,
                     vertex,
-                    rows: t.rows.clone(),
+                    // Moved from the file model below (no copy).
+                    rows: TermRows::default(),
                 });
             }
+            let (d_in, d_out, degree, rows) = (c.d_in, c.d_out, c.degree, c.rows);
+            // The file's term rows are read only here: the program takes them.
+            for (term, from) in terms.iter_mut().zip(&mut file.contents[index].terms) {
+                term.rows = std::mem::take(&mut from.rows);
+            }
             contents.push(Content {
-                d_in: c.d_in,
-                d_out: c.d_out,
-                degree: c.degree,
-                rows: c.rows,
+                d_in,
+                d_out,
+                degree,
+                rows,
                 terms,
                 open,
                 seeded,
@@ -2435,14 +2940,13 @@ impl LoopProgramV4 {
                                         .ok()
                                         .filter(|&c| c < born_components)
                                         .ok_or_else(|| invalid("seed component"))?;
-                                    let weight = match weight_index.get(&(re.as_str(), im.as_str()))
-                                    {
+                                    let weight = match weight_index.get(&(&**re, &**im)) {
                                         Some(&found) => found,
                                         None => {
                                             let next = u32::try_from(seed_weights.len())
                                                 .map_err(|_| invalid("seed weights"))?;
                                             seed_weights.push([exact(re)?, exact(im)?]);
-                                            weight_index.insert((re, im), next);
+                                            weight_index.insert((&**re, &**im), next);
                                             next
                                         }
                                     };
@@ -2472,7 +2976,7 @@ impl LoopProgramV4 {
             })
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut tables = Tables {
-            index: HashMap::new(),
+            index: WordMap::default(),
             tables: Vec::new(),
             links: LinkInterner::default(),
         };
@@ -2488,16 +2992,39 @@ impl LoopProgramV4 {
             Vec::new()
         };
         let rows = links::RowSpace::new(&file)?;
+        // A content's row map is a function of its legs, row count and row
+        // helicities: the contents of one decoded list (shared) and legs share
+        // one map (a large plan has hundreds of thousands of contents over a
+        // few thousand such keys).
+        let mut known: WordMap<(u64, usize, usize), Arc<WordMap<links::Row, u32>>> =
+            WordMap::default();
         let content_rows = file
             .contents
             .iter()
-            .map(|content| rows.content_rows(content))
+            .map(|content| {
+                let key = (
+                    content.mask,
+                    content.rows,
+                    Arc::as_ptr(&content.row_helicities) as usize,
+                );
+                if let Some(found) = known.get(&key) {
+                    return Ok(Arc::clone(found));
+                }
+                let found = Arc::new(rows.content_rows(content)?);
+                known.insert(key, Arc::clone(&found));
+                Ok(found)
+            })
             .collect::<RusticolResult<Vec<_>>>()?;
+        drop(known);
         let content_lists = if dressed {
             links::content_lists(&content_rows)
         } else {
             Vec::new()
         };
+        // The family records are consumed one by one below: each is dropped
+        // once its family is derived, so the decoded families shrink while
+        // the program grows (nothing after the loop reads them).
+        let family_files = std::mem::take(&mut file.families);
         let shared = Shared {
             file: &file,
             contents: &contents,
@@ -2509,15 +3036,29 @@ impl LoopProgramV4 {
             dressed: dressed.then_some(content_lists.as_slice()),
         };
         let mut leaf_weights = LeafWeights::default();
-        for f in &file.families {
-            order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
-            families.push(Self::family(
-                f,
-                &shared,
-                &mut tables,
-                &mut split_inputs,
-                &mut leaf_weights,
-            )?);
+        {
+            let mut ids = Registries {
+                tables: &mut tables,
+                split_inputs: &mut split_inputs,
+                leaf_weights: &mut leaf_weights,
+            };
+            // Families in parallel on the caller's pool when the probe
+            // granted a window ([`Self::pipeline`]), else sequentially.
+            if window == 0 || family_files.len() < 2 {
+                for f in family_files {
+                    order_count =
+                        order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
+                    families.push(Self::family(&f, &shared, &mut ids)?);
+                }
+            } else {
+                order_count = order_count.max(Self::pipeline(
+                    family_files,
+                    window,
+                    &shared,
+                    &mut ids,
+                    &mut families,
+                )?);
+            }
         }
         let leaf_weights = leaf_weights.values;
         let forward = file
@@ -2590,13 +3131,295 @@ impl LoopProgramV4 {
         Ok(program)
     }
 
-    fn family<'a>(
-        f: &'a FamilyFile,
+    /// The families derived in parallel and merged in family order (an
+    /// ordered pipeline): worker threads derive families against a
+    /// [`Recording`] of the ids they draw, into a reorder window of at most
+    /// `window` families started and not yet merged; the caller replays each
+    /// recording on the registries in family order as soon as it is there
+    /// ([`Recording::replay`]), so every id and shared list is the
+    /// sequential load's. The families' own work decides how many workers
+    /// run: the first family is derived and merged by the caller, timing
+    /// both, and as many workers derive at once as the derivation takes
+    /// replays (the running means' ratio, at least one, at most the window's
+    /// workers and the families left), the pipeline running only when the
+    /// bound allows two workers or more (one worker never pays: the caller
+    /// would only replay). A worker is started only when that
+    /// count grows (a load starts no thread its families do not use), as a
+    /// job on the pool the load's decode started, else on a thread of its
+    /// own; one that is no longer allowed waits on a condition, asleep. When a
+    /// family derives faster than it replays, the bound allows fewer than two
+    /// workers, or no worker thread can start, the rest load sequentially. The
+    /// first error in family order is the one returned, and a later family's
+    /// panic is raised only if the merge reaches it (as sequentially). Returns
+    /// the largest loop order + 1.
+    fn pipeline(
+        files: Vec<FamilyFile>,
+        window: usize,
         shared: &Shared<'_>,
-        tables: &mut Tables,
-        split_inputs: &mut SplitInputs,
-        leaf_weights: &mut LeafWeights<'a>,
-    ) -> RusticolResult<Family> {
+        ids: &mut Registries<'_>,
+        families: &mut Vec<Family>,
+    ) -> RusticolResult<usize> {
+        use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
+        use std::sync::{Condvar, Mutex};
+        use std::time::Instant;
+
+        let orders = |f: &FamilyFile| f.orders.iter().map(|&o| o + 1).max().unwrap_or(0);
+        let total = files.len();
+        let mut files = files.into_iter();
+        let mut order_count = 0;
+        // The first family on the caller: its derivation and replay times.
+        let first = files.next().expect("two families or more");
+        order_count = order_count.max(orders(&first));
+        let start = Instant::now();
+        let mut recording = Recording::default();
+        let mut family = Self::family(&first, shared, &mut recording)?;
+        let mut derive = start.elapsed().as_secs_f64();
+        drop(first);
+        let start = Instant::now();
+        recording.replay(&mut family, ids)?;
+        families.push(family);
+        let mut replay = start.elapsed().as_secs_f64();
+        let workers_most = (window / 2).max(1).min(total - 1);
+        // Workers for a derivation of `derive` s against replays of `replay` s.
+        let forced = FORCE_PIPELINE.load(std::sync::atomic::Ordering::Relaxed);
+        let wanted = |derive: f64, replay: f64| -> usize {
+            if forced || replay <= 0.0 {
+                return workers_most;
+            }
+            ((derive / replay).floor() as usize).clamp(1, workers_most)
+        };
+        // One worker never pays: the caller then only replays, so a family
+        // takes at least its derivation (with its recording) either way, plus
+        // the replay and the hand-off (g g > 7g at bound 2: 5.7 s against
+        // 4.8 s sequentially). A bound that allows fewer than two workers
+        // (two threads) loads sequentially; above it the running means decide
+        // (the first family's ratio understates the later ones').
+        if !forced && (workers_most < 2 || derive < replay) {
+            for f in files {
+                order_count = order_count.max(orders(&f));
+                families.push(Self::family(&f, shared, ids)?);
+            }
+            return Ok(order_count);
+        }
+        type Derived = std::thread::Result<RusticolResult<(Family, Recording)>>;
+        struct State {
+            /// The next family to start (index into the rest).
+            next: usize,
+            /// The families merged so far (of the rest).
+            merged: usize,
+            /// Workers allowed to derive at once, and deriving now.
+            allowed: usize,
+            busy: usize,
+            /// No family is started any more (an error, or the end).
+            stop: bool,
+            /// Derived families waiting for the merge, by index.
+            done: BTreeMap<usize, (Derived, f64)>,
+        }
+        let rest: Vec<Mutex<Option<FamilyFile>>> = files.map(|f| Mutex::new(Some(f))).collect();
+        let count = rest.len();
+        let state = Mutex::new(State {
+            next: 0,
+            merged: 0,
+            allowed: wanted(derive, replay),
+            busy: 0,
+            stop: false,
+            done: BTreeMap::new(),
+        });
+        let (start_work, merge_work) = (Condvar::new(), Condvar::new());
+        let lock = || {
+            state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        };
+        let mut outcome: RusticolResult<()> = Ok(());
+        let mut panic = None;
+        let mut sequential = false;
+        // A worker: starts the next family while the window and the
+        // allowed workers let it, else waits (asleep) for the merge.
+        let worker = || {
+            loop {
+                let index = {
+                    let mut st = lock();
+                    loop {
+                        if st.stop || st.next >= count {
+                            return;
+                        }
+                        if st.busy < st.allowed && st.next < st.merged + window {
+                            break;
+                        }
+                        st = start_work
+                            .wait(st)
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    }
+                    st.busy += 1;
+                    st.next += 1;
+                    st.next - 1
+                };
+                let f = rest[index]
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take()
+                    .expect("a family is derived once");
+                let start = Instant::now();
+                let derived = catch_unwind(AssertUnwindSafe(|| {
+                    let mut recording = Recording::default();
+                    Self::family(&f, shared, &mut recording).map(|family| (family, recording))
+                }));
+                let seconds = start.elapsed().as_secs_f64();
+                drop(f);
+                let mut st = lock();
+                st.busy -= 1;
+                st.done.insert(index, (derived, seconds));
+                merge_work.notify_one();
+            }
+        };
+        // Under a load's bound, the workers run on the pool its decode started
+        // (`with_load_threads`), as jobs: the threads that decoded the plan,
+        // whose malloc arenas hold what the decode frees as the families are
+        // derived (workers on threads of their own allocate in arenas of
+        // their own: g g > 8g at 8 threads peaked 2.4 GiB higher). Workers
+        // beyond its threads, or without one, are threads of their own.
+        let pool = if rayon::current_thread_index().is_none() && load_bound().is_some() {
+            load_pool_started()
+        } else {
+            None
+        };
+        let jobs = pool.as_ref().map_or(0, |pool| pool.current_num_threads());
+        let worker = &worker;
+        let mut run = |spawn: &dyn Fn(usize) -> bool| {
+            // Workers are started one by one as the families' work allows
+            // more (never more than it uses: an idle worker waits, asleep);
+            // one that cannot start leaves the others to it.
+            let mut spawned = 0;
+            let mut spawn_to = |allowed: usize| {
+                while spawned < allowed {
+                    if !spawn(spawned) {
+                        break;
+                    }
+                    spawned += 1;
+                }
+                spawned
+            };
+            if spawn_to(lock().allowed) == 0 {
+                // No worker: the caller derives the rest itself.
+                sequential = true;
+                return;
+            }
+            // However the merge ends (the end, an error, a worker's panic,
+            // or a panic of its own), no family starts any more and every
+            // waiting worker wakes and returns, so the scope joins them.
+            struct Stop<F: FnMut()>(F);
+            impl<F: FnMut()> Drop for Stop<F> {
+                fn drop(&mut self) {
+                    (self.0)();
+                }
+            }
+            let _stop = Stop(|| {
+                lock().stop = true;
+                start_work.notify_all();
+            });
+            // The merge, in family order.
+            let mut merged = 1.0;
+            for index in 0..count {
+                let (derived, seconds) = {
+                    let mut st = lock();
+                    loop {
+                        if let Some(found) = st.done.remove(&index) {
+                            break found;
+                        }
+                        st = merge_work
+                            .wait(st)
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    }
+                };
+                let (mut family, recording) = match derived {
+                    Ok(Ok(found)) => found,
+                    Ok(Err(error)) => {
+                        outcome = Err(error);
+                        break;
+                    }
+                    Err(payload) => {
+                        panic = Some(payload);
+                        break;
+                    }
+                };
+                if PANIC_IN_MERGE.load(std::sync::atomic::Ordering::Relaxed) == index + 1 {
+                    panic!("test: a panic in the merge of family {}", index + 1);
+                }
+                let start = Instant::now();
+                if let Err(error) = recording.replay(&mut family, ids) {
+                    outcome = Err(error);
+                    break;
+                }
+                families.push(family);
+                derive += seconds;
+                replay += start.elapsed().as_secs_f64();
+                merged += 1.0;
+                let allowed = wanted(derive / merged, replay / merged);
+                {
+                    let mut st = lock();
+                    st.merged = index + 1;
+                    let more = allowed > st.allowed;
+                    st.allowed = allowed;
+                    // The window moved by one family: one waiting worker may
+                    // start it (all, when more workers are allowed).
+                    if more {
+                        start_work.notify_all();
+                    } else {
+                        start_work.notify_one();
+                    }
+                }
+                spawn_to(allowed);
+            }
+        };
+        std::thread::scope(|threads| {
+            let thread = |_: usize| {
+                let started = std::thread::Builder::new()
+                    .name("rusticol-load".into())
+                    .spawn_scoped(threads, move || {
+                        let _unlock = crate::licence::unlock();
+                        worker()
+                    });
+                if started.is_ok() {
+                    load_started(1);
+                }
+                started.is_ok()
+            };
+            match &pool {
+                Some(pool) => pool.in_place_scope(|scope| {
+                    run(&|k| {
+                        if k < jobs {
+                            scope.spawn(move |_| worker());
+                            true
+                        } else {
+                            thread(k)
+                        }
+                    })
+                }),
+                None => run(&thread),
+            }
+        });
+        if let Some(payload) = panic {
+            resume_unwind(payload);
+        }
+        outcome?;
+        if sequential {
+            for f in rest {
+                let f = f
+                    .into_inner()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .expect("no family was started");
+                families.push(Self::family(&f, shared, ids)?);
+            }
+        }
+        // The orders of the families merged by the workers' records.
+        for family in families.iter() {
+            order_count = order_count.max(family.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
+        }
+        Ok(order_count)
+    }
+
+    fn family(f: &FamilyFile, shared: &Shared<'_>, ids: &mut impl Ids) -> RusticolResult<Family> {
         let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
         let full = super::bounds::check_legs(file.legs).map_err(invalid)?;
         let mut covered = 0u64;
@@ -2618,7 +3441,7 @@ impl LoopProgramV4 {
                 require(leaf.seed < seeds, "leaf seed index")?;
                 Ok(Leaf {
                     seed: u32::try_from(leaf.seed).map_err(|_| invalid("leaf seed index"))?,
-                    weight: leaf_weights.get(&leaf.weight)?,
+                    weight: ids.leaf_weight(&leaf.weight)?,
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
@@ -2701,21 +3524,29 @@ impl LoopProgramV4 {
                     step_key = key;
                 }
                 require(source_rank <= s.rank_in, "source rank above step rank")?;
-                for link in links.chunks(3) {
-                    require(
-                        link.len() == 3
-                            && (link[0] as usize) < rows
-                            && (link[1] as usize) < source_rows
-                            && (link[2] as usize) < c.rows,
-                        "row link out of range",
-                    )?;
+                // Every link a triple in range: each column's largest value.
+                let mut most = [0u32; 3];
+                for link in links.chunks_exact(3) {
+                    most = [
+                        most[0].max(link[0]),
+                        most[1].max(link[1]),
+                        most[2].max(link[2]),
+                    ];
                 }
+                require(
+                    links.len().is_multiple_of(3)
+                        && (links.is_empty()
+                            || ((most[0] as usize) < rows
+                                && (most[1] as usize) < source_rows
+                                && (most[2] as usize) < c.rows)),
+                    "row link out of range",
+                )?;
                 edges.push(Edge {
                     source,
                     factor: e.factor,
                     content,
                     source_rank,
-                    products: tables.get(source_rank, c.degree),
+                    products: ids.table(source_rank, c.degree),
                     links: expand_links(links, object_columns)?,
                 });
             }
@@ -2735,7 +3566,7 @@ impl LoopProgramV4 {
                 d_alpha: s.d_alpha,
                 rank_in: s.rank_in,
             };
-            let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            let (split, costs) = choose_form(&shape, &edges, shared, ids)?;
             release_split_links(&mut edges, &split);
             match &split {
                 None => factors.extend(edges.iter().map(|edge| edge.factor)),
@@ -3041,7 +3872,12 @@ impl LoopProgramV4 {
                 d_alpha: s.d_alpha,
                 rank_in: s.rank_in,
             };
-            let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            let mut ids = Registries {
+                tables,
+                split_inputs,
+                leaf_weights: &mut LeafWeights::default(),
+            };
+            let (split, costs) = choose_form(&shape, &edges, shared, &mut ids)?;
             release_split_links(&mut edges, &split);
             states.push(MergedState {
                 step: Step {

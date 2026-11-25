@@ -5,7 +5,6 @@ use crate::{
     C64, FastInput, FastPolynomialReducer, FastProfile, FastStatus, FastTensorPolynomialReducer,
 };
 use crate::{FourMomentum, Lane, Laurent};
-use symbolica::atom::Atom;
 
 enum FastPolynomial {
     Callback(FastPolynomialReducer),
@@ -66,7 +65,7 @@ impl FastReductions {
         // before parsing (the extension's import no longer does).
         super::register_scalar_primitives();
         let parse =
-            |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
+            |text: &str| rusticol_core::symbol_order::parse(text, "pyamplicol_loop").map_err(error);
         let variables = [
             parse("q0")?,
             parse("q1")?,
@@ -155,10 +154,17 @@ impl FastReductions {
             s_matrix: matrix.as_deref(),
         };
         let mut results = Vec::with_capacity(3);
+        let mut records = Vec::with_capacity(3);
         for (index, sector) in self.sectors.iter_mut().enumerate() {
             if self.active[index] {
                 results.push(sector.evaluate(ids, input, parameters)?);
+                // Taken after a successful evaluation only, which suffices:
+                // NinjaRS's `FastAmplitude::evaluate` forgets the thread's
+                // earlier records on entry (`clear_instabilities`), so those
+                // of a failed evaluation never reach the next one.
+                records.push(super::lane_status::fast_instabilities(ids.len()));
             } else {
+                records.push(vec![None; ids.len()]);
                 results.push(
                     ids.iter()
                         .map(|&id| Lane {
@@ -178,12 +184,16 @@ impl FastReductions {
             .into_iter()
             .zip(one)
             .zip(two)
-            .map(|((zero, one), two)| {
+            .enumerate()
+            .map(|(row, ((zero, one), two))| {
                 let status = [zero.status, one.status, two.status]
                     .iter()
                     .enumerate()
                     .find(|(_, s)| **s != FastStatus::Success)
-                    .map(|(i, s)| format!("epsilon sector {i}: {s:?}"))
+                    .map(|(i, &s)| {
+                        let text = super::lane_status::fast_status(s, records[i][row].as_ref());
+                        format!("epsilon sector {i}: {text}")
+                    })
                     .unwrap_or_else(|| "success".into());
                 let value = match (zero.value, one.value, two.value) {
                     (Some(a), Some(b), Some(c)) => {

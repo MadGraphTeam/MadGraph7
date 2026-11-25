@@ -106,6 +106,7 @@ use ninjars::fast::{
 use ninjars_symbolica::OneLoopNativeMasters;
 pub use ninjars_symbolica::PoleSelection;
 pub use rusticol_core::loop_execution::v2::Poles;
+use rusticol_core::loop_execution::v2::{TrackedPrecision, TrackedSums};
 use std::collections::{BTreeMap, HashMap};
 use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
 
@@ -130,8 +131,10 @@ pub fn fast_engine_threshold() -> f64 {
 /// thresholds, `FastOptions { stability_threshold: 0, relative_tolerance: 0
 /// }`: Ninja's stability test `relative(x, s)` becomes `x >= 0 && x > 0`, so
 /// a lane fails only where a tested quantity is exactly zero or NaN (a
-/// Euclidean-plane cut basis, `FastStatus::Unstable`), or as `NonFinite` /
-/// `MasterFailed`. `infrared_eps` keeps its meaning (a routing rule:
+/// Euclidean-plane cut basis, `FastStatus::Unstable`), by the box
+/// mu-expansion's conditioning screen (kept), or as `NonFinite` /
+/// `MasterFailed`; an `Unstable` lane's status text names the test and its
+/// numbers (`super::lane_status`). `infrared_eps` keeps its meaning (a routing rule:
 /// [`fast_engine_threshold`] reads the default).
 pub fn fast_options(unchecked: bool) -> FastOptions {
     let defaults = FastOptions::default();
@@ -191,6 +194,32 @@ fn invariant_reaches_fast_threshold(
                     .any(|m| m.im == 0. && inside((s.re - m.re).abs()))
         })
     })
+}
+
+/// The tracked-precision test at `working` bits
+/// (`rusticol_core::loop_execution::v2::TrackedPrecision`): NinjaRS's rule
+/// for its master integrals ([`ninjars_symbolica::required_tracked_bits`]:
+/// `max(53, working / 4)`, at most `working / 2`), so that a point keeps at
+/// least the precision its masters must keep.
+pub fn tracked_rule(working: u32) -> TrackedPrecision {
+    TrackedPrecision {
+        working,
+        required: ninjars_symbolica::required_tracked_bits(working),
+    }
+}
+
+/// The tracked-precision test of the lanes `lanes` (each its Laurent
+/// coefficients) at `working` bits ([`tracked_rule`]): their point's
+/// failure, or None.
+pub fn tracked_refusal<'a>(
+    lanes: impl IntoIterator<Item = &'a [Complex<Float>]>,
+    working: u32,
+) -> Option<String> {
+    let mut sums = TrackedSums::default();
+    for lane in lanes {
+        sums.add(lane, working);
+    }
+    sums.refusal(tracked_rule(working))
 }
 
 /// Options of one [`V2Reducer::reduce`] call.
@@ -685,11 +714,17 @@ impl FastEngine {
                 &mut self.statuses,
             )
             .map_err(error)?;
+        // Taken after a successful evaluation only, which suffices: NinjaRS's
+        // `FastAmplitude::evaluate` forgets the thread's earlier records on
+        // entry (`clear_instabilities`), so those of a failed evaluation
+        // never reach the next one.
+        let records = super::lane_status::fast_instabilities(lanes);
         Ok(self
             .statuses
             .iter()
             .zip(&self.results)
-            .map(|(&status, result)| {
+            .zip(&records)
+            .map(|((&status, result), record)| {
                 if status == FastStatus::Success {
                     Outcome {
                         status: "success".into(),
@@ -698,7 +733,7 @@ impl FastEngine {
                     }
                 } else {
                     Outcome {
-                        status: format!("{status:?}"),
+                        status: super::lane_status::fast_status(status, record.as_ref()),
                         value: None,
                         uv: None,
                     }
@@ -900,6 +935,54 @@ impl V2Reducer {
     /// The unchecked mode of the following reductions.
     pub fn unchecked(&self) -> bool {
         self.unchecked
+    }
+
+    /// The point-level tracked-precision test of this reducer's lanes
+    /// (`rusticol_core::loop_execution::v2::TrackedPrecision`): the
+    /// arbitrary-precision generic engine's `Float` lanes carry the precision
+    /// numerica tracked through the reduction, against NinjaRS's rule for
+    /// its master integrals at the working precision
+    /// ([`ninjars_symbolica::required_tracked_bits`]). `None` for binary64
+    /// and double-double (fixed precision, nothing tracked) and in the
+    /// unchecked mode (its values are served untested).
+    pub fn tracked_precision(&self) -> Option<TrackedPrecision> {
+        match &self.engines {
+            Engines::Arbitrary(engine) if !self.unchecked => Some(tracked_rule(engine.precision())),
+            _ => None,
+        }
+    }
+
+    /// The tracked-precision test ([`Self::tracked_precision`]) of the
+    /// direct outcomes of one point's [`Self::reduce`] (its successful
+    /// lanes, every group): the point's failure, or None (also when the
+    /// reducer takes no test). The Python reference path's per-point test;
+    /// the executor sums its lanes itself.
+    pub fn tracked_refusal<'a>(
+        &self,
+        batches: impl IntoIterator<Item = &'a ReductionBatch>,
+    ) -> Option<String> {
+        let rule = self.tracked_precision()?;
+        let mut sums = TrackedSums::default();
+        for batch in batches {
+            let columns = batch.values.columns().max(1);
+            let Data::Arbitrary(values) = batch.values.data() else {
+                continue;
+            };
+            // The successful lanes only, as the executor sums them: a row
+            // with a value whose status failed is not served.
+            let succeeded: std::collections::HashSet<u64> = batch
+                .statuses
+                .iter()
+                .filter(|(_, status)| status == "success")
+                .map(|&(id, _)| id)
+                .collect();
+            for (id, lane) in batch.values.ids().iter().zip(values.chunks_exact(columns)) {
+                if succeeded.contains(id) {
+                    sums.add(lane, rule.working);
+                }
+            }
+        }
+        sums.refusal(rule)
     }
 
     /// Master requests of the fast engine since the last call; `None` for
@@ -1146,6 +1229,96 @@ mod tests {
             outcomes[1].status
         );
         assert!(outcomes[1].value.is_none());
+    }
+
+    /// The tracked-precision test of the reducer: NinjaRS's rule at the
+    /// working bits of the arbitrary-precision engine only, off in the
+    /// unchecked mode; on the generic engine's own lanes (a rank-1
+    /// tadpole) a point whose shift is known to 20 bits (its lane keeps
+    /// about them, its masters all 256) fails typed, the full-precision
+    /// point passes.
+    #[test]
+    fn the_tracked_precision_test_reads_the_lanes_precision() {
+        let _unlock = pyamplicol::unlock(); // generic engine
+        for (arithmetic, digits, engine) in [
+            ("double", None, "fast"),
+            ("double", None, "generic"),
+            ("double-double", None, "generic"),
+        ] {
+            let reducer = V2Reducer::new(arithmetic, digits, engine, true).unwrap();
+            assert_eq!(reducer.tracked_precision(), None, "{arithmetic} {engine}");
+        }
+        // The working digits of pyAmpliCol's 40, 57, 60 and 80 digits
+        // (20 guard digits).
+        for (digits, working, required) in
+            [(60, 200, 53), (77, 256, 64), (80, 266, 66), (100, 333, 83)]
+        {
+            let reducer = V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap();
+            let rule = reducer.tracked_precision().unwrap();
+            assert_eq!(
+                (rule.working, rule.required),
+                (working, required),
+                "{digits}"
+            );
+        }
+        let mut reducer = V2Reducer::new("arbitrary", Some(77), "generic", true).unwrap();
+        let bits = reducer.precision_bits();
+        let zero = Float::with_val(bits, 0);
+        let c = |x: Float| Complex::new(x, zero.clone());
+        // A rank-1 tadpole `q0 / ((q + p)^2 - m^2)` (integral `-p0 A0`):
+        // the shift enters the reduction's arithmetic, the masters take the
+        // exact squared mass and scale.
+        let reduce = |reducer: &mut V2Reducer, shift: Float| {
+            let batch = |values: Vec<Complex<Float>>, columns| {
+                Batch::typed(values, vec![0], columns, bits).unwrap()
+            };
+            let shifts = batch(
+                vec![c(shift), c(zero.clone()), c(zero.clone()), c(zero.clone())],
+                4,
+            );
+            let masses = batch(vec![c(Float::with_val(bits, 29929))], 1);
+            let scales = batch(vec![c(Float::with_val(bits, 1_000_000))], 1);
+            let s_matrix = batch(vec![c(zero.clone())], 1);
+            let mut numerator = vec![c(zero.clone()); ncoeff(1)];
+            numerator[1] = c(Float::with_val(bits, 1));
+            let coefficients = batch(numerator, ncoeff(1));
+            let group = FamilyGroup {
+                propagators: 1,
+                shifts: &shifts,
+                masses_squared: &masses,
+                scales_squared: &scales,
+                s_matrix: &s_matrix,
+                coefficients: &coefficients,
+            };
+            let output = reducer.reduce(&[group], ReduceOptions::default()).unwrap();
+            assert_eq!(output.direct[0].statuses()[0].1, "success");
+            output.direct
+        };
+        let exact = reduce(&mut reducer, Float::with_val(bits, 3));
+        assert_eq!(reducer.tracked_refusal(&exact), None);
+        let coarse = reduce(&mut reducer, Float::with_val(20, 3));
+        let refusal = reducer.tracked_refusal(&coarse).unwrap();
+        assert!(
+            refusal.starts_with("NinjaRS tracked precision: the point's lanes keep 2")
+                && refusal.contains("64 required at 256 working bits; "),
+            "{refusal}"
+        );
+        // Both points together: the coarse lane is as large as the exact one.
+        assert!(
+            reducer
+                .tracked_refusal(exact.iter().chain(&coarse))
+                .is_some()
+        );
+        // Only successful rows count: the coarse value under a failed status
+        // is not summed (the executor sums successes only).
+        let failed = ReductionBatch {
+            values: coarse[0].values.clone(),
+            statuses: vec![(0, "Unstable".into())],
+        };
+        assert_eq!(reducer.tracked_refusal(exact.iter().chain([&failed])), None);
+        reducer.set_unchecked(true);
+        assert_eq!(reducer.tracked_precision(), None);
+        assert_eq!(reducer.tracked_refusal(&coarse), None);
     }
 
     #[test]

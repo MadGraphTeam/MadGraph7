@@ -21,7 +21,7 @@ In a ``P1_*`` directory, ``make`` builds the process library and ``check_sa.exe`
 Two variables select the build; they are part of the library name, so several
 builds coexist::
 
-    make BACKEND=auto FPTYPE=m          # the defaults
+    make BACKEND=auto FPTYPE=v          # the defaults
     make BACKEND=simd_256 FPTYPE=d -j8
 
 ``BACKEND``
@@ -30,9 +30,9 @@ builds coexist::
     on Apple silicon). The resolved choice is written to ``.resolved-backend``.
 
 ``FPTYPE``
-    ``d`` (double precision everywhere), ``f`` (single), ``m`` (the default:
-    amplitudes in double precision, colour algebra in single precision), ``v``
-    (single-precision amplitudes with double-precision momenta and denominators),
+    ``d`` (double precision everywhere), ``f`` (single), ``m`` (amplitudes in
+    double precision, colour algebra in single precision), ``v`` (the default:
+    single-precision amplitudes with double-precision momenta and denominators),
     ``e`` (double-word expansion). Compare them with ``check precision``.
 
 The flags are ``-O3 -std=c++20 -ffast-math`` (``OPTFLAGS`` for the optimisation
@@ -45,8 +45,9 @@ The plain code evaluates every wavefunction once per helicity configuration.
 ``--hel_recycling=True`` at output time builds each wavefunction once per copy
 (a wavefunction depends only on the helicities of the external legs it descends
 from), skips the amplitudes that vanish at a helicity and folds the others into
-per-helicity tables, as the helicity recycling of madevent does. It is off by
-default in the standalone and ``mg7`` outputs, on in ``madevent``::
+per-helicity tables, as the helicity recycling of madevent does. It is on by
+default in the ``standalone``, ``mg7`` and ``madevent`` outputs (``--hel_recycling=False``
+keeps the plain code) and off in ``standalone_fortran``::
 
     output standalone my_ttxg --hel_recycling=True
 
@@ -166,4 +167,4 @@ includes the good-helicity scan. The RAMBO seed is fixed, so two builds of the s
 process see the same points. Per-event files (``--dump-me``, ``--dump-momenta``,
 ``--momenta``, ``-e <file.lhe>``, ``--alphas``, ``--flavors``, ``--rnd-hel``) read
 or write one raw ``double`` (or ``int``) per event; ``./check_sa.exe --help``
-lists them. ``MG_DUMP_GOODHEL=1`` in the environment prints the good helicities.
+lists them. ``MG_DUMP_GOODHEL=1`` in the environment prints the good helicities of the warm-up probe build (``HRPROBE=1``).

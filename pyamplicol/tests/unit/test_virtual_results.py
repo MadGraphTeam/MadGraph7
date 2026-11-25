@@ -215,6 +215,10 @@ def test_arithmetic_specs_require_explicit_carriers():
     spec = VirtualArithmeticSpec("arbitrary", 70)
     with pytest.raises(FrozenInstanceError):
         spec.precision = 80
-    for args in (("double", 70), ("arbitrary", None), ("double-double", 33)):
+    for args in (("double", 70), ("arbitrary", 0), ("double-double", 33)):
         with pytest.raises(ValueError):
             VirtualArithmeticSpec(*args)
+    # Arbitrary without digits: the default arbitrary-precision digits.
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+    assert VirtualArithmeticSpec("arbitrary").precision == default_arbitrary_digits()

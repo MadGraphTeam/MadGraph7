@@ -1,2 +1,1 @@
-      INTEGER    N_MAX_CG
-      PARAMETER (N_MAX_CG=86)
+../../_shared/IOExportFKSTest%test_wprod_fksew%%SubProcesses%P0_dxu_veep%V0_dxu_veep%ngraphs.inc

@@ -1,4 +1,1 @@
-      INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=5)
-      INTEGER    NINCOMING
-      PARAMETER (NINCOMING=2)
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_bbx_ttx%nexternal.inc

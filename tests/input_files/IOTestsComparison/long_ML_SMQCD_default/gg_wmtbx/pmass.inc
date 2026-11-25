@@ -1,5 +1,1 @@
-      PMASS(1)=ZERO
-      PMASS(2)=ZERO
-      PMASS(3)=ABS(MDL_MW)
-      PMASS(4)=ABS(MDL_MT)
-      PMASS(5)=ABS(MDL_MB)
+../../_shared/long_ML_SMQCD_default%gg_wmtbx%pmass.inc

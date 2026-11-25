@@ -815,6 +815,12 @@ def _add_evaluation_options(
         dest="evaluation.precision",
         type=int,
         default=argparse.SUPPRESS,
+        metavar="DIGITS",
+        help=(
+            "decimal digits (default: the carrier's, 16 for binary64; with "
+            "--arithmetic arbitrary on a virtual artifact the default "
+            "arbitrary-precision digits, 500)"
+        ),
     )
     parser.add_argument(
         "--arithmetic",
@@ -883,6 +889,31 @@ def _add_evaluation_options(
             "choice as method selection, no acceptance pass, plain PV at gate "
             "0 for what they refuse; NinjaRS: zero stability thresholds); "
             "default off"
+        ),
+    )
+    parser.add_argument(
+        "--lane-rescue",
+        dest="evaluation.lane_rescue",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "v2 virtuals: reduce a reduction lane the backend refuses again "
+            "in a higher carrier (double-double, then arbitrary precision), "
+            "its binary64 coefficients lifted exactly, in the checked and the "
+            "unchecked mode; --no-lane-rescue leaves it to fail its point; "
+            "default on"
+        ),
+    )
+    parser.add_argument(
+        "--threads",
+        dest="evaluation.threads",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help=(
+            "v2 virtuals: the native threads of the artifact's load and of "
+            "every evaluation, clamped to the usable cores (default: "
+            "RAYON_NUM_THREADS, else every core)"
         ),
     )
     _add_kinematics_options(parser)
@@ -988,6 +1019,18 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
             "so that the stability run's binary64 calls are unchecked too (the "
             "runtime timing's optimistic pass is unchecked by default); not "
             "with --checked"
+        ),
+    )
+    parser.add_argument(
+        "--lane-rescue",
+        dest="evaluation.lane_rescue",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help=(
+            "loop artifacts: the lane rescue of refused reduction lanes in "
+            "every timed and stability call (default on); --no-lane-rescue "
+            "times and measures pure binary64 calls, refused points without "
+            "a value"
         ),
     )
     parser.add_argument(

@@ -152,10 +152,14 @@ class IOExportEWSudTest(IOTests.IOTestManager):
 
     @IOTests.createIOTest()
     def testIO_test_ppzz_ewsudakov(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > z z [LOonly=QCD] --ewsudakov'], 'loop_qcd_qed_sm_Gmu_forSudakov')
 
     @IOTests.createIOTest()
     def testIO_test_pptt_ewsudakovSA(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f)$]"""
         self.generate(['p p > t t~  [LOonly=QCD] --ewsudakov'], 'loop_qcd_qed_sm_Gmu_forSudakov', SA=True)

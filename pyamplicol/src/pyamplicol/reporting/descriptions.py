@@ -97,7 +97,8 @@ def _peak_ram(report: Any) -> str:
         "matrix element on this backend: the peak resident set size of a "
         "process that loads the artifact and evaluates on this backend alone "
         "(each backend is profiled in its own such process), at the runtime "
-        "setup's points per call, over its binary64 warm-up and timed calls, "
+        "setup's points per call, over its binary64 warm-up (or the warm entry "
+        "that replaces it) and timed calls, "
         "before the reference timing (whose own peak is in --json, "
         "reference), on one core (every thread pool at one thread): the "
         "memory of one Monte Carlo worker"
@@ -152,10 +153,18 @@ def _profile(report: Any) -> list[Block]:
                     "unchecked reduction alone, no stability checks, no "
                     "rescue, no best-effort re-evaluation; with --checked the "
                     "backends' own acceptance checks, a refused point served "
-                    "best-effort, the default backend as auto); the "
+                    "best-effort, the default backend as auto); 'refused "
+                    "lanes rescued': in both modes a reduction lane the "
+                    "backend still refuses is reduced again in double-double "
+                    "(then arbitrary precision) inside the timed call, its "
+                    "binary64 coefficients reused (--no-lane-rescue: pure "
+                    "binary64, such points without a value); the "
                     "distinct points per call (a new batch every call); the "
                     "timed calls (their count and size from the rule of the "
-                    "counts row), after the untimed warm-up; the reference "
+                    "counts row), after the untimed warm-up (or, where a "
+                    "point is dear and the runtime has one, its warm entry, "
+                    "which builds what a first call builds without a "
+                    "point); the reference "
                     "points the multiplier comes from; on one core: each "
                     "backend is timed in its "
                     "own process whose thread pools all run one thread (what "
@@ -170,14 +179,47 @@ def _profile(report: Any) -> list[Block]:
                     "minimums take when they alone exceed it), as given "
                     "(counts on the command line or in the card), or from the "
                     "default time budgets (10 s for the runtime timing, one "
-                    "minute per --n_core worker for the stability run)",
+                    "minute per --n_core worker for the stability run; a cost "
+                    "that cannot change the counts is not measured first, "
+                    "and when loading the artifact alone takes a backend's "
+                    "share every backend runs the minimums, measured as they "
+                    "run). When the minimums exceed the budget (the runtime "
+                    "timing's, the default or --target-runtime, and with "
+                    "--stability the stability run's), the runtime timing "
+                    "alone times no reference ('no dd multiplier': an "
+                    "explicit --ground-truth times it) and, when the default "
+                    "backend alone still exceeds it, every table holds that "
+                    "backend only ('TIRust not profiled': --all-backends, or "
+                    "--loop-reduction, chooses); counts given are honoured "
+                    "as given (a value stated in a run card is given); "
+                    "nothing is left out but on a lower bound of the "
+                    "measured costs, one decision on whatever this run has "
+                    "measured so far, called again as numbers arrive; "
+                    "'stability on N workers': fewer than --n_core because "
+                    "three quarters of the memory available hold only N at "
+                    "one worker's measured size (a --n_core given is "
+                    "honoured, said when it does not fit)",
                 ),
                 (
                     "ground truth",
                     "the reference precision of both tables (--ground-truth): "
                     "the stability run's true values and the reference time "
                     "multipliers; 'none (estimates only)': no reference pass, "
-                    "the stability tables show the estimates alone",
+                    "the stability tables show the estimates alone. With an "
+                    "arbitrary-precision ground truth a reference that agrees "
+                    "with another backend's to 2^-106 relative (binary64's "
+                    "unit roundoff squared, the double-double truth's "
+                    "accuracy) is trusted; any other valued one, or the only "
+                    "one, is evaluated again with the recommended stability "
+                    "checks and is 'no reference' when that estimate exceeds "
+                    "binary64's unit roundoff (2^-53, what a reference must "
+                    "resolve), or when two such checked references still "
+                    "differ by more than it (--json samples: "
+                    "reference_certified). With one backend profiled (or the "
+                    "other refused) every reference is evaluated once, with "
+                    "the checks. The runtime table's multipliers stay one "
+                    "optimistic pass; the stability table's reference time "
+                    "includes the checked evaluations",
                 ),
                 ("backends", "the reduction backends compared. " + _DEFAULT_MARK),
             ],
@@ -196,7 +238,8 @@ def _profile(report: Any) -> list[Block]:
                         f"time over its points; '({label} xN)', muted: the "
                         f"same optimistic pass in {name} (the ground truth) on "
                         "the same backend and core - the unchecked reduction, "
-                        "no stability checks, no rescue, no best-effort "
+                        "no stability checks, no rescue policy (its refused "
+                        "lanes rescued), no best-effort "
                         "re-evaluation - takes N times this time per point: N "
                         "is its median call's time per point over this one, "
                         "after one untimed point, its calls of one SIMD chunk "
@@ -205,7 +248,10 @@ def _profile(report: Any) -> list[Block]:
                         "calls' batches, at least one call, more while they "
                         "fit its budget (a quarter of the backend's runtime "
                         f"share); '({label} -)': no reference call ran (its "
-                        "points, calls and failures are in --json, reference)"
+                        "points, calls and failures are in --json, reference); "
+                        f"with {name} listed in --measured-precisions, N is "
+                        "its own runtime table's time per point (its stream "
+                        "timed once, at its own batch, with its warm-up)"
                         + (
                             f"; on {threads} threads the time per point is the "
                             f"call's wall time with {threads} threads working "
@@ -281,13 +327,17 @@ def _profile(report: Any) -> list[Block]:
                     (
                         None,
                         "--ground-truth none: each flat point is evaluated in "
-                        "binary64 only, with the default rotation test; no "
-                        "reference, so no true digits. " + _MADLOOP,
+                        "binary64 only, with its stability estimate ("
+                        + setup.get("estimate", "the default checks")
+                        + "); no reference, so no true digits. "
+                        + _MADLOOP,
                     ),
                     (
                         "percentile",
                         "the points sorted by their estimated digits from worst "
-                        "to best: the row 1 % is the point below which 1 % lie",
+                        "to best: the row 1 % is the point below which 1 % lie, "
+                        "100 % the best point (the row p holds the points "
+                        "between floor(p' N) and floor(p N), p' the row above)",
                     ),
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
@@ -295,7 +345,6 @@ def _profile(report: Any) -> list[Block]:
                         "the estimated stable digits of the point at that "
                         "percentile; '- (N >= n)' when n points are needed",
                     ),
-                    ("class", "the number of points between this and the previous row"),
                 ],
             ),
             (
@@ -339,20 +388,24 @@ def _profile(report: Any) -> list[Block]:
                     (
                         "percentile",
                         "the points sorted from worst to best: the row 1 % is the "
-                        "point below which 1 % of the points lie",
+                        "point below which 1 % of the points lie, 100 % the best "
+                        "point (the row p holds the points between floor(p' N) "
+                        "and floor(p N), p' the row above)",
                     ),
                     ("backend", "the reduction backend. " + _DEFAULT_MARK),
                     (
                         "true digits",
                         "the stable digits of the point at that percentile; "
-                        "'- (N >= n)' when n points are needed to fill it",
+                        "'- (N >= n)' when n points are needed to fill it; "
+                        "'(k failed)': k points of the row's class have no "
+                        "value (read at 0 digits)",
                     ),
-                    ("class", "the number of points between this and the previous row"),
                     (
                         "|est-true|",
-                        "how far the binary64 estimate of the digits (one default "
-                        "rotation of the point) is from the true digits: minimum, "
-                        "median and maximum over the class",
+                        "how far the binary64 estimate of the digits ("
+                        + setup.get("estimate", "the default checks")
+                        + ") is from the true digits: minimum, median and maximum "
+                        "over the class",
                     ),
                     (
                         "est-true med",
@@ -381,12 +434,18 @@ def _profile(report: Any) -> list[Block]:
                     (
                         "time",
                         "the wall time of the backend's binary64 calls with "
-                        "their stability checks (the default rotation test "
-                        "evaluates each point twice), summed over the workers "
+                        "their stability checks (the default checks evaluate "
+                        "each point again rotated, and re-reduce TIRust's points "
+                        "in the rescaled frame), summed over the workers "
                         "(each on one core, one thread per pool), "
                         "after each worker's untimed start-up (loading, first "
                         f"calls); '({label} xN)': its {name} reference calls "
-                        "(one evaluation per point) took N times as long in "
+                        "(one evaluation per point; with an arbitrary-precision "
+                        "ground truth, plus the checked re-runs of the "
+                        "references the cross-check did not certify, or with "
+                        "one backend one checked evaluation per point; each "
+                        "worker's first checked call untimed) took N times as "
+                        "long in "
                         "total, so N is not the cost ratio of one evaluation "
                         f"(the runtime table's '({label} xN)'); under the time "
                         "when "
@@ -410,6 +469,53 @@ def _profile(report: Any) -> list[Block]:
                 ],
             ),
         ]
+    entries = (report.stability_setup or {}).get("measured_precisions") or []
+    if any(entry.get("stability") is not None for entry in entries):
+        blocks.append(
+            (
+                "Stable / estimated digits of <precision> (--measured-precisions)",
+                [
+                    (
+                        None,
+                        "Each --measured-precisions entry other than binary64 is "
+                        "its own pair of tables, read as binary64's: its points "
+                        "evaluated in that precision with the default checks "
+                        "(best-effort values, lane rescue as that arithmetic "
+                        "has it). Below the ground truth: true digits against "
+                        "it, capped to the precision's own range (double-double "
+                        "-log10(2^-106) = 31.91, arbitrary precision its "
+                        "digits) and to what the ground truth certifies (an "
+                        "arbitrary-precision truth: its cross-check's 2^-106, "
+                        "or the agreement its backends' references reach; the "
+                        "title says 'capped at what the ground truth "
+                        "certifies' when that is the lower). The ground truth's own "
+                        "precision: its estimated digits only. The per-sample "
+                        "records (--json, --samples-output) hold every value "
+                        "as the exact decimal text of its carrier and the "
+                        "digits uncapped too.",
+                    ),
+                ],
+            )
+        )
+    if getattr(report, "runtime_measured", ()):
+        blocks.append(
+            (
+                "Runtime per reduction backend / Time per point and stage, "
+                "<precision> (--measured-precisions)",
+                [
+                    (
+                        None,
+                        "binary64's tables for another measured precision: the "
+                        "same optimistic pass in that arithmetic, from binary64's "
+                        "counts and budget (--target-runtime per precision), its "
+                        "batch fitted to its measured cost (down to one point; a "
+                        "--batch-size given honoured); its time carries the "
+                        "ground truth's multiplier against it, none on the "
+                        "ground truth's own table.",
+                    ),
+                ],
+            )
+        )
     blocks.append(
         (
             "Failure causes (under a table, after ---)",
@@ -419,7 +525,10 @@ def _profile(report: Any) -> list[Block]:
                     "One line per backend and cause, most frequent first: the "
                     "number of points, their share of the backend's points, the "
                     "backend, and the cause. 'best-effort': refused, returned "
-                    "with the best available value; 'no value': no result; 'no "
+                    "with the best available value; 'no value': no result; 'lane "
+                    "rescue': served, with reduction lanes refused in binary64 "
+                    "reduced again in the carrier named (their coefficients the "
+                    "binary64 ones), within the point's estimate; 'no "
                     f"reference': the {name} re-run failed; '... in {name}': "
                     "the same in the runtime's reference timing (counted over "
                     "its points).",
@@ -529,7 +638,14 @@ def _virtual(value: Any) -> list[Block]:
                 ("bits", "the mantissa bits of that precision"),
                 ("reduction", "the reduction backend that served the point"),
                 ("accuracy established", "whether a requested target was proven"),
-                ("detail", "the reason of a refusal or fallback"),
+                (
+                    "detail",
+                    "the reason of a refusal or fallback; for a point whose "
+                    "refused reduction lanes the lane rescue served, 'lane "
+                    "rescue: N lanes in <carrier>' and, when the call's checks "
+                    "had no reduction-direction check, that its estimate "
+                    "includes the rescaled one",
+                ),
             ],
         ),
     ]
@@ -563,10 +679,15 @@ def _virtual(value: Any) -> list[Block]:
                 [
                     (
                         None,
-                        "Relative error estimates from the requested checks: "
-                        "green within the target, red above.",
+                        "Relative error estimates from the requested checks, "
+                        "with the rescaled reduction-direction check added on "
+                        "points with rescued lanes when the requested checks "
+                        "had no reduction check (and on TIRust's points under "
+                        "a default check set): green within the target, red "
+                        "above; an estimate above 1 shows as >1 (--json keeps "
+                        "the number).",
                     ),
-                    ("checks", "each check and its own estimate"),
+                    ("checks", "each check that ran and its own estimate"),
                 ],
             )
         )

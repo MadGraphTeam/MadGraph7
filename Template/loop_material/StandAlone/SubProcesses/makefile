@@ -51,6 +51,7 @@ PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard COLLIER_interface.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard TIRUST_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard compute_color_flows.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard mg5_citation.f))
 
@@ -72,6 +73,7 @@ OLP_PROCESS= MadLoopParamReader.o MadLoopCommons.o \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/TIR_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/GOLEM_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/COLLIER_interface.f)) \
+ $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/TIRUST_interface.f)) \
  $(patsubst $(DOTF),$(DOTO),$(wildcard $(LOOP_PREFIX)*/compute_color_flows.f))
 
 POLYNOMIAL = $(patsubst $(DOTF),$(DOTO),$(wildcard polynomial.f))
@@ -151,7 +153,7 @@ WRAPPER_OBJS := $(patsubst %.f,%.o,$(wildcard */f2py_wrapper.f))
 ALL_DOTF := $(wildcard */polynomial.f */loop_matrix.f */improve_ps.f */born_matrix.f */CT_interface.f \
              */loop_num.f \
              */helas_calls*.f */mp_compute_loop_coefs.f */mp_helas_calls*.f */coef_construction_*.f \
-             */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f \
+             */loop_CT_calls_*.f */mp_coef_construction_*.f */TIR_interface.f */COLLIER_interface.f */TIRUST_interface.f \
              MadLoopParamReader.f MadLoopCommons.f mg5_citation.f */GOLEM_interface.f */compute_color_flows.f \
              */mp_born_amps_and_wfs.f */jamp?_calls_*.f)
 
@@ -213,7 +215,12 @@ shared: lib$(LIBALLME).$(dylibext)
 # builds them from a signature file (f2py -h), so no Fortran source is copied
 # to meson's build directory, where INCLUDE files are not found and the
 # P*/f2py_wrapper.f of different subprocesses would overwrite each other.
-F2PY_ENV = FC="$(FC)" LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS) $(LINK_LOOP_LIBS) $(LD_F2PY)"
+# Of the loop libraries, LDFLAGS takes only the library paths and linker
+# options (run paths): the libraries themselves are in the wrapped library.
+# meson also links LDFLAGS into its compiler sanity check, which runs in its
+# build directory, where a relative run path ($ORIGIN, as for TIRust with
+# internal dependencies) does not find a shared library.
+F2PY_ENV = FC="$(FC)" LDFLAGS="-Wl,-rpath,$(HERE) -L$(HERE) $(RPATH_LIBS) $(filter -L% -Wl%,$(LINK_LOOP_LIBS)) $(LD_F2PY)"
 
 # library of matrix$(MENUM)py, named after the output and subprocess
 # directories, like liball after the output one: f2py modules of several

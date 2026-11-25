@@ -11,7 +11,7 @@
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_INLINE_HELAMPS
+#ifdef MADMATRIX_INLINE_HELAMPS
 #define INLINE inline
 #define ALWAYS_INLINE __attribute__( ( always_inline ) )
 #else
@@ -252,7 +252,7 @@
     const fptype_amp_sv tm = 1 - tp;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
 #else
       volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
@@ -261,7 +261,7 @@
       // The Fortran ip/im indices ( 1 + nh ) / 2 and ( 1 - nh ) / 2 (for pp > 0, ( 3 +- nh ) / 2 as omega(2) has
       // indexes 1,2) are the truth values tp and tm: an array element x[ip] is tm * x[0] + tp * x[1], and
       // ip * x[ip] is just tp * x[1] (and likewise for im)
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pp == 0. )
       {
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
@@ -329,7 +329,7 @@
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -542,7 +542,7 @@
     {
       const fptype_amp_sv nsvahl = static_cast<fptype_amp>( nsv ) * abshel;
       const fptype_amp_sv hel0 = 1 - abshel; // truth value of hel == 0 (longitudinal polarisation)
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pt2 + ( pvec3 * pvec3 ) ) );
       const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
@@ -610,7 +610,7 @@
     else
     {
       const fptype_amp_sv& pp = pvec0; // NB: rewrite the following as in Fortran, using pp instead of pvec0
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt = fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
 #else
       volatile fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
@@ -618,7 +618,7 @@
 #endif
       w[0] = cxzero_sv();
       w[3] = cxmake( hel * pt / pp * sqh, 0. );
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pt != 0. )
       {
         const fptype_amp pzpt = pvec3 / ( pp * pt ) * sqh * hel;
@@ -699,7 +699,7 @@
     const fptype_amp_sv p3 = fpamp_of_mom( vc.pvec[3] );
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( vc.w );
     const cxtype_amp_sv rdote = w[0] * r0 - w[1] * r1 - w[2] * r2 - w[3] * r3;
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
     if( rdotp == 0. )
     {
       mgDebug( 1, __FUNCTION__ );
@@ -731,7 +731,7 @@
   {
     // As in ixxxxx: pp+p3 is taken from the light-cone identity ( pp+p3 ) ( pp-p3 ) = pT^2 for a backward
     // momentum (no cancellation), and the momentum along -z, where it vanishes, has the spinor ( 0, 1 )
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     // Variables xxxDENOM avoid division-by-0 FPEs in the lanes that do not use the result (#701, #727) and
     // are 'volatile' so that they are not optimised away (#724); a few more avoid sqrt-of-negative FPEs (#736)
     volatile fptype_amp_v ppDENOM = fpternary( pp != 0, pp, 1. ); // hack: ppDENOM[ieppV]=1 if pp[ieppV]==0
@@ -797,7 +797,7 @@
     const fptype_amp_sv q3 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, iref ) );
     // A reference with no direction (a lane without a valid momentum, say) gives the helicity basis,
     // r = ( |p|, -p ), as ixxxxxr in aloha_functions.f does (there exactly ixxxxx, here up to a phase)
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     const auto nodir = ( q1 == 0 and q2 == 0 and q3 == 0 );
     const fptype_amp_v r1 = fpternary( nodir, -p1, q1 );
     const fptype_amp_v r2 = fpternary( nodir, -p2, q2 );
@@ -812,7 +812,7 @@
     // BRANCHLESS HELICITY: as in ixxxxx, the spin state enters as the truth values tp (nh == +1) and tm (nh == -1)
     const fptype_amp_sv tp = ( 1 + nh ) * (fptype_amp)0.5;
     const fptype_amp_sv tm = 1 - tp;
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     volatile fptype_amp_v pp2 = p1 * p1 + p2 * p2 + p3 * p3; // volatile fixes #736
     volatile fptype_amp_v rr2 = r1 * r1 + r2 * r2 + r3 * r3;
     const fptype_amp_v pp = fpmin( p0, fpsqrt( pp2 ) );
@@ -830,7 +830,7 @@
     const fptype_amp_sv dr = x0 * y1r - x1r * y0;
     const fptype_amp_sv di = x0 * y1i - x1i * y0;
     // The normalisation omp2 |d|^2 + omm2 |c|^2 = p.r / |r| > 0
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     volatile fptype_amp_v omp2DENOM = fpternary( p0 + pp > 0, p0 + pp, 1. ); // hack: no FPE in a lane without a valid momentum
     const fptype_amp_v omp2n = p0 + pp;
     const fptype_amp_v omm2n = fmass * fmass / (const fptype_amp_v)omp2DENOM;
@@ -1022,7 +1022,7 @@
     const fptype_amp_sv tm = 1 - tp;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) + ( pvec3 * pvec3 ) ) );
       if( pp == 0. )
       {
@@ -1098,7 +1098,7 @@
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.

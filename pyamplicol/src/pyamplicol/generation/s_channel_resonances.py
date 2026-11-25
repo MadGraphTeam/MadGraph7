@@ -28,22 +28,79 @@ def s_channel_resonances(
     model: Model,
     max_coupling_orders: Mapping[str, int] | None = None,
 ) -> list[dict[str, object]]:
-    """``[{"pdg", "labels", "color"}]`` of every possibly unstable particle (see
-    ``_possibly_unstable``) that a tree current of two or more final-state legs
-    can carry, with a complementary current to close the amplitude with. The
-    pdg carries the summed charge of the outgoing legs it decays to."""
+    """``[{"pdg", "labels", "color", "required"}]`` of every possibly unstable
+    particle (see ``_possibly_unstable``) that a tree current of two or more
+    final-state legs can carry, with a complementary current to close the
+    amplitude with. The pdg carries the summed charge of the outgoing legs it
+    decays to. ``required``: the amplitude cannot be closed when the current of
+    these legs carries no possibly unstable particle, so every diagram has one
+    of these resonances (e+ ve only from a W, not e+ e- with the photon)."""
 
     if not any(_possibly_unstable(model, p) for p in model.particles.values()):
         return []
     limits = _normalize_coupling_order_limits(max_coupling_orders)
     legs = process.legs
-    every = final = 0
+    every = sum(1 << (leg.label - 1) for leg in legs)
+    final = sum(1 << (leg.label - 1) for leg in legs if leg.is_final)
+    species = _currents(process, model, limits)
+    closes = _closes(species, every, model, limits)
+    required: dict[int, bool] = {}
+    found: dict[tuple[int, tuple[int, ...]], dict[str, object]] = {}
+    for mask, particles in species.items():
+        if mask & ~final or mask.bit_count() < 2:
+            continue
+        decay_legs = [leg for leg in legs if mask >> (leg.label - 1) & 1]
+        rest = species.get(every & ~mask, {})
+        for pdg, orders in particles.items():
+            if not _possibly_unstable(model, model.particle(pdg)):
+                continue
+            closing = rest.get(model.anti_particle(pdg), ())
+            if not any(
+                _coupling_orders_within_limits(
+                    _combine_coupling_order_tuples(a, b), limits
+                )
+                for a in orders
+                for b in closing
+            ):
+                continue
+            if mask not in required:
+                required[mask] = closes and not _closes(
+                    _currents(process, model, limits, blocked=mask),
+                    every,
+                    model,
+                    limits,
+                )
+            charge = sum(model.charge(int(leg.pdg)) for leg in decay_legs)
+            if abs(model.charge(pdg) - charge) > 1e-9:
+                pdg = model.anti_particle(pdg)
+            labels = tuple(leg.label for leg in decay_legs)
+            found.setdefault(
+                (pdg, labels),
+                {
+                    "pdg": pdg,
+                    "labels": list(labels),
+                    "color": int(model.color_rep(pdg)),
+                    "required": required[mask],
+                },
+            )
+    return [found[key] for key in sorted(found)]
+
+
+def _currents(
+    process: CanonicalProcessIR,
+    model: Model,
+    limits,
+    blocked: int = 0,
+) -> dict[int, dict[int, set[CouplingOrders]]]:
+    """The species, with their coupling orders, that a tree current of every
+    subset of legs (a bit mask of their labels) can carry. The currents of the
+    ``blocked`` legs and of the others, the two ends of one propagator, carry
+    no possibly unstable particle."""
+    every = 0
     species: dict[int, dict[int, set[CouplingOrders]]] = {}
-    for leg in legs:
+    for leg in process.legs:
         bit = 1 << (leg.label - 1)
         every |= bit
-        if leg.is_final:
-            final |= bit
         if leg.outgoing_pdg is not None:
             species.setdefault(bit, {}).setdefault(int(leg.outgoing_pdg), set()).add(())
     for mask in _masks_by_size(every):
@@ -71,37 +128,29 @@ def s_channel_resonances(
                                     current.setdefault(vertex.particles[2], set()).add(
                                         orders
                                     )
-    found: dict[tuple[int, tuple[int, ...]], dict[str, object]] = {}
+        if blocked and mask in (blocked, every & ~blocked):
+            for pdg in [
+                p for p in current if _possibly_unstable(model, model.particle(p))
+            ]:
+                del current[pdg]
+    return species
+
+
+def _closes(species, every: int, model: Model, limits) -> bool:
+    """Whether the currents close a tree amplitude of all legs: two currents
+    of complementary legs joined by one propagator."""
     for mask, particles in species.items():
-        if mask & ~final or mask.bit_count() < 2:
+        if mask & every != mask or mask in (0, every):
             continue
-        decay_legs = [leg for leg in legs if mask >> (leg.label - 1) & 1]
         rest = species.get(every & ~mask, {})
-        for pdg, orders in particles.items():
-            if not _possibly_unstable(model, model.particle(pdg)):
-                continue
-            closing = rest.get(model.anti_particle(pdg), ())
-            if not any(
-                _coupling_orders_within_limits(
-                    _combine_coupling_order_tuples(a, b), limits
-                )
-                for a in orders
-                for b in closing
-            ):
-                continue
-            charge = sum(model.charge(int(leg.pdg)) for leg in decay_legs)
-            if abs(model.charge(pdg) - charge) > 1e-9:
-                pdg = model.anti_particle(pdg)
-            labels = tuple(leg.label for leg in decay_legs)
-            found.setdefault(
-                (pdg, labels),
-                {
-                    "pdg": pdg,
-                    "labels": list(labels),
-                    "color": int(model.color_rep(pdg)),
-                },
-            )
-    return [found[key] for key in sorted(found)]
+        if any(
+            _coupling_orders_within_limits(_combine_coupling_order_tuples(a, b), limits)
+            for pdg, orders in particles.items()
+            for a in orders
+            for b in rest.get(model.anti_particle(pdg), ())
+        ):
+            return True
+    return False
 
 
 def _possibly_unstable(model: Model, particle: Particle) -> bool:

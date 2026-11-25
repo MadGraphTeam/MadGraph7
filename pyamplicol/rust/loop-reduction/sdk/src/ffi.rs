@@ -219,6 +219,91 @@ pub unsafe extern "C" fn rusticol_virtual_open(
         Ok(())
     })
 }
+/// [`rusticol_virtual_open`] with the runtime options of the TOML text
+/// `options_toml` (NULL: none; [`rusticol_virtual_set_options`]): checked
+/// before anything is loaded, their `threads` bound the load as well as
+/// the later evaluations; a refused option opens nothing.
+///
+/// # Safety
+///
+/// As [`rusticol_virtual_open`]; `options_toml` is NULL or a NUL-terminated
+/// string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_open_with_options(
+    path: *const c_char,
+    process: *const c_char,
+    parameters_json: *const c_char,
+    strategy: *const c_char,
+    options_toml: *const c_char,
+    output: *mut *mut VirtualHandle,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let options = text(options_toml)?
+            .map(RuntimeOptions::from_toml)
+            .transpose()
+            .map_err(bad)?;
+        let parameters = text(parameters_json)?
+            .map(serde_json::from_str::<SourceOverrides>)
+            .transpose()
+            .map_err(bad)?;
+        let runtime = Runtime::open_with_options(
+            required_text(path)?,
+            text(process)?,
+            parameters.as_ref(),
+            text(strategy)?.unwrap_or("auto"),
+            options.as_ref(),
+        )?;
+        *output = Box::into_raw(Box::new(VirtualHandle(runtime)));
+        Ok(())
+    })
+}
+/// The runtime options of a TOML text (the run card's `[evaluation]`
+/// table; a full run card is accepted, its other tables are not read):
+/// every option given is checked first (an unknown key or a bad value is
+/// `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` with the run card's refusal text, a
+/// setting this process or library does not serve the setter's error) and
+/// then all are applied; on any refusal nothing changes. An option the
+/// TOML does not give keeps its setting; a setter called afterwards
+/// overrides the option it sets.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread; `options_toml` is a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_options(
+    handle: *mut VirtualHandle,
+    options_toml: *const c_char,
+) -> c_int {
+    guard(|| unsafe {
+        let options = RuntimeOptions::from_toml(required_text(options_toml)?).map_err(bad)?;
+        mutable(handle)?.0.set_options(&options)?;
+        Ok(())
+    })
+}
+/// The native threads of the handle's later evaluations (the run card's
+/// `evaluation.threads`): at most `threads` workers, clamped to the threads
+/// the process may use (`loop_artifact::effective_threads`); 0 (the default)
+/// is rayon's rule, `RAYON_NUM_THREADS` else every core. The values do not
+/// depend on the count; on an error nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_threads(
+    handle: *mut VirtualHandle,
+    threads: u32,
+) -> c_int {
+    guard(|| unsafe {
+        let threads = (threads != 0).then_some(threads as usize);
+        mutable(handle)?.0.set_threads(threads)?;
+        Ok(())
+    })
+}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rusticol_virtual_free(handle: *mut VirtualHandle) -> c_int {
     guard(|| {
@@ -389,6 +474,34 @@ pub unsafe extern "C" fn rusticol_virtual_set_reduction_unchecked(
         Ok(())
     })
 }
+/// The lane rescue of the handle's later evaluations, the Python API's
+/// `lane_rescue=` (USER 2026-11-18; additive, ABI version 2 kept): 1 (the
+/// default) reduces a reduction lane a backend refuses again in a higher
+/// carrier (double-double, then arbitrary precision) from its binary64
+/// coefficients, in the checked and the unchecked mode; 0 leaves such a lane
+/// to fail its point (pure binary64 evaluations, as before the lane
+/// rescue). Any other value is `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and
+/// nothing changes.
+///
+/// # Safety
+///
+/// `handle` is NULL or a live handle of `rusticol_virtual_open` used by no
+/// other thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_set_lane_rescue(
+    handle: *mut VirtualHandle,
+    on: c_int,
+) -> c_int {
+    guard(|| unsafe {
+        let on = match on {
+            0 => false,
+            1 => true,
+            other => return Err(bad(format!("lane rescue takes 1 or 0 (got {other})"))),
+        };
+        mutable(handle)?.0.set_lane_rescue(on);
+        Ok(())
+    })
+}
 /// The kinematics improvement of the handle's later evaluations, the Python
 /// API's `kinematics_improvement=` (m-lit lit-psimprove; additive, ABI
 /// version 2 kept): `"z-shift"` (MadLoop's ImprovePSPoint 2 with MadLoop's
@@ -525,6 +638,7 @@ macro_rules! runtime_json {
 }
 runtime_json!(rusticol_virtual_metadata_json, metadata_json);
 runtime_json!(rusticol_virtual_capabilities_json, capabilities_json);
+runtime_json!(rusticol_virtual_options_json, options_json);
 runtime_json!(
     rusticol_virtual_correlation_histories_json,
     correlation_histories_json

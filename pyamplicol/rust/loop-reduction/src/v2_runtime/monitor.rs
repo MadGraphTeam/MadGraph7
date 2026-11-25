@@ -129,6 +129,7 @@ impl V2Runtime {
             Frame::Rescaled => ReductionCheck::RESCALED,
         });
         let mut collected = Vec::with_capacity(momenta.len());
+        self.rescued_last.clear();
         let points = self.evaluate_batch::<f64, Binary64, true>(
             momenta,
             scales,
@@ -139,6 +140,7 @@ impl V2Runtime {
             frame,
             &mut collected,
         )?;
+        let mut rescued = self.take_rescued(momenta.len());
         let mut failures: Vec<PointFailure> = points
             .iter()
             .map(|point| point.as_ref().err().cloned().unwrap_or_default())
@@ -147,6 +149,7 @@ impl V2Runtime {
         for (k, rotation) in checks.rotations().iter().enumerate() {
             let moved = rotate(rotation, momenta)?;
             let mut runs = Vec::with_capacity(momenta.len());
+            self.rescued_last.clear();
             let turned = self.evaluate_batch::<f64, Binary64, true>(
                 &moved,
                 scales,
@@ -157,6 +160,7 @@ impl V2Runtime {
                 None,
                 &mut runs,
             )?;
+            self.merge_rescued(&mut rescued);
             for (index, point) in turned.iter().enumerate() {
                 if let Err(reasons) = point {
                     failures[index].extend(
@@ -222,7 +226,14 @@ impl V2Runtime {
             )?;
             out.push((point, Some(estimate), None));
         }
-        Ok(out)
+        self.rescued_estimates(
+            momenta,
+            scales,
+            checks,
+            &rescued,
+            out,
+            |runtime, m, s, c| runtime.checked_batch(m, s, mode, c),
+        )
     }
 
     /// One loop-induced batch of one scale partition with its checks
@@ -245,6 +256,7 @@ impl V2Runtime {
         let rows = induced.plan_rows();
         let average = self.record.average;
         let mut collected = Vec::with_capacity(momenta.len());
+        self.rescued_last.clear();
         let points = self.induced_points_with(
             induced,
             momenta,
@@ -263,6 +275,7 @@ impl V2Runtime {
                 induced.square_vectors(&Binary64, vectors, &rows, &gram, width, average)
             },
         )?;
+        let mut rescued = self.take_rescued(momenta.len());
         let mut failures: Vec<PointFailure> = points
             .iter()
             .map(|point| point.as_ref().err().cloned().unwrap_or_default())
@@ -271,6 +284,7 @@ impl V2Runtime {
         for (k, rotation) in checks.rotations().iter().enumerate() {
             let moved = rotate(rotation, momenta)?;
             let mut runs = Vec::with_capacity(momenta.len());
+            self.rescued_last.clear();
             let turned = self.induced_points_with(
                 induced,
                 &moved,
@@ -287,6 +301,7 @@ impl V2Runtime {
                 None,
                 &mut |_, _, _| Ok(()),
             )?;
+            self.merge_rescued(&mut rescued);
             for (index, point) in turned.iter().enumerate() {
                 if let Err(reasons) = point {
                     failures[index].extend(
@@ -354,6 +369,79 @@ impl V2Runtime {
                 .map(|&s| squared[s].clone())
                 .collect();
             out.push((Ok((Vec::new(), values)), Some(estimate), finiteness));
+        }
+        self.rescued_estimates(
+            momenta,
+            scales,
+            checks,
+            &rescued,
+            out,
+            |runtime, m, s, c| runtime.induced_checked_batch(induced, m, s, mode, c),
+        )
+    }
+
+    /// Per point of the last executor call (`n` points), whether the lane
+    /// rescue served one of its lanes (`rescued_last`, taken).
+    fn take_rescued(&mut self, n: usize) -> Vec<bool> {
+        let mut rescued = std::mem::take(&mut self.rescued_last);
+        rescued.resize(n, false);
+        rescued
+    }
+
+    /// `rescued` or-ed with the last executor call's (a rotated evaluation
+    /// of the same points: the Python API's `plan_export.merged_rescue`).
+    fn merge_rescued(&mut self, rescued: &mut [bool]) {
+        let last = self.take_rescued(rescued.len());
+        for (point, served) in rescued.iter_mut().zip(last) {
+            *point |= served;
+        }
+    }
+
+    /// The Python API's `reduction._rescued_estimates`: when `checks` lack
+    /// the reduction-direction check, every successful point of `out` with
+    /// rescued lanes (`rescued`: in its reference or a rotated evaluation)
+    /// is evaluated again (`again`: the batch's own checked evaluation, on
+    /// this runtime's backend and in its acceptance mode, so a per-point
+    /// fallback's points on the fallback) with the rescaled
+    /// reduction-direction check added ([`StabilityChecks::rescued_checks`])
+    /// and takes that run's estimate, its value and records unchanged; a
+    /// point the second run fails keeps its first result. Nothing runs
+    /// without such points.
+    fn rescued_estimates(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        checks: &StabilityChecks,
+        rescued: &[bool],
+        mut out: Vec<Monitored>,
+        mut again: impl FnMut(
+            &mut Self,
+            &[Vec<Rational>],
+            &[Rational],
+            &StabilityChecks,
+        ) -> RusticolResult<Vec<Monitored>>,
+    ) -> RusticolResult<Vec<Monitored>> {
+        let Some(extended) = checks.rescued_checks() else {
+            return Ok(out);
+        };
+        let indices: Vec<usize> = (0..out.len())
+            .filter(|&index| rescued[index] && out[index].0.is_ok() && out[index].1.is_some())
+            .collect();
+        if indices.is_empty() {
+            return Ok(out);
+        }
+        let points: Vec<Vec<Rational>> = indices.iter().map(|&i| momenta[i].clone()).collect();
+        let at: Vec<Rational> = indices.iter().map(|&i| scales[i].clone()).collect();
+        let found = again(self, &points, &at, &extended)?;
+        if found.len() != indices.len() {
+            return Err(invalid(
+                "the rescued points' checked evaluation lost points",
+            ));
+        }
+        for ((point, estimate, _), &index) in found.into_iter().zip(&indices) {
+            if let (Ok(_), Some(estimate)) = (point, estimate) {
+                out[index].1 = Some(estimate);
+            }
         }
         Ok(out)
     }

@@ -4,20 +4,17 @@ name: running acceptance test (mg7)
 # Controls when the workflow will run
 #    branches: [ main LTS ]
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
-    # All branches, no tags: a release tag points at a commit that already
-    # ran this suite when it was pushed to main, and release.yml gates on
-    # that main run rather than re-testing the same tree. '**' is needed
-    # over '*' so branch names containing a slash still match.
+    # main only: other branches run through workflow_dispatch
     branches:
-      - '**'
+      - main
     paths-ignore:
       - 'docs/**'
 #      - '.github/**'
 
-  pull_request:
-    types: [opened, synchronize, reopened]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -45,7 +42,7 @@ jobs:
   # composite action so it stays in sync with check_xsec_processes_mg7.yml.
   build_madspace:
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/build_madspace
@@ -58,6 +55,20 @@ jobs:
   # dispatch and the alpha_s of a decay) and test_auto_width_nlo.py (the NLO widths
   # with MC@NLO, the options of an 'auto' width, the precompiled headers of the
   # build) are run in the same job: they need the launcher module too.
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
   unittest_mg7_launch:
     # merged jobs, run one after the other: unittest_mg7_launch
     #   acceptancetest_mg7_launcher_cut_names
@@ -65,7 +76,7 @@ jobs:
     # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     needs: build_madspace
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -113,6 +124,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_every_cut_it_writes_builds_an_observable test_it_tightens_the_jet_pt_and_pair_mass_to_xqcut test_it_drops_the_jet_cone_cuts test_with_the_option_off_it_only_zeroes_cuts_above_xqcut test_it_leaves_an_unmerged_run_alone -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_1:
     # former jobs, run one after the other: acceptancetest_mg7_ufo_aloha
@@ -124,7 +149,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -269,6 +294,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_add_time_of_flight_mg7 -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_2:
     # former jobs, run one after the other: acceptancetest_mg7_fd_gauge
@@ -282,7 +321,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -476,6 +515,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             ./tests/test_manager.py test_vegas_simd_consistency_mg7 test_madnis_simd_consistency_mg7 test_madnis_gridpack_simd_consistency_mg7 -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_3:
     # former jobs, run one after the other: acceptancetest_mg7_e_p_collision
@@ -486,7 +539,7 @@ jobs:
     # Each keeps its own steps, run even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -575,6 +628,20 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_mg7_decays_reproducible_with_seed -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_bundle_4:
     # merged jobs, run one after the other: acceptancetest_mg7_bundle_4
@@ -584,7 +651,7 @@ jobs:
     # job restores the caches once instead of once per former job.
     runs-on: ubuntu-24.04
     needs: build_madspace
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -657,6 +724,31 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madmatrix_mssm_gogo -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
+
+      # ---- acceptancetest_mg7_precision_check ----
+      # The default precision denom64 (FPTYPE=v) and [run] precision_check: a
+      # fraction of the events evaluated again with an all64 (FPTYPE=d) build,
+      # the two built side by side; the check reproduces the |M|^2 of the run.
+      # Needs the madspace + LHAPDF(NNPDF23) stack.
+      - name: "acceptancetest_mg7_precision_check"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_precision_check_mg7 test_precision_check_reproduces_the_run_mg7 -pA -t0 -l INFO
 
   acceptancetest_mg7_madtrex:
     needs: build_madspace
@@ -667,7 +759,7 @@ jobs:
     # readers, in-place weights) and test_reweight_backends (classic module and
     # MadtRex reweight the same events and agree event by event; needs f2py).
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -678,6 +770,12 @@ jobs:
       # on the madtrex sources and on the madspace sources it is built against
       # (not madspace/install, restored above). Saved right after the build, so
       # that a failing test below does not throw the build away.
+      # Restore only: the madtrex_cache job of warm_cache.yml, on main, is the
+      # one writer. A PR restores main's entry when it touches neither madtrex/
+      # nor madspace/, and otherwise builds it in this job; nothing else in the
+      # run needs that build, so it is not kept.
+      # The key expression is duplicated in warm_cache.yml (madtrex_cache):
+      # keep the two in sync.
       - name: madtrex cache key
         run: |
             echo "MADTREX_KEY=madtrex-${{ runner.os }}-py$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')-${{ hashFiles('madtrex/**', 'madspace/**', '!madspace/install/**') }}" >> $GITHUB_ENV
@@ -692,12 +790,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             python3 madtrex/install.py --yes -j 4
-      - name: Save madtrex install
-        if: steps.cache-madtrex.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: madtrex/install
-          key: ${{ env.MADTREX_KEY }}
       - name: test_madtrex_standalone
         if: ${{ !cancelled() }}
         run: |
@@ -709,6 +801,20 @@ jobs:
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
             env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_reweight_backends -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   acceptancetest_mg7_uncovered:
     # mg7 acceptance tests that no workflow selected (audit of 2026-10-24).
@@ -720,7 +826,7 @@ jobs:
     # Each step runs even when an earlier one failed.
     needs: build_madspace
     runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
@@ -753,3 +859,17 @@ jobs:
             # LHAPDF_DATA_PATH (install_lhapdf_pdfset) holds only NNPDF23: unset, these
             # tests find NNPDF40_lo_as_01180 in the heptools data dir via lhapdf-config
             env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_output_mg7_decay_run_card_has_no_cuts test_output_mg7_decay_subprocess_metadata test_color_flow_consistency_mg7 test_systematics_mg7_legacy test_systematics_mixed_order_mg7 test_mg7_reweighting_at_generation test_delphes_mg7 -pA -t0 -l INFO
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true

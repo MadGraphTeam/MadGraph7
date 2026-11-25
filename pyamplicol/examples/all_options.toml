@@ -383,7 +383,10 @@ artifact = "artifacts/pp_zjj_all_options"
 # permutation within each side of a concrete process. Legs never cross ">".
 # Default null.
 process = "d d~ > g z g"
-# evaluation.precision: Positive decimal-digit request. Default 16.
+# evaluation.precision: Positive decimal-digit request, or null: the carrier's
+# default, binary64's 16 digits, or with arithmetic = "arbitrary" on a virtual
+# artifact the default arbitrary-precision digits (500). A number given is
+# never overridden. Default null.
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
 resolved = true
@@ -444,6 +447,17 @@ poles = "all"
 # without a finite value fail. pyAmpliCol's stability checks stay their own
 # settings. Default false.
 reduction_unchecked = false
+# evaluation.lane_rescue: v2 virtuals: true reduces a reduction lane the
+# backend refuses again in a higher carrier (double-double, then arbitrary
+# precision), its binary64 coefficients lifted exactly and its kinematics
+# rebuilt there, in the checked and the unchecked mode; false leaves the lane
+# to fail its point (pure binary64). Default true.
+lane_rescue = true
+# evaluation.threads: v2 virtuals: the native threads of the artifact's load
+# and of every evaluation (every native pool of the runtime at that many
+# threads, clamped to the cores the process may use; values do not depend on
+# it). Default null: RAYON_NUM_THREADS, else every core.
+# threads = 4
 # evaluation.kinematics_improvement: the improvement of the input points to
 # exact energy-momentum conservation and exact on-shell externals, in each
 # carrier above binary64 (double-double, arbitrary precision) before anything
@@ -479,6 +493,9 @@ verify_successful = false
 [evaluation.stability_checks]
 # Stability checks of v2 virtual evaluations; with none, no estimate is returned.
 # Recommended: rotation_count = 1, reduction_direction = true, rescaled = true.
+# Without this section profile --stability measures its default estimate:
+# one default rotation on NinjaRS's points, one rotation and the rescaled
+# reduction-direction check on TIRust's (set here, it applies to every backend).
 # evaluation.stability_checks.rotations: Exact rotations, "<x|y|z>:<cos>:<sin>"
 # (e.g. "x:3/5:4/5"; avoid the beam axis) or "<ax>,<ay>,<az>:<radians>".
 # Default empty.
@@ -529,24 +546,42 @@ color_flow_ids = []
 runtime = false
 # benchmark.stability: Loop artifacts: the stability statistics of each
 # reduction backend (binary64 stable digits against a re-run in the
-# ground_truth precision, and the accuracy of the default rotation estimate)
+# ground_truth precision, and the accuracy of the default estimate: one
+# rotation, plus the rescaled reduction-direction check on TIRust's points)
 # over flat points. Default false.
 stability = false
 # benchmark.stability_points: Positive count of flat (RAMBO on diet) phase-space
 # points of the stability statistics (drawn with evaluation.phase_space's
-# seed and sqrt_s). Default 1000.
+# seed and sqrt_s). Unset (the default): as many as the time budget affords
+# (one minute per n_core worker), at least 5; a value set here (as below) is
+# given and honoured.
 stability_points = 1000
 # benchmark.n_core: Positive count of worker processes of the stability
 # statistics (`--n_core`; at most the usable cores; 1 runs in-process; the
-# result does not depend on it; the runtime timing always runs on one core).
-# Default 10.
+# result does not depend on it; the runtime timing runs one process at a
+# time, on benchmark.runtime_threads threads).
+# Default 10, lowered to what three quarters of the memory available hold at
+# one worker's measured size; a value set here (as below) is given: honoured,
+# with a warning when its workers do not fit.
 n_core = 10
 # benchmark.ground_truth: Loop artifacts: the reference precision of the
 # profile (`--ground-truth`): the stability run's true values and the
 # reference time multipliers of both tables. "double-double" ("dd") or
-# arbitrary precision, "arbitrary" ("arb", at the built-in rescue's 57
-# digits) or "arbitrary:DIGITS". Default "double-double".
+# arbitrary precision, "arbitrary" ("arb", at the default arbitrary-precision
+# digits, 500) or "arbitrary:DIGITS" (the stability run then cross-checks
+# each reference between the backends), or "none" (no reference: estimates only). Default
+# "double-double". A value set here (as below, even the default) is given:
+# the runtime timing then times its multiplier even when its minimal counts
+# exceed the budget.
 ground_truth = "double-double"
+# benchmark.measured_precisions: Loop artifacts: the precisions whose
+# stability the stability run measures (`--measured-precisions`), each its
+# own pair of tables in this order: "binary64" ("double", "b64"; the default
+# ["binary64"]), "double-double" ("dd"), "arbitrary[:DIGITS]" ("arb"), each
+# strictly below ground_truth (true digits against it) or ground_truth itself
+# (its estimates only, with the default checks); with ground_truth "none"
+# every entry is estimates only.
+measured_precisions = ["binary64"]
 # benchmark.checked: Loop artifacts: time the checked mode (`--checked`): the
 # backends' own acceptance checks, a refused point served best-effort, the
 # default backend as auto. Default false: one fully optimistic binary64 pass
@@ -559,6 +594,11 @@ checked = false
 # backend and five stability points. Default null: the counts given, else
 # the time budgets (10 s for the runtime, one minute per stability worker).
 completion_time = "10m"
+# benchmark.all_backends: Loop artifacts: time every reduction backend
+# whatever the budget (`--all-backends`), or false the default backend only
+# (`--no-all-backends`). Default null: every backend unless the default
+# backend alone exceeds the budget at its minimal counts.
+all_backends = true
 # benchmark.samples_output: Loop artifacts: the file the stability run writes
 # every sample's record to (`--samples-output`; one columnar JSON document:
 # the points' inputs, per backend each point's values, estimates, reference,

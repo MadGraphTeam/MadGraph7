@@ -60,12 +60,12 @@ def test_percentile_classes_and_values_on_a_thousand_points():
     true_in = [true[k] for k in order]
     est_in = [t + (3.0 if t < 0.1 else 1.0) for t in true_in]
     rows = percentile_table(true_in, est_in)
-    assert [row.percentile for row in rows] == [0.001, 0.01, 0.1, 0.5]
-    assert [row.rank for row in rows] == [1, 10, 100, 500]
-    assert [row.count for row in rows] == [1, 9, 90, 400]
+    assert [row.percentile for row in rows] == [0.001, 0.01, 0.1, 0.5, 1.0]
+    assert [row.rank for row in rows] == [1, 10, 100, 500, 1000]
+    assert [row.count for row in rows] == [1, 9, 90, 400, 500]
     # The value at percentile p is the true digits of the point of rank
-    # floor(p N) of the sorted list (worst first).
-    assert [row.digits for row in rows] == [0.0, 0.09, 0.99, 4.99]
+    # floor(p N) of the sorted list (worst first); 100 %: the best point.
+    assert [row.digits for row in rows] == [0.0, 0.09, 0.99, 4.99, 9.99]
     assert rows[0].deviation_min == rows[0].deviation_max == pytest.approx(3.0)
     assert rows[1].deviation_median == pytest.approx(3.0)
     assert rows[1].signed_median == pytest.approx(3.0)
@@ -76,21 +76,44 @@ def test_percentile_classes_and_values_on_a_thousand_points():
 
 def test_small_samples_leave_classes_empty_and_name_the_needed_count():
     rows = percentile_table([5.0, 1.0, 3.0, 9.0], [5.0, 0.5, 4.0, 9.0])
-    assert [row.rank for row in rows] == [0, 0, 0, 2]
-    assert [row.count for row in rows] == [0, 0, 0, 2]
-    assert [row.digits for row in rows] == [None, None, None, 3.0]
+    assert [row.rank for row in rows] == [0, 0, 0, 2, 4]
+    assert [row.count for row in rows] == [0, 0, 0, 2, 2]
+    assert [row.digits for row in rows] == [None, None, None, 3.0, 9.0]
     assert rows[0].deviation_median is None and rows[0].signed_median is None
     # The median class: the two worst points (1.0 -> 0.5, 3.0 -> 4.0).
     assert rows[3].deviation_min == 0.5 and rows[3].deviation_max == 1.0
     assert rows[3].signed_median == pytest.approx(0.25)
-    assert [row.needed_points for row in rows] == [1000, 100, 10, 2]
+    assert [row.needed_points for row in rows] == [1000, 100, 10, 2, 1]
     assert needed_points(0) == 1000
-    # One point: only the median rank floor(N/2) = 0 is unresolved as well.
+    # One point: the median rank floor(N/2) = 0 is unresolved as well; the
+    # 100 % row holds it.
     single = percentile_table([7.0], [8.0])
-    assert all(row.count == 0 and row.digits is None for row in single)
+    assert all(row.count == 0 and row.digits is None for row in single[:-1])
+    assert (single[-1].rank, single[-1].count, single[-1].digits) == (1, 1, 7.0)
     assert percentile_table([], []) == tuple(percentile_table([], [], PERCENTILES))
     with pytest.raises(ValueError, match="aligned"):
         percentile_table([1.0], [])
+
+
+@pytest.mark.parametrize("n", [1, 2, 10, 52, 1000])
+def test_the_classes_add_up_to_every_point_with_the_best_last(n):
+    """The 100 % row: the point of rank N (the best), its class the ranks
+    floor(N / 2) < rank <= N; every class floor(p N) - floor(p' N), all of
+    them N; failed points (no estimate) counted in their class."""
+
+    true = [((7 * k) % n) / 10 for k in range(n)]
+    estimated = [None if k % 5 == 0 else t + 1.0 for k, t in enumerate(true)]
+    rows = percentile_table(true, estimated)
+    assert len(rows) == len(PERCENTILES) and rows[-1].percentile == 1.0
+    ranks = [math.floor(p * n) for p in PERCENTILES]
+    assert [row.rank for row in rows] == ranks
+    assert [row.count for row in rows] == [
+        rank - previous for rank, previous in zip(ranks, [0, *ranks[:-1]], strict=True)
+    ]
+    assert sum(row.count for row in rows) == n
+    assert rows[-1].digits == max(true)
+    assert rows[-1].count == n - n // 2
+    assert sum(row.failed for row in rows) == sum(e is None for e in estimated)
 
 
 def test_needed_points_for_other_percentiles():
@@ -184,9 +207,11 @@ def test_failed_points_rank_worst_and_classes_skip_their_estimates():
     true = [0.0, 0.0, 12.0, 13.0, 14.0, 15.0]
     estimated = [None, None, 10.0, 12.0, 11.0, 15.0]
     rows = percentile_table(true, estimated)
-    # N = 6: only the 50 % class (ranks 1..3) is populated: both failures
-    # and the 12-digit point, whose deviation is the class's only one.
-    assert [row.rank for row in rows] == [0, 0, 0, 3]
+    # N = 6: below 50 % only the 50 % class (ranks 1..3) is populated: both
+    # failures and the 12-digit point, whose deviation is the class's only
+    # one; the 100 % class holds the other three.
+    assert [row.rank for row in rows] == [0, 0, 0, 3, 6]
+    assert (rows[4].digits, rows[4].count, rows[4].failed) == (15.0, 3, 0)
     assert (rows[3].digits, rows[3].count, rows[3].failed) == (12.0, 3, 2)
     assert rows[3].deviation_min == rows[3].deviation_max == pytest.approx(2.0)
     assert rows[3].signed_median == pytest.approx(-2.0)
@@ -640,9 +665,10 @@ def test_ground_truth_spellings():
     from pyamplicol.config import BenchmarkConfig
     from pyamplicol.config.errors import ConfigurationError
     from pyamplicol.loop_profile import GroundTruth, ground_truth
-    from pyamplicol.loops.v2.stability import DEFAULT_RESCUE
+    from pyamplicol.loops.v2.reduction import default_arbitrary_digits
 
-    default = dict(DEFAULT_RESCUE)["arbitrary"]
+    default = default_arbitrary_digits()
+    assert default == 500  # USER 2026-11-18
     assert BenchmarkConfig().ground_truth == "double-double"
     for text, expected in (
         ("double-double", GroundTruth("double-double")),
@@ -1130,3 +1156,517 @@ def test_runtime_threads_setting_and_pools():
     invocation = parse_cli(["profile", "art", "--runtime", "--runtime-threads", "4"])
     overrides = repr(invocation)
     assert "runtime_threads" in overrides and "4" in overrides
+
+
+class _ReferenceRuntime:
+    """A runtime whose reference call serves two points with status success:
+    one its checks trust, one whose estimate exceeds the target (a wrong
+    value served as a success, alphal00p/ninjars#15)."""
+
+    def __init__(self, relatives=(1e-40, 49.0)) -> None:
+        self.calls: list[dict[str, object]] = []
+        self.relatives = relatives
+
+    def evaluate(self, batch, **options):
+        from types import SimpleNamespace
+
+        self.calls.append(options)
+        values = [
+            [(Decimal("1.25"),), (Decimal("0.5"),)],
+            [(Decimal("5.8e17"),)],
+        ]
+        checked = "stability_checks" in options
+        return SimpleNamespace(
+            values=values,
+            valid=[True, True],
+            diagnostics=[None, None],
+            stability=[SimpleNamespace(relative=r) for r in self.relatives]
+            if checked
+            else None,
+        )
+
+
+def test_an_arbitrary_precision_reference_point_failing_its_checks_is_no_reference():
+    from pyamplicol.loop_profile import (
+        _REFERENCE_CHECKED,
+        _WORKER,
+        GroundTruth,
+        _stability_records,
+    )
+    from pyamplicol.loops.v2.stability import RECOMMENDED_CHECKS
+
+    saved = dict(_WORKER)
+    try:
+        runtime = _ReferenceRuntime()
+        _WORKER.clear()
+        _WORKER.update(runtime=runtime, truth=GroundTruth("arbitrary", 57))
+        # The plain reference (the cross-check's): one evaluation, no checks.
+        records = _stability_records("ninjars", "reference", [29, 30], [0, 1], 1.0)
+        assert "stability_checks" not in runtime.calls[0]
+        assert [record[1] for record in records] == [
+            [[Fraction(7, 4)]],
+            [[Fraction(58 * 10**16)]],
+        ]
+        # The checked re-run of a reference the cross-check did not certify.
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        options = runtime.calls[1]
+        checks = options["stability_checks"].to_checks()
+        assert (checks.rotations, checks.reduction_direction, checks.rescaled) == (
+            RECOMMENDED_CHECKS.rotations,
+            RECOMMENDED_CHECKS.reduction_direction,
+            RECOMMENDED_CHECKS.rescaled,
+        )
+        assert (options["arithmetic"], options["precision"]) == ("arbitrary", 57)
+        # The trusted point is the reference, summed exactly.
+        # A checked reference carries its own estimate (what it certifies).
+        assert records[0] == (29, [[Fraction(7, 4)]], None, "1.75", 1e-40)
+        # The other one has no reference, as a failed reference point has.
+        index, value, reason, text, _ = records[1]
+        assert (index, value, text) == (30, None, None)
+        assert reason == (
+            "failed: stability checks: estimate >1 above binary64's unit "
+            "roundoff 1.1e-16"
+        )
+        # The bound is binary64's unit roundoff, inclusive: an estimate of
+        # 2^-53 is kept, the next float above it is not (not the run's
+        # target: 1e-5 would keep a reference unable to resolve binary64).
+        u = 2.0**-53
+        runtime = _ReferenceRuntime((u, math.nextafter(u, 1.0)))
+        _WORKER.update(runtime=runtime)
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        assert records[0][1] == [[Fraction(7, 4)]]
+        assert records[1][1] is None
+        runtime = _ReferenceRuntime((1e-6, 1e-40))
+        _WORKER.update(runtime=runtime)
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        assert records[0][1] is None and records[1][1] is not None
+        # Double-double: one plain evaluation, every success the reference.
+        runtime = _ReferenceRuntime()
+        _WORKER.update(runtime=runtime, truth=GroundTruth("double-double"))
+        records = _stability_records(
+            "ninjars", _REFERENCE_CHECKED, [29, 30], [0, 1], 1.0
+        )
+        assert "stability_checks" not in runtime.calls[0]
+        assert records[1][1] == [[Fraction(58 * 10**16)]]
+    finally:
+        _WORKER.clear()
+        _WORKER.update(saved)
+
+
+def test_the_backends_references_agree_to_the_unit_roundoff_squared():
+    """The cross-check's tolerance: binary64's unit roundoff squared,
+    relative to the larger reference (the double-double truth's accuracy)."""
+
+    from pyamplicol.loop_profile import _AGREEMENT, _references_agree
+
+    u = Fraction(1, 2**53)
+    assert u * u == _AGREEMENT
+    one = Fraction(-7, 3)
+    # Agreement up to the tolerance, inclusive.
+    assert _references_agree(one, one)
+    assert _references_agree(one, one * (1 + u * u))
+    assert _references_agree(one * (1 + u * u), one)
+    assert not _references_agree(one, one * (1 + 2 * u * u))
+    # A disagreement at binary64's resolution is one.
+    assert not _references_agree(one, one * (1 + u))
+    assert not _references_agree(one, -one)
+    # Two exact zeros agree; a zero and anything else do not, nor do two
+    # rounding-level values of an integrated zero: the checked re-run judges.
+    # The contradiction bound of two checked references: binary64's unit
+    # roundoff.
+    assert _references_agree(one, one * (1 + u), u)
+    assert not _references_agree(one, one * (1 + 2 * u), u)
+    assert _references_agree(Fraction(0), Fraction(0))
+    assert not _references_agree(Fraction(0), Fraction(1, 10**60))
+    assert not _references_agree(Fraction(3, 10**60), Fraction(-2, 10**60))
+
+
+def test_the_tracker_counts_checked_reruns_as_reference_time_and_eta():
+    from pyamplicol.loop_profile import _StabilityProgress
+
+    tracker = _StabilityProgress(None, ["ninjars", "tirust"], 10, 1)
+    tracker.add("ninjars", "reference", 10, 10.0)
+    assert tracker.rate(("ninjars", "reference")) == 1.0
+    tracker.queue_checked("ninjars", 2)
+    assert tracker.checked_rate("ninjars") is None
+    tracker.add_checked("ninjars", 1, 4.0)
+    # The re-run's seconds are the reference stream's time, not its points
+    # nor its plain rate; its cost per point adds their share once.
+    assert tracker.done[("ninjars", "reference")] == 10
+    assert tracker.seconds[("ninjars", "reference")] == 14.0
+    assert tracker.rate(("ninjars", "reference")) == 1.0
+    assert tracker.stream_cost(("ninjars", "reference")) == 1.4
+    assert (tracker.checking["ninjars"], tracker.checked_rate("ninjars")) == (1, 4.0)
+    for key in tracker.done:
+        tracker.done[key] = 10
+        tracker.timed[key][0] = max(tracker.timed[key][0], 1)
+    # The one queued re-run left is the whole remaining estimate (counted
+    # once: the done points carry no expected share).
+    assert tracker._eta() == 4.0
+    # Ten more points: each at its plain rate plus the re-runs' share, and
+    # the queued re-run once.
+    tracker.set_points(20)
+    tracker.done = {key: 10 for key in tracker.done}
+    eta = tracker._eta()
+    others = sum(
+        10 * tracker.stream_cost(key) for key in tracker.done if key[0] != "ninjars"
+    )
+    binary64 = 10 * tracker.stream_cost(("ninjars", "binary64"))
+    assert eta == pytest.approx(others + binary64 + 10 * 1.4 + 4.0)
+
+
+def test_the_measured_precisions_and_their_refusals():
+    """``measured_precisions``: below the ground truth against it (digits
+    capped to the precision's range and what the truth certifies), the
+    ground truth's own estimates only, everything estimates only without a
+    truth; above it or twice: refused, naming the option and the truth."""
+
+    from pyamplicol.config.errors import ConfigurationError
+    from pyamplicol.loop_profile import GroundTruth, measured_precisions
+
+    arb60 = GroundTruth("arbitrary", 60)
+    found = measured_precisions(("binary64", "double-double", "arbitrary:60"), arb60)
+    assert [m.label for m in found] == ["b64", "dd", "arb(60)"]
+    assert [m.estimates_only for m in found] == [False, False, True]
+    assert found[0].cap == BINARY64_DIGITS
+    assert found[1].cap == pytest.approx(2 * BINARY64_DIGITS)
+    assert found[2].cap == 60.0 and not found[2].capped_by_truth
+    # arb(60) against arb(140): true digits, capped at what the truth's
+    # cross-check certifies (2^-106), below arb(60)'s own range.
+    below = measured_precisions(("arbitrary:60",), GroundTruth("arbitrary", 140))
+    assert not below[0].estimates_only and below[0].capped_by_truth
+    assert below[0].cap == pytest.approx(2 * BINARY64_DIGITS)
+    dd = measured_precisions(
+        ("binary64", "double-double"), GroundTruth("double-double")
+    )
+    assert [m.estimates_only for m in dd] == [False, True]
+    none = measured_precisions(("binary64", "double-double"), GroundTruth("none"))
+    assert all(m.estimates_only for m in none)
+    with pytest.raises(ConfigurationError, match="--measured-precisions arbitrary:60"):
+        measured_precisions(("arbitrary:60",), GroundTruth("double-double"))
+    with pytest.raises(ConfigurationError, match="--ground-truth double-double"):
+        measured_precisions(
+            ("double-double", "arbitrary:40"), GroundTruth("double-double")
+        )
+    with pytest.raises(ConfigurationError, match="twice"):
+        measured_precisions(
+            ("arbitrary", "arbitrary:500"), GroundTruth("arbitrary", 600)
+        )
+
+
+def test_every_measured_precision_has_its_tables_and_json():
+    """Synthetic rows: binary64's tables as they are (with the 100 % row and
+    no class column), then double-double's against the truth and the truth's
+    own estimates-only pair, titled with their precision, in the order
+    given; the JSON keeps today's keys and adds the entries under
+    ``stability_setup.measured_precisions``."""
+
+    from pyamplicol.cli.main import write_result
+    from pyamplicol.loop_profile import GroundTruth, measured_precisions
+
+    def row(digits, estimated, estimate_only=False):
+        return BackendStability(
+            "tirust",
+            points=len(digits),
+            true_digits=() if estimate_only else digits,
+            estimated_digits=estimated,
+            percentiles=percentile_table(
+                estimated if estimate_only else digits,
+                [None] * len(digits) if estimate_only else estimated,
+            ),
+            seconds=1.0,
+            estimate_only=estimate_only,
+        )
+
+    b64 = row((1.0, 3.0, 5.0, 9.0), (2.0, 3.0, 4.0, 9.0))
+    dd = row((20.0, 25.0, 28.0, 31.0), (18.0, 22.0, 25.0, 27.0))
+    own = row((24.0, 26.0, 28.0, 30.0), (24.0, 26.0, 28.0, 30.0), True)
+    truth = GroundTruth("arbitrary", 60)
+    entries = [
+        {**m.record(), "stability": None if m.label == "b64" else rows}
+        for m, rows in zip(
+            measured_precisions(("binary64", "double-double", "arbitrary:60"), truth),
+            (None, (dd,), (own,)),
+            strict=True,
+        )
+    ]
+    report = _report((b64,), truth=truth.record())
+    report = replace(
+        report,
+        stability_setup={
+            **report.stability_setup,
+            "ground_truth": truth.record(),
+            "measured_precisions": entries,
+        },
+    )
+    plain, machine = io.StringIO(), io.StringIO()
+    write_result(report, format="human", stream=plain, color=False)
+    write_result(report, format="json", stream=machine, color=False)
+    text = plain.getvalue()
+    titles = [
+        "Stable digits of binary64 vs arb(60)",
+        # binary64's checks table is named too once precisions are listed.
+        "Default checks against the truth, binary64",
+        "Stable digits of double-double vs arb(60)",
+        "Default checks against the truth, double-double",
+        "Estimated digits of arb(60) (the ground truth)",
+        "Default checks, estimates only, arb(60)",
+    ]
+    assert all(title in text for title in titles)
+    assert [text.index(title) for title in titles] == sorted(
+        text.index(title) for title in titles
+    )
+    assert "100 %" in text and "| class" not in text and "31.00" in text
+    payload = json.loads(machine.getvalue())
+    assert len(payload["stability"][0]["percentiles"]) == 5
+    listed = payload["stability_setup"]["measured_precisions"]
+    assert [entry["label"] for entry in listed] == ["b64", "dd", "arb(60)"]
+    assert listed[0]["stability"] is None
+    assert listed[1]["stability"][0]["percentiles"][4]["digits"] == 31.0
+    assert listed[2]["estimates_only"] is True
+    # The default: no such key.
+    default = io.StringIO()
+    write_result(_report((b64,)), format="json", stream=default, color=False)
+    assert (
+        "measured_precisions" not in json.loads(default.getvalue())["stability_setup"]
+    )
+
+
+def test_a_dear_measured_precision_times_what_its_budget_affords():
+    """``benchmarking._fitted_calls``: the one-point warm-up call measures
+    the precision's cost; the batch falls to the largest power of two of at
+    most the batch given that ``minimum_samples`` calls fit in
+    ``target_runtime``, down to one point; the measuring call is the
+    warm-up."""
+
+    from pyamplicol.benchmarking import _fitted_calls
+    from pyamplicol.config import BenchmarkConfig
+
+    class _Runtime:
+        def __init__(self, seconds):
+            self.seconds = seconds
+
+        def evaluate(self, batch, **options):
+            import time
+
+            time.sleep(self.seconds * len(batch))
+
+    bench = BenchmarkConfig(batch_size=64, minimum_samples=2, target_runtime=0.2)
+
+    def batches(k, n):
+        return [None] * n
+
+    def scales(batch):
+        return 1.0
+
+    cheap = _fitted_calls(_Runtime(1e-4), batches, bench, {}, scales)
+    assert cheap.batch_size == 64 and cheap.warmup_runs == 0
+    dear = _fitted_calls(_Runtime(0.02), batches, bench, {}, scales)
+    assert dear.batch_size in (2, 4)
+    dearest = _fitted_calls(_Runtime(0.3), batches, bench, {}, scales)
+    assert dearest.batch_size == 1 and dearest.warmup_runs == 0
+
+
+def test_a_measured_precision_has_its_runtime_rows():
+    """``_measured_runtime``: per backend the profile of that precision on
+    the backend's binary64 bench, the ground truth's timing attached (its
+    multiplier) unless it is the ground truth's own precision, a refusal a
+    row, the ratio to the fastest; the report's JSON holds them only when
+    timed (``runtime_measured``)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import ReductionUnavailable
+    from pyamplicol.loop_profile import (
+        GroundTruth,
+        _measured_runtime,
+        measured_precisions,
+    )
+
+    truth = GroundTruth("arbitrary", 60)
+    dd, arb = measured_precisions(("double-double", "arbitrary:60"), truth)
+    seen = []
+
+    def profile(backend, bench, precision):
+        seen.append((backend, bench, precision))
+        if backend == "ninjars" and precision["arithmetic"] == "arbitrary":
+            raise ReductionUnavailable("no NinjaRS here")
+        return SimpleNamespace(
+            seconds_per_point={"tirust": 2.0, "ninjars": 6.0}[backend],
+            batch=1,
+            samples=1,
+            failed_points=0,
+            reference="own",
+            replace=None,
+        )
+
+    import dataclasses
+
+    @dataclasses.dataclass(frozen=True)
+    class _Profile:
+        seconds_per_point: float
+        batch: int = 1
+        samples: int = 1
+        failed_points: int = 0
+        reference: object = None
+
+    def typed(backend, bench, precision):
+        return _Profile(profile(backend, bench, precision).seconds_per_point)
+
+    benches = {"tirust": "b-tirust", "ninjars": "b-ninjars"}
+    rows = _measured_runtime(
+        dd,
+        ["tirust", "ninjars"],
+        benches,
+        {"tirust": "T", "ninjars": "N"},
+        truth,
+        typed,
+        fit=True,
+    )
+    assert [row.profile.reference for row in rows] == ["T", "N"]
+    assert [row.ratio for row in rows] == [1.0, 3.0]
+    assert seen[0] == (
+        "tirust",
+        "b-tirust",
+        {"arithmetic": "double-double", "fit": True},
+    )
+    own = _measured_runtime(
+        arb, ["tirust", "ninjars"], benches, {"tirust": "T"}, truth, typed, fit=False
+    )
+    assert own[0].profile.reference is None and own[1].refusal == "no NinjaRS here"
+    assert seen[-1][2] == {"arithmetic": "arbitrary", "precision": 60, "fit": False}
+    report = _report(())
+    assert "runtime_measured" not in report.cli_json()
+    timed = dataclasses.replace(
+        report, runtime_measured=({"precision": dd.record(), "runtime": rows},)
+    )
+    assert timed.cli_json()["runtime_measured"][0]["precision"]["label"] == "dd"
+
+
+def test_listed_precisions_name_every_runtime_table():
+    """With ``--measured-precisions`` each precision's runtime tables carry
+    its name, binary64's included, in the order given; the default's titles
+    stay bare."""
+
+    from pyamplicol.benchmarking import VirtualProfileResult
+    from pyamplicol.loop_profile import GroundTruth, measured_precisions
+    from pyamplicol.reporting import render_summary
+
+    def rows(seconds):
+        profile = VirtualProfileResult(
+            "gg_zgg",
+            "g g > z g g",
+            "loop-induced",
+            4,
+            2,
+            0,
+            seconds,
+            seconds,
+            seconds,
+            {"trees": seconds / 2, "reduction": seconds / 2},
+            {"lanes": {"tirust": 8}},
+            False,
+            0,
+        )
+        return (BackendRuntime("tirust", profile, ratio=1.0),)
+
+    report = _report(None, rows(1e-3))
+    bare = render_summary(report, color=False)
+    assert "Runtime per reduction backend" in bare
+    assert "Runtime per reduction backend," not in bare
+    assert "Time per point and stage," not in bare
+    b64, dd = measured_precisions(
+        ("binary64", "double-double"), GroundTruth("arbitrary", 60)
+    )
+    listed = replace(
+        report,
+        runtime_measured=(
+            {"precision": b64.record(), "runtime": None},
+            {"precision": dd.record(), "runtime": rows(3e-2)},
+        ),
+    )
+    text = render_summary(listed, color=False)
+    titles = [
+        "Runtime per reduction backend, binary64",
+        "Time per point and stage, binary64",
+        "Runtime per reduction backend, double-double",
+        "Time per point and stage, double-double",
+    ]
+    assert [text.index(title) for title in titles] == sorted(
+        text.index(title) for title in titles
+    )
+    for title in ("Runtime per reduction backend", "Time per point and stage"):
+        assert text.count(title) == text.count(title + ",") == 2
+
+
+def test_the_ground_truths_own_stream_is_its_reference():
+    """``_reference_of``: the ground truth's measured record as a reference
+    record, its value and exact text only where it was accepted (a
+    best-effort or failed point has no reference, as the plain evaluation
+    keeps it); ``_stream_label`` names each stream in the progress line."""
+
+    from pyamplicol.loop_profile import _reference_of, _stream_label
+
+    exact = [[Fraction(1, 3)]]
+    accepted = (4, exact, None, None, "success", None, ["0.33"], None, "0.333")
+    assert _reference_of(accepted) == (4, exact, None, "0.333")
+    served = (
+        5,
+        exact,
+        None,
+        "TIRust Unstable",
+        "best-effort",
+        1e-3,
+        ["0.3"],
+        None,
+        "0.3",
+    )
+    assert _reference_of(served) == (5, None, "TIRust Unstable", None)
+    failed = (6, None, None, "no value", "failed", None, None, None, None)
+    assert _reference_of(failed) == (6, None, "no value", None)
+    assert [
+        _stream_label(s, "dd") for s in ("binary64", "reference", "measured:arb(60)")
+    ] == ["b64", "dd", "arb(60)"]
+
+
+def test_a_wider_measured_precision_is_read_to_the_reference_agreement():
+    """arb(60) against arb(140): a point whose backends' references agree
+    closer than the cross-check's 2^-106 is read to that agreement, one
+    certified by its checks to that check's estimate (at most arb(60)'s
+    range), the others at the 2^-106 cap; a precision the truth does not cap
+    (double-double) keeps its own cap (a59b688ba read every arb(60) point at
+    2^-106: no ``_point_caps``)."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loop_profile import (
+        GroundTruth,
+        _point_caps,
+        measured_precisions,
+    )
+
+    arb140 = GroundTruth("arbitrary", 140)
+    (arb60,) = measured_precisions(("arbitrary:60",), arb140)
+    caps = _point_caps(
+        arb60,
+        arb140,
+        [0, 1, 2, 3],
+        {0: Fraction(1, 10**135), 1: Fraction(0), 2: Fraction(1, 10**40)},
+    )
+    assert caps[0] == 60.0 and caps[1] == 60.0
+    assert caps[2] == pytest.approx(40.0)
+    assert caps[3] == pytest.approx(2 * BINARY64_DIGITS)
+    # One backend (or a checked re-run): no second reference, the point is
+    # read to what its reference's own checked estimate certifies, which
+    # may be less than the cross-check's 2^-106.
+    checked = _point_caps(arb60, arb140, [0, 1, 2], {}, {0: 1e-130, 1: 1e-20, 2: 0.0})
+    assert checked[0] == 60.0 and checked[2] == 60.0
+    assert checked[1] == pytest.approx(20.0)
+    (dd,) = measured_precisions(("double-double",), arb140)
+    assert _point_caps(dd, arb140, [0], {0: Fraction(0)}, {0: 1e-20}) == {0: dd.cap}

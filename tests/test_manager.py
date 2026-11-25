@@ -458,11 +458,14 @@ def runIOTests(arg=[''],update=True,force=0,synchronize=False):
     
     # Make a backup of the comparison file directory in order to revert it if
     # the user wants to ignore the changes detected (only when updating the refs)
+    # Keep the links into IOTestsComparison/_shared as links (see
+    # IOTestManager.share_identical_references).
     hc_comparison_files_BackUp = _hc_comparison_files+'_BackUp'
     if update and path.isdir(_hc_comparison_files):
         if path.isdir(hc_comparison_files_BackUp):        
             shutil.rmtree(hc_comparison_files_BackUp)
-        misc.copytree(_hc_comparison_files,hc_comparison_files_BackUp)
+        misc.copytree(_hc_comparison_files,hc_comparison_files_BackUp,
+                                                          symlinks=True)
 
     IOTestManager.testFolders_filter = arg.split('/')[0].split('&')
     IOTestManager.testNames_filter = arg.split('/')[1].split('&')
@@ -604,7 +607,8 @@ def runIOTests(arg=[''],update=True,force=0,synchronize=False):
         else:
             if path.isdir(hc_comparison_files_BackUp):
                 shutil.rmtree(_hc_comparison_files)
-                misc.copytree(hc_comparison_files_BackUp,_hc_comparison_files)
+                misc.copytree(hc_comparison_files_BackUp,_hc_comparison_files,
+                                                          symlinks=True)
                 print(colored%(32,"INFO:: No modifications applied."))
             else:
                 print(colored%(31,

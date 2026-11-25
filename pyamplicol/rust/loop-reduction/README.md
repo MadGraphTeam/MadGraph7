@@ -31,7 +31,12 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `ac66cf6c551465f6c63490e112bb41596c2fd821` (branch
+- NinjaRS `a2546170c400956d9aaffd3151e6b0d6c7edf475` (main after PR #20:
+  `f7f5e165` + `ninjars_symbolica::reserve`, the history-independent exact
+  evaluators, called by `rusticol_core::symbol_order`; `f7f5e165` = PR #19:
+  main `3116e5e6` = `ac66cf6c` + PR #16, the box-Gram
+  conditioning bound of the generic engine, + the records of why a lane is
+  refused, shown in the lane status texts; `ac66cf6c` = branch
   `symbolica-community-2`: main `b51b7465`'s crate sources, i.e. per-row evaluation
   without the batch evaluator on main `cf28d8e0` (its scoped Symbolica library
   licence, the box mu-expansion's conditioning bound, UV/IR pole selection
@@ -42,7 +47,9 @@ aligns Symbolica with the application's shared core and uses:
   symbolica-dev/symbolica `community` (main `238dc613`, the author's
   state-omitting evaluator saves, plus his community-only commits; see
   `dependencies/README.md`).
-- TIRust `2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1` (branch `symbolica-community-2`: main
+- TIRust `1c130a81` (main `a8dba684` + PR #43, MPFR rounded at the
+  working precision in the direct engine; `a8dba684` = `2b9ba961` + PRs #41 and #42;
+  `2b9ba961` = branch `symbolica-community-2`: main
   `a5d4afbf`, PR #35 and the move to Symbolica community, re-pinned; with per-row evaluation instead of the batch
   evaluator, on 49dc836e's direct-engine fix for plan variants at exactly
   degenerate kinematics and TIRust's scoped Symbolica library key), behind

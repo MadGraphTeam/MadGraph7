@@ -757,7 +757,12 @@ without checks) and `on_failure` (the default `"best-effort"`: a point the
 backend refuses is returned with its best available value, status
 `"best-effort"`, its refusal and an uncertainty; `"return"`: a failed point
 is `None` with its reason; `"raise"`: `EvaluationError` at the first such
-point). Declared colour and spin correlations are served by
+point) and `lane_rescue` (default `True`: a reduction lane the backend
+refuses is reduced again in double-double, then at 500 digits; see
+[Lane rescue](python-api.md#lane-rescue-of-refused-reduction-lanes)).
+`Runtime.load` also takes `threads=` (the native threads of the load and of
+every evaluation) and `options=` (a runtime-options TOML; see
+[Runtime options](configuration.md#runtime-options)). Declared colour and spin correlations are served by
 `evaluate_correlated` and `evaluate_correlated_many`, per-helicity and
 per-colour components by `evaluate_resolved`, with the same options. See
 [The v2 loop engine](configuration.md#the-v2-loop-engine) for the generation

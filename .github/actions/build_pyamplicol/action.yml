@@ -1,9 +1,26 @@
 name: Build pyamplicol
 description: >
-  Build the pyamplicol install prefix once per commit with pyamplicol/install.py
-  and cache it (content-addressed on the pyamplicol package sources). Test jobs
-  restore the result with the install_pyamplicol action (they must `needs:` the
-  job that runs this action). Assumes the repository is already checked out.
+  Restore the pyamplicol install prefix from the warm_cache entry, or build it
+  with pyamplicol/install.py on a miss. This action NEVER saves a cache: the
+  pyamplicol caches are written only by the pyamplicol_cache job of
+  warm_cache.yml, on main. The build's keys and hit status come back as
+  outputs so that job can save what was built. Test jobs restore the result
+  with the install_pyamplicol action (they must `needs:` the job that runs
+  this action). Assumes the repository is already checked out.
+
+outputs:
+  install-key:
+    description: Key of the pyamplicol install cache (content-addressed).
+    value: ${{ steps.cache-pyamplicol.outputs.cache-primary-key }}
+  install-hit:
+    description: "'true' when the install prefix was restored, not built."
+    value: ${{ steps.cache-pyamplicol.outputs.cache-hit }}
+  cargo-key:
+    description: Key of the Cargo build tree (empty when the install was restored).
+    value: ${{ steps.cache-cargo.outputs.cache-primary-key }}
+  cargo-hit:
+    description: "'true' when the Cargo build tree was restored (empty when the install was restored)."
+    value: ${{ steps.cache-cargo.outputs.cache-hit }}
 
 runs:
   using: composite
@@ -13,20 +30,32 @@ runs:
       run: echo "PAC_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
       shell: bash
 
-    - name: Cache pyamplicol install
+    - name: Restore pyamplicol install
       id: cache-pyamplicol
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         path: pyamplicol/install
         key: pyamplicol-${{ runner.os }}-py${{ env.PAC_PY }}-${{ hashFiles('pyamplicol/src/**', 'pyamplicol/rust/**', 'pyamplicol/build_backend/**', 'pyamplicol/Cargo.*', 'pyamplicol/pyproject.toml', 'pyamplicol/rust-toolchain.toml', 'pyamplicol/dependencies/*.toml') }}
 
-    # ~1.5 GB: one entry per dependency set, pyamplicol's crates rebuild on top.
-    - name: Cache Cargo build tree
+    # Cargo build tree (cargo-target + cargo-home + source overlay), one entry
+    # per dependency set; pyamplicol's own crates rebuild on top of it. It is
+    # ~2.5 GB against the 10 GB per-repository Actions cache quota. Only the
+    # warm_cache.yml pyamplicol_cache job on main saves it; every other ref,
+    # PR or branch, restores main's entry and never saves one. A copy saved
+    # from a PR is readable only by that ref, and on 2026-11-21 three such
+    # copies (7.6 GB) pushed the repository over quota and evicted
+    # root-/delphes-ubuntu24 (the ROOT and Delphes caches the acceptance tests
+    # restore).
+    # restore-keys only off main: a PR that changes Cargo.lock starts from
+    # main's newest tree and recompiles just the changed crates.
+    - name: Restore Cargo build tree
+      id: cache-cargo
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         path: pyamplicol/build/cache
         key: pyamplicol-cargo-${{ runner.os }}-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/rust-toolchain.toml') }}
+        restore-keys: ${{ github.ref != 'refs/heads/main' && format('pyamplicol-cargo-{0}-', runner.os) || '' }}
 
     - name: Prepared models
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'

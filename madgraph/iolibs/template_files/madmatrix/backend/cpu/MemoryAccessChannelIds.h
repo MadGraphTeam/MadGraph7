@@ -7,13 +7,12 @@
 #ifndef MemoryAccessChannelIds_H
 #define MemoryAccessChannelIds_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
@@ -91,7 +90,7 @@ namespace madmatrix
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR) ===> const unsigned int& kernelAccessConst( const unsigned int* buffer ) <===]
-    static constexpr auto kernelAccessConst_s = KernelAccessHelper<MemoryAccessChannelIdsBase, onDevice, unsigned int>::template kernelAccessFieldConst<>; // requires cuda 11.4
+    static constexpr auto kernelAccessConst_s = KernelAccessHelper<MemoryAccessChannelIdsBase, onDevice, unsigned int>::template kernelAccessFieldConst<>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (const, SCALAR OR VECTOR) ===> const uint_sv& kernelAccess( const unsigned int* buffer ) <===]
@@ -106,7 +105,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessChannelIds<false> HostAccessChannelIds;
-  typedef KernelAccessChannelIds<true> DeviceAccessChannelIds;
 
   //----------------------------------------------------------------------------
 

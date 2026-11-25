@@ -21,10 +21,12 @@ from madgraph.models.model_reader import Alphas_Runner
 from madgraph.mg7 import helicity_choice as helicity_choice_module
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
+from madgraph.mg7 import upc_luminosity as upc_luminosity_module
 import madgraph.various.py8_bstrahl as py8_bstrahl
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7 import options
 from madgraph.mg7 import plots
+from madgraph.mg7 import precision_check
 from madgraph.mg7 import systematics_summary
 from madgraph.mg7.bootstrap import INSTALL_DIR as _INSTALL_DIR
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
@@ -38,7 +40,8 @@ from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
 from madgraph.mg7.model_widths import _proc_characteristic
 from madgraph.mg7.subprocess_amplicol import (
-    AmplicolSubprocess, amplicol_parameters, amplicol_subproc_args, is_amplicol,
+    AmplicolSubprocess, amplicol_parameters, amplicol_subproc_args, event_flavors,
+    is_amplicol, lc_flavor_mode, quark_lines,
 )
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
@@ -360,6 +363,7 @@ class MadgraphProcess:
                 self.merged_subprocess_data = json.load(f)
         else:
             self.merged_subprocess_data = None
+            self.drop_amplicol_without_lc_flavors()
 
         self.init_decay_mode()
         self.init_me_frame()
@@ -455,7 +459,9 @@ class MadgraphProcess:
             self.decaying_mass = None
             single = [meta["outgoing"] for meta in self.subprocess_data
                       if len(clean_pids(meta["outgoing"])) == 1]
-            if single and self.run_card["beam"]["leptonic"]:
+            # a gamma-UPC luminosity samples s_hat whatever beam.leptonic says
+            if single and self.run_card["beam"]["leptonic"] \
+                    and not self.run_card["beam"]["upc_flux"]:
                 raise ValueError(
                     f"2 -> 1 processes ({single[0]} ...) need beams with a PDF "
                     "(leptonic = false in [beam]): with fixed beam energies the "
@@ -498,6 +504,27 @@ class MadgraphProcess:
             for meta in self.subprocess_data
             for single in _single_flavor_metas(meta)
         ]
+
+    def drop_amplicol_without_lc_flavors(self) -> None:
+        """Remove the [amplicol] subprocesses whose flavours all have more than
+        two quark lines under lc_flavors = two_lines(_resample): they are
+        neglected, or reached by the flavour switch of the other subprocesses."""
+        mode = lc_flavor_mode(self.run_card)
+        if mode == "all":
+            return
+        kept = [
+            meta for meta in self.subprocess_data
+            if not is_amplicol(meta)
+            or any(quark_lines(f["options"][0]) <= 2 for f in meta["flavors"])
+        ]
+        if len(kept) < len(self.subprocess_data):
+            logger.info(
+                "lc_flavors = %s: %d [amplicol] subprocesses without a flavour of "
+                "at most two quark lines are skipped",
+                mode,
+                len(self.subprocess_data) - len(kept),
+            )
+        self.subprocess_data = kept
 
     def drop_closed_channels(self) -> None:
         """Remove subprocesses the decaying particle is too light to produce.
@@ -650,7 +677,8 @@ class MadgraphProcess:
         if path_format not in self.helicity_choices:
             backend, fptype = self.helicity_choice_build
             spread = not self.is_decay and (
-                not self.leptonic or bool(self._lepton_density_name))
+                not self.leptonic or bool(self._lepton_density_name)
+                or bool(self.upc_flux))
             choice = helicity_choice_module.choose(
                 path_format.format(device=backend, fptype=fptype), param_card,
                 parameters, self.e_cm, self.beam_rapidity, spread)
@@ -1034,6 +1062,25 @@ class MadgraphProcess:
             self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
 
+        # gamma-UPC (beam.upc_flux): one tabulated two-photon luminosity
+        # replaces the PDFs, as a dressed-lepton density does, so the run is
+        # 'leptonic' in the sense of "no PDF" (alpha_s from the param card).
+        # ebeam1/ebeam2 are the energies of the whole ions, as in madevent;
+        # the phase space is generated per nucleon (see upc_luminosity.py).
+        # Built lazily, from the subprocesses' lowest partonic energy.
+        self.upc_flux = "" if self.is_decay else str(beam_args.get("upc_flux", ""))
+        self.upc_ions = self.run_card.upc_ions()
+        self._upc_luminosity = None
+        if self.upc_flux:
+            e1, e2 = upc_luminosity_module.nucleon_energies(
+                self.beam_energies, self.upc_ions)
+            self.e_cm = 2.0 * math.sqrt(e1 * e2)
+            self.beam_rapidity = 0.5 * math.log(e1 / e2)
+            self.leptonic = True
+            logger.info(
+                "gamma-UPC %s photon-photon luminosity: sqrt(s_NN) = %g GeV "
+                "(Z,N = %s, %s)", self.upc_flux, self.e_cm, *self.upc_ions)
+
         # A dressed-lepton density is not the same thing as beam.leptonic:
         # 'leptonic' means no parton luminosity at all (monochromatic beams),
         # while a density brings ISR and, for the collider-specific sets,
@@ -1359,7 +1406,7 @@ class MadgraphProcess:
         for meta in self.subprocess_data:
             beam_pdgs = [
                 [int(flavor["options"][0][0]), int(flavor["options"][0][1])]
-                for flavor in meta["flavors"]
+                for flavor in event_flavors(meta, self)
             ]
             args.append(ms.SubprocessSystArgs(
                 qcd_power=int(meta.get("qcd_power", -1)), beam_pdgs=beam_pdgs))
@@ -1519,7 +1566,7 @@ class MadgraphProcess:
         matrix_elements = []
         flavor_remap = []
         for i, meta in enumerate(self.subprocess_data):
-            flavor_remap.append([int(f["index"]) for f in meta["flavors"]])
+            flavor_remap.append([int(f["index"]) for f in event_flavors(meta, self)])
             if i not in need:
                 matrix_elements.append(None)
                 continue
@@ -1912,6 +1959,7 @@ class MadgraphProcess:
             meta for meta in self.subprocess_data if not is_amplicol(meta)
         ]
         self.helicity_choice_build = None
+        self.precision_check_builds = None
         if not madmatrix_data:
             return backends
 
@@ -1975,26 +2023,31 @@ class MadgraphProcess:
         builds = [(backend, fptype) for backend in resolved]
         if not cpu_backends and not self.run_card["run"]["dummy_matrix_element"]:
             builds.append(self.helicity_choice_build)
-        for backend, fptype in builds:
+        # (not 'backend, fptype': a GPU-only run's last build is the scalar
+        # all64 one of the helicity choice, and the precision check below
+        # needs the run's fptype)
+        for build_backend, build_fptype in builds:
             # by library: the flavours of a split subprocess share one; a library
             # built with other recycling settings is rebuilt too: its SigmaKin.o
-            # records them in build.<backend>/.hrflags (madmatrix.mk)
+            # records them in build.<backend>_<fptype>/.hrflags (madmatrix.mk)
             missing = list({
                 meta["me_path"]: meta for meta in madmatrix_data
                 if not os.path.isfile(
-                    meta["me_path"].format(device=backend, fptype=fptype)
+                    meta["me_path"].format(device=build_backend, fptype=build_fptype)
                 )
-                or self.hel_recycling_flags_changed(meta["path"], backend, hr_flags)
+                or self.hel_recycling_flags_changed(
+                    meta["path"], build_backend, build_fptype, hr_flags)
             }.values())
             if not missing:
                 continue
             logger.info(
-                f"Start compilation of SubProcesses for device '{backend}' "
+                f"Start compilation of SubProcesses for device '{build_backend}' "
                 f"({len(missing)} subprocess(es), {nb_core} parallel job(s)), "
                 f"see log detail in {log_path}"
             )
             start_time = time.time()
-            make_args = [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            make_args = [f"BACKEND={build_backend}", f"FPTYPE={build_fptype}",
+                         "USEBUILDDIR=1"]
             make_args += self.extra_make_args + hr_args
             if (len(missing) >= PCH_MIN_SUBPROCESSES
                     and not any(arg.startswith("PCH=") for arg in make_args)):
@@ -2003,7 +2056,69 @@ class MadgraphProcess:
             logger.info(
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
+        self.compile_precision_check(
+            madmatrix_data, subproc_path, cpu_backends, fptype, builds,
+            hr_args, hr_flags, nb_core, log_path)
         return resolved
+
+    def precision_check_enabled(self, fptype: str) -> bool:
+        """Whether this run checks the precision of its matrix elements on a
+        fraction of its events (see precision_check.py). A card without the
+        entry checks nothing."""
+        return (
+            fptype != "d"
+            and float(self.run_card["run"].get("precision_check", 0)) > 0
+            and not self.run_card["run"]["dummy_matrix_element"]
+            and self.gridpack_run_mode == "regular"
+            and not self.gridpack_data_only
+        )
+
+    def compile_precision_check(
+        self, madmatrix_data, subproc_path, cpu_backends, fptype, builds,
+        hr_args, hr_flags, nb_core, log_path
+    ) -> None:
+        """Build the two CPU libraries the precision check compares: one in
+        the precision of the run and one in all64 (FPTYPE=d), on the CPU
+        backend of the run, else on the scalar one. A failure only disables
+        the check."""
+        if not self.precision_check_enabled(fptype):
+            return
+        backend = cpu_backends[0] if cpu_backends else "scalar"
+        checks = [(backend, fptype), (backend, "d")]
+        try:
+            for build_backend, build_fptype in checks:
+                if (build_backend, build_fptype) in builds:
+                    continue
+                # by library, as above
+                missing = list({
+                    meta["me_path"]: meta for meta in madmatrix_data
+                    if not os.path.isfile(meta["me_path"].format(
+                        device=build_backend, fptype=build_fptype))
+                    or self.hel_recycling_flags_changed(
+                        meta["path"], build_backend, build_fptype, hr_flags)
+                }.values())
+                if not missing:
+                    continue
+                logger.info(
+                    "precision check (%s of the events): compilation of SubProcesses "
+                    "for '%s' with FPTYPE=%s, see log detail in %s",
+                    self.run_card["run"]["precision_check"], build_backend,
+                    build_fptype, log_path)
+                start_time = time.time()
+                make_args = [f"BACKEND={build_backend}", f"FPTYPE={build_fptype}",
+                             "USEBUILDDIR=1"] + self.extra_make_args + hr_args
+                if (len(missing) >= PCH_MIN_SUBPROCESSES
+                        and not any(arg.startswith("PCH=") for arg in make_args)):
+                    make_args.append("PCH=1")
+                self.make_subprocesses(subproc_path, make_args, nb_core, log_path)
+                logger.info(
+                    f"Compilation for the precision check done in "
+                    f"{time.time() - start_time:.1f} s"
+                )
+        except RuntimeError as error:
+            logger.warning("no precision check for this run: %s", error)
+            return
+        self.precision_check_builds = tuple(checks)
 
     def compile_amplicol(self) -> None:
         """Build the libraries of the [amplicol] processes that are missing."""
@@ -2071,14 +2186,17 @@ class MadgraphProcess:
         return [f"HRMAXMB={max_mb}", f"HRNOBLAS={no_blas}"]
 
     @staticmethod
-    def hel_recycling_flags_changed(proc_path: str, backend: str, hr_flags: str) -> bool:
-        """Whether a --hel_recycling subprocess was built for this backend with
-        other recycling settings than hr_flags (see .hrflags in madmatrix.mk)."""
+    def hel_recycling_flags_changed(
+        proc_path: str, backend: str, fptype: str, hr_flags: str
+    ) -> bool:
+        """Whether a --hel_recycling subprocess was built for this backend and
+        FPTYPE with other recycling settings than hr_flags (see .hrflags in
+        madmatrix.mk)."""
         if backend.startswith(("cuda", "hip")):
             return False
         if not os.path.isfile(os.path.join(proc_path, "HelRecycling.inc")):
             return False
-        marker = os.path.join(proc_path, f"build.{backend}", ".hrflags")
+        marker = os.path.join(proc_path, f"build.{backend}_{fptype}", ".hrflags")
         try:
             with open(marker) as fsock:
                 return fsock.read().strip() != hr_flags
@@ -2305,7 +2423,7 @@ class MadgraphProcess:
             config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
             config.buffer_capacity = madnis_args["buffer_capacity"]
             config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-            config.buffered_steps_fraction = madnis_args["buffered_steps_fraction"]
+            config.buffered_steps_fraction = subproc.madnis_settings["buffered_steps_fraction"]
             config.buffer_skip_batches = madnis_args["buffer_skip_batches"]
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = subproc.madnis_settings["fixed_cwnet_fraction"]
@@ -2402,6 +2520,7 @@ class MadgraphProcess:
             self.event_generator.generate()
             control.armed = False
             self.write_events(output_format)
+        precision_check.run(self)
 
     def write_events(self, output_format) -> None:
         """Combine the generated events into the output_format file, then write
@@ -2667,6 +2786,38 @@ class MadgraphProcess:
                     raise ValueError(error)
         return self._lepton_density
 
+    def upc_luminosity(self):
+        """The gamma-UPC luminosity (upc_luminosity.UPCLuminosity) of the run,
+        or None without beam.upc_flux: one table, down to the lowest
+        s_hat / s_NN any subprocess reaches, since each costs minutes for ions.
+
+        gamma-UPC beams only give photons (madevent gives any other parton no
+        flux), so a subprocess with another incoming parton is refused."""
+        if not self.upc_flux:
+            return None
+        if self._upc_luminosity is None:
+            for subproc in self.subprocesses:
+                others = subproc.non_photon_incoming()
+                if others:
+                    raise ValueError(
+                        "beam.upc_flux = %s: subprocess %s > %s has incoming %s, "
+                        "but gamma-UPC beams only give photons; generate the "
+                        "photon-photon processes alone (e.g. a a > ...)"
+                        % (self.upc_flux, subproc.meta["incoming"],
+                           subproc.meta["outgoing"], others))
+            tau_min = min(subproc.upc_tau_min() for subproc in self.subprocesses)
+            gamma_dir = os.path.abspath(os.path.join("Source", "PDF", "gammaUPC"))
+            if not os.path.isdir(gamma_dir):
+                raise RuntimeError(
+                    "beam.upc_flux needs the gamma-UPC sources in %s, which an "
+                    "output ships for photon-photon processes only" % gamma_dir)
+            mg5_options = options.load_mg5_options(with_cluster=True)
+            self._upc_luminosity = upc_luminosity_module.UPCLuminosity(
+                ms, self.contexts, gamma_dir, self.upc_flux, self.upc_ions,
+                self.beam_energies, upc_luminosity_module.table_xmin(tau_min),
+                mg5_options.get("fortran_compiler"))
+        return self._upc_luminosity
+
     @property
     def fixed_fact_scale(self):
         """The factorisation scale as a number, or None if it is dynamical.
@@ -2693,12 +2844,16 @@ class MadgraphProcess:
             data = self.subprocess_data[0]
             pdg = clean_pids(data["incoming"])[0]
             return [pdg, 0], [float(self.e_cm), 0.0]
+        if self.upc_flux:
+            # the protons or ions emitting the photons, at their full energy
+            return ([upc_luminosity_module.lhe_beam_id(ion) for ion in self.upc_ions],
+                    list(self.beam_energies))
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
             return [2212, 2212], list(self.beam_energies)
         data = self.subprocess_data[0]
         incoming = data["incoming"]
-        flavor0 = data["flavors"][0]["options"][0]
+        flavor0 = event_flavors(data, self)[0]["options"][0]
         init_pdgs = flavor0[:len(incoming)]
         beam_pdgs = [pdg if abs(code) in (81, 82) else code
                      for code, pdg in zip(incoming, init_pdgs)]
@@ -3005,6 +3160,11 @@ class MadgraphProcess:
                     os.path.join(gridpack_path, artifact_dir, name),
                 )
             os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
+            # the tables of the flavour switch, read at launch
+            for switch in glob.glob(
+                os.path.join(artifact_dir, "reweight", "flavor_switch_*.json")
+            ):
+                shutil.copy(switch, os.path.join(gridpack_path, artifact_dir, "reweight"))
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)

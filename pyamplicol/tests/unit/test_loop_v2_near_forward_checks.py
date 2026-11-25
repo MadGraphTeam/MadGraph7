@@ -114,7 +114,7 @@ def test_recommended_checks_flag_the_near_forward_binary64_values(zz):
 @pytest.mark.loop_physics
 def test_the_default_rescue_serves_the_near_forward_points(zz):
     """The default rescue (``VirtualRescuePolicy()``: TIRust binary64 ->
-    NinjaRS binary64 -> double-double -> 57 digits, each with a rotation and
+    NinjaRS binary64 -> double-double -> 57 -> 500 digits, each with a rotation and
     the rescaled check) returns every point within 1e-5 of the consistent
     truth or fails it typed (DECISIONS 2026-11-10 18:54 (a)). At QR theta
     1e-4 (beams off the z axis) the double-double level's point is produced
