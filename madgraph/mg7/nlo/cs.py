@@ -14,7 +14,10 @@ operators take one more random number, the point z = x_i + (1 - x_i) r of
 the convolution of both beams, with the densities of the partons that
 split into those of the Born at x_i / z. The cuts act on the Born, with no
 unresolved parton, as those of the FKS driver on its soft counter-event,
-and the scales are those of the Born.
+and the scales are those of the Born. With hadron beams the Born mappings of
+both streams sample s_hat flat below the bound on sqrt(s_hat) of the cuts on
+the Born and falling above it, with the shift of the FKS driver (s_hat_shift
+of PhaseSpaceMapping).
 
 The I operator is that of CDR with the normalization (4 pi)^eps / Gamma(1 -
 eps) of the virtual of MadLoop at the renormalization scale, with the n_f
@@ -113,6 +116,7 @@ from madgraph.mg7.nlo.core import (
     LEPTON_POWER,
     NLORun,
     Runtime,
+    born_cuts,
     born_topology,
     integer,
     madspace,
@@ -433,12 +437,22 @@ class CSBornIntegrand:
         self.tagged = self.provider.tagged_factors()
         self.nlo_count = len(orders["nlo"])
         self.channels = self.provider.channels()
+        # s_hat flat below the bound of the Born cuts and falling above, also
+        # for the Born of the dipoles of the real emission
+        self.s_hat_shift = None
+        if not leptonic and self.leptons is None:
+            cuts = born_cuts(self.born_pdgs, run_card)
+            floor = 0.0
+            if cuts is not None:
+                floor = ms.fks_sqrt_s_hat_min(cuts, self.masses[self.incoming :])
+            self.s_hat_shift = floor**2 if floor > 0 else None
         self.channel_mappings = [
             ms.PhaseSpaceMapping(
                 born_topology(self.masses, self.incoming, channel),
                 self.energy,
                 leptonic=leptonic,
                 lepton_sampling_power=self.lepton_power,
+                s_hat_shift=self.s_hat_shift,
             )
             for channel in self.channels
         ]
@@ -873,6 +887,7 @@ class CSRealIntegrand:
                     self.energy,
                     leptonic=leptonic,
                     lepton_sampling_power=source.lepton_power,
+                    s_hat_shift=born.s_hat_shift,
                 )
                 mapping = ms.CSMapping(
                     born_mapping, d["i"], d["j"], d["k"], cutoff=technical_cut

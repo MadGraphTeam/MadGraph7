@@ -201,6 +201,32 @@ def test_against_mg5amc(name):
 
 
 @needs_outputs
+def test_s_hat_shift(monkeypatch):
+    """The Born mappings of both streams sample s_hat flat below the bound of
+    the Born cuts (mll_sf) and falling above, so that a steeper s_hat power
+    (1.5) does not put the points below the cuts, where VEGAS did not recover
+    them (p p > e+ e- 17 standard deviations low at these points without the
+    shift)."""
+    ms = madspace()
+    mapping = ms.PhaseSpaceMapping
+    shifts = []
+
+    def steeper(*args, **kwargs):
+        shifts.append(kwargs.get("s_hat_shift"))
+        return mapping(*args, s_hat_power=1.5, **kwargs)
+
+    monkeypatch.setattr(ms, "PhaseSpaceMapping", steeper)
+    data = reference("pp_epem")
+    run = make_run("pp_epem", points=2 * POINTS)
+    run.run()
+    mll_sf = float(data["run_card"]["mll_sf"])
+    assert shifts and all(s == pytest.approx(mll_sf**2, rel=1e-12) for s in shifts)
+    ours = run.result()
+    for order in ("lo", "nlo"):
+        assert abs(pull(ours[order], data[order])) < PULL, (order, ours, data[order])
+
+
+@needs_outputs
 @pytest.mark.parametrize(
     "name",
     ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj", "t_bw", "t_bw_mb0", "epem_ttx_isr"],
