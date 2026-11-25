@@ -277,3 +277,44 @@ Reported to TIRust on 2026-11-24, with the 171 inputs.
 - 18 unit-power hexagons, rank 4: "ill-conditioned Gram matrix" (conditioning 0 in 12) or "singular Gram matrix".
 
 So, apart from the heptagons, the point would still be unstable (410) on 4f1b06c + v9. Sent to TIRust on 2026-11-25; the rerun waits for its green light.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust bb62307 + bridge v11)
+
+The same output and point as the previous section, rerun on 2026-11-25 on TIRust bb62307 and the bridge part of v11 (poles-only, oneloop cdbc912; v12 differs from v11 only in the smoke test). For this run the output's `MadLoopCommons.f` admits N ≤ 7 and rank ≤ 7 in `DETECT_TIRUST`. The template keeps N, rank ≤ 6 until the bridge pin moves.
+
+**The point now runs through.** No seven-point call is refused. MadLoop still flags it unstable, because TIRust refuses some pentagons and hexagons:
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −18.596233944192 | −7.480511323961 | 219.286 | 410 | 5014 s |
+| 2 | −18.596233945513 | −7.480511323961 | 173.485 | 410 | 5799 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); Born = 1.4778648803e-08. The two loop directions agree to 7e-11 on c1 and 1e-14 on c2, and differ by 21% on the finite part. TIRust's own time was 207 s (CTModeRun 1) and 362 s (CTModeRun 2).
+
+**Reading.** A refused loop contributes nothing: `TIR_interface` returns `RES = 0`, and `ONIA_PW_DOUBLED` gives up the loop's raised-power terms at the first refusal. Its pole parts are then missing too, which should explain c1 and c2. This is not confirmed until TIRust serves these calls. The finite part is not quotable on bb62307 either way. TIRust found that a pentagon with a doubled massless line between two on-shell legs was served without its (D − 4) term. That term is proportional to the pentagon's B, so it vanishes for the flat pentagons of 2 → 2 processes, but not for those of this 2 → 3 process.
+
+**The prediction's terms** (`appendix_b.py terms`, CTModeRun 1, 6936 s; c1 as above), per Born:
+- T1 (monopole × monopole) −18.3060919898;
+- T2 (P → S, per P-wave state) −1.4326326220 and −1.3408266339;
+- T3 (dipole × dipole) f1 0.3561347885, f2 −0.2974642503.
+
+They sum to the prediction. The two contractions of the dipole-dipole term, Z_G and Z_V, are real up to imaginary parts of 6e-17 and 6e-15.
+
+**Capture** (`TIRUST_TRACE_FAILED_ONLY=1`). In each direction, 64196 DP calls (no QP calls) and 728 refused:
+
+| Lines | Rank | Powers | Calls |
+|---|---|---|---|
+| 5 | 4 | one doubled | 48 |
+| 5 | 5 | one doubled | 276 |
+| 6 | 5 | unit | 12 |
+| 6 | 5 | one doubled | 240 |
+| 6 | 6 | one doubled | 152 |
+
+The distinct inputs are 331 (CTModeRun 1) and 332 (CTModeRun 2, the check pass), in `data/refused_ggg_3p28_3p18_20gev_bb62307_ct1.txt.gz` (sha256 ed2003cc8c12b554…) and `_ct2.txt.gz` (e3cce94fb468705b…).
+
+**Replay** on bb62307 + v11 (`data/replay_ggg_3p28_3p18_20gev_bb62307_ct{1,2}.txt.gz`). QP and DP refuse all of them:
+- 313 and 314: "dotted massless line k in a collinear pair of pentagon […]: its (D + 2)-dimensional term is not reduced". By (lines, rank): (5,4) 18, (5,5) 111/112, (6,5) 102, (6,6) 82.
+- 18 and 18, all six lines at rank 5: "ill-conditioned Gram matrix". In each direction, 6 have unit powers (4-point sub-Grams, conditioning ~1e-35) and 12 have a doubled line (3-point sub-Grams, conditioning 0 or 6e-78).
+
+The rank-4 unit-power hexagons of the previous section are served now. Both sets were sent to TIRust on 2026-11-25. Its next revision (bridge v13) keeps the dropped (D − 4) terms for one doubled line: in its scratch build that serves the collinear-pair calls and the 6 unit-power hexagons of CTModeRun 1. The 12 doubled-line hexagons need the two-variable form of that correction.
