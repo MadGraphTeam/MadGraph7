@@ -119,11 +119,11 @@ class MG7MLMMultijetTest(unittest.TestCase):
         settings = {
             'run.seed': 445, 'run.cpu_mode': 'scalar', 'run.madspace_cpu_mode': 'scalar',
             'run.precision': 'all64', 'run.cpu_thread_pool_size': 1,
-            'run.combine_thread_pool_size': 1, 'run.output_format': 'compact_npy',
-            'run.weighted_histograms': False, 'run.postprocessing_histograms': False,
-            'run.make_plots': False, 'beam.pdf': _PDF, 'beam.dynamical_scale_choice': 'mlm',
-            'beam.fixed_ren_scale': False, 'beam.fixed_fact_scale': False,
-            'phasespace.xqcut': 30., 'generation.events': _EVENTS,
+            'run.combine_thread_pool_size': 1, 'output.output_format': 'compact_npy',
+            'histograms.weighted_histograms': False, 'histograms.postprocessing_histograms': False,
+            'histograms.make_plots': False, 'beam.pdf': _PDF, 'scale.dynamical_scale_choice': 'mlm',
+            'scale.fixed_ren_scale': False, 'scale.fixed_fact_scale': False,
+            'merging.xqcut': 30., 'generation.events': _EVENTS,
             'generation.cpu_batch_size': 256, 'generation.survey_min_iters': 1,
             'generation.survey_max_iters': 1, 'vegas.start_batch_size': 256,
             'vegas.max_batch_size': 256, 'madnis.enable': False,
@@ -135,7 +135,7 @@ class MG7MLMMultijetTest(unittest.TestCase):
             with self.subTest(sample=name, history=history):
                 card_path = run_dir / 'Cards/run_card.toml'
                 card = RunCardMG7(str(card_path))
-                for key, value in dict(settings, **{'run.run_name': history,
+                for key, value in dict(settings, **{'output.run_name': history,
                                                    'beam.clustering_history': history}).items():
                     card.set(key, value, user=True)
                 card.write(str(card_path))
@@ -201,7 +201,7 @@ class MG7MLMMultijetTest(unittest.TestCase):
         # choices and weights. Repeat the union history through the ordinary
         # launcher, with the proxy disabled and the same seed/cards.
         card = RunCardMG7(str(card_path))
-        card.set('run.run_name', 'unobserved', user=True)
+        card.set('output.run_name', 'unobserved', user=True)
         card.set('beam.clustering_history', 'all_diagrams', user=True)
         card.write(str(card_path))
         log = run_dir / 'launch_unobserved.log'

@@ -678,14 +678,14 @@ class TestEditCardCmd(unittest.TestCase):
         for value, full, factor in expected:
             cmd.do_set('dynamical_scale_choice %s' % value)
             beam = cmd.run_card['beam']
-            self.assertEqual(beam['dynamical_scale_choice'],
+            self.assertEqual(cmd.run_card['scale.dynamical_scale_choice'],
                              'transverse_mass' if full else 'half_transverse_mass')
-            self.assertAlmostEqual(beam['scale_factor'], factor)
+            self.assertAlmostEqual(cmd.run_card['scale.scale_factor'], factor)
         # fixed scales are left alone (a warning says they win)
-        cmd.do_set('beam.fixed_ren_scale True')
-        cmd.do_set('beam.dynamical_scale_choice HT/4')
-        self.assertTrue(cmd.run_card['beam']['fixed_ren_scale'])
-        self.assertEqual(cmd.run_card['beam']['scale_factor'], 0.5)
+        cmd.do_set('scale.fixed_ren_scale True')
+        cmd.do_set('scale.dynamical_scale_choice HT/4')
+        self.assertTrue(cmd.run_card['scale']['fixed_ren_scale'])
+        self.assertEqual(cmd.run_card['scale']['scale_factor'], 0.5)
 
         cmd = editor(banner_mod.RunCardLO(), 'run_card.dat')
         for value, full, factor in expected:

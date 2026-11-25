@@ -286,8 +286,8 @@ class MG7Cmd(Cmd):
         Events/<run.run_name>_NN, so the name is a run_card setting."""
         path = os.path.join("Cards", "run_card.toml")
         run_card = RunCardMG7(path, consistency=False)
-        if run_card["run"]["run_name"] != name:
-            run_card["run"]["run_name"] = name
+        if run_card["output"]["run_name"] != name:
+            run_card["output"]["run_name"] = name
             run_card.write(path)
             logger.info("run name set to '%s'", name)
 

@@ -2,29 +2,26 @@
 $hidden_groups
 
 [run]
-run_name = %(run.run_name)s
 seed = %(run.seed)s
 device = %(run.device)s
 cpu_mode = %(run.cpu_mode)s # SIMD width of the matrix elements on cpu; options: auto, scalar, simd_128, simd_256, simd_512, avx512y
 madspace_cpu_mode = %(run.madspace_cpu_mode)s # SIMD width of the phase-space sampling on cpu; options: auto, scalar, simd_128 (ARM), simd_256, avx512y, simd_512
 precision = %(run.precision)s # options: all64, all32, color32 (FP32 color sum), denom64 (FP64 momenta and denominators)
 precision_check = %(run.precision_check)s # fraction of the events evaluated again in all64 to check the precision; 0: off
-validation = %(run.validation)s # FPTYPE to reweight the events to after the run, e.g. d (all64), to check the weights; empty: off
-validation_events = %(run.validation_events)s
+validation = %(run.validation)s # FPTYPE to validate the weights against after the run, e.g. d (all64), or d:1000 for 1000 events; empty: off
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
-use_pigz = %(run.use_pigz)s # gzip the lhe output with pigz; auto: when it is installed
-lhe_compression = %(run.lhe_compression)s # auto: on a gpu device when madspace was built with nvCOMP; options: auto, cpu
-lhe_gzip_algorithm = %(run.lhe_gzip_algorithm)s # nvCOMP gzip algorithm on gpu: 0 fastest to 5 smallest output
-output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
-weighted_histograms = %(run.weighted_histograms)s
-postprocessing_histograms = %(run.postprocessing_histograms)s
-make_plots = %(run.make_plots)s
-write_hwu = %(run.write_hwu)s
 verbosity = %(run.verbosity)s # options: auto, silent, pretty, log
-dummy_matrix_element = %(run.dummy_matrix_element)s
-me_frame = %(run.me_frame)s # particles whose momenta define the matrix element frame; []: lab, [1, 2]: partonic c.m.
+
+[output]
+# the files written: the event file format and its compression, and the run name of Events/
+run_name = %(output.run_name)s
+use_pigz = %(output.use_pigz)s # gzip the lhe output with pigz; auto: when it is installed
+lhe_compression = %(output.lhe_compression)s # auto: on a gpu device when madspace was built with nvCOMP; options: auto, cpu
+lhe_gzip_algorithm = %(output.lhe_gzip_algorithm)s # nvCOMP gzip algorithm on gpu: 0 fastest to 5 smallest output
+output_format = %(output.output_format)s # options: compact_npy, lhe_npy, lhe
+time_of_flight = %(output.time_of_flight)s
 
 [beam]
 ebeam1 = %(beam.ebeam1)s # in GeV, units accepted; beam 1 moves along +z, events and eta cuts are in this lab frame
@@ -33,15 +30,17 @@ leptonic = %(beam.leptonic)s
 lepton_density = %(beam.lepton_density)s # dressed-lepton density in Source/PDF/lep_densities (ISR, beamstrahlung); empty: none
 pdf1 = %(beam.pdf1)s # LHAPDF set; set beam.pdf X sets both beams, a leptonic run has none
 pdf2 = %(beam.pdf2)s
-fixed_ren_scale = %(beam.fixed_ren_scale)s
-fixed_fact_scale = %(beam.fixed_fact_scale)s
-ren_scale = %(beam.ren_scale)s
-fact_scale1 = %(beam.fact_scale1)s
-fact_scale2 = %(beam.fact_scale2)s
-dynamical_scale_choice = %(beam.dynamical_scale_choice)s # options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm, ckkwl
-scale_factor = %(beam.scale_factor)s
-max_jet_flavor = %(beam.max_jet_flavor)s # heaviest quark flavour of the MLM jets; more MLM clustering options are in the documentation
-min_scale = %(beam.min_scale)s # floor on mu_R and mu_F in GeV (MLM drops the events below it); 0 disables it
+
+[scale]
+# the renormalization and factorization scales of the matrix element and the PDFs
+fixed_ren_scale = %(scale.fixed_ren_scale)s
+fixed_fact_scale = %(scale.fixed_fact_scale)s
+ren_scale = %(scale.ren_scale)s
+fact_scale1 = %(scale.fact_scale1)s
+fact_scale2 = %(scale.fact_scale2)s
+dynamical_scale_choice = %(scale.dynamical_scale_choice)s # options: transverse_energy, transverse_mass, half_transverse_mass, partonic_energy, mlm, ckkwl
+scale_factor = %(scale.scale_factor)s
+min_scale = %(scale.min_scale)s # floor on mu_R and mu_F in GeV (MLM drops the events below it); 0 disables it
 
 [generation]
 events = %(generation.events)s
@@ -67,27 +66,20 @@ pdf = %(systematics.pdf)s # "errorset", "central", LHAPDF set names or ids, or "
 write_inputs = %(systematics.write_inputs)s
 
 [phasespace]
-mode = %(phasespace.mode)s # multichannel, flat (one channel), both (small channels flat) or auto (both with MadNIS)
 merge_subprocesses = %(phasespace.merge_subprocesses)s # share the channels of subprocesses with the same topologies; off for MLM
 sde_strategy = %(phasespace.sde_strategy)s # channel weights from the squared diagrams or the denominators; options: diagrams, denominators
-t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
-flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
-combine_channel_threshold = %(phasespace.combine_channel_threshold)s
-drop_qcd_s_channel = %(phasespace.drop_qcd_s_channel)s
-ew_channel_reduction = %(phasespace.ew_channel_reduction)s # channel count above which off-shell EW boson variants are merged; -1 keeps all
-ew_channel_reduction_mode = %(phasespace.ew_channel_reduction_mode)s # options: full, partial, t_channel
-channel_reduction_with_vegas = %(phasespace.channel_reduction_with_vegas)s
-invariant_power = %(phasespace.invariant_power)s
-bw_cutoff = %(phasespace.bw_cutoff)s
-cut_decays = %(phasespace.cut_decays)s
-xqcut = %(phasespace.xqcut)s # MLM merging cut on the kt of matrix-element jets in GeV (dynamical_scale_choice = "mlm"); 0: off
-auto_ptj_mjj = %(phasespace.auto_ptj_mjj)s
-# CKKW-L merging with Pythia8: set at most one of ktdurham and ptlund, not together with xqcut
-ktdurham = %(phasespace.ktdurham)s
-ptlund = %(phasespace.ptlund)s
-dparameter = %(phasespace.dparameter)s
-merging_pdgs = %(phasespace.merging_pdgs)s
-adaptive_symmetry_sampling = %(phasespace.adaptive_symmetry_sampling)s
+
+#@group merging
+[merging]
+# MLM and CKKW-L merging; shown once the sample is merged (dynamical_scale_choice = "mlm" with xqcut > 0, or a CKKW-L cut)
+xqcut = %(merging.xqcut)s # MLM merging cut on the kt of matrix-element jets in GeV (dynamical_scale_choice = "mlm"); 0: off
+auto_ptj_mjj = %(merging.auto_ptj_mjj)s
+# CKKW-L: set at most one of ktdurham and ptlund, not together with xqcut
+ktdurham = %(merging.ktdurham)s
+ptlund = %(merging.ptlund)s
+dparameter = %(merging.dparameter)s
+merging_pdgs = %(merging.merging_pdgs)s
+#@end
 
 [madnis]
 enable = %(madnis.enable)s
@@ -147,11 +139,18 @@ $multiparticles
 # <group>[-<group>]-<observable>.min / .max
 # groups: jet, bottom, lepton, missing, photon (see [multiparticles])
 # observables: pt, eta_abs, delta_r, mass, pair_mass, sfos_pair_mass, sqrt_s
+cut_decays = %(cuts.cut_decays)s # apply the cuts to the decay products of on-shell particles
+bw_cutoff = %(cuts.bw_cutoff)s # number of widths around the mass sampled with a Breit-Wigner
+max_jet_flavor = %(cuts.max_jet_flavor)s # heaviest quark flavour the jet cuts and the MLM back-clustering treat as a jet
 $cuts
 
 [histograms]
 # <observable>.min, .max and .bin_count; "jet_1-pt" selects the hardest jet
 # "weight" histograms the event weight over the unit weight sigma_abs
+make_plots = %(histograms.make_plots)s # plot the histograms into Events/<run>/plots (needs matplotlib)
+weighted_histograms = %(histograms.weighted_histograms)s # fill the histograms with weighted events during integration
+postprocessing_histograms = %(histograms.postprocessing_histograms)s # fill the histograms with the final events, including scale/PDF weights
+write_hwu = %(histograms.write_hwu)s # also write the histograms as MADatLO.HwU
 $histograms
 
 #@group amplicol
@@ -201,11 +200,6 @@ $cluster_train
 [cluster_deploy]
 # the same for the event generation jobs, e.g. run.cpu_thread_pool_size = 8
 $cluster_deploy
-#@end
-
-#@group postprocessing
-[postprocessing]
-time_of_flight = %(postprocessing.time_of_flight)s
 #@end
 
 #@group vegas

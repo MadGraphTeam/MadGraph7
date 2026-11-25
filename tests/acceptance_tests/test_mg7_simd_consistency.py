@@ -94,9 +94,9 @@ class MG7SimdConsistencyTest(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % run_dir)
         settings = dict({
             'run.seed': _SEED,
-            'run.output_format': 'compact_npy',
-            'run.postprocessing_histograms': False,
-            'run.make_plots': False,
+            'output.output_format': 'compact_npy',
+            'histograms.postprocessing_histograms': False,
+            'histograms.make_plots': False,
             'beam.pdf': 'NNPDF23_lo_as_0130_qed',
             'generation.events': _EVENTS,
             'systematics.enable': False,

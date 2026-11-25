@@ -33,9 +33,9 @@ Hidden option groups
 --------------------
 
 To keep the card short, some option groups are left out of it by default: ``[gridpack]``,
-``[cluster]`` (with ``[cluster_train]`` and ``[cluster_deploy]``), ``[postprocessing]``,
+``[cluster]`` (with ``[cluster_train]`` and ``[cluster_deploy]``),
 ``[vegas]``, ``[custom_functions]``, ``[surrogate]``, ``[amplicol]`` (shown for an output with
-``[amplicol]`` processes) and every ``[madnis]`` option but ``enable`` and ``train_batches``
+``[amplicol]`` processes), ``[merging]`` (shown for a merged sample) and every ``[madnis]`` option but ``enable`` and ``train_batches``
 (the group ``madnis``). The second line of the card lists the hidden groups. They keep their
 default values, and
 
@@ -52,10 +52,6 @@ settings differs from its default, and ``[custom_functions]`` once a function ha
 
 [run]
 -----
-
-``run_name`` (``"run"``)
-    Name of the run. Events are written to ``Events/<run_name>_NN``, where ``NN`` counts up
-    from 01.
 
 ``seed`` (``-1``)
     Random seed. The same seed reproduces a run exactly. ``-1`` draws a new seed for each
@@ -96,35 +92,17 @@ settings differs from its default, and ``[custom_functions]`` once a function ha
     ``precision_check_threshold``) or is not finite, in which case ``all64`` or ``color32``
     is the safer choice for that process.
 
+``validation`` (``""``)
+    FPTYPE to check the generated weights against, after the run: the events are
+    reweighted to the matrix elements compiled at that precision, and the number of
+    significant digits they share with the weights is reported. ``d`` (all64) checks
+    every event; ``d:1000`` checks 1000 of them, evenly spaced through the sample.
+    ``""`` is off. It needs MadtRex, and is not run for a cluster run or a gridpack.
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)
     Number of threads for each ``cpu`` device, each GPU device and for combining the
     channel results. ``-1`` chooses based on the number of CPUs.
 
-``output_format`` (``"lhe_npy"``)
-    Format of the event file. ``compact_npy`` and ``lhe_npy`` write ``events.npy`` together
-    with a ``header.lhe`` that carries the run and param card and the cross-section
-    information. ``lhe`` writes a compressed LHE file directly. Tools that read LHE files,
-    such as the shower programs, need ``lhe``. The launch question switches to it when you
-    select one of them.
-
-``weighted_histograms`` (``false``)
-    Fill the :ref:`histograms <run-card-histograms>` with weighted events during the
-    integration. This costs one observable evaluation per phase-space point.
-
-``postprocessing_histograms`` (``true``)
-    Fill the histograms with the final events, including their scale and PDF weights.
-    Plots and the HwU file are made from these.
-
-``make_plots`` (``true``)
-    Plot the histograms into ``Events/<run>/plots``. This needs ``matplotlib``. Without it
-    the numbers are still written to ``info.json``.
-
-``write_hwu`` (``false``)
-    Also write the histograms as ``MADatLO.HwU``. This is the format MG5_aMC writes as
-    ``MADatNLO.HwU`` for NLO runs, with the same conventions: the cross section per bin
-    (not divided by the bin width, unlike the plots), and the same scale-variation
-    columns. ``madgraph/various/histograms.py`` reads both files together.
 
 ``verbosity`` (``"auto"``)
     Amount of console output: ``silent``, ``pretty`` or ``log``. ``auto`` is ``pretty`` in
@@ -132,6 +110,7 @@ settings differs from its default, and ``[custom_functions]`` once a function ha
 
 ``dummy_matrix_element`` (``false``)
     Skip the matrix element evaluation. This is meant for testing the phase-space sampling.
+    Hidden: written to the card only once changed.
 
 [gridpack]
 ----------
@@ -247,6 +226,38 @@ in the ``[cluster_train]`` and ``[cluster_deploy]`` sections, for example
 ``[cluster_deploy]`` to train on GPUs and generate on CPUs. See :doc:`cluster`.
 
 
+[output]
+--------
+
+The files of a run: the event file format, its compression, and the name of the run folder.
+
+``run_name`` (``"run"``)
+    Name of the run. Events are written to ``Events/<run_name>_NN``, where ``NN`` counts up
+    from 01.
+
+``output_format`` (``"lhe_npy"``)
+    Format of the event file. ``compact_npy`` and ``lhe_npy`` write ``events.npy`` together
+    with a ``header.lhe`` that carries the run and param card and the cross-section
+    information. ``lhe`` writes a compressed LHE file directly. Tools that read LHE files,
+    such as the shower programs, need ``lhe``. The launch question switches to it when you
+    select one of them.
+
+``use_pigz`` (``"auto"``)
+    gzip the LHE output with pigz when it is installed. ``auto`` detects it; ``false`` uses gzip.
+
+``lhe_compression`` (``"auto"``)
+    Where the LHE output is gzipped. ``auto`` uses a GPU when madspace was built with nvCOMP,
+    otherwise the CPU. ``cpu`` always uses pigz or gzip.
+
+``lhe_gzip_algorithm`` (``5``)
+    nvCOMP gzip algorithm for the GPU compression: ``0`` is the fastest and ``5`` gives the
+    smallest output.
+
+``time_of_flight`` (``-1.0``)
+    Threshold in mm below which the invariant livetime is not written. ``-1`` disables the
+    step. The step is a post-processing of the LHE file of MadEvent, so enabling it switches
+    ``output_format`` to ``"lhe"``.
+
 [beam]
 ------
 
@@ -269,34 +280,12 @@ in the ``[cluster_train]`` and ``[cluster_deploy]`` sections, for example
     which has 100 error members for the PDF variations. With different sets on the two
     beams the PDF member variations of ``[systematics]`` are dropped.
 
-``fixed_ren_scale`` (``false``), ``fixed_fact_scale`` (``false``)
-    Use the fixed values below instead of the dynamical scale choice. The two switches act
-    on the renormalization and the factorization scale separately.
-
-``ren_scale`` (``91.188``), ``fact_scale1`` (``91.188``), ``fact_scale2`` (``91.188``)
-    Fixed scales in GeV. They are only used when the matching switch is on.
-    ``fact_scale1`` and ``fact_scale2`` are the factorization scales of the two beams.
-
-``dynamical_scale_choice`` (``"half_transverse_mass"``)
-    Scale used when it is not fixed. ``transverse_energy`` is the sum of the transverse
-    energies of the final-state particles. ``transverse_mass`` is the sum of their
-    transverse masses, :math:`H_T`. ``half_transverse_mass`` is :math:`H_T/2`.
-    ``partonic_energy`` is the partonic center-of-mass energy. ``set dynamical_scale_choice
-    HT/4`` is a shortcut that sets this parameter and ``scale_factor`` to give
-    :math:`H_T/4`. ``ckkwl`` is the clustering scale of the diagram, without the
-    :math:`\alpha_s` and PDF reweighting of MLM merging: MadEvent's default ``-1`` for a
-    CKKW-L merged sample, where Pythia8 does that reweighting. An ``[amplicol]`` event is
-    clustered along the planar diagrams of its leading-colour flow, which differ from the
-    diagrams a madmatrix event is clustered along. Under ``mlm`` and ``ckkwl`` the scales
-    are those of the clustering: the fixed scales and ``scale_factor`` are ignored.
-    For madmatrix, ``ckkwl`` scores clusterings with the hidden ``clustering_measure``, so
-    the scales of jet events differ slightly from MadEvent's ``-1``: higher with the default
-    ``"fxfx"``, lower with ``"madevent"``. The merged cross section barely changes, since Pythia8
-    redoes the :math:`\alpha_s` reweighting.
-
-``scale_factor`` (``1.0``)
-    Factor applied to the dynamical scale. Fixed scales are not affected. With the default
-    choice, ``scale_factor = 0.5`` gives :math:`H_T/4`.
+``me_frame`` (``[]``)
+    External particles whose momenta define the rest frame the matrix element is
+    evaluated in, for a matrix element that is not Lorentz invariant (a polarised one).
+    ``[]`` applies no boost, ``[1, 2]`` is the partonic centre of mass. A polarised
+    process gets the default of MadEvent and aMC@NLO, set in the process definition.
+    Hidden: written to the card only once it differs from ``[]``.
 
 [generation]
 ------------
@@ -364,16 +353,6 @@ as ``<rwgt>`` blocks in LHE files and as ``rwgt_<id>`` columns in the npy files.
     Also store :math:`x_1`, :math:`x_2` and the scales of each event, so the weights can be
     recomputed later. In LHE files they go into an ``<mgrwt>`` block.
 
-[postprocessing]
-----------------
-
-This section drives a post-processing step of MadEvent that works on the LHE file, so
-enabling it switches ``output_format`` to ``"lhe"``.
-
-``time_of_flight`` (``-1.0``)
-    Threshold in mm below which the invariant livetime is not written. ``-1`` disables the
-    step.
-
 The scale and PDF variations of ``systematics.py`` are computed by ``[systematics]``
 instead. The ``systematics*`` entries of this section in older cards are ignored.
 
@@ -401,6 +380,9 @@ VEGAS grids adapt the phase-space sampling during the survey.
 
 [phasespace]
 ------------
+Only ``merge_subprocesses`` and ``sde_strategy`` are written to the card by default. The other
+entries are hidden: they keep their defaults, and are written to the card only once
+changed (``set`` takes them as any other).
 
 ``mode`` (``"multichannel"``)
     Strategy for the phase space. ``multichannel`` uses one channel per diagram. ``flat``
@@ -460,17 +442,30 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``invariant_power`` (``0.7``)
     Exponent :math:`p` of the :math:`1/s^p` sampling of time-like invariants.
 
-``bw_cutoff`` (``15``)
-    Breit-Wigner propagators are sampled within this many widths of the mass. The same
-    window applies to propagators excluded with ``$``.
-
-``cut_decays`` (``false``)
-    Apply the cuts to the decay products of on-shell particles. As in MadEvent, they are
-    left uncut by default.
-
 ``adaptive_symmetry_sampling`` (``true``)
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
+
+[merging]
+---------
+
+MLM and CKKW-L merging. The section is shown in the card once the sample is merged: an MLM
+sample (``dynamical_scale_choice = "mlm"`` with ``xqcut > 0``) or a CKKW-L one (``ktdurham``
+or ``ptlund`` set). Otherwise it is hidden.
+
+``jet_radius`` (``1.0``)
+    Jet radius of the MLM clustering measure, used with ``dynamical_scale_choice = "mlm"``.
+    Hidden: written to the card only once changed.
+
+``xqcut`` (``0.0``)
+    MLM merging cut on the :math:`k_T` of the matrix-element jets, in GeV, with
+    ``dynamical_scale_choice = "mlm"``: an emission below it is left to the parton
+    shower, so the event is dropped. ``0`` disables it.
+
+``auto_ptj_mjj`` (``true``)
+    With a merging cut in place, raise the jet :math:`p_T` and pair-mass cuts to ``xqcut``,
+    which the jets are bounded by anyway, and drop the jet :math:`\Delta R` cuts that
+    ``xqcut`` supersedes. As in MadEvent's ``auto_ptj_mjj``.
 
 ``ktdurham`` (``0.0``)
     CKKW-L merging with Pythia8: the smallest Durham :math:`k_T` an event may have, taken
@@ -689,8 +684,39 @@ without cuts.
 
 .. _run-card-histograms:
 
+``max_jet_flavor`` (``4``)
+    Heaviest quark flavour the jet cuts and the MLM back-clustering treat as a jet: the
+    ``jet`` multiparticle follows it (``5`` in a 5-flavour model, where the b is a jet).
+
+``bw_cutoff`` (``15``)
+    Breit-Wigner propagators are sampled within this many widths of the mass. The same
+    window applies to propagators excluded with ``$``.
+
+``cut_decays`` (``false``)
+    Apply the cuts to the decay products of on-shell particles. As in MadEvent, they are
+    left uncut by default.
+
 [histograms]
 ------------
+Output settings of the plots first, then the observables:
+
+``weighted_histograms`` (``false``)
+    Fill the :ref:`histograms <run-card-histograms>` with weighted events during the
+    integration. This costs one observable evaluation per phase-space point.
+
+``postprocessing_histograms`` (``true``)
+    Fill the histograms with the final events, including their scale and PDF weights.
+    Plots and the HwU file are made from these.
+
+``make_plots`` (``true``)
+    Plot the histograms into ``Events/<run>/plots``. This needs ``matplotlib``. Without it
+    the numbers are still written to ``info.json``.
+
+``write_hwu`` (``false``)
+    Also write the histograms as ``MADatLO.HwU``. This is the format MG5_aMC writes as
+    ``MADatNLO.HwU`` for NLO runs, with the same conventions: the cross section per bin
+    (not divided by the bin width, unlike the plots), and the same scale-variation
+    columns. ``madgraph/various/histograms.py`` reads both files together.
 
 Histograms of observables, filled during the run and written to ``Events/<run>/info.json``.
 They use the same observable names as the cuts. Each entry needs a range and a number of
@@ -710,8 +736,8 @@ negative weights (from an interference) a spike at -1.
 
 ``output`` writes a default set of histograms for the final state of your process. ``set
 histograms OFF`` at the launch question removes them and ``set histograms default``
-restores them. The parameters ``weighted_histograms``, ``postprocessing_histograms``,
-``make_plots`` and ``write_hwu`` in ``[run]`` control what is done with them.
+restores them. The settings above, ``weighted_histograms``, ``postprocessing_histograms``,
+``make_plots`` and ``write_hwu``, control what is done with them.
 
 [madnis]
 --------

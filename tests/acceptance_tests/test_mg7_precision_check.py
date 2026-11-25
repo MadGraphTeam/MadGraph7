@@ -89,7 +89,7 @@ class MG7PrecisionCheckTest(unittest.TestCase):
     def test_precision_check_mg7(self):
         datadir = _mg7_datadir_or_skip(self)
         run_dir = self._output_process(
-            'lhe', **{'run.output_format': 'lhe', 'run.precision_check': 0.05})
+            'lhe', **{'output.output_format': 'lhe', 'run.precision_check': 0.05})
         card = RunCardMG7(pjoin(run_dir, 'Cards', 'run_card.toml'))
         self.assertEqual(card['run']['precision'], 'denom64')
 
@@ -130,7 +130,7 @@ class MG7PrecisionCheckTest(unittest.TestCase):
     def test_precision_check_reproduces_the_run_mg7(self):
         datadir = _mg7_datadir_or_skip(self)
         run_dir = self._output_process(
-            'stored', **{'run.output_format': 'lhe_npy', 'run.precision_check': 0.01})
+            'stored', **{'output.output_format': 'lhe_npy', 'run.precision_check': 0.01})
         script = pjoin(run_dir, 'check_mapping.py')
         with open(script, 'w') as f:
             f.write(textwrap.dedent('''

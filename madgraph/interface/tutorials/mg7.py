@@ -81,10 +81,11 @@ are marked.
                     batch sizes, systematics                            <-
   [cuts]            the cuts
   [phasespace]      how phase space is built                            <-
+  [merging]         MLM and CKKW-L merging, shown for a merged sample
   [vegas]           the default integrator                              <-
   [madnis]          the trainable one                                   <-
   [multiparticles]  labels, as in the process line
-  [histograms]      what to plot
+  [histograms]      what to plot, and whether to make the plots
   [postprocessing]  lifetimes in the LHE file (time_of_flight)
   [gridpack]        self-contained event generation
 

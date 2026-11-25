@@ -589,10 +589,10 @@ class TestPythia8MLMConeRadius(unittest.TestCase):
 
     def test_mg7_jet_radius(self):
         run_card = self.banner_mod.RunCardMG7()
-        run_card.set('beam.dynamical_scale_choice', 'mlm')
-        run_card.set('phasespace.xqcut', 30.0)
+        run_card.set('scale.dynamical_scale_choice', 'mlm')
+        run_card.set('merging.xqcut', 30.0)
         self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 1.0)
-        run_card.set('beam.jet_radius', 0.7)
+        run_card.set('merging.jet_radius', 0.7)
         self.assertEqual(run_card['d'], 0.7)
         self.assertEqual(self.setup_card(run_card)['JetMatching:coneRadius'], 0.7)
 

@@ -7226,6 +7226,42 @@ class TOMLSectionView(object):
 DEFAULT_MERGING_PDGS = [21, 1, 2, 3, 4, 5, 6]
 
 
+# the FPTYPEs of [run] validation (madtrex_driver, madmatrix.mk SUPPORTED_FPTYPES)
+VALIDATION_FPTYPES = ('all64', 'all32', 'color32', 'denom64', 'd', 'f', 'm', 'e', 'v')
+
+
+def split_validation(value):
+    """The FPTYPE and the number of events of a [run] validation value:
+    "d" checks every event (events 0), "d:1000" a thousand of them. "" or
+    "none" is off: ("", 0). Raises ValueError on a malformed value."""
+    text = str(value).strip().lower()
+    if text in ('', 'none'):
+        return '', 0
+    fptype, colon, events = text.partition(':')
+    fptype = fptype.strip()
+    if fptype not in VALIDATION_FPTYPES:
+        raise ValueError("FPTYPE %r is not one of %s" % (fptype, ', '.join(VALIDATION_FPTYPES)))
+    if not colon:
+        return fptype, 0
+    try:
+        count = int(events)
+    except ValueError:
+        count = -1
+    if count < 0:
+        raise ValueError("the number of events after the colon must be a positive "
+                         "integer, not %r" % events.strip())
+    return fptype, count
+
+
+def split_validation_value(value):
+    """The [run] validation value as it is stored: "" (off), "none", "FPTYPE"
+    or "FPTYPE:N". Raises ValueError on a malformed one."""
+    if str(value).strip().lower() == 'none':
+        return 'none'
+    fptype, count = split_validation(value)
+    return fptype if not count else '%s:%d' % (fptype, count)
+
+
 class RunCardMG7(RunCard):
     """Python representation of the TOML ``run_card.toml`` used by the default
     (mg7/madnis) generation mode.
@@ -7271,7 +7307,7 @@ class RunCardMG7(RunCard):
     GROUP_HINTS = {'madnis': '# more options (networks, optimizer, buffer, channel '
                              'dropping): "update madnis" at the launch prompt\n'}
     # groups shown whole once a setting differs, instead of line by line
-    WHOLE_GROUPS = ('cluster',)
+    WHOLE_GROUPS = ('cluster', 'merging')
     _option_groups_cache = {}
 
     # energy units, expressed in GeV (the unit everything is stored in); the
@@ -7361,13 +7397,25 @@ class RunCardMG7(RunCard):
         if auto:
             self.auto_set.add(internal)
 
+    def hide_toml_params(self, section, keys):
+        """Hide the fixed parameters ``keys`` of ``section``: they have no line
+        in the card, and are written out (at the end of their section) only
+        once they differ from their default, so that a rewrite keeps them."""
+        for key in keys:
+            internal = '%s.%s' % (section, key)
+            if internal not in self.toml_defaults:
+                raise KeyError(internal)
+            if internal not in self.hidden_param:
+                self.hidden_param.append(internal)
+
     def gzip_configuration(self):
         """The ``misc.configure_gzip`` settings given by the [run] section:
         'auto' lets misc pick pigz, and a positive thread pool size caps it."""
         run = self['run']
+        output = self['output']
         threads = run['cpu_thread_pool_size']
         return {
-            'use_pigz': None if run['use_pigz'] == 'auto' else run['use_pigz'],
+            'use_pigz': None if output['use_pigz'] == 'auto' else output['use_pigz'],
             'nb_core': threads if threads > 0 else None,
         }
 
@@ -7384,7 +7432,7 @@ class RunCardMG7(RunCard):
         self.add_param('run_tag', 'tag_1', include=False)
 
         # ----------------------------- [run] --------------------------
-        self.add_toml_param('run', 'run_name', "run", gridpack=True,
+        self.add_toml_param('output', 'run_name', "run", gridpack=True,
             comment="name of the run; events go to Events/<run_name>_NN")
         self.add_toml_param('run', 'seed', -1, gridpack=True,
             comment="random seed; -1 draws a fresh one, which is recorded in the output")
@@ -7420,14 +7468,11 @@ class RunCardMG7(RunCard):
         # matrix element build accepts (madmatrix.mk SUPPORTED_FPTYPES), or a
         # precision name; "" (or "none") is off. Not a gridpack parameter:
         # gridpack runs do not validate.
+        # "FPTYPE" checks every event; "FPTYPE:N" checks N of them, evenly
+        # spaced through the sample (madtrex_driver._subsample_events())
         self.add_toml_param('run', 'validation', "",
-            allowed=['', 'none', 'all64', 'all32', 'color32', 'denom64',
-                     'd', 'f', 'm', 'e', 'v'],
-            comment="FPTYPE to validate the generated weights against (d/all64 suggested); \"\" for none")
-        # how many events the validation reweights, evenly spaced through a
-        # larger sample (madtrex_driver._subsample_events()); 0: all of them
-        self.add_toml_param('run', 'validation_events', 0,
-            comment="events the precision validation checks, evenly spaced through the sample; 0 for all")
+            comment="FPTYPE to validate the generated weights against (d/all64 suggested), "
+                    "optionally with the number of events to check: \"d:1000\"; \"\" for none")
         # --hel_recycling outputs (madmatrix, cpu only): the size of the recycled
         # tables per SIMD page above which the build takes the plain matrix
         # element (HRMAXMB of madmatrix.mk; -1: the build's default, 0: no
@@ -7439,15 +7484,15 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             execution=True,
             comment="threads for the cpu devices; -1 chooses automatically")
-        self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
+        self.add_toml_param('output', 'use_pigz', False, gridpack=True, auto=True,
             allowed=['auto', True, False],
             execution=True,
             comment="cpu gzip of the lhe output with pigz when available; auto detects it, false uses gzip")
-        self.add_toml_param('run', 'lhe_compression', 'auto', gridpack=True,
+        self.add_toml_param('output', 'lhe_compression', 'auto', gridpack=True,
             allowed=['auto', 'cpu'],
             execution=True,
             comment="where the lhe output is gzipped: auto uses a gpu device when madspace was built with nvCOMP, cpu always uses pigz/gzip")
-        self.add_toml_param('run', 'lhe_gzip_algorithm', 5, gridpack=True,
+        self.add_toml_param('output', 'lhe_gzip_algorithm', 5, gridpack=True,
             allowed=[0, 1, 2, 3, 4, 5],
             execution=True,
             comment="nvCOMP gzip algorithm for gpu compression of the lhe output: 0 fastest to 5 smallest output")
@@ -7457,44 +7502,14 @@ class RunCardMG7(RunCard):
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,
             execution=True,
             comment="threads for combining the channel results; -1 chooses automatically")
-        self.add_toml_param('run', 'output_format', "lhe_npy", gridpack=True,
+        self.add_toml_param('output', 'output_format', "lhe_npy", gridpack=True,
             allowed=['compact_npy', 'lhe_npy', 'lhe'],
             comment="event file format; the npy formats also write header.lhe")
-        self.add_toml_param('run', 'weighted_histograms', False,
-            comment="fill the [histograms] with weighted events during integration")
-        self.add_toml_param('run', 'postprocessing_histograms', True,
-            comment="fill the [histograms] with the final events, including scale/PDF weights")
-        self.add_toml_param('run', 'make_plots', True,
-            comment="plot the [histograms] into Events/<run>/plots (needs matplotlib)")
-        self.add_toml_param('run', 'write_hwu', False,
-            comment="also write the [histograms] as MADatLO.HwU")
         self.add_toml_param('run', 'verbosity', "auto", gridpack=True,
             allowed=['silent', 'pretty', 'log', 'auto'],
             comment="amount of console output; auto is pretty in a terminal and log otherwise")
-        self.add_toml_param('run', 'dummy_matrix_element', False,
+        self.add_toml_param('run', 'dummy_matrix_element', False, hidden=True,
             comment="skip the matrix element evaluation, for testing")
-        # Lorentz frame the matrix element is evaluated in, as a list of the
-        # external particles whose momenta are summed up to define it (same
-        # convention as the legacy run_card me_frame). The default [] means no
-        # boost at all: the matrix element sees the momenta in the frame they
-        # are generated in, which for a collision is the lab frame. [1, 2] is
-        # the partonic centre of mass, i.e. the frame madevent evaluates in,
-        # and [1] its equivalent for a 1 -> n decay. Only matters for a matrix
-        # element that is not Lorentz invariant, i.e. a polarised one, so the
-        # default costs nothing and leaves every other run unchanged. A
-        # polarised (or density-matrix) process gets the madevent/aMC@NLO
-        # default instead (create_default_for_process).
-        self.add_toml_param('run', 'me_frame', [], typelist=int,
-            comment="external particles whose momenta are summed up to define the "
-                    "rest frame in which to evaluate the matrix element; [] "
-                    "applies no boost, [1,2] is the partonic centre of mass. "
-                    "Only matters for a non Lorentz invariant (polarised or "
-                    "density-matrix) matrix element; for one, the default is "
-                    "the massive final-state particles (or their decay "
-                    "products) in p p, [1,2] in e+ e- and [1] for a decay, as "
-                    "in madevent and aMC@NLO. In a collision a single "
-                    "particle is held at rest with its spin along the "
-                    "Collins-Soper axis")
 
         # ---------------------------- [gridpack] ----------------------
         self.add_toml_param('gridpack', 'save_gridpack', False,
@@ -7609,19 +7624,19 @@ class RunCardMG7(RunCard):
             comment="LHAPDF set name of beam 1; set beam.pdf X sets both beams")
         self.add_toml_param('beam', 'pdf2', "NNPDF40_lo_as_01180",
             comment="LHAPDF set name of beam 2; PDF member variations need the same set on both beams")
-        self.add_toml_param('beam', 'fixed_ren_scale', False,
+        self.add_toml_param('scale', 'fixed_ren_scale', False,
             comment="use ren_scale instead of the dynamical scale")
-        self.add_toml_param('beam', 'fixed_fact_scale', False,
+        self.add_toml_param('scale', 'fixed_fact_scale', False,
             comment="use fact_scale1 and fact_scale2 instead of the dynamical scale")
-        self.add_toml_param('beam', 'ren_scale', 91.188,
+        self.add_toml_param('scale', 'ren_scale', 91.188,
             comment="fixed renormalization scale in GeV", energy=True)
-        self.add_toml_param('beam', 'fact_scale1', 91.188,
+        self.add_toml_param('scale', 'fact_scale1', 91.188,
             comment="fixed factorization scale of beam 1 in GeV", energy=True)
-        self.add_toml_param('beam', 'fact_scale2', 91.188,
+        self.add_toml_param('scale', 'fact_scale2', 91.188,
             comment="fixed factorization scale of beam 2 in GeV", energy=True)
-        self.add_toml_param('beam', 'scale_factor', 1.0,
+        self.add_toml_param('scale', 'scale_factor', 1.0,
             comment="multiplies the dynamical scale; fixed scales are unaffected")
-        self.add_toml_param('beam', 'dynamical_scale_choice', "half_transverse_mass",
+        self.add_toml_param('scale', 'dynamical_scale_choice', "half_transverse_mass",
             allowed=['transverse_energy', 'transverse_mass',
                      'half_transverse_mass', 'partonic_energy', 'mlm', 'ckkwl'],
             comment="dynamical scale used unless the scale is fixed")
@@ -7629,12 +7644,12 @@ class RunCardMG7(RunCard):
         # (only used when dynamical_scale_choice = "mlm"). 1.0 is madevent's
         # hidden run_card d (common/to_dj/D) and FxFx's value, and Pythia's
         # JetMatching:coneRadius default.
-        self.add_toml_param('beam', 'jet_radius', 1.0,
+        self.add_toml_param('merging', 'jet_radius', 1.0,
             comment="jet radius of the MLM clustering measure (dynamical_scale_choice = mlm)",
             hidden=True)
         # Heaviest quark flavour treated as a jet by the MLM back-clustering
         # (the counterpart of maxjetflavor in the legacy run_card).
-        self.add_toml_param('beam', 'max_jet_flavor', 4,
+        self.add_toml_param('cuts', 'max_jet_flavor', 4,
             comment="heaviest quark flavour the MLM back-clustering treats as a jet")
         # How the MLM back-clustering assigns a clustering scale to each
         # outgoing jet (written to the LHE as pt_clust_i, and used by Pythia as
@@ -7768,8 +7783,32 @@ class RunCardMG7(RunCard):
         # dynamical_scale_choice = "mlm" an event whose scales fall under it is
         # dropped instead, as madevent's setclscales does at 2 GeV. Ignored
         # for a run without beam PDFs (lepton collider, decay). 0 disables it.
-        self.add_toml_param('beam', 'min_scale', 2.0,
+        self.add_toml_param('scale', 'min_scale', 2.0,
             comment="floor on mu_R and mu_F (0 disables it)", energy=True)
+        # Lorentz frame the matrix element is evaluated in, as a list of the
+        # external particles whose momenta are summed up to define it (same
+        # convention as the legacy run_card me_frame). The default [] means no
+        # boost at all: the matrix element sees the momenta in the frame they
+        # are generated in, which for a collision is the lab frame. [1, 2] is
+        # the partonic centre of mass, i.e. the frame madevent evaluates in,
+        # and [1] its equivalent for a 1 -> n decay. Only matters for a matrix
+        # element that is not Lorentz invariant, i.e. a polarised one, so the
+        # default costs nothing and leaves every other run unchanged. A
+        # polarised (or density-matrix) process gets the madevent/aMC@NLO
+        # default instead (create_default_for_process). Hidden: the process
+        # definition sets it for a polarised process, and it is written out
+        # only once it differs from [].
+        self.add_toml_param('beam', 'me_frame', [], typelist=int, hidden=True,
+            comment="external particles whose momenta are summed up to define the "
+                    "rest frame in which to evaluate the matrix element; [] "
+                    "applies no boost, [1,2] is the partonic centre of mass. "
+                    "Only matters for a non Lorentz invariant (polarised or "
+                    "density-matrix) matrix element; for one, the default is "
+                    "the massive final-state particles (or their decay "
+                    "products) in p p, [1,2] in e+ e- and [1] for a decay, as "
+                    "in madevent and aMC@NLO. In a collision a single "
+                    "particle is held at rest with its spin along the "
+                    "Collins-Soper axis")
 
         # -------------------------- [generation] ----------------------
         self.add_toml_param('generation', 'events', 100000, gridpack=True,
@@ -7817,14 +7856,14 @@ class RunCardMG7(RunCard):
         self.add_toml_param('systematics', 'together', True, gridpack=True,
             comment="true: all mur x muf combinations; false: vary one scale at a time")
         self.add_toml_param('systematics', 'dynamical_scale', [], typelist=str, gridpack=True,
-            comment="alternative dynamical scale choices, as for beam.dynamical_scale_choice")
+            comment="alternative dynamical scale choices, as for scale.dynamical_scale_choice")
         self.add_toml_param('systematics', 'pdf', ['errorset'], typelist=str, gridpack=True,
             comment="'errorset', 'central', LHAPDF set names or ids, or '<set>@<member>'")
         self.add_toml_param('systematics', 'write_inputs', False, gridpack=True,
             comment="store x1, x2 and the scales for each event")
 
         # ------------------------- [postprocessing] -------------------
-        self.add_toml_param('postprocessing', 'time_of_flight', -1.0,
+        self.add_toml_param('output', 'time_of_flight', -1.0,
             comment="threshold in mm below which the lifetime is not written; -1 disables")
 
         # ----------------------------- [vegas] ------------------------
@@ -7852,12 +7891,14 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'subprocess_selection', [], typelist=int,
             comment="indices of the subprocesses (merge groups) to integrate; empty selects all",
             hidden=True)
-        self.add_toml_param('phasespace', 'mode', "multichannel",
-            allowed=['auto', 'multichannel', 'flat', 'both'],
-            comment="multichannel: channels from the diagrams; flat: a single channel; both: multichannel with the smallest channels replaced by a flat one; auto: both if MadNIS is enabled, else multichannel")
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
             allowed=['diagrams', 'denominators'],
             comment="channel weights from the squared diagrams or from the propagator denominators")
+        # the technicalities of the channel setup: settable, but written out
+        # only once they differ from their defaults (hide_toml_params)
+        self.add_toml_param('phasespace', 'mode', "multichannel",
+            allowed=['auto', 'multichannel', 'flat', 'both'],
+            comment="multichannel: channels from the diagrams; flat: a single channel; both: multichannel with the smallest channels replaced by a flat one; auto: both if MadNIS is enabled, else multichannel")
         self.add_toml_param('phasespace', 't_channel', "propagator",
             allowed=['propagator', 'rambo', 'chili'],
             comment="t-channel phase-space parametrization")
@@ -7877,15 +7918,24 @@ class RunCardMG7(RunCard):
             comment="also apply ew_channel_reduction when the run is certain to use VEGAS")
         self.add_toml_param('phasespace', 'invariant_power', 0.7,
             comment="exponent of the 1/s^p sampling of propagator invariants")
-        self.add_toml_param('phasespace', 'bw_cutoff', 15,
-            comment="number of widths around the mass sampled with a Breit-Wigner")
-        self.add_toml_param('phasespace', 'cut_decays', False,
-            comment="apply the [cuts] to the decay products of on-shell particles")
+        self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
+            comment="sample symmetric channels adaptively")
+        self.hide_toml_params('phasespace', [
+            'subprocess_selection', 'mode', 't_channel', 'flat_mode',
+            'combine_channel_threshold', 'drop_qcd_s_channel',
+            'ew_channel_reduction', 'ew_channel_reduction_mode',
+            'channel_reduction_with_vegas', 'invariant_power',
+            'adaptive_symmetry_sampling'])
+
+        # ---------------------------- [merging] -----------------------
+        # MLM and CKKW-L merging: a section of its own, shown once the sample
+        # is merged (see the #@group merging of the template). Only for a
+        # sample with several multiplicities or a CKKW-L shower.
         # Generation-level merging cut, the counterpart of xqcut in the legacy
         # run_card: a matrix-element jet emission below this scale is left to
         # the parton shower, so the event is dropped. Only used with
         # dynamical_scale_choice = "mlm"; 0 disables it.
-        self.add_toml_param('phasespace', 'xqcut', 0.0,
+        self.add_toml_param('merging', 'xqcut', 0.0,
             comment="MLM merging cut on the kt of matrix-element jets (0 disables it)", energy=True)
         # Counterpart of madevent's auto_ptj_mjj. With a merging cut in place
         # the matrix-element jets are already bounded from below by xqcut, so
@@ -7894,20 +7944,38 @@ class RunCardMG7(RunCard):
         # dropped, since xqcut supersedes them and a dR cut would otherwise
         # carve a hole out of the region the shower is meant to fill.
         # Only read when dynamical_scale_choice = "mlm" and xqcut > 0.
-        self.add_toml_param('phasespace', 'auto_ptj_mjj', True,
+        self.add_toml_param('merging', 'auto_ptj_mjj', True,
             comment="raise the jet pt and pair-mass cuts to xqcut, drop the jet dR cuts")
         # CKKW-L generation cuts of Template/LO/SubProcesses/cuts.f; <= 0 disables
-        self.add_toml_param('phasespace', 'ktdurham', 0.0, energy=True,
+        self.add_toml_param('merging', 'ktdurham', 0.0, energy=True,
             comment="CKKW-L: min Durham kt of the merging partons (0 disables it)")
-        self.add_toml_param('phasespace', 'ptlund', 0.0, energy=True,
+        self.add_toml_param('merging', 'ptlund', 0.0, energy=True,
             comment="CKKW-L: min Pythia8 evolution pT of the merging partons (0 disables it)")
-        self.add_toml_param('phasespace', 'dparameter', 0.4,
+        self.add_toml_param('merging', 'dparameter', 0.4,
             comment="D of the hadronic ktdurham measure (Merging:Dparameter)")
-        self.add_toml_param('phasespace', 'merging_pdgs', list(DEFAULT_MERGING_PDGS),
+        self.add_toml_param('merging', 'merging_pdgs', list(DEFAULT_MERGING_PDGS),
             typelist=int, auto=True,
             comment="pdg ids subject to the CKKW-L cut; auto: all coloured particles")
-        self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
-            comment="sample symmetric channels adaptively")
+
+        # ---------------------------- [histograms] --------------------
+        # the output settings of the plots, above the observables of the
+        # [histograms] section (fixed parameters and dynamic entries together)
+        self.add_toml_param('histograms', 'make_plots', True,
+            comment="plot the [histograms] into Events/<run>/plots (needs matplotlib)")
+        self.add_toml_param('histograms', 'weighted_histograms', False,
+            comment="fill the [histograms] with weighted events during integration")
+        self.add_toml_param('histograms', 'postprocessing_histograms', True,
+            comment="fill the [histograms] with the final events, including scale/PDF weights")
+        self.add_toml_param('histograms', 'write_hwu', False,
+            comment="also write the [histograms] as MADatLO.HwU")
+
+        # ------------------------------ [cuts] ------------------------
+        # the cuts of the final state are the dynamic entries; these two are
+        # not cuts on it but belong with them
+        self.add_toml_param('cuts', 'cut_decays', False,
+            comment="apply the [cuts] to the decay products of on-shell particles")
+        self.add_toml_param('cuts', 'bw_cutoff', 15,
+            comment="number of widths around the mass sampled with a Breit-Wigner")
 
         # ------------------------- [custom_functions] -----------------
         # user functions built with bin/init_custom_func; "" disables them
@@ -8150,6 +8218,18 @@ class RunCardMG7(RunCard):
         key = name.strip().lower() if isinstance(name, str) else None
         if key is not None and key.startswith('run.'):
             key = key[4:]
+        if key == 'validation':
+            # a bad FPTYPE is reported and the value kept, as an unknown
+            # allowed value is for the other entries
+            try:
+                value = split_validation_value(value)
+            except ValueError as error:
+                message = "validation: %s; kept %s" % (error, self['run.validation'])
+                if getattr(self, '_from_banner', False):
+                    logger.warning("%s (the run_card of the event file is read with it)", message)
+                else:
+                    logger.warning(message)
+                return
         if key in ('cpu_mode', 'madspace_cpu_mode'):
             allowed = self.allowed_value.get('run.' + key, [])
             if allowed and str(value).strip().lower() not in [str(v).lower() for v in allowed]:
@@ -8204,14 +8284,14 @@ class RunCardMG7(RunCard):
         on hadronic beams. Such a sample needs MLM jet matching in the shower
         (ickkw = 1 for the madevent tools) or it double counts."""
         beam = self['beam']
-        return (beam['dynamical_scale_choice'] == 'mlm'
+        return (self['scale.dynamical_scale_choice'] == 'mlm'
                 and not bool(beam['leptonic'])
-                and float(self['phasespace']['xqcut']) > 0)
+                and float(self['merging']['xqcut']) > 0)
 
     def is_ckkwl_merged(self):
         """Whether the events are a CKKW-L merged sample, i.e. generated with a
         ktdurham or ptlund cut for a merged Pythia8 shower."""
-        ps = self['phasespace']
+        ps = self['merging']
         return float(ps['ktdurham']) > 0 or float(ps['ptlund']) > 0
 
     def check_mlm_max_jet_flavor(self, expected):
@@ -8232,27 +8312,27 @@ class RunCardMG7(RunCard):
             expected = int(expected)
         except (TypeError, ValueError):
             return
-        choice = beam['dynamical_scale_choice']
+        choice = self['scale.dynamical_scale_choice']
         merged = choice in ('mlm', 'ckkwl') or self.is_ckkwl_merged()
         if not expected or not merged or bool(beam['leptonic']):
             return
-        if int(beam['max_jet_flavor']) != expected:
+        if int(self['cuts.max_jet_flavor']) != expected:
             what = 'ktdurham/ptlund' if choice not in ('mlm', 'ckkwl') \
                 else 'dynamical_scale_choice = "%s"' % choice
             raise InvalidRunCard(
-                "beam.max_jet_flavor = %s is not supported with %s: the "
+                "cuts.max_jet_flavor = %s is not supported with %s: the "
                 "clustering and the merged shower need the flavour scheme of "
                 "the model, "
                 "max_jet_flavor = %s (the quarks up to %s are massless jets). "
-                "Set beam.max_jet_flavor = %s." % (
-                    beam['max_jet_flavor'], what, expected, expected, expected))
+                "Set cuts.max_jet_flavor = %s." % (
+                    self['cuts.max_jet_flavor'], what, expected, expected, expected))
 
     def resolved_merging_pdgs(self, me_dir=None):
         """The pdg ids of the CKKW-L cut. "auto" is, as in madevent, every
         coloured particle of the model (proc_characteristics colored_pdgs of
         ``me_dir``, by default the process directory of the card; madevent's
         default list for a card without one)."""
-        pdgs = self['phasespace']['merging_pdgs']
+        pdgs = self['merging']['merging_pdgs']
         if pdgs != 'auto':
             return [int(pdg) for pdg in pdgs]
         if me_dir is None and getattr(self, 'path', None):
@@ -8299,9 +8379,9 @@ class RunCardMG7(RunCard):
             return True
         if key == 'scalefact':
             # applies to the dynamical scale only
-            if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
+            if self['scale.fixed_ren_scale'] and self['scale.fixed_fact_scale']:
                 return 1.0
-            return float(beam['scale_factor'])
+            return float(self['scale.scale_factor'])
         if key in ('mur_over_ref', 'muf_over_ref'):
             return 1.0
         if key == 'ickkw':
@@ -8311,17 +8391,17 @@ class RunCardMG7(RunCard):
         if key == 'event_norm':
             return 'average'
         if key == 'dynamical_scale_choice':
-            if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
+            if self['scale.fixed_ren_scale'] and self['scale.fixed_fact_scale']:
                 return -1  # fixed scale: no dynamical-scale variation
-            return self._dyn_scale_legacy.get(beam['dynamical_scale_choice'], -1)
+            return self._dyn_scale_legacy.get(self['scale.dynamical_scale_choice'], -1)
         # --- merging / matching: MLM through ickkw / xqcut, CKKW-L through
         # ktdurham / ptlund (with ickkw = 0, as in madevent) ---
         if key in ('ktdurham', 'ptlund'):
-            value = float(self['phasespace'][key])
+            value = float(self['merging'][key])
             return value if value > 0 else -1.0
         if key == 'xqcut':
             if self.is_mlm_merged():
-                return float(self['phasespace']['xqcut'])
+                return float(self['merging']['xqcut'])
             return 0.0
         if key == 'sys_matchscale':
             # 'auto': the CKKW-L shower varies Merging:TMS around its value
@@ -8330,13 +8410,13 @@ class RunCardMG7(RunCard):
             # JetMatching:nQmatch / Merging:nQuarksMerge: the heaviest quark
             # the merging treats as a jet
             if self.is_mlm_merged() or self.is_ckkwl_merged():
-                return int(beam['max_jet_flavor'])
+                return int(self['cuts.max_jet_flavor'])
             return 5
         if key == 'd':
             # JetMatching:coneRadius: the D of the clustering's kt measure
-            return float(beam['jet_radius'])
+            return float(self['merging.jet_radius'])
         if key == 'dparameter':
-            return float(self['phasespace']['dparameter'])
+            return float(self['merging']['dparameter'])
         if key == 'pdgs_for_merging_cut':
             return self.resolved_merging_pdgs()
         # --- run / seed bookkeeping ---
@@ -8352,7 +8432,7 @@ class RunCardMG7(RunCard):
         if key == 'lhe_version':
             return 3.0           # madspace's lhe_output always writes LHEF 3.0
         if key == 'bwcutoff':
-            return float(self['phasespace']['bw_cutoff'])
+            return float(self['cuts.bw_cutoff'])
         raise KeyError(key)
 
     def get_lhapdf_id(self, beam=1):
@@ -8483,22 +8563,99 @@ class RunCardMG7(RunCard):
         """Fill the card from a parsed TOML mapping (section -> {key: value}).
 
         The free-form sections ([multiparticles], [cuts], ...) are read last:
-        setting beam.max_jet_flavor updates a standard jet multiparticle
+        setting cuts.max_jet_flavor updates a standard jet multiparticle
         (_sync_jet_group), and the jet list the card writes has to win over
         that."""
         self._reading = True
         try:
+            data = self.relocate_moved_keys(data)
+            # [multiparticles] last: the jet list the card writes wins over the
+            # one a max_jet_flavor set in [cuts] makes (_sync_jet_group)
             items = sorted(data.items(), key=lambda item:
-                           item[0].lower() in self.dynamic_sections)
+                           (item[0].lower() == 'multiparticles',
+                            item[0].lower() in self.dynamic_sections))
             self._read_items(items, unknown_warning)
         finally:
             self._reading = False
+
+    # keys that moved to another section (old card placement -> new one). A
+    # card written before the move, or a set command, is read into the new
+    # place; a key given in both places takes the new one.
+    MOVED_KEYS = {
+        'phasespace.cut_decays': 'cuts.cut_decays',
+        'phasespace.bw_cutoff': 'cuts.bw_cutoff',
+        'phasespace.xqcut': 'merging.xqcut',
+        'phasespace.auto_ptj_mjj': 'merging.auto_ptj_mjj',
+        'phasespace.ktdurham': 'merging.ktdurham',
+        'phasespace.ptlund': 'merging.ptlund',
+        'phasespace.dparameter': 'merging.dparameter',
+        'phasespace.merging_pdgs': 'merging.merging_pdgs',
+        'run.make_plots': 'histograms.make_plots',
+        'run.write_hwu': 'histograms.write_hwu',
+        'run.weighted_histograms': 'histograms.weighted_histograms',
+        'run.postprocessing_histograms': 'histograms.postprocessing_histograms',
+        'run.me_frame': 'beam.me_frame',
+        'run.output_format': 'output.output_format',
+        'run.use_pigz': 'output.use_pigz',
+        'run.lhe_compression': 'output.lhe_compression',
+        'run.lhe_gzip_algorithm': 'output.lhe_gzip_algorithm',
+        'run.run_name': 'output.run_name',
+        'postprocessing.time_of_flight': 'output.time_of_flight',
+        'beam.fixed_ren_scale': 'scale.fixed_ren_scale',
+        'beam.fixed_fact_scale': 'scale.fixed_fact_scale',
+        'beam.ren_scale': 'scale.ren_scale',
+        'beam.fact_scale1': 'scale.fact_scale1',
+        'beam.fact_scale2': 'scale.fact_scale2',
+        'beam.scale_factor': 'scale.scale_factor',
+        'beam.dynamical_scale_choice': 'scale.dynamical_scale_choice',
+        'beam.min_scale': 'scale.min_scale',
+        'beam.max_jet_flavor': 'cuts.max_jet_flavor',
+        'beam.jet_radius': 'merging.jet_radius',
+    }
+
+    def relocate_moved_keys(self, data):
+        """``data`` (section -> {key: value}) with the keys of MOVED_KEYS
+        written in their new section."""
+        moved = collections.OrderedDict(
+            (section, collections.OrderedDict(content) if isinstance(content, dict)
+             else content) for section, content in data.items())
+        for section in list(moved):
+            if not isinstance(moved[section], dict):
+                continue
+            for key in list(moved[section]):
+                # the entries no longer read (REMOVED_ENTRIES) are dropped
+                if '%s.%s' % (section.lower(), key.lower()) in self.REMOVED_ENTRIES:
+                    value = moved[section].pop(key)
+                    if value and key.lower() == 'systematics':
+                        logger.warning("[postprocessing] systematics is no longer supported "
+                                       "and is ignored: the [systematics] section computes "
+                                       "the scale and PDF variations")
+                    continue
+                target = self.MOVED_KEYS.get('%s.%s' % (section.lower(), key.lower()))
+                if target is None:
+                    continue
+                new_section, new_key = target.split('.')
+                value = moved[section].pop(key)
+                destination = moved.setdefault(new_section, collections.OrderedDict())
+                if new_key not in destination:
+                    destination[new_key] = value
+            if not moved[section] and section.lower() not in self.toml_sections \
+                    and section.lower() not in self.dynamic_sections:
+                # a table left empty by the move (an old [postprocessing])
+                del moved[section]
+        return moved
 
     def _read_items(self, items, unknown_warning):
         for section, content in items:
             sl = section.lower()
             if sl in self.dynamic_sections:
-                self.dynamic_sections[sl] = collections.OrderedDict(content)
+                # a section of fixed parameters and dynamic entries together
+                # ([cuts], [histograms]): the fixed ones are set, the rest kept
+                fixed = [key for key in content if '%s.%s' % (sl, key.lower()) in self.section_of]
+                for key in fixed:
+                    self.set('%s.%s' % (sl, key.lower()), content[key], user=True)
+                self.dynamic_sections[sl] = collections.OrderedDict(
+                    (key, value) for key, value in content.items() if key not in fixed)
             elif sl in self.toml_sections:
                 for key, value in content.items():
                     internal = '%s.%s' % (sl, key.lower())
@@ -8549,6 +8706,9 @@ class RunCardMG7(RunCard):
         if isinstance(name, str):
             raiseerror = opts.get('raiseerror', args[2] if len(args) > 2 else False)
             lname = name.lower()
+            if lname in self.MOVED_KEYS:
+                # a key that moved to another section (see MOVED_KEYS)
+                lname = name = self.MOVED_KEYS[lname]
             if lname == 'e_cm':
                 lname = name = 'beam.e_cm'
             if lname == 'pdf':
@@ -8588,17 +8748,17 @@ class RunCardMG7(RunCard):
                 # function matches the parameter name as written, case included
                 self.set_custom_parameter(parts[1], name.split('.')[2], value)
                 return
-            if lname == 'beam.max_jet_flavor':
-                old = self['beam']['max_jet_flavor']
+            if lname == 'cuts.max_jet_flavor':
+                old = self['cuts.max_jet_flavor']
                 out = super(RunCardMG7, self).set(name, value, *args, **opts)
-                self._sync_jet_group(old, self['beam']['max_jet_flavor'],
+                self._sync_jet_group(old, self['cuts.max_jet_flavor'],
                                      verbose=not getattr(self, '_reading', False))
                 return out
         return super(RunCardMG7, self).set(name, value, *args, **opts)
 
     def _sync_jet_group(self, old, new, verbose=False):
         """Make the ``jet`` multiparticle follow a change of
-        ``beam.max_jet_flavor`` from ``old`` to ``new``, as madevent's
+        ``cuts.max_jet_flavor`` from ``old`` to ``new``, as madevent's
         maxjetflavor does: the jet cuts (pt, eta, delta_r) then apply to the
         same quarks the MLM clustering treats as jets. In a 5-flavour model the
         b is a jet; with the 4-flavour list a final-state b would get no cut
@@ -8625,14 +8785,14 @@ class RunCardMG7(RunCard):
         if current_set != set(self._lo_jet_group(old)):
             if verbose:
                 logger.warning(
-                    "beam.max_jet_flavor is now %s but the jet multiparticle %s "
+                    "cuts.max_jet_flavor is now %s but the jet multiparticle %s "
                     "is not the standard one of max_jet_flavor = %s: it is kept "
                     "as it is. Edit [multiparticles] jet if the jet cuts should "
                     "apply to other quark flavours.", new, list(current), old)
             return False
         multiparticles['jet'] = self._lo_jet_group(new)
         if verbose:
-            logger.info("multiparticles.jet follows beam.max_jet_flavor = %s: %s",
+            logger.info("multiparticles.jet follows cuts.max_jet_flavor = %s: %s",
                         new, multiparticles['jet'])
         return True
 
@@ -8848,17 +9008,17 @@ class RunCardMG7(RunCard):
                 (key, self.toml_defaults[key]) for key in self._MLM_MODE_KEYS)
         else:
             raise InvalidCmd('set mlm %s: %s' % (mode, self.MLM_MODE_HELP))
-        self.set('beam.dynamical_scale_choice', 'mlm', user=user)
+        self.set('scale.dynamical_scale_choice', 'mlm', user=user)
         for key, val in values.items():
             self.set(key, val, user=user)
-        return ['beam.dynamical_scale_choice'] + list(values)
+        return ['scale.dynamical_scale_choice'] + list(values)
 
     def set_lo_param(self, name, value, masses=None):
         """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
         not just rename (``_LO_SET_PARAMS``): its value needs translating
         (``dynamical_scale_choice 3``, ``maxjetflavor 4``, ...), or several
         madevent settings make one mg7 entry (fixed_fac_scale1 and
-        fixed_fac_scale2 give beam.fixed_fact_scale). The beam energies,
+        fixed_fac_scale2 give scale.fixed_fact_scale). The beam energies,
         types and PDFs go to :meth:`set_lo_beam_param` instead. A per-beam
         fixed_fac_scale is combined with the other beam's from earlier ``set``
         commands of the same launch question, and :meth:`lo_set_warnings`
@@ -8901,24 +9061,24 @@ class RunCardMG7(RunCard):
                     raise InvalidCmd('sde_strategy %d does not exist '
                                      '(1 = diagrams, 2 = denominators)' % code)
             elif code in self._LO_DYNSCALE_MAP:
-                put('beam.dynamical_scale_choice', self._LO_DYNSCALE_MAP[code])
+                put('scale.dynamical_scale_choice', self._LO_DYNSCALE_MAP[code])
             elif code in (-1, 0):
                 # madevent's own choices: a ported launch script keeps running
                 what = {-1: ' (CKKW back-clustering)',
                         0: ' (user-defined scale)'}[code]
                 warnings.append(
                     'dynamical_scale_choice %d%s has no mg7 equivalent: '
-                    'keeping %s' % (code, what, beam['dynamical_scale_choice']))
+                    'keeping %s' % (code, what, self['scale.dynamical_scale_choice']))
             else:
                 raise InvalidCmd('dynamical_scale_choice %d does not exist' % code)
 
         elif name in ('fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2'):
             flag = self.format_variable(text, bool, name=name)
-            current = beam['fixed_fact_scale']
+            current = self['scale.fixed_fact_scale']
             flags = vars(self).setdefault('_lo_fixed_fac_scale', {1: current, 2: current})
             for i in ((1, 2) if name == 'fixed_fac_scale' else (int(name[-1]),)):
                 flags[i] = flag
-            put('beam.fixed_fact_scale', flag)
+            put('scale.fixed_fact_scale', flag)
 
         elif name == 'maxjetflavor':
             flavours = self.format_variable(text, int, name=name)
@@ -8929,7 +9089,7 @@ class RunCardMG7(RunCard):
             changes['multiparticles.jet'] = jet
             # the MLM clustering's jet flavours, which madevent's maxjetflavor
             # also sets
-            put('beam.max_jet_flavor', flavours)
+            put('cuts.max_jet_flavor', flavours)
 
         elif name == 'mlm':
             # "set mlm madevent": MLM merging with every clustering option
@@ -8937,8 +9097,8 @@ class RunCardMG7(RunCard):
             for key in self.set_mlm_mode(text.lower(), user=True):
                 changes[key] = self[key]
             # no merging cut, no merged sample: take madevent's default
-            if float(self['phasespace']['xqcut']) <= 0:
-                put('phasespace.xqcut', self.default_mlm_xqcut)
+            if float(self['merging']['xqcut']) <= 0:
+                put('merging.xqcut', self.default_mlm_xqcut)
             if beam['leptonic']:
                 warnings.append('set mlm: the beams are not hadronic, so the '
                                 'events are clustered but not MLM merged')
@@ -9003,8 +9163,8 @@ class RunCardMG7(RunCard):
         out = []
         if flags and flags[1] != flags[2]:
             out.append('fixed_fac_scale1 = %s and fixed_fac_scale2 = %s: mg7 has '
-                       'one beam.fixed_fact_scale for both beams (%s)'
-                       % (flags[1], flags[2], beam['fixed_fact_scale']))
+                       'one scale.fixed_fact_scale for both beams (%s)'
+                       % (flags[1], flags[2], self['scale.fixed_fact_scale']))
         return out
 
     # ------------------------------------------------------------------
@@ -9234,11 +9394,11 @@ class RunCardMG7(RunCard):
         if isinstance(val, str):
             val = self.format_variable(val, float, name='fixed_scale')
         val = float(val)
-        self.set('beam.fixed_ren_scale', True, user=True)
-        self.set('beam.fixed_fact_scale', True, user=True)
-        self.set('beam.ren_scale', val, user=True)
-        self.set('beam.fact_scale1', val, user=True)
-        self.set('beam.fact_scale2', val, user=True)
+        self.set('scale.fixed_ren_scale', True, user=True)
+        self.set('scale.fixed_fact_scale', True, user=True)
+        self.set('scale.ren_scale', val, user=True)
+        self.set('scale.fact_scale1', val, user=True)
+        self.set('scale.fact_scale2', val, user=True)
         return val
 
     # The device types accepted by the 'device' entry of [run]. Each entry may
@@ -9359,15 +9519,15 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard("beam.ebeam%d must be positive (got %s)" % (beam, energy))
 
         beam = self['beam']
-        if float(beam['scale_factor']) <= 0.:
+        if float(self['scale.scale_factor']) <= 0.:
             raise InvalidRunCard("scale_factor must be strictly positive")
         self.check_upc_validity()
         self.check_ckkwl_validity()
-        if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
-                and beam['fixed_fact_scale']):
+        if (float(self['scale.scale_factor']) != 1. and self['scale.fixed_ren_scale']
+                and self['scale.fixed_fact_scale']):
             logger.warning(
                 "scale_factor = %s is ignored: both mu_R and mu_F are fixed.",
-                beam['scale_factor'])
+                self['scale.scale_factor'])
 
         self.check_devices(self['run']['device'], 'device')
 
@@ -9394,7 +9554,7 @@ class RunCardMG7(RunCard):
         # me_frame lists external particles by their (one based) position; the
         # number of external particles is only known to the run directory, so
         # all that can be checked here is that the entries could name one.
-        me_frame = self['run']['me_frame']
+        me_frame = self['beam']['me_frame']
         if len(set(me_frame)) != len(me_frame):
             raise InvalidRunCard(
                 "me_frame lists the same particle twice: %s" % (me_frame,))
@@ -9406,20 +9566,20 @@ class RunCardMG7(RunCard):
 
     def check_ckkwl_validity(self):
         """The CKKW-L cuts: at most one of them, and not together with MLM."""
-        ps = self['phasespace']
+        ps = self['merging']
         ktdurham, ptlund = float(ps['ktdurham']), float(ps['ptlund'])
         if ktdurham > 0 and ptlund > 0:
             raise InvalidRunCard(
                 "only one of ktdurham and ptlund can be set for CKKW-L merging")
         if not self.is_ckkwl_merged():
-            if self['beam']['dynamical_scale_choice'] == 'ckkwl' \
+            if self['scale']['dynamical_scale_choice'] == 'ckkwl' \
                     and float(ps['xqcut']) > 0:
                 raise InvalidRunCard(
                     "dynamical_scale_choice = \"ckkwl\" does not apply the MLM "
                     "cut xqcut: set ktdurham or ptlund for CKKW-L merging, and "
                     "xqcut = 0")
             return
-        if self['beam']['dynamical_scale_choice'] == 'mlm':
+        if self['scale']['dynamical_scale_choice'] == 'mlm':
             raise InvalidRunCard(
                 "CKKW-L merging (ktdurham/ptlund) can not be combined with "
                 "dynamical_scale_choice = \"mlm\"; use \"ckkwl\" instead")
@@ -9542,6 +9702,15 @@ class RunCardMG7(RunCard):
         return any(self['cluster.%s' % key] != self.toml_defaults.get('cluster.%s' % key)
                    for key in self.toml_sections['cluster'])
 
+    def show_merging_sections(self):
+        """Whether the card shows the [merging] section: for an MLM or CKKW-L
+        merged sample, or once one of its settings is set by the user (so a
+        rewrite keeps it). A sample without merging has none of it."""
+        if self.is_mlm_merged() or self.is_ckkwl_merged():
+            return True
+        return any('merging.%s' % key in self.user_set
+                   for key in self.toml_sections['merging'])
+
     def shown_groups(self, groups):
         """The option groups the card shows: those revealed ("update <group>",
         or shown in the card read), the cluster sections once in use and the
@@ -9549,6 +9718,8 @@ class RunCardMG7(RunCard):
         shown = set(self.display_block) & set(groups)
         if 'cluster' in groups and self.show_cluster_sections():
             shown.add('cluster')
+        if 'merging' in groups and self.show_merging_sections():
+            shown.add('merging')
         if 'custom_functions' in groups and self.custom_function_parameters:
             shown.add('custom_functions')
         return shown
@@ -9694,13 +9865,13 @@ class RunCardMG7(RunCard):
             # the heaviest quark the MLM clustering treats as a jet follows the
             # flavour scheme of the model, as madevent's maxjetflavor does: 5
             # once the b is massless and in the proton
-            old = self['beam']['max_jet_flavor']
-            self['beam']['max_jet_flavor'] = default_max_jet_flavor(
+            old = self['cuts.max_jet_flavor']
+            self['cuts.max_jet_flavor'] = default_max_jet_flavor(
                 get_model_flavour_scheme(proc_def), beam_id)
             # and so do the jet cuts: in a 5-flavour model a final-state b is
             # a jet (madevent applies ptj/etaj/drjj to it), not an uncut
             # particle
-            self._sync_jet_group(old, self['beam']['max_jet_flavor'])
+            self._sync_jet_group(old, self['cuts.max_jet_flavor'])
 
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy. The jet cuts stay,
@@ -9711,7 +9882,7 @@ class RunCardMG7(RunCard):
             self['beam']['leptonic'] = True
             self['beam']['ebeam1'] = 500.0
             self['beam']['ebeam2'] = 500.0
-            self['beam']['fixed_fact_scale'] = True
+            self['scale']['fixed_fact_scale'] = True
         elif beam_id and not (beam_id & hadronic):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
@@ -9728,14 +9899,18 @@ class RunCardMG7(RunCard):
         # auto_ptj_mjj ties the jet cuts to xqcut.
         if beam_id & hadronic and not self['beam']['leptonic'] and \
                 mlm_matching_needed(proc_def):
-            self['beam']['dynamical_scale_choice'] = 'mlm'
-            self['phasespace']['xqcut'] = self.default_mlm_xqcut
+            self['scale']['dynamical_scale_choice'] = 'mlm'
+            self['merging']['xqcut'] = self.default_mlm_xqcut
             cuts = self.dynamic_sections['cuts']
             for key in ('jet-delta_r', 'jet-lepton-delta_r'):
                 if isinstance(cuts.get(key), dict):
                     cuts[key].pop('min', None)
                     if not cuts[key]:
                         del cuts[key]
+
+        # a cut on a particle group the final state does not have (a jet cut
+        # for e+ e- > mu+ mu-, a lepton cut for p p > j j) applies to nothing
+        self.drop_cuts_without_particles(proc_def)
 
         # 1 -> N decay: no cuts at all. A partial width is an inclusive
         # quantity, so any kinematic cut biases it low (the collider defaults
@@ -9752,12 +9927,12 @@ class RunCardMG7(RunCard):
         # See default_me_frame_for_process.
         frame = default_me_frame_for_process(proc_def, density=bool(
             proc_characteristic and proc_characteristic.get('density_matrix')))
-        if frame is not None and 'run.me_frame' not in self.user_set:
+        if frame is not None and 'beam.me_frame' not in self.user_set:
             if frame == 'cm':
                 ninitial = proc_characteristic['ninitial'] \
                            if proc_characteristic else 2
                 frame = [1] if ninitial == 1 else [1, 2]
-            self['run']['me_frame'] = frame
+            self['beam']['me_frame'] = frame
 
         # the histograms are a list of observables of *this* final state, so
         # they can only be written once the process is known
@@ -10006,6 +10181,29 @@ class RunCardMG7(RunCard):
                 out.append((name, min(count, self.max_histogram_slots)))
         return out
 
+    def drop_cuts_without_particles(self, proc_def):
+        """Remove the [cuts] entries of the default card whose particle groups
+        the final state of the process(es) does not contain: "jet-pt" needs a
+        jet, "jet-lepton-delta_r" both a jet and a lepton. A group is present
+        when one of its particles is in some final state (a card of several
+        processes keeps a cut that one of them needs). Cuts on no group
+        (sqrt_s) and on a group that is not a multiparticle are kept. Nothing
+        is removed when the final states are not known."""
+        final_states, _ = self._final_states(proc_def)
+        if not final_states:
+            return
+        present = set(abs(pdg) for state in final_states for pdg in state)
+        multiparticles = self.dynamic_sections['multiparticles']
+        cuts = self.dynamic_sections['cuts']
+        for name in list(cuts):
+            groups = name.split('-')[:-1]
+            needed = [multiparticles[group] for group in groups if group in multiparticles]
+            if len(needed) != len(groups):
+                continue
+            if all(any(abs(pdg) in present for pdg in pdgs) for pdgs in needed):
+                continue
+            del cuts[name]
+
     def set_default_histograms(self, proc_characteristic, proc_def):
         """Fill [histograms] with a starting set of plots for this process:
         the pt and eta of every final-state particle, the invariant mass of
@@ -10115,22 +10313,23 @@ class RunCardMG7(RunCard):
     _LO_SCALAR_MAP = {
         'nevents': 'generation.events',
         'gridpack': 'gridpack.save_gridpack',
-        'fixed_ren_scale': 'beam.fixed_ren_scale',
+        'fixed_ren_scale': 'scale.fixed_ren_scale',
         'ebeam1': 'beam.ebeam1',
         'ebeam2': 'beam.ebeam2',
-        'scalefact': 'beam.scale_factor',
-        'scale': 'beam.ren_scale',
-        'dsqrt_q2fact1': 'beam.fact_scale1',
-        'dsqrt_q2fact2': 'beam.fact_scale2',
-        'bwcutoff': 'phasespace.bw_cutoff',
-        'cut_decays': 'phasespace.cut_decays',
+        'scalefact': 'scale.scale_factor',
+        'scale': 'scale.ren_scale',
+        'dsqrt_q2fact1': 'scale.fact_scale1',
+        'dsqrt_q2fact2': 'scale.fact_scale2',
+        'bwcutoff': 'cuts.bw_cutoff',
+        'time_of_flight': 'output.time_of_flight',
+        'cut_decays': 'cuts.cut_decays',
         'use_syst': 'systematics.enable',
         # D of the MLM clustering's kt measure (hidden in both cards)
-        'd': 'beam.jet_radius',
+        'd': 'merging.jet_radius',
         # for "set ktdurham ..." (cli.py); from_LO sets both again explicitly
-        'ktdurham': 'phasespace.ktdurham',
-        'ptlund': 'phasespace.ptlund',
-        'dparameter': 'phasespace.dparameter',
+        'ktdurham': 'merging.ktdurham',
+        'ptlund': 'merging.ptlund',
+        'dparameter': 'merging.dparameter',
     }
     # The MLM clustering as madevent does it (set_mlm_mode). min_scale is
     # setclscales' hard-coded 2 GeV floor. jet_radius, max_jet_flavor and
@@ -10144,7 +10343,7 @@ class RunCardMG7(RunCard):
         ('beam.parton_line_scheme', 'goodjet'),
         ('beam.alphas_reweighting', 'per_vertex'),
         ('beam.pdf_reweighting', True),
-        ('beam.min_scale', 2.0),
+        ('scale.min_scale', 2.0),
     ])
     # what set_mlm_mode('mg7') puts back to the card's defaults
     _MLM_MODE_KEYS = tuple(_MLM_MADEVENT) + ('beam.clustering_mean_pdf_ladder',)
@@ -10425,14 +10624,14 @@ class RunCardMG7(RunCard):
 
         # --- scales ---
         if 'fixed_fac_scale' in lo:
-            mg7.set('beam.fixed_fact_scale', lo['fixed_fac_scale'])
+            mg7.set('scale.fixed_fact_scale', lo['fixed_fac_scale'])
         if lo['fixed_fac_scale1'] != lo['fixed_fac_scale2']:
             dropped.append('fixed_fac_scale1/2 differ (mg7 has a single factorization flag)')
         dyn = lo['dynamical_scale_choice']
         if isinstance(dyn, list):
             dyn = dyn[0]
         if dyn in cls._LO_DYNSCALE_MAP:
-            mg7.set('beam.dynamical_scale_choice', cls._LO_DYNSCALE_MAP[dyn])
+            mg7.set('scale.dynamical_scale_choice', cls._LO_DYNSCALE_MAP[dyn])
         elif dyn not in (-1, 10) and nondefault('dynamical_scale_choice'):
             dropped.append('dynamical_scale_choice=%s (no mg7 equivalent)' % dyn)
 
@@ -10454,11 +10653,11 @@ class RunCardMG7(RunCard):
                 if 'pdfwgt' in lo:
                     mg7.set('beam.pdf_reweighting', bool(lo['pdfwgt']))
                     transferred.add('pdfwgt')
-                mg7.set('phasespace.xqcut', xqcut)
+                mg7.set('merging.xqcut', xqcut)
                 if 'mlm_shower_start' in lo:
                     mg7.set('beam.mlm_shower_start', lo['mlm_shower_start'])
                 if 'auto_ptj_mjj' in lo:
-                    mg7.set('phasespace.auto_ptj_mjj', bool(lo['auto_ptj_mjj']))
+                    mg7.set('merging.auto_ptj_mjj', bool(lo['auto_ptj_mjj']))
                 if dyn != -1:
                     dropped.append('dynamical_scale_choice=%s with ickkw=1 '
                                    '(mg7 uses the MLM clustering scales)' % dyn)
@@ -10475,23 +10674,23 @@ class RunCardMG7(RunCard):
         ktdurham = float(lo['ktdurham']) if 'ktdurham' in lo else -1.
         ptlund = float(lo['ptlund']) if 'ptlund' in lo else -1.
         # madevent disables them with -1, mg7 with 0
-        mg7.set('phasespace.ktdurham', max(ktdurham, 0.))
-        mg7.set('phasespace.ptlund', max(ptlund, 0.))
+        mg7.set('merging.ktdurham', max(ktdurham, 0.))
+        mg7.set('merging.ptlund', max(ptlund, 0.))
         if (ktdurham > 0 or ptlund > 0) and ickkw == 1:
             dropped.append('ktdurham/ptlund with ickkw=1 (CKKW-L and MLM '
                            'merging can not be combined)')
-            mg7.set('phasespace.ktdurham', 0.)
-            mg7.set('phasespace.ptlund', 0.)
+            mg7.set('merging.ktdurham', 0.)
+            mg7.set('merging.ptlund', 0.)
         elif ktdurham > 0 or ptlund > 0:
             if 'pdgs_for_merging_cut' in lo:
-                mg7.set('phasespace.merging_pdgs',
+                mg7.set('merging.merging_pdgs',
                         [int(pdg) for pdg in lo['pdgs_for_merging_cut']])
             # madevent does not cluster for fixed scales (reweight.f), mg7's
             # "ckkwl" ignores them: keep a closed-form choice then
             fixed = [bool(lo[key]) for key in ('fixed_ren_scale', 'fixed_fac_scale')
                      if key in lo]
             if dyn == -1 and not (fixed and all(fixed)):
-                mg7.set('beam.dynamical_scale_choice', 'ckkwl')
+                mg7.set('scale.dynamical_scale_choice', 'ckkwl')
                 if any(fixed):
                     dropped.append('fixed_ren_scale/fixed_fac_scale with a '
                                    'CKKW-L cut (mg7 uses the ckkwl clustering '
@@ -10514,7 +10713,7 @@ class RunCardMG7(RunCard):
         # particle's rest frame -- [1] in mg7 -- but nothing in the run_card
         # says whether the process is a decay.
         if 'me_frame' in lo:
-            mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
+            mg7.set('beam.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
         # a gamma-UPC label, like a dressed-lepton one, is no PDF set: it was
@@ -10529,7 +10728,7 @@ class RunCardMG7(RunCard):
         if 'maxjetflavor' in lo:
             mg7.dynamic_sections['multiparticles']['jet'] = \
                 cls._lo_jet_group(int(lo['maxjetflavor']))
-            mg7.set('beam.max_jet_flavor', int(lo['maxjetflavor']))
+            mg7.set('cuts.max_jet_flavor', int(lo['maxjetflavor']))
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()

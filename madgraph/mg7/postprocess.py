@@ -291,7 +291,7 @@ def run_lhe_postprocessing(process) -> None:
         return
     # process.run_card is a RunCardMG7; the section view exposes .get(key, def)
     try:
-        cfg = process.run_card["postprocessing"]
+        cfg = process.run_card["output"]
     except Exception:
         return
     log = logging.getLogger('madevent')

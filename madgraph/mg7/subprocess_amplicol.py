@@ -599,7 +599,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 "coupling orders are not supported yet: disable [systematics]"
             )
         self.supports_alpha_s = self.meta.get("supports_alpha_s", True)
-        if not self.supports_alpha_s and not self.process.run_card["beam"]["fixed_ren_scale"]:
+        if not self.supports_alpha_s and not self.process.run_card["scale"]["fixed_ren_scale"]:
             raise RuntimeError(
                 "the AmpliCol matrix elements of this model cannot take the running "
                 "alpha_s, as the model has no SMINPUTS 3 parameter: use a fixed "

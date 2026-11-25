@@ -168,7 +168,7 @@ def me_parameters(run_card):
     |M|^2 of an interference (see interference_helicities_summed). That one is
     only sent when asked for: a library made before it existed refuses an
     unknown parameter."""
-    parameters = {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+    parameters = {"bwcutoff": float(run_card['cuts.bw_cutoff'])}
     if interference_helicities_summed(run_card):
         parameters["interference_helicity_summed"] = 1.
     return parameters
@@ -183,7 +183,7 @@ def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
     beam = run_card["beam"]
     return bool(
         mlm_clustering and not is_decay and not leptonic
-        and beam["dynamical_scale_choice"] != "ckkwl"
+        and run_card["scale.dynamical_scale_choice"] != "ckkwl"
         and beam["pdf_reweighting"]
         and (beam["scale_scheme"] == "madevent"
              or beam["clustering_mean_pdf_ladder"]))
@@ -193,7 +193,7 @@ def mlm_clustering_history(run_card):
     """The clustering_history of the scale's MLM clustering. Pinned to
     all_diagrams under "ckkwl", keeping that scale a function of the momenta."""
     beam = run_card["beam"]
-    if beam["dynamical_scale_choice"] == "ckkwl":
+    if run_card["scale.dynamical_scale_choice"] == "ckkwl":
         return "all_diagrams"
     return beam["clustering_history"]
 

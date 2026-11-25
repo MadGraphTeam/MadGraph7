@@ -8544,7 +8544,7 @@ P1_qq_wp_wp_lvl
         # propagators, not a cut on the final state: it must survive.
         card = banner_mod.RunCardMG7(pjoin(self.out_dir, 'Cards',
                                            'run_card.toml'), consistency=False)
-        self.assertEqual(card['phasespace']['bw_cutoff'], 15)
+        self.assertEqual(card['cuts.bw_cutoff'], 15)
 
         # a 2 -> n collision keeps the standard cuts
         shutil.rmtree(self.out_dir)

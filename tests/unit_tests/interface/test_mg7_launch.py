@@ -577,7 +577,7 @@ class MG7CmdTest(unittest.TestCase):
         finally:
             os.chdir(cwd)
         from madgraph.various.banner import RunCardMG7
-        return RunCardMG7(path, consistency=False)['run']['output_format']
+        return RunCardMG7(path, consistency=False)['output']['output_format']
 
     def test_post_processing_forces_the_lhe_output(self):
         """the npy formats carry no event record a shower could read"""
@@ -601,7 +601,7 @@ class MG7CmdTest(unittest.TestCase):
         from madgraph.various.banner import RunCardMG7
         process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
         process.run_card = RunCardMG7()
-        process.run_card['run']['write_hwu'] = write_hwu
+        process.run_card['histograms.write_hwu'] = write_hwu
         process.run_path = self.me_dir
         process.systematics = None
         return process
@@ -614,7 +614,7 @@ class MG7CmdTest(unittest.TestCase):
         self.assertIs(self.launch.MadgraphProcess.__new__(
             self.launch.MadgraphProcess).__class__, self.launch.MadgraphProcess)
         from madgraph.various.banner import RunCardMG7
-        self.assertIs(RunCardMG7()['run']['write_hwu'], False)
+        self.assertIs(RunCardMG7()['histograms.write_hwu'], False)
         process = self.hwu_writer(False)
         process.write_hwu(self.FakeHistograms())
         self.assertFalse(os.path.exists(self.hwu_path()))
@@ -638,7 +638,7 @@ class MG7CmdTest(unittest.TestCase):
         from madgraph.various.banner import RunCardMG7
         process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
         process.run_card = RunCardMG7()
-        process.run_card['run']['make_plots'] = make_plots
+        process.run_card['histograms.make_plots'] = make_plots
         process.run_path = self.me_dir
         process.systematics = None
         return process
@@ -649,7 +649,7 @@ class MG7CmdTest(unittest.TestCase):
 
     def test_plots_are_on_by_default(self):
         from madgraph.various.banner import RunCardMG7
-        self.assertIs(RunCardMG7()['run']['make_plots'], True)
+        self.assertIs(RunCardMG7()['histograms.make_plots'], True)
 
     def test_plots_can_be_switched_off(self):
         process = self.plot_maker(False)
@@ -768,10 +768,10 @@ class MG7CmdTest(unittest.TestCase):
         the integer codes."""
         obj = self.cut_selector()
         obj.do_set('dynamical_scale_choice 1')
-        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+        self.assertEqual(obj.run_card['scale']['dynamical_scale_choice'],
                          'transverse_energy')
         obj.do_set('dynamical_scale_choice 0')     # no equivalent: kept
-        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+        self.assertEqual(obj.run_card['scale']['dynamical_scale_choice'],
                          'transverse_energy')
         obj.do_set('sde_strategy 2')
         self.assertEqual(obj.run_card['phasespace']['sde_strategy'], 'denominators')
@@ -789,15 +789,15 @@ class MG7CmdTest(unittest.TestCase):
         obj = self.cut_selector()
         obj.do_set('mlm madevent')
         beam = obj.run_card['beam']
-        self.assertEqual(beam['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(obj.run_card['scale.dynamical_scale_choice'], 'mlm')
         self.assertEqual(beam['scale_scheme'], 'madevent')
         self.assertEqual(beam['clustering_history'], 'madevent')
-        self.assertEqual(obj.run_card['phasespace']['xqcut'], 30.0)
+        self.assertEqual(obj.run_card['merging']['xqcut'], 30.0)
         obj.do_set('mlm mg7')
         self.assertEqual(beam['scale_scheme'], 'clustering_mean')
         self.assertEqual(beam['clustering_measure'], 'fxfx')
         obj.do_set('d 0.7')
-        self.assertEqual(beam['jet_radius'], 0.7)
+        self.assertEqual(obj.run_card['merging.jet_radius'], 0.7)
         self.assertIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 
@@ -1016,7 +1016,8 @@ class MG7CmdTest(unittest.TestCase):
             process = self.launch.MadgraphProcess.__new__(
                 self.launch.MadgraphProcess)
             process.run_card = {
-                "run": {"run_name": "run"},
+                "run": {},
+                "output": {"run_name": "run"},
                 "gridpack": {"output_dir": "", "temp_output_dir": ""},
             }
             process.init_event_dir()
@@ -1338,8 +1339,9 @@ class MG7ReweightingTest(unittest.TestCase):
         self.assertEqual(seen, [({'reweight': 'ON'}, 'classic')])
 
     def run_card(self, output_format='lhe', time_of_flight=-1.0):
-        return {'run': {'output_format': output_format},
-                'postprocessing': {'time_of_flight': time_of_flight}}
+        return {'run': {},
+                'output': {'output_format': output_format,
+                           'time_of_flight': time_of_flight}}
 
     def test_madtrex_lhe_run_is_generated_as_npy(self):
         """An "lhe" run MadtRex reweights is generated as npy, unless an
@@ -1370,9 +1372,9 @@ class MG7ReweightingTest(unittest.TestCase):
         with mock.patch.object(driver, 'madtrex_unavailable', return_value=''):
             self.assertTrue(via_binary(process, None))
             self.assertFalse(via_binary(process, rb.Decision('classic', 'param')))
-            card['run']['output_format'] = 'lhe_npy'
+            card['output']['output_format'] = 'lhe_npy'
             self.assertFalse(via_binary(process, None))
-            card['run']['output_format'] = 'lhe'
+            card['output']['output_format'] = 'lhe'
             process.gridpack_run_mode = 'minimal'
             self.assertFalse(via_binary(process, None))
             process.gridpack_run_mode = 'regular'
@@ -1458,7 +1460,7 @@ class MG7ReweightingTest(unittest.TestCase):
 
         class Process(object):
             events_path = os.path.join(run_path, 'events.npy')
-            run_card = {'run': {'output_format': 'lhe_npy'}}
+            run_card = {'output': {'output_format': 'lhe_npy'}}
         Process.run_path = run_path
         seen = {}
 
@@ -1497,7 +1499,7 @@ class MG7ReweightingTest(unittest.TestCase):
 
         class Process(object):
             events_path = events
-            run_card = {'run': {'output_format': 'lhe'}}
+            run_card = {'output': {'output_format': 'lhe'}}
         Process.run_path = run_path
 
         def fake_madtrex(card, events_path, card_kind, process_directory,
@@ -1532,7 +1534,7 @@ class MG7ReweightingTest(unittest.TestCase):
 
         class Process(object):
             run_path = os.path.join('Events', 'run_01')
-            run_card = {'run': {'output_format': 'compact_npy'}}
+            run_card = {'output': {'output_format': 'compact_npy'}}
         with self.assertRaisesRegex(ValueError, 'compact_npy'):
             self.launch.run_reweighting(Process(), card,
                                         decision=rb.Decision('madtrex', 'param'))
@@ -1601,7 +1603,7 @@ class MG7ReweightingTest(unittest.TestCase):
             card['run']['validation'] = value
             self.assertEqual(card['run']['validation'], expected, value)
         card['run']['validation'] = 'd'
-        with self.assertLogs(level='WARNING'):
+        with self.assertLogs('madevent', level='WARNING'):
             card['run']['validation'] = 'all46'
         self.assertEqual(card['run']['validation'], 'd')
 
@@ -1610,8 +1612,7 @@ class MG7ReweightingTest(unittest.TestCase):
         os.makedirs(os.path.join('Events', 'run_01'))
         from madgraph.mg7 import driver
         run_path = os.path.abspath(os.path.join('Events', 'run_01'))
-        process = mock.Mock(run_card={'run': {'validation': 'd',
-                                              'output_format': 'lhe'}},
+        process = mock.Mock(run_card={'run': {'validation': 'd'}, 'output': {'output_format': 'lhe'}},
                             run_path=run_path)
         with mock.patch.object(driver, 'madtrex_unavailable',
                                return_value='MadtRex is not installed'), \
@@ -1655,8 +1656,7 @@ class MG7ReweightingTest(unittest.TestCase):
         from madgraph.mg7 import driver
         madtrex = mock.Mock()
         madtrex.run_precision_validation.return_value = {'digits': {}}
-        process = mock.Mock(run_card={'run': {'validation': 'all64',
-                                              'output_format': 'lhe_npy'}},
+        process = mock.Mock(run_card={'run': {'validation': 'all64'}, 'output': {'output_format': 'lhe_npy'}},
                             events_path='Events/run_01/events.npy')
         with mock.patch.dict(sys.modules, {
                 'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
@@ -1706,10 +1706,10 @@ class MG7ReweightingTest(unittest.TestCase):
         self.assertIsNone(md._subsample_events('events.lhe.gz', 10, 'sample'))
 
     def test_validation_events_is_passed_on(self):
+        """The FPTYPE:N value of [run] validation checks N events."""
         from madgraph.mg7 import driver
         madtrex = mock.Mock()
-        process = mock.Mock(run_card={'run': {'validation': 'd', 'validation_events': 500,
-                                              'output_format': 'lhe'}},
+        process = mock.Mock(run_card={'run': {'validation': 'd:500'}, 'output': {'output_format': 'lhe'}},
                             events_path='Events/run_01/events.lhe.gz')
         with mock.patch.dict(sys.modules, {
                 'madgraph.iolibs.template_files.mg7.madtrex': madtrex}), \
@@ -1723,8 +1723,7 @@ class MG7ReweightingTest(unittest.TestCase):
         """compact_npy events have no flavor/helicity for MadtRex: skipped
         with a warning, not an error."""
         from madgraph.mg7 import driver
-        process = mock.Mock(run_card={'run': {'validation': 'd',
-                                              'output_format': 'compact_npy'}})
+        process = mock.Mock(run_card={'run': {'validation': 'd'}, 'output': {'output_format': 'compact_npy'}})
         with self.assertLogs('madevent', 'WARNING') as logs:
             self.assertIsNone(driver.run_precision_validation(process))
         self.assertIn('compact_npy', '\n'.join(logs.output))
@@ -1735,8 +1734,7 @@ class MG7ReweightingTest(unittest.TestCase):
         from madgraph.mg7 import driver
         madtrex = mock.Mock()
         madtrex.run_precision_validation.side_effect = RuntimeError('no such FPTYPE')
-        process = mock.Mock(run_card={'run': {'validation': 'd',
-                                              'output_format': 'lhe_npy'}},
+        process = mock.Mock(run_card={'run': {'validation': 'd'}, 'output': {'output_format': 'lhe_npy'}},
                             events_path='Events/run_01/events.npy',
                             run_path=os.path.abspath(os.path.join('Events', 'run_01')))
         with mock.patch.dict(sys.modules, {
@@ -1762,7 +1760,7 @@ class MG7ReweightingTest(unittest.TestCase):
         for run, events in (('lhe', 'events.lhe.gz'), ('lhe_npy', 'events.npy'),
                             ('compact_npy', 'events.npy')):
             existing = self.launch.ExistingRun(run)
-            self.assertEqual(existing.run_card['run']['output_format'], run)
+            self.assertEqual(existing.run_card['output']['output_format'], run)
             self.assertEqual(os.path.basename(existing.events_path), events)
         self.assertEqual(self.launch.list_runs(), ['compact_npy', 'lhe', 'lhe_npy'])
         with self.assertRaisesRegex(ValueError, 'no event file'):
@@ -1785,7 +1783,7 @@ class MG7ReweightingTest(unittest.TestCase):
 
         def fake_run(process, card_path, decision):
             seen.append(('run', os.path.basename(process.run_path),
-                         process.run_card['run']['output_format'], decision))
+                         process.run_card['output']['output_format'], decision))
         with mock.patch.object(cli, 'prepare_reweighting', fake_prepare), \
                 mock.patch.object(cli, 'run_reweighting', fake_run):
             cmd.do_reweight('run_01 --reweight=%s --reweight-backend=madtrex' % card)
@@ -2025,7 +2023,7 @@ class MG7MeFrameTest(unittest.TestCase):
         subprocesses of one output (g g > each of them)"""
         from madgraph.mg7 import launch as mg7_launch
         process = object.__new__(mg7_launch.MadgraphProcess)
-        process.run_card = {'run': {'me_frame': me_frame}}
+        process.run_card = {'beam': {'me_frame': me_frame}}
         process.is_decay = is_decay
         incoming = [23] if is_decay else [21, 21]
         if outgoing is None:
@@ -2122,7 +2120,6 @@ class TestForceLHEOutput(unittest.TestCase):
                                 'template_files', 'mg7', 'run_card.toml')
         self.assertTrue(os.path.isfile(template), template)
         card = RunCardMG7()
-        card.show_group('postprocessing')
         card.write(self.card, template=template)
 
     def tearDown(self):
@@ -2134,7 +2131,7 @@ class TestForceLHEOutput(unittest.TestCase):
     def output_format(self):
         import tomllib
         with open(self.card, 'rb') as f:
-            return tomllib.load(f)['run']['output_format']
+            return tomllib.load(f)['output']['output_format']
 
     def edit(self, old, new):
         with open(self.card) as f:
@@ -2309,8 +2306,8 @@ class TestHistogramSwitches(unittest.TestCase):
     def test_defaults(self):
         from madgraph.various.banner import RunCardMG7
         card = RunCardMG7()
-        self.assertIs(card['run']['weighted_histograms'], False)
-        self.assertIs(card['run']['postprocessing_histograms'], True)
+        self.assertIs(card['histograms.weighted_histograms'], False)
+        self.assertIs(card['histograms.postprocessing_histograms'], True)
 
     def test_mean_ignores_under_and_overflow(self):
         """Both histogram kinds carry the under/overflow bins first and last;
@@ -2326,7 +2323,7 @@ class TestHistogramSwitches(unittest.TestCase):
         from madgraph.various.banner import RunCardMG7
         process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
         process.run_card = RunCardMG7()
-        process.run_card['run']['postprocessing_histograms'] = False
+        process.run_card['histograms.postprocessing_histograms'] = False
         process.hist_data = [launch.HistItem(None, 0., 1., 10, 'weight', True)]
         self.assertIsNone(process.build_event_histograms())
         self.assertIsNone(process.event_histograms)
@@ -2526,17 +2523,17 @@ class MG7CkkwlMergingCutTest(unittest.TestCase):
 
     def test_ckkwl_scale_has_no_alpha_s_or_pdf_ladder(self):
         card = bannermod.RunCardMG7()
-        card.set('beam.dynamical_scale_choice', 'mlm')
+        card.set('scale.dynamical_scale_choice', 'mlm')
         self.assertTrue(self.launch.mlm_pdf_ladder(card, True))
-        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        card.set('scale.dynamical_scale_choice', 'ckkwl')
         self.assertFalse(self.launch.mlm_pdf_ladder(card, True))
 
     def test_ckkwl_scale_clusters_over_all_diagrams(self):
         card = bannermod.RunCardMG7()
         card.set('beam.clustering_history', 'diagram')
-        card.set('beam.dynamical_scale_choice', 'mlm')
+        card.set('scale.dynamical_scale_choice', 'mlm')
         self.assertEqual(self.launch.mlm_clustering_history(card), 'diagram')
-        card.set('beam.dynamical_scale_choice', 'ckkwl')
+        card.set('scale.dynamical_scale_choice', 'ckkwl')
         self.assertEqual(self.launch.mlm_clustering_history(card), 'all_diagrams')
 
 
@@ -2613,8 +2610,8 @@ class MG7AutoPtjMjjCutNamesTest(unittest.TestCase):
 
     def make_process(self, cuts, xqcut=20.0, auto=True):
         return types.SimpleNamespace(is_decay=False, run_card={
-            'beam': {'dynamical_scale_choice': 'mlm'},
-            'phasespace': {'xqcut': xqcut, 'auto_ptj_mjj': auto},
+            'scale': {'dynamical_scale_choice': 'mlm'},
+            'merging': {'xqcut': xqcut, 'auto_ptj_mjj': auto},
             'multiparticles': {'jet': [21, 1, 2, -1, -2],
                                'lepton': [11, 13, -11, -13]},
             'cuts': dict(cuts),
@@ -2660,7 +2657,7 @@ class MG7AutoPtjMjjCutNamesTest(unittest.TestCase):
         for kwargs in ({'xqcut': 0.0}, {}):
             process = self.make_process({'jet-pt': {'min': 10.0}}, **kwargs)
             if not kwargs:
-                process.run_card['beam']['dynamical_scale_choice'] = \
+                process.run_card['scale']['dynamical_scale_choice'] = \
                     'transverse_mass'
             cuts = {'jet-pt': {'min': 10.0}, 'jet-delta_r': {'min': 0.4}}
             self.launch.MadgraphProcess.apply_auto_ptj_mjj(process, cuts)

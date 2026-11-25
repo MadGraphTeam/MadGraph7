@@ -93,7 +93,7 @@ def _zboost(momenta, rapidity):
 
 def _mg7_card(me_frame):
     card = banner_mod.RunCardMG7()
-    card['run']['me_frame'] = me_frame
+    card['beam']['me_frame'] = me_frame
     return card
 
 

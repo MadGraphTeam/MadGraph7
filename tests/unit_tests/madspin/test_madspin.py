@@ -866,7 +866,7 @@ class TestFrameFromRunCard(unittest.TestCase):
             self.assertEqual(options['frame_id'], 16, type(card).__name__)
             self.assertEqual([float(x) for x in options['beampol']], [50., 0.])
         card = banner.RunCardMG7()
-        card['run']['me_frame'] = [3, 4]
+        card['beam']['me_frame'] = [3, 4]
         options = self.apply(card, user=('frame_id',))
         self.assertEqual(options['frame_id'], 16)
 
@@ -876,7 +876,7 @@ class TestFrameFromRunCard(unittest.TestCase):
         every other sample defaults to."""
         for frame, wanted in (([], 0), ([3], 8), ([3, 4], 24), ([1, 2], 6)):
             card = banner.RunCardMG7()
-            card['run']['me_frame'] = frame
+            card['beam']['me_frame'] = frame
             options = self.apply(card)
             self.assertEqual(options['frame_id'], wanted, frame)
             self.assertEqual([float(x) for x in options['beampol']], [0., 0.])
@@ -1021,7 +1021,7 @@ class TestImportRunCard(unittest.TestCase):
     def test_mg7_sample_is_read_like_a_madevent_one(self):
         mg7 = banner.RunCardMG7()
         mg7['generation']['events'] = self.NEVENTS
-        mg7['phasespace']['bw_cutoff'] = 12
+        mg7['cuts.bw_cutoff'] = 12
         lo = banner.RunCardLO()
         lo['nevents'] = self.NEVENTS
         lo['bwcutoff'] = 12
@@ -1036,7 +1036,7 @@ class TestImportRunCard(unittest.TestCase):
         # partonic c.m. (6): see test_the_mg7_me_frame_reaches_madspin
         self.assertEqual(picked['frame_id'], 0)
         self.assertEqual(picked['beampol'], [0., 0.])
-        mg7['run']['me_frame'] = [1, 2]
+        mg7['beam']['me_frame'] = [1, 2]
         self.assertEqual(self._picked(mg7, 'mg7_cm.lhe'),
                          self._picked(lo, 'lo.lhe'))
 
@@ -14109,7 +14109,7 @@ class TestMg7WritesANumpyPoolEveryWorkerStrides(unittest.TestCase):
     def test_the_run_card_asks_for_the_numpy_event_file(self):
         self._stub(1).generate_events_mg7(self.decay_dir, self.NB_EVENT)
         card = banner.RunCardMG7(pjoin(self.decay_dir, 'Cards', 'run_card.toml'))
-        self.assertEqual(card['run']['output_format'], 'lhe_npy')
+        self.assertEqual(card['output']['output_format'], 'lhe_npy')
 
     def test_the_run_card_carries_the_seed_it_is_given(self):
         """Without it the pool ran with run.seed = -1, a fresh random seed on
