@@ -1,5 +1,7 @@
 #include "madspace/driver/discrete_optimizer.hpp"
 
+#include <cmath>
+
 using namespace madspace;
 
 void DiscreteOptimizer::add_data(const std::vector<Tensor>& values_and_counts) {
@@ -29,32 +31,42 @@ void DiscreteOptimizer::add_data(const std::vector<Tensor>& values_and_counts) {
 }
 
 void DiscreteOptimizer::optimize() {
-    // TODO: check shapes
-    // std::size_t next_sample_count = _sample_count + weights_view.size();
-    double prob_ratio = 1.; // static_cast<double>(_sample_count) / next_sample_count;
-    //_sample_count = next_sample_count;
+    if (_data.size() != _prob_names.size()) {
+        return;
+    }
+    // the events of this update, those of the first dimension
+    std::size_t new_count = 0;
+    for (std::size_t count : std::get<1>(_data.at(0))) {
+        new_count += count;
+    }
+    if (new_count == 0) {
+        return;
+    }
+    double old_share = static_cast<double>(_sample_count) / (_sample_count + new_count);
+    _sample_count += new_count;
     for (auto [prob_name, data_item] : zip(_prob_names, _data)) {
         auto& [weight_sums, counts] = data_item;
-        Tensor prob(DataType::dt_float64, _contexts.at(0)->global(prob_name).shape());
+        Tensor prob = _contexts.at(0)->global(prob_name).cpu().copy();
         auto prob_view = prob.view<double, 2>()[0];
 
+        // |I_i| = p_i |<w>_i| per category
+        std::vector<double> contributions(weight_sums.size(), 0.);
         double norm = 0.;
-        for (std::size_t i = 0; auto [wsum, count] : zip(weight_sums, counts)) {
-            if (count > 0) {
-                wsum *= prob_view[i] / count;
+        for (std::size_t i = 0; i < contributions.size(); ++i) {
+            if (counts.at(i) > 0) {
+                contributions.at(i) =
+                    prob_view[i] * std::abs(weight_sums.at(i)) / counts.at(i);
             }
-            norm += wsum;
-            ++i;
+            norm += contributions.at(i);
         }
-
-        for (std::size_t i = 0; double wsum : weight_sums) {
-            // prob_view[i] = prob_view[i] * prob_ratio + wsum / norm * (1. -
-            // prob_ratio);
-            ++i;
-        }
-
-        for (auto& context : _contexts) {
-            context->global(prob_name).copy_from(prob);
+        if (norm > 0. && std::isfinite(norm)) {
+            for (std::size_t i = 0; i < contributions.size(); ++i) {
+                prob_view[i] = prob_view[i] * old_share +
+                    contributions.at(i) / norm * (1. - old_share);
+            }
+            for (auto& context : _contexts) {
+                context->global(prob_name).copy_from(prob);
+            }
         }
         std::fill(weight_sums.begin(), weight_sums.end(), 0.);
         std::fill(counts.begin(), counts.end(), 0);

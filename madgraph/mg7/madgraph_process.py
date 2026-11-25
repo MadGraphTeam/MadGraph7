@@ -1839,6 +1839,7 @@ class MadgraphProcess:
         cfg = ms.GeneratorConfig()
         cfg.target_count = gen_args["events"]
         cfg.vegas_damping = vegas_args["damping"]
+        cfg.adaptive_discrete = vegas_args["adaptive_discrete"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
         cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
         cfg.start_batch_size = vegas_args["start_batch_size"]
