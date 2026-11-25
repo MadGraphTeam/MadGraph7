@@ -1919,6 +1919,52 @@ class ColorMatrix(dict):
 
         return result, result_fixed_Nc
 
+    def leading_color(self, Nc=3):
+        """The leading colour approximation of this matrix, as a new matrix
+        on the same basis: the diagonal reduced to its highest power of Nc,
+        every off-diagonal entry zero.
+
+        That power P is the largest over the whole diagonal (n_g + n_qqbar
+        for a tree), so a basis element whose diagonal only starts below it
+        drops out entirely. The 1/Nc of an internal gluon (the U(1) piece of
+        the Fierz identity) sits in the coefficients of the JAMPs, not in the
+        basis, so it is kept as a number. This is pyAmpliCol's 'lc' colour
+        accuracy: |M|^2_LC = sum_i c_i Nc^P |JAMP_i|^2, e.g. N^3 X for
+        u u~ > g g (exact N^3 X - N (X+1) + 1/N) and (N^2+1)/4 for u d > u d.
+        It is only meaningful on a trace / colour-flow basis, not on DDM."""
+
+        if self._ddm_expansions is not None:
+            raise ValueError('The leading colour matrix needs the trace basis, '
+                             'not the DDM one.')
+        if self._col_basis1 is not self._col_basis2:
+            raise ValueError('The leading colour matrix needs a square matrix.')
+
+        n = len(self._sorted_keys1)
+        lead = None
+        for i in range(n):
+            for col_str in self[(i, i)]:
+                if col_str.coeff and (lead is None or col_str.Nc_power > lead):
+                    lead = col_str.Nc_power
+
+        new = copy.copy(self)
+        new.col_matrix_fixed_Nc = _ColorMatrixView(new, 1)
+        zero = color_algebra.ColorFactor()
+        new._values = [(zero, zero.set_Nc(Nc))]
+        new._val_index = array.array('i', [0]) * (n * n)
+        seen = {}
+        for i in range(n):
+            terms = color_algebra.ColorFactor(
+                [col_str.create_copy() for col_str in self[(i, i)]
+                 if lead is not None and col_str.Nc_power == lead])
+            value = terms.set_Nc(Nc)
+            if not value[0] and not value[1]:
+                continue
+            if value not in seen:
+                seen[value] = len(new._values)
+                new._values.append((terms, value))
+            new._val_index[i * n + i] = seen[value]
+        return new
+
     def __str__(self):
         """Returns a nicely formatted string with the fixed Nc representation
         of the current matrix (only the real part)"""

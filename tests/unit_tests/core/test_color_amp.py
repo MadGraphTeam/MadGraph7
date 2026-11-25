@@ -757,6 +757,41 @@ class ColorSquareTest(unittest.TestCase):
                                  (goal[n], 0))
 
 
+    def test_color_matrix_leading_color(self):
+        """ColorMatrix.leading_color keeps the diagonal at its highest power of
+        Nc and zeroes the rest: pyAmpliCol's 'lc' colour accuracy, N^4/16 for
+        each trace of g g > g g (full 19/6), N^3/4 for u u~ > g g (full 16/3)
+        and N^2 for the Kronecker deltas of u u~ > u u~ (unchanged)."""
+
+        def leading(ids):
+            myleglist = base_objects.LegList(
+                [base_objects.Leg({'id': pid, 'state': i >= 2})
+                 for i, pid in enumerate(ids)])
+            myamplitude = diagram_generation.Amplitude()
+            myamplitude.set('process', base_objects.Process(
+                {'legs': myleglist, 'model': self.mymodel}))
+            myamplitude.generate_diagrams()
+            col_basis = color_amp.ColorBasis(myamplitude)
+            full = color_amp.ColorMatrix(col_basis, Nc=3)
+            return full, full.leading_color()
+
+        for ids, diag in (([21, 21, 21, 21], fractions.Fraction(81, 16)),
+                          ([-2, 2, 21, 21], fractions.Fraction(27, 4)),
+                          ([-2, 2, -2, 2], fractions.Fraction(9, 1))):
+            full, lc = leading(ids)
+            n = len(full._sorted_keys1)
+            self.assertTrue(n > 1)
+            for i in range(n):
+                for j in range(n):
+                    self.assertEqual(lc.col_matrix_fixed_Nc[(i, j)],
+                                     (diag if i == j else 0, 0))
+            # the full matrix is left alone
+            self.assertNotEqual(full.col_matrix_fixed_Nc[(0, 1)], (0, 0))
+            self.assertEqual(lc.get_line_denominators(),
+                             [diag.denominator] * n)
+            self.assertEqual(lc.get_line_numerators(0, diag.denominator),
+                             [diag.numerator] + [0] * (n - 1))
+
     def test_color_matrix_fixed_indices(self):
         """Test index fixing for immutable color string"""
 

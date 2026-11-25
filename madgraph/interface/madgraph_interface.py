@@ -1089,9 +1089,19 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   This is useful to validate the merged-flavor method.")
         logger.info("o language:",'$MG:color:GREEN')
         logger.info("   Cross-check the matrix element by comparing the Python,")
-        logger.info("   Fortran standalone (SA), and C++ standalone (SA) back-ends")
-        logger.info("   at the same phase-space point.  Requires gfortran / g++.")
-        logger.info("   Example: check language p p > e+ e-",'$MG:color:GREEN')
+        logger.info("   Fortran standalone (SA), C++ standalone (SA), MG7 standalone")
+        logger.info("   (madmatrix, one column per SIMD/GPU build) and pyAmpliCol")
+        logger.info("   (when installed) back-ends at the same phase-space points.")
+        logger.info("   --npoints=N evaluates N RAMBO points in one run of every")
+        logger.info("   driver, so that their helicity filtering is tested too.")
+        logger.info("   --pyamplicol=auto|True|False includes pyAmpliCol (auto: if")
+        logger.info("   installed; it keeps the t-channel widths, so then do all).")
+        logger.info("   Example: check language p p > e+ e- --npoints=100",'$MG:color:GREEN')
+        logger.info("o lc:",'$MG:color:GREEN')
+        logger.info("   As language, at leading colour: the diagonal of the colour")
+        logger.info("   matrix at its highest power of Nc (pyAmpliCol's 'lc'), the")
+        logger.info("   same definition in every language.")
+        logger.info("   Example: check lc p p > t t~ j --npoints=100",'$MG:color:GREEN')
         logger.info("o crossing:",'$MG:color:GREEN')
         logger.info("   Output the process to a standalone backend twice, with")
         logger.info("   the crossing symmetry on (--use_crossing=True) and off,")
@@ -1917,6 +1927,13 @@ class CheckValidForCmd(cmd.CheckCmd):
         if args[0] == 'precision':
             user_options['--nb_event'] = '1000000'
             user_options['--backend'] = 'auto'
+
+        if args[0] in ['language', 'lc']:
+            # the number of phase-space points every backend evaluates in one
+            # run (helicity filtering included), and whether pyAmpliCol takes
+            # part (auto: when it is installed)
+            user_options['--npoints'] = '1'
+            user_options['--pyamplicol'] = 'auto'
 
         if args[0] in ['cms'] or args[0].lower()=='cmsoptions':
             # increase the default energy to 5000
@@ -3430,6 +3447,8 @@ class CompleteForCmd(cmd.CompleteCmd):
             options.append('--timing_provenance=')
         if len(args) >= 2 and args[1] == 'precision':
             options.extend(['--nb_event=', '--backend='])
+        if len(args) >= 2 and args[1] in ('language', 'lc'):
+            options.extend(['--npoints=', '--pyamplicol='])
         if cms_options:
             options.extend(cms_options)
         if crossing_check_mode:
@@ -4208,7 +4227,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                 list(self._tutorial_step_cmds))
     _switch_opts = ['mg5','aMC@NLO','ML5']
     _check_opts = ['full', 'timing', 'stability', 'profile', 'permutation',
-                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language',
+                   'gauge','lorentz', 'brs', 'cms', 'flavor', 'language', 'lc',
                    'crossing', 'precision']
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'ExRootAnalysis',
@@ -6529,6 +6548,21 @@ This implies that with decay chains:
                     options['events'] = option[1]
             elif option[0] == '--skip_evt':
                 options['skip_evt']=int(option[1])
+            elif option[0] == '--npoints':
+                try:
+                    options['npoints'] = int(float(option[1]))
+                except ValueError:
+                    raise self.InvalidCmd("The value of the 'npoints' option"
+                                          " must be a number, not %s." % option[1])
+                if options['npoints'] < 1:
+                    raise self.InvalidCmd("The 'npoints' option must be at least 1.")
+            elif option[0] == '--pyamplicol':
+                value = option[1].lower()
+                if value not in ('auto', 'true', 'false'):
+                    raise self.InvalidCmd("The value of the 'pyamplicol' option"
+                                          " must be auto, True or False, not %s."
+                                          % option[1])
+                options['pyamplicol'] = None if value == 'auto' else value == 'true'
             elif option[0] == '--nb_event':
                 try:
                     options['nb_event'] = int(float(option[1]))
@@ -7206,7 +7240,8 @@ This implies that with decay chains:
                                           cmd = self)
             nb_processes += len(flavor_result)
 
-        if args[0] in ['language']:
+        if args[0] in ['language', 'lc']:
+            options['color_accuracy'] = 'lc' if args[0] == 'lc' else 'full'
             language_result = process_checks.check_language(myprocdef,
                                           param_card = param_card,
                                           options=options,
@@ -7320,7 +7355,7 @@ This implies that with decay chains:
             if self.options['complex_mass_scheme']:
                 text = "Note that Complex mass scheme gives gauge/lorentz invariant\n"
                 text+= "results only for stable particles in final states.\n\ns"
-            elif ((not args or args[0] not in ['language', 'precision']) and
+            elif ((not args or args[0] not in ['language', 'lc', 'precision']) and
                   not myprocdef.get('perturbation_couplings')):
                 text = "Note That all width have been set to zero for those checks\n\n"
             else:
@@ -7350,7 +7385,9 @@ This implies that with decay chains:
             text += 'Flavor grouping check results:\n'
             text += process_checks.output_flavor(flavor_result) + '\n'
         if language_result:
-            text += 'Language comparison results (Fortran SA / C++ SA / MG7 SA / Python):\n'
+            text += ('Leading colour comparison results' if args[0] == 'lc' else
+                     'Language comparison results') + \
+                    ' (Fortran SA / C++ SA / MG7 SA / Python / pyAmpliCol):\n'
             text += process_checks.output_language(language_result) + '\n'
         if precision_result:
             text += 'Floating point precision results (madmatrix standalone):\n'

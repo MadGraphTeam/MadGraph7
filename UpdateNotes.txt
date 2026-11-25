@@ -5,6 +5,16 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: 'check language' also compares pyAmpliCol (when installed, --pyamplicol=auto|True|
+       False; the t-channel widths are then kept in every backend, as pyAmpliCol does) and
+       evaluates --npoints=N RAMBO points in one run of every driver (Fortran/C++ read them
+       all from PS.input, madmatrix from a momenta file), so that the helicity filtering is
+       exercised too. madmatrix is built in double precision for it. New 'check lc': the
+       same at leading colour, defined in every language as the diagonal of the colour
+       matrix at its highest power of Nc (ColorMatrix.leading_color), pyAmpliCol's 'lc'.
+       Bug fix: with flavour grouping, 'check language u d > u d' (any merged leg restricted
+       to some flavours) ran no compiled backend: the flavour restriction was lost and the
+       colour basis was built before the flavour trimming.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV
