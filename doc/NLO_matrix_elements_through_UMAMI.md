@@ -191,7 +191,7 @@ What it showed:
 - FKS takes the Born, amp2 and both correlations in one call per Born kinematics, so one Born library call per event suffices.
 - The scale and PDF variations need no key beyond these.
 
-Not covered yet: `IN_G_EW` (the blocks carry e of the model, and the integrand takes the alpha of the QED counterterms as a constant), the Borns of the extra counterterms, the scale of the user, the EW Sudakov blocks and the status and accuracy of the loop. QED corrections and tagged photons work. Among the 13 processes are p p > e+ e- \[QED\] and p p > a a with tagged photons, whose factors per order the integrand applies and whose conversion of the virtual comes with the loop library, as BinothLHA adds it.
+Since then the prototype takes `IN_G_EW` (the libraries at the e of the model), the Borns of the extra counterterms (one Born library per extra counterterm, which the integrand calls at the Born momenta of the configurations with it, R11) and the scale of the user (a scale library with the scale outputs UMAMI has, through `CustomFunction` at the kinematics of the real process). Not covered yet: the EW Sudakov blocks (open question 8) and the status and accuracy of the loop. QED corrections and tagged photons work. Among the 13 processes are p p > e+ e- \[QED\] and p p > a a with tagged photons, whose factors per order the integrand applies and whose conversion of the virtual comes with the loop library, as BinothLHA adds it.
 
 ## Open questions for the meeting
 
@@ -202,7 +202,12 @@ Not covered yet: `IN_G_EW` (the blocks carry e of the model, and the integrand t
 5. **The loop.** The MadLoop shim first, or the one loop of pyAmpliCol?
 6. **Flavours.** One flavour index across the Born, real and loop libraries of a subprocess, or a translation in the caller?
 7. **Colour flows.** `OUT_COLOR_FLOW_WEIGHTS` summed or per order, and whether the colour choice of LO takes the same weights.
-8. **Not designed yet.** The EW Sudakov blocks (complex amplitudes per helicity) and the status and accuracy of the loop.
+8. **EW Sudakov.** The `EWSudakov` of madspace (compute\_ewsudakov of MadFKS) takes per Born helicity h the square of its base amplitude (the Born, or the Goldstone amplitude for longitudinal W and Z bosons) at the LO1 and at the LO2, its derivatives with respect to the six parameters of the renormalization (numder\_\*.f), and per interference term t the complex interference of the base amplitude with an amplitude of a process with legs replaced by their SU(2) partners, at momenta reshuffled to their masses (momentum\_reshuffling.f). None of them is a UMAMI output, so the C++ integrand leaves EW Sudakov to the driver in Python for now. Three ways:
+   - Keys for these blocks, `OUT_EW_SUDAKOV_DIAGONAL` (h), `OUT_EW_SUDAKOV_LO2` (h), `OUT_EW_SUDAKOV_DERIVATIVES` (h, 6) and `OUT_EW_SUDAKOV_INTERFERENCE` (t, 2), with h and t as metadata. Closest to the Fortran of MadGraph, but they fix its algorithm (Goldstone amplitudes, reshuffling, the parameters of numder) in the interface.
+   - Complex helicity amplitudes, `OUT_HELICITY_AMPLITUDES` (h, 2), one library per partner process and per Goldstone amplitude, and the derivatives from calls at shifted parameters (`umami_set_parameter`). The caller builds the products and the reshuffling. More general, more calls.
+   - The correction itself per mode, computed in the library. Simplest for the caller, but every provider then carries the Sudakov logic.
+
+   Which one, and can pyAmpliCol or MadMatrix give helicity amplitudes? The status and accuracy of the loop are not designed yet either.
 9. **MadLoop setup.** How the shim finds the resources of moved or gridpack trees, and which settings are cheap per call (the scale) and which only per handle (the scheme).
 10. **Colour accuracy.** A library at leading colour, as pyAmpliCol by default, fills the same pairs, with zeros for the pairs that no colour line joins, which ones depending on the process. The caller needs to know it, for the leading-colour Casimirs of the diagonal (C\_F becomes N\_c / 2). A sparse output of only the non-zero pairs, linear rather than quadratic in n\_c, can come later as a key of its own for high multiplicities.
 
