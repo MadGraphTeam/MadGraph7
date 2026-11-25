@@ -252,6 +252,211 @@ def fortran_double(frac):
     return ('%.17e' % float(frac)).replace('e', 'D')
 
 
+# An array with more entries than this is written in several DATA
+# statements: FortranWriter splits a line in a time quadratic in its length
+# (17 s for 2 MB).
+DATA_COLUMN_LIMIT = 20000
+# the entries per statement of a large one-dimensional array
+DATA_CHUNK = 1000
+
+
+def fortran_data(name, values, dims):
+    """The DATA statements that set the array NAME(DIMS) to VALUES, Fortran
+    literals in column-major order. An array of up to DATA_COLUMN_LIMIT
+    entries gets one statement; a larger one gets one statement per column,
+    NAME(1:DIMS[0],j,...), or per DATA_CHUNK entries if it has rank 1."""
+    size = 1
+    for d in dims:
+        size *= d
+    if size <= DATA_COLUMN_LIMIT:
+        return ['DATA %s/%s/' % (name, ','.join(values))]
+    it, lines = iter(values), []
+    if len(dims) == 1:
+        for start in range(0, size, DATA_CHUNK):
+            n = min(DATA_CHUNK, size - start)
+            chunk = list(itertools.islice(it, n))
+            if len(chunk) != n:
+                raise OniaLoopError('DATA %s: fewer values than its %d entries' % (name, size))
+            lines.append('DATA %s(%d:%d)/%s/' % (name, start + 1, start + n, ','.join(chunk)))
+    else:
+        n = dims[0]
+        for k in range(size // n):
+            column = list(itertools.islice(it, n))
+            if len(column) != n:
+                raise OniaLoopError('DATA %s: fewer values than its %d entries' % (name, size))
+            index, rest = [], k
+            for d in dims[1:]:
+                index.append('%d' % (rest % d + 1))
+                rest //= d
+            lines.append('DATA %s(1:%d,%s)/%s/' % (name, n, ','.join(index), ','.join(column)))
+    if next(it, None) is not None:
+        raise OniaLoopError('DATA %s: more values than its %d entries' % (name, size))
+    return lines
+
+
+#===============================================================================
+# Colour in the basis of colour flows
+#===============================================================================
+# Every colour matrix of the onia layer has the form
+#   C[a][b] = sum_cd conj(l_c(a)) X[c][d] r_d(b)
+# between Born amplitudes a and b, with l_c(a) the coefficient of amplitude a
+# in colour flow c of the Born colour basis (get_amp_to_jamp_map) and r_d(b)
+# that of a colour basis on the right: the Born basis itself, or that of an
+# S-wave state of a soft current. onia_loop.f contracts amplitudes as
+#   sum_ab conj(U_a) C[a][b] V_b = sum_cd conj(J_c) X[c][d] K_d
+# with the colour flows J = l U and K = r V (ONIA_COLOUR_FLOWS,
+# ONIA_SANDWICH), so the data is the maps and the flow matrices X: they have
+# the size of the colour basis, not of the number of amplitudes squared.
+
+def flow_map(amp_to_flow):
+    """The entries (amplitude, flow, re, im) of an amplitude-to-flow map
+    (get_amp_to_jamp_map, coefficients (Fraction, is_imag)), 1-based, by
+    amplitude."""
+    zero = fractions.Fraction(0)
+    return [(a + 1, flow + 1, zero if is_imag else frac, frac if is_imag else zero)
+            for a, flows in enumerate(amp_to_flow) for flow, (frac, is_imag) in flows]
+
+
+def flow_map_lines(prefix, maps, nflows):
+    """Declarations and DATA statements of the amplitude-to-flow maps of
+    colour bases (maps: get_amp_to_jamp_map of each basis, nflows: their
+    numbers of flows), for ONIA_COLOUR_FLOWS. Basis B has PREFIX_NF(B) flows
+    and the entries PREFIX_MPTR(B) to PREFIX_MPTR(B+1)-1 of PREFIX_MA (the
+    amplitude), PREFIX_MF (the flow) and PREFIX_MC_RE + i PREFIX_MC_IM (the
+    coefficient)."""
+    entries = [flow_map(m) for m in maps]
+    ptr = [1]
+    for e in entries:
+        ptr.append(ptr[-1] + len(e))
+    flat = [x for e in entries for x in e]
+    nb, nmap = len(maps), len(flat)
+    if not flat:
+        flat = [(0, 0, 0, 0)]
+    nfs = list(nflows) or [0]
+    if not maps:
+        ptr = [1, 1]
+    p = prefix
+    lines = ['INTEGER %s_NB, %s_NMAP' % (p, p),
+             'PARAMETER (%s_NB=%d, %s_NMAP=%d)' % (p, nb, p, nmap),
+             'INTEGER %s_NF(%d), %s_MPTR(%d)' % (p, len(nfs), p, len(ptr)),
+             'INTEGER %s_MA(%d), %s_MF(%d)' % (p, len(flat), p, len(flat)),
+             'REAL*8 %s_MC_RE(%d), %s_MC_IM(%d)' % (p, len(flat), p, len(flat))]
+    lines += fortran_data('%s_NF' % p, ('%d' % n for n in nfs), (len(nfs),))
+    lines += fortran_data('%s_MPTR' % p, ('%d' % n for n in ptr), (len(ptr),))
+    lines += fortran_data('%s_MA' % p, ('%d' % e[0] for e in flat), (len(flat),))
+    lines += fortran_data('%s_MF' % p, ('%d' % e[1] for e in flat), (len(flat),))
+    lines += fortran_data('%s_MC_RE' % p, (fortran_double(e[2]) for e in flat), (len(flat),))
+    lines += fortran_data('%s_MC_IM' % p, (fortran_double(e[3]) for e in flat), (len(flat),))
+    return lines
+
+
+def flow_matrix_lines(name, matrices, dims, comment=None):
+    """Declarations and DATA statements of the flow matrices NAME_RE and
+    NAME_IM(DIMS): DIMS[0] x DIMS[1] matrices {(c, d): (re, im)}, in
+    column-major order of the slots DIMS[2:], padded with zeros."""
+    dims = tuple(max(d, 1) for d in dims)
+    nslots = 1
+    for d in dims[2:]:
+        nslots *= d
+    matrices = list(matrices) + [{}] * (nslots - len(matrices))
+    if len(matrices) != nslots:
+        raise OniaLoopError('%s: %d matrices for %d slots' % (name, len(matrices), nslots))
+    shape = ','.join('%d' % d for d in dims)
+    lines = ['C     %s' % comment] if comment else []
+    lines.append('REAL*8 %s_RE(%s), %s_IM(%s)' % (name, shape, name, shape))
+    for part, suffix in ((0, 'RE'), (1, 'IM')):
+        lines += fortran_data('%s_%s' % (name, suffix), (
+            fortran_double(v) for m in matrices
+            for v in flow_matrix_values(m, dims[0], dims[1], part)), dims)
+    return lines
+
+
+def flow_colour_matrix(color_matrix):
+    """{(c, d): (re, im)} of a ColorMatrix (col_matrix_fixed_Nc), nonzero
+    entries, as Fractions."""
+    zero = fractions.Fraction(0)
+    res = {}
+    for key, (value, is_imag) in color_matrix.col_matrix_fixed_Nc.items():
+        if value:
+            value = fractions.Fraction(value)
+            res[key] = (zero, value) if is_imag else (value, zero)
+    return res
+
+
+def flow_matrix_values(xmat, nrows, ncols, part):
+    """The column-major part (0: re, 1: im) of the flow matrix {(c, d): (re,
+    im)}, padded with zeros to nrows x ncols."""
+    zero = (0, 0)
+    return (xmat.get((c, d), zero)[part] for d in range(ncols) for c in range(nrows))
+
+
+def physical_charges(matrix_element, info):
+    """{physical leg: (colour index, representation)} of the coloured physical
+    legs: a parton of colour 3, -3 (initial quarks, final antiquarks) or 8,
+    and a colour-octet bound state of coloured constituents, whose total
+    charge T_Q + T_Qbar acts on its octet index, the number of its quark.
+    A colour-singlet bound state has no charge."""
+    process = matrix_element.get('processes')[0]
+    model = process.get('model')
+    onia = dict((o['q1'], o) for o in info['onia'])
+    charges = {}
+    for leg in process.get('legs'):
+        num = leg.get('number')
+        colour = model.get_particle(leg.get('id')).get_color()
+        if leg.get('onium'):
+            o = onia.get(num)
+            if o is not None and o['C'] == 8 and abs(colour) == 3:
+                charges[info['mapping'][num - 1]] = (num, 8)
+            continue
+        if colour in (1, 0):
+            continue
+        charges[info['mapping'][num - 1]] = (num, 8 if colour == 8 else
+                                             (colour if leg.get('state') else -colour))
+    return charges
+
+
+def flow_color_links(matrix_element, info):
+    """The colour-linked Borns between different physical legs j, k in the
+    Born colour-flow basis: {(j, k): K}, with
+       K[(c, d)] = sum_colours conj(c_c) T_j.T_k c_d
+    over the strings c_c, c_d of the (projected) Born colour basis, in the
+    order of its flows, as (re, im) Fractions. T_j is the colour charge of
+    physical_charges (that of MadFKS, fks_common.legs_to_color_link_string,
+    for both signs of each charge), so sum_cd conj(l_c(a)) K[(c, d)] l_d(b)
+    is the CL[a][b] of physical_color_links. The keys are the ordered pairs
+    of different physical legs with coloured constituents, as there; K is
+    empty if a leg is a colour-singlet bound state."""
+    process = matrix_element.get('processes')[0]
+    model = process.get('model')
+    coloured = set(info['mapping'][leg.get('number') - 1] for leg in process.get('legs')
+                   if abs(model.get_particle(leg.get('id')).get_color()) > 1)
+    charges = physical_charges(matrix_element, info)
+    keys = sorted(matrix_element.get('born_color_basis').keys())
+    a, fresh_j, fresh_k = -4201, -4202, -4203
+    result = {}
+    for j in sorted(coloured):
+        for k in sorted(coloured):
+            if j == k:
+                continue
+            if (k, j) in result:
+                # T_j.T_k = T_k.T_j
+                result[(j, k)] = result[(k, j)]
+                continue
+            kmat = {}
+            if j in charges and k in charges:
+                (num_j, rep_j), (num_k, rep_k) = charges[j], charges[k]
+                insertion = _colour_charge_string(rep_j, num_j, a, fresh_j)
+                insertion.product(_colour_charge_string(rep_k, num_k, a, fresh_k))
+                for ic, kc in enumerate(keys):
+                    for id_, kd in enumerate(keys):
+                        value = _colour_contract(kc, kd, {}, {num_j: fresh_j, num_k: fresh_k},
+                                                 insertion)
+                        if value != (0, 0):
+                            kmat[(ic, id_)] = value
+            result[(j, k)] = kmat
+    return result
+
+
 def fortran_quad(frac):
     """A Fraction as a Fortran quadruple-precision expression, exact for
     rational colour and normalisation factors."""
@@ -474,8 +679,8 @@ def _to_amplitude_space(mat, amp_p, amp_s, nborn):
 def _swave_colour_basis(matrix_element, basis, col_obj, onia_numbers, colours, amp_to_jamp):
     """The Born colour basis with the pairs of the quarks n_q of `colours`
     ({n_q: C'}) projected on the colours C' instead of their own: (keys,
-    amplitude-to-colour-flow map, colour matrix between Born amplitudes),
-    or None if the colour forbids it."""
+    amplitude-to-colour-flow map, colour matrix between its flows), or None
+    if the colour forbids it."""
     import madgraph.core.color_amp as color_amp
     nborn = matrix_element.get_number_of_born_amplitudes()
     numbers = [[charges, numbers_, next((c for n_q, c in colours.items() if n_q in numbers_),
@@ -494,13 +699,7 @@ def _swave_colour_basis(matrix_element, basis, col_obj, onia_numbers, colours, a
     keys_s = sorted(basis_s.keys())
     amp_s = amp_to_jamp(matrix_element.generate_color_amplitudes(
         basis_s, matrix_element.get_born_diagrams()), nborn)
-    cm = color_amp.ColorMatrix(basis_s)
-    mat = {}
-    for (i, j), (m_val, m_imag) in cm.col_matrix_fixed_Nc.items():
-        if m_val:
-            mat[(i, j)] = (fractions.Fraction(0), fractions.Fraction(m_val)) if m_imag \
-                else (fractions.Fraction(m_val), fractions.Fraction(0))
-    return keys_s, amp_s, _to_amplitude_space(mat, amp_s, amp_s, nborn)
+    return keys_s, amp_s, flow_colour_matrix(color_amp.ColorMatrix(basis_s))
 
 
 def _qeff_insertion(label, kind, n_q, a, c_new, repl_p, repl_s):
@@ -533,16 +732,20 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp, ipw=None):
       cnorm           n_C'/n_C, the ratio of the squared normalisations of
                       the colour projectors (1/3 for a singlet, 2 for an
                       octet)
-      cs              the colour matrix of S' between Born amplitudes,
-                      CS[a][b] = sum_colours conj(c'_a) c'_b
+      amp_s, nflow    the amplitude-to-flow map of the colour basis of S'
+                      (get_amp_to_jamp_map) and its number of flows
+      cs              the colour matrix between the flows of S',
+                      {(c', d'): (re, im)}
       links           {(k, kind): X} for every coloured physical leg k
                       other than the P-wave state, kind 1 for Delta (18,
                       81) or D (88) and 2 for T (88), with
-                      X[a][b] = sum_colours conj(c_a) Q_k^a Q_eff^a c'_b
+                      X[(c, d')] = sum_colours conj(c_c) Q_k^a Q_eff^a c'_d'
                       without the mass factors of Q_eff
-    c (c') are the colour strings of the Born amplitudes projected on the
-    colour of the P-wave state (of S'), as (re, im) Fractions. amp_to_jamp
-    is the exporter's get_amp_to_jamp_map."""
+    c_c (c'_d') are the strings of the Born colour basis projected on the
+    colour of the P-wave state (of S'), in the order of their flows, and the
+    values (re, im) Fractions (nonzero entries); _to_amplitude_space gives
+    the matrices between Born amplitudes. amp_to_jamp is the exporter's
+    get_amp_to_jamp_map."""
     import madgraph.core.color_algebra as color_algebra
     import madgraph.core.color_amp as color_amp
     import madgraph.loop.loop_color_amp as loop_color_amp
@@ -551,14 +754,12 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp, ipw=None):
     process = matrix_element.get('processes')[0]
     model = process.get('model')
     legs = process.get('legs')
-    nborn = matrix_element.get_number_of_born_amplitudes()
     born_diagrams = matrix_element.get('base_amplitude').get('born_diagrams')
     basis = loop_color_amp.LoopColorBasis()
     col_obj = [basis.colorize(d, model) for d in born_diagrams]
     onia_numbers = basis.get_onia_color_numbers(process)
     born_basis = matrix_element.get('born_color_basis')
     keys_p = sorted(born_basis.keys())
-    amp_p = amp_to_jamp(matrix_element.get_born_color_amplitudes(), nborn)
     # the octet index of a quarkonium is the number of its quark (colour 3)
     n_q = pw['q1']
     octet_index = {}
@@ -610,10 +811,9 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp, ipw=None):
                         if value != (0, 0):
                             xmat[(ia, ib)] = value
                 if xmat:
-                    links[(phys, 2 if kind == 'T' else 1)] = \
-                        _to_amplitude_space(xmat, amp_p, amp_s, nborn)
+                    links[(phys, 2 if kind == 'T' else 1)] = xmat
         result.append(dict(colour=colour, label=label, cnorm=norm[colour] / norm[pw['C']],
-                           cs=cs, links=links))
+                           amp_s=amp_s, nflow=len(keys_s), cs=cs, links=links))
     return result
 
 
@@ -626,22 +826,24 @@ def pwave_dipole_dipole(matrix_element, info, amp_to_jamp):
       label1, label2   the labels of Q_eff of the two states
       kind1, kind2     1 for Delta (18, 81) or D (88), 2 for T (88)
       cnorm1, cnorm2   n_C'/n_C of each state
-      x                X[a][b] = sum_colours conj(c_a) Q_eff1^e Q_eff2^e c'_b
+      amp_s, nflow     the amplitude-to-flow map of the colour basis of
+                       (S1', S2') and its number of flows
+      x                X[(c, d')] = sum_colours conj(c_c) Q_eff1^e Q_eff2^e c'_d'
                        without the mass factors of Q_eff
-    c (c') are the colour strings of the Born amplitudes projected on the
-    colours of the two P-wave states (of S1', S2'), as (re, im) Fractions."""
+    c_c (c'_d') are the strings of the Born colour basis projected on the
+    colours of the two P-wave states (of S1', S2'), in the order of their
+    flows, and the values (re, im) Fractions (nonzero entries), as in
+    pwave_soft_current."""
     import madgraph.loop.loop_color_amp as loop_color_amp
 
     pw1, pw2 = [info['onia'][i - 1] for i in info['ipwaves']]
     process = matrix_element.get('processes')[0]
     model = process.get('model')
-    nborn = matrix_element.get_number_of_born_amplitudes()
     born_diagrams = matrix_element.get('base_amplitude').get('born_diagrams')
     basis = loop_color_amp.LoopColorBasis()
     col_obj = [basis.colorize(d, model) for d in born_diagrams]
     onia_numbers = basis.get_onia_color_numbers(process)
     keys_p = sorted(matrix_element.get('born_color_basis').keys())
-    amp_p = amp_to_jamp(matrix_element.get_born_color_amplitudes(), nborn)
     e, c_new1, c_new2 = -4101, -4102, -4103
     norm = {1: fractions.Fraction(1, 3), 8: fractions.Fraction(2)}
     result = []
@@ -678,7 +880,7 @@ def pwave_dipole_dipole(matrix_element, info, amp_to_jamp):
                         label1=label1, label2=label2,
                         kind1=2 if kind1 == 'T' else 1, kind2=2 if kind2 == 'T' else 1,
                         cnorm1=norm[colour1] / norm[pw1['C']], cnorm2=norm[colour2] / norm[pw2['C']],
-                        x=_to_amplitude_space(xmat, amp_p, amp_s, nborn)))
+                        amp_s=amp_s, nflow=len(keys_s), x=xmat))
     return result
 
 

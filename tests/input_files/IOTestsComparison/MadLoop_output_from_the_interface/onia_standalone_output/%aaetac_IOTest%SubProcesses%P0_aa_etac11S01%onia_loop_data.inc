@@ -11,8 +11,6 @@ C     J_z of each bound state in each polarisation configuration
 C     the constituent helicity configurations (HelConfigs.dat) and
 C     the index of the helicities of their other legs
       INTEGER ONIA_HELC(4,16), ONIA_OTHERS(16)
-C     colour factors between the projected Born amplitudes
-      REAL*8 ONIA_CFB_RE(2,2), ONIA_CFB_IM(2,2)
       DATA ONIA_MAPPING/1,2,3,3/
       DATA ONIA_PARTNER/0,0,4,3/
       DATA ONIA_Q1/3/
@@ -25,10 +23,26 @@ C     colour factors between the projected Born amplitudes
      $ -1,1,-1,1,-1,-1,-1,1,1,1,-1,1,1,-1,1,-1,-1,1,1,-1,-1,-1,1,-1,1
      $ ,1,1,-1,1,-1,1,1,-1,1,1,1,-1,-1,1,1,1,1,1,1,1,-1/
       DATA ONIA_OTHERS/1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4/
-      DATA ONIA_CFB_RE/9.00000000000000000D+00,9.00000000000000000D+00
-     $ ,9.00000000000000000D+00,9.00000000000000000D+00/
-      DATA ONIA_CFB_IM/0.00000000000000000D+00,0.00000000000000000D+00
-     $ ,0.00000000000000000D+00,0.00000000000000000D+00/
+C     the colour flows of the projected Born amplitudes (ONIA_BF, one
+C     basis: ONIA_BORN_FLOWS) and the colour matrix between them
+      INTEGER ONIA_NFLOW
+      PARAMETER (ONIA_NFLOW=1)
+      INTEGER ONIA_BF_NB, ONIA_BF_NMAP
+      PARAMETER (ONIA_BF_NB=1, ONIA_BF_NMAP=2)
+      INTEGER ONIA_BF_NF(1), ONIA_BF_MPTR(2)
+      INTEGER ONIA_BF_MA(2), ONIA_BF_MF(2)
+      REAL*8 ONIA_BF_MC_RE(2), ONIA_BF_MC_IM(2)
+      DATA ONIA_BF_NF/1/
+      DATA ONIA_BF_MPTR/1,3/
+      DATA ONIA_BF_MA/1,2/
+      DATA ONIA_BF_MF/1,1/
+      DATA ONIA_BF_MC_RE/-3.00000000000000000D+00,
+     $ -3.00000000000000000D+00/
+      DATA ONIA_BF_MC_IM/0.00000000000000000D+00,0.00000000000000000D
+     $ +00/
+      REAL*8 ONIA_FCM_RE(1,1), ONIA_FCM_IM(1,1)
+      DATA ONIA_FCM_RE/1.00000000000000000D+00/
+      DATA ONIA_FCM_IM/0.00000000000000000D+00/
 C     some loop holds both constituents of a bound state
       LOGICAL ONIA_THRESHOLD_LOOPS
       PARAMETER (ONIA_THRESHOLD_LOOPS=.TRUE.)

@@ -206,24 +206,34 @@ class TestLoopOniaGeneration(unittest.TestCase):
         self.assertEqual(loop_onia.loop_rank_increase(
             self.matrix_element('g g > etac(1|1S01) [virt=QCD]')), 0)
 
-    def soft_current(self, process):
+    @staticmethod
+    def exporter():
         import madgraph.loop.loop_exporters as loop_exporters
-        exporter = loop_exporters.LoopProcessOptimizedExporterFortranSA.__new__(
+        return loop_exporters.LoopProcessOptimizedExporterFortranSA.__new__(
             loop_exporters.LoopProcessOptimizedExporterFortranSA)
+
+    def born_map(self, me):
+        return self.exporter().get_amp_to_jamp_map(me.get_born_color_amplitudes(),
+                                                   me.get_number_of_born_amplitudes())
+
+    def soft_current(self, process):
         me = self.matrix_element(process)
         info = loop_onia.onia_loop_info(me)
-        return me, loop_onia.pwave_soft_current(me, info, exporter.get_amp_to_jamp_map)
+        return me, loop_onia.pwave_soft_current(me, info, self.exporter().get_amp_to_jamp_map)
 
-    def assert_colour_conservation(self, aux, nborn):
-        """sum_k T_k = -T_P on the transition matrices: zero for a P-wave
-        singlet, and for an octet but for the T part of Q_eff(88)
-        (f_abm d_amc = 0, T^a_{b'a} = 0)."""
+    def assert_colour_conservation(self, me, aux):
+        """sum_k T_k = -T_P on the transition matrices between Born
+        amplitudes: zero for a P-wave singlet, and for an octet but for the T
+        part of Q_eff(88) (f_abm d_amc = 0, T^a_{b'a} = 0)."""
         zero = (fractions.Fraction(0), fractions.Fraction(0))
+        nborn = me.get_number_of_born_amplitudes()
+        ampb = self.born_map(me)
         for a in aux:
             for kind in set(k for _, k in a['links']):
                 if a['label'] == '88' and kind == 2:
                     continue
-                mats = [x for (leg, k), x in a['links'].items() if k == kind]
+                mats = [loop_onia._to_amplitude_space(x, ampb, a['amp_s'], nborn)
+                        for (leg, k), x in a['links'].items() if k == kind]
                 self.assertTrue(any(c != zero for x in mats for row in x for c in row))
                 for i in range(nborn):
                     for j in range(nborn):
@@ -237,17 +247,17 @@ class TestLoopOniaGeneration(unittest.TestCase):
         me, aux = self.soft_current('g g > chic0(1|3P01) [virt=QCD]')
         self.assertEqual([(a['label'], a['cnorm']) for a in aux], [('18', 6)])
         self.assertEqual(sorted(aux[0]['links']), [(1, 1), (2, 1)])
-        self.assert_colour_conservation(aux, me.get_number_of_born_amplitudes())
+        self.assert_colour_conservation(me, aux)
         me, aux = self.soft_current('g g > etac(1|1P18) [virt=QCD]')
         self.assertEqual([(a['label'], a['cnorm']) for a in aux],
                          [('81', fractions.Fraction(1, 6)), ('88', 1)])
         self.assertEqual(sorted(aux[1]['links']), [(1, 1), (1, 2), (2, 1), (2, 2)])
-        self.assert_colour_conservation(aux, me.get_number_of_born_amplitudes())
+        self.assert_colour_conservation(me, aux)
         # the colour charges of the light quarks: initial quark -t^aT,
         # initial antiquark t^a
         me, aux = self.soft_current('u u~ > chic0(1|3P01) g [virt=QCD]')
         self.assertEqual(sorted(aux[0]['links']), [(1, 1), (2, 1), (4, 1)])
-        self.assert_colour_conservation(aux, me.get_number_of_born_amplitudes())
+        self.assert_colour_conservation(me, aux)
         # a colour-forbidden S-wave state is left out: e+ e- > 3S1[1] g
         me, aux = self.soft_current('e+ e- > Jpsi(1|3P08) g [virt=QCD]')
         self.assertEqual([a['label'] for a in aux], ['88'])
@@ -270,11 +280,44 @@ class TestLoopOniaGeneration(unittest.TestCase):
         dd = loop_onia.pwave_dipole_dipole(me, info, exporter.get_amp_to_jamp_map)
         self.assertEqual([(d['label1'], d['label2'], d['kind1'], d['kind2'], d['cnorm1'],
                            d['cnorm2']) for d in dd], [('18', '18', 1, 1, 6, 6)])
-        x = dd[0]['x']
+        x = loop_onia._to_amplitude_space(dd[0]['x'], self.born_map(me), dd[0]['amp_s'], nborn)
         self.assertTrue(any(c != (0, 0) for row in x for c in row))
         # real (no f) and Hermitian-free: X[a][b] = sum conj(c_a) c'_b
         self.assertTrue(all(c[1] == 0 for row in x for c in row))
         self.assertEqual(len(x), nborn)
+
+    def test_flow_colour_matrices(self):
+        """The colour data in the Born colour-flow basis gives the colour
+        matrices between Born amplitudes: the Born colour matrix, and the
+        colour links of the projected Born basis (T_j.T_k inserted after the
+        projection) those of the diagrams (inserted before, as in MadFKS),
+        for a light quark, gluons, an octet and a singlet state, massive
+        quarks and unequal masses."""
+        for process in ['u u~ > chic0(1|3P01) g [virt=QCD]',
+                        'g g > etac(1|1P18) [virt=QCD]',
+                        'g g > Jpsi(1|3S18) g [virt=QCD]',
+                        'e+ e- > Bc+(1|1S01) b c~ / z t t~ QED=2 [virt=QCD]']:
+            me = self.matrix_element(process)
+            info = loop_onia.onia_loop_info(me)
+            nborn = me.get_number_of_born_amplitudes()
+            ampb = self.born_map(me)
+            cm = color_amp.ColorMatrix(me.get('born_color_basis'))
+            denom = cm.get_line_denominators()
+            num = [cm.get_line_numerators(i, d) for i, d in enumerate(denom)]
+            self.assertEqual(loop_onia._to_amplitude_space(
+                loop_onia.flow_colour_matrix(cm), ampb, ampb, nborn),
+                loop_onia.born_born_color_factors(ampb, num, denom), process)
+            reference = loop_onia.physical_color_links(info, loop_onia.color_linked_born_factors(
+                me, self.exporter().get_amp_to_jamp_map))
+            flows = loop_onia.flow_color_links(me, info)
+            self.assertEqual(sorted(flows), sorted(reference), process)
+            zero = (fractions.Fraction(0), fractions.Fraction(0))
+            nonzero = 0
+            for key, cl in reference.items():
+                self.assertEqual(loop_onia._to_amplitude_space(flows[key], ampb, ampb, nborn),
+                                 cl, (process, key))
+                nonzero += any(c != zero for row in cl for c in row)
+            self.assertTrue(nonzero, process)
 
     def test_triplet_polarisations(self):
         """A spin triplet has three J_z, a colour octet the norm 2."""
@@ -455,6 +498,31 @@ class TestBornBornColourFactors(unittest.TestCase):
         self.assertEqual(cfb[1][0], (F(-1, 2), F(-2)))
         # |i|^2 * 2 + 1 * 2 + conj(i)*(-1)*1/2 + (-1)*i*1/2 = 4
         self.assertEqual(cfb[1][1], (F(4), F(0)))
+
+
+class TestFortranData(unittest.TestCase):
+    """fortran_data: one DATA statement for a small array, one per column for
+    a large one."""
+
+    def test_small_array(self):
+        self.assertEqual(loop_onia.fortran_data('A', ['1', '2', '3', '4'], (2, 2)),
+                         ['DATA A/1,2,3,4/'])
+
+    def test_large_array(self):
+        limit = loop_onia.DATA_COLUMN_LIMIT
+        try:
+            loop_onia.DATA_COLUMN_LIMIT = 4
+            values = ['%d' % v for v in range(1, 13)]
+            self.assertEqual(loop_onia.fortran_data('A', iter(values), (2, 3, 2)),
+                             ['DATA A(1:2,1,1)/1,2/', 'DATA A(1:2,2,1)/3,4/',
+                              'DATA A(1:2,3,1)/5,6/', 'DATA A(1:2,1,2)/7,8/',
+                              'DATA A(1:2,2,2)/9,10/', 'DATA A(1:2,3,2)/11,12/'])
+            self.assertRaises(loop_onia.OniaLoopError, loop_onia.fortran_data,
+                              'A', values[:-1], (2, 3, 2))
+            self.assertRaises(loop_onia.OniaLoopError, loop_onia.fortran_data,
+                              'A', values + ['13'], (2, 3, 2))
+        finally:
+            loop_onia.DATA_COLUMN_LIMIT = limit
 
 
 import madgraph.loop.loop_exporters as loop_exporters

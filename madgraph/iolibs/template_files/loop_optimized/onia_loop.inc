@@ -479,6 +479,7 @@ C     momenta P.
       %(complex_dp_format)s AMPH(NBORNAMPS,NCOMB)
       %(complex_dp_format)s BPROJ(NBORNAMPS,ONIA_NOTHERS,ONIA_NJZT)
       %(complex_dp_format)s TMP
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW), %(proc_prefix)sONIA_SANDWICH
       %(real_dp_format)s CMASS(NEXTERNAL), KQ(0:3), FACT
       COMMON/%(proc_prefix)sONIA_PROJECTED/BPROJ,FACT
       LOGICAL ACTIVE(NCOMB)
@@ -565,18 +566,14 @@ C     The effective Born of each constituent helicity configuration
       DO H=1,NCOMB
         LIVE(H)=ANY(WEFF(1:NBORNAMPS,H).NE.(0D0,0D0))
       ENDDO
-C     The projected Born matrix element
+C     The projected Born matrix element, from the colour flows of the
+C     projected Born amplitudes
       BORN2=0D0
       DO O=1,ONIA_NOTHERS
         DO T=1,ONIA_NJZT
-          DO I=1,NBORNAMPS
-            IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-            TMP=(0D0,0D0)
-            DO J=1,NBORNAMPS
-              TMP=TMP+DCMPLX(ONIA_CFB_RE(I,J),ONIA_CFB_IM(I,J))*BPROJ(J,O,T)
-            ENDDO
-            BORN2=BORN2+DBLE(DCONJG(BPROJ(I,O,T))*TMP)
-          ENDDO
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW)
+          BORN2=BORN2+DBLE(%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW,
+     &     ONIA_NFLOW,JFLOW,ONIA_NFLOW,ONIA_FCM_RE,ONIA_FCM_IM))
         ENDDO
       ENDDO
       BORN2=BORN2*FACT/DBLE(ONIA_IDEN)
@@ -863,6 +860,18 @@ C     NHEL for the dual momenta P, without the counterterms
 %(onia_born_calls)s
       END
 
+      SUBROUTINE %(proc_prefix)sONIA_PWS_FLOWS(B,V,J)
+C     The colour flows J(1:PWS_SF_NF(B)) of the Born amplitudes V
+C     in colour basis B of the soft currents (onia_loop_pwsoft.inc)
+      IMPLICIT NONE
+      INTEGER B
+      INCLUDE 'onia_loop_data.inc'
+      INCLUDE 'onia_loop_pwsoft.inc'
+      %(complex_dp_format)s V(*), J(*)
+      CALL %(proc_prefix)sONIA_COLOUR_FLOWS(PWS_SF_MPTR(B),PWS_SF_MPTR(B+1)-1,
+     & PWS_SF_MA,PWS_SF_MF,PWS_SF_MC_RE,PWS_SF_MC_IM,PWS_SF_NF(B),V,J)
+      END
+
 ## if(not OniaPwave2){
       SUBROUTINE %(proc_prefix)sONIA_PREPARE(P)
 C     The spin projectors and their derivatives, the projected Born
@@ -896,6 +905,7 @@ C     constituent momenta P (at zero relative momentum).
       %(complex_dp_format)s PR0(ONIA_NJZT,NCOMB,3), PR1(ONIA_NJZT,NCOMB,3)
       %(complex_dp_format)s A0(NBORNAMPS,NCOMB), A1(NBORNAMPS,NCOMB,3)
       %(complex_dp_format)s TMP
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW), %(proc_prefix)sONIA_SANDWICH
       TYPE(DUAL) PD(0:3,NEXTERNAL), KD(0:3), PR, PRK
       %(real_dp_format)s CMASS(NEXTERNAL), CG
       LOGICAL ACTIVE(NCOMB)
@@ -1053,18 +1063,14 @@ C     W2, the first of which also takes the weights W1 and V
         ENDIF
         LIVE(H)=FIRSTLZ(H).NE.0
       ENDDO
-C     The projected Born matrix element
+C     The projected Born matrix element, from the colour flows of the
+C     projected Born amplitudes
       BORN2=0D0
       DO O=1,ONIA_NOTHERS
         DO T=1,ONIA_NJZT
-          DO I=1,NBORNAMPS
-            IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-            TMP=(0D0,0D0)
-            DO J=1,NBORNAMPS
-              TMP=TMP+DCMPLX(ONIA_CFB_RE(I,J),ONIA_CFB_IM(I,J))*BPROJ(J,O,T)
-            ENDDO
-            BORN2=BORN2+DBLE(DCONJG(BPROJ(I,O,T))*TMP)
-          ENDDO
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW)
+          BORN2=BORN2+DBLE(%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW,
+     &     ONIA_NFLOW,JFLOW,ONIA_NFLOW,ONIA_FCM_RE,ONIA_FCM_IM))
         ENDDO
       ENDDO
       BORN2=BORN2*FACT/DBLE(ONIA_IDEN)
@@ -1110,9 +1116,16 @@ C     sect. 5.2.1.)
       PARAMETER (NC=3D0)
       %(real_dp_format)s K(0:3), PK(0:3), KTOT2, PKK, MK2, V, FAC, F
       %(real_dp_format)s MQ, MQB, R, MSUM, VK
-      %(complex_dp_format)s Z, KV(NBORNAMPS), TMP
+      %(complex_dp_format)s Z, KV(NBORNAMPS)
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW,ONIA_NOTHERS,ONIA_NJZT)
+      %(complex_dp_format)s JS(PWS_NFMAX), %(proc_prefix)sONIA_SANDWICH
       INTEGER L, A, I, J, O, T, KL, IPHYS
       CONTR=0D0
+      DO O=1,ONIA_NOTHERS
+        DO T=1,ONIA_NJZT
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW(1,O,T))
+        ENDDO
+      ENDDO
       IPHYS=ONIA_MAPPING(ONIA_Q1(ONIA_IPW))
       K(0:3)=P_PHYS(0:3,IPHYS)
       KTOT2=K(0)**2-K(1)**2-K(2)**2-K(3)**2
@@ -1144,14 +1157,9 @@ C     the cross vectors k.VEC(k)
               KV(J)=PK(0)*VS(J,0,O,T)-PK(1)*VS(J,1,O,T)
      &         -PK(2)*VS(J,2,O,T)-PK(3)*VS(J,3,O,T)
             ENDDO
-            DO I=1,NBORNAMPS
-              IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-              TMP=(0D0,0D0)
-              DO J=1,NBORNAMPS
-                TMP=TMP+DCMPLX(PWS_X_RE(I,J,L),PWS_X_IM(I,J,L))*KV(J)
-              ENDDO
-              Z=Z+DCONJG(BPROJ(I,O,T))*TMP
-            ENDDO
+            CALL %(proc_prefix)sONIA_PWS_FLOWS(A,KV,JS)
+            Z=Z+%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW(1,O,T),
+     &       PWS_SF_NF(A),JS,ONIA_NFLOW,PWS_FX_RE(1,1,L),PWS_FX_IM(1,1,L))
           ENDDO
         ENDDO
         VK=-2D0*FAC*F*SQRT(PWS_CNORM(A))*DBLE(Z)
@@ -1655,6 +1663,7 @@ C     momenta)
       %(real_dp_format)s PWK1(0:3), PWK2(0:3), PWM1, PWM2
       COMMON/%(proc_prefix)sPW2_SOFT/VS1,VS2,GVSS,VVSS,PWK1,PWK2,PWM1,PWM2
       %(complex_dp_format)s TMP, E12, E1V2, E2V1
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW), %(proc_prefix)sONIA_SANDWICH
       TYPE(DUAL) PD(0:3,NEXTERNAL), KD(0:3), PR, PRK
       %(real_dp_format)s CMASS(NEXTERNAL), CG, GMET(0:3)
       LOGICAL ACTIVE(NCOMB)
@@ -1889,18 +1898,14 @@ C       them back)
      &   .OR.ANY(W2(1:NBORNAMPS,H,1:3).NE.(0D0,0D0))
      &   .OR.ANY(W3(1:NBORNAMPS,H,1:9).NE.(0D0,0D0))
       ENDDO
-C     The projected Born matrix element
+C     The projected Born matrix element, from the colour flows of the
+C     projected Born amplitudes
       BORN2=0D0
       DO O=1,ONIA_NOTHERS
         DO T=1,ONIA_NJZT
-          DO I=1,NBORNAMPS
-            IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-            TMP=(0D0,0D0)
-            DO J=1,NBORNAMPS
-              TMP=TMP+DCMPLX(ONIA_CFB_RE(I,J),ONIA_CFB_IM(I,J))*BPROJ(J,O,T)
-            ENDDO
-            BORN2=BORN2+DBLE(DCONJG(BPROJ(I,O,T))*TMP)
-          ENDDO
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW)
+          BORN2=BORN2+DBLE(%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW,
+     &     ONIA_NFLOW,JFLOW,ONIA_NFLOW,ONIA_FCM_RE,ONIA_FCM_IM))
         ENDDO
       ENDDO
       BORN2=BORN2*FACT/DBLE(ONIA_IDEN)
@@ -1955,9 +1960,16 @@ C     other state is a coloured leg if it is an octet)
       PARAMETER (NC=3D0)
       %(real_dp_format)s K(0:3), PK(0:3), KTOT2, PKK, MK2, V, FAC, F
       %(real_dp_format)s MQ, MQB, R, MSUM, VK
-      %(complex_dp_format)s Z, KV(NBORNAMPS), TMP
-      INTEGER L, A, I, J, O, T, KL, IPHYS, KS
+      %(complex_dp_format)s Z, KV(NBORNAMPS)
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW,ONIA_NOTHERS,ONIA_NJZT)
+      %(complex_dp_format)s JS(PWS_NFMAX), %(proc_prefix)sONIA_SANDWICH
+      INTEGER L, A, I, J, O, T, KL, IPHYS, KS, B
       CONTR=0D0
+      DO O=1,ONIA_NOTHERS
+        DO T=1,ONIA_NJZT
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW(1,O,T))
+        ENDDO
+      ENDDO
       IF (S.EQ.1) THEN
         KS=ONIA_IPW
         VS=VS1
@@ -1989,6 +2001,8 @@ C     the cross vectors k.VEC(k)
         KL=PWS_LEG(L,S)
         PK(0:3)=P_PHYS(0:3,KL)
         PKK=K(0)*PK(0)-K(1)*PK(1)-K(2)*PK(2)-K(3)*PK(3)
+C       the colour basis of S-wave state A of state S
+        B=A+(S-1)*PWS_NAUXMAX
         Z=(0D0,0D0)
         DO O=1,ONIA_NOTHERS
           DO T=1,ONIA_NJZT
@@ -1996,14 +2010,10 @@ C     the cross vectors k.VEC(k)
               KV(J)=PK(0)*VS(J,0,O,T)-PK(1)*VS(J,1,O,T)
      &         -PK(2)*VS(J,2,O,T)-PK(3)*VS(J,3,O,T)
             ENDDO
-            DO I=1,NBORNAMPS
-              IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-              TMP=(0D0,0D0)
-              DO J=1,NBORNAMPS
-                TMP=TMP+DCMPLX(PWS_X_RE(I,J,L,S),PWS_X_IM(I,J,L,S))*KV(J)
-              ENDDO
-              Z=Z+DCONJG(BPROJ(I,O,T))*TMP
-            ENDDO
+            CALL %(proc_prefix)sONIA_PWS_FLOWS(B,KV,JS)
+            Z=Z+%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW(1,O,T),
+     &       PWS_SF_NF(B),JS,ONIA_NFLOW,PWS_FX_RE(1,1,L,S),
+     &       PWS_FX_IM(1,1,L,S))
           ENDDO
         ENDDO
         VK=-2D0*FAC*F*SQRT(PWS_CNORM(A,S))*DBLE(Z)
@@ -2051,6 +2061,8 @@ C     last ONIA_PREPARE, in units of alpha_s/(2 pi):
 C       PDD = 4 [f1 Re Z_G + f2 Re Z_V] + 2 pi [Im Z_G/s^3 - 3 w Im Z_V/s^5]
 C       Z_G = FAC sum conj(BPROJ) XDD GVSS,  Z_V = the same with VVSS,
 C       XDD = sum_(S1'k1,S2'k2) sqrt(CN1 CN2) F1(k1) F2(k2)/(M1 M2) PDD_X
+C     (PDD_X: the flow matrix PDD_FX between the Born colour flows and
+C     those of the term, colour basis 2*PWS_NAUXMAX+N)
 C     with w = K1.K2/(M1 M2), s = sqrt(w^2-1) and F the factors of Q_eff of
 C     ONIA_PW_SOFT_POLE (Delta: MSUM/sqrt(2 N_c), D: MSUM/2, T: (1/r-r)/2)
       IMPLICIT NONE
@@ -2070,16 +2082,25 @@ C     ONIA_PW_SOFT_POLE (Delta: MSUM/sqrt(2 N_c), D: MSUM/2, T: (1/r-r)/2)
       COMMON/%(proc_prefix)sPW2_SOFT/VS1,VS2,GVSS,VVSS,PWK1,PWK2,PWM1,PWM2
       %(real_dp_format)s NC, PI
       PARAMETER (NC=3D0)
-      %(complex_dp_format)s XDD(NBORNAMPS,NBORNAMPS), ZG, ZV, TG, TV
-      %(real_dp_format)s W, F1, F2, S, FK(2), R, MSUM, FAC
-      INTEGER N, I, J, O, T, ST, KS
+      %(complex_dp_format)s ZG, ZV
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW,ONIA_NOTHERS,ONIA_NJZT)
+      %(complex_dp_format)s JG(PWS_NFMAX), JV(PWS_NFMAX)
+      %(complex_dp_format)s %(proc_prefix)sONIA_SANDWICH
+      %(real_dp_format)s W, F1, F2, S, FK(2), R, MSUM, FAC, CN
+      INTEGER N, I, J, O, T, ST, KS, B
       CHARACTER*2 LAB
       INTEGER KK
       PDD=0D0
       IF (PDD_N.EQ.0) RETURN
       PI=4D0*DATAN(1D0)
       FAC=FACT/DBLE(ONIA_IDEN)
-      XDD=(0D0,0D0)
+      DO O=1,ONIA_NOTHERS
+        DO T=1,ONIA_NJZT
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW(1,O,T))
+        ENDDO
+      ENDDO
+      ZG=(0D0,0D0)
+      ZV=(0D0,0D0)
       DO N=1,PDD_N
         DO ST=1,2
           IF (ST.EQ.1) THEN
@@ -2102,27 +2123,16 @@ C     ONIA_PW_SOFT_POLE (Delta: MSUM/sqrt(2 N_c), D: MSUM/2, T: (1/r-r)/2)
           ENDIF
         ENDDO
         IF (FK(1)*FK(2).EQ.0D0) CYCLE
-        DO J=1,NBORNAMPS
-          DO I=1,NBORNAMPS
-            XDD(I,J)=XDD(I,J)+SQRT(PDD_CNORM1(N)*PDD_CNORM2(N))*FK(1)*FK(2)
-     &       /(PWM1*PWM2)*DCMPLX(PDD_X_RE(I,J,N),PDD_X_IM(I,J,N))
-          ENDDO
-        ENDDO
-      ENDDO
-      ZG=(0D0,0D0)
-      ZV=(0D0,0D0)
-      DO O=1,ONIA_NOTHERS
-        DO T=1,ONIA_NJZT
-          DO I=1,NBORNAMPS
-            IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-            TG=(0D0,0D0)
-            TV=(0D0,0D0)
-            DO J=1,NBORNAMPS
-              TG=TG+XDD(I,J)*GVSS(J,O,T)
-              TV=TV+XDD(I,J)*VVSS(J,O,T)
-            ENDDO
-            ZG=ZG+DCONJG(BPROJ(I,O,T))*TG
-            ZV=ZV+DCONJG(BPROJ(I,O,T))*TV
+        CN=SQRT(PDD_CNORM1(N)*PDD_CNORM2(N))*FK(1)*FK(2)/(PWM1*PWM2)
+        B=2*PWS_NAUXMAX+N
+        DO O=1,ONIA_NOTHERS
+          DO T=1,ONIA_NJZT
+            CALL %(proc_prefix)sONIA_PWS_FLOWS(B,GVSS(1,O,T),JG)
+            CALL %(proc_prefix)sONIA_PWS_FLOWS(B,VVSS(1,O,T),JV)
+            ZG=ZG+CN*%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW(1,O,T),
+     &       PWS_SF_NF(B),JG,ONIA_NFLOW,PDD_FX_RE(1,1,N),PDD_FX_IM(1,1,N))
+            ZV=ZV+CN*%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,JFLOW(1,O,T),
+     &       PWS_SF_NF(B),JV,ONIA_NFLOW,PDD_FX_RE(1,1,N),PDD_FX_IM(1,1,N))
           ENDDO
         ENDDO
       ENDDO
@@ -3917,6 +3927,56 @@ C     selected (ONIA_SELECT_JZ); ALLSEL: every one is
       ENDDO
       END
 
+      SUBROUTINE %(proc_prefix)sONIA_COLOUR_FLOWS(N0,N1,MA,MF,MRE,MIM,NF,V,J)
+C     The colour flows J(1:NF) of the Born amplitudes V in a colour
+C     basis whose amplitude-to-flow map is entries N0 to N1 of MA
+C     (amplitude), MF (flow) and MRE + i MIM (coefficient). The colour
+C     matrices of the onia layer are matrices between flows
+C     (loop_onia.py, "Colour in the basis of colour flows"):
+C     sum_ab conj(U_a) C_ab V_b = ONIA_SANDWICH of the flows of U
+C     (Born basis) and V.
+      IMPLICIT NONE
+      INTEGER N0, N1, NF, MA(*), MF(*)
+      %(real_dp_format)s MRE(*), MIM(*)
+      %(complex_dp_format)s V(*), J(*)
+      INTEGER N
+      J(1:NF)=(0D0,0D0)
+      DO N=N0,N1
+        J(MF(N))=J(MF(N))+DCMPLX(MRE(N),MIM(N))*V(MA(N))
+      ENDDO
+      END
+
+      SUBROUTINE %(proc_prefix)sONIA_BORN_FLOWS(V,J)
+C     The colour flows J(1:ONIA_NFLOW) of the Born amplitudes V in the
+C     Born colour basis
+      IMPLICIT NONE
+      INCLUDE 'onia_loop_data.inc'
+      %(complex_dp_format)s V(*), J(*)
+      CALL %(proc_prefix)sONIA_COLOUR_FLOWS(ONIA_BF_MPTR(1),ONIA_BF_MPTR(2)-1,
+     & ONIA_BF_MA,ONIA_BF_MF,ONIA_BF_MC_RE,ONIA_BF_MC_IM,ONIA_NFLOW,V,J)
+      END
+
+      %(complex_dp_format)s FUNCTION %(proc_prefix)sONIA_SANDWICH(NL,JL,NR,JR,LD,XRE,XIM)
+C     sum_cd conj(JL(c)) X(c,d) JR(d) over c <= NL, d <= NR, for the
+C     flow matrix X = XRE + i XIM of leading dimension LD
+      IMPLICIT NONE
+      INTEGER NL, NR, LD
+      %(complex_dp_format)s JL(*), JR(*)
+      %(real_dp_format)s XRE(LD,*), XIM(LD,*)
+      %(complex_dp_format)s TMP, RES
+      INTEGER C, D
+      RES=(0D0,0D0)
+      DO C=1,NL
+        IF (JL(C).EQ.(0D0,0D0)) CYCLE
+        TMP=(0D0,0D0)
+        DO D=1,NR
+          TMP=TMP+DCMPLX(XRE(C,D),XIM(C,D))*JR(D)
+        ENDDO
+        RES=RES+DCONJG(JL(C))*TMP
+      ENDDO
+      %(proc_prefix)sONIA_SANDWICH=RES
+      END
+
       SUBROUTINE %(proc_prefix)sONIA_BORN(P,ANSB)
 C     The projected Born matrix element (ANSB(0), and ANSB(1) for its
 C     single squared split order) for the constituent momenta P. It also
@@ -3959,7 +4019,8 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       %(real_dp_format)s P(0:3,NEXTERNAL), CMASS(NEXTERNAL)
       %(real_dp_format)s PMASS(NEXTERNAL_PHYS), PJ(0:3), PK(0:3)
       %(real_dp_format)s LINKED, PJK, SJK, V, MU2, AO2PI, PI
-      %(complex_dp_format)s TMP
+      %(complex_dp_format)s JFLOW(ONIA_NFLOW,ONIA_NOTHERS,ONIA_NJZT)
+      %(complex_dp_format)s %(proc_prefix)sONIA_SANDWICH
       INTEGER L, I, J, O, T, JL, KL
 ## if(OniaPwave){
       %(real_dp_format)s PSPOLE
@@ -3976,19 +4037,20 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       ENDDO
       POLES(1)=0D0
       POLES(2)=0D0
+C     the colour flows of the projected Born amplitudes
+      DO O=1,ONIA_NOTHERS
+        DO T=1,ONIA_NJZT
+          CALL %(proc_prefix)sONIA_BORN_FLOWS(BPROJ(1,O,T),JFLOW(1,O,T))
+        ENDDO
+      ENDDO
 C     the colour-linked Borns <T_j.T_k>, j != k
       DO L=1,ONIA_NLINKS
         LINKED=0D0
         DO O=1,ONIA_NOTHERS
           DO T=1,ONIA_NJZT
-            DO I=1,NBORNAMPS
-              IF (BPROJ(I,O,T).EQ.(0D0,0D0)) CYCLE
-              TMP=(0D0,0D0)
-              DO J=1,NBORNAMPS
-                TMP=TMP+DCMPLX(ONIA_CL_RE(I,J,L),ONIA_CL_IM(I,J,L))*BPROJ(J,O,T)
-              ENDDO
-              LINKED=LINKED+DBLE(DCONJG(BPROJ(I,O,T))*TMP)
-            ENDDO
+            LINKED=LINKED+DBLE(%(proc_prefix)sONIA_SANDWICH(ONIA_NFLOW,
+     &       JFLOW(1,O,T),ONIA_NFLOW,JFLOW(1,O,T),ONIA_NFLOW,
+     &       ONIA_FCL_RE(1,1,L),ONIA_FCL_IM(1,1,L)))
           ENDDO
         ENDDO
         LINKED=LINKED*FACT/DBLE(ONIA_IDEN)

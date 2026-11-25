@@ -2090,13 +2090,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         nborn = matrix_element.get_number_of_born_amplitudes()
         model = matrix_element.get('processes')[0].get('model')
 
-        # The colour factors between the (projected) Born amplitudes
+        # The colour flows of the (projected) Born amplitudes and their
+        # colour matrix (loop_onia.py, "Colour in the basis of colour flows")
         ampb_to_jampb = self.get_amp_to_jamp_map(
             matrix_element.get_born_color_amplitudes(), nborn)
-        born_cm = color_amp.ColorMatrix(matrix_element.get('born_color_basis'))
-        cm_denom = born_cm.get_line_denominators()
-        cm_num = [born_cm.get_line_numerators(i, d) for (i, d) in enumerate(cm_denom)]
-        cfb = loop_onia.born_born_color_factors(ampb_to_jampb, cm_num, cm_denom)
+        nflow = len(matrix_element.get('born_color_basis'))
+        born_cm = loop_onia.flow_colour_matrix(
+            color_amp.ColorMatrix(matrix_element.get('born_color_basis')))
 
         def ints(values):
             return ','.join('%d' % v for v in values)
@@ -2114,9 +2114,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                  'INTEGER ONIA_JZ(%d,%d)' % (nonia, njzt),
                  'C     the constituent helicity configurations (HelConfigs.dat) and',
                  'C     the index of the helicities of their other legs',
-                 'INTEGER ONIA_HELC(%d,%d), ONIA_OTHERS(%d)' % (nexternal, ncomb, ncomb),
-                 'C     colour factors between the projected Born amplitudes',
-                 'REAL*8 ONIA_CFB_RE(%d,%d), ONIA_CFB_IM(%d,%d)' % (nborn, nborn, nborn, nborn)]
+                 'INTEGER ONIA_HELC(%d,%d), ONIA_OTHERS(%d)' % (nexternal, ncomb, ncomb)]
         partner = [0] * nexternal
         for o in info['onia']:
             partner[o['q1'] - 1] = o['q2']
@@ -2129,11 +2127,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         lines.append('DATA ONIA_JZ/%s/' % ints([j for t in info['jz'] for j in t]))
         lines.append('DATA ONIA_HELC/%s/' % ints([h for hel in info['helc'] for h in hel]))
         lines.append('DATA ONIA_OTHERS/%s/' % ints(info['others']))
-        # column-major order: CFB(i,j) with i fastest
-        lines.append('DATA ONIA_CFB_RE/%s/' % ','.join(
-            loop_onia.fortran_double(cfb[i][j][0]) for j in range(nborn) for i in range(nborn)))
-        lines.append('DATA ONIA_CFB_IM/%s/' % ','.join(
-            loop_onia.fortran_double(cfb[i][j][1]) for j in range(nborn) for i in range(nborn)))
+        lines.append('C     the colour flows of the projected Born amplitudes (ONIA_BF, one')
+        lines.append('C     basis: ONIA_BORN_FLOWS) and the colour matrix between them')
+        lines.append('INTEGER ONIA_NFLOW')
+        lines.append('PARAMETER (ONIA_NFLOW=%d)' % nflow)
+        lines.extend(loop_onia.flow_map_lines('ONIA_BF', [ampb_to_jampb], [nflow]))
+        lines.extend(loop_onia.flow_matrix_lines('ONIA_FCM', [born_cm], (nflow, nflow)))
         # QCD loops hold both constituents of a bound state, and so meet the
         # degenerate threshold integrals, only when the constituents are
         # coloured (not for leptonia)
@@ -2220,12 +2219,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 
     def write_onia_loop_links(self, matrix_element, info, model):
         """onia_loop_links.inc: the colour links between the physical legs
-        (loop_onia.color_linked_born_factors) and the coefficient of 1/eps of
-        the Gamma_j of each physical leg, for ONIA_IR_POLES."""
+        in the Born colour-flow basis (loop_onia.flow_color_links) and the
+        coefficient of 1/eps of the Gamma_j of each physical leg, for
+        ONIA_IR_POLES."""
 
-        nborn = matrix_element.get_number_of_born_amplitudes()
-        links = loop_onia.physical_color_links(info, loop_onia.color_linked_born_factors(
-                                                matrix_element, self.get_amp_to_jamp_map))
+        nflow = len(matrix_element.get('born_color_basis'))
+        links = loop_onia.flow_color_links(matrix_element, info)
         keys = sorted(links)
         nlinks = max(len(keys), 1)
         # the massless quark flavours (gamma_g)
@@ -2255,20 +2254,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                  'INTEGER ONIA_NLINKS',
                  'PARAMETER (ONIA_NLINKS=%d)' % len(keys),
                  'INTEGER ONIA_LINK_J(%d), ONIA_LINK_K(%d)' % (nlinks, nlinks),
-                 'REAL*8 ONIA_CL_RE(%d,%d,%d), ONIA_CL_IM(%d,%d,%d)'
-                 % (nborn, nborn, nlinks, nborn, nborn, nlinks),
                  'REAL*8 ONIA_LEG_GAMMA(%d)' % info['nexternal_phys'],
                  'DATA ONIA_LEG_GAMMA/%s/' % col(gamma)]
         if keys:
             lines.append('DATA ONIA_LINK_J/%s/' % ','.join('%d' % k[0] for k in keys))
             lines.append('DATA ONIA_LINK_K/%s/' % ','.join('%d' % k[1] for k in keys))
-            lines.append('DATA ONIA_CL_RE/%s/' % col(links[k][i][j][0] for k in keys
-                         for j in range(nborn) for i in range(nborn)))
-            lines.append('DATA ONIA_CL_IM/%s/' % col(links[k][i][j][1] for k in keys
-                         for j in range(nborn) for i in range(nborn)))
         else:
             lines.append('DATA ONIA_LINK_J/0/, ONIA_LINK_K/0/')
-            lines.append('DATA ONIA_CL_RE/%d*0D0/, ONIA_CL_IM/%d*0D0/' % ((nborn * nborn,) * 2))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'ONIA_FCL', [links[k] for k in keys], (nflow, nflow, nlinks),
+            '<T_j.T_k> between the Born colour flows, per link'))
         writers.FortranWriter('onia_loop_links.inc').writelines(lines)
         if info['npwave'] == 2:
             self.write_onia_loop_pwsoft2(matrix_element, info)
@@ -2278,49 +2273,44 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     def write_onia_loop_pwsoft(self, matrix_element, info):
         """onia_loop_pwsoft.inc: the colour of the soft current of the P-wave
         bound state (loop_onia.pwave_soft_current), for the P -> S pole of
-        ONIA_PW_SOFT_POLE."""
+        ONIA_PW_SOFT_POLE: the colour bases of its S-wave states (PWS_SF,
+        basis A for state A) and the flow matrices of the links (PWS_FX)."""
 
-        nborn = matrix_element.get_number_of_born_amplitudes()
+        nflow = len(matrix_element.get('born_color_basis'))
         aux = loop_onia.pwave_soft_current(matrix_element, info, self.get_amp_to_jamp_map)
         links = [(ia + 1, k, kind, x) for ia, a in enumerate(aux)
                  for (k, kind), x in sorted(a['links'].items())]
         naux, nlinks = max(len(aux), 1), max(len(links), 1)
+        nfmax = max([a['nflow'] for a in aux] + [1])
 
         def col(values):
             return ','.join(loop_onia.fortran_double(v) for v in values)
 
         lines = ['C     The S-wave states of the soft current of the P-wave bound state',
                  'C     and their colour (ONIA_PW_SOFT_POLE)',
-                 'INTEGER PWS_NAUX, PWS_NLINKS',
-                 'PARAMETER (PWS_NAUX=%d, PWS_NLINKS=%d)' % (len(aux), len(links)),
+                 'INTEGER PWS_NAUX, PWS_NLINKS, PWS_NFMAX',
+                 'PARAMETER (PWS_NAUX=%d, PWS_NLINKS=%d, PWS_NFMAX=%d)'
+                 % (len(aux), len(links), nfmax),
                  "CHARACTER*2 PWS_LABEL(%d)" % naux,
                  'REAL*8 PWS_CNORM(%d)' % naux,
-                 'REAL*8 PWS_CS_RE(%d,%d,%d), PWS_CS_IM(%d,%d,%d)'
-                 % (nborn, nborn, naux, nborn, nborn, naux),
-                 'INTEGER PWS_AUX(%d), PWS_LEG(%d), PWS_KIND(%d)' % (nlinks, nlinks, nlinks),
-                 'REAL*8 PWS_X_RE(%d,%d,%d), PWS_X_IM(%d,%d,%d)'
-                 % (nborn, nborn, nlinks, nborn, nborn, nlinks)]
+                 'INTEGER PWS_AUX(%d), PWS_LEG(%d), PWS_KIND(%d)' % (nlinks, nlinks, nlinks)]
         if aux:
             lines.append('DATA PWS_LABEL/%s/' % ','.join("'%s'" % a['label'] for a in aux))
             lines.append('DATA PWS_CNORM/%s/' % col(a['cnorm'] for a in aux))
-            lines.append('DATA PWS_CS_RE/%s/' % col(a['cs'][i][j][0] for a in aux
-                         for j in range(nborn) for i in range(nborn)))
-            lines.append('DATA PWS_CS_IM/%s/' % col(a['cs'][i][j][1] for a in aux
-                         for j in range(nborn) for i in range(nborn)))
         else:
             lines.append("DATA PWS_LABEL/'  '/, PWS_CNORM/0D0/")
-            lines.append('DATA PWS_CS_RE/%d*0D0/, PWS_CS_IM/%d*0D0/' % ((nborn * nborn,) * 2))
         if links:
             lines.append('DATA PWS_AUX/%s/' % ','.join('%d' % l[0] for l in links))
             lines.append('DATA PWS_LEG/%s/' % ','.join('%d' % l[1] for l in links))
             lines.append('DATA PWS_KIND/%s/' % ','.join('%d' % l[2] for l in links))
-            lines.append('DATA PWS_X_RE/%s/' % col(l[3][i][j][0] for l in links
-                         for j in range(nborn) for i in range(nborn)))
-            lines.append('DATA PWS_X_IM/%s/' % col(l[3][i][j][1] for l in links
-                         for j in range(nborn) for i in range(nborn)))
         else:
             lines.append('DATA PWS_AUX/0/, PWS_LEG/0/, PWS_KIND/0/')
-            lines.append('DATA PWS_X_RE/%d*0D0/, PWS_X_IM/%d*0D0/' % ((nborn * nborn,) * 2))
+        lines.append('C     the colour flows of the S-wave states (ONIA_PWS_FLOWS)')
+        lines.extend(loop_onia.flow_map_lines('PWS_SF', [a['amp_s'] for a in aux],
+                                              [a['nflow'] for a in aux]))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'PWS_FX', [l[3] for l in links], (nflow, nfmax, nlinks),
+            'X between the Born flows and those of the S-wave state, per link'))
         writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
 
     def write_onia_loop_pwsoft2(self, matrix_element, info):
@@ -2328,10 +2318,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         soft current of each state (loop_onia.pwave_soft_current, the other
         state keeping its colour), indexed by the state (1: ONIA_IPW, 2:
         ONIA_IPW2), and of the dipole-dipole exchange between them
-        (loop_onia.pwave_dipole_dipole), for ONIA_PW_SOFT_POLE."""
+        (loop_onia.pwave_dipole_dipole), for ONIA_PW_SOFT_POLE. The colour
+        bases (PWS_SF) are those of S-wave state A of state S, number
+        A+(S-1)*PWS_NAUXMAX, then those of the dipole-dipole terms N, number
+        2*PWS_NAUXMAX+N."""
 
-        nborn = matrix_element.get_number_of_born_amplitudes()
-        nb2 = nborn * nborn
+        nflow = len(matrix_element.get('born_color_basis'))
         auxs = [loop_onia.pwave_soft_current(matrix_element, info, self.get_amp_to_jamp_map, ipw)
                 for ipw in info['ipwaves']]
         links = [[(ia + 1, k, kind, x) for ia, a in enumerate(aux)
@@ -2340,15 +2332,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         naux = max([len(a) for a in auxs] + [1])
         nlinks = max([len(l) for l in links] + [1])
         ndd = max(len(dd), 1)
-        zero = (0, 0)
-        zmat = [[zero] * nborn for _ in range(nborn)]
+        nfmax = max([a['nflow'] for aux in auxs for a in aux] + [d['nflow'] for d in dd] + [1])
 
         def col(values):
             return ','.join(loop_onia.fortran_double(v) for v in values)
-
-        def mats(matrices, part):
-            # column-major: (I, J, slot)
-            return col(m[i][j][part] for m in matrices for j in range(nborn) for i in range(nborn))
 
         def padded(rows, size, fill):
             return [r + [fill] * (size - len(r)) for r in rows]
@@ -2357,48 +2344,47 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                  'C     each state and their colour (index 1: ONIA_IPW, 2: ONIA_IPW2), and',
                  'C     the colour of the dipole-dipole exchange between the two',
                  'C     (ONIA_PW_SOFT_POLE)',
-                 'INTEGER PWS_NAUXMAX, PWS_NLINKSMAX, PDD_N, PDD_NMAX',
+                 'INTEGER PWS_NAUXMAX, PWS_NLINKSMAX, PDD_N, PDD_NMAX, PWS_NFMAX',
                  'PARAMETER (PWS_NAUXMAX=%d, PWS_NLINKSMAX=%d, PDD_N=%d, PDD_NMAX=%d)'
                  % (naux, nlinks, len(dd), ndd),
+                 'PARAMETER (PWS_NFMAX=%d)' % nfmax,
                  'INTEGER PWS_NAUX(2), PWS_NLINKS(2)',
                  'CHARACTER*2 PWS_LABEL(PWS_NAUXMAX,2)',
                  'REAL*8 PWS_CNORM(PWS_NAUXMAX,2)',
-                 'REAL*8 PWS_CS_RE(%d,%d,PWS_NAUXMAX,2), PWS_CS_IM(%d,%d,PWS_NAUXMAX,2)'
-                 % (nborn, nborn, nborn, nborn),
                  'INTEGER PWS_AUX(PWS_NLINKSMAX,2), PWS_LEG(PWS_NLINKSMAX,2)',
                  'INTEGER PWS_KIND(PWS_NLINKSMAX,2)',
-                 'REAL*8 PWS_X_RE(%d,%d,PWS_NLINKSMAX,2), PWS_X_IM(%d,%d,PWS_NLINKSMAX,2)'
-                 % (nborn, nborn, nborn, nborn),
                  'CHARACTER*2 PDD_LABEL1(PDD_NMAX), PDD_LABEL2(PDD_NMAX)',
                  'INTEGER PDD_KIND1(PDD_NMAX), PDD_KIND2(PDD_NMAX)',
                  'REAL*8 PDD_CNORM1(PDD_NMAX), PDD_CNORM2(PDD_NMAX)',
-                 'REAL*8 PDD_X_RE(%d,%d,PDD_NMAX), PDD_X_IM(%d,%d,PDD_NMAX)'
-                 % (nborn, nborn, nborn, nborn),
                  'DATA PWS_NAUX/%s/' % ','.join('%d' % len(a) for a in auxs),
                  'DATA PWS_NLINKS/%s/' % ','.join('%d' % len(l) for l in links)]
         aux_rows = padded([list(a) for a in auxs], naux, None)
         lines.append('DATA PWS_LABEL/%s/' % ','.join(
             "'%s'" % (a['label'] if a else '  ') for row in aux_rows for a in row))
         lines.append('DATA PWS_CNORM/%s/' % col(a['cnorm'] if a else 0 for row in aux_rows for a in row))
-        for part, name in ((0, 'RE'), (1, 'IM')):
-            lines.append('DATA PWS_CS_%s/%s/' % (name, mats(
-                [a['cs'] if a else zmat for row in aux_rows for a in row], part)))
-        link_rows = padded(links, nlinks, (0, 0, 0, zmat))
+        link_rows = padded(links, nlinks, (0, 0, 0, {}))
         for field, name in ((0, 'AUX'), (1, 'LEG'), (2, 'KIND')):
             lines.append('DATA PWS_%s/%s/' % (name, ','.join('%d' % l[field] for row in link_rows
                                                             for l in row)))
-        for part, name in ((0, 'RE'), (1, 'IM')):
-            lines.append('DATA PWS_X_%s/%s/' % (name, mats([l[3] for row in link_rows for l in row],
-                                                          part)))
-        ddp = dd or [dict(label1='  ', label2='  ', kind1=0, kind2=0, cnorm1=0, cnorm2=0, x=zmat)]
+        ddp = dd or [dict(label1='  ', label2='  ', kind1=0, kind2=0, cnorm1=0, cnorm2=0,
+                          amp_s=[], nflow=0, x={})]
         lines.append('DATA PDD_LABEL1/%s/' % ','.join("'%s'" % d['label1'] for d in ddp))
         lines.append('DATA PDD_LABEL2/%s/' % ','.join("'%s'" % d['label2'] for d in ddp))
         lines.append('DATA PDD_KIND1/%s/' % ','.join('%d' % d['kind1'] for d in ddp))
         lines.append('DATA PDD_KIND2/%s/' % ','.join('%d' % d['kind2'] for d in ddp))
         lines.append('DATA PDD_CNORM1/%s/' % col(d['cnorm1'] for d in ddp))
         lines.append('DATA PDD_CNORM2/%s/' % col(d['cnorm2'] for d in ddp))
-        for part, name in ((0, 'RE'), (1, 'IM')):
-            lines.append('DATA PDD_X_%s/%s/' % (name, mats([d['x'] for d in ddp], part)))
+        lines.append('C     the colour flows of the S-wave states and of the dipole-dipole')
+        lines.append('C     terms (ONIA_PWS_FLOWS)')
+        bases = [a for row in aux_rows for a in row] + ddp
+        lines.extend(loop_onia.flow_map_lines('PWS_SF', [b['amp_s'] if b else [] for b in bases],
+                                              [b['nflow'] if b else 0 for b in bases]))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'PWS_FX', [l[3] for row in link_rows for l in row], (nflow, nfmax, nlinks, 2),
+            'X between the Born flows and those of the S-wave state, per link'))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'PDD_FX', [d['x'] for d in ddp], (nflow, nfmax, ndd),
+            'X between the Born flows and those of the dipole-dipole term'))
         writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
 
     def onia_public_entries(self, file, matrix_element):

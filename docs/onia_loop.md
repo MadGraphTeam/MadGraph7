@@ -119,6 +119,22 @@ so both constituents carry the same binary64 momentum.
 counterterm diagrams (`loop_color_amp.py`). MadLoop's colour factors between
 loop and Born amplitudes are therefore those of the projected bases.
 
+The onia layer's own colour data (the projected Born, the colour-linked
+Borns and the soft currents of P-wave states) is written in the basis of
+the Born colour flows, not between Born amplitudes. Each matrix has the
+form `C_ab = sum_cd conj(l_c(a)) X_cd r_d(b)`, with `l` and `r` the sparse
+amplitude-to-flow maps of the Born basis and of the basis on the right
+(the Born basis, or that of an S-wave state of a soft current).
+`onia_loop.f` computes the flows `J = l U` of the amplitudes and contracts
+them with the flow matrices `X` (`ONIA_COLOUR_FLOWS`, `ONIA_SANDWICH`).
+The data then grows with the square of the number of flows, not of Born
+amplitudes. For `g g > Jpsi(1|3P28) Jpsi(1|3P18) g`, with 786 Born
+amplitudes and 36 flows, that is a factor of about 480. The
+colour links `<T_j.T_k>` are computed in the projected Born basis, with
+the total charge `T_Q + T_Qbar` of a bound state on its octet index
+(`loop_onia.flow_color_links`). A unit test checks them against the
+insertion into the diagrams before the projection, as in MadFKS.
+
 **Spin and J.** The spin projector is a weighted sum over the constituent
 helicities h, `B(J_z) = sum_h PROJ(h,J_z) A(h)`, as at tree level. MadLoop
 contracts each loop amplitude with the conjugate Born of the same helicity
