@@ -1605,7 +1605,10 @@ class gen_ximprove_v4(gen_ximprove):
 
         trunc = self.run_card['max_overweight_truncation']
         if trunc <= 0:
-            logger.warning('enforce_overweight_limit requires max_overweight_truncation > 0: not applied')
+            # a warning only when the user asked for it (it is on by default)
+            log = logger.warning if 'enforce_overweight_limit' in getattr(self.run_card, 'user_set', ()) \
+                  else logger.info
+            log('enforce_overweight_limit requires max_overweight_truncation > 0: not applied')
             return
         if not hasattr(self, 'ow_channels'):
             return # not an event generation (refine for a precision)

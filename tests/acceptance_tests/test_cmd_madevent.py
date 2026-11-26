@@ -2615,9 +2615,12 @@ class TestMECmdShell(unittest.TestCase):
         val1 = self.cmd_line.results.current['cross']
         err1 = self.cmd_line.results.current['error']
         
-        target = 0.01118182
-        self.assertTrue(abs(val1 - target) / err1 < 2., 'large difference between %s and %s +- %s (%s sigma)'%
-                        (target, val1, err1, abs(val1 - target) / err1))
+        # mean of 7 seeds at 10k events (0.011225(17) with the former
+        # max_overweight_truncation=-1, 0.011221(6) with the current default)
+        target, terr = 0.011222, 0.000006
+        nsigma = abs(val1 - target) / math.sqrt(err1**2 + terr**2)
+        self.assertTrue(nsigma < 2., 'large difference between %s and %s +- %s (%s sigma)'%
+                        (target, val1, err1, nsigma))
 
     def test_eva_oldrelease_collision(self):
         """check that w+ w- > t t~ with EVA gives the correct result
@@ -3904,7 +3907,9 @@ class TestMEfromfile(unittest.TestCase):
                         stdout=stdout,stderr=stdout)     
         
         #a=rwa_input('freeze')
-        self.check_parton_output(cross=591.1733, error=2.17,target_event=10000)
+        # mean of 10 seeds at 10k events (599.3(9) with the former
+        # max_overweight_truncation=-1, 598.5(5) with the current default)
+        self.check_parton_output(cross=598.6, error=0.6,target_event=10000)
 
         count = [0,0]
         for event in lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01','unweighted_events.lhe.gz')):
