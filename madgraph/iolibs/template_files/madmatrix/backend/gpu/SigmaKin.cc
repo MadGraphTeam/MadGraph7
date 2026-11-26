@@ -921,19 +921,24 @@ namespace madmatrix
     // distribution as --use_crossing=False, not the same helicity per rndhel.
     // A zero, NaN or infinite total chooses none (selectable_total, as on cpu).
     const bool okcdf = selectable_total( allMEs[ievt] );
+    // The hit, or the last helicity with a weight when rndhel is not below 1
+    // (a double just below 1 rounds to 1 in a float fptype, #542), as in the signed case above
+    int ighelSel = -1;
     for( int ighel = 0; okcdf && ighel < dcNGoodHel; ighel++ )
     {
-      if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
+      const fptype cum = ghelAllMEs[ighel * nevt + ievt];
+      if( cum == ( ighel > 0 ? ghelAllMEs[( ighel - 1 ) * nevt + ievt] : 0 ) ) continue; // no weight
+      ighelSel = ighel;
+      if( allrndhel[ievt] < ( cum / allMEs[ievt] ) ) break;
+    }
+    if( ighelSel >= 0 )
+    {
+      if constexpr( use_crossing )
+        allselhel[ievt] = selected_hel_code( dcGoodHel[ighelSel], iflavorVec[ievt] );
+      else
       {
-        if constexpr( use_crossing )
-          allselhel[ievt] = selected_hel_code( dcGoodHel[ighel], iflavorVec[ievt] );
-        else
-        {
-          (void)iflavorVec;
-          const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
-          allselhel[ievt] = ihelF;
-        }
-        break;
+        (void)iflavorVec;
+        allselhel[ievt] = dcGoodHel[ighelSel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
       }
     }
   }
@@ -974,22 +979,15 @@ namespace madmatrix
       // as on cpu/simd
       channelId = madmatrix::nchannels;
       const bool okcdf = validFlavor && selectable_total( normalization );
-      // last channel with a weight, in case rnddiagram is not below 1 (#542)
-      unsigned int chanLast = 0;
-      bool chosen = false;
+      // channelId ends as the hit, or as the last channel with a weight when
+      // rnddiagram is not below 1 (a double just below 1 rounds to 1 in a float fptype, #542)
       for( unsigned int ichan = 0; okcdf && ichan < madmatrix::nchannels; ichan++ )
       {
-        if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
+        if( madmatrix::channel2iconfig[ichan] == -1 || !( numerators[ichan] > 0 ) ) continue;
         numerator_sum += numerators[ichan];
-        if( numerators[ichan] > 0 ) chanLast = ichan + 1;
-        if( allrnddiagram[ievt] < numerator_sum / normalization )
-        {
-          channelId = ichan + 1;
-          chosen = true;
-          break;
-        }
+        channelId = ichan + 1;
+        if( allrnddiagram[ievt] < numerator_sum / normalization ) break;
       }
-      if( okcdf && !chosen && chanLast != 0 ) channelId = chanLast;
     }
     if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelId;
 
@@ -1032,18 +1030,14 @@ namespace madmatrix
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
       const bool okcdf = validFlavor && selectable_total( targetamp[ncolor_flow - 1] );
+      // allselcol ends as the hit, or as the last flow with a weight when rndcol is
+      // not below 1 (a double just below 1 rounds to 1 in a float fptype, #542)
       for( int icolC = 0; okcdf && icolC < ncolor_flow; icolC++ )
       {
-        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
-        {
-          allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
-          break;
-        }
+        if( !( targetamp[icolC] > ( icolC > 0 ? targetamp[icolC - 1] : 0 ) ) ) continue; // no weight
+        allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
+        if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) ) break;
       }
-      // rndcol is not below 1 (a double just below 1 rounds to 1 in a float fptype,
-      // #542): the last flow with a weight, as for the helicity
-      for( int icolC = ncolor_flow - 1; okcdf && allselcol[ievt] == 0 && icolC >= 0; icolC-- )
-        if( targetamp[icolC] > ( icolC > 0 ? targetamp[icolC - 1] : 0 ) ) allselcol[ievt] = icolC + 1;
     }
     else
     {
