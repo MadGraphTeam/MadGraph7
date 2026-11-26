@@ -144,6 +144,10 @@ ANNOUNCEMENT:
        read the Sudakov tables through their monotone envelope, so that
        statistical zeros of the final-state tables at low scales and large
        dipole masses cannot divide by zero (seen in t t~ + jets).
+   RF: FxFx: max_n_matched_jets in proc_characteristics counts only the
+       Born-level light jets. It included the real-emission parton, so a
+       @0 + @1 sample recorded 2 and the shower interface rejected the
+       required njmax = 1.
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix

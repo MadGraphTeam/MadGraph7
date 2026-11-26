@@ -37,7 +37,7 @@ short-distance cross section. User documentation is in
 | `parton_shower` | shower of the MC counterterms; must match the run card |
 | `mcatnlo_delta` | MC@NLO-Delta: per-dipole starting scales in the LHE file (not with FxFx, see `docs/fxfx_delta.md`) |
 | `ickkw`, `ptj` | FxFx merging and its matrix-element cut |
-| `max_n_matched_jets` | minimum allowed FxFx `njmax`, from `proc_characteristics`; -1 if unknown in older files |
+| `max_n_matched_jets` | minimum allowed FxFx `njmax`: the largest Born-level number of light jets (1 for `@0` and `@1` samples), from `proc_characteristics`; -1 if unknown in older files |
 | `qed_matching` | QED splittings are matched (`splitting_types` contains QED) |
 | `pythia8_mmaxgamma` | `#Pythia8MMaxGamma` of `FKS_params.dat` |
 | `fxfx_pythia8_finite_terms` | FxFx Sudakov finite terms (forced for PYTHIA8) |
@@ -75,6 +75,13 @@ FxFx `njmax` may exceed `max_n_matched_jets` to cover samples generated in
 separate process directories. Its default, -1, uses the recorded maximum.
 The effective `JetMatching:nJetMax`, including `pythia8_options`, must meet
 this lower bound when it is known; it is not locked to an equality.
+Pythia's FxFx treats a sample as the highest multiplicity when its Born
+multiplicity `npNLO` equals `nJetMax`, so the exporter counts only Born-level
+matrix elements (`update_max_n_matched_jets` in `export_fks.py`): the real
+emission adds a parton but no merged jet. Process directories exported
+before this fix recorded the real-emission count, one too many; lower
+`max_n_matched_jets` in their `SubProcesses/proc_characteristics` or export
+them again.
 
 Required settings unknown to the installed Pythia8 version stop the run
 (per-feature gating, from the `xmldoc` of the installation); unknown

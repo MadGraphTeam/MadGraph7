@@ -2233,6 +2233,31 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     #===========================================================================
     # write_split_me_fks
     #===========================================================================
+    def update_max_n_matched_jets(self, matrix_element, proc_type):
+        """Record the largest Born-level number of light jets, for FxFx.
+
+        FxFx merging (Pythia's JetMatching:nJetMax) compares njmax with the
+        Born multiplicity npNLO of each sample, so njmax must be the largest
+        Born multiplicity: 1 for @0 and @1 samples. The real emission has one
+        more parton and is not counted. Born, born_hel and the extra n-body
+        counterterm matrix elements are."""
+        if proc_type == 'real':
+            return
+        # Maximum QCD power in all the contributions
+        max_qcd_order = 0
+        for diag in matrix_element.get('diagrams'):
+            orders = diag.calculate_orders()
+            if 'QCD' in orders:
+                max_qcd_order = max(max_qcd_order, orders['QCD'])
+        max_n_light_final_partons = max(len([1 for id in proc.get_final_ids()
+            if proc.get('model').get_particle(id).get('mass') == 'ZERO' and
+               proc.get('model').get_particle(id).get('color') > 1])
+                                        for proc in matrix_element.get('processes'))
+        # Maximum number of final state light jets to be matched
+        self.proc_characteristic['max_n_matched_jets'] = max(
+            self.proc_characteristic['max_n_matched_jets'],
+            min(max_qcd_order, max_n_light_final_partons))
+
     def write_split_me_fks(self, writer, matrix_element, fortran_model,
                                     proc_type, proc_prefix='',start_dict={}):
         """Export a matrix element using the split_order format
@@ -2250,22 +2275,7 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         if 'sa_symmetry 'not  in self.opt:
             self.opt['sa_symmetry']=False
 
-
-        # Add information relevant for FxFx matching:
-        # Maximum QCD power in all the contributions
-        max_qcd_order = 0
-        for diag in matrix_element.get('diagrams'):
-            orders = diag.calculate_orders()
-            if 'QCD' in orders:
-                max_qcd_order = max(max_qcd_order,orders['QCD'])  
-        max_n_light_final_partons = max(len([1 for id in proc.get_final_ids() 
-        if proc.get('model').get_particle(id).get('mass')=='ZERO' and
-               proc.get('model').get_particle(id).get('color')>1])
-                                    for proc in matrix_element.get('processes'))
-        # Maximum number of final state light jets to be matched
-        self.proc_characteristic['max_n_matched_jets'] = max(
-                               self.proc_characteristic['max_n_matched_jets'],
-                                   min(max_qcd_order,max_n_light_final_partons))   
+        self.update_max_n_matched_jets(matrix_element, proc_type)
 
         # Set lowercase/uppercase Fortran code
         writers.FortranWriter.downcase = False

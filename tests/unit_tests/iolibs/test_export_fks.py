@@ -126,6 +126,47 @@ class TestBornDirCollision(unittest.TestCase):
                          ['P0_cc_c99c', 'P0_cc_c9c', 'P0_cc_cc'])
 
 
+class TestMaxMatchedJets(unittest.TestCase):
+    """FxFx njmax lower bound: the largest Born-level number of light jets."""
+
+    PARTICLES = {21: ('ZERO', 8), 1: ('ZERO', 3), 2: ('ZERO', 3), -2: ('ZERO', 3),
+                 6: ('MT', 3), -6: ('MT', 3), -11: ('ZERO', 1), 12: ('ZERO', 1)}
+
+    def matrix_element(self, qcd, final_ids):
+        model = SimpleNamespace(get_particle=lambda pdg: dict(
+            zip(('mass', 'color'), self.PARTICLES[pdg])))
+        process = SimpleNamespace(get_final_ids=lambda: final_ids,
+                                  get=lambda key: {'model': model}[key])
+        diagram = SimpleNamespace(calculate_orders=lambda: {'QCD': qcd, 'QED': 2})
+        return {'diagrams': [diagram], 'processes': [process]}
+
+    def exporter(self):
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+            export_fks.ProcessExporterFortranFKS)
+        exporter.proc_characteristic = {'max_n_matched_jets': 0}
+        return exporter
+
+    def test_real_emission_parton_is_not_a_matched_jet(self):
+        # p p > e+ ve [QCD] @0 and e+ ve j @1: the reals of @1 have two
+        # partons, but FxFx needs njmax = 1.
+        exporter = self.exporter()
+        exporter.update_max_n_matched_jets(self.matrix_element(0, [-11, 12]), 'born')
+        exporter.update_max_n_matched_jets(self.matrix_element(1, [-11, 12, 21]), 'real')
+        exporter.update_max_n_matched_jets(self.matrix_element(1, [-11, 12, 2]), 'born')
+        exporter.update_max_n_matched_jets(self.matrix_element(1, [-11, 12, 2]), 'bhel')
+        exporter.update_max_n_matched_jets(self.matrix_element(2, [-11, 12, 2, 21]), 'real')
+        self.assertEqual(exporter.proc_characteristic['max_n_matched_jets'], 1)
+
+    def test_massive_and_coloured_born_particles(self):
+        # t t~ j: the top quarks are not light jets, the gluon is.
+        exporter = self.exporter()
+        exporter.update_max_n_matched_jets(self.matrix_element(3, [6, -6, 21]), 'born_links')
+        self.assertEqual(exporter.proc_characteristic['max_n_matched_jets'], 1)
+        # The extra n-body counterterm matrix elements are Born level too.
+        exporter.update_max_n_matched_jets(self.matrix_element(4, [6, -6, 21, 1]), 'cnt')
+        self.assertEqual(exporter.proc_characteristic['max_n_matched_jets'], 2)
+
+
 class TestRealChannelExport(unittest.TestCase):
     """Check real topology ownership and the helicity-summed partition."""
 
