@@ -22,6 +22,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 MG_VERSION_FILE = ROOT.parent / "VERSION"
 WORKSPACE_CRATES = ("pyamplicol", "rusticol-capi", "rusticol-core", "rusticol-python")
 
@@ -100,8 +101,18 @@ PYTHON_EDITS = {
 }
 
 
+# The shipped self-test artifacts record the package version that made them.
+SELFTEST_ARTIFACTS = (
+    Path("src/pyamplicol/assets/selftest/portable-64le/artifact"),
+    Path("src/pyamplicol/assets/selftest_virtual/ew/artifact"),
+    Path("src/pyamplicol/assets/selftest_virtual/li/artifact"),
+)
+
+
 def sync(mg_version: str, version: str, *, check: bool) -> list[Path]:
     """Return the files whose version differs, updating them unless checking."""
+
+    from prepare_selftest_fixture import stamp_package_version
 
     stale: list[Path] = []
     for edits, value in ((CARGO_EDITS, mg_version), (PYTHON_EDITS, version)):
@@ -113,6 +124,9 @@ def sync(mg_version: str, version: str, *, check: bool) -> list[Path]:
                 stale.append(relative)
                 if not check:
                     path.write_text(updated, encoding="utf-8")
+    for relative in SELFTEST_ARTIFACTS:
+        if stamp_package_version(ROOT / relative, version, check=check):
+            stale.append(relative)
     return stale
 
 
