@@ -393,3 +393,27 @@ The distinct inputs are in `data/refused_ggg_3p28_3p18_20gev_142610e_v15_ct1.txt
 With the gate bypassed (TIRust's local debug build), all nine are served at 256 and 512 bits. Their contraction identities hold to 1e-13 or better. Rotating the shifts in binary64 moves the frame-independent contractions by at most 2.6e-14.
 
 TIRust's user is to choose between two fixes: loosen the gate to the measured growth, or extend the Gram-free reduction to rank 7.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust da7902b + bridge v16)
+
+The same output and point, rerun on 2026-11-26 on TIRust da7902b and the bridge part of v16 (poles-only patch ff768d68…, oneloop cdbc912). da7902b is on hs/seven-point-powers, a merge of main into 142610e. In plans with raised powers its pentagons take the Gram-free reduction up to rank 7, and the UV remainders of the dropped (D − 4) terms are kept at ranks 6 and 7. It was pushed later as huashengshao/TIRust#71, whose head 9912b38 merges main into da7902b. These runs use da7902b. Both directions ran in parallel, with the instrumented output and failed-call capture.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −21.020880706908 | −9.000000000001 | 113.324403808 | 110 | 8076 s |
+| 2 | −21.020880708183 | −8.999999999999 | 113.324403772 | 110 | 8391 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); the Born (1.4778648803e-08) and the prediction's terms are those of the bb62307 section. Against the prediction:
+- c1 is off by 2.3e-11 (CTModeRun 1) and 3.7e-11 (CTModeRun 2);
+- c2 by 7.1e-14 and 1.6e-13.
+
+The two loop directions agree to 6.1e-11 on c1 and 3.2e-10 on the finite part.
+
+**Capture.** In each direction 73074 DP calls reach TIRust, and it serves all of them. The instrumented output prints no failure line, and the driver prints no warning. So every loop is computed, the heptagons and the rank-7 raised-power terms included.
+
+**Replay** of the nine v15 refusals on da7902b + v16 (`data/replay_ggg_3p28_3p18_20gev_da7902b_v16_ct{1,2}.txt.gz`). The DP entry serves all nine. The QP entry still refuses them with "ill-conditioned Gram matrix", but `replay_calls.f90` feeds it binary64 records widened to binary128. Their Coulomb and planar dependencies then hold only to about 1e-16, so the replay says nothing about MadLoop's own QP calls, whose binary128 inputs hold them to about 1e-34. TIRust checked only the DP entry.
+
+**Reading.** The 2e-4 to 4e-4 left on the poles on v15 was the 12 and 6 missing loops: with them served, both poles are as predicted, in both loop directions. Against v15 the finite part moved by 1.3e-5 (CTModeRun 1) and 6.6e-5 (CTModeRun 2). The finite part, 113.3244038 per Born × α_s/(2π), is quotable from this run on.
+
+**Time.** Each pass took 8.1 ks and 8.4 ks, against 5.9 ks and 6.0 ks on v15; TIRust's own time was 1483 s and 1521 s (v15: 997 s and 1111 s). The host was fully loaded during this run (load about 387 on 384 cores), so neither difference measures the code. Sent to TIRust on 2026-11-26.
