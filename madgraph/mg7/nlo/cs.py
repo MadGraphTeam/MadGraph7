@@ -44,7 +44,8 @@ that the weights add up to one at every event. With the combined channels
 of the real process as well (a PhaseSpaceMapping of its topology from
 real_channels_structure.json of the output), and the weight of every channel
 is the density of its mapping over the sum of those of all channels at the
-event (as MappingChannelWeights); channels="densities" takes these weights with the
+event (as MappingChannelWeights), which is the C++ integrand of a channel
+(CSRealChannelIntegrand); channels="densities" takes these weights with the
 channels of the dipoles alone. Each dipole takes the blocks
 of the Born of its own subprocess, the spin correlation in the factorized
 form <T_j . T_k> B(k_t) / B, with B(k_t) the Born of the provider with the
@@ -727,6 +728,36 @@ class CSBornIntegrand:
             evaluated=evaluated,
         )
 
+    def libraries(self, context):
+        """The MatrixElementApi of the matrix elements of the provider as
+        UMAMI libraries in the context (ProviderLibraries of
+        nlo/libraries.py, added once)."""
+        from madgraph.mg7.nlo.libraries import ProviderLibraries
+
+        if getattr(self, "_libraries", None) is None:
+            self._libraries = ProviderLibraries(self.provider, self.name)
+            self._apis = self._libraries.add_to(context)
+        return self._apis
+
+    def born_library(self, context):
+        """The Born of the provider as a MatrixElement with the spin legs and
+        vectors, for the dipoles of the real stream."""
+        ms = madspace()
+        element = ms.MatrixElement
+        apis = self.libraries(context)
+        outputs = [element.squared_orders_out, element.diagram_amp2_out]
+        if self._libraries.has_color:
+            outputs.append(element.color_correlated_out)
+        outputs.append(element.spin_correlated_out)
+        inputs = [
+            element.momenta_in,
+            element.alpha_s_in,
+            element.g_ew_in,
+            element.spin_legs_in,
+            element.spin_vectors_in,
+        ]
+        return element(apis["born"], inputs, outputs)
+
     def channel_integrand(self, channel, context):
         """The C++ integrand of a channel (CSBornChannelIntegrand of
         madspace) with the matrix elements of the provider as UMAMI libraries
@@ -734,14 +765,9 @@ class CSBornIntegrand:
         the same integrand as evaluate at the same random numbers and points
         with the virtual. The libraries evaluate at the e of the model, so
         that the blocks are those of the provider."""
-        from madgraph.mg7.nlo.libraries import ProviderLibraries
-
         ms = madspace()
         element = ms.MatrixElement
-        if getattr(self, "_libraries", None) is None:
-            self._libraries = ProviderLibraries(self.provider, self.name)
-            self._apis = self._libraries.add_to(context)
-        apis = self._apis
+        apis = self.libraries(context)
         outputs = [element.squared_orders_out, element.diagram_amp2_out]
         if self._libraries.has_color:
             outputs.append(element.color_correlated_out)
@@ -1302,6 +1328,95 @@ class CSRealIntegrand:
             virtual=np.zeros((count, self.nlo_count)),
             born=np.zeros((count, 1)),
             evaluated=np.zeros(count, dtype=bool),
+        )
+
+    def channel_integrand(self, channel, context):
+        """The C++ integrand of a channel (CSRealChannelIntegrand of
+        madspace) with the matrix elements of the providers as UMAMI libraries
+        in the context, the same integrand as evaluate with the combined
+        channels at the same random numbers. The libraries evaluate at the e
+        of the model, so that the blocks are those of the providers."""
+        ms = madspace()
+        element = ms.MatrixElement
+        if self.inverse is None or len(self.inverse) != len(self.channels):
+            raise NotImplementedError(
+                "nlo.cs: the C++ integrand has the combined channels only"
+            )
+        source = self.source
+        apis = source.libraries(context)
+        borns = []
+        for dipole in self.dipoles:
+            born = dipole.born
+            born_apis = born.libraries(context)
+            reference = None
+            if born.user_scale:
+                reference = ms.CustomFunction(
+                    born_apis["born_scale"],
+                    ms.CustomFunction.scale,
+                    len(born.born_pdgs),
+                )
+            charge = 0.0
+            if dipole.group == "QED":
+                charge = -dipole.weight if dipole.weight is not None else dipole.charges
+            spin_leg = -1
+            if dipole.gluon:
+                spin_leg = dipole.legs[0] if dipole.swap is None else dipole.swap
+            borns.append(
+                ms.CSRealDipole(
+                    born.born_library(context),
+                    born.cuts.function,
+                    born.scale.function,
+                    dipole.order,
+                    dipole.legs[0],
+                    dipole.legs[1],
+                    born_apis["born"].color_representations(),
+                    [float(p) for p in born.qcd_powers],
+                    list(dipole.orders),
+                    qed=dipole.group == "QED",
+                    charge=float(charge),
+                    alpha=float(born.alpha),
+                    factor=float(dipole.factor),
+                    spin_leg=spin_leg,
+                    swap=-1 if dipole.swap is None else dipole.swap,
+                    reference_scale=reference,
+                )
+            )
+        real_me = source.configurations["configurations"][self.configuration]["real_me"]
+        real = element(
+            apis["reals"][real_me - 1],
+            [element.momenta_in, element.alpha_s_in, element.g_ew_in],
+            [element.squared_orders_out],
+        )
+        reference = None
+        if source.user_scale:
+            reference = ms.CustomFunction(
+                apis["scale"], ms.CustomFunction.scale, len(self.pdgs)
+            )
+        dipole_channels = [
+            mapping
+            for mapping, (m, _) in zip(self.channel_mappings, self.channels)
+            if m is not None
+        ]
+        real_channels = [
+            mapping
+            for mapping, (m, _) in zip(self.channel_mappings, self.channels)
+            if m is None
+        ]
+        return ms.CSRealChannelIntegrand(
+            self.subtraction.function,
+            borns,
+            dipole_channels,
+            real_channels,
+            channel,
+            self.cuts.function,
+            self.scale.function,
+            source.couplings.running,
+            self.luminosity_function.runtime.function,
+            real,
+            [float(p) for p in self.real_powers],
+            source._libraries.e,
+            self.energy,
+            reference_scale=reference,
         )
 
     def histogram_runtime(self, histograms, jets):

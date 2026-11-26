@@ -195,7 +195,7 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     }
     if (color_representations.size() != _born_particles) {
         throw std::invalid_argument(
-            "FKSChannelIntegrand: a colour representation per Born leg"
+            "FKSChannelIntegrand: a color representation per Born leg"
         );
     }
     std::vector<Output> born_outputs{
@@ -218,8 +218,8 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     );
     if (_color.has_color() && born.color_pair_count() != _color.pair_count()) {
         throw std::invalid_argument(
-            "FKSChannelIntegrand: the Born library has another number of colour "
-            "pairs than the coloured legs"
+            "FKSChannelIntegrand: the Born library has another number of color "
+            "pairs than the colored legs"
         );
     }
     if (channel >= born.diagram_count()) {
@@ -396,7 +396,7 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         }
         ValueVec columns = fb.unstack(value), scaled;
         for (std::size_t k = 0; k < columns.size(); ++k) {
-            // of the shape of the column, a matrix per order for the colour
+            // of the shape of the column, a matrix per order for the color
             // correlations
             ValueVec full_args{per_order.at(k), batch_size};
             for (int size : columns.at(k).type.shape) {
@@ -517,8 +517,8 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
         born_values.at("diagram_amp2"),
         {static_cast<int>(_born.diagram_count())}
     );
-    // the colour matrix per Born order from the pairs, the Casimirs times the
-    // Born on the diagonal and zeros for the colourless legs
+    // the color matrix per Born order from the pairs, the Casimirs times the
+    // Born on the diagonal and zeros for the colorless legs
     Value color = fb.full({0., batch_size, b, n, n});
     if (_color.has_color()) {
         color = scatter(

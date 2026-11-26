@@ -1,10 +1,12 @@
 #include "madspace/nlo/cs_integrand.hpp"
 
+#include <algorithm>
 #include <format>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "madspace/util.hpp"
 
@@ -145,7 +147,7 @@ CSBornChannelIntegrand::CSBornChannelIntegrand(
         scale.particle_count() != _particles) {
         throw std::invalid_argument(
             "CSBornChannelIntegrand: the mapping, the cuts, the scales and the "
-            "colours have other particles than the Born library"
+            "colors have other particles than the Born library"
         );
     }
     if (luminosity.group_count() != 1 || !luminosity.all_groups()) {
@@ -168,8 +170,8 @@ CSBornChannelIntegrand::CSBornChannelIntegrand(
     );
     if (_color.has_color() && born.color_pair_count() != _color.pair_count()) {
         throw std::invalid_argument(
-            "CSBornChannelIntegrand: the Born library has another number of colour "
-            "pairs than the coloured legs"
+            "CSBornChannelIntegrand: the Born library has another number of color "
+            "pairs than the colored legs"
         );
     }
     if (channel >= born.diagram_count()) {
@@ -199,7 +201,7 @@ CSBornChannelIntegrand::CSBornChannelIntegrand(
         if (insertion->qed() || !_color.has_color()) {
             throw std::invalid_argument(
                 "CSBornChannelIntegrand: the QCD insertion operator needs the "
-                "colour correlations"
+                "color correlations"
             );
         }
         check_operator(
@@ -239,7 +241,7 @@ CSBornChannelIntegrand::CSBornChannelIntegrand(
     if (collinear) {
         if (collinear->qed() || !_color.has_color()) {
             throw std::invalid_argument(
-                "CSBornChannelIntegrand: the QCD K and P operators need the colour "
+                "CSBornChannelIntegrand: the QCD K and P operators need the color "
                 "correlations"
             );
         }
@@ -572,5 +574,582 @@ NamedVector<Value> CSBornChannelIntegrand::build_function_impl(
         {"born", born},
         {"evaluated", evaluated},
         {"momenta", momenta},
+    };
+}
+
+namespace {
+
+// the index of the pair of two colored particles among the pairs a < b of
+// the colored particles of a library, -1 if one is colorless
+int color_pair(const std::vector<int>& representations, std::size_t j, std::size_t k) {
+    std::vector<std::size_t> colored;
+    for (std::size_t leg = 0; leg < representations.size(); ++leg) {
+        if (representations[leg] != 1) {
+            colored.push_back(leg);
+        }
+    }
+    std::size_t a = std::min(j, k), b = std::max(j, k);
+    int index = 0;
+    for (std::size_t m = 0; m < colored.size(); ++m) {
+        for (std::size_t l = m + 1; l < colored.size(); ++l, ++index) {
+            if (colored[m] == a && colored[l] == b) {
+                return index;
+            }
+        }
+    }
+    return -1;
+}
+
+// the flux factor of events of momentum fractions x1, x2 with the conversion
+// to pb, 1 / (2 M) for a decay
+Value flux_factor(
+    FunctionBuilder& fb, Value x1, Value x2, double energy, bool decay, Value batch_size
+) {
+    auto full = [&](double value) { return fb.full({value, batch_size}); };
+    if (decay) {
+        return full(1. / (2. * energy));
+    }
+    Value s_hat = fb.mul(fb.mul(x1, x2), full(energy * energy));
+    Value positive = fb.cut_one(
+        s_hat,
+        std::numeric_limits<double>::min(),
+        std::numeric_limits<double>::infinity()
+    );
+    return fb.mul(
+        positive,
+        fb.div(
+            full(inv_gev2_to_pb),
+            fb.mul(full(2.), fb.max(s_hat, full(std::numeric_limits<double>::min())))
+        )
+    );
+}
+
+} // namespace
+
+CSRealDipole::CSRealDipole(
+    const MatrixElement& born,
+    const NLOCuts& cuts,
+    const NLOScale& scale,
+    const std::vector<std::size_t>& order,
+    std::size_t emitter,
+    std::size_t spectator,
+    const std::vector<int>& color_representations,
+    const std::vector<double>& born_powers,
+    const std::vector<bool>& corrected,
+    bool qed,
+    double charge,
+    double alpha,
+    double factor,
+    int spin_leg,
+    int swap,
+    const std::optional<CustomFunction>& reference_scale
+) :
+    born(born),
+    cuts(cuts),
+    scale(scale),
+    order(order),
+    emitter(emitter),
+    spectator(spectator),
+    color_representations(color_representations),
+    born_powers(born_powers),
+    corrected(corrected),
+    qed(qed),
+    charge(charge),
+    alpha(alpha),
+    factor(factor),
+    spin_leg(spin_leg),
+    swap(swap),
+    reference_scale(reference_scale),
+    color_pair(-1) {
+    std::size_t n = born.particle_count();
+    std::vector<bool> seen(n, false);
+    for (auto particle : order) {
+        if (particle >= n || seen[particle]) {
+            throw std::invalid_argument(
+                "CSRealDipole: the order is no permutation of the particles of the "
+                "Born"
+            );
+        }
+        seen[particle] = true;
+    }
+    if (order.size() != n || emitter >= n || spectator >= n || emitter == spectator ||
+        color_representations.size() != n) {
+        throw std::invalid_argument(
+            "CSRealDipole: the order, the emitter, the spectator or the colors do "
+            "not fit the particles of the Born library"
+        );
+    }
+    std::size_t b = born_powers.size();
+    if (b == 0 || born.squared_order_count() != b || corrected.size() != b) {
+        throw std::invalid_argument(
+            "CSRealDipole: a power of g_s and a correction flag per Born order of "
+            "the library"
+        );
+    }
+    if (cuts.layouts().size() != 1 || cuts.layouts().at(0).size() != n ||
+        scale.particle_count() != n) {
+        throw std::invalid_argument(
+            "CSRealDipole: the cuts and the scales have other particles than the "
+            "Born library"
+        );
+    }
+    if (scale.user() && !reference_scale) {
+        throw std::invalid_argument(
+            "CSRealDipole: the scales of the user need the reference scale"
+        );
+    }
+    if (spin_leg >= static_cast<int>(n) || swap >= static_cast<int>(n) ||
+        (swap >= 0 && spin_leg != swap)) {
+        throw std::invalid_argument(
+            "CSRealDipole: the spin leg is a particle of the Born, the exchanged "
+            "particle if there is one"
+        );
+    }
+    ColorMatrix colors(color_representations, "CSRealDipole");
+    std::vector<Output> outputs{
+        MatrixElement::squared_orders_out, MatrixElement::diagram_amp2_out
+    };
+    if (colors.has_color()) {
+        outputs.push_back(MatrixElement::color_correlated_out);
+    }
+    outputs.push_back(MatrixElement::spin_correlated_out);
+    if (born.inputs() !=
+            std::vector<Input>{
+                MatrixElement::momenta_in,
+                MatrixElement::alpha_s_in,
+                MatrixElement::g_ew_in,
+                MatrixElement::spin_legs_in,
+                MatrixElement::spin_vectors_in
+            } ||
+        born.outputs() != outputs) {
+        throw std::invalid_argument("CSRealDipole: the Born library has other keys");
+    }
+    if (!qed) {
+        color_pair = ::color_pair(color_representations, emitter, spectator);
+        if (color_pair < 0 || born.color_pair_count() != colors.pair_count()) {
+            throw std::invalid_argument(
+                "CSRealDipole: a dipole of QCD needs a colored emitter and "
+                "spectator and the color pairs of the library"
+            );
+        }
+    }
+}
+
+CSRealChannelIntegrand::CSRealChannelIntegrand(
+    const CSDipoles& dipoles,
+    const std::vector<CSRealDipole>& borns,
+    const std::vector<CSMapping>& dipole_channels,
+    const std::vector<PhaseSpaceMapping>& real_channels,
+    std::size_t channel,
+    const NLOCuts& cuts,
+    const NLOScale& scale,
+    const RunningCoupling& running_coupling,
+    const NLOLuminosity& luminosity,
+    const MatrixElement& real,
+    const std::vector<double>& real_powers,
+    double g_ew,
+    double energy,
+    const std::optional<CustomFunction>& reference_scale
+) :
+    FunctionGenerator(
+        "CSRealChannelIntegrand",
+        [&] {
+            std::size_t dimension = 0;
+            if (channel < dipole_channels.size()) {
+                dimension = dipole_channels.at(channel).random_dim();
+            } else if (channel - dipole_channels.size() < real_channels.size()) {
+                dimension =
+                    real_channels.at(channel - dipole_channels.size()).random_dim();
+            } else {
+                throw std::invalid_argument(
+                    std::format("CSRealChannelIntegrand: no channel {}", channel)
+                );
+            }
+            return NamedVector<Type>{
+                {"random", batch_float_array(static_cast<int>(dimension))}
+            };
+        }(),
+        [&] {
+            int d = static_cast<int>(dipoles.dipole_count());
+            int n = static_cast<int>(real.particle_count());
+            return NamedVector<Type>{
+                {"cross_section", batch_float},
+                {"real_weight", batch_float},
+                {"dipole_weights", batch_float_array(d)},
+                {"channel_weight", batch_float},
+                {"momenta", batch_four_vec_array(n)},
+                {"born_momenta", Type(DataType::dt_float64, batch_size, {d, n - 1, 4})}
+            };
+        }()
+    ),
+    _dipoles(dipoles),
+    _borns(borns),
+    _dipole_channels(dipole_channels),
+    _real_channels(real_channels),
+    _channel(channel),
+    _cuts(cuts),
+    _scale(scale),
+    _running_coupling(running_coupling),
+    _luminosity(luminosity),
+    _real(real),
+    _real_powers(real_powers),
+    _g_ew(g_ew),
+    _energy(energy),
+    _reference_scale(reference_scale),
+    _random_dim(arg_types().at("random").shape.at(0)),
+    _particles(real.particle_count()),
+    _decay(false) {
+    std::size_t n = _particles;
+    if (borns.size() != dipoles.dipole_count() || borns.empty()) {
+        throw std::invalid_argument(
+            "CSRealChannelIntegrand: a Born per dipole, and at least one dipole"
+        );
+    }
+    for (auto& mapping : dipoles.mappings()) {
+        if (mapping.particle_count() != n) {
+            throw std::invalid_argument(
+                "CSRealChannelIntegrand: the dipoles have another real process than "
+                "the real library"
+            );
+        }
+    }
+    _decay = dipoles.mappings().front().born().is_decay();
+    for (auto& mapping : dipole_channels) {
+        if (mapping.particle_count() != n || mapping.born().is_decay() != _decay) {
+            throw std::invalid_argument(
+                "CSRealChannelIntegrand: a channel of a dipole has another real "
+                "process"
+            );
+        }
+    }
+    for (auto& mapping : real_channels) {
+        if (mapping.particle_count() != n || mapping.is_decay() != _decay ||
+            mapping.channel_count() > 1) {
+            throw std::invalid_argument(
+                "CSRealChannelIntegrand: a channel of a diagram has another real "
+                "process or permutations"
+            );
+        }
+    }
+    // the densities need the inverse maps, which the mappings of dressed
+    // leptons have not
+    auto dressed = [](const Mapping& mapping) {
+        return mapping.output_types().index_map().contains("omx1");
+    };
+    for (auto& mapping : dipole_channels) {
+        if (dressed(mapping)) {
+            throw std::invalid_argument(
+                "CSRealChannelIntegrand: no channels with dressed leptons, whose "
+                "mappings have no inverse"
+            );
+        }
+    }
+    for (auto& mapping : real_channels) {
+        if (dressed(mapping)) {
+            throw std::invalid_argument(
+                "CSRealChannelIntegrand: no channels with dressed leptons, whose "
+                "mappings have no inverse"
+            );
+        }
+    }
+    for (std::size_t m = 0; m < borns.size(); ++m) {
+        if (borns[m].born.particle_count() + 1 != n) {
+            throw std::invalid_argument(
+                "CSRealChannelIntegrand: a Born of a dipole has not one particle "
+                "less than the real process"
+            );
+        }
+    }
+    if (real.inputs() !=
+            std::vector<Input>{
+                MatrixElement::momenta_in,
+                MatrixElement::alpha_s_in,
+                MatrixElement::g_ew_in
+            } ||
+        real.outputs() != std::vector<Output>{MatrixElement::squared_orders_out} ||
+        real.squared_order_count() != real_powers.size() || real_powers.empty()) {
+        throw std::invalid_argument(
+            "CSRealChannelIntegrand: the real library has other keys or another "
+            "number of orders than the powers of g_s"
+        );
+    }
+    if (cuts.layouts().size() != 1 || cuts.layouts().at(0).size() != n ||
+        scale.particle_count() != n) {
+        throw std::invalid_argument(
+            "CSRealChannelIntegrand: the cuts and the scales have other particles "
+            "than the real library"
+        );
+    }
+    if (luminosity.group_count() != 1 || !luminosity.all_groups()) {
+        throw std::invalid_argument(
+            "CSRealChannelIntegrand: the luminosity of the real emission is one "
+            "group with all_groups"
+        );
+    }
+    if (scale.user() && !reference_scale) {
+        throw std::invalid_argument(
+            "CSRealChannelIntegrand: the scales of the user need the reference scale"
+        );
+    }
+}
+
+NamedVector<Value> CSRealChannelIntegrand::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value random = args.at("random");
+    auto batch_size = fb.batch_size({random});
+    auto full = [&](double value) { return fb.full({value, batch_size}); };
+    auto scatter = [&](Value indices, Value source, const std::vector<int>& shape) {
+        ValueVec full_args{0., batch_size};
+        for (int size : shape) {
+            full_args.push_back(static_cast<me_int_t>(size));
+        }
+        return fb.batch_scatter(indices, fb.full(full_args), source);
+    };
+    // one where a value is zero
+    auto is_zero = [&](Value value) { return fb.cut_one(value, 0., 0.); };
+    constexpr double tiny = std::numeric_limits<double>::min();
+    constexpr double huge = std::numeric_limits<double>::max();
+    std::size_t d = _borns.size();
+    std::size_t dipole_channels = _dipole_channels.size();
+
+    // the real emission of the channel
+    auto mapped = _channel < dipole_channels
+        ? _dipole_channels.at(_channel).build_forward(fb, {random}, {})
+        : _real_channels.at(_channel - dipole_channels).build_forward(fb, {random}, {});
+    Value momenta = mapped.at("momenta");
+    Value det = mapped.at("det");
+    NamedVector<Value> event{
+        {"momenta", momenta}, {"x1", mapped.at("x1")}, {"x2", mapped.at("x2")}
+    };
+    bool dressed = mapped.index_map().contains("omx1");
+    if (dressed) {
+        event.push_back("omx1", mapped.at("omx1"));
+        event.push_back("omx2", mapped.at("omx2"));
+    }
+
+    // the densities of the mappings of all channels, zero where a mapping cannot
+    // produce the event (a random number of its inverse outside the unit
+    // hypercube) or where they are not finite
+    ValueVec densities;
+    auto add_density = [&](const Mapping& mapping) {
+        auto inverse = mapping.build_inverse(fb, event, {});
+        Value inverse_det = inverse.at("det");
+        Value finite = fb.cut_one(inverse_det, tiny, huge);
+        Value safe = fb.max(fb.min(inverse_det, full(huge)), full(0.));
+        densities.push_back(
+            fb.mul(fb.mul(safe, finite), fb.cut_all(inverse.at("random"), 0., 1.))
+        );
+    };
+    for (auto& mapping : _dipole_channels) {
+        add_density(mapping);
+    }
+    for (auto& mapping : _real_channels) {
+        add_density(mapping);
+    }
+    Value total = fb.reduce_sum(fb.stack(densities));
+    Value channel_weight = fb.mul(
+        fb.cut_one(total, tiny, huge),
+        fb.div(densities.at(_channel), fb.max(total, full(tiny)))
+    );
+
+    // the dipoles at the event; a channel of a diagram covers the events where
+    // the variables of all dipoles are at or above the technical cut
+    auto projected = _dipoles.build_function(fb, event);
+    Value keep = fb.sub(full(1.), is_zero(det));
+    if (_channel >= dipole_channels) {
+        for (Value covered : fb.unstack(projected.at("covered"))) {
+            keep = fb.mul(keep, covered);
+        }
+    }
+    ValueVec fractions{event.at("x1"), event.at("x2")};
+    if (dressed) {
+        fractions.push_back(event.at("omx1"));
+        fractions.push_back(event.at("omx2"));
+    }
+    // the luminosity of the real emission at some points and scales
+    auto luminosity = [&](Value points, Value mu1, Value mu2) {
+        ValueVec lum_args;
+        for (Value fraction : fractions) {
+            lum_args.push_back(fb.batch_gather(points, fraction));
+        }
+        lum_args.push_back(mu1);
+        lum_args.push_back(mu2);
+        return fb.unstack(_luminosity.build_function(fb, lum_args).at("luminosity"))
+            .at(0);
+    };
+    Value layout = fb.full({static_cast<me_int_t>(0), batch_size});
+
+    // the real emission where it passes its cuts
+    Value passes = _cuts.build_function(fb, {momenta, layout}).at("mask");
+    Value real_points = fb.nonzero(fb.mul(keep, passes));
+    Value real_momenta = fb.batch_gather(real_points, momenta);
+    Value real_batch = fb.batch_size({real_momenta});
+    ValueVec scale_args{real_momenta};
+    if (_reference_scale) {
+        scale_args.push_back(
+            _reference_scale->build_function(fb, {real_momenta}).at("ren_scale")
+        );
+    }
+    auto scales = _scale.build_function(fb, scale_args);
+    auto real_values = _real.build_function(
+        fb,
+        {real_momenta,
+         fb.full({NLO_UNIT_ALPHA_S, real_batch}),
+         fb.full({_g_ew, real_batch})}
+    );
+    Value alpha_s =
+        _running_coupling.build_function(fb, {scales.at("ren_scale")}).at("alpha_s");
+    Value g_s = fb.sqrt(fb.mul(fb.full({4. * std::numbers::pi, real_batch}), alpha_s));
+    Value real_value = fb.full({0., real_batch});
+    ValueVec real_columns = fb.unstack(real_values.at("squared_orders"));
+    for (std::size_t o = 0; o < _real_powers.size(); ++o) {
+        real_value = fb.add(
+            real_value,
+            fb.mul(
+                fb.pow(g_s, fb.full({_real_powers.at(o), real_batch})),
+                real_columns.at(o)
+            )
+        );
+    }
+    Value real_weight = scatter(
+        real_points,
+        fb.mul(
+            luminosity(real_points, scales.at("fact_scale1"), scales.at("fact_scale2")),
+            real_value
+        ),
+        {}
+    );
+
+    // each dipole at its Born where the Born passes its cuts and the dipole has
+    // a weight
+    ValueVec born_lab = fb.unstack(projected.at("born_momenta"));
+    ValueVec color_weights = fb.unstack(projected.at("color_weight"));
+    ValueVec spin_weights = fb.unstack(projected.at("spin_weight"));
+    ValueVec spin_vectors = fb.unstack(projected.at("spin_vector"));
+    ValueVec dipole_weights, born_momenta;
+    for (std::size_t m = 0; m < d; ++m) {
+        auto& dipole = _borns.at(m);
+        // the Born in the order of the library
+        ValueVec particles = fb.unstack(born_lab.at(m));
+        ValueVec ordered;
+        for (auto particle : dipole.order) {
+            ordered.push_back(particles.at(particle));
+        }
+        Value me = fb.stack(ordered);
+        born_momenta.push_back(me);
+        Value weighted = fb.sub(
+            full(1.), fb.mul(is_zero(color_weights.at(m)), is_zero(spin_weights.at(m)))
+        );
+        Value born_passes = dipole.cuts.build_function(fb, {me, layout}).at("mask");
+        Value points = fb.nonzero(fb.mul(fb.mul(keep, weighted), born_passes));
+        Value born_points = fb.batch_gather(points, me);
+        Value born_batch = fb.batch_size({born_points});
+        auto constant = [&](double value) { return fb.full({value, born_batch}); };
+        // the spin correlation with the vector of the dipole, at the Born with
+        // the emitter and an identical boson exchanged where the dipole takes the
+        // correlation of that boson
+        Value library_momenta = born_points;
+        if (dipole.swap >= 0) {
+            ValueVec exchanged = ordered;
+            std::swap(exchanged.at(dipole.emitter), exchanged.at(dipole.swap));
+            library_momenta = fb.batch_gather(points, fb.stack(exchanged));
+        }
+        Value vector = fb.batch_gather(points, spin_vectors.at(m));
+        Value legs = fb.stack(
+            {fb.full({static_cast<me_int_t>(dipole.spin_leg), born_batch}),
+             fb.full({static_cast<me_int_t>(-1), born_batch})}
+        );
+        auto values = dipole.born.build_function(
+            fb,
+            {library_momenta,
+             constant(NLO_UNIT_ALPHA_S),
+             constant(_g_ew),
+             legs,
+             fb.stack({vector, fb.full({0., born_batch, static_cast<me_int_t>(4)})})}
+        );
+        ValueVec plain = fb.unstack(values.at("squared_orders"));
+        ValueVec spin = fb.unstack(values.at("spin_correlated"));
+        std::vector<ValueVec> pairs;
+        if (!dipole.qed) {
+            for (Value per_order : fb.unstack(values.at("color_correlated"))) {
+                pairs.push_back(fb.unstack(per_order));
+            }
+        }
+        Value color = fb.mul(
+            fb.batch_gather(points, color_weights.at(m)), constant(dipole.factor)
+        );
+        Value spin_weight = fb.mul(
+            fb.batch_gather(points, spin_weights.at(m)), constant(dipole.factor)
+        );
+        // the scales and alpha_s of the Born
+        ValueVec born_scale_args{born_points};
+        if (dipole.reference_scale) {
+            born_scale_args.push_back(
+                dipole.reference_scale->build_function(fb, {born_points})
+                    .at("ren_scale")
+            );
+        }
+        auto born_scales = dipole.scale.build_function(fb, born_scale_args);
+        Value born_alpha_s =
+            _running_coupling.build_function(fb, {born_scales.at("ren_scale")})
+                .at("alpha_s");
+        Value born_g_s = fb.sqrt(fb.mul(constant(4. * std::numbers::pi), born_alpha_s));
+        // g_s^2, or e^2 for QED
+        Value coupling = dipole.qed
+            ? constant(4. * std::numbers::pi * dipole.alpha)
+            : fb.mul(born_g_s, born_g_s);
+        Value weight = constant(0.);
+        for (std::size_t k = 0; k < dipole.born_powers.size(); ++k) {
+            if (!dipole.corrected.at(k)) {
+                continue;
+            }
+            // the color correlation of the emitter and the spectator, or the
+            // charges times the Born for QED
+            Value colors = dipole.qed
+                ? fb.mul(constant(dipole.charge), plain.at(k))
+                : pairs.at(k).at(dipole.color_pair);
+            Value value = fb.mul(color, colors);
+            if (dipole.spin_leg >= 0) {
+                Value zero = is_zero(plain.at(k));
+                Value ratio = fb.mul(
+                    fb.sub(constant(1.), zero),
+                    fb.div(colors, fb.add(plain.at(k), zero))
+                );
+                value = fb.add(value, fb.mul(fb.mul(spin_weight, ratio), spin.at(k)));
+            }
+            weight = fb.add(
+                weight,
+                fb.mul(
+                    fb.mul(
+                        coupling, fb.pow(born_g_s, constant(dipole.born_powers.at(k)))
+                    ),
+                    value
+                )
+            );
+        }
+        Value lum = luminosity(
+            points, born_scales.at("fact_scale1"), born_scales.at("fact_scale2")
+        );
+        dipole_weights.push_back(scatter(points, fb.mul(lum, weight), {}));
+    }
+
+    // the normalization: the Jacobian, the weight of the channel and the flux
+    Value flux =
+        flux_factor(fb, event.at("x1"), event.at("x2"), _energy, _decay, batch_size);
+    Value norm = fb.mul(fb.mul(fb.mul(keep, det), channel_weight), flux);
+    real_weight = fb.mul(norm, real_weight);
+    Value total_weight = real_weight;
+    for (auto& weight : dipole_weights) {
+        weight = fb.mul(norm, weight);
+        total_weight = fb.add(total_weight, weight);
+    }
+    return {
+        {"cross_section", total_weight},
+        {"real_weight", real_weight},
+        {"dipole_weights", fb.stack(dipole_weights)},
+        {"channel_weight", channel_weight},
+        {"momenta", momenta},
+        {"born_momenta", fb.stack(born_momenta)},
     };
 }

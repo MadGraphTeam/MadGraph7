@@ -4560,6 +4560,96 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("CSBornChannelIntegrand::convolves")
         );
 
+    py::class_<CSRealDipole>(m, "CSRealDipole", pydoc::doc("CSRealDipole"))
+        .def(
+            py::init<
+                const MatrixElement&,
+                const NLOCuts&,
+                const NLOScale&,
+                const std::vector<std::size_t>&,
+                std::size_t,
+                std::size_t,
+                const std::vector<int>&,
+                const std::vector<double>&,
+                const std::vector<bool>&,
+                bool,
+                double,
+                double,
+                double,
+                int,
+                int,
+                const std::optional<CustomFunction>&>(),
+            py::arg("born"),
+            py::arg("cuts"),
+            py::arg("scale"),
+            py::arg("order"),
+            py::arg("emitter"),
+            py::arg("spectator"),
+            py::arg("color_representations"),
+            py::arg("born_powers"),
+            py::arg("corrected"),
+            py::arg("qed") = false,
+            py::arg("charge") = 0.,
+            py::arg("alpha") = 0.,
+            py::arg("factor") = 1.,
+            py::arg("spin_leg") = -1,
+            py::arg("swap") = -1,
+            py::arg("reference_scale") = std::nullopt,
+            pydoc::doc("CSRealDipole::CSRealDipole")
+        )
+        .def_readonly("color_pair", &CSRealDipole::color_pair);
+
+    py::classh<CSRealChannelIntegrand, FunctionGenerator>(
+        m, "CSRealChannelIntegrand", pydoc::doc("CSRealChannelIntegrand")
+    )
+        .def(
+            py::init<
+                const CSDipoles&,
+                const std::vector<CSRealDipole>&,
+                const std::vector<CSMapping>&,
+                const std::vector<PhaseSpaceMapping>&,
+                std::size_t,
+                const NLOCuts&,
+                const NLOScale&,
+                const RunningCoupling&,
+                const NLOLuminosity&,
+                const MatrixElement&,
+                const std::vector<double>&,
+                double,
+                double,
+                const std::optional<CustomFunction>&>(),
+            py::arg("dipoles"),
+            py::arg("borns"),
+            py::arg("dipole_channels"),
+            py::arg("real_channels"),
+            py::arg("channel"),
+            py::arg("cuts"),
+            py::arg("scale"),
+            py::arg("running_coupling"),
+            py::arg("luminosity"),
+            py::arg("real"),
+            py::arg("real_powers"),
+            py::arg("g_ew"),
+            py::arg("energy"),
+            py::arg("reference_scale") = std::nullopt,
+            pydoc::doc("CSRealChannelIntegrand::CSRealChannelIntegrand")
+        )
+        .def(
+            "random_dim",
+            &CSRealChannelIntegrand::random_dim,
+            pydoc::doc("CSRealChannelIntegrand::random_dim")
+        )
+        .def(
+            "channel_count",
+            &CSRealChannelIntegrand::channel_count,
+            pydoc::doc("CSRealChannelIntegrand::channel_count")
+        )
+        .def(
+            "dipole_count",
+            &CSRealChannelIntegrand::dipole_count,
+            pydoc::doc("CSRealChannelIntegrand::dipole_count")
+        );
+
     py::classh<FKSChannelIntegrand, FunctionGenerator>(
         m, "FKSChannelIntegrand", pydoc::doc("FKSChannelIntegrand")
     )

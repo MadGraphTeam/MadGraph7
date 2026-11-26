@@ -79,13 +79,16 @@ namespace madspace {
  *   virtual.
  *
  * **References**
- * - [1] S. Catani, M. H. Seymour, https://arxiv.org/abs/hep-ph/9605323
+ * - [1] S. Catani, M. H. Seymour, "A general algorithm for calculating jet
+ *   cross sections in NLO QCD", https://arxiv.org/abs/hep-ph/9605323
  *   (Sec. 10)
- * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi,
- *   https://arxiv.org/abs/hep-ph/0201036 (Sec. 6)
+ * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi, "The dipole
+ *   formalism for next-to-leading order QCD calculations with massive
+ *   partons", https://arxiv.org/abs/hep-ph/0201036 (Sec. 6)
  * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268
- * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero,
- *   https://arxiv.org/abs/1507.04676 (decays)
+ * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero, "Techniques for the
+ *   treatment of IR divergences in decay processes at NLO and application to
+ *   the top-quark decay", https://arxiv.org/abs/1507.04676 (decays)
  * - [5] S. Dittmaier, https://arxiv.org/abs/hep-ph/9904440 (QED)
  * - [6] S. Dittmaier, A. Kabelschacht, T. Kasprzik,
  *   https://arxiv.org/abs/0802.1405 (photon splittings)
@@ -206,10 +209,12 @@ private:
  *   the weights of the three luminosities, zero for a colorless particle.
  *
  * **References**
- * - [1] S. Catani, M. H. Seymour, https://arxiv.org/abs/hep-ph/9605323
+ * - [1] S. Catani, M. H. Seymour, "A general algorithm for calculating jet
+ *   cross sections in NLO QCD", https://arxiv.org/abs/hep-ph/9605323
  *   (Sec. 10)
- * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi,
- *   https://arxiv.org/abs/hep-ph/0201036 (Sec. 6)
+ * - [2] S. Catani, S. Dittmaier, M. H. Seymour, Z. Trocsanyi, "The dipole
+ *   formalism for next-to-leading order QCD calculations with massive
+ *   partons", https://arxiv.org/abs/hep-ph/0201036 (Sec. 6)
  * - [3] Z. Nagy, https://arxiv.org/abs/hep-ph/0307268
  * - [4] S. Dittmaier, A. Kabelschacht, T. Kasprzik,
  *   https://arxiv.org/abs/0802.1405 (QED)

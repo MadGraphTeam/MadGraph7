@@ -40,27 +40,27 @@ std::pair<Value, Value> born_frame_light_cone(
 inline constexpr double NLO_UNIT_ALPHA_S = 1. / (4. * std::numbers::pi);
 
 /**
- * The colour-correlated Born @f$\langle T_m \cdot T_n \rangle B@f$ of all
+ * The color-correlated Born @f$\langle T_m \cdot T_n \rangle B@f$ of all
  * legs of a Born from the output `color_correlated` of a UMAMI library, its
- * pairs @f$m < n@f$ of the coloured legs: the pairs off the diagonal,
+ * pairs @f$m < n@f$ of the colored legs: the pairs off the diagonal,
  * @f$C_m B@f$ with the Casimir of the representation of the leg on it and
- * zero for the colourless legs.
+ * zero for the colorless legs.
  */
 class ColorMatrix {
 public:
-    /// @param color_representations Per Born leg its colour representation
+    /// @param color_representations Per Born leg its color representation
     ///                     as UMAMI_META_COLOR_REPRESENTATIONS gives it, 1
-    ///                     for a colourless leg.
+    ///                     for a colorless leg.
     /// @param who          The class whose errors name it.
     /// @throws std::invalid_argument if a leg has a representation without a
     ///         Casimir here (but 1, 3, -3 and 8).
     ColorMatrix(const std::vector<int>& color_representations, const std::string& who);
-    /// Whether the Born has two coloured legs, so that the library has the
+    /// Whether the Born has two colored legs, so that the library has the
     /// output.
     bool has_color() const { return _has_color; }
     /// Number of legs of the Born.
     std::size_t particle_count() const { return _rows.size(); }
-    /// Number of pairs of coloured legs, the length of the output of the
+    /// Number of pairs of colored legs, the length of the output of the
     /// library per order.
     std::size_t pair_count() const { return _pair_count; }
     /// The matrices, shape `(batch, b, n, n)`, from the Born orders @p born,

@@ -41,7 +41,7 @@ std::pair<Value, Value> madspace::born_frame_light_cone(
 ColorMatrix::ColorMatrix(
     const std::vector<int>& color_representations, const std::string& who
 ) {
-    // the coloured legs with the index of their Casimir
+    // the colored legs with the index of their Casimir
     std::size_t n = color_representations.size();
     std::vector<std::size_t> colored;
     std::vector<std::size_t> casimir_index;
@@ -58,7 +58,7 @@ ColorMatrix::ColorMatrix(
         } else {
             throw std::invalid_argument(
                 std::format(
-                    "{}: no Casimir of the colour representation {}",
+                    "{}: no Casimir of the color representation {}",
                     who,
                     representation
                 )
@@ -71,9 +71,9 @@ ColorMatrix::ColorMatrix(
         }
         colored.push_back(leg);
     }
-    // the rows of the colour matrix from the pairs i < j of the coloured legs,
+    // the rows of the color matrix from the pairs i < j of the colored legs,
     // pair (a, c) at a (2 n_c - a - 1) / 2 + c - a - 1, the Casimirs times the
-    // Born after them and a zero for the colourless legs
+    // Born after them and a zero for the colorless legs
     std::size_t n_c = colored.size();
     std::size_t pairs = n_c * (n_c - 1) / 2;
     _pair_count = pairs;

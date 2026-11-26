@@ -38,8 +38,8 @@ namespace madspace {
  * - the real of the real matrix element of the configuration of the event
  *   (`squared_orders`), where the event has a weight and passes the cuts;
  * - the Born (`squared_orders`), its amplitudes per Born diagram of the
- *   channels (`diagram_amp2`), its colour correlations over the pairs of
- *   coloured legs (`color_correlated`) and its spin correlation
+ *   channels (`diagram_amp2`), its color correlations over the pairs of
+ *   colored legs (`color_correlated`) and its spin correlation
  *   (`spin_correlated`) at the mother of the configuration with
  *   @f$k_\perp@f$ for a gluon or photon mother, where the Born has a weight
  *   and one of the event and the soft and collinear counter-events passes
@@ -57,10 +57,10 @@ namespace madspace {
  *   as MadFKS takes the scales of the Born at the soft counter-event) and at
  *   the collinear counter-event where it has one, zero elsewhere.
  *
- * The colour-correlated Born that @ref FKSCrossSection takes is the matrix
+ * The color-correlated Born that @ref FKSCrossSection takes is the matrix
  * of @f$\langle T_m \cdot T_n \rangle B@f$ over all Born legs: the pairs of
  * the library off the diagonal, @f$C_m B@f$ with the Casimir of the
- * representation of the leg on it and zero for the colourless legs. The
+ * representation of the leg on it and zero for the colorless legs. The
  * spin-correlated Born that @ref FKSCrossSection takes is @f$B / 2@f$
  * for the other mothers, as the azimuthal terms of their splittings vanish.
  * The channel weight is that of MadFKS, the amplitude of the Born diagram of
@@ -76,7 +76,7 @@ namespace madspace {
  * The Born inputs of @ref FKSCrossSection are the Born orders followed by
  * the orders of the Born of each extra counterterm, in the order of the
  * libraries, those of the extra counterterm of the configuration of the point
- * and zero for the others. The colour correlations and the virtual trick take
+ * and zero for the others. The color correlations and the virtual trick take
  * the Born orders alone.
  *
  * With tagged photons and QED corrections, the factors of the couplings of
@@ -137,7 +137,7 @@ public:
      *                        `spin_vectors_in`, outputs `squared_orders_out`,
      *                        `diagram_amp2_out`, `spin_correlated_out` and
      *                        `color_correlated_out` with at least two
-     *                        coloured legs.
+     *                        colored legs.
      * @param reals           The real libraries, one per real matrix element:
      *                        inputs `momenta_in`, `alpha_s_in`, `g_ew_in`,
      *                        output `squared_orders_out`.
@@ -149,9 +149,9 @@ public:
      * @param spin_legs       Per FKS configuration the Born leg of its mother,
      *                        from 0, for a gluon or photon mother, -1 for the
      *                        others.
-     * @param color_representations Per Born leg its colour representation
+     * @param color_representations Per Born leg its color representation
      *                        as UMAMI_META_COLOR_REPRESENTATIONS gives it, 1
-     *                        for a colourless leg.
+     *                        for a colorless leg.
      * @param channel         The Born diagram of the channel, an index of
      *                        `diagram_amp2`.
      * @param g_ew            The electroweak coupling of the libraries, the
@@ -180,7 +180,7 @@ public:
      *         the scale of the user without @p reference_scale, the extra
      *         counterterms do not give the Born inputs of the cross section, a
      *         table has another length than the configurations or the Born
-     *         legs, or a leg has a colour representation without a Casimir
+     *         legs, or a leg has a color representation without a Casimir
      *         here.
      */
     FKSChannelIntegrand(
@@ -551,6 +551,12 @@ private:
  * - `prob` – `float`, shape `(batch,)` – the density of the adaptive mapping
  *   at `latent` times the probability of the configuration, from the
  *   @ref DiscreteFlow or the probabilities of the state.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] T. Heimel et al., "MadNIS - Neural multi-channel importance sampling",
+ *   https://arxiv.org/abs/2212.06172
  */
 class FKSIntegrandProbability : public FunctionGenerator {
 public:
