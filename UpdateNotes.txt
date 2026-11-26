@@ -5,6 +5,15 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: Bug fix (mg7): a contact interaction joining both beams and both final-state
+       particles at one vertex (e.g. the four-fermion operators of SMEFTatNLO-LO in
+       p p > t t~) crashed the survey with "IndexError: vector" when building its
+       phase-space topology. It is now mapped like a pure s-channel 2 -> n process.
+   OM: Bug fix (FD gauge): the couplings rotated into the goldstone phase convention
+       (GC_FDPH_*) and the summed couplings (GC_SUM_*) were registered twice in the model,
+       so the generated code declared them twice and did not compile
+       (SMEFTatNLO-LO p p > t t~ NP<=1). A cached model_FDG.pkl built before this fix
+       keeps the duplicate: delete it to rebuild the model.
    OM: madevent rejected every phase-space point with a dynamical factorisation scale below
        2 GeV whenever lpp was not 0, a floor that only makes sense for hadron PDFs: it
        silently cut the threshold region, e.g. 27% of PbPb > a a > ta+ ta- at 5.52 TeV

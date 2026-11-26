@@ -1934,8 +1934,8 @@ class UFOMG5Converter(object):
                         list(self.ufomodel.all_couplings) + self.additional_couplings)
             order = dict((c.name, c.order) for c in self.ufomodel.all_couplings)
             new_name = 'GC_FDPH_%d' % (len(self._rotated_couplings) + 1)
-            self.additional_couplings.append(self.add_coupling(
-                '(%s)*(%s)' % (literal, expr[base]), order.get(base, {}), new_name))
+            self.add_coupling('(%s)*(%s)' % (literal, expr[base]),
+                              order.get(base, {}), new_name)
             self._rotated_couplings[(base, literal)] = new_name
         return sign + self._rotated_couplings[(base, literal)]
 
@@ -2132,8 +2132,7 @@ class UFOMG5Converter(object):
             if c.value == value:
                 return c.name
         name = 'GC_SUM_%d' % (len(self.additional_couplings) + 1)
-        self.additional_couplings.append(
-            self.add_coupling(value, order.get(lname, order.get(rname, {})), name))
+        self.add_coupling(value, order.get(lname, order.get(rname, {})), name)
         return name
 
     def collapse_duplicate_lorentz(self, vertex):
@@ -3224,6 +3223,11 @@ class UFOMG5Converter(object):
             new = coup_class(name=name, value=expr, order=order)
         finally:
             coup_globals['all_couplings'] = old_all_couplings
+        # The UFO Coupling constructor registers itself in all_couplings, i.e.
+        # in additional_couplings here; do it for a constructor that does not,
+        # and never twice (a duplicated name breaks the generated code).
+        if not any(c is new for c in self.additional_couplings):
+            self.additional_couplings.append(new)
         return new
 
 

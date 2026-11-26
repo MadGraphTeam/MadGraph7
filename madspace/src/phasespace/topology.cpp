@@ -334,10 +334,23 @@ std::vector<Topology> Topology::topologies(const Diagram& diagram) {
             -1
         );
 
+        // A t-chain with n propagators has n + 1 lines leaving it. With no
+        // propagator at all both beams meet at one (contact) vertex, whose
+        // outgoing lines are the children of the root, as in the pure
+        // s-channel case. A vertex with more than three lines inside a longer
+        // chain is not supported by the t-channel mappings.
+        std::size_t t_count = topo._t_propagator_masses.size();
+        if (t_count > 0 && lines_after_t.size() != t_count + 1) {
+            throw std::invalid_argument(
+                "Topology: a t-channel chain with a vertex of more than three "
+                "lines is not supported"
+            );
+        }
+
         // sort by integration order and propagator mass, while preventing
         // impossible integration orders
         bool choose_low = false;
-        std::size_t index_low = 0, index_high = integration_order.size() - 1;
+        std::size_t index_low = 0, index_high = t_count;
         while (index_low != index_high) {
             int order_low = integration_order.at(index_low);
             int order_high = integration_order.at(index_high - 1);
