@@ -333,7 +333,7 @@ def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=N
     if decision.backend == "madtrex":
         if process.run_card["output"]["output_format"] == "compact_npy":
             raise ValueError(
-                "MadtRex reweighting requires run_card [run] output_format to be "
+                "MadtRex reweighting requires run_card [output] output_format to be "
                 "'lhe' or 'lhe_npy': 'compact_npy' discards the per-event flavor/"
                 "helicity information MadtRex needs to match events to the "
                 "matrix element library")
@@ -394,7 +394,7 @@ def lhe_via_binary(process, reweight) -> bool:
     (deliver_lhe_from_binary()): MadtRex reads and extends the npy events
     much faster than an LHE file, which it would decompress, parse and
     rewrite in full. Not when an LHE-only step runs before the reweighting:
-    the run_card [postprocessing] time_of_flight (see
+    the run_card [output] time_of_flight (see
     run_lhe_postprocessing()), nor for a validation MadtRex cannot run (see
     madtrex_unavailable())."""
     if reweight is None:
@@ -654,7 +654,7 @@ def run_scan(iterator, card_path, switch=None, reweight=None) -> None:
     import tomllib
     with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
         card = tomllib.load(f)
-        run_name = (card.get("output") or card.get("run") or {}).get("run_name", "run")
+        run_name = card.get("output", {}).get("run_name", "run")
 
     from madgraph.models import check_param_card as param_card_mod
     is_param_scan = isinstance(iterator, param_card_mod.ParamCardIterator)
@@ -717,7 +717,7 @@ def run_generation(switch=None, reweight=None) -> None:
 def _lhe_needed_by(switch, card, reweight=None) -> "str | None":
     """Why the run needs an LHE event file, or None when it does not: every
     post-processing tool run_selected_tools drives, the classic reweighting
-    module and the run_card [postprocessing] steps read the LHE file. MadtRex
+    module and the run_card [output] time_of_flight read the LHE file. MadtRex
     also reads the npy events. ``card`` is the raw TOML content of the
     run_card, ``reweight`` the prepare_reweighting() decision."""
     if reweight is not None and reweight.backend == "classic":
@@ -750,8 +750,7 @@ def force_lhe_output_if_needed(switch, reweight=None) -> None:
         return
     with open(path, "rb") as f:
         card = tomllib.load(f)
-    # [output] holds output_format; a card of an older version has it in [run]
-    output_format = (card.get("output") or card.get("run") or {}).get(
+    output_format = card.get("output", {}).get(
         "output_format", RunCardMG7()["output"]["output_format"])
     if output_format == "lhe":
         return

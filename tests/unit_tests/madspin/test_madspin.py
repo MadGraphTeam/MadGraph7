@@ -871,7 +871,7 @@ class TestFrameFromRunCard(unittest.TestCase):
         self.assertEqual(options['frame_id'], 16)
 
     def test_the_mg7_me_frame_reaches_madspin(self):
-        """mg7's run.me_frame, with its own default: [] is the lab frame the
+        """mg7's beam.me_frame, with its own default: [] is the lab frame the
         matrix element saw (frame_id 0, no boost), not the partonic c.m. (6)
         every other sample defaults to."""
         for frame, wanted in (([], 0), ([3], 8), ([3, 4], 24), ([1, 2], 6)):

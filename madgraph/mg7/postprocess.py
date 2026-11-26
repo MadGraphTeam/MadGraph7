@@ -284,7 +284,7 @@ def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
 
 def run_lhe_postprocessing(process) -> None:
     """Run the LHE-level post-processing configured in the run_card
-    [postprocessing] section on the generated event file (displaced-vertex
+    [output] section on the generated event file (displaced-vertex
     time-of-flight). Only applies when an LHE file exists."""
     lhe_path = _find_event_file(process.run_path)
     if lhe_path is None:

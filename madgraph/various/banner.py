@@ -7862,7 +7862,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('systematics', 'write_inputs', False, gridpack=True,
             comment="store x1, x2 and the scales for each event")
 
-        # ------------------------- [postprocessing] -------------------
+        # --------------------- [output] time_of_flight ---------------
         self.add_toml_param('output', 'time_of_flight', -1.0,
             comment="threshold in mm below which the lifetime is not written; -1 disables")
 
@@ -8570,7 +8570,6 @@ class RunCardMG7(RunCard):
         that."""
         self._reading = True
         try:
-            data = self.relocate_moved_keys(data)
             # [multiparticles] last: the jet list the card writes wins over the
             # one a max_jet_flavor set in [cuts] makes (_sync_jet_group)
             items = sorted(data.items(), key=lambda item:
@@ -8579,73 +8578,6 @@ class RunCardMG7(RunCard):
             self._read_items(items, unknown_warning)
         finally:
             self._reading = False
-
-    # keys that moved to another section (old card placement -> new one). A
-    # card written before the move, or a set command, is read into the new
-    # place; a key given in both places takes the new one.
-    MOVED_KEYS = {
-        'phasespace.cut_decays': 'cuts.cut_decays',
-        'phasespace.bw_cutoff': 'cuts.bw_cutoff',
-        'phasespace.xqcut': 'merging.xqcut',
-        'phasespace.auto_ptj_mjj': 'merging.auto_ptj_mjj',
-        'phasespace.ktdurham': 'merging.ktdurham',
-        'phasespace.ptlund': 'merging.ptlund',
-        'phasespace.dparameter': 'merging.dparameter',
-        'phasespace.merging_pdgs': 'merging.merging_pdgs',
-        'run.make_plots': 'histograms.make_plots',
-        'run.write_hwu': 'histograms.write_hwu',
-        'run.weighted_histograms': 'histograms.weighted_histograms',
-        'run.postprocessing_histograms': 'histograms.postprocessing_histograms',
-        'run.me_frame': 'beam.me_frame',
-        'run.output_format': 'output.output_format',
-        'run.use_pigz': 'output.use_pigz',
-        'run.lhe_compression': 'output.lhe_compression',
-        'run.lhe_gzip_algorithm': 'output.lhe_gzip_algorithm',
-        'run.run_name': 'output.run_name',
-        'postprocessing.time_of_flight': 'output.time_of_flight',
-        'beam.fixed_ren_scale': 'scale.fixed_ren_scale',
-        'beam.fixed_fact_scale': 'scale.fixed_fact_scale',
-        'beam.ren_scale': 'scale.ren_scale',
-        'beam.fact_scale1': 'scale.fact_scale1',
-        'beam.fact_scale2': 'scale.fact_scale2',
-        'beam.scale_factor': 'scale.scale_factor',
-        'beam.dynamical_scale_choice': 'scale.dynamical_scale_choice',
-        'beam.min_scale': 'scale.min_scale',
-        'beam.max_jet_flavor': 'cuts.max_jet_flavor',
-        'beam.jet_radius': 'merging.jet_radius',
-    }
-
-    def relocate_moved_keys(self, data):
-        """``data`` (section -> {key: value}) with the keys of MOVED_KEYS
-        written in their new section."""
-        moved = collections.OrderedDict(
-            (section, collections.OrderedDict(content) if isinstance(content, dict)
-             else content) for section, content in data.items())
-        for section in list(moved):
-            if not isinstance(moved[section], dict):
-                continue
-            for key in list(moved[section]):
-                # the entries no longer read (REMOVED_ENTRIES) are dropped
-                if '%s.%s' % (section.lower(), key.lower()) in self.REMOVED_ENTRIES:
-                    value = moved[section].pop(key)
-                    if value and key.lower() == 'systematics':
-                        logger.warning("[postprocessing] systematics is no longer supported "
-                                       "and is ignored: the [systematics] section computes "
-                                       "the scale and PDF variations")
-                    continue
-                target = self.MOVED_KEYS.get('%s.%s' % (section.lower(), key.lower()))
-                if target is None:
-                    continue
-                new_section, new_key = target.split('.')
-                value = moved[section].pop(key)
-                destination = moved.setdefault(new_section, collections.OrderedDict())
-                if new_key not in destination:
-                    destination[new_key] = value
-            if not moved[section] and section.lower() not in self.toml_sections \
-                    and section.lower() not in self.dynamic_sections:
-                # a table left empty by the move (an old [postprocessing])
-                del moved[section]
-        return moved
 
     def _read_items(self, items, unknown_warning):
         for section, content in items:
@@ -8661,13 +8593,7 @@ class RunCardMG7(RunCard):
             elif sl in self.toml_sections:
                 for key, value in content.items():
                     internal = '%s.%s' % (sl, key.lower())
-                    if internal in self.REMOVED_ENTRIES:
-                        if internal == 'postprocessing.systematics' and value:
-                            logger.warning(
-                                "[postprocessing] systematics is no longer supported "
-                                "and is ignored: the [systematics] section computes "
-                                "the scale and PDF variations")
-                    elif sl == 'custom_functions' and isinstance(value, dict):
+                    if sl == 'custom_functions' and isinstance(value, dict):
                         for name, parameter in value.items():
                             self.set_custom_parameter(key.lower(), name, parameter)
                     elif internal in self.derived_beam_keys:
@@ -8708,9 +8634,6 @@ class RunCardMG7(RunCard):
         if isinstance(name, str):
             raiseerror = opts.get('raiseerror', args[2] if len(args) > 2 else False)
             lname = name.lower()
-            if lname in self.MOVED_KEYS:
-                # a key that moved to another section (see MOVED_KEYS)
-                lname = name = self.MOVED_KEYS[lname]
             if lname == 'e_cm':
                 lname = name = 'beam.e_cm'
             if lname == 'pdf':
@@ -9622,11 +9545,6 @@ class RunCardMG7(RunCard):
 
     # hidden parameters that are read from old cards but never written back
     LEGACY_ALIASES = {'generation.systematics'}
-    # entries of old cards that are dropped: the legacy systematics.py run,
-    # replaced by the madspace [systematics]
-    REMOVED_ENTRIES = ('postprocessing.systematics', 'postprocessing.systematics_mur',
-                       'postprocessing.systematics_muf', 'postprocessing.systematics_pdf',
-                       'postprocessing.systematics_str_options')
 
     def write(self, output_file, template=None, python_template=True, **opt):
         """Write a valid ``run_card.toml``.

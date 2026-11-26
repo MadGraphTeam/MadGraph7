@@ -546,7 +546,7 @@ class TestPythia8MergingPlugin(unittest.TestCase):
 class TestPythia8MLMConeRadius(unittest.TestCase):
     """The MLM jet matching clusters the showered event with the D the events
     were clustered with at generation: JetMatching:coneRadius follows the
-    hidden run_card d of madevent and beam.jet_radius of mg7. A value set in
+    hidden run_card d of madevent and merging.jet_radius of mg7. A value set in
     the pythia8 card is kept; it used to stop the shower setup with "You can
     not change it"."""
 

@@ -354,7 +354,7 @@ as ``<rwgt>`` blocks in LHE files and as ``rwgt_<id>`` columns in the npy files.
     recomputed later. In LHE files they go into an ``<mgrwt>`` block.
 
 The scale and PDF variations of ``systematics.py`` are computed by ``[systematics]``
-instead. The ``systematics*`` entries of this section in older cards are ignored.
+instead.
 
 [vegas]
 -------

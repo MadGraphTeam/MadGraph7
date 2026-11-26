@@ -283,7 +283,7 @@ class MG7Cmd(Cmd):
 
     def _set_run_name(self, name):
         """Honour `launch -n NAME`: the mg7 run directory is
-        Events/<run.run_name>_NN, so the name is a run_card setting."""
+        Events/<output.run_name>_NN, so the name is a run_card setting."""
         path = os.path.join("Cards", "run_card.toml")
         run_card = RunCardMG7(path, consistency=False)
         if run_card["output"]["run_name"] != name:
@@ -517,7 +517,7 @@ def build_selector_cmd(mother=None):
                     # madevent parameters that are not a plain rename: the
                     # value is translated ("set dynamical_scale_choice 3") or
                     # several of them make one mg7 entry (fixed_fac_scale1 +
-                    # fixed_fac_scale2 -> beam.fixed_fact_scale), and the mg7
+                    # fixed_fac_scale2 -> scale.fixed_fact_scale), and the mg7
                     # shortcut "set mlm <mode>". mg7 values ("set sde_strategy
                     # denominators") come back as None and go on to the
                     # generic editor.

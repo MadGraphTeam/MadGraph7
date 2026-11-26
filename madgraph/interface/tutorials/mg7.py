@@ -75,8 +75,11 @@ code, and everything below is one file inside it.
 are marked.
 
   [run]             seed, device (cpu/gpu), cpu_mode, madspace_cpu_mode,
-                    the thread pools, output_format, verbosity          <-
+                    precision, the thread pools, verbosity              <-
+  [output]          run_name, output_format, LHE compression,
+                    lifetimes in the LHE file (time_of_flight)          <-
   [beam]            beam energies, PDF
+  [scale]           renormalization/factorization scales
   [generation]      events, the survey iterations and target precision,
                     batch sizes, systematics                            <-
   [cuts]            the cuts
@@ -86,10 +89,9 @@ are marked.
   [madnis]          the trainable one                                   <-
   [multiparticles]  labels, as in the process line
   [histograms]      what to plot, and whether to make the plots
-  [postprocessing]  lifetimes in the LHE file (time_of_flight)
   [gridpack]        self-contained event generation
 
-[vegas], [postprocessing], [gridpack] and most of [madnis] are hidden from
+[vegas], [merging], [gridpack] and most of [madnis] are hidden from
 the card by default: `update vegas` (or madnis, ...) at the launch prompt adds
 them, and `set vegas.bins 32` works either way.
 

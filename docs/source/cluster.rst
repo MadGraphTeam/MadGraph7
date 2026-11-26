@@ -45,7 +45,7 @@ How it works
    to ``Events/<run_name>_NN``, in the ``output_format`` of the run card. The cross
    section is the mean of the cross sections of the jobs weighted with their number of
    events, which is what the concatenated events measure, and its error follows from the
-   independence of the jobs. The post-processing of the ``[postprocessing]``
+   independence of the jobs. The LHE post-processing of the ``[output]``
    section (``time_of_flight``) is run on the result.
 
 With ``mode = "gridpack_only"``, the run stops after the merging and the merged

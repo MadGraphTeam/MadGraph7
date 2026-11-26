@@ -4300,7 +4300,7 @@ set draw_rivet_plots True
     def test_add_time_of_flight_mg7(self):
         """time-of-flight LHE post-processing chained on the mg7 output.
 
-        Mirrors test_add_time_of_flight: the run_card.toml [postprocessing]
+        Mirrors test_add_time_of_flight: the run_card.toml [output]
         time_of_flight threshold is applied to the generated events (this is the
         mg7 equivalent of the madevent 'add_time_of_flight' command), and the
         invariant lifetime written on the LHE particles is checked against the
@@ -4313,7 +4313,7 @@ set draw_rivet_plots True
              'generate p p > w+ z'],
             pjoin(self.path, 'MG7_tof'), datadir,
             switch_lines=None,
-            toml_edits=[lambda t: _set_toml_key(t, 'postprocessing', 'time_of_flight',
+            toml_edits=[lambda t: _set_toml_key(t, 'output', 'time_of_flight',
                                                 '4e-14')],
             events=100)
 

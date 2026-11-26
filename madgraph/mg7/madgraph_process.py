@@ -1043,6 +1043,7 @@ class MadgraphProcess:
 
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
+        scale_args = self.run_card["scale"]
 
         # built lazily by build_systematics (needs the subprocess data)
         self.systematics = None
@@ -1110,13 +1111,13 @@ class MadgraphProcess:
         # topologies of each subprocess, so the EnergyScale is built later, in
         # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
         # "ckkwl" is the same clustering without the alpha_s and pdf ladders.
-        self.ckkwl_scale = beam_args["dynamical_scale_choice"] == "ckkwl"
+        self.ckkwl_scale = scale_args["dynamical_scale_choice"] == "ckkwl"
         if not self.is_decay:
             # the jets of the clustering and of a merging cut have to be the
             # massless quarks of the model: no free max_jet_flavor when merging
             self.run_card.check_mlm_max_jet_flavor(
                 _proc_characteristic().get("max_jet_flavor", 0))
-        if beam_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
+        if scale_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
@@ -1131,19 +1132,19 @@ class MadgraphProcess:
                     beam_args["mlm_shower_start"] == "hardest_scale"
                 )
                 cfg.mlm_collider_energy = self.e_cm
-                cfg.mlm_max_jet_flavor = int(beam_args["max_jet_flavor"])
-        elif beam_args["dynamical_scale_choice"] in dynamical_scales:
+                cfg.mlm_max_jet_flavor = int(self.run_card["cuts.max_jet_flavor"])
+        elif scale_args["dynamical_scale_choice"] in dynamical_scales:
             self.mlm_clustering = False
             self.scale_kwargs = dict(
                 dynamical_scale_type=dynamical_scales[
-                    beam_args["dynamical_scale_choice"]
+                    scale_args["dynamical_scale_choice"]
                 ],
-                ren_scale_fixed=beam_args["fixed_ren_scale"],
-                fact_scale_fixed=beam_args["fixed_fact_scale"],
-                ren_scale=beam_args["ren_scale"],
-                fact_scale1=beam_args["fact_scale1"],
-                fact_scale2=beam_args["fact_scale2"],
-                scale_factor=float(beam_args.get("scale_factor", 1.)),
+                ren_scale_fixed=scale_args["fixed_ren_scale"],
+                fact_scale_fixed=scale_args["fixed_fact_scale"],
+                ren_scale=scale_args["ren_scale"],
+                fact_scale1=scale_args["fact_scale1"],
+                fact_scale2=scale_args["fact_scale2"],
+                scale_factor=float(scale_args["scale_factor"]),
             )
         else:
             raise ValueError("Unknown dynamical scale choice")
@@ -1155,16 +1156,16 @@ class MadgraphProcess:
             # The merging needs the scales of its own clustering history: a
             # custom scale or a factor on it would move the merging scale away
             # from the one the shower is matched to.
-            choice = beam_args["dynamical_scale_choice"]
+            choice = scale_args["dynamical_scale_choice"]
             if self.custom_functions.pop("scale", None) is not None:
                 logger.warning(
                     "custom scale ignored under dynamical_scale_choice = %s", choice)
-            if float(beam_args.get("scale_factor", 1.)) != 1.:
+            if float(scale_args["scale_factor"]) != 1.:
                 logger.warning(
                     "scale_factor ignored under dynamical_scale_choice = %s", choice)
             # lepton beams have no factorisation scale, fixed by default
-            if beam_args["fixed_ren_scale"] or (
-                    beam_args["fixed_fact_scale"] and not self.leptonic):
+            if scale_args["fixed_ren_scale"] or (
+                    scale_args["fixed_fact_scale"] and not self.leptonic):
                 logger.warning(
                     "fixed_ren_scale/fixed_fact_scale ignored under "
                     "dynamical_scale_choice = %s: the scales come from the "
@@ -1177,7 +1178,7 @@ class MadgraphProcess:
                 logger.warning(
                     "dynamical_scale_choice = %s has no meaning for a decay; "
                     "using the decaying mass as a fixed scale instead",
-                    beam_args["dynamical_scale_choice"]
+                    scale_args["dynamical_scale_choice"]
                 )
                 self.mlm_clustering = False
                 self.ckkwl_scale = False
@@ -1209,8 +1210,8 @@ class MadgraphProcess:
             if self.is_decay:
                 self.fixed_alphas_info = self.write_fixed_alphas_info()
             else:
-                fixed = ([float(beam_args["ren_scale"])]
-                         if beam_args["fixed_ren_scale"] else [])
+                fixed = ([float(scale_args["ren_scale"])]
+                         if scale_args["fixed_ren_scale"] else [])
                 self.fixed_alphas_info = self.write_fixed_alphas_info(
                     scales=fixed, nodes_per_decade=50, split_thresholds=True)
             self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
@@ -1448,7 +1449,7 @@ class MadgraphProcess:
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
         # alternative dynamical scales get the same factor as the nominal one
-        config.scale_factor = float(self.run_card["beam"].get("scale_factor", 1.))
+        config.scale_factor = float(self.run_card["scale.scale_factor"])
         config.write_inputs = bool(syst["write_inputs"])
         config.has_pdf = not self.leptonic
         # Without parton luminosity -- a decay, or leptonic beams -- there is no
@@ -1527,7 +1528,6 @@ class MadgraphProcess:
             return []
         if isinstance(entries, str):
             entries = [entries]
-        beam = self.run_card["beam"]
         generated = None
         # a custom scale replaces dynamical_scale_choice, so no variation is redundant
         custom_scale = "scale" in getattr(self, "custom_functions", {})
@@ -2836,7 +2836,6 @@ class MadgraphProcess:
         hands to the luminosity. With a dynamical scale annotate_lhe reads it
         back per event from SCALUP, which mg7 writes as mu_F.
         """
-        beam = self.run_card["beam"]
         if not self.run_card["scale.fixed_fact_scale"]:
             return None
         return float(self.run_card["scale.fact_scale1"])

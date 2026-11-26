@@ -56,7 +56,7 @@ def make_mg7_dir(root):
     os.makedirs(os.path.join(root, 'SubProcesses'))
     os.makedirs(os.path.join(root, 'Cards'))
     with open(os.path.join(root, 'Cards', 'run_card.toml'), 'w') as stream:
-        stream.write('[run]\nrun_name = "run"\n')
+        stream.write('[output]\nrun_name = "run"\n')
     return root
 
 
@@ -568,7 +568,7 @@ class MG7CmdTest(unittest.TestCase):
         and return the format the run ends up with."""
         path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
         with open(path, 'w') as stream:
-            stream.write('[run]\nrun_name = "run"\n'
+            stream.write('[output]\nrun_name = "run"\n'
                          'output_format = "%s"\n' % initial)
         cwd = os.getcwd()
         os.chdir(self.me_dir)
@@ -785,7 +785,7 @@ class MG7CmdTest(unittest.TestCase):
     def test_set_mlm_shortcut_and_jet_radius(self):
         """set mlm madevent turns on MLM merging with madevent's clustering
         options, set mlm mg7 goes back to mg7's; set d is madevent's name
-        for beam.jet_radius"""
+        for merging.jet_radius"""
         obj = self.cut_selector()
         obj.do_set('mlm madevent')
         beam = obj.run_card['beam']
@@ -2421,10 +2421,10 @@ class MG7CkkwlMergingCutTest(unittest.TestCase):
         self.launch = mg7_launch
         self.ms = ms
 
-    def run_card(self, **phasespace):
+    def run_card(self, **merging):
         card = bannermod.RunCardMG7()
-        for key, value in phasespace.items():
-            card.set('phasespace.' + key, value)
+        for key, value in merging.items():
+            card.set('merging.' + key, value)
         return card
 
     def process(self, card, leptonic=False):
@@ -2540,7 +2540,7 @@ class MG7CkkwlMergingCutTest(unittest.TestCase):
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
 class MG7DecayProductsTest(unittest.TestCase):
-    """Which particles phasespace.cut_decays = false leaves uncut: those an
+    """Which particles cuts.cut_decays = false leaves uncut: those an
     on-shell (decay-chain) propagator decays into, as MadEvent's check_decay."""
 
     def setUp(self):

@@ -2293,7 +2293,7 @@ class TestRunCardMG7(unittest.TestCase):
             os.remove(tmp.name)
 
     def test_mlm_jet_radius_defaults_to_madevents_d(self):
-        """beam.jet_radius is madevent's hidden run_card d (common/to_dj/D),
+        """merging.jet_radius is madevent's hidden run_card d (common/to_dj/D),
         which is 1 there and in FxFx; hidden in the TOML card too, so it is only
         written once it differs from that, and reads back as 1 otherwise"""
         import tomllib
@@ -2774,21 +2774,6 @@ class TestRunCardMG7(unittest.TestCase):
         rc5.set_custom_parameter('cut_parameters', 'pt_min', 30.0)
         self.assertIn('custom_functions', tomllib.loads(written(rc5)))
 
-    def test_legacy_systematics_entries_are_dropped(self):
-        """the [postprocessing] entries of the removed systematics.py run are
-        ignored, with a warning when it was on, and not written back"""
-        text = ('[postprocessing]\nsystematics = true\nsystematics_mur = [1.0]\n'
-                'time_of_flight = 0.5\n')
-        with self.assertLogs(bannermod.logger, level='WARNING') as logs:
-            rc = bannermod.RunCardMG7(text)
-        self.assertEqual(len(logs.output), 1, logs.output)
-        self.assertIn('no longer supported', logs.output[0])
-        self.assertEqual(rc['output']['time_of_flight'], 0.5)
-        out = io.StringIO()
-        rc.write(out, template=self.template)
-        self.assertNotIn('systematics_mur', out.getvalue())
-        self.assertNotIn('\nsystematics = ', out.getvalue())
-
     def test_read_card_with_e_cm_and_pdf(self):
         """a card written before the per-beam keys still reads"""
         rc = bannermod.RunCardMG7()
@@ -3233,7 +3218,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse(rc.is_mlm_merged())
 
     def test_from_LO_jet_radius(self):
-        """madevent's hidden d is the D of the MLM clustering: beam.jet_radius,
+        """madevent's hidden d is the D of the MLM clustering: merging.jet_radius,
         which the shower also reports as JetMatching:coneRadius"""
         lo = bannermod.RunCardLO()
         mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
@@ -3403,7 +3388,7 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertEqual(lo['dynamical_scale_choice'], -1)
 
     def test_scale_factor(self):
-        """[beam] scale_factor: default, legacy view, and the fixed-scale warning"""
+        """[scale] scale_factor: default, legacy view, and the fixed-scale warning"""
         rc = bannermod.RunCardMG7()
         self.assertEqual(rc['scale']['scale_factor'], 1.0)
         # legacy 'scalefact' view: the factor, or 1.0 when both scales are fixed
@@ -3823,17 +3808,17 @@ class TestRunCardMG7JetFlavours(unittest.TestCase):
     def test_read_keeps_the_jet_list_of_the_card(self):
         """a card that writes both keeps both, whatever the section order"""
         jet4 = '[%s]' % ', '.join(str(p) for p in self.JET4)
-        for text in ('[beam]\nmax_jet_flavor = 5\n[multiparticles]\njet = %s\n' % jet4,
-                     '[multiparticles]\njet = %s\n[beam]\nmax_jet_flavor = 5\n' % jet4):
+        for text in ('[cuts]\nmax_jet_flavor = 5\n[multiparticles]\njet = %s\n' % jet4,
+                     '[multiparticles]\njet = %s\n[cuts]\nmax_jet_flavor = 5\n' % jet4):
             rc = bannermod.RunCardMG7()
             rc.read(text, consistency=False)
             self.assertEqual(rc['cuts.max_jet_flavor'], 5)
             self.assertEqual(rc['multiparticles']['jet'], self.JET4)
 
     def test_read_without_multiparticles_follows_max_jet_flavor(self):
-        """e.g. a site default_run_card_mg7.toml setting only [beam]"""
+        """e.g. a site default_run_card_mg7.toml setting only [cuts]"""
         rc = bannermod.RunCardMG7()
-        rc.read('[beam]\nmax_jet_flavor = 5\n', consistency=False)
+        rc.read('[cuts]\nmax_jet_flavor = 5\n', consistency=False)
         self.assertEqual(sorted(rc['multiparticles']['jet']), sorted(self.JET5))
 
     def test_from_LO_5f(self):

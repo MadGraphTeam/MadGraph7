@@ -68,7 +68,7 @@ REWEIGHT = textwrap.dedent("""
     class Process:
         run_path = os.path.join("Events", {run!r})
         events_path = os.path.join(run_path, "events.lhe.gz")
-        run_card = {{"run": {{"output_format": "lhe"}}}}
+        run_card = {{"output": {{"output_format": "lhe"}}}}
     launch.run_reweighting(Process(), launch.REWEIGHT_CARD, requested={backend!r})
 """)
 

@@ -31,10 +31,10 @@ tests). Each test:
      which set the template defaults to; it also sets the event count and, for
      the hadronic tt~ decays, neutralises the jet cuts (see CLAUDE.md). An
      entry may add cuts (``"cuts": {"<cut>.<bound>": value}``), set
-     ``[phasespace] cut_decays`` (``"cut_decays": true``), set ``[beam]``
+     ``[cuts] cut_decays`` (``"cut_decays": true``), set ``[beam]``
      entries (``"beam": {"ebeam1": 250.0}``, e.g. the energy of a lepton
-     collider, whose default is 500 GeV per beam), set ``[phasespace]``
-     entries (``"phasespace": {"ktdurham": 30.0}``) and switch MadNIS off
+     collider, whose default is 500 GeV per beam), set ``[merging]``
+     entries (``"merging": {"ktdurham": 30.0}``) and switch MadNIS off
      (``"madnis": false``, see below),
   4. runs ``bin/generate_events -f`` and reads the cross-section from the
      madspace ``Events/*/info.json`` (``process.mean`` / ``process.error``),
@@ -173,9 +173,9 @@ def _require_mg7_runtime(test):
 
 
 def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
-                   cut_decays=None, madnis=None, beam=None, phasespace=None):
+                   cut_decays=None, madnis=None, beam=None, merging=None):
     """Set the event count, (optionally) neutralise the jet cuts, add the
-    entry's extra cuts and set its cut_decays, [beam] / [phasespace] entries
+    entry's extra cuts and set its cut_decays, [beam] / [merging] entries
     and MadNIS switch.
 
     The reference cross-sections were produced with FIXED scales
@@ -220,9 +220,15 @@ def _edit_run_card(toml_path, events, disable_jet_cuts, cuts=None,
         t, count = re.subn(r'(?m)^%s = .*$' % re.escape(key),
                            lambda m: '%s = %s' % (key, json.dumps(value)), t)
         assert count == 1, 'no [beam] %s in %s' % (key, toml_path)
-    for key, value in (phasespace or {}).items():
-        # e.g. the CKKW-L merging cut ktdurham / ptlund
+    for key, value in (merging or {}).items():
+        # e.g. the CKKW-L merging cut ktdurham / ptlund; an unmerged sample's
+        # card has no [merging] section
         t, count = re.subn(r'(?m)^%s = [^#\n]*' % key, '%s = %r ' % (key, value), t)
+        if not count:
+            t, count = re.subn(r'(?m)^\[merging\]\n',
+                               lambda m: m.group(0) + '%s = %r\n' % (key, value), t)
+        if not count:
+            t, count = t.rstrip('\n') + '\n\n[merging]\n%s = %r\n' % (key, value), 1
         assert count == 1, 'no %s in %s' % (key, toml_path)
     if madnis is not None:
         # the first `enable` after the [madnis] header ([vegas] and
@@ -342,7 +348,7 @@ class CheckXsecProcessesMG7Test(unittest.TestCase):
         _edit_run_card(toml, _EVENTS, entry.get('disable_jet_cuts', False),
                        entry.get('cuts'), entry.get('cut_decays'),
                        entry.get('madnis'), entry.get('beam'),
-                       entry.get('phasespace'))
+                       entry.get('merging'))
 
         log = pjoin(run_dir, 'mg7_gen.log')
         with open(log, 'w') as logfh:
