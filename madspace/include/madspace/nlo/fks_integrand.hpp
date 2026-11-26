@@ -263,9 +263,15 @@ private:
  * @ref MadnisLoss instead, without the virtual (the virtual trick then takes
  * @f$r_o@f$ times the Born at all points). The integrand of the training in
  * the latent space of the adaptive samplers is
- * @f$f(x, k) = \sigma(x, k) \, p_k@f$, with @f$\sigma@f$ the cross section of
- * @ref FKSChannelIntegrand, whose real part is divided by the probability
- * @f$p_k@f$ of the configuration @f$k@f$ and whose n-body part is not.
+ * @f$f(x, k) = (\sigma(x, k) - \sigma_n(x)) \, p_k + \sigma_n(x) / K@f$,
+ * with @f$\sigma@f$ the cross section of @ref FKSChannelIntegrand, whose real
+ * part is divided by the probability @f$p_k@f$ of the configuration @f$k@f$,
+ * and its n-body part @f$\sigma_n@f$, which is not. The n-body part goes to
+ * the @f$K@f$ configurations in equal parts, so that @f$f@f$ adds up to the
+ * integrand over the configurations and does not hold the probabilities the
+ * training learns (with @f$\sigma \, p_k@f$ a @ref DiscreteFlow chased its
+ * own probabilities, for the n-body part @f$\sigma_n p_k@f$ of every
+ * configuration grows with them).
  *
  * `batch` is the leading batch dimension, `d` the number of random numbers of
  * @ref FKSChannelIntegrand.

@@ -55,12 +55,13 @@ batches per subprocess turns each grid into a Flow, and the integration
 iterations run with the flows (generator_integrand with flow and
 madnis_training). The configurations keep the discrete choice of the state,
 which goes on adapting. With madnis_discrete a DiscreteFlow with the
-probabilities of the grid iterations as its prior chooses them instead. Its
-training integrand sigma p_k holds the n-body part times the probability the
-flow itself learns, so the flow chases its own probabilities: it lowers p_k
-where the real part of configuration k is negative and makes the weights
-negative there (e+ e- -> j j: the spread of the weights back at that of
-VEGAS after 3000 batches).
+probabilities of the grid iterations as its prior chooses them instead. The
+training integrand of FKSIntegrand has the real part times p_k and the n-body
+part in equal parts over the configurations, a target that does not hold the
+probabilities the flow learns (with the n-body part times p_k the flow chased
+its own probabilities: e+ e- -> j j at a fixed scale after 1000 batches
+5.2e-4 relative error with the DiscreteFlow and 3.9e-4 without, now 3.8e-4
+with it, p p > t t~ 5.1e-3 with and without it).
 """
 
 import json

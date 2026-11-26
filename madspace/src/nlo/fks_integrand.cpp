@@ -1109,8 +1109,13 @@ NamedVector<Value> FKSIntegrand::build_common_part(
     NamedVector<Value> result;
     if (_madnis_training) {
         Value cross_section = out.at("cross_section");
+        // the real part times p_k, and the n-body part in equal parts
+        Value nbody = out.at("nbody_weight");
+        Value real_part = fb.div(fb.sub(cross_section, nbody), configuration_weight);
+        Value nbody_part =
+            fb.mul(nbody, 1. / static_cast<double>(_configuration_count));
         result.push_back("full_weight", fb.mul(cross_section, det));
-        result.push_back("weight", fb.div(cross_section, configuration_weight));
+        result.push_back("weight", fb.add(real_part, nbody_part));
         result.push_back("latent", x);
         result.push_back(
             "adaptive_prob",

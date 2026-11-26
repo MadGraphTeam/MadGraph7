@@ -7,8 +7,8 @@ DiscreteFlow, FKSIntegrandProbability, MultiMadnisTraining on FKSIntegrand):
 - the state of a channel continuing from the globals of an earlier one, and
   a state that leaves the probabilities of the configurations to a
   DiscreteFlow;
-- runs of FKSRun with a MadNIS training against the cross sections of MG5aMC
-  per subprocess.
+- runs of FKSRun with a MadNIS training, also of a DiscreteFlow, against the
+  cross sections of MG5aMC per subprocess.
 
 The runs are those of test_fks_cross_section.py on the aMC@NLO outputs of
 MADSPACE_FKS_OUTPUTS.
@@ -45,10 +45,11 @@ def probability(integrand, context, latent, fks_index):
 @pytest.mark.parametrize("name", ["pp_ttx", "epem_jjj"])
 def test_training_outputs(name):
     """The training gives the cross section of FKSChannelIntegrand without the
-    virtual at its random numbers and configurations, times the probability
-    of the configuration, and the density of its samplers as
-    FKSIntegrandProbability, with the probabilities of the state or of a
-    DiscreteFlow."""
+    virtual at its random numbers and configurations, its real part times
+    the probability of the configuration and its n-body part over the number
+    of configurations, the weight of the point (the cross section over the
+    density), and the density of its samplers as FKSIntegrandProbability,
+    with the probabilities of the state or of a DiscreteFlow."""
     with fks_setup(name) as run:
         context = run.context
         integrand = run.integrands[0]
@@ -89,9 +90,6 @@ def test_training_outputs(name):
             fks_index = out["fks_index"].astype(np.int32)
             density = probability(generator, context, out["latent"], fks_index)
             np.testing.assert_allclose(density, out["adaptive_prob"], rtol=1e-10)
-            np.testing.assert_allclose(
-                out["weight"] / out["adaptive_prob"], out["full_weight"], rtol=1e-12
-            )
             # the probability of the configuration: the density over that of
             # the flow, the density with equally likely configurations times
             # their number
@@ -111,9 +109,17 @@ def test_training_outputs(name):
             )
             expected = outputs_by_name(channel_integrand, expected)
             assert np.all(expected["evaluated"] == 0)
+            cross_section, nbody = expected["cross_section"], expected["nbody_weight"]
             np.testing.assert_allclose(
-                out["weight"], expected["cross_section"] * choice, rtol=1e-10
+                out["full_weight"],
+                cross_section * choice / out["adaptive_prob"],
+                rtol=1e-10,
             )
+            # the n-body part in equal parts, the real part times p_k
+            target = (cross_section - nbody) * choice + nbody / count
+            scale = np.abs(cross_section - nbody) * choice + np.abs(nbody) / count
+            assert np.all(np.abs(out["weight"] - target) <= 1e-12 * scale + 1e-300)
+            assert np.any(nbody != 0)
             assert np.count_nonzero(out["weight"]) > POINTS // 4
 
 
@@ -198,11 +204,14 @@ def test_state_continues():
         assert not np.array_equal(fixed.virtual_ratios(), ratios)
 
 
-@pytest.mark.parametrize("name", ["epem_jj_fixed", "pp_ttx"])
-def test_against_mg5amc(name):
+@pytest.mark.parametrize(
+    "name, discrete", [("epem_jj_fixed", False), ("pp_ttx", False), ("pp_ttx", True)]
+)
+def test_against_mg5amc(name, discrete):
     """Runs with a MadNIS training between the grid and the integration
-    iterations agree with MG5aMC per subprocess, and their histograms add up
-    to the cross section."""
+    iterations, also of a DiscreteFlow of the configurations, agree with
+    MG5aMC per subprocess, and their histograms add up to the cross
+    section."""
     data, run = run_of(
         name,
         accuracy=0.0,
@@ -213,6 +222,7 @@ def test_against_mg5amc(name):
         generator=True,
         threads=2,
         madnis_batches=100,
+        madnis_discrete=discrete,
     )
     result = run.run()
     for key in ("lo", "nlo"):
