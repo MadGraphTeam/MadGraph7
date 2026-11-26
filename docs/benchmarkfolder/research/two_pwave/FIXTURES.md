@@ -282,7 +282,7 @@ So, apart from the heptagons, the point would still be unstable (410) on 4f1b06c
 
 The same output and point as the previous section, rerun on 2026-11-25 on TIRust bb62307 and the bridge part of v11 (poles-only, oneloop cdbc912; v12 differs from v11 only in the smoke test). For this run the output's `MadLoopCommons.f` admits N ≤ 7 and rank ≤ 7 in `DETECT_TIRUST`. The template keeps N, rank ≤ 6 until the bridge pin moves.
 
-**The point now runs through.** No seven-point call is refused. MadLoop still flags it unstable, because TIRust refuses some pentagons and hexagons:
+**The point now runs through.** MadLoop still flags it unstable, because TIRust refuses some pentagons and hexagons (below). *Correction (2026-11-26):* this section first said that no seven-point call is refused. That is wrong: the bridge's Fortran module refuses every seven-point and every rank-7 evaluation before it calls TIRust, and the capture shim does not see those (next section). So this run also lacks all 480 heptagon loop calls.
 
 | CTModeRun | c1 | c2 | finite | code | time |
 |---|---|---|---|---|---|
@@ -292,7 +292,8 @@ The same output and point as the previous section, rerun on 2026-11-25 on TIRust
 
 All in units of Born × α_s/(2π); Born = 1.4778648803e-08. The two loop directions agree to 7e-11 on c1 and 1e-14 on c2, and differ by 21% on the finite part. TIRust's own time was 207 s (CTModeRun 1) and 362 s (CTModeRun 2).
 
-**Reading.** Two effects can contribute to the c1 and c2 mismatch, and neither share has been measured.
+**Reading.** Three effects can contribute to the c1 and c2 mismatch, and none of their shares has been measured.
+- **The module's guard** (added 2026-11-26, see the next section) drops every heptagon loop and every loop with a rank-7 raised-power term.
 - **Refused loops contribute nothing.** `TIR_interface` returns `RES = 0`, and `ONIA_PW_DOUBLED` gives up the loop's raised-power terms at the first refusal, so their pole parts are missing.
 - **Some served values are wrong.** TIRust found that bb62307 served pentagons with a doubled massless line between two on-shell legs without their (D − 4) term. Per TIRust, their single pole can change too, not only the finite part. The term is proportional to the pentagon's B, so it vanishes for the flat pentagons of 2 → 2 processes, but not for this 2 → 3 process. For the same reason, the finite part is not quotable on bb62307.
 - **v13.** TIRust 488cb58 (bridge v13) adds the term. It refuses the cases it cannot yet correct, among them, per TIRust, heptagons where the Coulomb partial fractions triple a gluon line next to an on-shell heavy quark.
@@ -321,3 +322,32 @@ The distinct inputs are 331 (CTModeRun 1) and 332 (CTModeRun 2, the check pass),
 - 18 and 18, all six lines at rank 5: "ill-conditioned Gram matrix". In each direction, 6 have unit powers (4-point sub-Grams, conditioning ~1e-35) and 12 have a doubled line (3-point sub-Grams, conditioning 0 or 6e-78).
 
 The rank-4 unit-power hexagons of the previous section are served now. Both sets were sent to TIRust on 2026-11-25. Its next revision (bridge v13) keeps the dropped (D − 4) terms for one doubled line: in its scratch build that serves the collinear-pair calls and the 6 unit-power hexagons of CTModeRun 1. The 12 doubled-line hexagons need the two-variable form of that correction.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust 142610e + bridge v14)
+
+The same output and point, rerun on 2026-11-26 on TIRust 142610e and the bridge part of v14 (poles-only, oneloop cdbc912). `DETECT_TIRUST` is widened as in the previous section, and the two loop directions ran in parallel.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −17.585041167334 | −8.033370231611 | 116.389273374 | 410 | 5622 s |
+| 2 | −17.585041169105 | −8.033370231609 | 116.389273359 | 410 | 5650 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); the Born (1.4778648803e-08) and the prediction's terms are those of the previous section. The two loop directions agree to 1e-10 on c1, 2e-13 on c2 and 1.3e-10 on the finite part. TIRust's own time was 300 s (CTModeRun 1) and 315 s (CTModeRun 2).
+
+**Capture.** In each direction 67506 DP calls reach TIRust, and it serves all of them.
+
+**Why the point is still 410.** In CTModeRun 1 the output reports 410 with accuracy 1 only when a loop integral fails. An instrumented copy of the output finds the failures. It labels every early return of the DP wrappers in `TIRUST_interface.f`, and prints a line for every failed loop in `TIR_interface.f` and `ONIA_PW_DOUBLED`. Its CTModeRun 1 pass (5218 s) reproduces the result above to all digits and finds 768 failures. All of them fail at the status of the module's evaluation:
+
+| Lines | Rank | Powers | Calls |
+|---|---|---|---|
+| 7 | 5 | unit | 480 |
+| 5 | 7 | one tripled | 48 |
+| 6 | 7 | one tripled | 32 |
+| 6 | 7 | two doubled | 208 |
+
+The bridge's Fortran module (`mtirust.f90`, `valid_shapes`) still refuses N > 6 or rank > 6 with `TIRUST_UNSUPPORTED` ("TIRust bridge v1 qualifies n=1..6 and rank=0..6"), before it calls `ml_tirust_evaluate_dp` or `ml_tirust_evaluate_dp_powers`. The bridge's own domain and both capability queries (`ml_tirust_supports`, `ml_tirust_supports_powers`) admit N, rank ≤ 7. So MadLoop's pre-checks pass and the calls fail afterwards. The v11 module has the same guard.
+
+Each failure drops its whole loop (`RES = 0`). This run therefore lacks every heptagon loop and the 288 loops with a rank-7 raised-power term, and its poles are no test of the integrals. Reported to TIRust on 2026-11-26.
+
+**For later runs.** `tools/tirust_capture` wraps the C entry points, so it does not see refusals inside the Fortran module. "fail 0" in its summary does not mean that every integral was computed. The instrumented output does catch these refusals.
