@@ -42,7 +42,7 @@
  
 --- a/crates/iregi-rust/src/direct/numeric.rs
 +++ b/crates/iregi-rust/src/direct/numeric.rs
-@@ -278,24 +278,24 @@
+@@ -281,24 +281,24 @@
  
  /// `acc += factor * value` for all four Laurent slots.
  #[inline(always)]
@@ -71,7 +71,7 @@
          cfma(&mut acc[slot], factor, &value[slot]);
      }
  }
-@@ -303,30 +303,30 @@
+@@ -306,30 +306,30 @@
  /// `acc += factor * value` in the active slots: all four, or only UV and
  /// finite when the lane has no IR poles (`FULL = false`).
  #[inline(always)]
@@ -107,7 +107,7 @@
      }
  }
  
-@@ -335,55 +335,55 @@
+@@ -338,55 +338,55 @@
  /// computes for a factor with a +0 imaginary part (the zero terms it adds
  /// leave an accumulator started at +0 unchanged).
  #[inline(always)]
@@ -176,7 +176,7 @@
  }
  
  /// Outcome of a small dense solve.
-@@ -559,11 +559,25 @@
+@@ -562,11 +562,25 @@
      fn dimension_factors_round_trip() {
          let mut value = [c(1., 2.), c(-3., 0.5), c(0.25, -1.), c(7., 3.)];
          let original = value;
@@ -206,7 +206,7 @@
  }
 --- a/crates/iregi-rust/src/direct/exec.rs
 +++ b/crates/iregi-rust/src/direct/exec.rs
-@@ -96,8 +96,8 @@
+@@ -106,8 +106,8 @@
  /// coefficients replace the binary64 recursion; everything else stays
  /// binary64.
  #[derive(Clone)]
@@ -217,7 +217,7 @@
      threshold: f64,
  }
  
-@@ -129,13 +129,13 @@
+@@ -139,13 +139,13 @@
  }
  
  #[derive(Clone)]
@@ -234,7 +234,7 @@
      gram_external: Vec<usize>,
      /// Auxiliary executor of the expansion: its top box is filled from its
      /// triangles up to this rank instead of its Gram system, and lanes
-@@ -206,6 +206,7 @@
+@@ -223,6 +223,7 @@
      constants: Arc<Vec<T>>,
      evaluators: [Option<MasterEvaluator<T>>; 4],
      native: [Option<oneloop::NativeEvaluator<T>>; 4],
@@ -242,7 +242,7 @@
      /// How the workspace evaluates masters; a plan variant that needs a
      /// family its base plan has not gets that family's evaluator on first use.
      master_mode: DirectMasters,
-@@ -343,7 +344,7 @@
+@@ -381,7 +382,7 @@
      normalization: C<T>,
  }
  
@@ -251,7 +251,7 @@
  where
      Complex<T>: EvaluationDomain,
  {
-@@ -353,6 +354,9 @@
+@@ -391,6 +392,9 @@
          masters: DirectMasters,
      ) -> Result<Self, ReductionError> {
          let _oem_license = crate::license::unlock();
@@ -261,7 +261,7 @@
          let zero = czero(&prototype);
          let one = C::new(prototype.one(), prototype.zero());
          let constants: Arc<Vec<T>> = Arc::new(
-@@ -363,10 +367,16 @@
+@@ -401,10 +405,16 @@
          );
          let mut evaluators: [Option<MasterEvaluator<T>>; 4] = Default::default();
          let mut native: [Option<oneloop::NativeEvaluator<T>>; 4] = Default::default();
@@ -278,7 +278,7 @@
              match masters {
                  DirectMasters::Native => {
                      native[family_index] = Some(
-@@ -390,9 +400,11 @@
+@@ -428,9 +438,11 @@
          }
          let pi = prototype.pi();
          let a = prototype.euler() + &pi.log();
@@ -293,7 +293,7 @@
          let mut pi_power = prototype.one();
          for _ in 0..2 + i32::from(plan.settings.dimension_shift) {
              pi_power *= &pi;
-@@ -488,6 +500,7 @@
+@@ -529,6 +541,7 @@
              native_output: vec![zero.clone(); 3],
              master_key: Vec::with_capacity(25),
              native,
@@ -301,7 +301,7 @@
              master_mode: masters,
              master_inputs: Default::default(),
              master_values: Vec::new(),
-@@ -878,7 +891,14 @@
+@@ -942,7 +955,14 @@
              if plan.masters[family].is_empty() {
                  continue;
              }
@@ -317,7 +317,7 @@
                  // A plan variant (a relation variant or a Coulomb partial
                  // fraction) can need a family its base plan has not: its
                  // masters must be evaluated, never left at the previous
-@@ -891,9 +911,6 @@
+@@ -955,9 +975,6 @@
                  }
                  self.native[family] = Some(native_evaluator(family, self.prototype.get_precision())?);
              }
@@ -327,7 +327,7 @@
              for &(subset, index) in &plan.masters[family] {
                  let members = &plan.subsets[subset].members;
                  let d = |i: usize, j: usize| self.distances[members[i] * n + members[j]].clone();
-@@ -958,7 +975,14 @@
+@@ -1022,7 +1039,14 @@
                          provided_master(shared, family, &input[..arity + 1], &mut self.native_output, &self.prototype)
                      });
                      if !provided {
@@ -343,7 +343,7 @@
                      }
                      if let (true, Some(store)) = (dd_key, dd_store) {
                          if let Some(value) = read_dd_master(&self.native_output) {
-@@ -1165,7 +1189,7 @@
+@@ -1229,7 +1253,7 @@
      /// Laurent slots a gather computes: all four, or the UV and finite ones
      /// of an IR-free lane (the others are then zero times the scale).
      const fn gather_slots<const FULL: bool>() -> &'static [usize] {
@@ -352,7 +352,7 @@
      }
  
      /// Exact key of a gather's Cartesian moments: everything the gather
-@@ -1235,7 +1259,7 @@
+@@ -1299,7 +1323,7 @@
          let count = plan.coefficient_counts[id] as usize;
          let mut largest = 0.0f64;
          for value in &self.values[start as usize..start as usize + count] {
@@ -361,7 +361,7 @@
                  if !(z.re.is_finite() && z.im.is_finite()) {
                      return false;
                  }
-@@ -1292,7 +1316,7 @@
+@@ -1356,7 +1380,7 @@
                      std::collections::hash_map::Entry::Vacant(entry) => {
                          let small = DirectPlanData::new(self.subset_settings(size, rank))
                              .map_err(|e| e.to_string())?;
@@ -370,7 +370,7 @@
                              .map_err(|e| e.to_string())?;
                          // It evaluates this lane's inputs, at their precision.
                          executor.set_input_precision(self.input_bits);
-@@ -1301,6 +1325,9 @@
+@@ -1365,6 +1389,9 @@
                          entry.insert(executor)
                      }
                  };
@@ -380,7 +380,7 @@
                  let values = self.subset_row(&subset.members, |z| {
                      Complex::new(DoubleFloat::from(z.re.to_f64()), DoubleFloat::from(z.im.to_f64()))
                  });
-@@ -1648,7 +1675,7 @@
+@@ -1961,7 +1988,7 @@
                  }
                  let factor = cscale(ga, constant);
                  for b in 0..k_len - 1 - a {
@@ -389,7 +389,25 @@
                  }
              }
          }
-@@ -2340,8 +2367,8 @@
+@@ -2001,7 +2028,7 @@
+                 for term in terms {
+                     debug_assert_ne!(term.geometry, NO_GEOMETRY, "partial-fraction weights are geometry");
+                     let factor = cscale(&self.geometry[term.geometry as usize], &self.constants[term.constant as usize]);
+-                    lfma_slots::<T, FULL>(&mut acc, &factor, &self.values_jet[source - 1][term.src as usize]);
++                    lfma_slots::<T, FULL, POLES>(&mut acc, &factor, &self.values_jet[source - 1][term.src as usize]);
+                 }
+                 for &(weight, member) in own {
+                     let lower = jet.lower[usize::from(member)][c];
+@@ -2011,7 +2038,7 @@
+                     let shifted = raise[lower as usize] as usize;
+                     let value = if shifted == 0 { self.values[dst].clone() } else { self.values_jet[shifted - 1][dst].clone() };
+                     let factor = self.geometry[weight as usize].clone();
+-                    lfma_slots::<T, FULL>(&mut acc, &factor, &value);
++                    lfma_slots::<T, FULL, POLES>(&mut acc, &factor, &value);
+                 }
+             }
+             if c == 0 {
+@@ -2913,8 +2940,8 @@
              // L[n] = int_0^1 x^n log(a + b x) dx, n <= max_k.
              l_values.clear();
              l_values.resize(max_k + 1, self.zero.clone());
@@ -400,7 +418,7 @@
              } else if b_zero {
                  let log_a = log(&a);
                  for (n, value) in l_values.iter_mut().enumerate() {
-@@ -2409,7 +2436,7 @@
+@@ -2982,7 +3009,7 @@
                      *value = csub(&cscale(&log_end, &inverse), &cscale(&cmul(&b, &m_values[n + 1]), &inverse));
                  }
              }
@@ -409,7 +427,7 @@
              for &(lambda, k, index) in entries {
                  let mut value = lzero(&self.zero);
                  if a_zero && b_zero {
-@@ -2438,20 +2465,22 @@
+@@ -3011,20 +3038,22 @@
                          );
                          let inverse = self.prototype.one() / &self.prototype.from_usize(n + 1);
                          i0 = cadd(&i0, &cscale(&weight, &inverse));
@@ -436,7 +454,19 @@
                  }
                  self.values[index as usize] = value;
              }
-@@ -2710,8 +2739,8 @@
+@@ -4028,9 +4057,9 @@
+                     let child = powers + ibp_unit(bits, j) - ibp_unit(bits, k);
+                     let value = self.ibp(child)?;
+                     let weight = C::new(self.prototype.from_usize(power(powers, j) as usize), self.prototype.zero());
+-                    lfma(&mut sum, &weight, &value);
++                    lfma::<T, POLES>(&mut sum, &weight, &value);
+                 }
+-                div_dimension(&mut sum, &(self.prototype.one() / &self.prototype.from_i64(c0)));
++                div_dimension::<T, POLES>(&mut sum, &(self.prototype.one() / &self.prototype.from_i64(c0)));
+                 self.ibp_memo.insert(powers, sum.clone());
+                 return Ok(sum);
+             }
+@@ -4049,8 +4078,8 @@
          let w = powers - ibp_unit(bits, l);
          let base = self.ibp(w)?;
          let mut common = base;
@@ -447,7 +477,7 @@
          let mut result = lzero(&self.zero);
          let size = active.len();
          for (local_i, &i) in active.iter().enumerate() {
-@@ -2723,12 +2752,12 @@
+@@ -4062,12 +4091,12 @@
                  }
                  let child = w - ibp_unit(bits, i) + ibp_unit(bits, j);
                  let value = self.ibp(child)?;
@@ -463,12 +493,62 @@
          self.ibp_memo.insert(powers, result.clone());
          Ok(result)
      }
-@@ -2900,13 +2929,13 @@
+@@ -4173,39 +4202,39 @@
+         }
+         // rhs_k for k = c and for the better row of a, b.
+         let mut dimension = self.ibp(mu)?;
+-        mul_dimension(&mut dimension, &self.prototype.from_i64(5 - total));
++        mul_dimension::<T, POLES>(&mut dimension, &self.prototype.from_i64(5 - total));
+         let row = if cnorm2(&r_ac) >= cnorm2(&r_bc) { a } else { b };
+         let mut rhs = [lzero(&self.zero), lzero(&self.zero)];
+         for (slot, k) in [row, c].into_iter().enumerate() {
+             let mut acc: L4<T> = std::array::from_fn(|s| csub(&self.zero, &dimension[s]));
+             for i in [a, b, c] {
+                 let value = self.ibp(mu + unit(i) - unit(k))?;
+-                lfma(&mut acc, &real(power(mu, i) as i64), &value);
++                lfma::<T, POLES>(&mut acc, &real(power(mu, i) as i64), &value);
+             }
+             rhs[slot] = acc;
+         }
+         let r_kc = if row == a { &r_ac } else { &r_bc };
+         let mut y_c = lzero(&self.zero);
+-        lfma(&mut y_c, &cinv(r_kc), &rhs[0]);
++        lfma::<T, POLES>(&mut y_c, &cinv(r_kc), &rhs[0]);
+         let mut u = rhs[1].clone();
+-        lfma(&mut u, &csub(&self.zero, &r_cc), &y_c);
++        lfma::<T, POLES>(&mut u, &csub(&self.zero, &r_cc), &y_c);
+         // W: a lower power of b.
+         let mut w = lzero(&self.zero);
+         let k1 = self.ibp(mu + 2 * unit(a) - unit(b))?;
+-        lfma(&mut w, &real(mu_a as i64 + 1), &k1);
++        lfma::<T, POLES>(&mut w, &real(mu_a as i64 + 1), &k1);
+         let k2 = self.ibp(mu + unit(a) + unit(c) - unit(b))?;
+-        lfma(&mut w, &real(mu_c as i64), &k2);
++        lfma::<T, POLES>(&mut w, &real(mu_c as i64), &k2);
+         let mut numerator = u.clone();
+-        lfma(&mut numerator, &r_cb, &y_c);
+-        lfma(&mut numerator, &csub(&self.zero, &r_ca), &w);
++        lfma::<T, POLES>(&mut numerator, &r_cb, &y_c);
++        lfma::<T, POLES>(&mut numerator, &csub(&self.zero, &r_ca), &w);
+         // Y_a = (mu_a / Z) numerator / (A - 2 eps).
+         let y_a = {
+             let mut scaled = lzero(&self.zero);
+-            lfma(&mut scaled, &cmul(&real(mu_a as i64), &cinv(&z)), &numerator);
++            lfma::<T, POLES>(&mut scaled, &cmul(&real(mu_a as i64), &cinv(&z)), &numerator);
+             div_dimension_complex(&scaled, &coefficient)
+         };
+         let mut y_b = u;
+-        lfma(&mut y_b, &csub(&self.zero, &r_ca), &y_a);
++        lfma::<T, POLES>(&mut y_b, &csub(&self.zero, &r_ca), &y_a);
+         let y_b: L4<T> = std::array::from_fn(|s| cmul(&y_b[s], &cinv(&r_cb)));
+         let (y_l, mu_l) = if l == a {
+             (y_a, mu_a)
+@@ -4472,13 +4501,13 @@
                          } else {
-                             &self.values_jet[b - 1][src]
+                             &self.values_jet[b as usize - 1][src]
                          };
--                        lfma(&mut accumulator[a + b], &factors[a], value);
-+                        lfma::<T, POLES>(&mut accumulator[a + b], &factors[a], value);
+-                        lfma(&mut accumulator[c as usize], &factors[a], value);
++                        lfma::<T, POLES>(&mut accumulator[c as usize], &factors[a], value);
                      }
                  }
              }
@@ -479,7 +559,7 @@
                  }
              }
              let dst = instruction.dst as usize;
-@@ -2990,9 +3019,9 @@
+@@ -4564,9 +4593,9 @@
                  let src = term.src as usize;
                  if term.geometry == NO_GEOMETRY {
                      let factor = C::new(constant.clone(), self.prototype.zero());
@@ -491,7 +571,7 @@
                      }
                      continue;
                  }
-@@ -3003,16 +3032,16 @@
+@@ -4577,16 +4606,16 @@
                          continue;
                      }
                      let factor = if term.constant == 0 { ga.clone() } else { cscale(ga, constant) };
@@ -511,7 +591,7 @@
                  }
              }
              let dst = instruction.dst as usize;
-@@ -3170,12 +3199,12 @@
+@@ -4744,12 +4773,12 @@
                              cscale(geometry, &constants[term.constant as usize])
                          }
                      };
@@ -525,8 +605,8 @@
 +                        div_dimension::<T, POLES>(&mut accumulator, &constants[inverse as usize]);
                      }
                      // Only plans with a Taylor jet have partial fractions.
-                     PostOp::TaylorShift => unreachable!("a partial fraction without a Taylor jet"),
-@@ -3708,11 +3737,11 @@
+                     PostOp::TaylorShift { .. } => unreachable!("a partial fraction without a Taylor jet"),
+@@ -5282,11 +5311,11 @@
                      if real {
                          for (local, product) in &self.sparse_real[from as usize..to as usize] {
                              let total = &mut self.g_buffer[block_start + *local as usize];
@@ -540,7 +620,7 @@
                          }
                      }
                  }
-@@ -3727,14 +3756,14 @@
+@@ -5301,14 +5330,14 @@
                          continue;
                      }
                      let value = &self.g_buffer[usize::from(lambda) * stride + src as usize];
@@ -558,7 +638,7 @@
                      *slot = cscale(slot, &self.gather_scale);
                  }
                  self.values[moment_base + e] = total;
-@@ -3761,7 +3790,7 @@
+@@ -5335,7 +5364,7 @@
                          let mut total = self.values[moment_base + line[j] as usize].clone();
                          for k in 0..j {
                              let factor = cscale(&self.tpow[j - k], &self.binomials[j][k]);
@@ -567,7 +647,7 @@
                          }
                          self.values[moment_base + line[j] as usize] = total;
                      }
-@@ -3809,7 +3838,7 @@
+@@ -5383,7 +5412,7 @@
          }
          self.profile = DirectProfile::default();
          self.master_rows = 0;
@@ -576,7 +656,7 @@
          if batched_masters {
              let started = self.timer();
              self.evaluate_masters(batch)?;
-@@ -3959,7 +3988,7 @@
+@@ -5574,7 +5603,7 @@
                      continue;
                  }
              }
@@ -585,7 +665,7 @@
                  let started = self.timer();
                  if let Err(error) = self.geometry_jets() {
                      statuses.push(LaneStatus::Unstable(error));
-@@ -3990,7 +4019,7 @@
+@@ -5605,7 +5634,7 @@
                      continue;
                  }
              }
@@ -594,7 +674,7 @@
                  self.values[unit as usize] = [self.zero.clone(), self.zero.clone(), self.zero.clone(), self.one.clone()];
              }
              self.detect_ir_free(&plan);
-@@ -4059,7 +4088,7 @@
+@@ -5673,7 +5702,7 @@
                      Convention::MadLoop => {
                          let mut out = [uv, v[1].clone(), v[2].clone(), v[3].clone()];
                          if flags.odd {
@@ -603,7 +683,7 @@
                                  *slot = csub(&self.zero, slot);
                              }
                          }
-@@ -4067,20 +4096,26 @@
+@@ -5681,20 +5710,26 @@
                      }
                      Convention::IregiNative => {
                          let single_ir = csub(&v[1], &cscale(&v[2], &constants.a));
@@ -636,7 +716,7 @@
                      finite &= entry.re.is_finite() && entry.im.is_finite();
                      lane_out[4 * index + slot] = entry;
                  }
-@@ -4532,4 +4567,13 @@
+@@ -6202,4 +6237,13 @@
          assert_native_c0_is_handwritten(0.0f64);
          assert_native_c0_is_handwritten(DoubleFloat::from(0.0));
      }
@@ -693,10 +773,10 @@
 -                executor.set_shared_subsets(self.shared.clone());
 +                // Include the parent's double-double master store when present.
 +                executor.set_shared_subsets(self.shared_subsets());
-                 executor.gram_wanted_ranks = None;
-                 let result = executor
-                     .reduce_batch(&KinematicsBatch { rows: 1, components: 1, values })
-@@ -1385,7 +1388,7 @@
+                 // A pooled executor keeps the variant of its last lane, which
+                 // another parent (or thread) may have reduced.
+                 executor.lane_independent = self.lane_independent;
+@@ -1388,7 +1391,7 @@
                          for i in 0..nm {
                              let at = if i > 0 { grading.plus(lower, i) } else { lower };
                              let term = spz.at(at as usize).ok_or("small-Gram expansion: shifted C0 missing")?;
@@ -705,7 +785,7 @@
                                  acc[slot] = csub(&acc[slot], &term[slot]);
                              }
                          }
-@@ -1404,10 +1407,10 @@
+@@ -1407,10 +1410,10 @@
                      let kappa = grading.key(index).1;
                      let Some(c0) = spz.at(index) else { continue };
                      for m in 0..nm {
@@ -718,7 +798,7 @@
                                  out[slot] = cadd(&out[slot], &source[slot]);
                              }
                          }
-@@ -1463,7 +1466,7 @@
+@@ -1466,7 +1469,7 @@
          // stay +0 bit for bit either way.
          let full = !self.ir_free;
          let fma = |acc: &mut L4<T>, factor: &C<T>, value: &L4<T>| {
@@ -727,7 +807,7 @@
          };
          // The recursion's scalar factors, by multiplicity, built once by the
          // operations each key used to repeat (so the same bits).
-@@ -1479,7 +1482,7 @@
+@@ -1482,7 +1485,7 @@
          // Divisor (a - 2 eps) of the metric keys, a = 2 (lambda + |kappa|) + 4 - N,
          // by lambda + |kappa| - 1 (lambda >= 1).
          let dims: Vec<[T; 3]> = (1..=top)
@@ -736,7 +816,7 @@
              .collect();
          // Only the coefficients the results depend on.
          let structure: Vec<(usize, usize)> = pairs.iter().map(|&(a, b, _)| (a, b)).collect();
-@@ -1537,8 +1540,8 @@
+@@ -1540,8 +1543,8 @@
                          }
                          fma(&mut acc, neg_w, &bracket);
                      }
@@ -747,7 +827,7 @@
                      cur.insert_at(&grading, index, out, &zero);
                  }
              }
-@@ -1562,7 +1565,7 @@
+@@ -1565,7 +1568,7 @@
                      if let Some(prev) = prev {
                          fma(&mut acc, &neg_delta, prev.need_at(grading.plus(here, j), || (0, add(kappa, j)), what)?);
                      }
@@ -756,7 +836,7 @@
                      cur.insert_at(&grading, index, out, &zero);
                  }
              }
-@@ -1618,7 +1621,7 @@
+@@ -1621,7 +1624,7 @@
                  for index in grading.range(r) {
                      let Some(value) = latest.at(index) else { continue };
                      let sum = next.at_mut(index).ok_or("small-Gram expansion: coefficient missing")?;
@@ -765,7 +845,7 @@
                          sum[slot] = cadd(&sum[slot], &value[slot]);
                          diff = diff.max(cnorm2(&value[slot]).to_f64().sqrt());
                          size = size.max(cnorm2(&sum[slot]).to_f64().sqrt());
-@@ -1732,12 +1735,12 @@
+@@ -1735,12 +1738,12 @@
                          for n1 in 0..nm {
                              fma(&mut acc, &csub(&zero, &xt0(n1)), &rhs[n1]);
                          }
@@ -781,7 +861,7 @@
                              let mut bracket = lzero(&zero);
                              fma(&mut bracket, &real(2), &metric);
                              fma(&mut bracket, &csub(&zero, &real(1)), c0);
-@@ -1748,7 +1751,7 @@
+@@ -1751,7 +1754,7 @@
                                  for n1 in 0..nm {
                                      fma(&mut acc, &xtm[i][n1], &rhs[n1]);
                                  }
@@ -790,7 +870,7 @@
                                  cur.insert(&grading, (0, add(kappa, i)), out, &zero)?;
                              }
                          }
-@@ -1801,7 +1804,7 @@
+@@ -1804,7 +1807,7 @@
                  for index in grading.range(r) {
                      let Some(value) = expansion.at(index) else { continue };
                      let Some(other) = alternative.at(index) else { return expansion.clone() };
@@ -799,7 +879,7 @@
                          diff = diff.max(cnorm2(&csub(&value[slot], &other[slot])).to_f64().sqrt());
                          size = size.max(cnorm2(&value[slot]).to_f64().sqrt());
                      }
-@@ -1953,7 +1956,7 @@
+@@ -1956,7 +1959,7 @@
                                  }
                              }
                              let divisor = &gc_divisor[usize::from(kappa[l])];
@@ -808,7 +888,7 @@
                              cur.insert_at(&grading, here as usize, out, &zero);
                          }
                      }
-@@ -1970,7 +1973,7 @@
+@@ -1973,7 +1976,7 @@
                              continue;
                          }
                          let mut metric = cur.need_at(metric_at, || (1, kappa), "small-Gram/Cayley expansion")?.clone();
@@ -817,7 +897,7 @@
                          let mut bracket = lzero(&zero);
                          fma(&mut bracket, &gc_two, &metric);
                          if prev.is_none() {
-@@ -1992,7 +1995,7 @@
+@@ -1995,7 +1998,7 @@
                          if let Some(prev) = prev {
                              fma(&mut acc, &y0gj, prev.need_at(grading.plus(here, gi), || (0, add(kappa, gi)), "small-Gram/Cayley expansion")?);
                          }
@@ -826,7 +906,7 @@
                          let here = grading.index(0, &kappa).ok_or_else(|| {
                              format!("small-Gram expansion: coefficient {:?} outside the expansion ranks", (0u16, kappa))
                          })?;
-@@ -2038,7 +2041,7 @@
+@@ -2041,7 +2044,7 @@
                          for index in grading.range(r) {
                              let Some(value) = latest.at(index) else { continue };
                              let Some(sum) = next.at_mut(index) else { continue };

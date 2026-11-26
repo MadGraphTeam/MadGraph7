@@ -1,4 +1,4 @@
-oneloopmaster_revision=07fc754f656c4744c9464f7c0f47d00b708b37e6
+oneloopmaster_revision=cdbc912ab7b8327a23fe5fc08ddb0c58b9d55a21
 laurent_tags=-1,-2
 finite_roots=0
 A0: inputs=2 outputs=2 root_instructions=2 helpers=2 branches=0 bytes=813
