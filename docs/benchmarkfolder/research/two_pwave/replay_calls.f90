@@ -13,13 +13,13 @@ program replay
   character(len=400) :: line, msg
   integer :: id, n, rank, chk, ios, i, j, status, sdp, nserved, nref, nc
   character(len=1) :: fin
-  character(len=12) :: pw
-  integer :: powers(6)
+  character(len=14) :: pw
+  integer :: powers(7)
   integer(8) :: h(12)
-  real(dp) :: mu2d, sh(0:3,6), inv(6,6)
-  complex(dp) :: md(6)
-  real(qp) :: shq(0:3,6), invq(6,6), mu2q
-  complex(qp) :: mq(6)
+  real(dp) :: mu2d, sh(0:3,7), inv(7,7)
+  complex(dp) :: md(7)
+  real(qp) :: shq(0:3,7), invq(7,7), mu2q
+  complex(qp) :: mq(7)
   complex(qp), allocatable :: cq(:,:)
   complex(dp), allocatable :: cd(:,:)
   nserved = 0; nref = 0
@@ -56,8 +56,8 @@ program replay
         nref = nref + 1
       endif
       pw = ''
-      write(pw,'(6i2)') powers(1:n)
-      write(*,'(a,i4,a,i2,a,i2,a,a12,a,i2,a,i2,2x,a)') 'call', id, ' n', n, ' r', rank, ' pow', pw, &
+      write(pw,'(7i2)') powers(1:n)
+      write(*,'(a,i4,a,i2,a,i2,a,a14,a,i2,a,i2,2x,a)') 'call', id, ' n', n, ' r', rank, ' pow', pw, &
            '  QP', status, '  DP', sdp, trim(msg)
       deallocate(cq, cd)
     endif

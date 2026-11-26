@@ -351,3 +351,36 @@ The bridge's Fortran module (`mtirust.f90`, `valid_shapes`) still refuses N > 6 
 Each failure drops its whole loop (`RES = 0`). This run therefore lacks every heptagon loop and the 288 loops with a rank-7 raised-power term, and its poles are no test of the integrals. Reported to TIRust on 2026-11-26.
 
 **For later runs.** `tools/tirust_capture` wraps the C entry points, so it does not see refusals inside the Fortran module. "fail 0" in its summary does not mean that every integral was computed. The instrumented output does catch these refusals.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust 142610e + bridge v15)
+
+The same output and point, rerun on 2026-11-26 on TIRust 142610e and the bridge part of v15 (poles-only, oneloop cdbc912). v15 differs from v14 only in the Fortran module: `valid_shapes` accepts N, rank ≤ 7. Both directions ran in parallel, with the instrumented output of the previous section and failed-call capture.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −21.012183234058 | −8.996632538801 | 113.325865051 | 410 | 5887 s |
+| 2 | −21.016312841494 | −9.000561602820 | 113.331865163 | 410 | 5966 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); the Born (1.4778648803e-08) and the prediction's terms are those of the bb62307 section. Against the prediction:
+- c1 is off by 4.1e-4 (CTModeRun 1) and 2.2e-4 (CTModeRun 2);
+- c2 by 3.7e-4 and 6.2e-5.
+
+The two loop directions differ by 2.0e-4 on c1, 4.4e-4 on c2 and 5.3e-5 on the finite part. TIRust's own time was 997 s and 1111 s.
+
+**Capture.** In each direction 73074 DP calls reach TIRust. It refuses 12 in CTModeRun 1 and 6 in CTModeRun 2, and the instrumented output reports exactly these failures and no others. All are rank 7 with two doubled lines:
+
+| CTModeRun | Lines | Calls | Distinct |
+|---|---|---|---|
+| 1 | 6 | 8 | 4 |
+| 1 | 7 | 4 | 2 |
+| 2 | 6 | 4 | 2 |
+| 2 | 7 | 2 | 1 |
+
+The distinct inputs are in `data/refused_ggg_3p28_3p18_20gev_142610e_v15_ct1.txt.gz` (sha256 480edd93ead6c33e…) and `_ct2.txt.gz` (090efd40c4169c85…).
+
+**Replay** on 142610e + v15 (`data/replay_ggg_3p28_3p18_20gev_142610e_v15_ct{1,2}.txt.gz`; `replay_calls.f90` now takes seven lines). QP (256 bits) and DP refuse all nine with "ill-conditioned Gram matrix":
+- in the hexagons, 4-point sub-Grams, conditioning 1.0e-35 and 1.2e-34;
+- in the heptagons, 3-point sub-Grams, conditioning 2.7e-32, 5.8e-78 and 0.
+
+**Reading.** Each refused call drops its loop, so CTModeRun 1 lacks 12 loops and CTModeRun 2 lacks 6. The direction with fewer missing loops is closer to the prediction on both poles. That fits the remaining 2e-4 to 4e-4 being these loops, but it is no proof until TIRust serves them. The finite part is not quotable yet for the same reason. Sent to TIRust on 2026-11-26.
