@@ -1775,8 +1775,19 @@ c Compute the multi-channel enhancement factor 'enhance'.
 
 c All real charts use the same Born projection and coupling scale.
 c This also keeps the partition normalized for mixed Born orders.
+c Without event projection, the real emission is weighted with the
+c factor of the xi=0 Born (p_born, at shat), i.e. with the same factor
+c as all its counterterms (see include_multichannel_enhance(3)), so
+c that the soft and collinear cancellations hold within each
+c integration channel. p_born_norad is not used for this: its incoming
+c momenta are at shat and its outgoing ones at (1-xi)*shat, so the
+c factor computed on it would depend on how the Born propagators are
+c built from the external momenta. p_born_norad is only kept as a
+c fallback if the xi=0 Born is not available.
       enhance_real=1.d0
-      if (imode.eq.2) then
+      if (imode.eq.2 .and. .not.use_evpr .and. p_born(0,1).gt.0d0) then
+         enhance_real=enhance
+      elseif (imode.eq.2) then
          p_born_used(:,:) = p_born_ev(:,:)
          if (.not.use_evpr) p_born_used(:,:) = p_born_norad(:,:) 
          if (p_born_ev(0,1).gt.0d0) then
