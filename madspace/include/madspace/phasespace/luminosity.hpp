@@ -252,6 +252,30 @@ LeptonSHatResult lepton_s_hat(
     FunctionBuilder& fb, Value s_min, Value s_max, Value r, double power
 );
 
+/// Result of @ref lepton_s_hat_inverse: the random number and the Jacobian.
+struct LeptonSHatInverseResult {
+    /// The random number of @ref lepton_s_hat.
+    Value r;
+    /// @f$|dr/d\hat s|@f$, the reciprocal of that of @ref lepton_s_hat.
+    Value det;
+};
+
+/**
+ * The inverse of @ref lepton_s_hat, from the gap @f$s_\mathrm{max} - \hat s@f$,
+ * which the caller has to carry exactly for the same reason as the forward
+ * map: @f$r = (\text{gap} / (s_\mathrm{max} - s_\mathrm{min}))^{1-p}@f$, above
+ * one for an @f$\hat s@f$ below @f$s_\mathrm{min}@f$.
+ *
+ * @param fb      Builder to emit into.
+ * @param s_gap   @f$s_\mathrm{max} - \hat s@f$.
+ * @param s_min   Lower bound on @f$\hat s@f$.
+ * @param s_max   Upper bound, normally @f$s_\mathrm{lab}@f$.
+ * @param power   @f$p@f$, the density's reduction exponent.
+ */
+LeptonSHatInverseResult lepton_s_hat_inverse(
+    FunctionBuilder& fb, Value s_gap, Value s_min, Value s_max, double power
+);
+
 /// Result of @ref lepton_split: the two fractions and the Jacobian.
 struct LeptonSplitResult {
     Value x1, x2, omx1, omx2, det;
@@ -305,6 +329,43 @@ LeptonSplitResult lepton_split(
     Value omtau,
     Value r_x,
     Value r_swap,
+    double s_lab,
+    double power,
+    double jacobian_power = 0.
+);
+
+/// Result of @ref lepton_split_inverse.
+struct LeptonSplitInverseResult {
+    /// The random numbers of @ref lepton_split.
+    Value r_x, r_swap;
+    /// @f$1 - \tau@f$, exact from the @f$1 - x@f$ of both beams.
+    Value omtau;
+    /// The reciprocal of the Jacobian of @ref lepton_split.
+    Value det;
+};
+
+/**
+ * The inverse of @ref lepton_split. The drawn fraction is the larger one, so
+ * it is the larger @f$x@f$ and the smaller @f$1 - x@f$ of the two beams, and
+ * the beam that carries it gives the random number of the choice, 1/4 for
+ * the first beam and 3/4 for the second. The beam is that of the smaller
+ * @f$1 - x@f$, since both @f$x@f$ are often one. @f$1 - \tau = (1 - x_a) + x_a (1 -
+ * x_b)@f$ comes from the @f$1 - x@f$ of both, without the cancellation of
+ * @f$1 - x_a x_b@f$.
+ *
+ * @param fb       Builder to emit into.
+ * @param x1, x2   The momentum fractions.
+ * @param omx1, omx2  Their @f$1 - x@f$.
+ * @param s_lab    Squared collider energy.
+ * @param power    @f$p@f$ of the sampling.
+ * @param jacobian_power As for @ref lepton_split.
+ */
+LeptonSplitInverseResult lepton_split_inverse(
+    FunctionBuilder& fb,
+    Value x1,
+    Value x2,
+    Value omx1,
+    Value omx2,
     double s_lab,
     double power,
     double jacobian_power = 0.

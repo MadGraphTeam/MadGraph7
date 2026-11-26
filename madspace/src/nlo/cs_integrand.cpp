@@ -831,27 +831,6 @@ CSRealChannelIntegrand::CSRealChannelIntegrand(
             );
         }
     }
-    // the densities need the inverse maps, which the mappings of dressed
-    // leptons have not
-    auto dressed = [](const Mapping& mapping) {
-        return mapping.output_types().index_map().contains("omx1");
-    };
-    for (auto& mapping : dipole_channels) {
-        if (dressed(mapping)) {
-            throw std::invalid_argument(
-                "CSRealChannelIntegrand: no channels with dressed leptons, whose "
-                "mappings have no inverse"
-            );
-        }
-    }
-    for (auto& mapping : real_channels) {
-        if (dressed(mapping)) {
-            throw std::invalid_argument(
-                "CSRealChannelIntegrand: no channels with dressed leptons, whose "
-                "mappings have no inverse"
-            );
-        }
-    }
     for (std::size_t m = 0; m < borns.size(); ++m) {
         if (borns[m].born.particle_count() + 1 != n) {
             throw std::invalid_argument(

@@ -5,11 +5,10 @@ channels) at the same random numbers, on the aMC@NLO outputs of the
 references of test_cs_cross_section.py (MADSPACE_FKS_OUTPUTS): hadron beams
 (p p > e+ e-, t t~, a a, e+ e- j, w+), lepton beams (e+ e- > j j, j j j),
 elastic photons (a a > t t~), decays (t > b w+ with a massive and a
-massless b), QED corrections (p p > e+ e- [QED]) and the scale of the user,
-on channels of the dipoles and of the diagrams of the real processes, also
-with the channels of the default (pairs) and of the diagrams alone (reals).
-Dressed leptons have no channel densities, whose mappings have no
-inverse.
+massless b), QED corrections (p p > e+ e- [QED]), dressed leptons (e+ e- >
+j j and t t~ with ISR) and the scale of the user, on channels of the
+dipoles and of the diagrams of the real processes, also with the channels
+of the default (pairs) and of the diagrams alone (reals).
 
 The real emissions agree bit for bit, the weights to the rounding of their
 parts, whose sums are taken in another order. The spin correlations of
@@ -46,6 +45,8 @@ NAMES = [
     "t_bwg",
     "aa_ttx",
     "pp_epem_qed",
+    "epem_jj_isr",
+    "epem_ttx_isr",
 ]
 POINTS = 200
 # real processes and channels per real process of each run (the first ones
@@ -157,10 +158,12 @@ def test_user_scale(choice, monkeypatch):
         compare_with_driver(run)
 
 
-def test_channel_weights():
+@pytest.mark.parametrize("name", ["pp_ttx", "epem_ttx_isr"])
+def test_channel_weights(name):
     """The weights of the channels of a real process add up to one at the
-    events of each channel where it has a density."""
-    with cs_setup("pp_ttx") as run:
+    events of each channel where it has a density, also for dressed leptons,
+    whose inverse maps take 1 - x."""
+    with cs_setup(name) as run:
         integrand = run.integrands[0]
         functions = [
             Runtime(integrand.channel_integrand(c, run.context), run.context)
@@ -184,17 +187,6 @@ def test_channel_weights():
                 weights[valid, c],
                 rtol=1e-14,
             )
-
-
-def test_dressed_leptons():
-    """The densities of the channels need the inverse maps, which those of
-    dressed leptons have not: their real stream takes the channels and weights
-    of channels="dipoles", which the C++ integrand does not."""
-    with cs_setup("epem_ttx_isr") as run:
-        integrand = run.integrands[0]
-        assert integrand.channels_kind == "dipoles"
-        with pytest.raises(NotImplementedError):
-            integrand.channel_integrand(0, run.context)
 
 
 def test_refusals():

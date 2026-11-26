@@ -49,9 +49,8 @@ MappingChannelWeights), which is the C++ integrand of a channel
 (CSRealChannelIntegrand). Real-stream errors at the same points per channel
 (pairs / reals / combined): p p > t t~ 0.29 / 0.32 / 0.20 with 66 / 46 /
 154 channels, p p > e+ e- j 2.9 / 4.8 / 2.5 with 672 / 544 / 1568. With
-channels="dipoles", the scheme of the first driver and that of dressed
-leptons (their mappings have no inverse), the channels are those of all
-dipoles on all Born diagrams, the weight of a channel |c| of its dipole
+channels="dipoles", the scheme of the first driver, the channels are those
+of all dipoles on all Born diagrams, the weight of a channel |c| of its dipole
 over the sum over the dipoles of the real, c the color weight of CSDipoles
 at alpha = 1, times amp2 of its Born diagram over that of all Born diagrams
 at the Born of the dipole, so that the weights add up to one at every
@@ -96,8 +95,10 @@ Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
 of pdlabel among the lep_densities of the output, reduced by (1 - x)^p of
 the power p of the sampling of their momentum fractions in PhaseSpaceMapping
 (lepton_sampling_power), with the real emission and its dipoles at the
-momentum fractions of the Born, and their real stream the channels of
-channels="dipoles". Beams of elastic photons from protons (lpp
+momentum fractions of the Born, which the inverse maps of the densities of
+the channels take with 1 - x. Relative errors of their real stream at the
+same points (pairs / dipoles): e+ e- > j j with ISR 2.1% / 9.3%, e+ e- >
+t t~ 0.37% / 0.40%. Beams of elastic photons from protons (lpp
 2 and -2) take the equivalent-photon density of epa_proton of MadFKS
 (ElasticPhotonDensity). Neither the leptons nor the photons radiate QCD, so
 that their Borns have no K and P operators. The luminosities of all beams
@@ -1019,9 +1020,6 @@ class CSRealIntegrand(CSGeneratorIntegrand):
         if channels not in CHANNELS:
             raise ValueError(f"nlo.cs: channels of {CHANNELS} expected, not {channels}")
         entry = block["reals"][index]
-        if channels != "dipoles" and subprocesses[entry["subprocess"]].lepton_power:
-            # the mappings of dressed leptons have no inverse for the densities
-            channels = "dipoles"
         self.channels_kind = channels
         source = subprocesses[entry["subprocess"]]
         self.source = source

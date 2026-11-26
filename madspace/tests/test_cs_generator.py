@@ -15,13 +15,12 @@
 - the histograms of each stream (CSObservableHistograms) against those of
   the driver in Python (CSHistograms) at the outputs of the integrand;
 - runs of CSRun through the generator, also with the channels of the real
-  diagrams alone and with a MadNIS training, against the cross sections of
-  MG5aMC, the LO also per subprocess, with histograms that add up to the
-  cross section;
+  diagrams alone, of dressed leptons and with a MadNIS training, against the
+  cross sections of MG5aMC, the LO also per subprocess, with histograms that
+  add up to the cross section;
 - the refusals of a discrete flow, of a training without a flow, of an
   adaptive mapping of another dimension or with a condition, of fractions
-  of the virtual outside (0, 1] and of the real stream of dressed leptons,
-  whose channels have no densities.
+  of the virtual outside (0, 1].
 
 The runs are those of test_cs_cross_section.py on the aMC@NLO outputs of
 MADSPACE_FKS_OUTPUTS.
@@ -358,8 +357,7 @@ def test_histograms(name):
 def test_refusals():
     """CSIntegrand refuses a training without a flow, an adaptive mapping of
     another dimension or with a condition and fractions of the virtual
-    outside (0, 1], the CS integrands a discrete flow, and the real stream
-    of dressed leptons the integrand of a channel."""
+    outside (0, 1], and the CS integrands a discrete flow."""
     with cs_setup("pp_ttx", streams=("nbody",)) as run:
         context = run.context
         integrand = run.integrands[0]
@@ -391,12 +389,6 @@ def test_refusals():
             integrand.generator_integrand(
                 0, context, "refuse", 1.0, 0.005, 10, None, None, None, discrete
             )
-    with cs_setup("epem_ttx_isr", streams=("real",)) as run:
-        integrand = run.integrands[0]
-        with pytest.raises(NotImplementedError):
-            integrand.generator_integrand(
-                0, run.context, "refuse", 1.0, 0.005, 10, None, None
-            )
 
 
 @pytest.mark.parametrize(
@@ -406,13 +398,15 @@ def test_refusals():
         ("pp_epem", {}),
         ("t_bw", {}),
         ("pp_ttx", {"channels": "reals"}),
+        ("epem_ttx_isr", {}),
         ("epem_jj_fixed", {"madnis_batches": 100}),
         ("pp_epem", {"madnis_batches": 100}),
     ],
 )
 def test_against_mg5amc(name, options):
     """Runs through the event generator, with the channels of the real
-    diagrams alone and with a MadNIS training, agree with MG5aMC, the LO also
+    diagrams alone, of dressed leptons and with a MadNIS training, agree with
+    MG5aMC, the LO also
     per subprocess, and their histograms add up to the cross section."""
     tag = "_".join([name, *(f"{k}{v}" for k, v in options.items())])
     data, run = run_of(

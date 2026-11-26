@@ -66,6 +66,10 @@ namespace madspace {
  *   every event if `leptonic` and for a decay).
  * - `x2` – `float`, shape `(batch,)` – second parton momentum fraction (1 for
  *   every event if `leptonic` and for a decay).
+ * - `omx1`, `omx2` – `float`, shape `(batch,)` – 1 - x1 and 1 - x2, exact
+ *   close to x = 1. Present only with `lepton_sampling_power`.
+ *
+ * The inverse map takes the outputs and returns the random numbers.
  *
  * In addition every mapping returns a `det` (`float`, shape `(batch,)`), the
  * Jacobian of the transformation.
@@ -135,7 +139,7 @@ public:
      *                         exponent the density was reduced with. One
      *                         further random number is consumed, the mapping
      *                         also returns `omx1`/`omx2` (1 - x, kept exact),
-     *                         and the inverse map is not available. Not
+     *                         which the inverse map takes back. Not
      *                         compatible with @p mirror_beams or a 2 -> 1
      *                         topology.
      * @param sqrt_s_hat_min_condition  Add the `sqrt_s_hat_min` condition, a
@@ -232,7 +236,7 @@ public:
      *                         exponent the density was reduced with. One
      *                         further random number is consumed, the mapping
      *                         also returns `omx1`/`omx2` (1 - x, kept exact),
-     *                         and the inverse map is not available. Not
+     *                         which the inverse map takes back. Not
      *                         compatible with @p mirror_beams or a 2 -> 1
      *                         topology.
      * @param sqrt_s_hat_min_condition  Add the `sqrt_s_hat_min` condition, a

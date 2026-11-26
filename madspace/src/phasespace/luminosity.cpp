@@ -1,6 +1,7 @@
 #include "madspace/phasespace/luminosity.hpp"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 using namespace madspace;
@@ -221,6 +222,22 @@ LeptonSHatResult madspace::lepton_s_hat(
     return {s_hat, s_gap, det};
 }
 
+LeptonSHatInverseResult madspace::lepton_s_hat_inverse(
+    FunctionBuilder& fb, Value s_gap, Value s_min, Value s_max, double power
+) {
+    auto batch = fb.batch_size({s_max});
+    auto span = fb.sub(s_max, s_min);
+    auto v = fb.div(s_gap, span);
+    auto r = fb.pow(v, fb.full({1. - power, batch}));
+    // the reciprocal of span v^p / (1 - p); pow gives zero for v = 0, where
+    // the forward Jacobian vanishes, so that the inverse is infinite there as
+    // the reciprocal of zero
+    auto det = fb.div(
+        fb.full({1. - power, batch}), fb.mul(span, fb.pow(v, fb.full({power, batch})))
+    );
+    return {r, det};
+}
+
 LeptonSplitResult madspace::lepton_split(
     FunctionBuilder& fb,
     Value s_hat,
@@ -282,6 +299,43 @@ LeptonSplitResult madspace::lepton_split(
         fb.gather(index, fb.stack({omx_b, omx_a})),
         det
     };
+}
+
+LeptonSplitInverseResult madspace::lepton_split_inverse(
+    FunctionBuilder& fb,
+    Value x1,
+    Value x2,
+    Value omx1,
+    Value omx2,
+    double s_lab,
+    double power,
+    double jacobian_power
+) {
+    auto batch = fb.batch_size({x1});
+    // the drawn fraction is the larger one, with the smaller 1 - x
+    auto x_a = fb.max(x1, x2);
+    auto omx_a = fb.min(omx1, omx2);
+    auto omx_b = fb.max(omx1, omx2);
+    // 1 - tau = (1 - x_a) + x_a (1 - x_b), and tau = x_a x_b as the forward map
+    // builds x_b = tau / x_a
+    auto omtau = fb.add(omx_a, fb.mul(x_a, omx_b));
+    auto tau = fb.mul(x1, x2);
+    auto x_min = fb.sqrt(tau);
+    auto span = fb.div(omtau, fb.add(fb.full({1., batch}), x_min));
+    auto [r_x, det_a] = fb.lepton_x_sample_inverse(omx_a, span, power, jacobian_power);
+    // the second beam carries it where 1 - x2 < 1 - x1, as index 1 of
+    // sample_discrete; x1 and x2 are often both one
+    auto second =
+        fb.cut_one(fb.sub(omx1, omx2), 0., std::numeric_limits<double>::infinity());
+    auto r_swap = fb.add(fb.full({0.25, batch}), fb.mul(second, 0.5));
+    // the reciprocals of 1 / x_a, omx_b^(jacobian_power - p) and 2 / s_lab
+    auto det = fb.product({
+        det_a,
+        x_a,
+        fb.pow(omx_b, fb.full({power - jacobian_power, batch})),
+        fb.full({0.5 * s_lab, batch}),
+    });
+    return {r_x, r_swap, omtau, det};
 }
 
 Mapping::Result LeptonLuminosityInvariant::build_forward_impl(

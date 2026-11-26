@@ -1033,9 +1033,18 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         // A dressed-lepton density diverges as x -> 1, which the hadronic
         // x1 = tau^r split gives no weight to. See @ref lepton_split. Any
         // rapidity window from the cuts is left to the cuts here.
+        // the drawn fraction first, then the beam that carries it, in this
+        // order rather than in that of the evaluation of the arguments
+        Value r_x = next_random();
+        Value r_swap = next_random();
         auto split = lepton_split(
-            fb, s_hat, lepton_omtau, next_random(), next_random(),
-            _sqrt_s_lab * _sqrt_s_lab, _lepton_power
+            fb,
+            s_hat,
+            lepton_omtau,
+            r_x,
+            r_swap,
+            _sqrt_s_lab * _sqrt_s_lab,
+            _lepton_power
         );
         x1 = split.x1;
         x2 = split.x2;
@@ -1253,16 +1262,6 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
     const NamedVector<Value>& inputs,
     const NamedVector<Value>& conditions
 ) const {
-    if (_lepton_power != 0.) {
-        // The dressed split picks which beam carries the drawn fraction, and
-        // recovering that choice needs a comparison the instruction set does
-        // not have. Nothing asks for it -- Integrand inverts the adaptive
-        // mapping and the discrete samplers, never the phase space itself --
-        // so this refuses rather than returning something plausible.
-        throw std::runtime_error(
-            "PhaseSpaceMapping: no inverse map with dressed-lepton beams"
-        );
-    }
     Value p_ext_lab = inputs.at(0), x1 = inputs.at(1), x2 = inputs.at(2);
     if (_two_to_one) {
         auto [r, det_x] = fb.x1x2_to_r(x1, x2, _sqrt_s_lab * _sqrt_s_lab);
@@ -1390,7 +1389,27 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         _t_mapping
     );
 
-    if (_map_luminosity && _y_max_lab >= 0.) {
+    // 1 - s_hat/s_lab of the dressed-lepton root, exact from the 1 - x of the
+    // beams, for the inverse of lepton_s_hat below
+    Value lepton_omtau;
+    if (_map_luminosity && _lepton_power != 0.) {
+        // the inverse of lepton_split, with the 1 - x the forward map returns:
+        // recomputed from x they would be zero for a quarter of the events
+        auto split = lepton_split_inverse(
+            fb,
+            x1,
+            x2,
+            inputs.at(3),
+            inputs.at(4),
+            _sqrt_s_lab * _sqrt_s_lab,
+            _lepton_power
+        );
+        // reversed below, so that r_x comes before r_swap as in the forward map
+        random_out_reversed.push_back(split.r_swap);
+        random_out_reversed.push_back(split.r_x);
+        dets.push_back(split.det);
+        lepton_omtau = split.omtau;
+    } else if (_map_luminosity && _y_max_lab >= 0.) {
         auto [r, det_x] =
             fb.x1x2_to_r_window(x1, x2, _sqrt_s_lab * _sqrt_s_lab, _y_max_lab);
         random_out_reversed.push_back(r);
@@ -1416,7 +1435,23 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         if (data.decay.e_max > 0.) {
             sqrt_s_max = fb.min(sqrt_s_max, data.decay.e_max);
         }
-        if (decay_index != 0 || _map_luminosity) {
+        if (decay_index == 0 && _map_luminosity && _lepton_power != 0.) {
+            // the inverse of lepton_s_hat, from the gap s_max - s_hat =
+            // s_lab (1 - tau) - (s_lab - s_max), which is exact where s_hat
+            // has rounded to s_max
+            ++invariant_index;
+            auto s_max = fb.square(sqrt_s_max);
+            data.mass = data.computed_mass.value();
+            data.mass2 = fb.square(data.mass.value());
+            double s_lab = _sqrt_s_lab * _sqrt_s_lab;
+            auto s_gap = fb.sub(
+                fb.mul(lepton_omtau, s_lab),
+                fb.sub(fb.full({s_lab, fb.batch_size({s_max})}), s_max)
+            );
+            auto root = lepton_s_hat_inverse(fb, s_gap, s_min, s_max, _lepton_power);
+            random_out.push_back(root.r);
+            dets.push_back(root.det);
+        } else if (decay_index != 0 || _map_luminosity) {
             auto s_max = fb.square(sqrt_s_max);
             if (decay_index == 0 && _sqrt_s_hat_min_condition) {
                 s_min = raised_s_min(fb, s_min, s_max, conditions);

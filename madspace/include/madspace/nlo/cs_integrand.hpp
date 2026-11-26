@@ -388,8 +388,7 @@ public:
      *                      emission.
      * @throws std::invalid_argument if the pieces do not fit together: the
      *         mappings, dipoles, libraries or Borns with other particles,
-     *         orders or keys, a channel outside the channels, channels with
-     *         dressed leptons (whose mappings have no inverse), or the scales
+     *         orders or keys, a channel outside the channels, or the scales
      *         of the user without a reference scale.
      */
     CSRealChannelIntegrand(

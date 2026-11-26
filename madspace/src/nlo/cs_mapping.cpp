@@ -401,13 +401,18 @@ Mapping::Result CSMapping::build_inverse_impl(
     const NamedVector<Value>& conditions
 ) const {
     auto projection = build_projection(fb, inputs, conditions);
-    auto born = _born.build_inverse(
-        fb,
-        {{"momenta", projection.at("born_momenta")},
-         {"x1", projection.at("born_x1")},
-         {"x2", projection.at("born_x2")}},
-        conditions
-    );
+    NamedVector<Value> born_inputs{
+        {"momenta", projection.at("born_momenta")},
+        {"x1", projection.at("born_x1")},
+        {"x2", projection.at("born_x2")}
+    };
+    if (dressed(_born)) {
+        // the emitter and the spectator of dressed leptons are in the final
+        // state, so that the Born has the fractions of the real emission
+        born_inputs.push_back("omx1", inputs.at("omx1"));
+        born_inputs.push_back("omx2", inputs.at("omx2"));
+    }
+    auto born = _born.build_inverse(fb, born_inputs, conditions);
     auto r = fb.unstack(born.at("random"));
     r.push_back(projection.at("r_1"));
     r.push_back(projection.at("r_2"));

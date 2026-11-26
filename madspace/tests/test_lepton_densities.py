@@ -263,6 +263,66 @@ def call_mapping(mapping, context, r):
     return [np.array(np.from_dlpack(t)) for t in runtime.call([r])]
 
 
+def decay_chain():
+    """e+ e- > Z > q q~, q~ > q~ g, with the invariant of the q~ after that
+    of the root."""
+    return ms.Topology(
+        ms.Diagram(
+            [0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [ms.Propagator(mass=91.188, width=2.44), ms.Propagator()],
+            [["i0", "i1", "p0"], ["p0", "o0", "p1"], ["p1", "o1", "o2"]],
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "topology, swap",
+    [
+        ([0.0, 0.0, TOP, TOP], 2),
+        ([0.0, 0.0, 0.0, 0.0, 0.0], 2),
+        (decay_chain(), 3),
+    ],
+    ids=["ttx", "t_channel", "decays"],
+)
+def test_mapping_inverse(topology, swap):
+    """The inverse of the dressed-lepton PhaseSpaceMapping takes the outputs
+    of the forward map back to its random numbers, with the reciprocal of
+    its Jacobian, also where 1 - x has no digit in x. The random numbers are
+    those of the invariants, then of the drawn fraction and of the beam that
+    carries it, of which the inverse returns 1/4 or 3/4."""
+    mapping = ms.PhaseSpaceMapping(
+        topology, ENERGY, leptonic=False, lepton_sampling_power=LEPTON_POWER
+    )
+    context = default_context()
+    rng = np.random.default_rng(6)
+    r = rng.random((500, mapping.random_dim()))
+    # s_hat at s and the drawn fraction at one, down to 1 - x of 1e-280
+    r[:100, 0] = 10.0 ** rng.uniform(-7, -1, 100)
+    r[100:200, swap - 1] = 10.0 ** rng.uniform(-7, -1, 100)
+    momenta, x1, x2, omx1, omx2, det = call_mapping(mapping, context, r)
+    assert np.any(omx1 < 1e-100) and np.any(omx2 < 1e-100) and np.all(det > 0)
+    inverse = ms.FunctionRuntime(mapping.inverse_function(), context)
+    back, density = [
+        np.array(np.from_dlpack(t)) for t in inverse.call([momenta, x1, x2, omx1, omx2])
+    ]
+    # the beam choice where the beams differ, also where both x are one
+    differ = omx1 != omx2
+    assert differ.mean() > 0.99 and np.any((x1 == x2) & differ)
+    np.testing.assert_array_equal(
+        back[differ, swap], np.where(r[differ, swap] < 0.5, 0.25, 0.75)
+    )
+    # the other random numbers where 1 - x has not underflowed (where both
+    # random numbers that bring x to one are small together)
+    others = [i for i in range(mapping.random_dim()) if i != swap]
+    normal = np.minimum(omx1, omx2) > 1e-290
+    assert normal.mean() > 0.95
+    np.testing.assert_allclose(
+        back[normal][:, others], r[normal][:, others], rtol=1e-6, atol=1e-9
+    )
+    np.testing.assert_allclose(density * det, 1.0, rtol=1e-6)
+
+
 def test_cs_mapping_invalid():
     """The incoming leptons radiate no QCD, so that a dipole of dressed
     leptons has its emitter and its spectator in the final state."""
