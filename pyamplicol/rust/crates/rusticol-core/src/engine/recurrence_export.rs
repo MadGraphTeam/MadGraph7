@@ -471,7 +471,7 @@ impl NativeRuntime {
         }
         let export = RecurrenceExport {
             schema_version: 2,
-            rusticol_version: env!("CARGO_PKG_VERSION").to_owned(),
+            rusticol_version: crate::package_version().to_owned(),
             artifact_id: self.artifact_id.clone(),
             execution_semantics: EXECUTION_SEMANTICS.to_owned(),
             parameters,

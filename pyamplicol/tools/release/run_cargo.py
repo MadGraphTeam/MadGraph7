@@ -55,8 +55,6 @@ def main(argv: list[str] | None = None) -> int:
             "CARGO_HOME": str(target.parent / "cargo-home"),
             "CARGO_TARGET_DIR": str(target),
             "PYTHONDONTWRITEBYTECODE": "1",
-            # Rust reports the Python version, as in the wheel build.
-            "PYAMPLICOL_PACKAGE_VERSION": backend.python_package_version(overlay),
         }
         updates.update(_python_test_loader_updates(arguments))
         if arguments[:1] == ["test"]:

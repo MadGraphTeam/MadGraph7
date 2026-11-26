@@ -1763,7 +1763,7 @@ fn abi_version() -> u32 {
 #[pyfunction]
 fn package_version() -> &'static str {
     let _unlock = pyamplicol::unlock();
-    option_env!("PYAMPLICOL_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+    rusticol_core::package_version()
 }
 
 #[pyfunction]
