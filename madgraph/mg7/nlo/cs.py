@@ -115,8 +115,8 @@ without momentum, as at the soft counter-event of MadFKS.
 With generator (see nlo.core) the channels of both streams run in the C++
 event generator of madspace (CSIntegrand, with the virtual trick of the
 n-body stream in NLOIterationState), also with a MadNIS training
-(madnis_batches), but without histograms and not for the real stream of
-dressed leptons.
+(madnis_batches), with the histograms of CSHistograms (CSObservableHistograms
+of madspace), but not for the real stream of dressed leptons.
 
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photons of gamma-UPC, the
 scale and PDF variations of reweight_scale and reweight_PDF and the Sudakov
@@ -403,9 +403,10 @@ class CSGeneratorIntegrand:
     generator (CSIntegrand of madspace), with channel_integrand and
     channel_dimension of the integrand."""
 
-    # the histograms of the CS integrands are filled by the driver in Python,
-    # not through the event generator
-    generator_histograms = False
+    def generator_histograms(self, histograms, jets):
+        """The CSObservableHistograms of the histograms with the jets of the
+        run card, those of histogram_runtime."""
+        return self.histogram_runtime(histograms, jets).generator()
 
     def generator_integrand(
         self,
@@ -424,11 +425,12 @@ class CSGeneratorIntegrand:
         """The CSIntegrand of a channel for the C++ event generator (see
         nlo.core): channel_integrand with a VEGAS grid of bins bins and, for
         the n-body stream, the virtual trick from fraction down to
-        min_fraction, its globals with the prefix defined in the context.
-        With a flow, the integrand takes it instead of the VEGAS grid and
-        keeps the globals of the integrand before it, for the MadNIS training
-        with madnis_training. The histograms are not filled through the
-        event generator, and the CS integrands have no discrete choice."""
+        min_fraction, the histograms with the jets of the run card
+        (generator_histograms), its globals with the prefix defined in the
+        context. With a flow, the integrand takes it instead of the VEGAS grid
+        and keeps the globals of the integrand before it, for the MadNIS
+        training with madnis_training. The CS integrands have no discrete
+        choice."""
         ms = madspace()
         if discrete is not None:
             raise ValueError("nlo.cs: the CS integrands have no discrete choice")
@@ -437,12 +439,16 @@ class CSGeneratorIntegrand:
             adaptive_map = ms.VegasMapping(
                 self.channel_dimension(channel), bins, prefix
             )
+        observables = None
+        if histograms and not madnis_training:
+            observables = self.generator_histograms(histograms, jets)
         generator = ms.CSIntegrand(
             self.channel_integrand(channel, context),
             adaptive_map,
             prefix,
             virtual_fraction=fraction,
             min_virtual_fraction=min_fraction,
+            histograms=observables,
             madnis_training=madnis_training,
         )
         if flow is None:
@@ -898,6 +904,7 @@ class CSBornIntegrand(CSGeneratorIntegrand):
         alone."""
         runtime = CSHistograms(self.context, histograms, jets, 1)
         runtime.born = runtime.jets(self, self.born_pdgs)
+        runtime.layouts = [runtime.born]
         return runtime
 
     def histogram_sums(self, runtime, result, jacobian, choice):
@@ -1526,15 +1533,20 @@ class CSHistograms:
         self.context = context
         self.histograms = histograms
         self.jet_options = jets
-        self.observables = {}
+        # the observables of the histograms by the PDG codes of the jets
+        self.observables, self.functions = {}, {}
+        # the jets of the kinematics, in their order
+        self.layouts = []
+        self.real = kinematics_count > 1
+        self.jet_counts = [
+            histogram_jet_count(dict(histogram["observable"]))
+            for histogram in histograms
+        ]
         items = [
             ms.NLOHistograms.HistItem(
-                histogram["min"],
-                histogram["max"],
-                histogram["bin_count"],
-                histogram_jet_count(dict(histogram["observable"])),
+                histogram["min"], histogram["max"], histogram["bin_count"], count
             )
-            for histogram in histograms
+            for histogram, count in zip(histograms, self.jet_counts)
         ]
         self.binning = Runtime(ms.NLOHistograms(items, kinematics_count), context)
 
@@ -1554,15 +1566,17 @@ class CSHistograms:
         )
         pids = tuple(function.pids())
         if pids not in self.observables:
-            self.observables[pids] = [
-                Runtime(jet_observable(function, histogram), self.context)
-                for histogram in self.histograms
+            self.functions[pids] = [
+                jet_observable(function, histogram) for histogram in self.histograms
             ]
-        return Runtime(function, self.context), pids
+            self.observables[pids] = [
+                Runtime(observable, self.context) for observable in self.functions[pids]
+            ]
+        return Runtime(function, self.context), pids, function
 
     def kinematics(self, jets, momenta, inputs, k):
         """The jets and the observables of kinematics k into inputs."""
-        runtime, pids = jets
+        runtime, pids, _ = jets
         layout = np.zeros(len(momenta), dtype=np.int32)
         out = runtime(momenta, layout_index=layout)
         inputs[f"jet_count{k}"] = out["jet_count"].astype(np.int32)
@@ -1574,6 +1588,24 @@ class CSHistograms:
 
     def sums(self, inputs):
         return list(self.binning.by_name(inputs).values())
+
+    def generator(self):
+        """The same histograms as CSObservableHistograms of madspace, for the
+        event generator, on the kinematics of layouts."""
+        ms = madspace()
+        items = [
+            ms.CSObservableHistograms.HistItem(
+                [self.functions[pids][i] for _, pids, _ in self.layouts],
+                histogram["min"],
+                histogram["max"],
+                histogram["bin_count"],
+                self.jet_counts[i],
+            )
+            for i, histogram in enumerate(self.histograms)
+        ]
+        return ms.CSObservableHistograms(
+            [function for _, _, function in self.layouts], items, self.real
+        )
 
 
 class CSRealHistograms(CSHistograms):
@@ -1592,6 +1624,7 @@ class CSRealHistograms(CSHistograms):
             if name not in born_layouts:
                 born_layouts[name] = self.jets(dipole.born, dipole.born.born_pdgs)
             self.born_jets.append(born_layouts[name])
+        self.layouts = [self.real_jets, *self.born_jets]
 
     def __call__(self, result, jacobian):
         inputs = {"weight0": result["real_weight"] * jacobian}

@@ -4971,6 +4971,82 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSIntegrand::ratio_name")
         );
 
+    py::classh<CSObservableHistograms, FunctionGenerator> cs_observable_histograms(
+        m, "CSObservableHistograms", pydoc::doc("CSObservableHistograms")
+    );
+    py::classh<CSObservableHistograms::HistItem>(
+        cs_observable_histograms,
+        "HistItem",
+        pydoc::doc("CSObservableHistograms::HistItem")
+    )
+        .def(
+            py::init([](const std::vector<Observable>& observables,
+                        double min,
+                        double max,
+                        std::size_t bin_count,
+                        std::size_t jets) {
+                return CSObservableHistograms::HistItem{
+                    observables, min, max, bin_count, jets
+                };
+            }),
+            py::arg("observables"),
+            py::arg("min"),
+            py::arg("max"),
+            py::arg("bin_count"),
+            py::arg("jet_count") = 0
+        )
+        .def_readonly(
+            "observables",
+            &CSObservableHistograms::HistItem::observables,
+            pydoc::doc("CSObservableHistograms::HistItem::observables")
+        )
+        .def_readonly(
+            "min",
+            &CSObservableHistograms::HistItem::min,
+            pydoc::doc("CSObservableHistograms::HistItem::min")
+        )
+        .def_readonly(
+            "max",
+            &CSObservableHistograms::HistItem::max,
+            pydoc::doc("CSObservableHistograms::HistItem::max")
+        )
+        .def_readonly(
+            "bin_count",
+            &CSObservableHistograms::HistItem::bin_count,
+            pydoc::doc("CSObservableHistograms::HistItem::bin_count")
+        )
+        .def_readonly(
+            "jet_count",
+            &CSObservableHistograms::HistItem::jet_count,
+            pydoc::doc("CSObservableHistograms::HistItem::jet_count")
+        );
+    cs_observable_histograms
+        .def(
+            py::init<
+                const std::vector<NLOJets>&,
+                const std::vector<CSObservableHistograms::HistItem>&,
+                bool>(),
+            py::arg("jets"),
+            py::arg("histograms"),
+            py::arg("real"),
+            pydoc::doc("CSObservableHistograms::CSObservableHistograms")
+        )
+        .def(
+            "histograms",
+            &CSObservableHistograms::histograms,
+            pydoc::doc("CSObservableHistograms::histograms")
+        )
+        .def(
+            "jets",
+            &CSObservableHistograms::jets,
+            pydoc::doc("CSObservableHistograms::jets")
+        )
+        .def(
+            "real",
+            &CSObservableHistograms::real,
+            pydoc::doc("CSObservableHistograms::real")
+        );
+
     py::classh<CSIntegrand, FunctionGenerator, GeneratorIntegrand> cs_integrand(
         m, "CSIntegrand", pydoc::doc("CSIntegrand")
     );
@@ -4982,6 +5058,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                         const std::string& prefix,
                         double virtual_fraction,
                         double min_virtual_fraction,
+                        const std::optional<CSObservableHistograms>& histograms,
                         bool madnis_training) {
                 return std::make_unique<CSIntegrand>(
                     integrand,
@@ -4989,6 +5066,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     prefix,
                     virtual_fraction,
                     min_virtual_fraction,
+                    histograms,
                     madnis_training
                 );
             }),
@@ -4997,6 +5075,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("prefix"),
             py::arg("virtual_fraction") = 1.,
             py::arg("min_virtual_fraction") = 0.005,
+            py::arg("histograms") = std::nullopt,
             py::arg("madnis_training") = false,
             pydoc::doc("CSIntegrand::CSIntegrand")
         );

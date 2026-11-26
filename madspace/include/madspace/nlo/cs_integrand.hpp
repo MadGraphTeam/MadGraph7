@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "madspace/nlo/common.hpp"
+#include "madspace/nlo/cs_histograms.hpp"
 #include "madspace/nlo/cs_integrated.hpp"
 #include "madspace/nlo/cs_mapping.hpp"
 #include "madspace/nlo/cuts.hpp"
@@ -473,6 +474,9 @@ private:
  *   `dipole_weights` – `float`, shape `(batch, m)` – those of
  *   @ref CSRealChannelIntegrand.
  * - `momenta` – `float`, shape `(batch, n, 4)` – the kinematics.
+ * - real stream with histograms: `born_momenta` – `float`, shape
+ *   `(batch, m, n - 1, 4)` – the Borns of the dipoles, for the
+ *   @ref CSObservableHistograms.
  * - `random` – `float`, shape `(batch, d)` – the inputs of the adaptive
  *   mapping.
  *
@@ -507,12 +511,15 @@ public:
      * @param virtual_fraction      The fraction of the points with the virtual
      *                              in the first iteration.
      * @param min_virtual_fraction  The smallest fraction.
+     * @param histograms            The histograms the points fill, of the
+     *                              stream of the integrand.
      * @param madnis_training       Whether the integrand gives the quantities
      *                              of the @ref MadnisLoss.
      * @throws std::invalid_argument if the adaptive mapping has another
      *         dimension than the random numbers, the flow takes a condition,
-     *         the training has no @ref Flow, or the fractions are not in
-     *         (0, 1].
+     *         the training has no @ref Flow, the fractions are not in (0, 1],
+     *         or the histograms take what the integrand does not give (those
+     *         of another stream, or with the training).
      */
     CSIntegrand(
         const ChannelIntegrand& integrand,
@@ -520,6 +527,7 @@ public:
         const std::string& prefix,
         double virtual_fraction = 1.,
         double min_virtual_fraction = 0.005,
+        const std::optional<CSObservableHistograms>& histograms = std::nullopt,
         bool madnis_training = false
     );
     /// Define the globals of the virtual trick on @p context (the fraction of
@@ -560,12 +568,12 @@ public:
     /// None, the integrand has no channel weights.
     const std::vector<me_int_t>& channel_indices() const override;
     bool unweighted() const override { return false; }
-    /// None, the histograms of the CS integrands are filled by the driver.
+    /// The function of the histograms and the histograms it fills, none
+    /// without histograms.
     std::optional<std::pair<Function, std::vector<Histogram>>>
-    histograms() const override {
-        return std::nullopt;
-    }
-    std::vector<std::string> histogram_inputs() const override { return {}; }
+    histograms() const override;
+    /// The outputs of the integrand the histograms take.
+    std::vector<std::string> histogram_inputs() const override;
     std::shared_ptr<IterationState> iteration_state() const override;
 
 private:
@@ -579,6 +587,7 @@ private:
 
     ChannelIntegrand _integrand;
     AdaptiveMapping _adaptive_map;
+    std::optional<CSObservableHistograms> _histograms;
     std::string _fraction_name, _ratio_name;
     double _virtual_fraction, _min_virtual_fraction;
     bool _madnis_training, _nbody;

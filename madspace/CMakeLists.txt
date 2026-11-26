@@ -275,6 +275,7 @@ add_library(
     src/nlo/fks_radiation.cpp
     src/nlo/fks_sector.cpp
     src/nlo/fks_subtraction.cpp
+    src/nlo/cs_histograms.cpp
     src/nlo/cs_integrand.cpp
     src/nlo/cs_integrated.cpp
     src/nlo/cs_mapping.cpp
@@ -358,6 +359,7 @@ add_library(
     include/madspace/nlo/fks_radiation.hpp
     include/madspace/nlo/fks_sector.hpp
     include/madspace/nlo/fks_subtraction.hpp
+    include/madspace/nlo/cs_histograms.hpp
     include/madspace/nlo/cs_integrand.hpp
     include/madspace/nlo/cs_integrated.hpp
     include/madspace/nlo/cs_mapping.hpp

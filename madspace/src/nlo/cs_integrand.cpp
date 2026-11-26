@@ -1156,8 +1156,11 @@ NamedVector<Value> CSRealChannelIntegrand::build_function_impl(
 
 namespace {
 
-NamedVector<Type>
-cs_event_types(const CSIntegrand::ChannelIntegrand& integrand, bool madnis_training) {
+NamedVector<Type> cs_event_types(
+    const CSIntegrand::ChannelIntegrand& integrand,
+    bool madnis_training,
+    bool born_momenta = false
+) {
     auto& generator = std::visit(
         [](const auto& item) -> const FunctionGenerator& { return item; }, integrand
     );
@@ -1184,6 +1187,9 @@ cs_event_types(const CSIntegrand::ChannelIntegrand& integrand, bool madnis_train
         }
     }
     out.push_back("momenta", types.at("momenta"));
+    if (born_momenta && std::holds_alternative<CSRealChannelIntegrand>(integrand)) {
+        out.push_back("born_momenta", types.at("born_momenta"));
+    }
     out.push_back("random", random);
     return out;
 }
@@ -1272,15 +1278,17 @@ CSIntegrand::CSIntegrand(
     const std::string& prefix,
     double virtual_fraction,
     double min_virtual_fraction,
+    const std::optional<CSObservableHistograms>& histograms,
     bool madnis_training
 ) :
     FunctionGenerator(
         "CSIntegrand",
         {{"batch_size", Type({batch_size})}},
-        cs_event_types(integrand, madnis_training)
+        cs_event_types(integrand, madnis_training, histograms.has_value())
     ),
     _integrand(integrand),
     _adaptive_map(adaptive_map),
+    _histograms(histograms),
     _fraction_name(prefixed_name(prefix, "virtual_fraction")),
     _ratio_name(prefixed_name(prefix, "virtual_ratio")),
     _virtual_fraction(virtual_fraction),
@@ -1324,6 +1332,23 @@ CSIntegrand::CSIntegrand(
         throw std::invalid_argument(
             "CSIntegrand: the fractions of the virtual are in (0, 1]"
         );
+    }
+    if (histograms) {
+        auto index_map = return_types().index_map();
+        auto arg_types = histograms->arg_types();
+        for (auto [name, type] : zip(arg_types.keys(), arg_types)) {
+            if (!index_map.contains(name) ||
+                return_types().at(name).shape != type.shape ||
+                return_types().at(name).dtype != type.dtype) {
+                throw std::invalid_argument(
+                    std::format(
+                        "CSIntegrand: the histograms take {}, which the integrand "
+                        "does not give",
+                        name
+                    )
+                );
+            }
+        }
     }
 }
 
@@ -1394,6 +1419,31 @@ const std::vector<std::size_t>& CSIntegrand::active_flavors() const {
 const std::vector<me_int_t>& CSIntegrand::channel_indices() const {
     static const std::vector<me_int_t> none;
     return none;
+}
+
+std::optional<std::pair<Function, std::vector<Histogram>>>
+CSIntegrand::histograms() const {
+    if (!_histograms) {
+        return std::nullopt;
+    }
+    std::vector<Histogram> empty;
+    for (auto& item : _histograms->histograms()) {
+        empty.push_back({
+            .name = item.observables.at(0).name(),
+            .min = item.min,
+            .max = item.max,
+            .bin_values = std::vector<double>(item.bin_count + 2),
+            .bin_errors = std::vector<double>(item.bin_count + 2),
+        });
+    }
+    return std::make_pair(_histograms->function(), empty);
+}
+
+std::vector<std::string> CSIntegrand::histogram_inputs() const {
+    if (!_histograms) {
+        return {};
+    }
+    return _histograms->arg_types().keys();
 }
 
 std::shared_ptr<IterationState> CSIntegrand::iteration_state() const {
@@ -1497,6 +1547,9 @@ NamedVector<Value> CSIntegrand::build_common_part(
         result.push_back("dipole_weights", weighted(out.at("dipole_weights")));
     }
     result.push_back("momenta", out.at("momenta"));
+    if (_histograms && !_nbody) {
+        result.push_back("born_momenta", out.at("born_momenta"));
+    }
     result.push_back("random", args.at("random"));
     return result;
 }

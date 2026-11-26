@@ -47,8 +47,7 @@ generator_integrand(index, context, prefix, fraction, min_fraction, bins,
 histograms, jets), a GeneratorIntegrand of madspace with its VEGAS grid, its
 discrete choice and its virtual trick as globals of the context, which the
 iterations adapt in C++ (FKSIntegrand for FKS, CSIntegrand for CS, both with
-NLOIterationState). An integrand with generator_histograms False fills no
-histograms there, for which the run warns.
+NLOIterationState) and fill the histograms of the run.
 
 With madnis_batches as well, the grid iterations adapt the VEGAS grids, the
 discrete choice and the virtual trick, a MadNIS training of that many
@@ -1269,15 +1268,6 @@ class NLORun:
                         f"the event generator of madspace does not run the "
                         f"{self.scheme} integrands yet"
                     )
-            if self.histograms and not all(
-                getattr(integrand, "generator_histograms", True)
-                for integrand in self.integrands
-            ):
-                logger.warning(
-                    "the %s integrands fill no histograms through the event "
-                    "generator of madspace yet",
-                    self.scheme,
-                )
             self.write_status("survey")
             config = ms.GeneratorConfig()
             config.cpu_batch_size = self.batch

@@ -12,9 +12,12 @@
   the sums of the points;
 - the outputs of the training against the channel integrands without the
   virtual, and the density of the flow against CSIntegrandProbability;
+- the histograms of each stream (CSObservableHistograms) against those of
+  the driver in Python (CSHistograms) at the outputs of the integrand;
 - runs of CSRun through the generator, also with the channels of the real
   diagrams alone and with a MadNIS training, against the cross sections of
-  MG5aMC, the LO also per subprocess, without histograms;
+  MG5aMC, the LO also per subprocess, with histograms that add up to the
+  cross section;
 - the refusals of a discrete flow, of a training without a flow, of an
   adaptive mapping of another dimension or with a condition, of fractions
   of the virtual outside (0, 1] and of the real stream of dressed leptons,
@@ -26,7 +29,6 @@ MADSPACE_FKS_OUTPUTS.
 
 import contextlib
 import json
-import logging
 import math
 import os
 import tempfile
@@ -297,6 +299,62 @@ def test_training_outputs(name):
         assert streams == {False, True}
 
 
+@pytest.mark.parametrize("name", ["pp_ttx", "epem_jjj", "t_bwg"])
+def test_histograms(name):
+    """The histograms of a channel of each stream through the generator
+    (CSObservableHistograms) are those of the driver in Python (CSHistograms)
+    at the outputs of the integrand, the real emission and the Borns of its
+    dipoles in the same bins, to the rounding of the bins, and the integrand
+    of the other stream refuses them."""
+    with cs_setup(name) as run:
+        context = run.context
+        histograms, jets = run.histograms, run.jets()
+        assert histograms
+        streams = {}
+        for integrand, channel in channels_of(run):
+            observables = integrand.generator_histograms(histograms, jets)
+            streams[nbody(integrand)] = (integrand, channel, observables)
+            generator = ms.CSIntegrand(
+                integrand.channel_integrand(channel, context),
+                None,
+                f"histograms.{integrand.name}.{channel}",
+                histograms=observables,
+            )
+            generator.initialize_globals(context)
+            out = outputs_by_name(
+                generator, ms.FunctionRuntime(generator.function(), context)(BATCH)
+            )
+            names = list(observables.arg_types().keys())
+            ours = ms.FunctionRuntime(observables.function(), context)(
+                *[out[name] for name in names]
+            )
+            runtime = integrand.histogram_runtime(histograms, jets)
+            ones = np.ones(POINTS)
+            if nbody(integrand):
+                result = dict(nlo=out["weight"], momenta=out["momenta"])
+                theirs = integrand.histogram_sums(runtime, result, ones, None)
+            else:
+                assert out["born_momenta"].shape[1] == len(integrand.dipoles)
+                theirs = runtime(out, ones)
+            assert len(ours) == len(theirs) == 2 * len(histograms)
+            # the graph of the generator fuses the observables of the
+            # kinematics otherwise, so that a bin can differ by its rounding
+            for a, b in zip(ours, theirs):
+                a, b = np.asarray(a).reshape(-1), np.asarray(b).reshape(-1)
+                np.testing.assert_allclose(a, b, rtol=0, atol=1e-14 * np.abs(b).max())
+        assert set(streams) == {False, True}
+        for born in (False, True):
+            integrand, channel, _ = streams[born]
+            _, _, other = streams[not born]
+            with pytest.raises(ValueError, match="histograms take"):
+                ms.CSIntegrand(
+                    integrand.channel_integrand(channel, context),
+                    None,
+                    "refuse",
+                    histograms=other,
+                )
+
+
 def test_refusals():
     """CSIntegrand refuses a training without a flow, an adaptive mapping of
     another dimension or with a condition and fractions of the virtual
@@ -352,10 +410,10 @@ def test_refusals():
         ("pp_epem", {"madnis_batches": 100}),
     ],
 )
-def test_against_mg5amc(name, options, caplog):
+def test_against_mg5amc(name, options):
     """Runs through the event generator, with the channels of the real
     diagrams alone and with a MadNIS training, agree with MG5aMC, the LO also
-    per subprocess, without histograms."""
+    per subprocess, and their histograms add up to the cross section."""
     tag = "_".join([name, *(f"{k}{v}" for k, v in options.items())])
     data, run = run_of(
         name,
@@ -369,8 +427,7 @@ def test_against_mg5amc(name, options, caplog):
         threads=2,
         **options,
     )
-    with caplog.at_level(logging.WARNING):
-        result = run.run()
+    result = run.run()
     for key in ("lo", "nlo"):
         assert abs(pull(result[key], data[key])) < SIGMAS, (key, result[key])
     # the real streams belong to the real processes, not to the subprocesses
@@ -381,6 +438,7 @@ def test_against_mg5amc(name, options, caplog):
     with open(os.path.join(run.run_path, "info.json")) as f:
         info = json.load(f)
     assert info["status"] == "done"
-    if run.histograms:
-        assert "fill no histograms" in caplog.text
-    assert info["histograms"] == []
+    histograms = info["histograms"]
+    assert histograms
+    total = sum(histograms[0]["bin_values"])
+    assert total == pytest.approx(result["nlo"]["sigma"], rel=1e-9)
