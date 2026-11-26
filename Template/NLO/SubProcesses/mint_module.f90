@@ -191,10 +191,13 @@ module mint_module
   double precision, dimension(0:nintervals,ndimmax,maxchannels), private :: xgrid,xacc
   double precision, dimension(nintervals,ndimmax,maxchannels), private :: ymax,xmmm
   double precision, dimension(nintegrals,0:maxchannels), private :: vtot,etot,chi2
-  ! Keep the legacy harmonic errors used to choose iteration weights apart
-  ! from the propagated uncertainty of the weighted estimator itself.
-  double precision, dimension(nintegrals), private :: iteration_weight_unc
-  double precision, dimension(nintegrals,3), private :: ans3,unc3
+  ! Iterations are combined with weights proportional to their number of
+  ! phase-space points, fixed before the iteration is evaluated. Weights
+  ! taken from an iteration's own error estimate correlate with its value
+  ! and bias the combination (see combine_iterations).
+  double precision, dimension(nintegrals), private :: iteration_points, &
+       included_points,special_loop_points
+  double precision, dimension(nintegrals,3), private :: ans3,unc3,npt3
   double precision, dimension(nintegrals), private :: ans_l3,unc_l3,chi2_l3,f
   double precision, dimension(0:maxchannels), private :: ymax_virt,ans_chan
   double precision, dimension(maxchannels), private :: channel_moment,channel_squares,channel_probability
@@ -1084,41 +1087,36 @@ contains
   subroutine combine_final_three_iterations
     implicit none
     integer :: i,j
-    double precision :: weight_unc,old_weight,new_weight
-    logical :: initialized
+    double precision :: wsum
 ! Update the results of the last tree iterations
     do j=1,2
        ans3(1:nintegrals,j)=ans3(1:nintegrals,j+1)
        unc3(1:nintegrals,j)=unc3(1:nintegrals,j+1)
+       npt3(1:nintegrals,j)=npt3(1:nintegrals,j+1)
     enddo
     ans3(1:nintegrals,3)=vtot(1:nintegrals,0)
     unc3(1:nintegrals,3)=etot(1:nintegrals,0)
-! Compute the results of the last three iterations
+    npt3(1:nintegrals,3)=iteration_points(1:nintegrals)
+! Compute the results of the last three iterations, weighted by their
+! number of points as in combine_iterations.
     if (nit_included.ge.4) then
        do i=1,nintegrals
           ans_l3(i)=0d0
           unc_l3(i)=0d0
-          weight_unc=0d0
-          initialized=.false.
           chi2_l3(i)=0d0
+          wsum=0d0
           do j=1,3 ! the three final iterations
-             if (i.ne.1 .and. unc3(i,j).eq.0d0) then
-                continue ! do not do anything
-             elseif (.not.initialized) then
-                ! Start with an actual observation instead of the signed
-                ! ans3*1d99 sentinel, which fails for a zero first mean.
-                ans_l3(i)=ans3(i,j)
-                unc_l3(i)=unc3(i,j)
-                weight_unc=unc3(i,j)
-                initialized=.true.
-             else
-                old_weight=unc3(i,j)/(weight_unc+unc3(i,j))
-                new_weight=weight_unc/(weight_unc+unc3(i,j))
-                ans_l3(i)=(ans_l3(i)/weight_unc+ans3(i,j)/unc3(i,j))/(1d0/weight_unc+1d0/unc3(i,j))
-                unc_l3(i)=sqrt((old_weight*unc_l3(i))**2+(new_weight*unc3(i,j))**2)
-                weight_unc=1d0/sqrt(1d0/weight_unc**2+1d0/unc3(i,j)**2)
-                chi2_l3(i)=chi2_l3(i)+(ans3(i,j)-ans_l3(i))**2/unc3(i,j)**2
-             endif
+             if (i.ne.1 .and. unc3(i,j).eq.0d0) cycle
+             wsum=wsum+npt3(i,j)
+             ans_l3(i)=ans_l3(i)+npt3(i,j)*ans3(i,j)
+             unc_l3(i)=unc_l3(i)+(npt3(i,j)*unc3(i,j))**2
+          enddo
+          if (wsum.le.0d0) cycle
+          ans_l3(i)=ans_l3(i)/wsum
+          unc_l3(i)=sqrt(unc_l3(i))/wsum
+          do j=1,3
+             if (unc3(i,j).eq.0d0) cycle
+             chi2_l3(i)=chi2_l3(i)+(ans3(i,j)-ans_l3(i))**2/unc3(i,j)**2
           enddo
           chi2_l3(i)=chi2_l3(i)/2d0 ! three iterations, so 2 degrees of freedom
        enddo
@@ -1169,41 +1167,63 @@ contains
 
   
   subroutine combine_iterations
+! Combine the current iteration with the accumulated results. Each
+! iteration is an unbiased estimate of the integral, and so is any
+! average of them with weights fixed before the iterations are
+! evaluated. The weight of an iteration is therefore its number of
+! phase-space points n_k, not its own error estimate:
+!    ans = sum_k n_k v_k / sum_k n_k,
+!    unc = sqrt(sum_k n_k^2 e_k^2) / sum_k n_k.
+! Weights from the error of the iteration itself (1/e_k, as before) are
+! correlated with its value whenever the weight distribution is skewed:
+! an iteration with an upward fluctuation from a few large weights also
+! has a larger error, gets a smaller weight, and the average is biased
+! low. That bias does not decrease with the number of iterations.
     implicit none
     integer i,kchan
     double precision :: old_weight,new_weight
-    HwU_values(1)=etot(1,0)
-    HwU_values(2)=iteration_weight_unc(1)
-    if(nit.eq.1) then ! first iteration
+! Histograms (HwU, error_estimation=3) combine iterations with weights
+! 1/values(1) for the new and 1/values(2) for the accumulated results.
+    HwU_values(1)=1d0/max(iteration_points(1),1d0)
+    if (included_points(1).gt.0d0) then
+       HwU_values(2)=1d0/included_points(1)
+    else
+       HwU_values(2)=huge(1d0)
+    endif
+    if(nit_included.eq.0) then ! first iteration
        ans(1:nintegrals,0:nchans)=vtot(1:nintegrals,0:nchans)
        unc(1:nintegrals,0:nchans)=etot(1:nintegrals,0:nchans)
-       iteration_weight_unc(1:nintegrals)=etot(1:nintegrals,0)
+       do i=1,nintegrals
+          included_points(i)=0d0
+          if (i.eq.1 .or. etot(i,0).ne.0d0) included_points(i)=iteration_points(i)
+       enddo
        ans_chan(0:nchans)=ans(1,0:nchans)
        write (*,'(a,1x,e10.4)') 'Chi^2 per d.o.f.',0d0
     else
-       do kchan=nchans,0,-1 ! go backwards so that kchan=0 goes last
-                            ! (this makes sure central value is correctly updated).
-          do i=1,nintegrals
-             if (i.ne.1 .and. (etot(i,0).eq.0d0 .or. iteration_weight_unc(i).eq.0d0)) then
-                continue ! do not do anything
-             else
-                old_weight=etot(i,0)/(iteration_weight_unc(i)+etot(i,0))
-                new_weight=iteration_weight_unc(i)/(iteration_weight_unc(i)+etot(i,0))
-                ans(i,kchan)=(ans(i,kchan)/iteration_weight_unc(i)+vtot(i,kchan)/etot(i,0)) &
-                     /(1d0/iteration_weight_unc(i)+1d0/etot(i,0))
-                ! Every channel uses the total-integral weights. Propagate
-                ! its variance with those same weights, including zero
-                ! channel errors; the total retains its own covariance.
-                ! As for HwU, this treats the estimated weights as fixed.
-                unc(i,kchan)=sqrt((old_weight*unc(i,kchan))**2+(new_weight*etot(i,kchan))**2)
-                if (kchan.eq.0) iteration_weight_unc(i)= &
-                     1d0/sqrt(1d0/iteration_weight_unc(i)**2+1d0/etot(i,0)**2)
-                if (etot(i,kchan).gt.0d0) chi2(i,kchan)= &
-                     chi2(i,kchan)+(vtot(i,kchan)-ans(i,kchan))**2/etot(i,kchan)**2
-             endif
+       do i=1,nintegrals
+          ! An integral without any contribution in this iteration (e.g.
+          ! the virtual where it was not computed) carries no information.
+          if (i.ne.1 .and. etot(i,0).eq.0d0) cycle
+          if (included_points(i).le.0d0) then
+             ! first iteration with a contribution to this integral
+             ans(i,0:nchans)=vtot(i,0:nchans)
+             unc(i,0:nchans)=etot(i,0:nchans)
+             included_points(i)=iteration_points(i)
+             cycle
+          endif
+          old_weight=included_points(i)/(included_points(i)+iteration_points(i))
+          new_weight=iteration_points(i)/(included_points(i)+iteration_points(i))
+          do kchan=0,nchans
+             ans(i,kchan)=old_weight*ans(i,kchan)+new_weight*vtot(i,kchan)
+             ! Every channel uses the weights of the total; the weights
+             ! are fixed, so the variances simply add.
+             unc(i,kchan)=sqrt((old_weight*unc(i,kchan))**2+(new_weight*etot(i,kchan))**2)
+             if (etot(i,kchan).gt.0d0) chi2(i,kchan)= &
+                  chi2(i,kchan)+(vtot(i,kchan)-ans(i,kchan))**2/etot(i,kchan)**2
           enddo
-          ans_chan(kchan)=ans(1,kchan)
+          included_points(i)=included_points(i)+iteration_points(i)
        enddo
+       ans_chan(0:nchans)=ans(1,0:nchans)
        write (*,'(a,1x,e10.4)') 'Chi^2=',(vtot(1,0)-ans(1,0))**2/etot(1,0)**2
     endif
     nit_included=nit_included+1
@@ -1310,6 +1330,7 @@ contains
     integer :: kchan
     vtot(1:nintegrals,0)=sum(vtot(1:nintegrals,1:nchans),dim=2)
     etot(1:nintegrals,0)=sum(etot(1:nintegrals,1:nchans),dim=2)
+    iteration_points(1:nintegrals)=dble(ntotcalls(1:nintegrals))
     do kchan=0,nchans
        vtot(1:nintegrals,kchan)=vtot(1:nintegrals,kchan)/dble(ntotcalls(1:nintegrals))
        etot(1:nintegrals,kchan)=etot(1:nintegrals,kchan)/dble(ntotcalls(1:nintegrals))
@@ -1337,6 +1358,8 @@ contains
 ! prepare for the next channel
           ans_chan(kchan)=0d0
           ans_chan(kchan+1)=1d0
+          special_loop_points(1:nintegrals)=special_loop_points(1:nintegrals) &
+               +dble(ntotcalls(1:nintegrals))
           ntotcalls(1:nintegrals)=0
           non_zero_point(1:nintegrals)=0
           pass_cuts_point=0
@@ -1354,6 +1377,10 @@ contains
     vtot(1:nintegrals,0)=sum(vtot(1:nintegrals,1:nchans),dim=2)
     etot(1:nintegrals,0)=sum(etot(1:nintegrals,1:nchans)**2,dim=2)
     etot(1:nintegrals,0)=sqrt(etot(1:nintegrals,0))
+! points of all the channels of this iteration (the last one is still in ntotcalls)
+    iteration_points(1:nintegrals)=special_loop_points(1:nintegrals) &
+         +dble(ntotcalls(1:nintegrals))
+    special_loop_points(1:nintegrals)=0d0
     ncalls0=ncalls0*nchans
     initial_channel_scan_pending=.false.
   end subroutine combine_results_channels_special_loop
@@ -1893,10 +1920,13 @@ contains
     nit_included=0
     ans(1:nintegrals,0:nchans)=0d0
     unc(1:nintegrals,0:nchans)=0d0
-    iteration_weight_unc=0d0
+    iteration_points=0d0
+    included_points=0d0
+    special_loop_points=0d0
     chi2(1:nintegrals,0:nchans)=0d0
     ans3(1:nintegrals,1:3)=0d0
     unc3(1:nintegrals,1:3)=0d0
+    npt3(1:nintegrals,1:3)=0d0
     ans_l3(1:nintegrals)=0d0
     unc_l3(1:nintegrals)=0d0
     chi2_l3(1:nintegrals)=0d0
