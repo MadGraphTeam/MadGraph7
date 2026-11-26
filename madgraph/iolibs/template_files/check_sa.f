@@ -34,7 +34,7 @@ C
       CHARACTER*120 BUFF(NEXTERNAL)
       CHARACTER*30 SQRTS_STR
       CHARACTER*30 NB_TRY_STR, UFLAVOR_STR
-      INTEGER ARGC
+      INTEGER ARGC, NPOINT
       INTEGER NB_TRY, unique_flavor
       INTEGER MAXFLAVOR
       PARAMETER (MAXFLAVOR=%(maxflavor)d)
@@ -112,20 +112,23 @@ c---  Allow the energy to be set via command-line argument: ./check <energy> [nb
       call printout()
 
 C     If the file PS.input is present in the folder, take the momenta from it, else, generate them with GET_MOMENTA
+C     PS.input may hold several points one after the other (NEXTERNAL lines
+C     each): every one of them is evaluated, in the same run, so that the
+C     helicity filtering learnt on the first points is used for the others.
+      NPOINT = 0
       inquire(FILE='PS.input', EXIST=READPS)
       IF (READPS) THEN
         OPEN(5, FILE='PS.input', ERR=6, STATUS='OLD',ACTION='READ')
+      ENDIF
+ 5    CONTINUE
+      IF (READPS) THEN
         DO I=1,NEXTERNAL
           READ(5,*,END=7) P(0,I),P(1,I),P(2,I),P(3,I)
         ENDDO
-        GOTO 7
- 6      CONTINUE
-        STOP 'Could not read the PS.input phase-space point.'
- 7      CONTINUE
-        CLOSE(5)
       ELSE
         CALL GET_MOMENTA(SQRTS,PMASS,P)
       ENDIF
+      NPOINT = NPOINT + 1
 c
 c     write the information on the four momenta 
 c
@@ -155,6 +158,15 @@ c
       write (*,*) "Matrix element = ", MATELEM, " GeV^",-(2*nexternal-8)
       write (*,*) "-----------------------------------------------------------------------------"
       enddo
+C     next point of PS.input
+      IF (READPS) GOTO 5
+      GOTO 8
+ 6    CONTINUE
+      STOP 'Could not read the PS.input phase-space point.'
+ 7    CONTINUE
+      CLOSE(5)
+      IF (NPOINT.EQ.0) STOP 'No phase-space point in PS.input.'
+ 8    CONTINUE
 
 %(crossing_example)s
 

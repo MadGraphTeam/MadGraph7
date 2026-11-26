@@ -1,6 +1,8 @@
 #include <iostream>
 #include <iomanip>
 #include <cstdlib>
+#include <fstream>
+#include <vector>
 
 #include "CPPProcess.h"
 #include "rambo.h"
@@ -29,9 +31,44 @@ int main(int argc, char** argv){
   if(energy <= 2.0 * total_mass) energy = 2.0 * total_mass;
   double weight;
 
-  // Get phase space point (RAMBO with fixed seed -> reproducible)
-  vector<double*> p = get_momenta(process.ninitial, energy,
-                                  process.getMasses(), weight);
+  // Phase-space points: those of PS.input when it is present (any number of
+  // them, nexternal lines of E px py pz each, all evaluated in this run so that
+  // the helicity filtering learnt on the first points is used for the others),
+  // else one RAMBO point with the fixed seed (reproducible).
+  vector<vector<double*> > points;
+  {
+    ifstream psin("PS.input");
+    if(psin){
+      while(true){
+        vector<double*> point;
+        bool complete = true;
+        for(int i = 0; i < process.nexternal; i++){
+          double* mom = new double[4];
+          if(!(psin >> mom[0] >> mom[1] >> mom[2] >> mom[3])){
+            delete[] mom;
+            complete = false;
+            break;
+          }
+          point.push_back(mom);
+        }
+        if(!complete){
+          for(unsigned int i = 0; i < point.size(); i++) delete[] point[i];
+          break;
+        }
+        points.push_back(point);
+      }
+      if(points.empty()){
+        cerr << "No phase-space point in PS.input." << endl;
+        return 1;
+      }
+    }
+    else
+      points.push_back(get_momenta(process.ninitial, energy,
+                                   process.getMasses(), weight));
+  }
+
+  for(unsigned int ipoint = 0; ipoint < points.size(); ipoint++){
+  vector<double*>& p = points[ipoint];
 
   // Print phase space point (same format as the Fortran check_sa.f)
   cout << endl << " Phase space point:" << endl << endl;
@@ -59,11 +96,13 @@ int main(int argc, char** argv){
     cout << endl;
 
     // Print matrix element value
-    cout << " Matrix element = " << matrix_element
+    cout << " Matrix element = " << setprecision(16) << matrix_element
          << " GeV^" << -(2*process.nexternal-8) << endl;
 
     cout << " -----------------------------------------------------------------------------" << endl;
   }
+  }
+  vector<double*>& p = points.back();
 
 %(crossing_example)s
 

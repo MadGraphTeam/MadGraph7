@@ -982,6 +982,38 @@ class TestFlavorCheck(unittest.TestCase):
                          process_checks.output_flavor(result))
 
 
+    def test_check_language_merged_flavor_restriction(self):
+        """check language u d > u d with flavour grouping: the merged legs keep
+        their flavour restriction (u, d, u, d), so the process is not the whole
+        _quark _quark > _quark _quark, and its diagrams are trimmed to the four
+        of u d > u d before the colour basis is built -- every compiled backend
+        used to fail on it ('No backend available')."""
+        import madgraph.various.misc as _misc
+        if not _misc.which('gfortran'):
+            self.skipTest('gfortran is required')
+        q_id = 81
+        proc_def = base_objects.ProcessDefinition({
+            'legs': base_objects.MultiLegList([
+                base_objects.MultiLeg({'ids': [q_id], 'state': state,
+                                       'flavor': [flavor]})
+                for state, flavor in ((False, 2), (False, 1), (True, 2),
+                                      (True, 1))]),
+            'model': self.merged_model,
+        })
+        results = process_checks.check_language(
+            proc_def, options={'npoints': 2, 'pyamplicol': False,
+                               'mg7_backends': ['scalar']},
+            cmd=process_checks.FakeInterface())
+        self.assertEqual([entry['process_label'] for entry in results],
+                         ['u d > u d'])
+        entry = results[0]
+        self.assertIsNotNone(entry['value_fortran'])
+        self.assertIsNotNone(entry['value_python'])
+        for a, b in zip(entry['value_fortran']['m2_points'],
+                        entry['value_python']['m2_points']):
+            self.assertLess(abs(a - b) / abs(b), 1e-6)
+        self.assertEqual(process_checks.output_language(results, output='fail'), 0)
+
     def test_check_language_proclist_merged_expansion(self):
         """check_language with a merged-particle ProcessDefinition.
 
@@ -1564,6 +1596,119 @@ class TestMultiLanguageComparison(unittest.TestCase):
         text = process_checks.output_language(results)
         self.assertIn('Passed', text,
                       'output_language reported failure for g g > t t~:\n' + text)
+
+    def test_check_lc_several_points(self):
+        """check lc u u~ > g g on 4 points: every backend evaluates all of
+        them (in one run of each driver) at leading colour, and they agree.
+        The Python leading colour is (27/4)/(16/3) of the diagonal part of the
+        full colour one, a check that the colour matrix was replaced."""
+        if not (self.has_fortran or self.has_cpp):
+            self.skipTest('No compiled backend available')
+
+        import madgraph.core.base_objects as _bo
+        legs = _bo.LegList([
+            _bo.Leg({'id': 2, 'state': False, 'number': 1}),
+            _bo.Leg({'id': -2, 'state': False, 'number': 2}),
+            _bo.Leg({'id': 21, 'state': True, 'number': 3}),
+            _bo.Leg({'id': 21, 'state': True, 'number': 4}),
+        ])
+        proc = _bo.Process({'legs': legs, 'model': self.model, 'orders': {}})
+
+        options = {'npoints': 4, 'pyamplicol': False,
+                   'mg7_backends': ['scalar']}
+        full = process_checks.check_language(proc, options=dict(options))
+        lc = process_checks.check_language(
+            proc, options=dict(options, color_accuracy='lc'))
+        self.assertEqual(len(lc), 1)
+        entry = lc[0]
+        self.assertEqual(entry['npoints'], 4)
+        self.assertEqual(entry['color_accuracy'], 'lc')
+        points = {}
+        for name in ('value_fortran', 'value_cpp', 'value_python'):
+            if entry[name] is not None:
+                points[name] = entry[name]['m2_points']
+        if entry['value_mg7']:
+            for name, values in entry['value_mg7']['m2_points'].items():
+                if values:
+                    points[name] = values
+        self.assertIn('value_python', points)
+        self.assertGreater(len(points), 1)
+        reference = points['value_python']
+        self.assertEqual(len(reference), 4)
+        # four different points
+        self.assertEqual(len(set(reference)), 4)
+        for name, values in points.items():
+            self.assertEqual(len(values), 4, name)
+            for a, b in zip(values, reference):
+                self.assertLess(abs(a - b) / abs(b), 1e-4,
+                                '%s: %s vs %s' % (name, values, reference))
+        # leading colour is not full colour
+        full_py = full[0]['value_python']['m2_points']
+        for a, b in zip(reference, full_py):
+            self.assertGreater(abs(a - b) / abs(b), 1e-3)
+        self.assertEqual(process_checks.output_language(lc, output='fail'), 0)
+        self.assertIn('Leading colour, 4 phase-space points',
+                      process_checks.output_language(lc))
+
+
+class TestOutputLanguage(unittest.TestCase):
+    """output_language on hand-made results: all the points and every pair of
+    backends enter the maximal difference."""
+
+    @staticmethod
+    def entry(label, **values):
+        entry = {'process': None, 'process_label': label, 'npoints': 3,
+                 'color_accuracy': 'full', 'value_mg7': None}
+        for name in ('fortran', 'cpp', 'python', 'pyamplicol'):
+            points = values.get(name)
+            entry['value_%s' % name] = {'m2': points[0], 'm2_points': points} \
+                                       if points else None
+        if values.get('mg7'):
+            entry['value_mg7'] = {
+                'm2': {'value_mg7_scalar': values['mg7'][0]},
+                'm2_points': {'value_mg7_scalar': values['mg7']}}
+        return entry
+
+    def test_output_language_points(self):
+        good = self.entry('a > b', fortran=[1., 2., 3.], cpp=[1., 2., 3.],
+                          python=[1., 2., 3. * (1 + 1e-9)],
+                          pyamplicol=[1., 2., 3.], mg7=[1., 2., 3.])
+        # only the last point of pyAmpliCol differs
+        bad = self.entry('c > d', fortran=[1., 2., 3.], python=[1., 2., 3.],
+                         pyamplicol=[1., 2., 3.3])
+        # a numerical zero (helicity-suppressed point) is not a failure
+        zero = self.entry('e > f', fortran=[1., 1e-25, 3.],
+                          python=[1., -3e-25, 3.])
+        lone = self.entry('g > h', python=[1., 2., 3.])
+        # a process that vanishes (nu nu~ > a a in a SMEFT model): round-off in
+        # one backend, exactly 0 in another, |M|^2 far below 1e-30 at 1 TeV
+        null = self.entry('n > m', fortran=[7.8e-73, 2.7e-37, 1e-40],
+                          mg7=[0., 1.7e-38, 0.])
+        null['momenta'] = [[500., 0., 0., 500.], [500., 0., 0., -500.],
+                           [500., 300., 0., 400.], [500., -300., 0., -400.]]
+        # but a genuine value is compared, however small the other one
+        real = self.entry('o > q', fortran=[1e-3, 1e-3, 1e-3], mg7=[1e-3, 0., 1e-3])
+        real['momenta'] = null['momenta']
+        results = [good, bad, zero, lone, null, real]
+        self.assertEqual(process_checks.output_language(results, output='fail'), 2)
+        text = process_checks.output_language(results)
+        lines = dict((line.split()[0] + line.split()[1] + line.split()[2], line)
+                     for line in text.split('\n') if '>' in line.split()[1:2])
+        self.assertTrue(lines['n>m'].endswith('Passed'))
+        self.assertIn('Failed', lines['o>q'])
+        results = [good, bad, zero, lone]
+        self.assertEqual(process_checks.output_language(results, output='fail'), 1)
+        text = process_checks.output_language(results)
+        self.assertIn('Full colour, 3 phase-space points', text)
+        self.assertIn('pyAmpliCol', text)
+        self.assertIn('MG7 SA scalar', text)
+        lines = dict((line.split()[0] + line.split()[1] + line.split()[2], line)
+                     for line in text.split('\n') if '>' in line.split()[1:2])
+        self.assertTrue(lines['a>b'].endswith('Passed'))
+        self.assertIn('Failed (Fortran vs pyAmpliCol, point 3)', lines['c>d'])
+        self.assertTrue(lines['e>f'].endswith('Passed'))
+        self.assertTrue(lines['g>h'].endswith('Only one backend available'))
+        self.assertIn('Summary: 2/3 passed, 1/3 failed', text)
 
 
 class TestPrecisionCheck(unittest.TestCase):

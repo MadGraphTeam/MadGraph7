@@ -34,6 +34,7 @@ import random
 import glob
 import re
 import subprocess
+import tempfile
 import time
 import datetime
 import errno
@@ -207,9 +208,10 @@ class MatrixElementEvaluator(object):
     #===============================================================================
     def evaluate_matrix_element(self, matrix_element, p=None, full_model=None, 
                                 gauge_check=False, auth_skipping=None, output='m2',
-                                options=None):
+                                options=None, points=None):
         """Calculate the matrix element and evaluate it for a phase space point
-           output is either m2, amp, jamp
+           output is either m2, amp, jamp. With points (a list of phase-space
+           points) the list of |M|^2 at those points is returned instead.
         """
 
         if full_model:
@@ -314,8 +316,16 @@ class MatrixElementEvaluator(object):
         # Set the color for the matrix element
         matrix_element.set('color_basis',
                            self.stored_quantities['list_color_basis'][col_index])
-        matrix_element.set('color_matrix',
-                           self.stored_quantities['list_color_matrices'][col_index])
+        col_matrix = self.stored_quantities['list_color_matrices'][col_index]
+        if getattr(self, 'color_accuracy', 'full') == 'lc':
+            # 'check lc': the leading colour matrix (ColorMatrix.leading_color),
+            # derived once per color matrix
+            lc_matrices = self.stored_quantities.setdefault('lc_color_matrices', {})
+            if id(col_matrix) not in lc_matrices:
+                lc_matrices[id(col_matrix)] = (col_matrix,
+                                               col_matrix.leading_color())
+            col_matrix = lc_matrices[id(col_matrix)][1]
+        matrix_element.set('color_matrix', col_matrix)
 
         # Create the needed aloha routines
         if "used_lorentz" not in self.stored_quantities:
@@ -406,6 +416,12 @@ if __name__ == '__main__':
             # model (merged vs unmerged).
             exec_ns = dict(globals())
             exec(matrix_methods[process.shell_string()], exec_ns)
+        # Several points at once (check language --npoints): one generated
+        # matrix element evaluated on each of them, a list of |M|^2 returned
+        if points is not None:
+            data = exec_ns['Matrix_%s' % process.shell_string()]()
+            return [data.smatrix(point, self.full_model, flavor)
+                    for point in points]
         # Generate phase space point to use
         if not p:
             p, w_rambo = self.get_momenta(process, options)
@@ -5305,7 +5321,7 @@ def _check_sa_energy(proc, evaluator_obj, energy):
                                 evaluator_obj.get_external_masses(proc)))
 
 
-def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
+def _get_seeded_python_momenta(proc, evaluator_obj, energy_value, npoints=None):
     """Generate Python momenta with the same RAMBO RNG seed as check_sa.
 
     Uses :func:`_seeded_rambo_rng` to temporarily replace ``rambo.random_nb``
@@ -5313,6 +5329,9 @@ def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
     hard-coded in the Fortran/C++ check_sa templates, so that all three
     backends in ``check_language`` share the same phase-space point without
     relying on parsed printed output.
+
+    With *npoints* the list of the first *npoints* points of that sequence is
+    returned instead (the first one being the single point above).
 
     Returns ``None`` on any error.
     """
@@ -5323,34 +5342,210 @@ def _get_seeded_python_momenta(proc, evaluator_obj, energy_value):
             seeded_options = {'energy': float(energy_value),
                               'events': None,
                               'skip_evt': 0}
-            p_seeded, _ = evaluator_obj.get_momenta(proc, seeded_options)
-        return p_seeded
+            points = []
+            for _ in range(1 if npoints is None else npoints):
+                p_seeded, _ = evaluator_obj.get_momenta(proc, seeded_options)
+                points.append(p_seeded)
+        return points[0] if npoints is None else points
     except Exception:
         return None
+
+
+def _write_ps_input(path, points):
+    """PS.input of the Fortran/C++ check drivers: every point, one line
+    'E px py pz' per external particle."""
+    with open(path, 'w') as stream:
+        for point in points:
+            for momentum in point:
+                stream.write(' '.join('%.17e' % float(x) for x in momentum)
+                             + '\n')
+
+
+def _write_binary_momenta(path, points):
+    """The raw doubles (E, px, py, pz per leg per event) of check_sa.exe
+    perf --momenta."""
+    values = array.array('d', [float(x) for point in points
+                               for momentum in point for x in momentum])
+    with open(path, 'wb') as stream:
+        values.tofile(stream)
+
+
+#===============================================================================
+# pyAmpliCol backend of check language / check lc
+#===============================================================================
+def pyamplicol_available():
+    """Whether a compiled pyAmpliCol can be imported (it is never installed
+    from here: 'install pyamplicol' builds it)."""
+    try:
+        from madgraph.mg7 import bootstrap
+    except ImportError:
+        return False
+    try:
+        return bootstrap.pyamplicol_is_installed()
+    except Exception:
+        return False
+
+
+class PyAmpliColEvaluator(object):
+    """Matrix elements of pyAmpliCol for the processes of check language (full
+    colour) or check lc (leading colour), with the parameters of the param
+    card of the MadGraph evaluator.
+
+    The UFO model of the MadGraph model (with its restriction) is compiled once,
+    then one artifact is generated per process, at the requested colour
+    accuracy, and evaluated on all the phase-space points at once. pyAmpliCol
+    keeps the width of every propagator, spacelike ones included: the caller
+    has to make the MadGraph backends do the same (aloha.t_channel_width)."""
+
+    @staticmethod
+    @contextlib.contextmanager
+    def on_path():
+        """pyamplicol/install first on sys.path while pyAmpliCol works only:
+        it holds pinned dependencies (numpy, ...) too, which must not shadow
+        those of the rest of the session (as export_amplicol does)."""
+        from madgraph.mg7 import bootstrap
+        saved = list(sys.path)
+        try:
+            bootstrap.ensure_pyamplicol(interactive=False)
+            yield
+        finally:
+            sys.path[:] = saved
+
+    def __init__(self, model, full_model, accuracy, work_dir=None):
+        with self.on_path():
+            import pyamplicol
+        self.pyamplicol = pyamplicol
+        self.model = model
+        self.accuracy = accuracy
+        self.own_dir = work_dir is None
+        self.work_dir = work_dir or tempfile.mkdtemp(prefix='mg5_langcheck_amplicol_')
+        self.cache = {}
+        # LHA block/code -> value, from the param card read by MadGraph
+        self.lha_values = {}
+        for param in full_model.get('parameters').get(('external',), []):
+            try:
+                code = tuple(int(c) for c in param.lhacode)
+            except (TypeError, ValueError):
+                continue
+            value = param.value.real if isinstance(param.value, complex) \
+                    else param.value
+            self.lha_values[(param.lhablock.lower(), code)] = float(value)
+        self._model_source = None
+
+    # The compiled models, kept for the session: {(UFO path, restriction):
+    # (directory, model source)}
+    _models = {}
+
+    def model_source(self):
+        if self._model_source is None:
+            import atexit
+            import madgraph.iolibs.export_amplicol as export_amplicol
+            import madgraph.iolibs.amplicol_generation as amplicol_generation
+            key = (self.model.get('modelpath'), self.model.get('restrict_name'))
+            if key not in PyAmpliColEvaluator._models:
+                model_dir = tempfile.mkdtemp(prefix='mg5_langcheck_amplicol_model_')
+                atexit.register(shutil.rmtree, model_dir, True)
+                job = export_amplicol.model_job(
+                    self.model, pjoin(model_dir, export_amplicol.MODEL_FILE))
+                PyAmpliColEvaluator._models[key] = (
+                    model_dir, amplicol_generation.model_source(self.pyamplicol,
+                                                                job))
+            self._model_source = PyAmpliColEvaluator._models[key][1]
+        return self._model_source
+
+    def orders(self, proc):
+        """The largest coupling orders of the artifact: those of the process,
+        unbounded for the others, as the MadGraph backends of the check, which
+        generate the amplitude of the process with no WEIGHTED selection (all
+        the diagrams of u u~ > d d~, QCD and electroweak)."""
+        orders = dict((k, v) for k, v in proc.get('orders').items()
+                      if k != 'WEIGHTED')
+        for order in self.model.get('coupling_orders'):
+            orders.setdefault(order, 99)
+        return orders
+
+    def expression(self, pdgs, proc):
+        ninitial = proc.get_ninitial()
+        names = [self.model.get_particle(pdg).get_name() for pdg in pdgs]
+        return '%s > %s' % (' '.join(names[:ninitial]), ' '.join(names[ninitial:]))
+
+    def runtime(self, pdgs, proc):
+        """The runtime of the process with these PDG codes (one artifact
+        each), its parameters set from the param card."""
+        key = (tuple(pdgs), tuple(sorted(self.orders(proc).items())))
+        if key in self.cache:
+            return self.cache[key]
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        import madgraph.iolibs.amplicol_generation as amplicol_generation
+        expression = self.expression(pdgs, proc)
+        artifact = pjoin(self.work_dir, 'P%d_%s' % (len(self.cache),
+                         re.sub(r'[^A-Za-z0-9]', '_', expression)))
+        amplicol_generation.generate_artifact(
+            self.pyamplicol, artifact, self.accuracy,
+            {'expression': expression, 'multiparticles': {},
+             'orders': self.orders(proc)}, self.model_source())
+        runtime = self.pyamplicol.Runtime.load(artifact, process=expression)
+        parameters = {}
+        for metadata in export_amplicol.load_metadata(artifact):
+            for name, (block, code) in \
+                    export_amplicol.parameter_references(metadata).items():
+                value = self.lha_values.get((block.lower(), tuple(code)))
+                if value is not None:
+                    parameters[name] = value
+        if parameters:
+            runtime.set_model_parameters(parameters)
+        self.cache[key] = runtime
+        return runtime
+
+    def evaluate(self, pdgs, proc, points):
+        """|M|^2 of the process with these PDG codes at every point, summed
+        and averaged as MadGraph's (None if pyAmpliCol refuses it)."""
+        try:
+            with self.on_path():
+                runtime = self.runtime(pdgs, proc)
+                values = runtime.evaluate([[list(map(float, momentum))
+                                            for momentum in point]
+                                           for point in points])
+        except Exception as error:
+            logger.info('Language check: pyAmpliCol failed for %s: %s'
+                        % (self.expression(pdgs, proc), error))
+            return None
+        return [complex(value).real for value in values]
+
+    def clean(self):
+        if self.own_dir:
+            shutil.rmtree(self.work_dir, ignore_errors=True)
 
 
 #===============================================================================
 # check_language
 #===============================================================================
+# The madmatrix builds compared by check language; those that do not build on
+# the host (no GPU, no AVX on arm) are skipped.
+LANGUAGE_MG7_BACKENDS = ["scalar", "simd_128", "simd_256", "simd_512", "cuda",
+                         "hip"]
+# Events per check_sa.exe perf batch when the points are read from a file (a
+# power of two, so that any SIMD width fits; several batches for 100 points).
+LANGUAGE_MG7_BATCH = 32
+
+
 def check_language(process_definition, param_card=None, options=None,
                    cmd=FakeInterface()):
-    """Compare Fortran SA, C++ SA and Python matrix elements for each process
-    in *process_definition*.
+    """Compare the matrix elements of every backend for each process in
+    *process_definition*: Fortran SA, C++ SA, MG7 SA (madmatrix, one column per
+    SIMD/GPU build that succeeds), Python and pyAmpliCol.
 
-    For each process the function:
+    All the backends see the same phase-space points: *npoints* RAMBO points
+    generated in Python with the seed of the check_sa drivers (the first one is
+    the point ``./check <energy>`` would generate itself), written to PS.input
+    for the Fortran/C++ drivers and to a raw momenta file for check_sa.exe
+    perf. Every driver evaluates all of them in ONE run, so that its helicity
+    filtering, learnt on the first points, is exercised on the others.
 
-    1. Generates a Fortran standalone (SA) directory, compiles it, and runs
-       ``./check <energy>`` where *energy* is fixed so that both backends use
-       the same RAMBO seed → identical phase-space points.
-    2. Does the same with the C++ SA back-end.
-    3. Evaluates the matrix element in pure Python using the phase-space
-       point printed by the SA binaries (so all three backends see the same
-       momenta).
-    4. Parses the outputs, extracts the per-flavor |M|² values, and compares
-       all three backends.
-
-    The centre-of-mass energy defaults to 1000 GeV and can be overridden via
-    ``options['energy']``.
+    With ``options['color_accuracy'] = 'lc'`` (check lc) every backend
+    computes the leading colour matrix element instead: the MadGraph ones with
+    the colour matrix of ColorMatrix.leading_color (the same definition in all
+    the languages), pyAmpliCol with its 'lc' colour accuracy.
 
     Parameters
     ----------
@@ -5359,30 +5554,45 @@ def check_language(process_definition, param_card=None, options=None,
     param_card : str or None
         Path to a ``param_card.dat`` file.  *None* uses model defaults.
     options : dict or None
-        Optional dict.  Recognised key: ``'energy'`` (float, GeV).
+        Recognised keys: ``'energy'`` (float, GeV, default 1000),
+        ``'npoints'`` (int, default 1), ``'color_accuracy'`` ('full' or 'lc'),
+        ``'pyamplicol'`` (False to skip pyAmpliCol; by default it is used when
+        installed).
     cmd : interface object
         Interface object providing ``cmd.options`` and ``cmd._mgme_dir``.
 
     Returns
     -------
     list of dict
-        One entry per process.  Each dict has the keys:
+        One entry per process (and flavour).  Each dict has the keys:
 
-        ``'process'``       – :class:`base_objects.Process`,
-        ``'value_fortran'`` – ``{'m2': float}`` or ``None``,
-        ``'value_cpp'``     – ``{'m2': float}`` or ``None``,
-        ``'value_mg7'``     – ``{'m2': float}`` or ``None``,
-        ``'value_python'``  – ``{'m2': float}`` or ``None``,
-        ``'momenta'``       – phase-space point (list of 4-vectors) or ``None``.
+        ``'process'``          – :class:`base_objects.Process`,
+        ``'process_label'``    – the flavour of the entry, as text,
+        ``'value_fortran'``, ``'value_cpp'``, ``'value_python'``,
+        ``'value_pyamplicol'`` – ``{'m2': float, 'm2_points': [float]}`` or
+                                 ``None`` (``'m2'`` at the first point),
+        ``'value_mg7'``        – ``{'m2': {'value_mg7_<backend>': float},
+                                 'm2_points': {'value_mg7_<backend>': [...]}}``,
+        ``'momenta'``          – the first phase-space point,
+        ``'npoints'``          – the number of points,
+        ``'color_accuracy'``   – 'full' or 'lc'.
     """
     import madgraph.iolibs.export_v4 as export_v4
     import madgraph.iolibs.export_cpp as export_cpp
-    import tempfile
+    from collections import OrderedDict
 
     if options is None:
         options = {}
 
     energy = float(options.get('energy', 1000.0))
+    npoints = max(1, int(options.get('npoints', 1) or 1))
+    color_accuracy = options.get('color_accuracy', 'full')
+    if color_accuracy not in ('full', 'lc'):
+        raise InvalidCmd("Unknown colour accuracy '%s' (full or lc)"
+                         % color_accuracy)
+    use_pyamplicol = options.get('pyamplicol')
+    if use_pyamplicol is None:
+        use_pyamplicol = pyamplicol_available()
 
     # Compiler availability
     has_fortran = bool(misc.which('gfortran') or
@@ -5397,15 +5607,18 @@ def check_language(process_definition, param_card=None, options=None,
                         cmd.options.get('cpp_compiler'))     or 'g++'
 
     # MG7 (standalone / madmatrix) availability: needs the madmatrix
-    # package, a C++ compiler and make.  Its check_sa.exe "matrix" mode
-    # evaluates the same phase-space point as the Fortran/C++ drivers and
-    # prints the per-flavor PDG / matrix-element lines in the same format.
+    # package, a C++ compiler and make.
     try:
         from madmatrix import output as madmatrix_output
         from madmatrix import model_handling as madmatrix_model_handling
         has_mg7 = has_cpp and bool(misc.which('make'))
     except ImportError:
         has_mg7 = False
+    mg7_backends = options.get('mg7_backends') or LANGUAGE_MG7_BACKENDS
+    # double precision, as the other backends: the default FPTYPE=v (single
+    # precision amplitudes) loses ~1e-4 in the gauge cancellations of
+    # w+ z > z w+, which is what 'check precision' measures, not this check
+    mg7_fptype = options.get('mg7_fptype', 'd')
 
     # Ensure Template/LO/Source/make_opts exists (written on first MG5 run).
     make_opts     = pjoin(MG5DIR, 'Template', 'LO', 'Source', 'make_opts')
@@ -5426,14 +5639,13 @@ def check_language(process_definition, param_card=None, options=None,
     # Matches the "PDG  2  -2  6  -6" lines written by the flavor loop.
     _pdg_re = re.compile(r'^\s*PDG\s+(.+)$', re.IGNORECASE)
 
-    def _parse_all_flavors_dict(text):
+    def _parse_all_flavors(text):
         """Parse ALL PDG blocks in SA output.
 
-        Returns an OrderedDict mapping ``pdg_tuple → me_value``.
-        Each PDG line like ``PDG 2 -2 23 21`` followed by a
-        ``Matrix element = ...`` line produces one entry.
+        Returns an OrderedDict mapping ``pdg_tuple → [me_value, ...]``, one
+        value per phase-space point: each PDG line like ``PDG 2 -2 23 21``
+        followed by a ``Matrix element = ...`` line adds one value.
         """
-        from collections import OrderedDict
         result = OrderedDict()
         current_pdgs = None
         for line in text.split('\n'):
@@ -5445,20 +5657,14 @@ def check_language(process_definition, param_card=None, options=None,
                     current_pdgs = None
             m = _me_re.match(line)
             if m:
-                val = float(m.group('val'))
-                key = current_pdgs  # None when no PDG line precedes this ME
-                if key not in result:  # keep first occurrence per combination
-                    result[key] = val
+                # None when no PDG line precedes this ME
+                result.setdefault(current_pdgs, []).append(
+                    float(m.group('val')))
                 current_pdgs = None
         return result
 
     def _parse_momenta(text):
-        """Parse the phase-space point printed once per SA run.
-
-        Returns the first contiguous block of momentum lines (stopping at the
-        first non-matching line), so the per-flavor matrix element values that
-        follow do not leak into the list.
-        """
+        """Parse the (first) phase-space point printed by an SA run."""
         momenta = []
         started = False
         for line in text.split('\n'):
@@ -5487,57 +5693,55 @@ def check_language(process_definition, param_card=None, options=None,
         except Exception:
             return str(pdg_tuple)
 
-    def _parse_sa_output(text, target_pdgs=None):
-        """Parse stdout of a SA check binary; return (me_value, momenta).
-
-        Matches the per-flavor PDG block to *target_pdgs* when provided.
-        Falls back to the last seen ME value when no match is found.
-        """
-        me_val, momenta = None, []
-        last_val = None
-        current_pdgs = None
-        for line in text.split('\n'):
-            mp = _pdg_re.match(line)
-            if mp:
-                try:
-                    current_pdgs = [int(x) for x in mp.group(1).split()]
-                except ValueError:
-                    current_pdgs = None
-            m = _me_re.match(line)
-            if m:
-                val = float(m.group('val'))
-                last_val = val
-                if target_pdgs is not None and current_pdgs is not None:
-                    if current_pdgs == list(target_pdgs):
-                        me_val = val
-                else:
-                    me_val = val
-                current_pdgs = None
-            m2 = _mom_re.match(line)
-            if m2:
-                momenta.append([float(x) for x in m2.groups()[:4]])
-        if target_pdgs is not None and me_val is None:
-            me_val = last_val
-        return me_val, momenta
+    def _p_dir(sa_dir):
+        p_dirs = sorted([
+            d for d in os.listdir(pjoin(sa_dir, 'SubProcesses'))
+            if d.startswith('P') and
+            os.path.isdir(pjoin(sa_dir, 'SubProcesses', d))])
+        return pjoin(sa_dir, 'SubProcesses', p_dirs[0]) if p_dirs else None
 
     # ── resolve process list ──────────────────────────────────────────────────
     if isinstance(process_definition, base_objects.ProcessDefinition):
         model = process_definition.get('model')
-        is_id_options = [leg.get('ids') for leg in process_definition.get('legs')
+        merged_ids = model.get('merged_particles') or {}
+
+        def _options(leg):
+            # (id, flavours) for every id of a multi-leg: a merged id keeps the
+            # flavours the leg was restricted to (u d > u d is _quark _quark >
+            # _quark _quark with the flavours u, d, u, d -- without them it
+            # would be every flavour, u u > u u included), with the sign
+            # convention of MultiProcess: the flavours of the merged id and of
+            # its sign only, negated for an initial-state leg
+            flavors = (leg.get('flavor') or []) if 'flavor' in leg else []
+            options = []
+            for i in leg.get('ids'):
+                kept = tuple(f if leg.get('state') else -f for f in flavors
+                             if abs(i) in merged_ids and
+                             abs(f) in merged_ids[abs(i)] and f * i > 0)
+                options.append((i, kept))
+            return options
+        is_id_options = [_options(leg) for leg in process_definition.get('legs')
                          if not leg.get('state')]
-        fs_id_options = [leg.get('ids') for leg in process_definition.get('legs')
+        fs_id_options = [_options(leg) for leg in process_definition.get('legs')
                          if leg.get('state')]
         proc_list = []
         checked   = set()
+
+        def _leg(option, state):
+            data = {'id': option[0], 'state': state}
+            if option[1]:
+                data['flavor'] = list(option[1])
+            return base_objects.Leg(data)
         for is_ids in itertools.product(*is_id_options):
             for fs_ids in itertools.product(*fs_id_options):
-                key = (is_ids, fs_ids)
+                # the final state in any order is the same process
+                key = (is_ids, tuple(sorted(fs_ids)))
                 if key in checked:
                     continue
                 checked.add(key)
                 legs = base_objects.LegList(
-                    [base_objects.Leg({'id': i, 'state': False}) for i in is_ids] +
-                    [base_objects.Leg({'id': i, 'state': True})  for i in fs_ids])
+                    [_leg(i, False) for i in is_ids] +
+                    [_leg(i, True)  for i in fs_ids])
                 proc = base_objects.Process({
                     'legs': legs,
                     'model': model,
@@ -5573,9 +5777,35 @@ def check_language(process_definition, param_card=None, options=None,
         # previous check command with a different model.
         evaluator = MatrixElementEvaluator(model, param_card, cmd=cmd,
                                            auth_skipping=False, reuse=False)
+        evaluator.color_accuracy = color_accuracy
     except Exception as err:
         logger.info("Language check: Python evaluator setup failed: %s" % err)
         has_python = False
+
+    # ── pyAmpliCol ────────────────────────────────────────────────────────────
+    amplicol = None
+    if use_pyamplicol and evaluator is not None:
+        try:
+            amplicol = PyAmpliColEvaluator(model, evaluator.full_model,
+                                           color_accuracy)
+        except Exception as err:
+            logger.info("Language check: pyAmpliCol unavailable: %s" % err)
+    elif use_pyamplicol is not False and not pyamplicol_available():
+        logger.info("Language check: pyAmpliCol is not installed, run "
+                    "'install pyamplicol' to compare with it too.")
+
+    # pyAmpliCol keeps the width of a spacelike propagator, which MadGraph
+    # drops by default (zerowidth_tchannel): keep it for every backend then.
+    old_t_channel_width = aloha.t_channel_width
+    # The leading colour is defined on the trace (colour-flow) basis, never
+    # the DDM one that 'set color_basis ddm' would select
+    old_ddm = (color_amp.ddm_basis, color_amp.ddm_flow_basis)
+    if color_accuracy == 'lc' and color_amp.ddm_basis:
+        color_amp.ddm_basis = color_amp.ddm_flow_basis = False
+    if amplicol is not None and not aloha.t_channel_width:
+        logger.info("Language check: the widths of the t-channel propagators "
+                    "are kept in every backend, as pyAmpliCol does.")
+        aloha.t_channel_width = True
 
     # Merged-particle map used to set per-leg flavor tags when the SA output
     # iterates over individual flavors of a merged multi-leg.
@@ -5585,54 +5815,76 @@ def check_language(process_definition, param_card=None, options=None,
         merged_particles = {}
 
     results = []
-    # Cache SA output text (stdout of ./check <energy>) keyed by the leg-id
-    # tuple.  All individual-flavor procs share the same matrix element code.
+    # Cache SA output keyed by the leg-id tuple.  All individual-flavor procs
+    # share the same matrix element code.
     sa_f_output_cache   = {}
     sa_cpp_output_cache = {}
-    # Cache of MG7 (standalone / madmatrix) check_sa.exe matrix-mode output text.
+    # {backend: {pdg tuple: [values]}} of the MG7 (madmatrix) builds
     sa_mg7_output_cache = {}
 
-    for proc in proc_list:
-        try:
-            amplitude = diagram_generation.Amplitude(proc)
-        except InvalidCmd:
-            continue
-        if not amplitude.get('diagrams'):
-            continue
-
-        logger.info("Language check: %s" %
-                    proc.nice_string().replace('Process:', 'process'))
-
-        me = helas_objects.HelasMatrixElement(amplitude, gen_color=True)
-        wl = misc.make_unique(me.get_used_lorentz())
-        _seen_wc = set()
-        wc = []
-        for l in me.get_used_couplings():
-            for c in l:
-                key_c = c if isinstance(c, str) else c.get('name')
-                if key_c not in _seen_wc:
-                    _seen_wc.add(key_c)
-                    wc.append(c)
-
-        sa_key = tuple(leg.get('id') for leg in proc.get('legs'))
-
-        # One energy for every backend, decided here: each driver (and
-        # get_momenta) has its own rule for an energy too close to threshold,
-        # and passing the one they would all reach keeps them on one point.
-        proc_energy = energy
-        if evaluator is not None:
+    try:
+        for proc in proc_list:
             try:
-                proc_energy = _check_sa_energy(proc, evaluator, energy)
-            except Exception as err:
-                logger.warning('Language check: could not work out the energy of %s '
-                               '(%s); the backends may compare different points.'
-                               % (proc.nice_string(), err))
-        energy_str = repr(proc_energy)
+                amplitude = diagram_generation.Amplitude(proc)
+            except InvalidCmd:
+                continue
+            if not amplitude.get('diagrams'):
+                continue
 
-        # ── Fortran SA ───────────────────────────────────────────────────────
-        out_f_text = None
-        if has_fortran:
-            if sa_key not in sa_f_output_cache:
+            logger.info("%s check: %s" % (
+                'Leading colour' if color_accuracy == 'lc' else 'Language',
+                proc.nice_string().replace('Process:', 'process')))
+
+            # As HelasMultiProcess: the merged-flavour diagrams are trimmed
+            # BEFORE the colour basis is built, so that it refers to the
+            # diagrams that are left (u d > u d of _quark _quark > _quark
+            # _quark keeps 4 of its 10 diagrams)
+            me = helas_objects.HelasMatrixElement(amplitude, gen_color=False)
+            try:
+                me.get_external_flavors()
+            except helas_objects.HelasMatrixElement.NoFlavorError:
+                continue
+            helas_objects.HelasMultiProcess.process_color(
+                me, {'list_colorize': [], 'list_color_basis': [],
+                     'list_color_matrices': []})
+            if color_accuracy == 'lc' and me.get('color_matrix'):
+                me.set('color_matrix', me.get('color_matrix').leading_color())
+            wl = misc.make_unique(me.get_used_lorentz())
+            _seen_wc = set()
+            wc = []
+            for l in me.get_used_couplings():
+                for c in l:
+                    key_c = c if isinstance(c, str) else c.get('name')
+                    if key_c not in _seen_wc:
+                        _seen_wc.add(key_c)
+                        wc.append(c)
+
+            # the builds are cached by leg (and flavour restriction of a
+            # merged leg)
+            sa_key = tuple((leg.get('id'), tuple(leg.get('flavor') or ())
+                            if 'flavor' in leg else ())
+                           for leg in proc.get('legs'))
+
+            # One energy for every backend, decided here: each driver (and
+            # get_momenta) has its own rule for an energy too close to
+            # threshold, and passing the one they would all reach keeps them
+            # on one point.
+            proc_energy = energy
+            if evaluator is not None:
+                try:
+                    proc_energy = _check_sa_energy(proc, evaluator, energy)
+                except Exception as err:
+                    logger.warning('Language check: could not work out the energy of %s '
+                                   '(%s); the backends may compare different points.'
+                                   % (proc.nice_string(), err))
+            energy_str = repr(proc_energy)
+
+            # The phase-space points, the same RAMBO sequence as check_sa
+            points = _get_seeded_python_momenta(proc, evaluator, proc_energy,
+                                                npoints)
+
+            # ── Fortran SA ───────────────────────────────────────────────────
+            if has_fortran and sa_key not in sa_f_output_cache:
                 sa_f_output_cache[sa_key] = None
                 parent_f  = tempfile.mkdtemp(prefix='mg5_langcheck_f_')
                 sa_dir_f  = pjoin(parent_f, 'sa_f')
@@ -5649,17 +5901,16 @@ def check_language(process_definition, param_card=None, options=None,
                     exporter_f.convert_model(model, wl, wc)
                     exporter_f.finalize({'matrix_elements': [me_f]}, '',
                                         mg5opt, ['nojpeg'])
-                    p_dirs_f = sorted([
-                        d for d in os.listdir(pjoin(sa_dir_f, 'SubProcesses'))
-                        if d.startswith('P') and
-                        os.path.isdir(pjoin(sa_dir_f, 'SubProcesses', d))])
-                    if p_dirs_f:
-                        check_dir_f = pjoin(sa_dir_f, 'SubProcesses', p_dirs_f[0])
+                    check_dir_f = _p_dir(sa_dir_f)
+                    if check_dir_f:
                         with open(os.devnull, 'w') as devnull:
                             ret = subprocess.call(['make', 'check'],
                                                   cwd=check_dir_f,
                                                   stdout=devnull, stderr=devnull)
                         if ret == 0:
+                            if points:
+                                _write_ps_input(pjoin(check_dir_f, 'PS.input'),
+                                                points)
                             try:
                                 out_f = subprocess.check_output(
                                     ['./check', energy_str],
@@ -5673,13 +5924,10 @@ def check_language(process_definition, param_card=None, options=None,
                                 % (proc.nice_string(), err))
                 finally:
                     shutil.rmtree(parent_f, ignore_errors=True)
-
             out_f_text = sa_f_output_cache.get(sa_key)
 
-        # ── C++ SA ───────────────────────────────────────────────────────────
-        out_cpp_text = None
-        if has_cpp:
-            if sa_key not in sa_cpp_output_cache:
+            # ── C++ SA ───────────────────────────────────────────────────────
+            if has_cpp and sa_key not in sa_cpp_output_cache:
                 sa_cpp_output_cache[sa_key] = None
                 parent_cpp = tempfile.mkdtemp(prefix='mg5_langcheck_cpp_')
                 sa_dir_cpp = pjoin(parent_cpp, 'sa_cpp')
@@ -5699,18 +5947,16 @@ def check_language(process_definition, param_card=None, options=None,
                     exporter_cpp.convert_model(model, wl, wc)
                     exporter_cpp.finalize({'matrix_elements': [me_cpp_sa]},
                                           '', mg5opt, ['nojpeg'])
-                    p_dirs_cpp = sorted([
-                        d for d in os.listdir(pjoin(sa_dir_cpp, 'SubProcesses'))
-                        if d.startswith('P') and
-                        os.path.isdir(pjoin(sa_dir_cpp, 'SubProcesses', d))])
-                    if p_dirs_cpp:
-                        check_dir_cpp = pjoin(sa_dir_cpp, 'SubProcesses',
-                                              p_dirs_cpp[0])
+                    check_dir_cpp = _p_dir(sa_dir_cpp)
+                    if check_dir_cpp:
                         with open(os.devnull, 'w') as devnull:
                             ret = subprocess.call(['make', 'check'],
                                                   cwd=check_dir_cpp,
                                                   stdout=devnull, stderr=devnull)
                         if ret == 0:
+                            if points:
+                                _write_ps_input(pjoin(check_dir_cpp, 'PS.input'),
+                                                points)
                             try:
                                 out_cpp = subprocess.check_output(
                                     ['./check', energy_str],
@@ -5724,14 +5970,14 @@ def check_language(process_definition, param_card=None, options=None,
                                 % (proc.nice_string(), err))
                 finally:
                     shutil.rmtree(parent_cpp, ignore_errors=True)
-
             out_cpp_text = sa_cpp_output_cache.get(sa_key)
 
-        # ── MG7 SA (standalone / madmatrix) ─────────────────────────────────
-        out_mg7_text = None
-        if has_mg7:
-            if sa_key not in sa_mg7_output_cache:
-                sa_mg7_output_cache[sa_key] = {}
+            # ── MG7 SA (standalone / madmatrix) ─────────────────────────────
+            # matrix mode lists the flavours (and evaluates the first point);
+            # perf mode evaluates every point of the momenta file, one flavour
+            # at a time, in batches of LANGUAGE_MG7_BATCH events.
+            if has_mg7 and sa_key not in sa_mg7_output_cache:
+                sa_mg7_output_cache[sa_key] = OrderedDict()
                 parent_mg7 = tempfile.mkdtemp(prefix='mg5_langcheck_mg7_')
                 sa_dir_mg7 = pjoin(parent_mg7, 'sa_mg7')
                 try:
@@ -5751,161 +5997,193 @@ def check_language(process_definition, param_card=None, options=None,
                     exporter_mg7.convert_model(model, wl, wc)
                     exporter_mg7.finalize({'matrix_elements': [me_mg7]}, '',
                                           mg5opt, ['nojpeg'])
-                    p_dirs_mg7 = sorted([
-                        d for d in os.listdir(pjoin(sa_dir_mg7, 'SubProcesses'))
-                        if d.startswith('P') and
-                        os.path.isdir(pjoin(sa_dir_mg7, 'SubProcesses', d))])
-                    if p_dirs_mg7:
-                        check_dir_mg7 = pjoin(sa_dir_mg7, 'SubProcesses',
-                                              p_dirs_mg7[0])
-                        backends = ["scalar", "simd_128", "simd_256", "simd_512", "cuda", "hip"]
-                        for backend in backends:
+                    check_dir_mg7 = _p_dir(sa_dir_mg7)
+                    if check_dir_mg7:
+                        momenta_file = pjoin(parent_mg7, 'momenta.bin')
+                        if points:
+                            _write_binary_momenta(momenta_file, points)
+                        for backend in mg7_backends:
                             with open(os.devnull, 'w') as devnull:
-                                ret = subprocess.call(f'make clean && make BACKEND={backend} USEBUILDDIR=1', shell=True, cwd=check_dir_mg7,
-                                                      stdout=devnull,
-                                                      stderr=devnull)
-                            if ret == 0:
-                                try:
-                                    out_mg7 = subprocess.check_output(
-                                        ['./check_sa.exe', 'matrix', energy_str],
-                                        cwd=check_dir_mg7,
-                                        stderr=subprocess.STDOUT).decode()
-                                    sa_mg7_output_cache[sa_key][backend] = out_mg7
-                                except Exception:
-                                    pass
+                                ret = subprocess.call(
+                                    'make clean && make BACKEND=%s FPTYPE=%s '
+                                    'USEBUILDDIR=1' % (backend, mg7_fptype),
+                                    shell=True, cwd=check_dir_mg7,
+                                    stdout=devnull, stderr=devnull)
+                            if ret != 0:
+                                continue
+                            try:
+                                out_mg7 = subprocess.check_output(
+                                    ['./check_sa.exe', 'matrix', energy_str],
+                                    cwd=check_dir_mg7,
+                                    stderr=subprocess.STDOUT).decode()
+                            except Exception:
+                                continue
+                            values = _parse_all_flavors(out_mg7)
+                            if points:
+                                for iflav, key in enumerate(list(values)):
+                                    dump = pjoin(parent_mg7, 'me_%s_%d.bin'
+                                                 % (backend, iflav))
+                                    try:
+                                        with open(os.devnull, 'w') as devnull:
+                                            subprocess.check_call(
+                                                ['./check_sa.exe', 'perf', '-f',
+                                                 str(iflav), '--momenta',
+                                                 momenta_file, '--dump-me', dump,
+                                                 '1', str(LANGUAGE_MG7_BATCH), '1'],
+                                                cwd=check_dir_mg7,
+                                                stdout=devnull,
+                                                stderr=subprocess.STDOUT)
+                                        mes = array.array('d')
+                                        with open(dump, 'rb') as stream:
+                                            mes.frombytes(stream.read())
+                                        values[key] = list(mes)[:len(points)]
+                                    except Exception as err:
+                                        logger.info("Language check: MG7 SA (%s) "
+                                                    "perf failed for %s: %s"
+                                                    % (backend, key, err))
+                                        values[key] = None
+                            sa_mg7_output_cache[sa_key][backend] = values
                 except Exception as err:
                     logger.info("Language check: MG7 SA failed for %s: %s"
                                 % (proc.nice_string(), err))
                 finally:
                     shutil.rmtree(parent_mg7, ignore_errors=True)
+            out_mg7 = sa_mg7_output_cache.get(sa_key) or OrderedDict()
 
-            out_mg7_text = sa_mg7_output_cache.get(sa_key)
+            # ── per-flavor comparison ─────────────────────────────────────────
+            # Parse ALL PDG blocks from the SA outputs and match by PDG tuple
+            # so that merged-particle processes (e.g. _quark _anti_quark > z g)
+            # are compared flavor-by-flavor: u u~ > z g, d d~ > z g, etc.
+            flavors_f   = _parse_all_flavors(out_f_text)   if out_f_text   else OrderedDict()
+            flavors_cpp = _parse_all_flavors(out_cpp_text) if out_cpp_text else OrderedDict()
+            flavors_mg7 = OrderedDict((b, flv if flv else OrderedDict())
+                                      for b, flv in out_mg7.items())
 
-        # ── per-flavor comparison ─────────────────────────────────────────────
-        # Parse ALL PDG blocks from the SA outputs and match by PDG tuple so
-        # that merged-particle processes (e.g. _quark _anti_quark > z g) are
-        # compared flavor-by-flavor: u u~ > z g, d d~ > z g, etc.
-        from collections import OrderedDict as _OD
-        flavors_f   = _parse_all_flavors_dict(out_f_text)   if out_f_text   else _OD()
-        flavors_cpp = _parse_all_flavors_dict(out_cpp_text) if out_cpp_text else _OD()
-        flavors_mg7 = { b: _parse_all_flavors_dict(mg7_text) if mg7_text else _OD() for b, mg7_text in out_mg7_text.items() }
+            sa_momenta = points[0] if points else None
+            if not points:
+                # Fallback to the point printed by SA when seeded generation
+                # is unavailable (one point only then).
+                if out_f_text:
+                    sa_momenta = _parse_momenta(out_f_text)
+                if not sa_momenta and out_cpp_text:
+                    sa_momenta = _parse_momenta(out_cpp_text)
+                points = [sa_momenta] if sa_momenta else None
 
-        # Build the Python phase-space point using the same RAMBO RNG seed as
-        # check_sa (Fortran/C++), so all backends compare on the same point.
-        sa_momenta = _get_seeded_python_momenta(proc, evaluator, proc_energy)
-        if not sa_momenta:
-            # Fallback to parsing the point printed by SA when seeded generation
-            # is unavailable.
-            if out_f_text:
-                sa_momenta = _parse_momenta(out_f_text)
-            if not sa_momenta and out_cpp_text:
-                sa_momenta = _parse_momenta(out_cpp_text)
-            if not sa_momenta:
-                sa_momenta = None
+            # Union of PDG keys in order: Fortran first, then any keys seen
+            # only by the C++ or MG7 backends.
+            mg7_keys = []
+            for flavors in flavors_mg7.values():
+                mg7_keys.extend(list(flavors.keys()))
+            all_keys = list(dict.fromkeys(
+                list(flavors_f.keys()) + list(flavors_cpp.keys()) + mg7_keys))
+            if not all_keys and (has_python or amplicol):
+                # no compiled backend ran: the process itself is the flavour
+                all_keys = [None]
 
-        # Union of PDG keys in order: Fortran first, then any keys seen only
-        # by the C++ or MG7 backends.
-        mg7_keys = []
-        for _, flavors in flavors_mg7.items():
-            mg7_keys.extend(list(flavors.keys()))
-        all_keys = list(dict.fromkeys(
-            list(flavors_f.keys()) + list(flavors_cpp.keys()) + mg7_keys
-        ))
-
-        # ── Python evaluation per PDG tuple ───────────────────────────────────
-        # Run the Python back-end with the same phase-space point as Fortran/
-        # C++.  For merged-particle processes the leg flavor tags are set to
-        # the individual PDG codes before each call so that smatrix selects
-        # the matching FLV-coupling component.  We rebuild the Process from
-        # scratch (rather than deep-copying) because the SA exporters mutate
-        # internal color-algebra objects on the legs in a way that breaks
-        # color_amp.create_color_dict_list when re-evaluated.
-        py_values = {}
-        if has_python and sa_momenta and all_keys:
-            keys_for_python = all_keys if all_keys != [None] else [None]
+            # ── Python and pyAmpliCol per PDG tuple ──────────────────────────
+            # Run the Python back-end with the same phase-space points.  For
+            # merged-particle processes the leg flavor tags are set to the
+            # individual PDG codes before each call so that smatrix selects
+            # the matching FLV-coupling component.  We rebuild the Process
+            # from scratch (rather than deep-copying) because the SA exporters
+            # mutate internal color-algebra objects on the legs in a way that
+            # breaks color_amp.create_color_dict_list when re-evaluated.
+            py_values = {}
+            amplicol_values = {}
             orig_legs = list(proc.get('legs'))
-            for key in keys_for_python:
-                new_legs = base_objects.LegList()
-                for idx, src_leg in enumerate(orig_legs):
-                    leg_data = {
-                        'id':     src_leg.get('id'),
-                        'state':  src_leg.get('state'),
-                        'number': idx + 1,
-                    }
-                    if (key is not None and
-                            abs(src_leg.get('id')) in merged_particles):
-                        leg_data['flavor'] = [abs(key[idx])]
-                    new_legs.append(base_objects.Leg(leg_data))
-                proc_py = base_objects.Process({
-                    'legs':  new_legs,
-                    'model': model,
-                    'orders': proc.get('orders'),
-                    'forbidden_particles': proc.get('forbidden_particles'),
-                    'forbidden_onsh_s_channels':
-                        proc.get('forbidden_onsh_s_channels'),
-                    'forbidden_s_channels': proc.get('forbidden_s_channels'),
-                    'perturbation_couplings':
-                        proc.get('perturbation_couplings'),
-                })
-                try:
-                    amp_py = diagram_generation.Amplitude(proc_py)
-                    if not amp_py.get('diagrams'):
-                        continue
-                    me_py_obj = helas_objects.HelasMatrixElement(amp_py,
-                                                                 gen_color=True)
-                    result = evaluator.evaluate_matrix_element(
-                        me_py_obj, p=sa_momenta, options=options)
-                    if result is None:
-                        continue
-                    if isinstance(result, tuple):
-                        m2_py = result[0]
-                    elif isinstance(result, dict):
-                        m2_py = result.get('m2')
-                    else:
-                        m2_py = result
-                    py_values[key] = m2_py
-                except Exception as err:
-                    logger.info(
-                        "Language check: Python eval failed for %s: %s"
-                        % (proc.nice_string(), err))
+            for key in (all_keys if points else []):
+                if has_python:
+                    new_legs = base_objects.LegList()
+                    for idx, src_leg in enumerate(orig_legs):
+                        leg_data = {
+                            'id':     src_leg.get('id'),
+                            'state':  src_leg.get('state'),
+                            'number': idx + 1,
+                        }
+                        if (key is not None and
+                                abs(src_leg.get('id')) in merged_particles):
+                            leg_data['flavor'] = [abs(key[idx])]
+                        elif src_leg.get('flavor'):
+                            leg_data['flavor'] = list(src_leg.get('flavor'))
+                        new_legs.append(base_objects.Leg(leg_data))
+                    proc_py = base_objects.Process({
+                        'legs':  new_legs,
+                        'model': model,
+                        'orders': proc.get('orders'),
+                        'forbidden_particles': proc.get('forbidden_particles'),
+                        'forbidden_onsh_s_channels':
+                            proc.get('forbidden_onsh_s_channels'),
+                        'forbidden_s_channels': proc.get('forbidden_s_channels'),
+                        'perturbation_couplings':
+                            proc.get('perturbation_couplings'),
+                    })
+                    try:
+                        amp_py = diagram_generation.Amplitude(proc_py)
+                        if amp_py.get('diagrams'):
+                            me_py_obj = helas_objects.HelasMatrixElement(
+                                amp_py, gen_color=True)
+                            m2_py = evaluator.evaluate_matrix_element(
+                                me_py_obj, points=points, options=options)
+                            if m2_py is not None:
+                                py_values[key] = m2_py
+                    except Exception as err:
+                        logger.info(
+                            "Language check: Python eval failed for %s: %s"
+                            % (proc.nice_string(), err))
+                if amplicol is not None:
+                    pdgs = key
+                    if pdgs is None:
+                        # the physical flavour of a merged leg restricted to one
+                        pdgs = tuple(
+                            (leg.get('flavor')[0] if leg.get('state')
+                             else -leg.get('flavor')[0])
+                            if leg.get('flavor') and len(leg.get('flavor')) == 1
+                            else leg.get('id') for leg in orig_legs)
+                    if not any(abs(pdg) in merged_particles for pdg in pdgs):
+                        values = amplicol.evaluate(pdgs, proc, points)
+                        if values is not None:
+                            amplicol_values[key] = values
 
-        if not all_keys:
-            # Neither backend ran → one placeholder entry so the process still
-            # appears in the output table.
-            mg7_results = { f"value_mg7_{b}": None for b in flavors_mg7.keys() }
-            results.append({
-                'process':        proc,
-                'process_label':  proc.base_string(),
-                'value_fortran':  None,
-                'value_cpp':      None,
-                **mg7_results,
-                'value_python':   None,
-                'momenta':        sa_momenta,
-            })
-        else:
-            for key in all_keys:
-                me_f_val   = flavors_f.get(key)
-                me_cpp_val = flavors_cpp.get(key)
-                me_mg7_val = { f"value_mg7_{b}": flv.get(key) for b, flv in flavors_mg7.items() }
-                me_py_val  = py_values.get(key)
+            def _value(values):
+                if not values:
+                    return None
+                return {'m2': values[0], 'm2_points': list(values)}
 
+            for key in (all_keys or [None]):
                 if key is None:
                     label = proc.base_string()
                 else:
                     label = _pdg_tuple_to_label(key, model, proc)
-
-                results.append({
-                    'process':        proc,
-                    'process_label':  label,
-                    'value_fortran':  {'m2': me_f_val}   if me_f_val   is not None else None,
-                    'value_cpp':      {'m2': me_cpp_val} if me_cpp_val is not None else None,
-                    **{ k: {'m2': val} if val is not None else None for k, val in me_mg7_val.items() },
-                    'value_mg7':      {'m2': me_mg7_val} if me_mg7_val is not None else None,
-                    'value_python':   {'m2': me_py_val}  if me_py_val  is not None else None,
-                    'momenta':        sa_momenta,
-                })
-
-    clean_added_globals(ADDED_GLOBAL)
+                mg7_points = OrderedDict(
+                    ('value_mg7_%s' % b, flv.get(key))
+                    for b, flv in flavors_mg7.items())
+                mg7_entries = dict((name, _value(values))
+                                   for name, values in mg7_points.items())
+                value_mg7 = None
+                if mg7_points:
+                    value_mg7 = {
+                        'm2': OrderedDict(
+                            (name, values[0] if values else None)
+                            for name, values in mg7_points.items()),
+                        'm2_points': mg7_points}
+                results.append(dict(
+                    process=proc,
+                    process_label=label,
+                    value_fortran=_value(flavors_f.get(key)),
+                    value_cpp=_value(flavors_cpp.get(key)),
+                    value_mg7=value_mg7,
+                    value_python=_value(py_values.get(key)),
+                    value_pyamplicol=_value(amplicol_values.get(key)),
+                    momenta=sa_momenta,
+                    npoints=len(points) if points else 0,
+                    color_accuracy=color_accuracy,
+                    **mg7_entries))
+    finally:
+        aloha.t_channel_width = old_t_channel_width
+        color_amp.ddm_basis, color_amp.ddm_flow_basis = old_ddm
+        if amplicol is not None:
+            amplicol.clean()
+        clean_added_globals(ADDED_GLOBAL)
     return results
 
 
@@ -6351,8 +6629,18 @@ def output_precision(results, output='text'):
     return text
 
 
-def output_language(comparison_results, output='text'):
-    """Present the results of a Fortran SA / C++ SA / MG7 SA / Python cross-check.
+def output_language(comparison_results, output='text', threshold=1e-4):
+    """Present the results of a Fortran SA / C++ SA / MG7 SA / Python /
+    pyAmpliCol cross-check (check language, or check lc).
+
+    The values shown are those of the first phase-space point; the maximal
+    relative difference is over every pair of backends and every point. A
+    difference is relative to the larger of the two values, and a value below
+    1e-10 of the largest one of the entry (a helicity-suppressed point) is
+    compared to that scale instead, so that two numerical zeros agree. A
+    process that vanishes altogether (nu nu~ > a a in a SMEFT model: round-off
+    of 1e-73 in one backend, exactly 0 in another) has no such scale: a value
+    whose dimensionless size |M|^2 sqrt(s)^(2n-8) is below 1e-30 counts as 0.
 
     Parameters
     ----------
@@ -6367,7 +6655,7 @@ def output_language(comparison_results, output='text'):
     """
     proc_col_size = 17
     for data in comparison_results:
-        proc = data.get('process_label', data['process'].base_string())
+        proc = (data.get('process_label') or data['process'].base_string())
         if len(proc) + 1 > proc_col_size:
             proc_col_size = len(proc) + 1
 
@@ -6380,90 +6668,124 @@ def output_language(comparison_results, output='text'):
     no_check_list = []
     failed_list = []
 
-    # in case something broke within MG7, we just write a single N/A column
-    try:
-        mg7_columns = [fixed_string_length(f"MG7 SA ({k.rsplit('_',1)[-1]})", col_size) for k in comparison_results[0]["value_mg7"]["m2"].keys()]
-    except KeyError:
+    # One column per madmatrix build of the first entry, a single N/A column
+    # when none built
+    mg7_names = []
+    for entry in comparison_results:
+        if entry.get('value_mg7'):
+            mg7_names = list(entry['value_mg7']['m2'].keys())
+            break
+    if mg7_names:
+        mg7_columns = [fixed_string_length("MG7 SA %s" % name[len('value_mg7_'):],
+                                           col_size) for name in mg7_names]
+    else:
         mg7_columns = [fixed_string_length("MG7 SA", col_size)]
-    res_str = (fixed_string_length(process_header, proc_col_size) +
+
+    npoints = max([entry.get('npoints', 1) or 1 for entry in comparison_results]
+                  or [1])
+    accuracy = comparison_results[0].get('color_accuracy', 'full') \
+               if comparison_results else 'full'
+    res_str = "%s colour, %d phase-space point%s (values: first point)\n" % (
+        'Leading' if accuracy == 'lc' else 'Full', npoints,
+        's' if npoints > 1 else '')
+    res_str += (fixed_string_length(process_header, proc_col_size) +
                fixed_string_length("Fortran SA", col_size) +
                fixed_string_length("C++ SA", col_size) +
-               "".join(mg7_columns) + 
+               "".join(mg7_columns) +
                fixed_string_length("Python", col_size) +
+               fixed_string_length("pyAmpliCol", col_size) +
                fixed_string_length("max rel.diff.", col_size) +
                "Result")
 
     def _fmt(v):
         return "%1.6e" % v if v is not None else "N/A"
 
-    def _reldiff(a, b):
-        if a is None or b is None:
+    def _points(value):
+        if value is None:
             return None
-        ref = abs(a) if a != 0 else abs(b) if b != 0 else 0.
-        if ref == 0:
-            return 0.
-        return abs(a - b) / ref
-
-    def _fmt_diff(d):
-        return "%1.6e" % d if d is not None else "N/A"
+        return value.get('m2_points') or [value['m2']]
 
     for entry in comparison_results:
-        proc    = entry.get('process_label', entry['process'].base_string())
-        val_f   = entry['value_fortran']
-        val_cpp = entry['value_cpp']
-        val_mg7 = entry.get('value_mg7')
-        val_py  = entry.get('value_python')
+        proc = (entry.get('process_label') or entry['process'].base_string())
+        series = [('Fortran', _points(entry.get('value_fortran'))),
+                  ('C++', _points(entry.get('value_cpp')))]
+        mg7 = entry.get('value_mg7')
+        for name in mg7_names:
+            values = mg7['m2_points'].get(name) if mg7 and 'm2_points' in mg7 \
+                     else ([mg7['m2'].get(name)] if mg7 and
+                           mg7['m2'].get(name) is not None else None)
+            series.append(('MG7 %s' % name[len('value_mg7_'):], values))
+        series.append(('Python', _points(entry.get('value_python'))))
+        series.append(('pyAmpliCol', _points(entry.get('value_pyamplicol'))))
+        available = [(name, values) for name, values in series if values]
 
-        me_f   = val_f['m2']   if val_f   is not None else None
-        me_cpp = val_cpp['m2'] if val_cpp is not None else None
-        me_mg7 = val_mg7['m2'] if val_mg7 is not None else None
-        me_py  = val_py['m2']  if val_py  is not None else None
+        # the scale of the entry, below which values are numerical zeros
+        scale = max([abs(v) for _, values in available for v in values
+                     if v is not None and math.isfinite(v)] or [0.])
+        # and the absolute one, 1e-30 in units of sqrt(s) (first point)
+        momenta = entry.get('momenta')
+        if momenta:
+            ninitial = entry['process'].get_ninitial() \
+                       if entry.get('process') is not None else 2
+            sqrts = sum(p[0] for p in momenta[:ninitial])
+            if ninitial == 2:
+                sqrts = math.sqrt(max(sqrts ** 2 - sum(
+                    (momenta[0][i] + momenta[1][i]) ** 2 for i in (1, 2, 3)), 0.))
+            zero = 1e-30 * sqrts ** (8 - 2 * len(momenta)) if sqrts > 0 else 0.
+            if scale < zero:
+                available = [(name, [0. if v is not None and abs(v) < zero else v
+                                     for v in values])
+                             for name, values in available]
+                scale = 0.
+        max_diff = None
+        worst = None
+        for i, (name1, values1) in enumerate(available):
+            for name2, values2 in available[i + 1:]:
+                for ipoint, (a, b) in enumerate(zip(values1, values2)):
+                    if a is None or b is None:
+                        continue
+                    if not (math.isfinite(a) and math.isfinite(b)):
+                        diff = float('inf')
+                    else:
+                        ref = max(abs(a), abs(b), 1e-10 * scale)
+                        diff = abs(a - b) / ref if ref else 0.
+                    if max_diff is None or diff > max_diff:
+                        max_diff = diff
+                        worst = (name1, name2, ipoint + 1)
+                if len(values1) != len(values2):
+                    max_diff = float('inf')
+                    worst = (name1, name2, 'number of points')
 
-        # Pairwise relative differences across the available backends.
-        # for MG7 separate results from various backends, if something broke
-        # we display a single None
-        mg7_fortran_diffs = [ _reldiff(me_f, me_mg7_backend) for me_mg7_backend in me_mg7.values() ] if me_mg7 is not None else [None]
-        mg7_cpp_diffs = [ _reldiff(me_cpp, me_mg7_backend) for me_mg7_backend in me_mg7.values() ] if me_mg7 is not None else [None]
-        mg7_python_diffs = [ _reldiff(me_py, me_mg7_backend) for me_mg7_backend in me_mg7.values() ] if me_mg7 is not None else [None]
-        diffs = [d for d in (
-            _reldiff(me_f, me_cpp),
-            *mg7_fortran_diffs,
-            _reldiff(me_f, me_py),
-            *mg7_cpp_diffs,
-            _reldiff(me_cpp, me_py),
-            *mg7_python_diffs,
-        ) if d is not None]
-        max_diff = max(diffs) if diffs else None
-
-        mg7_strings = [
-            fixed_string_length(_fmt(me_mg7_backend), col_size)
-            for me_mg7_backend in me_mg7.values()
-        ] if me_mg7 is not None else [fixed_string_length(_fmt(None), col_size)]
+        firsts = dict((name, values[0] if values else None)
+                      for name, values in series)
+        mg7_strings = [fixed_string_length(_fmt(firsts['MG7 %s' % name[len('value_mg7_'):]]),
+                                           col_size) for name in mg7_names] \
+                      or [fixed_string_length(_fmt(None), col_size)]
         row = ('\n' + fixed_string_length(proc, proc_col_size) +
-               fixed_string_length(_fmt(me_f),   col_size) +
-               fixed_string_length(_fmt(me_cpp), col_size) +
+               fixed_string_length(_fmt(firsts['Fortran']), col_size) +
+               fixed_string_length(_fmt(firsts['C++']), col_size) +
                "".join(mg7_strings) +
-               fixed_string_length(_fmt(me_py),  col_size) +
-               fixed_string_length(_fmt_diff(max_diff), col_size))
+               fixed_string_length(_fmt(firsts['Python']), col_size) +
+               fixed_string_length(_fmt(firsts['pyAmpliCol']), col_size) +
+               fixed_string_length(_fmt(max_diff), col_size))
 
-        mg7_available = me_mg7.values() if me_mg7 is not None else [None]
-        n_available = sum(v is not None for v in (me_f, me_cpp, *mg7_available, me_py))
-
-        if n_available == 0:
+        if not available:
             no_check_proc += 1
             no_check_list.append(proc)
             res_str += row + "No backend available"
-        elif n_available == 1:
+        elif len(available) == 1:
             no_check_proc += 1
             no_check_list.append(proc)
             res_str += row + "Only one backend available"
-        elif max_diff is not None and max_diff < 1e-4:
+        elif max_diff is not None and max_diff < threshold:
             pass_proc += 1
             res_str += row + "Passed"
         else:
             fail_proc += 1
             failed_list.append(proc)
             res_str += row + "Failed"
+            if worst:
+                res_str += " (%s vs %s, point %s)" % worst
 
     res_str += "\nSummary: %i/%i passed, %i/%i failed" % (
         pass_proc, pass_proc + fail_proc,
