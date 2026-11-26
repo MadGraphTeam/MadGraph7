@@ -1634,8 +1634,9 @@ namespace madmatrix
       {
         const int ighel0 = allihel != nullptr ? 0 : hstPatStart[ipat];
         const int npat = allihel != nullptr ? ( ipat == 0 ? nhel : 0 ) : hstPatStart[ipat + 1] - hstPatStart[ipat];
+        const auto kernel = cJampsKernels[ipat]; // Plain name: host_hip rewrites only name<<<>>>.
         if( npat > 0 )
-          gpuLaunchKernel2DSharedMem( cJampsKernels[ipat], gpublocks, npat, gputhreads, sharedWfBytes( gputhreads ), ghelStreams[0], kparams, ighel0, allihel, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, true, nullptr );
+          gpuLaunchKernel2DSharedMem( kernel, gpublocks, npat, gputhreads, sharedWfBytes( gputhreads ), ghelStreams[0], kparams, ighel0, allihel, allmomenta, allcouplings, iflavorVec, ghelAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, true, nullptr );
       }
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nhel, gpublocks, gputhreads, true );
     }
@@ -1649,7 +1650,8 @@ namespace madmatrix
         // into the same numerator slots via atomicAdd. The denominators are derived later.
         int ipat = 0;
         while( allihel == nullptr && ipat + 1 < nHrPat && ighel >= hstPatStart[ipat + 1] ) ipat++;
-        gpuLaunchKernelStreamSharedMem( cJampsKernels[ipat], gpublocks, gputhreads, sharedWfBytes( gputhreads ), ghelStreams[ighel], kparams, ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false, nullptr );
+        const auto kernel = cJampsKernels[ipat];
+        gpuLaunchKernelStreamSharedMem( kernel, gpublocks, gputhreads, sharedWfBytes( gputhreads ), ghelStreams[ighel], kparams, ihel, allihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, ghelAllNumerators, ghelAllDenominators, colAllJamp2s, nevt, nhel, false, nullptr );
       }
       // (2) Then compute the ME for that helicity from the color sum of QCD partial amplitudes jamps
       color_sum_gpu( ghelAllMEs, ghelAllJamps, ghelAllBlasTmp, pBlasHandle, ghelStreams, nhel, gpublocks, gputhreads, false );
