@@ -1,18 +1,21 @@
 # SPDX-License-Identifier: 0BSD
-"""Crafted UMAMI metadata must not reach the generated reweight sources."""
+"""Crafted UMAMI metadata must not reach the reweight provider data."""
 
 from __future__ import annotations
 
 import json
+from array import array
 from pathlib import Path
 
 import pytest
 
 from pyamplicol.artifacts.umami_reweight import (
+    SwitchTargetTable,
     load_umami_metadata,
-    reweight_header,
+    reweight_tables,
     switch_catalogue,
     write_reweight_provider,
+    write_switch_sidecar,
 )
 
 
@@ -60,9 +63,10 @@ def _write(artifact: Path, document) -> Path:
     return artifact
 
 
-def test_valid_metadata_renders():
-    header = reweight_header(_document(), [_document()], "lc", "full")
-    assert "reweight_c0_f0_permutation[] = {0, 1, 2, 3};" in header
+def test_valid_metadata_gives_tables():
+    tables = reweight_tables(_document(), [_document()], "lc", "full")
+    (row,) = tables.channels[0]
+    assert row.permutation == (0, 1, 2, 3) and row.target_permutation is None
 
 
 @pytest.mark.parametrize(
@@ -75,7 +79,7 @@ def test_valid_metadata_renders():
 )
 def test_non_integer_metadata_is_rejected(document):
     with pytest.raises(ValueError, match="integer"):
-        reweight_header(document, [_document()], "lc", "full")
+        reweight_tables(document, [_document()], "lc", "full")
 
 
 def test_provider_id_is_validated(tmp_path):
@@ -279,21 +283,21 @@ def _crossed_reference(signs):
 
 def test_crossed_reference_rows_carry_their_signs():
     reference, target = _crossed_reference([1, -1, -1, 1])
-    header = reweight_header(reference, [target], "lc", "full")
-    assert "static const signed char reweight_c0_f0_signs[] = {1, -1, -1, 1};" in header
-    assert (
-        "{0, 0, reweight_c0_f0_permutation, reweight_c0_f0_signs, "
-        "reweight_c0_f0_reference, reweight_c0_f0_target, 1, "
-        '"u_g_to_u_g", reweight_c0_f0_target_permutation, NULL, 1.0, -1, NULL},'
-    ) in header
-    # uncrossed rows: no signs on either side
-    assert "reweight_c0_f0_permutation, NULL, reweight_c0_f0_reference" in (
-        reweight_header(_document(), [_document()], "lc", "full")
+    (row,) = reweight_tables(reference, [target], "lc", "full").channels[0]
+    assert row.reference_signs == (1, -1, -1, 1)
+    assert (row.reference_process, row.target_process) == (0, 0)
+    assert (row.reference_assignment, row.assignment_key) == (1, "u_g_to_u_g")
+    assert row.target_permutation is not None and row.target_signs is None
+    assert (row.target_factor, row.target_assignment, row.target_assignment_key) == (
+        1.0, -1, None
     )
+    # uncrossed rows: no signs on either side
+    (plain,) = reweight_tables(_document(), [_document()], "lc", "full").channels[0]
+    assert plain.reference_signs is None and plain.target_signs is None
     for signs in ([1, -1, 2, 1], [1, -1, True, 1]):
         bad, _ = _crossed_reference(signs)
         with pytest.raises(ValueError, match=r"momentum signs|integer"):
-            reweight_header(bad, [target], "lc", "full")
+            reweight_tables(bad, [target], "lc", "full")
 
 
 def test_canonical_legs_keep_crossed_slots():
@@ -364,20 +368,17 @@ def test_switch_evaluations_of_crossed_members_carry_their_signs():
             for e in call["evaluations"]
         }
         assert len(kinds) == 1
-    from pyamplicol.artifacts.umami_reweight import _switch_tables
+    from pyamplicol.artifacts.umami_reweight import _switch_rows
 
     reference["helicities"] = [[1, 1, 1, 1]]
-    lines: list[str] = []
-    _switch_tables(reference, catalogue, lambda *_: (0, None, 1.0, -1, None), lines)
+    rows = _switch_rows(reference, catalogue, lambda *_: (0, None, 1.0, -1, None))
     index = catalogue["evaluations"].index(crossed[0])
-    prefix = "static const signed char reweight_switch_"
-    assert f"{prefix}s{index}[] = {{1, -1, -1, 1}};" in lines
-    assert f"{prefix}h{index}[] = {{1, -1, 1, 1}};" in lines
+    assert rows.evaluations[index].signs == (1, -1, -1, 1)
+    assert rows.evaluations[index].helicity_signs == (1, -1, 1, 1)
     assert any(
-        line.endswith(f"reweight_switch_s{index}, reweight_switch_h{index}}},")
-        for line in lines
+        e.assignment_key == "r0" and e.signs is None and e.helicity_signs is None
+        for e in rows.evaluations
     )
-    assert any(line.endswith('"r0", NULL, NULL},') for line in lines)
 
 
 @pytest.mark.parametrize(
@@ -393,3 +394,123 @@ def test_switch_refuses_inconsistent_crossings(signs, rho):
     reference["runtime_processes"] = reference["runtime_processes"][:1]
     with pytest.raises(ValueError, match="inconsistent crossing signs"):
         switch_catalogue(reference, _crossed_groups(signs, rho), 1)
+
+
+@pytest.mark.parametrize("count", [0, 1, 30_000])
+def test_switch_sidecar_has_the_bytes_of_json_dumps(tmp_path, count):
+    # chunked writing over several chunks, negative pdg ids, an empty table
+    width = 5
+    pdgs = [[21, -2, 2 + k % 3, -(k % 4) - 1, 21] for k in range(count)]
+    flows = [[[501 + k % 7, 0], [0, 502], [503, 501], [0, 0], [502, 503]]
+             for k in range(count // 2)]
+    targets = SwitchTargetTable(
+        array("i"), array("i"), [], array("i", [v for row in pdgs for v in row]), width
+    )
+    catalogue = {
+        "switch_lines": 3,
+        "target_table": targets,
+        "color_flow_table": array("i", [t for f in flows for p in f for t in p]),
+    }
+    path = tmp_path / "flavor_switch_p0.json"
+    write_switch_sidecar(path, catalogue, 17)
+    expected = {"switch_lines": 3, "targets": pdgs}
+    expected.update(color_flow_offset=17, color_flows=flows)
+    assert path.read_text() == json.dumps(expected)
+
+
+def test_switch_catalogue_rows_view_its_tables():
+    reference = _switch_reference(TTJ_ROWS, [0.0, 0.0, 173.0, 173.0, 0.0])
+    catalogue = switch_catalogue(reference, None, 2)
+    table, rows = catalogue["ordering_table"], catalogue["orderings"]
+    assert len(rows) == len(table.evaluation) == 7
+    assert rows[-1] == rows[6] and rows[1:3] == [rows[1], rows[2]]
+    assert [o["target"] for o in rows] == list(table.target)
+    with pytest.raises(IndexError):
+        rows[7]
+    targets = catalogue["target_table"]
+    assert catalogue["target_pdgs"] == [
+        list(targets.pdgs[k * 5:(k + 1) * 5]) for k in range(len(targets.evaluation))
+    ]
+
+
+def _slot_pdgs(reference, evaluation):
+    pdgs = reference["runtime_processes"][evaluation["process"]]["pdgs"]
+    return tuple(pdg for _, pdg in sorted(zip(evaluation["legs"], pdgs, strict=True)))
+
+
+def _conjugate(pdgs):
+    return tuple(p if p == 21 else -p for p in pdgs)
+
+
+@pytest.mark.parametrize("power", [2, 1, None])
+def test_switch_shares_charge_conjugate_totals_of_pure_qcd(monkeypatch, power):
+    import pyamplicol.artifacts.umami_reweight as module
+
+    rows = ([21, 21, 21, 21], [2, -2, 21, 21], [2, -2, 1, -1], [1, 2, 1, 2])
+    reference = _switch_reference(rows, [0.0] * 4)
+    for process in reference["runtime_processes"]:
+        process["alpha_s_power"] = power
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", False)
+    old = switch_catalogue(reference, None, 2)
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", True)
+    new = switch_catalogue(reference, None, 2)
+    if power != 2:
+        # not proven pure QCD (an electroweak coupling or no proof): unchanged
+        assert new["calls"] == old["calls"]
+        assert new["ordering_table"] == old["ordering_table"]
+        return
+    assert len(new["calls"]) < len(old["calls"])
+    # every evaluation stays for the targets, which keep their own
+    assert new["evaluations"] == old["evaluations"]
+    assert list(new["targets"]) == list(old["targets"])
+    assert list(new["target_pdgs"]) == list(old["target_pdgs"])
+    written = {e for call in new["calls"] for e in call["evaluations"]}
+    assert written == set(new["ordering_table"].evaluation)
+    shared = 0
+    for before, after in zip(old["orderings"], new["orderings"], strict=True):
+        assert {**before, "evaluation": 0} == {**after, "evaluation": 0}
+        own = _slot_pdgs(reference, old["evaluations"][before["evaluation"]])
+        read = _slot_pdgs(reference, new["evaluations"][after["evaluation"]])
+        # the total of the flavour or of its charge conjugate in the same slots
+        assert read in (own, _conjugate(own))
+        shared += read != own
+    assert shared
+
+
+@pytest.mark.parametrize("width", [None, {"lhablock": "DECAY", "lhacode": [6]},
+                                   {"name": "particle.6.width"}])
+def test_charge_conjugate_totals_cross_arrangements_without_a_width(
+    monkeypatch, width
+):
+    import pyamplicol.artifacts.umami_reweight as module
+
+    # t and t~ swap slots under C: the pairs join different arrangements
+    rows = ([21, 21, 6, -6, 21, 21], [21, 21, -6, 6, 21, 21],
+            [2, -2, 6, -6, 21, 21], [2, -2, -6, 6, 21, 21],
+            [21, 21, 6, -6, 2, -2], [21, 21, -6, 6, 2, -2])
+    reference = _switch_reference(rows, [0.0, 0.0, 173.0, 173.0, 0.0, 0.0])
+    for process in reference["runtime_processes"]:
+        process["alpha_s_power"] = 4
+        process["parameters"] = [{"name": "MT"}]
+        if width is not None:
+            process["parameters"].append({"name": "WT", **width})
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", False)
+    old = switch_catalogue(reference, None, 2)
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", True)
+    new = switch_catalogue(reference, None, 2)
+    if width is not None:
+        # a top width breaks the symmetry of the leading colour: unchanged
+        assert new["calls"] == old["calls"]
+        assert new["ordering_table"] == old["ordering_table"]
+        return
+    assert len(new["calls"]) < len(old["calls"])
+    arrangements: dict[int, set[int]] = {}
+    for row in old["orderings"]:
+        arrangements.setdefault(row["evaluation"], set()).add(row["arrangement"])
+    crossing = 0
+    for before, after in zip(old["orderings"], new["orderings"], strict=True):
+        own = _slot_pdgs(reference, old["evaluations"][before["evaluation"]])
+        read = _slot_pdgs(reference, new["evaluations"][after["evaluation"]])
+        assert read in (own, _conjugate(own))
+        crossing += before["arrangement"] not in arrangements[after["evaluation"]]
+    assert crossing

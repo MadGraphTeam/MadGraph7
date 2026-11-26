@@ -24,14 +24,14 @@ static const UmamiParameter umami_p0_parameters[] = {
 static const UmamiProcess umami_processes[] = {
     {"d_dbar_to_z", umami_p0_pdgs, NULL, -1, "lc", 12, umami_p0_helicities, 12, umami_p0_parameters},
 };
-static const size_t umami_c0_f0_permutation[] = {0, 1, 2};
-static const int umami_c0_f0_helicity_runtime[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-static const size_t umami_c0_f0_helicity_export[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-static const UmamiContribution umami_c0_f0_contributions[] = {
-    {0, "flow:2,1", 0, umami_c0_f0_permutation, 1, umami_c0_f0_helicity_runtime, umami_c0_f0_helicity_export},
+static const size_t umami_perm0[] = {0, 1, 2};
+static const int umami_hrt0[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+static const size_t umami_hex0[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+static const UmamiContribution umami_contributions[] = {
+    {0, "flow:2,1", 0, umami_perm0, 1, umami_hrt0, umami_hex0},
 };
 static const UmamiFlavour umami_c0_flavours[] = {
-    {1, umami_c0_f0_contributions},
+    {1, &umami_contributions[0]},
 };
 static const UmamiChannel umami_channels[] = {
     {1, umami_c0_flavours},

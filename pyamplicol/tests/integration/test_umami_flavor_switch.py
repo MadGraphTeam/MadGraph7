@@ -25,6 +25,7 @@ import numpy as np
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import quark_lines, write_reweight_provider
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -216,7 +217,7 @@ def test_stay_is_the_ratio_times_the_summed_flavours(switch):
     lc, _, data, _, library, handle = switch
     point, densities = _point(lc), _densities()
     channel, flavour, entry = _entry(data)
-    helicity = entry["runtime"]["helicity_export"][3]
+    helicity = helicity_export(data, entry["runtime"])[3]
     generated, dropped = _summed(lc, data, point, densities)
     assert dropped > 0.0
     off = _call(library, handle, point, densities, [0.0], [0.5], channel, flavour,
@@ -240,7 +241,7 @@ def test_switched_targets_and_helicities_follow_the_leading_colour(switch):
     random_helicity = np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
     ratio, target, helicity, color = _call(
         library, handle, point, densities, random_flavor, random_helicity, channel,
-        flavour, entry["runtime"]["helicity_export"][0],
+        flavour, helicity_export(data, entry["runtime"])[0],
     )
     assert (target >= 0).all()
     shares = {}
@@ -283,6 +284,52 @@ def test_switched_targets_and_helicities_follow_the_leading_colour(switch):
                     assert colour and not anticolour
                 elif pdg < 0:
                     assert anticolour and not colour
+
+
+def test_charge_conjugate_totals_keep_the_switch(switch, tmp_path, monkeypatch):
+    """Orderings reading the total of their charge conjugate (pure QCD) give the
+    same ratios and draws; the targets keep evaluations no call writes."""
+    import pyamplicol.artifacts.umami_reweight as module
+    from pyamplicol.artifacts.umami_reweight_data import decode_reweight_data
+
+    lc, full, data, _, library, handle = switch
+    old = Path(library._name).parents[1]
+    # the builtin model has no alpha_s proof; its 2 -> 2 flavours are pure QCD
+    monkeypatch.setattr(
+        module, "_pure_qcd", lambda p: all(module._is_qcd_parton(x) for x in p["pdgs"])
+    )
+    monkeypatch.setattr(module, "SWITCH_C_DEDUP", True)
+    output = tmp_path / "dedup"
+    assert write_reweight_provider(lc, full, output, switch_lines=2) == ["p0"]
+    completed = subprocess.run(
+        ["make", "-C", str(output), f"RUSTICOL_CONFIG={_config_executable()}"],
+        capture_output=True, text=True, timeout=180, check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    before = decode_reweight_data((old / "reweight_p0.rwd").read_bytes()).switch
+    after = decode_reweight_data((output / "reweight_p0.rwd").read_bytes()).switch
+    assert len(after.calls) < len(before.calls)
+    assert after.targets == before.targets and after.evaluations == before.evaluations
+    written = {e for call in after.calls for e in call.evaluations}
+    assert set(after.targets.evaluation) - written
+    dedup = _library(output / "build/libreweight_p0.so")
+    dedup_handle = ct.c_void_p()
+    assert dedup.umami_initialize(ct.byref(dedup_handle), os.fsencode(output)) == 0
+    point, densities = _point(lc), _densities()
+    channel, flavour, entry = _entry(data)
+    count = 400
+    random_flavor = (np.arange(count) + 0.5) / count * 1.2
+    random_helicity = np.modf(np.arange(count) * (math.sqrt(5) - 1) / 2)[0]
+    results = [
+        _call(lib, h, point, densities, random_flavor, random_helicity, channel, flavour,
+              helicity_export(data, entry["runtime"])[0], random_color=random_helicity)
+        for lib, h in ((library, handle), (dedup, dedup_handle))
+    ]
+    assert (results[0][1] >= 0).any()
+    np.testing.assert_allclose(results[1][0], results[0][0], rtol=1e-12)
+    for k in (1, 2, 3):
+        assert (results[1][k] == results[0][k]).all()
+    assert dedup.umami_free(dedup_handle) == 0
 
 
 def _flow_strings(pdgs, flow):
@@ -331,7 +378,7 @@ def test_switched_colours_follow_the_leading_colour_flows(switch):
             ratio, target, helicity, color = _call(
                 library, handle, point, densities, [fixed] * count,
                 [random_helicity] * count, channel, flavour,
-                entry["runtime"]["helicity_export"][0], random_color=grid,
+                helicity_export(data, entry["runtime"])[0], random_color=grid,
             )
             assert len(set(target)) == 1 and len(set(helicity)) == 1
             k, e = int(target[0]), int(helicity[0])
@@ -360,3 +407,169 @@ def test_switched_colours_follow_the_leading_colour_flows(switch):
                 assert abs(drawn.get(key, 0) - count * value / total) <= 2, (pdgs, key)
             multi += sum(value > 0 for value in expected.values()) > 1
     assert multi
+
+
+def _rebuilt(source: Path, target: Path, data: bytes | None, header: bool) -> Path:
+    """A copy of a provider with the data file ``data`` (None: removed); with
+    ``header``, its header bound to that data and the library rebuilt."""
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        content_sha256,
+        decode_reweight_data,
+        reweight_data_header,
+    )
+
+    shutil.copytree(source, target)
+    path = target / "reweight_p0.rwd"
+    if data is None:
+        path.unlink()
+        return target
+    if header:
+        tables = decode_reweight_data(path.read_bytes())
+        (target / "reweight_p0.h").write_text(
+            reweight_data_header(tables, path.name, content_sha256(data))
+        )
+    path.write_bytes(data)
+    if header:
+        completed = subprocess.run(
+            ["make", "-C", str(target), f"RUSTICOL_CONFIG={_config_executable()}"],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+    return target
+
+
+def _initialize(directory: Path) -> tuple[int, str]:
+    """umami_initialize in a child process: its status and stderr (no crash)."""
+
+    import sys
+
+    code = (
+        "import ctypes as ct, sys; lib = ct.CDLL(sys.argv[1]); h = ct.c_void_p(); "
+        "s = lib.umami_initialize(ct.byref(h), sys.argv[2].encode()); "
+        "s == 0 and lib.umami_free(h); print(s)"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", code, str(directory / "build/libreweight_p0.so"),
+         str(directory)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return int(completed.stdout), completed.stderr
+
+
+def _field(data: bytes, tag: str, row: int, field: int, value: int) -> bytes:
+    import struct
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        reseal_reweight_data,
+        section_table,
+    )
+
+    offset, count, size = section_table(data)[tag]
+    assert row < count, tag
+    patched = bytearray(data)
+    struct.pack_into("<i", patched, offset + row * size + 4 * field, value)
+    return reseal_reweight_data(bytes(patched))
+
+
+def _helicity_value(data: bytes) -> bytes:
+    """The first value of flavour 0's reference helicity map out of range."""
+
+    import struct
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        reseal_reweight_data,
+        section_table,
+    )
+
+    table = section_table(data)
+    ref = struct.unpack_from("<I", data, table["FLAV"][0] + 16)[0]
+    patched = bytearray(data)
+    struct.pack_into("<i", patched, table["I32P"][0] + 4 * ref, 1 << 20)
+    return reseal_reweight_data(bytes(patched))
+
+
+def _pool_end(data: bytes) -> int:
+    from pyamplicol.artifacts.umami_reweight_data import section_table
+
+    return section_table(data)["I32P"][1]
+
+
+def _calls(data: bytes, change) -> bytes:
+    """The data re-encoded with the switch calls ``change(calls, orderings)``."""
+
+    import dataclasses
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        decode_reweight_data,
+        encode_reweight_data,
+    )
+
+    tables = decode_reweight_data(data)
+    sw = tables.switch
+    calls = change(list(sw.calls), sw.orderings)
+    return encode_reweight_data(
+        dataclasses.replace(tables, switch=dataclasses.replace(sw, calls=calls))
+    )
+
+
+def _plain_pair(calls, orderings):
+    from pyamplicol.artifacts.umami_reweight_data import SwitchCall
+
+    return [*calls, SwitchCall((0, 1), None, None, None)]
+
+
+def _uncovered(calls, orderings):
+    return [c for c in calls if orderings.evaluation[0] not in c.evaluations]
+
+
+# (corrupted data or None, header and library rebuilt for it, message)
+CORRUPTIONS = {
+    "flipped byte": (
+        lambda d: d[:-5] + bytes([d[-5] ^ 0x40]) + d[-4:], False, "checksum"
+    ),
+    "truncated": (lambda d: d[:-8], False, "file size"),
+    "newer format": (
+        lambda d: d[:8] + (2).to_bytes(4, "little") + d[12:], False, "format version 2"
+    ),
+    "missing": (lambda d: None, False, "cannot read the reweight data"),
+    "stale library": (lambda d: _field(d, "FLAV", 0, 13, 7), False, "digest"),
+    "target evaluation": (lambda d: _field(d, "STGT", 0, 0, 1 << 20), True, "target"),
+    "ordering target": (lambda d: _field(d, "SORD", 0, 1, 1 << 20), True, "ordering"),
+    "colour length": (
+        lambda d: _field(d, "STGT", 0, 2, _pool_end(d)), True, "target"
+    ),
+    "assignment without key": (
+        lambda d: _field(d, "FLAV", 0, 8, 0), True, "flavour"
+    ),
+    "call without evaluations": (lambda d: _field(d, "SCAL", 0, 0, 0), True, "call"),
+    "helicity map value": (_helicity_value, True, "flavour"),
+    "plain call of two evaluations": (
+        lambda d: _calls(d, _plain_pair), True, "invalid switch call"
+    ),
+    "ordering of an unwritten evaluation": (
+        lambda d: _calls(d, _uncovered), True, "invalid switch ordering"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(CORRUPTIONS))
+def test_a_corrupted_data_file_fails_the_load(switch, tmp_path, name):
+    """umami_initialize refuses damaged, mismatched or out-of-range data with a
+    message; semantic damage behind a matching digest is caught by validation."""
+
+    library = switch[4]
+    output = Path(library._name).parents[1]
+    patch, header, message = CORRUPTIONS[name]
+    data = patch((output / "reweight_p0.rwd").read_bytes())
+    copy = _rebuilt(output, tmp_path / "copy", data, header)
+    status, stderr = _initialize(copy)
+    assert status != 0
+    assert "umami: " in stderr and message in stderr, stderr

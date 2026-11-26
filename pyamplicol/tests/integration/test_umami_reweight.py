@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import write_reweight_provider
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -133,7 +134,8 @@ def test_ratio_matches_native_runtimes(reweight):
                 point = [None] * len(runtime_point)
                 for runtime_slot, input_slot in enumerate(runtime["permutation"]):
                     point[input_slot] = runtime_point[runtime_slot]
-                for runtime_index, exported in enumerate(runtime["helicity_export"]):
+                exports = helicity_export(data, runtime)
+                for runtime_index, exported in enumerate(exports):
                     identifier = process["helicity_ids"][runtime_index]
                     reference = complex(
                         lc_runtime.evaluate((runtime_point,), helicities=[identifier])[0]
@@ -170,7 +172,7 @@ def test_batched_ratios_match_single_events(reweight):
             # Ratios of structurally zero helicities are rounding noise.
             native = Runtime.load(lc, process=process["id"])
             total = complex(native.evaluate((runtime_point,))[0]).real
-            for runtime_index, exported in enumerate(runtime["helicity_export"]):
+            for runtime_index, exported in enumerate(helicity_export(data, runtime)):
                 value = complex(
                     native.evaluate(
                         (runtime_point,),
@@ -283,7 +285,8 @@ def test_selector_only_target_matches_the_default_target(
                 point = [None] * len(runtime_point)
                 for runtime_slot, input_slot in enumerate(runtime["permutation"]):
                     point[input_slot] = runtime_point[runtime_slot]
-                for runtime_index, exported in enumerate(runtime["helicity_export"]):
+                exports = helicity_export(data, runtime)
+                for runtime_index, exported in enumerate(exports):
                     identifier = process["helicity_ids"][runtime_index]
                     reference = _single(lc_runtime, runtime_point, identifier)
                     expected = _single(full_runtime, runtime_point, identifier)

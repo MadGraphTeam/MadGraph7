@@ -91,7 +91,10 @@ void EventGenerator::commit_generate_job(GeneratorBatchJob& job) {
 void EventGenerator::commit_unweight_job(GeneratorBatchJob& job) {
     auto& channel = _channels.at(job.channel_index);
     if (_pipeline && _pipeline->contains(job.channel_index)) {
-        _pipeline->add_events(job);
+        // the next VEGAS iteration would clear them, see release_held_events()
+        _pipeline->add_events(
+            job, job.is_vegas_batch && _generate_mode == GenerateMode::events
+        );
     } else {
         channel->write_events(job.unweighted_events, job.max_weight);
     }
@@ -108,8 +111,14 @@ void EventGenerator::finish_channel_job(const GeneratorBatchJob& job) {
         return;
     }
     if (job.is_vegas_batch) {
-        _channels.at(job.channel_index)->optimize_vegas(job);
+        auto& channel = _channels.at(job.channel_index);
+        channel->optimize_vegas(job);
         _channel_optimizing.at(job.channel_index) = false;
+        // a converged channel keeps the events of its last iteration
+        if (_pipeline && _pipeline->contains(job.channel_index) &&
+            _pipeline->has_held(job.channel_index) && !channel->needs_optimization()) {
+            _pipeline->release_held(job.channel_index);
+        }
     } else if (_channel_batch_dispatch_done.at(job.channel_index)) {
         _channel_batch_pending.at(job.channel_index) = false;
     }
@@ -242,7 +251,9 @@ void EventGenerator::run_generate(GenerateMode mode) {
             round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
                 start_pipeline_jobs();
         }
+        release_held_events(stopping());
         drain_pipeline();
+        finish_held_events(stopping());
 
         if (mode == GenerateMode::optimize_only) {
             if (std::none_of(_channels.begin(), _channels.end(), [](auto& channel) {
@@ -636,6 +647,57 @@ std::size_t EventGenerator::start_pipeline_jobs() {
                     _context_unweight_queue.end(),
                     [](auto& queue) { return queue.empty(); });
     return _pipeline->start_jobs(_result_queue, flush, _context_job_counts);
+}
+
+void EventGenerator::release_held_events(bool stopping) {
+    if (!_pipeline || !_pipeline->has_held()) {
+        return;
+    }
+    // the shares update_integral_fractions() would give with the current estimates
+    double total_estimate = 0.;
+    for (auto& channel : _channels) {
+        total_estimate += channel->abs_integral_estimate(true);
+    }
+    double total_count =
+        static_cast<double>(_pending_target_count.value_or(_config.target_count));
+    for (std::size_t channel_index = 0; channel_index < _channels.size();
+         ++channel_index) {
+        if (!_pipeline->has_held(channel_index)) {
+            continue;
+        }
+        auto& channel = _channels.at(channel_index);
+        double target =
+            total_count * channel->abs_integral_estimate(true) / total_estimate;
+        // The channel iterates again and clears the events unless they can reach
+        // its target. The margin covers the target change from the steps.
+        constexpr double target_margin = 0.5;
+        if (stopping || !channel->needs_optimization() || !std::isfinite(target) ||
+            channel->status().count_unweighted +
+                    _pipeline->held_count_bound(channel_index) >=
+                target_margin * target) {
+            _pipeline->release_held(channel_index);
+        }
+    }
+}
+
+void EventGenerator::finish_held_events(bool stopping) {
+    if (!_pipeline || !_pipeline->has_held()) {
+        return;
+    }
+    for (std::size_t channel_index = 0; channel_index < _channels.size();
+         ++channel_index) {
+        if (!_pipeline->has_held(channel_index)) {
+            continue;
+        }
+        if (stopping) {
+            _pipeline->release_held(channel_index);
+        } else {
+            _pipeline->drop_held(channel_index);
+        }
+    }
+    if (stopping) {
+        drain_pipeline();
+    }
 }
 
 // Partial batches are fine: the steps don't depend on the batching.

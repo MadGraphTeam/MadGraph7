@@ -321,6 +321,25 @@ class AmplicolExportTest(unittest.TestCase):
             3, [partons, partons], switch)[0]
         self.assertEqual(entry['flavor_switch'], switch[0])
         self.assertEqual(entry['switch_resonance_pdgs'], [[[24]], [[-24]], [[0]]])
+        # the sidecar as the export reads it: its targets loaded only when needed
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'flavor_switch_p0.json')
+            for targets in (switch[1]['targets'], []):
+                with open(path, 'w') as stream:
+                    json.dump({'switch_lines': 3, 'targets': targets,
+                               'color_flow_offset': 0, 'color_flows': []}, stream)
+                lazy = export_amplicol.SwitchTargets(path)
+                self.assertEqual(bool(lazy), bool(targets))
+                lazy_entry = export_amplicol.subprocess_entries(
+                    metadata, self.cmd._curr_model, 'SubProcesses/A1', 'me.so',
+                    'ratio.so', 3, [partons, partons],
+                    (switch[0], {'targets': lazy}))[0]
+                if targets:
+                    self.assertEqual(lazy_entry, entry)
+                else:
+                    self.assertNotIn('flavor_switch', lazy_entry)
 
 
 class AmplicolLaunchResonancesTest(unittest.TestCase):

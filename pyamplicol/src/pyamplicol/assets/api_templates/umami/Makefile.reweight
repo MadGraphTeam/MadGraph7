@@ -28,7 +28,7 @@ all shared: $(LIBRARIES)
 $(BUILD_DIR):
 	mkdir -p "$@"
 
-$(BUILD_DIR)/libreweight_%.so: umami_reweight.c reweight_%.h reweight_provider.h umami.h $(SDK_LIBRARY) | $(BUILD_DIR)
+$(BUILD_DIR)/libreweight_%.so: umami_reweight.c reweight_%.h reweight_provider.h reweight_data.h umami.h $(SDK_LIBRARY) | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(SDK_CFLAGS) $(CFLAGS) -fPIC -DUMAMI_REWEIGHT_HEADER='"reweight_$*.h"' $(SHARED_FLAGS) "$<" -o "$@" $(LDFLAGS) $(SDK_LIBS)
 
 clean:

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -23,6 +23,19 @@ def _boolean(value: object) -> str:
 def _power(process: Mapping[str, Any]) -> str:
     power = process.get("alpha_s_power")
     return "-1" if power is None else str(int(power))
+
+
+def helicity_export(
+    data: Mapping[str, Any], runtime: Mapping[str, Any]
+) -> Sequence[int]:
+    """The exported helicity of each helicity of a runtime record: from schema 6
+    its ``helicity_export`` is an index into the document's ``helicity_exports``."""
+    export = runtime["helicity_export"]
+    if data.get("schema_version", 0) < 6:
+        return export
+    if isinstance(export, bool) or not isinstance(export, int):
+        raise ValueError(f"expected a helicity export index, got {export!r}")
+    return data["helicity_exports"][export]
 
 
 def provider_header(data: Mapping[str, Any]) -> str:
@@ -96,49 +109,52 @@ def provider_header(data: Mapping[str, Any]) -> str:
     lines.extend(
         ["static const UmamiProcess umami_processes[] = {", *process_rows, "};"]
     )
+    # per-entry arrays interned by content: providers repeat few distinct ones
+    interned: dict[tuple[str, tuple], str] = {}
+    counts: dict[str, int] = {}
+
+    def array(kind: str, ctype: str, values: list[str]) -> str:
+        key = (kind, tuple(values))
+        name = interned.get(key)
+        if name is None:
+            counts[kind] = counts.get(kind, 0) + 1
+            name = interned[key] = f"umami_{kind}{counts[kind] - 1}"
+            lines.append(f"static const {ctype} {name}[] = {{" + ", ".join(values) + "};")
+        return name
+
+    contributions: list[str] = []
     channel_rows = []
     for channel_index, channel in enumerate(data["channels"]):
-        flavour_rows = []
-        for flavour_index, flavour in enumerate(channel["processes"]):
-            prefix = f"umami_c{channel_index}_f{flavour_index}"
+        first = len(contributions)
+        for flavour in channel["processes"]:
             runtime = flavour["runtime"]
-            lines.append(
-                f"static const size_t {prefix}_permutation[] = {{"
-                + ", ".join(str(v) for v in runtime["permutation"])
-                + "};"
+            permutation = array(
+                "perm", "size_t", [str(v) for v in runtime["permutation"]]
             )
-            exported = runtime["helicity_export"]
+            exported = helicity_export(data, runtime)
             to_runtime = [-1] * len(data["helicities"])
             for runtime_index, export_index in enumerate(exported):
                 to_runtime[export_index] = runtime_index
-            lines.append(
-                f"static const int {prefix}_helicity_runtime[] = {{"
-                + ", ".join(str(v) for v in to_runtime or [-1])
-                + "};"
+            helicity_runtime = array(
+                "hrt", "int", [str(v) for v in to_runtime or [-1]]
             )
-            lines.append(
-                f"static const size_t {prefix}_helicity_export[] = {{"
-                + ", ".join(str(v) for v in exported or [0])
-                + "};"
+            export_array = array(
+                "hex", "size_t", [str(v) for v in exported or [0]]
             )
             signs = runtime.get("momentum_signs")
+            momentum_signs = None
             if signs is not None:
-                lines.append(
-                    f"static const signed char {prefix}_momentum_signs[] = {{"
-                    + ", ".join(str(int(v)) for v in signs)
-                    + "};"
+                momentum_signs = array(
+                    "sgn", "signed char", [str(int(v)) for v in signs]
                 )
-            lines.append(
-                f"static const UmamiContribution {prefix}_contributions[] = {{"
-            )
             fields = [
                 str(runtime["process_index"]),
                 _string(runtime["color_id"]),
                 str(runtime["color_index"]),
-                f"{prefix}_permutation",
+                permutation,
                 _number(runtime["factor"]),
-                f"{prefix}_helicity_runtime",
-                f"{prefix}_helicity_export",
+                helicity_runtime,
+                export_array,
             ]
             if "assignment" in runtime:
                 # Flavour-union assignment; omitted fields stay zero (NULL key).
@@ -147,23 +163,34 @@ def provider_header(data: Mapping[str, Any]) -> str:
                     str(int(runtime["assignment"])),
                     str(int(runtime["color_axis"])),
                 ]
-                if signs is not None:
-                    fields.append(f"{prefix}_momentum_signs")
+                if momentum_signs is not None:
+                    fields.append(momentum_signs)
             elif signs is not None:
                 raise ValueError("a crossed UMAMI contribution must be an assignment")
-            lines.append("    {" + ", ".join(fields) + "},")
-            lines.append("};")
-            flavour_rows.append(f"    {{1, {prefix}_contributions}},")
+            contributions.append("    {" + ", ".join(fields) + "},")
+        channel_rows.append((first, len(contributions) - first))
+    # one contribution per flavour, all in one array
+    lines.extend([
+        "static const UmamiContribution umami_contributions[] = {",
+        *(contributions or ["    {0},"]),
+        "};",
+    ])
+    for channel_index, (first, count) in enumerate(channel_rows):
         lines.extend(
             [
                 f"static const UmamiFlavour umami_c{channel_index}_flavours[] = {{",
-                *flavour_rows,
+                *(
+                    f"    {{1, &umami_contributions[{first + k}]}},"
+                    for k in range(count)
+                ),
+                *([] if count else ["    {0},"]),
                 "};",
             ]
         )
-        channel_rows.append(
-            f"    {{{len(flavour_rows)}, umami_c{channel_index}_flavours}},"
-        )
+    channel_rows = [
+        f"    {{{count}, umami_c{channel_index}_flavours}},"
+        for channel_index, (_, count) in enumerate(channel_rows)
+    ]
     lines.extend(
         ["static const UmamiChannel umami_channels[] = {", *channel_rows, "};"]
     )

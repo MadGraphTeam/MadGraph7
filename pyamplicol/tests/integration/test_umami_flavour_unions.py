@@ -26,6 +26,7 @@ import numpy as np
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet, Runtime
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import (
     load_umami_metadata,
     write_reweight_provider,
@@ -447,7 +448,7 @@ def test_union_matrix_elements_equal_per_flavour_artifacts(built):
                 )
             # fixed helicities, mapped through the physical legs
             data, other_data = unions[provider][0], flavours[other[0]][0]
-            for label in entry["runtime"]["helicity_export"][:4]:
+            for label in helicity_export(data, entry["runtime"])[:4]:
                 physical = _to_physical(entry, member, data["helicities"][label])
                 other_label = other_data["helicities"].index(
                     list(_to_input(other[3], other[4], physical))
@@ -574,7 +575,7 @@ def _flavour_events(documents, provider, point, every=False):
             if not entry["members"]:
                 continue  # a phase-space partner copy
             member = entry["members"][0]
-            exported = entry["runtime"]["helicity_export"]
+            exported = helicity_export(data, entry["runtime"])
             for label in exported if every else exported[::7][:3]:
                 physical = _to_physical(entry, member, data["helicities"][label])
                 events.append(
@@ -850,8 +851,11 @@ def test_crossed_reweight_tables_carry_their_signs(built):
     }
     assert crossed
     ((output, _, _),) = built["reweight"]["crossing"].values()
-    header = next(output.glob("reweight_*.h")).read_text()
-    assert "_signs[] = {" in header and "reweight_switch_s" in header
+    from pyamplicol.artifacts.umami_reweight_data import decode_reweight_data
+
+    tables = decode_reweight_data(next(output.glob("reweight_*.rwd")).read_bytes())
+    assert any(row.reference_signs for rows in tables.channels for row in rows)
+    assert any(e.signs for e in tables.switch.evaluations)
     from pyamplicol.artifacts.umami_reweight import switch_catalogue
 
     ((data, _),) = built["umami"]["crossing"]
@@ -876,7 +880,12 @@ def test_reweight_provider_without_signs_is_refused(built, tmp_path):
     """Reference rows that lose the signs of crossed assignments fail at load
     (the core's crossing of the assignment differs)."""
 
-    import re
+    from dataclasses import replace
+
+    from pyamplicol.artifacts.umami_reweight_data import (
+        decode_reweight_data,
+        write_reweight_data,
+    )
 
     output = tmp_path / "stripped"
     (identifier,) = write_reweight_provider(
@@ -885,13 +894,12 @@ def test_reweight_provider_without_signs_is_refused(built, tmp_path):
         output,
         switch_lines=SWITCH_LINES,
     )
-    header = output / f"reweight_{identifier}.h"
-    text, count = re.subn(
-        r"_permutation, reweight_c\d+_f\d+_signs,", "_permutation, NULL,",
-        header.read_text(),
-    )
+    tables = decode_reweight_data((output / f"reweight_{identifier}.rwd").read_bytes())
+    count = sum(row.reference_signs is not None for rows in tables.channels for row in rows)
     assert count
-    header.write_text(text)
+    for rows in tables.channels:
+        rows[:] = [replace(row, reference_signs=None) for row in rows]
+    write_reweight_data(output, tables)
     _make(output, _config_executable())
     library = _library(output / f"build/libreweight_{identifier}.so")
     handle = ct.c_void_p()
@@ -901,7 +909,7 @@ def test_reweight_provider_without_signs_is_refused(built, tmp_path):
         ((data, _),) = built["umami"]["crossing"]
         point = _points(1)[0]
         events = [
-            (point, channel, flavour, entry["runtime"]["helicity_export"][0])
+            (point, channel, flavour, helicity_export(data, entry["runtime"])[0])
             for channel, description in enumerate(data["channels"])
             for flavour, entry in enumerate(description["processes"])
             if "momentum_signs" in entry["runtime"]

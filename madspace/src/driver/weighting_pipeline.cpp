@@ -256,6 +256,7 @@ WeightingPipeline::WeightingPipeline(
     _next_sequences(channels.size()),
     _ready(channels.size()),
     _context_job_counts(contexts.size()),
+    _held(channels.size()),
     _sink(sink) {
     if (!_sink) {
         _sink = [this](StepEvents& step_events) {
@@ -426,7 +427,38 @@ std::size_t WeightingPipeline::batch_size(std::size_t context_index) const {
         : _config.gpu_batch_size;
 }
 
-void WeightingPipeline::add_events(GeneratorBatchJob& job) {
+double WeightingPipeline::held_count_bound(std::size_t channel_index) const {
+    // all events pass the steps, with the job maximum relative to the current one
+    double max_weight = _channels.at(channel_index)->max_weight();
+    double bound = 0.;
+    for (auto& chunk : _held.at(channel_index)) {
+        bound += chunk->size() *
+            (chunk->max_weight > 0 && max_weight > 0
+                 ? chunk->max_weight / max_weight
+                 : 1.);
+    }
+    return bound;
+}
+
+void WeightingPipeline::release_held(std::size_t channel_index) {
+    _held_chunk_count -= _held.at(channel_index).size();
+    for (auto& chunk : _held.at(channel_index)) {
+        advance(chunk, 1);
+    }
+    _held.at(channel_index).clear();
+}
+
+void WeightingPipeline::drop_held(std::size_t channel_index) {
+    _held_chunk_count -= _held.at(channel_index).size();
+    for (auto& chunk : _held.at(channel_index)) {
+        chunk->dropped = true;
+        chunk->clear();
+        set_ready(chunk, 1);
+    }
+    _held.at(channel_index).clear();
+}
+
+void WeightingPipeline::add_events(GeneratorBatchJob& job, bool hold) {
     auto& channel = _channels.at(job.channel_index);
     auto chunk = std::make_shared<Chunk>();
     chunk->channel_index = job.channel_index;
@@ -457,11 +489,22 @@ void WeightingPipeline::add_events(GeneratorBatchJob& job) {
     job.unweighted_events.clear();
     job.step_host.clear();
     ++_chunk_count;
+    if (hold) {
+        _held.at(job.channel_index).push_back(chunk);
+        ++_held_chunk_count;
+        return;
+    }
     advance(chunk, 1);
 }
 
+bool WeightingPipeline::is_stale(const Chunk& chunk) const {
+    return chunk.dropped ||
+        chunk.epoch != _channels.at(chunk.channel_index)->event_epoch();
+}
+
 void WeightingPipeline::advance(ChunkPtr chunk, std::size_t stage) {
-    if (chunk->size() == 0) {
+    // stale chunks skip the remaining steps, commit_stage() clears them
+    if (chunk->size() == 0 || is_stale(*chunk)) {
         set_ready(chunk, stage);
         return;
     }
@@ -486,8 +529,8 @@ void WeightingPipeline::set_ready(ChunkPtr chunk, std::size_t stage) {
 void WeightingPipeline::commit_stage(ChunkPtr chunk, std::size_t stage) {
     auto& channel = _channels.at(chunk->channel_index);
     std::size_t step_count = channel->weighting_steps().size();
-    // the events of the channel were cleared since
-    bool stale = chunk->epoch != channel->event_epoch();
+    // the events of the channel were cleared since, or dropped
+    bool stale = is_stale(*chunk);
     if (stale) {
         chunk->clear();
     }
@@ -909,5 +952,9 @@ void WeightingPipeline::reset() {
             next_sequence = _channel_sequences.at(channel_index);
         }
     }
+    for (auto& held : _held) {
+        held.clear();
+    }
+    _held_chunk_count = 0;
     _chunk_count = 0;
 }

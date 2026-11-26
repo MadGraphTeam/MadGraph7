@@ -9,17 +9,22 @@ from __future__ import annotations
 
 import ctypes as ct
 import os
-import re
 import shutil
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from pyamplicol import Generator, ModelSource, ProcessSet
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_reweight import (
     load_umami_metadata,
     write_reweight_provider,
+)
+from pyamplicol.artifacts.umami_reweight_data import (
+    decode_reweight_data,
+    write_reweight_data,
 )
 from pyamplicol.assets.prepared_models import (
     BUILTIN_SM_JIT_O2,
@@ -55,16 +60,6 @@ EXPRESSIONS = (
     "d d > d d",
 )
 NAMES = tuple(f"p{index}" for index in range(len(EXPRESSIONS)))
-# (block of the provider header, row pattern of a flavour-union target key)
-BLOCKS = {
-    "flavours": (r"static const ReweightFlavour \w+\[\] = \{", r', \d+, "[^"]*"\},$'),
-    "switch": (
-        r"static const ReweightSwitchTarget reweight_switch_targets\[\] = \{",
-        r', \d+, "[^"]*"\},$',
-    ),
-}
-
-
 def _config(accuracy: str, unions: bool) -> RunConfig:
     return RunConfig(
         action="generate",
@@ -123,24 +118,27 @@ def provider(tmp_path_factory):
 
 def _corrupted(provider, block: str) -> Path:
     """A copy of the provider with every target assignment key of ``block``
-    replaced; returns the copy."""
+    (the flavours or the switch targets) replaced; returns the copy."""
 
     root, _lc, output, config_executable = provider
     copy = root / f"reweight-{block}"
     shutil.copytree(output, copy, ignore=shutil.ignore_patterns("build"))
-    header = copy / "reweight_p0.h"
-    start, row = BLOCKS[block]
-    lines, inside, changed = header.read_text().splitlines(), False, 0
-    for index, line in enumerate(lines):
-        if re.match(start, line):
-            inside = True
-        elif inside and line == "};":
-            inside = False
-        elif inside and re.search(row, line):
-            lines[index] = re.sub(r'"[^"]*"\},$', '"not-an-assignment"},', line)
-            changed += 1
+    tables = decode_reweight_data((copy / "reweight_p0.rwd").read_bytes())
+    changed = 0
+    if block == "flavours":
+        for rows in tables.channels:
+            for k, row in enumerate(rows):
+                if row.target_assignment_key is not None:
+                    rows[k] = replace(row, target_assignment_key="not-an-assignment")
+                    changed += 1
+    else:
+        keys = tables.switch.targets.assignment_key
+        for k, key in enumerate(keys):
+            if key is not None:
+                keys[k] = "not-an-assignment"
+                changed += 1
     assert changed, f"no flavour-union target key in the {block} rows"
-    header.write_text("\n".join(lines) + "\n")
+    write_reweight_data(copy, tables)
     _make(copy, config_executable)
     return copy
 
@@ -160,7 +158,7 @@ def _status(directory: Path, lc: Path, *, switch: bool) -> int:
             tuple(map(float, p.momentum)) for p in generic_validation_point("g g > g g")
         ]
         events = [
-            (channel, flavour, entry["runtime"]["helicity_export"][0])
+            (channel, flavour, helicity_export(data, entry["runtime"])[0])
             for channel, description in enumerate(data["channels"])
             for flavour, entry in enumerate(description["processes"])
         ]
@@ -214,8 +212,9 @@ def _status(directory: Path, lc: Path, *, switch: bool) -> int:
 
 def test_target_assignment_keys_are_those_of_the_target_runtime(provider):
     _root, lc, output, config_executable = provider
-    header = (output / "reweight_p0.h").read_text()
-    assert re.search(r'"not-an-assignment"', header) is None
+    tables = decode_reweight_data((output / "reweight_p0.rwd").read_bytes())
+    keys = [row.target_assignment_key for rows in tables.channels for row in rows]
+    assert "not-an-assignment" not in keys + tables.switch.targets.assignment_key
     _make(output, config_executable)
     assert _status(output, lc, switch=False) == 0
     assert _status(output, lc, switch=True) == 0

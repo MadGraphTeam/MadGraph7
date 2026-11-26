@@ -72,7 +72,9 @@ public:
     /**
      * Estimate the events that @ref request_stop would keep now, without
      * changing anything: the channel with the fewest events for its share of
-     * the integral limits the total (see @ref generate).
+     * the integral limits the total (see @ref generate). Events still in the
+     * weighting steps, e.g. those of a VEGAS iteration held until the end of the
+     * round, are not counted yet, so a stop can keep more.
      *
      * @return The event count, the name of the limiting channel and its share
      *         of the integral.
@@ -305,6 +307,12 @@ private:
     );
     // run the re- and unweighting steps of all collected events
     void drain_pipeline();
+    // At the end of a round, before drain_pipeline(): send the held VEGAS-iteration
+    // events through the steps, except those that the next iteration clears.
+    void release_held_events(bool stopping);
+    // After drain_pipeline(): drop the events still held, or with a stop
+    // requested in the meantime, send them through the steps too.
+    void finish_held_events(bool stopping);
     // Statistics of the passes: the first unweighting, then the steps. A step
     // that does not unweight has no efficiency (NaN). The efficiencies and
     // RSDs only use events that have gone through the pass, whatever is still

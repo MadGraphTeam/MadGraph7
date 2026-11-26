@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from dataclasses import replace
 from fractions import Fraction
 from itertools import permutations
@@ -19,6 +20,7 @@ from pyamplicol.artifacts.umami import (
     build_umami_metadata,
     umami_bundle_payloads,
 )
+from pyamplicol.artifacts.umami_c import helicity_export
 from pyamplicol.artifacts.umami_otf import (
     build_umami_on_the_fly_physics,
     restore_umami_on_the_fly_input,
@@ -608,8 +610,10 @@ def test_payloads_have_sdk_roles_and_generated_c_matches_json():
     header = payloads["API/umami/provider_p0.h"].content.decode()
     assert "#define UMAMI_HAS_ALPHA_S 1" in header
     assert "static const UmamiProvider umami_provider" in header
-    assert "umami_c0_f0_permutation[] = {0, 1, 2, 3}" in header
-    assert "umami_c1_f0_permutation" not in header
+    # per-entry arrays are interned: one channel, one flavour, one permutation
+    assert "static const size_t umami_perm0[] = {0, 1, 2, 3};" in header
+    assert "umami_perm1" not in header and "umami_c1_flavours" not in header
+    assert "{1, &umami_contributions[0]}," in header
     assert entries(data)[0]["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2]
     assert data["provider"]["library"] == "libumami.so"
     assert payloads["API/umami/metadata.json"].role == "sdk-metadata"
@@ -679,15 +683,16 @@ def test_only_certified_helicity_equivalences_are_reused(representative):
         [[0, 1]] if representative == "h:all-plus" else [[0], [1]]
     )
     mappings = data["helicity_mappings"][entries(data)[0]["helicity_mappings"]]
-    assert mappings == [
-        {
-            "helicity": index,
-            "representative_id": "h:all-plus" if index == 0 else representative,
-            "coefficient": 1,
-            "structural_zero": False,
-        }
-        for index in range(2)
-    ]
+    # schema 6: one column per field, representative ids by index
+    assert mappings == {
+        "helicity": [0, 1],
+        "representative": [
+            data["helicity_ids"].index(r) for r in ("h:all-plus", representative)
+        ],
+        "coefficient": [1, 1],
+        "structural_zero": [False, False],
+    }
+    assert set(data["helicity_ids"]) == {"h:all-plus", representative}
 
 
 @pytest.mark.parametrize("accuracy,flows", [("lc", 6), ("full", 1)])
@@ -893,7 +898,7 @@ def test_flavor_blind_member_with_swapped_incoming_legs_maps_axes():
         runtime = physical["runtime"]
         assert runtime["process_id"] == "a" and runtime["process_index"] == 0
         assert runtime["permutation"] == [1, 0, 2, 3]
-        assert [data["helicities"][i] for i in runtime["helicity_export"]] == [
+        assert [data["helicities"][i] for i in helicity_export(data, runtime)] == [
             [v[1], v[0], *v[2:]] for v in runtime_values
         ]
     # The relabelled tags are those of the member exported on its own.
@@ -1088,7 +1093,7 @@ def _runtimes(data, process_id):
 def test_crossed_union_member_carries_momentum_signs_and_its_own_labels():
     a, m = crossed_template()
     (data,) = export(a)  # one provider: the template's helicity domain is m's
-    assert data["schema_version"] == 5
+    assert data["schema_version"] == 6
     runtime_values = [h["values"] for h in a.physics["helicities"]]
     member_runtimes = _runtimes(data, "m")
     assert len(member_runtimes) == 2
@@ -1104,7 +1109,8 @@ def test_crossed_union_member_carries_momentum_signs_and_its_own_labels():
             for slot, leg in enumerate(m.permutation):
                 vector[leg] = m.crossing_helicity_signs[slot] * values[slot]
             expected.append(vector)
-        assert [data["helicities"][i] for i in runtime["helicity_export"]] == expected
+        exported = helicity_export(data, runtime)
+        assert [data["helicities"][i] for i in exported] == expected
     for row in entries(data):
         signs = [row["runtime"].get("momentum_signs")]
         signs += [x["runtime"].get("momentum_signs") for x in row["members"]]
@@ -1119,11 +1125,12 @@ def test_crossed_union_member_carries_momentum_signs_and_its_own_labels():
     assert physical_flows(data, "m") == physical_flows(export(reference)[0], "m")
     header = umami_bundle_payloads(processes=[a], compiled_model=model())
     text = next(p.content for p in header if p.path.endswith("provider_p0.h")).decode()
-    assert "_momentum_signs[] = {-1, 1, 1, -1};" in text
-    assert text.count("_momentum_signs}") == 2
+    # sign arrays are interned like the other per-entry arrays
+    assert re.search(r"umami_sgn\d+\[\] = \{-1, 1, 1, -1\};", text)
+    assert len(re.findall(r"umami_sgn\d+\}", text)) == 2
 
 
-def test_uncrossed_union_metadata_stays_schema_4():
+def test_uncrossed_union_metadata_has_no_momentum_signs():
     a = _all_helicities(quark_gluon(), 4)
     member = replace(
         crossed_member("d", (992, 990, 992, 990), (0, 1, 2, 3), (-1,) * 4, (1,) * 4),
@@ -1131,7 +1138,7 @@ def test_uncrossed_union_metadata_stays_schema_4():
         crossing_helicity_signs=None,
     )
     (data,) = export(replace(a, group_members=(member,), union_pattern_count=1))
-    assert data["schema_version"] == 4
+    assert data["schema_version"] == 6
     assert "momentum_signs" not in json.dumps(data)
 
 
@@ -1243,6 +1250,6 @@ def test_otf_restore_and_append_keep_crossed_records(tmp_path):
             process_groups=stored,
         )
         calls.append(json.loads(written["API/umami/metadata.json"]))
-    assert calls[0]["schema_version"] == 5
+    assert calls[0]["schema_version"] == 6
     assert _runtimes(calls[1], "m") == _runtimes(calls[0], "m")
     assert calls[1] == calls[0]

@@ -441,6 +441,34 @@ def switch_lines(procdef, model):
     return SWITCH_LINES if len(initial) == 2 and partons else None
 
 
+class SwitchTargets(object):
+    """The targets of a flavour-switch sidecar (hundreds of MB at 7j), read only
+    when iterated: whether it has any is read from the first bytes of the file,
+    which json.dumps writes as {"switch_lines": ..., "targets": [...], ...}."""
+
+    def __init__(self, path):
+        self.path = path
+        self.loaded = None
+
+    def __bool__(self):
+        if self.loaded is not None:
+            return bool(self.loaded)
+        with open(self.path) as stream:
+            head = stream.read(256)
+        match = re.match(r'\{"switch_lines": [^,]*, "targets": \[(.)', head)
+        if match is None:
+            return bool(list(self))
+        return match.group(1) != ']'
+
+    __nonzero__ = __bool__
+
+    def __iter__(self):
+        if self.loaded is None:
+            with open(self.path) as stream:
+                self.loaded = json.load(stream)['targets']
+        return iter(self.loaded)
+
+
 def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
                        initial_legs, switch=None):
     """One subprocesses.json entry per channel of a UMAMI provider; initial_legs
@@ -649,8 +677,8 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
             switch_file = 'flavor_switch_%s.json' % provider_id
             switch = None
             if os.path.isfile(pjoin(path, 'reweight', switch_file)):
-                with open(pjoin(path, 'reweight', switch_file)) as stream:
-                    switch = (pjoin(rel_dir, 'reweight', switch_file), json.load(stream))
+                switch = (pjoin(rel_dir, 'reweight', switch_file),
+                          {'targets': SwitchTargets(pjoin(path, 'reweight', switch_file))})
             entries.extend(subprocess_entries(metadata, model, rel_dir, me_path,
                                               ratio_path, qcd_power, initial_legs,
                                               switch))
