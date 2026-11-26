@@ -18,6 +18,7 @@
 #include "nlo/fks_sector.hpp"
 #include "nlo/fks_subtraction.hpp"
 #include "nlo/histograms.hpp"
+#include "nlo/iteration_state.hpp"
 #include "nlo/jets.hpp"
 #include "nlo/luminosity.hpp"
 #include "nlo/scale.hpp"

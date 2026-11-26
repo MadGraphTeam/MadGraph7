@@ -4807,8 +4807,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("FKSChannelIntegrand::born_particle_count")
         );
 
-    py::classh<FKSIterationState, IterationState>(
-        m, "FKSIterationState", pydoc::doc("FKSIterationState")
+    py::classh<NLOIterationState, IterationState>(
+        m, "NLOIterationState", pydoc::doc("NLOIterationState")
     )
         .def(
             py::init<
@@ -4830,17 +4830,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("min_virtual_fraction"),
             py::arg("floor"),
             py::arg("adapt_probabilities") = true,
-            pydoc::doc("FKSIterationState::FKSIterationState")
+            pydoc::doc("NLOIterationState::NLOIterationState")
         )
         .def(
             "read_globals",
-            &FKSIterationState::read_globals,
+            &NLOIterationState::read_globals,
             py::arg("context"),
-            pydoc::doc("FKSIterationState::read_globals")
+            pydoc::doc("NLOIterationState::read_globals")
         )
         .def(
             "add",
-            [](FKSIterationState& state, const std::vector<py::object>& events) {
+            [](NLOIterationState& state, const std::vector<py::object>& events) {
                 TensorVec tensors;
                 for (std::size_t i = 0; auto& event : events) {
                     tensors.push_back(
@@ -4851,46 +4851,56 @@ PYBIND11_MODULE(_madspace_py, m) {
                 state.add(tensors);
             },
             py::arg("events"),
-            pydoc::doc("FKSIterationState::add")
+            pydoc::doc("NLOIterationState::add")
         )
         .def(
             "end_iteration",
-            &FKSIterationState::end_iteration,
+            &NLOIterationState::end_iteration,
             py::arg("contexts"),
-            pydoc::doc("FKSIterationState::end_iteration")
+            pydoc::doc("NLOIterationState::end_iteration")
         )
-        .def("reset", &FKSIterationState::reset, pydoc::doc("FKSIterationState::reset"))
-        .def("count", &FKSIterationState::count, pydoc::doc("FKSIterationState::count"))
+        .def("reset", &NLOIterationState::reset, pydoc::doc("NLOIterationState::reset"))
+        .def("count", &NLOIterationState::count, pydoc::doc("NLOIterationState::count"))
         .def(
             "value_count",
-            &FKSIterationState::value_count,
-            pydoc::doc("FKSIterationState::value_count")
+            &NLOIterationState::value_count,
+            pydoc::doc("NLOIterationState::value_count")
         )
         .def(
             "combination",
-            &FKSIterationState::combination,
+            &NLOIterationState::combination,
             py::arg("coefficients"),
-            pydoc::doc("FKSIterationState::combination")
+            pydoc::doc("NLOIterationState::combination")
+        )
+        .def(
+            "has_virtual",
+            &NLOIterationState::has_virtual,
+            pydoc::doc("NLOIterationState::has_virtual")
+        )
+        .def(
+            "has_choice",
+            &NLOIterationState::has_choice,
+            pydoc::doc("NLOIterationState::has_choice")
         )
         .def(
             "virtual_fraction",
-            &FKSIterationState::virtual_fraction,
-            pydoc::doc("FKSIterationState::virtual_fraction")
+            &NLOIterationState::virtual_fraction,
+            pydoc::doc("NLOIterationState::virtual_fraction")
         )
         .def(
             "virtual_ratios",
-            &FKSIterationState::virtual_ratios,
-            pydoc::doc("FKSIterationState::virtual_ratios")
+            &NLOIterationState::virtual_ratios,
+            pydoc::doc("NLOIterationState::virtual_ratios")
         )
         .def(
             "configuration_probabilities",
-            &FKSIterationState::configuration_probabilities,
-            pydoc::doc("FKSIterationState::configuration_probabilities")
+            &NLOIterationState::configuration_probabilities,
+            pydoc::doc("NLOIterationState::configuration_probabilities")
         )
         .def(
             "iteration_std",
-            &FKSIterationState::iteration_std,
-            pydoc::doc("FKSIterationState::iteration_std")
+            &NLOIterationState::iteration_std,
+            pydoc::doc("NLOIterationState::iteration_std")
         );
 
     py::classh<FKSIntegrand, FunctionGenerator, GeneratorIntegrand>(
@@ -4959,6 +4969,72 @@ PYBIND11_MODULE(_madspace_py, m) {
             "ratio_name",
             &FKSIntegrand::ratio_name,
             pydoc::doc("FKSIntegrand::ratio_name")
+        );
+
+    py::classh<CSIntegrand, FunctionGenerator, GeneratorIntegrand> cs_integrand(
+        m, "CSIntegrand", pydoc::doc("CSIntegrand")
+    );
+    // one constructor per channel integrand, whose variant has no default
+    auto cs_integrand_init = [&]<typename ChannelIntegrand>() {
+        cs_integrand.def(
+            py::init([](const ChannelIntegrand& integrand,
+                        const CSIntegrand::AdaptiveMapping& adaptive_map,
+                        const std::string& prefix,
+                        double virtual_fraction,
+                        double min_virtual_fraction,
+                        bool madnis_training) {
+                return std::make_unique<CSIntegrand>(
+                    integrand,
+                    adaptive_map,
+                    prefix,
+                    virtual_fraction,
+                    min_virtual_fraction,
+                    madnis_training
+                );
+            }),
+            py::arg("integrand"),
+            py::arg("adaptive_map"),
+            py::arg("prefix"),
+            py::arg("virtual_fraction") = 1.,
+            py::arg("min_virtual_fraction") = 0.005,
+            py::arg("madnis_training") = false,
+            pydoc::doc("CSIntegrand::CSIntegrand")
+        );
+    };
+    cs_integrand_init.template operator()<CSBornChannelIntegrand>();
+    cs_integrand_init.template operator()<CSRealChannelIntegrand>();
+    cs_integrand
+        .def(
+            "adaptive_map",
+            &CSIntegrand::adaptive_map,
+            pydoc::doc("CSIntegrand::adaptive_map")
+        )
+        .def("nbody", &CSIntegrand::nbody, pydoc::doc("CSIntegrand::nbody"))
+        .def(
+            "probability",
+            &CSIntegrand::probability,
+            pydoc::doc("CSIntegrand::probability")
+        )
+        .def(
+            "initialize_globals",
+            &CSIntegrand::initialize_globals,
+            py::arg("context"),
+            pydoc::doc("CSIntegrand::initialize_globals")
+        )
+        .def(
+            "random_dim",
+            &CSIntegrand::random_dim,
+            pydoc::doc("CSIntegrand::random_dim")
+        )
+        .def(
+            "fraction_name",
+            &CSIntegrand::fraction_name,
+            pydoc::doc("CSIntegrand::fraction_name")
+        )
+        .def(
+            "ratio_name",
+            &CSIntegrand::ratio_name,
+            pydoc::doc("CSIntegrand::ratio_name")
         );
 
     py::classh<EnergyScale, FunctionGenerator> scale(

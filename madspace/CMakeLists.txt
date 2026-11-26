@@ -270,6 +270,7 @@ add_library(
     src/nlo/luminosity.cpp
     src/nlo/fks_histograms.cpp
     src/nlo/fks_integrand.cpp
+    src/nlo/iteration_state.cpp
     src/nlo/fks_mapping.cpp
     src/nlo/fks_radiation.cpp
     src/nlo/fks_sector.cpp
@@ -351,6 +352,7 @@ add_library(
     include/madspace/nlo/luminosity.hpp
     include/madspace/nlo/fks_histograms.hpp
     include/madspace/nlo/fks_integrand.hpp
+    include/madspace/nlo/iteration_state.hpp
     include/madspace/nlo/fks_limits.hpp
     include/madspace/nlo/fks_mapping.hpp
     include/madspace/nlo/fks_radiation.hpp

@@ -1,19 +1,27 @@
 #pragma once
 
+#include <array>
+#include <memory>
 #include <optional>
+#include <string>
+#include <variant>
 #include <vector>
 
 #include "madspace/nlo/common.hpp"
 #include "madspace/nlo/cs_integrated.hpp"
 #include "madspace/nlo/cs_mapping.hpp"
 #include "madspace/nlo/cuts.hpp"
+#include "madspace/nlo/iteration_state.hpp"
 #include "madspace/nlo/luminosity.hpp"
 #include "madspace/nlo/scale.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/custom_function.hpp"
+#include "madspace/phasespace/flow.hpp"
+#include "madspace/phasespace/integrand.hpp"
 #include "madspace/phasespace/matrix_element.hpp"
 #include "madspace/phasespace/pdf.hpp"
 #include "madspace/phasespace/phasespace.hpp"
+#include "madspace/phasespace/vegas.hpp"
 
 namespace madspace {
 
@@ -428,6 +436,191 @@ private:
     std::optional<CustomFunction> _reference_scale;
     std::size_t _random_dim, _particles;
     bool _decay;
+};
+
+/**
+ * The Catani-Seymour integrand of a channel as a @ref ChannelEventGenerator
+ * runs it at fixed order (see @ref EventGenerator::integrate): a
+ * @ref CSBornChannelIntegrand (the n-body stream) or a
+ * @ref CSRealChannelIntegrand (the real stream) at random numbers through an
+ * optional @ref VegasMapping or @ref Flow. For the n-body stream the points
+ * with the virtual are drawn per point from the fraction and ratios of the
+ * virtual trick that its @ref NLOIterationState adapts. The channels of the
+ * real stream need no state besides the sums of the results.
+ *
+ * With @p madnis_training, the integrand gives the quantities of the
+ * @ref MadnisLoss instead, without the virtual (the virtual trick then takes
+ * @f$r_o@f$ times the Born at all points), whose integrand in the latent space
+ * of the adaptive mapping is the cross section.
+ *
+ * `batch` is the leading batch dimension, `d` the number of random numbers of
+ * the channel integrand, `o` the number of NLO orders, `b` the number of Born
+ * orders, `m` the number of dipoles, `n` the number of particles of the
+ * kinematics of the stream (the Born or the real emission).
+ *
+ * **Arguments**
+ * - `batch_size` – the number of points.
+ *
+ * **Returns** (without @p madnis_training)
+ * - `weight` – `float`, shape `(batch,)` – the cross section, with the
+ *   virtual trick for the n-body stream, times the Jacobian of the adaptive
+ *   mapping, as all weights here.
+ * - n-body stream: `lo_weight`, `virtual_residual` – those of
+ *   @ref CSBornChannelIntegrand, `virtual` – `float`, shape `(batch, o)`,
+ *   `born` – `float`, shape `(batch, b)` and `evaluated` – `float`, shape
+ *   `(batch,)` – those of @ref CSBornChannelIntegrand, unweighted.
+ * - real stream: `real_weight` – `float`, shape `(batch,)` and
+ *   `dipole_weights` – `float`, shape `(batch, m)` – those of
+ *   @ref CSRealChannelIntegrand.
+ * - `momenta` – `float`, shape `(batch, n, 4)` – the kinematics.
+ * - `random` – `float`, shape `(batch, d)` – the inputs of the adaptive
+ *   mapping.
+ *
+ * **Returns** (with @p madnis_training)
+ * - `full_weight` – `float`, shape `(batch,)` – the weight of the point, the
+ *   cross section times the Jacobian of the adaptive mapping.
+ * - `weight` – `float`, shape `(batch,)` – the cross section.
+ * - `latent` – `float`, shape `(batch, d)` – the random numbers of the
+ *   channel integrand.
+ * - `adaptive_prob` – `float`, shape `(batch,)` – the density of the
+ *   adaptive mapping at the point.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] S. Catani, M. H. Seymour, "A general algorithm for calculating jet
+ *   cross sections in NLO QCD", https://arxiv.org/abs/hep-ph/9605323
+ */
+class CSIntegrand : public FunctionGenerator, public GeneratorIntegrand {
+public:
+    /// The optional adaptive reparametrization of the random numbers.
+    using AdaptiveMapping = std::variant<std::monostate, VegasMapping, Flow>;
+    /// The integrand of a channel of the n-body or the real stream.
+    using ChannelIntegrand =
+        std::variant<CSBornChannelIntegrand, CSRealChannelIntegrand>;
+
+    /**
+     * @param integrand             The integrand of the channel.
+     * @param adaptive_map          The adaptive mapping of its random numbers,
+     *                              none for uniform ones.
+     * @param prefix                Prefix of the globals of the virtual trick.
+     * @param virtual_fraction      The fraction of the points with the virtual
+     *                              in the first iteration.
+     * @param min_virtual_fraction  The smallest fraction.
+     * @param madnis_training       Whether the integrand gives the quantities
+     *                              of the @ref MadnisLoss.
+     * @throws std::invalid_argument if the adaptive mapping has another
+     *         dimension than the random numbers, the flow takes a condition,
+     *         the training has no @ref Flow, or the fractions are not in
+     *         (0, 1].
+     */
+    CSIntegrand(
+        const ChannelIntegrand& integrand,
+        const AdaptiveMapping& adaptive_map,
+        const std::string& prefix,
+        double virtual_fraction = 1.,
+        double min_virtual_fraction = 0.005,
+        bool madnis_training = false
+    );
+    /// Define the globals of the virtual trick on @p context (the fraction of
+    /// the first iteration and zero ratios, for the n-body stream) and those
+    /// of a VEGAS grid, uniform. The globals of a @ref Flow are left to it.
+    void initialize_globals(ContextPtr context) const;
+    /// The adaptive mapping.
+    const AdaptiveMapping& adaptive_map() const { return _adaptive_map; }
+    /// Whether the channel is one of the n-body stream.
+    bool nbody() const { return _nbody; }
+    /// Number of random numbers of the channel integrand.
+    std::size_t random_dim() const { return _random_dim; }
+    /// Global of the fraction of the virtual.
+    const std::string& fraction_name() const { return _fraction_name; }
+    /// Global of the ratios of the virtual.
+    const std::string& ratio_name() const { return _ratio_name; }
+
+    std::size_t particle_count() const override { return _particle_count; }
+    const NamedVector<Type>& event_types() const override { return return_types(); }
+    Function channel_function() const override;
+    Function common_function() const override;
+    Function concat_function() const override;
+    std::optional<std::string> vegas_grid_name() const override;
+    std::size_t vegas_dimension() const override;
+    std::size_t vegas_bin_count() const override;
+    std::vector<std::string> discrete_prob_names() const override { return {}; }
+    std::vector<std::size_t> discrete_option_counts() const override { return {}; }
+    std::array<bool, 3> provided_indices() const override {
+        return {false, false, false};
+    }
+    bool madnis_training() const override { return _madnis_training; }
+    /// The integrand itself.
+    const FunctionGenerator& function_generator() const override { return *this; }
+    /// A @ref CSIntegrandProbability of the integrand.
+    std::shared_ptr<FunctionGenerator> probability() const override;
+    /// None, the integrand has no flavors to drop.
+    const std::vector<std::size_t>& active_flavors() const override;
+    /// None, the integrand has no channel weights.
+    const std::vector<me_int_t>& channel_indices() const override;
+    bool unweighted() const override { return false; }
+    /// None, the histograms of the CS integrands are filled by the driver.
+    std::optional<std::pair<Function, std::vector<Histogram>>>
+    histograms() const override {
+        return std::nullopt;
+    }
+    std::vector<std::string> histogram_inputs() const override { return {}; }
+    std::shared_ptr<IterationState> iteration_state() const override;
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+    NamedVector<Value>
+    build_channel_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
+    NamedVector<Value>
+    build_common_part(FunctionBuilder& fb, const NamedVector<Value>& args) const;
+
+    ChannelIntegrand _integrand;
+    AdaptiveMapping _adaptive_map;
+    std::string _fraction_name, _ratio_name;
+    double _virtual_fraction, _min_virtual_fraction;
+    bool _madnis_training, _nbody;
+    std::size_t _random_dim, _particle_count, _nlo_orders;
+    NamedVector<Type> _channel_types;
+
+    friend class CSIntegrandPart;
+    friend class CSIntegrandProbability;
+};
+
+/**
+ * The density of the adaptive mapping of a @ref CSIntegrand at a point, for
+ * the @ref MadnisLoss of its training.
+ *
+ * `batch` is the leading batch dimension, `d` the number of random numbers of
+ * the channel integrand.
+ *
+ * **Arguments**
+ * - `latent` – `float`, shape `(batch, d)` – the random numbers of the
+ *   channel integrand.
+ *
+ * **Returns**
+ * - `prob` – `float`, shape `(batch,)` – the density of the adaptive mapping
+ *   at `latent`, one without it.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895
+ * - [2] T. Heimel et al., "MadNIS - Neural multi-channel importance sampling",
+ *   https://arxiv.org/abs/2212.06172
+ */
+class CSIntegrandProbability : public FunctionGenerator {
+public:
+    /// @param integrand  The integrand to take the density of.
+    CSIntegrandProbability(const CSIntegrand& integrand);
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    CSIntegrand::AdaptiveMapping _adaptive_map;
 };
 
 } // namespace madspace

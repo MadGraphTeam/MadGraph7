@@ -1153,3 +1153,375 @@ NamedVector<Value> CSRealChannelIntegrand::build_function_impl(
         {"born_momenta", fb.stack(born_momenta)},
     };
 }
+
+namespace {
+
+NamedVector<Type>
+cs_event_types(const CSIntegrand::ChannelIntegrand& integrand, bool madnis_training) {
+    auto& generator = std::visit(
+        [](const auto& item) -> const FunctionGenerator& { return item; }, integrand
+    );
+    Type random = generator.arg_types().at("random");
+    if (madnis_training) {
+        return {
+            {"full_weight", batch_float},
+            {"weight", batch_float},
+            {"latent", random},
+            {"adaptive_prob", batch_float},
+        };
+    }
+    auto& types = generator.return_types();
+    NamedVector<Type> out;
+    out.push_back("weight", batch_float);
+    if (std::holds_alternative<CSBornChannelIntegrand>(integrand)) {
+        for (std::string name :
+             {"lo_weight", "virtual_residual", "virtual", "born", "evaluated"}) {
+            out.push_back(name, types.at(name));
+        }
+    } else {
+        for (std::string name : {"real_weight", "dipole_weights"}) {
+            out.push_back(name, types.at(name));
+        }
+    }
+    out.push_back("momenta", types.at("momenta"));
+    out.push_back("random", random);
+    return out;
+}
+
+NamedVector<Type> cs_channel_types(std::size_t random_dim) {
+    auto dim = static_cast<int>(random_dim);
+    return {
+        {"random", batch_float_array(dim)},
+        {"x", batch_float_array(dim)},
+        {"map_det", batch_float},
+        {"virtual_random", batch_float},
+        {"indices_acc", batch_int},
+    };
+}
+
+} // namespace
+
+namespace madspace {
+
+// The channel part, the common part and the concatenation of CSIntegrand.
+class CSIntegrandPart : public FunctionGenerator {
+public:
+    enum Part { channel, common, concat };
+
+    CSIntegrandPart(const CSIntegrand& integrand, Part part) :
+        FunctionGenerator(
+            "CSIntegrandPart",
+            [&] {
+                if (part == channel) {
+                    return NamedVector<Type>{{"batch_size", Type({batch_size})}};
+                }
+                if (part == common) {
+                    return integrand._channel_types;
+                }
+                NamedVector<Type> args;
+                auto keys = integrand._channel_types.keys();
+                for (std::string prefix : {"arg1_", "arg2_"}) {
+                    for (auto [key, type] : zip(keys, integrand._channel_types)) {
+                        args.push_back(prefix + key, type);
+                    }
+                }
+                return args;
+            }(),
+            part == common ? integrand.return_types() : integrand._channel_types
+        ),
+        _integrand(integrand),
+        _part(part) {}
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override {
+        if (_part == channel) {
+            return _integrand.build_channel_part(fb, args);
+        }
+        if (_part == common) {
+            return _integrand.build_common_part(fb, args);
+        }
+        auto keys = return_types().keys();
+        std::size_t half = args.size() / 2;
+        Value sizes = fb.stack_sizes(
+            {fb.batch_size({args.at("arg1_random")}),
+             fb.batch_size({args.at("arg2_random")})}
+        );
+        ValueVec outputs;
+        for (std::size_t i = 0; i < half; ++i) {
+            auto [cat, cat_sizes] = fb.batch_cat({args.at(i), args.at(half + i)});
+            if (keys.at(i) == "indices_acc") {
+                outputs.push_back(fb.add_int(fb.offset_indices(sizes, cat_sizes), cat));
+            } else {
+                outputs.push_back(cat);
+            }
+        }
+        return {keys, outputs};
+    }
+
+    const CSIntegrand& _integrand;
+    Part _part;
+};
+
+} // namespace madspace
+
+CSIntegrand::CSIntegrand(
+    const ChannelIntegrand& integrand,
+    const AdaptiveMapping& adaptive_map,
+    const std::string& prefix,
+    double virtual_fraction,
+    double min_virtual_fraction,
+    bool madnis_training
+) :
+    FunctionGenerator(
+        "CSIntegrand",
+        {{"batch_size", Type({batch_size})}},
+        cs_event_types(integrand, madnis_training)
+    ),
+    _integrand(integrand),
+    _adaptive_map(adaptive_map),
+    _fraction_name(prefixed_name(prefix, "virtual_fraction")),
+    _ratio_name(prefixed_name(prefix, "virtual_ratio")),
+    _virtual_fraction(virtual_fraction),
+    _min_virtual_fraction(min_virtual_fraction),
+    _madnis_training(madnis_training),
+    _nbody(std::holds_alternative<CSBornChannelIntegrand>(integrand)),
+    _random_dim(0),
+    _particle_count(0),
+    _nlo_orders(0) {
+    auto& generator = std::visit(
+        [](const auto& item) -> const FunctionGenerator& { return item; }, integrand
+    );
+    _random_dim = generator.arg_types().at("random").shape.at(0);
+    _particle_count = generator.return_types().at("momenta").shape.at(0);
+    if (auto born = std::get_if<CSBornChannelIntegrand>(&integrand)) {
+        _nlo_orders = born->nlo_order_count();
+    }
+    _channel_types = cs_channel_types(_random_dim);
+    std::size_t map_dim = std::visit(
+        Overloaded{
+            [&](std::monostate) { return _random_dim; },
+            [](const VegasMapping& vegas) { return vegas.dimension(); },
+            [](const Flow& flow) { return flow.input_dim(); }
+        },
+        adaptive_map
+    );
+    if (map_dim != _random_dim) {
+        throw std::invalid_argument(
+            "CSIntegrand: the adaptive mapping needs the dimension of the random "
+            "numbers"
+        );
+    }
+    if (auto flow = std::get_if<Flow>(&adaptive_map); flow && flow->condition_dim()) {
+        throw std::invalid_argument("CSIntegrand: the flow takes no condition");
+    }
+    if (madnis_training && !std::holds_alternative<Flow>(adaptive_map)) {
+        throw std::invalid_argument("CSIntegrand: the training needs a flow");
+    }
+    if (!(virtual_fraction > 0. && virtual_fraction <= 1.) ||
+        !(min_virtual_fraction > 0. && min_virtual_fraction <= 1.)) {
+        throw std::invalid_argument(
+            "CSIntegrand: the fractions of the virtual are in (0, 1]"
+        );
+    }
+}
+
+void CSIntegrand::initialize_globals(ContextPtr context) const {
+    if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
+        vegas->initialize_globals(context);
+    }
+    if (!_nbody) {
+        return;
+    }
+    if (!context->global_exists(_ratio_name)) {
+        context->define_global(_ratio_name, DataType::dt_float64, {_nlo_orders});
+    }
+    if (!context->global_exists(_fraction_name)) {
+        context->define_global(_fraction_name, DataType::dt_float64, {});
+    }
+    NLOIterationState(
+        cs_event_types(_integrand, false),
+        "",
+        _fraction_name,
+        _ratio_name,
+        1,
+        _virtual_fraction,
+        _min_virtual_fraction,
+        0.
+    )
+        .write_globals(context);
+}
+
+Function CSIntegrand::channel_function() const {
+    return CSIntegrandPart(*this, CSIntegrandPart::channel).function();
+}
+
+Function CSIntegrand::common_function() const {
+    return CSIntegrandPart(*this, CSIntegrandPart::common).function();
+}
+
+Function CSIntegrand::concat_function() const {
+    return CSIntegrandPart(*this, CSIntegrandPart::concat).function();
+}
+
+std::optional<std::string> CSIntegrand::vegas_grid_name() const {
+    if (auto vegas = std::get_if<VegasMapping>(&_adaptive_map)) {
+        return vegas->grid_name();
+    }
+    return std::nullopt;
+}
+
+std::size_t CSIntegrand::vegas_dimension() const {
+    auto vegas = std::get_if<VegasMapping>(&_adaptive_map);
+    return vegas ? vegas->dimension() : 0;
+}
+
+std::size_t CSIntegrand::vegas_bin_count() const {
+    auto vegas = std::get_if<VegasMapping>(&_adaptive_map);
+    return vegas ? vegas->bin_count() : 0;
+}
+
+std::shared_ptr<FunctionGenerator> CSIntegrand::probability() const {
+    return std::make_shared<CSIntegrandProbability>(*this);
+}
+
+const std::vector<std::size_t>& CSIntegrand::active_flavors() const {
+    static const std::vector<std::size_t> none;
+    return none;
+}
+
+const std::vector<me_int_t>& CSIntegrand::channel_indices() const {
+    static const std::vector<me_int_t> none;
+    return none;
+}
+
+std::shared_ptr<IterationState> CSIntegrand::iteration_state() const {
+    if (_madnis_training) {
+        return nullptr;
+    }
+    return std::make_shared<NLOIterationState>(
+        return_types(),
+        "",
+        _nbody ? _fraction_name : "",
+        _nbody ? _ratio_name : "",
+        1,
+        _virtual_fraction,
+        _min_virtual_fraction,
+        0.
+    );
+}
+
+NamedVector<Value> CSIntegrand::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    return build_common_part(fb, build_channel_part(fb, args));
+}
+
+NamedVector<Value> CSIntegrand::build_channel_part(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value batch = args.at("batch_size");
+    Value r = fb.random(batch, static_cast<me_int_t>(_random_dim + 1));
+    auto [random, virtual_random] = fb.pop(r);
+    Value x = random;
+    Value map_det = fb.full({1., batch});
+    std::visit(
+        Overloaded{
+            [](std::monostate) {},
+            [&](const auto& mapping) {
+                auto result = mapping.build_forward(fb, {random}, {});
+                x = result.at("data");
+                map_det = result.at("det");
+            }
+        },
+        _adaptive_map
+    );
+    Value indices = fb.nonzero(fb.full({1., batch}));
+    return {_channel_types.keys(), {random, x, map_det, virtual_random, indices}};
+}
+
+NamedVector<Value> CSIntegrand::build_common_part(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value x = args.at("x");
+    Value det = args.at("map_det");
+    Value batch = fb.batch_size({x});
+    NamedVector<Value> out;
+    if (auto born = std::get_if<CSBornChannelIntegrand>(&_integrand)) {
+        auto fraction = fb.global(_fraction_name, DataType::dt_float64, {});
+        auto ratios = fb.global(
+            _ratio_name, DataType::dt_float64, {static_cast<int>(_nlo_orders)}
+        );
+        // the training takes no virtual
+        Value virtual_mask = _madnis_training
+            ? fb.full({0., batch})
+            : fb.cut_one(args.at("virtual_random"), 0., fraction);
+        Value virtual_fraction = fb.mul(fb.full({1., batch}), fraction);
+        Value virtual_ratio =
+            fb.mul(fb.full({1., batch, static_cast<me_int_t>(_nlo_orders)}), ratios);
+        out = born->build_function(
+            fb, {x, virtual_mask, virtual_ratio, virtual_fraction}
+        );
+    } else {
+        out = std::get<CSRealChannelIntegrand>(_integrand).build_function(fb, {x});
+    }
+    Value cross_section = out.at("cross_section");
+    NamedVector<Value> result;
+    if (_madnis_training) {
+        result.push_back("full_weight", fb.mul(cross_section, det));
+        result.push_back("weight", cross_section);
+        result.push_back("latent", x);
+        result.push_back("adaptive_prob", fb.div(fb.full({1., batch}), det));
+        return result;
+    }
+    auto weighted = [&](Value value) {
+        if (value.type.shape.empty()) {
+            return fb.mul(value, det);
+        }
+        ValueVec columns;
+        for (auto& column : fb.unstack(value)) {
+            columns.push_back(fb.mul(column, det));
+        }
+        return fb.stack(columns);
+    };
+    result.push_back("weight", weighted(cross_section));
+    if (_nbody) {
+        result.push_back("lo_weight", weighted(out.at("lo_weight")));
+        result.push_back("virtual_residual", weighted(out.at("virtual_residual")));
+        for (std::string name : {"virtual", "born", "evaluated"}) {
+            result.push_back(name, out.at(name));
+        }
+    } else {
+        result.push_back("real_weight", weighted(out.at("real_weight")));
+        result.push_back("dipole_weights", weighted(out.at("dipole_weights")));
+    }
+    result.push_back("momenta", out.at("momenta"));
+    result.push_back("random", args.at("random"));
+    return result;
+}
+
+CSIntegrandProbability::CSIntegrandProbability(const CSIntegrand& integrand) :
+    FunctionGenerator(
+        "CSIntegrandProbability",
+        {{"latent", batch_float_array(static_cast<int>(integrand._random_dim))}},
+        {{"prob", batch_float}}
+    ),
+    _adaptive_map(integrand._adaptive_map) {}
+
+NamedVector<Value> CSIntegrandProbability::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value latent = args.at("latent");
+    Value prob = fb.full({1., fb.batch_size({latent})});
+    std::visit(
+        Overloaded{
+            [](std::monostate) {},
+            [&](const auto& mapping) {
+                prob = mapping.build_inverse(fb, {latent}, {}).at("det");
+            }
+        },
+        _adaptive_map
+    );
+    return {{"prob", prob}};
+}

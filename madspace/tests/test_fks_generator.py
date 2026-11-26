@@ -1,5 +1,5 @@
 """The FKS integrand of a channel through the C++ event generator (FKSIntegrand,
-FKSIterationState, EventGenerator.integrate):
+NLOIterationState, EventGenerator.integrate):
 
 - the integrand of its first iteration (equally likely configurations, the
   virtual on every point, no ratios) against FKSChannelIntegrand at the
@@ -126,7 +126,7 @@ def test_adaptation():
         generator = integrand.generator_integrand(
             0, context, "adapt", 0.5, 0.005, 50, None, None
         )
-        state = ms.FKSIterationState(
+        state = ms.NLOIterationState(
             generator.return_types(),
             generator.probability_name(),
             generator.fraction_name(),

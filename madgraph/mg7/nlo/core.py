@@ -46,7 +46,9 @@ instead (EventGenerator.integrate): an integrand of a scheme then also gives
 generator_integrand(index, context, prefix, fraction, min_fraction, bins,
 histograms, jets), a GeneratorIntegrand of madspace with its VEGAS grid, its
 discrete choice and its virtual trick as globals of the context, which the
-iterations adapt in C++ (FKSIntegrand for FKS).
+iterations adapt in C++ (FKSIntegrand for FKS, CSIntegrand for CS, both with
+NLOIterationState). An integrand with generator_histograms False fills no
+histograms there, for which the run warns.
 
 With madnis_batches as well, the grid iterations adapt the VEGAS grids, the
 discrete choice and the virtual trick, a MadNIS training of that many
@@ -862,7 +864,7 @@ class Channel:
 class GeneratorChannel:
     """A channel of a run through the C++ event generator, with the
     interface of Channel that the outputs of NLORun read: its results from
-    the FKSIterationState of its ChannelEventGenerator, its histograms from
+    the NLOIterationState of its ChannelEventGenerator, its histograms from
     the sums of the generator."""
 
     class Trick:
@@ -1267,6 +1269,15 @@ class NLORun:
                         f"the event generator of madspace does not run the "
                         f"{self.scheme} integrands yet"
                     )
+            if self.histograms and not all(
+                getattr(integrand, "generator_histograms", True)
+                for integrand in self.integrands
+            ):
+                logger.warning(
+                    "the %s integrands fill no histograms through the event "
+                    "generator of madspace yet",
+                    self.scheme,
+                )
             self.write_status("survey")
             config = ms.GeneratorConfig()
             config.cpu_batch_size = self.batch
@@ -1375,7 +1386,7 @@ class NLORun:
             flow = ms.Flow(input_dim=dimension, prefix=f"{prefix}.flow")
             flow.initialize_from_vegas(self.context, vegas.grid_name(), self.seed)
             discrete = None
-            count = integrand.configuration_count()
+            count = getattr(integrand, "configuration_count", lambda: 1)()
             if self.madnis_discrete and count > 1:
                 discrete = ms.DiscreteFlow(
                     option_counts=[count],

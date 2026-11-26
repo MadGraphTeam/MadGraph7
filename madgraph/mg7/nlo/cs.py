@@ -111,6 +111,12 @@ The scale of the user (dynamical_scale_choice 0 or 10, user_dynamical_scale
 of dummy_fct.f) comes from the provider, at the Born with a last particle
 without momentum, as at the soft counter-event of MadFKS.
 
+With generator (see nlo.core) the channels of both streams run in the C++
+event generator of madspace (CSIntegrand, with the virtual trick of the
+n-body stream in NLOIterationState), also with a MadNIS training
+(madnis_batches), but without histograms and not for the real stream of
+dressed leptons.
+
 Not covered yet: a final-state gluon with a colored decaying particle, PDF
 schemes other than MSbar, densities of eMELA, photons of gamma-UPC, the
 scale and PDF variations of reweight_scale and reweight_PDF and the Sudakov
@@ -392,7 +398,59 @@ class Densities:
         return values[:, 1 : 1 + self.quark_count].sum(1)
 
 
-class CSBornIntegrand:
+class CSGeneratorIntegrand:
+    """The integrand of a channel of the CS integrands for the C++ event
+    generator (CSIntegrand of madspace), with channel_integrand and
+    channel_dimension of the integrand."""
+
+    # the histograms of the CS integrands are filled by the driver in Python,
+    # not through the event generator
+    generator_histograms = False
+
+    def generator_integrand(
+        self,
+        channel,
+        context,
+        prefix,
+        fraction,
+        min_fraction,
+        bins,
+        histograms,
+        jets,
+        flow=None,
+        discrete=None,
+        madnis_training=False,
+    ):
+        """The CSIntegrand of a channel for the C++ event generator (see
+        nlo.core): channel_integrand with a VEGAS grid of bins bins and, for
+        the n-body stream, the virtual trick from fraction down to
+        min_fraction, its globals with the prefix defined in the context.
+        With a flow, the integrand takes it instead of the VEGAS grid and
+        keeps the globals of the integrand before it, for the MadNIS training
+        with madnis_training. The histograms are not filled through the
+        event generator, and the CS integrands have no discrete choice."""
+        ms = madspace()
+        if discrete is not None:
+            raise ValueError("nlo.cs: the CS integrands have no discrete choice")
+        adaptive_map = flow
+        if flow is None:
+            adaptive_map = ms.VegasMapping(
+                self.channel_dimension(channel), bins, prefix
+            )
+        generator = ms.CSIntegrand(
+            self.channel_integrand(channel, context),
+            adaptive_map,
+            prefix,
+            virtual_fraction=fraction,
+            min_virtual_fraction=min_fraction,
+            madnis_training=madnis_training,
+        )
+        if flow is None:
+            generator.initialize_globals(context)
+        return generator
+
+
+class CSBornIntegrand(CSGeneratorIntegrand):
     """The n-body stream of the Catani-Seymour integrand of one subprocess
     (a P* directory) of an aMC@NLO output, per Born channel of MadFKS (an
     integrand of nlo.core, without a discrete choice)."""
@@ -926,7 +984,7 @@ class CSDipole:
         return self.charges * plain
 
 
-class CSRealIntegrand:
+class CSRealIntegrand(CSGeneratorIntegrand):
     """The real stream of the Catani-Seymour integrand of one real process of
     an aMC@NLO output, the real emission minus its dipoles, per dipole and
     Born channel of its Born (an integrand of nlo.core, without a discrete

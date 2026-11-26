@@ -11,6 +11,7 @@
 #include "madspace/nlo/fks_limits.hpp"
 #include "madspace/nlo/fks_mapping.hpp"
 #include "madspace/nlo/fks_subtraction.hpp"
+#include "madspace/nlo/iteration_state.hpp"
 #include "madspace/nlo/scale.hpp"
 #include "madspace/phasespace/base.hpp"
 #include "madspace/phasespace/custom_function.hpp"
@@ -249,126 +250,11 @@ private:
 };
 
 /**
- * What the iterations of an @ref FKSIntegrand adapt besides its VEGAS grid,
- * and the results of the iterations kept, as the fixed-order driver of
- * MadGraph7 keeps them per channel (Channel of madgraph/mg7/nlo/core.py).
- *
- * Per iteration of the channel:
- * - the choice of the FKS configuration takes the probabilities
- *   @f$p_k \propto \langle |w - w_n| \, p_k \rangle_k@f$ over the points of
- *   configuration @f$k@f$, mixed with the uniform choice by @p floor, as
- *   MC_integer of MadFKS, with @f$w_n@f$ the n-body part of the weight, which
- *   does not depend on the configuration (the root mean square of
- *   @f$w p_k@f$ let one large weight decide the probabilities, and its n-body
- *   part @f$w_n p_k@f$ kept them where they were);
- * - the virtual trick takes @f$r_o@f$ as the sum of the virtual of NLO order
- *   @f$o@f$ over the sum of the Born orders where the virtual is evaluated, and
- *   multiplies its fraction @f$f@f$ by @f$2 \sigma_V / \sigma@f$ clamped to
- *   @f$[1/4, 2]@f$, @f$f@f$ in @f$[f_\text{min}, 1]@f$, with @f$\sigma_V@f$
- *   and @f$\sigma@f$ the errors of the virtual residual and of the cross
- *   section in the iteration.
- *
- * The state starts from the probabilities, ratios and fraction in the globals
- * of the first context at its first iteration, so that it continues the
- * adaptation of an earlier state of the channel.
- *
- * The results are the sums of the cross section, its LO part, its virtual
- * residual, the scale and PDF variations and the modes of the Sudakov
- * approximation, in this order, over the points of the iterations since
- * @ref reset, each iteration with its own variance.
- */
-class FKSIterationState : public IterationState {
-public:
-    /**
-     * @param event_types           The outputs of the @ref FKSIntegrand.
-     * @param probability_name      Global of the probabilities of the
-     *                              configurations.
-     * @param fraction_name         Global of the fraction of the virtual.
-     * @param ratio_name            Global of the ratios of the virtual.
-     * @param configuration_count   Number of FKS configurations.
-     * @param virtual_fraction      The fraction of the first iteration.
-     * @param min_virtual_fraction  The smallest fraction.
-     * @param floor                 The weight of the uniform choice.
-     * @param adapt_probabilities   Whether the iterations adapt the
-     *                              probabilities of the configurations, not
-     *                              when a @ref DiscreteFlow chooses them.
-     */
-    FKSIterationState(
-        const NamedVector<Type>& event_types,
-        const std::string& probability_name,
-        const std::string& fraction_name,
-        const std::string& ratio_name,
-        std::size_t configuration_count,
-        double virtual_fraction,
-        double min_virtual_fraction,
-        double floor,
-        bool adapt_probabilities = true
-    );
-    /// Add the outputs of the @ref FKSIntegrand for one batch.
-    void add(const TensorVec& events) override;
-    /// Adapt to the iteration, keep its results and write the globals of
-    /// @p contexts.
-    void end_iteration(const std::vector<ContextPtr>& contexts) override;
-    /// Discard the results of the iterations so far.
-    void reset() override;
-    /// The outputs of the @ref FKSIntegrand the state takes.
-    const NamedVector<Type>& event_types() const { return _event_types; }
-    /// Write the globals of the state into @p context.
-    void write_globals(ContextPtr context) const;
-    /// Take the probabilities, ratios and fraction from the globals of
-    /// @p context.
-    void read_globals(ContextPtr context);
-    /// Number of points of the kept iterations.
-    std::size_t count() const { return _count; }
-    /// Number of sums: three, the scale and PDF variations and the modes.
-    std::size_t value_count() const { return _sums.size(); }
-    /// The estimate and its error of the linear combination of the sums with
-    /// @p coefficients, missing ones zero.
-    std::pair<double, double>
-    combination(const std::vector<double>& coefficients) const;
-    /// The fraction of the virtual trick.
-    double virtual_fraction() const { return _fraction; }
-    /// The ratios of the virtual trick, per NLO order.
-    const std::vector<double>& virtual_ratios() const { return _ratios; }
-    /// The probabilities of the FKS configurations.
-    const std::vector<double>& configuration_probabilities() const {
-        return _probabilities;
-    }
-    /// The standard deviation of the cross section in the last iteration.
-    double iteration_std() const { return _iteration_std; }
-
-private:
-    NamedVector<Type> _event_types;
-    std::string _probability_name, _fraction_name, _ratio_name;
-    double _fraction, _min_fraction, _floor;
-    bool _adapt_probabilities;
-    // whether the state has taken the globals of the contexts
-    bool _started = false;
-    std::vector<double> _ratios, _probabilities;
-    // the outputs per point summed for the results, (index, width)
-    std::vector<std::pair<std::size_t, std::size_t>> _value_fields;
-    std::size_t _virtual, _born, _evaluated, _configuration_weight, _nbody_weight;
-    std::size_t _fks_index;
-    // the kept iterations
-    std::size_t _count = 0;
-    std::vector<double> _sums;
-    std::vector<double> _covariance;
-    // the current iteration
-    std::size_t _iteration_count = 0;
-    std::vector<double> _iteration_sums, _iteration_products;
-    double _residual_sum = 0., _residual_square_sum = 0.;
-    std::vector<double> _virtual_sums;
-    double _born_sum = 0.;
-    std::vector<double> _choice_sums, _choice_counts;
-    double _iteration_std = 0.;
-};
-
-/**
  * The FKS integrand of a channel as a @ref ChannelEventGenerator runs it at
  * fixed order (see @ref EventGenerator::integrate): @ref FKSChannelIntegrand
  * at random numbers through an optional @ref VegasMapping or @ref Flow, with
  * the FKS configuration and the points with the virtual drawn per point from
- * the probabilities, fraction and ratios that its @ref FKSIterationState
+ * the probabilities, fraction and ratios that its @ref NLOIterationState
  * adapts. A @ref DiscreteFlow can choose the configuration instead, from the
  * random numbers of the kinematics and with the probabilities of the state as
  * its prior.
@@ -502,7 +388,7 @@ public:
     const FunctionGenerator& function_generator() const override { return *this; }
     /// An @ref FKSIntegrandProbability of the integrand.
     std::shared_ptr<FunctionGenerator> probability() const override;
-    /// None, the integrand has no flavours to drop.
+    /// None, the integrand has no flavors to drop.
     const std::vector<std::size_t>& active_flavors() const override;
     /// None, the integrand has no channel weights.
     const std::vector<me_int_t>& channel_indices() const override;

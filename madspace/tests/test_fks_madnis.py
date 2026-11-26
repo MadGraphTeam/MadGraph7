@@ -154,7 +154,7 @@ def test_state_continues():
         count = integrand.choice_count(0)
 
         def state(adapt=True):
-            return ms.FKSIterationState(
+            return ms.NLOIterationState(
                 generator.return_types(),
                 generator.probability_name(),
                 generator.fraction_name(),
