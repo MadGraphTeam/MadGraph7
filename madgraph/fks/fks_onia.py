@@ -161,16 +161,41 @@ def onium_emission_split(leg, model):
     return [j, i]
 
 
-def partition_nosector(is_onium, fks_infos):
+def partition_nosector(is_onium, fks_infos, owns=None):
     """For each physical leg of a real emission (is_onium: list of booleans),
     whether fks_Sij leaves it out of the partition (FKS_ONIA_NOSECTOR): an
     onium, unless onia are the FKS sisters j of sectors of this real
-    (onium_emission_split: every soft-partner onium of a real with a
-    final-state gluon). Then every onium is in the partition, also one whose
-    equivalent sector was dropped for identical onia (the kept sector counts
-    it through its FKS_FAC_J_D)."""
-    owns = any(is_onium[i['j'] - 1] for i in fks_infos)
+    (onium_emission_split). Then every onium is in the partition, also one
+    whose equivalent sector was dropped for identical onia (the kept sector
+    counts it through its FKS_FAC_J_D).
+
+    owns: whether an onium is the sister of a sector of this real under any of
+    its Borns (FKSMultiProcess.set_onia_partition). The S functions of all
+    sectors of a real must share one denominator, and a real reached from
+    several Borns has the sector (gluon, onium) only under the Born without
+    that gluon: q g > onium q g has it under q g > onium q, not under
+    g g > onium g (reached through the quark). Only when owns is None do the
+    sectors of one Born (fks_infos, physical numbering) decide."""
+    if owns is None:
+        owns = any(is_onium[i['j'] - 1] for i in fks_infos)
     return [x and not owns for x in is_onium]
+
+
+def real_partition_key(legs):
+    """A real emission as a physical process, the same under each of its
+    Borns: the physical PDGs (the Fock state for an onium) of the initial
+    state in order and of the final state as a multiset, since the order of
+    the final legs depends on the Born the real was reached from."""
+    phys = physical_legs(legs)
+    pdg = lambda l: onium_of(l)['id'] if onium_of(l) else l.get('id')
+    return (tuple(pdg(l) for l in phys if not l.get('state')),
+            tuple(sorted(pdg(l) for l in phys if l.get('state'))))
+
+
+def onium_owns_sector(legs, fks_infos):
+    """True if an onium (its first constituent) is the FKS sister j of one of
+    the sectors fks_infos (constituent numbering, legs of the real)."""
+    return any(onium_of(legs[info['j'] - 1]) for info in fks_infos)
 
 
 def aux_states(onium):

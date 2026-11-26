@@ -998,6 +998,9 @@ class FKSHelasRealProcess(object): #test written
             self.charges = fksrealproc.charges
             self.fks_infos = fksrealproc.fks_infos
             self.is_to_integrate = fksrealproc.is_to_integrate
+            # bound states: the onia in the FKS partition, decided over all
+            # Borns of the real (FKSMultiProcess.set_onia_partition)
+            self.onia_partition = getattr(fksrealproc, 'onia_partition', None)
 
             # real_me_list is a list in the old NLO generation mode;
             # in the new one it is a matrix element

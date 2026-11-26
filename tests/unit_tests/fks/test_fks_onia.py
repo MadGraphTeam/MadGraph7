@@ -132,6 +132,41 @@ class TestFKSOniaGeneration(unittest.TestCase):
         self.assertEqual(fks_onia.partition_nosector(is_onium, [{'j': 1}, {'j': 2}]),
                          is_onium)
 
+    def test_partition_decided_per_real(self):
+        """Whether the onia of a real are in the partition of fks_Sij is
+        decided over all Borns of the real: u g > Jpsi u g owns the sector
+        (gluon, onium) under u g > Jpsi u, and its sector (quark, quark) under
+        g g > Jpsi g must count the onium in its S function too, or the S
+        functions of the real do not sum to one (it shifted sigma of
+        p p > Jpsi[3S1(8)] j by ~5%). A real without a final-state gluon
+        (u u~ > Jpsi u u~) owns none, under every Born."""
+        self.cmd.exec_cmd('define pp = g u u~')
+        borns = self.generate('pp pp > Jpsi(1|3S18) pp [real=QCD]')
+        copies = {}
+        for born in borns:
+            for real in born.real_amps:
+                key = fks_onia.real_partition_key(real.process['legs'])
+                copies.setdefault(key, []).append(real)
+        for key, reals in copies.items():
+            owns = any(fks_onia.onium_owns_sector(r.process['legs'], r.fks_infos) for r in reals)
+            self.assertEqual([r.onia_partition for r in reals], [owns] * len(reals), key)
+        gg, = [b for b in borns if [l['id'] for l in b.born_amp['process']['legs']] == [21, 21, 4, -4, 21]]
+        ug = [r for r in gg.real_amps if fks_onia.real_partition_key(r.process['legs'])[0] == (2, 21)
+              and r.process['legs'][-1]['id'] == 21]
+        self.assertTrue(ug)
+        for real in ug:
+            legs = real.process['legs']
+            self.assertFalse(fks_onia.onium_owns_sector(legs, real.fks_infos))
+            self.assertTrue(real.onia_partition)
+            infos = fks_onia.to_physical_fks(legs, real.process['model'], real.fks_infos, real.fks_j_from_i,
+                                             real.colors, real.particle_tags, real.charges)[0]
+            row = [bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)]
+            self.assertEqual(fks_onia.partition_nosector(row, infos), row)   # the old, per-Born rule
+            self.assertEqual(fks_onia.partition_nosector(row, infos, real.onia_partition), [False] * len(row))
+        quarks = [r for key, reals in copies.items() if key[0] == (2, -2) and 21 not in key[1] for r in reals]
+        self.assertTrue(quarks)
+        self.assertFalse(any(r.onia_partition for r in quarks))
+
     def test_leg_identity_keeps_fock_state(self):
         """Constituents of different onia are not interchangeable FKS legs;
         those of identical onia are (the position 'index' is ignored)."""

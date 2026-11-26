@@ -70,10 +70,12 @@ c      include "fks.inc"
 
       logical setsijzero
 c Bound states (onia_legs.f): an onium is a soft partner of the gluons
-c (colour links, P-wave soft current); when it owns no FKS sector (the
-c gluon has elementary sisters) it is not part of the partition. When the
-c onia are the only coloured particles they are the FKS sisters of the
-c gluon and are part of it.
+c (colour links, P-wave soft current). A soft-partner onium is the FKS
+c sister of the gluons it emits and then part of the partition; when no
+c onium owns a sector of the real (under any of its Borns, e.g. no gluon
+c in the final state, or 2->1 Borns) it is left out. The choice is made
+c once per real (FKSMultiProcess.set_onia_partition), so that every
+c sector of the real, in every directory, has the same denominator.
       logical fks_onia_nosector
       external fks_onia_nosector
 

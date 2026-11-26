@@ -2889,8 +2889,10 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         the FKS sister of the gluon it emits (fks_onia.onium_emission_split),
         and then all onia of the real are in the partition. FKS_ONIA_NOSECTOR
         makes fks_Sij leave out an onium of a real in which no onium owns a
-        sector: the soft region is then shared among the sectors that are
-        integrated. Without the exclusion the share of the pairs (gluon,
+        sector under any of the real's Borns (decided once per real,
+        FKSMultiProcess.set_onia_partition, so that the S functions of its
+        sectors in all directories share one denominator): the soft region is
+        then shared among the sectors that are integrated. Without the exclusion the share of the pairs (gluon,
         onium) would be dropped while the integrated soft counterterm keeps
         it."""
         fks_info_list = matrix_element.get_fks_info_list()
@@ -2900,7 +2902,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
             legs = real.matrix_element.get('processes')[0].get('legs')
             row = [bool(fks_onia.onium_of(l)) for l in fks_onia.physical_legs(legs)]
             rows.append(row)
-            nosector.append(fks_onia.partition_nosector(row, real.fks_infos))
+            nosector.append(fks_onia.partition_nosector(
+                row, real.fks_infos, getattr(real, 'onia_partition', None)))
         if not rows:
             # LOonly: one fake configuration, the Born legs and a gluon
             legs = matrix_element.born_me.get('processes')[0].get('legs')

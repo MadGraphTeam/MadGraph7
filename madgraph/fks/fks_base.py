@@ -341,6 +341,8 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             # finally combine the real amplitudes
             born.combine_real_amplitudes()
 
+        self.set_onia_partition()
+
         try:
             self.warn_missing_singular_borns(leptons)
         except Exception as error:
@@ -401,6 +403,28 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
         self['OLP'] = other['OLP']
         self['ncores_for_proc_gen'] = other['ncores_for_proc_gen']
         self['ewsudakov'] = self['ewsudakov'] or other['ewsudakov']
+        self.set_onia_partition()
+
+    def set_onia_partition(self):
+        """Bound states: whether the onia of a real emission are in the FKS
+        partition (fks_Sij, fks_onia.partition_nosector) is a property of the
+        real, decided over all the Borns it is reached from. The sector
+        (gluon, onium) exists only under the Born without that gluon, and the
+        real's sectors under its other Borns must still count it in their S
+        functions, or the S functions of the real do not sum to one (onia_fks
+        PLAN.md, 2026-11-26). Sets onia_partition on every real with onia."""
+        owned, reals = set(), []
+        for born in self['born_processes']:
+            for real in born.real_amps:
+                legs = real.process.get('legs')
+                if not fks_onia.has_onia(legs):
+                    continue
+                key = fks_onia.real_partition_key(legs)
+                reals.append((key, real))
+                if fks_onia.onium_owns_sector(legs, real.fks_infos):
+                    owned.add(key)
+        for key, real in reals:
+            real.onia_partition = key in owned
 
 
 
