@@ -1180,13 +1180,19 @@ bit and are now on `onia_loop`:
 - *B2:* split-order tables in `CREATE_LOOP_COEFS`;
 - *D:* the IEEE rounding and halting modes, which the private DP-terminal updaters need, checked once per coefficient batch instead of in every call. The fail-closed proof of these updaters certifies the new caller statements: a canonical block at the top level of the batch, no jump target between it and the private calls, its result ANDed into each captured INEXACT flag. Combined with the batch check, the updaters' frozen IEEE admission corpus (384 000 trials, every rounding mode and trap) gives the same answers as before;
 - *E:* the `DHELAS` and `MODEL` libraries of the standalone output at `-O2` (`ALOHA_FLAG`, `MODEL_FLAG` in `make_opts`, which the proof admits with exactly that value).
-Paired alternating runs on this shared host (AMD EPYC 9754, load 80–100,
-single core): the median time per point after the initialisation, ratio of the
-candidate to the frozen baseline `5c5b573794` (ordinary processes) or to
-`onia_loop` before these changes (bound states), with the upper bound of the 95%
-confidence interval of the geometric-mean ratio.
+The final campaign ran at `4ba297a911`, after all the bound-state work of this
+report. Paired alternating runs on this shared host (AMD EPYC 9754, load about
+250 of 384 threads), 15 pairs per process, each process pinned to a core that
+was idle when it started: the median time per point after the initialisation,
+ratio of the candidate to the frozen baseline `5c5b573794` (ordinary processes)
+or to `onia_loop` before these changes, `a56ca387a3` (bound states), with the
+upper bound of the 95% confidence interval of the geometric-mean ratio. Every
+checkout links the same TIRust library. The ordinary processes give identical
+results. The two bound-state processes give the same virtual bit for bit. Their
+Born differs by at most $1.1 dot 10^(-15)$, because the projected Born is now
+contracted in the basis of the colour flows (`54a0c4cac1`).
 
-#block(breakable: false)[#figure(caption: [Time per phase-space point, baseline and candidate, and their ratio. Acceptance: upper 95% bound ≤ 1.05 and identical results.])[
+#block(breakable: false)[#figure(caption: [Time per phase-space point, baseline and candidate, and their ratio. Acceptance: upper 95% bound ≤ 1.05, and results identical or within $3 dot 10^(-6)$ for a stated reason (the last column gives the largest relative difference of the Born, poles and finite part).])[
   #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, left, right, right, right, right, right, center),
     [Process (`generate ...`)], [libs], [points × pairs], [baseline ms], [candidate ms], [median ratio], [upper 95%], [identical],
@@ -1206,10 +1212,10 @@ confidence interval of the geometric-mean ratio.
 = Sources and reproducibility <sources>
 
 #set text(9pt)
-- Campaign revisions: validation and reducers at `a82b34d314`, timing at `5aadddcbd8`,
-  the 2.5.5 comparison at `8effaa7a29`, the P-wave checks at `eda7d7fe04`.
-  The changes in between (D and E of @perf) give identical results; the timing
-  campaign compares the results of the two bound-state processes bit for bit.
+- Campaign revisions: validation and reducers at `a82b34d314`, timing at `4ba297a911`
+  (the final campaign; the earlier one, at `5aadddcbd8`, had 9 pairs and gave upper
+  bounds ≤ 0.86 too), the 2.5.5 comparison at `8effaa7a29`, the P-wave checks at
+  `eda7d7fe04`. The timing campaign compares the results of every process.
 - Model: `tools/make_onia_model.py models/loop_sm models/loop_sm_onia`.
 - Validation and reducers (one campaign, `data/raw/validate.json`):
   `tools/onia_loop_validate.py --work DIR --libs 9 3 8 6 7 1 --npoints 10 --timeout 120 --json validate.json`

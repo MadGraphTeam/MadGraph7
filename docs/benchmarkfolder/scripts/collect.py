@@ -104,7 +104,10 @@ STATUS_LINES = [
     'says; `ONIA_IR_POLES` now has none either (it kept the self term and LDME '
     'counterterm of arXiv:2402.19221, off by up to 90% for a $B_c$ octet).',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
-    'checks, bit-identical, faster on every benchmark process.',
+    'checks, bit-identical, faster on every benchmark process. The final campaign, after all '
+    'the bound-state work (`4ba297a911`, 15 pairs, pinned cores), gives upper 95% bounds of '
+    '0.67–0.86. Unit tests and IOTests against the baseline: no failure the baseline does not '
+    'have, except one sealed TIRust fixture (open items).',
 ]
 OPEN_ITEMS = [
     '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, '
@@ -139,6 +142,12 @@ OPEN_ITEMS = [
     'published to compare with (@twopw).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
     '(it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.',
+    '*Sealed latch fixture:* `ReductionLatchLifecycleTest` compiles stubs from the sealed '
+    '`tests/input_files/tirust_reduction_latch/stub_check.py` (its SHA-256 is pinned). It '
+    'renders the stability policy of `loop_matrix_standalone.inc` with the `ninjars_available` '
+    'switch only, and refuses the bound-state switches there (the counterterm-rounding '
+    'estimate and the 80-bit rotations), so the test fails on `onia_loop`. The fixture\'s '
+    'owner has to admit them.',
 ]
 BASELINE = '5c5b573794'
 DECISIONS = [
