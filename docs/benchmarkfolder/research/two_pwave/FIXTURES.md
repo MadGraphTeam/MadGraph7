@@ -466,3 +466,34 @@ The UV slots are zero in all three versions.
 - **The input floor.** For the unit-power and rank-5 calls and for 2871, the identities hold only to 2e-11 to 2e-10 even at 256 bits. That is the mismatch between our binary64 shifts and the snapped invariants, and no method does better on those inputs.
 
 **Reading.** The 2.8e-6 and 4.2e-5 moves of the DP 1/ε at 50 GeV point 1 are v16 removing pole errors of about 1e-11, amplified by the point's cancellation of about 1e6. The DP miss of 5e-4 to 8e-4 against QP is a separate, larger effect, about 30 times the correction. TIRust's reading, not checked here: the same cancellation acting on the binary64 inputs' floor (about 1e-10 per call). That fits v16 not bringing DP closer to QP. The QP results (mode 4) are unchanged and match the prediction.
+
+## A P-wave singlet with a P-wave octet: u u~ → χ_c0 + ³P₀[8] (TIRust da7902b + bridge v16)
+
+`u u~ > chic0(1|3P01) Jpsi(1|3P08) [virt=QCD]`, QCD only: 14 Born and 482 loop diagrams, on 2026-11-26. All three parts of the single pole contribute:
+- the massive soft terms of the quarks and of the octet state's monopole;
+- the P → S term of each state;
+- the dipole-dipole term.
+
+`qp_check.py` ran at the seed-1 points (CTModeRun 1 and 2 with MLStabThres 1d99, −1 with 1.0d-3), and CTModeRun 4 at 20 GeV, point 0. The data are in `data/singlet_octet_uu_chic0_3p08_da7902b_v16.json`. Per Born × α_s/(2π):
+
+| √s (GeV), point | Born | 1/ε error, CTModeRun 1 / 2 / −1 | 1/ε² error (−2 C_F) | finite part, 1 against 2 | code −1, accuracy |
+|---|---|---|---|---|---|
+| 8, 0 | 1.5e-10 | 2.7e-12 / 3.4e-12 / 3.0e-12 | 7.2e-13 | 8.0e-13 | 213, 1.9e-11 |
+| 8, 1 | 8.1e-12 | 3.7e-9 / 2.6e-8 / 1.5e-8 | 2.6e-9 | 6.9e-9 | 213, 2.1e-8 |
+| 20, 0 | 3.3e-11 | 3.1e-8 / 2.2e-8 / 2.6e-8 | 4.1e-13 | 2.7e-8 | 213, 8.8e-8 |
+| 20, 1 | 5.9e-14 | 3.5e-8 / 7.0e-8 / 5.2e-8 | 1.4e-8 | 3.7e-8 | 213, 1.1e-7 |
+| 50, 0 | 1.1e-12 | 9.2e-6 / 5.9e-5 / 3.4e-5 | 9.2e-12 | 4.8e-6 | 213, 1.9e-5 |
+
+- **Quadruple precision** (CTModeRun 4, 20 GeV, point 0, code 120, 355 s): 1/ε is 4.3e-14 from the prediction and 1/ε² is −2 C_F to 4e-15. Its finite part, 77.751715619891, is the DP value of CTModeRun 1 to 3.0e-9, of CTModeRun 2 to 3.0e-8 and of the stability test to 1.7e-8. The stability test's estimate there, 8.8e-8, is above its true error.
+- **Double precision** follows the Born: as it falls from 1.5e-10 to 1.1e-12, the 1/ε error grows from 3e-12 to 6e-5. No call is refused, and the stability test calls every point stable, with estimates that track the errors.
+
+The parts of the prediction (`appendix_b.py terms`, in the order of eq. (B.2)):
+
+| √s (GeV), point | soft terms (lines 1–4) | P → S, χ_c0 / ³P₀[8] | dipole-dipole f₁ + f₂ | 1/ε, computed (CTModeRun 1) |
+|---|---|---|---|---|
+| 8, 0 | −5.640287 | −0.073159 / −0.590482 | −6.751121 + 7.330003 | −5.725046 |
+| 8, 1 | −6.944439 | −0.233836 / −1.887353 | −43.568125 + 49.214088 | −3.419665 |
+| 20, 0 | −0.371543 | −0.581147 / −0.675843 | −2.574276 + 2.631754 | −1.571056 |
+| 20, 1 | −6.296162 | −47.172190 / −54.858704 | −523.173341 + 542.906597 | −88.593796 |
+
+The imaginary parts of the dipole-dipole kernels are zero to rounding: 8e-15 to 6e-10 per Born, against parts of up to 540. With the ggg run (two octets) and g g → χ_c0 χ_c0 (two singlets), the predicted pole is now checked for every colour assignment of two P-wave states.

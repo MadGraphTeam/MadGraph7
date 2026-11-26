@@ -5088,6 +5088,24 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
         self.assertLess(abs(r['finite_norm'] / 128.62581220811 - 1.),
                         max(5e-9, r['accuracy']))
 
+    def test_two_pwave_singlet_octet_loop_standalone(self):
+        """One-loop QCD virtual of u u~ > chic0 + 3P0[8]: a P-wave colour
+        singlet with a P-wave colour octet, so every part of the single pole
+        contributes (the massive soft terms with the octet's monopole, the
+        P -> S term of each state and the dipole-dipole term). At 8 GeV,
+        point 0: 1/eps^2 = -2 C_F, the computed 1/eps against ONIA_IR_POLES,
+        and the finite part against its value on TIRust da7902b (the two
+        loop directions agree to 8e-13 there). Needs TIRust with raised
+        propagator powers, two of them dotted (TIRUST_LIB)."""
+        r, = self.run_two_pwave('u u~ > chic0(1|3P01) Jpsi(1|3P08) [virt=QCD]',
+                                'twopw_uu', 8.0, 1)
+        self.assertEqual(r['ret_code'] // 100, 2)
+        self.assertLess(abs(r['predicted_single_norm'] / -5.72504550760606 - 1.), 1e-12)
+        self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.), 1e-8)
+        self.assertLess(abs(r['double_norm'] / (-8. / 3.) - 1.), 1e-9)
+        self.assertLess(abs(r['finite_norm'] / -31.1590105103 - 1.),
+                        max(5e-9, r['accuracy']))
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 
