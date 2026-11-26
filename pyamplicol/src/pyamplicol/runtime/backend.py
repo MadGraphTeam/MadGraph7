@@ -2144,6 +2144,8 @@ def load_runtime_backend(
     reduction_unchecked: bool | None = None,
     kinematics_improvement: str | None = None,
     kinematics_improvement_binary64: bool | None = None,
+    lane_rescue: bool | None = None,
+    threads: int | None = None,
 ) -> RuntimeBackend:
     """Load a schema-v3 artifact without importing the extension during discovery.
 
@@ -2172,6 +2174,10 @@ def load_runtime_backend(
         options["reduction_target"] = reduction_target
     if reduction_unchecked is not None:
         options["reduction_unchecked"] = reduction_unchecked
+    if lane_rescue is not None:
+        options["lane_rescue"] = lane_rescue
+    if threads is not None:
+        options["threads"] = threads
     # The kinematics improvement's load-time defaults (m-lit lit-psimprove):
     # tree and virtual runtimes.
     kinematics: dict[str, object] = {}

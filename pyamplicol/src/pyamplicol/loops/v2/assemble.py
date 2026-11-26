@@ -74,7 +74,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal, getcontext, localcontext
 from fractions import Fraction
 from itertools import permutations, product
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal, NamedTuple, cast
 
 from pyamplicol.color.connections import (
     ColorConnection,
@@ -213,6 +213,7 @@ from .stability import (
     cross_check,
     differences,
 )
+from .wide import magnitude
 
 COMPONENTS = ("virtual", "bare", "uv", "r2", "uv_local", FIELD_COMPONENT)
 # Components summed from local insertions (no reduction lane).
@@ -279,6 +280,22 @@ class Precision:
         return 0.5 * 10.0 ** (1 - self.digits)
 
     @property
+    def estimate_roundoff(self) -> Any:
+        """The unit roundoff as the stability estimates hold it
+        (``loops.v2.wide``): ``unit_roundoff`` in binary64 and double-double,
+        an exponent-safe ``Wide`` in arbitrary precision (5e-(digits) is 0.0
+        as a float beyond about 320 digits)."""
+        if self.arithmetic != "arbitrary":
+            return self.unit_roundoff
+        from .wide import Wide
+
+        rounded = self.unit_roundoff
+        if rounded >= 2.0**-1022:
+            # Inside binary64's range: the float, bitwise as before.
+            return Wide(rounded)
+        return Wide.of(Decimal(5).scaleb(-cast(int, self.digits)))
+
+    @property
     def working_digits(self) -> int:
         """Decimal digits of the Python arithmetic and of the tree replay."""
         if self.arithmetic == "double":
@@ -301,6 +318,8 @@ class _Numbers:
     def __init__(self, precision: Precision):
         self.precision = precision
         self.double = precision.arithmetic == "double"
+        # Stability magnitudes beyond binary64's exponent range (``wide``).
+        self.wide = precision.arithmetic == "arbitrary"
         self.carrier = (
             rx.Carrier.f64() if self.double else rx.Carrier.ap(precision.working_digits)
         )
@@ -1684,6 +1703,11 @@ class PointResult:
     # poles and its term scale are (the native executor forms the term scale
     # with the stability checks); None otherwise.
     finiteness: float | None = None
+    # The lane rescue (``api.virtual_results.VirtualLaneRescue``): per
+    # carrier ("double-double", "arbitrary") the point's reduction lanes it
+    # served, over the point's native evaluations (the reference and its
+    # rotations); empty when none was rescued.
+    lane_rescue: tuple[tuple[str, int], ...] = ()
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -3233,7 +3257,7 @@ class LoopSlice:
             reference.result.components["virtual"],
             budgets,
             scale=reference.stability_scale(),
-            roundoff=precision.unit_roundoff,
+            roundoff=precision.estimate_roundoff,
             families=reference.family_deviations,
             not_run=not_run,
         )
@@ -3899,6 +3923,20 @@ _COUPLING_DIGITS = 32
 _UNSET = object()
 
 
+def require_tracked_precision(reducer: Any, direct: Sequence[Any]) -> None:
+    """The point-level tracked-precision test of the Python reference path:
+    the native executor's (``rusticol_core::loop_execution::v2::
+    TrackedPrecision``), on the direct batches of one point's reduction
+    (``reducer.tracked_refusal``; NinjaRS's arbitrary-precision lanes only,
+    TIRust's reducer takes none). A point whose lanes kept too few of the
+    bits their carrier tracked fails typed (``ArithmeticError``, a failed
+    point with the reason, as a failed lane's)."""
+
+    refusal = reducer.tracked_refusal(direct)
+    if refusal is not None:
+        raise ArithmeticError(refusal)
+
+
 class _PointEvaluation:
     """All per-point work of ``LoopSlice.evaluate`` in one carrier."""
 
@@ -4529,7 +4567,8 @@ class _PointEvaluation:
                 dressed.numerators, len(lanes), columns
             )
             groups = groups + twin_groups
-        direct, check = self.reducer().reduce(
+        reducer = self.reducer()
+        direct, check = reducer.reduce(
             groups,
             poles=reducer_poles(self.mode),
             check=retest is not None,
@@ -4545,12 +4584,14 @@ class _PointEvaluation:
             }
 
         main, extra = set(lanes), set(twin_lanes)
-        self.set_lanes(
+        found = (
             values(direct, main),
             None if check is None else values(check, main),
             values(direct, extra) if extra else None,
             None if check is None or not extra else values(check, extra),
         )
+        require_tracked_precision(reducer, direct)
+        self.set_lanes(*found)
 
     def _groups(self, numerators, offset: int, columns=None) -> tuple[list, list]:
         """Reduction lanes ``(family, loop order, column label)`` and their
@@ -4845,13 +4886,14 @@ class _PointEvaluation:
         factor = 2 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(self.average))
         width = 3 if self.poles else 1
         budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
+        wide = self.numbers.wide
         for (_family, _loop, sector), errors in lanes.items():
             for k, error in enumerate(errors):
-                budget[sector][k] += factor * float(abs(error))
+                budget[sector][k] += factor * magnitude(error, wide)
         for components in local:
             for sector, laurent in components.items():
                 for k, value in enumerate(laurent.coefficients):
-                    budget[sector][k] += abs(float(value))
+                    budget[sector][k] += magnitude(value, wide)
         return {sector: Budget(tuple(values)) for sector, values in budget.items()}
 
     def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:

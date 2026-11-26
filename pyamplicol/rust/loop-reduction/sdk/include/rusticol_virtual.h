@@ -155,7 +155,7 @@ int rusticol_virtual_set_arithmetic(rusticol_virtual_handle *handle,
  * NinjaRS from its original exact inputs, at the call's own arithmetic, after
  * the TIRust call; a point NinjaRS fails too fails with both reasons. In
  * double-double and arbitrary precision every point the fallback serves is
- * guarded (m-lit lit-fallback-guard): its NinjaRS value runs a rotation
+ * guarded: its NinjaRS value runs a rotation
  * re-test (the point rotated exactly by the recommended checks' rotation and
  * evaluated again) in the call's arithmetic, and a point whose relative
  * estimate of the outputs the
@@ -204,8 +204,19 @@ int rusticol_virtual_set_reduction_target(rusticol_virtual_handle *handle,
  * nothing changes. */
 int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
   int unchecked);
-/* Failure policy of later evaluations (the Python API's on_failure=; m-lit
- * ux-besteffort; additive, ABI version 2 kept). "best-effort" (the default,
+/* Lane rescue of later evaluations (the Python API's lane_rescue=; additive,
+ * ABI version 2 kept): 1, the default, reduces a reduction lane (one family
+ * and Laurent column of one point) that the backend refuses again in a higher
+ * carrier, double-double then arbitrary precision, from its binary64
+ * coefficients and the point improved in that carrier, in the checked and the
+ * unchecked mode; the rescued integrals enter the point's binary64 sum and
+ * the point is a success. 0 leaves such a lane to fail its point (pure
+ * binary64, as before the lane rescue). Each result records it in its
+ * "reduction" diagnostics ("lane_rescue"). Any other value is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT and nothing changes. */
+int rusticol_virtual_set_lane_rescue(rusticol_virtual_handle *handle, int on);
+/* Failure policy of later evaluations (the Python API's on_failure=;
+ * additive, ABI version 2 kept). "best-effort" (the default,
  * also for NULL): the call returns OK with every point; a point that no
  * configured alternative accepts (the backend's own acceptance checks, the
  * "auto" per-point fallback) is evaluated again from its exact inputs without
@@ -235,7 +246,7 @@ int rusticol_virtual_set_reduction_unchecked(rusticol_virtual_handle *handle,
 int rusticol_virtual_set_on_failure(rusticol_virtual_handle *handle,
   const char *on_failure);
 /* Kinematics improvement of later evaluations (the Python API's
- * kinematics_improvement=; m-lit lit-psimprove; additive, ABI version 2 kept):
+ * kinematics_improvement=; additive, ABI version 2 kept):
  * "z-shift" (MadLoop's ImprovePSPoint 2 with MadLoop's own fallback to 1,
  * finished by the projection where MadLoop leaves the point inexact; the
  * default, also for NULL), "rescaling" (ImprovePSPoint 1), "projection" (the
@@ -291,6 +302,65 @@ int rusticol_virtual_set_kinematics_improvement_binary64(
 int rusticol_virtual_set_stability_checks(rusticol_virtual_handle *handle,
   uint64_t rotation_count, const char *rotations, uint32_t reduction_direction,
   uint32_t rescaled, uint32_t cross_backend);
+/* Native threads of later evaluations (the run card's evaluation.threads,
+ * the Python API's Runtime.load(threads=); additive, ABI version 2 kept):
+ * every executor of the handle runs on at most `threads` workers, clamped to
+ * the threads the process may use (std::thread::available_parallelism: the
+ * affinity mask and the cgroup quota; RAYON_NUM_THREADS is not read for the
+ * clamp), so a count above them gives the usable cores, never a refusal; 0,
+ * the default, is rayon's rule (RAYON_NUM_THREADS, else every core). The
+ * values do not depend on the count. Two handles keep their own counts.
+ * Every new pool is built first: if the system refuses a thread
+ * (RUSTICOL_VIRTUAL_RUNTIME_ERROR), nothing changes. To bound the load too,
+ * give the count at open (rusticol_virtual_open_with_options). */
+int rusticol_virtual_set_threads(rusticol_virtual_handle *handle,
+  uint32_t threads);
+/* Runtime options of later evaluations from a TOML text (additive, ABI
+ * version 2 kept): its [evaluation] table (a full run card is accepted: its
+ * other tables are not read). The keys read, with the run card's values:
+ * arithmetic and precision (rusticol_virtual_set_arithmetic; the Python
+ * API's carrier rule: an arithmetic given is that carrier, "arbitrary" at
+ * the digits given else 500; without one, 16 digits are binary64 and others
+ * arbitrary precision), poles, on_failure, reduction, reduction_target,
+ * reduction_unchecked, lane_rescue, kinematics_improvement,
+ * kinematics_improvement_binary64, threads (clamped as rusticol_virtual_set_threads),
+ * and the table
+ * [evaluation.stability_checks] (rotations, rotation_count,
+ * reduction_direction, rescaled; given, it replaces the checks as a whole,
+ * rusticol_virtual_set_stability_checks without the cross-backend check).
+ * The run card's other [evaluation] keys (artifact, process, mu_r2,
+ * mu_r2_file, model_parameters, momenta, resolved, orders,
+ * correlated_requests, helicity_ids, color_flow_ids, [evaluation.stability],
+ * [evaluation.phase_space]) are accepted and not read; any other key is
+ * RUSTICOL_VIRTUAL_INVALID_ARGUMENT naming it. Every option is checked
+ * first, as its setter checks it (a bad value: INVALID_ARGUMENT with the
+ * run card's text; a setting this process or library does not serve: the
+ * setter's error), then all are applied; on any error nothing changes. A key
+ * absent keeps its setting; a setter called afterwards overrides the key it
+ * sets. */
+int rusticol_virtual_set_options(rusticol_virtual_handle *handle,
+  const char *options_toml);
+/* rusticol_virtual_open, then rusticol_virtual_set_options with
+ * options_toml (NULL: none), its threads bounding the load too (clamped as
+ * rusticol_virtual_set_threads; without it, RAYON_NUM_THREADS else every
+ * core): the load starts only the threads its work uses, up to that count,
+ * at most that many working at once (about twice it may be alive for a
+ * moment while its decode pool grows); options are checked before anything
+ * is loaded and a refused option opens nothing (additive, ABI version 2
+ * kept). */
+int rusticol_virtual_open_with_options(const char *path, const char *process,
+  const char *parameters_json, const char *r2_strategy,
+  const char *options_toml, rusticol_virtual_handle **output);
+/* The handle's settings as JSON (size query as metadata_json): "arithmetic",
+ * "precision" (digits, null outside arbitrary precision), "poles",
+ * "on_failure", "reduction", "reduction_target", "reduction_unchecked",
+ * "lane_rescue", "kinematics_improvement", "kinematics_improvement_binary64",
+ * "stability_checks" {"rotations" (exact matrices, rows of rational texts),
+ * "reduction_direction", "rescaled", "cross_backend"}, "threads" (the
+ * effective count; null: rayon's rule) and "threads_requested" (the count
+ * asked for when the clamp lowered it, else null). */
+int rusticol_virtual_options_json(const rusticol_virtual_handle *handle,
+  char *output, size_t capacity, size_t *needed);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.
@@ -345,14 +415,14 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  * Every selector is validated before any evaluation; *output is written only
  * on success (NULL otherwise).
  *
- * Loop-induced processes (full colour only, RULED Q8):
+ * Loop-induced processes (full colour only):
  * - helicity IDs are the capabilities' "helicity_ids" (h<i>) or the tree
  *   engine's IDs (h:<helicities in leg order>, e.g. "h:-1,-1,+1,+1");
  *   helicity_by_point[p] is the zero-based helicity row of point p;
  * - request.resolved = 0: per point the sum over the selected rows of
- *   |A(h)|^2/avg with the total's average (RULED Q39: the rows of a complete
- *   selection sum to the ordinary value; no parity or Bose row mapping,
- *   RULED Q37), in the ordinary layout; with helicity_by_point, each point's
+ *   |A(h)|^2/avg with the total's average (the rows of a complete
+ *   selection sum to the ordinary value; no parity or Bose row mapping),
+ *   in the ordinary layout; with helicity_by_point, each point's
  *   value is that of the global selection of its own row on that point;
  * - request.resolved = 1: the selected rows (all without helicity IDs) in
  *   the resolved layout [successful_point,order,helicity,colour,(epsilon)];
@@ -386,7 +456,7 @@ int rusticol_virtual_result_decimal_json(const rusticol_virtual_result *, char *
  * Every process: a NULL selection, or one without selectors whose
  * color_resolution is NULL or "contracted", is rusticol_virtual_evaluate
  * (values and diagnostics, its monitoring included).
- * Born-interfered processes (lit-fc-hel): helicity IDs and helicity_by_point
+ * Born-interfered processes: helicity IDs and helicity_by_point
  * are served at every colour accuracy as for a loop-induced process (ordinary:
  * the selected rows' value per point; resolved: the selected rows in the
  * accuracy's resolved layout, one contracted component at NLC / full colour,

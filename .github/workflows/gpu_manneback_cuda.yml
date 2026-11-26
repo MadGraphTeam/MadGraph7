@@ -28,13 +28,13 @@ on:
       nevents:
         description: 'Number of unweighted events'
         type: string
-        default: '10000'
+        default: '1000'
       time_limit:
-        description: 'Slurm --time of the allocation (all CI jobs together)'
+        description: 'Slurm --time of ONE allocation (all CI jobs together), instead of the three tiers (empty = the tiers)'
         type: string
-        default: '00:30:00'
+        default: ''
       extra_sbatch:
-        description: 'Extra sbatch options, space separated, no quotes (e.g. --qos=preemptible)'
+        description: 'Extra sbatch options of that one allocation, space separated, no quotes (e.g. --constraint=TeslaH200); set = no tiers'
         type: string
         default: ''
       keep_workdir:
@@ -67,9 +67,17 @@ jobs:
       # the fallbacks are the defaults, used on push (no inputs) or when left empty
       modules: ${{ inputs.modules || 'PyTorch CUDA Python foss' }}
       gres: ${{ inputs.gres || 'gpu:1' }}
+      # (cpus, mem: the defaults, 8 and 32G; 32 cores ran no faster on an A100 node, the CI is
+      # mostly single-core python and the mg7 launches)
       gpu_arch: ${{ inputs.gpu_arch }}
-      nevents: ${{ inputs.nevents || '10000' }}
-      # 30 min, not 20 as on lemaitre4: the runner set-up and checkout are sometimes slow here
+      nevents: ${{ inputs.nevents || '1000' }}
+      # Three runner jobs, the first to start runs the CI and cancels the others, with a time
+      # limit after the speed of the node's cores (the CI is mostly CPU-bound): H200 (EPYC
+      # Turin) 30 min; A100 (EPYC Milan/Rome) and L40s (EPYC Genoa) 45 min, as two A100 runs
+      # needed about 34 and an L40s run timed out at 30 (about 29 with a warm madspace cache);
+      # the other GPUs 60 min. Features from sinfo -o "%N %f" on manneback.
+      # With a time_limit or extra_sbatch input (Run workflow), one allocation with those.
+      tiers: "${{ (inputs.time_limit == '' && inputs.extra_sbatch == '') && '00:30:00 --constraint=TeslaH200; 00:45:00 --constraint=TeslaA100|TeslaA100_80|TeslaL40s; 01:00:00 --constraint=GeForceRTX2080Ti|TeslaV100|TeslaA10|GeForceRTX3090' || '' }}"
       time_limit: ${{ inputs.time_limit || '00:30:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}

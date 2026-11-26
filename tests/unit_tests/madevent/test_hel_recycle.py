@@ -1547,15 +1547,17 @@ class TestRecyclingMakeArguments(unittest.TestCase):
         changed = self.launch.MadgraphProcess.hel_recycling_flags_changed
         tmpdir = tempfile.mkdtemp()
         try:
-            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # not recycled
+            self.assertFalse(changed(tmpdir, 'simd_128', 'v', ':'))      # not recycled
             open(os.path.join(tmpdir, 'HelRecycling.inc'), 'w').close()
-            self.assertFalse(changed(tmpdir, 'simd_128', ':'))      # never built
-            os.mkdir(os.path.join(tmpdir, 'build.simd_128'))
-            with open(os.path.join(tmpdir, 'build.simd_128', '.hrflags'), 'w') as fsock:
+            self.assertFalse(changed(tmpdir, 'simd_128', 'v', ':'))      # never built
+            os.mkdir(os.path.join(tmpdir, 'build.simd_128_v'))
+            with open(os.path.join(tmpdir, 'build.simd_128_v', '.hrflags'), 'w') as fsock:
                 fsock.write(':\n')
-            self.assertFalse(changed(tmpdir, 'simd_128', ':'))
-            self.assertTrue(changed(tmpdir, 'simd_128', '0:'))
-            self.assertFalse(changed(tmpdir, 'cuda', '0:'))           # gpu: plain anyway
+            self.assertFalse(changed(tmpdir, 'simd_128', 'v', ':'))
+            self.assertTrue(changed(tmpdir, 'simd_128', 'v', '0:'))
+            # each FPTYPE has its own build directory, hence its own record
+            self.assertFalse(changed(tmpdir, 'simd_128', 'd', '0:'))     # never built
+            self.assertFalse(changed(tmpdir, 'cuda', 'v', '0:'))           # gpu: plain anyway
         finally:
             shutil.rmtree(tmpdir)
 

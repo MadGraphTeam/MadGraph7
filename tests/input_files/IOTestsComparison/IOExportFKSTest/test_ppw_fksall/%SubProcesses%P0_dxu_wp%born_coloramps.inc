@@ -1,2 +1,1 @@
-      LOGICAL ICOLAMP(MAX_BCOL,LMAXCONFIGS,1)
-      COMMON/MC_NATIVE_BORN_COLOURS/ICOLAMP
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%born_coloramps.inc

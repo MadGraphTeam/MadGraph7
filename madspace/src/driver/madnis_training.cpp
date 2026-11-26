@@ -29,6 +29,10 @@ MadnisTraining::MadnisTraining(
     _cwnet(cwnet),
     _seed(seed),
     _channel_index_offset(channel_index_offset) {
+    // without buffered steps, the buffer would be allocated and filled for nothing
+    if (_config.buffered_steps_fraction <= 0.) {
+        _config.buffer_capacity = 0;
+    }
     for (std::size_t index = 0;
          auto [integrand, channel] : zip(integrands, _channels)) {
         channel.index = index;

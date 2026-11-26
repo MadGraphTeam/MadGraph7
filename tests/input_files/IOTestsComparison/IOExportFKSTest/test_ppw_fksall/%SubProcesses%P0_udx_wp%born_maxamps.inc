@@ -1,3 +1,1 @@
-      INTEGER    MAXAMPS, MAXFLOW, MAXPROC, MAXSPROC
-      PARAMETER (MAXAMPS=1, MAXFLOW=1)
-      PARAMETER (MAXPROC=2, MAXSPROC=1)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%born_maxamps.inc

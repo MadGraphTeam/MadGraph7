@@ -154,6 +154,12 @@ def test_the_profile_counts_every_native_batch_of_a_call():
     assert "_collected_stage_seconds" not in vars(runtime._backend._executor)
     with collected_stage_seconds(object()) as nothing:
         assert nothing is None
+    # The native executor has its report attribute before its first call,
+    # so a profile's first timed call (after a warm entry, with no warm-up
+    # call) is collected too.
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    assert NativeExecutor.last_report is None
 
 
 @pytest.mark.loop_physics
@@ -380,11 +386,14 @@ def test_the_cli_orders_and_profile_of_a_loop_artifact(uux_ddx, tmp_path):
             assert first["failed_binary64"] == sum(
                 p["status"] == "binary64-failed" for p in per_point
             )
-            assert len(first["percentiles"]) == 4
+            # 1 per mil, 1 %, 10 %, 50 % and 100 % (the best point).
+            assert len(first["percentiles"]) == 5
+            assert first["percentiles"][-1]["rank"] == first["points"]
             assert all(0.0 <= d <= 16.0 for d in first["true_digits"])
         else:
             text = stdout.getvalue()
             assert "true digits" in text and "NinjaRS" in text and "50 %" in text
+            assert "100 %" in text and "| class" not in text
             assert max(len(line) for line in text.splitlines()) <= 100
     from pyamplicol.api import BenchmarkRunner
     from pyamplicol.config import BenchmarkConfig
@@ -554,6 +563,8 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
         assert report["stability_setup"]["interrupted"] is False
         assert report["stability_setup"]["requested"] == 7
         report["stability_setup"].pop("n_core")
+        # The workers' memory rule: the host's memory now and the workers.
+        report["stability_setup"].pop("memory")
         for row in report["stability"]:
             row.pop("seconds")
             # Every sample's record (the per-sample dump) reproduces the
@@ -610,6 +621,251 @@ def test_the_stability_tables_do_not_depend_on_the_worker_count(uux_ddx):
     assert all(len(s["momenta"]) == 4 and len(s["momenta"][0]) == 4 for s in inputs)
     assert one["stability_setup"] == three["stability_setup"]
     assert one["failure_causes"] == three["failure_causes"]
+
+
+@pytest.mark.loop_fast
+def test_arbitrary_precision_references_are_certified_on_any_worker_count(uux_ddx):
+    """profile --stability --ground-truth arb: every reference is certified,
+    by the other backend's agreeing reference or by its checked re-run,
+    with the same records on one and on three workers; with one backend
+    every reference is the checked one."""
+
+    from pyamplicol.cli.main import run_cli
+
+    def profile(*extra):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "6",
+                "--ground-truth",
+                "arb:30",
+                "--progress",
+                "off",
+                "--json",
+                *extra,
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        return json.loads(stdout.getvalue())
+
+    certified = {}
+    for cores in ("1", "3"):
+        report = profile("--n_core", cores)
+        assert "certified" in report["stability_setup"]["reference"]
+        certified[cores] = {
+            row["backend"]: [
+                (s["index"], s["reference_certified"], s["true_digits"])
+                for s in _records(row["samples"])
+            ]
+            for row in report["stability"]
+        }
+        for row in report["stability"]:
+            timing = row["precision_timing"]
+            assert {k: v["points"] for k, v in timing.items()} == {
+                "binary64": 6,
+                "arbitrary": 6,
+            }
+            for sample in _records(row["samples"]):
+                if sample["reference_value"] is None:
+                    assert sample["reference_certified"] is None
+                else:
+                    assert sample["reference_certified"] in ("agreement", "checks")
+    assert certified["1"] == certified["3"]
+    # Both backends served every point here: they agree everywhere.
+    assert {c for rows in certified["1"].values() for _, c, _ in rows} == {"agreement"}
+    alone = profile("--n_core", "1", "--loop-reduction", "ninjars")
+    (row,) = alone["stability"]
+    assert {s["reference_certified"] for s in _records(row["samples"])} == {"checks"}
+
+
+@pytest.mark.loop_fast
+def test_disagreeing_references_are_rerun_checked_on_the_worker_pool(
+    uux_ddx, monkeypatch
+):
+    """References that do not agree go to their checked re-run, queued
+    after both backends' plain references and submitted to the pool before
+    any further chunk: every reference ends certified by its checks, the
+    records equal on one and three workers. (The agreement is decided in
+    the parent process, so forcing it off holds for spawned workers.)"""
+
+    from pyamplicol import loop_profile
+    from pyamplicol.cli.main import run_cli
+
+    def plain_disagree(a, b, tolerance=loop_profile._AGREEMENT):
+        # The cross-check's agreement off; the checked references' own
+        # comparison (to binary64's unit roundoff) as it is.
+        return tolerance is not loop_profile._AGREEMENT and abs(a - b) <= (
+            tolerance * max(abs(a), abs(b))
+        )
+
+    monkeypatch.setattr(loop_profile, "_references_agree", plain_disagree)
+    found = {}
+    for cores in ("1", "3"):
+        stdout = io.StringIO()
+        code = run_cli(
+            [
+                "profile",
+                str(uux_ddx),
+                "--stability",
+                "--stability-points",
+                "5",
+                "--ground-truth",
+                "arb:30",
+                "--n_core",
+                cores,
+                "--progress",
+                "off",
+                "--json",
+            ],
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+        assert code == 0
+        report = json.loads(stdout.getvalue())
+        assert report["stability_setup"]["interrupted"] is False
+        assert report["stability_setup"]["n_core"] == int(cores)
+        for row in report["stability"]:
+            tasks = row["samples"]["tasks"]
+            for sample in _records(row["samples"]):
+                # The re-run's own task (seconds, points) is recorded.
+                assert tasks[sample["reference_checked_task"]][1] >= 1
+        found[cores] = {
+            row["backend"]: [
+                (s["index"], s["reference_certified"], s["true_digits"])
+                for s in _records(row["samples"])
+            ]
+            for row in report["stability"]
+        }
+        for row in report["stability"]:
+            # The re-runs' time is the reference stream's, not new points.
+            assert row["precision_timing"]["arbitrary"]["points"] == 5
+    assert found["1"] == found["3"]
+    assert {c for rows in found["1"].values() for _, c, _ in rows} == {"checks"}
+    assert all(len(rows) == 5 for rows in found["1"].values())
+
+
+def _profile_json(artifact, *extra):
+    from pyamplicol.cli.main import run_cli
+
+    stdout = io.StringIO()
+    code = run_cli(
+        [
+            "profile",
+            str(artifact),
+            "--stability",
+            "--progress",
+            "off",
+            "--json",
+            *extra,
+        ],
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+    assert code == 0
+    return json.loads(stdout.getvalue())
+
+
+@pytest.mark.loop_fast
+def test_checked_references_that_contradict_each_other_are_no_reference(
+    uux_ddx, monkeypatch
+):
+    """Two checked re-runs that both pass their checks but still differ by
+    more than binary64's unit roundoff contradict their estimates: neither
+    is kept, the point has no reference, its reason says so."""
+
+    from pyamplicol import loop_profile
+
+    monkeypatch.setattr(loop_profile, "_references_agree", lambda a, b, t=None: False)
+    report = _profile_json(
+        uux_ddx, "--stability-points", "4", "--ground-truth", "arb:30", "--n_core", "1"
+    )
+    for row in report["stability"]:
+        assert row["failed_reference"] == 4
+        for sample in _records(row["samples"]):
+            assert sample["reference_value"] is None
+            assert sample["reference_certified"] is None
+            assert sample["reference_reason"].startswith(
+                "failed: stability checks: the backends' checked references differ by"
+            )
+
+
+@pytest.mark.loop_fast
+def test_the_deadline_admits_checked_reruns_and_ends_in_time(uux_ddx, monkeypatch):
+    """Under --completion-time on three workers, with every reference sent to
+    its checked re-run: no chunk is admitted on an unmeasured stream, the
+    re-runs of the admitted points are all done, the run ends within the
+    plan's tolerance."""
+
+    import time
+
+    from pyamplicol import loop_profile
+    from pyamplicol.profile_plan import BUDGET_TOLERANCE, STABILITY_MINIMUM
+
+    monkeypatch.setattr(
+        loop_profile,
+        "_references_agree",
+        lambda a, b, t=loop_profile._AGREEMENT: t is not loop_profile._AGREEMENT,
+    )
+    begin = time.perf_counter()
+    report = _profile_json(
+        uux_ddx,
+        "--ground-truth",
+        "arb:30",
+        "--completion-time",
+        "40s",
+        "--n_core",
+        "3",
+    )
+    assert time.perf_counter() - begin <= BUDGET_TOLERANCE * 40
+    setup = report["stability_setup"]
+    assert setup["interrupted"] is False and setup["n_core"] == 3
+    for row in report["stability"]:
+        samples = _records(row["samples"])
+        assert len(samples) >= STABILITY_MINIMUM
+        assert {s["reference_certified"] for s in samples} == {"checks"}
+
+
+@pytest.mark.loop_fast
+def test_a_backend_refused_mid_run_leaves_the_other_certified(uux_ddx, monkeypatch):
+    """TIRust refused from the second chunk on (in process): its row is
+    refused, NinjaRS's references of the first chunk stay certified by the
+    agreement, the later ones by their checks (one live backend)."""
+
+    from pyamplicol import loop_profile
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    task = loop_profile._stability_task
+
+    def refusing(backend, precision, indices, batch, scales):
+        if backend == "tirust" and min(indices) >= 16:
+            raise ReductionUnavailable("refused for the test")
+        return task(backend, precision, indices, batch, scales)
+
+    monkeypatch.setattr(loop_profile, "_stability_task", refusing)
+    report = _profile_json(
+        uux_ddx,
+        "--stability-points",
+        "20",
+        "--ground-truth",
+        "arb:30",
+        "--n_core",
+        "1",
+    )
+    rows = {row["backend"]: row for row in report["stability"]}
+    assert rows["tirust"]["refusal"] == "refused for the test"
+    labels = {
+        s["index"]: s["reference_certified"]
+        for s in _records(rows["ninjars"]["samples"])
+    }
+    assert sorted(labels) == list(range(20))
+    assert {labels[i] for i in range(16)} == {"agreement"}
+    assert {labels[i] for i in range(16, 20)} == {"checks"}
 
 
 def _records(table):
@@ -946,16 +1202,24 @@ def test_a_stale_history_only_seeds_the_estimate(uux_ddx, tmp_path, monkeypatch)
 
 def _normalised(text: str) -> str:
     """A rendered profile without what timing changes (numbers, units,
-    bars, padding)."""
+    bars, padding, and which backend the time ratio column marks fastest:
+    two backends of nearly equal time swap it from one run to the next),
+    as its words in order: a cell near the table's width wraps at another
+    word when its numbers have more digits (the box drawing and the line
+    breaks are layout)."""
 
     import re
 
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
     text = re.sub(r"[0-9]+(\.[0-9]+)?(e[-+][0-9]+)?", "N", text)
+    text = re.sub(r"\bfastest\b", "xN", text)
     text = re.sub(r"\b(s|ms|us|KiB|MiB|GiB)\b", "U", text)
     text = re.sub(r"#+", "B", text)
     text = re.sub(r"-+", "-", text)
-    return re.sub(r" +", " ", text)
+    text = re.sub(
+        r"(?<=\s)[|+-]+(?=\s)|^[|+-]+(?=\s)|(?<=\s)[|+-]+$", " ", text, flags=re.M
+    )
+    return " ".join(text.split())
 
 
 @pytest.mark.loop_physics
@@ -1081,3 +1345,997 @@ def test_one_runtime_thread_is_the_default(uux_ddx):
     assert keys(default_json) == keys(one_json)
     assert all(row["profile"]["threads"] == 1 for row in one_json["runtime"])
     assert "one_thread_seconds_per_point" not in json.dumps(one_json)
+
+
+@pytest.mark.parametrize("rule", ["reference", "measurement"])
+def test_a_cost_that_cannot_change_the_counts_is_not_measured(
+    uux_ddx, monkeypatch, rule
+):
+    """Under the default budget the measurement times only what can change
+    the counts (``profile_plan.reference_affects_counts``,
+    ``measurement_affects_counts``; forced here, as on an expensive process):
+    without the reference's the parent evaluates binary64 only and each
+    backend still times its reference; without any it evaluates nothing and
+    each backend runs the minimum counts with one reference point, its costs
+    measured by its own runtime timing (the plan's record)."""
+
+    import pyamplicol.loop_profile as lp
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    name = f"{rule}_affects_counts"
+    monkeypatch.setattr(plan_module, name, lambda *args, **kwargs: False)
+    # An absurd reference prior: the record and the counts row must come
+    # from the reference the runtime timing measured (ptimereview B3).
+    monkeypatch.setattr(lp, "_MULTIPLIER_PRIOR", {"tirust": 1e7, "ninjars": 1e7})
+    calls: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, batch, *args, **kwargs):
+        calls.append(kwargs.get("arithmetic"))
+        return evaluate(self, batch, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "evaluate", recorded)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            # Given: the reference is timed whatever the absurd prior says.
+            "benchmark": {
+                "runtime": True,
+                "n_core": 1,
+                "ground_truth": "double-double",
+            },
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert report.runtime is not None
+    for row in report.runtime:
+        assert row.profile is not None and row.profile.reference is not None
+        # The expected seconds from the measured costs (ptimereview m4).
+        expected = report.plan["runtime"][row.backend]["expected_seconds"]
+        assert expected > row.profile.batch * row.profile.seconds_per_point
+    assert report.seconds is not None
+    assert report.plan["minimum_seconds"] < 10.0 * report.seconds
+    assert report.plan["feasible"] is True
+    if rule == "reference":
+        # Binary64 only in this process; the reference budget is the share's
+        # quarter alone (the estimate sets none).
+        assert calls and set(calls) == {None}
+        return
+    assert calls == []
+    for row in report.runtime:
+        assert (row.profile.batch, row.profile.samples) == (16, 1)
+        assert row.profile.reference.points == 1
+        counts = report.plan["runtime"][row.backend]
+        assert (counts["batch"], counts["minimum"], counts["budget_seconds"]) == (
+            16,
+            1,
+            0.0,
+        )
+
+
+def test_a_one_task_stability_run_after_the_runtime_timing(uux_ddx, monkeypatch):
+    """The parent keeps (or loads again) the runtime an in-process stability
+    run needs: with the points given and a single stream (one backend, no
+    reference) its one task runs in this process although two workers were
+    asked for (``_stability`` lowers the count to the tasks), after the
+    runtime timing (ptimereview B1: AttributeError on a released runtime)."""
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.config import resolve_config
+
+    monkeypatch.setattr(lp, "usable_cores", lambda: 2)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx), "reduction": "tirust"},
+            "benchmark": {
+                "runtime": True,
+                "stability": True,
+                "n_core": 2,
+                "ground_truth": "none",
+                "stability_points": 5,
+            },
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    assert report.runtime is not None and report.stability is not None
+    (row,) = report.stability
+    assert row.backend == "tirust" and len(row.per_point) == 5
+
+
+def test_a_refusing_backend_takes_no_share_of_the_budget(uux_ddx, monkeypatch):
+    """The no-measurement rule shares the budget among the backends that can
+    serve (``_serving``: admitted by the artifact, present in the native
+    build), not every requested one (ptimereview B2): NinjaRS absent from
+    the native build and a 5 s load leave TIRust the whole 10 s less its
+    start-up, so the parent measures and TIRust gets budgeted counts, as
+    before the rule."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    import pyamplicol.loops.v2.reduction as reduction
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+
+    native_backends = reduction.native_backends
+
+    def without_ninjars(native):
+        found = dict(native_backends(native))
+        found.pop("ninjars", None)
+        return found
+
+    monkeypatch.setattr(reduction, "native_backends", without_ninjars)
+    load = Runtime.load.__func__
+
+    def slow(cls, *args, **kwargs):
+        time.sleep(5.0)
+        return load(cls, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "load", classmethod(slow))
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    rows = {row.backend: row for row in report.runtime or ()}
+    tirust = rows["tirust"].profile
+    assert tirust is not None
+    assert (tirust.batch, tirust.samples) != (16, 1)
+    assert report.plan["runtime"]["tirust"]["budget_seconds"] > 0.0
+
+
+@pytest.mark.parametrize("warm_entry", [False, True])
+def test_the_warm_entry_replaces_a_dear_binary64_warm_up(uux_ddx, warm_entry):
+    """With a warm entry on the runtime's backend (``prepare``, loadfast) and
+    the caller's decision (``warm_entry``, ``profile_plan.takes_entry``) the
+    optimistic timing warms through it, in its backend and unchecked mode,
+    instead of the untimed warm-up point: no warm-up call, the timed calls
+    unchanged; without the decision the warm-up point (inert without the
+    entry, as on this base)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import BenchmarkConfig
+
+    runtime = Runtime.load(uux_ddx)
+    prepared: list = []
+    runtime._backend.prepare = lambda **kwargs: prepared.append(kwargs)
+    calls: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, batch, *args, **kwargs):
+        calls.append(len(batch))
+        return evaluate(self, batch, *args, **kwargs)
+
+    bench = BenchmarkConfig(
+        batch_size=4, warmup_runs=1, minimum_samples=1, target_runtime=1e-6
+    )
+    Runtime.evaluate = recorded
+    try:
+        result = profile_virtual(
+            runtime,
+            bench,
+            points=_points(uux_ddx) * 8,
+            reduction="tirust",
+            optimistic=True,
+            warm_entry=warm_entry,
+        )
+    finally:
+        Runtime.evaluate = evaluate
+    if warm_entry:
+        assert prepared == [{"reduction": "tirust", "unchecked": True}]
+        assert result.warmup == 0 and result.prepared_seconds is not None
+        assert calls == [4]
+        assert "prepared_seconds" in result.cli_json()
+    else:
+        assert prepared == [] and result.prepared_seconds is None
+        assert result.warmup == 1 and calls == [1, 4, 4]
+        assert "prepared_seconds" not in result.cli_json()
+    assert result.samples == 1 and result.batch == 4
+
+
+@pytest.mark.parametrize(
+    ("given", "measured"),
+    [
+        ({}, True),
+        ({}, False),
+        ({"all_backends": True}, True),
+        ({"ground_truth": "double-double"}, True),
+        ({"ground_truth": "double-double"}, False),
+        ({"stability": True, "stability_points": 4}, True),
+        ({"target_runtime": 1e-6}, True),
+        ({"target_runtime": 1e-6, "batch_size": 16}, True),
+        ({"batch_size": 16}, True),
+    ],
+)
+def test_an_exceeded_budget_times_the_default_backend_alone(
+    uux_ddx, monkeypatch, given, measured
+):
+    """A runtime budget the minimums exceed (forced: 1 ms) on the runtime
+    timing alone (USER 2026-11-19): no reference pass and the default
+    backend only, from the measurement or, without one (``measured`` False:
+    the start-up takes the share), from the runtime timing's own costs; the
+    record and the counts row name what was left out. --all-backends keeps
+    every backend, an explicit --ground-truth the multiplier, --stability
+    both (its true digits need the reference), and counts given are
+    honoured as given."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-6)
+    if not measured:
+        monkeypatch.setattr(
+            plan_module, "measurement_affects_counts", lambda *a, **k: False
+        )
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1, **given},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    # Counts given (--batch-size, --stability-points) are honoured as
+    # given; a given --target-runtime is a budget (1e-6 s: exceeded).
+    stability = given.get("stability", False) or "batch_size" in given
+    forced = "ground_truth" in given
+    every = given.get("all_backends") or stability
+    assert set(rows) == ({"ninjars", "tirust"} if every else {"ninjars"})
+    assert report.backends == tuple(rows)
+    for profile in rows.values():
+        assert profile is not None
+        assert (profile.reference is not None) == (forced or stability)
+    plan = report.plan
+    assert plan["omitted_backends"] == ([] if every else ["tirust"])
+    assert plan["omitted_reference"] == (None if forced or stability else "dd")
+    text = _counts_cell(report, False) or ""
+    assert ("TIRust not profiled (--all-backends)" in text) == (not every)
+    assert ("no dd multiplier (--ground-truth)" in text) == (not (forced or stability))
+
+
+def test_a_default_budget_keeps_every_backend_and_the_multiplier(uux_ddx):
+    """On a cheap process with the default budget nothing is left out."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    assert all(p is not None and p.reference is not None for p in rows.values())
+    assert report.plan["omitted_backends"] == []
+    assert report.plan["omitted_reference"] is None
+    # The prepared_seconds key at either level only where the warm entry
+    # ran, with its seconds, never as null (m-c; a runtime without the entry
+    # has none, one with it warms through it, profile_plan.takes_entry).
+    has_entry = callable(getattr(Runtime.load(uux_ddx)._backend, "prepare", None))
+    for profile in rows.values():
+        document = profile.cli_json()
+        for level in (document, document["reference"]):
+            assert ("prepared_seconds" in level) <= has_entry
+            assert level.get("prepared_seconds", 1.0) is not None
+
+
+@pytest.mark.parametrize("given", [False, True])
+def test_the_profile_document_is_plain_json(uux_ddx, monkeypatch, given):
+    """``cli_json`` is plain JSON at every level on both paths of the
+    reference's warming, the entry taken wherever it is allowed
+    (``takes_entry``): through its untimed point (the default ground truth:
+    rule B open) and through the warm entry the runtime offers (an explicit
+    --ground-truth); both precision levels carry the same keys,
+    ``prepared_seconds`` only where its entry ran, never null."""
+
+    import json
+    from dataclasses import fields
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import PrecisionTiming
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    has_entry = callable(getattr(Runtime.load(uux_ddx)._backend, "prepare", None))
+    monkeypatch.setattr(plan_module, "takes_entry", lambda *args, **kwargs: True)
+    bench = {"runtime": True, "n_core": 1}
+    if given:
+        bench["ground_truth"] = "double-double"
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": bench,
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    timing = {item.name for item in fields(PrecisionTiming)} - {"prepared_seconds"}
+    for profile in rows.values():
+        document = profile.cli_json()
+        assert json.loads(json.dumps(document, allow_nan=False)) == document
+        reference = document["reference"]
+        assert isinstance(reference, dict)
+        entry = profile.reference.prepared_seconds is not None
+        assert set(reference) == timing | ({"prepared_seconds"} if entry else set())
+        # Through the entry with rule B closed (the ground truth given),
+        # where the runtime offers it; the warm-up call it replaces is gone.
+        assert entry == (given and has_entry)
+        assert reference["warmup"] == (0 if entry else 1)
+        for level in (document, reference):
+            assert level.get("prepared_seconds", 1.0) is not None
+
+
+@pytest.mark.parametrize(
+    "given",
+    [{}, {"all_backends": True}, {"reduction": "tirust"}, {"runtime": True}],
+)
+def test_an_exceeded_budget_with_the_stability_run(uux_ddx, monkeypatch, given):
+    """Rule A with --stability: when the default backend's minimum for
+    everything asked (forced budgets: 1 ms each) exceeds the budget, both
+    tables hold the default backend only, its reference still run (the true
+    digits need it); --all-backends and --loop-reduction keep the user's
+    choice; with --runtime too, the runtime row keeps its multiplier."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-6)
+    monkeypatch.setattr(plan_module, "DEFAULT_STABILITY_SECONDS_PER_CORE", 1e-6)
+    given = dict(given)
+    reduction = given.pop("reduction", None)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)}
+            | ({"reduction": reduction} if reduction else {}),
+            "benchmark": {"stability": True, "n_core": 1, **given},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    expected = (
+        {reduction}
+        if reduction
+        else {"ninjars", "tirust"}
+        if given.get("all_backends")
+        else {"ninjars"}
+    )
+    assert {row.backend for row in report.stability or ()} == expected
+    assert set(report.backends) == expected
+    if given.get("runtime"):
+        rows = {row.backend: row.profile for row in report.runtime or ()}
+        assert set(rows) == expected
+        assert all(p is not None and p.reference is not None for p in rows.values())
+    assert report.plan["omitted_backends"] == (
+        ["tirust"] if expected == {"ninjars"} else []
+    )
+    assert report.plan["omitted_reference"] is None
+
+
+def test_a_default_budget_with_the_stability_run_keeps_both(uux_ddx):
+    """On a cheap process at the default budgets --runtime --stability
+    keeps both backends in both tables and the multiplier."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "stability": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert {row.backend for row in report.stability or ()} == {"ninjars", "tirust"}
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    assert all(p is not None and p.reference is not None for p in rows.values())
+    assert report.plan["omitted_backends"] == []
+
+
+@pytest.mark.parametrize("stability", [False, True])
+def test_the_measurement_stops_after_a_decisive_default_backend(
+    uux_ddx, monkeypatch, stability
+):
+    """When the default backend's measured costs alone decide rule A
+    (forced 1 us budgets, the measurement forced for the runtime timing
+    alone, whose start-up would otherwise take the share), the measurement
+    does not time the other backends: this process evaluates on the default
+    backend only (ptimereview3 m8: the runtime case ran the blind path)."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-6)
+    monkeypatch.setattr(plan_module, "DEFAULT_STABILITY_SECONDS_PER_CORE", 1e-6)
+    backends: list = []
+    evaluate = Runtime.evaluate
+
+    def recorded(self, batch, *args, **kwargs):
+        backends.append(kwargs.get("reduction"))
+        return evaluate(self, batch, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "evaluate", recorded)
+    monkeypatch.setattr(plan_module, "measurement_affects_counts", lambda *a, **k: True)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "runtime": not stability,
+                "stability": stability,
+                "n_core": 2,
+            },
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert set(backends) == {"ninjars"}
+    assert report.plan["omitted_backends"] == ["tirust"]
+    assert {row.backend for row in report.runtime or report.stability or ()} == {
+        "ninjars"
+    }
+
+
+@pytest.mark.parametrize("given", [{}, {"target_runtime": 1e-6}])
+def test_rule_b_is_judged_on_the_backends_rule_a_keeps(uux_ddx, monkeypatch, given):
+    """Once rule A has left the other backends out (the measurement's early
+    stop, or the decision before the runtime timing), rule B and its
+    decider's bound (``rule_b_drops``, ``rule_b_bound``) are judged on the
+    backends that still run: under a given --target-runtime T its bound is
+    1.5 T per running backend, not per serving one (integration of
+    work/profile-time, coordinator 2026-11-19)."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 1e-6)
+    monkeypatch.setattr(plan_module, "measurement_affects_counts", lambda *a, **k: True)
+    judged: list[set[str]] = []
+    for name in ("rule_b_drops", "rule_b_bound"):
+        original = getattr(plan_module, name)
+
+        def recorded(known, *args, _original=original, **kwargs):
+            judged.append(set(known))
+            return _original(known, *args, **kwargs)
+
+        monkeypatch.setattr(plan_module, name, recorded)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1, **given},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert report.plan["omitted_backends"] == ["tirust"]
+    assert judged and judged[-1] == {"ninjars"}
+    # Nothing after the first judgement without TIRust counts it again.
+    first = judged.index({"ninjars"})
+    assert all(found == {"ninjars"} for found in judged[first:]), judged
+
+
+def test_the_plan_counts_the_warm_entry_not_a_point(uux_ddx, monkeypatch):
+    """With a warm entry (a stub ``prepare``) and a dear reference point
+    (every double-double call slowed by 3 s), the reference streams warm
+    through the entry, and the record's minimums are those of what ran: no
+    untimed reference point counted (ptimereview2 W-B1: 2 x 3 s too many);
+    the JSON names the entry's seconds, and the setup row the entry."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import resolve_config
+
+    evaluate = Runtime.evaluate
+    load = Runtime.load.__func__
+
+    def slow(self, batch, *args, **kwargs):
+        if kwargs.get("arithmetic") == "double-double":
+            time.sleep(3.0)
+        return evaluate(self, batch, *args, **kwargs)
+
+    def with_entry(cls, *args, **kwargs):
+        runtime = load(cls, *args, **kwargs)
+        runtime._backend.prepare = lambda **options: time.sleep(0.01)
+        return runtime
+
+    def in_process(
+        artifact,
+        process,
+        options,
+        config,
+        points,
+        request,
+        run,
+        *,
+        reference=None,
+        one_thread=None,
+        warm_entry=False,
+    ):
+        runtime = Runtime.load(artifact, process=process, **options)
+        return profile_virtual(
+            runtime,
+            config,
+            points=points,
+            artifact=artifact,
+            reduction=request,
+            reference=reference,
+            optimistic=True,
+            warm_entry=warm_entry,
+        )
+
+    monkeypatch.setattr(Runtime, "evaluate", slow)
+    monkeypatch.setattr(Runtime, "load", classmethod(with_entry))
+    monkeypatch.setattr(lp, "_isolated_profile", in_process)
+    # The ground truth given: rule B closed, the references take the entry
+    # (with rule B open they warm by their untimed point, which the
+    # measurement's cold point bounds).
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "runtime": True,
+                "n_core": 1,
+                "ground_truth": "double-double",
+            },
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    for profile in rows.values():
+        assert profile.reference is not None
+        assert profile.reference.prepared_seconds is not None
+        assert profile.reference.warmup == 0
+    assert report.seconds is not None
+    # What ran: each reference one timed 3 s point after its entry; the
+    # warm-up point the entry replaced would add 2 x 3 s.
+    assert report.plan["minimum_seconds"] <= report.seconds + 3.0
+    assert "after a warm entry" in (report.runtime_setup or "")
+
+
+@pytest.mark.parametrize("n_core", [None, 4, "probe"])
+def test_the_stability_workers_fit_the_memory(uux_ddx, monkeypatch, caplog, n_core):
+    """The stability run starts no more workers than ``MEMORY_SHARE`` of the
+    memory available holds at one worker's measured resident size (stubbed:
+    1 GB each, 3 GB available: 2 of the 4 usable cores); a --n_core given
+    is honoured and warned about; the counts row says so."""
+
+    import logging
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.config import resolve_config
+    from pyamplicol.profile_plan import memory_workers
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    assert memory_workers(1e9, 3e9) == 2 and memory_workers(1e9, 1e8) == 1
+    monkeypatch.setattr(lp, "usable_cores", lambda: 4)
+    monkeypatch.setattr(lp, "_own_peak_bytes", lambda: 1e9)
+    monkeypatch.setattr(lp, "_available_memory", lambda: 3e9)
+    probe = n_core == "probe"
+    probed: list = []
+    if probe:
+        # The first worker's own peak after its first task: 2 GB; the pool
+        # holds that one worker alone then (ptimereview4 m-1).
+        def peak(pid):
+            probed.append(pid)
+            return 2e9
+
+        monkeypatch.setattr(lp, "_process_peak_bytes", peak)
+        n_core = None
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "stability": True,
+                "ground_truth": "none",
+                **({} if n_core is None else {"n_core": n_core}),
+            },
+        }
+    ).effective
+    with caplog.at_level(logging.INFO, logger="pyamplicol.profile"):
+        report = lp.profile_loop(uux_ddx, config)
+    setup = report.stability_setup
+    memory = setup["memory"]
+    assert memory["fits"] == 2 and memory["asked"] == 4
+    assert setup["n_core"] == (2 if n_core is None else 4)
+    text = _counts_cell(report, False) or ""
+    if probe:
+        # Tasks of several points: the first worker's peak sets the workers.
+        assert memory["probed_bytes"] == 2e9 and memory["workers"] == 1
+        assert len(set(probed)) == 1
+        assert "stability on 1 worker (memory: 1.9 GiB each, 3/4 of 2.8 GiB" in text
+        assert any("keeps 1 of its 2 workers" in r.message for r in caplog.records)
+    elif n_core is None:
+        assert "stability on 2 workers (memory: " in text
+        assert "3/4 of 2.8 GiB available" in text
+        assert any("starts 2 workers instead of 4" in r.message for r in caplog.records)
+    else:
+        assert "--n_core 4 needs 3.7 GiB" in text
+        assert any("--n_core 4 given" in r.message for r in caplog.records)
+
+
+def test_a_slow_point_and_a_cheap_chunk_keep_both_backends(uux_ddx, monkeypatch):
+    """Rule A never drops a backend on an over-estimate (ptimereview3 B-1):
+    the measurement's one-point calls slowed by 1 s (a 16-point call of the
+    runtime timing stays cheap: its worker is not slowed) would put the
+    default backend's chunk at 16 s past the 15 s bound, but before the
+    runtime timing only a lower bound decides (the call at one point's
+    cost) and then the default backend's measured row: both backends run,
+    and the record's minimum is that of what ran."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.api import Runtime
+    from pyamplicol.config import resolve_config
+
+    evaluate = Runtime.evaluate
+
+    def slow(self, batch, *args, **kwargs):
+        if len(batch) == 1 and kwargs.get("arithmetic") is None:
+            time.sleep(1.0)
+        return evaluate(self, batch, *args, **kwargs)
+
+    monkeypatch.setattr(Runtime, "evaluate", slow)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    assert {row.backend for row in report.runtime or ()} == {"ninjars", "tirust"}
+    assert report.plan["omitted_backends"] == []
+    assert report.seconds is not None
+    assert report.plan["minimum_seconds"] <= report.seconds
+
+
+def test_the_reference_keeps_its_warm_up_after_the_binary64_entry(uux_ddx):
+    """The binary64 warm entry lowers the binary64 calls' warm-ups only: the
+    reference pass without an entry of its own keeps its untimed point
+    (ptimereview3 m2: it ran cold)."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import BenchmarkConfig
+
+    runtime = Runtime.load(uux_ddx)
+    runtime._backend.prepare = lambda **kwargs: None
+    result = profile_virtual(
+        runtime,
+        BenchmarkConfig(
+            batch_size=4, warmup_runs=1, minimum_samples=1, target_runtime=1e-6
+        ),
+        points=_points(uux_ddx) * 8,
+        reduction="tirust",
+        optimistic=True,
+        warm_entry=True,
+        reference={"arithmetic": "double-double", "entry": False, "budget": 1e-9},
+    )
+    assert result.prepared_seconds is not None and result.warmup == 0
+    assert result.reference is not None and result.reference.warmup == 1
+
+
+def test_a_target_runtime_alone_is_a_budget_the_counts_follow(uux_ddx):
+    """A --target-runtime given alone keeps origin/main's meaning, each
+    backend's timed binary64 budget (start-up and warm-up outside it, the
+    reference's budget on top), but its counts are chosen from it
+    (``profile_plan.target_counts``: one warm-up, the minimum calls, more
+    while the target affords them), not the default counts as if given
+    (ptimereview4 B-2); the counts row names it."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1, "target_runtime": 0.5},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    plan = report.plan
+    assert plan["rule"] == "time budgets" and plan["runtime_target"] == 0.5
+    assert plan["given"]["runtime"] is False
+    for row in report.runtime or ():
+        counts = plan["runtime"][row.backend]
+        assert counts["minimum"] == 1 and counts["warmup"] == 1
+        assert counts["budget_seconds"] == 0.5
+        assert counts["reference_budget_seconds"] == 0.5
+    assert "--target-runtime 500 ms per backend" in (_counts_cell(report, False) or "")
+
+
+def test_a_backend_profiled_alone_keeps_its_share(uux_ddx, monkeypatch):
+    """When rule A leaves the other backend out before the runtime timing,
+    the default backend keeps the per-backend share it has beside it
+    (ptimereview3 m9: its row must not depend on which rows are shown)."""
+
+    import pyamplicol.loop_profile as lp
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.profile_plan import DEFAULT_RUNTIME_SECONDS
+
+    monkeypatch.setattr(plan_module, "rule_a_drops", lambda *a, **k: True)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    assert report.plan["omitted_backends"] == ["tirust"]
+    assert report.plan["runtime"]["ninjars"]["budget_seconds"] < (
+        DEFAULT_RUNTIME_SECONDS / 2
+    )
+
+
+def _in_process(monkeypatch, *, slow_reference=0.0, slow_chunk=0.0, entry=False):
+    """Run each backend's runtime timing in this process (the spawned worker
+    would not see the stubs), with double-double calls slowed by
+    ``slow_reference`` seconds and binary64 calls of several points by
+    ``slow_chunk``; ``entry``: a stub warm entry. Returns the calls seen."""
+
+    import time
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+
+    evaluate = Runtime.evaluate
+    load = Runtime.load.__func__
+    calls: list = []
+
+    def slow(self, batch, *args, **kwargs):
+        calls.append((len(batch), kwargs.get("arithmetic"), kwargs.get("reduction")))
+        if kwargs.get("arithmetic") == "double-double":
+            time.sleep(slow_reference)
+        elif len(batch) > 1:
+            time.sleep(slow_chunk)
+        return evaluate(self, batch, *args, **kwargs)
+
+    def loaded(cls, *args, **kwargs):
+        runtime = load(cls, *args, **kwargs)
+        if entry:
+            runtime._backend.prepare = lambda **options: None
+        return runtime
+
+    def in_process(
+        artifact,
+        process,
+        options,
+        config,
+        points,
+        request,
+        run,
+        *,
+        reference=None,
+        one_thread=None,
+        warm_entry=False,
+    ):
+        runtime = Runtime.load(artifact, process=process, **options)
+        return profile_virtual(
+            runtime,
+            config,
+            points=points,
+            artifact=artifact,
+            reduction=request,
+            reference=reference,
+            optimistic=True,
+            warm_entry=warm_entry,
+        )
+
+    monkeypatch.setattr(Runtime, "evaluate", slow)
+    monkeypatch.setattr(Runtime, "load", classmethod(loaded))
+    monkeypatch.setattr(lp, "_isolated_profile", in_process)
+    return calls
+
+
+@pytest.mark.parametrize("measured", [False, True])
+def test_a_dear_reference_is_left_out_on_every_path(uux_ddx, monkeypatch, measured):
+    """Rule B on what each path measures (ptimereview4 B-1): double-double
+    calls slowed by 5 s against a 3 s runtime budget (bound 4.5 s). Without a
+    measurement phase the decider (NinjaRS) runs its binary64 call, its
+    untimed reference point (a measured cold 5 s point: the bound is
+    exceeded) and no timed one; with the measurement the parent's measured
+    point decides it before. Either way: no reference for any backend (all
+    or none), both backends kept (rule A never counts that reference), the
+    record names what was left out."""
+
+    import pyamplicol.profile_plan as plan_module
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    monkeypatch.setattr(plan_module, "DEFAULT_RUNTIME_SECONDS", 3.0)
+    monkeypatch.setattr(
+        plan_module, "measurement_affects_counts", lambda *a, **k: measured
+    )
+    calls = _in_process(monkeypatch, slow_reference=5.0)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    rows = {row.backend: row.profile for row in report.runtime or ()}
+    assert set(rows) == {"ninjars", "tirust"}
+    assert all(p.reference is None for p in rows.values())
+    assert report.plan["omitted_backends"] == []
+    assert report.plan["omitted_reference"] == "dd"
+    # One dd point in all: the parent's measured one, or the decider's
+    # untimed one (then no timed one, and none for TIRust: all or none).
+    dd = [c for c in calls if c[1] == "double-double"]
+    assert len(dd) == 1 and dd[0][2] == "ninjars"
+    if rows["ninjars"].reference_skipped:
+        assert rows["ninjars"].reference_point_seconds >= 5.0
+    else:
+        assert measured
+    assert not rows["tirust"].reference_skipped
+
+
+def test_rule_a_is_decided_again_on_the_default_backends_row(uux_ddx, monkeypatch):
+    """A cheap one-point call keeps both backends before the runtime timing,
+    the default backend's measured chunk (slowed to 16 s) then leaves the
+    other out (ptimereview4 m-7: the row decision on the measured path)."""
+
+    from pyamplicol.config import resolve_config
+    from pyamplicol.loop_profile import profile_loop
+
+    _in_process(monkeypatch, slow_chunk=16.0)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {"runtime": True, "n_core": 1},
+        }
+    ).effective
+    report = profile_loop(uux_ddx, config)
+    assert {row.backend for row in report.runtime or ()} == {"ninjars"}
+    assert report.plan["omitted_backends"] == ["tirust"]
+
+
+@pytest.mark.parametrize(
+    ("target", "shown"),
+    [(0.001, "1 ms"), (0.5, "500 ms"), (5.0, "5 s"), (90.0, "90 s")],
+)
+def test_counts_row_target_runtime_in_seconds_units(target: float, shown: str) -> None:
+    """The counts row writes a --target-runtime budget with the tables' unit
+    convention (a sub-second budget is not rounded up to a whole second)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.reporting.loop_profile import _counts_cell
+
+    report = SimpleNamespace(
+        plan={"rule": "time budgets", "runtime_target": target, "given": {}},
+        seconds=None,
+    )
+    text = _counts_cell(report, False) or ""
+    assert f"--target-runtime {shown} per backend for the runtime timing" in text
+
+
+def test_a_fitted_precision_times_calls_of_its_own_batch(uux_ddx):
+    """A measured precision's calls (``profile_virtual(precision=)``, its
+    batch fitted to its cost, ``_fitted_calls``) evaluate the fitted batch:
+    every call holds at most that many points, the time per point divides
+    by it (7572cf781 drew binary64's 16-point batches and divided by the
+    fitted size: gg_ggg NinjaRS double-double at 3.59 s instead of 0.45 s
+    per point); a --batch-size given is evaluated as given."""
+
+    from pyamplicol.api import Runtime
+    from pyamplicol.benchmarking import profile_virtual
+    from pyamplicol.config import BenchmarkConfig
+
+    runtime = Runtime.load(uux_ddx, threads=1)
+    sizes: list[int] = []
+    evaluate = runtime.evaluate
+
+    def counted(batch, *args, **kwargs):
+        sizes.append(len(batch))
+        return evaluate(batch, *args, **kwargs)
+
+    runtime.evaluate = counted
+    bench = BenchmarkConfig(
+        batch_size=16, warmup_runs=1, minimum_samples=2, target_runtime=1e-6
+    )
+    fitted = profile_virtual(
+        runtime,
+        bench,
+        artifact=uux_ddx,
+        reduction="ninjars",
+        optimistic=True,
+        precision={"arithmetic": "double-double", "fit": True},
+    )
+    assert fitted.batch == 1 and fitted.samples >= 2
+    assert max(sizes) == 1
+    sizes.clear()
+    given = profile_virtual(
+        runtime,
+        replace(bench, batch_size=4),
+        artifact=uux_ddx,
+        reduction="ninjars",
+        optimistic=True,
+        precision={"arithmetic": "double-double", "fit": False},
+    )
+    assert given.batch == 4 and max(sizes) == 4
+
+
+@pytest.mark.parametrize(
+    ("listed", "streams", "binary64_rows"),
+    [
+        (("binary64", "double-double"), {"binary64", "measured:dd"}, True),
+        (("double-double",), {"measured:dd"}, False),
+    ],
+)
+def test_a_listed_ground_truth_is_evaluated_once(
+    uux_ddx, monkeypatch, listed, streams, binary64_rows
+):
+    """The ground truth listed in --measured-precisions: its stream (the
+    default checks) is also the reference, no separate reference task; a
+    precision not listed (binary64) is not evaluated, and has no rows."""
+
+    import pyamplicol.loop_profile as lp
+    from pyamplicol.config import resolve_config
+
+    seen: set[str] = set()
+    records = lp._stability_records
+
+    def spied(backend, precision, *args, **kwargs):
+        seen.add(precision)
+        return records(backend, precision, *args, **kwargs)
+
+    monkeypatch.setattr(lp, "_stability_records", spied)
+    config = resolve_config(
+        {
+            "action": "benchmark",
+            "evaluation": {"artifact": str(uux_ddx)},
+            "benchmark": {
+                "stability": True,
+                "stability_points": 5,
+                "n_core": 1,
+                "ground_truth": "double-double",
+                "measured_precisions": list(listed),
+            },
+        }
+    ).effective
+    report = lp.profile_loop(uux_ddx, config)
+    assert seen == streams
+    assert bool(report.stability) is binary64_rows
+    entry = report.stability_setup["measured_precisions"][-1]
+    assert entry["estimates_only"] and all(
+        row.points == 5 for row in entry["stability"] if row.refusal is None
+    )

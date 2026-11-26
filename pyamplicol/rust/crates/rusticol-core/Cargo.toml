@@ -23,7 +23,7 @@ symbolica-runtime = ["dep:symbolica", "dep:pyamplicol", "dep:tracing", "dep:trac
 # Native core of the loop engine v2: plan v4 and its executor (open-loop
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
-loop-v2 = ["dep:brotli", "dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
+loop-v2 = ["dep:brotli", "dep:flate2", "dep:ninjars", "dep:ninjars-symbolica", "symbolica-runtime", "f64-symjit"]
 # TIRust's capability query in the loop engine's rank admission (m-lit
 # lit-eft: families beyond NinjaRS's rank <= N+2 are admitted when TIRust
 # reduces them; `loop_v2::bounds`). Not the TIRust backend (the default
@@ -40,10 +40,14 @@ brotli = { version = "8.0", optional = true }
 flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "ac66cf6c551465f6c63490e112bb41596c2fd821", optional = true }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "a2546170c400956d9aaffd3151e6b0d6c7edf475", optional = true }
+# NinjaRS's reserved symbols (`ninjars_symbolica::reserve`), registered before
+# this crate registers any other symbol (`symbol_order`); the revision of
+# `ninjars` (one source per NinjaRS crate: tests/unit/test_ninjars_single_source.py).
+ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "a2546170c400956d9aaffd3151e6b0d6c7edf475", optional = true }
 # The loop consumer's TIRust pin (rusticol-loop-reduction's `iregi-rust`, the
 # same revision): its capability query only (feature `tir`).
-iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "2b9ba961f640a6f0ee3b7f376cd23c5b869f41c1", optional = true }
+iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "1c130a81c4d1145ad5368664b580070eab9ebd7c", optional = true }
 # pyAmpliCol's Symbolica library key (the crate named after the package the
 # key is issued for).
 pyamplicol = { path = "../pyamplicol", optional = true }

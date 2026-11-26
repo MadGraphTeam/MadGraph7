@@ -42,7 +42,7 @@ namespace madmatrix
     const fptype_denom_sv p2 = ( P[0] * P[0] ) - ( P[1] * P[1] ) - ( P[2] * P[2] ) - ( P[3] * P[3] );
     const fptype_amp_sv p2a = fpamp_of_mom( p2 );
     const fptype_amp width = static_cast<fptype_amp>( -m2.imag() );
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
     const fptype_amp_sv im = fpternary( p2a > 0, fptype_amp_sv{} + width, fptype_amp_sv{} );
 #else
     const fptype_amp_sv im = ( p2a > 0 ) ? width : fptype_amp( 0 );

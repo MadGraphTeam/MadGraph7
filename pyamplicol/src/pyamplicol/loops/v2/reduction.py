@@ -172,11 +172,27 @@ def default_target() -> float:
     return float(policy()["target"]["default"])
 
 
+def default_arbitrary_digits() -> int:
+    """The default decimal digits of arbitrary precision (the native policy's
+    one definition, ``reduction_policy::DEFAULT_ARBITRARY_DIGITS``: 500,
+    USER 2026-11-18): the built-in rescue's last level and ``profile
+    --ground-truth arb``; an explicit digit count is never replaced."""
+
+    return int(policy()["arbitrary"]["default_digits"])
+
+
 def default_unchecked() -> bool:
     """The default of the unchecked setting (the native policy's one
     definition, ``reduction_policy::DEFAULT_UNCHECKED``: off)."""
 
     return bool(policy()["unchecked"]["default"])
+
+
+def default_lane_rescue() -> bool:
+    """The default of the lane rescue (the native policy's one definition,
+    ``reduction_policy::DEFAULT_LANE_RESCUE``: on)."""
+
+    return bool(policy()["lane_rescue"]["default"])
 
 
 def auto_default(contribution: str, admitted: Collection[str] | None = None) -> str:
@@ -304,6 +320,14 @@ _EFFECTIVE: ContextVar[str] = ContextVar("pyamplicol_v2_reduction", default="nin
 _TARGET: ContextVar[float | None] = ContextVar("pyamplicol_v2_target", default=None)
 # The unchecked setting of the current context (off by default).
 _UNCHECKED: ContextVar[bool] = ContextVar("pyamplicol_v2_unchecked", default=False)
+# The lane rescue of the current context (on by default; ``lane_rescue``).
+_LANE_RESCUE: ContextVar[bool] = ContextVar("pyamplicol_v2_lane_rescue", default=True)
+# Whether the current context's stability checks are a DEFAULT set
+# (``default_checks``: the checks of each point follow the backend that
+# serves it, ``backend_checks``); off: the checks the caller gave.
+_DEFAULT_CHECKS: ContextVar[bool] = ContextVar(
+    "pyamplicol_v2_default_checks", default=False
+)
 _KEEP: Any = object()
 
 
@@ -364,6 +388,52 @@ def cross(backend: str) -> str:
     return others[0]
 
 
+@contextmanager
+def lane_rescue(on: bool) -> Iterator[None]:
+    """Run the native executor calls of this context with the lane rescue
+    on or off (``evaluation.lane_rescue``; the native executor's
+    ``lane_rescue``): a reduction lane the backend refuses is reduced again
+    in a higher carrier, or fails its point."""
+
+    token = _LANE_RESCUE.set(bool(on))
+    try:
+        yield
+    finally:
+        _LANE_RESCUE.reset(token)
+
+
+@contextmanager
+def default_checks() -> Iterator[None]:
+    """Run the evaluations of this context with their stability checks as a
+    DEFAULT set (USER 2026-11-19: "Add it for TIRust as part of the default
+    stability stack ..., so only for TIRust"): a point TIRust serves runs
+    them with the rescaled reduction-direction check added (one rotation
+    alone under-states the error of an accepted TIRust point, true error
+    above it on 144 of 200 g g > g g g points, none with the check), a
+    point NinjaRS serves runs them as given (``backend_checks``). Used where
+    a default set is chosen for the caller (``profile --stability`` without
+    ``evaluation.stability_checks``); checks a caller gives are never
+    changed."""
+
+    token = _DEFAULT_CHECKS.set(True)
+    try:
+        yield
+    finally:
+        _DEFAULT_CHECKS.reset(token)
+
+
+def backend_checks(checks: Any, backend: str | None) -> Any:
+    """The checks a point served by ``backend`` runs: inside
+    ``default_checks``, TIRust's are ``rescued_checks`` of the call's (the
+    rescaled reduction-direction check added, when they lack a reduction
+    check); otherwise, and for NinjaRS, the call's checks unchanged."""
+
+    if not _DEFAULT_CHECKS.get() or backend != "tirust":
+        return checks
+    extended = rescued_checks(checks)
+    return checks if extended is None else extended
+
+
 def executor_options() -> dict[str, object]:
     """The native executor's ``reduction`` and ``unchecked`` options in the
     current context (``running``): empty for NinjaRS without the unchecked
@@ -374,6 +444,8 @@ def executor_options() -> dict[str, object]:
     options: dict[str, object] = {} if backend == "ninjars" else {"reduction": backend}
     if _UNCHECKED.get():
         options["unchecked"] = True
+    if not _LANE_RESCUE.get():
+        options["lane_rescue"] = False
     return options
 
 
@@ -477,8 +549,44 @@ def _without_checks(result: Any) -> Any:
     term scale the checks request, ``induced.point_finiteness``)."""
 
     if isinstance(result, Mapping):
-        return {key: _without_checks(item) for key, item in result.items()}
+        return _like(
+            result, {key: _without_checks(item) for key, item in result.items()}
+        )
     return replace(result, stability=None, finiteness=None)
+
+
+def _like(result: Mapping[Any, Any], items: Mapping[Any, Any]) -> Any:
+    """``items`` as the outputs of the point ``result`` describes: with its
+    lane rescue record when it has one (``plan_export.RescuedOutputs``)."""
+
+    rescue = getattr(result, "lane_rescue", None)
+    if rescue is None:
+        return dict(items)
+    from .plan_export import RescuedOutputs
+
+    return RescuedOutputs(items, rescue)
+
+
+def _with_estimates(first: Any, again: Any) -> Any:
+    """``first`` (a point's result: its ``PointResult``, or a mapping of its
+    outputs' on the resolved, correlated and selected routes) with the
+    estimates of ``again``, the same point evaluated with other checks; None
+    when ``again`` has no estimate for one of them."""
+
+    if isinstance(first, Mapping):
+        if not isinstance(again, Mapping) or any(
+            getattr(again.get(key), "stability", None) is None for key in first
+        ):
+            return None
+        return _like(
+            first,
+            {
+                key: replace(item, stability=again[key].stability)
+                for key, item in first.items()
+            },
+        )
+    estimate = getattr(again, "stability", None)
+    return None if estimate is None else replace(first, stability=estimate)
 
 
 def fallback_estimate(
@@ -494,9 +602,47 @@ def fallback_estimate(
     estimate's rounding floor, ``FLOOR_UNITS`` u S) against the largest
     returned output of the point; NaN when any input is not a number."""
 
+    from .wide import Wide, is_wide
+
+    if isinstance(roundoff, Wide) or is_wide(
+        value for output in outputs for sector in output for value in sector
+    ):
+        return _wide_fallback_estimate(outputs, roundoff)
     from pyamplicol.loops.native import load_loop_native
 
     return float(load_loop_native().reduction_fallback_estimate(outputs, roundoff))
+
+
+def _wide_fallback_estimate(
+    outputs: list[list[tuple[Any, Any, Any]]], roundoff: Any
+) -> float:
+    """``fallback_estimate`` for arbitrary precision, whose sizes and unit
+    roundoff lie beyond binary64's exponent range (``loops.v2.wide``): the
+    native rule (``reduction_policy::fallback_estimate``) step by step on
+    exponent-safe magnitudes, the ratio rounded to binary64 last (equal to
+    the native rule wherever its floats represent the inputs)."""
+
+    import math
+
+    from .stability import FLOOR_UNITS
+    from .wide import ratio
+
+    sectors = max((len(output) for output in outputs), default=0)
+    largest: list[Any] = [0.0] * sectors
+    for output in outputs:
+        for s, (size, error, scale) in enumerate(output):
+            if any(math.isnan(float(x)) for x in (size, error, scale)):
+                return math.nan
+            if size > largest[s]:
+                largest[s] = size
+    worst = 0.0
+    for output in outputs:
+        for s, (size, error, scale) in enumerate(output):
+            vanishes = size <= FLOOR_UNITS * roundoff * scale
+            against = largest[s] if vanishes else size
+            if against:
+                worst = max(worst, ratio(error, against))
+    return worst
 
 
 def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
@@ -506,7 +652,15 @@ def _guard_sectors(estimate: Any) -> list[tuple[float, float, float]]:
     estimate E and its largest term scale S (NaN where a value is not a
     number: a NaN budget is no estimate, and ``max`` would pass over it)."""
 
-    def largest(values: Any) -> float:
+    from .wide import Wide, magnitude
+
+    wide = isinstance(estimate.roundoff, Wide)
+
+    def largest(values: Any) -> Any:
+        if wide:
+            # Arbitrary precision: exponent-safe sizes (``loops.v2.wide``).
+            sizes = [magnitude(x, True) for x in values]
+            return math.nan if any(math.isnan(float(x)) for x in sizes) else max(sizes)
         found = [abs(float(x)) for x in values]
         return math.nan if any(math.isnan(x) for x in found) else max(found)
 
@@ -656,7 +810,9 @@ def _with_fallback(
     fallback = choice.fallback
     try:
         with running(choice.effective, choice.target, choice.unchecked):
-            results, failures = run(None, checks)
+            # The checks of the primary backend's points (``backend_checks``:
+            # a default set adds TIRust's reduction check).
+            results, failures = run(None, backend_checks(checks, choice.effective))
     except ReductionUnavailable as error:
         # The primary backend refuses the call's plans (TIRust's capability
         # query of a family): with a fallback, every point is the
@@ -672,10 +828,13 @@ def _with_fallback(
     # The fallback's checks (a fallback point's cross-backend check is not
     # run, m-lit R6) and how the guard's rotation re-test runs beside them:
     # reused, carried by the fallback's evaluation, or once more.
-    plain = (
-        replace(checks, cross_backend=False)
-        if checks is not None and checks.cross_backend
-        else checks
+    plain = backend_checks(
+        (
+            replace(checks, cross_backend=False)
+            if checks is not None and checks.cross_backend
+            else checks
+        ),
+        fallback,
     )
     enabled = plain is not None and bool(plain.rotations or plain.reduction_direction)
     reused = enabled and _carries_guard(plain)
@@ -772,8 +931,92 @@ def with_fallback(
 
     results, failures, records = _with_fallback(run, choice, count, checks, carrier)
     if failures and best_effort and not choice.unchecked:
-        _best_effort(run, choice, checks, carrier, results, failures, records)
+        _best_effort(
+            run,
+            choice,
+            backend_checks(checks, choice.effective),
+            carrier,
+            results,
+            failures,
+            records,
+        )
+    _rescued_estimates(run, choice, checks, results, failures, records)
     return results, failures, records
+
+
+def rescued_checks(checks: Any) -> Any:
+    """The checks of a point served with rescued lanes (``VirtualLaneRescue``)
+    when the call's checks lack the reduction-direction check: the call's
+    with the recommended set's rescaled reduction-direction check added
+    (USER / coordinator 2026-11-18: one rotation alone under-states the
+    error of a rescued TIRust point, true above the estimate on 162 of 185
+    g g > g g g points; with the reduction check none above it); None when
+    nothing is added (no checks, or the call's include a reduction check)."""
+
+    enabled = checks is not None and bool(
+        getattr(checks, "rotations", ())
+        or getattr(checks, "reduction_direction", False)
+    )
+    if not enabled or getattr(checks, "reduction_direction", False):
+        return None
+    return replace(checks, reduction_direction=True, rescaled=True)
+
+
+def _rescued_estimates(
+    run: Callable[[list[int] | None, Any], tuple[list[Any], dict[int, list[str]]]],
+    choice: VirtualReduction,
+    checks: Any,
+    results: list[Any],
+    failures: dict[int, list[str]],
+    records: dict[int, VirtualReduction],
+) -> None:
+    """Give every served point with rescued lanes the estimate of the checks
+    its backend ran (``backend_checks``; a per-point fallback's or
+    best-effort point's without the cross-backend check) with the rescaled
+    reduction-direction check (``rescued_checks``), in place: those points
+    alone evaluated again, from their exact inputs, with those checks, on
+    the backend and in the acceptance mode that served each (``records``:
+    the fallback's or the best-effort's; else the call's ``choice``), at the
+    call's target, each keeping its first result (value and records) with
+    the second run's estimate (the checks re-reduce, they change no direct
+    lane). A point the second run fails keeps its first result. Nothing
+    runs for a call without checks, for points whose checks include a
+    reduction check (a default set on TIRust, ``default_checks``) or
+    without rescued lanes."""
+
+    if rescued_checks(checks) is None:
+        return
+    groups: dict[tuple[str, bool, bool], list[int]] = {}
+    for index, result in enumerate(results):
+        if (
+            result is None
+            or index in failures
+            or not getattr(result, "lane_rescue", ())
+        ):
+            continue
+        record = records.get(index)
+        served = choice if record is None else record
+        key = (served.effective, bool(served.unchecked), record is not None)
+        groups.setdefault(key, []).append(index)
+    for (backend, unchecked, other), indices in groups.items():
+        own = (
+            replace(checks, cross_backend=False)
+            if other and getattr(checks, "cross_backend", False)
+            else checks
+        )
+        extended = rescued_checks(backend_checks(own, backend))
+        if extended is None:
+            continue
+        with running(backend, choice.target, unchecked):
+            again, failed = run(indices, extended)
+        for local, index in enumerate(indices):
+            if local in failed:
+                continue
+            # The first result (its value and records) with the extended
+            # estimate (of each output, on the mapping routes).
+            extended = _with_estimates(results[index], again[local])
+            if extended is not None:
+                results[index] = extended
 
 
 def backend_deviation(reasons: Collection[str]) -> float | None:
@@ -1008,6 +1251,7 @@ __all__ = [
     "current",
     "current_target",
     "current_unchecked",
+    "default_arbitrary_digits",
     "default_target",
     "default_unchecked",
     "executor_options",

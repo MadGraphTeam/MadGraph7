@@ -103,6 +103,7 @@ from pyamplicol.color.connections import ExactColorCoefficient
 from . import induced
 from . import reference_executor as rx
 from .families import Orders
+from .wide import magnitude
 
 # The resolved colour axis of a loop-induced result: one colour-contracted
 # component per helicity row (its ID the accuracy, "full"), or the
@@ -638,9 +639,12 @@ def _bound(evaluation, magnitude, left, right, rows) -> dict:
     return induced.sector_form(evaluation, rows, columns(left), columns(right), kernel)
 
 
-def _absolute(vectors) -> dict:
+def _absolute(vectors, wide: bool = False) -> dict:
+    """|z| per cell: binary64, or exponent-safe in arbitrary precision
+    (``loops.v2.wide.magnitude``)."""
+
     return {
-        key: [[float(abs(z)) for z in cell] for cell in vector]
+        key: [[magnitude(z, wide) for z in cell] for cell in vector]
         for key, vector in vectors.items()
     }
 
@@ -828,7 +832,7 @@ class PointOutputs:
             out[name] = {
                 sector: Budget(
                     tuple(
-                        float(abs(y - x))
+                        magnitude(y - x, self.evaluation.numbers.wide)
                         for x, y in zip(values, moved[sector], strict=True)
                     )
                 )
@@ -841,7 +845,10 @@ class PointOutputs:
         if self.changes:
             if self._transverse is None:
                 self._transverse = _spin_errors(
-                    _absolute(self.evaluation.amplitude_vectors),
+                    _absolute(
+                        self.evaluation.amplitude_vectors,
+                        self.evaluation.numbers.wide,
+                    ),
                     self.coefficients,
                     self.changes,
                 )
@@ -854,7 +861,7 @@ class PointOutputs:
 
         rows = self.rows_of(output)
         _h, _k, magnitude = self.forms(output.metric)
-        values = _absolute(self.amplitudes)
+        values = _absolute(self.amplitudes, self.evaluation.numbers.wide)
         return _add_budgets(
             _bound(self.evaluation, magnitude, errors, values, rows),
             _bound(self.evaluation, magnitude, values, errors, rows),
@@ -878,7 +885,7 @@ class PointOutputs:
 
         evaluation = self.evaluation
         terms = induced.term_values(evaluation)
-        kets = _absolute(evaluation.counterterm_vectors)
+        kets = _absolute(evaluation.counterterm_vectors, evaluation.numbers.wide)
         floors: dict = {}
         for key in dict.fromkeys([*terms, *kets]):
             cells = []
@@ -887,7 +894,7 @@ class PointOutputs:
                 for source in (terms.get(key), kets.get(key)):
                     if source is not None:
                         for k in range(self.width):
-                            values[k] += float(source[t][k])
+                            values[k] += induced._size(source[t][k])
                 cells.append([max(value, values[0]) for value in values])
             floors[key] = cells
         floors = _spin_errors(floors, self.coefficients)
@@ -1023,7 +1030,12 @@ class InducedColumns:
         executor refuses one it does not run)."""
 
         from .observables import _member_key, _rotated_point, _rotated_spin
-        from .plan_export import FailedPoints, point_estimate
+        from .plan_export import (
+            FailedPoints,
+            RescuedOutputs,
+            merged_rescue,
+            point_estimate,
+        )
         from .stability import StabilityChecks
 
         if ward is not None:
@@ -1138,7 +1150,7 @@ class InducedColumns:
                         reference,
                         [run[index] for run in rotated],
                         stability,
-                        precision.unit_roundoff,
+                        precision.estimate_roundoff,
                     )
                 elif stability.enabled:
                     other, skipped = cross(g)
@@ -1146,7 +1158,7 @@ class InducedColumns:
                         output,
                         rotations(g),
                         stability.reduction,
-                        precision.unit_roundoff,
+                        precision.estimate_roundoff,
                         other,
                         skipped,
                     )
@@ -1157,7 +1169,13 @@ class InducedColumns:
                 if member is not None and self.resolved:
                     key = _member_key(member, key)
                 result[key] = value
-            out.append(result)
+            # The point's lane rescue over its reference and rotated
+            # evaluations (review B1).
+            out.append(
+                RescuedOutputs(
+                    result, merged_rescue([reference, *(run[index] for run in rotated)])
+                )
+            )
         if failures:
             raise FailedPoints(out, failures)
         return out

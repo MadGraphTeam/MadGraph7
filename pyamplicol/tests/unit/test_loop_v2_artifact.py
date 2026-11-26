@@ -842,6 +842,140 @@ def test_public_generation_publishes_plan_v4(full_colour):
 
 
 @pytest.mark.loop_physics
+def test_the_admitted_program_is_shared_and_the_warm_entry_changes_no_value(
+    quark_controls, loop_native
+):
+    """``Runtime.load`` hands the program its admission loaded to the
+    executors (``V2AdmittedPlan``: no second load of the plan member, refused
+    for other kernel forms), and the warm entry (``V2VirtualRuntime.prepare``,
+    ``V2Executor.warm``) builds a carrier's lazy state without changing any
+    value: every carrier and backend, bit-identical to a runtime that did not
+    prepare."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.cli.flat_points import draw_flat_points
+
+    flat = draw_flat_points(
+        quark_controls, process="uudd", points=2, seed=3, sqrt_s=None
+    )
+    points, scales = flat.as_inputs(exact=False), flat.mu_r2()
+    backends = [
+        name
+        for name in ("ninjars", "tirust")
+        if name in json.loads(loop_native.reduction_backends())
+    ]
+    carriers = ({}, {"arithmetic": "double-double"}, {"precision": 20})
+
+    def values(prepare: bool) -> list[str]:
+        runtime = Runtime.load(quark_controls, process="uudd")
+        backend = runtime._backend
+        admitted = backend._native_process.admitted
+        assert admitted is not None and admitted.get().families > 0
+        if prepare:
+            for carrier in carriers:
+                backend.prepare(reduction="auto", **carrier)
+        out = []
+        for reduction in backends:
+            for carrier in carriers:
+                result = runtime.evaluate(
+                    points, mu_r2=scales, reduction=reduction, **carrier
+                )
+                out.append(repr((result.values, result.born_values)))
+        return out
+
+    assert values(True) == values(False)
+    _described, admitted, _companion = loop_native.admit_v2_artifact_program(
+        str(quark_controls), "uudd"
+    )
+    with pytest.raises(ValueError, match="admitted plan"):
+        loop_native.V2Executor(admitted, forms="fused")
+    with pytest.raises(ValueError, match="reduction must be"):
+        Runtime.load(quark_controls, process="uudd")._backend.prepare(reduction="x")
+
+
+@pytest.mark.loop_physics
+def test_the_admitted_program_is_released_by_clear_and_the_companion_not_kept(
+    quark_controls, loop_native
+):
+    """The admitted plan program is held for the process's executors only:
+    the first evaluation takes it, ``clear`` releases it (the next executor
+    loads the plan member, values unchanged), and the certified-scaleless
+    companion's program is not kept from the admission."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.cli.flat_points import draw_flat_points
+
+    flat = draw_flat_points(
+        quark_controls, process="uudd", points=2, seed=5, sqrt_s=None
+    )
+    points, scales = flat.as_inputs(exact=False), flat.mu_r2()
+    runtime = Runtime.load(quark_controls, process="uudd")
+    backend = runtime._backend
+    admitted = backend._native_process.admitted
+    assert admitted is not None and not admitted.taken
+    assert not hasattr(backend, "_programs")
+    first = repr(runtime.evaluate(points, mu_r2=scales).values)
+    assert admitted.taken
+    runtime.clear()
+    assert admitted.get() is None
+    assert repr(runtime.evaluate(points, mu_r2=scales).values) == first
+
+
+@pytest.mark.loop_physics
+def test_prepare_auto_warms_only_the_backends_the_native_module_serves(
+    quark_controls, loop_native, monkeypatch
+):
+    """``prepare(reduction="auto")`` warms the backends the artifact admits
+    AND the native module serves in the carrier (a native without TIRust
+    warms NinjaRS only); an explicit backend the module does not serve is
+    ``ReductionUnavailable``."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import ReductionUnavailable
+
+    backend = Runtime.load(quark_controls, process="uudd")._backend
+    warmed: list[str] = []
+    monkeypatch.setattr(
+        backend._executor,
+        "prepare",
+        lambda setting, reduction, **options: warmed.append(reduction),
+    )
+
+    class NinjaOnly:
+        def __getattr__(self, name):
+            return getattr(loop_native, name)
+
+        def reduction_backends(self):
+            return json.dumps({"ninjars": ["double", "double-double", "arbitrary"]})
+
+    backend._native = NinjaOnly()
+    backend.prepare(reduction="auto")
+    assert warmed == ["ninjars"]
+    with pytest.raises(ReductionUnavailable):
+        backend.prepare(reduction="tirust")
+    assert warmed == ["ninjars"]
+
+
+@pytest.mark.loop_physics
+def test_a_plan_loads_to_the_same_program_on_any_thread_count(
+    quark_controls, loop_native
+):
+    """The loader derives the families in parallel inside a thread pool and
+    merges them in family order: the loaded program (its tables' digest,
+    every id and shared list) is the sequential load's at every count."""
+
+    from pyamplicol.loops.v2.artifact import load_native_process
+
+    runtime = quark_controls / "processes" / "uudd" / "loop-runtime.pacbin"
+    plan = load_native_process(runtime).plan.bytes()
+    digests = {
+        threads: loop_native.v2_plan_read(plan, threads) for threads in (1, 2, 3, 8)
+    }
+    assert len(set(digests.values())) == 1, digests
+    assert digests[1] == loop_native.v2_plan_read(plan)
+
+
+@pytest.mark.loop_physics
 def test_public_particle_veto_equals_njet_five_flavours(
     loop_sm_compiled_model, loop_native, tmp_path
 ):

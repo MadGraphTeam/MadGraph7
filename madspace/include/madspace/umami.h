@@ -30,7 +30,7 @@ extern "C" {
  * Minor version number of the UMAMI interface. Between minor versions, new keys for
  * errors, devices, metadata, inputs and outputs can be added.
  */
-#define UMAMI_MINOR_VERSION 2
+#define UMAMI_MINOR_VERSION 3
 
 typedef enum {
     /** operation was executed successfully */
@@ -120,6 +120,11 @@ typedef enum {
     UMAMI_IN_PDG_ID,
     /** index of the beam (0 or 1), type: `int`, shape: `()` */
     UMAMI_IN_BEAM_INDEX,
+    /** random number for flavor selection, type: `double`, shape: `()` */
+    UMAMI_IN_RANDOM_FLAVOR,
+    /** parton densities x f(x, mu_F) of the two incoming legs for the PDG ids -6..6,
+     * index 6 the gluon, type: `double`, shape: `(2, 13)` */
+    UMAMI_IN_PARTON_DENSITIES,
     /* Provisional NLO keys, a draft under discussion and not yet part of a
      * released version: names, shapes and values may change. */
     /** 0-based legs whose polarization `UMAMI_OUT_SPIN_CORRELATED` replaces by the
@@ -170,6 +175,9 @@ typedef enum {
     /** ratio of the matrix element to a reference matrix element defined by the
      * caller, type: `double`, shape: `()` */
     UMAMI_OUT_MATRIX_ELEMENT_RATIO,
+    /** selected flavor index, -1 if the flavor is unchanged, type: `int`, shape:
+     * `()` */
+    UMAMI_OUT_FLAVOR_INDEX,
     /* Provisional NLO keys, a draft under discussion and not yet part of a
      * released version: names, shapes and values may change. The outputs per
      * squared coupling order are summed over helicities and colours and

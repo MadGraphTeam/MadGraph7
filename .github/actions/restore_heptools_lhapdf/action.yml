@@ -79,10 +79,15 @@ runs:
     # skip as a failure). Fetching them here is a no-op once the cache carries
     # them. Non-fatal on failure: the tests skip as they did before.
     # fetch_pdfsets.sh also repairs a set a cancelled job left half-unpacked.
+    # cteq6l1 and NNPDF23_nlo_as_0118_qed are the two sets check_heptools
+    # requires of the lhapdf tree (the NLO acceptance tests). Nothing else
+    # fetches them outside the warm_cache lhapdf job, so a restore that lacks
+    # them (e.g. a pythia8/boost tree built on a lhapdf cache that was evicted)
+    # would otherwise fail the check for good.
     - name: ensure the default PDF sets are present
       run: |
         bash "${{ github.action_path }}/fetch_pdfsets.sh" \
           "$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF" \
           NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 NNPDF40_nlo_as_01180_nf_4 \
-          NNPDF40_nlo_as_01180_qed
+          NNPDF40_nlo_as_01180_qed cteq6l1 NNPDF23_nlo_as_0118_qed
       shell: bash

@@ -55,6 +55,9 @@ CALIBRATION = (
 ESTIMATE_MARGIN = 10
 CALIBRATION_ROWS = ("li_gg_hh", "li_gg_z")
 TRUTH_DIGITS = 57
+# The relative estimate of a numerical zero is its absolute estimate against
+# rounding: far above any target (here: above 1e5 = 1 / 1e-5).
+RESCUE_TARGET_OF_ZERO = 1e-5
 
 
 @pytest.fixture(scope="module")
@@ -66,6 +69,22 @@ def _evaluate(li, name, precision, index, checks):
     return li.native_value(
         name, precision, inputs="native", index=index, stability=checks
     )
+
+
+def _truth(li, name, index):
+    """The 57-digit NinjaRS truth of a fixture point through the unchecked
+    reduction (``reduction.running(..., unchecked=True)``): it drops only
+    NinjaRS's acceptance tests, among them the tracked-precision test, which
+    refuses an integrated zero (g g > z: every lane is rounding noise, so
+    its lanes keep a few tracked bits of their own size); the value is the
+    one NinjaRS computes at 57 digits either way (the test never changes a
+    served value), so the estimates are still bracketed by the same truth."""
+
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.reduction import running
+
+    with running("ninjars", unchecked=True):
+        return _evaluate(li, name, Precision.arbitrary(TRUTH_DIGITS), index, None)
 
 
 def _errors(result, truth):
@@ -101,7 +120,7 @@ def test_single_point_estimates_bracket_the_error(li, name, carrier):
     precision = getattr(Precision, carrier)()
     for index in range(len(_fixture(name)["points"])):
         result = _evaluate(li, name, precision, index, RECOMMENDED_CHECKS)
-        truth = _evaluate(li, name, Precision.arbitrary(TRUTH_DIGITS), index, None)
+        truth = _truth(li, name, index)
         for sector, errors in _errors(result, truth).items():
             estimate = result.stability.absolute[sector].coefficients
             for k, error in enumerate(errors):
@@ -175,11 +194,15 @@ def test_g_g_to_z_is_zero_within_its_estimate(li, carrier):
 @pytest.mark.loop_physics
 def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     """Under the default (relative) rescue metric an integrated zero can
-    never meet its target: g g > z climbs the loop-induced default stack
-    (TIRust binary64 -> NinjaRS binary64 -> double-double -> arbitrary(57),
-    m-lit F3 (b): ``VirtualRescuePolicy()`` on a loop-induced "auto" call)
-    and is kept at the last level with the target marked as not met (PLAN
-    §2.a.8: the rescue terminates, at the cost of every level). The opt-in
+    never meet its target: g g > z on the loop-induced default stack
+    (TIRust binary64 -> NinjaRS binary64 -> double-double -> arbitrary(57)
+    -> arbitrary(500), m-lit F3 (b): ``VirtualRescuePolicy()`` on a
+    loop-induced "auto" call) has a relative estimate that grows with the
+    digits (|A|^2 falls with the unit roundoff squared), so the stopping
+    rule keeps it at double-double, the first level of more precision that
+    does not improve it, with the target marked as not met (PLAN §2.a.8:
+    the rescue terminates; before the rule, at the cost of every level;
+    at 500 digits its estimate would underflow binary64). The opt-in
     "scale" metric (E <= target x S, ``VirtualRescueLevel.metric``) on the
     same ladder accepts it at the first level, its E / S
     the floor's FLOOR_UNITS x u, its value the binary64 one and within its
@@ -209,10 +232,15 @@ def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
         [point], mu_r2=[str(scale)], stability=VirtualRescuePolicy()
     )
     (record,) = result.rescue
-    assert record.level == len(policy.levels) - 1 and not record.met
+    assert not record.met and record.arithmetic == "double-double"
+    assert record.level < len(policy.levels) - 1
     assert [attempt.arithmetic for attempt in record.attempts] == [
-        level.arithmetic for level in policy.levels
+        level.arithmetic for level in policy.levels[: record.level + 1]
     ]
+    assert record.attempts[-1].estimate >= min(
+        attempt.estimate for attempt in record.attempts[:-1]
+    )
+    assert "not escalated" in result.diagnostics[0].detail
     assert all(
         attempt.estimate > policy.levels[0].target for attempt in record.attempts
     )
@@ -236,6 +264,74 @@ def test_the_rescue_of_g_g_to_z_terminates_under_either_metric(li, tmp_path):
     unchecked = runtime.evaluate([point], mu_r2=[str(scale)])
     assert scaled.values == unchecked.values
     assert scaled.contribution == "loop-induced"
+
+
+# The 500-digit evaluations below run in a child process: an evaluation at
+# 500 digits shifts later double-double guard estimates of the same process
+# (pre-existing, origin/main too; FINDINGS 2026-11-18 "ladder"), which would
+# leak into the fallback-guard tests of a shared pytest process.
+_ZERO_CHILD = """
+import json, sys
+from pyamplicol import Runtime
+from pyamplicol.api.virtual_results import VirtualRescueLevel, VirtualRescuePolicy
+output, point, scale, parameters, digits = json.loads(sys.argv[1])
+runtime = Runtime.load(output, process="gg_z", model_parameters=parameters)
+found = []
+for metric in ("relative", "scale"):
+    level = VirtualRescueLevel("arbitrary", digits, metric=metric)
+    result = runtime.evaluate(
+        [point], mu_r2=[scale], stability=VirtualRescuePolicy((level,))
+    )
+    (record,) = result.rescue
+    (estimate,) = result.stability
+    (value,) = result.values[0]
+    found.append(
+        [metric, record.met, estimate.relative, estimate.scale, level.target,
+         str(value.finite), dict(estimate.checks)]
+    )
+print(json.dumps(found))
+"""
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("digits", [57, 500])
+def test_g_g_to_z_reads_right_in_arbitrary_precision(li, tmp_path, digits):
+    """g g > z (Landau-Yang) in arbitrary precision, also beyond binary64's
+    exponent range (the default 500 digits: unit roundoff ~5e-500, |A|^2 ~
+    1e-1039): the estimate's sizes are exponent-safe (``loops.v2.wide``), so
+    its relative estimate exceeds the target (the value is rounding; it read
+    0.0, "met", through 0 / 0 in binary64 floats) while its E / S, the
+    floor's FLOOR_UNITS x u, meets the "scale" metric; the value is zero
+    within its absolute estimate."""
+
+    import json
+    import subprocess
+    import sys
+    from decimal import Decimal
+
+    output = _generate(tmp_path, (("gg_z", "g g > z"),), _fixture("li_gg_z"))
+    point, scale, parameters = li.point("li_gg_z")
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _ZERO_CHILD,
+            json.dumps([str(output), point, str(scale), parameters, digits]),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    found = json.loads(child.stdout.strip().splitlines()[-1])
+    for metric, met, relative, scale_estimate, target, value, checks in found:
+        assert met is (metric == "scale"), (digits, metric, found)
+        # Every check keeps its size (review M1: the native re-test budget
+        # and term scale read 0.0 above ~308 digits as binary64): the
+        # rescaled re-test reads 1.95 at 57 digits, 3.07 at 500.
+        assert checks["reduction-rescaled"] > 0.1, (digits, checks)
+        assert relative > 1 / RESCUE_TARGET_OF_ZERO, found
+        assert scale_estimate <= target, found
+        assert abs(Decimal(value)) < Decimal(10) ** (-digits), value
 
 
 # ------------------------------------------------------------ rotation check

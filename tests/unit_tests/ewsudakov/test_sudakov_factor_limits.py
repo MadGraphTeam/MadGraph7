@@ -14,6 +14,25 @@ from madgraph.various import fxfx_ewsudakov as fx
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import make_event, ww_event
 
 
+def density_result(dimension, central, var, qed, nres=2, relative=None):
+    """Full-interference kernel result with a unit Born and diagonal corrections.
+
+    With a unit decay matrix the contraction gives 1 + correction per variant.
+    relative=(central, var, qed) gives the goldstone_relative corrections their
+    own values; by default they equal the amplitude ones.
+    """
+    def corrections(changes):
+        array = np.zeros((dimension, dimension, 5), complex)
+        for variant, change in zip((1, 2, 0), changes):
+            array[:, :, variant] = np.eye(dimension) * change
+        return array
+    correction = corrections((central, var, qed))
+    return {'version': fx.DENSITY_KERNEL_VERSION, 'density_born': np.eye(dimension),
+            'density_correction': correction,
+            'density_relative': correction if relative is None else corrections(relative),
+            'zero_gold': 0, 'total_dim': dimension, 'nres': nres}
+
+
 class FactorDriver(fx.FxFxEWSudakovMixin):
     def __init__(self):
         self.model = None
@@ -86,18 +105,13 @@ class TestSudakovFactorLimits(unittest.TestCase):
             with self.subTest(factors=factors):
                 driver = FactorDriver()
                 module = self.scalar_module(driver, [1.1, 0.9, factors[2]])
-                module.density_sudakov = mock.Mock(return_value={
-                    'density_delta': np.full(9, (factors[0] - 1.) / 2),
-                    'density_delta_var': np.full(9, (factors[1] - 1.) / 2),
-                    'born_diag': np.ones(9), 'total_dim': 9, 'nres': 2, 'results': [9.]})
-                driver.density_prod_id_to_path = {'process': True}
-                driver.density_prod_f2pylib = {'module': True}
+                module.density_sudakov = mock.Mock(return_value=density_result(
+                    9, factors[0] - 1., factors[1] - 1., factors[2] - 1.))
                 driver._get_decay_density_matrix = mock.Mock(return_value=
                     fx.DensityMatrix.from_full_matrix(np.eye(9), [24, -24]))
-                with mock.patch.object(fx, 'DensityHelper') as helper:
-                    helper.return_value.compute_density_matrix.return_value = np.eye(9)
-                    result = driver._compute_density_ewsudakov_reweight(self.event, module)
-                module.ewsudakov.assert_called_once()
+                result = driver._compute_density_ewsudakov_reweight(self.event, module)
+                # Every variant, the QED one included, comes from the contraction.
+                module.ewsudakov.assert_not_called()
                 self.assertEqual(driver._density_logger.log_event.call_args.kwargs['mode'], 'density')
                 self.assert_factors(driver, result, expected)
 

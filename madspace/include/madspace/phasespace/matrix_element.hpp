@@ -11,7 +11,7 @@ namespace madspace {
  * Calls a matrix element through the UMAMI interface.
  *
  * UMAMI (Unified MAtrix eleMent Interface) is `madspace`'s uniform way of
- * calling matrix-element code — currently the cudacpp plugin — for both
+ * calling matrix-element code — currently the madmatrix backend — for both
  * integration and event generation [1] (Sec. 3.3 of [2]). Which quantities are
  * passed and returned is chosen by @p inputs and @p outputs, given as integer
  * keys so the interface can be extended without breaking binary compatibility.
@@ -77,6 +77,9 @@ public:
         scale_in,             ///< Energy scale, e.g. the factorization scale.
         pdg_id_in,            ///< PDG id of a single parton.
         beam_index_in,        ///< Index of the beam (0 or 1).
+        random_flavor_in,     ///< Random number for the flavour draw.
+        /// x f(x, mu_F) of both incoming legs for the PDG ids -6..6 (6: gluon).
+        parton_densities_in,
         spin_legs_in,         ///< Legs of the spin correlation (provisional).
         spin_vectors_in,      ///< Vectors of the spin correlation (provisional).
         g_ew_in               ///< Electroweak coupling (provisional).
@@ -98,6 +101,7 @@ public:
         /// Ratio of the matrix element to a reference matrix element, for a
         /// @ref WeightingStep.
         matrix_element_ratio_out,
+        flavor_index_out, ///< Selected flavour, -1 if unchanged.
         squared_orders_out,   ///< Matrix element per squared order (provisional).
         color_correlated_out, ///< Colour-correlated matrix element (provisional).
         spin_correlated_out,  ///< Spin-correlated matrix element (provisional).
@@ -204,6 +208,11 @@ public:
     const std::vector<MatrixElementOutput>& outputs() const { return _outputs; }
     /// Whether the `random_*` inputs are drawn internally.
     bool sample_random_inputs() const { return _sample_random_inputs; }
+    /// Whether the input is one of the `random_*` inputs.
+    static bool is_random_input(MatrixElementInput input) {
+        return input == random_color_in || input == random_helicity_in ||
+            input == random_diagram_in || input == random_flavor_in;
+    }
     /// The fixed channel passed as `channel_in`, or -1 if it is an input.
     me_int_t channel() const { return _channel; }
     /// The inputs that must be supplied by the caller (excludes the `random_*`

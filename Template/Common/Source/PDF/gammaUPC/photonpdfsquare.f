@@ -31,6 +31,10 @@ c      common/to_pdf/lhaid,pdlabel,epa_label,pdsublabel
       integer nb_proton(2), nb_neutron(2) 
       common/to_heavyion_pdg/ nb_proton, nb_neutron
       integer nb_hadron(2)
+c     gamma-UPC grid cache shared by the jobs of a run
+      logical cache_set,lexist
+      save cache_set
+      data cache_set/.false./
 C      
 
       integer i,j
@@ -133,6 +137,19 @@ c     saved. 'pdflast' is filled below.
 
 c     gamma-UPC options from the pdlabel (EDFF/ChFF, neutron tagging)
       call set_gammaUPC_label(pdlabel)
+
+c     The jobs of a run (SubProcesses/P*/G*/) share the photon-photon
+c     flux grids through files in the lib/ directory of the process:
+c     the first job builds each grid, the others read it. Off when the
+c     job does not run inside the process directory.
+      if (.not.cache_set) then
+         inquire(file='../../../Cards/run_card.dat',exist=lexist)
+         if (lexist) then
+            FFE_Grid_Cache=.true.
+            FFE_Grid_Cache_Dir='../../../lib/'
+         endif
+         cache_set=.true.
+      endif
 
 c     write(*,*) 'running gamma-UPC'
 

@@ -663,6 +663,41 @@ NamedVector<Value> EELuminosity::build_function_impl(
     return {{"luminosity", luminosity}, {"component_index", sampled[0]}};
 }
 
+namespace {
+std::vector<int> single_table_pid(const PdfGrid& grid) {
+    if (grid.pids.size() != 1) {
+        throw std::invalid_argument(std::format(
+            "TabulatedLuminosity: the table must hold exactly one flavour, not {}",
+            grid.pids.size()
+        ));
+    }
+    return grid.pids;
+}
+} // namespace
+
+TabulatedLuminosity::TabulatedLuminosity(
+    const PdfGrid& grid, const std::string& prefix
+) :
+    FunctionGenerator(
+        "TabulatedLuminosity",
+        {{"x1", batch_float}, {"x2", batch_float}},
+        {{"luminosity", batch_float}}
+    ),
+    _density(grid, single_table_pid(grid), true, prefix) {}
+
+NamedVector<Value> TabulatedLuminosity::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    auto x1 = args.at(0), x2 = args.at(1);
+    auto flavor = fb.full({static_cast<me_int_t>(0), fb.batch_size({x1})});
+    // the table's q axis is x2
+    auto lum = _density.build_function(fb, ValueVec{x1, x2, flavor}).at(0);
+    // a luminosity is never negative, but the bicubic interpolation can
+    // undershoot between knots where it falls steeply (the form-factor dips
+    // of an ion's photon flux at large x): never a negative weight
+    return {{"luminosity", fb.max(lum, Value(0.))}};
+}
+
 AlphaSGrid::AlphaSGrid(const std::string& file) {
     std::ifstream grid_file(file);
     if (!grid_file) {

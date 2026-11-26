@@ -7,7 +7,7 @@
 #ifndef constexpr_math_h
 #define constexpr_math_h 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <cassert>
 #include <cmath>
@@ -32,7 +32,6 @@
 #define CONSTEXPRMATHVAR constexpr
 #endif
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // Constexpr implementation of sqrt (see https://stackoverflow.com/a/34134071)

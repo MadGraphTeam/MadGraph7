@@ -837,6 +837,16 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --update              Rebuild with this checkout's committed dependency pins (after git pull).")
         logger.info("                           Replace the installation after DP and QP smoke tests pass.")
         logger.info("     --force               Equivalent backward-compatible alias for --update.")
+        logger.info("   \"install tirust [options]\"",'$MG:BOLD')
+        logger.info("   Build the pinned TIRust/oneloopmaster Fortran interface (MLReductionLib=9).")
+        logger.info("   Requires Cargo/Rust >= 1.96, GNU make and a Fortran compiler with REAL(16).")
+        logger.info("     --source=DIR          Use a local TIRust checkout (copied before building).")
+        logger.info("     --oneloop-source=DIR  Use a local oneloopmaster checkout.")
+        logger.info("     --prefix=DIR          Override the HEPTools installation prefix.")
+        logger.info("     -j N/--jobs=N         Parallel compilation jobs (default: nb_core).")
+        logger.info("     --update              Rebuild with this checkout's committed dependency pins (after git pull).")
+        logger.info("                           Replace the installation after DP and QP smoke tests pass.")
+        logger.info("     --force               Equivalent backward-compatible alias for --update.")
         logger.info(" ")
         logger.info("   \"install pyamplicol [options]\"",'$MG:BOLD')
         logger.info("   Install pyAmpliCol, the matrix-element generator of the [amplicol] backend.")
@@ -1177,6 +1187,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   optional argument.")
         logger.info(" > Notice multiparticle labels cannot be used with these checks.")
         logger.info(" > \"--reduction=\" allows to change what reduction methods should be used.")
+        logger.info(" > TIRust: --reduction=9, --tirust_cache=-1, --tirust_cache_max_bytes=268435456.")
+        logger.info(" > --loop_pole_mode=-1|0|1|2|3 selects legacy/both/UV/IR/no poles.")
+        logger.info(" > --tirust_finite=false is reserved for tensor diagnostics; amplitude checks require finite results.")
         logger.info(" > Timing/profile: --timing_provenance=True archives timing sources and")
         logger.info("   hashes linked libraries for reproducible benchmarks (default: False).")
         logger.info("   This opt-in mode requires those runtime files to remain unchanged.")
@@ -1882,6 +1895,9 @@ class CheckValidForCmd(cmd.CheckCmd):
                    '--collier_req_acc':'auto',
                    '--collier_internal_stability_test':'False',
                    '--collier_mode':'1',
+                   '--loop_pole_mode':'-1', '--tirust_finite':'true',
+                   '--tirust_cache':'-1', '--tirust_cache_max_bytes':'268435456',
+                   '--tirust_qp_integrand':'true',
                    '--events': None,
                    '--skip_evt':0,
                    # 'check crossing' backend: standalone_fortran (the default,
@@ -3407,6 +3423,9 @@ class CompleteForCmd(cmd.CompleteCmd):
           '--loop_filter=','--resonances=']
 
         options = ['--energy=']
+        if len(args) >= 2 and args[1] in ('timing', 'profile', 'stability'):
+            options.extend(['--loop_pole_mode=', '--tirust_finite=', '--tirust_cache=',
+                            '--tirust_cache_max_bytes=', '--tirust_qp_integrand='])
         if len(args) >= 2 and args[1] in ['timing', 'profile']:
             options.append('--timing_provenance=')
         if len(args) >= 2 and args[1] == 'precision':
@@ -4109,6 +4128,9 @@ class CompleteForCmd(cmd.CompleteCmd):
             return self.list_completion(text, sorted(set(self._install_opts) | set(self._advanced_install_opts)))
         elif len(args) and args[0] == 'update':
             return self.list_completion(text, ['-f','--timeout='])
+        elif len(args) >= 2 and args[1] == 'tirust':
+            return self.list_completion(text, ['--source=', '--oneloop-source=',
+                '--prefix=', '--jobs=', '--update', '--force'])
         elif len(args) >= 2 and args[1] == 'madspace':
             options = ['-y', '--yes', '--bin', '--source', '-j', '--jobs=',
                        '--system', '--clean', '--docs', '--no-docs',
@@ -4192,13 +4214,13 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace', 'ninjars', 'pyamplicol', 'madtrex']
+                     'madspace', 'ninjars', 'tirust', 'pyamplicol', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
                               'hepmc','ninja','oneloop','MadAnalysis5',
                               'yoda', 'rivet', 'fastjet', 'fjcontrib', 'contur', 'cmake', 'eMELA',
-                              'cudacpp', 'hepmc3', 'pythia8_hepmc3', 'DMTCP']
+                              'hepmc3', 'pythia8_hepmc3', 'DMTCP']
 
     _install_opts.extend(_advanced_install_opts)
 
@@ -4295,6 +4317,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
                        'ninjars':None,
+                       'tirust':None,
                        'collier':'./HEPTools/lib',
                        'dmtcp': None,
                        'lhapdf':'lhapdf-config',
@@ -6531,6 +6554,20 @@ This implies that with decay chains:
                 if 2 in MLoptions['MLReductionLib']:
                     raise self.InvalidCmd('PJFry (reduction ID 2) is retired; '
                                           'use 8 for NinjaRS or 6 for Ninja.')
+            elif option[0] in ('--tirust_finite', '--tirust_qp_integrand'):
+                if option[1].lower() not in ('true', 'false'):
+                    raise self.InvalidCmd('%s expects true or false.' % option[0])
+                name = {'--tirust_finite':'TIRustComputeFinite',
+                        '--tirust_qp_integrand':'UseQPIntegrandForTIRust'}[option[0]]
+                MLoptions[name] = option[1].lower() == 'true'
+            elif option[0] in ('--tirust_cache', '--tirust_cache_max_bytes', '--loop_pole_mode'):
+                name = {'--tirust_cache':'TIRustGlobalCache',
+                        '--tirust_cache_max_bytes':'TIRustCacheMaxBytes',
+                        '--loop_pole_mode':'LoopPoleMode'}[option[0]]
+                try:
+                    MLoptions[name] = int(option[1])
+                except ValueError:
+                    raise self.InvalidCmd('%s expects an integer.' % option[0])
             elif option[0]=='--timing_provenance':
                 if len(option) != 2 or option[1].lower() not in ('true', 'false'):
                     raise self.InvalidCmd("The value of 'timing_provenance' must be True or False.")
@@ -6933,6 +6970,8 @@ This implies that with decay chains:
         # check modes for which no process could be checked at all
         not_checked = []
 
+        if MLoptions.get('TIRustComputeFinite') is False and args[0] in ('timing', 'profile', 'stability'):
+            raise self.InvalidCmd('TIRust poles-only mode uses the tensor diagnostic interface; amplitude checks require finite results.')
         if automatic_reduction and myprocdef and myprocdef.get('has_born'):
             from madgraph.various import ninjars_install
             MLoptions['MLReductionLib'] = ninjars_install.default_reduction_library(
@@ -7004,6 +7043,18 @@ This implies that with decay chains:
             raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "
                                   "or set ninjars to its library directory.")
         
+        if isinstance(self.options.get('tirust'), str):
+            from madgraph.various import tirust_install
+            TIR_dir['tirust_dir'] = self.options['tirust']
+            if 9 in MLoptions.get('MLReductionLib', []) and not tirust_install.is_available(
+                    self.options['tirust']):
+                raise self.InvalidCmd("TIRust is unavailable or unusable at %s. "
+                                      "Run 'install tirust --update'." %
+                                      self.options['tirust'])
+        elif 9 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd("TIRust is disabled. Run 'install tirust' "
+                                  "or set tirust to its library directory.")
+
         if args[0] in ['timing']:
             timings = process_checks.check_timing(myprocdef,
                                                   param_card = param_card,
@@ -10008,7 +10059,7 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
          # Return true for successful installation
         return True
 
-    install_plugin = ['maddm', 'maddump', 'MadSTR', 'cudacpp']
+    install_plugin = ['maddm', 'maddump', 'MadSTR']
     install_ad = {'pythia-pgs':['arXiv:0603175'],
                           'Delphes':['arXiv:1307.6346'],
                           'Delphes2':['arXiv:0903.2225'],
@@ -10081,6 +10132,27 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                     os.path.dirname(os.path.dirname(libdir)))
                 self.exec_cmd('save options %s ninjars' % config_file,
                               printcmd=False, log=False)
+            return
+        elif args[0] == 'tirust':
+            from madgraph.various import tirust_install
+            prefix, config_file = self.heptools_install_target(
+                self.options['heptools_install_dir'])
+            def save_tirust_configuration(libdir):
+                _, target_config = self.heptools_install_target(
+                    os.path.dirname(os.path.dirname(libdir)))
+                try:
+                    tirust_install.save_configuration(self, target_config, libdir)
+                except Exception as error:
+                    raise MadGraph5Error('TIRust configuration could not be saved; '
+                        'the installation update was not committed: %s' % error) from error
+            libdir = tirust_install.install(
+                MG5DIR, prefix,
+                arguments=install_options['options_for_HEPToolsInstaller'] + add_options,
+                fortran_compiler=self.options['fortran_compiler'],
+                jobs=self.options['nb_core'],
+                on_publish=save_tirust_configuration)
+            if libdir is not None:
+                self.options['tirust'] = libdir
             return
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
@@ -13082,12 +13154,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
     def setup_path_for_options(self,name, args, log=True):
-        """Set the path for golem/samurai/ninja/ninjars/collier options.
+        """Set the path for golem/samurai/ninja/ninjars/tirust/collier options.
         Example: set golem /PATH/TO/golem/lib
         or: set golem None
         """
         args = [name] + args[:]
-        if not (args[0] in ['ninja','ninjars','collier'] and args[1]=='./HEPTools/lib'):
+        if not (args[0] in ['ninja','ninjars','tirust','collier'] and args[1]=='./HEPTools/lib'):
             if args[1] in ['None',"''",'""']:
                 self.options[args[0]] = None
             else:
@@ -13111,6 +13183,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     set2_samurai = lambda self, *args, **opts : self.setup_path_for_options('samurai' , *args, **opts)  
     set2_ninja = lambda self, *args, **opts : self.setup_path_for_options('ninja'   , *args,   **opts)
     set2_ninjars = lambda self, *args, **opts : self.setup_path_for_options('ninjars', *args, **opts)
+    set2_tirust = lambda self, *args, **opts : self.setup_path_for_options('tirust', *args, **opts)
     set2_collier = lambda self,*args, **opts : self.setup_path_for_options('collier' , *args, **opts)
 
     def set2_lhapdf(self, args, log=True):
@@ -13890,7 +13963,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         elif args[0] == 'fastjet':
             raise Exception('This option is now handled by a dedicated function.')
             # set_fastjet(args[1:], log=log)
-        elif args[0] in ['golem','samurai','ninja','ninjars','collier']:
+        elif args[0] in ['golem','samurai','ninja','ninjars','tirust','collier']:
             raise Exception('This option is now handled by a dedicated function.')
             # setup_path_for_options(args, log=log)
         elif args[0].startswith('lhapdf'):
@@ -14468,7 +14541,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         (fill_crossing_replace_dict_so), so the carve-out is gone and the
         answer is the format again. The other two folding formats never needed
         it: standalone_rw writes the same fortran template, and the
-        mg7/cudacpp exporter has no split-orders variant at all.
+        mg7/madmatrix exporter has no split-orders variant at all.
         """
         crossed = [amp for amp in amps if 'crossed_processes' in amp
                    and amp.get('crossed_processes')]

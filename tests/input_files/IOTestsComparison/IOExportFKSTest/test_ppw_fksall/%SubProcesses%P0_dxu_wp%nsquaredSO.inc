@@ -1,2 +1,1 @@
-      INTEGER NSQUAREDSO
-      PARAMETER (NSQUAREDSO=1)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%V0_dxu_wp%nsquaredSO.inc

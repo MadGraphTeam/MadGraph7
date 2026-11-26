@@ -50,9 +50,6 @@ namespace
   // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
   // std::numeric_limits<double>::min(), which is a host function and cannot be
   // called from device code.
-#ifdef MGONGPUCPP_GPUIMPL
-  __host__ __device__
-#endif
     inline double
     channel_amp2( double numerator, double denominator )
   {
@@ -580,8 +577,8 @@ extern "C"
       {
         const int diagram = diagram_in[i_event + offset];
         if( diagram < -1 || ( diagram >= 0 &&
-            ( static_cast<unsigned int>( diagram ) >= mgOnGpu::nchannels ||
-              mgOnGpu::channel2iconfig[diagram] <= 0 ) ) ) return UMAMI_ERROR;
+            ( static_cast<unsigned int>( diagram ) >= madmatrix::nchannels ||
+              madmatrix::channel2iconfig[diagram] <= 0 ) ) ) return UMAMI_ERROR;
       }
     }
     // UMAMI_IN_HELICITY_INDEX: evaluate each event for the one helicity it is given, an index
@@ -635,11 +632,7 @@ extern "C"
     // precision (double amplitudes, float colour algebra): the batch is rounded up
     // to that, and no further. Every extra event is computed for nothing: a call
     // with one event used to evaluate two of them on the scalar backend.
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-    constexpr std::size_t page_size2 = 2 * vector_size;
-#else
     constexpr std::size_t page_size2 = vector_size;
-#endif
     std::vector<std::size_t> permutation;
     std::size_t rounded_count;
 

@@ -1,0 +1,32 @@
+[package]
+name = "madloop-tirust"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-3.0-or-later"
+publish = false
+
+[workspace]
+
+[lib]
+name = "madloop_tirust"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# Enabled by the installer only after applying the checked TIRust patch series.
+poles-only = []
+
+[dependencies]
+iregi-rust = { git = "https://github.com/huashengshao/TIRust", rev = "1c130a81c4d1145ad5368664b580070eab9ebd7c" }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "serde", "tracing_max_level_info"] }
+
+[patch.crates-io]
+symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+numerica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+graphica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+

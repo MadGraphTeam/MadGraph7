@@ -23,8 +23,9 @@
 //! every link survives shared and interns the lists it shortens. Sharing
 //! changes no link and no order (values bitwise unchanged).
 
-use std::collections::HashSet;
 use std::sync::Arc;
+
+use super::hash::WordSet;
 
 use crate::loop_v2::kernels::RowLink;
 
@@ -44,6 +45,17 @@ fn width(max: u32) -> u8 {
         2
     } else {
         4
+    }
+}
+
+/// Store `value` as entry `k` of a column of `w`-byte little-endian values
+/// (`value` fits: `w` is the column's [`width`]).
+#[inline(always)]
+fn put(column: &mut [u8], k: usize, w: u8, value: u32) {
+    match w {
+        1 => column[k] = value as u8,
+        2 => column[2 * k..2 * k + 2].copy_from_slice(&(value as u16).to_le_bytes()),
+        _ => column[4 * k..4 * k + 4].copy_from_slice(&value.to_le_bytes()),
     }
 }
 
@@ -78,21 +90,15 @@ impl PackedLinks {
             max[2] = max[2].max(link.block);
         }
         let widths = max.map(width);
-        let starts = [
-            0,
-            len * usize::from(widths[0]),
-            len * usize::from(widths[0] + widths[1]),
-        ];
         let total = len * usize::from(widths[0] + widths[1] + widths[2]);
         let mut bytes = vec![0u8; total].into_boxed_slice();
-        for (k, link) in links().enumerate() {
-            for (c, value) in [link.output, link.input, link.block]
-                .into_iter()
-                .enumerate()
-            {
-                let w = usize::from(widths[c]);
-                let at = starts[c] + k * w;
-                bytes[at..at + w].copy_from_slice(&value.to_le_bytes()[..w]);
+        {
+            let (outputs, rest) = bytes.split_at_mut(len * usize::from(widths[0]));
+            let (inputs, blocks) = rest.split_at_mut(len * usize::from(widths[1]));
+            for (k, link) in links().enumerate() {
+                put(outputs, k, widths[0], link.output);
+                put(inputs, k, widths[1], link.input);
+                put(blocks, k, widths[2], link.block);
             }
         }
         Self { len, widths, bytes }
@@ -168,7 +174,7 @@ pub type SharedLinks = Arc<PackedLinks>;
 /// The distinct link lists of one plan's split parts, while it loads.
 #[derive(Debug, Default)]
 pub struct LinkInterner {
-    lists: HashSet<SharedLinks>,
+    lists: WordSet<SharedLinks>,
 }
 
 impl LinkInterner {

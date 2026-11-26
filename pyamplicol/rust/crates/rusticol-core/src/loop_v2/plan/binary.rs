@@ -378,7 +378,23 @@ impl PlanModel {
             )?;
         }
         derive::reserve("the loader's derivations need", bound.memory)?;
-        LoopProgramV4::from_file(self.file, policy)
+        // The families' parallel load (on the caller's pool) holds up to its
+        // window of families in flight beyond the sequential peak: probed
+        // too, and loaded sequentially when the allocator refuses it (the
+        // program is the same either way).
+        let window = super::family_window(super::pool_threads());
+        let window = if window > 0
+            && derive::reserve(
+                "the parallel load needs",
+                bound.in_flight_memory(window as u64),
+            )
+            .is_ok()
+        {
+            window
+        } else {
+            0
+        };
+        LoopProgramV4::from_file_with(self.file, policy, window)
     }
 
     /// [`Self::program`] without the probe of the derivations' peak (the
@@ -532,6 +548,10 @@ trait Stream {
     const READ: bool;
     fn int(&mut self, col: Col, value: &mut i64) -> RusticolResult<()>;
     fn string(&mut self, col: Col, value: &mut String) -> RusticolResult<()>;
+    /// [`Self::string`] into a shared text: read, the string table's own
+    /// (charged as the copy [`Self::string`] makes, which it no longer
+    /// makes).
+    fn text(&mut self, col: Col, value: &mut super::Text) -> RusticolResult<()>;
     /// A list length: written as `len`, or read.
     fn len(&mut self, col: Col, len: usize) -> RusticolResult<usize>;
     /// Charges `bytes` of decoded model (module docs, "Bounded decoding"):
@@ -610,7 +630,7 @@ fn list<S: Stream, T: Fresh>(
     let len = stream.len(col, items.len())?;
     // A crafted length is refused here, beyond the declared size, before its
     // buffer is reserved (and a damaged one at its first exhausted column).
-    stream.charge(col, allocation(len, size_of::<T>()))?;
+    stream.charge(col, allocation(len, size_of::<T::Layout>()))?;
     fill(stream, col, len, items, visit)
 }
 
@@ -745,12 +765,59 @@ fn option<S: Stream, T: Fresh>(
 /// (`fresh_records!`), so a field added to a file type without a column fails
 /// to compile here.
 trait Fresh {
+    /// The record layout the member's declared decoded size counts a list
+    /// buffer of this type at: the type itself, but for the file model's
+    /// shared and flat forms (texts, shared lists, flat term rows), whose
+    /// records count at the layouts they replaced ([`declared`]), so that
+    /// a member's declared size is the same as before them (members written
+    /// before and after decode alike, and the writer writes the same bytes).
+    type Layout;
     fn fresh() -> Self;
+}
+
+/// The file model's former record layouts ([`Fresh::Layout`]): the
+/// records as they were before the shared lists, flat term rows and shared
+/// texts.
+mod declared {
+    #![allow(dead_code)]
+    pub(super) struct Content {
+        d_in: usize,
+        d_out: usize,
+        degree: usize,
+        rows: usize,
+        mask: u64,
+        row_helicities: Vec<Vec<i32>>,
+        fused: Vec<[u32; 6]>,
+        terms: Vec<()>,
+    }
+    pub(super) struct Term {
+        slots: Vec<u64>,
+        dimensions: Vec<usize>,
+        bindings: Vec<()>,
+        vertex: i64,
+        split: Vec<()>,
+        rows: Vec<(usize, Vec<usize>)>,
+    }
+    pub(super) struct Binding {
+        kernel: usize,
+        inputs: Vec<(String, usize, usize)>,
+        entries: Vec<usize>,
+    }
+    pub(super) struct Split {
+        kernel: usize,
+        inputs: Vec<(String, usize, usize)>,
+        entries: Vec<(usize, usize)>,
+    }
+    pub(super) struct Leaf {
+        seed: usize,
+        weight: String,
+    }
 }
 
 macro_rules! fresh_scalars {
     ($($ty:ty),* $(,)?) => {
         $(impl Fresh for $ty {
+            type Layout = Self;
             fn fresh() -> Self {
                 <$ty>::default()
             }
@@ -760,31 +827,57 @@ macro_rules! fresh_scalars {
 
 fresh_scalars!(bool, i8, i32, i64, u32, u64, usize, String);
 
+impl Fresh for super::Text {
+    type Layout = String;
+    fn fresh() -> Self {
+        Self::from("")
+    }
+}
+
 impl<T> Fresh for Vec<T> {
+    type Layout = Self;
     fn fresh() -> Self {
         Vec::new()
     }
 }
 
+impl<T> Fresh for Arc<Vec<T>> {
+    type Layout = Vec<T>;
+    fn fresh() -> Self {
+        Arc::new(Vec::new())
+    }
+}
+
+impl Fresh for super::TermRows {
+    type Layout = Vec<(usize, Vec<usize>)>;
+    fn fresh() -> Self {
+        Self::default()
+    }
+}
+
 impl<T> Fresh for Option<T> {
+    type Layout = Self;
     fn fresh() -> Self {
         None
     }
 }
 
 impl<T: Fresh, const N: usize> Fresh for [T; N] {
+    type Layout = [T::Layout; N];
     fn fresh() -> Self {
         std::array::from_fn(|_| T::fresh())
     }
 }
 
 impl<A: Fresh, B: Fresh> Fresh for (A, B) {
+    type Layout = (A::Layout, B::Layout);
     fn fresh() -> Self {
         (A::fresh(), B::fresh())
     }
 }
 
 impl<A: Fresh, B: Fresh, C: Fresh> Fresh for (A, B, C) {
+    type Layout = (A::Layout, B::Layout, C::Layout);
     fn fresh() -> Self {
         (A::fresh(), B::fresh(), C::fresh())
     }
@@ -1002,8 +1095,8 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
             list(s, Col::SeedColumnLen, columns, |s, column| {
                 list(s, Col::SeedWeightLen, column, |s, (born, re, im)| {
                     num(s, Col::SeedWeightBorn, born)?;
-                    s.string(Col::SeedWeightRe, re)?;
-                    s.string(Col::SeedWeightIm, im)
+                    s.text(Col::SeedWeightRe, re)?;
+                    s.text(Col::SeedWeightIm, im)
                 })
             })
         },
@@ -1011,8 +1104,8 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
     s.records(Col::SeedKeyLen, seeds, |s, SeedKeyFile { classes }| {
         list(s, Col::SeedKeyClassLen, classes, |s, (class, re, im)| {
             num(s, Col::SeedKeyClass, class)?;
-            s.string(Col::SeedKeyRe, re)?;
-            s.string(Col::SeedKeyIm, im)
+            s.text(Col::SeedKeyRe, re)?;
+            s.text(Col::SeedKeyIm, im)
         })
     })?;
     s.records(Col::FamilyLen, families, visit_family)?;
@@ -1061,6 +1154,104 @@ fn visit_kernel<S: Stream>(s: &mut S, kernel: &mut KernelFile) -> RusticolResult
     })
 }
 
+/// [`shared`] into an `Arc` (the file model's shared lists): a reference
+/// takes the table's `Arc` instead of a copy, so equal lists are held once.
+/// The charges are [`shared`]'s (a reference is charged the copy it used to
+/// make), so the member's declared decoded size, which the writer computes
+/// in the same traversal, is unchanged and stays an upper bound.
+fn shared_arc<S: Stream, T>(
+    stream: &mut S,
+    refs: Col,
+    len: Col,
+    items: &mut Arc<Vec<T>>,
+    visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
+) -> RusticolResult<()>
+where
+    T: TryCopy + Fresh + Eq + Hash + Clone + 'static,
+{
+    if !S::READ {
+        return shared(stream, refs, len, Arc::make_mut(items), visit);
+    }
+    let entry = 2 * size_of::<(Vec<T>, usize)>();
+    if stream.skipping() {
+        return Err(invalid("binary plan: a shared list in a parallel section"));
+    }
+    let mut id = 0i64;
+    stream.int(refs, &mut id)?;
+    let known: &mut Vec<(Arc<Vec<T>>, usize)> = table(stream, refs);
+    let first = known.len();
+    match usize::try_from(id) {
+        Ok(k) if k < first => {
+            let (list, heap) = (Arc::clone(&known[k].0), known[k].1);
+            stream.charge(refs, heap)?;
+            *items = list;
+            Ok(())
+        }
+        Ok(k) if k == first => {
+            let mut fresh = Vec::new();
+            list(stream, len, &mut fresh, visit)?;
+            let heap = fresh.heap();
+            stream.charge(refs, heap.saturating_add(entry))?;
+            let fresh = Arc::new(fresh);
+            let known: &mut Vec<(Arc<Vec<T>>, usize)> = table(stream, refs);
+            known.try_reserve(1).map_err(|_| too_large(refs))?;
+            known.push((Arc::clone(&fresh), heap));
+            *items = fresh;
+            Ok(())
+        }
+        _ => Err(invalid(format!("binary plan: {refs:?} reference"))),
+    }
+}
+
+/// A content term's rows ([`super::TermRows`], flat), charged as the list
+/// of `(row, blocks)` pairs they were decoded into (`list` of the pairs and
+/// `nums` of each row's blocks), so the declared decoded size is unchanged.
+fn term_rows<S: Stream>(s: &mut S, rows: &mut super::TermRows) -> RusticolResult<()> {
+    let len = s.len(Col::TermRowLen, rows.len())?;
+    s.charge(
+        Col::TermRowLen,
+        allocation(len, size_of::<(usize, Vec<usize>)>()),
+    )?;
+    if !S::READ {
+        for k in 0..len {
+            let (row, blocks) = rows.get(k);
+            let mut row = row;
+            num(s, Col::TermRow, &mut row)?;
+            let count = s.len(Col::TermRowBlockLen, blocks.len())?;
+            s.charge(Col::TermRowBlockLen, allocation(count, size_of::<usize>()))?;
+            for &block in blocks {
+                let mut block = block as usize;
+                num(s, Col::TermRowBlock, &mut block)?;
+            }
+        }
+        return Ok(());
+    }
+    let mut out = super::TermRows::default();
+    out.try_reserve(len, len)
+        .map_err(|_| too_large(Col::TermRowLen))?;
+    let mut blocks: Vec<usize> = Vec::new();
+    for _ in 0..len {
+        let mut row = 0usize;
+        num(s, Col::TermRow, &mut row)?;
+        let count = s.len(Col::TermRowBlockLen, 0)?;
+        s.charge(Col::TermRowBlockLen, allocation(count, size_of::<usize>()))?;
+        blocks.clear();
+        blocks
+            .try_reserve(count)
+            .map_err(|_| too_large(Col::TermRowBlockLen))?;
+        for _ in 0..count {
+            let mut block = 0usize;
+            num(s, Col::TermRowBlock, &mut block)?;
+            blocks.push(block);
+        }
+        if !s.skipping() {
+            out.push(row, &blocks)?;
+        }
+    }
+    *rows = out;
+    Ok(())
+}
+
 fn visit_content<S: Stream>(s: &mut S, content: &mut ContentFile) -> RusticolResult<()> {
     let ContentFile {
         d_in,
@@ -1077,14 +1268,14 @@ fn visit_content<S: Stream>(s: &mut S, content: &mut ContentFile) -> RusticolRes
     num(s, Col::ContentDegree, degree)?;
     num(s, Col::ContentRows, rows)?;
     num(s, Col::ContentMask, mask)?;
-    shared(
+    shared_arc(
         s,
         Col::RowHelicityRef,
         Col::RowHelicityLen,
         row_helicities,
         |s, row| nums(s, Col::RowHelicityLegs, Col::RowHelicity, row),
     )?;
-    shared(s, Col::FusedRef, Col::FusedLen, fused, |s, entry| {
+    shared_arc(s, Col::FusedRef, Col::FusedLen, fused, |s, entry| {
         const FUSED: [Col; 6] = [
             Col::Fused0,
             Col::Fused1,
@@ -1111,7 +1302,7 @@ fn visit_term<S: Stream>(s: &mut S, term: &mut TermFile) -> RusticolResult<()> {
         rows,
     } = term;
     nums(s, Col::SlotLen, Col::Slot, slots)?;
-    shared(
+    shared_arc(
         s,
         Col::DimensionRef,
         Col::DimensionLen,
@@ -1121,10 +1312,7 @@ fn visit_term<S: Stream>(s: &mut S, term: &mut TermFile) -> RusticolResult<()> {
     list(s, Col::BindingLen, bindings, visit_binding)?;
     num(s, Col::TermVertex, vertex)?;
     list(s, Col::SplitLen, split, visit_split)?;
-    list(s, Col::TermRowLen, rows, |s, (row, blocks)| {
-        num(s, Col::TermRow, row)?;
-        nums(s, Col::TermRowBlockLen, Col::TermRowBlock, blocks)
-    })
+    term_rows(s, rows)
 }
 
 fn visit_binding<S: Stream>(s: &mut S, binding: &mut BindingFile) -> RusticolResult<()> {
@@ -1139,14 +1327,14 @@ fn visit_binding<S: Stream>(s: &mut S, binding: &mut BindingFile) -> RusticolRes
         entries,
     } = binding;
     num(s, Col::BindingKernel, kernel)?;
-    shared(
+    shared_arc(
         s,
         Col::BindingInputRef,
         Col::BindingInputLen,
         inputs,
         |s, item| input(s, INPUT, item),
     )?;
-    shared(
+    shared_arc(
         s,
         Col::BindingEntryRef,
         Col::BindingEntryLen,
@@ -1163,14 +1351,14 @@ fn visit_split<S: Stream>(s: &mut S, split: &mut SplitFile) -> RusticolResult<()
         entries,
     } = split;
     num(s, Col::SplitKernel, kernel)?;
-    shared(
+    shared_arc(
         s,
         Col::SplitInputRef,
         Col::SplitInputLen,
         inputs,
         |s, item| input(s, INPUT, item),
     )?;
-    shared(
+    shared_arc(
         s,
         Col::SplitEntryRef,
         Col::SplitEntryLen,
@@ -1198,7 +1386,7 @@ fn visit_family<S: Stream>(s: &mut S, family: &mut FamilyFile) -> RusticolResult
     nums(s, Col::FamilyOrderLen, Col::FamilyOrder, orders)?;
     list(s, Col::LeafLen, leaves, |s, LeafFile { seed, weight }| {
         num(s, Col::LeafSeed, seed)?;
-        s.string(Col::LeafWeight, weight)
+        s.text(Col::LeafWeight, weight)
     })?;
     list(s, Col::StepLen, steps, visit_step)
 }
@@ -1474,6 +1662,23 @@ impl Stream for Writer {
         Ok(())
     }
 
+    fn text(&mut self, col: Col, value: &mut super::Text) -> RusticolResult<()> {
+        self.decoded = self
+            .decoded
+            .saturating_add(allocation(value.len(), 1) as u64);
+        let id = match self.ids.get(&**value) {
+            Some(&id) => id,
+            None => {
+                let id = self.strings.len() as i64;
+                self.strings.push(value.to_string());
+                self.ids.insert(value.to_string(), id);
+                id
+            }
+        };
+        self.column(col).push(id);
+        Ok(())
+    }
+
     fn len(&mut self, col: Col, len: usize) -> RusticolResult<usize> {
         let mut wide = len as i64;
         self.int(col, &mut wide)?;
@@ -1604,7 +1809,7 @@ impl Cursor<'_> {
 
 struct Reader<'a> {
     cursors: Vec<Cursor<'a>>,
-    strings: Arc<Vec<String>>,
+    strings: Arc<Vec<super::Text>>,
     budget: Budget,
     tables: Vec<Option<Box<dyn Any>>>,
     /// In the skip pass of [`Reader::records`].
@@ -1677,9 +1882,7 @@ thread_local! {
     static SEQUENTIAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// [`read_binary_with`] within the caller's thread bound: inside a pool's
-/// worker on that pool's threads, else sequentially on the calling thread,
-/// never starting rayon's global pool (whose workers would outlive the call).
+/// [`read_binary_with`] within the caller's thread bound (`read_bounded`).
 /// The loader's read of a stored member (`LoopProgramV4::load_with`): an
 /// executor or runtime built with a thread bound starts no other threads
 /// (M-FINAL MF-8G-1 item 5; the JSON load is sequential too). The model and
@@ -1688,10 +1891,13 @@ pub fn read_binary_bounded(member: &[u8], policy: FormPolicy) -> RusticolResult<
     read_bounded(|| read_binary_with(member, policy))
 }
 
-/// `read` (a read of a binary member) within the caller's thread bound
-/// ([`read_binary_bounded`]).
+/// `read` (a read of a binary member) within the caller's thread bound:
+/// under a load's bound (`plan::with_load_threads`) with the threads its work
+/// uses, inside a pool's worker on that pool's threads, else sequentially on
+/// the calling thread, never starting rayon's global pool (whose workers
+/// would outlive the call).
 pub(super) fn read_bounded<T>(read: impl FnOnce() -> RusticolResult<T>) -> RusticolResult<T> {
-    if rayon::current_thread_index().is_some() {
+    if rayon::current_thread_index().is_some() || super::load_bound().is_some() {
         return read();
     }
     struct Reset;
@@ -1724,17 +1930,22 @@ pub fn read_pool() -> Option<bool> {
 /// sequential decode charges, probes and makes fallibly every allocation it
 /// makes (the parallel one adds per-thread state: the workers' malloc arenas,
 /// created lazily after the probes, rayon's queues and the chunks' cursors);
-/// else inside a pool's worker that pool's, else the global pool's, started
-/// first. rayon starts the global pool lazily at its first use and panics
-/// there when a worker cannot be spawned, and never starts it after a failed
-/// start (any later use panics too): the reader starts it itself, and a
-/// pool that cannot start, or whose start failed before (outside this
-/// reader, revealed by one caught use), makes every read of the process
-/// decode on one thread, never a refusal or rayon's panic. A pool another
-/// component started first is used as it is.
+/// else the bound of a load on this thread (`plan::with_load_threads`: each
+/// list then decodes on the load's pool with the threads it uses,
+/// [`Reader::list_threads`]); else inside a pool's worker that pool's, else
+/// the global pool's, started first. rayon starts the global pool lazily at
+/// its first use and panics there when a worker cannot be spawned, and never
+/// starts it after a failed start (any later use panics too): the reader
+/// starts it itself, and a pool that cannot start, or whose start failed
+/// before (outside this reader, revealed by one caught use), makes every
+/// read of the process decode on one thread, never a refusal or rayon's
+/// panic. A pool another component started first is used as it is.
 fn read_threads() -> usize {
     if allocations_can_fail() || SEQUENTIAL.with(std::cell::Cell::get) {
         return 1;
+    }
+    if let Some(bound) = super::load_bound() {
+        return bound;
     }
     if rayon::current_thread_index().is_some() {
         return rayon::current_num_threads();
@@ -1879,7 +2090,8 @@ impl<'a> Reader<'a> {
                 let byte = reader.next(Col::StringByte)?;
                 text.push(u8::try_from(byte).map_err(|_| invalid("binary plan: string byte"))?);
             }
-            strings.push(String::from_utf8(text).map_err(|_| invalid("binary plan: string"))?);
+            let text = String::from_utf8(text).map_err(|_| invalid("binary plan: string"))?;
+            strings.push(super::Text::from(text));
         }
         // Shared as decoded (a fixed-size Arc header, no copy of the table).
         reader.strings = Arc::new(strings);
@@ -1955,19 +2167,44 @@ impl<'a> Reader<'a> {
     /// chunk's state cannot be allocated or a chunk fails (the caller decodes
     /// the section sequentially from its start), an error when the skip pass
     /// refuses the member.
+    /// The threads a list of `len` records decodes with: the read's, and
+    /// under a load's bound on this thread (`plan::with_load_threads`) one
+    /// per [`PARALLEL_RECORDS`] records at most, on the load's pool (a load
+    /// starts no thread its lists do not use).
+    fn list_threads(&self, len: usize) -> usize {
+        if rayon::current_thread_index().is_none() && super::load_bound().is_some() {
+            self.threads.min(len / PARALLEL_RECORDS).max(1)
+        } else {
+            self.threads
+        }
+    }
+
     fn parallel<T, F>(
         &mut self,
         col: Col,
         len: usize,
         items: &mut Vec<T>,
         visit: &F,
+        threads: usize,
     ) -> RusticolResult<bool>
     where
         T: Fresh + Send,
         F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
     {
-        let threads = self.threads;
-        let chunk = len.div_ceil(8 * threads).max(1);
+        // Under a load's bound, the load's pool of the list's threads (a
+        // pool that cannot start: the sequential decode).
+        let pool = if rayon::current_thread_index().is_none() && super::load_bound().is_some() {
+            match super::load_pool(threads) {
+                Some(pool) => Some(pool),
+                None => return Ok(false),
+            }
+        } else {
+            None
+        };
+        // A chunk holds at least the records below which a list decodes
+        // sequentially (PARALLEL_RECORDS): a large pool does not split a list
+        // into chunks too small to repay their cursors' states.
+        let chunk = len.div_ceil(8 * threads).max(PARALLEL_RECORDS);
         // Skip pass: every value of the section read, checked and charged
         // against the declaration before any record allocates, and the
         // cursors' state at each chunk's start.
@@ -2002,34 +2239,40 @@ impl<'a> Reader<'a> {
         *items = buffer;
         items.resize_with(len, T::fresh);
         let (cursors, strings, schema) = (&self.cursors, &self.strings, self.schema);
-        let decoded = items
-            .par_chunks_mut(chunk)
-            .zip(starts.par_windows(2))
-            .try_for_each(|(records, window)| {
-                let [start, end] = window else {
-                    return Err(());
-                };
-                let mut copy = Vec::new();
-                copy.try_reserve_exact(cursors.len()).map_err(drop)?;
-                copy.extend_from_slice(cursors);
-                let mut reader = Reader {
-                    cursors: copy,
-                    strings: Arc::clone(strings),
-                    budget: Budget {
-                        declared: end.1,
-                        used: 0,
-                    },
-                    tables: Vec::new(),
-                    skip: false,
-                    threads,
-                    schema,
-                };
-                reader.restore(start);
-                for record in records {
-                    visit(&mut reader, record).map_err(drop)?;
-                }
-                if reader.at(end) { Ok(()) } else { Err(()) }
-            });
+        let mut decode = || {
+            items
+                .par_chunks_mut(chunk)
+                .zip(starts.par_windows(2))
+                .try_for_each(|(records, window)| {
+                    let [start, end] = window else {
+                        return Err(());
+                    };
+                    let mut copy = Vec::new();
+                    copy.try_reserve_exact(cursors.len()).map_err(drop)?;
+                    copy.extend_from_slice(cursors);
+                    let mut reader = Reader {
+                        cursors: copy,
+                        strings: Arc::clone(strings),
+                        budget: Budget {
+                            declared: end.1,
+                            used: 0,
+                        },
+                        tables: Vec::new(),
+                        skip: false,
+                        threads,
+                        schema,
+                    };
+                    reader.restore(start);
+                    for record in records {
+                        visit(&mut reader, record).map_err(drop)?;
+                    }
+                    if reader.at(end) { Ok(()) } else { Err(()) }
+                })
+        };
+        let decoded = match &pool {
+            Some(pool) => pool.install(decode),
+            None => decode(),
+        };
         Ok(decoded.is_ok())
     }
 }
@@ -2061,6 +2304,19 @@ impl Stream for Reader<'_> {
         copy_text(text, value, col)
     }
 
+    fn text(&mut self, col: Col, value: &mut super::Text) -> RusticolResult<()> {
+        let id = self.next(col)?;
+        let text = usize::try_from(id)
+            .ok()
+            .and_then(|id| self.strings.get(id))
+            .ok_or_else(|| invalid(format!("binary plan: {col:?} string id")))?;
+        self.budget.charge(col, allocation(text.len(), 1))?;
+        if !self.skip {
+            *value = Arc::clone(text);
+        }
+        Ok(())
+    }
+
     #[inline]
     fn len(&mut self, col: Col, _len: usize) -> RusticolResult<usize> {
         let len = self.next(col)?;
@@ -2086,8 +2342,10 @@ impl Stream for Reader<'_> {
         F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
     {
         let len = self.len(col, 0)?;
-        self.budget.charge(col, allocation(len, size_of::<T>()))?;
-        if self.threads == 1 || self.skip || len < PARALLEL_RECORDS {
+        self.budget
+            .charge(col, allocation(len, size_of::<T::Layout>()))?;
+        let threads = self.list_threads(len);
+        if threads == 1 || self.skip || len < PARALLEL_RECORDS {
             return fill(self, col, len, items, visit);
         }
         // The section's start, where the sequential decode takes over when
@@ -2095,7 +2353,7 @@ impl Stream for Reader<'_> {
         let Some(section) = self.state() else {
             return fill(self, col, len, items, visit);
         };
-        if self.parallel(col, len, items, &visit)? {
+        if self.parallel(col, len, items, &visit, threads)? {
             return Ok(());
         }
         *items = Vec::new();
@@ -2108,8 +2366,11 @@ impl Stream for Reader<'_> {
 
 /// The traversal fills fresh records when reading.
 macro_rules! fresh_records {
-    ($($name:ident { $($field:ident),* $(,)? }),* $(,)?) => {
+    (@layout $name:ident) => { $name };
+    (@layout $name:ident, $layout:ty) => { $layout };
+    ($($name:ident $(as $layout:ty)? { $($field:ident),* $(,)? }),* $(,)?) => {
         $(impl Fresh for $name {
+            type Layout = fresh_records!(@layout $name $(, $layout)?);
             fn fresh() -> Self {
                 Self { $($field: Fresh::fresh()),* }
             }
@@ -2124,14 +2385,14 @@ fresh_records! {
         column_rows, column_weights, dressed,
     },
     KernelFile { inputs, outputs },
-    ContentFile { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },
-    TermFile { slots, dimensions, bindings, vertex, split, rows },
-    SplitFile { kernel, inputs, entries },
-    BindingFile { kernel, inputs, entries },
+    ContentFile as declared::Content { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },
+    TermFile as declared::Term { slots, dimensions, bindings, vertex, split, rows },
+    SplitFile as declared::Split { kernel, inputs, entries },
+    BindingFile as declared::Binding { kernel, inputs, entries },
     SeedFile { columns },
     SeedKeyFile { classes },
     FamilyFile { sequence, rank, orders, leaves, steps },
-    LeafFile { seed, weight },
+    LeafFile as declared::Leaf { seed, weight },
     StepFile { seeded, trace, out, d_alpha, d_out, degree, rank_in, edges, rows },
     EdgeFile { leaf, child, factor, links },
     ForwardFile { states },
@@ -2147,6 +2408,46 @@ fresh_records! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The declared decoded size counts the file model's list buffers at the
+    /// record layouts it had before its shared lists, flat rows and shared
+    /// texts (64-bit sizes), so that members written before them decode
+    /// (charges equal to their declarations) and the writer writes the same
+    /// bytes.
+    /// Stored plan members decode with their charges equal to their
+    /// declared decoded size (evidence runs: `LOOP_PLAN_MEMBERS`, PACBIN
+    /// paths separated by `:`; the main plan and the companion of each).
+    #[test]
+    #[ignore = "stored members from LOOP_PLAN_MEMBERS (evidence runs)"]
+    fn stored_members_decode_within_their_declared_size() {
+        let paths = std::env::var("LOOP_PLAN_MEMBERS").expect("LOOP_PLAN_MEMBERS");
+        for path in paths.split(':').filter(|p| !p.is_empty()) {
+            let reader = crate::pacbin::PacbinReader::open(path).unwrap();
+            let main = crate::loop_runtime::read_loop_program_v4_json(&reader).unwrap();
+            PlanModel::from_binary(&main).unwrap();
+            if let Some(companion) =
+                crate::loop_runtime::read_loop_program_v4_scaleless_json(&reader).unwrap()
+            {
+                PlanModel::from_binary(&companion).unwrap();
+            }
+            println!("decoded {path}");
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn list_buffers_count_at_the_former_record_layouts() {
+        assert_eq!(size_of::<<ContentFile as Fresh>::Layout>(), 112);
+        assert_eq!(size_of::<<TermFile as Fresh>::Layout>(), 128);
+        assert_eq!(size_of::<<BindingFile as Fresh>::Layout>(), 56);
+        assert_eq!(size_of::<<SplitFile as Fresh>::Layout>(), 56);
+        assert_eq!(size_of::<<LeafFile as Fresh>::Layout>(), 32);
+        assert_eq!(
+            size_of::<<(usize, super::super::Text, super::super::Text) as Fresh>::Layout>(),
+            56
+        );
+        assert_eq!(size_of::<<(usize, Vec<usize>) as Fresh>::Layout>(), 32);
+    }
 
     #[test]
     fn columns_pick_the_narrowest_form() {
@@ -2351,7 +2652,7 @@ mod tests {
         file.contents = (0..n)
             .map(|_| {
                 let mut content = ContentFile::fresh();
-                content.row_helicities = vec![Vec::new(); m];
+                content.row_helicities = Arc::new(vec![Vec::new(); m]);
                 content
             })
             .collect();
@@ -2406,14 +2707,16 @@ mod tests {
             .map(|k| SeedFile {
                 columns: vec![
                     (0..k % 9)
-                        .map(|t| (t, weight(k + t), "0".to_string()))
+                        .map(|t| (t, weight(k + t).into(), "0".into()))
                         .collect(),
                 ],
             })
             .collect();
         file.seeds = (0..700)
             .map(|k| SeedKeyFile {
-                classes: (0..k % 4).map(|c| (c, weight(c), weight(k))).collect(),
+                classes: (0..k % 4)
+                    .map(|c| (c, weight(c).into(), weight(k).into()))
+                    .collect(),
             })
             .collect();
         file.families = (0..900)
@@ -2424,7 +2727,7 @@ mod tests {
                 family.leaves = (0..k % 6)
                     .map(|j| LeafFile {
                         seed: j,
-                        weight: weight(j * k),
+                        weight: weight(j * k).into(),
                     })
                     .collect();
                 let mut step = StepFile::fresh();
@@ -2570,7 +2873,7 @@ mod tests {
             (super::super::PLAN_SCHEMA, legs, 1 << legs, columns);
         file.helicities = vec![vec![-1, 1]; legs];
         let mut content = ContentFile::fresh();
-        (content.rows, content.row_helicities) = (1, vec![Vec::new()]);
+        (content.rows, content.row_helicities) = (1, Arc::new(vec![Vec::new()]));
         content.terms = vec![TermFile::fresh()];
         file.contents = vec![content];
         file.factors = vec![(0, 0)];
@@ -2654,7 +2957,7 @@ mod tests {
             let mut unread = ContentFile::fresh();
             (unread.d_in, unread.d_out, unread.degree) = (1, 1, degree);
             let [e0, e1, e2, e3] = exponents;
-            unread.fused = vec![[0, 0, e0, e1, e2, e3]];
+            unread.fused = Arc::new(vec![[0, 0, e0, e1, e2, e3]]);
             fused.contents.push(unread);
             bombs.push((name, fused));
         }
@@ -2666,7 +2969,7 @@ mod tests {
         ] {
             let mut power = born_rows_plan(4, 1, 1);
             power.seed_classes = vec![SeedFile {
-                columns: vec![vec![(0, weight.to_owned(), "0".to_owned())]],
+                columns: vec![vec![(0, weight.into(), "0".into())]],
             }];
             bombs.push((name, power));
         }

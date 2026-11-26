@@ -1,4 +1,1 @@
-      INTEGER    NEXTERNAL
-      PARAMETER (NEXTERNAL=4)
-      INTEGER    NINCOMING
-      PARAMETER (NINCOMING=2)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%nexternal.inc

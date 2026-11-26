@@ -1,12 +1,1 @@
-      DOUBLE PRECISION FUNCTION DLUM()
-      IMPLICIT NONE
-      INTEGER NFKSPROCESS
-      COMMON/C_NFKSPROCESS/NFKSPROCESS
-      SELECT CASE(NFKSPROCESS)
-      CASE(1)
-        CALL DLUM_0(DLUM)
-      CASE DEFAULT
-        STOP 'Invalid native PDF sector'
-      END SELECT
-      CALL MC_FILTER_NATIVE_LUM(DLUM)
-      END
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%parton_lum_chooser.f

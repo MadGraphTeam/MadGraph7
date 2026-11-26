@@ -1878,6 +1878,59 @@ pub unsafe extern "C" fn rusticol_runtime_set_kinematics_improvement_binary64(
     })
 }
 
+/// Applies the runtime options of a TOML text (the run card's `[evaluation]`
+/// table, read by the loop SDK's reader, `rusticol_virtual_set_options`; a
+/// full run card is accepted, its other tables and the `[evaluation]` keys
+/// that are not runtime options are not read). A tree runtime takes
+/// `kinematics_improvement` and `kinematics_improvement_binary64` (the
+/// setters above); a runtime option of virtual runtimes given (reduction,
+/// arithmetic, threads, ...) is an invalid argument naming it, as an unknown
+/// key or a bad value is with the run card's text. Everything is checked
+/// first; on an error nothing changes. Additive; `RUSTICOL_ABI_VERSION` 1
+/// kept.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call;
+/// `options_toml` must reference a readable NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_set_options(
+    handle: *mut RusticolRuntimeHandle,
+    options_toml: *const c_char,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate the handle and the string.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        let text = unsafe { required_c_string(options_toml, "runtime options TOML") }?;
+        let options = rusticol_loop_sdk::RuntimeOptions::from_toml(text).map_err(invalid)?;
+        let virtual_only: Vec<&str> = options
+            .given()
+            .into_iter()
+            .filter(|name| !name.starts_with("kinematics_improvement"))
+            .collect();
+        if !virtual_only.is_empty() {
+            return Err(invalid(format!(
+                "{} are options of virtual runtimes; a tree runtime takes \
+                 kinematics_improvement and kinematics_improvement_binary64",
+                virtual_only.join(", ")
+            )));
+        }
+        let kinematics = options
+            .kinematics_improvement
+            .as_deref()
+            .map(kinematics_improvement::setting)
+            .transpose()
+            .map_err(invalid)?;
+        if let Some(variant) = kinematics {
+            handle.kinematics = variant;
+        }
+        if let Some(binary64) = options.kinematics_improvement_binary64 {
+            handle.kinematics_binary64 = binary64;
+        }
+        Ok(())
+    })
+}
+
 /// Mutes or unmutes runtime warnings.
 ///
 /// # Safety

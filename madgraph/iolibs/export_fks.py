@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import string
@@ -30,7 +31,6 @@ import platform
 
 import madgraph
 import madgraph.core.color_algebra as color
-import madgraph.core.color_amp as color_amp
 import madgraph.core.helas_objects as helas_objects
 import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
@@ -48,6 +48,8 @@ import madgraph.iolibs.template_files as template_files
 import madgraph.iolibs.ufo_expression_parsers as parsers
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.born_support as born_support
+from madgraph.iolibs.export_ewsud_density import (colour_matrix,
+    DensityExporter, sudakov_term_expressions)
 import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.various.banner as banner_mod
@@ -494,6 +496,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # fks_common.born_basis_link_matrices). False restores the former layout:
     # one b_sf_NNN.f per link, each with its own colour basis.
     born_color_links_in_born = True
+    # density_matrix_wrapper.f, the EW Sudakov spin-interference kernel, is
+    # written only for the reweighting library (ProcessExporterEWSudakovSA).
+    sudakov_density_kernel = False
 
 #===============================================================================
 # copy the Template in a new directory.
@@ -1394,6 +1399,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         # Check for compiler
         fcompiler_chosen = self.set_fortran_compiler(compiler_dict)
         ccompiler_chosen = self.set_cpp_compiler(compiler_dict['cpp'])
+
+        # Every source and build recipe of the loop directories now exists:
+        # keep the private DP terminal updaters only where the rendered proof
+        # succeeds (optimized output), before the export is packed below.
+        finalize_dp_terminal = getattr(self, 'finalize_dp_terminal_updates', None)
+        if finalize_dp_terminal:
+            finalize_dp_terminal()
 
         old_pos = os.getcwd()
         os.chdir(os.path.join(self.dir_path, 'SubProcesses'))
@@ -2797,6 +2809,8 @@ As a result, the default card will not be tailored to the process generated.""")
 
     def generate_ewsudakov_fks_files(self, matrix_element, fortran_model):
         """Write context-local EW files, also for a reused Born provider."""
+        if matrix_element.ewsudakov:
+            self.check_sudakov_beams(matrix_element)
         # finally the matrix elements needed for the sudakov approximation
         # of ew corrections. 
         # First, the squared amplitudes involving the goldstones
@@ -2824,7 +2838,9 @@ As a result, the default card will not be tailored to the process generated.""")
             self.write_numder_me(writers.FortranWriter(filename),
                              None, fortran_model)
 
-        # Then, the interferences with the goldstones or with the born amplitudes
+        # Then, the interferences with the goldstones or with the born amplitudes.
+        # Their colour matrices are reused by the density kernel below.
+        color_matrices = {}
         for j, sud_me in enumerate([me for me in matrix_element.sudakov_matrix_elements if me['type'] != 'goldstone']):
             filename = "ewsudakov_me_%d.f" % (j + 1)
             if sud_me['base_amp']:
@@ -2834,7 +2850,7 @@ As a result, the default card will not be tailored to the process generated.""")
             else:
                 base_me = matrix_element.born_me
             self.write_sudakov_me(writers.FortranWriter(filename),
-                         base_me, sud_me, j, fortran_model)
+                         base_me, sud_me, j, fortran_model, color_matrices)
 
         # finally, the wrapper for all matrix elements needed
         # for the Sudakov approximation
@@ -2842,11 +2858,13 @@ As a result, the default card will not be tailored to the process generated.""")
         self.write_sudakov_wrapper(writers.FortranWriter(filename),
                                    matrix_element,has_lo,fortran_model)
 
-        # per-helicity Sudakov wrapper for the spin-correlated reweighting
-        if matrix_element.ewsudakov:
+        # full spin-interference kernel for the spin-correlated reweighting,
+        # which only the reweighting library links
+        if matrix_element.ewsudakov and self.sudakov_density_kernel:
             filename = "density_matrix_wrapper.f"
             self.write_density_matrix_wrapper(writers.FortranWriter(filename),
-                                              matrix_element, fortran_model)
+                                              matrix_element, fortran_model,
+                                              color_matrices)
 
 
 
@@ -3693,10 +3711,6 @@ Parameters              %(params)s\n\
         # classify the different kind of matrix-elements
         goldstone_mes = [sud for sud in sudakov_list if sud['type'] == 'goldstone']
         non_goldstone_mes = [sud for sud in sudakov_list if sud['type'] != 'goldstone']
-        non_goldstone_mes_lsc = [sud for sud in non_goldstone_mes if sud['type'] == 'cew'] 
-        non_goldstone_mes_ssc_n1 = [sud for sud in non_goldstone_mes if sud['type'] == 'iz1'] 
-        non_goldstone_mes_ssc_n2 = [sud for sud in non_goldstone_mes if sud['type'] == 'iz2'] 
-        non_goldstone_mes_ssc_c = [sud for sud in non_goldstone_mes if sud['type'] == 'ipm2'] 
 
         replace_dict = {}
 
@@ -3785,51 +3799,23 @@ Parameters              %(params)s\n\
             if not has_lo[1]: 
                 continue
 
-            mes_same_charge_lsc = [me for me in non_goldstone_mes_lsc if me['base_amp'] == i+1]
-            if mes_same_charge_lsc:
-                calls_to_me += "C LSC and C non diag\n"
-            for mesc in mes_same_charge_lsc:
-                idx = non_goldstone_mes.index(mesc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_LSC(:) = AMP_SPLIT_EWSUD_LSC(:)+AMP_SPLIT_EWSUD(:)*get_lsc_nondiag(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0]) # old and new pdg of the leg that changes
-                calls_to_me += "AMP_SPLIT_EWSUD_XXC(:) = AMP_SPLIT_EWSUD_XXC(:)+AMP_SPLIT_EWSUD(:)*get_xxc_nondiag(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0]) # old and new pdg of the leg that changes
-
-            # now the calls to the SSC non-diagonal, with one particle different wrt base amp
-            mes_same_charge_ssc1 = [me for me in non_goldstone_mes_ssc_n1 if me['base_amp'] == i+1]
-            if mes_same_charge_ssc1:
-                calls_to_me += "C SSC non diag #1\n"
-            for mesc in mes_same_charge_ssc1:
-                idx = non_goldstone_mes.index(mesc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_SSC(:) = AMP_SPLIT_EWSUD_SSC(:)+AMP_SPLIT_EWSUD(:)*get_ssc_n_nondiag_1(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0]) # number, old and new pdg of the leg that changes
-
-            # now the calls to the SSC non-diagonal, with two particles different wrt base amp
-            mes_same_charge_ssc2 = [me for me in non_goldstone_mes_ssc_n2 if me['base_amp'] == i+1]
-            if mes_same_charge_ssc2:
-                calls_to_me += "C SSC non diag #2\n"
-            for mesc in mes_same_charge_ssc2:
-                idx = non_goldstone_mes.index(mesc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_SSC(:) = AMP_SPLIT_EWSUD_SSC(:)+AMP_SPLIT_EWSUD(:)*get_ssc_n_nondiag_2(pdglist,nhel(1,ihel),iflist,invariants,%d,%d,%d,%d,%d,%d)*comp_idfac\n" % \
-                                        (mesc['legs'][0]['number'],mesc['pdgs'][0][0], mesc['pdgs'][1][0], \
-                                         mesc['legs'][1]['number'],mesc['pdgs'][0][1], mesc['pdgs'][1][1]) # number, old and new pdg of the legs that change
-
-            # SSC calls, charged
-            mes_ssc_charged = [me for me in non_goldstone_mes_ssc_c if me['base_amp'] == i+1]
-            if mes_ssc_charged:
-                calls_to_me += "C the SSC terms (charged)\n"
-            for messc in mes_ssc_charged:
-                idx = non_goldstone_mes.index(messc)
-                calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
-                calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in messc['matrix_element']['processes'][0]['legs']])
-                calls_to_me += "AMP_SPLIT_EWSUD_SSC(:) = AMP_SPLIT_EWSUD_SSC(:)+AMP_SPLIT_EWSUD(:)*get_ssc_c(%d,%d,pdglist,%d,%d,nhel(1,ihel),iflist,invariants)*comp_idfac\n" % \
-                                (messc['legs'][0]['number'], messc['legs'][1]['number'], messc['pdgs'][1][0], messc['pdgs'][1][1])
+            # the non-diagonal LSC/C (cew) and SSC (iz1, iz2, ipm2) terms of
+            # the auxiliary amplitudes built on this base amplitude
+            for kind, comment in (('cew', 'LSC and C non diag'),
+                                  ('iz1', 'SSC non diag #1'),
+                                  ('iz2', 'SSC non diag #2'),
+                                  ('ipm2', 'the SSC terms (charged)')):
+                mes_kind = [me for me in non_goldstone_mes
+                            if me['type'] == kind and me['base_amp'] == i+1]
+                if mes_kind:
+                    calls_to_me += "C %s\n" % comment
+                for mesc in mes_kind:
+                    idx = non_goldstone_mes.index(mesc)
+                    calls_to_me += "call EWSDK_ME_%d(p,nhel(1,ihel),ans_summed)\n" % (idx + 1)
+                    calls_to_me += "pdglist_oth = (/%s/)\n" % ','.join([str(leg['id']) for leg in mesc['matrix_element']['processes'][0]['legs']])
+                    for term, expression in sudakov_term_expressions(mesc, 'nhel(1,ihel)'):
+                        calls_to_me += "AMP_SPLIT_EWSUD_%s(:) = AMP_SPLIT_EWSUD_%s(:)+AMP_SPLIT_EWSUD(:)*%s*comp_idfac\n" % \
+                                       (term, term, expression)
 
         if goldstone_mes:
             calls_to_me += "endif\n"
@@ -3861,29 +3847,35 @@ Parameters              %(params)s\n\
         return
 
 
+    def check_sudakov_beams(self, matrix_element):
+        """Stop the export of EW Sudakov corrections for a massive beam.
+
+        The Sudakov charges and the initial-state momentum reshuffling assume
+        massless incoming particles, so neither the scalar nor the density
+        kernel may run with a W, Z, top or other massive beam.
+        """
+        for process in matrix_element.born_me['processes']:
+            model = process['model']
+            for leg in process['legs']:
+                if (not leg['state'] and
+                        model.get_particle(leg['id'])['mass'].lower() != 'zero'):
+                    raise MadGraph5Error('EW Sudakov corrections require massless '
+                                         'beams: %s' % process.base_string())
+
     #===============================================================================
     # write_density_matrix_wrapper
     #===============================================================================
-    def write_density_matrix_wrapper(self, writer, matrix_element, fortran_model):
+    def write_density_matrix_wrapper(self, writer, matrix_element, fortran_model,
+                                     color_matrices=None):
         """Write density_matrix_wrapper.f for the spin-correlated EW Sudakov.
 
-        For each resonance-helicity combination h the wrapper returns the
-        Born-weighted Sudakov correction (density_delta) and the Born summed over
-        spectator helicities (born_diag); Python takes their ratio as delta_h.
-        The density matrix B[h,h'] is built in Python (DensityHelper, from
-        GET_DENSITY of the rw_me_density_prod modules).
+        It holds the kernel of export_ewsud_density: the complex Born and
+        linear Sudakov interference matrices of the resonance helicities,
+        summed over spectator helicities and colours. color_matrices holds
+        the colour matrices already computed for the Sudakov interferences.
         """
-        # No substitution variables, but the template is still %-formatted:
-        # a literal '%' in it must be written '%%'.
-        replace_dict = {}
-
-        file = open(os.path.join(_file_path,
-                          'iolibs/template_files/density_matrix_wrapper.inc')).read()
-        file = file % replace_dict
-
-        writer.writelines(file)
-
-        return
+        DensityExporter(self, matrix_element, fortran_model,
+                        color_matrices).write(writer)
 
 
     #===============================================================================
@@ -4070,9 +4062,11 @@ Parameters              %(params)s\n\
     #===============================================================================
     # write_sudakov_me
     #===============================================================================
-    def write_sudakov_me(self, writer, base_me, sudakov, ime, fortran_model):
+    def write_sudakov_me(self, writer, base_me, sudakov, ime, fortran_model,
+                         color_matrices=None):
         """Create the sudakov_me_*.f file for the sudakov approximation of EW
-        corrections
+        corrections. color_matrices caches the colour matrices of the
+        base/Sudakov pairs for the density kernel.
         """
 
         sudakov_me = sudakov['matrix_element']
@@ -4135,7 +4129,9 @@ Parameters              %(params)s\n\
         replace_dict['ncolor2'] = ncolor2
 
         # compute the color matrix between basis of the Born and of the Sudakov
-        color_matrix= color_amp.ColorMatrix(matrix_element.get('color_basis'), sudakov_me.get('color_basis'))
+        color_matrix = colour_matrix({} if color_matrices is None else color_matrices,
+                                     matrix_element.get('color_basis'),
+                                     sudakov_me.get('color_basis'))
     
         # Extract color data lines
         color_data_lines = self.get_color_data_lines_from_color_matrix(color_matrix)
@@ -5799,23 +5795,37 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                               libpath,"lib%s.a"%tir,tir_name=tir)
             setattr(self,tir_dir,libpath)
             if libpath != "":
-                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars']:
+                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars','tirust']:
                     # We should link dynamically when possible, so we use the original
                     # location of these libraries.
-                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                        # Recorded flags are argv words; quote them for the makefile shell.
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.pre_link_flags(
+                                libpath, getattr(self, 'fortran_compiler', None) or 'gfortran'))
+                    if tir == 'tirust':
+                        from madgraph.various import tirust_install
+                        link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
                     if copied_ninjars:
-                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
-                        tir_libs.append('$(LIBDIR)libninjars.a')
+                        link_tir_libs.append('-L$(LIBDIR) -l' + tir)
+                        tir_libs.append('$(LIBDIR)lib' + tir + '.a')
                     else:
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
                         tir_libs.append('%s/lib%s.%s' % (
-                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                            libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
                     if tir == 'ninjars':
                         from madgraph.various import ninjars_install
-                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                        link_tir_libs.extend(shlex.quote(flag) for flag in
+                            ninjars_install.native_link_flags(libpath))
+                    if tir == 'tirust':
+                        from madgraph.various import tirust_install
+                        link_tir_libs.extend(tirust_install.native_link_flags(libpath))
+                        # Executables live in SubProcesses or its process directories;
+                        # shared process libraries live in lib.
+                        link_tir_libs.extend(tirust_install.runtime_search_flags(
+                            libpath, copied_ninjars))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -5825,7 +5835,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
                     # We must add the corresponding includes for these TIR
-                    if tir in ['golem','samurai','ninja','collier','ninjars']:
+                    if tir in ['golem','samurai','ninja','collier','ninjars','tirust']:
                         trg_path = pjoin(os.path.dirname(libpath),'include')
                         trg_path2 = pjoin(trg_path,tir)
                         to_include = None
@@ -5835,7 +5845,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         if to_include is None and os.path.isdir(trg_path2):
                             to_include = misc.find_includes_path(trg_path2,
                                                         self.include_names[tir])
-                        if to_include is None and tir == 'ninjars':
+                        if to_include is None and tir in ('ninjars', 'tirust'):
                             to_include = misc.find_includes_path(
                                 libpath, self.include_names[tir])
                         # Special possible location for collier
@@ -6101,6 +6111,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
 class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     """exports the EW sudakov matrix element in a standalone format
     """
+    # The reweighting library links the spin-interference kernel.
+    sudakov_density_kernel = True
 
     # No Born providers (prepare_born_support): keep Born evaluators in each
     # standalone Sudakov library. This exporter builds libsudpy instead of

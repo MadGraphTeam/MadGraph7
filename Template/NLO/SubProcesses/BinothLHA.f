@@ -45,6 +45,10 @@ c statistics for MadLoop
       double precision avgPoleRes(2),PoleDiff(2)
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      INTEGER ML_GET_RET_CODE_LIBRARY
+      EXTERNAL ML_GET_RET_CODE_LIBRARY
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
       parameter (nbadmax = 5)
@@ -502,6 +506,13 @@ c Unit 2 is NinjaRS; classify precision with T, not the stability digit H.
      $     mod(ret_code,100)/10.eq.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
       if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.2.or.
      $     mod(ret_code,100)/10.eq.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+c Unit 3 is shared by IREGI and TIRust (MLReductionLib=9).
+      if (mod(ret_code,10).eq.3.and.ML_GET_RET_CODE_LIBRARY().eq.9) then
+         if (mod(ret_code,100)/10.eq.1.or.mod(ret_code,100)/10.eq.3)
+     $        TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
+         if (mod(ret_code,100)/10.eq.2.or.mod(ret_code,100)/10.eq.4)
+     $        TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+      endif
 
 c Write out the unstable, non-rescued phase-space points (MadLoop return
 c code is in the four hundreds) or the ones that are found by the pole

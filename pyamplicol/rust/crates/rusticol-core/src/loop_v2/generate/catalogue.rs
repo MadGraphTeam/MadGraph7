@@ -31,7 +31,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use symbolica::atom::{Atom, AtomCore, AtomView, Symbol};
 use symbolica::coefficient::CoefficientView;
-use symbolica::parser::ParseSettings;
 
 use crate::model_proofs::json_string;
 use crate::{RusticolError, RusticolResult};
@@ -168,7 +167,7 @@ pub type VariantResult = Result<Option<PolynomialCandidate>, CandidateError>;
 fn parse(text: &str) -> RusticolResult<Atom> {
     // Canonical strings name every symbol with its namespace; the default
     // namespace is the Python wheel's (`E`).
-    Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {
+    crate::symbol_order::parse(text, "python").map_err(|error| {
         RusticolError::invalid_argument(format!(
             "loop catalogue: cannot parse a canonical expression: {error}"
         ))

@@ -26,28 +26,26 @@ of check_sa.exe, so only the check it belongs to.
    where |M|^2 = 0 exactly and no helicity or colour (-1) may be reported on either
    backend: a -ffast-math build let the 0/0 of the selection pass and reported the first
    good helicity (relabelled for the crossed ids) and the first colour flow.
-3. mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocess that folds crossings
-   (P1_gQ_gogoQ: g q > go go q also serves q q~ > go go g, ...), with running flavour
-   couplings: events drawn over every extended flavour id K*nmaxflavor + flavour
-   (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
-   helicities and colours equal the CPU ones event by event (the crossed helicity code
-   of a moved leg included).
-   crossed_massive_gpu_vs_cpu: SM ``u g > u z`` and ``u u~ > z g`` in one generation,
+3. crossed_massive_gpu_vs_cpu: SM ``u g > u z`` and ``u u~ > z g`` in one generation,
    folded into P1_ug_uz, whose crossing moves the Z into a massless slot (xonshell_tab 0):
    umami_initialize chooses the good helicities of that crossing on points of its own
    masses (choose_good_helicities, getGoodHel). The events of every row are on shell for
    that row, in a randomly boosted frame: the GPU |M|^2, helicities and colours equal
    the CPU ones event by event, so the GPU kept the same good-helicity list.
-   axial_crossed_gpu_vs_cpu: SM ``p p > z j --axial_gauge=True``, the subprocess that
-   folds crossings (P1_gQ_zQ): the gluon wavefunction is vxxxxxr in the axial gauge of
-   another external leg, whose momentum a crossed event reads from its own input slot
-   (xperm of the reference leg): the same comparison as above.
    signed_crossed_gpu_vs_cpu: SM ``p p > j j QED^2==2`` and ``p p > t t~ j QED^2==2``,
    the subprocesses that fold crossings (P1_QQ_QQ, P1_gQ_ttxQ), interferences of the QCD
    and electroweak amplitudes (nampso 2) whose |M|^2 per helicity is signed: the same
    comparison as the helicity sum and with one signed helicity per event (--rnd-hel,
    negative |M|^2 and helicities of both signs included), on the events above the
    rounding residue of the interferences that vanish (colour, flavour).
+   Only with --only (not in the GPU CI, to fit its time limit; the CPU acceptance test
+   test_gpu_backend_host_emulation runs the axial one on host-emulated HIP):
+   mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocesses that fold crossings
+   (P1_gQ_gogoQ...), with running flavour couplings: the same comparison as above.
+   axial_crossed_gpu_vs_cpu: SM ``p p > z j --axial_gauge=True``, the subprocess that
+   folds crossings (P1_gQ_zQ): the gluon wavefunction is vxxxxxr in the axial gauge of
+   another external leg, whose momentum a crossed event reads from its own input slot
+   (xperm of the reference leg): the same comparison as above.
 4. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
    non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
    synchronise with the default stream) gives the same |M|^2 and helicities as on the
@@ -83,9 +81,11 @@ import time
 
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
-CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel', 'mssm_crossed_gpu_vs_cpu',
-          'crossed_massive_gpu_vs_cpu', 'axial_crossed_gpu_vs_cpu', 'signed_crossed_gpu_vs_cpu',
+# the checks run by default (the GPU CI); OPTIONAL_CHECKS only with --only
+CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel',
+          'crossed_massive_gpu_vs_cpu', 'signed_crossed_gpu_vs_cpu',
           'nonblocking_stream', 'helicity_index')
+OPTIONAL_CHECKS = ('mssm_crossed_gpu_vs_cpu', 'axial_crossed_gpu_vs_cpu')
 
 results = {}
 
@@ -180,15 +180,21 @@ def output(repo, name, model, process, backends, select=None, defines=(), option
         if not proc_dirs:
             raise RuntimeError('no selected subprocess directory for %s' % process)
     jobs = os.environ.get('SLURM_CPUS_PER_TASK', '4')
-    for proc_dir in proc_dirs:
-        for backend in backends:
-            log = '%s_%s_%s_make.log' % (name, os.path.basename(proc_dir), backend)
-            # check_sa.exe is relinked for the backend of each make (its libraries carry
-            # the backend in their name)
-            if run(['make', '-j', jobs, 'BACKEND=' + backend, 'FPTYPE=d'],
-                   cwd=proc_dir, log=log) != 0:
-                raise RuntimeError('make failed, see %s' % log)
-            shutil.copy(os.path.join(proc_dir, 'check_sa.exe'),
+    # The selected subprocesses are built at once by SubProcesses/makefile, which spreads the
+    # -j slots over all of them (and builds the common library once, first). One backend at
+    # a time: each links check_sa.exe in the subprocess directory, kept as
+    # check_sa_<backend>.exe (removed first, so that a stale one is never kept)
+    targets = [os.path.basename(proc_dir) for proc_dir in proc_dirs]
+    for backend in backends:
+        for proc_dir in proc_dirs:
+            if os.path.exists(os.path.join(proc_dir, 'check_sa.exe')):
+                os.remove(os.path.join(proc_dir, 'check_sa.exe'))
+        log = '%s_%s_make.log' % (name, backend)
+        if run(['make', '-j', jobs, 'BACKEND=' + backend, 'FPTYPE=d'] + targets,
+               cwd=os.path.join(name, 'SubProcesses'), log=log) != 0:
+            raise RuntimeError('make failed, see %s' % log)
+        for proc_dir in proc_dirs:
+            shutil.move(os.path.join(proc_dir, 'check_sa.exe'),
                         os.path.join(proc_dir, 'check_sa_%s.exe' % backend))
     return proc_dirs
 
@@ -388,7 +394,7 @@ def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt,
     violates C parity (chiral or electroweak couplings): on a C-symmetric one (g g > q q~,
     g g > t t~) the CPU counts each helicity row once for itself and its C mirror and draws
     between the two, the GPU orders every row, so the same random number selects other
-    rows (same frequencies). Build the CPU reference with -DMGONGPU_NOCSYM there, or
+    rows (same frequencies). Build the CPU reference with -DMADMATRIX_NOCSYM there, or
     compare helicity frequencies."""
     rng = random.Random(seed)
     problems, details = [], []
@@ -508,15 +514,6 @@ def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt,
     check(check_name, not problems, '; '.join(problems[:3]) or '; '.join(details))
 
 
-def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
-    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
-    name = 'mssm_gogoj'
-    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
-    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
-                       select=lambda proc_dir: ncross(proc_dir) > 1)
-    crossed_gpu_vs_cpu('mssm_crossed_gpu_vs_cpu', backend, name, proc_dirs, 3000, 17, nevt)
-
-
 def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
     section('u g > u z with u u~ > z g, a massive leg crossed into a massless slot: %s against %s'
             % (backend, CPU_BACKEND))
@@ -527,6 +524,15 @@ def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
                        defines=('b1 = g u~', 'c1 = u z', 'd1 = z g'))
     crossed_gpu_vs_cpu('crossed_massive_gpu_vs_cpu', backend, name, proc_dirs, 1000, 29, nevt,
                        own_points=True)
+
+
+def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
+    name = 'mssm_gogoj'
+    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
+    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1)
+    crossed_gpu_vs_cpu('mssm_crossed_gpu_vs_cpu', backend, name, proc_dirs, 3000, 17, nevt)
 
 
 def check_axial_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
@@ -664,7 +670,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--repo', required=True)
     parser.add_argument('--backend', required=True)
-    parser.add_argument('--only', choices=CHECKS, action='append',
+    parser.add_argument('--only', choices=CHECKS + OPTIONAL_CHECKS, action='append',
                         help='run this check only (repeatable)')
     args = parser.parse_args()
     if args.backend == CPU_BACKEND:

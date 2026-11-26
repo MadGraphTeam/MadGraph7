@@ -84,6 +84,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "evaluation.arithmetic",
         "evaluation.reduction",
         "evaluation.reduction_target",
+        "evaluation.threads",
         "evaluation.correlated_requests",
         "evaluation.on_failure",
         "evaluation.mu_r2",

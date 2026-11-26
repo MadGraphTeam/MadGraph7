@@ -17,9 +17,10 @@ with gamma-UPC (arXiv:2207.03012) and forward neutron tagging, at LO
 (MadEvent) and NLO (fixed order).
 
 The references are 2000-event (LO) and 1% (NLO) runs with gamma-UPC 1.8.
-Each test compares with 3 combined standard deviations. EDFF is used
-throughout: building the ChFF luminosity grid for ion-ion collisions takes
-tens of minutes; the ChFF labels are covered by the unit tests."""
+Each test compares with 3 combined standard deviations. The ChFF references
+were made with the original gamma-UPC integration (before the
+kernel-factorised engine, where an ion-ion ChFF run took about an hour); the
+neutron classes with ChFF are checked through their sum."""
 
 from __future__ import absolute_import
 
@@ -46,6 +47,7 @@ PB208, O16, PROTON = (82, 126), (8, 8), (1, 0)
 E_PBPB = (522080, 522080)
 E_PPB = (6500, 532480)
 E_OO = (42880, 42880)
+E_PP = (6500, 6500)
 
 # a a > mu+ mu-, pT(mu) > 5 GeV, |eta(mu)| < 2.5 (pb)
 REF_LO = {
@@ -60,6 +62,10 @@ REF_LO = {
     ('pPb', 'edfin2n'): (0.09758, 4.569e-4),   # Pb excited by the proton field only
     ('OO', 'edff'): (6187., 26.74),
     ('OO', 'edf1n1n'): (6.976e-5, 3.92e-7),  # mutual excitation of O16 is rare
+    # ChFF: the original gamma-UPC integration
+    ('PbPb', 'chff'): (2.9642e7, 2.12e5),
+    ('pPb', 'chff'): (1.4703e4, 114.),
+    ('pp', 'chff'): (6.0877, 0.0492),
 }
 # !a! !a! > b b~ [QCD] at fixed-order NLO, no cuts (pb)
 REF_NLO = {
@@ -166,6 +172,40 @@ class TestGammaUPCMadEvent(unittest.TestCase):
         compatible(self, down, down_error, *REF_LO[('PbPb', 'edmxnxn')])
         self.assertGreater(up - 3 * up_error, central)
         self.assertLess(down + 3 * down_error, central)
+
+    def test_upc_pbpb_chff(self):
+        """inclusive PbPb with the charge form factor; the jobs share the
+        flux grid through a file in lib/ (gamma-UPC grid cache), and a second
+        run reads it"""
+
+        compatible(self, *self.run_upc('chff'), *REF_LO[('PbPb', 'chff')])
+        lib = pjoin(self.run_dir, 'lib')
+        grids = [f for f in os.listdir(lib) if f.startswith('gammaUPC_grid_')]
+        self.assertTrue(any(f.endswith('.bin') for f in grids), grids)
+        self.assertFalse([f for f in grids if f.endswith('.lock') or '.tmp' in f], grids)
+        compatible(self, *self.run_upc('chff'), *REF_LO[('PbPb', 'chff')])
+
+    def test_upc_pbpb_chff_neutron_classes(self):
+        """with the charge form factor, the 0n0n, 0nXn, Xn0n and XnXn classes
+        add up to the inclusive cross section of the original gamma-UPC"""
+
+        total, total_error2 = 0., 0.
+        incl, incl_error = REF_LO[('PbPb', 'chff')]
+        for label in ['chf0n0n', 'chf0nxn', 'chfxn0n', 'chfxnxn']:
+            value, error = self.run_upc(label)
+            self.assertLess(value, incl)
+            total += value
+            total_error2 += error**2
+        compatible(self, total, math.sqrt(total_error2), incl, incl_error)
+
+    def test_upc_ppb_pp_chff(self):
+        """pPb and pp with the charge form factor (dipole form factor of the
+        proton)"""
+
+        value, error = self.run_upc('chff', beam1=PROTON, beam2=PB208, ebeam=E_PPB)
+        compatible(self, value, error, *REF_LO[('pPb', 'chff')])
+        value, error = self.run_upc('chff', beam1=PROTON, beam2=PROTON, ebeam=E_PP)
+        compatible(self, value, error, *REF_LO[('pp', 'chff')])
 
     def test_upc_ppb_proton_tag_ignored(self):
         """pPb: the tag of the proton beam is ignored (edf1n2n = edfin2n)"""

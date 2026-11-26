@@ -148,6 +148,27 @@ class TestSudakovWeightIds(unittest.TestCase):
         waiter._prepare_sudakov_weight_ids()
         self.assertEqual(waiter._sudakov_weight_map, creator._sudakov_weight_map)
 
+    def test_param_card_must_suit_the_sudakov_kernels(self):
+        # Both kernels stop the Fortran process otherwise, at the first event.
+        driver = self.driver([self.event({'1001': 2.})])
+        # ntadpole is set to 1 when the Sudakov library writes param_card.inc.
+        good = 'BLOCK MASS\n 6 173.0\nBLOCK YUKAWA\n 6 173.0\nBLOCK TADPOLE\n 1 1.0001\n'
+        driver.banner['slha'] = good
+        driver.check_sudakov_param_card()
+        driver.banner['slha'] = good.replace('YUKAWA\n 6 173.0', 'YUKAWA\n 6 172.5')
+        with self.assertRaisesRegex(ReweightInterface.InvalidCmd, 'YMT = MT'):
+            driver.check_sudakov_param_card()
+
+    def test_density_metadata_only_for_density_runs(self):
+        for mode, kernel in ((0, None), (3, str(fx.DENSITY_KERNEL_VERSION))):
+            with self.subTest(ickkw=mode):
+                driver = self.driver([self.event({'1001': 2.})], mode=mode)
+                tree = ET.fromstring('<initrwgt>' + driver._sudakov_weight_header() + '</initrwgt>')
+                group = tree.find("weightgroup[@name='ew_sudakov']")
+                self.assertEqual(group.get('density_kernel'), kernel)
+                self.assertEqual(group.get('density_prescription'),
+                                 'amplitude' if kernel else None)
+
     def test_source_scan_keeps_input_position(self):
         driver = self.driver([self.event({'1001': 1.}), self.event({'1101': 2.})], mode=0)
         next(driver.lhe_input)

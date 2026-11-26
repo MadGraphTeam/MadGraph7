@@ -75,6 +75,41 @@ struct ColumnSet {
     twin: Option<Runner>,
 }
 
+impl Observables {
+    /// The pools of the column sets' runners for `threads` threads, built
+    /// and not installed (`V2Runtime::set_threads`), by set and runner.
+    pub(super) fn prepare_threads(&self, threads: Option<usize>) -> RusticolResult<ColumnPools> {
+        let mut pools = Vec::new();
+        for (kind, set) in &self.sets {
+            for (twin, runner) in [(false, &set.runner), (true, &set.twin)] {
+                if let Some(runner) = runner {
+                    pools.push((kind.clone(), twin, runner.prepare_threads(threads)?));
+                }
+            }
+        }
+        Ok(pools)
+    }
+
+    /// Install the pools of [`Self::prepare_threads`].
+    pub(super) fn commit_threads(&mut self, threads: Option<usize>, pools: ColumnPools) {
+        for (kind, twin, built) in pools {
+            if let Some(set) = self.sets.get_mut(&kind) {
+                let runner = if twin { &mut set.twin } else { &mut set.runner };
+                if let Some(runner) = runner {
+                    runner.commit_threads(threads, built);
+                }
+            }
+        }
+    }
+}
+
+/// The pools of the column sets' runners (set kind, companion, pools).
+pub(super) type ColumnPools = Vec<(
+    String,
+    bool,
+    Vec<(usize, rusticol_core::loop_execution::v2::ExecutorPool)>,
+)>;
+
 /// The output columns of a set: per column its key, whether it is directed
 /// (a history with a bra: complex outputs), and per sector its (direct,
 /// swapped) lane columns.
@@ -993,6 +1028,7 @@ impl V2Runtime {
         self.backend(precision)?;
         let options = V2Options {
             poles: mode.lanes(),
+            rescue: self.rescue_inputs(),
             ..V2Options::default()
         };
         let observables = self.observables.as_mut().expect("the observables");

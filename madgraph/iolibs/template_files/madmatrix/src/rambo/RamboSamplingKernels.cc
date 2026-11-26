@@ -6,7 +6,7 @@
 
 #include "RamboSamplingKernels.h"
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #include "GpuRuntime.h"
 #endif
 #include "MemoryAccessMomenta.h"
@@ -153,7 +153,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   MasslessRamboSamplingKernelDevice::MasslessRamboSamplingKernelDevice( const fptype energy,               // input: energy
                                                         const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
                                                         BufferMomenta& momenta,            // output: momenta
@@ -196,7 +196,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   getMomentaInitialDevice( const fptype energy,
                            fptype_momenta* momenta )
@@ -208,7 +208,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   void
   MasslessRamboSamplingKernelDevice::getMomentaInitial()
   {
@@ -218,7 +218,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   getMomentaFinalDevice( const fptype energy,
                          const fptype* rndmom,
@@ -232,7 +232,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   void
   MasslessRamboSamplingKernelDevice::getMomentaFinal()
   {

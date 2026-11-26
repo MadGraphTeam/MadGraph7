@@ -327,6 +327,11 @@ One-loop evaluation settings:
 - `reduction_target: float | null` (TIRust's target accuracy; null = 1e-5)
 - `reduction_unchecked: bool = false` (timing mode without the backends'
   acceptance checks; no accuracy certificate)
+- `lane_rescue: bool = true` (a refused reduction lane reduced again in a
+  higher carrier, checked and unchecked mode; false: it fails its point)
+- `threads: int >= 1 | null` (the native threads of the runtime's load and
+  evaluations, clamped to the cores the process may use; null:
+  `RAYON_NUM_THREADS`, else every core)
 - `kinematics_improvement: z-shift | rescaling | projection | off | null`
   (null = `z-shift`: MadLoop's default chain, finished by the projection when
   the produced point is inexact)

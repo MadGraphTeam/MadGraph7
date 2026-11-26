@@ -6,13 +6,12 @@
 #ifndef MemoryAccessIflavorVec_H
 #define MemoryAccessIflavorVec_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
@@ -90,7 +89,7 @@ namespace madmatrix
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR) ===> const unsigned int& kernelAccessConst( const unsigned int* buffer ) <===]
-    static constexpr auto kernelAccessConst_s = KernelAccessHelper<MemoryAccessIflavorVecBase, onDevice, unsigned int>::template kernelAccessFieldConst<>; // requires cuda 11.4
+    static constexpr auto kernelAccessConst_s = KernelAccessHelper<MemoryAccessIflavorVecBase, onDevice, unsigned int>::template kernelAccessFieldConst<>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (const, SCALAR OR VECTOR) ===> const uint_sv& kernelAccess( const unsigned int* buffer ) <===]
@@ -100,7 +99,7 @@ namespace madmatrix
       const unsigned int& out = kernelAccessConst_s( buffer );
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
       static_assert( madmatrix::HostBufferIflavorVec::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::uintvFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
   };
@@ -108,7 +107,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessIflavorVec<false> HostAccessIflavorVec;
-  typedef KernelAccessIflavorVec<true> DeviceAccessIflavorVec;
 
   //----------------------------------------------------------------------------
 

@@ -1205,12 +1205,12 @@ C The value of VECSIZE_USED can be chosen at runtime
 C (typically 8k-16k for GPUs, 16-32 for vectorized C++).
 C
 C The value of VECSIZE_USED represents the number of events
-C handled by one call to the Fortran/cudacpp "bridge".
+C handled by one call to the matrix element library.
 C This is not necessarily the number of events which are
 C processed in lockstep within a single SIMD vector on CPUs
 C or within a single "warp" of threads on GPUs. These parameters
-C are internal to the cudacpp bridge and need not be exposed
-C to the Fortran program which calls the cudacpp bridge.
+C are internal to the library and need not be exposed
+C to the Fortran program which calls it.
 C
 C NB: THIS FILE CANNOT CONTAIN #ifdef DIRECTIVES
 C BECAUSE IT DOES NOT GO THROUGH THE CPP PREPROCESSOR
@@ -19524,6 +19524,7 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
       'samurai_dir':cmd.options['samurai'],
       'ninja_dir':cmd.options['ninja'],
       'ninjars_dir':cmd.options.get('ninjars'),
+      'tirust_dir':cmd.options.get('tirust'),
       'collier_dir':cmd.options['collier'],
       'fortran_compiler':cmd.options['fortran_compiler'],
       'f2py_compiler':cmd.options['f2py_compiler'],

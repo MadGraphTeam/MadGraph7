@@ -116,6 +116,14 @@ def test_every_lane_is_refused_or_within_the_target(loop_native, carrier):
     for name in ("zzz-stream-0", "gg_ggg-planar-1e-8-g0"):
         assert outcomes[(name, 0)] == "success", (name, carrier)
     if carrier == "fast":
-        # Binary64 refuses the planar loop-induced lanes, typed.
-        for name in ("zzz-p44-tilt-1e-9", "zzz-p44-tilt-1e-12", "zzz-stream-44"):
-            assert outcomes[(name, 0)] == "Unstable", (name, outcomes[(name, 0)])
+        # Binary64 refuses the planar loop-induced lanes, typed, and its
+        # status names the test: at tilt 1e-9 the conditioning screen (the
+        # predicted rounding error above its limit), closer to the plane the
+        # uncut line's mu-expansion denominator (at most its bound).
+        for name, test in (
+            ("zzz-p44-tilt-1e-9", "box mu-expansion conditioning"),
+            ("zzz-p44-tilt-1e-12", "box mu-expansion denominator"),
+            ("zzz-stream-44", "box mu-expansion denominator"),
+        ):
+            status = outcomes[(name, 0)]
+            assert status.startswith(f"Unstable ({test}: "), (name, status)

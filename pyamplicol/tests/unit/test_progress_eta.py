@@ -170,6 +170,11 @@ def test_log_heartbeat_breaks_every_silence(monkeypatch) -> None:
     from pyamplicol.reporting.progress import ProgressEnd, ProgressStart
 
     monkeypatch.setattr(progress, "_LOG_CADENCE", ((float("inf"), 0.6),))
+    # The start line is due well before the first beat (0.5 s). With the
+    # default delay of 1 s it was due at the second beat, the very beat at
+    # which the 0.6 s silence asks for a status line: on a loaded runner the
+    # status line came first.
+    monkeypatch.setattr(progress, "_LOG_START_DELAY", 0.2)
     stream = io.StringIO()
     sink = progress.progress_sink("log", stream=stream)
     sink.emit(ProgressStart("root", "Generating processes", total=1))

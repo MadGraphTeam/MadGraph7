@@ -49,6 +49,8 @@ c     Vegas stuff
 c statistics for MadLoop      
       INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
       COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
 
@@ -111,6 +113,8 @@ c
       enddo
       NINJARS_DP_USAGE=0
       NINJARS_QP_USAGE=0
+      TIRUST_DP_USAGE=0
+      TIRUST_QP_USAGE=0
       
       call setrun                !Sets up run parameters
       call configure_fxfx_sudakov(ickkw,nlo_ps,shower_mc,.true.)
@@ -241,6 +245,10 @@ c
          write(*,*) '#ReturnCodeVersion = 2'
          write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
          write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
+         write(*,*) '#TIRust DP = ',TIRUST_DP_USAGE
+         write(*,*) '#TIRust precision note: DP denotes input'
+     &        //' precision; tensor routes can use higher precision.'
+         write(*,*) '#TIRust QP = ',TIRUST_QP_USAGE
       endif
 
       call cpu_time(job_finished)

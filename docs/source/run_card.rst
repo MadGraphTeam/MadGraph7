@@ -55,11 +55,25 @@ fixed parameters. Their entries are described below.
     ``auto`` picks ``simd_512``, then ``simd_256`` on x86. On ARM it picks ``scalar``,
     because the vectorized mode is currently slower there.
 
-``precision`` (``"color32"``)
+``precision`` (``"denom64"``)
     Floating-point precision of the matrix elements. ``all64`` and ``all32`` use double and
     single precision throughout. ``color32`` evaluates the color algebra in single precision
-    and everything else in double precision. ``denom64`` keeps the momenta and propagator
-    denominators in double precision and uses single precision elsewhere.
+    and everything else in double precision. ``denom64``, the default, keeps the momenta and
+    propagator denominators in double precision and uses single precision elsewhere.
+
+``precision_check`` (``0``)
+    Fraction of the events evaluated again with the matrix elements in ``all64``, to check
+    the precision of a run in any other precision. Off by default, because the run then
+    also builds an ``all64`` CPU library of each subprocess (``[run] validation``
+    reweights the whole sample through MadtRex instead). Once the events are written, the
+    two are compared at the momenta of events drawn at random from the output (at most
+    1000 of them, hidden entry ``precision_check_max_events``). With
+    ``r = |M|^2 / |M|^2_all64 - 1`` per event, the mean of ``r`` (the relative change of the
+    cross section, since unweighted events already follow ``|M|^2``), the mean and the
+    maximum of ``|r|`` are logged and written to ``Events/<run>/precision_check.json``; the
+    run warns when an event deviates by more than ``1e-3`` (hidden entry
+    ``precision_check_threshold``) or is not finite, in which case ``all64`` or ``color32``
+    is the safer choice for that process.
 
 
 ``cpu_thread_pool_size`` (``-1``), ``gpu_thread_pool_size`` (``1``), ``combine_thread_pool_size`` (``-1``)
@@ -363,6 +377,10 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``damping`` (``0.4``)
     Damping of the grid updates. Raise it if the grid oscillates instead of settling.
 
+``adaptive_discrete`` (``false``)
+    Adapt the probabilities of the flavour and permutation choices during the survey,
+    together with the grids. Off until it is shown to pay off.
+
 ``optimization_patience`` (``5``), ``optimization_threshold`` (``0.9``)
     The grid optimization stops when this many iterations in a row fail to improve the
     result by the given relative margin.
@@ -556,12 +574,12 @@ for an output that has them.
     ``"full"`` corrects the events to full colour in the second pass. ``"lc"`` keeps the
     leading-colour events and skips the second pass.
 
-``mode`` (``"reweight"``)
+``mode`` (``"unweight"``)
     ``"reweight"`` keeps the full- to leading-colour ratio in the event weights.
     ``"unweight"`` unweights the events a second time with respect to that ratio. The
     events then have unit weights apart from overweights.
 
-``first_pass_max_overweight_truncation`` (``0.01``), ``first_pass_freeze_max_weight_after`` (``10000``)
+``first_pass_max_overweight_truncation`` (``0.001``), ``first_pass_freeze_max_weight_after`` (``10000``)
     ``max_overweight_truncation`` and ``freeze_max_weight_after`` of the first,
     leading-colour unweighting, in unweight mode. The ones of ``[generation]`` set the
     second unweighting, to full colour, which gives the final events. In reweight mode, the
@@ -751,7 +769,7 @@ Optimizer
 ``adam_beta1`` (``0.9``), ``adam_beta2`` (``0.999``), ``adam_eps`` (``1e-8``), ``adam_weight_decay`` (``1e-4``)
     Adam parameters.
 
-``grad_clip_threshold`` (``0.003``)
+``grad_clip_threshold`` (``0.03``)
     Maximum gradient norm. ``0`` disables clipping.
 
 Replay buffer
@@ -765,8 +783,9 @@ Training can reuse earlier samples. This saves matrix element evaluations.
 ``minimum_buffer_size`` (``10000``)
     Number of buffered samples needed before training on the buffer starts.
 
-``buffered_steps_fraction`` (``0.8``)
-    Fraction of the training steps done on buffered samples.
+``buffered_steps_fraction`` (``"auto"``)
+    Fraction of the training steps done on buffered samples. ``auto`` is 0 for
+    ``[amplicol]`` subprocesses and 0.8 otherwise.
 
 ``buffer_skip_batches`` (``1000``)
     Number of initial batches that are not stored.

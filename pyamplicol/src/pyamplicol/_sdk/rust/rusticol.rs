@@ -142,6 +142,18 @@ pub mod virtual_amplitudes {
             parameters_json: Option<&str>,
             strategy: Option<&str>,
         ) -> Result<Self> {
+            Self::open_with_options(path, process, parameters_json, strategy, None)
+        }
+        /// [`Runtime::open`] with the runtime options of a TOML text
+        /// (`rusticol_virtual_open_with_options`; [`Runtime::set_options`]):
+        /// its `threads` bound the load too; a refused option opens nothing.
+        pub fn open_with_options(
+            path: impl AsRef<Path>,
+            process: Option<&str>,
+            parameters_json: Option<&str>,
+            strategy: Option<&str>,
+            options_toml: Option<&str>,
+        ) -> Result<Self> {
             // SAFETY: no borrowed inputs are involved in this version query.
             if unsafe { ffi::rusticol_virtual_abi_version() } != 2 {
                 return Err(Error::new(
@@ -153,16 +165,27 @@ pub mod virtual_amplitudes {
             let process = optional_cstring(process, "process")?;
             let parameters = optional_cstring(parameters_json, "exact parameters JSON")?;
             let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let options = optional_cstring(options_toml, "runtime options TOML")?;
             let mut handle = ptr::null_mut();
             // SAFETY: owned strings and handle output live for the full call.
             check(unsafe {
-                ffi::rusticol_virtual_open(
-                    path.as_ptr(),
-                    optional_pointer(&process),
-                    optional_pointer(&parameters),
-                    optional_pointer(&strategy),
-                    &mut handle,
-                )
+                match &options {
+                    None => ffi::rusticol_virtual_open(
+                        path.as_ptr(),
+                        optional_pointer(&process),
+                        optional_pointer(&parameters),
+                        optional_pointer(&strategy),
+                        &mut handle,
+                    ),
+                    Some(_) => ffi::rusticol_virtual_open_with_options(
+                        path.as_ptr(),
+                        optional_pointer(&process),
+                        optional_pointer(&parameters),
+                        optional_pointer(&strategy),
+                        optional_pointer(&options),
+                        &mut handle,
+                    ),
+                }
             })?;
             let mut runtime = Self {
                 handle: NonNull::new(handle).ok_or_else(|| {
@@ -286,6 +309,63 @@ pub mod virtual_amplitudes {
                     self.handle.as_ptr(),
                     c_int::from(unchecked),
                 )
+            })
+        }
+        /// Native threads of later evaluations (the run card's
+        /// `evaluation.threads`; None: `RAYON_NUM_THREADS`, else every core).
+        pub fn set_threads(&mut self, threads: Option<u32>) -> Result<()> {
+            if threads == Some(0) {
+                return Err(Error::new(
+                    ErrorKind::InvalidArgument,
+                    "threads must be a positive count (None: the default)",
+                ));
+            }
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_threads(self.handle.as_ptr(), threads.unwrap_or(0))
+            })
+        }
+        /// Runtime options of a TOML text (its `[evaluation]` table; a full
+        /// run card is accepted): checked as a whole, then applied; nothing
+        /// changes on an error. A setter called afterwards overrides the key
+        /// it sets.
+        pub fn set_options(&mut self, options_toml: &str) -> Result<()> {
+            let text = checked_cstring(options_toml, "runtime options TOML")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe { ffi::rusticol_virtual_set_options(self.handle.as_ptr(), text.as_ptr()) })
+        }
+        /// [`Runtime::set_options`] with the TOML of a file.
+        pub fn set_options_file(&mut self, path: impl AsRef<Path>) -> Result<()> {
+            let text = std::fs::read_to_string(path.as_ref()).map_err(|error| {
+                Error::new(
+                    ErrorKind::InvalidArgument,
+                    format!(
+                        "cannot read runtime options {}: {error}",
+                        path.as_ref().display()
+                    ),
+                )
+            })?;
+            self.set_options(&text)
+        }
+        /// The handle's settings as JSON (`rusticol_virtual_options_json`).
+        pub fn options_json(&self) -> Result<String> {
+            read_string_checked(
+                |out, count, needed| {
+                    // SAFETY: helper supplies writable buffers; handle is borrowed live.
+                    unsafe {
+                        ffi::rusticol_virtual_options_json(self.handle.as_ptr(), out, count, needed)
+                    }
+                },
+                check,
+            )
+        }
+        /// Lane rescue of later evaluations, the Python API's `lane_rescue=`
+        /// (default true): a refused reduction lane reduced again in a
+        /// higher carrier; false leaves it to fail its point.
+        pub fn set_lane_rescue(&mut self, on: bool) -> Result<()> {
+            // SAFETY: exclusive live handle.
+            check(unsafe {
+                ffi::rusticol_virtual_set_lane_rescue(self.handle.as_ptr(), c_int::from(on))
             })
         }
         /// Failure policy of later evaluations, the Python API's
@@ -414,8 +494,8 @@ pub mod virtual_amplitudes {
         }
         /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
         /// of a loop-induced process or, at every colour accuracy, of a
-        /// Born-interfered one (lit-fc-hel) (`resolved` false: their sum per
-        /// point, RULED Q39; true: per selected row its colour components in
+        /// Born-interfered one (`resolved` false: their sum per
+        /// point; true: per selected row its colour components in
         /// the selection's colour resolution, or the accuracy's resolved
         /// layout); refusals are errors.
         #[allow(clippy::too_many_arguments)]
@@ -973,6 +1053,25 @@ pub mod virtual_amplitudes {
                 strategy: *const c_char,
                 output: *mut *mut c_void,
             ) -> c_int;
+            pub(super) fn rusticol_virtual_open_with_options(
+                path: *const c_char,
+                process: *const c_char,
+                parameters: *const c_char,
+                strategy: *const c_char,
+                options: *const c_char,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_threads(handle: *mut c_void, threads: u32) -> c_int;
+            pub(super) fn rusticol_virtual_set_options(
+                handle: *mut c_void,
+                options: *const c_char,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_options_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
             pub(super) fn rusticol_virtual_free(handle: *mut c_void) -> c_int;
             pub(super) fn rusticol_virtual_clear(handle: *mut c_void) -> c_int;
             pub(super) fn rusticol_virtual_shape(
@@ -1005,6 +1104,8 @@ pub mod virtual_amplitudes {
                 handle: *mut c_void,
                 unchecked: c_int,
             ) -> c_int;
+            pub(super) fn rusticol_virtual_set_lane_rescue(handle: *mut c_void, on: c_int)
+            -> c_int;
             pub(super) fn rusticol_virtual_set_on_failure(
                 handle: *mut c_void,
                 on_failure: *const c_char,
@@ -2281,8 +2382,8 @@ impl Runtime {
         })
     }
 
-    /// Kinematics improvement of later f64 evaluations (m-lit
-    /// lit-psimprove), the Python API's `kinematics_improvement=`:
+    /// Kinematics improvement of later f64 evaluations, the Python API's
+    /// `kinematics_improvement=`:
     /// `"z-shift"` (MadLoop's default), `"rescaling"`, `"projection"` or
     /// `"off"`. Every evaluation of this runtime is binary64, so the variant
     /// runs only with [`Self::set_kinematics_improvement_binary64`]`(true)`;

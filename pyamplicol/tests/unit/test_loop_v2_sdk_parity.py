@@ -1145,7 +1145,9 @@ def test_the_native_runtime_honours_its_thread_bound(ggtt, tmp_path):
     )
     assert run.returncode == 0, run.stderr[-4000:]
     before, after = map(int, run.stdout.split()[-2:])
-    assert after == before, (before, after)
+    # No thread outlives the call (a thread of the interpreter present before
+    # it may exit meanwhile on a loaded host: the count may drop, never grow).
+    assert after <= before, (before, after)
 
 
 EXECUTOR_THREADS_SCRIPT = r"""

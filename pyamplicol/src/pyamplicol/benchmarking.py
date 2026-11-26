@@ -15,7 +15,7 @@ import tomllib
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -2802,6 +2802,12 @@ class VirtualProfileResult:
     # most frequent first.
     best_effort_points: int = 0
     best_effort_reasons: tuple[tuple[str, int], ...] = ()
+    # The timed points served with a lane rescue (``VirtualLaneDiagnostic.
+    # lane_rescue``: reduction lanes refused in binary64 reduced again in a
+    # higher carrier; in the checked and the unchecked mode) and their causes
+    # (``lane_rescue_reason``), most frequent first.
+    lane_rescue_points: int = 0
+    lane_rescue_reasons: tuple[tuple[str, int], ...] = ()
     # The peak resident set size of this process over the binary64 warm-up
     # and timed calls (``reporting.resources.peak_memory``).
     peak_memory: PeakMemory | None = None
@@ -2817,6 +2823,16 @@ class VirtualProfileResult:
     # about 1 on one core (below 1 when the host took the core from it),
     # approaching N on N native threads.
     cpu_per_wall: float | None = None
+    # The seconds of the binary64 warm entry when it replaced the untimed
+    # warm-up point (``_prepared``; None: none ran).
+    prepared_seconds: float | None = None
+    # The reference pass was asked for but left out (its timed calls, or
+    # all of it): rule B on this backend's measured numbers
+    # (``reference["scope"]``, ``_scope_drops``).
+    reference_skipped: bool = False
+    # The untimed reference point's seconds when one ran (a measured cold
+    # point: what rule B learns from it).
+    reference_point_seconds: float | None = None
     # With N > 1 native threads (``profile --runtime-threads``): the time per
     # point of the same calls' points on one thread (a short timing of its
     # own, ``one_thread_profile``) and its timed calls; None: not measured.
@@ -2824,14 +2840,40 @@ class VirtualProfileResult:
     one_thread_calls: int = 0
 
     def cli_json(self) -> dict[str, object]:
-        """The JSON form (``cli.main``): every field, the one-thread timing's
-        only when it ran (one thread: the document as before it existed)."""
+        """The JSON form (``cli.main``), plain JSON values at every level
+        (``_plain``): every field, the one-thread timing's only when it ran
+        (one thread: the document as before it existed); at each precision
+        level, binary64 and the reference, ``prepared_seconds`` only where
+        its warm entry ran."""
 
-        out = {item.name: getattr(self, item.name) for item in fields(self)}
+        out = cast("dict[str, Any]", _plain(self))
         if self.one_thread_seconds_per_point is None:
             out.pop("one_thread_seconds_per_point")
             out.pop("one_thread_calls")
+        if self.prepared_seconds is None:
+            # No warm entry ran: the document as before it existed.
+            out.pop("prepared_seconds")
+        if self.reference is not None and self.reference.prepared_seconds is None:
+            out["reference"].pop("prepared_seconds")
+        if not self.reference_skipped:
+            out.pop("reference_skipped")
+        if self.reference_point_seconds is None:
+            out.pop("reference_point_seconds")
         return out
+
+
+def _plain(value: object) -> object:
+    """``value`` as plain JSON values (``VirtualProfileResult.cli_json``): a
+    dataclass as its fields, a sequence as a list, a mapping with string
+    keys; leaves as they are."""
+
+    if is_dataclass(value) and not isinstance(value, type):
+        return {item.name: _plain(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [_plain(entry) for entry in value]
+    if isinstance(value, Mapping):
+        return {str(key): _plain(entry) for key, entry in value.items()}
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -2863,6 +2905,9 @@ class PrecisionTiming:
     # ones in the same process (their state resident).
     peak_memory: PeakMemory | None = None
     digits: int | None = None
+    # The seconds of the carrier's warm entry when it replaced the untimed
+    # warm-up call (``_prepared``; None: no warm entry ran).
+    prepared_seconds: float | None = None
 
 
 def is_virtual_artifact(path: os.PathLike[str] | str) -> bool:
@@ -3001,6 +3046,8 @@ def profile_virtual(
     artifact: os.PathLike[str] | str | None = None,
     optimistic: bool = False,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+    warm_entry: bool = False,
+    precision: Mapping[str, Any] | None = None,
 ) -> VirtualProfileResult:
     """Profile a loop artifact path or a loaded virtual :class:`Runtime`
     (``VirtualProfileResult``) on ``points`` (default: the distinct flat
@@ -3056,6 +3103,8 @@ def profile_virtual(
                 options["reduction_target"] = evaluation.reduction_target
             if evaluation.reduction_unchecked:
                 options["reduction_unchecked"] = True
+            if not evaluation.lane_rescue:
+                options["lane_rescue"] = False
         runtime = Runtime.load(
             source,
             process=None if evaluation is None else evaluation.process,
@@ -3082,6 +3131,13 @@ def profile_virtual(
     )
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
     options = {"poles": "none", "on_failure": on_failure}
+    # A measured precision other than binary64 (``loop_profile.
+    # MeasuredPrecision.options``): the same calls in its arithmetic, its
+    # batch fitted to its cost (``_fitted_calls``) unless ``fit`` is false
+    # (a --batch-size given).
+    carrier = dict(precision or {})
+    fit = bool(carrier.pop("fit", True)) and bool(carrier)
+    options.update(carrier)
     if reduction is not None:
         options["reduction"] = reduction
     if optimistic:
@@ -3123,16 +3179,43 @@ def profile_virtual(
     # expensive process that call alone takes minutes.
     report(0, bench.warmup_runs + max(bench.minimum_samples, 1), None, ())
     with peak_memory() as peak:
-        profile = _profile_virtual_calls(
-            runtime, batches, bench, options, scales, report
+        # The optimistic pass's warm entry instead of its untimed warm-up
+        # point (``warm_entry``: the caller's ``profile_plan.takes_entry``),
+        # inside the peak's region as the warm-up call would be.
+        prepared = (
+            _prepared(runtime, options, options.get("reduction"))
+            if warm_entry and optimistic and bench.warmup_runs > 0
+            else None
         )
-    profile = replace(profile, peak_memory=peak.result)
+        # The binary64 calls' warm-ups (one fewer after the entry); the
+        # reference pass keeps its own (``_reference_timing``).
+        calls = (
+            bench
+            if prepared is None
+            else replace(bench, warmup_runs=bench.warmup_runs - 1)
+        )
+        if fit:
+            calls = _fitted_calls(runtime, batches, calls, options, scales)
+            size = calls.batch_size
+        profile = _profile_virtual_calls(
+            runtime, batches, calls, options, scales, report
+        )
+    profile = replace(profile, peak_memory=peak.result, prepared_seconds=prepared)
     if monitor is not None:
         monitor("binary64-result", {"profile": profile})
     timing = None
-    if reference is not None:
+    scope = None if reference is None else reference.get("scope")
+
+    def drops(reference_point: float | None = None, entry: float | None = None) -> bool:
+        return scope is not None and _scope_drops(
+            profile, scope, bench.batch_size, reference_point, entry
+        )
+
+    skipped = reference is not None and drops()
+    point_seconds = None
+    if reference is not None and not skipped:
         with peak_memory() as reference_peak:
-            timing = _reference_timing(
+            timing, point_seconds = _reference_pass(
                 runtime,
                 batches,
                 bench,
@@ -3141,9 +3224,85 @@ def profile_virtual(
                 reference,
                 binary64=profile.seconds_per_point,
                 monitor=monitor,
+                stop=drops if scope is not None else None,
+                entry_stop=(lambda seconds: drops(entry=seconds))
+                if scope is not None
+                else None,
             )
-        timing = replace(timing, peak_memory=reference_peak.result)
-    return replace(profile, reference=timing)
+        if timing is None:
+            skipped = True
+        else:
+            timing = replace(timing, peak_memory=reference_peak.result)
+    return replace(
+        profile,
+        reference=timing,
+        reference_skipped=skipped,
+        reference_point_seconds=point_seconds,
+    )
+
+
+def _fitted_calls(
+    runtime: Any,
+    batches: Any,
+    bench: BenchmarkConfig,
+    options: Mapping[str, Any],
+    scales: Callable[[Momenta], Any],
+) -> BenchmarkConfig:
+    """A measured precision's calls (``profile_virtual(precision=)``): its
+    one-point warm-up call measures its cost per point (untimed; after the
+    warm entry the same call, a first measured point), and the batch falls
+    to what ``target_runtime`` affords for ``minimum_samples`` calls, a
+    power of two of at most ``batch_size`` points, at least one; the
+    measuring call is its warm-up (no other: a carrier's first call at a
+    new batch size costs no more than its next, measured on gg_ggg in
+    double-double). A cheap precision keeps the batch given."""
+
+    batch = batches(0, 1)
+    begin = time.perf_counter()
+    runtime.evaluate(batch, mu_r2=scales(batch), **options)
+    per_point = time.perf_counter() - begin
+    calls = max(int(bench.minimum_samples), 1)
+    affordable = float(bench.target_runtime) / max(calls * per_point, 1e-12)
+    size = 1
+    while size * 2 <= min(int(bench.batch_size), affordable):
+        size *= 2
+    size = max(min(size, int(bench.batch_size)), 1)
+    return replace(bench, batch_size=size, warmup_runs=0)
+
+
+def _scope_drops(
+    profile: VirtualProfileResult,
+    scope: Mapping[str, Any],
+    batch: int,
+    reference_point: float | None = None,
+    entry: float | None = None,
+) -> bool:
+    """Rule B re-called by the decider's runtime timing on its own measured
+    numbers (``profile_plan.rule_b_drops``): this backend's ``Known`` from the
+    parent's (``scope["known"]``) with its measured binary64 chunk, its warm
+    entry and, after its untimed reference point, that point's seconds; a
+    reference that warms through the entry (``reference_entry``, no untimed
+    point) counts the entry's measured seconds (``entry``, none before),
+    never the cold point (m-4)."""
+
+    from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
+    from pyamplicol.profile_plan import Known, lower_bound
+
+    given = dict(scope.get("known") or {})
+    known = Known(
+        point=given.get("point"),
+        chunk=profile.seconds_per_point,
+        warm=profile.prepared_seconds,
+        reference=reference_point
+        if reference_point is not None
+        else given.get("reference"),
+        start=float(given.get("start") or 0.0),
+        warm_entry=profile.prepared_seconds is not None,
+        reference_entry=bool(given.get("reference_entry")) and reference_point is None,
+        reference_warm=entry,
+    )
+    total = lower_bound(known, lanes=min(DEFAULT_LANES, max(batch, 1)), reference=True)
+    return total > float(scope["bound"])
 
 
 def one_thread_profile(
@@ -3265,6 +3424,8 @@ def _reference_calls(
     call: Callable[[int, int], float],
     progress: Callable[[int, int, float | None, Sequence[float]], None] | None,
     prior: float | None,
+    *,
+    stop: Callable[[float], bool] | None = None,
 ) -> tuple[list[float], int]:
     """The reference pass's protocol (``_reference_timing``): one untimed
     call of one point (``warmup``: the carrier's first call builds what it
@@ -3285,9 +3446,13 @@ def _reference_calls(
         return max(len(walls) + int(room // estimate), len(walls), 1)
 
     def fitted(per_point: float | None) -> int:
+        # What the budget affords, down to a power of two (no padded lane in
+        # any carrier: binary64's chunk is one, the extended carriers run a
+        # batch in chunks of the widths of its binary digits).
         if per_point is None or per_point <= 0.0:
             return size
-        return max(1, min(size, int(budget // per_point)))
+        affords = max(1, min(size, int(budget // per_point)))
+        return 1 << (affords.bit_length() - 1)
 
     done = 0
     per_point = prior
@@ -3301,6 +3466,9 @@ def _reference_calls(
         # call's fixed cost counted in full).
         per_point = call(0, 1)
         done = 1
+        if stop is not None and stop(per_point):
+            # The untimed point says the budget is exceeded: no timed call.
+            return [], 0
         chunk = fitted(per_point)
         estimate = per_point * chunk
         total = 1 + planned((), estimate)
@@ -3340,6 +3508,35 @@ def _reference_timing(
     binary64: float | None = None,
     monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
 ) -> PrecisionTiming:
+    """``_reference_pass`` without a scope: its timing."""
+
+    timing, _ = _reference_pass(
+        runtime,
+        batches,
+        bench,
+        reduction,
+        scales,
+        reference,
+        binary64=binary64,
+        monitor=monitor,
+    )
+    assert timing is not None
+    return timing
+
+
+def _reference_pass(
+    runtime: Any,
+    batches: _PointBatches,
+    bench: BenchmarkConfig,
+    reduction: str | None,
+    scales: Callable[[Momenta], Any],
+    reference: Mapping[str, Any],
+    *,
+    binary64: float | None = None,
+    monitor: Callable[[str, Mapping[str, Any]], None] | None = None,
+    stop: Callable[[float], bool] | None = None,
+    entry_stop: Callable[[float], bool] | None = None,
+) -> tuple[PrecisionTiming | None, float | None]:
     """The reference carrier's time per point (``PrecisionTiming``): one
     fully optimistic pass per point, the unchecked reduction of the
     profiled backend alone (``reduction``, "auto" resolved to the runtime's
@@ -3355,7 +3552,9 @@ def _reference_timing(
     carrier. Call k takes the first points of the binary64 timing's batch
     k. ``binary64``: the binary64 seconds per point (the ETA prior before a
     reference call is back, with ``REFERENCE_PRIOR``); ``monitor("reference",
-    ...)`` after each call."""
+    ...)`` after each call; ``stop`` after the untimed point and
+    ``entry_stop`` after the warm entry (their seconds; True: no timed
+    call)."""
 
     from pyamplicol.loops.v2.plan_export import DEFAULT_LANES
 
@@ -3368,7 +3567,7 @@ def _reference_timing(
         **{
             k: v
             for k, v in reference.items()
-            if k not in ("points", "budget", "seconds_per_point")
+            if k not in ("points", "budget", "seconds_per_point", "scope", "entry")
         },
     }
     backend = _single_backend(runtime, reference.get("reduction", reduction))
@@ -3425,7 +3624,32 @@ def _reference_timing(
                 },
             )
 
-    walls, size = _reference_calls(budget, warm, size, call, report, prior)
+    prepared = None
+    scope = reference.get("scope")
+    # With rule B open and this reference's cost unknown, its untimed point
+    # (not the entry) measures it (``stop``).
+    unknown = scope is not None and (scope.get("known") or {}).get("reference") is None
+    if warm and reference.get("entry") and not unknown:
+        # The warm entry instead of the untimed point (the caller's
+        # ``profile_plan.takes_entry``).
+        report(0, 1, prior, ())
+        prepared = _prepared(runtime, options, backend)
+        warm = prepared is None
+        # Rule B re-called with the entry's measured seconds (m-4).
+        if prepared is not None and entry_stop is not None and entry_stop(prepared):
+            return None, None
+    first: list[float] = []
+
+    def stopped(per_point: float) -> bool:
+        first.append(per_point)
+        return stop is not None and stop(per_point)
+
+    walls, size = _reference_calls(
+        budget, warm, size, call, report, prior, stop=stopped if warm else None
+    )
+    point = first[0] if first else None
+    if not walls:
+        return None, point
     return PrecisionTiming(
         arithmetic,
         size,
@@ -3438,7 +3662,36 @@ def _reference_timing(
         sum(reasons.values()),
         tuple(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))),
         digits=cast("int | None", options.get("precision")),
-    )
+        prepared_seconds=prepared,
+    ), point
+
+
+def _prepared(
+    runtime: Any,
+    options: Mapping[str, Any],
+    backend: str | None,
+) -> float | None:
+    """The warm entry of a stream (``prepare`` of the runtime's backend: it
+    builds what the carrier's first evaluation with ``backend`` builds
+    lazily, without a point, in the unchecked mode of ``options``) in place
+    of its untimed warm-up point. Its seconds, or None when it did not run
+    (no entry, an unknown backend, or the entry failed: the point then
+    warms)."""
+
+    prepare = getattr(getattr(runtime, "_backend", runtime), "prepare", None)
+    if not callable(prepare) or backend is None:
+        return None
+    carrier = {k: options[k] for k in ("arithmetic", "precision") if k in options}
+    begin = time.perf_counter()
+    try:
+        prepare(
+            **carrier,
+            reduction=backend,
+            unchecked=bool(options.get("reduction_unchecked")),
+        )
+    except Exception:
+        return None
+    return time.perf_counter() - begin
 
 
 def _single_backend(runtime: Any, reduction: str | None) -> str | None:
@@ -3503,6 +3756,8 @@ def _profile_virtual_calls(
     reasons: dict[str, int] = {}
     served = 0
     served_reasons: dict[str, int] = {}
+    rescued = 0
+    rescued_reasons: dict[str, int] = {}
     contribution = runtime.contribution_kind
     reductions: list[Any] = []
     warmup = bench.warmup_runs
@@ -3511,8 +3766,11 @@ def _profile_virtual_calls(
     from pyamplicol.profile_plan import WARMUP_CALL_SECONDS
 
     def call(k: int) -> float:
-        nonlocal failed, served
-        batch = batches(k)
+        nonlocal failed, served, rescued
+        # The first ``batch_size`` points of call k's batch: a measured
+        # precision's fitted batch (``_fitted_calls``) is smaller than the
+        # batches' own, which ``batches(k)`` alone would return whole.
+        batch = batches(k, bench.batch_size)
         mu_r2 = scales(batch)
         if k < warmup:
             # One point first: when a full call would cost more than
@@ -3540,6 +3798,10 @@ def _profile_virtual_calls(
             wall = time.perf_counter() - begin
             cpu_seconds[0] += time.process_time() - cpu
         for valid, lane in zip(result.valid, result.diagnostics, strict=True):
+            rescue = lane_rescue_reason(lane)
+            if rescue is not None:
+                rescued += 1
+                rescued_reasons[rescue] = rescued_reasons.get(rescue, 0) + 1
             if valid:
                 continue
             reason = failure_reason(lane)
@@ -3586,9 +3848,24 @@ def _profile_virtual_calls(
         best_effort_reasons=tuple(
             sorted(served_reasons.items(), key=lambda item: (-item[1], item[0]))
         ),
+        lane_rescue_points=rescued,
+        lane_rescue_reasons=tuple(
+            sorted(rescued_reasons.items(), key=lambda item: (-item[1], item[0]))
+        ),
         threads=_native_threads(runtime),
         cpu_per_wall=cpu_seconds[0] / sum(walls) if sum(walls) > 0.0 else None,
     )
+
+
+def lane_rescue_reason(diagnostic: Any) -> str | None:
+    """A point's lane-rescue cause from its ``VirtualLaneDiagnostic``
+    (``lane_rescue``): "reduction lanes rescued in <carrier>", the highest
+    carrier that served one of its lanes; None without a lane rescue."""
+
+    rescue = getattr(diagnostic, "lane_rescue", None)
+    if rescue is None:
+        return None
+    return f"reduction lanes rescued in {rescue.carrier}"
 
 
 def failure_reason(diagnostic: Any) -> str:

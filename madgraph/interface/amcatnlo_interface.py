@@ -120,6 +120,7 @@ def generate_directories_fks_async(args):
     me = fks_helas.load_matrix_element(mefile, ime + 1)
 
     aloha_infos = set(aloha_cached_infos(curr_exporter))
+    dp_terminal = set(getattr(curr_exporter, '_dp_terminal_pending', {}))
     
     calls, splitorders = curr_exporter.generate_directories_fks(me, curr_fortran_model, ime, nme, path, olpopts)
 
@@ -138,7 +139,12 @@ def generate_directories_fks_async(args):
             'proc_characteristic': dict(curr_exporter.proc_characteristic),
             # the aloha computations this worker added, to replay them
             'aloha_infos': [info for info in aloha_cached_infos(curr_exporter) \
-                            if info not in aloha_infos]}
+                            if info not in aloha_infos],
+            # the loop directories whose private DP terminal updaters the
+            # parent's finalize must prove (see finalize_dp_terminal_updates)
+            'dp_terminal_pending': {directory: entry for directory, entry in \
+                getattr(curr_exporter, '_dp_terminal_pending', {}).items() \
+                if directory not in dp_terminal}}
 
 class CheckFKS(mg_interface.CheckValidForCmd):
 
@@ -1222,6 +1228,13 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         self.replay_aloha_computations([info for diroutput in diroutputmap \
                                         for info in diroutput['aloha_infos']])
+        pending = [diroutput['dp_terminal_pending'] for diroutput in diroutputmap \
+                   if diroutput['dp_terminal_pending']]
+        if pending:
+            merged = dict(getattr(self._curr_exporter, '_dp_terminal_pending', {}))
+            for entries in pending:
+                merged.update(entries)
+            self._curr_exporter._dp_terminal_pending = merged
         self._curr_exporter.write_born_dirs([diroutput['borndir'] \
                                              for diroutput in diroutputmap])
 

@@ -1086,3 +1086,216 @@ def test_packaged_rust_wrapper_compiles_and_serves_the_extras(artifacts, tmp_pat
         found = [int(bits) for bits in lines[axis].split()]
         assert found == [_bits(v) & (2**64 - 1) for v in expected[axis]], axis
     assert json.loads(lines["decimal"]) == expected["decimal"]
+
+
+# The runtime-options calls through every wrapper (USER 2026-11-19): open with
+# a TOML, read back; a TOML and the thread setter on the handle, read back; a
+# TOML file where the wrapper reads one (C++, Rust). Each client prints
+# "<label> <options_json>" lines.
+OPTIONS_OPEN = "[evaluation]\nthreads = 2\npoles = 'none'\nreduction = 'ninjars'\n"
+OPTIONS_SET = "[evaluation]\nlane_rescue = false\n"
+OPTIONS_FILE = "[evaluation]\non_failure = 'return'\n"
+
+OPTIONS_C = r"""
+#include "rusticol_virtual.h"
+#include <stdio.h>
+#include <stdlib.h>
+static void show(const char *label, rusticol_virtual_handle *h) {
+    size_t n = 0;
+    if (rusticol_virtual_options_json(h, NULL, 0, &n) != 0) exit(2);
+    char *text = malloc(n);
+    if (rusticol_virtual_options_json(h, text, n, &n) != 0) exit(3);
+    printf("%s %s\n", label, text);
+    free(text);
+}
+int main(int argc, char **argv) {
+    rusticol_virtual_handle *h = NULL;
+    if (rusticol_virtual_open_with_options(argv[1], argv[2], NULL, NULL, argv[3],
+                                           &h) != 0) {
+        fprintf(stderr, "%s\n", rusticol_virtual_last_error_message()); return 1;
+    }
+    show("open", h);
+    if (rusticol_virtual_set_options(h, argv[4]) != 0) return 4;
+    if (rusticol_virtual_set_threads(h, 3) != 0) return 5;
+    show("set", h);
+    rusticol_virtual_free(h);
+    return 0;
+}
+"""
+
+OPTIONS_CPP = r"""
+#include "rusticol_virtual.hpp"
+#include <iostream>
+int main(int argc, char **argv) {
+    auto runtime = rusticol::VirtualRuntime::with_options(
+        argv[1], argv[3], std::string(argv[2]));
+    std::cout << "open " << runtime.options_json() << "\n";
+    runtime.set_options(argv[4]);
+    runtime.set_threads(3);
+    std::cout << "set " << runtime.options_json() << "\n";
+    runtime.set_options_file(argv[5]);
+    std::cout << "file " << runtime.options_json() << "\n";
+    return 0;
+}
+"""
+
+OPTIONS_FORTRAN = r"""
+program options_client
+  use rusticol_virtual
+  use, intrinsic :: iso_c_binding, only: c_int
+  implicit none
+  type(virtual_runtime) :: runtime
+  character(len=4096) :: path, process, opened, later
+  integer(c_int) :: ierr
+  call get_command_argument(1, path)
+  call get_command_argument(2, process)
+  call get_command_argument(3, opened)
+  call get_command_argument(4, later)
+  call runtime%load(trim(path), process=trim(process), ierr=ierr, &
+    options_toml=unescape(trim(opened)))
+  if (ierr /= 0) stop 1
+  print '(a,1x,a)', 'open', runtime%options_json(ierr)
+  call runtime%set_options(unescape(trim(later)), ierr=ierr)
+  if (ierr /= 0) stop 4
+  call runtime%set_threads(3, ierr=ierr)
+  if (ierr /= 0) stop 5
+  print '(a,1x,a)', 'set', runtime%options_json(ierr)
+contains
+  ! The TOML arrives with "|" for its line breaks.
+  function unescape(text) result(out)
+    character(*), intent(in) :: text
+    character(len(text)) :: out
+    integer :: k
+    out = text
+    do k = 1, len(text)
+      if (out(k:k) == '|') out(k:k) = achar(10)
+    end do
+  end function
+end program
+"""
+
+OPTIONS_RUST = """
+#[path = "{wrapper}"]
+#[allow(dead_code)]
+mod rusticol;
+use rusticol::virtual_amplitudes::Runtime;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {{
+    let args: Vec<String> = std::env::args().collect();
+    let mut runtime =
+        Runtime::open_with_options(
+            &args[1], Some(args[2].as_str()), None, None, Some(&args[3]),
+        )?;
+    println!("open {{}}", runtime.options_json()?);
+    runtime.set_options(&args[4])?;
+    runtime.set_threads(Some(3))?;
+    println!("set {{}}", runtime.options_json()?);
+    runtime.set_options_file(&args[5])?;
+    println!("file {{}}", runtime.options_json()?);
+    Ok(())
+}}
+"""
+
+
+def test_the_runtime_options_calls_through_every_wrapper(artifacts, tmp_path):
+    """``open_with_options`` / ``with_options`` / ``load(..., options_toml=)``,
+    ``set_options``, ``set_threads``, ``options_json`` and (C++, Rust)
+    ``set_options_file`` through the C, C++, Fortran and packaged-Rust
+    wrappers, compiled against the staged loop SDK: every read-back shows the
+    keys set and nothing else changed."""
+
+    build = _staged_sdk()
+    include = [f"-I{SDK / 'include'}"]
+    link = [f"-L{build}", "-lrusticol_loop_sdk", f"-Wl,-rpath,{build}", "-lm"]
+    sources = {
+        "c": ("options.c", OPTIONS_C),
+        "cpp": ("options.cpp", OPTIONS_CPP),
+        "fortran": ("options.f90", OPTIONS_FORTRAN),
+        "rust": ("options.rs", OPTIONS_RUST.format(wrapper=WRAPPER)),
+    }
+    binaries = {}
+    for language, (name, text) in sources.items():
+        source = tmp_path / name
+        source.write_text(text)
+        binary = tmp_path / f"options-{language}"
+        command = {
+            "c": [
+                _compiler("CC", "cc"),
+                "-std=c11",
+                "-Wall",
+                *include,
+                str(source),
+                *link,
+            ],
+            "cpp": [
+                _compiler("CXX", "c++"),
+                "-std=c++17",
+                "-Wall",
+                *include,
+                str(source),
+                *link,
+            ],
+            "fortran": [
+                _compiler("FC", "gfortran"),
+                "-std=f2018",
+                f"-J{tmp_path}",
+                str(SDK / "fortran" / "rusticol_virtual.f90"),
+                str(source),
+                *link,
+            ],
+            "rust": [
+                _compiler("RUSTC", "rustc"),
+                "--edition=2021",
+                "-D",
+                "warnings",
+                str(source),
+                "-L",
+                f"native={build}",
+                "-l",
+                "dylib=rusticol_loop_sdk",
+                "-C",
+                f"link-arg=-Wl,-rpath,{build}",
+            ],
+        }[language]
+        subprocess.run([*command, "-o", str(binary)], check=True, cwd=tmp_path)
+        binaries[language] = binary
+    options_file = tmp_path / "options.toml"
+    options_file.write_text(OPTIONS_FILE)
+    for language, binary in binaries.items():
+        opened, later = OPTIONS_OPEN, OPTIONS_SET
+        if language == "fortran":
+            opened, later = opened.replace("\n", "|"), later.replace("\n", "|")
+        run = subprocess.run(
+            [
+                str(binary),
+                str(artifacts["uuddg"]),
+                "uuddg",
+                opened,
+                later,
+                str(options_file),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        assert run.returncode == 0, (language, run.stdout[-3000:], run.stderr[-3000:])
+        states = {
+            label: json.loads(text)
+            for label, text in (line.split(" ", 1) for line in run.stdout.splitlines())
+        }
+        opened_state = states["open"]
+        # (the counts are clamped to the usable cores: at least 3 here)
+        assert len(os.sched_getaffinity(0)) >= 3
+        assert opened_state["threads"] == 2, language
+        assert (opened_state["poles"], opened_state["reduction"]) == ("none", "ninjars")
+        assert (
+            opened_state["lane_rescue"] is True
+            and opened_state["on_failure"] == "best-effort"
+        )
+        set_state = states["set"]
+        assert set_state == {**opened_state, "lane_rescue": False, "threads": 3}, (
+            language
+        )
+        if language in ("cpp", "rust"):
+            assert states["file"] == {**set_state, "on_failure": "return"}, language

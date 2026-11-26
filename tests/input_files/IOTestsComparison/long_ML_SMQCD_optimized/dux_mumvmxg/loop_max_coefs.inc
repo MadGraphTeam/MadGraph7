@@ -1,2 +1,1 @@
-      INTEGER LOOPMAXCOEFS
-      PARAMETER (LOOPMAXCOEFS=35)
+../../_shared/long_ML_SMQCD_optimized%dux_mumvmxg%loop_max_coefs.inc

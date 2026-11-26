@@ -143,7 +143,8 @@ gridpack is created.
       - ``output_format``
       - ``--output_format``
     * -
-      - ``cpu_mode``, ``precision``, ``combine_thread_pool_size``
+      - ``cpu_mode``, ``precision``, ``combine_thread_pool_size``, ``use_pigz``,
+        ``lhe_compression``, ``lhe_gzip_algorithm``
       - Card only.
     * - ``[generation]``
       - ``events``
@@ -164,7 +165,7 @@ gridpack is created.
       - ``output_dir``, ``temp_output_dir``
       - ``--output_dir``, ``--temp_output_dir``
     * - ``[systematics]``
-      - ``enable``, ``mur``, ``muf``, ``together``, ``dynamical_scale``, ``pdf``,
+      - ``enable``, ``mur``, ``muf``, ``alps``, ``together``, ``dynamical_scale``, ``pdf``,
         ``write_inputs``
       - Card only.
 
@@ -216,7 +217,7 @@ Matrix elements
     .. code-block:: bash
 
         cd SubProcesses
-        make -j8 BACKEND=simd_128 FPTYPE=m USEBUILDDIR=1
+        make -j8 BACKEND=simd_128 FPTYPE=v USEBUILDDIR=1
 
     ``BACKEND`` is the ``cpu_mode`` in ``Cards/grid_run_card.toml`` for a ``cpu`` device, and
     ``cuda`` or ``hip`` for a GPU. ``FPTYPE`` follows the ``precision`` of the card:

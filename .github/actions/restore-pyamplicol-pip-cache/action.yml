@@ -1,0 +1,23 @@
+name: Restore pyamplicol pip cache
+description: Restores the pip download cache that warm_cache.yml builds for pyamplicol's pinned dependencies (restore only; main saves it)
+
+inputs:
+  python-version:
+    description: Python version of the setup-python step before this one
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set cache key
+      run: echo "CACHE_KEY=pip-pyamplicol-${ImageOS}-py${{ inputs.python-version }}" >> $GITHUB_ENV
+      shell: bash
+
+    # Restore-only. The exact key never matches a PR run (run id suffix), so
+    # the restore-keys prefix serves the newest generation warm_cache.yml saved.
+    - uses: actions/cache/restore@v5
+      with:
+        path: ~/.cache/pip
+        key: ${{ env.CACHE_KEY }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ env.CACHE_KEY }}-

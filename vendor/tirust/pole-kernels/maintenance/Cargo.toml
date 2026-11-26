@@ -1,0 +1,44 @@
+[package]
+name = "madloop-pole-kernel-maintenance"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+# A separate maintenance workspace leaves the installed TIRust and bridge
+# workspaces free to choose their own source locations and dependency patches.
+[workspace]
+
+[lib]
+name = "madloop_pole_kernels"
+path = "../src/lib.rs"
+
+[[bin]]
+name = "generate-poles"
+path = "../examples/generate_poles.rs"
+
+[[test]]
+name = "scalar_poles"
+path = "../tests/scalar_poles.rs"
+
+[[example]]
+name = "benchmark_poles"
+path = "../examples/benchmark_poles.rs"
+
+[dependencies]
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "07fc754f656c4744c9464f7c0f47d00b708b37e6", default-features = false, features = ["rust-codegen"] }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "tracing_max_level_info"] }
+
+[dev-dependencies]
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "07fc754f656c4744c9464f7c0f47d00b708b37e6", default-features = false, features = ["generated-evaluators", "rust-codegen"] }
+
+[patch.crates-io]
+symbolica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+numerica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+graphica = { git = "https://github.com/symbolica-dev/symbolica.git", rev = "d0424f9e414d3007889f8a98b404a1b1a91b37a7" }
+
+[profile.release]
+codegen-units = 16
+
+[profile.dev]
+opt-level = 2

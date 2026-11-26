@@ -153,7 +153,7 @@ impl Out {
         self.byte(b']');
     }
 
-    fn weights(&mut self, items: &[(usize, String, String)]) {
+    fn weights(&mut self, items: &[(usize, super::super::Text, super::super::Text)]) {
         self.list(items, |out, (index, re, im)| {
             out.byte(b'[');
             out.usize(*index);
@@ -387,13 +387,18 @@ fn term(out: &mut Out, term: &TermFile) {
         out.byte(b'}');
     });
     out.key(false, "rows");
-    out.list(rows, |out, (row, blocks)| {
+    out.byte(b'[');
+    for (k, (row, blocks)) in rows.iter().enumerate() {
+        if k > 0 {
+            out.byte(b',');
+        }
         out.byte(b'[');
-        out.usize(*row);
+        out.usize(row);
         out.byte(b',');
-        out.usizes(blocks);
+        out.list(blocks, |out, &block| out.usize(block as usize));
         out.byte(b']');
-    });
+    }
+    out.byte(b']');
     out.byte(b'}');
 }
 

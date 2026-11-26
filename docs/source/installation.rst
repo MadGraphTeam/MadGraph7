@@ -14,12 +14,15 @@ installed automatically the first time you launch a run. To build it yourself in
 run ``install madspace`` from the MadGraph7 prompt, or see the
 :doc:`MadSpace installation instructions <madspace/installation>`.
 
+For the optional TIRust/oneloopmaster MadLoop reduction backend, see
+:doc:`TIRust installation and controls <tirust>`.
+
 The ``pyamplicol`` package, used by the ``[amplicol]`` matrix-element backend, is
 installed in the same way with ``install pyamplicol``; see the
 :doc:`pyAmpliCol installation instructions <pyamplicol/user/installation>`.
 
 NinjaRS for MadLoop
-------------------
+-------------------
 
 The optional NinjaRS reduction backend uses oneloopmaster for scalar integrals.
 From the MadGraph7 prompt, run::
@@ -92,5 +95,16 @@ For a manual Fortran link, use both installed flag files in this order::
 
 Here ``PREFIX`` is the NinjaRS installation directory, usually
 ``HEPTools/ninjars``. The current validated compiler-runtime policy is
-GNU Fortran on Linux and places ``-lgcc_s`` before the archive. Additional
-platforms require validation of their compiler-runtime resolution.
+GNU Fortran on Linux and places ``-Wl,--undefined=`` flags for every binary128
+helper in the compiler's static ``libgcc.a``, then that archive (the path
+``gfortran -print-file-name=libgcc.a`` reports), then ``-lgcc_s``, before the
+archive. The flags make the linker take each helper from ``libgcc.a`` even when
+it is first referenced by an object linked after the NinjaRS flags.
+``-lgcc_s`` alone is not enough on some toolchains, for example GNU Fortran on
+Nix: the archive's own binary128 helpers still win and the installer's rounding
+check fails. Installations that record only ``-lgcc_s`` passed that check on
+their own toolchain and remain usable; ``install ninjars --update`` switches
+them to the current order. If the recorded ``libgcc.a`` disappears later (a GCC
+upgrade or a Nix garbage collection), NinjaRS reports itself unavailable until
+it is reinstalled. Additional platforms require validation of their
+compiler-runtime resolution.

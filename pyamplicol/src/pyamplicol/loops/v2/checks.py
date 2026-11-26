@@ -87,6 +87,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+from pyamplicol.loops.v2.stability import relative_text
+
 # The pole criterion against Catani's operator (moved here from
 # tools/loop_benchmark/stored_checks.py, which imports it): each deviation
 # within ESTIMATES x E plus CATANI_FLOOR of the prediction (binary64 with
@@ -578,8 +580,8 @@ def _pole_rows_binary64(result: Any, index: int, target: float) -> dict[Any, Che
     elif float(estimate.relative) > target:
         reason = (
             f"out of the binary64 scope: relative estimate "
-            f"{float(estimate.relative):.3g} above the default target "
-            f"accuracy {target:g}"
+            f"{relative_text(float(estimate.relative), '.3g')} above the default "
+            f"target accuracy {target:g}"
         )
     for sector, laurent in result.components["virtual"].items():
         values = [complex(x).real for x in laurent.coefficients]

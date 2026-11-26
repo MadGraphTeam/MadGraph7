@@ -37,7 +37,7 @@ Loading the matrix element
     import madspace as ms
 
     proc_dir = "PROC_ggttg"
-    me_path = os.path.join(proc_dir, "lib", "libmadmatrix_sm_P0_gg_ttxg_scalar_m.so")
+    me_path = os.path.join(proc_dir, "lib", "libmadmatrix_sm_P0_gg_ttxg_scalar_v.so")
     param_card = os.path.join(proc_dir, "Cards", "param_card.dat")
 
     ctx = ms.default_context()
@@ -47,7 +47,7 @@ Loading the matrix element
 The library name also appears, alongside every other subprocess of the process, in
 ``PROC_ggttg/SubProcesses/subprocesses.json``, as ``me_path`` with a ``{device}`` placeholder
 for the backend and an ``{fptype}`` placeholder for the floating-point precision the library
-was compiled with (``FPTYPE``, ``m`` by default). The model name (``sm``) is part of the
+was compiled with (``FPTYPE``, ``v`` by default). The model name (``sm``) is part of the
 library name too.
 
 :py:meth:`Context.load_matrix_element <madspace.Context.load_matrix_element>` returns a

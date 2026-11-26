@@ -595,7 +595,7 @@ def _fresh_inputs(name: str, count: int = 8):
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_c_abi_selections_on_fresh_points_equal_the_python_api(
-    artifacts, loop_native, backend
+    artifacts, loop_native, backend, monkeypatch
 ):
     """Fresh points of g g > h g g on which TIRust fails closed: every new
     call keeps the Python API's statuses, failure reasons and values (a
@@ -608,7 +608,11 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
     selections too."""
 
     from pyamplicol import Runtime
+    from pyamplicol.loops.v2 import reduction
 
+    # The points TIRust fails closed on are those the lane rescue (on by
+    # default) would serve: both sides run without it.
+    monkeypatch.setattr(reduction, "default_lane_rescue", lambda: False)
     name = "li_gg_hgg"
     artifact = artifacts[name]
     runtime = Runtime.load(artifact, process="p")
@@ -616,6 +620,7 @@ def test_c_abi_selections_on_fresh_points_equal_the_python_api(
     sdk = _sdk()
     handle = _open(sdk, artifact)
     try:
+        assert sdk.rusticol_virtual_set_lane_rescue(handle, 0) == 0, _error(sdk)
         status = sdk.rusticol_virtual_set_reduction(handle, backend.encode())
         if status != 0:
             # Not built into this library: the fixture-point test checks the

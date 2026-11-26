@@ -58,6 +58,21 @@ UNVERIFIED = "TIR method-choice lanes refused by their check"
 LAST_RESORT = "TIR last-resort rows"
 
 
+@pytest.fixture(autouse=True)
+def _without_lane_rescue(monkeypatch):
+    """These tests exercise the mechanisms behind the lane rescue (the
+    per-point fallback and its guard, best-effort values, the unchecked
+    mode against the checked one) on points whose refused lanes the lane
+    rescue would serve: they run without it, the Python runtimes by their
+    default (``lane_rescue``, ``reduction.default_lane_rescue``), the C ABI
+    handles by ``rusticol_virtual_set_lane_rescue(handle, 0)``
+    (``test_loop_v2_sdk_induced._open``)."""
+
+    from pyamplicol.loops.v2 import reduction
+
+    monkeypatch.setattr(reduction, "default_lane_rescue", lambda: False)
+
+
 def _tirust(native) -> bool:
     return "tirust" in json.loads(native.reduction_backends())
 

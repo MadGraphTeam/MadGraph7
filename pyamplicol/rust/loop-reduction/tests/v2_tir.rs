@@ -190,10 +190,10 @@ fn count(statistics: &rusticol_core::loop_execution::v2::BackendStatistics, name
 }
 
 fn ninjars(arithmetic: &str, engine: &str) -> V2Backends {
-    V2Backends::NinjaRs(V2ReductionBackend {
-        reducer: V2Reducer::new(arithmetic, None, engine, true).unwrap(),
-        masters: PoleSelection::BOTH,
-    })
+    V2Backends::NinjaRs(V2ReductionBackend::new(
+        V2Reducer::new(arithmetic, None, engine, true).unwrap(),
+        PoleSelection::BOTH,
+    ))
 }
 
 type Lanes = Vec<Vec<LaneOutcome<f64>>>;
@@ -238,10 +238,10 @@ fn reference(groups: &[FamilyLanes<f64>], poles: Poles) -> Lanes {
 fn reference_arbitrary(groups: &[FamilyLanes<f64>], poles: Poles, digits: u32) -> Lanes {
     use symbolica::domains::float::Float;
     let _unlock = pyamplicol::unlock();
-    let mut backend = V2Backends::NinjaRs(V2ReductionBackend {
-        reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
-        masters: PoleSelection::BOTH,
-    });
+    let mut backend = V2Backends::NinjaRs(V2ReductionBackend::new(
+        V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+        PoleSelection::BOTH,
+    ));
     let bits = Float::decimal_digits_to_bits(f64::from(digits)).unwrap();
     let lift = |v: &[C]| -> Vec<Complex<Float>> {
         v.iter()
@@ -947,25 +947,25 @@ fn extended_worst(
     let _unlock = pyamplicol::unlock();
     let truth_bits = Float::decimal_digits_to_bits(f64::from(digits)).unwrap();
     let exact = lifted(groups, truth_bits.max(bits));
-    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
-        reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
-        masters: PoleSelection::BOTH,
-    });
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend::new(
+        V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+        PoleSelection::BOTH,
+    ));
     V2Backend::<Float>::begin(&mut ninja);
     let (truth, _) = V2Backend::<Float>::reduce(&mut ninja, &exact, poles, None).unwrap();
     let mut backend = if !ninjars {
         tir()
     } else if bits == 106 {
-        V2Backends::NinjaRs(V2ReductionBackend {
-            reducer: V2Reducer::new("double-double", None, "generic", true).unwrap(),
-            masters: PoleSelection::BOTH,
-        })
+        V2Backends::NinjaRs(V2ReductionBackend::new(
+            V2Reducer::new("double-double", None, "generic", true).unwrap(),
+            PoleSelection::BOTH,
+        ))
     } else {
         let digits = (f64::from(bits) * std::f64::consts::LOG10_2).floor() as u32;
-        V2Backends::NinjaRs(V2ReductionBackend {
-            reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
-            masters: PoleSelection::BOTH,
-        })
+        V2Backends::NinjaRs(V2ReductionBackend::new(
+            V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+            PoleSelection::BOTH,
+        ))
     };
     let found: Vec<Vec<Vec<Complex<Float>>>> = if bits == 106 {
         let dd: Vec<FamilyLanes<DoubleFloat>> = lifted(groups, 106)
@@ -1432,10 +1432,10 @@ fn consistent_truth(groups: &[FamilyLanes<f64>], digits: u32) -> Lanes {
     let _unlock = pyamplicol::unlock();
     let bits = Float::decimal_digits_to_bits(f64::from(digits)).unwrap();
     let exact = lifted(groups, bits);
-    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
-        reducer: V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
-        masters: PoleSelection::BOTH,
-    });
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend::new(
+        V2Reducer::new("arbitrary", Some(digits), "generic", true).unwrap(),
+        PoleSelection::BOTH,
+    ));
     V2Backend::<Float>::begin(&mut ninja);
     let (truth, _) = V2Backend::<Float>::reduce(&mut ninja, &exact, Poles::All, None).unwrap();
     truth
@@ -2336,10 +2336,10 @@ fn an_arbitrary_rescaled_check_is_at_the_working_precision() {
     let (_, single) = run(std::slice::from_ref(&alone), ReductionCheck::RESCALED);
     assert_eq!(single[0][0], rescaled[0][1]);
     // NinjaRS's generic engine at the same precision: the same frame map.
-    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend {
-        reducer: V2Reducer::new("arbitrary", Some(57), "generic", true).unwrap(),
-        masters: PoleSelection::BOTH,
-    });
+    let mut ninja = V2Backends::NinjaRs(V2ReductionBackend::new(
+        V2Reducer::new("arbitrary", Some(57), "generic", true).unwrap(),
+        PoleSelection::BOTH,
+    ));
     V2Backend::<Float>::begin(&mut ninja);
     let (direct, checked) = V2Backend::<Float>::reduce(
         &mut ninja,

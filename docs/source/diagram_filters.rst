@@ -121,7 +121,8 @@ Things to know
 - **NLO real emissions.** The FKS subtraction pairs every real-emission diagram in a
   soft or collinear limit with a Born diagram. A tree filter must keep the
   real-emission diagrams that match the kept Born diagrams. Otherwise the generation
-  stops with ``Cannot map born/real configurations``.
+  stops with an error such as ``Linking ... no real configuration with the
+  splitting``.
 
 - **No Born diagram left.** If ``--tree_diagram_filter`` removes all the Born diagrams,
   the generation stops. A ``[QCD]`` process that has no Born diagram at all, such as

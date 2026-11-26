@@ -52,8 +52,9 @@ Beams and PDFs
         :math:`\eta` cuts applied, in the lab frame.
     * - ``lpp1``, ``lpp2``
       - ``beam.leptonic``
-      - ``false`` for proton beams and ``true`` for lepton beams without PDFs. Other beam
-        types, such as elastic photons or antiprotons, are not supported.
+      - ``false`` for proton beams and ``true`` for lepton beams without PDFs. Antiprotons are
+        not supported. Elastic photons (``lpp = 2``) only come from a gamma-UPC ``pdlabel``, set
+        as ``beam.upc_flux``.
     * - ``pdlabel``, ``lhaid``
       - ``beam.pdf1``, ``beam.pdf2``
       - The name of the LHAPDF set instead of its id. For example, ``lhaid = 331900`` becomes
@@ -452,13 +453,13 @@ Not supported yet
 The following MadEvent features have no MG7 equivalent. Settings for them are ignored.
 
 * Matching and merging settings other than MLM (``ickkw = 1``, ``xqcut``,
-  ``auto_ptj_mjj``) and CKKW-L (``ktdurham``, ``ptlund``, ``dparameter``,
+  ``auto_ptj_mjj``, ``pdfwgt``) and CKKW-L (``ktdurham``, ``ptlund``, ``dparameter``,
   ``pdgs_for_merging_cut``): ``highestmult``, ``ktscheme``, ``alpsfact``, ``chcluster``,
-  ``pdfwgt``, ``asrwgtflavor``, ``clusinfo``.
+  ``asrwgtflavor``, ``clusinfo``.
 * Biasing: ``bias_module`` and ``bias_parameters``.
-* Beam polarization and heavy-ion or equivalent-photon beams: ``polbeam1``, ``polbeam2``,
-  ``nb_proton1``, ``nb_proton2``, ``nb_neutron1``, ``nb_neutron2``, ``mass_ion1``,
-  ``mass_ion2``, ``ievo_eva``, ``evaorder``, ``eva_xcut``.
+* Beam polarization and equivalent-photon (EVA) beams: ``polbeam1``, ``polbeam2``,
+  ``mass_ion1``, ``mass_ion2``, ``ievo_eva``, ``evaorder``, ``eva_xcut``. The ions of a
+  gamma-UPC run are set with ``beam.nb_proton1`` and the like.
 * Fixed factorization scales for the two beams, and the scale parameters
   ``mue_over_ref``, ``mue_ref_fixed`` and ``fixed_extra_scale``.
 * Cuts that are not a bound on a single observable: ``cutuse = 1``, which accepts an event if
@@ -467,5 +468,5 @@ The following MadEvent features have no MG7 equivalent. Settings for them are ig
 * Photon isolation: ``ptgmin``, ``r0gamma``, ``xn``, ``epsgamma``, ``isoem``.
 * Helicity sampling: ``nhel``, ``limhel``, ``hel_recycling``, ``hel_filtering``,
   ``hel_splitamp``, ``hel_zeroamp``.
-* Event output options: ``event_norm``, ``lhe_version``, ``boost_event``, ``me_frame``,
-  ``frame_id``, ``systematics_program`` and ``systematics_arguments``.
+* Event output options: ``event_norm``, ``lhe_version``, ``boost_event``,
+  ``systematics_program`` and ``systematics_arguments``.

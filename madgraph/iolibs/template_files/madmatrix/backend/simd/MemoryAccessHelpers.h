@@ -7,9 +7,9 @@
 #ifndef MemoryAccessHelpers_H
 #define MemoryAccessHelpers_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "MadMatrixFptypes.h"
 
 //----------------------------------------------------------------------------
 
@@ -98,16 +98,10 @@ public:
   static __host__ __device__ inline FT*
   kernelAccessRecord( FT* buffer )
   {
-    if constexpr( !onDevice ) // requires c++17 also in CUDA (#333)
-    {
-      // FIXME #436: clarify that buffer includes all events on device, and only the record for an event subset on host!
-      // FIXME #436: am I not assuming that the following line is always identical to buffer for all access classes T?
-      return T::ieventAccessRecord( buffer, 0 );
-    }
-    else
-    {
-      throw std::runtime_error( "kernelAccessRecord on device is only implemented in CUDA" );
-    }
+    static_assert( !onDevice, "device access is only available in the gpu backend" );
+    // FIXME #436: clarify that buffer includes all events on device, and only the record for an event subset on host!
+    // FIXME #436: am I not assuming that the following line is always identical to buffer for all access classes T?
+    return T::ieventAccessRecord( buffer, 0 );
   }
 
   //--------------------------------------------------------------------------

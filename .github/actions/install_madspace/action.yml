@@ -1,10 +1,11 @@
 name: Install madspace
 description: >
   Make the madspace install (built once per commit by the build_madspace job)
-  available to the mg7 tests. Restores the cached madspace/install directory
-  (content-addressed on the madspace source) and puts it on PYTHONPATH; it does
-  NOT build. The build_madspace job must run first (use `needs: build_madspace`)
-  so the cache is populated.
+  available to the mg7 tests. Restores the madspace/install directory from the
+  warm_cache entry (content-addressed on the madspace source). On a miss, which
+  happens on every PR that changes madspace/, it unpacks the install that the
+  build_madspace job of this run handed over as an artifact. It does NOT build.
+  The build_madspace job must run first (use `needs: build_madspace`).
 
 inputs:
   enable_docs:
@@ -17,27 +18,41 @@ inputs:
 runs:
   using: composite
   steps:
-    # Must match the key computed by the build_madspace job exactly, otherwise
-    # the restore misses and the step fails.
+    # Must match the key computed by the build_madspace action exactly, otherwise
+    # the restore misses and the artifact name is not found.
     - name: madspace cache key
+      id: key
       run: |
-        echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+        MS_PY="$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')"
         # -simd: the install includes the SIMD CPU backends; a separate suffix so
         # that a cached install from before SIMD was enabled is never restored
-        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}-simd" >> $GITHUB_ENV
+        MS_VARIANT="${{ inputs.enable_docs == 'true' && '-docs' || '' }}-simd"
+        KEY="madspace${MS_VARIANT}-${RUNNER_OS}-py${MS_PY}-${{ hashFiles('madspace/**') }}"
+        echo "key=$KEY" >> "$GITHUB_OUTPUT"
       shell: bash
 
     # madspace/install is the local prefix the mg7 runtime expects (see
     # madevent.py and madspace/install.py, which both use this path). Restoring
-    # it directly avoids a per-job pip install. hashFiles is evaluated before
-    # this step creates the directory, so the key is the clean-source hash and
-    # matches the build_madspace job.
+    # it directly avoids a per-job pip install.
     - name: Restore madspace install
+      id: cache-madspace
       uses: actions/cache/restore@v5
       with:
         path: madspace/install
-        key: madspace${{ env.MS_VARIANT }}-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
-        fail-on-cache-miss: true
+        key: ${{ steps.key.outputs.key }}
+
+    # Miss: the build_madspace job of this run built it and handed it over.
+    - name: Download madspace install from the build job (on cache miss)
+      if: steps.cache-madspace.outputs.cache-hit != 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ steps.key.outputs.key }}
+        path: ${{ runner.temp }}/madspace-artifact
+
+    - name: Unpack madspace install (on cache miss)
+      if: steps.cache-madspace.outputs.cache-hit != 'true'
+      run: tar -C madspace -xzf "$RUNNER_TEMP/madspace-artifact/madspace-install.tgz"
+      shell: bash
 
     # Expose it on PYTHONPATH so the test harness' own `import madspace`
     # availability check resolves and the mg7 tests actually run (instead of

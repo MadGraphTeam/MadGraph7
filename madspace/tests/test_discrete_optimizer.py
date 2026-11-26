@@ -2,9 +2,10 @@
 average of the old probabilities and of the contributions of the categories,
 VegasGridOptimizer and DiscreteOptimizer take the outputs of their
 histograms from Python, VegasHistogram sums squared or absolute weights,
-and the flavour choice of an integrand adapts in a survey without changing
-its cross section (e+ e- -> q q~ g with a d and a u flavour of different
-matrix elements, on the setup of test_event_stream)."""
+and with GeneratorConfig.adaptive_discrete the flavour choice of an integrand
+adapts in a survey without changing its cross section (e+ e- -> q q~ g with
+a d and a u flavour of different matrix elements, on the setup of
+test_event_stream)."""
 
 import os
 
@@ -141,39 +142,45 @@ def flavor_integrand(alphas_file, context, discrete_flavor):
 
 
 def test_adaptive_flavor_choice(tmp_path):
-    """The survey adapts the flavour probabilities towards the shares of the
-    flavours (1/4 and 3/4), and the cross section is that of the uniform
-    choice."""
+    """With adaptive_discrete the survey adapts the flavour probabilities
+    towards the shares of the flavours (1/4 and 3/4), without it they stay,
+    and the cross section is that of the uniform choice either way."""
     context, alphas_file = make_context(str(tmp_path), 2)
     statuses = []
-    for adaptive in (False, True):
+    for setup in ("uniform", "fixed", "adaptive"):
         sampler = None
-        if adaptive:
-            sampler = ms.DiscreteSampler([2], "flavor")
+        if setup != "uniform":
+            sampler = ms.DiscreteSampler([2], f"flavor_{setup}")
             sampler.initialize_globals(context)
         integrand = flavor_integrand(alphas_file, context, sampler)
         config = make_config()
         config.target_count = 2000
+        assert not config.adaptive_discrete
+        config.adaptive_discrete = setup == "adaptive"
         channel = ms.ChannelEventGenerator(
             contexts=[context],
             integrand=integrand,
-            event_file=os.path.join(str(tmp_path), f"events{adaptive}.npy"),
-            weight_file=os.path.join(str(tmp_path), f"weights{adaptive}.npy"),
+            event_file=os.path.join(str(tmp_path), f"events_{setup}.npy"),
+            weight_file=os.path.join(str(tmp_path), f"weights_{setup}.npy"),
             config=config,
             subprocess_index=0,
-            name=f"flavor{adaptive}",
+            name=f"flavor_{setup}",
             histograms=None,
         )
         generator = ms.EventGenerator([context], [channel], seed=7, config=config)
         generator.survey()
         generator.generate()
         statuses.append(generator.status())
-        if adaptive:
+        if sampler is not None:
             (name,) = sampler.prob_names()
             p = probabilities(context, name)
-            assert p.sum() == pytest.approx(1.0, rel=1e-12)
-            # moved from (1/2, 1/2) towards (1/4, 3/4)
-            assert 0.25 < p[0] < 0.45
-    uniform, adaptive = statuses
-    error = np.hypot(uniform.error, adaptive.error)
-    assert abs(uniform.mean - adaptive.mean) < 5 * error
+            if setup == "fixed":
+                np.testing.assert_array_equal(p, [0.5, 0.5])
+            else:
+                assert p.sum() == pytest.approx(1.0, rel=1e-12)
+                # moved from (1/2, 1/2) towards (1/4, 3/4)
+                assert 0.25 < p[0] < 0.45
+    uniform = statuses[0]
+    for status in statuses[1:]:
+        error = np.hypot(uniform.error, status.error)
+        assert abs(uniform.mean - status.mean) < 5 * error

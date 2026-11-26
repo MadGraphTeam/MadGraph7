@@ -911,6 +911,8 @@ pub struct TirReductionBackend {
     /// The measures of the last `reduce`'s refused lanes
     /// ([`Self::take_lane_measures`]).
     measures: Vec<MeasuredLane>,
+    /// The lane rescue's backends (`runtime::RescueBackends`).
+    pub(crate) rescue: crate::runtime::RescueBackends,
 }
 
 /// `|z|` in binary64.
@@ -1112,6 +1114,7 @@ impl TirReductionBackend {
             }),
             census,
             measures: Vec::new(),
+            rescue: Default::default(),
         }
     }
 

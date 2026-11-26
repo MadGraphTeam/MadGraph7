@@ -664,7 +664,7 @@ class TestNoHardcodedParameters(unittest.TestCase):
     def test_templates(self):
         import os
         from madgraph import MG5DIR
-        removed = ('MGONGPU_HARDCODE_PARAM', 'HRDCOD', 'Parameters::current', '%(hardcoded')
+        removed = ('MADMATRIX_HARDCODE_PARAM', 'HRDCOD', 'Parameters::current', '%(hardcoded')
         for root in ('madgraph/iolibs/template_files/madmatrix', 'aloha/template_files/madmatrix'):
             for dirpath, _, filenames in os.walk(os.path.join(MG5DIR, root)):
                 for filename in filenames:

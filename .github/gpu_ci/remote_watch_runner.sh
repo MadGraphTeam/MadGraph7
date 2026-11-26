@@ -5,7 +5,9 @@
 # The copy that runs is the one installed on the vmadgraph VM (/usr/local/share/ceci-gate):
 # install it there again after a change (README.md, "One-time setup").
 # Waits until the runner job of the workflow run has ended: the Slurm job called
-# mg7-gh-runner-LABEL whose comment is RUN_TAG (set by remote_start_runner.sh). Then prints
+# mg7-gh-runner-LABEL or mg7-gh-runner-LABEL-N (the tier that won, see remote_start_runner.sh)
+# whose comment is RUN_TAG (set by remote_start_runner.sh), the running one if the cancelled
+# tiers are still listed. Then prints
 #     ALLOCATION_ENDED JOBID STATE ELAPSED TIMELIMIT
 # with a final state from sacct (COMPLETED, TIMEOUT, NODE_FAIL, PREEMPTED, CANCELLED...), and
 # exits 0. Whether that end was the normal one (after stop_runner) is decided by the watchdog,
@@ -42,8 +44,8 @@ MISSES=0
 DEADLINE=
 COMMENT=
 while true; do
-    # by name, not with -j: squeue -j fails once the job has left the controller
-    if ! JOBS=$(squeue -h -u "$USER" -n "$NAME" -o '%i %T %k %M %l' 2>&1); then
+    # by user and name, not with -j: squeue -j fails once the job has left the controller
+    if ! JOBS=$(squeue -h -u "$USER" -o '%i %T %k %M %l %j' 2>&1); then
         FAILS=$((FAILS + 1))
         echo "$(date +%T) squeue failed ($FAILS): $JOBS"
         [ "$FAILS" -lt 30 ] || exit 1
@@ -51,9 +53,15 @@ while true; do
         continue
     fi
     FAILS=0
+    # the runner jobs of every tier: "JOBID STATE RUN_TAG USED LIMIT"
+    JOBS=$(awk -v n="$NAME" '$6 == n || (index($6, n "-") == 1 && substr($6, length(n) + 2) ~ /^[0-9]+$/) {
+               print $1, $2, $3, $4, $5 }' <<< "$JOBS")
     if [ -z "$JOBID" ]; then
-        # the runner job of this run attempt, from its comment; from then on, by its id
-        read -r ID STATE TAG USED LIMIT <<< "$(awk -v tag="$RUN_TAG" '$3 == tag' <<< "$JOBS")"
+        # the runner job of this run attempt, from its comment (the running tier first); from
+        # then on, by its id
+        read -r ID STATE TAG USED LIMIT <<< "$(awk -v tag="$RUN_TAG" '$3 == tag {
+            if ($2 == "RUNNING") { print; found = 1; exit } else if (first == "") first = $0 }
+            END { if (!found && first != "") print first }' <<< "$JOBS")"
         if [ -z "$ID" ]; then
             MISSES=$((MISSES + 1))
             echo "$(date +%T) no job $NAME with comment $RUN_TAG in squeue ($MISSES): ${JOBS:-empty list}"

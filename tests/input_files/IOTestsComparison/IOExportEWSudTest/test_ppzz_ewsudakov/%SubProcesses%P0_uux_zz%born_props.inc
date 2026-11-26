@@ -1,1 +1,1 @@
-      CALL MC_NATIVE_PROPS(PMASS,PWIDTH,POW)
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%born_props.inc

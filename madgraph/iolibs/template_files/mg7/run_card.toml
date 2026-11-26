@@ -12,6 +12,17 @@ cpu_mode = %(run.cpu_mode)s
 madspace_cpu_mode = %(run.madspace_cpu_mode)s
 # matrix element precision; options: all64, all32, color32, denom64
 precision = %(run.precision)s
+# fraction of the events evaluated again in all64 to check the precision (0: no check);
+# builds the matrix elements a second time, in all64
+precision_check = %(run.precision_check)s
+# after the generation, reweight the events to the matrix elements compiled at
+# this FPTYPE and report how many significant digits they share with the
+# generated weights (no weights are written); d (all64) is the suggested
+# validation type; "" for no validation. Not run for gridpack runs, nor in
+# the cluster mode
+validation = %(run.validation)s
+# events the validation checks, evenly spaced through the sample; 0 for all
+validation_events = %(run.validation_events)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 # cpu gzip of the lhe output: auto uses pigz when installed; false uses gzip
@@ -168,6 +179,7 @@ systematics_str_options = %(postprocessing.systematics_str_options)s
 enable = %(vegas.enable)s
 bins = %(vegas.bins)s
 damping = %(vegas.damping)s
+adaptive_discrete = %(vegas.adaptive_discrete)s
 optimization_patience = %(vegas.optimization_patience)s
 optimization_threshold = %(vegas.optimization_threshold)s
 start_batch_size = %(vegas.start_batch_size)s
@@ -239,6 +251,12 @@ mode = %(amplicol.mode)s
 # unweighting at leading colour (unweight mode); [generation] sets the second pass
 first_pass_max_overweight_truncation = %(amplicol.first_pass_max_overweight_truncation)s
 first_pass_freeze_max_weight_after = %(amplicol.first_pass_freeze_max_weight_after)s
+# divide each flavour's sampling prior by its number of phase-space channels
+prior_partner_share = %(amplicol.prior_partner_share)s
+# flavours at leading colour: all; two_lines_resample (at most two quark lines,
+# the full-colour pass switches events to the others); or two_lines (at most
+# two quark lines, the others neglected)
+lc_flavors = %(amplicol.lc_flavors)s
 
 [multiparticles]
 $multiparticles
@@ -269,6 +287,10 @@ flow_invert_spline = %(madnis.flow_invert_spline)s
 discrete_hidden_dim = %(madnis.discrete_hidden_dim)s
 discrete_layers = %(madnis.discrete_layers)s
 discrete_activation = %(madnis.discrete_activation)s # options: relu, leaky_relu, elu, gelu, sigmoid, softplus
+# flavours sampled by initial state, final-state content and flavour
+flavor_levels = %(madnis.flavor_levels)s
+flavor_prior_floor = %(madnis.flavor_prior_floor)s # fraction sampled from the prior
+flavor_logit_bound = %(madnis.flavor_logit_bound)s # c tanh(x / c) on the learned logits, 0: off
 
 # channel weight network
 cwnet_hidden_dim = %(madnis.cwnet_hidden_dim)s

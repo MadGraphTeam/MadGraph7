@@ -47,7 +47,7 @@ struct UmamiFunctions {
  * Loaded UMAMI shared library for one matrix element.
  *
  * UMAMI (Unified MAtrix eleMent Interface) is madspace's uniform way of
- * calling matrix-element code, currently the cudacpp plugin [1]; see @ref
+ * calling matrix-element code, currently the madmatrix backend [1]; see @ref
  * MatrixElement for the compute-graph function built on top of it. A
  * `MatrixElementApi` dynamically loads the library, resolves its exported
  * UMAMI entry points, and exposes the metadata queries and the raw @ref call.

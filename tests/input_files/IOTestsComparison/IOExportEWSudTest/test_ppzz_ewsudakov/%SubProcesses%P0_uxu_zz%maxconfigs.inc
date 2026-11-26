@@ -1,2 +1,1 @@
-      INTEGER LMAXCONFIGS
-      PARAMETER(LMAXCONFIGS=2)
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%maxconfigs.inc

@@ -352,7 +352,7 @@ Two more things stood in the way of checking all this, and are fixed too:
   complex-mass scheme.** Three things were missing:
   - `Parameters.cc` takes the `sqrt` of a `cxsmpl`, the complex masses. A
     host-only `sqrt(cxsmpl)` now sits next to `conj` in the four
-    `mgOnGpuCxtypes.h`.
+    `MadMatrixCxtypes.h`.
   - The real `cIPD` table held the complex `CMASS_*` of the propagators. A
     complex parameter now takes two slots (real, imaginary), and the call
     passes `cxmake( cIPD[k], cIPD[k+1] )`.

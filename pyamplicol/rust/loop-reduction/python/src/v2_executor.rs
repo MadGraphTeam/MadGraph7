@@ -46,10 +46,38 @@ enum Values {
     Text(Vec<[String; 2]>),
 }
 
+/// Real magnitudes (re-test budgets, term scales) handed back to Python:
+/// binary64, or decimal texts for the arbitrary-precision carrier, whose
+/// magnitudes lie beyond binary64's exponent range at high precision (500
+/// digits: ~1e-500; Python reads them as `loops.v2.wide.Wide`).
+#[derive(IntoPyObject)]
+enum Reals {
+    Float(Vec<f64>),
+    Text(Vec<String>),
+}
+
 /// A native carrier with its Python value conversions.
 trait Exchanged: V2Carrier {
     fn import(values: &Bound<'_, PyAny>, zero: &Self) -> PyResult<Vec<Complex<Self>>>;
     fn export(values: &[Complex<Self>], bits: u32) -> Values;
+    /// Magnitudes as decimal texts (the arbitrary-precision carrier); None:
+    /// binary64 reals (`reals`).
+    fn magnitude_texts(_values: &[Self]) -> Option<Vec<String>> {
+        None
+    }
+}
+
+/// A real's binary64 value (`Real::to_f64`).
+fn binary64<T: Exchanged + Real>(x: &T) -> f64 {
+    x.to_f64()
+}
+
+/// `values` as `Reals`: decimal texts where the carrier gives them, else
+/// binary64 (`to_f64`, as before).
+fn reals<T: Exchanged + Real>(values: &[T]) -> Reals {
+    T::magnitude_texts(values)
+        .map(Reals::Text)
+        .unwrap_or_else(|| Reals::Float(values.iter().map(|x| x.to_f64()).collect()))
 }
 
 fn exact_pairs<T: V2Carrier>(values: &Bound<'_, PyAny>, zero: &T) -> PyResult<Vec<Complex<T>>> {
@@ -103,6 +131,25 @@ impl Exchanged for Float {
                 .iter()
                 .cloned()
                 .map(|z| decimal_complex(z, bits))
+                .collect(),
+        )
+    }
+    fn magnitude_texts(values: &[Self]) -> Option<Vec<String>> {
+        // Inside binary64's range the shortest round-trip text of `to_f64()`,
+        // so that Python reads exactly that float (as before, no second
+        // rounding); outside it (zero, subnormal, overflow) 21 significant
+        // digits: a magnitude's size at any exponent.
+        Some(
+            values
+                .iter()
+                .map(|x| {
+                    let f = binary64(x);
+                    if f.is_normal() {
+                        format!("{f:e}")
+                    } else {
+                        format!("{x:.20e}")
+                    }
+                })
                 .collect(),
         )
     }
@@ -272,6 +319,36 @@ const ROW_BUDGET: usize = 3 << 30;
 struct Bounds {
     part_points: Option<usize>,
     fill_points: Option<usize>,
+}
+
+/// Build the carrier's tree runtime of `trees` now unless it is built
+/// (`V2Executor.warm`; what [`Trees::bind`] builds on first use).
+fn warm_trees<T: Exchanged + Real + TreeCarrier + Send + Sync>(
+    py: Python<'_>,
+    executor: &Executor,
+    trees: &Trees,
+    zero: &T,
+) -> PyResult<()>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut guard = trees
+        .runtime
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !guard
+        .as_ref()
+        .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>())
+    {
+        // On the executor's pool, as an evaluation builds it.
+        let program = &trees.program;
+        let built = py
+            .detach(|| executor.install(|| program.runtime(zero)))
+            .map_err(error)?;
+        *guard = Some(Box::new(built));
+    }
+    Ok(())
 }
 
 impl Trees {
@@ -593,20 +670,20 @@ struct Evaluation {
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
-    budget: Vec<Option<Vec<Vec<f64>>>>,
+    budget: Vec<Option<Vec<Reals>>>,
     /// Amplitude-mode plans (loop-induced): per point and (loop order,
     /// column) slot `order * columns + column` the bare loop amplitude per
     /// Laurent coefficient (`PointResult::amplitudes`), else None.
     amplitudes: Option<Vec<Vec<Values>>>,
     /// Their re-test, when a check ran.
     amplitude_check: Option<Vec<Vec<Values>>>,
-    /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (binary64
-    /// reals), when a check ran.
-    amplitude_budget: Option<Vec<Vec<Vec<f64>>>>,
+    /// Per point and slot `Σ_f |ΔΩ_f| / (16π²)` per coefficient (`Reals`),
+    /// when a check ran.
+    amplitude_budget: Option<Vec<Vec<Reals>>>,
     /// With `term_scale`, per point and slot the term scale
-    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (binary64 reals;
+    /// `Σ_f Σ_α |N_α| |I_α| / (16π²)` per coefficient (`Reals`;
     /// `PointResult::amplitude_scale`), else None.
-    amplitude_scale: Option<Vec<Vec<Vec<f64>>>>,
+    amplitude_scale: Option<Vec<Vec<Reals>>>,
     /// Amplitude-mode plans with native trees and counterterms: per point
     /// the counterterm kets (`TreeInputs::kets`: rows × ket components in
     /// the counterterm program's layout), else None.
@@ -621,6 +698,13 @@ struct Evaluation {
     /// Per point the backend's measures of its refused lanes, `(kind,
     /// value)` (`PointResult::measures`; m-lit ux-polish item 4).
     refusal_measures: Vec<Vec<(&'static str, f64)>>,
+    /// Per point the lanes the lane rescue served, `((family, order,
+    /// column), carrier)` (`PointResult::rescued`; USER 2026-11-18).
+    rescued: Vec<Vec<((usize, usize, usize), &'static str)>>,
+    /// Per point the term-scale moments the lane rescue served, `((family,
+    /// monomial), carrier)` (`PointResult::rescued_moments`, apart from the
+    /// lanes).
+    rescued_moments: Vec<Vec<((usize, usize), &'static str)>>,
     report: ReportObject,
 }
 
@@ -681,12 +765,7 @@ fn export_evaluation<T: Exchanged + Real>(
             .map(|r| {
                 r.amplitude_budget
                     .as_ref()
-                    .map(|budget| {
-                        budget
-                            .iter()
-                            .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
-                            .collect()
-                    })
+                    .map(|budget| budget.iter().map(|slot| reals(slot)).collect())
                     .unwrap_or_default()
             })
             .collect()
@@ -695,12 +774,7 @@ fn export_evaluation<T: Exchanged + Real>(
     let amplitude_scale = scaled.then(|| {
         results
             .iter()
-            .map(|r| {
-                r.amplitude_scale
-                    .iter()
-                    .map(|slot| slot.iter().map(|x| x.to_f64()).collect())
-                    .collect()
-            })
+            .map(|r| r.amplitude_scale.iter().map(|slot| reals(slot)).collect())
             .collect()
     });
     Evaluation {
@@ -743,12 +817,9 @@ fn export_evaluation<T: Exchanged + Real>(
         budget: results
             .iter()
             .map(|r| {
-                r.budget.as_ref().map(|columns| {
-                    columns
-                        .iter()
-                        .map(|column| column.iter().map(|x| x.to_f64()).collect())
-                        .collect()
-                })
+                r.budget
+                    .as_ref()
+                    .map(|columns| columns.iter().map(|column| reals(column)).collect())
             })
             .collect(),
         refusal_measures: results
@@ -757,6 +828,24 @@ fn export_evaluation<T: Exchanged + Real>(
                 r.measures
                     .iter()
                     .map(|m| (m.kind.name(), m.value))
+                    .collect()
+            })
+            .collect(),
+        rescued: results
+            .iter()
+            .map(|r| {
+                r.rescued
+                    .iter()
+                    .map(|(key, carrier)| ((key.family, key.order, key.column), carrier.name()))
+                    .collect()
+            })
+            .collect(),
+        rescued_moments: results
+            .iter()
+            .map(|r| {
+                r.rescued_moments
+                    .iter()
+                    .map(|(family, monomial, carrier)| ((*family, *monomial), carrier.name()))
                     .collect()
             })
             .collect(),
@@ -885,10 +974,10 @@ fn backend_of<'a>(
                     Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
                 }
                 .map_err(error)?;
-                V2Backends::NinjaRs(V2ReductionBackend {
+                V2Backends::NinjaRs(V2ReductionBackend::new(
                     reducer,
-                    masters: v2::master_selection("both")?,
-                })
+                    v2::master_selection("both")?,
+                ))
             }
             Reduction::TiRust => V2Backends::tirust(
                 runtime::plan_histogram(plan),
@@ -1444,7 +1533,9 @@ fn stored_tree_program_section<'py>(
 #[pymethods]
 impl V2Executor {
     /// `plan` is the plan v4: its binary member (bytes, M-FINAL MF-8G-1 item
-    /// 5), its JSON (text) or a stored member of either (`program_bytes`).
+    /// 5), its JSON (text), a stored member of either (`program_bytes`) or
+    /// the program an artifact's admission loaded (`V2AdmittedPlan`, with
+    /// `forms="rule"` and no `overlay`: shared, not loaded again).
     /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON, its
     /// binary container or a stored member (`program_bytes`),
     /// the saved exact evaluator of each kernel and of the parameter program
@@ -1497,15 +1588,27 @@ impl V2Executor {
         // (`program_bytes`); `load_with` reads either form. With `overlay`
         // (a column set's seed records, `native_observables.with_overlay`)
         // the plan with them, without forming the merged plan JSON.
-        let plan = {
+        // An admitted plan (`V2AdmittedPlan`) is the program itself, loaded
+        // with the default kernel forms and no overlay.
+        let plan = if let Ok(admitted) = plan.cast::<V2AdmittedPlan>() {
+            if policy != FormPolicy::Rule || overlay.is_some() {
+                return Err(error(
+                    "an admitted plan is loaded with the rule kernel forms and no \
+                     overlay; pass the stored plan for other forms or an overlay",
+                ));
+            }
+            admitted.get().program.clone()
+        } else {
             let data = program_bytes(&plan)?;
+            // Within the executor's thread bound, the threads started as the
+            // load's work uses them (`loop_artifact::on_load_threads`).
             Arc::new(
-                match &overlay {
+                rusticol_core::loop_artifact::on_load_threads(threads, || match &overlay {
                     Some(overlay) => {
                         LoopProgramV4::load_overlaid(&data, overlay.as_bytes(), policy)
                     }
                     None => LoopProgramV4::load_with(&data, policy),
-                }
+                })
                 .map_err(error)?,
             )
         };
@@ -1777,6 +1880,98 @@ impl V2Executor {
         )?;
         backend.set_unchecked(unchecked);
         Ok(backend.plans())
+    }
+
+    /// Build now most of what this executor's first evaluation in its carrier
+    /// would build lazily, without evaluating a point of the process (the warm
+    /// entry: `plan_export.NativeExecutor.prepare`): the carrier's tree
+    /// runtime (its kernels' evaluators, or their plane applications in
+    /// binary64), the families' walk data (and dependent columns), the
+    /// `reduction` backend as an evaluation builds it
+    /// (TIRust: its plans at the default target, unless
+    /// `prepare_reduction` set another) and, through one synthetic lane per
+    /// (propagators, rank) class its lanes reach (`runtime::warm_classes`), what
+    /// its first reductions build (NinjaRS: each class's engine, whose
+    /// generic engine builds its cut expansions on its first evaluation in
+    /// double-double and arbitrary precision; TIRust: its workspaces), in
+    /// the `unchecked` mode (None: off; `evaluate` sets the mode per call)
+    /// with every master pole kept, as `evaluate` reduces by default
+    /// (`runtime::warm_backend`). What it builds is shared with the
+    /// executors derived with the same carrier and engine
+    /// (`SharedBackends`, the tree runtime) and kept for their lifetime.
+    /// The values of every later evaluation are unchanged. Left to the first
+    /// call that needs it: NinjaRS's lower class of a lane whose top
+    /// coefficients vanish at its point, and the binary64 fast engine's exact
+    /// fallback engine (lanes at its absolute thresholds).
+    #[pyo3(signature = (reduction="ninjars", *, unchecked=None))]
+    fn warm(&mut self, py: Python<'_>, reduction: &str, unchecked: Option<bool>) -> PyResult<()> {
+        let _unlock = pyamplicol::unlock();
+        let reduction = Reduction::parse(reduction).map_err(error)?;
+        if matches!(self.carrier, Carriers::Exact | Carriers::Prime) {
+            return Err(error("the exact carrier dresses numerators only"));
+        }
+        let unchecked =
+            unchecked.unwrap_or(rusticol_loop_reduction::reduction_policy::DEFAULT_UNCHECKED);
+        let bits = self.bits()?;
+        if let Some(trees) = &self.trees {
+            match self.carrier {
+                Carriers::Double => warm_trees(py, &self.executor, trees, &0.0)?,
+                Carriers::DoubleDouble => {
+                    warm_trees(py, &self.executor, trees, &DoubleFloat::from(0.0))?
+                }
+                Carriers::Arbitrary(_) => {
+                    warm_trees(py, &self.executor, trees, &Float::with_val(bits, 0))?
+                }
+                Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+            }
+        }
+        // The families' walk data and (dressed rows) dependent columns, which
+        // the first walk and reduction of each family derive (carrier-free:
+        // shared by every executor of the plan).
+        {
+            let executor = &self.executor;
+            let plan = executor.plan();
+            py.detach(|| {
+                executor.install(|| {
+                    for family in &plan.families {
+                        family.walk.get_or_init(|| plan.walk_of(family));
+                        if plan.dressed {
+                            family.dependents.get_or_init(|| plan.dependents_of(family));
+                        }
+                    }
+                })
+            });
+        }
+        let classes: Vec<(usize, usize)> = runtime::warm_classes(self.executor.plan(), reduction)
+            .into_iter()
+            .collect();
+        let mut taken = self.backends.take();
+        let backend = backend_of(
+            &mut taken.slots,
+            self.carrier,
+            &self.engine,
+            reduction,
+            self.executor.plan(),
+        )?;
+        backend
+            .set_masters(v2::master_selection("both")?)
+            .map_err(error)?;
+        backend.set_unchecked(unchecked);
+        let carrier = self.carrier;
+        let executor = &self.executor;
+        py.detach(|| {
+            executor.install(|| match carrier {
+                Carriers::Double => runtime::warm_backend(backend, &classes, &0.0),
+                Carriers::DoubleDouble => {
+                    runtime::warm_backend(backend, &classes, &DoubleFloat::from(0.0))
+                }
+                Carriers::Arbitrary(_) => {
+                    runtime::warm_backend(backend, &classes, &Float::with_val(bits, 0))
+                }
+                Carriers::Exact | Carriers::Prime => unreachable!("refused above"),
+            })
+        })
+        .map_err(error)
     }
 
     /// Whether the executor has a tree program (native inputs).
@@ -2066,7 +2261,12 @@ impl V2Executor {
     /// `unchecked` is the call's unchecked setting (m-lit lit-unchecked,
     /// default off): the backend reduces without its own acceptance and
     /// refusal checks (`V2Backends::set_unchecked`), fixed for the call.
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false))]
+    /// `initial_states` (the process's initial states, first in leg order)
+    /// lets the lane rescue rebuild a refused lane's kinematic inputs from
+    /// the point improved in the rescue carrier (`RescueInputs::Improved`);
+    /// without it they are the given point's exact inputs. `lane_rescue`
+    /// false turns the lane rescue off (`evaluation.lane_rescue`).
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false, initial_states=None, lane_rescue=true))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -2095,6 +2295,8 @@ impl V2Executor {
         term_scale: bool,
         reduction: &str,
         unchecked: bool,
+        initial_states: Option<usize>,
+        lane_rescue: bool,
     ) -> PyResult<Evaluation> {
         let _unlock = pyamplicol::unlock();
         let reduction = Reduction::parse(reduction).map_err(error)?;
@@ -2126,6 +2328,17 @@ impl V2Executor {
             term_scale,
             ..V2Options::default()
         };
+        // The lane rescue's inputs (`V2Options::rescue`): the point improved
+        // in the rescue carrier, its `initial_states` initial states first;
+        // its exact inputs without them.
+        if let Some(n_initial) = initial_states {
+            options.rescue =
+                rusticol_core::loop_execution::v2::RescueInputs::Improved { n_initial };
+        }
+        // `evaluation.lane_rescue` off: a refused lane fails its point.
+        if !lane_rescue {
+            options.rescue = rusticol_core::loop_execution::v2::RescueInputs::Off;
+        }
         if let Some(chunk) = chunk_families {
             options.chunk_families = chunk;
         }
@@ -2253,14 +2466,99 @@ impl V2Executor {
 /// the declared metadata, the generation request and the companion plan of
 /// certified-scaleless families (digest and families, or null).
 #[pyfunction]
-#[pyo3(signature = (path, process=None))]
-fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
+#[pyo3(signature = (path, process=None, threads=None))]
+fn admit_v2_artifact(
+    py: Python<'_>,
+    path: &str,
+    process: Option<&str>,
+    threads: Option<usize>,
+) -> PyResult<String> {
     let _unlock = pyamplicol::unlock();
-    use rusticol_core::loop_artifact::{loop_v2_capability, open_loop_v2_artifact};
-
+    // `threads` bounds the load's threads (None: rayon's default rule,
+    // `loop_artifact::on_load_threads`).
     let loaded = py
-        .detach(|| open_loop_v2_artifact(path, process))
+        .detach(|| {
+            let artifact = rusticol_core::VerifiedArtifact::open(path)?;
+            rusticol_core::loop_artifact::load_loop_v2_artifact_threads(&artifact, process, threads)
+        })
         .map_err(error)?;
+    describe_admitted(&loaded)
+}
+
+/// A plan v4 program the native loader admitted and validated
+/// ([`admit_v2_artifact_program`]): the loaded program, with its derived
+/// tables (kernel forms by the default rule), that an executor takes as its
+/// `plan` instead of loading the plan member again (`V2Executor(plan=...)`).
+/// Immutable; executors built from it share it.
+#[pyclass(frozen)]
+struct V2AdmittedPlan {
+    program: Arc<LoopProgramV4>,
+    /// The stored plan's SHA-256 (the admission checked it).
+    sha256: String,
+}
+
+#[pymethods]
+impl V2AdmittedPlan {
+    /// The SHA-256 of the stored plan member this program was loaded from.
+    #[getter]
+    fn sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    /// The plan's families.
+    #[getter]
+    fn families(&self) -> usize {
+        self.program.families.len()
+    }
+}
+
+/// [`admit_v2_artifact`], also returning the admitted programs (the plan's
+/// and its certified-scaleless companion's, or None) as [`V2AdmittedPlan`]s:
+/// the artifact runtime hands them to its executors, so a loaded process's
+/// plan is read and derived once (`loops/v2/artifact.py`). `threads` bounds
+/// the load's threads (None: rayon's default, `RAYON_NUM_THREADS` or the
+/// cores of the affinity mask, as the runtime's executors), started only as
+/// its work uses them (`loop_artifact::on_load_threads`): the programs are
+/// the same for any count.
+#[pyfunction]
+#[pyo3(signature = (path, process=None, threads=None))]
+fn admit_v2_artifact_program(
+    py: Python<'_>,
+    path: &str,
+    process: Option<&str>,
+    threads: Option<usize>,
+) -> PyResult<(String, V2AdmittedPlan, Option<V2AdmittedPlan>)> {
+    let _unlock = pyamplicol::unlock();
+    let loaded = py
+        .detach(|| {
+            let artifact = rusticol_core::VerifiedArtifact::open(path)?;
+            rusticol_core::loop_artifact::load_loop_v2_artifact_threads(&artifact, process, threads)
+        })
+        .map_err(error)?;
+    let described = describe_admitted(&loaded)?;
+    let scaleless = match (&loaded.scaleless_program, &loaded.scaleless_plan_sha256) {
+        (Some(program), Some(sha256)) => Some(V2AdmittedPlan {
+            program: program.clone(),
+            sha256: sha256.clone(),
+        }),
+        _ => None,
+    };
+    Ok((
+        described,
+        V2AdmittedPlan {
+            program: loaded.program.clone(),
+            sha256: loaded.plan_sha256.clone(),
+        },
+        scaleless,
+    ))
+}
+
+/// The JSON description of an admitted process ([`admit_v2_artifact`]).
+fn describe_admitted(
+    loaded: &rusticol_core::loop_artifact::LoadedLoopV2Artifact,
+) -> PyResult<String> {
+    use rusticol_core::loop_artifact::loop_v2_capability;
+
     // The admitted process's own runtime (v4 Born-interfered, v5
     // loop-induced): the loader checked it against its contribution.
     let runtime_capability = loop_v2_capability(&loaded.metadata.contribution_kind)
@@ -2721,6 +3019,8 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(admit_v2_artifact_program, module)?)?;
+    module.add_class::<V2AdmittedPlan>()?;
     module.add_function(wrap_pyfunction!(stored_tree_program_section, module)?)?;
     module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)
 }

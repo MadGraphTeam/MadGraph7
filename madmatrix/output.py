@@ -29,7 +29,6 @@ import madgraph.iolibs.export_cpp as export_cpp
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.various.misc as misc
 
-from . import launch_plugin
 
 def relative_path_list(relative_path, files_list):
     return list(map(lambda f: pjoin(relative_path, f), files_list))
@@ -93,20 +92,15 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV - use a custom OneProcessExporter
     oneprocessclass = model_handling.OneProcessExporterMadMatrix
 
-    # Crossing symmetry (extended flavor id) is supported by the madmatrix /
-    # cudacpp backends, cpu/simd and GPU (gated by --use_crossing, default on,
+    # Crossing symmetry (extended flavor id) is supported by the madmatrix
+    # backends, cpu/simd and GPU (gated by --use_crossing, default on,
     # and by the matrix element recording a crossed subprocess: see
     # ProcessExporterMG7.generate_subprocess_directory). The MG7 (pure-cpp
     # mg7_v5) exporter keeps supports_crossing=False. When the machinery is off
     # the generated output is byte-identical to before.
     supports_crossing = True
 
-    # Information to find the template file that we want to include from madgraph
-    # you can include additional file from the plugin directory as well
-    # AV - use template files from PLUGINDIR instead of MG5DIR and add gpu/mgOnGpuVectors.h
-    # [NB: mgOnGpuConfig.h, check_sa.cc and fcheck_sa.f are handled through dedicated methods]
-    ###s = MG5DIR + '/madgraph/iolibs/template_files/'
-
+    # Information to find the template files to include from madgraph
     templates_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files')
     mg7_templates = pjoin(templates_path, 'mg7')
     madmatrix_templates = pjoin(templates_path, 'madmatrix')
@@ -168,11 +162,10 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         rambo_template_dir, template_sources(rambo_template_dir))
 
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
-    # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
-    # etc.) are NOT linked into P* at all: they are read straight from the
+    # MemoryAccess*.h family, umami.cc, etc.) are NOT linked into P* at all: they are read straight from the
     # top-level backend/<variant>/ and backend/common/ dirs via the Makefile's
     # INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). They are still compiled
-    # once per P* directory, into its own build.<BACKEND>/, and have to be:
+    # once per P* directory, into its own build.<BACKEND>_<FPTYPE>/, and have to be:
     # they include that directory's generated ProcessData.h, ColorData.h and
     # ProcessTables.h. Only files with no backend/ counterpart - genuinely
     # backend-agnostic - stay here.
@@ -304,7 +297,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         and wants the QCD-EW cross term alone, which no amount of dropping
         diagrams at generation can produce.
 
-        The BLAS color sums (CPU: compile time, GPU: CUDACPP_RUNTIME_BLASCOLORSUM)
+        The BLAS color sums (CPU: compile time, GPU: per run)
         cannot pair split orders and are not used for such a process.
         """
 
@@ -352,9 +345,9 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # libraries of P-wave bound states) is passed by keyword to all of them
         if not getattr(self, 'has_madmatrix', True):
             return
-        if hasattr(model , 'cudacpp_wanted_ordered_couplings'):
-            wanted_couplings = model.cudacpp_wanted_ordered_couplings
-            del model.cudacpp_wanted_ordered_couplings
+        if hasattr(model , 'madmatrix_wanted_ordered_couplings'):
+            wanted_couplings = model.madmatrix_wanted_ordered_couplings
+            del model.madmatrix_wanted_ordered_couplings
         return super().convert_model(model, wanted_lorentz, wanted_couplings, **opts)
 
     # AV (default from OM's tutorial) - overload settings and add a debug printout

@@ -22,7 +22,7 @@ static const UmamiParameter umami_p0_parameters[] = {
     {"coupling.10.1_23_1.component_1", 0.17818666745287456, 0, true, true},
 };
 static const UmamiProcess umami_processes[] = {
-    {"d_dbar_to_z", umami_p0_pdgs, NULL, "lc", 12, umami_p0_helicities, 12, umami_p0_parameters},
+    {"d_dbar_to_z", umami_p0_pdgs, NULL, -1, "lc", 12, umami_p0_helicities, 12, umami_p0_parameters},
 };
 static const size_t umami_c0_f0_permutation[] = {0, 1, 2};
 static const int umami_c0_f0_helicity_runtime[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};

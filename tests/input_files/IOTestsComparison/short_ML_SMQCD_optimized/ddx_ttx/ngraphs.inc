@@ -1,2 +1,1 @@
-      INTEGER    N_MAX_CG
-      PARAMETER (N_MAX_CG=52)
+../../_shared/long_ML_SMQCD_default%dux_mumvmxg%ngraphs.inc

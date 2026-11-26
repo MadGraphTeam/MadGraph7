@@ -5,7 +5,10 @@ C
       USE POLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
 C     
+      USE, INTRINSIC :: IEEE_EXCEPTIONS, ONLY: IEEE_GET_FLAG,IEEE_INEXAC
+     $T
       IMPLICIT NONE
+      LOGICAL WL_ENTRY_INEXACT
 C     
 C     CONSTANTS
 C     
@@ -103,7 +106,9 @@ C     Coefficient construction for loop diagram with ID 2
      $ ,COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,1))
       CALL VVV1L2P0_1(PL(0,1),W(6),GC_4,DCMPLX(ZERO),PL(0,2),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,1),4,COEFS,4,4,WL(1,0,1,2))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,1),4,COEFS,4,4,WL(1,0,1,2),WL_ENT
+     $RY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,2),2,4,1,1,1,16,H)
 C     Coefficient construction for loop diagram with ID 3
       CALL VVS1L1_3(PL(0,0),W(5),GC_92,DCMPLX(CMASS_MDL_MW),PL(0,3)
@@ -119,7 +124,9 @@ C     Coefficient construction for loop diagram with ID 4
       CALL UPDATE_WL_1_0(WL(1,0,1,5),4,COEFS,4,4,WL(1,0,1,6))
       CALL VVV1L1P0_3(PL(0,6),W(5),GC_4,DCMPLX(CMASS_MDL_MW),PL(0,7)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,6),4,COEFS,4,4,WL(1,0,1,7))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,6),4,COEFS,4,4,WL(1,0,1,7),WL_ENT
+     $RY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,7),2,4,2,1,1,18,H)
 C     Coefficient construction for loop diagram with ID 5
       CALL FFV1L2P0_3(PL(0,0),W(1),GC_2,DCMPLX(ZERO),PL(0,8),COEFS)
@@ -127,7 +134,9 @@ C     Coefficient construction for loop diagram with ID 5
       CALL FFV1L3_1(PL(0,8),W(2),GC_1,DCMPLX(ZERO),PL(0,9),COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,8),4,COEFS,4,4,WL(1,0,1,9))
       CALL FFV2L2_1(PL(0,9),W(6),GC_124,DCMPLX(ZERO),PL(0,10),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,9),4,COEFS,4,4,WL(1,0,1,10))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,9),4,COEFS,4,4,WL(1,0,1,10),WL_EN
+     $TRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,10),2,4,3,1,1,19,H)
 C     Coefficient construction for loop diagram with ID 6
       CALL FFV1L3_2(PL(0,0),W(1),GC_2,DCMPLX(ZERO),PL(0,11),COEFS)
@@ -136,7 +145,9 @@ C     Coefficient construction for loop diagram with ID 6
      $ ,12),COEFS)
       CALL UPDATE_WL_1_0(WL(1,0,1,11),4,COEFS,4,4,WL(1,0,1,12))
       CALL VVV1L2P0_1(PL(0,12),W(6),GC_4,DCMPLX(ZERO),PL(0,13),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,12),4,COEFS,4,4,WL(1,0,1,13))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,12),4,COEFS,4,4,WL(1,0,1,13),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,13),2,4,4,1,1,20,H)
 C     Coefficient construction for loop diagram with ID 7
       CALL FFV2L3_1(PL(0,12),W(3),GC_124,DCMPLX(ZERO),PL(0,14),COEFS)
@@ -151,7 +162,9 @@ C     Coefficient construction for loop diagram with ID 8
       CALL UPDATE_WL_1_0(WL(1,0,1,16),4,COEFS,4,4,WL(1,0,1,17))
       CALL VVV1L1P0_2(PL(0,17),W(6),GC_4,DCMPLX(CMASS_MDL_MW),PL(0,18)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,17),4,COEFS,4,4,WL(1,0,1,18))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,17),4,COEFS,4,4,WL(1,0,1,18),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,18),2,4,6,1,1,22,H)
 C     Coefficient construction for loop diagram with ID 9
       CALL FFV1L3_2(PL(0,17),W(4),GC_3,DCMPLX(ZERO),PL(0,19),COEFS)
@@ -171,7 +184,9 @@ C     Coefficient construction for loop diagram with ID 11
       CALL UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,22))
       CALL VVV1L1P0_3(PL(0,22),W(6),GC_71,DCMPLX(CMASS_MDL_MZ),PL(0,23)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,22),4,COEFS,4,4,WL(1,0,1,23))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,22),4,COEFS,4,4,WL(1,0,1,23),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,23),2,4,9,1,1,25,H)
 C     Coefficient construction for loop diagram with ID 12
       CALL VVS1L2_3(PL(0,0),W(5),GC_85,DCMPLX(CMASS_MDL_MW),PL(0,24)
@@ -189,7 +204,9 @@ C     Coefficient construction for loop diagram with ID 13
       CALL UPDATE_WL_1_0(WL(1,0,1,26),4,COEFS,4,4,WL(1,0,1,27))
       CALL VVV1L2P0_3(PL(0,27),W(5),GC_71,DCMPLX(CMASS_MDL_MZ),PL(0,28)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,27),4,COEFS,4,4,WL(1,0,1,28))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,27),4,COEFS,4,4,WL(1,0,1,28),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,28),2,4,10,1,1,27,H)
 C     Coefficient construction for loop diagram with ID 14
       CALL FFV2L1P0_3(PL(0,0),W(3),GC_80,DCMPLX(CMASS_MDL_MZ),PL(0,29)
@@ -199,7 +216,9 @@ C     Coefficient construction for loop diagram with ID 14
      $ ,COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,29),4,COEFS,4,4,WL(1,0,1,30))
       CALL FFV2L1_2(PL(0,30),W(5),GC_124,DCMPLX(ZERO),PL(0,31),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,30),4,COEFS,4,4,WL(1,0,1,31))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,30),4,COEFS,4,4,WL(1,0,1,31),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,31),2,4,11,1,1,28,H)
 C     Coefficient construction for loop diagram with ID 15
       CALL FFV2_4L2P0_3(PL(0,5),W(4),GC_68,GC_77,DCMPLX(CMASS_MDL_MZ)
@@ -207,7 +226,9 @@ C     Coefficient construction for loop diagram with ID 15
       CALL UPDATE_WL_1_0(WL(1,0,1,5),4,COEFS,4,4,WL(1,0,1,32))
       CALL VVV1L3P0_2(PL(0,32),W(5),GC_71,DCMPLX(CMASS_MDL_MW),PL(0,33)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,32),4,COEFS,4,4,WL(1,0,1,33))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,32),4,COEFS,4,4,WL(1,0,1,33),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,33),2,4,12,1,1,29,H)
 C     Coefficient construction for loop diagram with ID 16
       CALL FFV2_5L2P0_3(PL(0,0),W(1),GC_69,GC_76,DCMPLX(CMASS_MDL_MZ)
@@ -217,7 +238,9 @@ C     Coefficient construction for loop diagram with ID 16
      $ ,COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,34),4,COEFS,4,4,WL(1,0,1,35))
       CALL FFV2L2_1(PL(0,35),W(6),GC_124,DCMPLX(ZERO),PL(0,36),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,35),4,COEFS,4,4,WL(1,0,1,36))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,35),4,COEFS,4,4,WL(1,0,1,36),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,36),2,4,13,1,1,30,H)
 C     Coefficient construction for loop diagram with ID 17
       CALL FFV2_5L3_2(PL(0,0),W(1),GC_69,GC_76,DCMPLX(ZERO),PL(0,37)
@@ -228,7 +251,9 @@ C     Coefficient construction for loop diagram with ID 17
       CALL UPDATE_WL_1_0(WL(1,0,1,37),4,COEFS,4,4,WL(1,0,1,38))
       CALL VVV1L1P0_3(PL(0,38),W(6),GC_71,DCMPLX(CMASS_MDL_MZ),PL(0,39)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,38),4,COEFS,4,4,WL(1,0,1,39))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,38),4,COEFS,4,4,WL(1,0,1,39),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,39),2,4,14,1,1,31,H)
 C     Coefficient construction for loop diagram with ID 18
       CALL FFV2L3_2(PL(0,38),W(4),GC_124,DCMPLX(ZERO),PL(0,40),COEFS)
@@ -250,7 +275,9 @@ C     Coefficient construction for loop diagram with ID 20
       CALL UPDATE_WL_1_0(WL(1,0,1,16),4,COEFS,4,4,WL(1,0,1,44))
       CALL VVV1L3P0_1(PL(0,44),W(6),GC_71,DCMPLX(CMASS_MDL_MW),PL(0,45)
      $ ,COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,44),4,COEFS,4,4,WL(1,0,1,45))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,44),4,COEFS,4,4,WL(1,0,1,45),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,45),2,4,17,1,1,34,H)
 C     Coefficient construction for loop diagram with ID 21
       CALL FFV2L3_1(PL(0,44),W(3),GC_80,DCMPLX(ZERO),PL(0,46),COEFS)
@@ -339,20 +366,26 @@ C     Coefficient construction for loop diagram with ID 34
       CALL FFV2L1_2(PL(0,0),W(5),GC_124,DCMPLX(ZERO),PL(0,68),COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,68))
       CALL FFV2L1_2(PL(0,68),W(6),GC_124,DCMPLX(ZERO),PL(0,69),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,68),4,COEFS,4,4,WL(1,0,1,69))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,68),4,COEFS,4,4,WL(1,0,1,69),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,69),2,4,24,1,2,48,H)
 C     Coefficient construction for loop diagram with ID 35
       CALL FFV2L1_2(PL(0,0),W(5),GC_124,DCMPLX(CMASS_MDL_MT),PL(0,70)
      $ ,COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,70))
       CALL FFV2L1_2(PL(0,70),W(6),GC_124,DCMPLX(ZERO),PL(0,71),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,70),4,COEFS,4,4,WL(1,0,1,71))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,70),4,COEFS,4,4,WL(1,0,1,71),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,71),2,4,25,1,1,49,H)
 C     Coefficient construction for loop diagram with ID 36
       CALL FFV2L1_2(PL(0,0),W(5),GC_124,DCMPLX(ZERO),PL(0,72),COEFS)
       CALL UPDATE_WL_0_1(WL(1,0,1,0),4,COEFS,4,4,WL(1,0,1,72))
       CALL FFV2L1_2(PL(0,72),W(6),GC_124,DCMPLX(ZERO),PL(0,73),COEFS)
-      CALL UPDATE_WL_1_1(WL(1,0,1,72),4,COEFS,4,4,WL(1,0,1,73))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL DP_TERMINAL_WL_1_1(WL(1,0,1,72),4,COEFS,4,4,WL(1,0,1,73),WL_E
+     $NTRY_INEXACT)
       CALL CREATE_LOOP_COEFS(WL(1,0,1,73),2,4,24,1,3,50,H)
 C     At this point, all loop coefficients needed for (QCD=0 QED=6),
 C      i.e. of split order ID=1, are computed.

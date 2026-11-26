@@ -132,6 +132,15 @@ def _alpha_s_name(model: Mapping, physics: Mapping, parameters: Mapping) -> str 
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _alpha_s_power(physics: Mapping, name: str | None) -> int | None:
+    """The proven power of alpha_s in the ME, see generation.alpha_s_power."""
+    proof = physics.get("extensions", {}).get("alpha_s_power")
+    if name is None or not isinstance(proof, Mapping) or proof.get("parameter") != name:
+        return None
+    power = proof.get("power")
+    return power if isinstance(power, int) and power >= 0 else None
+
+
 def _slha_reference(declaration: Mapping) -> dict[str, Any]:
     """The parameter card entry of an external UFO parameter, if it has one."""
     if declaration.get("nature") != "external" or not declaration.get("lhablock"):
@@ -497,14 +506,18 @@ def _placements(word_slots, blocks, units):
                 yield order
 
 
-def _phasespace_partners(word_slots, singlet_slots, roles, configurations):
+def _phasespace_partners(
+    word_slots, singlet_slots, roles, configurations, required=frozenset()
+):
     """The phase-space orders and resonance configurations integrating one
     colour order together, the first one its own: ``[(order, configuration)]``
     with ``configuration`` one of the process's ``configurations`` of
     ``(pdg, legs)``. A resonance decaying to coloured particles applies only if
     they are a complete colour line of this order. At most ``_MAX_PARTNERS``
     configurations are kept, in their order, and as many placements of each
-    as fit."""
+    as fit. A configuration without a ``required`` resonance (one every diagram
+    has, as the W of e+ ve) is left out when it applies with it too: its
+    channel would share the peak without sampling it."""
     blocks = _line_blocks(word_slots, roles) if word_slots else None
     lines = {frozenset(block) for block in blocks or ()}
     applicable = [
@@ -513,6 +526,14 @@ def _phasespace_partners(word_slots, singlet_slots, roles, configurations):
         if all(
             legs in lines or all(roles[slot] == 1 for slot in legs)
             for _, legs in configuration
+        )
+    ]
+    present = {frozenset(c) for c in applicable}
+    applicable = [
+        c
+        for c in applicable
+        if not any(
+            r not in c and frozenset((*c, r)) in present for r in required
         )
     ][:_MAX_PARTNERS]
     per_configuration = max(1, _MAX_PARTNERS // len(applicable))
@@ -963,13 +984,16 @@ def _build_provider(
         helicities = _records(physics.get("helicities"))
         if process.process_id not in runtime_indices:
             runtime_indices[process.process_id] = len(data["runtime_processes"])
+            alpha_s_name = _alpha_s_name(model, physics, parameters)
             data["runtime_processes"].append(
                 {
                     "id": process.process_id,
                     "expression": process.expression,
                     "pdgs": list(process.external_pdgs),
                     "color_accuracy": process.color_accuracy,
-                    "alpha_s_parameter": _alpha_s_name(model, physics, parameters),
+                    "alpha_s_parameter": alpha_s_name,
+                    # ME(alpha_s) = (alpha_s / alpha_s_0)^power ME(alpha_s_0)
+                    "alpha_s_power": _alpha_s_power(physics, alpha_s_name),
                     "parameters": [
                         {
                             **p,
@@ -1035,6 +1059,18 @@ def _build_provider(
                 (pdg, frozenset(relation[slot] for slot in legs), color)
                 for pdg, legs, color in resonances
             ]
+        required = frozenset(
+            (int(r["pdg"]), frozenset(labels[int(label)] for label in r["labels"]))
+            for r in _records(
+                physics.get("extensions", {}).get("s_channel_resonances", ())
+            )
+            if r.get("required")
+        )
+        if relation is not None:
+            required = frozenset(
+                (pdg, frozenset(relation[slot] for slot in legs))
+                for pdg, legs in required
+            )
         mappable, coloured, unmapped = _classify_resonances(resonances, roles)
         configurations, complete = _configurations(mappable)
         if not complete and process.color_accuracy == "lc":
@@ -1156,6 +1192,7 @@ def _build_provider(
                     [slot for slot in order if roles[slot] == 1],
                     roles,
                     configurations,
+                    required,
                 ),
                 incoming,
                 leg_masses,

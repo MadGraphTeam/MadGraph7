@@ -20,6 +20,11 @@ def _boolean(value: object) -> str:
     return "true" if value else "false"
 
 
+def _power(process: Mapping[str, Any]) -> str:
+    power = process.get("alpha_s_power")
+    return "-1" if power is None else str(int(power))
+
+
 def provider_header(data: Mapping[str, Any]) -> str:
     """Render the private ABI defined by ``umami_provider.h``."""
     provider = data["provider"]
@@ -78,6 +83,7 @@ def provider_header(data: Mapping[str, Any]) -> str:
                     _string(process["id"]),
                     f"{prefix}_pdgs",
                     _string(process["alpha_s_parameter"]),
+                    _power(process),
                     _string(process["color_accuracy"]),
                     str(len(helicities)),
                     f"{prefix}_helicities" if helicities else "NULL",

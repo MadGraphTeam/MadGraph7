@@ -1,5 +1,5 @@
 #!/bin/bash -l
-# Runs on the self-hosted runner (GPU node): jobs pp_ttx and pp_jj of gpu_runner_ci.yml.
+# Runs on the self-hosted runner (GPU node): job pp_ttx of gpu_runner_ci.yml.
 # generate $PROCESS (default p p > t t~), output mg7, run it on the GPU (run_card
 # device = cuda|hip) and check that a cross section comes out.
 # Environment:

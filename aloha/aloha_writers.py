@@ -2768,7 +2768,7 @@ class ALOHAWriterForGPU(ALOHAWriterForCPP):
         if not self.mode == 'no_include':
             h_string.write('#ifndef '+ self.name + '_guard\n')
             h_string.write('#define ' + self.name + '_guard\n')
-            h_string.write('#include "mgOnGpuTypes.h"\n')
+            h_string.write('#include "MadMatrixCxtypes.h"\n')
             h_string.write('using namespace std;\n\n')
 
         h_header = self.get_header_txt(mode='no_include__is_h', couplings=couplings)

@@ -366,6 +366,21 @@ C        ARGUMENTS
         
         return '\n'.join(lines)
     
+    def get_TIRUST_mapping(self):
+        """Map MadLoop coefficient indices to the 1-based packed TIRust basis.
+
+        TIRust enumerates decreasing time/x/y exponents within each rank;
+        MadLoop uses its historical polynomial ordering. Components are
+        unweighted: numerator coefficients already contain permutation sums.
+        """
+        packed = {}
+        for rank in range(self.max_rank + 1):
+            for t in range(rank, -1, -1):
+                for x in range(rank - t, -1, -1):
+                    for y in range(rank - t - x, -1, -1):
+                        packed[(t, x, y, rank - t - x - y)] = len(packed) + 1
+        return [packed[exponents] for exponents in self.get_COLLIER_mapping()]
+
     def get_COLLIER_mapping(self):
         """ Returns a list of tuples of the form:
           [ (COLLIER_ind0, COLLIER_ind1, COLLIER_ind2, COLLIER_ind3), ]
@@ -574,6 +589,101 @@ END FUNCTION
 END FUNCTION
 """
         return declarations, preparation, classifier
+
+    def write_dp_terminal_wl_updater(self, r_1=1, r_2=1):
+        """Private binary64 diagonal updater for the qualified rank pairs.
+
+        The exporter must prove that only the final diagonal is consumed.
+        Keep the public updater and all surviving arithmetic unchanged. Signed
+        zero or component exponents [-400,400] put products on a 2**-904
+        lattice and bound partial sums below 2**810; omitted operations cannot
+        add invalid, overflow, underflow or divide-by-zero. INEXACT must already
+        be sticky, with nearest rounding and no enabled exception traps.
+        """
+        if (self.coef_format != 'complex*16' or (r_1, r_2) not in ((1, 1), (2, 1), (3, 1))
+                or self.max_rank < r_1 + r_2 or self.updater_max_rank < 1
+                or (r_1 > 1 and (self.max_rank > 6 or self.updater_max_rank != 1))):
+            raise PolynomialError("Unsupported DP terminal rank or storage shape")
+        public = self.sub_prefix + 'UPDATE_WL_%d_%d' % (r_1, r_2)
+        private = self.sub_prefix + 'DP_TERMINAL_WL_%d_%d' % (r_1, r_2)
+        if len(private) > 63:
+            raise PolynomialError("DP terminal updater name exceeds 63 characters")
+        def replace_once(text, old, new):
+            if text.count(old) != 1:
+                raise PolynomialError("Unrecognized dense DP updater structure")
+            return text.replace(old, new, 1)
+
+        source = (self.write_expanded_wl_updater(1, 1, _sparse=False) if r_1 == 1 else
+                  self.write_compact_wl_updater(r_1, r_2, _sparse=False))
+        source = replace_once(source, 'SUBROUTINE '+public+'(', 'SUBROUTINE '+private+'(')
+        source = replace_once(source, 'OUT_SIZE,OUT)\n', 'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n')
+        if r_1 == 1:
+            source = replace_once(source, '  INTEGER I,J,K\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
+  USE, INTRINSIC :: IEEE_EXCEPTIONS
+  INTEGER I,J,K,WL_H
+  LOGICAL WL_ENTRY_INEXACT
+  LOGICAL WL_HALTING(SIZE(IEEE_ALL))
+  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
+''')
+        else:
+            source = replace_once(source, '  implicit none\n', '''  USE, INTRINSIC :: IEEE_ARITHMETIC
+  USE, INTRINSIC :: IEEE_EXCEPTIONS
+  implicit none
+''')
+            source = replace_once(source, '  INTEGER I,J,K,L,M\n', '''  INTEGER I,J,K,L,M,WL_H
+  LOGICAL WL_ENTRY_INEXACT
+  LOGICAL WL_HALTING(SIZE(IEEE_ALL))
+  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
+''')
+        guard = '''C Private diagonal arithmetic requires the rendered consumer proof.
+IF(.NOT.WL_ENTRY_INEXACT) GOTO 900
+IF(MAXLWFSIZE.NE.4.OR.LCUT_SIZE.NE.4.OR.IN_SIZE.NE.4.OR.OUT_SIZE.NE.4) GOTO 900
+CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)
+IF(WL_ROUNDING.NE.IEEE_NEAREST) GOTO 900
+DO WL_H=1,SIZE(IEEE_ALL)
+  IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(WL_H))) GOTO 900
+ENDDO
+CALL IEEE_GET_HALTING_MODE(IEEE_ALL,WL_HALTING)
+IF(ANY(WL_HALTING)) GOTO 900
+IF(.NOT.ALL(WL_DP_BOUNDED(REAL(A(:,0:4,:),KIND=8)))) GOTO 900
+IF(.NOT.ALL(WL_DP_BOUNDED(AIMAG(A(:,0:4,:))))) GOTO 900
+IF(.NOT.ALL(WL_DP_BOUNDED(REAL(B(:,0:4,:),KIND=8)))) GOTO 900
+IF(.NOT.ALL(WL_DP_BOUNDED(AIMAG(B(:,0:4,:))))) GOTO 900
+C DP_TERMINAL_FAST_PATH
+'''
+        if r_1 == 1:
+            source = replace_once(source, 'DO I=1,LCUT_SIZE\n', guard+'DO I=1,LCUT_SIZE\n')
+            source = replace_once(source, '  DO K=1,IN_SIZE\n    DO J=1,OUT_SIZE',
+                                  '  DO K=1,IN_SIZE\n    DO J=I,I')
+        else:
+            guard = guard.replace('A(:,0:4,:)', 'A(:,0:%d,:)' %
+                                  (get_number_of_coefs_for_rank(r_1) - 1))
+            initialize = 'OUT(:,:,:)=%s\n' % self.czero
+            source = replace_once(source, initialize, guard + initialize)
+            source = replace_once(source, '          DO I=1,LCUT_SIZE',
+                                  '          DO I=J,J')
+        if not source.endswith('\nEND'):
+            raise PolynomialError("Unrecognized dense DP updater terminator")
+        source = source[:-3] + '''RETURN
+900 CONTINUE
+CALL {public}(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
+CONTAINS
+ELEMENTAL LOGICAL FUNCTION WL_DP_BOUNDED(X)
+  REAL*8, INTENT(IN) :: X
+  INTEGER*8, PARAMETER :: ONE_WORDS(1)=TRANSFER(1.0_8,(/0_8/))
+  WL_DP_BOUNDED=.FALSE.
+  IF(STORAGE_SIZE(X).NE.64.OR.DIGITS(X).NE.53.OR.RADIX(X).NE.2.OR.MAXEXPONENT(X).NE.1024) RETURN
+  IF(ONE_WORDS(1).NE.ISHFT(1023_8,52)) RETURN
+  ASSOCIATE(WORDS=>TRANSFER(X,ONE_WORDS))
+    IF(IBCLR(WORDS(1),63).EQ.0_8) THEN
+      WL_DP_BOUNDED=.TRUE.
+    ELSE
+      WL_DP_BOUNDED=IBITS(WORDS(1),52,11).GE.623_8.AND.IBITS(WORDS(1),52,11).LE.1423_8
+    ENDIF
+  END ASSOCIATE
+END FUNCTION
+END'''.format(public=public)
+        return source
 
     def write_compact_wl_updater(self,r_1,r_2,loop_over_vertex_coefs_first=True,
                                 _sparse=True, terminal=False):

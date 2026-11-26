@@ -30,6 +30,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualLaneRescue,
     VirtualPoleParts,
     VirtualReduction,
     VirtualRescuePolicy,
@@ -39,6 +40,7 @@ from pyamplicol.api.virtual_results import (
     best_effort_detail,
     computes_poles,
     pole_selection,
+    rescue_text,
     splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
@@ -78,6 +80,10 @@ PROFILE_GROUPS = (
     PROFILE_REST,
 )
 
+# The lane detail of an evaluation without stability checks (the same text
+# as ``loops.v2.artifact``'s).
+_NO_CHECK_DETAIL = "no stability check was requested, so the accuracy is not estimated"
+
 
 def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
     """The native stages of each timed group of a ``contribution`` call
@@ -90,7 +96,9 @@ def profile_stage_names(contribution: str) -> dict[str, tuple[str, ...]]:
         PROFILE_TREES: ("trees",),
         PROFILE_DRESSING: dressing,
         PROFILE_SCATTER: ("scatter",),
-        PROFILE_REDUCTION: ("reduction",),
+        # The lane rescue's reductions (``V2Options::rescue``) are
+        # reductions too.
+        PROFILE_REDUCTION: ("reduction", "lane rescue"),
     }
 
 
@@ -386,7 +394,7 @@ def _ratio(error: float, scale: float) -> float:
 
     if not error:
         return 0.0
-    return error / scale if scale else math.inf
+    return float(error / scale) if scale else math.inf
 
 
 def v2_public_estimate(
@@ -415,20 +423,26 @@ def v2_public_estimate(
         else [canonical_order(sector) for sector in sectors]
     )
 
-    def floats(found: Any) -> list[float]:
+    def sizes(found: Any) -> list[Any]:
+        # As the estimate holds them: binary64 floats, or exponent-safe
+        # ``loops.v2.wide.Wide`` magnitudes in arbitrary precision.
         return [
-            0.0 if found is None else abs(float(found.coefficients[k]))
-            for k in range(width)
+            0.0 if found is None else abs(found.coefficients[k]) for k in range(width)
         ]
+
+    def floats(values: list[Any]) -> list[float]:
+        return [float(value) for value in values]
 
     def laurent(values: list[float]) -> LaurentCoefficients:
         absent = cast(VirtualScalar, None)
         return LaurentCoefficients(*values, *([absent] * (3 - width)))
 
-    error_values = [floats(errors.get(key)) for key in keys]
-    scale_values = [floats(scales.get(key)) for key in keys]
-    absolute = tuple(laurent(values) for values in error_values)
-    magnitude = tuple(laurent(values) for values in scale_values)
+    error_values = [sizes(errors.get(key)) for key in keys]
+    scale_values = [sizes(scales.get(key)) for key in keys]
+    # The public E and S are binary64 floats (below its range: 0.0); every
+    # ratio below is formed from the exact sizes first.
+    absolute = tuple(laurent(floats(values)) for values in error_values)
+    magnitude = tuple(laurent(floats(values)) for values in scale_values)
     ratios = [
         [
             _ratio(error[k], size[k])
@@ -463,6 +477,16 @@ def v2_r2_strategy(value: R2Strategy | str | None) -> R2Strategy:
     if strategy is R2Strategy.DIRECT:
         raise CompatibilityError("v2 virtual artifacts carry model-supplied R2 only")
     return strategy
+
+
+def _rescaled_added(checks: Any) -> bool:
+    """Whether a rescued point's estimate gets the rescaled
+    reduction-direction check added to ``checks`` (``reduction.
+    rescued_checks``; the lane diagnostic's text, review m-a)."""
+
+    from pyamplicol.loops.v2.reduction import rescued_checks
+
+    return rescued_checks(checks) is not None
 
 
 def v2_options(
@@ -613,6 +637,15 @@ class V2ObservablesRuntime:
                 _parameters(model_parameters) or {}
             ).items()
         }
+        # The digits that select the load-time arithmetic for a call naming
+        # none: the load's digits, else binary64's 16 (``_precision``).
+        self._carrier_digits = 16 if precision is None else precision
+        if precision is None and arithmetic == "arbitrary":
+            # Arbitrary precision without digits: the default arbitrary-
+            # precision digits (500, USER 2026-11-18); binary64's 16 else.
+            from pyamplicol.loops.v2.reduction import default_arbitrary_digits
+
+            precision = default_arbitrary_digits()
         self.default_arithmetic = arithmetic or (
             "double" if precision in (None, 16) else "arbitrary"
         )
@@ -942,7 +975,7 @@ class V2ObservablesRuntime:
 
         precision = self.default_precision if precision is None else precision
         arithmetic = arithmetic or (
-            self.default_arithmetic if precision == self.default_precision else None
+            self.default_arithmetic if precision == self._carrier_digits else None
         )
         arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
         if arithmetic == "double":
@@ -993,6 +1026,8 @@ class V2ObservablesRuntime:
         reasons: Sequence[str] | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
         served: Mapping[int, VirtualReduction] | None = None,
+        lane_rescue: tuple[tuple[str, int], ...] = (),
+        added: bool = False,
     ) -> VirtualLaneDiagnostic:
         bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
             precision.digits * math.log2(10)
@@ -1036,6 +1071,7 @@ class V2ObservablesRuntime:
                 ),
                 reduction=reduction,
             )
+        rescue = VirtualLaneRescue.of(lane_rescue) if lane_rescue else None
         return VirtualLaneDiagnostic(
             "success",
             arithmetic,  # type: ignore[arg-type]
@@ -1045,9 +1081,11 @@ class V2ObservablesRuntime:
             + (
                 "accuracy is estimated only by the requested stability checks"
                 if checked
-                else "no stability check requested"
-            ),
+                else _NO_CHECK_DETAIL
+            )
+            + ("" if rescue is None else "; " + rescue_text(rescue, added)),
             reduction=reduction,
+            lane_rescue=rescue,
         )
 
     def _failed(self, failures: Mapping[int, Sequence[str]], on_failure: str) -> None:
@@ -1069,7 +1107,11 @@ class V2ObservablesRuntime:
         checks: VirtualStabilityChecks | None = None,
         reductions: Mapping[str, VirtualReduction] | None = None,
         served: Mapping[int, VirtualReduction] | None = None,
+        rescues: Sequence[Any] | None = None,
     ) -> VirtualEvaluation:
+        """``results``: one output per point; ``rescues``: per point its lane
+        rescue when ``results`` are outputs taken from each point's mapping
+        (``plan_export.RescuedOutputs``; else read from the result)."""
 
         born_orders = self._default_born_orders()
         checked = checks is not None and checks.enabled
@@ -1144,6 +1186,12 @@ class V2ObservablesRuntime:
                     index,
                     reductions=reductions,
                     served=served,
+                    lane_rescue=(
+                        getattr(result, "lane_rescue", ())
+                        if rescues is None
+                        else rescues[index]
+                    ),
+                    added=_rescaled_added(checks),
                 )
             )
         return VirtualEvaluation(
@@ -1495,6 +1543,7 @@ class V2ObservablesRuntime:
                 checks,
                 reductions,
                 served,
+                [getattr(result, "lane_rescue", ()) for result in per_point],
             ),
             kinematics,
         )
@@ -1575,6 +1624,7 @@ class V2ObservablesRuntime:
                         checks,
                         reductions,
                         served,
+                        [getattr(results, "lane_rescue", ()) for results in per_point],
                     ),
                     kinematics,
                 )
@@ -1803,6 +1853,8 @@ class V2ObservablesRuntime:
                     index,
                     reductions=reductions,
                     served=served,
+                    lane_rescue=getattr(result, "lane_rescue", ()),
+                    added=_rescaled_added(checks),
                 )
             )
             estimates.append(

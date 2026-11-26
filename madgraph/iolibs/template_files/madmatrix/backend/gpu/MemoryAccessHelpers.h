@@ -7,9 +7,9 @@
 #ifndef MemoryAccessHelpers_H
 #define MemoryAccessHelpers_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuFptypes.h"
+#include "MadMatrixFptypes.h"
 
 //----------------------------------------------------------------------------
 

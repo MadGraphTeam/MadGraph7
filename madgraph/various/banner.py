@@ -848,18 +848,23 @@ UPC_NEUTRON_TAGGING_NUCLEI = {(82, 126): 4,   # Pb208
                               (79, 118): 4,   # Au197
                               (8, 8): 2}      # O16
 
-def check_upc_neutron_tagging(card, label):
+def check_upc_neutron_tagging(card, label, ions=None):
     """Raise InvalidRunCard if the gamma-UPC pdlabel asks for a neutron tag
-    that gamma-UPC does not provide for the ion of that beam."""
+    that gamma-UPC does not provide for the ion of that beam.
+
+    ions: ((Z1, N1), (Z2, N2)) of the beams (the mg7 card); read from the
+    madevent card, when both beams are |lpp| = 2, if not given."""
 
     if not is_upc_label(label) or label[3] == 'f':
         return
-    if not abs(card['lpp1']) == 2 == abs(card['lpp2']):
-        return
-    for beam, tag in ((1, label[3:5]), (2, label[5:7])):
+    if ions is None:
+        if not abs(card['lpp1']) == 2 == abs(card['lpp2']):
+            return
+        ions = [(card['nb_proton%i' % beam], card['nb_neutron%i' % beam])
+                for beam in (1, 2)]
+    for beam, ((Z, N), tag) in enumerate(zip(ions, (label[3:5], label[5:7])), 1):
         if tag == 'in':
             continue
-        Z, N = card['nb_proton%i' % beam], card['nb_neutron%i' % beam]
         if (Z, N) == (1, 0):
             continue
         nmax = UPC_NEUTRON_TAGGING_NUCLEI.get((Z, N))
@@ -867,7 +872,7 @@ def check_upc_neutron_tagging(card, label):
             raise InvalidRunCard("pdlabel '%s': forward neutron tagging ('%s') is not available "
                                  "for beam %i (Z=%s, N=%s). Only Pb208, Au197 and O16 are supported "
                                  "(use pdlabel '%sf' for no tagging)."
-                                 % (label, tag, beam, Z, N, label[:2]))
+                                 % (label, tag, beam, Z, N, label[:3]))
         if tag[0].isdigit() and int(tag[0]) > nmax:
             raise InvalidRunCard("pdlabel '%s': neutron tag '%s' is not available for beam %i "
                                  "(Z=%s, N=%s), which has at most %in."
@@ -1726,8 +1731,18 @@ class ConfigFile(dict):
         
         return dict.__getitem__(self, name.lower())
 
-    
-    get = __getitem__
+    _no_default = object()
+
+    def get(self, name, default=_no_default):
+        """card[name]. With a default, return it when the card has no such
+        parameter; without one, a missing name raises KeyError (unlike
+        dict.get, which would return None)."""
+        try:
+            return self[name]
+        except KeyError:
+            if default is ConfigFile._no_default:
+                raise
+            return default
 
     def set(self, name, value, changeifuserset=True, user=False, raiseerror=False):
         """convenient way to change attribute.
@@ -4031,6 +4046,10 @@ class RunCard(ConfigFile):
         for incname in self.includepath:
             self.write_one_include_file(output_dir, incname, output_file)
  
+        # directory of the include files, for the fct_mod functions
+        # (keep their signature: plugins can overwrite them)
+        self.include_output_dir = output_dir
+        self.simd_reset_done = False
         for name,value in value_in_old_include.items():
             if value != self[name]:
                 self.fct_mod[name][0](value, self[name], name, *self.fct_mod[name][1],**self.fct_mod[name][2])
@@ -4600,6 +4619,12 @@ class PDLabelBlock(RunBlock):
     def post_set(card, value, change_userdefine, raiseerror, name="unknown", **opt):
         """call when change to pdlabel1 or pdlabel2 --do not know which one """
 
+        # only a user-defined pdlabel1/2 supersedes pdlabel. Internal
+        # assignments (e.g. get_default filling a hidden pdlabel1/2 while
+        # writing run_card.inc) must not drop pdlabel from user_set, otherwise
+        # the next write takes pdlabel from run_card_default.dat (issue 481)
+        if name not in card.user_set:
+            return
         if 'pdlabel' in card.user_set:
             card.user_set.remove('pdlabel')
 
@@ -5125,6 +5150,9 @@ class RunCardLO(RunCard):
         self.add_param('refine_evt_by_job', -1, hidden=True, include=False, comment="control the maximal number of events for the first iteration of the refine (larger means less jobs)")
         self.add_param('disable_multichannel', False, hidden=True, include=False, comment='disable madevent suppressed-amplitude multichannel mode and ignore symfact multiplicative factors in gen_ximprove channel steering')
         self.add_param('max_overweight_truncation', -1.0, hidden=True, comment="refine: fraction of the cross-section carried by the events heavier than the maximum weight (they keep their weight), as [generation] max_overweight_truncation in mg7. Negative (default): the maximum weight is the 99% quantile of the event weights of the iteration that decides the last one.")
+        self.add_param('enforce_overweight_limit', False, hidden=True, include=False, comment="refine: enforce max_overweight_truncation on all the events of the channels (see overweight_limit_mode), adding refine jobs to the channels whose maximum weight had to rise (needs max_overweight_truncation > 0)")
+        self.add_param('overweight_limit_min_events', -1, hidden=True, include=False, comment="enforce_overweight_limit: a channel's overweight budget is max_overweight_truncation times max(its share of nevents, this value). Negative (default): the average share, nevents / number of channels")
+        self.add_param('overweight_limit_mode', 'channel', hidden=True, include=False, allowed=['channel', 'process'], comment="enforce_overweight_limit: 'channel' applies the budget to each channel (as mg7), 'process' shares max_overweight_truncation of the cross-section among all channels (fewer additional refine jobs, no bound per channel)")
         self.add_param('small_width_treatment', 1e-6, hidden=True, comment="generation where the width is below VALUE times mass will be replace by VALUE times mass for the computation. The cross-section will be corrected assuming NWA. Not used for loop-induced process")
         #hel recycling
         self.add_param('hel_recycling', True, hidden=True, include=False, comment='allowed to deactivate helicity optimization at run-time --code needed to be generated with such optimization--')
@@ -5284,8 +5312,9 @@ class RunCardLO(RunCard):
                     mod = True
             elif abs(self[lpp]) == 2:
                 if self[pdlabelX] not in ['none','iww'] and not is_upc_label(self[pdlabelX]):
-                    logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to edff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
-                    self.set(pdlabelX, 'edff')
+                    # ChFF, as for 'set lpp 2' in mg7
+                    logger.warning("%s \'%s\' not compatible with %s \'%s\'. Changing %s to chff" % (lpp, self[lpp], pdlabelX, self[pdlabelX], pdlabelX))
+                    self.set(pdlabelX, 'chff')
                     mod = True
 
         if mod:
@@ -5401,6 +5430,30 @@ class RunCardLO(RunCard):
                     cite_fn('Frixione:2021zdp', 'lepton collisions in MadGraph7')
         except Exception:
             pass
+
+    def reset_simd(self, old_value, new_value, name, *args, **opts):
+        """vector_size/nb_warp changed: VECSIZE_MEMMAX (vector.inc) sets the
+        size of arrays/common blocks shared by the code of Source and of
+        SubProcesses, while the makefiles do not track that dependency.
+        Keeping old object files gives a code mixing both sizes (wrong or zero
+        cross-section) -> clean the compiled code of Source and of all P*."""
+
+        if getattr(self, 'simd_reset_done', False):
+            return
+        source_dir = getattr(self, 'include_output_dir', None)
+        if not source_dir or not os.path.exists(pjoin(source_dir, 'makefile')):
+            return
+        if 'MAKELEVEL' in os.environ:
+            # called by make (run_card.inc rule): cleaning would remove the
+            # object files of the running make
+            logger.warning('%s changed from %s to %s: run "make clean" in %s '
+                           'before compiling again', name, old_value, new_value,
+                           source_dir)
+            return
+        logger.info('%s changed from %s to %s: removing the compiled code',
+                    name, old_value, new_value)
+        misc.compile(['clean'], cwd=source_dir)
+        self.simd_reset_done = True
 
     def update_system_parameter_for_include(self):
         """system parameter need to be setupe"""
@@ -7333,9 +7386,34 @@ class RunCardMG7(RunCard):
             allowed=['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y', 'simd_512'],
             execution=True,
             comment="SIMD width of the phase-space sampling on cpu devices; simd_128 is ARM only")
-        self.add_toml_param('run', 'precision', "color32", gridpack=True,
+        self.add_toml_param('run', 'precision', "denom64", gridpack=True,
             allowed=['all64', 'all32', 'color32', 'denom64'],
             comment="matrix element precision: all64, all32, color32 (FP32 color sum) or denom64 (FP64 momenta and propagator denominators)")
+        # The precision check (madgraph/mg7/precision_check.py): a fraction of
+        # the events evaluated again in all64, for a precision other than all64.
+        # Off by default: it builds every subprocess a second time (in all64);
+        # 'validation' below reweights the whole sample through MadtRex instead.
+        self.add_toml_param('run', 'precision_check', 0.0,
+            comment="fraction of the events evaluated again in all64 to check the precision (0: no check, the default); builds the matrix elements a second time, in all64")
+        self.add_toml_param('run', 'precision_check_max_events', 1000, hidden=True,
+            comment="the precision check evaluates at most this many events")
+        self.add_toml_param('run', 'precision_check_threshold', 1e-3, hidden=True,
+            comment="relative deviation from all64 above which the precision check warns")
+        # after the generation, MadtRex reweights the events to the matrix
+        # elements compiled at this FPTYPE and reports how many significant
+        # digits they share with the generated weights (madtrex_driver.
+        # run_precision_validation()); no weights are written. An FPTYPE the
+        # matrix element build accepts (madmatrix.mk SUPPORTED_FPTYPES), or a
+        # precision name; "" (or "none") is off. Not a gridpack parameter:
+        # gridpack runs do not validate.
+        self.add_toml_param('run', 'validation', "",
+            allowed=['', 'none', 'all64', 'all32', 'color32', 'denom64',
+                     'd', 'f', 'm', 'e', 'v'],
+            comment="FPTYPE to validate the generated weights against (d/all64 suggested); \"\" for none")
+        # how many events the validation reweights, evenly spaced through a
+        # larger sample (madtrex_driver._subsample_events()); 0: all of them
+        self.add_toml_param('run', 'validation_events', 0,
+            comment="events the precision validation checks, evenly spaced through the sample; 0 for all")
         # --hel_recycling outputs (madmatrix, cpu only): the size of the recycled
         # tables per SIMD page above which the build takes the plain matrix
         # element (HRMAXMB of madmatrix.mk; -1: the build's default, 0: no
@@ -7496,6 +7574,25 @@ class RunCardMG7(RunCard):
         self.add_toml_param('beam', 'lepton_density', "",
             comment="dressed-lepton density (a directory of Source/PDF/lep_densities) "
                     "or \"\" for none: ISR and, for the collider-specific sets, beamstrahlung")
+        # gamma-UPC (madevent: lpp = 2 on both beams with an 'ed*'/'ch*'
+        # pdlabel): the coherent photons of two protons or ions, with the
+        # probability that the beams do not break up. Like a dressed-lepton
+        # density it replaces the PDFs by one two-beam luminosity, tabulated by
+        # the gamma-UPC Fortran (Source/PDF/gammaUPC) the first time it is needed.
+        self.add_toml_param('beam', 'upc_flux', "",
+            comment="gamma-UPC photon flux of two protons/ions (edff, chff, or "
+                    "with neutron tagging, e.g. chf0n0n), \"\" for none; "
+                    "replaces the PDFs, photon-photon processes only",
+            hidden=True)
+        # the beam particles of a gamma-UPC run; ebeam1/ebeam2 are then the
+        # energies of the whole ions, as in madevent
+        for i in (1, 2):
+            self.add_toml_param('beam', 'nb_proton%d' % i, 1,
+                comment="protons in the beam-%d ion (with upc_flux)" % i,
+                hidden=True)
+            self.add_toml_param('beam', 'nb_neutron%d' % i, 0,
+                comment="neutrons in the beam-%d ion (with upc_flux)" % i,
+                hidden=True)
         self.add_toml_param('beam', 'pdf1', "NNPDF40_lo_as_01180",
             comment="LHAPDF set name of beam 1; set beam.pdf X sets both beams")
         self.add_toml_param('beam', 'pdf2', "NNPDF40_lo_as_01180",
@@ -7735,6 +7832,8 @@ class RunCardMG7(RunCard):
             comment="number of grid bins per dimension")
         self.add_toml_param('vegas', 'damping', 0.4,
             comment="damping of the grid updates")
+        self.add_toml_param('vegas', 'adaptive_discrete', False,
+            comment="adapt the flavour and permutation choices with the grids")
         self.add_toml_param('vegas', 'optimization_patience', 5,
             comment="survey iterations without improvement before the optimization stops")
         self.add_toml_param('vegas', 'optimization_threshold', 0.9,
@@ -7839,12 +7938,21 @@ class RunCardMG7(RunCard):
         # the colour accuracy in a second pass
         self.add_toml_param('amplicol', 'color_accuracy', "full", allowed=["full", "lc"],
             comment="colour accuracy of the [amplicol] events, lc skips the second pass")
-        self.add_toml_param('amplicol', 'mode', "reweight", allowed=["unweight", "reweight"],
+        self.add_toml_param('amplicol', 'mode', "unweight", allowed=["unweight", "reweight"],
             comment="unweight or reweight the events to the colour accuracy")
-        self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.01,
+        # as the second pass: its overweights are carried into the second unweighting
+        self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.001,
             gridpack=True, comment="max_overweight_truncation of the leading-colour unweighting")
         self.add_toml_param('amplicol', 'first_pass_freeze_max_weight_after', 10000,
             gridpack=True, comment="freeze_max_weight_after of the leading-colour unweighting")
+        self.add_toml_param('amplicol', 'prior_partner_share', True,
+            comment="divide each flavour's sampling prior by its number of "
+                    "phase-space channels, its expected share in each")
+        self.add_toml_param('amplicol', 'lc_flavors', "two_lines_resample",
+            allowed=["all", "two_lines_resample", "two_lines"],
+            comment="flavours at leading colour: all; those with at most two quark "
+                    "lines, the full-colour pass switching events to the others "
+                    "(two_lines_resample); or those alone (two_lines)")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
@@ -7867,6 +7975,15 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'],
             comment="activation function of the discrete-dimension network")
+        self.add_toml_param('madnis', 'flavor_levels', True,
+            comment="sample the flavours in three levels: initial state, final-state "
+                    "content (both learned) and flavour")
+        self.add_toml_param('madnis', 'flavor_prior_floor', 0.05,
+            comment="with flavor_levels, the fraction of the learned levels sampled "
+                    "from their prior")
+        self.add_toml_param('madnis', 'flavor_logit_bound', 2.5,
+            comment="with flavor_levels, bound c of the learned logits, c tanh(x / c); "
+                    "0: unbounded")
         self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True,
             comment="hidden units per layer of the channel weight network")
         self.add_toml_param('madnis', 'cwnet_layers', 3,
@@ -7903,14 +8020,15 @@ class RunCardMG7(RunCard):
             comment="Adam numerical stability constant")
         self.add_toml_param('madnis', 'adam_weight_decay', 1e-4,
             comment="Adam weight decay")
-        self.add_toml_param('madnis', 'grad_clip_threshold', 0.003,
+        self.add_toml_param('madnis', 'grad_clip_threshold', 0.03,
             comment="maximum gradient norm; 0 disables clipping")
         self.add_toml_param('madnis', 'buffer_capacity', 60000,
             comment="replay buffer size per channel; 0 disables buffering")
         self.add_toml_param('madnis', 'minimum_buffer_size', 10000,
             comment="buffered samples needed before training on the buffer starts")
-        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8,
-            comment="fraction of training steps done on buffered samples")
+        self.add_toml_param('madnis', 'buffered_steps_fraction', 0.8, auto=True,
+            comment="fraction of training steps done on buffered samples; 0 "
+                    "allocates no buffer; auto: 0 for [amplicol], 0.8 otherwise")
         self.add_toml_param('madnis', 'buffer_skip_batches', 1000,
             comment="initial batches that are not stored in the buffer")
         self.add_toml_param('madnis', 'buffer_unweighting_quantile', 0.95,
@@ -8015,8 +8133,6 @@ class RunCardMG7(RunCard):
             raise KeyError("beam.pdf is ambiguous: the beams use different PDF "
                            "sets (%s, %s), read beam.pdf1 / beam.pdf2" % (pdf1, pdf2))
         return pdf1
-
-    get = __getitem__
 
     def __setitem__(self, name, value, *args, **opts):
         """Refuse an unsupported (madspace_)cpu_mode instead of silently falling back.
@@ -8158,6 +8274,15 @@ class RunCardMG7(RunCard):
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
+        upc_flux = str(beam['upc_flux'])
+        if upc_flux:
+            # gamma-UPC: madevent's lpp = 2 with the gamma-UPC pdlabel and ions
+            if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
+                return upc_flux
+            if key in ('lpp1', 'lpp2'):
+                return 2
+            if key in ('nb_proton1', 'nb_proton2', 'nb_neutron1', 'nb_neutron2'):
+                return int(beam[key])
         if key == 'nevents':
             return self['generation']['events']
         if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
@@ -8923,7 +9048,9 @@ class RunCardMG7(RunCard):
 
     # madevent beam settings understood by set_lo_beam_param
     lo_beam_params = ('ebeam', 'ebeam1', 'ebeam2', 'lpp', 'lpp1', 'lpp2',
-                      'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid')
+                      'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid',
+                      'nb_proton', 'nb_proton1', 'nb_proton2',
+                      'nb_neutron', 'nb_neutron1', 'nb_neutron2')
 
     def set_lo_beam_param(self, name, value, masses=None, data_paths=()):
         """``set <name> <value>`` with a madevent beam setting (lo_beam_params);
@@ -8937,7 +9064,11 @@ class RunCardMG7(RunCard):
           'lhapdf' alone changes nothing, since the set comes from lhaid;
           'none' on both beams is a lepton collider.
         * lpp: mg7 has one switch for both beams, beam.leptonic, true for
-          0 (no PDF) and +-3/+-4 (e/mu), false for +-1.
+          0 (no PDF) and +-3/+-4 (e/mu), false for +-1 and +-2 (elastic
+          photons, only through a gamma-UPC pdlabel: beam.upc_flux).
+        * a gamma-UPC pdlabel (edff, chff, ...) sets beam.upc_flux, for both
+          beams; any other pdlabel clears it.
+        * nb_proton / nb_neutron: the ions of a gamma-UPC run.
 
         Raises InvalidRunCard for a value mg7 cannot represent."""
         name = name.lower()
@@ -8953,14 +9084,42 @@ class RunCardMG7(RunCard):
                 self.set('beam.ebeam' + beam, float(energy), user=True)
             return 'beam energy of %s: %s GeV' % (which, float(energy))
 
+        if name.startswith('nb_'):
+            try:
+                count = int(value)
+            except ValueError:
+                raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            key = 'nb_proton' if name.startswith('nb_proton') else 'nb_neutron'
+            for beam in beams:
+                self.set('beam.%s%s' % (key, beam), count, user=True)
+            return '%s of %s: %s' % (key, which, count)
+
         if name.startswith('lpp'):
             try:
                 lpp = int(value)
             except ValueError:
                 raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            if abs(lpp) == 2:
+                # an elastic photon: mg7 has it only from gamma-UPC (madevent
+                # also has the EPA, pdlabel iww). Without a gamma-UPC label
+                # yet, start from ChFF, madevent's fallback for lpp = 2 too
+                # (the pdlabel usually follows), never from the proton PDFs
+                # of beam.leptonic = False.
+                if not self['beam']['upc_flux']:
+                    self.set('beam.upc_flux', self.default_upc_flux, user=True)
+                    logger.info(
+                        '%s = %s: mg7 has elastic-photon beams only through '
+                        'gamma-UPC (no EPA/iww): beam.upc_flux = %s until a '
+                        'gamma-UPC pdlabel chooses another flux',
+                        name, lpp, self.default_upc_flux)
+                self.set('beam.leptonic', False, user=True)
+                return ('beam.leptonic = False, beam.upc_flux = %s (elastic '
+                        'photons from gamma-UPC)' % self['beam']['upc_flux'])
             if abs(lpp) not in (0, 1, 3, 4):
                 raise InvalidRunCard('%s = %s: beam type not representable in mg7'
                                      % (name, lpp))
+            if self['beam']['upc_flux']:
+                self.clear_upc(name, lpp)
             leptonic = abs(lpp) != 1
             beam_types = getattr(self, '_lo_beam_leptonic', {})
             beam_types.update((beam, leptonic) for beam in beams)
@@ -8983,6 +9142,20 @@ class RunCardMG7(RunCard):
                 raise InvalidRunCard('lhaid = %s: not an integer' % value)
         else:
             label, lhaid = value, None
+            if is_upc_label(label.lower()):
+                # one label for both beams (PDLabelBlock does the same)
+                self.set('beam.upc_flux', label.lower(), user=True)
+                return 'beam.upc_flux = %s (gamma-UPC, both beams)' % label.lower()
+        if self['beam']['upc_flux']:
+            # lpp = 2: madevent also has the EPA (iww) and replaces any other
+            # pdlabel by chff; mg7 refuses it rather than guess, and leaving
+            # gamma-UPC goes through lpp
+            raise InvalidRunCard(
+                "%s = %s with beam.upc_flux = %s (lpp = 2): mg7 has elastic "
+                "photons only from gamma-UPC, so this needs a gamma-UPC label "
+                "(e.g. chff); set lpp to 1, 0, 3 or 4 first to leave gamma-UPC"
+                % (name, value, self['beam']['upc_flux']))
+        if name != 'lhaid':
             if label.lower() == 'lhapdf':
                 return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
                         'with lhaid or beam.pdf1/pdf2')
@@ -9072,6 +9245,56 @@ class RunCardMG7(RunCard):
         card.check_devices(card['run']['device'], '[%s] run.device' % section)
         return card
 
+    # beam.upc_flux of 'set lpp 2' before any gamma-UPC pdlabel
+    default_upc_flux = 'chff'
+
+    def clear_upc(self, name, value):
+        """Leave gamma-UPC (``set <name> <value>``, an lpp of another beam
+        type): beam.upc_flux off and the ions back to protons, which without
+        upc_flux check_upc_validity refuses."""
+        self.set('beam.upc_flux', '', user=True)
+        for i in (1, 2):
+            self.set('beam.nb_proton%d' % i, 1, user=True)
+            self.set('beam.nb_neutron%d' % i, 0, user=True)
+        logger.info('%s = %s: beam.upc_flux (gamma-UPC) switched off, '
+                    'beams back to protons', name, value)
+
+    def upc_ions(self):
+        """((Z1, N1), (Z2, N2)) of the beams of a gamma-UPC run."""
+        beam = self['beam']
+        return tuple((int(beam['nb_proton%d' % i]), int(beam['nb_neutron%d' % i]))
+                     for i in (1, 2))
+
+    def check_upc_validity(self):
+        """beam.upc_flux: a gamma-UPC label, on charged beams, with a neutron
+        tag gamma-UPC provides for those ions (as check_upc_neutron_tagging
+        for the madevent card), and not together with a dressed-lepton
+        density, which is the other luminosity replacing the PDFs."""
+        beam = self['beam']
+        label = str(beam['upc_flux'])
+        ions = self.upc_ions()
+        if not label:
+            if any(ion != (1, 0) for ion in ions):
+                raise InvalidRunCard(
+                    "beam.nb_proton/nb_neutron describe the ions of a gamma-UPC "
+                    "run: set beam.upc_flux too (mg7 has no nuclear PDFs)")
+            return
+        if not is_upc_label(label):
+            raise InvalidRunCard(
+                "beam.upc_flux = '%s' is not a gamma-UPC label: 'ed' (EDFF) or "
+                "'ch' (ChFF), then 'f', 'p' or 'm', then 'f' or a neutron tag "
+                "'<y>n<z>n' (e.g. chff, edff, chf0n0n)" % label)
+        if beam['lepton_density']:
+            raise InvalidRunCard(
+                "beam.upc_flux and beam.lepton_density both replace the PDFs: "
+                "set only one of them")
+        for i, (Z, N) in enumerate(ions, 1):
+            if Z < 1 or N < 0:
+                raise InvalidRunCard(
+                    "beam %d of a gamma-UPC run must be charged (nb_proton%d >= 1, "
+                    "nb_neutron%d >= 0)" % (i, i, i))
+        check_upc_neutron_tagging(None, label, ions)
+
     def check_validity(self):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
@@ -9084,6 +9307,7 @@ class RunCardMG7(RunCard):
         beam = self['beam']
         if float(beam['scale_factor']) <= 0.:
             raise InvalidRunCard("scale_factor must be strictly positive")
+        self.check_upc_validity()
         self.check_ckkwl_validity()
         if (float(beam['scale_factor']) != 1. and beam['fixed_ren_scale']
                 and beam['fixed_fact_scale']):
@@ -10033,7 +10257,28 @@ class RunCardMG7(RunCard):
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
         mg7.set('beam.leptonic',
                 all(l == 0 for l in lpps) or any(is_lep(l) for l in lpps))
+        # gamma-UPC: |lpp| = 2 on both beams with a gamma-UPC pdlabel (the
+        # PDLabelBlock makes it the same on both)
+        upc_keys = set()
+        # pdlabel1/2 only follow pdlabel once the LO card is checked
+        upc_label = ''
+        for name in ('pdlabel1', 'pdlabel'):
+            if name in lo and is_upc_label(str(lo[name])):
+                upc_label = str(lo[name])
+                break
+        if all(isinstance(l, int) and abs(l) == 2 for l in lpps) and \
+                is_upc_label(upc_label):
+            mg7.set('beam.upc_flux', upc_label)
+            for i in (1, 2):
+                for name in ('nb_proton%d' % i, 'nb_neutron%d' % i):
+                    if name in lo:
+                        mg7.set('beam.' + name, lo[name])
+                        upc_keys.add(name)
+            # the ion masses only enter madevent's LHE header
+            upc_keys.update(('mass_ion1', 'mass_ion2'))
         for i, lpp in ((1, lpps[0]), (2, lpps[1])):
+            if upc_keys:
+                continue
             if isinstance(lpp, int) and abs(lpp) not in (0, 1, 3, 4):
                 dropped.append('lpp%d=%s (beam type not representable in mg7)' % (i, lpp))
             elif is_lep(lpp):
@@ -10089,7 +10334,7 @@ class RunCardMG7(RunCard):
         # clustering scales are used whatever dynamical_scale_choice said.
         ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
         # unsupported LO names transferred all the same in this context
-        transferred = set()
+        transferred = set(upc_keys)
         if ickkw == 1:
             xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
             if xqcut > 0:
@@ -10162,7 +10407,10 @@ class RunCardMG7(RunCard):
             mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
-        pdf_names = cls._resolve_pdf(lo, dropped, dressed=bool(dressed))
+        # a gamma-UPC label, like a dressed-lepton one, is no PDF set: it was
+        # carried as beam.upc_flux above
+        pdf_names = cls._resolve_pdf(lo, dropped,
+                                     dressed=bool(dressed) or bool(upc_keys))
         for beam, pdf_name in zip((1, 2), pdf_names):
             if pdf_name:
                 mg7.set('beam.pdf%d' % beam, pdf_name)
@@ -10249,7 +10497,8 @@ class MadLoopParam(ConfigFile):
                              5:'Samurai',
                              6:'Ninja',
                              7:'COLLIER',
-                             8:'NinjaRS'}
+                             8:'NinjaRS',
+                             9:'TIRust'}
 
     @staticmethod
     def _reject_retired_reduction(value):
@@ -10304,6 +10553,10 @@ class MadLoopParam(ConfigFile):
         self.add_param("HelInitStartOver", False)
         self.add_param("UseQPIntegrandForNinja", True)        
         self.add_param("UseQPIntegrandForNinjaRS", True)
+        self.add_param("UseQPIntegrandForTIRust", True)
+        self.add_param("TIRustComputeFinite", True)
+        self.add_param("TIRustGlobalCache", -1)
+        self.add_param("TIRustCacheMaxBytes", 268435456)
         self.add_param("UseQPIntegrandForCutTools", True)
         self.add_param("COLLIERMode", 1)
         self.add_param("COLLIERComputeUVpoles", True)
@@ -10313,6 +10566,23 @@ class MadLoopParam(ConfigFile):
         self.add_param("COLLIERGlobalCache",-1)
         self.add_param("COLLIERUseCacheForPoles",False)
         self.add_param("COLLIERUseInternalStabilityTest",True)
+
+    def validate_tirust(self, production=False):
+        """Reject incomplete amplitudes and invalid cache settings before writing."""
+        backends = [int(value) for value in str(self['MLReductionLib']).split('|') if value.strip()]
+        if 9 not in backends:
+            return
+        if self['TIRustGlobalCache'] < -1:
+            raise MadGraph5Error('TIRustGlobalCache must be -1, 0 or a positive integer.')
+        if not 0 <= self['TIRustCacheMaxBytes'] <= 9223372036854775807:
+            raise MadGraph5Error('TIRustCacheMaxBytes must be between 0 and 9223372036854775807 bytes.')
+        if not self['TIRustComputeFinite']:
+            if self['LoopPoleMode'] == 3:
+                raise MadGraph5Error('TIRust poles-only mode requires UV and/or IR poles.')
+            if backends != [9]:
+                raise MadGraph5Error('TIRust poles-only mode requires MLReductionLib=9 without fallback backends.')
+            if production:
+                raise MadGraph5Error('TIRust poles-only mode is for diagnostics; production requires the finite amplitude.')
 
     def read(self, finput):
         """Read the input file, this can be a path to a file, 
@@ -10340,6 +10610,7 @@ class MadLoopParam(ConfigFile):
         # dict.update/copy can bypass __setitem__; validate again before any
         # output is written, so programmatic card construction cannot emit 2.
         self._reject_retired_reduction(self['MLReductionLib'])
+        self.validate_tirust()
 
         if not template:
             if not MADEVENT:

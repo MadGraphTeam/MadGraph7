@@ -1188,7 +1188,7 @@ class TestDensityKernelLimits(unittest.TestCase):
         self.assertTrue(fx.density_dimensions_supported(9, 2))
         self.assertTrue(fx.density_dimensions_supported(36, 4))
         self.assertFalse(fx.density_dimensions_supported(81, 4))
-        self.assertFalse(fx.density_dimensions_supported(36, 9))
+        self.assertFalse(fx.density_dimensions_supported(37, 2))
         self.assertFalse(fx.density_dimensions_supported(1, 11))
 
 

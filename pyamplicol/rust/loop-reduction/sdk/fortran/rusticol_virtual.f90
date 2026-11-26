@@ -18,7 +18,7 @@ module rusticol_virtual
   integer(c_int32_t), parameter, public :: VIRTUAL_SUCCESS=0, VIRTUAL_VERIFIED=1, VIRTUAL_RESCUED=2
   integer(c_int32_t), parameter, public :: VIRTUAL_FAILED=3, VIRTUAL_ACCURACY_NOT_ESTABLISHED=4
   ! A point no configured alternative accepted, returned with the unchecked
-  ! reduction's value (never a success; set_on_failure, m-lit ux-besteffort).
+  ! reduction's value (never a success; set_on_failure).
   integer(c_int32_t), parameter, public :: VIRTUAL_BEST_EFFORT=5
 
   type, bind(C), public :: virtual_shape
@@ -116,12 +116,16 @@ module rusticol_virtual
     procedure :: shape => runtime_shape
     procedure :: metadata_json
     procedure :: capabilities_json
+    procedure :: options_json
+    procedure :: set_options
+    procedure :: set_threads
     procedure :: update_parameters
     procedure :: set_poles
     procedure :: set_arithmetic
     procedure :: set_reduction
     procedure :: set_reduction_target
     procedure :: set_reduction_unchecked
+    procedure :: set_lane_rescue
     procedure :: set_on_failure
     procedure :: set_kinematics_improvement
     procedure :: set_kinematics_improvement_binary64
@@ -168,6 +172,31 @@ module rusticol_virtual
       integer(c_int) :: value
     end function
     function c_metadata_json(handle, output, capacity, needed) bind(C, name="rusticol_virtual_metadata_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
+      integer(c_int) :: value
+    end function
+    function c_open_with_options(path, process, parameters, strategy, options, output) &
+        bind(C, name="rusticol_virtual_open_with_options") result(value)
+      import
+      type(c_ptr), value :: path, process, parameters, strategy, options
+      type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
+    function c_set_options(handle, options) bind(C, name="rusticol_virtual_set_options") result(value)
+      import
+      type(c_ptr), value :: handle, options
+      integer(c_int) :: value
+    end function
+    function c_set_threads(handle, threads) bind(C, name="rusticol_virtual_set_threads") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int32_t), value :: threads
+      integer(c_int) :: value
+    end function
+    function c_options_json(handle, output, capacity, needed) bind(C, name="rusticol_virtual_options_json") result(value)
       import
       type(c_ptr), value :: handle, output
       integer(c_size_t), value :: capacity
@@ -239,6 +268,13 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle
       integer(c_int), value :: unchecked
+      integer(c_int) :: value
+    end function
+    function c_set_lane_rescue(handle, on) &
+        bind(C, name="rusticol_virtual_set_lane_rescue") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: on
       integer(c_int) :: value
     end function
     function c_set_on_failure(handle, on_failure) &
@@ -551,12 +587,16 @@ contains
     is_loaded=c_associated(handle_of(self))
   end function
 
-  subroutine load(self,path,process,parameters_json,r2_strategy,ierr)
+  ! options_toml: the runtime options of a TOML text, applied at open
+  ! (rusticol_virtual_open_with_options: its threads bound the load too).
+  subroutine load(self,path,process,parameters_json,r2_strategy,ierr,options_toml)
     class(virtual_runtime), intent(inout) :: self
     character(*), intent(in) :: path
     character(*), optional, intent(in) :: process, parameters_json, r2_strategy
     integer(c_int), optional, intent(out) :: ierr
+    character(*), optional, intent(in) :: options_toml
     character(c_char), allocatable, target :: p(:), process_c(:), parameters_c(:), strategy_c(:)
+    character(c_char), allocatable, target :: options_c(:)
     type(c_ptr) :: process_p, parameters_p, strategy_p, new_handle
     integer(c_int) :: status
     p=cstring(path)
@@ -570,7 +610,13 @@ contains
     if (present(r2_strategy)) then
       strategy_c=cstring(r2_strategy); strategy_p=c_loc(strategy_c)
     end if
-    status=c_open(c_loc(p),process_p,parameters_p,strategy_p,new_handle)
+    if (present(options_toml)) then
+      options_c=cstring(options_toml)
+      status=c_open_with_options(c_loc(p),process_p,parameters_p,strategy_p, &
+        c_loc(options_c),new_handle)
+    else
+      status=c_open(c_loc(p),process_p,parameters_p,strategy_p,new_handle)
+    end if
     if (status==VIRTUAL_OK) then
       call release(self)
       allocate(self%owner)
@@ -623,6 +669,8 @@ contains
       status=c_correlated_decimal_json(handle,c_null_ptr,0_c_size_t,n)
     case(11)
       status=c_result_axes_json(handle,c_null_ptr,0_c_size_t,n)
+    case(12)
+      status=c_options_json(handle,c_null_ptr,0_c_size_t,n)
     end select
     if (status/=VIRTUAL_OK) return
     allocate(buffer(n))
@@ -649,6 +697,8 @@ contains
       status=c_correlated_decimal_json(handle,c_loc(buffer),n,n)
     case(11)
       status=c_result_axes_json(handle,c_loc(buffer),n,n)
+    case(12)
+      status=c_options_json(handle,c_loc(buffer),n,n)
     end select
     if (status/=VIRTUAL_OK) return
     deallocate(text)
@@ -666,6 +716,46 @@ contains
     text=read_json(handle_of(self),1,status)
     call finish(status,ierr)
   end function
+
+  ! The handle's settings as JSON (rusticol_virtual_options_json).
+  function options_json(self,ierr) result(text)
+    class(virtual_runtime), intent(in) :: self
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable :: text
+    integer(c_int) :: status
+    text=read_json(handle_of(self),12,status)
+    call finish(status,ierr)
+  end function
+
+  ! Runtime options of a TOML text (its [evaluation] table): checked as a
+  ! whole, then applied; nothing changes on an error.
+  subroutine set_options(self,options_toml,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: options_toml
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(options_toml)
+    call finish(c_set_options(handle_of(self),c_loc(buffer)),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Native threads of later evaluations (0: RAYON_NUM_THREADS, else every
+  ! core).
+  subroutine set_threads(self,threads,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    integer, intent(in) :: threads
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    if (threads < 0) then
+      call finish(VIRTUAL_INVALID_ARGUMENT,ierr, &
+        message="threads must be 0 (the default) or a positive count", &
+        error_message=error_message)
+      return
+    end if
+    call finish(c_set_threads(handle_of(self),int(threads,c_int32_t)),ierr, &
+      error_message=error_message)
+  end subroutine
 
   function capabilities_json(self,ierr) result(text)
     class(virtual_runtime), intent(in) :: self
@@ -779,6 +869,21 @@ contains
     flag = 0_c_int
     if (unchecked) flag = 1_c_int
     call finish(c_set_reduction_unchecked(handle_of(self),flag),ierr, &
+      error_message=error_message)
+  end subroutine
+
+  ! Lane rescue of later evaluations (the Python API's lane_rescue=;
+  ! default .true.): a refused reduction lane reduced again in a higher
+  ! carrier; .false. leaves it to fail its point.
+  subroutine set_lane_rescue(self,on,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    logical, intent(in) :: on
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    integer(c_int) :: flag
+    flag = 0_c_int
+    if (on) flag = 1_c_int
+    call finish(c_set_lane_rescue(handle_of(self),flag),ierr, &
       error_message=error_message)
   end subroutine
 
@@ -983,7 +1088,7 @@ contains
 
   ! rusticol_virtual_evaluate_selected: the selected helicity rows of a
   ! loop-induced process or, at every colour accuracy, of a Born-interfered
-  ! one (lit-fc-hel) (resolved absent/false: their sum per point, RULED Q39;
+  ! one (resolved absent/false: their sum per point;
   ! resolved: per selected row its colour components). helicity_ids are
   ! global IDs (trailing blanks ignored), helicity_by_point zero-based rows
   ! (one per point; exclusive with helicity_ids), color_ids /

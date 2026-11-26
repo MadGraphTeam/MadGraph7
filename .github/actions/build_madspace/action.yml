@@ -1,10 +1,12 @@
 name: Build madspace
 description: >
-  Build the madspace install prefix once per commit and cache it
-  (content-addressed on the madspace source). Shared by the build_madspace job
-  of every mg7 workflow so the build logic lives in exactly one place. Test jobs
-  restore the result with the install_madspace action (they must `needs:` the
-  job that runs this action). Assumes the repository is already checked out.
+  Build the madspace install prefix once per commit (content-addressed on the
+  madspace source). Shared by the build_madspace job of every mg7 workflow so
+  the build logic lives in exactly one place. This action NEVER saves a cache:
+  the madspace cache entry is written only by the madspace_cache job of
+  warm_cache.yml, on main. A miss here is handed to the test jobs of the same
+  run as a workflow artifact (a tarball, kept one day), which install_madspace
+  unpacks. Assumes the repository is already checked out.
 
 inputs:
   enable_docs:
@@ -17,30 +19,45 @@ inputs:
       existing cache entry keeps its exact key.
     required: false
     default: 'false'
+  handoff:
+    description: >
+      'true' (default): on a miss, upload the built install as an artifact for
+      the test jobs of this run. warm_cache.yml passes 'false', because it saves
+      the cache itself and has no test jobs to hand the install to.
+    required: false
+    default: 'true'
+
+outputs:
+  cache-hit:
+    description: "'true' when the install was restored from the cache, not built."
+    value: ${{ steps.cache-madspace.outputs.cache-hit }}
+  cache-key:
+    description: The cache key of this install (the key install_madspace restores).
+    value: ${{ steps.key.outputs.key }}
 
 runs:
   using: composite
   steps:
-    # Cache key must match the one used by the install_madspace action exactly,
-    # otherwise the later restore misses.
+    # The key is computed here, before the build creates madspace/install, so
+    # hashFiles sees the clean source. install_madspace computes the same string.
     - name: madspace cache key
+      id: key
       run: |
-        echo "MS_PY=$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')" >> $GITHUB_ENV
+        MS_PY="$(python3 -c 'import sys;print(f"{sys.version_info.major}{sys.version_info.minor}")')"
         # -simd: the install includes the SIMD CPU backends; a separate suffix so
         # that a cached install from before SIMD was enabled is never restored
-        echo "MS_VARIANT=${{ inputs.enable_docs == 'true' && '-docs' || '' }}-simd" >> $GITHUB_ENV
+        MS_VARIANT="${{ inputs.enable_docs == 'true' && '-docs' || '' }}-simd"
+        KEY="madspace${MS_VARIANT}-${RUNNER_OS}-py${MS_PY}-${{ hashFiles('madspace/**') }}"
+        echo "key=$KEY" >> "$GITHUB_OUTPUT"
       shell: bash
 
-    # Cache the installed madspace/install prefix directly (not just a wheel), so
-    # every test job restores a ready-to-use install and skips pip entirely.
-    # hashFiles is evaluated before the build step creates madspace/install, so
-    # the key is the clean-source hash and matches the install_madspace action.
-    - name: Cache madspace install
+    # Restore only. Saved by warm_cache.yml on main.
+    - name: Restore madspace install
       id: cache-madspace
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         path: madspace/install
-        key: madspace${{ env.MS_VARIANT }}-${{ runner.os }}-py${{ env.MS_PY }}-${{ hashFiles('madspace/**') }}
+        key: ${{ steps.key.outputs.key }}
 
     # generate_docstrings.py --require-doxygen (invoked by CMake when
     # ENABLE_DOCS=ON) hard-fails if doxygen isn't on PATH -- check early with a
@@ -74,3 +91,20 @@ runs:
           ${{ inputs.enable_docs == 'true' && '-Ccmake.define.ENABLE_DOCS=ON' || '' }} \
           --target="$GITHUB_WORKSPACE/madspace/install"
       shell: bash
+
+    # A tarball keeps the symlinks of the install (shared-library SONAMEs),
+    # which an artifact upload would drop.
+    - name: Package madspace install for the test jobs (on cache miss)
+      if: steps.cache-madspace.outputs.cache-hit != 'true' && inputs.handoff == 'true'
+      run: tar -C madspace -czf "$RUNNER_TEMP/madspace-install.tgz" install
+      shell: bash
+
+    - name: Hand madspace install to the test jobs (on cache miss)
+      if: steps.cache-madspace.outputs.cache-hit != 'true' && inputs.handoff == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.key.outputs.key }}
+        path: ${{ runner.temp }}/madspace-install.tgz
+        retention-days: 1
+        if-no-files-found: error
+        overwrite: true

@@ -544,6 +544,32 @@ class TestSudakovF2pyBuild(unittest.TestCase):
         self.assertLessEqual(includes, {"nexternal.inc", "coupl.inc", "orders.inc"})
 
 
+def exec_dispatcher(testcase, filename):
+    """Namespace of the generated Sudakov dispatcher, with empty PDG tables.
+
+    The dispatcher puts its SubProcesses directory on sys.path; testcase
+    restores sys.path when it finishes.
+    """
+    template = (
+        Path(MG5DIR) / "madgraph/iolibs/template_files/ewsudakov_pydispatcher.inc"
+    ).read_text()
+    namespace = {"__file__": filename}
+    old_path = sys.path[:]
+    testcase.addCleanup(lambda: sys.path.__setitem__(slice(None), old_path))
+    exec(  # noqa: S102 - execute the generated dispatcher
+        compile(
+            misc.apply_template(
+                template,
+                {"path": "", "pdir_list": "", "pdg2sud": "", "pdgsorted": ""},
+            ),
+            filename,
+            "exec",
+        ),
+        namespace,
+    )
+    return namespace
+
+
 class TestSudakovDispatcherImport(unittest.TestCase):
     def setUp(self):
         try:
@@ -555,25 +581,8 @@ class TestSudakovDispatcherImport(unittest.TestCase):
         self.root = Path(temporary.name)
         for name in ("P0_uux_zz", "P0_ddx_zz"):
             (self.root / "SubProcesses" / name).mkdir(parents=True)
-        template = (
-            Path(MG5DIR) / "madgraph/iolibs/template_files/ewsudakov_pydispatcher.inc"
-        ).read_text()
-        self.namespace = {
-            "__file__": str(self.root / "bin/internal/ewsud_pydispatcher.py")
-        }
-        old_path = sys.path[:]
-        self.addCleanup(lambda: sys.path.__setitem__(slice(None), old_path))
-        exec(  # noqa: S102 - execute the generated dispatcher
-            compile(
-                misc.apply_template(
-                    template,
-                    {"path": "", "pdir_list": "", "pdg2sud": "", "pdgsorted": ""},
-                ),
-                self.namespace["__file__"],
-                "exec",
-            ),
-            self.namespace,
-        )
+        self.namespace = exec_dispatcher(
+            self, str(self.root / "bin/internal/ewsud_pydispatcher.py"))
 
     def test_processes_load_distinct_native_modules(self):
         modules = {}

@@ -1,3 +1,1 @@
-      INTEGER    MAX_BHEL, MAX_BCOL
-      PARAMETER (MAX_BHEL=36)
-      PARAMETER(MAX_BCOL=1)
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%born_nhel.inc

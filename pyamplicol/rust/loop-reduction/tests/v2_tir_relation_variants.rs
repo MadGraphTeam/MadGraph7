@@ -116,10 +116,10 @@ fn tir(groups: &[FamilyLanes<f64>]) -> Lanes {
 /// NinjaRS's generic engine at 80 digits, read back in binary64.
 fn ninjars_80(group: &FamilyLanes<f64>) -> Vec<Vec<C>> {
     let _unlock = pyamplicol::unlock();
-    let mut backend = V2Backends::NinjaRs(V2ReductionBackend {
-        reducer: V2Reducer::new("arbitrary", Some(80), "generic", true).unwrap(),
-        masters: PoleSelection::BOTH,
-    });
+    let mut backend = V2Backends::NinjaRs(V2ReductionBackend::new(
+        V2Reducer::new("arbitrary", Some(80), "generic", true).unwrap(),
+        PoleSelection::BOTH,
+    ));
     let bits = Float::decimal_digits_to_bits(80.).unwrap();
     let lift = |v: &[C]| -> Vec<Complex<Float>> {
         v.iter()

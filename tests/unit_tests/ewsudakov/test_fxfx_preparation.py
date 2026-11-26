@@ -35,8 +35,8 @@ class TestFxFxPreparation(unittest.TestCase):
         driver._sudakov_ickkw = 3
         driver.sudakov_xi_scan = list(self.xis)
         driver._configure_sudakov_weight_ids(self.event.parse_reweight(), self.xis)
-        driver.density_prod_id_to_path = driver.density_decay_id_to_path = {'process': True}
-        driver.density_prod_f2pylib = driver.density_decay_f2pylib = {'module': True}
+        driver.density_decay_id_to_path = {'process': True}
+        driver.density_decay_f2pylib = {'module': True}
         return driver
 
     def module(self):
@@ -54,12 +54,9 @@ class TestFxFxPreparation(unittest.TestCase):
             return limits.np.array([1., correction, correction * 3., correction * 2.,
                                     correction * 2., correction * 3.])
 
-        def density(tag, p, coupling, indices, dims):
-            dimension = math.prod(dims)
-            return {'total_dim': dimension, 'nres': len(dims),
-                    'density_delta': limits.np.full(dimension, len(p) * .01),
-                    'density_delta_var': limits.np.full(dimension, len(p) * .005),
-                    'born_diag': limits.np.ones(dimension)}
+        def density(tag, p, coupling, indices, dims, **options):
+            return limits.density_result(math.prod(dims), len(p) * .02, len(p) * .01,
+                                         len(p) * .005, len(dims))
 
         return SimpleNamespace(original_pdg_list_dict=catalogue,
                                ewsudakov=mock.Mock(side_effect=scalar),
@@ -110,7 +107,8 @@ class TestFxFxPreparation(unittest.TestCase):
         self.assertEqual(fx.FKS_QUALITY_COUNTS, expected_outcomes)
         self.assertEqual(forced.call_count, 1)
         self.assertEqual(pattern.findall.call_count, 1 if self.event.tag else 0)
-        self.assertEqual(module.ewsudakov.call_count, len(self.xis))
+        # The density contraction supplies every variant; no scalar kernel call.
+        module.ewsudakov.assert_not_called()
         self.assertEqual(module.density_sudakov.call_count, len(self.xis))
         self.assertEqual(len(actual_inputs), len(expected_inputs))
         for (actual_pdgs, actual_p), (expected_pdgs, expected_p) in zip(actual_inputs, expected_inputs):
@@ -123,6 +121,9 @@ class TestFxFxPreparation(unittest.TestCase):
     def test_cached_scan_matches_independent_weights_momenta_and_accounting(self):
         driver, module = self.check_scan()
         self.assertEqual([len(call.args[1]) for call in module.density_sudakov.call_args_list], [5, 4, 4])
+        # The FxFx weights need only the leading three kernel variants.
+        self.assertEqual([call.kwargs for call in module.density_sudakov.call_args_list],
+                         [{'nvariants': 3, 'goldstone_relative': False}] * len(self.xis))
         self.assertEqual(len(driver.fxfx_clustered_final_states), 2)
 
     def test_no_fxfx_history_keeps_each_xi_copy_independent(self):

@@ -315,7 +315,74 @@ def test_candidates_are_kept_unless_their_mass_or_width_is_zero_in_the_model():
         ),
     )
     found = s_channel_resonances(ir, _Model(particles, parameters))
-    assert found == [{"pdg": pdg, "labels": [3, 4], "color": 1} for pdg in (23, 97, 99)]
+    # the photon carries the pair too, so no resonance is required
+    assert found == [
+        {"pdg": pdg, "labels": [3, 4], "color": 1, "required": False}
+        for pdg in (23, 97, 99)
+    ]
+
+
+class _MuonModel(_Model):
+    """f f~ > mu- mu+ through any vector of ``particles``: s-channel only."""
+
+    def vertices_accepting(self, left, right, color_accuracy):
+        if {left, right} not in ({11, -11}, {13, -13}):
+            return []
+        return [
+            SimpleNamespace(particles=(left, right, pdg))
+            for pdg in self.particles
+            if abs(pdg) not in (11, 13)
+        ]
+
+
+def test_a_resonance_is_required_if_no_stable_particle_carries_its_legs():
+    def vector(pdg, width):
+        return Particle(pdg, pdg, 2, 4, 1, 91.0 if width else 0.0, width)
+
+    leptons = [
+        Particle(pdg, -pdg, 1, 4, 1, 0.0, 0.0, -1.0 if pdg > 0 else 1.0)
+        for pdg in (11, -11, 13, -13)
+    ]
+    parameters = {(23, "mass"): "MZ", (23, "width"): "WZ"}
+
+    def leg(label, pdg, outgoing, final):
+        return SimpleNamespace(
+            label=label, pdg=pdg, outgoing_pdg=outgoing, is_final=final
+        )
+
+    ir = SimpleNamespace(
+        color_accuracy="lc",
+        legs=(
+            leg(1, 11, -11, False),
+            leg(2, -11, 11, False),
+            leg(3, 13, 13, True),
+            leg(4, -13, -13, True),
+        ),
+    )
+    with_photon = _MuonModel([*leptons, vector(22, 0.0), vector(23, 2.5)], parameters)
+    without = _MuonModel([*leptons, vector(23, 2.5)], parameters)
+    assert [r["required"] for r in s_channel_resonances(ir, with_photon)] == [False]
+    assert [r["required"] for r in s_channel_resonances(ir, without)] == [True]
+
+
+def test_a_required_resonance_replaces_the_non_resonant_configuration():
+    roles = [QBAR, Q, S, S, G]
+    w = (24, frozenset({2, 3}))
+    configurations, _ = _configurations([w])
+    assert configurations == [(), (w,)]
+    both = _phasespace_partners([1, 4, 0], [2, 3], roles, configurations)
+    assert [c for _, c in both] == [(), (), (w,)]
+    only = _phasespace_partners([1, 4, 0], [2, 3], roles, configurations, {w})
+    assert only == [p for p in both if p[1] == (w,)]
+
+
+def test_a_required_resonance_that_does_not_apply_keeps_the_others():
+    # a singlet decaying to a quark pair that is no colour line of this order
+    roles = [Q, QBAR, Q, QBAR, G]
+    z = (23, frozenset({2, 3}))
+    configurations, _ = _configurations([z])
+    partners = _phasespace_partners([0, 3, 2, 1], [], roles, configurations, {z})
+    assert [c for _, c in partners] == [()]
 
 
 def test_a_resonance_decays_to_at_most_three_daughters():

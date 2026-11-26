@@ -86,6 +86,9 @@ fn predicate<T: Real + SingleFloat + PartialOrd>(args: &[Complex<T>], mode: u8) 
 }
 
 pub fn register_scalar_primitives() {
+    // Before the `Once`: a failed reservation reports its cause on every call
+    // instead of poisoning the registration.
+    crate::symbol_order::reserved();
     static REGISTER: std::sync::Once = std::sync::Once::new();
     REGISTER.call_once(|| {
         // Symbol definitions are Symbolica state (`crate::licence`).

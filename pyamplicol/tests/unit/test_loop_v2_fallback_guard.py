@@ -73,6 +73,21 @@ TARGET = 1e-5
 FLOOR = 1e-5
 
 
+@pytest.fixture(autouse=True)
+def _without_lane_rescue(monkeypatch):
+    """These tests exercise the mechanisms behind the lane rescue (the
+    per-point fallback and its guard, best-effort values, the unchecked
+    mode against the checked one) on points whose refused lanes the lane
+    rescue would serve: they run without it, the Python runtimes by their
+    default (``lane_rescue``, ``reduction.default_lane_rescue``), the C ABI
+    handles by ``rusticol_virtual_set_lane_rescue(handle, 0)``
+    (``test_loop_v2_sdk_induced._open``)."""
+
+    from pyamplicol.loops.v2 import reduction
+
+    monkeypatch.setattr(reduction, "default_lane_rescue", lambda: False)
+
+
 def _limit(target: float) -> float:
     return max(target, FLOOR)
 
@@ -130,7 +145,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
     assert reason == (
         "auto: TIRust refused or failed the point (TIRust refused the row); the "
         "per-point NinjaRS fallback's value failed its rotation check: "
-        "estimate 1.4e2 > 1e-5 = max(target 1e-5, 1e-5) (double-double)"
+        "estimate >1, above 1e-5 = max(target 1e-5, 1e-5) (double-double)"
     )
     assert loop_native.reduction_text(
         "rejected",
@@ -140,7 +155,7 @@ def test_the_guard_has_one_rule_and_one_reason(loop_native):
         carrier="arbitrary",
         estimate=3.0,
         target=1e-7,
-    ).endswith("estimate 3.0e0 > 1e-5 = max(target 1e-7, 1e-5) (arbitrary)")
+    ).endswith("estimate >1, above 1e-5 = max(target 1e-7, 1e-5) (arbitrary)")
 
 
 # ------------------------------------------------- with_fallback, scripted
@@ -875,7 +890,7 @@ def test_the_default_rescue_stack_escalates_the_guarded_fallback(zzz, loop_nativ
     """(loop_nightly: ~340 s, its 57-digit level; DECISIONS 2026-11-09 14:30:
     the CI tier keeps the guard's rejections on every route below.) The
     loop-induced default stack (TIRust b64 -> NinjaRS b64 ->
-    double-double -> 57 digits) at z z z points 44 and 57: before the guard
+    double-double -> 57 -> 500 digits) at z z z points 44 and 57: before the guard
     both escalated past the double-double level on that level's rescaled
     estimates (64 / 31, ninjars-dd-zzz B.md §2.1). The double-double level is
     ``"auto"`` with the per-point fallback; its rescaled checks run no cached

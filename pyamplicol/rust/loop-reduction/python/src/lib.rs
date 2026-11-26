@@ -138,6 +138,63 @@ fn tirust_capabilities(bits: u32) -> Option<String> {
     })
 }
 
+/// The runtime options of a TOML text (`rusticol_loop_reduction::
+/// runtime_options`, the native SDKs' reader) as JSON: every option of
+/// `KEYS` by its run-card name, null where the TOML does not give it, and
+/// the carrier it selects (`"carrier": [name, digits]` or null); a refusal
+/// raises `ValueError` with the reader's text. With `keys=True`: the
+/// reader's keys instead, `{"runtime": [...], "other": [...]}`.
+#[pyfunction]
+#[pyo3(signature = (text, keys=false))]
+fn runtime_options(text: &str, keys: bool) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
+    use rusticol_loop_reduction::runtime_options::{RuntimeOptions, known_keys, runtime_keys};
+    if keys {
+        let runtime = runtime_keys();
+        let other: Vec<String> = known_keys()
+            .into_iter()
+            .filter(|key| !runtime.contains(key))
+            .collect();
+        return Ok(serde_json::json!({"runtime": runtime, "other": other}).to_string());
+    }
+    let options =
+        RuntimeOptions::from_toml(text).map_err(pyo3::exceptions::PyValueError::new_err)?;
+    let checks = options.stability_checks.as_ref().map(|checks| {
+        serde_json::json!({
+            "rotations": checks.rotations,
+            "rotation_count": checks.rotation_count,
+            "reduction_direction": checks.reduction_direction,
+            "rescaled": checks.rescaled,
+        })
+    });
+    Ok(serde_json::json!({
+        "arithmetic": options.arithmetic,
+        "precision": options.precision,
+        "poles": options.poles,
+        "on_failure": options.on_failure,
+        "reduction": options.reduction,
+        "reduction_target": options.reduction_target,
+        "reduction_unchecked": options.reduction_unchecked,
+        "lane_rescue": options.lane_rescue,
+        "kinematics_improvement": options.kinematics_improvement,
+        "kinematics_improvement_binary64": options.kinematics_improvement_binary64,
+        "stability_checks": checks,
+        "threads": options.threads,
+        "carrier": options.carrier(),
+    })
+    .to_string())
+}
+
+/// The effective thread bound of a requested count
+/// (`rusticol_core::loop_artifact::effective_threads`: clamped to the threads
+/// this process may use, the affinity mask and the cgroup quota): the one
+/// rule the Python runtime, the native SDKs and the pools share.
+#[pyfunction]
+fn effective_threads(requested: usize) -> usize {
+    let _unlock = pyamplicol::unlock();
+    rusticol_core::loop_artifact::effective_threads(requested)
+}
+
 /// The reduction-backend policy, the one definition of `"auto"` (m-lit
 /// DECISIONS 2026-11-07 21:50 R7; `rusticol_loop_reduction::reduction_policy`)
 /// as JSON: `{"backends", "carriers", "defaults": {kind: backend}, "routes":
@@ -265,6 +322,35 @@ fn reduction_text(
     }
 }
 
+/// The point-level tracked-precision test of NinjaRS's arbitrary-precision
+/// lanes (`runtime::tracked_refusal`, the one rule the executor and the
+/// reference path apply) on synthetic lanes: `lanes[l][k]` = `(re, im,
+/// p_re, p_im)`, Laurent coefficient `k` of lane `l` with its parts'
+/// tracked precisions in bits, at `working` bits. The point's failure text,
+/// or None.
+#[pyfunction]
+fn reduction_tracked_refusal(
+    lanes: Vec<Vec<(String, String, u32, u32)>>,
+    working: u32,
+) -> PyResult<Option<String>> {
+    let _unlock = pyamplicol::unlock();
+    let part = |text: &str, bits: u32| {
+        symbolica::domains::float::Float::parse(text, Some(bits.max(1))).map_err(error)
+    };
+    let lanes = lanes
+        .iter()
+        .map(|lane| {
+            lane.iter()
+                .map(|(re, im, p_re, p_im)| Ok(Complex::new(part(re, *p_re)?, part(im, *p_im)?)))
+                .collect::<PyResult<Vec<_>>>()
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    Ok(rusticol_loop_reduction::runtime::tracked_refusal(
+        lanes.iter().map(Vec::as_slice),
+        working,
+    ))
+}
+
 /// Whether the per-point fallback's guard accepts a served point whose
 /// reduction-direction estimate is `estimate` at the call's `target`
 /// (`reduction_policy::fallback_accepted`, the one rule: a number at most
@@ -302,6 +388,26 @@ fn reduction_fallback_estimate(outputs: Vec<Vec<(f64, f64, f64)>>, roundoff: f64
     fallback_estimate(&outputs, roundoff)
 }
 
+/// The registration ID of NinjaRS's first positional slot symbol, or None
+/// before the reservation (registers nothing): the same in every process
+/// exactly when the reservation was the first registration
+/// (`rusticol_core::symbol_order::first_slot_id`; the history tests).
+#[pyfunction]
+fn symbol_first_slot_id() -> Option<u32> {
+    let _unlock = pyamplicol::unlock();
+    rusticol_core::symbol_order::first_slot_id()
+}
+
+/// The slot regime of NinjaRS's positional pool after the symbol reservation
+/// (`rusticol_core::symbol_order`): `"variables"`; an error when NinjaRS could
+/// not get two-byte variable slots. Reserves (Symbolica state) on first use;
+/// for the process-history tests.
+#[pyfunction]
+fn symbol_regime() -> PyResult<&'static str> {
+    let _unlock = pyamplicol::unlock();
+    rusticol_core::symbol_order::regime().map_err(pyo3::exceptions::PyRuntimeError::new_err)
+}
+
 /// Whether the per-point fallback's guard runs in the carrier `carrier`
 /// (`reduction_policy::fallback_guarded`: the extended carriers only; m-lit
 /// lit-fallback-guard, USER 2026-11-09 ~11:53).
@@ -336,11 +442,16 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(reduction_backends, module)?)?;
     module.add_function(wrap_pyfunction!(tirust_capabilities, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_policy, module)?)?;
+    module.add_function(wrap_pyfunction!(runtime_options, module)?)?;
+    module.add_function(wrap_pyfunction!(effective_threads, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_resolve, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_auto_default, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_text, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_accepted, module)?)?;
+    module.add_function(wrap_pyfunction!(reduction_tracked_refusal, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_guarded, module)?)?;
+    module.add_function(wrap_pyfunction!(symbol_regime, module)?)?;
+    module.add_function(wrap_pyfunction!(symbol_first_slot_id, module)?)?;
     module.add_function(wrap_pyfunction!(reduction_fallback_estimate, module)?)?;
     module.add_function(wrap_pyfunction!(tir_acceptance, module)?)?;
     module.add_function(wrap_pyfunction!(kinematics::kinematics_policy, module)?)?;

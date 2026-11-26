@@ -8,6 +8,7 @@
 #include "madspace/phasespace/channel_weights.hpp"
 #include "madspace/phasespace/cross_section.hpp"
 #include "madspace/phasespace/custom_function.hpp"
+#include "madspace/phasespace/discrete_flavor_levels.hpp"
 #include "madspace/phasespace/discrete_flow.hpp"
 #include "madspace/phasespace/discrete_sampler.hpp"
 #include "madspace/phasespace/flow.hpp"
@@ -177,8 +178,8 @@ public:
     /// The optional adaptive reparametrization of the continuous latent space.
     using AdaptiveMapping = std::variant<std::monostate, VegasMapping, Flow>;
     /// The optional adaptive sampler for a set of discrete choices.
-    using AdaptiveDiscrete =
-        std::variant<std::monostate, DiscreteSampler, DiscreteFlow>;
+    using AdaptiveDiscrete = std::
+        variant<std::monostate, DiscreteSampler, DiscreteFlow, DiscreteFlavorLevels>;
     /// The optional parton density: an LHAPDF grid or a user-supplied library.
     using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf>;
 
@@ -291,6 +292,20 @@ public:
      *                                          evaluation rescaled by the alpha_s
      *                                          and PDF ratios instead of a second
      *                                          evaluation.
+     * @param lepton_luminosity                 Optional dressed-lepton
+     *                                          luminosity, replacing both
+     *                                          parton densities.
+     * @param tabulated_luminosity              Optional tabulated two-beam
+     *                                          luminosity (e.g. the gamma-UPC
+     *                                          two-photon luminosity),
+     *                                          replacing both parton
+     *                                          densities. Not together with
+     *                                          @p pdf_grid, @p pdf_grid2 or
+     *                                          @p lepton_luminosity.
+     * @param parton_density_output             Also return `parton_densities`,
+     *                                          x f(x, mu_F) of both legs for the
+     *                                          PDG ids -6..6 (6: gluon), shape
+     *                                          `(2, 13)`, for a @ref WeightingStep.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -325,7 +340,9 @@ public:
         const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
         const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt,
         int mlm_history_qcd_power = -1,
-        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt
+        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt,
+        const std::optional<TabulatedLuminosity>& tabulated_luminosity = std::nullopt,
+        bool parton_density_output = false
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -416,6 +433,9 @@ public:
     const FunctionGenerator& function_generator() const override { return *this; }
     /// An @ref IntegrandProbability of the integrand.
     std::shared_ptr<FunctionGenerator> probability() const override;
+    /// Constant factors of the flavours' sampling priors, in place of the flavour
+    /// factors (which still weight the events).
+    void set_flavor_prior_factors(const std::vector<double>& factors);
 
 private:
     NamedVector<Value> build_function_impl(
@@ -456,10 +476,15 @@ private:
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::optional<EELuminosity> _lepton_luminosity;
+    std::optional<TabulatedLuminosity> _tabulated_luminosity;
     // with different PDFs per beam: each leg's density from the other beam,
     // for the events whose orientation is mirrored
     std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
+    // parton_densities output: per leg the grid's partons, their columns of -6..6
+    std::array<std::optional<PartonDensity>, 2> _all_pdfs;
+    std::array<std::optional<PartonDensity>, 2> _all_pdfs_swapped;
+    std::vector<int> _all_pdf_columns;
     // Density over every flavour a beam line can have on the MLM clustering
     // ladder, picked per event by index.
     std::optional<PartonDensity> _pdf_rw;
@@ -500,6 +525,7 @@ private:
     std::vector<me_int_t> _flavor_remap;
     std::vector<double> _flavor_factors;
     std::vector<double> _flavor_mirror_factors;
+    std::vector<double> _flavor_prior_factors;
     bool _has_mirror;
     NamedVector<Type> _channel_part_ret_types;
     std::vector<me_int_t> _flavor_diff_xs_indices;

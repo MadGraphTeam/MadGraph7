@@ -66,6 +66,11 @@ struct GeneratorConfig {
     /// Whether the VEGAS grids adapt to the absolute weights instead of their
     /// squares; see @ref VegasHistogram.
     bool vegas_absolute_weights = false;
+    /// Whether the survey adapts the probabilities of the discrete samplers
+    /// (@ref DiscreteSampler, the flavour and permutation choices) with the
+    /// VEGAS grids; see @ref DiscreteOptimizer. Off by default until it is
+    /// shown to pay off.
+    bool adaptive_discrete = false;
     /// Overweight tolerated when choosing the maximum weight, as a fraction of
     /// the smaller of the target count and `freeze_max_weight_after`.
     double max_overweight_truncation = 0.01;

@@ -559,3 +559,21 @@ def test_the_native_formation_is_the_python_one(artifacts, process, accuracy):
         assert records(formed) == records(oracle)
         assert formed.columns == oracle.columns
         assert formed.lanes == oracle.lanes
+
+
+@pytest.mark.loop_physics
+def test_a_column_set_with_seeds_of_its_own_releases_the_admitted_plan(artifacts):
+    """The resolved column set stores seeds of its own (a real overlay): its
+    executor loads its plan, and the plan program the artifact's admission
+    loaded, which the process's executor has not taken, is released first
+    (one program in the session); a null-overlay set (the correlated one)
+    takes it instead (``native_observables._source``)."""
+
+    runtime = _runtime(artifacts("u u~ > d d~ g", "full"))
+    admitted = runtime._backend._native_process.admitted
+    assert admitted is not None and not admitted.taken
+    sets = runtime._backend._native_process.observables.sets
+    assert json.loads(sets["resolved"].overlay_json) is not None
+    pts, scales = _points("uux_ddxg")
+    runtime.evaluate_resolved(pts, mu_r2=scales)
+    assert admitted.get() is None and not admitted.taken

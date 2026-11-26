@@ -120,7 +120,9 @@ Integrand::Integrand(
     const std::optional<PdfGrid>& pdf_grid2,
     const std::optional<MappingChannelWeights>& mapping_chan_weights,
     int mlm_history_qcd_power,
-    const std::optional<EELuminosity>& lepton_luminosity
+    const std::optional<EELuminosity>& lepton_luminosity,
+    const std::optional<TabulatedLuminosity>& tabulated_luminosity,
+    bool parton_density_output
 ) :
     FunctionGenerator(
         "Integrand",
@@ -204,6 +206,11 @@ Integrand::Integrand(
                     ret_types.push_back("x2", batch_float);
                     ret_types.push_back("fact_scale2", batch_float);
                 }
+                if (parton_density_output) {
+                    ret_types.push_back(
+                        "parton_densities", {DataType::dt_float64, batch_size, {2, 13}}
+                    );
+                }
                 if (emits_partial_weights(partial_weights, energy_scale) &&
                     (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1))) {
                     ret_types.push_back("partial_weight_product", batch_float);
@@ -268,6 +275,7 @@ Integrand::Integrand(
     _running_coupling(running_coupling),
     _energy_scale(energy_scale),
     _lepton_luminosity(lepton_luminosity),
+    _tabulated_luminosity(tabulated_luminosity),
     _prop_chan_weights(prop_chan_weights),
     _mapping_chan_weights(mapping_chan_weights),
     _subchan_weights(subchan_weights),
@@ -301,6 +309,14 @@ Integrand::Integrand(
     ),
     _custom_bias(custom_bias) {
     _mlm_history_qcd_power = mlm_history_qcd_power;
+    if (tabulated_luminosity &&
+        (!std::holds_alternative<std::monostate>(pdf_grid) || pdf_grid2 ||
+         lepton_luminosity)) {
+        throw std::invalid_argument(
+            "a tabulated luminosity replaces both parton densities: it cannot be "
+            "combined with a PDF or a dressed-lepton luminosity"
+        );
+    }
     if (energy_scale && energy_scale->mlm_flavor_dependent() &&
         pid_options.size() > 1) {
         for (auto& option : pid_options) {
@@ -354,6 +370,54 @@ Integrand::Integrand(
                 // the custom PDF may differ per beam, so mirrored events need
                 // the other beam's density
                 _pdfs_swapped.at(i) = PartonDensity(custom_pdf, pid_vec, 1 - beam);
+            }
+        }
+    }
+    if (parton_density_output) {
+        if (std::holds_alternative<std::monostate>(pdf_grid) || !energy_scale ||
+            !diff_xs.at(0).has_pdf(0) || !diff_xs.at(0).has_pdf(1)) {
+            throw std::invalid_argument(
+                "parton_density_output needs PDFs and a scale for both beams"
+            );
+        }
+        // the partons -6..6 that every grid of the beams has
+        std::vector<int> pids;
+        for (int pid = -6; pid <= 6; ++pid) {
+            int code = pid == 0 ? 21 : pid;
+            auto in_grid = [&](const PdfGrid& grid) {
+                return std::find(grid.pids.begin(), grid.pids.end(), code) !=
+                    grid.pids.end();
+            };
+            auto grid = std::get_if<PdfGrid>(&pdf_grid);
+            bool found =
+                !grid || (in_grid(*grid) && (!pdf_grid2 || in_grid(*pdf_grid2)));
+            _all_pdf_columns.push_back(found ? static_cast<int>(pids.size()) : -1);
+            if (found) {
+                pids.push_back(code);
+            }
+        }
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (auto grid = std::get_if<PdfGrid>(&pdf_grid)) {
+                bool own_grid = i == 1 && pdf_grid2;
+                _all_pdfs.at(i) = PartonDensity(
+                    own_grid ? pdf_grid2.value() : *grid,
+                    pids,
+                    false,
+                    own_grid ? pdf2_prefix : ""
+                );
+                if (pdf_grid2) {
+                    _all_pdfs_swapped.at(i) = PartonDensity(
+                        own_grid ? *grid : pdf_grid2.value(),
+                        pids,
+                        false,
+                        own_grid ? "" : pdf2_prefix
+                    );
+                }
+            } else {
+                auto& custom_pdf = std::get<CustomPdf>(pdf_grid);
+                int beam = static_cast<int>(i);
+                _all_pdfs.at(i) = PartonDensity(custom_pdf, pids, beam);
+                _all_pdfs_swapped.at(i) = PartonDensity(custom_pdf, pids, 1 - beam);
             }
         }
     }
@@ -480,7 +544,8 @@ Integrand::Integrand(
         if (input != MatrixElement::momenta_in && input != MatrixElement::flavor_in &&
             input != MatrixElement::alpha_s_in && input != MatrixElement::diagram_in) {
             throw std::invalid_argument(
-                "the integrand only supplies momenta, flavor, alpha_s and diagram to the "
+                "the integrand only supplies momenta, flavor, alpha_s and diagram to "
+                "the "
                 "matrix element, the random inputs have to be sampled internally"
             );
         }
@@ -653,7 +718,8 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     ret.push_back("ren_scale", acc_float);
     // a dressed-lepton run has no PartonDensity at all -- one luminosity
     // replaces both PDFs -- but still returns pdf1/fact_scale1
-    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity) && _energy_scale) {
+    if ((_pdfs.at(0) || _pdfs.at(1) || _lepton_luminosity || _tabulated_luminosity) &&
+        _energy_scale) {
         auto flav_count = static_cast<int>(_pid_options.size());
         // pdf_prior is built from the per-flavour PartonDensity values, which
         // a dressed-lepton run does not have: build_channel_part only sets it
@@ -671,6 +737,11 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
                 ret.push_back(std::format("fact_scale{}", i + 1), acc_float);
             }
         }
+    }
+    if (_all_pdfs.at(0)) {
+        ret.push_back(
+            "parton_densities", Type(DataType::dt_float64, acc_batch_size, {2, 13})
+        );
     }
 
     if (_energy_scale && _energy_scale->is_mlm()) {
@@ -765,7 +836,8 @@ NamedVector<Value> Integrand::build_channel_part(
                 [&](const auto& discrete_sym) {
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_sym)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
@@ -858,8 +930,7 @@ NamedVector<Value> Integrand::build_channel_part(
     std::array<Value, 2> omx_acc;
     if (_lepton_luminosity) {
         omx_acc = {
-            {fb.batch_gather(indices_acc, omx0),
-             fb.batch_gather(indices_acc, omx1_val)}
+            {fb.batch_gather(indices_acc, omx0), fb.batch_gather(indices_acc, omx1_val)}
         };
     }
     for (auto& cond : flow_conditions) {
@@ -907,11 +978,13 @@ NamedVector<Value> Integrand::build_channel_part(
             // the constant factors of the flavours' weights, so that the prior
             // follows their contributions at a given phase-space point but for
             // the matrix element
-            if (_flavor_factors.size() == _pid_options.size() || _has_mirror) {
+            auto& prior_factors =
+                _flavor_prior_factors.empty() ? _flavor_factors : _flavor_prior_factors;
+            if (prior_factors.size() == _pid_options.size() || _has_mirror) {
                 std::vector<double> factors(_pid_options.size(), 1.);
                 for (std::size_t f = 0; f < factors.size(); ++f) {
-                    if (_flavor_factors.size() == factors.size()) {
-                        factors[f] *= _flavor_factors[f];
+                    if (prior_factors.size() == factors.size()) {
+                        factors[f] *= prior_factors[f];
                     }
                     if (_has_mirror) {
                         factors[f] *= _flavor_mirror_factors.at(f);
@@ -960,7 +1033,8 @@ NamedVector<Value> Integrand::build_channel_part(
                 [&](const auto& discrete_flavor) {
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_flavor)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
@@ -1066,6 +1140,40 @@ NamedVector<Value> Integrand::build_channel_part(
         ? fb.div(fb.accept_norm(indices_acc, adaptive_det), adaptive_det)
         : fb.div(fb.full({1., batch_size_val}), adaptive_det);
 
+    Value parton_densities;
+    if (_all_pdfs.at(0)) {
+        ValueVec legs;
+        for (std::size_t i = 0; i < 2; ++i) {
+            auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+                ? scales.at(std::format("pdf_scale{}", i + 1))
+                : scales.at(i + 1);
+            auto pdf =
+                _all_pdfs.at(i)
+                    .value()
+                    .build_function(fb, {x_acc.at(i), pdf_scale})
+                    .at(0);
+            if (_has_mirror && _all_pdfs_swapped.at(i)) {
+                auto pdf_swapped =
+                    _all_pdfs_swapped.at(i)
+                        .value()
+                        .build_function(fb, {x_acc.at(i), pdf_scale})
+                        .at(0);
+                pdf = fb.gather_vector(
+                    fb.batch_gather(indices_acc, mirror_index),
+                    fb.stack({pdf, pdf_swapped})
+                );
+            }
+            ValueVec columns = fb.unstack(pdf), all_columns;
+            for (int column : _all_pdf_columns) {
+                all_columns.push_back(
+                    column == -1 ? fb.full({0., batch_size_acc}) : columns.at(column)
+                );
+            }
+            legs.push_back(fb.stack(all_columns));
+        }
+        parton_densities = fb.stack(legs);
+    }
+
     NamedVector<Value> out;
 
     // outputs before cuts
@@ -1109,16 +1217,25 @@ NamedVector<Value> Integrand::build_channel_part(
         auto lum = _lepton_luminosity.value().build_function(
             fb,
             ValueVec{
-                x_acc.at(0), omx_acc.at(0),
-                x_acc.at(1), omx_acc.at(1),
+                x_acc.at(0),
+                omx_acc.at(0),
+                x_acc.at(1),
+                omx_acc.at(1),
                 scales.at(1),
                 // the component choice does not enter the luminosity; the
                 // beamstrahlung split picks it again when events are written
                 fb.full({0.5, batch})
             }
         );
+        pdf_results.at(0) = fb.mul(lum.at(0), fb.mul(x_acc.at(0), x_acc.at(1)));
+    }
+    if (_tabulated_luminosity) {
+        // the same single slot as the dressed-lepton luminosity: the table
+        // already holds x1 x2 L, the x f convention diff_cross_section wants
         pdf_results.at(0) =
-            fb.mul(lum.at(0), fb.mul(x_acc.at(0), x_acc.at(1)));
+            _tabulated_luminosity.value()
+                .build_function(fb, ValueVec{x_acc.at(0), x_acc.at(1)})
+                .at(0);
     }
     if (_diff_xs.at(0).has_pdf(0)) {
         out.push_back("pdf1", pdf_results.at(0));
@@ -1127,6 +1244,9 @@ NamedVector<Value> Integrand::build_channel_part(
     if (_diff_xs.at(0).has_pdf(1)) {
         out.push_back("pdf2", pdf_results.at(1));
         out.push_back("fact_scale2", scales.at(2));
+    }
+    if (parton_densities) {
+        out.push_back("parton_densities", parton_densities);
     }
 
     if (_energy_scale && _energy_scale->is_mlm()) {
@@ -1443,11 +1563,12 @@ NamedVector<Value> Integrand::build_common_part(
         _flavor_remap.size() > 0 ? flavor_table_lookup(_flavor_remap) : flavor_id;
     // Union clustering's terminal diagram is a uniform bookkeeping choice.
     // Leave the amplitude-weighted diagram/color draw to the matrix element.
-    Value mlm_diagram = fb.full({static_cast<me_int_t>(-1), fb.batch_size({momenta_acc})});
+    Value mlm_diagram =
+        fb.full({static_cast<me_int_t>(-1), fb.batch_size({momenta_acc})});
     const auto& me_inputs = me_first.external_inputs();
-    const bool accepts_diagram = std::find(
-        me_inputs.begin(), me_inputs.end(), MatrixElement::diagram_in
-    ) != me_inputs.end();
+    const bool accepts_diagram =
+        std::find(me_inputs.begin(), me_inputs.end(), MatrixElement::diagram_in) !=
+        me_inputs.end();
     auto make_xs_args = [&](std::array<Value, 2>& pdfs, Value alpha) {
         ValueVec xs_args;
         for (auto input : me_first.external_inputs()) {
@@ -1549,11 +1670,15 @@ NamedVector<Value> Integrand::build_common_part(
         // A zero-weight event still needs a valid topology/color index. Use
         // the eligible mask as its prior rather than the sampler's index 0.
         auto zero_norm = fb.cut_one(fb.reduce_sum(probabilities), 0., 0.);
-        probabilities = fb.mul(diagram_mask, fb.add(
-            dxs_vec.at(amp2_index),
-            fb.stack(ValueVec(me_first.diagram_count(), zero_norm))
-        ));
-        const int diagram_index = me_output_index(me_first, MatrixElement::diagram_index_out);
+        probabilities = fb.mul(
+            diagram_mask,
+            fb.add(
+                dxs_vec.at(amp2_index),
+                fb.stack(ValueVec(me_first.diagram_count(), zero_norm))
+            )
+        );
+        const int diagram_index =
+            me_output_index(me_first, MatrixElement::diagram_index_out);
         Value diagram, replaced;
         if (diagram_index >= 0) {
             auto choice = fb.sample_discrete_probs_reuse(
@@ -1631,17 +1756,20 @@ NamedVector<Value> Integrand::build_common_part(
             if (accepts_diagram) {
                 // Only rejected first draws need a new color selection. Split
                 // the batch so eligible events keep their first helicity sum.
-                auto indices = fb.batch_split_by_index(replaced, static_cast<me_int_t>(2));
+                auto indices =
+                    fb.batch_split_by_index(replaced, static_cast<me_int_t>(2));
                 ValueVec retry_args;
                 for (auto arg : make_xs_args(pdfs_acc, alpha_qcd_acc)) {
                     retry_args.push_back(fb.batch_gather(indices.at(1), arg));
                 }
                 auto retry = _diff_xs.at(0).build_function(fb, retry_args).values();
                 for (std::size_t i = 0; i < dxs_vec.size(); ++i) {
-                    dxs_vec.at(i) = fb.batch_merge_by_index({
-                        fb.batch_gather(indices.at(0), dxs_vec.at(i)), indices.at(0),
-                        retry.at(i), indices.at(1)
-                    });
+                    dxs_vec.at(i) = fb.batch_merge_by_index(
+                        {fb.batch_gather(indices.at(0), dxs_vec.at(i)),
+                         indices.at(0),
+                         retry.at(i),
+                         indices.at(1)}
+                    );
                 }
             }
         } else {
@@ -1833,8 +1961,10 @@ NamedVector<Value> Integrand::build_common_part(
               std::pair{"helicity_index", MatrixElement::helicity_index_out},
               std::pair{"diagram_index", MatrixElement::diagram_index_out}}) {
             int index = me_output_index(me_first, me_output);
+            // only a per-event MLM history draws a diagram (all_diagrams leaves -1)
             if (index == -1 && me_output == MatrixElement::diagram_index_out &&
-                _energy_scale && _energy_scale->is_mlm()) {
+                _energy_scale && _energy_scale->is_mlm() &&
+                _energy_scale->mlm_history_per_diagram()) {
                 outputs.push_back(name, scatter_or_drop(zeros_int, mlm_diagram));
                 continue;
             }
@@ -1875,6 +2005,14 @@ NamedVector<Value> Integrand::build_common_part(
                 "fact_scale2", scatter_or_drop(zeros_float, fact_scales_acc.at(1))
             );
             pdf_vals.push_back(pdfs_acc.at(1));
+        }
+        if (_all_pdfs.at(0)) {
+            outputs.push_back(
+                "parton_densities",
+                scatter_or_drop(
+                    fb.full({0., batch_size_val, 2, 13}), args.at("parton_densities")
+                )
+            );
         }
         if (_partial_weights &&
             (_diff_xs.at(0).has_pdf(0) || _diff_xs.at(0).has_pdf(1))) {
@@ -1945,6 +2083,13 @@ NamedVector<Value> Integrand::build_common_part(
     }
 
     return outputs;
+}
+
+void Integrand::set_flavor_prior_factors(const std::vector<double>& factors) {
+    if (factors.size() != _pid_options.size()) {
+        throw std::invalid_argument("set_flavor_prior_factors: one factor per flavour");
+    }
+    _flavor_prior_factors = factors;
 }
 
 IntegrandChannelPart::IntegrandChannelPart(const Integrand& integrand) :
@@ -2162,7 +2307,8 @@ NamedVector<Value> IntegrandProbability::build_function_impl(
                 [&](const auto& discrete_sym) {
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_sym)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {
@@ -2192,7 +2338,8 @@ NamedVector<Value> IntegrandProbability::build_function_impl(
                     ++arg_index;
                     ValueVec discrete_condition;
                     using TDiscrete = std::decay_t<decltype(discrete_flavor)>;
-                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow>) {
+                    if constexpr (std::is_same_v<TDiscrete, DiscreteFlow> ||
+                                  std::is_same_v<TDiscrete, DiscreteFlavorLevels>) {
                         if (flow_conditions.size() == 1) {
                             discrete_condition.push_back(flow_conditions.at(0));
                         } else if (flow_conditions.size() > 1) {

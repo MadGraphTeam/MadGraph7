@@ -63,6 +63,7 @@ c     c
       double precision twgt, maxwgt,swgt(maxevents)
       integer                             lun, nw
       common/to_unwgt/twgt, maxwgt, swgt, lun, nw, itmin
+      logical ow_topup
 
 c--masses
       double precision pmass(nexternal)
@@ -202,7 +203,10 @@ c         (e.g. the Z at rest of q q~ > z).
          endif
       enddo
 c      ncall =  ncall * max(1., min(3., (nb_tchannel+1.)/2.))
-      if (nb_tchannel.gt.1) then
+c     (an overweight-limit top-up job, marked by ow_threshold.dat, runs
+c     a single iteration on a fixed grid: nothing to adapt)
+      inquire(file='ow_threshold.dat', exist=ow_topup)
+      if (nb_tchannel.gt.1 .and. .not.ow_topup) then
 c         itmin = itmin + 1
          itmax = itmax + 2
       endif

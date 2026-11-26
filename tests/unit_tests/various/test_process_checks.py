@@ -1708,7 +1708,7 @@ class TestPrecisionCheck(unittest.TestCase):
         FPTYPE=v computes the momenta and the propagator denominators in double
         precision and the rest in single precision. On a SIMD backend the
         denominators are a double precision vector with the single precision
-        lane count (MGONGPU_SIMD_DENOM64), a code path of its own; on the scalar
+        lane count (MADMATRIX_SIMD_DENOM64), a code path of its own; on the scalar
         backend they are plain doubles. The process uses both forms of
         madmatrix::denom: the photon propagator with its coupling (FFV1P0_3) and
         the Z one of a routine assembled from two Lorentz structures, without

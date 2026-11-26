@@ -368,7 +368,10 @@ def _coerce(
         raise AssertionError(f"unsupported configuration kind {kind!r}")
 
     if item.choices and result not in item.choices:
-        allowed = ", ".join(repr(choice) for choice in item.choices)
+        # An enum's choices by their values (the run card's spelling).
+        allowed = ", ".join(
+            repr(getattr(choice, "value", choice)) for choice in item.choices
+        )
         raise ConfigurationError(
             f"{item.path} must be one of {allowed}; got {result!r}"
         )

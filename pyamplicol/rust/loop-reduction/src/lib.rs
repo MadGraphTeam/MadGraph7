@@ -12,6 +12,7 @@
 
 pub mod reduction_policy;
 pub mod runtime;
+pub mod runtime_options;
 pub mod tir;
 pub mod v2_decimal;
 pub mod v2_runtime;

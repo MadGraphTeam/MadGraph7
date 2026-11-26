@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <ranges>
@@ -204,25 +205,44 @@ void EventGenerator::run_generate(GenerateMode mode) {
             }
         }
 
-        std::size_t job_id_before = _job_id;
-        std::size_t unweight_dispatched = start_jobs();
-        std::size_t round_in_flight = (_job_id - job_id_before) + unweight_dispatched;
+        // A thread count change pauses the dispatch until the jobs in flight are
+        // done, then the round resumes from its queue: the events do not change.
+        auto dispatch = [&](bool pipeline = true) -> std::size_t {
+            if (_pending_thread_count) {
+                return 0;
+            }
+            std::size_t job_id_before = _job_id;
+            std::size_t unweight_dispatched = start_jobs();
+            return (_job_id - job_id_before) + unweight_dispatched +
+                (pipeline ? start_pipeline_jobs() : 0);
+        };
+        apply_thread_count();
+        std::size_t round_in_flight = dispatch(false);
+        auto resume = [&] {
+            if (!_pending_thread_count) {
+                return false;
+            }
+            apply_thread_count();
+            round_in_flight = dispatch();
+            return round_in_flight > 0;
+        };
 
         // Wait for the round to commit before updating the channel fractions.
-        while (round_in_flight > 0) {
+        while (round_in_flight > 0 || resume()) {
             std::size_t job_id = wait_for_result(round_in_flight);
             if (stopping()) {
                 // no new batches; the ones in flight still commit and unweight
                 _ready_jobs.clear();
+            } else if (mode == GenerateMode::events && _pending_target_count &&
+                       *_pending_target_count != _config.target_count) {
+                // end the round early, the new target applies after it
+                drop_ready_jobs();
             }
             if (WeightingPipeline::owns_job(job_id)) {
                 _pipeline->commit_job(job_id);
                 update_counts();
                 print_gen_update(false);
-                std::size_t job_id_refill = _job_id;
-                std::size_t refill_unweight_dispatched = start_jobs();
-                round_in_flight += (_job_id - job_id_refill) +
-                    refill_unweight_dispatched + start_pipeline_jobs();
+                round_in_flight += dispatch();
                 continue;
             }
             auto& job = _running_jobs.at(job_id);
@@ -250,10 +270,7 @@ void EventGenerator::run_generate(GenerateMode mode) {
                     _running_jobs.erase(commit_id);
                 }
             }
-            std::size_t job_id_refill = _job_id;
-            std::size_t refill_unweight_dispatched = start_jobs();
-            round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
-                start_pipeline_jobs();
+            round_in_flight += dispatch();
         }
         drain_pipeline();
 
@@ -654,6 +671,25 @@ std::size_t EventGenerator::wait_for_result(std::size_t& in_flight) {
     std::rethrow_exception(aborted ? aborted : exception);
 }
 
+void EventGenerator::drop_ready_jobs() {
+    for (auto& ready_job : _ready_jobs) {
+        std::size_t channel_index = ready_job.channel_index;
+        if (ready_job.is_vegas_batch) {
+            // dispatched atomically, so none of it is running
+            _channel_optimizing.at(channel_index) = false;
+        } else {
+            // finish_channel_job() clears the pending flag once the running part
+            // commits
+            _channel_batch_dispatch_done.at(channel_index) = true;
+            if (_channel_job_counts.at(channel_index) == 0) {
+                _channel_batch_pending.at(channel_index) = false;
+            }
+        }
+    }
+    _ready_jobs.clear();
+    _ready_job_rr_cursor = 0;
+}
+
 void EventGenerator::reset_jobs() {
     _running_jobs.clear();
     if (_pipeline) {
@@ -825,24 +861,35 @@ void EventGenerator::update_integral_status() {
     sum_channel_status(_channels, _status);
 }
 
-void EventGenerator::apply_pending_changes() {
+void EventGenerator::apply_thread_count() {
     if (_pending_thread_count) {
         for (auto& context : _contexts) {
             if (context->device()->device_type() == DeviceType::cpu) {
                 context->thread_pool().set_thread_count(*_pending_thread_count);
             }
         }
-        Logger::info(std::format("CPU thread count set to {}", *_pending_thread_count));
+        // a log line would break the pretty boxes
+        if (_config.verbosity == Verbosity::log) {
+            Logger::info(
+                std::format("CPU thread count set to {}", *_pending_thread_count)
+            );
+        }
         _pending_thread_count.reset();
     }
+}
+
+void EventGenerator::apply_pending_changes() {
+    apply_thread_count();
     if (_pending_target_count && _generate_mode == GenerateMode::events) {
-        Logger::info(
-            std::format(
-                "requested events changed from {} to {}",
-                _config.target_count,
-                *_pending_target_count
-            )
-        );
+        if (_config.verbosity == Verbosity::log) {
+            Logger::info(
+                std::format(
+                    "requested events changed from {} to {}",
+                    _config.target_count,
+                    *_pending_target_count
+                )
+            );
+        }
         _config.target_count = *_pending_target_count;
         _status.count_target = *_pending_target_count;
         _pending_target_count.reset();
@@ -1630,6 +1677,17 @@ void EventGenerator::write_status(const std::string& status, bool force_write) {
         {"run_times", _timing_data},
         {"histograms", histograms()},
     };
+    if (_pipeline && _generate_mode != GenerateMode::optimize_only) {
+        nlohmann::json passes = nlohmann::json::array();
+        for (auto& pass : pass_statistics().passes) {
+            passes.push_back({
+                {"unweight", pass.unweight},
+                {"efficiency", pass.efficiency},
+                {"rsd", pass.rsd},
+            });
+        }
+        j["passes"] = passes;
+    }
     if (_systematics) {
         j["systematics"] = _systematics->summary();
     }
@@ -1833,7 +1891,7 @@ void EventGenerator::print_gen_init() {
                 _generate_mode == GenerateMode::fix_max_weights
                     ? "Integration and max. weight estimation"
                     : "Integration and unweighting",
-                8,
+                9,
                 {19, 0},
                 offset
             );
@@ -1842,6 +1900,7 @@ void EventGenerator::print_gen_init() {
                 {"Result:",
                  "Rel. error:",
                  "Rel. stddev:",
+                 "  per pass:",
                  "Number of events:",
                  "Unweighting eff.:",
                  "  per pass:",
@@ -1856,31 +1915,118 @@ void EventGenerator::print_gen_init() {
     }
 }
 
-std::tuple<double, double, std::vector<double>>
-EventGenerator::pass_efficiencies() const {
-    // events accepted per pass, a channel with fewer steps passes the others
-    std::vector<double> accepted;
+namespace {
+std::string format_efficiency(double value) {
+    return std::isfinite(value) ? std::format("{:.5f}", value) : "-";
+}
+} // namespace
+
+EventGenerator::PassSummary EventGenerator::pass_statistics() const {
+    constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+    // the first unweighting
+    double first_count = 0., first_count_opt = 0., first_count_after_cuts_opt = 0.;
+    double rsd_var = 0., rsd_mean = 0.;
+    std::size_t rsd_count = 0;
+    std::vector<StepStatistics> pooled;
     for (auto& channel : _channels) {
-        auto counts = channel->step_accepted_counts();
-        if (counts.size() > accepted.size()) {
-            accepted.resize(counts.size(), 0.);
+        first_count += channel->step_statistics().empty()
+            ? channel->status().count_unweighted
+            : channel->first_step_count();
+        first_count_opt += channel->status().count_opt;
+        first_count_after_cuts_opt += channel->status().count_after_cuts_opt;
+        if (!channel->uses_integral_prior()) {
+            auto integral = channel->first_step_integral();
+            if (integral.count > 0) {
+                rsd_var += integral.variance_abs / integral.count;
+                rsd_mean += integral.mean_abs;
+                rsd_count += integral.count;
+            }
         }
-        for (std::size_t i = 0; i < accepted.size(); ++i) {
-            accepted.at(i) += counts.at(std::min(i, counts.size() - 1));
+        // a channel with fewer steps does not take part in the later ones
+        auto statistics = channel->step_statistics();
+        if (statistics.size() > pooled.size()) {
+            pooled.resize(
+                statistics.size(), {.unweight = false, .entered = 0., .passed = 0.}
+            );
+        }
+        for (std::size_t i = 0; i < statistics.size(); ++i) {
+            auto& step = statistics.at(i);
+            auto& target = pooled.at(i);
+            if (step.unweight) {
+                // a step that unweights in some channel and reweights in others
+                // is reported as unweighting, with the efficiency of those
+                target.unweight = true;
+                target.entered += step.entered;
+                target.passed += step.passed;
+            }
+            target.sums += step.sums;
         }
     }
-    // the last pass ends with the counts of the final events, so that the
-    // product is the overall efficiency
-    accepted.back() = _status.count_unweighted;
-    std::vector<double> later_passes;
-    for (std::size_t i = 1; i < accepted.size(); ++i) {
-        later_passes.push_back(accepted.at(i) / accepted.at(i - 1));
-    }
-    return {
-        accepted.at(0) / _status.count_opt,
-        accepted.at(0) / _status.count_after_cuts_opt,
-        later_passes
+    PassSummary summary{
+        .first_efficiency_after_cuts = first_count_after_cuts_opt > 0
+            ? first_count / first_count_after_cuts_opt
+            : nan,
     };
+    summary.passes.push_back({
+        .unweight = true,
+        .efficiency = first_count_opt > 0 ? first_count / first_count_opt : nan,
+        .rsd = rsd_mean != 0. ? std::sqrt(rsd_var * rsd_count) / rsd_mean : nan,
+    });
+    for (auto& step : pooled) {
+        summary.passes.push_back({
+            .unweight = step.unweight,
+            .efficiency =
+                step.unweight && step.entered > 0 ? step.passed / step.entered : nan,
+            .rsd = step.sums.weight_rsd(),
+        });
+    }
+    return summary;
+}
+
+double EventGenerator::unweighting_efficiency(bool after_cuts) const {
+    double count_opt = 0.;
+    for (auto& channel : _channels) {
+        count_opt += after_cuts
+            ? channel->count_after_cuts_opt_completed()
+            : channel->count_opt_completed();
+    }
+    return count_opt > 0
+        ? _status.count_unweighted / count_opt
+        : std::numeric_limits<double>::quiet_NaN();
+}
+
+std::pair<std::string, std::string> EventGenerator::pass_strings() const {
+    auto format = [](double value, const char* spec) {
+        return std::isfinite(value)
+            ? std::vformat(spec, std::make_format_args(value))
+            : std::string("-");
+    };
+    auto summary = pass_statistics();
+    std::string efficiencies, rsds;
+    for (std::size_t i = 0; auto& pass : summary.passes) {
+        // the passes are numbered like their efficiency, reweighting steps
+        // carry an "r"
+        std::string label = std::format("{}{}", i + 1, pass.unweight ? "" : "r");
+        if (pass.unweight) {
+            efficiencies += std::format(
+                "{}{}: {}",
+                efficiencies.empty() ? "" : ", ",
+                label,
+                format(pass.efficiency, "{:.5f}")
+            );
+            if (i == 0) {
+                efficiencies += std::format(
+                    " ({} after cuts)",
+                    format(summary.first_efficiency_after_cuts, "{:.5f}")
+                );
+            }
+        }
+        rsds += std::format(
+            "{}{}: {}", rsds.empty() ? "" : ", ", label, format(pass.rsd, "{:.3f}")
+        );
+        ++i;
+    }
+    return {efficiencies, rsds};
 }
 
 void EventGenerator::print_gen_update(bool done) {
@@ -1904,7 +2050,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
     _last_print_time = now;
     bool optimize_only = _generate_mode == GenerateMode::optimize_only;
 
-    std::string int_str, rel_str, rsd_str, uweff_str, pass_str, count_str;
+    std::string int_str, rel_str, rsd_str, uweff_str, pass_str, pass_rsd_str, count_str;
     count_str = std::format(
         "{} before cuts, {} after",
         format_si_prefix(_status.count),
@@ -1919,18 +2065,12 @@ void EventGenerator::print_gen_update_pretty(bool done) {
         }
         rsd_str = std::format("{:.3f}", _status.rel_std_dev);
         uweff_str = std::format(
-            "{:.5f} before cuts, {:.5f} after",
-            _status.count_unweighted / _status.count_opt,
-            _status.count_unweighted / _status.count_after_cuts_opt
+            "{} before cuts, {} after",
+            format_efficiency(unweighting_efficiency(false)),
+            format_efficiency(unweighting_efficiency(true))
         );
         if (_pipeline) {
-            auto [first, first_after_cuts, later] = pass_efficiencies();
-            pass_str =
-                std::format("1: {:.5f} ({:.5f} after cuts)", first, first_after_cuts);
-            for (std::size_t i = 0; double eff : later) {
-                pass_str += std::format(", {}: {:.5f}", i + 2, eff);
-                ++i;
-            }
+            std::tie(pass_str, pass_rsd_str) = pass_strings();
         }
     }
     // the progress of the run: unweighted events, or optimized channels
@@ -1971,6 +2111,7 @@ void EventGenerator::print_gen_update_pretty(bool done) {
             {int_str,
              rel_str,
              rsd_str,
+             pass_rsd_str,
              count_str,
              uweff_str,
              pass_str,
@@ -1986,18 +2127,25 @@ void EventGenerator::print_gen_update_pretty(bool done) {
 
     if (_channels.size() > 1) {
         auto channels = channel_status();
-        std::sort(channels.begin(), channels.end(), [](auto& chan1, auto& chan2) {
-            return chan1.mean_abs > chan2.mean_abs;
+        std::vector<std::size_t> order(channels.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::sort(order.begin(), order.end(), [&](std::size_t i, std::size_t j) {
+            return channels.at(i).mean_abs > channels.at(j).mean_abs;
         });
 
-        for (std::size_t row = 1; auto& channel : channels | std::views::take(20)) {
+        for (std::size_t row = 1; std::size_t index : order | std::views::take(20)) {
+            auto& channel = channels.at(index);
+            double channel_count_opt =
+                _channels.at(index)->count_after_cuts_opt_completed();
             std::string index_str = std::format("{}", channel.name);
             std::string int_str, rsd_str, count_str, unw_str, opt_str, patience_str;
             if (!std::isnan(channel.error)) {
                 int_str = format_with_error(channel.mean, channel.error);
                 rsd_str = std::format("{:.3f}", channel.rel_std_dev);
-                uweff_str = std::format(
-                    "{:.5f}", channel.count_unweighted / channel.count_after_cuts_opt
+                uweff_str = format_efficiency(
+                    channel_count_opt > 0
+                        ? channel.count_unweighted / channel_count_opt
+                        : std::numeric_limits<double>::quiet_NaN()
                 );
                 count_str = format_si_prefix(channel.count_after_cuts);
                 opt_str = std::format(
@@ -2086,21 +2234,16 @@ void EventGenerator::print_gen_update_log(bool done) {
     } else {
         std::string pass_efficiency_str;
         if (_pipeline) {
-            auto [first, first_after_cuts, later] = pass_efficiencies();
+            auto [efficiencies, rsds] = pass_strings();
             pass_efficiency_str = std::format(
-                ", unw. eff. per pass: {:.5f} ({:.5f} after cuts)",
-                first,
-                first_after_cuts
+                ", unw. eff. per pass: {}, RSD per pass: {}", efficiencies, rsds
             );
-            for (double eff : later) {
-                pass_efficiency_str += std::format(", {:.5f}", eff);
-            }
         }
         Logger::info(
             std::format(
                 "generating, events: {} / {}, integral: {}, rel. error: {}, "
                 "RSD: {:.3f}, samps: {}, samps. after cuts: {}, "
-                "unw. eff.: {:.5f}, unw. eff. after cuts: {:.5f}{}, time: {:%H:%M:%S}",
+                "unw. eff.: {}, unw. eff. after cuts: {}{}, time: {:%H:%M:%S}",
                 format_si_prefix(_status.count_unweighted),
                 format_si_prefix(_status.count_target),
                 format_with_error(_status.mean, _status.error),
@@ -2108,8 +2251,8 @@ void EventGenerator::print_gen_update_log(bool done) {
                 _status.rel_std_dev,
                 format_si_prefix(_status.count),
                 format_si_prefix(_status.count_after_cuts),
-                _status.count_unweighted / _status.count_opt,
-                _status.count_unweighted / _status.count_after_cuts_opt,
+                format_efficiency(unweighting_efficiency(false)),
+                format_efficiency(unweighting_efficiency(true)),
                 pass_efficiency_str,
                 std::chrono::round<std::chrono::seconds>(now - _start_time)
             )

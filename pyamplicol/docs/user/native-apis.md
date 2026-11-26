@@ -829,7 +829,17 @@ Python API's `stability_checks=`: `rusticol_virtual_set_stability_checks`
 `set_stability_checks`) takes a count of default rotations or rotation
 specifications, the reduction-direction check, its rescaled variant and the
 cross-backend check. Without checks (the default, or a rotation count of 0
-with the other checks off) nothing else runs and no estimate is formed. With
+with the other checks off) nothing else runs and no estimate is formed. The
+SDK has no per-backend default set: the checks a caller sets are run as set
+on every backend (an explicit set is never changed, as in the Python API).
+For TIRust-served evaluations (the loop-induced `"auto"` and `"tirust"`) set
+one rotation with the reduction-direction check and its rescaled variant,
+the recommended checks and the Python API's default set for TIRust (one
+rotation alone under-states the error of accepted TIRust points, on 144 of
+200 flat g g > g g g points). The SDKs have the reduction-level checks, the
+lane rescue and these point-level checks, not the Python API's rescue stack
+([Python API](python-api.md#the-stability-machinery-end-to-end), "The
+stability machinery, end to end"). With
 checks, every successful point of a binary64 ordinary evaluation carries its
 estimate in the result's `diagnostics_json` (`"stability"`), equal bit for bit
 to the Python API's `VirtualStabilityEstimate`; the precision rescue stays the
@@ -909,7 +919,13 @@ measured windows and the estimates of each check are in the
 conditioning bound refuses such lanes typed (status Failed). The SDKs'
 binary64 monitoring, bitwise the Python API's binary64 estimate, flags what
 the bound does not refuse; in double-double and arbitrary precision the SDKs
-run no monitoring (`AccuracyNotEstablished`, no estimate). The target accuracy
+run no monitoring (`AccuracyNotEstablished`, no estimate). In arbitrary
+precision the SDKs apply the Python API's tracked-precision test of NinjaRS's
+lanes ([Python API](python-api.md), "NinjaRS tracked precision"): a point
+whose lanes kept too few of the bits their carrier tracked has status Failed
+with the reason "NinjaRS tracked precision: ..." (under the default
+`"best-effort"` it is returned as `BEST_EFFORT` with the unchecked
+reduction's value; the unchecked setting drops the test). The target accuracy
 `rusticol_virtual_set_reduction_target(handle, target)` (C++ and Fortran
 `set_reduction_target`, the packaged Rust wrapper's `set_reduction_target`;
 default 1e-5, the relative accuracy of each point's result) sets the
@@ -932,6 +948,21 @@ the caller's inputs in the caller's leg order, before anything is evaluated
 `diagnostics_json` records it per point (`"kinematics"`: the Python API's
 `VirtualKinematics` fields); another value is an invalid argument
 ([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+The lane rescue `rusticol_virtual_set_lane_rescue(handle, on)` (C++
+`set_lane_rescue(bool)`, Fortran `set_lane_rescue(logical)`, the packaged
+Rust wrapper's `set_lane_rescue(bool)`; 1 or 0, default 1, as the Python
+API's `lane_rescue=`; additive, ABI version 2 kept) reduces a reduction lane
+a backend refuses again in double-double, then arbitrary precision, from its
+binary64 coefficients and the point improved in that carrier, in the checked
+and the unchecked mode ([Python API](python-api.md), "Lane rescue of refused
+reduction lanes"); 0 leaves such a lane to fail its point; each result
+records `"lane_rescue"` in its `"reduction"` diagnostics (the setting; an SDK
+result carries no per-point record of which lanes were rescued, unlike the
+Python API's `VirtualLaneDiagnostic.lane_rescue`); any other value is
+an invalid argument. With stability checks that lack the
+reduction-direction check, a point with rescued lanes gets the estimate of
+the checks with the rescaled reduction-direction check added, as in the
+Python API.
 Additive symbols, ABI version 2 kept. The unchecked setting
 `rusticol_virtual_set_reduction_unchecked(handle, unchecked)` (C++
 `set_reduction_unchecked(bool)`, Fortran `set_reduction_unchecked(logical)`,
@@ -979,6 +1010,59 @@ a point (C++ throws `VirtualError`, Fortran sets `ierr`, Rust returns an
 error). Points the configured alternatives accept are evaluated exactly as
 before; a call whose points are all accepted only appends the policy's
 empty records to its diagnostics. Additive symbols, ABI version 2 kept.
+
+### Runtime options and threads
+
+Every runtime setting above can also be given together, as a runtime-options
+TOML (its `[evaluation]` table; a full run card works: its other tables and
+the `[evaluation]` keys that are inputs of a command-line run, such as
+`momenta`, `process`, `mu_r2` or `model_parameters`, are not read):
+`rusticol_virtual_set_options(handle, toml_text)` (C++ `set_options(text)`
+and `set_options_file(path)`, Fortran `set_options(text)`, the packaged Rust
+wrapper's `set_options(&str)` and `set_options_file(path)`) and
+`rusticol_virtual_open_with_options(path, process, parameters_json,
+r2_strategy, toml_text, &handle)` (C++ `VirtualRuntime::with_options(path,
+text, ...)`, Fortran `load(..., options_toml=text)`, Rust
+`Runtime::open_with_options`). The keys, their setters and their Python and
+CLI spellings are tabulated in
+[Configuration](configuration.md#runtime-options); they are read with the
+run card's values and refusal texts by one native reader
+(`rusticol_loop_reduction::runtime_options`). Every key is checked first, as
+its setter checks it, and then all are applied: on an error nothing changes
+and `rusticol_virtual_last_error_message` names the key
+(`RUSTICOL_VIRTUAL_INVALID_ARGUMENT` for an unknown key or a bad value; a
+setting the process or the library does not serve fails with its setter's
+status). A key absent keeps its setting; a setter called after the TOML
+overrides the key it sets. `rusticol_virtual_options_json(handle, ...)` (C++
+/ Fortran / Rust `options_json`) returns the handle's settings, every key by
+its run-card name (`"precision"` null outside arbitrary precision,
+`"threads"` the effective count, null for the default, `"threads_requested"`
+the count asked for when the clamp lowered it, the stability checks'
+rotations as exact matrices).
+
+`rusticol_virtual_set_threads(handle, threads)` (C++ `set_threads(n)`,
+Fortran `set_threads(n)`, Rust `set_threads(Option<u32>)`) bounds the
+handle's later evaluations to `threads` native threads (every executor of
+the handle, in every carrier), clamped to the threads the process may use
+(the affinity mask and the cgroup quota: a larger count gives the usable
+cores, never an error; [Configuration](configuration.md#threads)); every new
+pool is built before any is installed, so a refused thread changes nothing;
+0, the default, keeps rayon's rule
+(`RAYON_NUM_THREADS`, else every core). The values do not depend on the
+count, and two handles keep their own counts. The load at open is bounded by
+the `threads` of the TOML given to `rusticol_virtual_open_with_options`
+(else `RAYON_NUM_THREADS`, else every core); a load starts only the threads
+its work uses, up to that count (briefly up to about twice the count alive
+while its decode pool grows; [Configuration](configuration.md#threads)).
+
+The tree C API reads the same TOML with `rusticol_runtime_set_options(handle,
+toml_text)` (C++ and Fortran `set_options`): a tree runtime takes
+`kinematics_improvement` and `kinematics_improvement_binary64` and refuses
+every virtual runtime option it names, by name, changing nothing (a virtual
+run card is not accepted there). All these symbols are
+additive: `rusticol_virtual_abi_version` stays 2 and `RUSTICOL_ABI_VERSION`
+1 (the project's rule: additive symbols keep the version; the packaged UMAMI
+header is unchanged).
 
 ## Common setup failures
 

@@ -1,3 +1,1 @@
-      LOGICAL HAS_EWSUDAKOV
-      PARAMETER (HAS_EWSUDAKOV=.TRUE.)
-
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_bbx_ttx%has_ewsudakov.inc

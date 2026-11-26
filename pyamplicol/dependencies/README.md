@@ -26,9 +26,11 @@ moved `conj` into its numeric trait, which GammaLoop's Spenso implements:
 FeynKit and Spenso come from the fork ValentinHirschi/gammaloop
 `pyamplicol-community` `ea3faaae` (alphal00p/gammaloop `d1904bf2` plus that
 one change), the revision NinjaRS pins. NinjaRS
-(`ac66cf6c`, branch `symbolica-community-2`: main `b51b7465`'s
-crate sources, the per-row evaluation without the
-batch evaluator, pinned on this Symbolica, the gammaloop fork and
+(`a2546170`, main after PR #20: `f7f5e165` with PR #16's box-Gram bound
+and PR #19's records of why a lane is refused, + `ninjars_symbolica::reserve`,
+the history-independent exact evaluators; main `3116e5e6` = `ac66cf6c` + PR #16,
+`ac66cf6c` = branch `symbolica-community-2`: main `b51b7465`'s crate sources, the
+per-row evaluation without the batch evaluator; pinned on this Symbolica, the gammaloop fork and
 oneloopmaster `07fc754f`) pins the same revision, as does oneloopmaster
 (`07fc754f`, branch `symbolica-community-2`: `3b6f229f`'s sources) in its
 own standalone `[patch]`, which only applies when it is the root workspace.
@@ -40,8 +42,10 @@ publishable until this revision is in a Symbolica release.
 
 TIRust ([huashengshao/TIRust](https://github.com/huashengshao/TIRust), crates
 `iregi-rust` and `iregi-masters`, pinned to a commit of its main after its one
-history rewrite, currently `2b9ba961` (branch `symbolica-community-2`: main
-`a5d4afbf`, PR #35 and the move to Symbolica community, re-pinned on `d0424f9e`) with per-row evaluation instead of the batch evaluator) is one more git source, linked by the cargo feature `tir`, a
+history rewrite, currently `1c130a81` (main `a8dba684` = `2b9ba961`,
+the move to Symbolica community `d0424f9e` with per-row evaluation instead of the
+batch evaluator, + PRs #41 and #42; + PR #43, MPFR rounded at the working
+precision in the direct engine) is one more git source, linked by the cargo feature `tir`, a
 default feature of every crate that links it (`--no-default-features` builds
 without it). Its crates require `symbolica = "3.0"` and the oneloop revision
 and features pinned here, so the root `[patch]` and oneloop pin serve them

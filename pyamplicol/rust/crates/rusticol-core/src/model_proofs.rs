@@ -34,7 +34,6 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use symbolica::atom::{Atom, AtomCore};
 use symbolica::id::Replacement;
-use symbolica::parser::ParseSettings;
 
 use crate::{RusticolError, RusticolResult};
 
@@ -67,7 +66,7 @@ const ORDERS: [[u8; 2]; 2] = [[0, 1], [1, 0]];
 fn parse(text: &str) -> RusticolResult<Atom> {
     // Canonical strings name every symbol with its namespace; the default
     // namespace is the Python wheel's (`E`).
-    Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {
+    crate::symbol_order::parse(text, "python").map_err(|error| {
         RusticolError::invalid_argument(format!(
             "kernel proof: cannot parse a canonical expression: {error}"
         ))

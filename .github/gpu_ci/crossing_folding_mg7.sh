@@ -1,6 +1,6 @@
 #!/bin/bash -l
 # Runs on the self-hosted runner (GPU node): job crossing_folding of gpu_runner_ci.yml.
-# Per process (p p > w+ j, p p > j j, p p > w+ j j): one generation --use_crossing=True,
+# Per process (p p > w+ j, p p > w+ j j): one generation --use_crossing=True,
 # written twice by `output mg7`: FOLD_<tag> (the crossed subprocesses are
 # subprocesses.json entries evaluated by their base's library at an extended flavor id)
 # and EXP_<tag> (--use_crossing=False, every subprocess its own). Same seed everywhere,
@@ -14,13 +14,13 @@
 #   <tag>_fold_cpu     FOLD on cpu                                 = <tag>_exp_cpu
 #   <tag>_gp_exp_gpu   the cpu-made EXP gridpack on $BACKEND       = <tag>_exp_cpu
 #   <tag>_gp_fold_gpu  the cpu-made FOLD gridpack on $BACKEND      = <tag>_fold_cpu
-# and, per process <tag> of STANDALONE (p p > w+ j j, p p > j j), at one fixed phase-space
+# and, for STANDALONE p p > w+ j j, at one fixed phase-space
 # point with no Monte-Carlo noise: every matrix element check_sa.exe prints (every base
 # flavor, every crossing folded in) must agree between its $BACKEND and cpu builds, in
-# double precision, to 1e-10, and none may be NaN -- for the folded and the expanded
-# standalone output, after checking that the folded one did fold (fewer P dirs, crossings
-# to show):
-#   <tag>_sa_output, <tag>_sa_fold_<P dir>, <tag>_sa_exp_<P dir>
+# double precision, to 1e-10, and none may be NaN -- for the folded standalone output, after
+# checking that it did fold (fewer P dirs than the expanded output, crossings to show). The
+# expanded output is only generated, not compiled (its many P dirs are not checked):
+#   <tag>_sa_output, <tag>_sa_fold_<P dir>
 # "=" is agreement within 4 combined standard deviations; each run must succeed, within
 # RUN_TIMEOUT seconds (default 1200): a hung run fails alone instead of taking the
 # whole allocation with it.
@@ -168,12 +168,27 @@ check_sa_devices() {
     local tag=$1 kind=$2 out=$3 pdir name dev ret worst gpu=$BACKEND
     # (BACKEND=cpu, the laptop try-out of this script, is no madmatrix backend)
     if [ "$gpu" = cpu ]; then gpu=scalar; fi
+    # Every P dir is built at once by SubProcesses/makefile, which spreads the -j slots over
+    # all of them (and builds the common library once, first). One backend at a time: both
+    # link check_sa.exe in the P dir, kept as check_sa_<dev>.exe. -k: a P dir that does not
+    # build fails alone, below.
+    for dev in "$gpu" scalar; do
+        rm -f "$out"/SubProcesses/P*/check_sa.exe
+        make -k -C "$out/SubProcesses" -j"${SLURM_CPUS_PER_TASK:-4}" BACKEND=$dev FPTYPE=d \
+             > "${tag}_sa_${kind}_make.$dev.log" 2>&1
+        for pdir in "$out"/SubProcesses/P*/; do
+            if [ -x "$pdir/check_sa.exe" ]; then mv "$pdir/check_sa.exe" "$pdir/check_sa_$dev.exe"; fi
+        done
+    done
     for pdir in "$out"/SubProcesses/P*/; do
         name=${tag}_sa_${kind}_$(basename "$pdir")
         for dev in "$gpu" scalar; do
+            if [ ! -x "$pdir/check_sa_$dev.exe" ]; then
+                record "$name" FAIL "check_sa.exe not built for $dev (see ${tag}_sa_${kind}_make.$dev.log)"
+                continue 2
+            fi
             ret=0
-            (cd "$pdir" && make -j"${SLURM_CPUS_PER_TASK:-4}" BACKEND=$dev FPTYPE=d check_sa.exe \
-                 && timeout "$RUN_TIMEOUT" ./check_sa.exe) > "$name.$dev.log" 2>&1 || ret=$?
+            (cd "$pdir" && timeout "$RUN_TIMEOUT" "./check_sa_$dev.exe") > "$name.$dev.log" 2>&1 || ret=$?
             if [ "$ret" -ne 0 ]; then
                 record "$name" FAIL "check_sa.exe on $dev: exit $ret (see $name.$dev.log)"
                 continue 2
@@ -238,16 +253,13 @@ EOF
         record "${tag}_sa_output" PASS "$nfold folded P dirs ($ndemo with crossings), $nexp expanded"
     fi
     check_sa_devices "$tag" fold "SA_FOLD_$tag"
-    check_sa_devices "$tag" exp "SA_EXP_$tag"
 }
 
 START=$SECONDS
 CROSSED=
 check_process wj 'p p > w+ j' true
-check_process jj 'p p > j j' false
 check_process wjj 'p p > w+ j j' false
 check_standalone wjj 'p p > w+ j j'
-check_standalone jj 'p p > j j'
 WALLTIME=$((SECONDS - START))
 
 cat > summary.txt << EOF

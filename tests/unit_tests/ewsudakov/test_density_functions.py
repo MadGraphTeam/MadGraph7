@@ -35,6 +35,16 @@ def _upper_triangle(matrix):
     ]
 
 
+def _linear_correction(born, delta):
+    """dB[h,h'] = B[h,h'] (delta_h + delta*_h') of the amplitudes M_h (1 + delta_h)."""
+    return born * (delta[:, None] + np.conj(delta)[None, :])
+
+
+def _weight(prod, decay, delta):
+    return fx.compute_density_interference_weight(
+        prod, decay, _linear_correction(prod.matrix, delta))
+
+
 @unittest.skipIf(np is None, "NumPy is required for density matrix checks")
 class TestFortranTriangleConvention(unittest.TestCase):
     def test_upper_triangle_is_not_conjugated(self):
@@ -68,7 +78,7 @@ class TestFortranTriangleConvention(unittest.TestCase):
         def weight(b_matrix, c_matrix, correction):
             b = fx.DensityMatrix.from_full_matrix(b_matrix, [24, -24])
             c = fx.DensityMatrix.from_full_matrix(c_matrix, [24, -24])
-            return b.apply_sudakov(correction).contract(c) / b.contract(c)
+            return _weight(b, c, correction)
 
         factor = 1.0 + delta[:, None] + np.conj(delta)[None, :]
         expected = (
@@ -176,7 +186,7 @@ class TestDensityContraction(unittest.TestCase):
             prod_amp = rng.normal(size=9) + 1j * rng.normal(size=9)
             decay_amp = rng.normal(size=9) + 1j * rng.normal(size=9)
             delta = 1.0e-4 * (rng.normal(size=9) + 1j * rng.normal(size=9))
-            weight = fx.compute_density_weight(
+            weight = _weight(
                 _density(prod_amp, [24, -24]), _density(decay_amp, [24, -24]), delta
             )
             born = abs(np.sum(prod_amp * decay_amp)) ** 2
@@ -202,7 +212,7 @@ class TestDensityContraction(unittest.TestCase):
         delta = np.array([0.02 - 0.03j, 0.01 + 0.04j, -0.02 + 0.01j])
         prod = _density(prod_amp, [24])
         for amp in (decay_amp, np.conj(decay_amp)):
-            weight = fx.compute_density_weight(prod, _density(amp, [24]), delta)
+            weight = _weight(prod, _density(amp, [24]), delta)
             linear = np.sum(
                 np.outer(prod_amp, np.conj(prod_amp))
                 * (1.0 + delta[:, None] + np.conj(delta)[None, :])
@@ -211,9 +221,9 @@ class TestDensityContraction(unittest.TestCase):
             np.testing.assert_allclose(
                 weight, linear / abs(np.sum(prod_amp * amp)) ** 2, rtol=1e-12
             )
-        mirror_difference = fx.compute_density_weight(
+        mirror_difference = _weight(
             prod, _density(decay_amp, [24]), delta
-        ) - fx.compute_density_weight(prod, _density(np.conj(decay_amp), [24]), delta)
+        ) - _weight(prod, _density(np.conj(decay_amp), [24]), delta)
         self.assertGreater(abs(mirror_difference), 1.0e-4)
 
 

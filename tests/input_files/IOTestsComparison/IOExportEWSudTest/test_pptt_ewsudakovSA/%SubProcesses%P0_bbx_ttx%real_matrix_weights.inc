@@ -1,4 +1,1 @@
-      DOUBLE PRECISION REAL_AMP2(1)
-      COMMON /C_REAL_DIAGRAM_WEIGHTS/ REAL_AMP2
-      LOGICAL GET_REAL_DIAGRAM_WEIGHTS
-      COMMON /C_GET_REAL_DIAGRAM_WEIGHTS/ GET_REAL_DIAGRAM_WEIGHTS
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_bbx_ttx%real_matrix_weights.inc

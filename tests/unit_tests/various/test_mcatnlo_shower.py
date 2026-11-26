@@ -72,6 +72,15 @@ class TestMatchingContract(unittest.TestCase):
         self.assertTrue(contract['legacy'])
         self.assertEqual(contract['max_n_matched_jets'], 2)
 
+    def test_generation_contract_reads_proc_characteristics(self):
+        # The run interface passes its ProcCharacteristic, a ConfigFile.
+        proc = banner_mod.ProcCharacteristic()
+        proc['max_n_matched_jets'] = 2
+        contract = mcatnlo_shower.contract_from_generation(
+            self.root, {'parton_shower': 'PYTHIA8'}, proc,
+            fks_params=pjoin(self.root, 'FKS_params.dat'))
+        self.assertEqual(contract['max_n_matched_jets'], 2)
+
     def test_scan_born_multiplicity_and_resonances(self):
         # q q~ > t t~ (S) and q q~ > t t~ g (H); a Z decaying to b b~ in
         # one event (an NLO-corrected decay), and Z > e+ e- in another.

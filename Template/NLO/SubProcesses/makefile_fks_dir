@@ -189,7 +189,7 @@ libewsud_$(PDIR).$(dylibext): $(FILESSUD) $(BORN_SUPPORT_LIB) $(LIBDIR)/libdhela
 libsudpy: $(EWSUDLIB) libewsud_$(PDIR).$(dylibext) $(LIBDIR)/libmodel.$(dylibext) $(LIBDIR)/libdhelas.$(dylibext)
 	touch __init__.py
 	#ar rcs libewsud.$(libext) $(EWSUDLIB)
-	LDFLAGS="-Wl,-rpath,$(HERE) -Wl,-rpath,$(LIBDIR)" $(F2PY)  -c --f77flags='-ffixed-line-length-132' -I$(HERE) sub_f2py_ewsudakov.f -L$(HERE) -lewsud_$(PDIR) $(LINKLIBS) -m ewsudpy_$(PDIR)
+	LDFLAGS="-Wl,-rpath,$(HERE) -Wl,-rpath,$(LIBDIR) $(filter -Wl%,$(LINKLIBS))" $(F2PY)  -c --f77flags='-ffixed-line-length-132' -I$(HERE) sub_f2py_ewsudakov.f -L$(HERE) -lewsud_$(PDIR) $(filter-out -Wl%,$(LINKLIBS)) -m ewsudpy_$(PDIR)
 
 check_sudakov_angle2: $(EWSUD2) $(libmadloop)
 	$(FC) -o check_sudakov_angle2 $(EWSUD2) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(LDFLAGS)

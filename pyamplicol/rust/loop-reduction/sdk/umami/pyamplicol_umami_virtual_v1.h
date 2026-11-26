@@ -24,8 +24,8 @@ extern "C" {
  * (int[stride], as the tree provider's: per event the zero-based helicity row,
  * an index into the SDK capabilities' "helicity_ids"; ordinary evaluations,
  * options.resolved = 0) selects that row alone: the event's value is the
- * loop-induced |A(h)|^2/avg (RULED Q39) or, for a Born-interfered process at
- * every colour accuracy, that Born row's virtual (lit-fc-hel)
+ * loop-induced |A(h)|^2/avg or, for a Born-interfered process at every
+ * colour accuracy, that Born row's virtual
  * (rusticol_virtual_evaluate_selected's helicity_by_point; only the selected
  * rows are evaluated). COLOR_RESOLUTION
  * (a NUL-terminated char string, capacity its bytes; options.resolved = 1)
@@ -38,7 +38,7 @@ extern "C" {
  * Other standard inputs,
  * including random/probability selectors (UMAMI_IN_RANDOM_HELICITY),
  * UMAMI_IN_RANDOM_COLOR, channels and flavours, are unsupported; a
- * loop-induced process has no colour flows (full colour only, RULED Q8).
+ * loop-induced process has no colour flows (full colour only).
  */
 enum pyamplicol_umami_virtual_v1_input_key {
     PYAMPLICOL_UMAMI_V1_IN_MU_R2 = 0x50410001, /* double[stride] */

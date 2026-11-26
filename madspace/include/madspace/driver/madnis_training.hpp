@@ -92,7 +92,8 @@ public:
         /// Minimum buffered samples before buffered steps are taken.
         std::size_t minimum_buffer_size = 10000;
         /// Fraction of training steps done on buffered samples, reached once
-        /// the buffers are full.
+        /// the buffers are full. `0` disables buffering, as `buffer_capacity`
+        /// does: no buffer is allocated or filled.
         double buffered_steps_fraction = 0.;
         /// Number of initial batches during which no samples are buffered.
         std::size_t buffer_skip_batches = 1000;
@@ -138,7 +139,8 @@ public:
         std::size_t channel_index_offset = 0,
         const nested_vector2<std::size_t>& channel_resonances = {}
     );
-    /// The configuration passed to the constructor.
+    /// The configuration in use: the one passed to the constructor, with
+    /// `buffer_capacity` 0 if `buffered_steps_fraction` is not positive.
     const Config& config() const { return _config; }
     /// Run training batch `batch_index`: sample, optimize, and update the
     /// status history.

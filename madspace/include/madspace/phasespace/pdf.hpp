@@ -286,6 +286,55 @@ private:
 };
 
 /**
+ * Two-beam luminosity read from a two-dimensional table.
+ *
+ * Some luminosities do not factorize into one density per beam, not even as
+ * a sum of factorized terms as @ref EELuminosity: the two-photon luminosity
+ * of ultra-peripheral collisions (gamma-UPC) carries the probability that the
+ * beams do not interact hadronically, which depends on both photon energies
+ * at once. Such a luminosity is tabulated as a function of both momentum
+ * fractions, @f$x_1 x_2 L(x_1, x_2)@f$ (the @f$x f@f$ convention of the
+ * densities), and interpolated here.
+ *
+ * The table is an LHAPDF-format @ref PdfGrid with a single flavour whose x
+ * axis is @f$x_1@f$ and whose q axis is @f$x_2@f$: the interpolation, bicubic
+ * in @f$\log x@f$ and @f$\log q^2 = 2 \log x_2@f$, is the one of the parton
+ * densities. The grid should cover @f$x_2@f$ up to 1 and down to the
+ * smallest fraction the phase space reaches; below its first q knot the
+ * continuation of @ref PartonDensity, made for a scale, would apply.
+ *
+ * The interpolation is only as good as the knots: with 20 knots per decade
+ * the gamma-UPC luminosity of protons is reproduced to a few 1e-6, that of
+ * lead to ~1e-5 up to W_gamma-gamma ~ 100 GeV, 0.1-1% for 200-500 GeV and
+ * a few % above, where the form-factor dips of the flux are not resolved
+ * (and the luminosity is negligible). Values below zero, which the bicubic
+ * interpolation can give there, are set to zero.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions.
+ *
+ * **Returns**
+ * - `luminosity` – `float`, shape `(batch,)` – @f$x_1 x_2 L(x_1, x_2)@f$.
+ */
+class TabulatedLuminosity : public FunctionGenerator {
+public:
+    /**
+     * @param grid    The table, see above.
+     * @param prefix  Prefix for the grid global names.
+     */
+    TabulatedLuminosity(const PdfGrid& grid, const std::string& prefix = "");
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density;
+};
+
+/**
  * A strong-coupling grid in the LHAPDF format, loaded from a file.
  *
  * Holds the @f$\alpha_s(q)@f$ knots of an LHAPDF `.info` set;

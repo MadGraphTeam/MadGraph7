@@ -45,7 +45,7 @@ def main(argv):
             args.append(arg)
         i += 1
     cxx = os.environ.get('CXX') or 'c++'
-    base = ['-D__HIPCC__', '-D__HIP_PLATFORM_AMD__', '-DMGONGPU_HAS_NO_HIPRAND',
+    base = ['-D__HIPCC__', '-D__HIP_PLATFORM_AMD__', '-DMADMATRIX_HAS_NO_HIPRAND',
             '-I' + os.path.join(ROOT, 'include')]
     if not compile_only:
         return subprocess.call([cxx] + base + args + sources + (['-o', out] if out else []))

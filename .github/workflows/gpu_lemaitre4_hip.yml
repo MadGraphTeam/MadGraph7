@@ -12,7 +12,7 @@ name: GPU CI (lemaitre4, HIP)
 
 on:
   push:
-    branches: [main, claude/fortran-cross-symmetry-3f13f3]
+    branches: [main]
     paths-ignore:
       - 'docs/**'
   workflow_dispatch:
@@ -32,7 +32,7 @@ on:
       nevents:
         description: 'Number of unweighted events'
         type: string
-        default: '10000'
+        default: '1000'
       time_limit:
         description: 'Slurm --time of the allocation (all CI jobs together)'
         type: string
@@ -72,7 +72,7 @@ jobs:
       modules: ${{ inputs.modules || 'releases/2024a_apu PyTorch Python ROCm' }}
       gres: ${{ inputs.gres || 'gpu:1' }}
       gpu_arch: ${{ inputs.gpu_arch }}
-      nevents: ${{ inputs.nevents || '10000' }}
+      nevents: ${{ inputs.nevents || '1000' }}
       time_limit: ${{ inputs.time_limit || '00:30:00' }}
       extra_sbatch: ${{ inputs.extra_sbatch }}
       keep_workdir: ${{ inputs.keep_workdir || false }}

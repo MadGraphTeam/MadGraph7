@@ -43,7 +43,7 @@ class LoopF2PYMakefileTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.output = Path(tmp.name)
 
-    def write_output(self, uname, stdlib, dylibext):
+    def write_output(self, uname, stdlib, dylibext, extra_tir_libs=''):
         """A loop standalone output with Ninja and two subprocesses, whose
         sources and objects exist so that make -n prints the f2py recipes."""
         out = self.output / uname / OUTPUT
@@ -65,7 +65,8 @@ class LoopF2PYMakefileTest(unittest.TestCase):
         shutil.copy(SUBPROCESSES / 'makefile', sub / 'makefile')
         definitions = (SUBPROCESSES / 'MadLoop_makefile_definitions.inc').read_text()
         (sub / 'MadLoop_makefile_definitions').write_text(definitions % {
-            'link_tir_libs': '-liregi -L%s/ -lninja -L%s/ -lavh_olo' % (ninja, ninja),
+            'link_tir_libs': '-liregi -L%s/ -lninja -L%s/ -lavh_olo %s' % (
+                ninja, ninja, extra_tir_libs),
             'tir_libs': '$(LIBDIR)libiregi.$(libext) %s/libninja.$(libext) '
                         '%s/libavh_olo.$(libext)' % (ninja, ninja),
             'tir_dylibs': '%s/libninja.$(dylibext)' % ninja,
@@ -166,6 +167,39 @@ class LoopF2PYMakefileTest(unittest.TestCase):
                 self.assertIn('f2py_wrapper.o', link)
                 (signature,) = [args for _, args, _ in self.f2py_calls(lines) if '-h' in args]
                 self.assertIn('f2py_wrapper.f', signature)
+
+    def test_ldflags_carry_run_paths_but_no_loop_library(self):
+        """meson links LDFLAGS into its compiler sanity check and runs it in its
+        build directory. TIRust with internal dependencies links a shared
+        library found only through a relative run path, so LDFLAGS must keep
+        the run path but not the library, which the wrapped library carries."""
+        relative = {'Linux': '-Wl,-rpath,\\$$ORIGIN:\\$$ORIGIN/../lib',
+                    'Darwin': '-Wl,-rpath,@loader_path -Wl,-rpath,@loader_path/../lib'}
+        for uname, stdlib, dylibext in PLATFORMS:
+            with self.subTest(uname=uname):
+                run_path = relative[uname]
+                libraries = ['/gcc/libgcc.a', '-lgcc_s', '-ltirust', '-lmadloop_tirust', '-ldl']
+                sub = self.write_output(
+                    uname, stdlib, dylibext,
+                    ' '.join(libraries[:2] + ['-L$(LIBDIR)'] + libraries[2:] + [run_path]))
+                # shlex keeps the backslash of \$ inside double quotes; a shell drops it
+                expected = run_path.replace('\\$$', '$').split()
+                loop_libraries = libraries + ['-lcts', '-liregi', '-lninja', '-lavh_olo']
+                for directory, target in ((sub, 'all_matrix2py.so'),
+                                          (sub, 'allmatrix2py.so'),
+                                          (sub / 'P0_uux_z', 'matrix2py.so')):
+                    lines = self.dry_run(directory, target)
+                    (env, args, line), = [call for call in self.f2py_calls(lines)
+                                          if '-c' in call[1]]
+                    ldflags = env['LDFLAGS'].replace('\\$', '$').split()
+                    for flag in expected:
+                        self.assertIn(flag, ldflags, line)
+                    self.assertEqual([flag for flag in ldflags if flag in loop_libraries],
+                                     [], line)
+                    (library,) = [arg[2:] for arg in args if arg.startswith('-l')]
+                    link = self.library_link(lines, library, dylibext)
+                    for flag in libraries:
+                        self.assertIn(flag, link)
 
 
 if __name__ == '__main__':

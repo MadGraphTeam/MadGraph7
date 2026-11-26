@@ -7,15 +7,14 @@
 #ifndef MemoryAccessCouplings_H
 #define MemoryAccessCouplings_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessMomenta.h" // for MemoryAccessMomentaBase::neppM
 #include "MemoryBuffers.h"       // for HostBufferCouplings::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
@@ -67,14 +66,13 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessCouplingsBase>;
-    friend class KernelAccessHelper<MemoryAccessCouplingsBase, true>;
     friend class KernelAccessHelper<MemoryAccessCouplingsBase, false>;
 
     // The number of couplings that dependent on the running alphas QCD in this specific process
     static constexpr size_t ndcoup = Parameters_dependentCouplings::ndcoup;
 
     // The number of floating point components of a complex number
-    static constexpr int nx2 = mgOnGpu::nx2;
+    static constexpr int nx2 = madmatrix::nx2;
 
     //--------------------------------------------------------------------------
     // NB all KernelLaunchers assume that memory access can be decomposed as "accessField = decodeRecord( accessRecord )"
@@ -163,7 +161,7 @@ namespace madmatrix
     // Per-flavor stride (in fptype's) between two consecutive flavor slots of a flavored coupling value buffer.
     // For dependent (event-by-event, running-alphas) couplings the value is an AOSOA record [nx2][neppC]
     // (real and imaginary SIMD lanes), so consecutive flavor slots are nx2*neppC fptype's apart.
-    static constexpr int flv_stride = MemoryAccessCouplingsBase::neppC * mgOnGpu::nx2;
+    static constexpr int flv_stride = MemoryAccessCouplingsBase::neppC * madmatrix::nx2;
 
     // Expose selected functions from MemoryAccessCouplings
     static constexpr auto ieventAccessRecordConst = MemoryAccessCouplings::ieventAccessRecordConst;
@@ -231,7 +229,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessCouplings<false> HostAccessCouplings;
-  typedef KernelAccessCouplings<true> DeviceAccessCouplings;
 
   //----------------------------------------------------------------------------
 

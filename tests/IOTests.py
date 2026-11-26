@@ -15,6 +15,7 @@
 
 from __future__ import absolute_import
 import copy
+import io
 import os
 import sys
 import shutil
@@ -248,10 +249,14 @@ def createIOTest(groupName=None, testName=None):
         filesToCheck = []
         prevent_cleanUp = False
         pathsToErase = []
-        targetFinder = re.compile(r"(?P<type>(target|clean)):\s*(?P<file>\S*)")
+        targetFinder = re.compile(
+                           r"(?P<type>(target|once|clean)):\s*(?P<file>\S*)")
         for target in re.finditer(targetFinder, GenerateFilefunc.__doc__):
             if target.group('type')=='target':
                 filesToCheck.append(target.group('file'))
+            if target.group('type')=='once':
+                # Compare only the first file of each name among the matches.
+                filesToCheck.append('='+target.group('file'))
             if target.group('type')=='clean':
                 if target.group('file')=='False':
                     prevent_cleanUp = True
@@ -402,20 +407,34 @@ class IOTestManager(unittest.TestCase):
         """ This method is added so that one can instantiate this class """
         raise MadGraph5Error('runTest in IOTestManager not supposed to be called.')
     
-    def assertFileContains(self, source, solution):
+    # Fixed-form Fortran sources, whose comment lines carry no behavior.
+    _fortran_suffixes = ('.f', '.inc')
+
+    @classmethod
+    def comparable_lines(cls, text, fname=None):
+        """The lines of a reference or output file that the comparison uses:
+        blank lines are dropped, and so are the comment lines of fixed-form
+        Fortran files (a C, c or * in column 1, or a line starting with !), so
+        that a comment-only change in a template neither fails a test nor
+        rewrites its reference files."""
+        lines = [line for line in text.split('\n') if line != '']
+        if fname is not None and fname.endswith(cls._fortran_suffixes):
+            lines = [line for line in lines if line[0] not in 'cC*' and
+                     not line.lstrip().startswith('!')]
+        return lines
+
+    def reference_accepts(self, reference, output, fname=None):
+        """Whether the comparison of the test passes for this output."""
+        try:
+            self.assertFileContains(io.StringIO(output), reference, fname=fname)
+        except AssertionError:
+            return False
+        return True
+
+    def assertFileContains(self, source, solution, fname=None):
         """ Check the content of a file """
-        list_cur=source.read().split('\n')
-        list_sol=solution.split('\n')
-        while 1:
-            if '' in list_sol:
-                list_sol.remove('')
-            else:
-                break
-        while 1:
-            if '' in list_cur:
-                list_cur.remove('')
-            else:
-                break            
+        list_cur = self.comparable_lines(source.read(), fname)
+        list_sol = self.comparable_lines(solution, fname)
         for a, b in zip(list_sol, list_cur):
             try:
                 self.assertEqual(a,b)
@@ -469,6 +488,83 @@ class IOTestManager(unittest.TestCase):
                 return False
 
         return True
+
+    # Reference files identical to another one are stored once, in this folder
+    # of the comparison tree, and each test keeps a relative symlink to it.
+    _shared_folder = '_shared'
+
+    @classmethod
+    def share_identical_references(cls, root=None):
+        """Store each reference content used by several tests (or several
+        files of one test) once, under <root>/_shared, and turn every file with
+        that content into a relative symlink to it. A file whose content is no
+        longer shared becomes a regular file again, and unused shared files are
+        removed. The shared file is named after the first reference using it
+        (folder%test%file, in sorted order), so that a change applied to all
+        its users edits that one file and leaves the links unchanged."""
+        root = root or _hc_comparison_files
+        shared = pjoin(root, cls._shared_folder)
+        users = {}
+        for folder in sorted(os.listdir(root)):
+            if folder == cls._shared_folder or \
+                                        not path.isdir(pjoin(root, folder)):
+                continue
+            for test in sorted(os.listdir(pjoin(root, folder))):
+                test_dir = pjoin(root, folder, test)
+                if not path.isdir(test_dir):
+                    continue
+                for name in sorted(os.listdir(test_dir)):
+                    file_path = pjoin(test_dir, name)
+                    if name.endswith('.BackUp') or path.isdir(file_path):
+                        continue
+                    with open(file_path, 'rb') as stream:
+                        users.setdefault(stream.read(), []).append(
+                                                           (folder, test, name))
+        wanted = {}
+        for content, references in users.items():
+            if len(references) == 1:
+                file_path = pjoin(root, *references[0])
+                if path.islink(file_path):
+                    os.remove(file_path)
+                    with open(file_path, 'wb') as stream:
+                        stream.write(content)
+                continue
+            shared_name = '%'.join(references[0])
+            wanted[shared_name] = content
+            for reference in references:
+                file_path = pjoin(root, *reference)
+                link = os.path.relpath(pjoin(shared, shared_name),
+                                       path.dirname(file_path))
+                if path.islink(file_path) and os.readlink(file_path) == link:
+                    continue
+                os.remove(file_path)
+                os.symlink(link, file_path)
+        if wanted and not path.isdir(shared):
+            os.makedirs(shared)
+        for shared_name, content in wanted.items():
+            shared_path = pjoin(shared, shared_name)
+            if path.isfile(shared_path):
+                with open(shared_path, 'rb') as stream:
+                    if stream.read() == content:
+                        continue
+            with open(shared_path, 'wb') as stream:
+                stream.write(content)
+        if path.isdir(shared):
+            for shared_name in os.listdir(shared):
+                if shared_name not in wanted:
+                    os.remove(pjoin(shared, shared_name))
+            if not os.listdir(shared):
+                os.rmdir(shared)
+
+    @staticmethod
+    def beyond_first_of_name(files):
+        """The files of a 'once' rule that are not compared: all but the first
+        one (in sorted order) of each file name."""
+        first_of_name = {}
+        for file_path in sorted(files):
+            first_of_name.setdefault(path.basename(file_path), file_path)
+        return [file_path for file_path in files
+                if first_of_name[path.basename(file_path)] != file_path]
 
     @classmethod
     def toFileName(cls, file_path):
@@ -621,10 +717,15 @@ class IOTestManager(unittest.TestCase):
             # Store here the files reckognized as veto rules (with filename
             # starting with '-')
             veto_rules = []
+            # Files matched by a 'once' rule (starting with '='): of those with
+            # the same file name, only the first (in sorted order) is compared.
+            # Use it for template files that every subprocess directory
+            # carries identically.
+            once_rules = []
             for fname in iotest.testedFiles:
                 # Disregard the veto rules
                 regexp_finder = re.compile(
-                r'^(?P<veto>-)?(?P<root_folder>.*)(\/)?\[(?P<regexp>.*)\]$')
+                r'^(?P<veto>[-=])?(?P<root_folder>.*)(\/)?\[(?P<regexp>.*)\]$')
                 found = regexp_finder.search(fname)
                 if not found is None:
                     # folder without the final /
@@ -640,6 +741,8 @@ class IOTestManager(unittest.TestCase):
                                                    pjoin(root,file),files_path)
                                 if found.group('veto')=='-':
                                     veto_rules.append(new_target)
+                                elif found.group('veto')=='=':
+                                    once_rules.append(new_target)
                                 else:
                                     filesToCheck.append(new_target)
                 else:
@@ -658,6 +761,8 @@ class IOTestManager(unittest.TestCase):
                             veto_rules.append(fn)
                         else:
                             filesToCheck.append(fn)
+
+            veto_rules.extend(self.beyond_first_of_name(once_rules))
 
             # Apply the trimming of the veto rules
             filesToCheck = [f for f in filesToCheck if f not in veto_rules]
@@ -756,10 +861,10 @@ class IOTestManager(unittest.TestCase):
                             exit(0)
                     goal = misc.apply_template(open(comparison_path).read(), misc.get_pkg_info())
                     if not verbose:
-                        self.assertFileContains(open(file_path), goal)
+                        self.assertFileContains(open(file_path), goal, fname=fname)
                     else:
                         try:
-                            self.assertFileContains(open(file_path), goal)
+                            self.assertFileContains(open(file_path), goal, fname=fname)
                         except AssertionError:
                             if verbose: 
                                 print("    > %s differs from the reference."%fname)
@@ -817,7 +922,15 @@ class IOTestManager(unittest.TestCase):
                         file = open(comparison_path,'r')
                         existing = file.read()
                         file.close()
-                        if existing == target:
+                        # Leave the reference untouched when the test accepts
+                        # the new output (e.g. a comment-only template change):
+                        # rewriting it would only add noise to the diff.
+                        with open(file_path) as output:
+                            accepted = existing == target or \
+                                self.reference_accepts(misc.apply_template(
+                                    existing, misc.get_pkg_info()),
+                                    output.read(), fname=fname)
+                        if accepted:
                             continue
                         else:
                             # Copying the existing reference as a backup
@@ -918,6 +1031,10 @@ class IOTestManager(unittest.TestCase):
                                                   (colored%(32,"CREATED"),fname))
                         modifications['created'].append(
                                       '/'.join(comparison_path.split('/')[-3:]))
+                    # A shared reference (a link into _shared) also belongs
+                    # to other tests: never write through it.
+                    if path.islink(comparison_path):
+                        os.remove(comparison_path)
                     file = open(comparison_path,'w')
                     file.write(target)
                     file.close()
@@ -928,6 +1045,7 @@ class IOTestManager(unittest.TestCase):
         # Monitor the modifications when in creation files mode by returning the
         # modifications dictionary.
         if update:
+            self.share_identical_references()
             return modifications
         else:
             return 'test_over'

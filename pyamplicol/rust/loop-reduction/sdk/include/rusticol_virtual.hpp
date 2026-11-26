@@ -6,8 +6,10 @@
 #include "rusticol_virtual.h"
 #include <cstdint>
 #include <complex>
+#include <fstream>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -116,7 +118,7 @@ public:
 // served by the Python API's color_flows=) and a resolved evaluation's
 // colour resolution of a loop-induced process ("contracted", the default, or
 // "amplitude-basis"). Helicity rows are selected for loop-induced and, at
-// every colour accuracy, Born-interfered processes (lit-fc-hel).
+// every colour accuracy, Born-interfered processes.
 struct VirtualSelection {
     std::vector<std::string> helicity_ids;
     std::vector<std::string> color_ids;
@@ -185,6 +187,7 @@ public:
 
 class VirtualRuntime {
     std::unique_ptr<rusticol_virtual_handle, virtual_detail::RuntimeDeleter> handle_;
+    explicit VirtualRuntime(rusticol_virtual_handle *p) : handle_(p) {}
 public:
     explicit VirtualRuntime(const std::string &path,
                             const std::optional<std::string> &process = std::nullopt,
@@ -195,6 +198,18 @@ public:
             virtual_detail::optional_string(process), virtual_detail::optional_string(parameters_json),
             r2_strategy.c_str(), &p));
         handle_.reset(p);
+    }
+    // Open with the runtime options of a TOML text (rusticol_virtual_open_with_options:
+    // its threads bound the load too).
+    static VirtualRuntime with_options(const std::string &path, const std::string &options_toml,
+                                       const std::optional<std::string> &process = std::nullopt,
+                                       const std::optional<std::string> &parameters_json = std::nullopt,
+                                       const std::string &r2_strategy = "auto") {
+        rusticol_virtual_handle *p = nullptr;
+        virtual_detail::check(rusticol_virtual_open_with_options(path.c_str(),
+            virtual_detail::optional_string(process), virtual_detail::optional_string(parameters_json),
+            r2_strategy.c_str(), options_toml.c_str(), &p));
+        return VirtualRuntime(p);
     }
     VirtualRuntime(VirtualRuntime &&) noexcept = default;
     VirtualRuntime &operator=(VirtualRuntime &&) noexcept = default;
@@ -285,11 +300,39 @@ public:
         virtual_detail::check(
             rusticol_virtual_set_reduction_unchecked(handle_.get(), unchecked ? 1 : 0));
     }
+    // Lane rescue of later evaluations (the Python API's lane_rescue=;
+    // default true): a refused reduction lane reduced again in a higher
+    // carrier; false leaves it to fail its point.
+    void set_lane_rescue(bool on) {
+        virtual_detail::check(rusticol_virtual_set_lane_rescue(handle_.get(), on ? 1 : 0));
+    }
     // Failure policy of later evaluations (the Python API's on_failure=):
     // "best-effort" (default; refused points return the unchecked value with
     // status RUSTICOL_VIRTUAL_BEST_EFFORT and an uncertainty, nothing thrown),
     // "return" (they stay failed) or "raise" (a call with such a point throws
     // VirtualError). A refused value throws VirtualError.
+    // Native threads of later evaluations (0: RAYON_NUM_THREADS, else every core).
+    void set_threads(std::uint32_t threads) {
+        virtual_detail::check(rusticol_virtual_set_threads(handle_.get(), threads));
+    }
+    // Runtime options of a TOML text (its [evaluation] table): checked as a
+    // whole, then applied; nothing changes on an error.
+    void set_options(const std::string &options_toml) {
+        virtual_detail::check(rusticol_virtual_set_options(handle_.get(), options_toml.c_str()));
+    }
+    // The same, read from a TOML file.
+    void set_options_file(const std::string &path) {
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream) throw VirtualError("cannot read runtime options " + path,
+                                        RUSTICOL_VIRTUAL_INVALID_ARGUMENT);
+        std::ostringstream text;
+        text << stream.rdbuf();
+        set_options(text.str());
+    }
+    // The handle's settings as JSON (rusticol_virtual_options_json).
+    std::string options_json() const {
+        return virtual_detail::json(handle_.get(), rusticol_virtual_options_json);
+    }
     void set_on_failure(const std::string &on_failure) {
         virtual_detail::check(rusticol_virtual_set_on_failure(handle_.get(), on_failure.c_str()));
     }
@@ -340,7 +383,7 @@ public:
         return VirtualEvaluation(p);
     }
     // rusticol_virtual_evaluate_selected: the selected helicity rows of a
-    // loop-induced process (resolved = false: their sum per point, RULED Q39;
+    // loop-induced process (resolved = false: their sum per point;
     // resolved = true: per selected row its colour components in the
     // selection's colour resolution). Refusals throw VirtualError.
     VirtualEvaluation evaluate_selected(const std::vector<double> &momenta, std::size_t point_count,

@@ -1,3 +1,1 @@
-      INTEGER    MAXAMPS, MAXFLOW, MAXPROC, MAXSPROC
-      PARAMETER (MAXAMPS=3, MAXFLOW=2)
-      PARAMETER (MAXPROC=1, MAXSPROC=1)
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_gg_ttx%born_maxamps.inc

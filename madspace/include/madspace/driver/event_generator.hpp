@@ -80,14 +80,15 @@ public:
     static void request_stop(bool stop = true) { _stop_requested = stop; }
     /// Whether @ref request_stop asked the generation to stop.
     static bool stop_requested() { return _stop_requested; }
-    /// Change the number of events @ref generate aims for. It takes effect once
-    /// the batches in flight are committed, as do the shares of the channels.
+    /// Change the number of events @ref generate aims for. The batches not
+    /// dispatched yet are dropped; it takes effect once the batches in flight
+    /// are committed, as do the shares of the channels.
     void set_target_count(std::size_t target_count) {
         _pending_target_count = target_count;
     }
-    /// Change the thread count of the CPU contexts. It takes effect once the
-    /// batches in flight are committed, as the per-thread resources cannot grow
-    /// while jobs use them.
+    /// Change the thread count of the CPU contexts. The dispatch of new batches
+    /// pauses until the ones in flight are committed, as the per-thread resources
+    /// cannot grow while jobs use them; the events do not change.
     void set_thread_count(std::size_t thread_count) {
         _pending_thread_count = thread_count;
     }
@@ -231,7 +232,8 @@ private:
     };
     inline static std::function<void(void)> _abort_check_function = [] {};
     inline static std::atomic<bool> _stop_requested = false;
-    // set_target_count() and set_thread_count(), applied between rounds
+    // set_target_count(), applied between rounds, and set_thread_count(), applied
+    // once no job is in flight
     std::optional<std::size_t> _pending_target_count;
     std::optional<std::size_t> _pending_thread_count;
 
@@ -317,6 +319,8 @@ private:
     std::size_t start_jobs();
     std::size_t wait_for_result(std::size_t& in_flight);
     void reset_jobs();
+    // Drop the batches not dispatched yet, so that the round ends early.
+    void drop_ready_jobs();
     void update_integral();
     void update_integral_status();
     // With `final_step`, the integrals after the weighting steps are used. They
@@ -332,6 +336,7 @@ private:
     void finish_stopped_generation();
     // Apply set_target_count() and set_thread_count(), with no job in flight.
     void apply_pending_changes();
+    void apply_thread_count();
     void update_counts();
     void reset_start_time();
     void add_timing_data(const std::string& key);
@@ -346,8 +351,27 @@ private:
     );
     // run the re- and unweighting steps of all collected events
     void drain_pipeline();
-    // unweighting efficiency of each pass, the first one before and after cuts
-    std::tuple<double, double, std::vector<double>> pass_efficiencies() const;
+    // Statistics of the passes: the first unweighting, then the steps. A step
+    // that does not unweight has no efficiency (NaN). The efficiencies and
+    // RSDs only use events that have gone through the pass, whatever is still
+    // in later passes.
+    struct PassStatistics {
+        bool unweight;
+        double efficiency;
+        // relative standard deviation of the weight leaving the pass, since the
+        // last unweighting
+        double rsd;
+    };
+    struct PassSummary {
+        double first_efficiency_after_cuts;
+        std::vector<PassStatistics> passes;
+    };
+    PassSummary pass_statistics() const;
+    // Overall unweighting efficiency of the events that have gone through all
+    // passes, NaN if there are none.
+    double unweighting_efficiency(bool after_cuts) const;
+    // formats the pass efficiencies and RSDs, "-" for NaN
+    std::pair<std::string, std::string> pass_strings() const;
     // start the jobs of the steps whose batches are full, and the partial ones
     // once the generation jobs leave threads idle
     std::size_t start_pipeline_jobs();

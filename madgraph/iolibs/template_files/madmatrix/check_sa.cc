@@ -23,10 +23,10 @@
 //
 //==========================================================================
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "CPPProcess.h"
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h"
 #endif
@@ -292,7 +292,7 @@ namespace
     }
   }
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   aosoa_to_umami_kernel( const fptype_momenta* aosoa,
                          double* soa,
@@ -317,11 +317,11 @@ namespace
 
   const char* fp_label()
   {
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     return "MIXED";
-#elif defined MGONGPU_FPTYPE_DOUBLE
+#elif defined MADMATRIX_FPTYPE_DOUBLE
     return "DOUBLE";
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
     return "FLOAT";
 #else
     return "UNKNOWN";
@@ -373,7 +373,7 @@ namespace
   bool run_umami(
     UmamiHandle handle,
     unsigned int nevt,
-    mgOnGpu::TimerMap& timermap,
+    madmatrix::TimerMap& timermap,
     double& wavetime,
     const std::vector<UmamiInputKey>& in_keys,
     const std::vector<const void*>& inputs,
@@ -383,7 +383,7 @@ namespace
     timermap.start( "3a UmamiCall" );
     UmamiStatus st = umami_matrix_element(
       handle, nevt, nevt, 0, in_keys.size(), in_keys.data(), inputs.data(), out_keys.size(), out_keys.data(), outputs.data() );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     // UMAMI only enqueues the kernels; wait for them so the ME time is the computation, not the launch.
     checkGpu( gpuDeviceSynchronize() );
 #endif
@@ -443,7 +443,7 @@ namespace
     constexpr unsigned int nevt = kMatrixBlocks * kMatrixThreads;
     const unsigned int nFlavors = CPPProcess::nmaxflavor;
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     GpuRuntime gpuRuntime( false );
 
     DeviceBufferBase<double> devUmamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
@@ -501,7 +501,7 @@ namespace
       classic_rambo_momenta( CPPProcess::npari, energy, massesD, rambowgt );
 
     std::vector<double> alphasVec( nevt, param_card_alpha_s() );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     DeviceBufferBase<double> devAlphaS( nevt );
     gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
 #endif
@@ -514,7 +514,7 @@ namespace
       for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           umamiMomenta[(std::size_t)ip4 * CPPProcess::npar * nevt + (std::size_t)ipar * nevt + ievt] = point[ipar][ip4];
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
 #endif
 
@@ -544,12 +544,12 @@ namespace
     for( unsigned int iflav = 0; iflav < nFlavors; ++iflav )
     {
       std::fill( flvVec.begin(), flvVec.end(), iflav );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
 #endif
       UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
       UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
       void* outputs[1] = { devUmamiMEs.data() };
 #else
@@ -564,7 +564,7 @@ namespace
         umami_free( umami_handle );
         return 3;
       }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
       const double* mes = hstUmamiMEs.data();
 #else
@@ -619,7 +619,7 @@ namespace
           std::fill( flvVec.begin(), flvVec.end(), fid );
           UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
           UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
           gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
           gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
           const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
@@ -635,7 +635,7 @@ namespace
             std::cerr << "ERROR! crossed umami_matrix_element failed (flavorID=" << fid << ")" << std::endl;
             continue;
           }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
           gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
           const double* xmes = hstUmamiMEs.data();
 #else
@@ -755,7 +755,7 @@ namespace
       }
     }
 
-    mgOnGpu::TimerMap timermap;
+    madmatrix::TimerMap timermap;
 
     // The per-event inputs and outputs of one batch (host side)
     std::vector<unsigned int> flvVec( nevt, flavorID );
@@ -763,7 +763,7 @@ namespace
     std::vector<double> rndHelVec( nevt, 0.5 ), rndColVec( nevt, 0.5 );
     std::vector<int> helVec( nevt ), colVec( nevt );
     std::vector<int> helInVec( nevt, 0 );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     timermap.start( "00 GpuInit" );
     GpuRuntime gpuRuntime( false );
 
@@ -842,7 +842,7 @@ namespace
       out_keys.push_back( UMAMI_OUT_COLOR_INDEX );
       outputs.push_back( colPtr );
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( stream != nullptr )
     {
       out_keys.push_back( UMAMI_OUT_GPU_STREAM );
@@ -898,7 +898,7 @@ namespace
     }
     else
     {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       prsk.reset( new MasslessRamboSamplingKernelDevice( kEnergy, devRndmom, devMomenta, devWeights, gpublocks, gputhreads ) );
 #else
       prsk.reset( new MasslessRamboSamplingKernelHost( kEnergy, hstRndmom, hstMomenta, hstWeights, nevt ) );
@@ -930,7 +930,7 @@ namespace
         timermap.start( "1b GenRnGen" );
         prnk->generateRnarray();
         genrtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         if( ramboType == RAMBO_MASSLESS )
         {
           timermap.start( "1c CpHTDrnd" );
@@ -944,12 +944,12 @@ namespace
         rambtime += timermap.stop();
         timermap.start( "2b RamboFin" );
         prsk->getMomentaFinal();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         // Massless RAMBO runs on the device
         checkGpu( gpuDeviceSynchronize() );
 #endif
         rambtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         // Massive host only (copy)
         if( ramboType != RAMBO_MASSLESS )
         {
@@ -976,7 +976,7 @@ namespace
               MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype_momenta)ev[ipar][ip4];
         }
         rambtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         timermap.start( "2c CpHTDmom" );
         copyDeviceFromHost( devMomenta, hstMomenta );
         timermap.stop();
@@ -984,7 +984,7 @@ namespace
       }
 
       timermap.start( "2d Aosoa2U " );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       gpuLaunchKernel( aosoa_to_umami_kernel, gpublocks, gputhreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
       checkGpu( gpuPeekAtLastError() );
       checkGpu( gpuDeviceSynchronize() );
@@ -1014,7 +1014,7 @@ namespace
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           helInVec[ievt] = helIndexIn[base + std::min( ievt, nreal - 1 )];
       }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       if( !alphasIn.empty() ) gpuMemcpy( alphasPtr, alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
       if( !rndHelIn.empty() ) gpuMemcpy( rndHelPtr, rndHelVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
       if( !rndColIn.empty() ) gpuMemcpy( rndColPtr, rndColVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
@@ -1032,7 +1032,7 @@ namespace
         return 3;
       }
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       timermap.start( "3b CpDTHmes" );
       // nor do the copies below wait for the work on a non-blocking stream
       if( stream != nullptr ) gpuStreamSynchronize( stream );
@@ -1156,7 +1156,7 @@ namespace
     std::cout << std::string( SEP79, '*' ) << std::endl;
 
     umami_free( umami_handle );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( stream != nullptr ) gpuStreamDestroy( stream );
 #endif
     for( std::ofstream* file : { &dumpMomenta, &dumpMEs, &dumpHel, &dumpCol } )
@@ -1316,7 +1316,7 @@ int main( int argc, char** argv )
     return usage( argv[0] );
   }
   if( perfEnergy > 0 ) kEnergy = perfEnergy;
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
   if( io.nonblockingStream )
   {
     std::cerr << "ERROR: --nonblocking-stream needs a CUDA or HIP build." << std::endl;

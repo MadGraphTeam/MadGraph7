@@ -47,6 +47,8 @@ pub mod scalar_primitives;
 pub mod source_bindings;
 #[cfg(feature = "symbolica-runtime")]
 pub mod source_scalar;
+#[cfg(feature = "symbolica-runtime")]
+pub mod symbol_order;
 
 pub use artifact::{
     ArtifactKind, ArtifactManifest, ArtifactProcess, ArtifactSelection, Payload, PayloadRole,

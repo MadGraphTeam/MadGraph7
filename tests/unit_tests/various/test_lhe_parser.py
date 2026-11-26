@@ -2461,7 +2461,7 @@ class TestUnweightOverweight(unittest.TestCase):
             channels.append((path, wgts))
         return channels
 
-    def unweight(self, channels, normalization, event_target, get_wgt=None):
+    def unweight(self, channels, normalization, event_target, get_wgt=None, **opts):
         """run the final unweighting. Return the output events as a list of
         (written weight, scaled input weight) and the MultiEventFile"""
 
@@ -2481,7 +2481,7 @@ class TestUnweightOverweight(unittest.TestCase):
         output = pjoin(self.path, 'unweighted_events.lhe')
         nb_event = allevent.unweight(output, get_wgt, trunc_error=1e-2, keep_overweight_weight=True,
                                      event_target=event_target,
-                                     normalization=normalization)
+                                     normalization=normalization, **opts)
         events = []
         for event in lhe_parser.EventFile(output):
             ifile, orig = event.comment.split()[1:3]
@@ -2550,6 +2550,28 @@ class TestUnweightOverweight(unittest.TestCase):
         common = min(abs(w) for w, _ in events)
         truncated = sum(math.copysign(common, w) for w, orig in events if abs(orig) > tail)
         self.assertLess(truncated/xsec_tail, 0.8)
+
+    def test_unweight_max_overweight_fraction(self):
+        """with max_overweight_fraction, the events above max_wgt carry at most
+        that fraction of the cross section, even if fewer events than
+        event_target are written then"""
+
+        channels = self.write_channels()
+        xsec = sum((i+1) * sum(abs(w) for w in wgts) for i, (_, wgts) in enumerate(channels))
+        for fraction in (0.001, 0.01):
+            events, allevent = self.unweight(channels, 'sum', 1500,
+                                             max_overweight_fraction=fraction)
+            tail = allevent.max_wgt
+            # (the scan's weights carry a rounding of the input ones)
+            above = sum(abs(w)*(i+1) for i, (_, wgts) in enumerate(channels)
+                        for w in wgts if abs(w)*(i+1) > tail * (1 + 1e-9))
+            self.assertLessEqual(above, fraction * xsec * (1 + 1e-9))
+            self.assertLess(len(events), 1500)
+        # without it, the same target lowers max_wgt below that limit
+        events, allevent = self.unweight(channels, 'sum', 1500)
+        above = sum(abs(w)*(i+1) for i, (_, wgts) in enumerate(channels)
+                    for w in wgts if abs(w)*(i+1) > allevent.max_wgt)
+        self.assertGreater(above, 0.01 * xsec)
 
     def test_unweight_partial_then_final(self):
         """two-stage combination (do_combine_events_partial, then the final

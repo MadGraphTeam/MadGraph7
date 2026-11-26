@@ -60,6 +60,7 @@ from typing import Any
 
 from . import reference_executor as rx
 from .families import Orders
+from .wide import Wide, magnitude
 
 # The interference of a loop-induced result (the artifact metadata value).
 LOOP_INDUCED_INTERFERENCE = "conj(loop)*loop"
@@ -584,18 +585,19 @@ def read_native(
     evaluation.native_bare = vectors(
         [] if amplitudes is None else amplitudes[index], carrier
     )
+    # Magnitudes: binary64 floats, or exponent-safe in arbitrary precision
+    # (``loops.v2.wide``; a 500-digit budget is far below binary64's range).
+    size_of = (
+        (lambda values: [Wide.of(x) for x in values])
+        if numbers.wide
+        else (lambda values: [float(x) for x in values])
+    )
     budget = output.get("amplitude_budget")
     evaluation.native_budget = (
-        None
-        if budget is None
-        else vectors(budget[index], lambda values: [float(x) for x in values])
+        None if budget is None else vectors(budget[index], size_of)
     )
     terms = output.get("amplitude_scale")
-    evaluation.native_terms = (
-        None
-        if terms is None
-        else vectors(terms[index], lambda values: [float(x) for x in values])
-    )
+    evaluation.native_terms = None if terms is None else vectors(terms[index], size_of)
     evaluation.native_square = numbers.double
     evaluation.amplitude_rows = rows
     kets = output.get("counterterm_kets")
@@ -811,8 +813,15 @@ def _bound_norm(errors, gram) -> float:
     total = 0.0
     for t, x in enumerate(errors):
         for u, y in enumerate(errors):
-            total += float(x) * abs(complex(gram[t][u])) * float(y)
+            total += _size(x) * abs(complex(gram[t][u])) * _size(y)
     return total**0.5
+
+
+def _size(value: Any) -> Any:
+    """A magnitude as the budgets hold it: a ``Wide`` as it is, anything
+    else as a binary64 float (``float`` as before)."""
+
+    return value if isinstance(value, Wide) else float(value)
 
 
 def sector_form(
@@ -870,7 +879,10 @@ def quadratic_budget(evaluation: Any, errors: Mapping) -> dict:
             (
                 0.0
                 if vector is None
-                else float(g_norm([vector[t][k] for t in range(size)], gram, numbers)),
+                else magnitude(
+                    g_norm([vector[t][k] for t in range(size)], gram, numbers),
+                    numbers.wide,
+                ),
                 0.0
                 if error is None
                 else _bound_norm([error[t][k] for t in range(size)], gram),
@@ -898,10 +910,11 @@ def lane_errors(evaluation: Any, lanes: Mapping) -> dict:
     size = len(evaluation.slice.amplitude)
     factor = 1 / (LOOP_FACTOR_DENOMINATOR * math.pi**2)
     out: dict = {}
+    wide = evaluation.numbers.wide
     for (_family, order, (row, t)), values in lanes.items():
         cell = out.setdefault((order, row), [[0.0] * width for _ in range(size)])[t]
         for k, value in enumerate(tuple(values)[:width]):
-            cell[k] += factor * float(abs(value))
+            cell[k] += factor * magnitude(value, wide)
     return out
 
 
@@ -1041,7 +1054,10 @@ def _rotation_deviations(direct: Any, rotated: Any, phases: Mapping) -> dict:
             a = (zero,) * width if a is None else a.coefficients[:width]
             b = (zero,) * width if b is None else b.coefficients[:width]
             deviations[lane] = tuple(
-                abs(y * phases[row] - x) for x, y in zip(a, b, strict=True)
+                magnitude(y * phases[row] - x, True)
+                if numbers.wide
+                else abs(y * phases[row] - x)
+                for x, y in zip(a, b, strict=True)
             )
         errors = lane_errors(direct, deviations)
         # Without raw lanes (the native amplitude sum) the bare amplitudes
@@ -1060,7 +1076,7 @@ def _rotation_deviations(direct: Any, rotated: Any, phases: Mapping) -> dict:
                 for k in range(width):
                     x = zero if a is None else a[t][k]
                     y = zero if b is None else b[t][k]
-                    cell[t][k] += float(abs(y * phases[row] - x))
+                    cell[t][k] += magnitude(y * phases[row] - x, numbers.wide)
     return errors
 
 
@@ -1159,6 +1175,7 @@ def _term_sums(evaluation: Any, numerators: Mapping, moments: Mapping) -> dict:
     size = len(evaluation.slice.amplitude)
     rows = rows_of(evaluation)
     factor = 1 / (LOOP_FACTOR_DENOMINATOR * math.pi**2)
+    wide = evaluation.numbers.wide
     out: dict = {}
     for (family, order), numerator in sorted(numerators.items()):
         integrals = moments[(family, numerator.frame)]
@@ -1170,9 +1187,9 @@ def _term_sums(evaluation: Any, numerators: Mapping, moments: Mapping) -> dict:
             for alpha, value in enumerate(coefficients):
                 if not value:
                     continue
-                magnitude = float(abs(value))
+                size_ = magnitude(value, wide)
                 for k in range(width):
-                    cell[k] += factor * magnitude * float(abs(integrals[alpha][k]))
+                    cell[k] += factor * size_ * magnitude(integrals[alpha][k], wide)
     return out
 
 
@@ -1207,8 +1224,9 @@ def row_scales(evaluation: Any) -> dict:
                 if vector is not None:
                     value = sum(vector[t][k] * roots[t] for t in range(size))
                 if ket is not None:
-                    value += float(
-                        g_norm([ket[t][k] for t in range(size)], gram, numbers)
+                    value += magnitude(
+                        g_norm([ket[t][k] for t in range(size)], gram, numbers),
+                        numbers.wide,
                     )
                 values.append(value)
             out[key] = [max(value, values[0]) for value in values]
@@ -1265,12 +1283,13 @@ def finiteness(evaluation: Any) -> dict:
         ratio = 0.0
         for k in range(1, width):
             with numbers.scope():
-                residue = float(
-                    g_norm([vector[t][k] for t in range(size)], gram, numbers)
+                residue = magnitude(
+                    g_norm([vector[t][k] for t in range(size)], gram, numbers),
+                    numbers.wide,
                 )
             if residue:
                 bound = scales.get(key, [0.0] * width)[k]
-                ratio = max(ratio, residue / bound if bound else float("inf"))
+                ratio = max(ratio, float(residue / bound) if bound else float("inf"))
         out[key] = ratio
     return out
 

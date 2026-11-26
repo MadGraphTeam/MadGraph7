@@ -21,12 +21,11 @@ allocation per workflow run, and every CI job of that run executes in it:
 | `start_runner` | vmadgraph | ask `ceci-gate` on the VM to `sbatch` `runner_batch.sh` on the GPU partition, wait until the runner is online (`remote_start_runner.sh`); if cancelled, timed out or failed before that, `scancel` the runner job (`ceci-gate cancel-runner`, `remote_cancel_runner.sh`) |
 | `build_madspace` | cluster | build madspace with `ENABLE_CUDA`/`ENABLE_HIP` for the GPU of the node (`build_madspace_gpu.sh`). The build is kept in `$GLOBALSCRATCH/mg7-gpu-ci/cache` and redone only when the madspace sources, the modules or the GPU architecture change |
 | `pp_ttx` | cluster | `generate p p > t t~`, `output mg7`, `device = ["cuda"]` or `["hip"]` in `run_card.toml`, `bin/generate_events -f`, check the cross section in `info.json` (`pp_ttx_mg7.sh`). The logs and cards are uploaded as an artifact, and the cross section is shown in the run summary |
-| `pp_jj` | cluster | the same with `generate p p > j j` (`PROCESS`/`TAG` of `pp_ttx_mg7.sh`): its jet cuts act on several objects, which `p p > t t~` has none of |
-| `crossing_folding` | cluster | `p p > w+ j`, `p p > j j` and `p p > w+ j j` generated `--use_crossing=True`, each written folded and `--use_crossing=False` expanded, each run on the GPU and on cpu with one seed, then the cpu-made `p p > w+ j` gridpacks on the GPU (`crossing_folding_mg7.sh`): every run must agree with its counterpart (folded = expanded, GPU = cpu, gridpack = its run) |
+| `crossing_folding` | cluster | `p p > w+ j` and `p p > w+ j j` generated `--use_crossing=True`, each written folded and `--use_crossing=False` expanded (the standalone one only generated), each run on the GPU and on cpu with one seed, then the cpu-made `p p > w+ j` gridpacks on the GPU (`crossing_folding_mg7.sh`): every run must agree with its counterpart (folded = expanded, GPU = cpu, gridpack = its run) |
 | `madspace_tests` | cluster | the madspace unit tests, `madspace/tests`, with `MADSPACE_TEST_DEVICE=cuda` or `hip` (`madspace_tests_gpu.sh`): the tests put their torch tensors on the GPU, so madspace runs them on its GPU runtime. Host-side tests (marker `cpu_only`) are skipped. pytest and scipy are installed in the cache when the modules lack them, and so is a CUDA torch wheel when the PyTorch module is a CPU build (manneback). The log and `junit.xml` are uploaded as an artifact |
 | `acceptance` | cluster | the acceptance tests that need a GPU, through `tests/test_manager.py` (`acceptance_gpu.sh`): they skip without `nvcc`/`hipcc` or a device, so a skip fails the job. Now `test_standalone_umami_first_call_gpu` (the good helicities chosen at `umami_initialize`, with device buffers). To add a test, append it to `DEFAULT_TESTS` in `acceptance_gpu.sh` |
 | `interference` | cluster | squared split orders on the GPU backend of madmatrix (`interference_gpu.sh`, `interference_checks.py`): standalone `u u~ > u u~` constraints, the helicity choice of an interference matrix element through umami, with `check_sa.exe` (exact and summed), and `p p > u u~ QCD^2==2` with mg7 against its CPU reference. Input `interference`, on by default and on push |
-| `madmatrix` | cluster | the GPU backend of madmatrix against its scalar CPU backend (`madmatrix_gpu.sh`, `madmatrix_checks.py`), with the `check_sa.exe` of each backend fed the same events from files: MSSM `p p > go go` event by event (running flavour couplings), MSSM `p p > go go j` over every crossing of the subprocess that folds them (extended flavour ids, helicities and colours included), the same for `u g > u z` with `u u~ > z g` (a massive leg crossed into a massless slot) for `p p > z j --axial_gauge=True` (a crossed axial-gauge gluon) and for `p p > j j` and `p p > t t~ j` at `QED^2==2` (a crossed interference, whose helicities are signed: helicity sum and signed draws), a subprocess with no good helicity (`b b~ > ta+ ta- / z a`, ymtau = 0) and |M|^2 = 0 with good helicities (`p p > w+ j` at alpha_s = 0, after a call at 0.118): no helicity or colour, and a non-blocking stream handed to umami (`g g > t t~ g`, `--nonblocking-stream`) |
+| `madmatrix` | cluster | the GPU backend of madmatrix against its scalar CPU backend (`madmatrix_gpu.sh`, `madmatrix_checks.py`), with the `check_sa.exe` of each backend fed the same events from files: MSSM `p p > go go` event by event (running flavour couplings), the same for `u g > u z` with `u u~ > z g` (a massive leg crossed into a massless slot), and for `p p > j j` and `p p > t t~ j` at `QED^2==2` (a crossed interference, whose helicities are signed: helicity sum and signed draws), a subprocess with no good helicity (`b b~ > ta+ ta- / z a`, ymtau = 0) and |M|^2 = 0 with good helicities (`p p > w+ j` at alpha_s = 0, after a call at 0.118): no helicity or colour, and a non-blocking stream handed to umami (`g g > t t~ g`, `--nonblocking-stream`) |
 | `stop_runner` | cluster | clean up, then create the stop file: `runner_batch.sh` stops the runner and the allocation ends |
 | `watchdog` | vmadgraph | from the start of the runner to the end of the allocation: if the allocation ends before `stop_runner` completed, scancel the runner job if still there (`ceci-gate cancel-runner`) and cancel the run (`ceci-gate watch-runner`, `remote_watch_runner.sh`) |
 
@@ -49,10 +48,26 @@ the checkout are sometimes slow there.
 Raise it from the Actions tab for a run that needs more, or in the caller workflow when a
 new job makes every run longer.
 
+**Tiers (manneback).** The CI is mostly CPU-bound (single-core python and the mg7 launches),
+so its length follows the cores of the GPU node more than its GPU. Instead of one allocation,
+manneback asks for three at once (input `tiers` of `gpu_runner_ci.yml`, `--tier` of
+`ceci-gate start-runner`), by node feature: 30 minutes on H200 nodes, 45 on A100 and L40s
+nodes (two A100 runs needed about 34; an L40s run timed out at 30, about 29 with a warm
+madspace cache) and 60 on the other GPUs. The first run on a new GPU architecture also
+builds madspace for it (about 4 more minutes). One runner job is submitted
+per tier, `mg7-gh-runner-<label>`, `...-2` and `...-3`; the first that starts runs the CI:
+before it starts the runner, `runner_batch.sh` scancels the other tiers of its run (if two
+start together, the lower job id wins). Giving a `time_limit` or `extra_sbatch` from the
+Actions tab replaces the tiers by that one allocation.
+
 Other safeguards:
-* **One run at a time per cluster.** The runner jobs of a cluster share the name
-  `mg7-gh-runner-<label>` and use `--dependency=singleton`, so a second runner waits until the
-  first one has stopped. The workflows also use a concurrency group per cluster.
+* **One run at a time per cluster.** The runner jobs of a cluster are called
+  `mg7-gh-runner-<label>` (or `...-<tier>`) and use `--dependency=singleton`, so a second
+  runner of a name waits until the first one has stopped. Not one name for every tier:
+  singleton also waits for a job of that name that is only queued, so the other tiers could
+  never start first. Across the names, a starting runner job waits until the runner jobs of
+  the other names, of older runs, have stopped (`runner_batch.sh`). The workflows also use a
+  concurrency group per cluster.
 * **Cancelled runs.** If a run is cancelled (or `start_runner` times out or fails) before its
   runner is online, the last step of `start_runner` scancels the runner job
   (`ceci-gate cancel-runner`): otherwise it could stay queued for hours when the partition is
@@ -198,7 +213,11 @@ change rulesets.
 * **A run is "canceled forcefully by @github-actions[bot]".** The watchdog found the
   allocation gone before `stop_runner` ran. The last lines of its log give the Slurm job and
   its state, e.g. `ALLOCATION_ENDED 10134442 TIMEOUT 00:04:10 00:04:00`. `TIMEOUT`: the jobs
-  together need more than `time_limit`, raise it. The runner log on the cluster tells the rest.
+  together need more than `time_limit` (or the time of the tier that ran: the log of
+  `start_runner` names it), raise it. The runner log on the cluster tells the rest.
+* **`start_runner` fails with "no tier after --".** The VM has a `remote_start_runner.sh`
+  older than its `ceci-gate` (or the reverse): install both again (step 1), with
+  `runner_batch.sh`, `remote_cancel_runner.sh` and `remote_watch_runner.sh`.
 * **`stop_runner` or `watchdog` fails with "re-runs some jobs only, without start_runner",
   and the cluster jobs are skipped.** The run was re-run with "Re-run failed jobs", or one of
   its jobs alone, which cannot start a runner: re-run it with "Re-run all jobs".
@@ -215,7 +234,8 @@ change rulesets.
 * **`start_runner` fails with "Runner registration has been deleted".** GitHub removes a
   self-hosted runner that has not connected for 14 days. Run the install command of step 2 again.
 * **A runner job is stuck on the cluster.** Look for it with
-  `squeue -u $USER -n mg7-gh-runner-<label>` (in a login shell: `ssh <cluster> 'bash -lc "..."'`).
+  `squeue -u $USER -o '%i %T %k %j' | grep mg7-gh-runner-<label>` (in a login shell:
+  `ssh <cluster> 'bash -lc "..."'`).
   Its comment is the run attempt that submitted it, `mg7-run-<run id>-<attempt>`. The next
   start removes it if that attempt is over; otherwise remove it with `scancel`, but only when
   no run of the cluster is in progress on GitHub.

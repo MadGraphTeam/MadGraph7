@@ -10,8 +10,12 @@ cannot go on shell with the param card masses and widths are dropped at launch.
 A second pass re- or
 unweights the events to full colour with the ratio of the full-colour to the
 leading-colour matrix element summed over all colour orderings, at the
-helicity of the event. MLM and CKKW-L scales cluster each event along the planar
-diagrams of its leading-colour flow (amplicol_clustering).
+helicity of the event. Under lc_flavors = two_lines_resample, the first pass
+only samples the flavours with at most two quark lines and the second one
+switches events to the others, in proportion to the leading colour of all
+flavours at the event (the flavour switch of the ratio library).
+MLM and CKKW-L scales cluster each event along the planar diagrams of its
+leading-colour flow (amplicol_clustering).
 """
 
 from __future__ import annotations
@@ -192,7 +196,120 @@ def active_resonances(meta: dict, get_mass, get_width) -> dict:
         }
         for flavor in meta["flavors"]
     ]
-    return {**meta, "phasespace_channels": channels, "flavors": flavors}
+    meta = {**meta, "phasespace_channels": channels, "flavors": flavors}
+    if "switch_resonance_pdgs" in meta:
+        meta["switch_resonance_pdgs"] = [
+            [[pdgs[i] for i in keep] for pdgs, keep in zip(target, kept)]
+            for target in meta["switch_resonance_pdgs"]
+        ]
+    return meta
+
+
+def quark_lines(pdgs: list[int]) -> int:
+    return sum(1 for pid in pdgs if 0 < abs(pid) <= 6) // 2
+
+
+def with_prior_factors(meta: dict, partner_share: bool) -> dict:
+    """Each flavour's prior factor: its factor, divided by its number of
+    phase-space channels if partner_share (its expected share in this one)."""
+    return {**meta, "flavors": [
+        {
+            **flavor,
+            "prior_factor": flavor.get("factor", len(flavor["options"]))
+            / (len(flavor["channels"]) if partner_share else 1),
+        }
+        for flavor in meta["flavors"]
+    ]}
+
+
+def lc_flavor_mode(run_card) -> str:
+    """lc_flavors, two_lines_resample read as all without a full-colour pass
+    to switch flavours in."""
+    amplicol = run_card["amplicol"]
+    mode = amplicol["lc_flavors"]
+    if mode == "two_lines_resample" and amplicol.get("color_accuracy") == "lc":
+        if not getattr(lc_flavor_mode, "warned", False):
+            lc_flavor_mode.warned = True
+            logger.warning("color_accuracy = lc: lc_flavors = two_lines_resample has no "
+                           "full-colour pass to switch flavours in, using lc_flavors = all")
+        return "all"
+    return mode
+
+
+def lc_flavors(meta: dict, mode: str) -> dict:
+    """The flavours of the leading-colour pass: all of them, or only those with
+    at most two quark lines (two_lines, the others neglected, and
+    two_lines_resample, the others reached by the flavour switch)."""
+    flavors = meta["flavors"]
+    if mode == "all":
+        return meta
+    kept = [f for f in flavors if quark_lines(f["options"][0]) <= 2]
+    if not kept:
+        raise RuntimeError(f"lc_flavors = {mode} leaves no flavour")
+    return {**meta, "flavors": kept}
+
+
+@lru_cache(maxsize=None)
+def _load_switch(path: str) -> dict:
+    with open(path) as stream:
+        return json.load(stream)
+
+
+def flavor_switch(meta: dict, process: MadgraphProcess) -> dict | None:
+    """The flavour switch of an [amplicol] subprocess under two_lines_resample
+    (its targets, colour flows), None if it switches to no flavour."""
+    if not is_amplicol(meta) or lc_flavor_mode(process.run_card) != "two_lines_resample":
+        return None
+    dropped = any(quark_lines(f["options"][0]) > 2 for f in meta["flavors"])
+    if "flavor_switch" not in meta:
+        if dropped:
+            raise RuntimeError(
+                "lc_flavors = two_lines_resample needs an [amplicol] output with the "
+                "flavour switch: regenerate the output"
+            )
+        return None
+    # relative to the process directory, as the other paths of the meta
+    switch = _load_switch(os.path.abspath(meta["flavor_switch"]))
+    if switch["switch_lines"] != 3:
+        raise RuntimeError("the flavour switch of the output does not start at 3 lines")
+    if not switch["targets"]:
+        return None
+    return switch
+
+
+def event_flavors(meta: dict, process: MadgraphProcess) -> list[dict]:
+    """The flavours of a subprocess as its events index them (LHE, systematics):
+    those of the leading-colour pass, then the targets of the flavour switch."""
+    if not is_amplicol(meta):
+        return meta["flavors"]
+    flavors = lc_flavors(meta, lc_flavor_mode(process.run_card))["flavors"]
+    switch = flavor_switch(meta, process)
+    if switch is None:
+        return flavors
+    return flavors + [
+        {"index": -1, "options": [pdgs], "weights": [1.0]} for pdgs in switch["targets"]
+    ]
+
+
+def switch_diagrams(meta: dict, diagrams: list) -> tuple[list, list[list[int]]]:
+    """The LHE diagrams with those of the switched events appended, and per
+    switch target the diagram replacing each diagram: the same phase-space
+    channel, its resonance charges on the target's legs."""
+    if not diagrams or "switch_resonance_pdgs" not in meta:
+        return diagrams, []
+    extended = list(diagrams)
+    index = {diagram: i for i, diagram in enumerate(extended)}
+    switch_map = []
+    for target in meta["switch_resonance_pdgs"]:
+        row = []
+        for channel, _ in diagrams:
+            diagram = (channel, tuple(target[channel]))
+            if diagram not in index:
+                index[diagram] = len(extended)
+                extended.append(diagram)
+            row.append(index[diagram])
+        switch_map.append(row)
+    return extended, switch_map
 
 
 def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]]:
@@ -220,11 +337,25 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
     """LHE completion of an AmpliCol subprocess: its diagrams are the
     phase-space channels, with the resonances they map out."""
     meta = active_resonances(meta, process.get_mass, process.get_width)
+    switch = flavor_switch(meta, process)
+    meta = lc_flavors(meta, lc_flavor_mode(process.run_card))
     diagrams, _ = lhe_diagrams(meta)
+    color_flows = meta["color_flows"]
+    colors = sorted({flavor["color_index"] for flavor in meta["flavors"]})
+    flavors = meta["flavors"]
+    if switch is not None:
+        # the switched events: their flavours, colour flows and diagrams
+        diagrams, _ = switch_diagrams(meta, diagrams)
+        if len(color_flows) != switch["color_flow_offset"]:
+            raise RuntimeError("the flavour switch does not match the colour flows")
+        color_flows = color_flows + switch["color_flows"]
+        colors += list(range(switch["color_flow_offset"], len(color_flows)))
+        flavors = flavors + [
+            {"options": [pdgs], "weights": [1.0]} for pdgs in switch["targets"]
+        ]
     if diagrams:
         topologies = channel_topologies(meta, process)
         particle_count = len(meta["incoming"]) + len(meta["outgoing"])
-        colors = sorted({flavor["color_index"] for flavor in meta["flavors"]})
         by_channel = [
             [(d, pdgs) for d, (c, pdgs) in enumerate(diagrams) if c == channel]
             for channel in range(len(topologies))
@@ -255,13 +386,13 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
         )
     return ms.SubprocArgs(
         **layout,
-        color_flows=meta["color_flows"],
+        color_flows=color_flows,
         pdg_color_types={
             int(key): value for key, value in meta["pdg_color_types"].items()
         },
         helicities=lhe_helicities(meta, process.run_card),
-        pdg_ids=[flavor["options"] for flavor in meta["flavors"]],
-        pdg_id_weights=[flavor.get("weights", []) for flavor in meta["flavors"]],
+        pdg_ids=[flavor["options"] for flavor in flavors],
+        pdg_id_weights=[flavor.get("weights", []) for flavor in flavors],
     )
 
 
@@ -319,9 +450,29 @@ class AmplicolSubprocess(MadgraphSubprocess):
                 "the MLM clustering of [amplicol] subprocesses needs "
                 "clustering_history = all_diagrams"
             )
+        # before lc_flavors drops the flavours it switches to; the matrix
+        # elements loaded by the base class need it
+        self.switch = flavor_switch(meta, process)
         super().__init__(process, meta, subproc_id, unmerged_meta)
         self.meta = active_resonances(self.meta, process.get_mass, process.get_width)
+        if unmerged_meta is not None and lc_flavor_mode(process.run_card) != "all":
+            raise RuntimeError("lc_flavors needs unmerged [amplicol] subprocesses")
+        self.meta = with_prior_factors(
+            self.meta, process.run_card["amplicol"]["prior_partner_share"]
+        )
+        self.meta = lc_flavors(self.meta, lc_flavor_mode(process.run_card))
+        if self.switch is not None and getattr(process, "custom_functions", None):
+            raise RuntimeError(
+                "lc_flavors = two_lines_resample changes the flavour of events after "
+                "the custom cut, scale, PDF and bias functions saw it: use "
+                "lc_flavors = all with [custom_functions]"
+            )
         self.check_flavor_blind_cuts()
+
+    def auto_buffered_steps_fraction(self) -> float:
+        """No buffered training: the leading-colour matrix element is cheap
+        enough to sample every batch afresh."""
+        return 0.0
 
     def check_flavor_blind_cuts(self):
         """AmpliCol groups the flavours and identical-particle orderings that
@@ -331,6 +482,9 @@ class AmplicolSubprocess(MadgraphSubprocess):
             clean_pids(pdgs) for flavor in self.meta["flavors"]
             for pdgs in flavor["options"]
         ]
+        # the flavours the events can be switched to as well
+        if self.switch is not None:
+            options += [clean_pids(pdgs) for pdgs in self.switch["targets"]]
         for item in self.process.cut_data:
             for group in item.observable_kwargs["select_pids"]:
                 if len({tuple(pid in group for pid in pdgs) for pdgs in options}) > 1:
@@ -459,8 +613,11 @@ class AmplicolSubprocess(MadgraphSubprocess):
         self.surrogates = []
         self.ratio_matrix_element = None
         if self.process.run_card["amplicol"]["color_accuracy"] != "lc":
+            ratio_parameters = dict(parameters)
+            if self.switch is not None:
+                ratio_parameters["flavor_switch"] = 1.0
             self.ratio_matrix_element = self.load(
-                self.meta["ratio_path"], self.meta["ratio_artifact"], parameters
+                self.meta["ratio_path"], self.meta["ratio_artifact"], ratio_parameters
             )
 
     def load(self, path: str, artifact: str, parameters: dict):
@@ -488,6 +645,12 @@ class AmplicolSubprocess(MadgraphSubprocess):
             raise NotImplementedError(
                 "dressed-lepton beams (beam.lepton_density) are not supported "
                 "with the AmpliCol output; use the madmatrix one"
+            )
+        if self.process.upc_flux:
+            # the same for the gamma-UPC luminosity
+            raise NotImplementedError(
+                "gamma-UPC beams (beam.upc_flux) are not supported with the "
+                "AmpliCol output; use the madmatrix one"
             )
         flavors = self.meta["flavors"]
         particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
@@ -541,6 +704,15 @@ class AmplicolSubprocess(MadgraphSubprocess):
             mapping_chan_weights=weights,
         )
 
+    def build_integrands(self, *args, **kwargs) -> list:
+        integrands = super().build_integrands(*args, **kwargs)
+        for integrand in integrands:
+            if len(self.meta["flavors"]) > 1:
+                integrand.set_flavor_prior_factors(
+                    [flavor["prior_factor"] for flavor in self.meta["flavors"]]
+                )
+        return integrands
+
     def build_flat_phasespace(self) -> PhaseSpace:
         return self.build_multichannel_phasespace()
 
@@ -570,16 +742,37 @@ class AmplicolSubprocess(MadgraphSubprocess):
     def has_weighting_steps(self) -> bool:
         return self.ratio_matrix_element is not None
 
+    def parton_density_output(self) -> bool:
+        return self.switch is not None
+
     def weighting_steps(self) -> list:
         """The second pass to full colour."""
         if self.ratio_matrix_element is None:
             return []
+        inputs = [ms.MatrixElement.momenta_in, ms.MatrixElement.flavor_in,
+                  ms.MatrixElement.channel_in, ms.MatrixElement.helicity_in]
+        outputs = [ms.MatrixElement.matrix_element_ratio_out]
+        switch_args = {}
+        if self.switch is not None:
+            inputs += [ms.MatrixElement.parton_densities_in,
+                       ms.MatrixElement.random_flavor_in,
+                       ms.MatrixElement.random_helicity_in,
+                       ms.MatrixElement.random_color_in]
+            outputs += [ms.MatrixElement.flavor_index_out,
+                        ms.MatrixElement.helicity_index_out,
+                        ms.MatrixElement.color_index_out]
+            _, switch_map = switch_diagrams(self.meta, lhe_diagrams(self.meta)[0])
+            switch_args = dict(
+                flavor_target_count=len(self.switch["targets"]),
+                # the targets follow the flavours of this subprocess, see event_flavors
+                flavor_offset=len(self.meta["flavors"]),
+                switch_diagram_map=switch_map,
+            )
         ratio = ms.MatrixElement(
             self.ratio_matrix_element.index(),
             self.particle_count,
-            [ms.MatrixElement.momenta_in, ms.MatrixElement.flavor_in,
-             ms.MatrixElement.channel_in, ms.MatrixElement.helicity_in],
-            [ms.MatrixElement.matrix_element_ratio_out],
+            inputs,
+            outputs,
             1,
             False,
             self.process.me_frame,
@@ -592,6 +785,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
             mode=self.process.run_card["amplicol"]["mode"],
             max_overweight_truncation=gen_args["max_overweight_truncation"],
             freeze_max_weight_after=gen_args["freeze_max_weight_after"],
+            **switch_args,
         )]
 
     def first_pass_settings(self) -> dict | None:

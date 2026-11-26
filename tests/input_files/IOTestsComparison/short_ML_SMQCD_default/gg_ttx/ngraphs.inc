@@ -1,2 +1,1 @@
-      INTEGER    N_MAX_CG
-      PARAMETER (N_MAX_CG=176)
+../../_shared/short_ML_SMQCD_default%gg_ttx%ngraphs.inc
