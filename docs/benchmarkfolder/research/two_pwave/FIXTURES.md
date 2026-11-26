@@ -417,3 +417,35 @@ The two loop directions agree to 6.1e-11 on c1 and 3.2e-10 on the finite part.
 **Reading.** The 2e-4 to 4e-4 left on the poles on v15 was the 12 and 6 missing loops: with them served, both poles are as predicted, in both loop directions. Against v15 the finite part moved by 1.3e-5 (CTModeRun 1) and 6.6e-5 (CTModeRun 2). The finite part, 113.3244038 per Born × α_s/(2π), is quotable from this run on.
 
 **Time.** Each pass took 8.1 ks and 8.4 ks, against 5.9 ks and 6.0 ks on v15; TIRust's own time was 1483 s and 1521 s (v15: 997 s and 1111 s). The host was fully loaded during this run (load about 387 on 384 cores), so neither difference measures the code. Sent to TIRust on 2026-11-26.
+
+## g g → χ_c0 χ_c0 rerun on TIRust da7902b + bridge v16
+
+TIRust's v16 also changes some rank-6 hexagons with two doubled lines. Its replays of our earlier records show the changes as corrections of up to 2.3e-9 in the 6960-call set and 1.0e-7 in the forward-point set. So the accepted results of the benchmark (`docs/benchmarkfolder/data/raw/two_pwave`, TIRust 4f1b06c + v9) were rerun on 2026-11-26. The output was regenerated from the current branch and linked against v16. The points are the seed-1 points of the benchmark, with the benchmark's modes: CTModeRun 1 and 2 with MLStabThres 1d99, −1 with 1.0d-3, and 4 at the forward point (point 1). Results and comparison are in `data/rerun_gg_chic0_chic0_da7902b_v16.json`.
+
+| √s (GeV), points | 1/ε moved | finite part moved | codes |
+|---|---|---|---|
+| 8, 12: 0, 1; 20: 0–3 | ≤ 2.9e-10 | ≤ 2.2e-9 | unchanged (110 / 110 / 213) |
+| 50: 0 | ≤ 2.1e-9 | ≤ 2.8e-9 | unchanged (110 / 110 / 213) |
+| 50: 1 (forward), DP | 2.8e-6 to 4.2e-5 | ≤ 2.5e-7 | unchanged (110 / 110 / 213) |
+| 200: 0, 1, DP (modes 1, 2) | 2e-8 to 1.5e-2 | 1e-9 to 8.5e-2 | unchanged (110 / 110) |
+| 200: 0, 1, stability test (−1) | ≤ 6.5e-16 | ≤ 6.5e-16 | unchanged (323) |
+| 20, 50, 200: 1, QP (mode 4) | ≤ 9.6e-16 | ≤ 1.0e-15 | unchanged (120) |
+
+Relative to the benchmark values; the predictions moved by at most 4e-11.
+- **The stability test's results stay within their accuracy estimates.** Its finite parts (CTModeRun −1) moved by at most 1.4e-9 up to 50 GeV point 0, and by 1.2e-7 at 50 GeV point 1, against an estimate of 6.3e-6 there. The rescued 200 GeV points (323) and the QP runs (120) are unchanged to 1e-15.
+- **The larger moves are where DP was already lost.** At 200 GeV, DP misses 1/ε by 0.7 to 31 relative, and the stability test catches both points. At 50 GeV point 1, DP misses 1/ε by 5e-4 to 8e-4: the pole per Born, 0.2027, is what is left of a large cancellation.
+- **Replays** of the 171, 97 and 52 refused-call records: DP serves all of them, as on 4f1b06c. The 97 and 52 give the same statuses and messages as on 4f1b06c. Of the 171 forward-point records, the binary128 entry (widened binary64 inputs) now serves 147 that 4f1b06c refused, and 24 remain refused.
+
+**50 GeV, point 1.** Three copies of the new output, linked against v9 (4f1b06c), v15 (142610e) and v16, were run in DP at points 0 and 1:
+- with v9 the new output gives the benchmark values to 1e-15, so the changes in MadLoop since the benchmark (colour-flow basis, pole predictor) do not move them;
+- v15 moves 1/ε by at most 4.3e-13 from v9;
+- v16 moves it from v15 by 2.8e-6 (CTModeRun 1) and 4.2e-5 (CTModeRun 2) at point 1, and by 3.1e-10 and 2.1e-9 at point 0.
+
+So the shift is v16's. Against the QP value (mode 4, 1.8e-12 from the prediction), v16 is not closer: 1/ε is off by 7.84e-4 and 5.74e-4 (v15: 7.81e-4 and 5.32e-4), and the finite part by 6.69e-6 and 8.57e-6 (v15: 6.69e-6 and 8.33e-6).
+
+`fixtures.py --unit` dumped all 5238 TIRust calls of each pass (1758 unit-power, 3480 raised-power) on the three versions. The inputs are identical call by call, and no status changes. Each difference is the largest change over the array, relative to its largest entry:
+- **v16 against v15.** The unit-power calls are bit-identical. Of the raised-power calls, only 5 in CTModeRun 2 at point 1 moved by more than 1e-8: rank-6 hexagons QgQggQ with two doubled lines, powers 1,2,1,1,2,1 and 1,2,1,2,1,1 (8.9e-8 and 7.3e-8, twice each), and 1,1,2,2,1,1 (1.4e-8). Everywhere else at both points they moved by at most 6.1e-11.
+- **v15 against v9.** A unit-power hexagon gQQgQg (4.3e-8) and two rank-5 calls with the same lines (1.7e-8 and 3.2e-8) changed. They are equal on v15 and v16.
+- **The poles of these integrals barely move.** The changes are in the finite slot; the pole slots move by at most 9.0e-12 (CTModeRun 2) and 2.5e-12 (CTModeRun 1), in rank-6 pentagons and hexagons with two doubled lines or a tripled one. The v9 → v15 changes are finite-slot only (pole slots 1e-15), and the DP 1/ε did not move with them.
+
+So pole-slot changes of 1e-12 to 1e-11 move the DP 1/ε at this point by 1e-6 to 1e-5: an amplification of about 1e6, which also fits the 5e-4 to 8e-4 by which DP misses the pole. The 8 calls (6 distinct) that moved by more than 1e-8 are in `data/moved_gg_chic0chic0_50gev_da7902b_v16.txt` (replay records; CTModeRun 2 has the check-pass flag; sha256 93f8444ffc1c033c…). Their arrays on the three versions are in `_v16.json.gz` (5e37e112dda3e33c…). Through `replay_calls.f90` on v16, DP serves all 8, and the binary128 entry refuses the widened records ("ill-conditioned Gram matrix"). Sent to TIRust on 2026-11-26.
