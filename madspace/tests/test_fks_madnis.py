@@ -117,8 +117,11 @@ def test_training_outputs(name):
             )
             # the n-body part in equal parts, the real part times p_k
             target = (cross_section - nbody) * choice + nbody / count
-            scale = np.abs(cross_section - nbody) * choice + np.abs(nbody) / count
-            assert np.all(np.abs(out["weight"] - target) <= 1e-12 * scale + 1e-300)
+            # to the rounding of the difference, which can cancel, and to the
+            # agreement of the cross sections (as for the full weight)
+            difference = (np.abs(cross_section) + np.abs(nbody)) * choice
+            scale = difference + np.abs(nbody) / count
+            assert np.all(np.abs(out["weight"] - target) <= 1e-10 * scale + 1e-300)
             assert np.any(nbody != 0)
             assert np.count_nonzero(out["weight"]) > POINTS // 4
 
