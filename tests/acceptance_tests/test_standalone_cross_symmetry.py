@@ -3681,7 +3681,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                         'the flavor tables are not indexed by the base flavor')
         self.assertTrue('/ ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) )'
                         in sigmakin, 'normalise_output keeps the base denominator')
-        self.assertTrue('allselhel[ievt] = selected_hel_code( dcGoodHel[ighel], iflavorVec[ievt] );'
+        self.assertTrue('allselhel[ievt] = selected_hel_code( dcGoodHel[ighelSel], iflavorVec[ievt] );'
                         in sigmakin, 'the reported helicity is not the crossed code')
         self.assertTrue('if( !use_crossing && !validFlavor )' in sigmakin,
                         'a crossing build gives a crossed id a NaN')
