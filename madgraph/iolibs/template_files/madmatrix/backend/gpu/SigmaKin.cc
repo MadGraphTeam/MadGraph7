@@ -385,7 +385,11 @@ namespace madmatrix
   // lifetimes (SharedWavefunctions.inc, by the generator) live instead in dynamic shared
   // memory, one padded record per thread, as many as fit with sharedWfBlockThreads threads
   // per block. MADMATRIX_NO_SHARED_WF turns it off.
+#ifdef MADMATRIX_DIRECT_JAMPS
+#include "SharedWavefunctionsDirect.inc"
+#else
 #include "SharedWavefunctions.inc"
+#endif
 
   // Dynamic shared memory per block that a kernel can opt in to, by compute capability.
   constexpr size_t
@@ -631,7 +635,11 @@ namespace madmatrix
     const unsigned int iflavor_ext = F_ACCESS::kernelAccessConst( iflavorVec );
     const unsigned int iflavor = use_crossing ? iflavor_ext % (unsigned int)nmaxflavor
                                               : ( iflavor_ext < (unsigned int)nmaxflavor ? iflavor_ext : 0 );
+#ifdef MADMATRIX_DIRECT_JAMPS
+#include "EvaluateDiagramsDirect.inc"
+#else
 #include "EvaluateDiagrams.inc"
+#endif
 #include "ColorFlows.inc" // defines jampflow_sv[ncolor_flow], which is not jamp_sv on the DDM basis
 
     // *** COLOR CHOICE BELOW ***

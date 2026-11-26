@@ -2911,6 +2911,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         try:
             if recycle:
                 self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
+            direct = self.direct_jamp_calls(color_amplitudes[0])
             helas_calls = self.helas_call_writer.get_matrix_element_calls(\
                                                 self.matrix_elements[0],
                                                 color_amplitudes[0],
@@ -2926,14 +2927,41 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff = open(pjoin(self.path, 'EvaluateDiagrams.inc'), 'w')
         ff.write('\n'.join(helas_calls))
         ff.close()
-        self.edit_sharedwavefunctions(helas_calls)
+        self.edit_sharedwavefunctions(helas_calls, self.helas_call_writer.shared_wf_order(), 'SharedWavefunctions.inc')
+        if direct and direct[0] != helas_calls:
+            with open(pjoin(self.path, 'EvaluateDiagramsDirect.inc'), 'w') as ff:
+                ff.write('\n'.join(direct[0]))
+            self.edit_sharedwavefunctions(*direct, 'SharedWavefunctionsDirect.inc')
         return ''
 
-    def edit_sharedwavefunctions(self, helas_calls):
+    # Subprocesses with more amplitudes than this also get EvaluateDiagramsDirect.inc, which
+    # madmatrix.mk builds for CUDA f/v: no jampTmp, half the calculate_jamps stack of
+    # g g > t t~ g g g, faster on L40S/H100 (V100 tt~ +3j -1.4%/-3.1%, accepted).
+    direct_jamps_above = 150
+
+    def direct_jamp_calls(self, color_amplitudes):
+        """(calls, shared wavefunction order) with every amplitude added straight into its
+        color flows, or None. Run before the ordinary calls, whose writer state the
+        other files read; amplitude numbers restored as in hr_orig_calls."""
+        amplitudes = self.matrix_elements[0].get_all_amplitudes()
+        if len(amplitudes) <= self.direct_jamps_above:
+            return None
+        numbers = [(amp, amp.get('number')) for amp in amplitudes]
+        writer = self.helas_call_writer
+        writer.jamps_direct = True
+        try:
+            calls = writer.get_matrix_element_calls(self.matrix_elements[0], color_amplitudes,
+                                                    multi_channel_map=self.multi_channel_map)
+            return calls, writer.shared_wf_order()
+        finally:
+            writer.jamps_direct = False
+            for amp, number in numbers:
+                amp.set('number', number)
+
+    def edit_sharedwavefunctions(self, helas_calls, order, filename):
         """Generate SharedWavefunctions.inc: the wavefunction slots of EvaluateDiagrams.inc in the
         order the GPU calculate_jamps moves them to shared memory, as many as fit (see
         backend/gpu/SigmaKin.cc)."""
-        order = self.helas_call_writer.shared_wf_order()
         # nwf counts wavefunction calls, slots are reused: size the GPU arrays by the slots indexed
         nslots = 1 + max((int(i) for line in helas_calls for i in re.findall(r'aloha_obj\[(\d+)\]', line)), default=0)
         lines = ['// Wavefunction slots, most worth keeping out of registers first (generated).',
@@ -2943,7 +2971,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                  '  __device__ constexpr int sharedWfSlots[nSharedWfSlots > 0 ? nSharedWfSlots : 1] = { %s };'
                  % ', '.join(map(str, order or [0])),
                  '']
-        ff = open(pjoin(self.path, 'SharedWavefunctions.inc'), 'w')
+        ff = open(pjoin(self.path, filename), 'w')
         ff.write('\n'.join(lines))
         ff.close()
 
@@ -3839,6 +3867,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # leaving the color basis invariant (see JampOptimiser). Toggled by
     # --jamp_orbit=True|False.
     jamp_orbit = True
+    # Set by OneProcessExporterMadMatrix.direct_jamp_calls: every amplitude
+    # straight into its color flows, as with --jamp_optim=False.
+    jamps_direct = False
     # --hel_recycling. hr_orig: write the calls the way madevent's hel_recycle
     # reads them back (one call per line, every amplitude tagged //HRAMP with its
     # number and its legs' spins, and followed by what it adds to the per-row tables, with a ${row}
@@ -4635,6 +4666,8 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         """build_jamp_plan, once per matrix element: the hr_orig pass and the
         ordinary one ask for the same plan, and at high multiplicity finding it
         is most of the generation time."""
+        if self.jamps_direct:
+            return None
         # the objects themselves, not their id(): the cache holds them alive,
         # so an id cannot come back for another matrix element
         flags = (self.jamp_optim_enabled(), self.jamp_orbit_allowed(matrix_element))
