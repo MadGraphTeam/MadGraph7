@@ -448,4 +448,21 @@ So the shift is v16's. Against the QP value (mode 4, 1.8e-12 from the prediction
 - **v15 against v9.** A unit-power hexagon gQQgQg (4.3e-8) and two rank-5 calls with the same lines (1.7e-8 and 3.2e-8) changed. They are equal on v15 and v16.
 - **The poles of these integrals barely move.** The changes are in the finite slot; the pole slots move by at most 9.0e-12 (CTModeRun 2) and 2.5e-12 (CTModeRun 1), in rank-6 pentagons and hexagons with two doubled lines or a tripled one. The v9 → v15 changes are finite-slot only (pole slots 1e-15), and the DP 1/ε did not move with them.
 
-So pole-slot changes of 1e-12 to 1e-11 move the DP 1/ε at this point by 1e-6 to 1e-5: an amplification of about 1e6, which also fits the 5e-4 to 8e-4 by which DP misses the pole. The 8 calls (6 distinct) that moved by more than 1e-8 are in `data/moved_gg_chic0chic0_50gev_da7902b_v16.txt` (replay records; CTModeRun 2 has the check-pass flag; sha256 93f8444ffc1c033c…). Their arrays on the three versions are in `_v16.json.gz` (5e37e112dda3e33c…). Through `replay_calls.f90` on v16, DP serves all 8, and the binary128 entry refuses the widened records ("ill-conditioned Gram matrix"). Sent to TIRust on 2026-11-26.
+So pole-slot changes of 1e-12 to 1e-11 move the DP 1/ε at this point by 1e-6 to 1e-5: an amplification of about 1e6. The 8 calls (6 distinct) that moved by more than 1e-8 are in `data/moved_gg_chic0chic0_50gev_da7902b_v16.txt` (replay records; CTModeRun 2 has the check-pass flag; sha256 5e37e112dda3e33c…). Their arrays on the three versions are in `_v16.json.gz` (93f8444ffc1c033c…). Through `replay_calls.f90` on v16, DP serves all 8, and the binary128 entry refuses the widened records ("ill-conditioned Gram matrix"). Sent to TIRust on 2026-11-26.
+
+**TIRust's verdict** (2026-11-26). It computed 256-bit references of the 8 records in the bridge's settings (binary64 inputs as supplied, converged against 512 bits to 1e-67), checked them by exact contraction identities, and scored the three arrays slot by slot against them:
+
+| calls | powers, rank | v9 / v15: IR1, IR2, finite | v16: IR1, IR2, finite | identities of the reference |
+|---|---|---|---|---|
+| 3716, 3751 | 1,2,1,1,2,1; 6 | 9.1e-12, 1.4e-11, 8.9e-8 | 1.6e-13, 6.3e-15, 1.9e-13 | 8.8e-14 |
+| 3717, 3752 | 1,2,1,2,1,1; 6 | 8.1e-12, 6.6e-12, 7.3e-8 | 1.7e-13, 1.2e-15, 1.5e-13 | 2.6e-14 |
+| 2871 | 1,1,2,2,1,1; 6 | 3.6e-14, 2.8e-10, 1.4e-8 | 5.1e-14, 9.8e-16, 2.5e-11 | 2.0e-11 |
+| 2864 | unit; 4 | v9 finite 4.3e-8 | 1.5e-14 finite (= v15) | 1.8e-10 |
+| 2867 / 2868 | 1,1,2,1,1,1 / 1,2,1,1,1,1; 5 | v9 finite 1.6e-8 / 3.2e-8 | 9.0e-11 / 2.7e-14 (= v15) | 1.0e-10 / 2.0e-11 |
+
+The UV slots are zero in all three versions.
+- **The v16 changes are corrections.** The rank-6 hexagons with two doubled lines had their IR poles off by 7e-12 to 3e-10 and their finite parts by 1e-8 to 9e-8 on v9 and v15; on v16 they are at rounding level.
+- **So are the v9 → v15 changes** of the unit-power and rank-5 calls.
+- **The input floor.** For the unit-power and rank-5 calls and for 2871, the identities hold only to 2e-11 to 2e-10 even at 256 bits. That is the mismatch between our binary64 shifts and the snapped invariants, and no method does better on those inputs.
+
+**Reading.** The 2.8e-6 and 4.2e-5 moves of the DP 1/ε at 50 GeV point 1 are v16 removing pole errors of about 1e-11, amplified by the point's cancellation of about 1e6. The DP miss of 5e-4 to 8e-4 against QP is a separate, larger effect, about 30 times the correction. TIRust's reading, not checked here: the same cancellation acting on the binary64 inputs' floor (about 1e-10 per call). That fits v16 not bringing DP closer to QP. The QP results (mode 4) are unchanged and match the prediction.
