@@ -1816,17 +1816,24 @@ namespace madmatrix
           // iconfig (#919), as the GPU does; -ffast-math could pass rnd < 0/0 instead
           channelIdVec[ieppV] = madmatrix::nchannels;
           const bool okcdf = valid_flavor_id( iflavorVec[ievt] ) && selectable_total( normalization );
+          // last channel with a weight, in case rnddiagram is not below 1 (#542)
+          unsigned int chanLast = 0;
+          bool chosen = false;
           for( unsigned int ichan = 0; okcdf && ichan < madmatrix::nchannels; ichan++ )
           {
             if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
-            numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +
-                                           ichan * neppV + ieppV % neppV];
+            const fptype numerator = allNumerators[ievt / neppV * neppV * ndiagrams +
+                                                   ichan * neppV + ieppV % neppV];
+            numerator_sum += numerator;
+            if( numerator > 0 ) chanLast = ichan + 1;
             if( allrnddiagram[ievt] < numerator_sum / normalization )
             {
               channelIdVec[ieppV] = ichan + 1;
+              chosen = true;
               break;
             }
           }
+          if( okcdf && !chosen && chanLast != 0 ) channelIdVec[ieppV] = chanLast;
           if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
       }
@@ -1876,6 +1883,10 @@ namespace madmatrix
               break;
             }
           }
+          // rndcol is not below 1 (a double just below 1 rounds to 1 in a float fptype,
+          // #542): the last flow with a weight, as for the helicity
+          for( int icolC = ncolor_flow - 1; okcdf && allselcol[ievt] == 0 && icolC >= 0; icolC-- )
+            if( targetamp[icolC] > ( icolC > 0 ? targetamp[icolC - 1] : 0 ) ) allselcol[ievt] = icolC + 1;
         }
       }
       else

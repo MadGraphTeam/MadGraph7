@@ -974,16 +974,22 @@ namespace madmatrix
       // as on cpu/simd
       channelId = madmatrix::nchannels;
       const bool okcdf = validFlavor && selectable_total( normalization );
+      // last channel with a weight, in case rnddiagram is not below 1 (#542)
+      unsigned int chanLast = 0;
+      bool chosen = false;
       for( unsigned int ichan = 0; okcdf && ichan < madmatrix::nchannels; ichan++ )
       {
         if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
         numerator_sum += numerators[ichan];
+        if( numerators[ichan] > 0 ) chanLast = ichan + 1;
         if( allrnddiagram[ievt] < numerator_sum / normalization )
         {
           channelId = ichan + 1;
+          chosen = true;
           break;
         }
       }
+      if( okcdf && !chosen && chanLast != 0 ) channelId = chanLast;
     }
     if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelId;
 
@@ -1034,6 +1040,10 @@ namespace madmatrix
           break;
         }
       }
+      // rndcol is not below 1 (a double just below 1 rounds to 1 in a float fptype,
+      // #542): the last flow with a weight, as for the helicity
+      for( int icolC = ncolor_flow - 1; okcdf && allselcol[ievt] == 0 && icolC >= 0; icolC-- )
+        if( targetamp[icolC] > ( icolC > 0 ? targetamp[icolC - 1] : 0 ) ) allselcol[ievt] = icolC + 1;
     }
     else
     {
