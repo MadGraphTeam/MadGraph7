@@ -94,6 +94,7 @@ class TestMCatNLODeltaMatching(unittest.TestCase):
         (work / 'delta_matching.f').write_text(mc_counterterm_test_module(
                         ('compute_delta', 'get_delta_stopping_scales',
                          'get_delta_connections', 'delta_leg_probability',
+                         'delta_table_value', 'pysudakov_envelope',
                          'delta_backward_parameters', 'setSudType',
                          'delta_H_min_probability') + BACKWARD_ROUTINES,
                         external_functions=(('double precision', 'pysudakov_safe'),)))
@@ -167,7 +168,8 @@ class TestMCatNLODeltaMatching(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn(message, result.stdout + result.stderr)
     def test_minimal_H_scale_probability(self):
-        for mode, label in (('hmin_fsr', 'final-state'), ('hmin_isr', 'initial-state')):
+        for mode, label in (('hmin_fsr', 'final-state'), ('hmin_isr', 'initial-state'),
+                            ('hmin_hole', 'tabulated-hole')):
             with self.subTest(mode=mode):
                 result = subprocess.run([str(self.executable), mode],
                                         capture_output=True, text=True, timeout=15)

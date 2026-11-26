@@ -1477,10 +1477,13 @@ c     Bound the scales as for Delta's live connections (eq.3.33).
             endif
             if (leg_probability.lt.0d0) leg_probability=
      $           delta_leg_probability(a,pdg,idup_d(ifks,a,1:nflav),
-     $           lpp(a),xbjrk_ev(a),line,mcmass)
+     $           lpp(a),xbjrk_ev(a),line,mcmass,monotone=.true.)
          else
+c     Both scales of a line can lie where the final-state tables are
+c     noisy; read them through their monotone envelope.
             leg_probability=delta_leg_probability(a,pdg,
-     $           idup_d(ifks,a,1:nflav),0,0d0,line,mcmass)
+     $           idup_d(ifks,a,1:nflav),0,0d0,line,mcmass,
+     $           monotone=.true.)
          endif
          probability=probability*leg_probability
       enddo
@@ -1650,19 +1653,25 @@ c     other connection lies in a dead zone.
       end subroutine get_delta_connections
 
       double precision function delta_leg_probability(ipart,pdg,
-     $     flavours,beam_type,bjorken,connections,mcmass)
+     $     flavours,beam_type,bjorken,connections,mcmass,monotone)
 c     Evaluate eqs.3.31/3.34 for one Born leg from its live connections.
 c     Keep the PDF flavour average and the order of Sudakov-table calls.
+c     With monotone=.true., read the tables through their monotone
+c     envelope (pysudakov_envelope); the S-event Delta does not.
       implicit none
       integer, intent(in) :: ipart,pdg,flavours(:),beam_type
       double precision, intent(in) :: bjorken,mcmass(21)
       type(delta_connections), intent(in) :: connections
+      logical, intent(in), optional :: monotone
       integer in_con,out_con,isudtype,ip,lp,id
       double precision deltanum,deltaden,delta(2,2),gl(2),Fk(2)
       double precision pdfnum,pdfden,PIk,gl_sum
+      logical envelope
       double precision pdg2pdf
       external pdg2pdf
 
+      envelope=.false.
+      if (present(monotone)) envelope=monotone
       delta_leg_probability=1d0
       if (connections%count.eq.0) return
       do out_con=1,connections%count
@@ -1671,10 +1680,10 @@ c     Compute g1 and g2 for the two lines of eq.3.34.
             gl(out_con)=1d0
          else
             isudtype=connections%sudakov_type(out_con)
-            deltanum=pysudakov_safe(connections%stop(out_con),
-     $           connections%mass(out_con),pdg,isudtype,mcmass)
-            deltaden=pysudakov_safe(connections%start(out_con),
-     $           connections%mass(out_con),pdg,isudtype,mcmass)
+            deltanum=delta_table_value(connections%stop(out_con),
+     $           connections%mass(out_con),pdg,isudtype,mcmass,envelope)
+            deltaden=delta_table_value(connections%start(out_con),
+     $           connections%mass(out_con),pdg,isudtype,mcmass,envelope)
             gl(out_con)=gl_safe(deltanum,deltaden)
          endif
 c     Flavour configurations are summed in the Born matrix element.
@@ -1710,10 +1719,10 @@ c     An empty interval has unit no-emission probability.
                cycle
             endif
             isudtype=connections%sudakov_type(in_con)
-            deltanum=pysudakov_safe(connections%stop(out_con),
-     $           connections%mass(in_con),pdg,isudtype,mcmass)
-            deltaden=pysudakov_safe(connections%start(in_con),
-     $           connections%mass(in_con),pdg,isudtype,mcmass)
+            deltanum=delta_table_value(connections%stop(out_con),
+     $           connections%mass(in_con),pdg,isudtype,mcmass,envelope)
+            deltaden=delta_table_value(connections%start(in_con),
+     $           connections%mass(in_con),pdg,isudtype,mcmass,envelope)
             if (deltaden.eq.0d0) then
                if (deltanum.ne.0d0) then
                   write (*,*) 'Denominator is zero in Sudakov'
@@ -2199,6 +2208,46 @@ c     by PYTHIA8's fixed-point iteration from start.
          pysudakov_safe=pysudakov(scale,mass,id,type,mcmass)
       endif
       end function pysudakov_safe
+
+
+      double precision function pysudakov_envelope(scale,mass,id,type
+     $     ,mcmass)
+c     Monotone envelope of the tabulated Sudakov: the largest value at or
+c     below scale. The tables are Monte Carlo estimates of the
+c     no-emission probability down to scale, which cannot decrease with
+c     scale. At low scales and large dipole masses (final-state lines of
+c     heavy systems) their statistical zeros and dips would make
+c     Delta(qmin)/Delta(t) exceed one or divide by zero. For a monotone
+c     table this is the table value.
+      implicit none
+      double precision, intent(in) :: scale,mass,mcmass(21)
+      integer, intent(in) :: id,type
+      double precision s
+      double precision smallptupp,step
+c     Finer than the 1.0935 spacing of the shipped table nodes.
+      parameter (smallptupp=1.01d0,step=1.04d0)
+      pysudakov_envelope=pysudakov_safe(scale,mass,id,type,mcmass)
+      s=scale/step
+      do while (s.gt.smallptupp)
+         pysudakov_envelope=max(pysudakov_envelope,
+     $        pysudakov_safe(s,mass,id,type,mcmass))
+         s=s/step
+      enddo
+      end function pysudakov_envelope
+
+
+      double precision function delta_table_value(scale,mass,id,type
+     $     ,mcmass,envelope)
+      implicit none
+      double precision, intent(in) :: scale,mass,mcmass(21)
+      integer, intent(in) :: id,type
+      logical, intent(in) :: envelope
+      if (envelope) then
+         delta_table_value=pysudakov_envelope(scale,mass,id,type,mcmass)
+      else
+         delta_table_value=pysudakov_safe(scale,mass,id,type,mcmass)
+      endif
+      end function delta_table_value
 
 
       integer function get_parton_id(ipdg,lp)

@@ -114,6 +114,19 @@ beam-pair mass and FSR lines the mass of the line, capped as in Delta.
 Incoming legs include their PDF ratio, and `DeltaBackwardISR` also
 applies to them. A line that starts at `Q_min` does not contribute.
 
+The Sudakov tables are Monte Carlo estimates of the no-emission
+probability, which cannot decrease with the scale. For final-state lines
+of heavy systems (large dipole masses) they are noisy at low scales,
+with statistical zeros and dips. Delta's S events divide by the table at
+their starting scale, which lies above that region; here both `t_ab` and
+`Q_min` can lie inside it, and the noise would make a ratio exceed one or
+divide by zero. The H-event lines therefore read the tables through their
+monotone envelope, the largest table value at or below the scale
+(`pysudakov_envelope`). For a monotone table this is the table value.
+A line that the table does not resolve at all, zero at and below `t_ab`,
+gets zero, as an unresolved stopping scale does in Delta. The S-event
+Delta is unchanged.
+
 `P_H` is computed once per physical H event, for the outer history and
 colour flow that also own `SCALUP` (`delta_H_min_probability` in
 `montecarlocounter.f`). It multiplies all H records of that event,
@@ -306,9 +319,9 @@ CI job:
   H-event geometric mean and minimum, sentinel exclusion, sector and fold
   ownership, and the ordinary-mode controls.
 - `test_mcatnlo_delta_scales` also checks the minimal-scale H probability
-  against closed forms for final- and initial-state lines, and
-  `test_fxfx_delta_weights` checks that only the event's H records are
-  multiplied.
+  against closed forms for final- and initial-state lines and across a
+  table hole under a starting scale, and `test_fxfx_delta_weights` checks
+  that only the event's H records are multiplied.
 - `test_fxfx_delta_lhe` round-trips ordinary FxFx, FxFx-Delta and
   standalone Delta events through both Fortran readers and the Python
   parser.

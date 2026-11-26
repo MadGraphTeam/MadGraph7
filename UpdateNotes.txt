@@ -140,7 +140,10 @@ ANNOUNCEMENT:
        H events start the shower at the smallest of their directed starting
        scales instead of the geometric mean, and all H contributions are
        multiplied by the no-emission probability of every H-event colour
-       line from its own directed start down to that scale.
+       line from its own directed start down to that scale. These lines
+       read the Sudakov tables through their monotone envelope, so that
+       statistical zeros of the final-state tables at low scales and large
+       dipole masses cannot divide by zero (seen in t t~ + jets).
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix

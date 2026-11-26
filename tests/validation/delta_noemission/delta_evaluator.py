@@ -156,7 +156,8 @@ class DeltaEvaluator:
         source = SOURCE.read_text()
         dtype = re.search(r'^      type :: delta_connections\n.*?^      end type delta_connections',
                           source, re.M|re.S).group()
-        names = ['delta_leg_probability','gl_safe','pysudakov_safe',
+        names = ['delta_leg_probability','delta_table_value','pysudakov_envelope',
+                 'gl_safe','pysudakov_safe',
                  'get_parton_id','setSudType','get_to_zero','emscafun','get_delta_connections']
         routines = [fortran_routine(SOURCE,n) for n in names]
         # Diagnostic only: identical routine before the final [0,1] clipping.

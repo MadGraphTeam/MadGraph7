@@ -45,7 +45,7 @@ program check_mcatnlo_delta_matching
     call check_connection_probabilities(mode)
     stop
   endif
-  if(mode.eq.'hmin_fsr'.or.mode.eq.'hmin_isr')then
+  if(mode.eq.'hmin_fsr'.or.mode.eq.'hmin_isr'.or.mode.eq.'hmin_hole')then
     call check_H_min_probability(mode)
     stop
   endif
@@ -333,7 +333,28 @@ contains
     ph(:,4)=(/30d0,-30d0,0d0,0d0/)
     ph(:,5)=(/30d0,0d0,30d0,0d0/)
     q=36d0
-    if(mode.eq.'hmin_fsr')then
+    if(mode.eq.'hmin_hole')then
+      ! As hmin_fsr, but the table has a statistical zero at 39.5-40.5 GeV
+      ! (table_mode=4) under the start of the 3-5 line. The monotone
+      ! envelope reads that start at 40/1.04 GeV, the next value below.
+      table_mode=4
+      fixture_kind=0
+      icolup_h(1,3)=501
+      icolup_h(2,4)=502
+      icolup_h(1,5)=502
+      icolup_h(2,5)=501
+      emsca_H(1,1,3,5)=40d0
+      emsca_H(1,1,5,3)=38d0
+      emsca_H(1,1,4,5)=45d0
+      emsca_H(1,1,5,4)=42d0
+      m35=sqrt(2400d0)
+      m45=sqrt(1800d0)
+      reference=(q/(40d0/1.04d0))**(m35+.2d0)*(q/45d0)**(m45+.2d0)* &
+           (q/42d0)**(m45+.2d0)*(q/38d0)**(m35+.2d0)
+      call delta_H_min_probability(ph,1,1,q,answer)
+      call require(abs(answer/reference-1d0)<1d-12,'monotone envelope across a table hole')
+      print *, 'PASS tabulated-hole minimal-scale H probability'
+    elseif(mode.eq.'hmin_fsr')then
       ! e+ e- > d d~ g: d-g and d~-g lines, two gluon lines.
       fixture_kind=0
       icolup_h(1,3)=501
@@ -444,6 +465,7 @@ double precision function pysudakov_safe(scale,mass,id,kind,mcmass)
     table_calls=table_calls+1
     pysudakov_safe=1d0
     if(table_mode.ne.3)pysudakov_safe=(scale/1000d0)**(mass+.1d0*kind)
+    if(table_mode.eq.4.and.scale.gt.39.5d0.and.scale.lt.40.5d0)pysudakov_safe=0d0
     return
   endif
   if(unit_table)then
