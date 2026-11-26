@@ -377,6 +377,22 @@ def strip_tag(name):
 
 # -- the two passes ----------------------------------------------------------
 
+def write_gpu_zero_amps(exporter, name, good, zeros):
+    """HelZeroAmps.inc of the GPU build: independent of the recycled CPU build,
+    which can be declined for its size."""
+    if good is None:
+        return
+    try:
+        nzero = exporter.write_gpu_zero_amps(good, zeros)
+        if nzero:
+            logger.info('hel_recycling: %s skips %d vanishing (helicity, '
+                        'amplitude) pairs on GPU', name, nzero)
+    except Exception as error:
+        logger.warning('hel_recycling: the GPU zero-amplitude table of %s '
+                       'could not be written (%s); its GPU build skips '
+                       'nothing.', name, error)
+
+
 def measure_at_output(root, exporters, card):
     """The generation-time pass (madmatrix/output.py): measure every
     --hel_recycling P* directory of `exporters` at `card` and write its
@@ -392,6 +408,7 @@ def measure_at_output(root, exporters, card):
         state = {'cards': key, 'recycled': False}
         try:
             good, zeros = tree.measure(pdir, [card])
+            write_gpu_zero_amps(exporter, name, good, zeros)
             nrows = write_build(pdir, recipe, good, zeros)
             if nrows is not None:
                 state.update(recycled=True, good_hels=good, zero_perhel=zeros)

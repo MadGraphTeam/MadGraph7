@@ -111,6 +111,11 @@ namespace madmatrix
   // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
   void sigmaKin_setNoPhaseSpace( const int cross );
 
+  // The C-parity verdict of the last sigmaKin_getGoodHel scan of this thread, and the
+  // one the next sigmaKin_setGoodHel uses instead (see backend/cpu/SigmaKin.h)
+  bool sigmaKin_csymScanBad();
+  void sigmaKin_setCsymVerdict( const bool bad );
+
   void
   sigmaKin( const ProcessParameters& params,     // input: parameters of the process (host)
             const ProcessParametersArg kparams,  // input: the same, as the kernels take them
