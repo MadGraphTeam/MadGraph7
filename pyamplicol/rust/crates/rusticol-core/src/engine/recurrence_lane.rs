@@ -181,6 +181,11 @@ impl PatternSelection {
     pub(super) fn pattern_count(&self) -> usize {
         self.signs.len()
     }
+
+    /// Selected sign per template pattern (0 for unselected patterns).
+    pub(super) fn signs(&self) -> &[f64] {
+        &self.signs
+    }
 }
 
 /// Restricted replay program key: a pattern mask and a helicity subset.
@@ -1312,6 +1317,11 @@ impl RecurrenceNativeRuntime {
     /// Restricted replay plans built since loading.
     pub(super) const fn selected_replay_builds(&self) -> usize {
         self.selected_replay_builds
+    }
+
+    /// Selected sign per pattern of a pattern-resolved template.
+    pub(super) fn pattern_signs(&self) -> Option<&[f64]> {
+        self.pattern_selection.as_ref().map(PatternSelection::signs)
     }
 
     pub(super) fn pattern_count(&self) -> Option<usize> {

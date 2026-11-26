@@ -192,7 +192,12 @@ fn interpret_recurrence_export(
         for instruction in &body {
             machine.execute(instruction, &run.sources, &program.kernel_bindings, kernels);
         }
-        machine.reduce(&run.reduction, program.helicity_outputs.len(), &mut output);
+        machine.reduce(
+            &run.reduction,
+            program.pattern_signs.as_deref(),
+            program.helicity_outputs.len(),
+            &mut output,
+        );
     }
     apply_export_group_factor(&mut output, program.group_factor);
     output
@@ -702,20 +707,47 @@ impl ExportMachine {
     pub(super) fn reduce(
         &self,
         reduction: &[RecurrenceExportReduction],
+        pattern_signs: Option<&[i32]>,
         helicity_count: usize,
         output: &mut [f64],
     ) {
         let points = self.points;
+        let scaled = |reduction: &RecurrenceExportReduction, amplitude: u32, point: usize| {
+            let index = amplitude as usize * points + point;
+            let (re, im) = (self.amplitude_re[index], self.amplitude_im[index]);
+            if reduction.apply_amplitude_scale {
+                let scale = reduction.amplitude_scale;
+                (re * scale.re - im * scale.im, re * scale.im + im * scale.re)
+            } else {
+                (re, im)
+            }
+        };
         for reduction in reduction {
             for point in 0..points {
-                let index = reduction.amplitude as usize * points + point;
-                let (mut re, mut im) = (self.amplitude_re[index], self.amplitude_im[index]);
-                if reduction.apply_amplitude_scale {
-                    (re, im) = (
-                        re * reduction.amplitude_scale.re - im * reduction.amplitude_scale.im,
-                        re * reduction.amplitude_scale.im + im * reduction.amplitude_scale.re,
-                    );
-                }
+                let (re, im) = if let Some(terms) = &reduction.pattern_terms {
+                    // The first selected term multiplies; later ones fuse.
+                    let signs = pattern_signs.expect("pattern terms need pattern signs");
+                    let mut sum = None::<(f64, f64)>;
+                    for term in terms {
+                        let sign = f64::from(signs[term.pattern as usize]);
+                        if sign == 0.0 {
+                            continue;
+                        }
+                        let (re, im) = scaled(reduction, term.amplitude, point);
+                        sum = Some(match sum {
+                            None => (sign * re, sign * im),
+                            Some((sum_re, sum_im)) => {
+                                (sign.mul_add(re, sum_re), sign.mul_add(im, sum_im))
+                            }
+                        });
+                    }
+                    match sum {
+                        Some(sum) => sum,
+                        None => continue,
+                    }
+                } else {
+                    scaled(reduction, reduction.amplitude, point)
+                };
                 output[point * helicity_count + reduction.helicity_output] +=
                     re.mul_add(re, im * im) * reduction.weight;
             }
@@ -775,6 +807,7 @@ fn arithmetic_program(
                 amplitude_scale: ExportComplex::ONE,
                 apply_amplitude_scale: false,
                 weight: 1.0,
+                pattern_terms: None,
             }],
         }],
         group_factor: NativeRationalFactor {
@@ -782,6 +815,7 @@ fn arithmetic_program(
             denominator: 1,
         },
         alpha_s: None,
+        pattern_signs: None,
     }
 }
 
@@ -1474,7 +1508,14 @@ fn check_every_exported_process(root: &Path) {
     for process_id in process_ids {
         let mut runtime = NativeRuntime::load(root, Some(&process_id), None).unwrap();
         let export = runtime.export_recurrence(None).unwrap();
-        assert_eq!(export.schema_version, 2);
+        assert_eq!(
+            export.schema_version,
+            if runtime.flavour_union_pattern_resolved() {
+                3
+            } else {
+                2
+            }
+        );
         let base =
             super::recurrence_integration_tests::generated_recurrence_validation_point(&runtime);
         let mut caller = base.clone();
@@ -1536,6 +1577,7 @@ fn check_every_exported_process(root: &Path) {
                 referenced.crossing = program.crossing.clone();
                 referenced.group_factor = program.group_factor;
                 referenced.helicity_outputs = program.helicity_outputs.clone();
+                referenced.pattern_signs = program.pattern_signs.clone();
                 let actual = interpret_recurrence_export(
                     &referenced,
                     &representative.kernels,

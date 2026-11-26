@@ -35,7 +35,8 @@ colour, loop, and non-recurrence execution modes are outside this format.
 
 ## Identity and numbers
 
-Consumers must check `schema_version` (currently `2`) and
+Consumers must check `schema_version` (`2`, or `3` when the export contains
+a pattern-resolved flavour-union program, see below) and
 `execution_semantics` before interpreting instructions. `rusticol_version`
 identifies the producer. `artifact_id` is the original artifact identity.
 `parameters` records the model values used to resolve the programs. Complex
@@ -69,6 +70,8 @@ crossing and group factor and label outputs with its helicity descriptors.
 These replace the representative's corresponding fields. Referenced
 representatives are included even when `--process` selects only a member.
 The Python and Rust per-runtime APIs return a full selected-process program.
+A flavour-union member's entry also keeps its own `pattern_signs`, which
+replace the template's when the referenced program runs.
 
 `crossing`, when present, maps every `program_leg` to a `caller_leg` and a
 momentum `sign`. Apply it before constructing momentum forms. The forms
@@ -219,6 +222,24 @@ helicity output. After all runs, apply `group_factor` once: if numerator and
 denominator differ, multiply each output by the numerator converted to f64,
 then divide by the denominator converted to f64. Equal values require no
 arithmetic. Precomputing a ratio would change rounding.
+
+### Pattern-resolved flavour-union programs (schema 3)
+
+With flavour unions, one template program serves several flavour classes.
+Each of its amplitudes belongs to a pairing pattern, and a class (a union
+member) sums its patterns' amplitudes with signs before squaring. Such a
+program has `pattern_signs`, one integer per template pattern: `+1`, `-1`, or
+`0` for a pattern the member does not use. The template itself has every sign
+`+1`. Each of its reductions has `pattern_terms`, an ordered list of
+`{amplitude, pattern}` entries; `amplitude` repeats the first term's amplitude.
+For such a reduction, skip terms whose sign is `0`. Apply the replay amplitude
+scale to each remaining amplitude as above. For the first remaining term
+compute `sign*real` and `sign*imaginary`; add each later term as
+`fma(sign, real, sum)` and `fma(sign, imaginary, sum)`. If no term remains,
+the reduction adds nothing. Otherwise square the sum as above, multiply by the
+weight and add it to the helicity output. Exports without such programs keep
+schema `2` and these fields are absent; the CLI file takes the highest
+schema of its processes.
 
 This export describes batched execution. The one-point path may use different
 native interaction rewrites. Use batched `evaluate_resolved_f64` as the

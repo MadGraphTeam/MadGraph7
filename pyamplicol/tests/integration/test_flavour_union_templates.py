@@ -273,27 +273,63 @@ def test_high_precision_refuses_union_members(
         routed.evaluate((_point(member.expression),), precision=32)
 
 
-def test_recurrence_export_refuses_union_processes(
+def test_recurrence_export_sums_union_patterns(
     union_artifacts: dict[str, Path], tmp_path: Path
 ) -> None:
-    from pyamplicol.api.errors import ConfigurationError
+    """Members export their pattern signs; the Rust parity test checks the bits."""
     from pyamplicol.cli.recurrence_export import parse_export_recurrence
 
     groups = read_process_groups(union_artifacts["union"])
     assert groups is not None
-    member = next(
+    members = [
         member
         for member in groups.members()
         if member.basis is GroupingBasis.FLAVOUR_UNION
+    ]
+    member = next(
+        (member for member in members if set(member.pattern_signs or ()) != {1}),
+        members[0],
     )
     routed = Runtime.load(union_artifacts["union"], process=member.process_id)
-    with pytest.raises(CompatibilityError, match="pattern-resolved"):
-        routed.export_recurrence()
-    invocation = parse_export_recurrence(
-        [str(union_artifacts["union"]), "-o", str(tmp_path / "export.json")]
-    )
-    with pytest.raises(ConfigurationError, match="flavour-union"):
-        invocation.run()
+    export = routed.export_recurrence()
+    assert export["schema_version"] == 3
+    programs = export["programs"]
+    assert programs
+    for program in programs:
+        signs = program["pattern_signs"]
+        assert set(signs) <= {-1, 0, 1}
+        selected = dict(
+            zip(member.patterns or (), member.pattern_signs or (), strict=True)
+        )
+        assert {index: sign for index, sign in enumerate(signs) if sign} == selected
+        reductions = [term for run in program["runs"] for term in run["reduction"]]
+        assert reductions
+        assert all("pattern_terms" in term for term in reductions)
+        assert all(
+            term["amplitude"] == term["pattern_terms"][0]["amplitude"]
+            for term in reductions
+        )
+    kept = os.environ.get("PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS")
+    if kept and union_artifacts["union"].parent.name.startswith("flavour-union-uu2j"):
+        # CI's Rust parity test interprets this export bit for bit as well.
+        destination = Path(kept) / "flavour-union"
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(union_artifacts["union"], destination)
+    output = tmp_path / "export.json"
+    parse_export_recurrence([str(union_artifacts["union"]), "-o", str(output)]).run()
+    combined = json.loads(output.read_text(encoding="utf-8"))
+    assert combined["schema_version"] == 3
+    entries = {entry["process_key"]: entry for entry in combined["programs"]}
+    entry = entries[member.process_id]
+    if "program_reference" in entry:
+        assert entry["pattern_signs"] == programs[0]["pattern_signs"]
+        template = next(
+            candidate
+            for candidate in combined["programs"]
+            if "program_reference" not in candidate
+            and candidate["process_key"] == entry["program_reference"]["process_key"]
+        )
+        assert set(template["pattern_signs"]) == {1}
 
 
 def test_plan_with_a_compiled_model_keeps_electroweak_flows_routed() -> None:

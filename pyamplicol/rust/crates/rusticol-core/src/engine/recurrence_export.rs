@@ -106,6 +106,18 @@ pub struct RecurrenceExportReduction {
     /// Union execution skips replay entirely, rather than multiplying by one.
     pub apply_amplitude_scale: bool,
     pub weight: f64,
+    /// Pattern-resolved templates (schema 3): square the signed sum of these
+    /// scaled amplitudes instead of `amplitude` alone, which is the first term.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern_terms: Option<Vec<RecurrenceExportPatternTerm>>,
+}
+
+/// One amplitude of a pattern-resolved reduction; its sign is the program's
+/// `pattern_signs[pattern]`.
+#[derive(Clone, Debug, Serialize)]
+pub struct RecurrenceExportPatternTerm {
+    pub amplitude: u32,
+    pub pattern: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -146,7 +158,15 @@ pub struct RecurrenceExportProgram {
     /// Do not precompute their ratio: its rounding can differ.
     pub group_factor: NativeRationalFactor,
     pub alpha_s: Option<RecurrenceExportAlphaS>,
+    /// Pattern-resolved templates (schema 3): the selected flavour-union
+    /// member's sign per template pattern, +1, -1 or 0 (unselected).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern_signs: Option<Vec<i32>>,
 }
+
+/// Schema of an export without pattern-resolved programs; those need 3.
+const SCHEMA_VERSION: u32 = 2;
+const PATTERN_RESOLVED_SCHEMA_VERSION: u32 = 3;
 
 /// The arithmetic contract of every exported program. The golden vectors of
 /// `recurrence_export_golden.rs` pin its bits: a change to the exported
@@ -177,12 +197,6 @@ impl NativeRuntime {
         if !matches!(self.execution_lane, NativeExecutionLane::Recurrence(_)) {
             return Err(RusticolError::compatibility(
                 "recurrence export requires an LC recurrence artifact",
-            ));
-        }
-        // The export squares each destination; templates must sum patterns first.
-        if self.flavour_union_pattern_resolved() {
-            return Err(RusticolError::compatibility(
-                "recurrence export is unavailable for pattern-resolved flavour-union templates",
             ));
         }
         let context = self.recurrence_export_context()?;
@@ -249,6 +263,13 @@ impl NativeRuntime {
         let (re, im) = lane.scheduler.factors_mut();
         let factors = split_values(re, im);
         let plan = lane.scheduler.plan();
+        // Pattern-resolved templates sum signed pattern amplitudes before squaring.
+        let pattern_signs = lane
+            .pattern_signs()
+            .map(|signs| signs.iter().map(|sign| *sign as i32).collect::<Vec<_>>());
+        let destination_patterns = pattern_signs
+            .is_some()
+            .then(|| plan.destination_patterns().destination_patterns.as_slice());
         let executors = export_executors(&context.executors.descriptors, &scales)?;
         let alpha_s_parameter =
             resolve_alpha_s_parameter(context.alpha_s_parameter.as_deref(), &parameters);
@@ -302,6 +323,7 @@ impl NativeRuntime {
                 runs: Vec::new(),
                 group_factor,
                 alpha_s: alpha_s.clone(),
+                pattern_signs: pattern_signs.clone(),
             };
             match &lane.selectors {
                 RecurrenceNativeSelectors::TopologyReplay {
@@ -336,11 +358,35 @@ impl NativeRuntime {
                         let mut reduction = Vec::new();
                         let (re, im) = selector.amplitude_scale();
                         let amplitude_scale = ExportComplex { re, im };
-                        for destination in
-                            plan.amplitude_destinations().iter().filter(|destination| {
+                        let destinations = plan
+                            .amplitude_destinations()
+                            .iter()
+                            .filter(|destination| {
                                 destination.target_sector_id == selector.representative_flow_id()
                             })
-                        {
+                            .collect::<Vec<_>>();
+                        // Pattern-resolved: consecutive destinations of one helicity form a
+                        // group, as in the runtime's pattern sum; otherwise one per group.
+                        let mut groups = Vec::new();
+                        for (index, destination) in destinations.iter().enumerate() {
+                            let joins = destination_patterns.is_some()
+                                && index > 0
+                                && destinations[index - 1].target_helicity_id_or_sentinel
+                                    == destination.target_helicity_id_or_sentinel;
+                            if joins {
+                                let group: &mut Vec<_> = groups.last_mut().expect("open group");
+                                group.push(*destination);
+                            } else {
+                                groups.push(vec![*destination]);
+                            }
+                        }
+                        for group in groups {
+                            let destination = group[0];
+                            let pattern_terms = destination_patterns
+                                .map(|patterns| {
+                                    export_pattern_terms(&group, patterns, selector.pattern_map())
+                                })
+                                .transpose()?;
                             let direct_id = destination.target_helicity_id_or_sentinel as usize;
                             let mapped =
                                 *selector.helicity_map().get(direct_id).ok_or_else(|| {
@@ -375,6 +421,7 @@ impl NativeRuntime {
                                     amplitude_scale,
                                     apply_amplitude_scale: true,
                                     weight,
+                                    pattern_terms: pattern_terms.clone(),
                                 });
                             }
                         }
@@ -388,6 +435,11 @@ impl NativeRuntime {
                     helicity_selectors_by_physics,
                     destination_by_public_flow,
                 } => {
+                    if pattern_signs.is_some() {
+                        return Err(RusticolError::compatibility(
+                            "recurrence export of pattern-resolved templates requires topology replay",
+                        ));
+                    }
                     program.momentum_forms = export_momentum_forms(plan, None)?;
                     let mut source_rows = Vec::new();
                     if runtime_physics.color_is_computed(colour_index) {
@@ -437,6 +489,7 @@ impl NativeRuntime {
                                     amplitude_scale: ExportComplex::ONE,
                                     apply_amplitude_scale: false,
                                     weight,
+                                    pattern_terms: None,
                                 }],
                             });
                         }
@@ -476,7 +529,11 @@ impl NativeRuntime {
             }
         }
         let export = RecurrenceExport {
-            schema_version: 2,
+            schema_version: if pattern_signs.is_some() {
+                PATTERN_RESOLVED_SCHEMA_VERSION
+            } else {
+                SCHEMA_VERSION
+            },
             rusticol_version: env!("CARGO_PKG_VERSION").to_owned(),
             artifact_id: self.artifact_id.clone(),
             execution_semantics: EXECUTION_SEMANTICS.to_owned(),
@@ -609,6 +666,32 @@ impl NativeRuntime {
             alpha_s_parameter,
         })
     }
+}
+
+/// Terms of one pattern-resolved group in destination order, with each
+/// destination's pattern relabelled for the replayed flow.
+fn export_pattern_terms(
+    group: &[&crate::recurrence::DirectAmplitudeDestinationDescriptor],
+    destination_patterns: &[u32],
+    pattern_map: Option<&[u32]>,
+) -> RusticolResult<Vec<RecurrenceExportPatternTerm>> {
+    group
+        .iter()
+        .map(|destination| {
+            let pattern = destination_patterns
+                .get(destination.id as usize)
+                .copied()
+                .and_then(|pattern| match pattern_map {
+                    Some(map) => map.get(pattern as usize).copied(),
+                    None => Some(pattern),
+                })
+                .ok_or_else(|| RusticolError::integrity("export destination has no pattern"))?;
+            Ok(RecurrenceExportPatternTerm {
+                amplitude: destination.id,
+                pattern,
+            })
+        })
+        .collect()
 }
 
 fn split_values(re: &[f64], im: &[f64]) -> Vec<ExportComplex> {
@@ -1253,6 +1336,7 @@ mod tests {
                 amplitude_scale: ExportComplex::ONE,
                 apply_amplitude_scale: false,
                 weight,
+                pattern_terms: None,
             }],
         };
         finite::require_finite("finite runs", &[run(0.5), run(-0.0)]).unwrap();

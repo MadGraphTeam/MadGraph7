@@ -108,8 +108,8 @@ pub use engine::{
 pub use engine::{
     RecurrenceExport, RecurrenceExportAlphaS, RecurrenceExportCrossing, RecurrenceExportCurrent,
     RecurrenceExportHelicity, RecurrenceExportKernel, RecurrenceExportLeg,
-    RecurrenceExportMomentumTerm, RecurrenceExportParameter, RecurrenceExportProgram,
-    RecurrenceExportReduction, RecurrenceExportRun,
+    RecurrenceExportMomentumTerm, RecurrenceExportParameter, RecurrenceExportPatternTerm,
+    RecurrenceExportProgram, RecurrenceExportReduction, RecurrenceExportRun,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{
