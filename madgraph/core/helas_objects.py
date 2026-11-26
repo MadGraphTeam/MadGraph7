@@ -5714,6 +5714,92 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 dropped = True
         return dropped
 
+    def get_reachable_zero_width_poles(self, mass_value):
+        """Return the propagators whose width was dropped by
+        set_onshell_particles_width_to_zero (zerowidth_external) and whose pole
+        lies inside phase space, as a sorted list of strings
+        'u d~ > w+ w+ d u~: m(d u~) reaches the w+ mass 80.4 GeV'.
+
+        Such a propagator 1/(p^2 - M^2) is not integrable without a cut that
+        removes p^2 ~ M^2: e.g. the final-state W- > d u~ of u d~ > w+ w+ d u~
+        (the W+ being external, every internal W loses its width).
+        The pole is reachable when the propagator is timelike and the masses on
+        its final-state side sum to less than M:
+         - no initial leg feeds it: p^2 >= (sum of the masses of its legs)^2;
+         - all initial legs feed it: p^2 is the invariant mass squared of the
+           other final-state legs, >= (sum of their masses)^2;
+         - some but not all initial legs: spacelike (t-channel), no pole.
+        The equality case is the edge of phase space (the s-channel top of
+        t a > t a at zero photon energy) and is not reported.
+        Which legs are initial is checked for the process itself and for every
+        crossed process folded into this matrix element ('crossed_processes'):
+        a t-channel W of _quark _quark > w+ w+ _quark _quark is the final-state
+        W- > d u~ of its crossing u d~ > w+ w+ d u~.
+        mass_value(name) returns the numerical value of a mass parameter;
+        a mass it cannot evaluate (KeyError/ValueError) skips that propagator.
+        Run-time cuts are not known here: the caller reports the list."""
+
+        dropped = [wf for wf in self.get_all_wavefunctions()
+                   if getattr(wf, 'onshell_zero_width', False)]
+        if not dropped:
+            return []
+        proc = self.get('processes')[0]
+        legs = proc.get_legs_with_decays() \
+            if hasattr(proc, 'get_legs_with_decays') else proc.get('legs')
+        model = proc.get('model')
+        ninitial = proc.get_ninitial()
+        try:
+            masses = dict((leg.get('number'), float(mass_value(
+                model.get_particle(leg.get('id')).get('mass')))) for leg in legs)
+        except (KeyError, ValueError, TypeError):
+            return []
+        slots = set(masses)
+        def leg_name(leg):
+            return model.get_particle(leg.get('id')).get_name()
+        # one view per physical process served: (process string, initial
+        # slots, slot -> particle name), the slots being this ME's leg numbers
+        views = [(proc.nice_string(print_weighted=False).replace(
+                      'Process: ', ''),
+                  set(n for n in slots if n <= ninitial),
+                  dict((leg.get('number'), leg_name(leg)) for leg in legs))]
+        if 'crossed_processes' in self:
+            for crossed, base_perm, crossed_perm in self['crossed_processes']:
+                crossed_legs = crossed.get('legs')
+                if len(base_perm) != len(slots) or \
+                        len(crossed_perm) != len(slots):
+                    continue
+                views.append((
+                    crossed.nice_string(print_weighted=False).replace(
+                        'Process: ', ''),
+                    set(base_perm[k] for k in range(len(base_perm))
+                        if crossed_perm[k] <= ninitial),
+                    dict((base_perm[k],
+                          leg_name(crossed_legs[crossed_perm[k] - 1]))
+                         for k in range(len(base_perm)))))
+        poles = set()
+        for wf in dropped:
+            leaves = wf.get_struct_external_leg_ids()
+            if not leaves <= slots:
+                continue
+            try:
+                mass = float(mass_value(wf.get('mass')))
+            except (KeyError, ValueError, TypeError):
+                continue
+            for name, initial_slots, names in views:
+                initial = leaves & initial_slots
+                if initial and len(initial) < ninitial:
+                    continue
+                side = leaves if not initial else \
+                    (slots - initial_slots) - leaves
+                threshold = sum(masses[n] for n in side)
+                if threshold < mass * (1. - 1e-9):
+                    poles.add('%s: m(%s) reaches the %s mass %.1f GeV' % (
+                        name.split(' QCD')[0].split(' QED')[0].strip(),
+                        ' '.join(names[n] for n in sorted(side)),
+                        model.get_particle(abs(wf.get_pdg_code())).get_name(),
+                        mass))
+        return sorted(poles)
+
 
     def get_coupling_for_flv(self, flv, model):
         """Return the coupling constant for a specific flavor"""
