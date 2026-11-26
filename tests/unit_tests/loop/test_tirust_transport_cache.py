@@ -245,6 +245,11 @@ int ml_tirust_evaluate_mp(void *ctx, int n, int rank, const char *p,
     memcpy(out, e->output, olen);
     return 0;
 }
+/* The raised-power entries of the bridge (P-wave bound states); unused here. */
+int ml_tirust_supports_powers(int n, int rank, const int *powers, size_t plen,
+    int finite) { return 3; }
+int ml_tirust_evaluate_dp_powers(void) { return 3; }
+int ml_tirust_evaluate_mp_powers(void) { return 3; }
 """
 
 

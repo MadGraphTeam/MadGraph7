@@ -113,6 +113,7 @@ class DPTerminalSelectionTest(unittest.TestCase):
         matrix.get.return_value = [{'has_born': True}]
         matrix.get_max_loop_rank.return_value = 2
         matrix.get_max_loop_vertex_rank.return_value = 1
+        matrix.get_nonia.return_value = 0
         return exporter, matrix
 
     def test_only_qualified_shape_is_selected(self):
@@ -178,6 +179,15 @@ class DPTerminalSelectionTest(unittest.TestCase):
                 with patch.object(Writer, 'get_terminal_wavefunctions') as graph:
                     self.assertEqual(exporter.get_dp_terminal_wavefunctions(matrix), {})
                     graph.assert_not_called()
+
+    def test_pwave_bound_states_stay_dense(self):
+        # A P-wave bound state differentiates the loop numerators in its
+        # relative momentum (onia_loop.f), which the proof does not cover.
+        exporter, matrix = self.exporter()
+        with patch('madgraph.loop.loop_onia.has_pwave', return_value=True), \
+                patch.object(Writer, 'get_terminal_wavefunctions') as graph:
+            self.assertEqual(exporter.get_dp_terminal_wavefunctions(matrix), {})
+            graph.assert_not_called()
 
 
 class DPTerminalGeneratorTest(unittest.TestCase):

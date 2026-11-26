@@ -194,7 +194,8 @@ C MODE 3 starts at the final QP entry and wraps immediately.
             with FortranWriter(str(self.work / 'adapter.f')) as writer:
                 writer.writelines(source % replacements, context={
                     'tirust_available': True, 'tirust_supports_quad_prec': True,
-                    'AmplitudeReduction': True})
+                    'AmplitudeReduction': True, 'OniaPwave': False,
+                    'OniaPwaveEP': False})
             (self.work / 'loop_max_coefs.inc').write_text(
                 '      INTEGER LOOPMAXCOEFS\n      PARAMETER(LOOPMAXCOEFS=210)\n')
             (self.work / 'coupl.inc').write_text(
@@ -214,7 +215,8 @@ C MODE 3 starts at the final QP entry and wraps immediately.
             with FortranWriter(str(self.work / 'adapter.f')) as writer:
                 writer.writelines(source % replacements, context={
                     'tirust_available': True, 'tirust_supports_quad_prec': True,
-                    'AmplitudeReduction': True})
+                    'AmplitudeReduction': True, 'OniaPwave': False,
+                    'OniaPwaveEP': False})
             (self.work / 'loop_max_coefs.inc').write_text(
                 '      INTEGER LOOPMAXCOEFS\n      PARAMETER(LOOPMAXCOEFS=5)\n')
             (self.work / 'module.f90').write_text(recording_module().replace(

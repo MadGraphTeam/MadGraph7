@@ -2505,8 +2505,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         # (the MP code the EP code is derived from)
         context['OniaPwaveEP'] = bool(
             type(self) is LoopProcessOptimizedExporterFortranSA and
-            context['OniaPwave'] and not context['OniaPwave2'] and
-            not context['AmplitudeReduction'] and
+            context.get('OniaPwave') and not context.get('OniaPwave2') and
+            not context.get('AmplitudeReduction') and
             context['tirust_supports_quad_prec'] and context['tirust_raised_powers'] and
             onia_ep.tirust_supports_extended_inputs(getattr(self, 'tirust_dir', '')))
 
