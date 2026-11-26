@@ -51,26 +51,51 @@ the mixed derivative; one-P-wave outputs keep `mp_dual_variables.f`) and the
 `MP_` copies of the two-state routines of `onia_loop.f`. It costs about 60
 times the double-precision time, nearly all of it in the binary128 loop
 numerators. Their predicted poles are complete, the dipole-dipole term
-included. Their virtual needs TIRust integrals with two dotted propagators:
+included. Their virtual needs TIRust integrals with two dotted propagators
+or a tripled one, at the thresholds of both pairs, and with a jet pentagons
+of rank 7:
 - **With the pinned TIRust (1c130a81).** The virtual is reported unstable.
-- **With the TIRust candidate.** It serves them (59aee45 and later, on branch
-  hs/pwave-two-dotted, not yet in MadGraph); see Validation below.
-- **g g > chic0 chic0.** It also needs unit-power boxes, pentagons and
-  hexagons whose heavy-quark propagators are linearly dependent at the two
-  thresholds. With the TIRust candidate 08cca00, at 20 GeV, both poles are
-  as predicted: 1/eps to 6e-9 in either loop direction, and 1e-14 in
-  quadruple precision. The finite parts of the two directions agree to
-  2e-8. Between 8 and 200 GeV, MadLoop's stability test (default threshold)
-  flags every point whose result is wrong:
-  - At 10 degrees from the beam, from 20 GeV on, TIRust fails on some five-
-    and six-line integrals with a dotted massless line, in both precisions.
-    The point is reported unstable.
-  - At 200 GeV, double precision loses the poles, and the quadruple-precision
-    rescue restores them.
+- **With the TIRust candidate da7902b and the bridge patch v16** (TIRust PR
+  #71, not yet in MadGraph). It serves every integral of the processes
+  below. The earlier candidate 4f1b06c (TIRust main) with the bridge patch v9
+  serves `e+ e- > chic0 hc` and `g g > chic0 chic0`, the processes of the
+  report's tables.
 
-  Details are in `research/two_pwave/FIXTURES.md`. Earlier candidates gave
-  tensor coefficients of five- and six-line raised-power integrals that
-  depended on the cache, on earlier calls and on the order of the lines.
+Checked for every colour assignment of the two states, on da7902b
+(`docs/benchmarkfolder/benchmark.pdf`, section 5.2;
+`research/two_pwave/FIXTURES.md`):
+- **Two singlets.** `e+ e- > chic0 hc`, where the whole pole is the
+  dipole-dipole term (see below; on da7902b through the acceptance test),
+  and `g g > chic0 chic0`, where all its parts contribute. For the latter, up
+  to 20 GeV, both poles are as predicted to 1e-8 in double precision, and to
+  3e-14 in quadruple precision. At 200 GeV double precision loses the poles,
+  and MadLoop's stability test (default threshold) rescues the points in
+  quadruple precision. da7902b corrects rank-6 hexagons with two doubled
+  lines. The results of 4f1b06c move by at most 3e-9, apart from the
+  double-precision 1/eps at the forward point of 50 GeV (4e-5), where the
+  pole is what is left of a large cancellation; the stability test's
+  results stay within their estimates.
+- **A singlet and an octet.** `u u~ > chic0(1|3P01) Jpsi(1|3P08)`. The 1/eps
+  is as predicted to 3e-12 at 8 GeV in double precision, and to 4e-14 at
+  20 GeV in quadruple precision.
+- **Two octets.** `g g > Jpsi(1|3P28) Jpsi(1|3P18) g`, which needs the
+  rank-7 pentagons. The 1/eps is as predicted to 4e-11 at 20 GeV in either
+  loop direction; a pass takes about 8000 s.
+- **Unequal flavours and J = 1.** `g g > chic1(1|3P11) chib0(1|3P01)`. Its
+  Born equals the tree output's bit for bit when both have the same masses:
+  the loop layer always takes M = m1 + m2, while the tree output takes the
+  model's physical masses. The 1/eps is as predicted to 8e-13 at 20 GeV.
+
+In double precision the poles lose digits at high energy and near the beam,
+where they are what is left of a large cancellation. MadLoop's stability
+test estimates the error there; where it was run, its estimates are of the
+size of the true errors, and points beyond its threshold go to quadruple
+precision. The
+acceptance tests `test_two_pwave_loop_standalone`,
+`test_two_pwave_gg_loop_standalone` and
+`test_two_pwave_singlet_octet_loop_standalone` (`test_cmd.py`) check the
+poles and finite parts of three of these processes. They take the TIRust of
+`$TIRUST_LIB`, or the configured one, and are skipped without raised powers.
 
 Such outputs are built with the medium code model on x86-64, since their loop
 arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the
@@ -356,9 +381,9 @@ independent evaluation of the research folder: 0.71157569957729 at
 sqrt(s) = 10.6 GeV, 0.72155466286996 at 7 GeV and 0.67519653345551 at 30 GeV,
 to 6e-15.
 
-With the TIRust candidate (59aee45 and the bridge patch v3), every integral
-of `e+ e- > chic0 hc` is served in both passes, and the computed poles match
-the prediction:
+With the first TIRust candidate with two dotted propagators (59aee45 and the
+bridge patch v3), every integral of `e+ e- > chic0 hc` is served in both
+passes, and the computed poles match the prediction:
 - the 1/eps coefficient to 3e-12 at 7 and 10.58 GeV, 1.5e-11 at 20 GeV and
   2e-10 at 30 GeV;
 - no 1/eps^2.

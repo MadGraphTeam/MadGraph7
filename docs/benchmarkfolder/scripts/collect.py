@@ -94,6 +94,10 @@ STATUS_LINES = [
     '$J = 1$ misprints there). With TIRust 4f1b06c (TIRust main, not yet pinned) the computed '
     'poles are as predicted: $e^+ e^- -> chi_(c 0) thin h_c$ to $10^(-10)$, '
     '$g g -> chi_(c 0) thin chi_(c 0)$ to $10^(-8)$ up to 20 GeV, also in quadruple precision. '
+    'With da7902b (TIRust PR \\#71) they are too for the other colour assignments and unequal '
+    'flavours (@twopw16): two octets with a jet to $4 dot 10^(-11)$, a singlet with an octet to '
+    '$3 dot 10^(-12)$ at 8 GeV, $g g -> chi_(c 1) thin chi_(b 0)$ to $10^(-12)$, whose Born is '
+    'the tree output\'s bit for bit. '
     '`ONIA_NRQCD_CT` gives the MS-bar counterterm of the exchange. The poles are those of eq. (B.2) '
     'of the two-P-wave manuscript (@appb): its table 2 to all seven digits, each of its terms '
     'tested; for unequal constituent masses ($B_c$) the virtual has no self-like pole, as eq. (B.2) '
@@ -127,8 +131,10 @@ OPEN_ITEMS = [
     '(its `BinothLHA` can call this virtual).',
     '*80-bit switch:* the bridge patch v2 (inputs as hi + lo words, check pass at the input '
     'precision) into MadGraph, then the TIRust pin with it (@ep).',
-    '*Two P-wave bound states:* a TIRust pin with two dotted propagators (4f1b06c, in TIRust '
-    'main) and its bridge patch v9 in MadGraph; a quadruple-precision pass takes about 75 '
+    '*Two P-wave bound states:* a TIRust pin with two dotted propagators and the rank-7 '
+    'pentagons of raised-power plans (da7902b, TIRust PR \\#71; 4f1b06c, in TIRust main, '
+    'serves those of @tab:ee2p and @tab:gg2p) and its bridge patch v16 in MadGraph; a '
+    'quadruple-precision pass of $g g -> chi_(c 0) thin chi_(c 0)$ takes about 75 '
     'minutes, nearly all in MadLoop\'s binary128 numerator. No one-loop finite part is '
     'published to compare with (@twopw).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
@@ -482,17 +488,7 @@ def summarize_two_pwave(folder):
                         sigma3=s3, brute_force=max(abs(x - 1) for x in p['brute_force_ratio'].values())
                         if p['brute_force_ratio'] else None))
     pdd = {float(k): v for k, v in hkw['chic0_hc_pdd_over_born'].items()}
-
-    def row(r, modes):
-        out = dict(energy=r['energy'], point=r['point'])
-        for m in modes:
-            x = r['ctmode' + m]
-            out[m] = dict(single=x['single_norm'], predicted=x['predicted_single_norm'],
-                          single_dev=abs(x['single_norm'] - x['predicted_single_norm'])
-                          / max(abs(x['predicted_single_norm']), 1e-300),
-                          double=x['double_norm'], double_dev=abs(x['double_norm'] - x['predicted_double_norm']),
-                          finite=x['finite_norm'], code=x['ret_code'], accuracy=x['accuracy'], time=x['time'])
-        return out
+    row = qp_check_row
     ee = []
     d = json.load(open(os.path.join(folder, 'ee_dp.json')))
     q = json.load(open(os.path.join(folder, 'ee_qp.json')))
@@ -525,7 +521,100 @@ def summarize_two_pwave(folder):
                         finite=x['finite_norm'], code=x['ret_code'], time=x['time']))
     ggq.sort(key=lambda e: e['energy'])
     return dict(kernel=hkw['kernel'], eq5=eq5, eq5_fit_J1=hkw['eq5_fit_J1'], ee=ee, gg=gg, gg_qp=ggq,
-                appb=summarize_appendix_b(folder))
+                appb=summarize_appendix_b(folder), v16=summarize_two_pwave_v16(folder))
+
+
+def qp_check_row(r, modes):
+    """One point of a research/two_pwave/qp_check.py record: per CTModeRun the
+    poles and finite part per Born alpha_s/2pi against ONIA_IR_POLES."""
+    out = dict(energy=r['energy'], point=r['point'])
+    for m in modes:
+        x = r['ctmode' + m]
+        out[m] = dict(single=x['single_norm'], predicted=x['predicted_single_norm'],
+                      single_dev=abs(x['single_norm'] - x['predicted_single_norm'])
+                      / max(abs(x['predicted_single_norm']), 1e-300),
+                      double=x['double_norm'], double_dev=abs(x['double_norm'] - x['predicted_double_norm']),
+                      finite=x['finite_norm'], code=x['ret_code'], accuracy=x['accuracy'], time=x['time'])
+    return out
+
+
+def summarize_two_pwave_v16(folder):
+    """TIRust da7902b with the bridge patch v16 (v16_*.json): the g g -> chic0
+    chic0 points rerun against the 4f1b06c records of the tables before
+    (v16_gg_chic0_chic0.json; its 'comparison' is relative to them), and the
+    processes first run on it, qp_check.py records: two octets
+    (v16_ggg_3p28_3p18_ct{1,2}.json, one point, one loop direction each), a
+    singlet with an octet (v16_uu_chic0_3p08.json, with a CTModeRun 4 point
+    and the parts of the prediction of appendix_b.py terms) and g g -> chic1
+    chib0 (v16_gg_chic1_chib0.json, with its Born against the tree output).
+    research/two_pwave/FIXTURES.md describes the runs."""
+    path = os.path.join(folder, 'v16_gg_chic0_chic0.json')
+    if not os.path.exists(path):
+        return None
+    rr = json.load(open(path))
+    rerun = {}
+    for e in rr['comparison']['dp']:
+        r = rerun.setdefault(e['point'], dict(point=e['point'], c1_moved=0.0, finite_moved=0.0,
+                                              c1_vs_predicted=0.0, codes_unchanged=True))
+        if e['mode'] == '-1':
+            r['test'] = dict(c1_moved=e['c1_vs_old'], finite_moved=e['fin_vs_old'], code=e['code'],
+                             accuracy=e['acc'])
+        else:
+            r['c1_moved'] = max(r['c1_moved'], e['c1_vs_old'])
+            r['finite_moved'] = max(r['finite_moved'], e['fin_vs_old'])
+            r['c1_vs_predicted'] = max(r['c1_vs_predicted'], e['c1_vs_pred'])
+        r['codes_unchanged'] = r['codes_unchanged'] and e['code'] == e['old_code']
+    for e in rr['comparison']['qp']:
+        r = rerun[e['point']]
+        r['qp'] = dict(c1_moved=e['c1_vs_old'], finite_moved=e['fin_vs_old'], code=e['code'],
+                       c1_vs_predicted=e['c1_vs_pred'])
+        r['codes_unchanged'] = r['codes_unchanged'] and e['code'] == e['old_code']
+    rerun = sorted(rerun.values(), key=lambda r: tuple(int(x) for x in r['point'].split('/')))
+
+    cases = []
+
+    def add(label, names):
+        recs = {}
+        for name in names:
+            d = json.load(open(os.path.join(folder, name)))
+            d = d.get('dp', d)
+            for r in d['records']:
+                e = recs.setdefault((r['energy'], r['point']), dict(process=label))
+                e.update(qp_check_row(r, d['modes']))
+                e['born'] = r['ctmode' + d['modes'][0]]['born']
+        for key in sorted(recs):
+            e = recs[key]
+            e['finite_directions'] = abs(e['2']['finite'] - e['1']['finite']) / abs(e['1']['finite'])
+            e['double_dev'] = max(e[m]['double_dev'] for m in ('1', '2'))
+            cases.append(e)
+    add('ggg', ['v16_ggg_3p28_3p18_ct1.json', 'v16_ggg_3p28_3p18_ct2.json'])
+    add('so', ['v16_uu_chic0_3p08.json'])
+    add('cb', ['v16_gg_chic1_chib0.json'])
+
+    so = json.load(open(os.path.join(folder, 'v16_uu_chic0_3p08.json')))
+    x = so['qp']['result']
+    dp1 = next(e for e in cases if e['process'] == 'so' and (e['energy'], e['point']) ==
+               (so['qp']['energy'], so['qp']['point']))
+    so_qp = dict(energy=so['qp']['energy'], point=so['qp']['point'], code=x['ret_code'], time=x['time'],
+                 finite=x['finite_norm'],
+                 single_dev=abs(x['single_norm'] - x['predicted_single_norm']) / abs(x['predicted_single_norm']),
+                 double_dev=abs(x['double_norm'] - x['predicted_double_norm']),
+                 dp_finite_dev={m: abs(dp1[m]['finite'] - x['finite_norm']) / abs(x['finite_norm'])
+                                for m in ('1', '2', '-1')},
+                 test_accuracy=dp1['-1']['accuracy'])
+    so_terms = [dict(energy=r['energy'], point=r['point'], omega=r['omega'], c1=r['c1'], predicted=r['predicted'],
+                     term1=r['term1'], term2=r['term2'], term3_f1=r['term3_f1'], term3_f2=r['term3_f2'],
+                     im_z=max(abs(v) for v in r['im_z']),
+                     c1_vs_predicted=abs(r['c1'] - r['predicted']) / abs(r['predicted']))
+                for r in so['terms']['rows']]
+
+    cb = json.load(open(os.path.join(folder, 'v16_gg_chic1_chib0.json')))
+    x = cb['born']['result']
+    born = dict(tree_default=cb['tree_default'], tree=cb['born']['tree'], loop=x['born'],
+                relative=abs(x['born'] - cb['born']['tree']) / cb['born']['tree'],
+                energy=2 * cb['born']['point'][0][0],
+                single=x['single_norm'], predicted=x['predicted_single_norm'], code=x['ret_code'])
+    return dict(rerun=rerun, cases=cases, so_qp=so_qp, so_terms=so_terms, born=born)
 
 
 # Table 2 (tab:chic0hc) of the two-P-wave manuscript,

@@ -485,7 +485,7 @@ The UV slots are zero in all three versions.
 | 50, 0 | 1.1e-12 | 9.2e-6 / 5.9e-5 / 3.4e-5 | 9.2e-12 | 4.8e-6 | 213, 1.9e-5 |
 
 - **Quadruple precision** (CTModeRun 4, 20 GeV, point 0, code 120, 355 s): 1/ε is 4.3e-14 from the prediction and 1/ε² is −2 C_F to 4e-15. Its finite part, 77.751715619891, is the DP value of CTModeRun 1 to 3.0e-9, of CTModeRun 2 to 3.0e-8 and of the stability test to 1.7e-8. The stability test's estimate there, 8.8e-8, is above its true error.
-- **Double precision** follows the Born: as it falls from 1.5e-10 to 1.1e-12, the 1/ε error grows from 3e-12 to 6e-5. No call is refused, and the stability test calls every point stable, with estimates that track the errors.
+- **Double precision** loses digits with the energy: the 1/ε error grows from 3e-12 (8 GeV, point 0) to at most 7e-8 at 20 GeV and 6e-5 at 50 GeV. It does not follow the Born: the smallest one, 5.9e-14 at 20 GeV point 1, has a smaller error than the 50 GeV point with 1.1e-12. No call is refused, and the stability test calls every point stable, with estimates that track the errors.
 
 The parts of the prediction (`appendix_b.py terms`, in the order of eq. (B.2)):
 

@@ -572,7 +572,10 @@ counterterm of the eight-quark operators.
 The virtual needs TIRust integrals with two dotted or one tripled
 propagator, at the thresholds of both pairs. TIRust 4f1b06c serves them; it
 is in TIRust's main branch (PR \#58), not yet pinned. It runs with the bridge
-patch v9, not yet in MadGraph.
+patch v9, not yet in MadGraph. The tables of this section use it. TIRust
+da7902b with the bridge patch v16 also serves the rank-7 pentagons of a
+process with a jet; @twopw16 has the processes run on it, which cover every
+colour assignment of the two states, and the rerun of @tab:gg2p.
 
 No one-loop finite part of a process with two P-wave states is published.
 HKW give the poles of the soft real emission in $e^+ e^- -> c overline(c)[""^3 P_(J_1)^((8))] + c overline(c)[""^3 P_(J_2)^((1))] + g$
@@ -756,6 +759,117 @@ The numbers:
   #calc.round(100 * calc.min(..ab.terms_gg.map(r => calc.abs(r.term3_f2 / r.c1))))–#calc.round(100 * calc.max(..ab.terms_gg.map(r => calc.abs(r.term3_f2 / r.c1))))%
   of the pole, so it is tested too. The $e^+ e^-$ process cannot test it:
   there it vanishes, as the manuscript notes.
+
+=== TIRust da7902b: every colour assignment <twopw16>
+
+#let v16 = two.v16
+#let v16c(p) = v16.cases.filter(e => e.process == p)
+#let v16name = (
+  ggg: [$c overline(c)[""^3 P_2^((8))] thin c overline(c)[""^3 P_1^((8))] thin g$],
+  so: [$chi_(c 0) thin c overline(c)[""^3 P_0^((8))]$],
+  cb: [$chi_(c 1) thin chi_(b 0)$])
+TIRust da7902b (TIRust PR \#71, not yet pinned) with the bridge patch v16
+reduces the pentagons of raised-power plans without Gram determinants up to
+rank 7, and keeps the UV remainders of the dropped $(D - 4)$ terms at ranks 6
+and 7. It serves every integral of three more processes, which cover the
+colour assignments and states left (@tab:v16; `research/two_pwave/FIXTURES.md`):
+- *Two octets with a jet,* $g g -> c overline(c)[""^3 P_2^((8))] thin c overline(c)[""^3 P_1^((8))] thin g$,
+  with 786 Born amplitudes. All 73074 calls of each loop direction are
+  served, the heptagons and the rank-7 terms included. A pass took about
+  8000 s on a fully loaded host.
+- *A singlet with an octet,* $u overline(u) -> chi_(c 0) thin c overline(c)[""^3 P_0^((8))]$.
+  All three parts of the pole contribute (@tab:v16-terms).
+- *Unequal flavours and $J = 1$,* $g g -> chi_(c 1) thin chi_(b 0)$, whose
+  tree value is an acceptance reference (`test_cmd.py`).
+
+#block(breakable: false)[#figure(caption: [The processes first run on TIRust da7902b, at the seed-1 points of `qp_check.py`, double precision: the Born, the predicted 1/ε per Born times $alpha_s\/2pi$, the relative deviation of the computed one in both loop directions (`CTModeRun` 1 and 2), the largest deviation of the 1/ε² from its prediction (−9, $-2 C_F$ and $-2 C_A$), the finite part, the agreement of the two directions, and the return code and accuracy estimate of MadLoop's stability test at its default threshold $10^(-3)$, where run.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right, right, right, right, right),
+    [process], [$sqrt(s)$, pt], [Born], [$c_1$ prediction], [dev. (1, 2)], [$|c_2 - "pred."|$], [$c_0$], [1 vs 2], [test],
+    ..v16.cases.map(e => (v16name.at(e.process), [#fixed(e.energy, 0), #e.point], sci(e.born, d: 2), dec(e.at("1").predicted, 6),
+      [#sci(e.at("1").single_dev), #sci(e.at("2").single_dev)], sci(e.double_dev), dec(e.at("1").finite, 4),
+      sci(e.finite_directions),
+      if e.at("-1", default: none) == none [—] else [#e.at("-1").code, #sci(e.at("-1").accuracy)])).flatten()))
+] <tab:v16>]
+
+#block(breakable: false)[#figure(caption: [$u overline(u) -> chi_(c 0) thin c overline(c)[""^3 P_0^((8))]$: MadLoop's computed 1/ε per Born times $alpha_s\/2pi$ (`CTModeRun` 1), and the parts of eq. (B.2) that `ONIA_IR_POLES` adds up (`appendix_b.py terms`), as in @tab:appb-gg. The $P -> S$ terms are those of each state, in the order of the process. The last column is the relative deviation of the computed 1/ε from their sum.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, right, right, right),
+    [$sqrt(s)$, pt], [$omega$], [$c_1$ MadLoop], [lines 1–4], [lines 4–5 (each state)], [line 6, $f_1$], [line 6, $f_2$], [dev.],
+    ..v16.so_terms.map(r => ([#fixed(r.energy, 0), #r.point], fixed(r.omega, 4), dec(r.c1, 6), dec(r.term1, 6),
+      [#dec(r.term2.at(0), 6), #dec(r.term2.at(1), 6)], dec(r.term3_f1, 6), dec(r.term3_f2, 6), sci(r.c1_vs_predicted))).flatten()))
+] <tab:v16-terms>]
+
+#let ggg = v16c("ggg").first()
+#let soq = v16.so_qp
+The numbers:
+- *Two octets.* The 1/ε is as predicted to #sci(ggg.at("1").single_dev) and
+  #sci(ggg.at("2").single_dev) in the two loop directions. The finite part,
+  #dec(ggg.at("1").finite, 7) per Born, is the first one of the process that
+  can be quoted: on earlier revisions TIRust refused some of its integrals.
+- *A singlet with an octet.* Every part of the pole is nonzero, and the
+  $f_1$ and $f_2$ parts of the dipole-dipole term largely cancel. Double
+  precision loses digits with the energy: the 1/ε error is
+  #sci(v16c("so").first().at("1").single_dev) at 8 GeV, point 0, up to
+  #sci(calc.max(..v16c("so").filter(e => e.energy == 20).map(e => calc.max(e.at("1").single_dev, e.at("2").single_dev))))
+  at 20 GeV and #sci(v16c("so").last().at("2").single_dev) at 50 GeV. The
+  stability test calls every point stable, with estimates that track the
+  errors. In quadruple precision
+  (`CTModeRun` 4, #fixed(soq.energy, 0) GeV, point #soq.point, code
+  #soq.code) the 1/ε is as predicted to #sci(soq.single_dev), and the
+  double-precision finite part is within #sci(soq.dp_finite_dev.at("1")) of
+  it (`CTModeRun` 1; the stability test's estimate there is
+  #sci(soq.test_accuracy)). The imaginary parts of the kernels are
+  $lt.eq$ #sci(calc.max(..v16.so_terms.map(r => r.im_z))) per Born.
+- *$g g -> chi_(c 1) thin chi_(b 0)$: the Born against the tree.* The tree
+  output takes the model's physical masses, 3.51 and 9.86 GeV, with
+  $m_c = 1.55$ and $m_b = 4.7$ GeV: its acceptance reference,
+  #sci(v16.born.tree_default, d: 4), has $M != m_1 + m_2$. The loop layer
+  always takes $M = m_1 + m_2$. With $m_c = 1.755$ and $m_b = 4.93$ GeV both
+  outputs have the same masses, and at the tree's check point
+  ($sqrt(s) = #fixed(v16.born.energy, 0)$ GeV) the loop output's Born is the
+  tree's, #sci(v16.born.tree, d: 15), bit for bit. At that point double
+  precision loses the pole (1/ε #dec(v16.born.single, 2) against
+  #dec(v16.born.predicted, 2)), as for $g g -> chi_(c 0) thin chi_(c 0)$ at
+  200 GeV; that run had the stability test off. At 20 GeV the poles are as
+  predicted to $lt.eq$ #sci(calc.max(..v16c("cb").map(e => calc.max(e.at("1").single_dev, e.at("2").single_dev)))).
+
+#let rr = v16.rerun
+#let rr50 = rr.filter(r => r.point.starts-with("50/") or r.point.starts-with("200/"))
+#let rrlow = rr.filter(r => not (r.point.starts-with("50/1") or r.point.starts-with("200/")))
+#block(breakable: false)[#figure(caption: [The $g g -> chi_(c 0) thin chi_(c 0)$ points of @tab:gg2p rerun on TIRust da7902b with the bridge patch v16, output regenerated from the current branch: how far each result moved from the 4f1b06c one, relative. Double precision is the larger of `CTModeRun` 1 and 2; "test" is `CTModeRun` −1 at the default threshold, and QP `CTModeRun` 4 (forward points). The return codes are unchanged at every point. The last column is the deviation of the double-precision 1/ε from the prediction on da7902b.])[
+  #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (right, right, right, right, right, center, right, right),
+    [$sqrt(s)$, pt], [DP $c_1$], [DP $c_0$], [test $c_1$], [test $c_0$], [test code], [QP $c_1$, $c_0$], [DP $c_1$ vs. pred.],
+    ..rr.map(r => ([#r.point.replace("/", ", ")], sci(r.c1_moved), sci(r.finite_moved), sci(r.test.c1_moved),
+      sci(r.test.finite_moved), str(r.test.code),
+      if r.at("qp", default: none) == none [—] else [#sci(r.qp.c1_moved), #sci(r.qp.finite_moved)],
+      sci(r.c1_vs_predicted))).flatten()))
+] <tab:v16-rerun>]
+
+#box-note[
+  *The rerun of @tab:gg2p* (@tab:v16-rerun). da7902b changes rank-6
+  hexagons with two doubled lines:
+  - *Up to 50 GeV, point 0,* the results move by at most
+    #sci(calc.max(..rrlow.map(r => calc.max(r.c1_moved, r.finite_moved)))), and the
+    quadruple-precision results and the rescued 200 GeV points by about
+    $10^(-15)$.
+  - *At the forward point of 50 GeV* double precision's 1/ε moves by
+    #sci(rr.find(r => r.point == "50/1").c1_moved). There the pole per Born,
+    0.20, is what is left of a large cancellation, which amplifies the
+    changes of the integrals' poles about $10^6$ times. TIRust's 256-bit
+    references of the moved hexagons show the da7902b values right to
+    rounding, where 4f1b06c had their poles off by up to $3 dot 10^(-10)$
+    and their finite parts by up to $9 dot 10^(-8)$.
+  - *Double precision's miss at that point,* #sci(rr.find(r => r.point == "50/1").c1_vs_predicted)
+    against the prediction (quadruple precision:
+    #sci(rr.find(r => r.point == "50/1").qp.c1_vs_predicted)), is a separate
+    effect, which da7902b does not change. TIRust attributes it to the same
+    cancellation acting on the rounding of the binary64 inputs (not checked
+    here).
+  The tables above stay on 4f1b06c: the stability test's results agree with
+  da7902b's within their accuracy estimates.
+]
 
 = Reduction libraries at threshold <reducers>
 
@@ -1112,6 +1226,7 @@ confidence interval of the geometric-mean ratio.
 - $e^+ e^- -> J\/psi thin chi_(c J)$ (`data/raw/pwave/psi_chic_<J>.json`,
   `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The heavy-quark floor (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on `e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]` (the $b$ and $t$ in the loops), and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]`, both generated with the same TIRust.
 - Two P-wave states (`data/raw/two_pwave/`): `hkw_phase0.json` collects the outputs of `research/two_pwave/kernel_check.py` and `sigma3_check.py` (the derivation) and its $e^+ e^- -> chi_(c 0) thin h_c$ reference; `ee_dp.json`, `ee_qp.json`, `gg_dp_*.json` are `research/two_pwave/qp_check.py OUTDIR OUT ...` ($e^+ e^-$: `7:1 10.58:2 30:1 --modes 1,2` and `10.58:1 --modes 4`; $g g$: `8:2 12:2`, `20:4`, `50:2 200:2` with `--modes 1,2,-1 --thres 1.0d-3`), and `gg_qp_*.json` are `research/two_pwave/qp_point.py OUTDIR OUT E 1 4`, on outputs generated with TIRust 4f1b06c and the bridge patch v9 (`research/pwave_fd/build.sh`).
+- Two P-wave states on TIRust da7902b with the bridge patch v16 (@twopw16; `data/raw/two_pwave/v16_*.json`, described in `research/two_pwave/FIXTURES.md`): `v16_gg_chic0_chic0.json` is the rerun of the $g g -> chi_(c 0) thin chi_(c 0)$ points with `qp_check.py` and `qp_point.py`, with its comparison against the records above; `v16_ggg_3p28_3p18_ct1.json`, `_ct2.json` (one loop direction each), `v16_uu_chic0_3p08.json` (with a `CTModeRun` 4 point and `appendix_b.py terms`) and `v16_gg_chic1_chib0.json` (with the Born at the tree output's check point) are `qp_check.py` records.
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json --two-pwave data/raw/two_pwave --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
