@@ -2795,6 +2795,15 @@ RESTART = %(mint_mode)s
                 elif step+1 > 2:
                     raise aMCatNLOError('Cannot determine number of iterations and PS points '+
                                         'for integration step %i' % step )
+            elif req_acc > 0 and tot == 0 and totABS == 0:
+                # every channel vanished at every phase-space point: there is
+                # no accuracy to reach (it divided by zero)
+                raise aMCatNLOError('The cross section is exactly zero: every integration '
+                                    'channel vanished at every phase-space point. This is the '
+                                    'case at LO for a process whose Born vanishes identically '
+                                    '(e.g. p p > chic1(1|3P11), whose real emission starts at '
+                                    'NLO: use "launch NLO"), or when the cuts remove the whole '
+                                    'phase space.')
             elif ( req_acc > 0 and err/abs(tot) > req_acc*1.2 ) or step <= 0:
                 req_accABS=req_acc*abs(tot)/totABS # overall relative required accuracy on ABS Xsec.
                 for job in jobs:

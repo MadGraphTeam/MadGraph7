@@ -5,6 +5,35 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   HS: fixed-order NLO QCD with bound states (FKS subtraction of arXiv:2402.19221,
+       extended to several P waves) for any number of S- and P-wave quarkonia
+       (colour singlet or octet), S- and P-wave leptonia and elementary particles,
+       with "generate ... [QCD]" or "[real=QCD]" in the sm_onia models (massive
+       constituents, e.g. "import model sm_onia-c_mass"):
+       - the onium is one FKS particle of mass m_Q + m_Qbar (no reshuffling at NLO;
+         the onium_mass of the onia card is not used). A colour-octet or P-wave
+         onium is a soft partner of the gluons and has an FKS sector of its own
+         (soft only);
+       - local and integrated soft counterterms of P waves: the "flavour-changing"
+         soft current to the S waves of the other colour, rank-1 and rank-2
+         eikonal tensor integrals, and the dipole-dipole terms of two P waves with
+         the counterterms of the eight-quark operators;
+       - the LDME counterterms, also for unequal constituent masses, at the NRQCD
+         scale mu_nrqcd_ref_fixed of the run card (-1: (m_Q + m_Qbar)/2);
+       - the poles of the virtual in check_poles, and built-in one-loop virtuals of
+         2 -> 1 Borns: g g -> 1S0, 3P0, 3P2 (singlet and octet) and 1P1[8],
+         q q~ -> 3S1[8], q q~ -> leptonium. Other [QCD] processes need a user
+         virtual (BinothLHA_user.f), or can be run as [real=QCD];
+       - diagrams that vanish by C parity or colour are left out of the colour
+         flows. The generation warns when a real emission has a soft or collinear
+         region whose Born was not generated (use p = j = all massless flavours);
+       - refused: onia in the initial state, polarised particles, [QED], massless
+         constituents, and matching to a parton shower (launch aMC@NLO).
+   HS: FKS fixed order: integrable weights of the ISR collinear counterterms
+       (log(1-xi) sampling of the n+1-body weights) and S functions with the exact
+       dot product, for light systems at small tau; velocities of massive emitters
+       at rest in the integrated eikonals; MINT combines a channel whose integrand
+       vanishes at every point to zero (it gave 0/0).
    HS: fixed-order NLO: the collinear cut-off of the initial-state radiation angle
        (1-y >= 1e-6) now scales with z = shat_born/shat. The real leaves its collinear
        limit on 1-y ~ z, so for light systems at high energy (z down to 1e-7) the fixed

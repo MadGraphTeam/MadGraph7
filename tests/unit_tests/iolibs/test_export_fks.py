@@ -378,8 +378,22 @@ class IOExportFKSTest(IOTests.IOTestManager):
     @IOTests.createIOTest()
     def testIO_test_pptt_fksrealew(self):
         r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
-        self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QED]'], 'sm', 
+        self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QED]'], 'sm',
                       multiparticles = ['p = u u~ d d~ s s~ c c~ g a'])
+
+    @IOTests.createIOTest()
+    def testIO_test_gg_jpsi8g_fksreal(self):
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        # a colour-octet S-wave onium: one FKS particle of mass 2 m_c, soft
+        # partner of the gluons with a soft-only sector of its own
+        self.generate(['g g > Jpsi(1|3S18) g [real=QCD]'], 'sm_onia-c_mass')
+
+    @IOTests.createIOTest()
+    def testIO_test_gg_chic0g_fksreal(self):
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        # a P-wave onium: born_onia.f (cross vectors, self tensor, auxiliary
+        # S-wave Borns) and the dual-number P-wave kernels
+        self.generate(['g g > chic0(1|3P01) g [real=QCD]'], 'sm_onia-c_mass')
 
 
 

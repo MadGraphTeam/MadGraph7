@@ -1398,3 +1398,108 @@ class MECmdShell(IOTests.IOTestManager):
 
         check_html_page(self, pjoin(self.path, 'crossx.html'))
         check_html_page(self, pjoin(self.path, 'HTML', 'run_01', 'results.html'))
+
+
+class TestOniaFixedOrder(unittest.TestCase):
+    """Fixed-order NLO QCD with bound states (madgraph/fks/fks_onia.py,
+    arXiv:2402.19221 and its extension to several P waves): 2 -> 1 processes
+    with the built-in virtuals, a real emission with an octet onium, a
+    leptonium, and the refusals. The references are cross sections of this
+    code at higher statistics (nn23nlo, mu_R = mu_F = M fixed, default
+    LDMEs; 13 TeV, or 20 and 100 GeV where the positive and negative weights
+    cancel strongly at 13 TeV); the totals of the 2 -> 1 processes agree with
+    HELAC-Onia's pp_oniumX (onia_fks report, family E)."""
+
+    LIGHT = ['p = g u d s u~ d~ s~', 'j = g u d s u~ d~ s~']
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='amc_onia')
+        self.path = pjoin(self.tmpdir, 'MGProcess')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def run_fo(self, process, mass, settings=(), order='NLO'):
+        """generate, output and launch at fixed order; returns (sigma, error)"""
+        lines = ['set automatic_html_opening False --no_save',
+                 'set notification_center False --no_save',
+                 'import model sm_onia-c_mass']
+        lines += ['define %s' % d for d in self.LIGHT]
+        lines += ['generate %s' % process, 'output %s' % self.path, 'launch %s' % order,
+                  'set pdlabel nn23nlo', 'set fixed_ren_scale True', 'set fixed_fac_scale True',
+                  'set muR_ref_fixed %s' % mass, 'set muF_ref_fixed %s' % mass]
+        lines += ['set %s' % s for s in settings]
+        open(pjoin(self.tmpdir, 'cmd'), 'w').write('\n'.join(lines) + '\n')
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import command %s' % pjoin(self.tmpdir, 'cmd'))
+        run = 'run_01' if order == 'NLO' else 'run_01_LO'
+        summary = open(pjoin(self.path, 'Events', run, 'summary.txt')).read()
+        xsect = summary.split("Total cross section:")[1].split(" +-")[0]
+        error = summary.split("Total cross section:")[1].split(" +-")[1].split()[0]
+        return float(xsect), float(error)
+
+    def check(self, value, error, reference, reference_error):
+        self.assertAlmostEqual(value, reference,
+                               delta=3 * math.sqrt(error ** 2 + reference_error ** 2))
+
+    def test_onia_fo_gg_etac(self):
+        """g g > eta_c at NLO: built-in virtual (Petrelli et al.), check_poles"""
+        sig, err = self.run_fo('p p > etac(1|1S01) [QCD]', 3.1, ['req_acc_FO 0.01'])
+        self.check(sig, err, ONIA_REF['etac'][0], ONIA_REF['etac'][1])
+
+    def test_onia_fo_chic_2to1(self):
+        """p p > chi_c0 at NLO: a P-wave Born (g g) and a vanishing one with a
+        soft P-wave current (q q~), the LDME counterterm; p p at 20 GeV"""
+        sig, err = self.run_fo('p p > chic0(1|3P01) [QCD]', 3.1,
+                               ['req_acc_FO 0.01', 'ebeam1 10', 'ebeam2 10'])
+        self.check(sig, err, ONIA_REF['chic0'][0], ONIA_REF['chic0'][1])
+
+    def test_onia_fo_jpsi_octet_2to2_real(self):
+        """p p > J/psi[3S1(8)] j, real emission and integrated counterterms of
+        a colour-octet onium (soft partner with a sector of its own, massive
+        octet); p p at 100 GeV"""
+        sig, err = self.run_fo('p p > Jpsi(1|3S18) j [real=QCD]', 3.1,
+                               ['req_acc_FO 0.05', 'ebeam1 50', 'ebeam2 50', 'ptj 5', 'etaj 4'])
+        self.check(sig, err, ONIA_REF['jpsi8j'][0], ONIA_REF['jpsi8j'][1])
+
+    def test_onia_fo_leptonium(self):
+        """p p > ditauonium(3S1) at NLO: the light-quark form factor"""
+        sig, err = self.run_fo('p p > tata(1|3S1) [QCD]', 3.554, ['req_acc_FO 0.01'])
+        self.check(sig, err, ONIA_REF['tata'][0], ONIA_REF['tata'][1])
+
+    def test_onia_nlo_refusals(self):
+        """processes outside the category are refused with a message, several
+        P waves are accepted, and parton-shower matching is refused at launch"""
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('set automatic_html_opening False --no_save')
+        interface.exec_cmd('set notification_center False --no_save')
+        interface.exec_cmd('import model sm_onia')
+        with self.assertRaises(Exception) as ctx:
+            interface.exec_cmd('generate g g > Jpsi(1|3S18) g [real=QCD]', errorhandling=False)
+        self.assertIn('massive constituents', str(ctx.exception))
+        interface.exec_cmd('import model sm_onia-c_mass')
+        for process, text in [('Jpsi(1|3S11) > g g g [QCD]', 'initial state'),
+                              ('g g > Jpsi(1|3S18) g [QED]', 'QCD corrections only')]:
+            with self.assertRaises(Exception) as ctx:
+                interface.exec_cmd('generate %s' % process, errorhandling=False)
+            self.assertIn(text, str(ctx.exception))
+        # two P-wave quarkonia (dipole-dipole soft terms) are supported
+        interface.exec_cmd('generate e+ e- > Bc+(1|1P18) Bc-(1|1P18) / z h QED=2 QCD=2 [real=QCD]',
+                           errorhandling=False)
+        self.assertTrue(interface._fks_multi_proc['born_processes'])
+        interface.exec_cmd('generate g g > etac(1|1S01) [QCD]', precmd=True, postcmd=True)
+        interface.exec_cmd('output %s' % self.path, precmd=True, postcmd=True)
+        cmd = NLOCmd.aMCatNLOCmdShell(me_dir=self.path)
+        cmd.no_notification()
+        with self.assertRaises(Exception) as ctx:
+            cmd.check_onia_run_mode('aMC@NLO')
+        self.assertIn('only available at fixed order', str(ctx.exception))
+        cmd.check_onia_run_mode('NLO')
+
+
+# (sigma, error) in pb of the TestOniaFixedOrder processes, from the same settings at
+# req_acc_FO = 0.002 (etac, tata), 0.003 (chic0) and 0.01 (jpsi8j)
+ONIA_REF = {'etac': (4.361e8, 7.8e5), 'chic0': (2.446e5, 5.1e2), 'jpsi8j': (4.003e3, 25.),
+            'tata': (9.128e-2, 2.1e-4)}
