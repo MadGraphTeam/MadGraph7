@@ -497,3 +497,24 @@ The parts of the prediction (`appendix_b.py terms`, in the order of eq. (B.2)):
 | 20, 1 | −6.296162 | −47.172190 / −54.858704 | −523.173341 + 542.906597 | −88.593796 |
 
 The imaginary parts of the dipole-dipole kernels are zero to rounding: 8e-15 to 6e-10 per Born, against parts of up to 540. With the ggg run (two octets) and g g → χ_c0 χ_c0 (two singlets), the predicted pole is now checked for every colour assignment of two P-wave states.
+
+## g g → χ_c1 χ_b0: the Born against the tree output, and the virtual (TIRust da7902b + bridge v16)
+
+`g g > chic1(1|3P11) chib0(1|3P01) [virt=QCD]` has two P-wave states of different flavours, one of them with J = 1: 36 Born and 1336 loop diagrams, run on 2026-11-26. Its tree value is the acceptance reference of `test_quarkonium_standalone` (`test_cmd.py`), 3.1322751724804800e-16 at the check point of `check_sa.f` (√s = 1 TeV).
+
+**Masses.** The two outputs give each bound state its mass differently:
+- the tree output (`sm_onia-c_mass`) takes the model's physical masses, 3.51 and 9.86, with the constituent masses MC = 1.55 and MB = 4.7, so M ≠ m₁ + m₂;
+- the loop layer always uses M = m₁ + m₂ (`pmass.inc`: `ABS(MDL_MC)+ABS(MDL_MC)`).
+
+The tree value depends on MC and MB. With MC = 1.755 and MB = 4.93, both outputs have M = m₁ + m₂ = 3.51 and 9.86, and the tree gives 1.8698583325418731e-16 at the same point. The loop output gets that point in full precision, with these masses set in its param_card.
+
+**Born.** The loop output's Born is 1.8698583325418731e-16, bit for bit the tree value.
+
+**Virtual** with the default masses (M = 3.1, 9.4), at the seed-1 points of 20 GeV, CTModeRun 1 and 2 (MLStabThres 1d99), code 110. Per Born × α_s/(2π):
+
+| point | 1/ε | prediction | 1/ε error, 1 / 2 | 1/ε² error | finite part (CTModeRun 1) | 1 against 2 |
+|---|---|---|---|---|---|---|
+| 0 | −15.616433619007 | −15.616433619011 | 2.8e-13 / 7.8e-13 | 1.9e-13 | 77.201675021187 | 5.8e-13 |
+| 1 | −14.593014764684 | −14.593014764679 | 3.1e-13 / 3.7e-13 | 2.3e-13 | 74.085086355840 | 1.8e-12 |
+
+At the 1 TeV tree point, DP loses the pole (1/ε −234.65 against −4.69, 1/ε² −5.9995): as for g g → χ_c0 χ_c0 at 200 GeV, the cancellation exceeds double precision there. That run had the stability test off (MLStabThres 1d99), which is why it returned 110. The data are in `data/born_gg_chic1_chib0_da7902b_v16.json`.
