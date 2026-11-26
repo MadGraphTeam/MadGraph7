@@ -98,6 +98,10 @@ SETUPS = {
     "pp_epem_rw": ("pp_epem", dict(mfir.PROCESSES["pp_epem"][1], reweight_scale=True)),
     # a Born of one final-state particle, a W at rest in the partonic frame
     "pp_wp": ("pp_wp", {}),
+    # a gluon of a decay that splits into g g and q q~ against the top, with
+    # a massive and a massless b
+    "t_bwg": ("t_bwg", {}),
+    "t_bwg_mb0": ("t_bwg_mb0", {}),
     # the Sudakov approximation of the EW corrections at a 3 TeV collider
     "epem_ttx_sdk": ("epem_ttx_sdk", {}),
 }
@@ -140,6 +144,13 @@ OUTPUTS = {
     ),
     "aa_ttx": ("a a > t t~ [QCD]", dict(mfir.HADRONIC, lpp1=2, lpp2=2), None),
     "pp_wp": ("p p > w+ [QCD]", dict(mfir.HADRONIC), None),
+    # the jet of the gluon with its cuts in the rest frame of the top
+    "t_bwg": ("t > b w+ g QED=1 [QCD]", dict(ptj=10, jetalgo=-1, jetradius=0.4), None),
+    "t_bwg_mb0": (
+        "t > b w+ g QED=1 [QCD]",
+        dict(ptj=10, jetalgo=-1, jetradius=0.4),
+        "loop_sm-no_b_mass",
+    ),
     # the forSudakov models of the model database of MadGraph
     "epem_ttx_sdk": (
         "e+ e- > t t~ [QCD] --ewsudakov",
@@ -178,6 +189,8 @@ ACCURACIES = {
     # the Sudakov approximation on every point makes MadFKS slow, and it is
     # -30% of the LO (sud_mod 0) at 3 TeV
     "epem_ttx_sdk": 1e-3,
+    "t_bwg": 1e-3,
+    "t_bwg_mb0": 1e-3,
 }
 # the values of every run, the defaults of the run_card where a setup of
 # the same output changes them

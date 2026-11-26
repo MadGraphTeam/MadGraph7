@@ -41,6 +41,7 @@ NAMES = [
     "pp_epemj",
     "t_bw",
     "t_bw_mb0",
+    "t_bwg",
     "epem_ttx_isr",
     "aa_ttx",
     "pp_epem_qed",

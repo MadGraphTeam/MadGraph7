@@ -452,12 +452,6 @@ double kernel_index(CSMapping::Family family, const std::string& kernel) {
     if (!final_emitter) {
         names = {"qg", "gg", "qq", "gq"};
     }
-    if (family == CSMapping::final_decay && kernel != "qg") {
-        throw std::invalid_argument(
-            "CSDipoles: a decaying spectator has the dipoles of a quark emitter "
-            "only (qg)"
-        );
-    }
     for (std::size_t k = 0; k < names.size(); ++k) {
         if (names[k] == kernel) {
             return static_cast<double>(k);

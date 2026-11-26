@@ -219,9 +219,10 @@ private:
  * the dipole (the identical particles of its Born over those of the real).
  * A dipole vanishes outside the alpha of its family, @f$y < \alpha y_+@f$
  * (ff), @f$1 - x < \alpha@f$ (fi), @f$u < \alpha@f$ (if), @f$v < \alpha@f$
- * (ii). The dipoles of a final-state quark with the decaying particle of a
+ * (ii). The dipoles of a final-state emitter with the decaying particle of a
  * decay as the spectator take @f$y < \alpha_{ff} y_+@f$ of their final-final
- * map, and the soft terms of the decaying particle (`cs_final_decay_dipole`).
+ * map, and the soft terms of the decaying particle (`cs_final_decay_dipole`
+ * [4], for gluons as the dipoles of [5]).
  *
  * `batch` is the leading batch dimension, `d` the number of dipoles and `n`
  * the number of particles of their Borns.
@@ -253,6 +254,9 @@ private:
  * - [4] L. Basso, S. Dittmaier, A. Huss, L. Oggero, "Techniques for the
  *   treatment of IR divergences in decay processes at NLO and application to
  *   the top-quark decay", https://arxiv.org/abs/1507.04676 (decays)
+ * - [5] W. Bernreuther, C. Gonzalez, M. Mellein, "Decays of polarized top
+ *   quarks to lepton, neutrino and jets at NLO QCD",
+ *   https://arxiv.org/abs/1401.5930 (gluons in decays)
  */
 class CSDipoles : public FunctionGenerator {
 public:

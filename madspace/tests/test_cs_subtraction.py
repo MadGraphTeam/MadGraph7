@@ -173,8 +173,7 @@ def test_subtraction_block():
 
 def test_decays():
     """A colored decaying particle is the spectator of the final-state quarks
-    (fd), a colorless one of none, and a final-state gluon with a colored
-    decaying particle is not covered."""
+    and gluons (fd), a colorless one of none."""
     masses = {6: 173.0, 5: 4.7}
     dipoles = cs_dipoles([6, 5, 24, 21], borns([6, 5, 24]), masses, nincoming=1)
     assert [
@@ -193,8 +192,21 @@ def test_decays():
     # a colorless decaying particle: H > b b~
     dipoles = cs_dipoles([25, 5, -5, 21], borns([25, 5, -5]), masses, nincoming=1)
     assert families(dipoles) == {("ff", "qg"): 2}
-    with pytest.raises(NotImplementedError, match="gluon"):
-        cs_dipoles([6, 5, 24, 21, 21], borns([6, 5, 24, 21]), masses, nincoming=1)
+    # t > b w+ g g and t > b w+ u u~: the gluon of the Born splits against
+    # the top and the b
+    dipoles = cs_dipoles([6, 5, 24, 21, 21], borns([6, 5, 24, 21]), masses, nincoming=1)
+    assert families(dipoles) == {
+        ("fd", "qg"): 2,
+        ("ff", "qg"): 2,
+        ("fd", "gg"): 1,
+        ("ff", "gg"): 1,
+    }
+    assert {d["symmetry"] for d in dipoles} == {0.5}
+    dipoles = cs_dipoles([6, 5, 24, 2, -2], borns([6, 5, 24, 21]), masses, nincoming=1)
+    assert [(d["family"], d["i"], d["j"], d["k"], d["kernel"]) for d in dipoles] == [
+        ("fd", 4, 3, 0, "gq"),
+        ("ff", 4, 3, 1, "gq"),
+    ]
 
 
 def test_qed_splittings():

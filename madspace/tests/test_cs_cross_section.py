@@ -180,6 +180,8 @@ def test_epem_jj_real(alpha):
         "pp_epemj",
         "t_bw",
         "t_bw_mb0",
+        "t_bwg",
+        "t_bwg_mb0",
         "epem_jj_isr",
         "epem_ttx_isr",
         "epem_ttx_ilc",
@@ -304,7 +306,17 @@ def test_real_topologies(name):
 @needs_outputs
 @pytest.mark.parametrize(
     "name",
-    ["epem_jj", "pp_epem", "epem_jjj", "pp_epemj", "t_bw", "t_bw_mb0", "epem_ttx_isr"],
+    [
+        "epem_jj",
+        "pp_epem",
+        "epem_jjj",
+        "pp_epemj",
+        "t_bw",
+        "t_bw_mb0",
+        "t_bwg",
+        "t_bwg_mb0",
+        "epem_ttx_isr",
+    ],
 )
 def test_alpha_independence(name):
     """The NLO cross section does not depend on alpha (1 and 0.1 for all
@@ -566,6 +578,50 @@ def test_decay_limits(real_stream, name):
         assert (ratios[1] < ratios[0] / 3).all(), (both, ratios)
         assert (ratios[2] < ratios[1] / 3).all(), (both, ratios)
         assert (ratios[2] < 1e-2).all(), (both, ratios)
+
+
+@needs_outputs
+@pytest.mark.parametrize("name", ["t_bwg", "t_bwg_mb0"])
+def test_gluon_decay_limits(real_stream, name):
+    """The real streams of t > b w+ g g and t > b w+ q q~ in the channels of
+    the dipoles of the gluon of the Born with the top as the spectator (fd,
+    g -> g g and g -> q q~), along rays into the limits: the collinear one
+    (the random number of y times lambda) for both, and the soft one of the
+    emitted gluon (those of y and z_i) for g -> g g. |R - D| / R, with the
+    sum of all dipoles, falls about linearly in lambda, by more than 30 in
+    the median from lambda = 0.1 to 1e-3, to below 1e-2 (single points pass
+    through zero on the way). Of the events of a massless b only those whose
+    jets pass the cuts count."""
+    run = real_stream(name, 0.0)
+    rng = np.random.default_rng(5)
+    kernels = set()
+    for integrand in run.integrands:
+        if not hasattr(integrand, "dipoles"):
+            continue
+        for channel, (m, _) in enumerate(integrand.channels):
+            entry = None if m is None else integrand.dipoles[m].entry
+            if entry is None or entry["family"] != "fd" or entry["kernel"] == "qg":
+                continue
+            kernels.add(entry["kernel"])
+            base = rng.uniform(0.2, 0.8, (16, integrand.channel_dimension(channel)))
+            for both in [False, True] if entry["kernel"] == "gg" else [False]:
+                ratios, passes = [], np.ones(len(base), dtype=bool)
+                for lam in (0.1, 1e-3):
+                    x = base.copy()
+                    x[:, -3] *= lam
+                    if both:
+                        x[:, -2] *= lam
+                    out = integrand.evaluate(channel, x, None, None, None, None)
+                    real = out["real_weight"]
+                    passes &= real != 0
+                    ratio = np.abs(real + out["dipole_weights"].sum(1))
+                    ratios.append(ratio / np.where(real != 0, np.abs(real), 1.0))
+                # the events whose jets pass the cuts (a massless b is a jet)
+                assert passes.sum() >= 8
+                ratios = [r[passes] for r in ratios]
+                assert np.median(ratios[1]) < np.median(ratios[0]) / 30, ratios
+                assert (ratios[1] < 1e-2).all(), (both, ratios)
+    assert kernels == {"gg", "gq"}
 
 
 @needs_outputs

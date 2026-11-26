@@ -47,6 +47,7 @@ NAMES = [
     "pp_wp",
     "t_bw",
     "t_bw_mb0",
+    "t_bwg",
     "epem_ttx_isr",
     "epem_ttx_ilc",
     "aa_ttx",

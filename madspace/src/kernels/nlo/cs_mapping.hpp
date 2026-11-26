@@ -926,14 +926,19 @@ KERNELSPEC void kernel_cs_final_final_dipole(
     );
 }
 
-// The dipole of a final-state quark j with the decaying particle a as the
-// spectator, q -> q g: the final-final kernel of CDST with the spectator K =
-// p_a - p_i - p_j of mass sqrt(K^2) (that of cs_final_decay_radiate), and the
-// soft terms of the decaying particle, 2 m_j^2 / (p_a.p_i p_i.p_j) - m_a^2 /
-// (p_a.p_i)^2, so that its soft limit is the eikonal of the pair j, a with
-// the mass terms of both (the partial fraction of the eikonal of a, which
-// emits no collinear parton, belongs to it, as in the dipoles of
-// arXiv:1507.04676)
+// The dipole of a final-state emitter j with the decaying particle a as the
+// spectator: the final-final kernel of CDST with the spectator K = p_a - p_i -
+// p_j of mass sqrt(K^2) (that of cs_final_decay_radiate), and the soft terms
+// of the decaying particle, so that each soft limit is the eikonal of the
+// emitter of the soft parton and a with the mass terms of both (the partial
+// fraction of the eikonal of a, which emits no collinear parton, belongs to
+// it, as in the dipoles of arXiv:1507.04676). The eikonal term 2 / (1 - z_j (1
+// - y)) of the soft i is 2 p_j.K / (p_a.p_i p_i.p_j) times p_i.p_j, since
+// p_i.(p_j + K) = p_a.p_i, which differs from 2 p_j.p_a / (p_a.p_i p_i.p_j) by
+// 2 (p_i.p_j + m_j^2) / (p_a.p_i p_i.p_j), finite but for the mass term. For q
+// -> q g the soft gluon i adds 2 m_j^2 / (p_a.p_i p_i.p_j) - m_a^2 /
+// (p_a.p_i)^2, for g -> g g each of the soft gluons i and j its - m_a^2 /
+// (p_a.p_x)^2 (the gluons are massless), and g -> q q~ has no soft limit.
 template <typename T>
 KERNELSPEC void kernel_cs_final_decay_dipole(
     FIn<T, 1> p_i,
@@ -946,7 +951,7 @@ KERNELSPEC void kernel_cs_final_decay_dipole(
     FOut<T, 0> spin_weight,
     FOut<T, 1> spin_vector
 ) {
-    FVal<T> alpha = options[1], kappa = options[2];
+    FVal<T> kernel = options[0], alpha = options[1], kappa = options[2];
     FVal<T> mj = options[3], ma = options[4];
     auto pi = load_mom<T>(p_i);
     auto pj = load_mom<T>(p_j);
@@ -956,9 +961,14 @@ KERNELSPEC void kernel_cs_final_decay_dipole(
         k[n] = pa[n] - pi[n] - pj[n];
     }
     auto mk = sqrt(max(ldot<T>(k, k), 0.));
-    auto f = cs_final_final_kernel<T>(pi, pj, k, mj, mk, FVal<T>(0.), alpha, kappa);
+    auto f = cs_final_final_kernel<T>(pi, pj, k, mj, mk, kernel, alpha, kappa);
     auto pipa = max(cs_lc_dot<T>(pa, ma, pi), EPS2);
-    auto a = f.a + 2. * mj * mj / pipa - ma * ma * f.pipj / (pipa * pipa);
+    // p_j.p_a of a massless j (a gluon), unused for a quark
+    auto pjpa = max(cs_lc_dot<T>(pa, ma, pj), EPS2);
+    auto ma2 = ma * ma;
+    auto a_qg = f.a + 2. * mj * mj / pipa - ma2 * f.pipj / (pipa * pipa);
+    auto a_gg = f.a - ma2 * f.pipj * (1. / (pipa * pipa) + 1. / (pjpa * pjpa));
+    auto a = where(kernel == 0., a_qg, where(kernel == 1., a_gg, f.a));
     auto k_t = cs_without_along<T>(f.kk, load_mom<T>(born_ij), load_mom<T>(born_a));
     cs_store_dipole<T>(
         f.gate, f.pipj, a, f.b, k_t, color_weight, spin_weight, spin_vector

@@ -8,7 +8,8 @@ positions of the real process (0-based). i is massless and emitted in the final 
 is ff, fi, if or ii by whether the emitter and the spectator are in the
 final (f) or the initial (i) state, and fd for a final-state emitter with
 the decaying particle of a decay as the spectator (Basso, Dittmaier, Huss,
-Oggero, arXiv:1507.04676), whose soft terms its dipoles take, as the decaying
+Oggero, arXiv:1507.04676, for gluons Bernreuther, Gonzalez, Mellein,
+arXiv:1401.5930), whose soft terms its dipoles take, as the decaying
 particle emits no collinear parton. The kernel names the splitting by the
 Born parton of the emitter and the emitted parton, q for a quark or an
 antiquark and g for a gluon:
@@ -225,13 +226,12 @@ def cs_dipoles(real_pdgs, borns, masses=None, nincoming=2, groups=("QCD",)):
     kernel, born_order, symmetry and weight (see the module). borns are dicts
     with pdgs and flavors, the masses {pdg: mass} (zero by default). In a
     decay (nincoming 1) a colored decaying particle is the spectator of the
-    final-state emitters (fd), which have to be quarks, and a charged one
-    that of the emitters of photons.
+    final-state emitters (fd), and a charged one that of the emitters of
+    photons.
 
     Raises:
-        NotImplementedError: for a gluon emitter with a colored decaying
-            particle as the spectator, or a photon that splits with no
-            charged particle as the spectator.
+        NotImplementedError: for a photon that splits with no charged
+            particle as the spectator.
         ValueError: for a group other than QCD and QED.
     """
     unknown = set(groups) - set(GROUPS)
@@ -302,11 +302,6 @@ def _splitting_dipoles(pdgs, borns, nincoming, group, i, j, flavor, kernel):
         if k in (i, j):
             continue
         if nincoming == 1 and k == 0:
-            if kernel != "qg":
-                raise NotImplementedError(
-                    "dipoles of a final-state gluon with a decaying particle "
-                    "as the spectator"
-                )
             family = "fd"
         else:
             family = ("i" if j < nincoming else "f") + ("i" if k < nincoming else "f")

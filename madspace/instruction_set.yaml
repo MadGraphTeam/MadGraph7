@@ -4791,7 +4791,7 @@ cs_final_decay_dipole:
       desc: "emitted massless parton"
     - name: p_j
       type: [float, 4]
-      desc: "final-state emitter, a quark"
+      desc: "final-state emitter"
     - name: p_a
       type: [float, 4]
       desc: "the decaying particle, the spectator"
@@ -4803,18 +4803,18 @@ cs_final_decay_dipole:
       desc: "the decaying particle of the Born"
     - name: options
       type: [float, single, 5]
-      desc: "the kernel (0, q -> q g), alpha of the final-final family, kappa of CDST, the masses of the emitter and of the decaying particle"
+      desc: "the kernel (0, q -> q g, 1, g -> g g, 2, g -> q q~), alpha of the final-final family, kappa of CDST, the masses of the emitter and of the decaying particle"
   outputs:
     - name: color_weight
       type: [float]
       desc: "the weight of the color-correlated Born <T_j . T_a>, zero outside alpha"
     - name: spin_weight
       type: [float]
-      desc: "zero"
+      desc: "the weight of the Born with k_t for a gluon emitter, zero for a quark"
     - name: spin_vector
       type: [float, 4]
       desc: "k_t of the kernel, unused by a quark emitter"
-  desc: "Catani-Seymour dipole of a final-state quark j with the decaying particle a as the spectator, q -> q g: the kernel of @ref cs_final_final_dipole with the recoil system K = p_a - p_i - p_j of mass sqrt(K^2) as the spectator, plus the soft terms of the decaying particle 2 m_j^2 / (p_a.p_i p_i.p_j) - m_a^2 / (p_a.p_i)^2, so that the soft limit is the eikonal of the pair j, a with both mass terms (the decaying particle emits no collinear parton, the dipoles of arXiv:1507.04676 combine its terms with those of j as well). It vanishes for y >= alpha y_+ (with alpha of the final-final family), over the invariant p_i.p_j. See @ref CSDipoles."
+  desc: "Catani-Seymour dipole of a final-state emitter j with the decaying particle a as the spectator, q -> q g, g -> g g or g -> q q~: the kernel of @ref cs_final_final_dipole with the recoil system K = p_a - p_i - p_j of mass sqrt(K^2) as the spectator, plus the soft terms of the decaying particle, so that each soft limit is the eikonal of the emitter of the soft parton and a with both mass terms (the decaying particle emits no collinear parton, the dipoles of arXiv:1507.04676 combine its terms with those of j as well): 2 m_j^2 / (p_a.p_i p_i.p_j) - m_a^2 / (p_a.p_i)^2 for q -> q g, -m_a^2 / (p_a.p_i)^2 - m_a^2 / (p_a.p_j)^2 for the two soft gluons of g -> g g, none for g -> q q~. It vanishes for y >= alpha y_+ (with alpha of the final-final family), over the invariant p_i.p_j. See @ref CSDipoles."
 
 cs_insertion:
   inputs:
@@ -4870,7 +4870,7 @@ cs_insertion:
     - name: poles
       type: [float, b, 2]
       desc: "the coefficients of eps^-2 and eps^-1 of <I> per Born order"
-  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). In a decay (incoming = 1) the decaying particle a is no emitter, and the pair of a final-state quark j with a as the spectator is the integral of the dipole of @ref cs_final_decay_dipole: the pair term above with the recoil system K~ = p_a - p_j as the spectator (s_jK = 2 p_j.K~ and the mass of K~), plus (s_jK / 2 + 2 m_j^2) H_j - (s_jK / 2) H_K - I_a per unit <T_j . T_a> B, with H_x the integral of 1 / (p_a.q p_x.q) over the gluon q and I_a that of m_a^2 / (p_a.q)^2, in closed form (see cs_decay_soft in kernels/nlo/cs_integrated.hpp): the pair term has the mean of the integrals of the eikonal terms s_jK / (p_a.q p_j.q) and s_jK / (p_a.q p_K.q) of both orderings, the dipole that of its own, and the soft terms of a. For alpha < 1 it loses the integral of the dipole over alpha y_+ < y < y_+. For QED (options[3] = 1) the Born times the product of the charges flowing out of j and k takes the place of <T_j . T_k> B, Q_j^2 that of T_j^2 (C_F for the splitting of a charged particle, also a massive W, with gamma_j and K_j of a quark), and a photon, which has no charge, gives the collinear part per unit -w_k B in place of <T_j . T_k> B / T_j^2 with the weights w_k of its spectators, with -2/3 and -10/9 sum_f N_c Q_f^2 in place of gamma_g and K_g (Dittmaier, Kabelschacht, Kasprzik, arXiv:0802.1405). See @ref CSInsertion."
+  desc: "The insertion operator I of the Catani-Seymour dipoles, CDST eq. 6.16 with V^(S) and V^(NS) of eqs. 6.20 to 6.26 and Gamma_j of eqs. 6.27 to 6.29, per Born order: a = alpha_s / (2 pi) times the sum over the ordered pairs (j, k) of colored particles of -<T_j . T_k> B / T_j^2 [T_j^2 ((mu^2 / s_jk)^eps V_j - pi^2 / 3) + Gamma_j + gamma_j log(mu^2 / s_jk) + gamma_j + K_j] with s_jk = 2 p_j p_k, in conventional dimensional regularization with the normalization (4 pi)^eps / Gamma(1 - eps). An incoming emitter has kappa = 2/3, and gluons split into the n_f light quarks only. For alpha < 1 a final-state pair loses the integral of its dipoles over alpha y_+ < y < y_+ in four dimensions (see @ref cs_final_final_dipole). In a decay (incoming = 1) the decaying particle a is no emitter, and the pair of a final-state parton j with a as the spectator is the integral of the dipole of @ref cs_final_decay_dipole: the pair term above with the recoil system K~ = p_a - p_j as the spectator (s_jK = 2 p_j.K~ and the mass of K~), plus (s_jK / 2 + 2 m_j^2) H_j - (s_jK / 2) H_K - I_a per unit <T_j . T_a> B, with H_x the integral of 1 / (p_a.q p_x.q) over the gluon q and I_a that of m_a^2 / (p_a.q)^2, in closed form (see cs_decay_soft in kernels/nlo/cs_integrated.hpp): the pair term has the mean of the integrals of the eikonal terms s_jK / (p_a.q p_j.q) and s_jK / (p_a.q p_K.q) of both orderings, the dipole that of its own, and the soft terms of a. A gluon j takes the rest of a massless quark: the dipole of g -> g g has half of its soft terms for each of the two soft gluons, whose integrals over the dipole phase space, symmetric in them, are equal. For alpha < 1 it loses the integral of the dipole over alpha y_+ < y < y_+. For QED (options[3] = 1) the Born times the product of the charges flowing out of j and k takes the place of <T_j . T_k> B, Q_j^2 that of T_j^2 (C_F for the splitting of a charged particle, also a massive W, with gamma_j and K_j of a quark), and a photon, which has no charge, gives the collinear part per unit -w_k B in place of <T_j . T_k> B / T_j^2 with the weights w_k of its spectators, with -2/3 and -10/9 sum_f N_c Q_f^2 in place of gamma_g and K_g (Dittmaier, Kabelschacht, Kasprzik, arXiv:0802.1405). See @ref CSInsertion."
 
 cs_collinear:
   inputs:

@@ -32,17 +32,19 @@ namespace madspace {
  * @f$\alpha_{ff} y_+ < y < y_+@f$, the four-dimensional alpha term of Nagy
  * [3].
  *
- * In a decay the decaying particle @f$a@f$ is no emitter. A final-state quark
- * @f$j@f$ has it as the spectator with the dipole of @ref CSDipoles (the
- * final-final dipole with the recoil system @f$K@f$ of the other final-state
- * particles as the spectator, and the soft terms of @f$a@f$). Its integral is
- * the pair term above with @f$s_{jK} = m_a^2 - m_j^2 - m_K^2@f$ and the mass
- * @f$m_K@f$ of the recoil system of the Born (massless only if it is a single
- * massless particle), plus the rest in closed form
+ * In a decay the decaying particle @f$a@f$ is no emitter. A final-state
+ * parton @f$j@f$ has it as the spectator with the dipole of @ref CSDipoles
+ * (the final-final dipole with the recoil system @f$K@f$ of the other
+ * final-state particles as the spectator, and the soft terms of @f$a@f$). Its
+ * integral is the pair term above with @f$s_{jK} = m_a^2 - m_j^2 - m_K^2@f$
+ * and the mass @f$m_K@f$ of the recoil system of the Born (massless only if
+ * it is a single massless particle), plus the rest in closed form
  * (see the instruction `cs_insertion`): the pair term of CDST has the mean of
  * the integrals of the eikonal terms of both orderings of the pair, which
- * only their sum needs, the dipole of one ordering its own. A final-state
- * gluon with a colored decaying particle is not covered.
+ * only their sum needs, the dipole of one ordering its own. For a gluon the
+ * two soft gluons of @f$g \to g g@f$ each have half of the soft terms of a
+ * massless quark, whose rest it takes, and @f$g \to q \bar q@f$ has none,
+ * as in the dipoles of [7].
  *
  * The operator of the QED corrections (`qed`) is the same with the charges
  * in place of the colors [5]: @f$Q_j Q_k B@f$ of the charges flowing out of
@@ -92,6 +94,9 @@ namespace madspace {
  * - [5] S. Dittmaier, https://arxiv.org/abs/hep-ph/9904440 (QED)
  * - [6] S. Dittmaier, A. Kabelschacht, T. Kasprzik,
  *   https://arxiv.org/abs/0802.1405 (photon splittings)
+ * - [7] W. Bernreuther, C. Gonzalez, M. Mellein, "Decays of polarized top
+ *   quarks to lepton, neutrino and jets at NLO QCD",
+ *   https://arxiv.org/abs/1401.5930 (gluons in decays)
  */
 class CSInsertion : public FunctionGenerator {
 public:

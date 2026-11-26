@@ -87,8 +87,9 @@ of g g > t t~ g, depending on the angle).
 A decay has the CSMapping of a final-state emitter with the decaying
 particle as the spectator (fd, Basso, Dittmaier, Huss, Oggero,
 arXiv:1507.04676): the final-final map with the other final-state particles
-as the spectator, the decaying particle at rest. Its dipoles take the soft
-terms of the decaying particle and alpha_ff, and CSInsertion their integral.
+as the spectator, the decaying particle at rest, for quark and gluon
+emitters. Its dipoles take the soft terms of the decaying particle and
+alpha_ff, and CSInsertion their integral.
 A decay has the flux 1 / (2 M) and gives a width in GeV, as the FKS driver.
 
 Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
@@ -117,8 +118,7 @@ n-body stream in NLOIterationState), also with a MadNIS training
 (madnis_batches), but without histograms and not for the real stream of
 dressed leptons.
 
-Not covered yet: a final-state gluon with a colored decaying particle, PDF
-schemes other than MSbar, densities of eMELA, photons of gamma-UPC, the
+Not covered yet: PDF schemes other than MSbar, densities of eMELA, photons of gamma-UPC, the
 scale and PDF variations of reweight_scale and reweight_PDF and the Sudakov
 approximation of the EW corrections of --ewsudakov, which the run leaves out
 with a warning.

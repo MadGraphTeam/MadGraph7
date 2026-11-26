@@ -169,6 +169,9 @@ class Dipole:
     """A final-final dipole of e+ e- > X at a fixed Born, its emission on
     Gauss-Legendre nodes in the random numbers of CSMapping."""
 
+    # the Born emitter and spectator
+    emitter, spectator = 2, 3
+
     def __init__(self, born_masses, kernel):
         self.born = ms.PhaseSpaceMapping(
             list(born_masses),
@@ -223,7 +226,8 @@ class Dipole:
         out = evaluate(generator, to_numpy(momenta), broadcast(x1), broadcast(x2))
         born = out["born_momenta"][:, 0]
         k_t = out["spin_vector"][:, 0] * np.array([1.0, -1.0, -1.0, -1.0])
-        spin = 0.5 * np.einsum("bm,bmn,bn->b", k_t, g_perp(born[:, 2], born[:, 3]), k_t)
+        g = g_perp(born[:, self.emitter], born[:, self.spectator])
+        spin = 0.5 * np.einsum("bm,bmn,bn->b", k_t, g, k_t)
         dipole = (
             -4
             * math.pi
@@ -328,9 +332,18 @@ def test_kappa(case):
 W_MASS = 80.419
 
 
-def decay_born(bottom):
-    """The mapping of t > b w+ at rest."""
-    diagram = ms.Diagram([TOP], [bottom, W_MASS], [], [["i0", "o0", "o1"]])
+def decay_born(bottom, gluon=False):
+    """The mapping of t > b w+ at rest, or of t > b w+ g with the b g from a
+    propagator."""
+    if not gluon:
+        diagram = ms.Diagram([TOP], [bottom, W_MASS], [], [["i0", "o0", "o1"]])
+    else:
+        diagram = ms.Diagram(
+            [TOP],
+            [bottom, W_MASS, 0.0],
+            [ms.Propagator(mass=TOP, width=1.5)],
+            [["p0", "o0", "o2"], ["i0", "p0", "o1"]],
+        )
     return ms.PhaseSpaceMapping(ms.Topology(diagram), TOP, leptonic=True)
 
 
@@ -390,6 +403,49 @@ def test_alpha_decay(bottom, alpha_ff):
     momenta = dipole.born_momenta()
     colors = pair_colors(3, 1, 0)
     pdgs, masses = [6, 5, 24], [TOP, bottom, W_MASS]
+    finite, _ = insertion(pdgs, masses, momenta, colors, 100.0, incoming=1)
+    finite_alpha, _ = insertion(
+        pdgs, masses, momenta, colors, 100.0, alpha_ff=alpha_ff, incoming=1
+    )
+    rtol = 1e-11 if alpha_ff > 1e-3 else 1e-9
+    np.testing.assert_allclose(finite_alpha - finite, -removed, rtol=rtol)
+
+
+class GluonDecayDipole(Dipole):
+    """The dipole of the gluon of t > b w+ g (g -> g g or g -> q q~) with the
+    top as the spectator at a fixed Born, its emission on Gauss-Legendre
+    nodes and averaged over the azimuth (see Dipole)."""
+
+    emitter, spectator = 3, 0
+
+    def __init__(self, bottom, kernel):
+        self.born = decay_born(bottom, gluon=True)
+        self.mapping = ms.CSMapping(self.born, 4, 3, 0)
+        self.kernel = kernel
+        self.r_born = np.array([0.3, 0.7, 0.4, 0.6, 0.5])[: self.born.random_dim()]
+
+
+@pytest.mark.parametrize("bottom", [4.7, 0.0])
+@pytest.mark.parametrize("alpha_ff", [0.3, 0.03, 1e-4])
+def test_alpha_gluon_decay(bottom, alpha_ff):
+    """What alpha_ff removes from <I> of t > b w+ g at the pair of the gluon
+    with the top as the spectator is the integral of its dipoles over
+    alpha_ff y_+ < y < y_+: g -> g g with 1/2 for the identical gluons and
+    g -> q q~ of the n_f = 5 light quarks of the insertion, each the
+    final-final part with the recoil system of the b and the W as the
+    spectator and the soft terms of the top."""
+    # the quadrature loses digits at small alpha, where a gluon is soft (1e-9
+    # with 96 nodes at alpha 1e-4, 1.5e-10 with 256)
+    nodes = 96 if alpha_ff > 1e-3 else 256
+    removed = 0.0
+    for kernel, factor in {"gg": 0.5, "gq": 5.0}.items():
+        dipole = GluonDecayDipole(bottom, kernel)
+        full = dipole.integral(math.sqrt(alpha_ff), nodes, 1.0, 2.0 / 3.0)
+        gated = dipole.integral(math.sqrt(alpha_ff), nodes, alpha_ff, 2.0 / 3.0)
+        removed += factor * (full - gated)
+    momenta = GluonDecayDipole(bottom, "gg").born_momenta()
+    colors = pair_colors(4, 3, 0)
+    pdgs, masses = [6, 5, 24, 21], [TOP, bottom, W_MASS, 0.0]
     finite, _ = insertion(pdgs, masses, momenta, colors, 100.0, incoming=1)
     finite_alpha, _ = insertion(
         pdgs, masses, momenta, colors, 100.0, alpha_ff=alpha_ff, incoming=1
@@ -538,6 +594,38 @@ def test_poles_massless_decay():
     assert_poles(provider, masses, to_numpy(momenta), 5.0, rtol=1e-9)
 
 
+@pytest.mark.skipif(not OUTPUTS, reason="MADSPACE_FKS_OUTPUTS names no aMC@NLO outputs")
+@pytest.mark.parametrize("name, bottom", [("t_bwg", 4.7), ("t_bwg_mb0", 0.0)])
+def test_poles_gluon_decay(name, bottom):
+    """The poles of <I> of t > b w+ g (the outputs t_bwg and t_bwg_mb0 of
+    make_fks_cross_section_reference.py), whose gluon has the top as a
+    spectator with the recoil system of the b and the W, with a massive and a
+    massless b, at Born points of the decay at rest with the W mass of
+    MadGraph (with the 80.419 of the param card MadLoop moves the momenta to
+    its masses, and the poles differ by 3e-8)."""
+    from madgraph.mg7.nlo.provider import FortranProvider
+
+    root = os.path.join(fks_output(name), "SubProcesses")
+    (subprocess,) = [d for d in os.listdir(root) if d.startswith("P")]
+    directory = os.path.join(root, subprocess)
+    provider = FortranProvider(
+        directory, rebuild=not os.path.isfile(os.path.join(directory, "fks_provider"))
+    )
+    pdg_masses = {6: TOP, 5: bottom, 24: 80.4190024, 21: 0.0}
+    masses = [pdg_masses[pdg] for pdg in provider.fks_configurations["born_pdgs"]]
+    diagram = ms.Diagram(
+        masses[:1],
+        masses[1:],
+        [ms.Propagator(mass=TOP, width=1.5)],
+        [["p0", "o1", "o2"], ["i0", "o0", "p0"]],
+    )
+    born = ms.PhaseSpaceMapping(ms.Topology(diagram), TOP, leptonic=True)
+    r = np.random.default_rng(3).random((8, born.random_dim()))
+    momenta, *_ = born.map_forward([to_torch(r)], [])
+    n_f = 4.0 if bottom else 5.0
+    assert_poles(provider, masses, to_numpy(momenta), n_f, rtol=1e-9)
+
+
 def test_invalid():
     with pytest.raises(ValueError):
         ms.CSInsertion([21, 21, 6, -6], [0.0, 0.0, TOP, TOP], alpha_ff=0.0)
@@ -549,11 +637,8 @@ def test_invalid():
         ms.CSInsertion([21, 21, 21, 21], [0.0, 0.0, 10.0, 0.0])
     with pytest.raises(ValueError):
         ms.CSInsertion([21, 21, 6, -6], [0.0, 0.0, TOP, TOP], born_orders=0)
-    # decays: one or two incoming particles, no decaying gluon, no final-state
-    # gluon with a colored decaying particle
+    # decays: one or two incoming particles, no decaying gluon
     with pytest.raises(ValueError):
         ms.CSInsertion([6, 5, 24], [TOP, 4.7, W_MASS], incoming=3)
     with pytest.raises(ValueError):
         ms.CSInsertion([21, 1, -1], [10.0, 0.0, 0.0], incoming=1)
-    with pytest.raises(ValueError, match="gluon"):
-        ms.CSInsertion([6, 5, 24, 21], [TOP, 4.7, W_MASS, 0.0], incoming=1)

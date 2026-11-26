@@ -213,16 +213,6 @@ CSInsertion::CSInsertion(
     }
     _charges.assign(pdgs.size(), 0.);
     _weights.assign(pdgs.size(), 0.);
-    if (incoming == 1 && _casimir[0] != 0.) {
-        for (std::size_t j = 1; j < pdgs.size(); ++j) {
-            if (_casimir[j] == QCD_CA) {
-                throw std::invalid_argument(
-                    "CSInsertion: no dipoles of a final-state gluon with a colored "
-                    "decaying particle"
-                );
-            }
-        }
-    }
 }
 
 CSCollinear::CSCollinear(
