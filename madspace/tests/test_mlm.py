@@ -686,6 +686,67 @@ def test_resonant_propagators_get_a_breit_wigner_index():
     assert resonant_pairs == {(2, 3)}
 
 
+M_T, W_T = 173.0, 1.49
+
+
+def top_radiation_diagram(top_pdg):
+    """g g > t t~ g with the gluon radiated off the outgoing top: p0 = t* > t g
+    (legs 2 and 4), p1 a t-channel top. top_pdg is the flavour handed for both
+    top propagators, 0 for "not supplied" as in the mass-only fixtures.
+
+    Legs: (g, g, t, t~, g).
+    """
+    return [
+        {
+            "incoming_masses": [0.0, 0.0],
+            "outgoing_masses": [M_T, M_T, 0.0],
+            "propagators": [
+                [M_T, W_T, 0, 0.0, 0.0, top_pdg],
+                [M_T, 0.0, 0, 0.0, 0.0, top_pdg],
+            ],
+            "vertices": [
+                ["o0", "o2", "p0"],
+                ["i0", "o1", "p1"],
+                ["p1", "p0", "i1"],
+            ],
+            "permutations": [[0, 1, 2, 3, 4]],
+        }
+    ]
+
+
+def resonant_pairs_of(clustering, n_ext):
+    non_terminal, _ = walk(np.asarray(clustering.cluster_state_machine), n_ext)
+    return {
+        (field(data, BIT_PARTICLE1), field(data, BIT_PARTICLE2))
+        for _, (_, transitions) in non_terminal.items()
+        for data, _, _ in transitions
+        if field(data, BIT_MASS_INDEX) != 0
+    }
+
+
+@pytest.mark.parametrize("top_pdg", [6, -6])
+def test_radiation_off_a_top_is_not_a_resonance(top_pdg):
+    """t* > t g is an emission, not a decay: as in madevent's cut_bw ("Only
+    allow OnBW if no decay to identical particle") a line that repeats a
+    daughter's flavour never gets a Breit-Wigner index, so the gluon is
+    clustered at its kt and not at m(t g) whenever that falls within
+    bw_cutoff widths of m_t. The sign of the propagator does not matter."""
+    clustering = make_clustering(
+        top_radiation_diagram(top_pdg), external_pdg_ids=[21, 21, 6, -6, 21]
+    )
+    assert resonant_pairs_of(clustering, 5) == set()
+    assert list(clustering.bw_masses) == []
+
+
+def test_top_line_without_flavour_stays_resonant():
+    """Without the propagator's flavour the rule cannot apply, and the width
+    alone keeps making the t g clustering a resonance candidate."""
+    clustering = make_clustering(
+        top_radiation_diagram(0), external_pdg_ids=[21, 21, 6, -6, 21]
+    )
+    assert resonant_pairs_of(clustering, 5) == {(2, 4)}
+
+
 def test_resonant_clustering_uses_the_invariant_mass():
     """A clustering onto a propagator inside its Breit-Wigner window is scored
     with the invariant mass of the pair rather than the kt measure. Compare

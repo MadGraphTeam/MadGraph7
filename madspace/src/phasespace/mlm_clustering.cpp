@@ -333,9 +333,28 @@ StateItem make_state_item(
     // (t-channel) clustering is exactly the case particle1 < 2.
     bool is_initial = particle1 < 2;
 
+    // "The mother repeats a daughter's flavour" compares |pdg|: the external
+    // legs come without their sign (clean_pids in launch.py) while a propagator
+    // keeps the one MG5 gave it, so the t~* of t~* > t~ g is -6 against the t~
+    // leg's 6. For a light quark is_jet_in makes the vertex a jet vertex anyway;
+    // for a top this is the only way it is one, and without it the gluon was
+    // written at sqrt(s) and never counted as a merging jet.
+    bool mother_is_daughter1 =
+        meta_in.pdg_id != 0 && std::abs(meta_in.pdg_id) == std::abs(meta_1.pdg_id);
+    bool mother_is_daughter2 =
+        meta_in.pdg_id != 0 && std::abs(meta_in.pdg_id) == std::abs(meta_2.pdg_id);
+
     // A t-channel propagator is spacelike and can never go on shell, so the
-    // resonance test is only meaningful for a final-state clustering.
-    int mass_index = is_initial ? 0 : breit_wigner_index(ctx, meta_in);
+    // resonance test is only meaningful for a final-state clustering. Nor is a
+    // line that "decays" into itself plus a radiated particle, t* > t g: as in
+    // madevent's cut_bw ("Only allow OnBW if no decay to identical particle"),
+    // that is an emission, clustered at its kT, not a resonance at m(t g).
+    // (cut_bw keeps whichever of two identical s-channel lines is closer to its
+    // mass shell; here the daughter keeps it, which is what cut_bw does when the
+    // daughter is a decaying, forced-on-shell line.)
+    int mass_index = is_initial || mother_is_daughter1 || mother_is_daughter2
+        ? 0
+        : breit_wigner_index(ctx, meta_in);
 
     int color_1 = color_rep(meta_1.pdg_id, ctx.pdg_color_types);
     int color_2 = color_rep(meta_2.pdg_id, ctx.pdg_color_types);
@@ -384,17 +403,6 @@ StateItem make_state_item(
     if (same_flavor) {
         ctx.has_same_flavor = true;
     }
-
-    // "The mother repeats a daughter's flavour" compares |pdg|: the external
-    // legs come without their sign (clean_pids in launch.py) while a propagator
-    // keeps the one MG5 gave it, so the t~* of t~* > t~ g is -6 against the t~
-    // leg's 6. For a light quark is_jet_in makes the vertex a jet vertex anyway;
-    // for a top this is the only way it is one, and without it the gluon was
-    // written at sqrt(s) and never counted as a merging jet.
-    bool mother_is_daughter1 =
-        meta_in.pdg_id != 0 && std::abs(meta_in.pdg_id) == std::abs(meta_1.pdg_id);
-    bool mother_is_daughter2 =
-        meta_in.pdg_id != 0 && std::abs(meta_in.pdg_id) == std::abs(meta_2.pdg_id);
 
     return {
         .next_state = next_state,
