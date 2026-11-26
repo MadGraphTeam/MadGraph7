@@ -479,6 +479,7 @@ NamedVector<Type> dipole_return_types(const std::vector<CSMapping>& mappings) {
         {"color_weight", batch_float_array(d)},
         {"spin_weight", batch_float_array(d)},
         {"spin_vector", batch_four_vec_array(d)},
+        {"covered", batch_float_array(d)},
     };
 }
 
@@ -535,7 +536,7 @@ NamedVector<Value> CSDipoles::build_function_impl(
         conditions.push_back(name, args.at(name));
     }
     auto p = fb.unstack(args.at("momenta"));
-    ValueVec born_momenta, x1, x2, color, spin, vectors;
+    ValueVec born_momenta, x1, x2, color, spin, vectors, covered;
     for (std::size_t d = 0; d < _mappings.size(); ++d) {
         const auto& mapping = _mappings[d];
         auto projection = mapping.build_projection(fb, inputs, conditions);
@@ -578,6 +579,9 @@ NamedVector<Value> CSDipoles::build_function_impl(
         color.push_back(fb.mul(weights[0], _symmetry[d]));
         spin.push_back(fb.mul(weights[1], _symmetry[d]));
         vectors.push_back(weights[2]);
+        // the variables at or above the cutoff, where the Jacobian of the
+        // projection is not zero
+        covered.push_back(fb.sub(1., fb.cut_one(projection.at("det"), 0., 0.)));
     }
     return {
         {"born_momenta", fb.stack(born_momenta)},
@@ -586,5 +590,6 @@ NamedVector<Value> CSDipoles::build_function_impl(
         {"color_weight", fb.stack(color)},
         {"spin_weight", fb.stack(spin)},
         {"spin_vector", fb.stack(vectors)},
+        {"covered", fb.stack(covered)},
     };
 }

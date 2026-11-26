@@ -240,6 +240,8 @@ private:
  * - `color_weight`, `spin_weight` – `float`, shape `(batch, d)` – @f$S c@f$
  *   and @f$S s@f$.
  * - `spin_vector` – `float`, shape `(batch, d, 4)` – @f$k_t@f$.
+ * - `covered` – `float`, shape `(batch, d)` – one where the two variables of
+ *   the dipole are at or above the cutoff of its mapping, zero elsewhere.
  *
  * **References**
  * - [1] S. Catani, M. H. Seymour, https://arxiv.org/abs/hep-ph/9605323

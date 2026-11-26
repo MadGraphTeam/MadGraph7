@@ -39,7 +39,13 @@ Born: the CSMapping of the dipole on the Born diagram of the channel. The
 weight of a channel is |c| of its dipole over the sum over the dipoles of
 the real, c the color weight of CSDipoles at alpha = 1, times amp2 of its
 Born diagram over that of all Born diagrams at the Born of the dipole, so
-that the weights add up to one at every event. Each dipole takes the blocks
+that the weights add up to one at every event. With the combined channels
+(channels="combined", as MoCaNLO) the real stream has a channel per diagram
+of the real process as well (a PhaseSpaceMapping of its topology from
+real_channels_structure.json of the output), and the weight of every channel
+is the density of its mapping over the sum of those of all channels at the
+event (as MappingChannelWeights); channels="densities" takes these weights with the
+channels of the dipoles alone. Each dipole takes the blocks
 of the Born of its own subprocess, the spin correlation in the factorized
 form <T_j . T_k> B(k_t) / B, with B(k_t) the Born of the provider with the
 azimuthal part of an FKS configuration whose mother is the emitter. MadFKS
@@ -56,7 +62,8 @@ fractions of the real emission.
 
 The technical cut is the cutoff of the CSMapping of every channel: a channel
 covers only the events where both variables of its dipole (y and z_i, 1 - x
-and z, v and 1 - x - v) are at or above technical_cut, and its events are
+and z, v and 1 - x - v) are at or above technical_cut (one of a diagram
+those where the variables of all dipoles are), and its events are
 never cut afterwards, as the FKS configurations of MadFKS cover xi and 1 - y
 from 1e-6 up (genps_fks.f). The real emission minus the dipoles then has the
 cut sum_c w_c Theta_c of the channel weights w_c and of the regions Theta_c
@@ -101,12 +108,14 @@ with a warning.
 """
 
 import argparse
+import json
 import logging
 import math
 import os
 
 import numpy as np
 
+from madgraph.mg7.nlo.libraries import transverse_square
 from madgraph.mg7.nlo.provider import (
     FortranProvider,
     boost_z,
@@ -122,6 +131,7 @@ from madgraph.mg7.nlo.core import (
     madspace,
     pdf_reweight,
     real,
+    real_topology,
     run_cuts,
     scale_parameters,
     scale_variations,
@@ -132,6 +142,7 @@ logger = logging.getLogger("madgraph.mg7.nlo.cs")
 INV_GEV2_TO_PB = 0.38937937217186e9
 FAMILIES = ("ff", "fi", "if", "ii")
 STREAMS = ("nbody", "real")
+CHANNELS = ("dipoles", "densities", "combined")
 
 
 def minkowski(a, b):
@@ -393,6 +404,7 @@ class CSBornIntegrand:
         from madspace.nlo import nlo_scale
 
         self.name = os.path.basename(os.path.normpath(directory))
+        self.directory = directory
         self.context = context
         self.provider = FortranProvider(directory)
         self.configurations = self.provider.fks_configurations
@@ -898,11 +910,19 @@ class CSRealIntegrand:
         alpha,
         kappa,
         technical_cut,
+        channels="dipoles",
     ):
         ms = madspace()
         from madspace.nlo import nlo_scale
 
+        if channels not in CHANNELS:
+            raise ValueError(f"nlo.cs: channels of {CHANNELS} expected, not {channels}")
         entry = block["reals"][index]
+        if channels != "dipoles" and subprocesses[entry["subprocess"]].lepton_power:
+            raise NotImplementedError(
+                "nlo.cs: no densities of the channels with dressed leptons, whose "
+                "mappings have no inverse"
+            )
         source = subprocesses[entry["subprocess"]]
         self.source = source
         self.context = context
@@ -944,6 +964,7 @@ class CSRealIntegrand:
         )
         self.dipoles, self.channels, self.forward, self.dimensions = [], [], [], []
         mappings, kernels, symmetry = [], [], []
+        channel_mappings, discrete_mappings = [], []
         for d in block["cs"]:
             if d["real"] != index:
                 continue
@@ -966,6 +987,8 @@ class CSRealIntegrand:
                 )
                 if b == 0:
                     mappings.append(mapping)
+                channel_mappings.append(mapping)
+                discrete_mappings.append(born_mapping)
                 self.channels.append((len(self.dipoles), b))
                 self.forward.append(
                     ms.FunctionRuntime(mapping.forward_function(), context)
@@ -974,6 +997,41 @@ class CSRealIntegrand:
             self.dipoles.append(dipole)
             kernels.append(d["kernel"])
             symmetry.append(d["symmetry"])
+        # the channels of the diagrams of the real emission, and the inverse
+        # maps of all channels for their densities
+        self.inverse = None
+        if channels == "combined":
+            path = os.path.join(source.directory, "real_channels_structure.json")
+            with open(path) as stream:
+                structure = json.load(stream)
+            real_me = configurations["configurations"][self.configuration]["real_me"]
+            for c, diagram in enumerate(structure["reals"][real_me - 1]["diagrams"]):
+                mapping = ms.PhaseSpaceMapping(
+                    real_topology(diagram, self.masses, self.incoming),
+                    self.energy,
+                    leptonic=leptonic,
+                    lepton_sampling_power=source.lepton_power,
+                    s_hat_shift=source.s_hat_shift,
+                )
+                channel_mappings.append(mapping)
+                discrete_mappings.append(mapping)
+                self.channels.append((None, c))
+                self.forward.append(
+                    ms.FunctionRuntime(mapping.forward_function(), context)
+                )
+                self.dimensions.append(mapping.random_dim())
+        self.channel_mappings = channel_mappings
+        if channels != "dipoles":
+            self.inverse = [
+                ms.FunctionRuntime(mapping.inverse_function(), context)
+                for mapping in channel_mappings
+            ]
+            # the mappings of the Borns and of the real emission have no
+            # discrete choices, which would change their outputs
+            if any(m.discrete_dim() for m in discrete_mappings):
+                raise NotImplementedError(
+                    "nlo.cs: no channels with discrete choices yet"
+                )
         self.subtraction = Runtime(
             ms.CSDipoles(
                 mappings,
@@ -1000,6 +1058,8 @@ class CSRealIntegrand:
 
     def channel_name(self, index):
         m, b = self.channels[index]
+        if m is None:
+            return f"{self.name} diagram {b + 1}"
         return f"{self.name} dipole {m + 1} channel {b + 1}"
 
     def choice_count(self, index):
@@ -1013,13 +1073,35 @@ class CSRealIntegrand:
 
     def covered(self, index, momenta):
         """Whether real emissions are in the region of the channel index, both
-        variables of its dipole at or above the technical cut."""
+        variables of its dipole at or above the technical cut, those of every
+        dipole for the channel of a diagram of the real emission."""
         keep = np.ones(len(momenta), dtype=bool)
-        dipole = self.dipoles[self.channels[index][0]]
+        m = self.channels[index][0]
+        dipoles = self.dipoles if m is None else [self.dipoles[m]]
         with np.errstate(divide="ignore", invalid="ignore"):
-            for variable in dipole_variables(momenta, dipole.entry):
-                keep &= variable >= self.technical_cut
+            for dipole in dipoles:
+                for variable in dipole_variables(momenta, dipole.entry):
+                    keep &= variable >= self.technical_cut
         return keep
+
+    def densities(self, momenta, fractions, valid):
+        """The densities of the mappings of all channels at real emissions
+        (batch, channels), as MappingChannelWeights: zero where a mapping
+        cannot produce the event (a random number of its inverse outside the
+        unit hypercube)."""
+        count = len(momenta)
+        inputs = [np.ascontiguousarray(momenta)]
+        inputs += [np.ascontiguousarray(np.broadcast_to(f, count)) for f in fractions]
+        densities = np.zeros((count, len(self.inverse)))
+        for k, inverse in enumerate(self.inverse):
+            out = inverse.call(inputs)
+            random = np.array(np.from_dlpack(out[0])).reshape(count, -1)
+            density = np.array(np.from_dlpack(out[-1]))
+            density = np.broadcast_to(density, count)
+            good = valid & np.isfinite(density) & (density > 0)
+            good &= ((random >= 0) & (random <= 1)).all(axis=1)
+            densities[:, k] = np.where(good, density, 0.0)
+        return densities
 
     def dipole_value(self, dipole, cm, k_t, color_weight, spin_weight, born):
         """-D / g_s^2 per Born order of a dipole (points, b) at its Born in
@@ -1042,7 +1124,10 @@ class CSRealIntegrand:
                     :, [dipole.swap, dipole.legs[0]]
                 ]
                 perp = provider.spin_correlated(exchanged, k_t, configuration)
-            square = -minkowski(k_t, k_t)
+            # -k_t^2 as the square of the part of k_t transverse to the gluon
+            # in its frame, as the libraries take it (equal for a massless
+            # emitter, without the cancellation of the Minkowski square)
+            square = transverse_square(cm[:, dipole.legs[0]], k_t)
             ratio = np.divide(
                 colors, plain, out=np.zeros_like(colors), where=plain != 0
             )
@@ -1075,20 +1160,37 @@ class CSRealIntegrand:
         valid &= minkowski(incoming, incoming) > 0
         if covered is None:
             covered = self.covered(index, momenta)
-        keep = valid & covered
         fractions = (x1, x2) if omx is None else (x1, x2, *omx)
         projected = self.subtraction(momenta, *fractions)
-        ungated = self.ungated(momenta, *fractions)["color_weight"]
-        rho = np.abs(ungated)
-        total = rho.sum(1)
-        # not where the ungated dipoles are infinite (the momenta of the points
-        # that are not valid, set to zero)
-        channel_weight = np.divide(
-            rho[:, m_channel],
-            total,
-            out=np.zeros(count),
-            where=np.isfinite(total) & (total > 0),
-        )
+        if m_channel is None:
+            # the channel of a diagram covers the events where the variables of
+            # all dipoles are at or above the technical cut
+            covered = covered & (projected["covered"] != 0).all(axis=1)
+        keep = valid & covered
+        if self.inverse is None:
+            ungated = self.ungated(momenta, *fractions)["color_weight"]
+            rho = np.abs(ungated)
+            total = rho.sum(1)
+            # not where the ungated dipoles are infinite (the momenta of the
+            # points that are not valid, set to zero)
+            channel_weight = np.divide(
+                rho[:, m_channel],
+                total,
+                out=np.zeros(count),
+                where=np.isfinite(total) & (total > 0),
+            )
+            amplitude_weight = np.zeros(count)
+        else:
+            # the density of the mapping of the channel over that of all
+            densities = self.densities(momenta, fractions, valid)
+            total = densities.sum(1)
+            channel_weight = np.divide(
+                densities[:, index],
+                total,
+                out=np.zeros(count),
+                where=np.isfinite(total) & (total > 0),
+            )
+            amplitude_weight = np.ones(count)
         # the real emission
         fks_index = np.full(count, self.configuration, dtype=np.int32)
         scales = self.scale(momenta, *self.source.references(momenta, valid))
@@ -1120,7 +1222,6 @@ class CSRealIntegrand:
         n = len(self.pdgs) - 1
         born_momenta = np.zeros((count, d, n, 4))
         dipole_weights = np.zeros((count, d))
-        amplitude_weight = np.zeros(count)
         for m, dipole in enumerate(self.dipoles):
             born = dipole.born
             me = projected["born_momenta"][:, m][:, dipole.order]
@@ -1130,7 +1231,8 @@ class CSRealIntegrand:
             spin_weight = projected["spin_weight"][:, m]
             active = keep & ((color_weight != 0) | (spin_weight != 0))
             active &= born.passes_cuts(me)
-            needed = active | (keep if m == m_channel else False)
+            amplitudes = self.inverse is None and m == m_channel
+            needed = active | (keep if amplitudes else False)
             points = np.flatnonzero(needed)
             if not len(points):
                 continue
@@ -1139,7 +1241,7 @@ class CSRealIntegrand:
             evaluated = born.provider.born(
                 cm, np.full(len(points), dipole.configuration)
             )
-            if m == m_channel:
+            if amplitudes:
                 amp2 = evaluated[2]
                 amp2_total = amp2.sum(1)
                 amplitude_weight[points] = np.divide(
@@ -1311,8 +1413,9 @@ class CSRun(NLORun):
     an aMC@NLO output (see the module and NLORun of nlo.core), with the
     alpha of the four families of dipoles (ff, fi, if, ii, by name or one
     for all), kappa of the final-state gluon kernels with a massive
-    spectator, the technical cut of the real stream and the streams to
-    integrate (nbody, real or both)."""
+    spectator, the technical cut of the real stream, the streams to
+    integrate (nbody, real or both) and the channels of the real stream
+    (dipoles, densities or combined, see the module)."""
 
     scheme = "cs"
     work_directory = "madspace_cs"
@@ -1324,6 +1427,7 @@ class CSRun(NLORun):
         kappa=2.0 / 3.0,
         technical_cut=1e-6,
         streams=STREAMS,
+        channels="dipoles",
         **options,
     ):
         super().__init__(output, **options)
@@ -1332,6 +1436,9 @@ class CSRun(NLORun):
         self.alpha = {family: float(alpha.get(family, 1.0)) for family in FAMILIES}
         self.kappa = kappa
         self.technical_cut = technical_cut
+        if channels not in CHANNELS:
+            raise ValueError(f"nlo.cs: channels of {CHANNELS} expected, not {channels}")
+        self.real_channels = channels
         unknown = set(streams) - set(STREAMS)
         if unknown or not streams:
             raise ValueError(f"nlo.cs: streams of {STREAMS} expected, not {streams}")
@@ -1377,6 +1484,7 @@ class CSRun(NLORun):
                     self.alpha,
                     self.kappa,
                     self.technical_cut,
+                    self.real_channels,
                 )
                 for index in range(len(block["reals"]))
             ]
@@ -1412,6 +1520,13 @@ def main(argv=None):
         help="the technical cut of the real stream",
     )
     parser.add_argument(
+        "--channels",
+        default="dipoles",
+        choices=CHANNELS,
+        help="the channels of the real stream: per dipole and Born diagram, "
+        "or combined with those of the diagrams of the real emission",
+    )
+    parser.add_argument(
         "--streams",
         default=",".join(STREAMS),
         help="the streams to integrate, nbody, real or both (nbody,real)",
@@ -1426,6 +1541,7 @@ def main(argv=None):
         alpha=args.alpha,
         technical_cut=args.technical_cut,
         streams=tuple(args.streams.split(",")),
+        channels=args.channels,
         name=args.name,
         accuracy=args.accuracy,
         grid_points=args.grid_points,

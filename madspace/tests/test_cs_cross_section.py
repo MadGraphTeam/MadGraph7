@@ -33,6 +33,7 @@ runs only with MADSPACE_FKS_SLOW=1.
 
 import copy
 import functools
+import glob
 import json
 import math
 import os
@@ -224,6 +225,75 @@ def test_s_hat_shift(monkeypatch):
     ours = run.result()
     for order in ("lo", "nlo"):
         assert abs(pull(ours[order], data[order])) < PULL, (order, ours, data[order])
+
+
+@needs_outputs
+def test_combined_channels():
+    """With the channels of the diagrams of the real processes as well, whose
+    weights are the densities of the mappings, the real stream of e+ e- > j j
+    at a fixed scale without cuts is (1 - C_F) alpha_s / pi sigma_LO, and the
+    NLO of p p > t t~ that of MG5aMC, within PULL errors."""
+    data = reference("epem_jj_fixed")
+    run = make_run("epem_jj_fixed", streams=("real",), channels="combined")
+    run.run()
+    assert any(m is None for integrand in run.integrands for m, _ in integrand.channels)
+    a = alpha_s_of(run, float(data["run_card"]["mur_ref_fixed"])) / math.pi
+    lo = data["lo"]["sigma"]
+    sigma, error = run.combination([1.0, 0.0, 0.0])
+    assert abs(sigma - (1 - CF) * a * lo) < PULL * error, (sigma, error)
+    run.close()
+    data = reference("pp_ttx")
+    run = make_run("pp_ttx", channels="combined")
+    run.run()
+    ours = run.result()
+    run.close()
+    assert abs(pull(ours["nlo"], data["nlo"])) < PULL, (ours["nlo"], data["nlo"])
+
+
+@needs_outputs
+@pytest.mark.parametrize("name", ["pp_ttx", "epem_jjj", "pp_wp", "t_bw"])
+def test_real_topologies(name):
+    """The mappings of the diagrams of the real processes of the output
+    (real_topology of nlo/core.py, from real_channels_structure.json, with
+    the four-gluon vertices of g g > t t~ g) map random numbers to events and
+    back. The round trip is as good as the conditioning of the mappings, a
+    few 1e-6 of the random numbers at worst (2 > 4 at 13 TeV)."""
+    from madgraph.mg7.nlo.core import real_topology
+
+    ms = madspace()
+    context = ms.Context(ms.cpu_device())
+    directories = glob.glob(
+        os.path.join(fks_output(reference(name)["output"]), "SubProcesses", "P*")
+    )
+    count = 0
+    for directory in sorted(directories):
+        with open(os.path.join(directory, "real_channels_structure.json")) as f:
+            structure = json.load(f)
+        for real in structure["reals"]:
+            incoming = sum(1 for leg in real["legs"] if not leg[2])
+            masses = [float(m) for m in real["masses"]]
+            energy = masses[0] if incoming == 1 else 13000.0
+            leptonic = incoming == 1 or name.startswith("epem")
+            for diagram in real["diagrams"]:
+                mapping = ms.PhaseSpaceMapping(
+                    real_topology(diagram, masses, incoming),
+                    energy,
+                    leptonic=leptonic,
+                )
+                forward = ms.FunctionRuntime(mapping.forward_function(), context)
+                inverse = ms.FunctionRuntime(mapping.inverse_function(), context)
+                x = np.random.default_rng(count).random((50, mapping.random_dim()))
+                out = [np.array(np.from_dlpack(t)) for t in forward.call([x])]
+                momenta, det = out[0], out[-1]
+                fractions = [np.broadcast_to(f, 50).copy() for f in out[1:3]]
+                back = inverse.call([momenta, *fractions])
+                r, density = [np.array(np.from_dlpack(t)) for t in back]
+                good = det > 0
+                assert good.mean() > 0.9
+                np.testing.assert_allclose(r[good], x[good], atol=1e-5)
+                np.testing.assert_allclose(density[good] * det[good], 1.0, rtol=1e-4)
+                count += 1
+    assert count > 0
 
 
 @needs_outputs

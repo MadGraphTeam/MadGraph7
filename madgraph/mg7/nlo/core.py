@@ -315,6 +315,67 @@ def born_topology(masses, nincoming, channel, order=None):
     return ms.Topology(diagram)
 
 
+def real_topology(diagram, masses, nincoming):
+    """The Topology of a diagram of a real emission of the aMC@NLO output
+    (the diagrams of a real of real_channels_structure.json), with the masses
+    of its legs. Each propagator of the diagram is (legs, pdg, s_channel,
+    mass, width), legs being the external legs (from 1) on one of its sides.
+    The sides not holding the first leg nest into a tree, whose vertices join
+    the largest sides inside a side with the legs left over. A vertex of the
+    t-channel line of a scattering (from the first to the second leg) with
+    more than one other line, as of a four-gluon vertex, takes these lines
+    through a massless s-channel propagator, since a Topology has t-channel
+    vertices of three lines."""
+    ms = madspace()
+    n = len(masses)
+
+    def line(leg):
+        position = leg - 1
+        if position < nincoming:
+            return f"i{position}"
+        return f"o{position - nincoming}"
+
+    everything = frozenset(range(1, n + 1))
+    sides, propagators = [], []
+    for legs, _, _, mass, width in diagram:
+        side = frozenset(legs)
+        if 1 in side:
+            side = everything - side
+        if len(side) < 2 or len(side) > n - 2 or side in sides:
+            raise ValueError(f"nlo.core: the propagators {diagram} are no tree")
+        sides.append(side)
+        propagators.append(ms.Propagator(mass=float(mass), width=float(width)))
+
+    def children(side):
+        # the largest sides inside side, then its legs outside them
+        inner = [s for s in sides if s < side]
+        largest = [s for s in inner if not any(s < t for t in inner)]
+        covered = frozenset().union(*largest)
+        return largest + [frozenset([leg]) for leg in sorted(side - covered)]
+
+    def name(side):
+        if len(side) == 1:
+            return line(next(iter(side)))
+        return f"p{sides.index(side)}"
+
+    tree = [(side, children(side)) for side in list(sides)]
+    tree.append((None, children(everything - {1})))
+    vertices = []
+    for parent, lines in tree:
+        on_line = nincoming == 2 and (parent is None or 2 in parent)
+        others = [s for s in lines if 2 not in s]
+        if on_line and len(others) > 1:
+            joined = frozenset().union(*others)
+            sides.append(joined)
+            propagators.append(ms.Propagator(mass=0.0, width=0.0))
+            vertices.append([name(joined)] + [name(s) for s in others])
+            lines = [s for s in lines if 2 in s] + [joined]
+        head = line(1) if parent is None else name(parent)
+        vertices.append([head] + [name(s) for s in lines])
+    real = ms.Diagram(masses[:nincoming], masses[nincoming:], propagators, vertices)
+    return ms.Topology(real)
+
+
 def born_cuts(born_pdgs, run_card):
     """The cuts of the run card on the final-state jets, leptons and photons
     of the Born as madspace Cuts, for the bound on sqrt(s_hat) they imply:
