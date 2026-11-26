@@ -181,7 +181,7 @@ class TestMergeGridpacks(unittest.TestCase):
         """Only some of the subprocesses can have negative weights: IDWTUP of
         the merged gridpack is the one of a sample that can."""
         paths = [self.path("a"), self.path("b"), self.path("c")]
-        for i, (path, mode) in enumerate(zip(paths, (3, -4, 3))):
+        for i, (path, mode) in enumerate(zip(paths, (4, -4, 4))):
             write_data(path, [i])
             meta_path = os.path.join(path, "lhe_meta.json")
             with open(meta_path) as f:

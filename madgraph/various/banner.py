@@ -7873,6 +7873,8 @@ class RunCardMG7(RunCard):
             comment="number of grid bins per dimension")
         self.add_toml_param('vegas', 'damping', 0.4,
             comment="damping of the grid updates")
+        self.add_toml_param('vegas', 'adaptive_discrete', False,
+            comment="adapt the flavour and permutation choices with the grids")
         self.add_toml_param('vegas', 'optimization_patience', 5,
             comment="survey iterations without improvement before the optimization stops")
         self.add_toml_param('vegas', 'optimization_threshold', 0.9,

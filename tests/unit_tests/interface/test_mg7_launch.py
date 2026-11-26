@@ -2241,7 +2241,7 @@ class TestNpyToLHE(unittest.TestCase):
         meta = ms.LHEMeta(
             beam1_pdg_id=-11, beam2_pdg_id=11, beam1_energy=500.,
             beam2_energy=500., beam1_pdf_id=-1, beam2_pdf_id=-1,
-            weight_mode=3, processes=[ms.LHEProcess(0.5, 0.01, 0.5, 1)],
+            weight_mode=4, processes=[ms.LHEProcess(0.5, 0.01, 0.5, 1)],
             headers=[ms.LHEHeader(name="MG7Seed", content="7"),
                      ms.LHEHeader(name="initrwgt",
                                   content='<weight id="1">a</weight>')])
