@@ -8546,9 +8546,9 @@ P1_qq_wp_wp_lvl
                                            'run_card.toml'), consistency=False)
         self.assertEqual(card['cuts.bw_cutoff'], 15)
 
-        # a 2 -> n collision keeps the standard cuts
+        # a 2 -> n collision keeps the standard cuts of its final-state groups
         shutil.rmtree(self.out_dir)
-        self.do('generate p p > t t~')
+        self.do('generate p p > e+ e- j')
         self.do('output mg7 %s' % self.out_dir)
         cuts = cuts_of(pjoin(self.out_dir, 'Cards', 'run_card.toml'))
         self.assertEqual(cuts['jet-pt']['min'], 20.0)

@@ -46,6 +46,18 @@ _NSIGMA = float(os.environ.get('MG7_AMPLICOL_NSIGMA', 4))
 _PDF = 'NNPDF23_lo_as_0130_qed'
 
 
+def _set_merging(card, key, value):
+    """`card` with [merging] `key` = `value`; an unmerged sample's card has
+    no [merging] section, so it is added then."""
+    line = '%s = %s' % (key, value)
+    card, count = re.subn(r'(?m)^%s = .*$' % key, line, card)
+    if count:
+        return card
+    card, count = re.subn(r'(?m)^\[merging\]\n', lambda m: m.group(0) + line + '\n',
+                          card, count=1)
+    return card if count else card.rstrip('\n') + '\n\n[merging]\n%s\n' % line
+
+
 def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
                    **amplicol):
     card = open(path).read()
@@ -55,11 +67,11 @@ def _edit_run_card(path, gridpack=False, output_format=None, merging=None,
     if merging == 'mlm':
         card = re.sub(r'(?m)^dynamical_scale_choice = ".*"',
                       'dynamical_scale_choice = "mlm"', card)
-        card = re.sub(r'(?m)^xqcut = .*$', 'xqcut = 20.0', card)
+        card = _set_merging(card, 'xqcut', 20.0)
     elif merging == 'ckkwl':
         card = re.sub(r'(?m)^dynamical_scale_choice = ".*"',
                       'dynamical_scale_choice = "ckkwl"', card)
-        card = re.sub(r'(?m)^ktdurham = .*$', 'ktdurham = 30.0', card)
+        card = _set_merging(card, 'ktdurham', 30.0)
         card = re.sub(r'(?m)^xqcut = .*$', 'xqcut = 0.0', card)
     else:
         # unmerged even where the output defaults to MLM (several
