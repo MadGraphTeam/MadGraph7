@@ -10,7 +10,7 @@ backend-path = ["build_backend"]
 
 [project]
 name = "pyamplicol"
-dynamic = ["version"]
+version = "0.3.0.1"
 description = "Generator using current recursion to build fast color-ordered matrix-element evaluators"
 readme = "README.md"
 requires-python = ">=3.11"

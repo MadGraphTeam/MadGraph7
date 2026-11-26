@@ -720,19 +720,20 @@ def _release_package_version(
     if release is None:
         with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
             release = tomllib.load(stream)
-    with (overlay / "Cargo.toml").open("rb") as stream:
-        cargo = tomllib.load(stream)
-    cargo_version = _required_string(
-        cargo["workspace"]["package"]["version"], "Cargo package version"
+    with (overlay / "pyproject.toml").open("rb") as stream:
+        pyproject = tomllib.load(stream)
+    python_version = _required_string(
+        pyproject["project"].get("version"), "pyproject.toml project version"
     )
     locked_version = _required_string(
         release["project"]["version"], "release-lock project version"
     )
-    if cargo_version != locked_version:
+    if python_version != locked_version:
         raise RuntimeError(
-            "release package version differs between Cargo.toml and release-lock.toml"
+            "release package version differs between pyproject.toml and "
+            "release-lock.toml"
         )
-    return cargo_version
+    return python_version
 
 
 def _cargo_package_version(overlay: Path, package_name: str) -> str:

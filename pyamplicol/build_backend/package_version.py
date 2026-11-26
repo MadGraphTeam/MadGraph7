@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: 0BSD
-"""Package-version checks sourced from the Cargo workspace manifest."""
+"""Package-version checks: pyproject.toml, release lock and Cargo workspace."""
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -27,8 +28,21 @@ def _required_string(value: object, context: str) -> str:
     return value
 
 
+def python_package_version(root: Path) -> str:
+    """Return the static ``[project].version`` of pyproject.toml, unchecked."""
+
+    project = _load_toml(root / "pyproject.toml").get("project")
+    if not isinstance(project, dict):
+        raise RuntimeError("pyproject.toml [project] must be a table")
+    return _required_string(project.get("version"), "pyproject.toml [project].version")
+
+
 def canonical_package_version(root: Path) -> str:
-    """Return Cargo's package version after checking release-facing metadata."""
+    """Return the Python package version after checking release-facing metadata.
+
+    The PyPI version is ``<MadGraph version>.<N>``; Cargo only takes semver, so
+    the Rust crates carry the MadGraph version (see tools/release/sync_version.py).
+    """
 
     cargo = _load_toml(root / "Cargo.toml")
     pyproject = _load_toml(root / "pyproject.toml")
@@ -48,23 +62,27 @@ def canonical_package_version(root: Path) -> str:
 
     if not isinstance(project, dict):
         raise RuntimeError("pyproject.toml [project] must be a table")
-    dynamic = project.get("dynamic")
-    if (
-        "version" in project
-        or not isinstance(dynamic, list)
-        or "version" not in dynamic
-    ):
+    if "version" in (project.get("dynamic") or ()) or "version" not in project:
         raise RuntimeError(
-            "pyproject.toml must declare project.version as dynamic; "
-            "Cargo.toml [workspace.package].version is canonical"
+            "pyproject.toml must declare a static project.version "
+            "(<MadGraph version>.<N>, written by tools/release/sync_version.py)"
         )
-    if locked_version != cargo_version:
+    python_version = _required_string(
+        project["version"], "pyproject.toml [project].version"
+    )
+    if locked_version != python_version:
         raise RuntimeError(
-            "package version mismatch: Cargo.toml declares "
-            f"{cargo_version!r}, but dependencies/release-lock.toml declares "
+            "package version mismatch: pyproject.toml declares "
+            f"{python_version!r}, but dependencies/release-lock.toml declares "
             f"{locked_version!r}"
         )
-    return cargo_version
+    cargo_base = re.split(r"[-+]", cargo_version, maxsplit=1)[0]
+    if python_version.rpartition(".")[0] != cargo_base:
+        raise RuntimeError(
+            "package version mismatch: pyproject.toml declares "
+            f"{python_version!r}, which is not <Cargo version {cargo_base!r}>.<N>"
+        )
+    return python_version
 
 
 def check_contributor_lock_consistency(root: Path) -> None:

@@ -1,8 +1,8 @@
 name: pyAmpliCol prepared models
 description: >
   Put the prepared-model packs into the pyamplicol source tree. They are not
-  tracked in Git: the archive of the matching (else latest) MadGraph release is
-  downloaded and validated against this source tree; when it is stale, the packs
+  tracked in Git: the archive of the release of this pyamplicol version (else
+  the latest one) is downloaded and validated against this source tree; when it is stale, the packs
   are regenerated on this runner (bootstrap wheel + produce, about ten minutes).
   Either way the archive ends up at pyamplicol/.artifacts/prepared-models/ for
   jobs that publish or reuse it. Needs Python 3.11+ and, for a regeneration,
@@ -25,7 +25,8 @@ runs:
         archive_dir=.artifacts/prepared-models
         tool=tools/release/prepared_models_archive.py
         check='import sys; from pathlib import Path; sys.path.insert(0, "build_backend"); from prepared_models import stage_packaged_prepared_models as s; s(Path("."), "release")'
-        if python "$tool" fetch --version "$(sed -n 's/^version *= *//p' ../VERSION)" \
+        version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+        if python "$tool" fetch --version "$version" \
               --output "$archive_dir" && python -I -c "$check"; then
           echo "regenerated=false" >> "$GITHUB_OUTPUT"
         else

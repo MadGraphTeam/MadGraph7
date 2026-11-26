@@ -1077,7 +1077,7 @@ def _source_runtime_key(payload: Mapping[str, Any]) -> tuple[object, ...] | None
     )
 
 
-def package_version(default: str = "0.2.1") -> str:
+def package_version(default: str = "0.3.0.1") -> str:
     """Return the wheel/source-runtime version without importing heavy modules."""
 
     if _is_source_checkout(_SOURCE_PACKAGE_ROOT, _SOURCE_ROOT):

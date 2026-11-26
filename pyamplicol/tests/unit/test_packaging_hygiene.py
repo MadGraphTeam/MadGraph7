@@ -17,7 +17,8 @@ sys.path.insert(0, str(ROOT / "tools" / "release"))
 import package_version  # noqa: E402
 import sync_version  # noqa: E402
 
-RELEASE_VERSION = sync_version.madgraph_version()
+MG_VERSION = sync_version.madgraph_version()
+RELEASE_VERSION = sync_version.package_version()
 
 
 def _copy_version_contract(tmp_path: Path) -> Path:
@@ -33,8 +34,36 @@ def _copy_version_contract(tmp_path: Path) -> Path:
     return root
 
 
-def test_cargo_workspace_is_the_canonical_package_version() -> None:
+def test_package_version_is_madgraph_version_with_release_number() -> None:
     assert package_version.canonical_package_version(ROOT) == RELEASE_VERSION
+    assert sync_version.release_number(RELEASE_VERSION, MG_VERSION) is not None
+    assert (
+        subprocess.run(
+            [sys.executable, ROOT / "tools/release/sync_version.py", "--check"]
+        ).returncode
+        == 0
+    )
+
+
+def test_package_version_contract_rejects_cargo_drift(tmp_path: Path) -> None:
+    root = _copy_version_contract(tmp_path)
+    cargo = root / "Cargo.toml"
+    cargo.write_text(
+        cargo.read_text(encoding="utf-8").replace(
+            f'version = "{MG_VERSION}"', 'version = "9.9.9"', 1
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="not <Cargo version"):
+        package_version.canonical_package_version(root)
+
+
+def test_release_number_parsing() -> None:
+    assert sync_version.release_number("1.0.0.1", "1.0.0") == 1
+    assert sync_version.release_number("1.0.0.12", "1.0.0") == 12
+    for version in ("1.0.0", "1.0.0.0", "1.0.0.01", "1.0.1.1", "1.0.0.1.dev0"):
+        assert sync_version.release_number(version, "1.0.0") is None
 
 
 def test_package_version_contract_rejects_release_lock_drift(tmp_path: Path) -> None:
@@ -54,21 +83,21 @@ def test_package_version_contract_rejects_release_lock_drift(tmp_path: Path) -> 
         package_version.canonical_package_version(root)
 
 
-def test_package_version_contract_rejects_static_python_version(
+def test_package_version_contract_rejects_dynamic_python_version(
     tmp_path: Path,
 ) -> None:
     root = _copy_version_contract(tmp_path)
     pyproject = root / "pyproject.toml"
     pyproject.write_text(
         pyproject.read_text(encoding="utf-8").replace(
+            f'version = "{RELEASE_VERSION}"',
             'dynamic = ["version"]',
-            'version = "0.1.0"',
             1,
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeError, match=r"project\.version as dynamic"):
+    with pytest.raises(RuntimeError, match=r"static project\.version"):
         package_version.canonical_package_version(root)
 
 

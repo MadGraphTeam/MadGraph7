@@ -91,6 +91,8 @@ jobs:
               ;;
             release)
               dir="$RELEASE_TAG"
+              # Standalone pyamplicol releases have no MadGraph docs of their own.
+              case "$RELEASE_TAG" in pyamplicol-v*) skip=true ;; esac
               case "$RELEASE_ACTION" in
                 published)
                   action=publish

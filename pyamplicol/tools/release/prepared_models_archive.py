@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: 0BSD
 """Pack, unpack and fetch the single prepared-model release archive.
 
-Prepared-model packs are not tracked in Git. Each MadGraph7 release attaches
-one archive holding the metadata of every architecture pair and each distinct
-bundle once (named by its SHA-256). Unpacking restores the files in both the
-package asset directory and the release store.
+Prepared-model packs are not tracked in Git. Each MadGraph7 release (tag
+``v<MG>``, pyamplicol ``<MG>.1``) and each standalone pyamplicol release (tag
+``pyamplicol-v<MG>.<N>``, N >= 2) attaches one archive holding the metadata
+of every architecture pair and each distinct bundle once (named by its
+SHA-256). Unpacking restores the files in both the package asset directory and
+the release store.
 
     prepared_models_archive.py pack --output DIR
     prepared_models_archive.py unpack ARCHIVE
-    prepared_models_archive.py fetch [--version V] [--output DIR]
+    prepared_models_archive.py fetch [--version PYAMPLICOL_VERSION] [--output DIR]
     prepared_models_archive.py regenerate --work DIR
 
 ``regenerate`` repeats the release-prepared-models workflow on this host: it
@@ -159,8 +161,19 @@ def _download(url: str, target: Path) -> bool:
     return True
 
 
+def release_tag(version: str) -> str:
+    """The GitHub release tag that publishes pyamplicol ``version``."""
+
+    mg_version, _, number = version.rpartition(".")
+    if version.count(".") == 3 and number == "1":
+        return f"v{mg_version}"
+    if version.count(".") == 3:
+        return f"pyamplicol-v{version}"
+    return f"v{version}"  # releases before the <MG>.<N> scheme
+
+
 def _release_tags(version: str | None) -> list[str]:
-    tags = [f"v{version}"] if version else []
+    tags = [release_tag(version)] if version else []
     api = f"https://api.github.com/repos/{RELEASES_REPOSITORY}/releases?per_page=30"
     try:
         with urllib.request.urlopen(api, timeout=60) as response:
@@ -187,7 +200,7 @@ def fetch(output: Path, version: str | None = None) -> Path:
         if _download(f"{base}/{tag}/{ARCHIVE_NAME}", target):
             print(f"Fetched {ARCHIVE_NAME} from release {tag}")
             return target
-    raise ArchiveError(f"no MadGraph7 release provides {ARCHIVE_NAME}")
+    raise ArchiveError(f"no MadGraph7 or pyamplicol release provides {ARCHIVE_NAME}")
 
 
 def _run(command: list[str | os.PathLike[str]]) -> None:

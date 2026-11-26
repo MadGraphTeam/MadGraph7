@@ -125,6 +125,11 @@ pub const C_ABI_VERSION: u32 = 1;
 // unpatched import when the layout does not parse.
 pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v2";
 
+/// The pyamplicol (PyPI) version this runtime reports and admits.
+pub fn package_version() -> &'static str {
+    artifact::rusticol_package_version()
+}
+
 /// Unstable implementation details shared with pyAmpliCol's private PyO3
 /// extension and native loop consumer. Absent from ordinary/default builds.
 #[cfg(feature = "python-generation-bridge")]

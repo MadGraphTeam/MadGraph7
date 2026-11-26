@@ -30,6 +30,7 @@ from native_build_identity import (
 from package_version import (
     canonical_package_version,
     check_contributor_lock_consistency,
+    python_package_version,
 )
 from prepared_models import (
     discard_release_packaged_prepared_model_store,
@@ -891,15 +892,7 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     if target not in _PORTABLE_SELFTEST_TARGETS:
         raise RuntimeError(f"unsupported self-test target: {target}")
 
-    with (overlay / "Cargo.toml").open("rb") as stream:
-        cargo = tomllib.load(stream)
-    try:
-        cargo_version = cargo["workspace"]["package"]["version"]
-    except (KeyError, TypeError) as error:
-        raise RuntimeError("build overlay has no workspace package version") from error
-    if not isinstance(cargo_version, str) or not cargo_version:
-        raise RuntimeError("build overlay workspace package version is invalid")
-    package_version = cargo_version.replace("-dev.", ".dev")
+    package_version = python_package_version(overlay)
     fixture_root = overlay / "src" / "pyamplicol" / "assets" / "selftest"
     if not fixture_root.is_dir():
         raise RuntimeError("wheel build input has no portable self-test fixture")
@@ -1037,6 +1030,57 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     )
 
 
+def _stamp_virtual_selftests(overlay: Path) -> None:
+    """Stamp the package version into the shipped one-loop self-test artifacts:
+    Rusticol admits only artifacts of its own version, and a version bump
+    alone does not change their content."""
+
+    package_version = python_package_version(overlay)
+    root = overlay / "src" / "pyamplicol" / "assets" / "selftest_virtual"
+    for path in sorted(root.glob("*/artifact/artifact.json")):
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            _require_artifact_identity_contract(manifest)
+            manifest["producer"]["version"] = package_version
+            manifest["runtime"]["engine_version"] = package_version
+            compiled_payloads = [
+                payload
+                for payload in manifest["payloads"]
+                if isinstance(payload, dict) and payload.get("role") == "compiled-model"
+            ]
+            if len(compiled_payloads) != 1:
+                raise RuntimeError(f"{path} must contain one compiled model")
+            payload = compiled_payloads[0]
+            relative = Path(payload["path"])
+            if relative.is_absolute() or any(
+                part in {"", ".", ".."} for part in relative.parts
+            ):
+                raise RuntimeError(f"{path} compiled-model path is unsafe")
+            compiled_path = path.parent / relative
+            compiled_model = json.loads(compiled_path.read_text(encoding="utf-8"))
+            compiled_model["producer"]["pyamplicol"] = package_version
+            compiled_data = (
+                json.dumps(
+                    compiled_model,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                + "\n"
+            ).encode("utf-8")
+            compiled_path.write_bytes(compiled_data)
+            payload["sha256"] = hashlib.sha256(compiled_data).hexdigest()
+            payload["size_bytes"] = len(compiled_data)
+        except (KeyError, OSError, TypeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"invalid self-test artifact: {path}") from error
+        manifest["artifact_id"] = _runtime_artifact_id(manifest)
+        path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            + "\n",
+            encoding="utf-8",
+        )
+
+
 def _workspace_version_crates(workspace: Path) -> tuple[str, ...]:
     """The workspace members whose package version is the workspace's own
     (``version.workspace = true``): a candidate build rewrites the workspace
@@ -1093,6 +1137,18 @@ def _candidate_lock_text(
     return lock_text
 
 
+def _cargo_workspace_version(root: Path) -> str:
+    with (root / "Cargo.toml").open("rb") as stream:
+        cargo = tomllib.load(stream)
+    try:
+        version = cargo["workspace"]["package"]["version"]
+    except (KeyError, TypeError) as error:
+        raise RuntimeError("build overlay has no workspace package version") from error
+    if not isinstance(version, str) or not version:
+        raise RuntimeError("build overlay workspace package version is invalid")
+    return version
+
+
 def _mark_candidate(
     overlay: Path,
     base_version: str,
@@ -1108,8 +1164,10 @@ def _mark_candidate(
     if re.fullmatch(r"[0-9a-f]{64}", native_build_inputs_sha256) is None:
         raise RuntimeError("candidate build has an invalid native source identity")
     candidate_fingerprint = native_build_inputs_sha256[:12]
-    cargo_version = f"{base_version}-dev.0+candidate.{candidate_fingerprint}"
-    python_version = cargo_version.replace("-dev.", ".dev")
+    # base_version is the Python version; Cargo carries its semver prefix.
+    cargo_base = _cargo_workspace_version(overlay)
+    cargo_version = f"{cargo_base}-dev.0+candidate.{candidate_fingerprint}"
+    python_version = f"{base_version}.dev0+candidate.{candidate_fingerprint}"
     if wheel is None:
         shutil.copy2(candidate_lock, overlay / "Cargo.lock")
         overlay_config = overlay / ".cargo" / "config.toml"
@@ -1119,7 +1177,7 @@ def _mark_candidate(
     cargo = overlay / "Cargo.toml"
     text = cargo.read_text(encoding="utf-8")
     updated, count = re.subn(
-        rf'(?m)^version = "{re.escape(base_version)}"$',
+        rf'(?m)^version = "{re.escape(cargo_base)}"$',
         f'version = "{cargo_version}"',
         text,
         count=1,
@@ -1127,13 +1185,24 @@ def _mark_candidate(
     if count != 1:
         raise RuntimeError("could not derive candidate version from Cargo.toml")
     cargo.write_text(updated, encoding="utf-8")
+    pyproject = overlay / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        rf'(?m)^version = "{re.escape(base_version)}"$',
+        f'version = "{python_version}"',
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError("could not derive candidate version from pyproject.toml")
+    pyproject.write_text(updated, encoding="utf-8")
 
     lock = overlay / "Cargo.lock"
     lock.write_text(
         _candidate_lock_text(
             overlay,
             lock.read_text(encoding="utf-8"),
-            base_version,
+            cargo_base,
             cargo_version,
         ),
         encoding="utf-8",
@@ -1893,6 +1962,8 @@ def _from_overlay(
                 "CARGO_ENCODED_RUSTFLAGS": _rust_remap_flags(overlay, target_dir),
                 "CARGO_TARGET_DIR": str(target_dir),
                 "PYAMPLICOL_BUILD_OVERLAY": str(overlay),
+                # Rust reports the Python version, not the semver Cargo one.
+                "PYAMPLICOL_PACKAGE_VERSION": python_package_version(overlay),
                 "RUSTUP_TOOLCHAIN": _pinned_rustup_toolchain(),
             }
             jobs = os.environ.get("PYAMPLICOL_BUILD_JOBS")
@@ -1967,6 +2038,7 @@ def _from_overlay(
                             overlay,
                             str(sdk_metadata["target"]),
                         )
+                    _stamp_virtual_selftests(overlay)
                     os.environ["PYAMPLICOL_SDK_STAGING"] = str(sdk)
                 return operation(*args, **kwargs)
 

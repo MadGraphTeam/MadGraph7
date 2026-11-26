@@ -54,7 +54,7 @@ const NATIVE_LIBRARY_SNAPSHOT_ATTEMPTS: u64 = 128;
 #[cfg(feature = "f64-compiled")]
 static NEXT_NATIVE_LIBRARY_SNAPSHOT: AtomicU64 = AtomicU64::new(0);
 
-fn rusticol_package_version() -> &'static str {
+pub(crate) fn rusticol_package_version() -> &'static str {
     option_env!("PYAMPLICOL_PACKAGE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 

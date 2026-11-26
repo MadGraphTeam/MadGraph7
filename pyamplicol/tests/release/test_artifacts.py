@@ -1003,6 +1003,7 @@ def _sdist(
             ).read_bytes(),
             "pyproject.toml": (
                 '[project]\nname = "pyamplicol"\n'
+                + f'version = "{python_version}"\n'
                 + (
                     f"dependencies = [{json.dumps(project_requirement)}]\n"
                     if project_requirement is not None

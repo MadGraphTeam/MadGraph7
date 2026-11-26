@@ -269,16 +269,52 @@ def refresh_umami_artifact_identity(
     return len(updates)
 
 
+def stamp_package_version(artifact: Path, version: str, *, check: bool = False) -> bool:
+    """Give a shipped self-test artifact the package version ``version``
+    (Rusticol admits only its own), rebinding its identity; return whether
+    it was stale. ``check`` only reports. JSON files keep their layout."""
+
+    path = artifact / "artifact.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    payload, relative = _compiled_model_payload(manifest)
+    compiled_path = artifact / relative
+    compiled_raw = compiled_path.read_bytes()
+    compiled = json.loads(compiled_raw)
+    if (
+        manifest["producer"]["version"] == version
+        and manifest["runtime"]["engine_version"] == version
+        and compiled["producer"]["pyamplicol"] == version
+    ):
+        return False
+    if check:
+        return True
+    canonical = _canonical_json(compiled) == compiled_raw
+    compiled["producer"]["pyamplicol"] = version
+    data = (
+        _canonical_json(compiled)
+        if canonical
+        else (
+            json.dumps(compiled, indent=2, sort_keys=True, allow_nan=False) + "\n"
+        ).encode("utf-8")
+    )
+    compiled_path.write_bytes(data)
+    payload["sha256"] = hashlib.sha256(data).hexdigest()
+    payload["size_bytes"] = len(data)
+    manifest["producer"]["version"] = version
+    manifest["runtime"]["engine_version"] = version
+    manifest["artifact_id"] = _artifact_id(manifest)
+    refresh_umami_artifact_identity(artifact, manifest)
+    path.write_bytes(_canonical_json(manifest))
+    return True
+
+
 def _workspace_version() -> str:
-    with (ROOT / "Cargo.toml").open("rb") as stream:
-        cargo = tomllib.load(stream)
-    try:
-        version = cargo["workspace"]["package"]["version"]
-    except (KeyError, TypeError) as exc:
-        raise RuntimeError("Cargo.toml has no workspace package version") from exc
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        pyproject = tomllib.load(stream)
+    version = pyproject.get("project", {}).get("version")
     if not isinstance(version, str) or not version:
-        raise RuntimeError("Cargo workspace package version is invalid")
-    return version.replace("-dev.", ".dev")
+        raise RuntimeError("pyproject.toml has no package version")
+    return version
 
 
 def _walk_evaluator_manifests(value: object) -> Sequence[dict[str, Any]]:

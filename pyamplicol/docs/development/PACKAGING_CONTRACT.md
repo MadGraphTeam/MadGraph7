@@ -17,8 +17,12 @@ publication.
   `abi3-py311`.
 - Native SDK: `rusticol-capi` links the Python-independent Rusticol core and
   must contain no PyO3, NumPy, Python symbols, or Python linker dependency.
-- Version source: root Cargo workspace metadata. Installed Python obtains the
-  version from distribution metadata.
+- Version source: the static `[project].version` in `pyproject.toml`,
+  `<MadGraph version>.<N>` (N = 1 ships with that MadGraph release, N >= 2 are
+  standalone `pyamplicol-v<MG>.<N>` releases). Cargo only takes semver, so the
+  Rust crates carry `<MadGraph version>` and the backend passes the Python
+  version to Rust as `PYAMPLICOL_PACKAGE_VERSION`. `tools/release/sync_version.py`
+  writes both. Installed Python obtains the version from distribution metadata.
 - Rust resolution: the committed `Cargo.lock` is authoritative.
 
 Release builds use a temporary allowlisted source overlay and an external
