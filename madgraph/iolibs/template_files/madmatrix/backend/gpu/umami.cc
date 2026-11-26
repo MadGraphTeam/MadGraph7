@@ -203,6 +203,8 @@ namespace
     bool good_hel[ProcessData::ncomb] = {};
     // where RAMBO has no phase space (a decay below threshold), every helicity is kept
     bool keep_every_helicity = false;
+    // one C-parity verdict for every scan of the instance (see csymOk)
+    bool csym_bad = false;
     // parameter interference_helicity_summed (run card [generation]
     // interference_helicity = "summed"): an interference |M|^2 stays the helicity
     // sum even when the caller draws the helicity (see umami_matrix_element)
@@ -265,8 +267,9 @@ namespace
   {
     for( bool& good : instance->good_hel ) good = true;
     instance->learned = nlearn;
+    instance->csym_bad = false;
     ProcessParameters& params = instance->process.parameters();
-    sigmaKin_setGoodHel( params, instance->good_hel );
+    sigmaKin_setGoodHel( params, instance->good_hel ); // no scan: no C-parity dedup
     instance->deviceParams.update( params );
   }
 
@@ -292,6 +295,8 @@ namespace
       count );
     for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
       if( is_good_hel[ihel] ) instance->good_hel[ihel] = true;
+    if( sigmaKin_csymScanBad() ) instance->csym_bad = true;
+    sigmaKin_setCsymVerdict( instance->csym_bad );
     sigmaKin_setGoodHel( params, instance->good_hel );
     instance->deviceParams.update( params );
     return scanned;
@@ -301,6 +306,7 @@ namespace
   void reset_good_helicities( InterfaceInstance* instance )
   {
     instance->learned = 0;
+    instance->csym_bad = false;
     for( bool& good : instance->good_hel ) good = false;
     instance->keep_every_helicity = no_phase_space( instance );
   }
@@ -944,8 +950,8 @@ extern "C"
 
   // A madmatrix extension, not part of UMAMI: the good helicities an instance has
   // chosen, as madmatrix_set_helicity_choice takes them (see the cpu backend):
-  // choice[0], the flags of the CPU builds (--hel_recycling, C-parity dedup: neither
-  // here, 0), then the rows of the helicity table that are kept. Returns the size of the choice, written if it
+  // choice[0], the flags (--hel_recycling: never here; 2 if the C-parity dedup
+  // holds), then the rows of the helicity table that are kept. Returns the size of the choice, written if it
   // is at most `capacity`, or -1 while the instance is still choosing.
   int madmatrix_get_helicity_choice( UmamiHandle handle, int* choice, int capacity )
   {
@@ -956,7 +962,7 @@ extern "C"
     if( choice != nullptr && size <= capacity )
     {
       int k = 0;
-      choice[k++] = 0;
+      choice[k++] = instance->process.parameters().csymOk ? 2 : 0;
       for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
         if( instance->good_hel[ihel] ) choice[k++] = ihel;
     }
@@ -968,8 +974,8 @@ extern "C"
   // the same parameters: mg7 chooses them from its cards on a CPU build
   // (madmatrix_choose_good_helicities), so that a run on a GPU evaluates the
   // helicities of a run on a CPU. They are kept until
-  // umami_set_parameter changes a parameter. The flags of choice[0] are not used
-  // here. UMAMI_ERROR, and nothing changes, if the choice does not fit the
+  // umami_set_parameter changes a parameter. Of the flags of choice[0], only the
+  // C-parity verdict (2) is used here. UMAMI_ERROR, and nothing changes, if the choice does not fit the
   // helicities of this process.
   UmamiStatus madmatrix_set_helicity_choice( UmamiHandle handle, const int* choice, int size )
   {
@@ -981,6 +987,8 @@ extern "C"
     for( bool& good : instance->good_hel ) good = false;
     for( int k = 1; k < size; ++k ) instance->good_hel[choice[k]] = true;
     instance->learned = nlearn;
+    instance->csym_bad = ( choice[0] & 2 ) == 0;
+    sigmaKin_setCsymVerdict( instance->csym_bad );
     ProcessParameters& params = instance->process.parameters();
     sigmaKin_setGoodHel( params, instance->good_hel );
     instance->deviceParams.update( params );

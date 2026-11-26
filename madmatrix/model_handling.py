@@ -2874,6 +2874,156 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             fsock.write(cls.hr_jamps_inc(post))
         return len(kept)
 
+    HR_GPU_FILE = 'HelZeroAmps.inc'
+    # Guarded calls above which no zero table is written: one inlined kernel per
+    # pattern kept cicc busy >1.5 h on g g > t t~ g g g (2282 calls); 502 build in
+    # minutes. Limit between the two is a guess.
+    HR_GPU_MAX_CALLS = 1000
+
+    @staticmethod
+    def hr_gpu_dead_nodes(graph, dead_amps):
+        """The nodes of hr_gpu_graph that nothing computed reads when the
+        amplitudes dead_amps are skipped: the graph is in code order, so one
+        backward pass carries the liveness of the amplitudes up to every node
+        they read, however indirectly (hr_set_masks in backend/gpu/SigmaKin.cc
+        does the same at run time)."""
+        alive = [False] * len(graph['wf'])
+        for namp, reads in graph['amp'].items():
+            if namp not in dead_amps:
+                for node in reads:
+                    alive[node] = True
+        for node in range(len(alive) - 1, -1, -1):
+            if alive[node]:
+                for mother in graph['wf'][node]:
+                    alive[mother] = True
+        return set(node for node, keep in enumerate(alive) if not keep)
+
+    def write_gpu_zero_amps(self, good_hels, zero_perhel):
+        """--hel_recycling, GPU: write HelZeroAmps.inc, from which the GPU backend
+        skips at each helicity the amplitudes that vanish there and the
+        wavefunctions that only those amplitudes read (backend/gpu/SigmaKin.cc).
+        It holds the warm-up's (row, amplitude) zero list, the graph of the
+        guarded calls and, for each call, its bit in the per-helicity masks, or
+        -1 for one that never vanishes, whose guard the compiler drops: the run
+        time can only find fewer zeros than the warm-up (getGoodHel checks them
+        at the parameters of the run), never more. Returns the number of zero
+        pairs written, or None when there is nothing to skip with or the graph is too big
+        (HR_GPU_MAX_CALLS) (then any old file is removed and the GPU build is
+        plain)."""
+        path = pjoin(self.path, self.HR_GPU_FILE)
+        if os.path.exists(path):
+            os.remove(path)
+        graph = getattr(self, '_hr_gpu_graph', None)
+        if not graph or not graph['amp']:
+            return None
+        ncalls = len(graph['wf']) + len(graph['amp'])
+        if ncalls > self.HR_GPU_MAX_CALLS:
+            logger.info('hel_recycling: %s has %d guarded GPU calls, above %d: plain GPU build',
+                        os.path.basename(self.path), ncalls, self.HR_GPU_MAX_CALLS)
+            return None
+        ncomb = self.matrix_elements[0].get_helicity_combinations()
+        namp = max(graph['amp']) + 1
+        good = set(int(hel) for hel in good_hels)
+        zeros = sorted(set((int(hel) - 1, int(amp)) for hel, amp in zero_perhel
+                           if int(hel) in good and int(amp) in graph['amp']))
+        if not zeros:
+            return None
+        nwf = len(graph['wf'])
+        dead_amps = {}
+        for ihel, amp in zeros:
+            dead_amps.setdefault(ihel, set()).add(amp)
+        skip_wf, skip_amp = set(), set()
+        for ihel, amps in dead_amps.items():
+            skip_amp |= amps
+            skip_wf |= self.hr_gpu_dead_nodes(graph, amps)
+        wf_bit = [-1] * nwf
+        amp_bit = [-1] * namp
+        nbits = 0
+        for node in sorted(skip_wf):
+            wf_bit[node] = nbits
+            nbits += 1
+        for amp in sorted(skip_amp):
+            amp_bit[amp] = nbits
+            nbits += 1
+        # the helicities with the same zeros share a kernel with only their live
+        # calls compiled in (pattern 0: nothing vanishes), most helicities first
+        by_zeros = {}
+        for ihel, amps in dead_amps.items():
+            by_zeros.setdefault(frozenset(amps), []).append(ihel)
+        patterns = sorted(by_zeros, key=lambda amps: (-len(by_zeros[amps]), sorted(amps)))
+        hel_pat = [0] * ncomb
+        nwords = (nbits + 31) // 32
+        pat_alive = [[0xffffffff] * nwords]
+        for ipat, amps in enumerate(patterns, 1):
+            for ihel in by_zeros[amps]:
+                hel_pat[ihel] = ipat
+            words = [0xffffffff] * nwords
+            for bit in [wf_bit[k] for k in self.hr_gpu_dead_nodes(graph, amps)] + [amp_bit[a] for a in amps]:
+                words[bit >> 5] &= ~(1 << (bit & 31))
+            pat_alive.append(words)
+
+        def csr(lists):
+            offsets, flat = [0], []
+            for one in lists:
+                flat.extend(one)
+                offsets.append(len(flat))
+            return offsets, flat or [0]
+
+        def table(values, per_line=16):
+            values = [str(v) for v in values]
+            return ',\n'.join('    ' + ', '.join(values[i:i + per_line])
+                               for i in range(0, len(values), per_line))
+
+        wf_off, wf_flat = csr(graph['wf'])
+        amp_off, amp_flat = csr([graph['amp'].get(n, []) for n in range(namp)])
+        lines = [
+            '// --hel_recycling, GPU: the amplitudes that vanish at each helicity, as the',
+            '// warm-up measured them at the param_card of the output, and the graph of the',
+            '// MG_HR_WF/MG_HR_AMP guarded calls of EvaluateDiagrams.inc (see',
+            '// backend/gpu/SigmaKin.cc). Generated by madmatrix/model_handling.py.',
+            '// the size of the device masks, one bit per call that can be skipped per helicity row',
+            '#define MADMATRIX_HR_MASK_BYTES %d' % (4 * ncomb * ((nbits + 31) // 32)),
+            'namespace hrgpu',
+            '{',
+            '  constexpr int ncomb = %d;' % ncomb,
+            '  constexpr int nwf = %d; // guarded wavefunctions and current sums, in code order' % nwf,
+            '  constexpr int namp = %d; // amplitude numbers [0, namp)' % namp,
+            '  constexpr int nzero = %d;' % len(zeros),
+            '  constexpr int nbits = %d; // calls that vanish at one helicity at least: %d nodes, %d amplitudes'
+            % (nbits, len(skip_wf), len(skip_amp)),
+            '  // the bit of each node and amplitude in the masks, -1 if it is never skipped',
+            '  constexpr short wfBit[nwf] = {', table(wf_bit), '  };',
+            '  constexpr short ampBit[namp] = {', table(amp_bit), '  };',
+            '  // as constants of device code (MG_HR_WF/MG_HR_AMP, for literal K and N)',
+            '  template<int K>',
+            '  struct WfBit { static constexpr int value = wfBit[K]; };',
+            '  template<int N>',
+            '  struct AmpBit { static constexpr int value = ampBit[N]; };',
+            '  // the zero pattern of each helicity row at the warm-up (0: nothing vanishes),',
+            '  // and the calls alive in each pattern, one bit per call that can be skipped',
+            '  constexpr int npat = %d;' % len(pat_alive),
+            '  constexpr signed char helPat[ncomb] = {', table(hel_pat), '  };',
+            '  constexpr unsigned int patAlive[npat][%d] = {' % nwords,
+            table(['{ %s }' % ', '.join('0x%08xu' % w for w in words) for words in pat_alive], 1),
+            '  };',
+            '  template<int P, int B>',
+            '  struct PatAlive { static constexpr bool value = B < 0 || ( ( patAlive[P][( B < 0 ? 0 : B ) >> 5] >> ( ( B < 0 ? 0 : B ) & 31 ) ) & 1u ); };',
+            '  // (helicity row of cHel [0, ncomb), amplitude number) pairs that vanish',
+            '  static const short zeroAmp[nzero][2] = {',
+            table(['{ %d, %d }' % pair for pair in zeros], 8),
+            '  };',
+            '  // the nodes each node reads: wfMother[wfOffset[k], wfOffset[k + 1])',
+            '  static const int wfOffset[nwf + 1] = {', table(wf_off), '  };',
+            '  static const int wfMother[] = {', table(wf_flat), '  };',
+            '  // the nodes each amplitude reads: ampMother[ampOffset[n], ampOffset[n + 1])',
+            '  static const int ampOffset[namp + 1] = {', table(amp_off), '  };',
+            '  static const int ampMother[] = {', table(amp_flat), '  };',
+            '}',
+            '']
+        with open(path, 'w') as fsock:
+            fsock.write('\n'.join(lines))
+        return len(zeros)
+
     # AV - modify export_cpp.OneProcessExporterCPP method (fix CPPProcess.cc)
     # backend_separation: calculate_jamps' prologue (signature, memory-access
     # typedefs) and epilogue (color-choice bookkeeping, jamp output copy) are
@@ -2908,6 +3058,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # every crossed lane of the recycled build would be the base process.
         self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
         self.helas_call_writer.hr_probe = recycle
+        self.helas_call_writer.hr_gpu_graph = None
         try:
             if recycle:
                 self._hr_calls = self.hr_orig_calls(color_amplitudes[0])
@@ -2917,9 +3068,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                                                 color_amplitudes[0],
                                                 multi_channel_map = self.multi_channel_map
                                                 )
+            self._hr_gpu_graph = self.helas_call_writer.hr_gpu_graph
         finally:
             self.helas_call_writer.use_crossing_ic = False
             self.helas_call_writer.hr_probe = False
+            self.helas_call_writer.hr_gpu_graph = None
         self.couplings2order = self.helas_call_writer.couplings2order
         self.couporderflv = self.helas_call_writer.couporderflv
         self.couporderflv_dep = self.helas_call_writer.couporderflv_dep
@@ -3875,9 +4028,15 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # number and its legs' spins, and followed by what it adds to the per-row tables, with a ${row}
     # hole); see OneProcessExporterMadMatrix.hr_orig_calls. hr_probe: follow every
     # amplitude of the ordinary calls with MG_HR_PROBE_AMP, which only a warm-up
-    # build (-DMG_HR_PROBE) compiles to anything.
+    # build (-DMG_HR_PROBE) compiles to anything, and put every wavefunction and
+    # amplitude call under an MG_HR_WF/MG_HR_AMP guard, which only the GPU backend
+    # compiles to anything: the per-helicity skipping of the amplitudes that
+    # vanish (see backend/gpu/SigmaKin.cc). hr_gpu_graph is what that skipping
+    # needs besides the warm-up's zero list: for each guarded wavefunction (code
+    # order) and amplitude, the wavefunctions it reads.
     hr_orig = False
     hr_probe = False
+    hr_gpu_graph = None
     # Class structure information
     #  - object
     #  - dict(object) [built-in]
@@ -4390,6 +4549,31 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             # Emit the opening of an `if` guard for a non-full grouped mask.
             return self.flavour_guard(group_mask)
 
+        # --hel_recycling, GPU: every wavefunction (and current sum) of the
+        # ordinary calls is a node, numbered in code order, guarded by
+        # MG_HR_WF( node ), and every amplitude is guarded by MG_HR_AMP( number ).
+        # The graph records what each node and amplitude reads, so that the GPU
+        # can skip, at a helicity, the amplitudes that vanish there and the
+        # wavefunctions only those amplitudes need.
+        hr_guard = self.hr_probe and not self.hr_orig
+        hr_wf_node = {}         # wavefunction number -> node
+        hr_wf_mothers = []      # node -> the nodes it reads
+        hr_amp_mothers = {}     # amplitude number -> the nodes it reads
+        hr_sum_node = {}        # current sum -> node
+        hr_graph_ok = True
+
+        def _hr_node(mothers):
+            nonlocal hr_graph_ok
+            nodes = []
+            for mother in mothers:
+                node = hr_wf_node.get(mother)
+                if node is None:
+                    hr_graph_ok = False # a wavefunction that is not one of the calls
+                else:
+                    nodes.append(node)
+            hr_wf_mothers.append(sorted(set(nodes)))
+            return len(hr_wf_mothers) - 1
+
         # OM - the four gluon optimisation (set merge_quartic_vertices). A quartic
         # current and the cubic current carrying the same colour factor are
         # summed into a third one, which the amplitude reads instead, so that
@@ -4417,6 +4601,14 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 call = self.get_wavefunction_call(wf)
                 if call and call[-1] == '\n': call = call[:-1]
                 gmask = wf_group_mask.get(id(wf))
+                if hr_guard:
+                    node = _hr_node([m.get('number') for m in wf.get('mothers')])
+                    hr_wf_node[wf.get('number')] = node
+                    if '\n' in call.strip():
+                        # crossing blends the external calls under #ifdef: the braces go on lines of their own
+                        call = 'if( MG_HR_WF( %d ) )\n      {\n%s\n      }' % (node, call.rstrip())
+                    else:
+                        call = 'if( MG_HR_WF( %d ) ) { %s }' % (node, call.strip())
                 if gmask is not None:
                     res.append(_guard_open(gmask))
                     res.append(call)
@@ -4431,12 +4623,17 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                         continue
                     sum_written.add(isum)
                     cubic, quartic, coeff = sums[isum]
-                    res.append('%s<W_ACCESS>( aloha_obj[%d], aloha_obj[%d],'
-                               ' aloha_obj[%d] );'
-                               % ('SUMW_1' if coeff == 1 else 'SUBW_1',
-                                  cubic.get('me_id') - 1,
-                                  quartic.get('me_id') - 1,
-                                  sum_slots[isum] - 1))
+                    call = ('%s<W_ACCESS>( aloha_obj[%d], aloha_obj[%d],'
+                            ' aloha_obj[%d] );'
+                            % ('SUMW_1' if coeff == 1 else 'SUBW_1',
+                               cubic.get('me_id') - 1,
+                               quartic.get('me_id') - 1,
+                               sum_slots[isum] - 1))
+                    if hr_guard:
+                        node = _hr_node([cubic.get('number'), quartic.get('number')])
+                        hr_sum_node[isum] = node
+                        call = 'if( MG_HR_WF( %d ) ) { %s }' % (node, call)
+                    res.append(call)
                     self.wf_events.append((len(res), [cubic.get('me_id') - 1, quartic.get('me_id') - 1], sum_slots[isum] - 1))
             if len(diagram.get('wavefunctions')) == 0 : res.append('// (none)') # AV
             res.append('\n      // Amplitude(s) for diagram number %d' % diagram.get('number'))
@@ -4461,6 +4658,19 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                     mother.set('me_id', me_id)
                 # the flavours this amplitude contributes to (None: all of them)
                 gmask = diag_group_mask.get(id(diagram))
+                if hr_guard:
+                    # what this amplitude reads: a current sum in place of the
+                    # cubic current it was built from
+                    reads = set()
+                    for mother in amplitude.get('mothers'):
+                        isum = sum_uses.get(namp, {}).get(mother.get('number'))
+                        if isum is not None and isum in hr_sum_node:
+                            reads.add(hr_sum_node[isum])
+                        elif mother.get('number') in hr_wf_node:
+                            reads.add(hr_wf_node[mother.get('number')])
+                        else:
+                            hr_graph_ok = False
+                    hr_amp_mothers[namp] = sorted(reads)
                 if hr_mode == 'rows':
                     res.extend(self._hr_orig_store(amp_block[0], namp, hr_namp,
                                                    amplitude, gmask))
@@ -4494,6 +4704,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 # amp_sv[0]) only contributes for the flavors in the diagram's
                 # mask, so guard the whole block as a unit.
                 before_guard = []
+                if_skipped = [] # what the hr guard does instead of the amplitude
                 if jamp_plan is None:
                     # With split orders the jamps are nampso vectors end to end
                     # and this amplitude belongs to exactly one of them, so its
@@ -4520,8 +4731,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                             # sub-expression, so it has to start from zero
                             before_guard.append('%s = cxzero_sv();' % target)
                             line = line.replace(' = ', ' += ', 1)
+                        elif first and hr_guard:
+                            # the same, in an else that the compiler drops
+                            # with the guard when the amplitude never vanishes
+                            if_skipped.append('%s = cxzero_sv<cxtype_amp_sv>();' % target)
                         amp_block.append(line)
                 res.extend(before_guard)
+                if hr_guard:
+                    amp_block = ['if( MG_HR_AMP( %d ) )' % namp, '{'] + \
+                                ['  ' + line for line in amp_block] + ['}']
+                    if if_skipped:
+                        amp_block += ['else', '{'] + \
+                                     ['  ' + line for line in if_skipped] + ['}']
                 if gmask is not None:
                     res.append(_guard_open(gmask))
                     res.extend(amp_block)
@@ -4538,6 +4759,9 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         if jamp_plan is not None and not self.hr_orig:
             res.append('\n      // *** COLOR FLOWS FROM THE SHARED SUB-EXPRESSIONS ***')
             res.extend(jamp_final)
+        if hr_guard:
+            self.hr_gpu_graph = {'wf': hr_wf_mothers, 'amp': hr_amp_mothers} \
+                                if hr_graph_ok else None
         ###res.append('\n    // *** END OF DIAGRAMS ***' ) # AV - no longer needed ('COLOR MATRIX BELOW')
         return res
 
@@ -4871,7 +5095,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             self.axial_gauge_refs = {}
         masks = iter(self.barrier_masks())
         for i, item in enumerate(res):
-            if item == 'SHWF_RELOAD();': item = res[i] = 'SHWF_RELOAD( 0x%08x );' % next(masks)
+            if item.strip() == 'SHWF_RELOAD();': item = res[i] = item.replace('SHWF_RELOAD();', 'SHWF_RELOAD( 0x%08x );' % next(masks))
             ###print(item) # FOR DEBUGGING
             if item.startswith('# Amplitude'): item='//'+item[1:] # AV replace '# Amplitude' by '// Amplitude'
             if not item.startswith('\n') and not item.startswith('#'): res[i]='      '+item
