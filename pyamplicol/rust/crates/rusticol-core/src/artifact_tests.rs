@@ -272,7 +272,7 @@ impl TestArtifact {
             "created_utc": "2026-07-15T00:00:00Z",
             "producer": {
                 "distribution": "pyamplicol",
-                "version": env!("CARGO_PKG_VERSION"),
+                "version": rusticol_package_version(),
                 "versions": {
                     "python_api": PYTHON_API_VERSION,
                     "toml": TOML_SCHEMA_VERSION,
@@ -310,7 +310,7 @@ impl TestArtifact {
             "default_process_id": "p0",
             "runtime": {
                 "engine": "rusticol",
-                "engine_version": env!("CARGO_PKG_VERSION"),
+                "engine_version": rusticol_package_version(),
                 "evaluator_manifest_path": "evaluator.json",
                 "required_runtime_capabilities": [
                     "symjit.application.complex-f64.v1"
@@ -2492,8 +2492,8 @@ fn packaged_portable_64le_o2_artifact_loads_through_native_runtime() {
     )
     .expect("parse portable manifest");
     let source_artifact_id = staged.manifest["artifact_id"].clone();
-    staged.manifest["producer"]["version"] = json!(env!("CARGO_PKG_VERSION"));
-    staged.manifest["runtime"]["engine_version"] = json!(env!("CARGO_PKG_VERSION"));
+    staged.manifest["producer"]["version"] = json!(rusticol_package_version());
+    staged.manifest["runtime"]["engine_version"] = json!(rusticol_package_version());
     staged.write_manifest();
     assert_eq!(staged.manifest["artifact_id"], source_artifact_id);
 
