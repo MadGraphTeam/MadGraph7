@@ -6637,7 +6637,10 @@ def output_language(comparison_results, output='text', threshold=1e-4):
     relative difference is over every pair of backends and every point. A
     difference is relative to the larger of the two values, and a value below
     1e-10 of the largest one of the entry (a helicity-suppressed point) is
-    compared to that scale instead, so that two numerical zeros agree.
+    compared to that scale instead, so that two numerical zeros agree. A
+    process that vanishes altogether (nu nu~ > a a in a SMEFT model: round-off
+    of 1e-73 in one backend, exactly 0 in another) has no such scale: a value
+    whose dimensionless size |M|^2 sqrt(s)^(2n-8) is below 1e-30 counts as 0.
 
     Parameters
     ----------
@@ -6719,6 +6722,21 @@ def output_language(comparison_results, output='text', threshold=1e-4):
         # the scale of the entry, below which values are numerical zeros
         scale = max([abs(v) for _, values in available for v in values
                      if v is not None and math.isfinite(v)] or [0.])
+        # and the absolute one, 1e-30 in units of sqrt(s) (first point)
+        momenta = entry.get('momenta')
+        if momenta:
+            ninitial = entry['process'].get_ninitial() \
+                       if entry.get('process') is not None else 2
+            sqrts = sum(p[0] for p in momenta[:ninitial])
+            if ninitial == 2:
+                sqrts = math.sqrt(max(sqrts ** 2 - sum(
+                    (momenta[0][i] + momenta[1][i]) ** 2 for i in (1, 2, 3)), 0.))
+            zero = 1e-30 * sqrts ** (8 - 2 * len(momenta)) if sqrts > 0 else 0.
+            if scale < zero:
+                available = [(name, [0. if v is not None and abs(v) < zero else v
+                                     for v in values])
+                             for name, values in available]
+                scale = 0.
         max_diff = None
         worst = None
         for i, (name1, values1) in enumerate(available):

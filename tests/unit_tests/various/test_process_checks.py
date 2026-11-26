@@ -1680,6 +1680,22 @@ class TestOutputLanguage(unittest.TestCase):
         zero = self.entry('e > f', fortran=[1., 1e-25, 3.],
                           python=[1., -3e-25, 3.])
         lone = self.entry('g > h', python=[1., 2., 3.])
+        # a process that vanishes (nu nu~ > a a in a SMEFT model): round-off in
+        # one backend, exactly 0 in another, |M|^2 far below 1e-30 at 1 TeV
+        null = self.entry('n > m', fortran=[7.8e-73, 2.7e-37, 1e-40],
+                          mg7=[0., 1.7e-38, 0.])
+        null['momenta'] = [[500., 0., 0., 500.], [500., 0., 0., -500.],
+                           [500., 300., 0., 400.], [500., -300., 0., -400.]]
+        # but a genuine value is compared, however small the other one
+        real = self.entry('o > q', fortran=[1e-3, 1e-3, 1e-3], mg7=[1e-3, 0., 1e-3])
+        real['momenta'] = null['momenta']
+        results = [good, bad, zero, lone, null, real]
+        self.assertEqual(process_checks.output_language(results, output='fail'), 2)
+        text = process_checks.output_language(results)
+        lines = dict((line.split()[0] + line.split()[1] + line.split()[2], line)
+                     for line in text.split('\n') if '>' in line.split()[1:2])
+        self.assertTrue(lines['n>m'].endswith('Passed'))
+        self.assertIn('Failed', lines['o>q'])
         results = [good, bad, zero, lone]
         self.assertEqual(process_checks.output_language(results, output='fail'), 1)
         text = process_checks.output_language(results)
