@@ -6,7 +6,8 @@ references of test_cs_cross_section.py (MADSPACE_FKS_OUTPUTS): hadron beams
 (p p > e+ e-, t t~, a a, e+ e- j, w+), lepton beams (e+ e- > j j, j j j),
 elastic photons (a a > t t~), decays (t > b w+ with a massive and a
 massless b), QED corrections (p p > e+ e- [QED]) and the scale of the user,
-on channels of the dipoles and of the diagrams of the real processes.
+on channels of the dipoles and of the diagrams of the real processes, also
+with the channels of the default (pairs) and of the diagrams alone (reals).
 Dressed leptons have no channel densities, whose mappings have no
 inverse.
 
@@ -55,10 +56,11 @@ RTOL = 1e-13
 
 
 @contextlib.contextmanager
-def cs_setup(name, **run_card):
-    """The real stream of the driver with the combined channels on the output
-    of a reference with the entries of run_card changed, set up, and closed
-    afterwards with the processes of its providers."""
+def cs_setup(name, channels="combined", **run_card):
+    """The real stream of the driver with the channels (by default all of
+    them, combined) on the output of a reference with the entries of run_card
+    changed, set up, and closed afterwards with the processes of its
+    providers."""
     data = reference(name)
     run = CSRun(
         fks_output(data["output"]),
@@ -67,7 +69,7 @@ def cs_setup(name, **run_card):
         run_path=os.path.join(tempfile.gettempdir(), "madspace_cs_real", name),
         seed=4711,
         streams=("real",),
-        channels="combined",
+        channels=channels,
     )
     run.setup()
     try:
@@ -124,6 +126,19 @@ def test_against_driver(name):
         compare_with_driver(run)
 
 
+@pytest.mark.parametrize("channels", ["pairs", "reals"])
+@pytest.mark.parametrize("name", ["pp_ttx", "epem_jjj"])
+def test_channel_sets(name, channels):
+    """The channels of the default (the diagrams and one dipole per singular
+    pair) and those of the diagrams alone, with no channel of a dipole."""
+    with cs_setup(name, channels) as run:
+        dipoles = sum(
+            m is not None for integrand in run.integrands for m, _ in integrand.channels
+        )
+        assert (dipoles == 0) == (channels == "reals")
+        compare_with_driver(run)
+
+
 @pytest.mark.parametrize("choice", [0, 10])
 def test_user_scale(choice, monkeypatch):
     """The scale of the user (dynamical_scale_choice 0 and 10) on p p > e+ e-,
@@ -172,10 +187,13 @@ def test_channel_weights():
 
 def test_dressed_leptons():
     """The densities of the channels need the inverse maps, which those of
-    dressed leptons have not."""
-    with pytest.raises(NotImplementedError):
-        with cs_setup("epem_ttx_isr"):
-            pass
+    dressed leptons have not: their real stream takes the channels and weights
+    of channels="dipoles", which the C++ integrand does not."""
+    with cs_setup("epem_ttx_isr") as run:
+        integrand = run.integrands[0]
+        assert integrand.channels_kind == "dipoles"
+        with pytest.raises(NotImplementedError):
+            integrand.channel_integrand(0, run.context)
 
 
 def test_refusals():

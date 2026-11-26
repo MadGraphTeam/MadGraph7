@@ -36,17 +36,26 @@ The real stream of a real process (a real matrix element of the cs block of
 madspace.nlo.cs, with its flavor lines) is the real emission minus
 its dipoles (CSDipoles), with one channel per dipole and Born channel of its
 Born: the CSMapping of the dipole on the Born diagram of the channel. The
-weight of a channel is |c| of its dipole over the sum over the dipoles of
-the real, c the color weight of CSDipoles at alpha = 1, times amp2 of its
-Born diagram over that of all Born diagrams at the Born of the dipole, so
-that the weights add up to one at every event. With the combined channels
-(channels="combined", as MoCaNLO) the real stream has a channel per diagram
-of the real process as well (a PhaseSpaceMapping of its topology from
-real_channels_structure.json of the output), and the weight of every channel
-is the density of its mapping over the sum of those of all channels at the
-event (as MappingChannelWeights), which is the C++ integrand of a channel
-(CSRealChannelIntegrand); channels="densities" takes these weights with the
-channels of the dipoles alone. Each dipole takes the blocks
+channels of the real stream (channels) are, by default (pairs), one per
+diagram of the real process (a PhaseSpaceMapping of its topology from
+real_channels_structure.json of the output) and one per singular pair
+{i, j} of its dipoles (the CSMapping of the first dipole of the pair on the
+first Born diagram of its Born, since the spectator fixes only the recoil
+and the Born peaks are those of the diagrams); reals takes the diagrams
+alone, as at LO, and combined all dipoles on all Born diagrams as well (as
+MoCaNLO). The weight of every channel is then the density of its mapping
+over the sum of those of all channels at the event (as
+MappingChannelWeights), which is the C++ integrand of a channel
+(CSRealChannelIntegrand). Real-stream errors at the same points per channel
+(pairs / reals / combined): p p > t t~ 0.29 / 0.32 / 0.20 with 66 / 46 /
+154 channels, p p > e+ e- j 2.9 / 4.8 / 2.5 with 672 / 544 / 1568. With
+channels="dipoles", the scheme of the first driver and that of dressed
+leptons (their mappings have no inverse), the channels are those of all
+dipoles on all Born diagrams, the weight of a channel |c| of its dipole
+over the sum over the dipoles of the real, c the color weight of CSDipoles
+at alpha = 1, times amp2 of its Born diagram over that of all Born diagrams
+at the Born of the dipole, so that the weights add up to one at every
+event. Each dipole takes the blocks
 of the Born of its own subprocess, the spin correlation in the factorized
 form <T_j . T_k> B(k_t) / B, with B(k_t) the Born of the provider with the
 azimuthal part of an FKS configuration whose mother is the emitter. MadFKS
@@ -86,7 +95,8 @@ Beams of dressed electrons and positrons (lpp 3 and -3) take the densities
 of pdlabel among the lep_densities of the output, reduced by (1 - x)^p of
 the power p of the sampling of their momentum fractions in PhaseSpaceMapping
 (lepton_sampling_power), with the real emission and its dipoles at the
-momentum fractions of the Born. Beams of elastic photons from protons (lpp
+momentum fractions of the Born, and their real stream the channels of
+channels="dipoles". Beams of elastic photons from protons (lpp
 2 and -2) take the equivalent-photon density of epa_proton of MadFKS
 (ElasticPhotonDensity). Neither the leptons nor the photons radiate QCD, so
 that their Borns have no K and P operators. The luminosities of all beams
@@ -143,7 +153,7 @@ logger = logging.getLogger("madgraph.mg7.nlo.cs")
 INV_GEV2_TO_PB = 0.38937937217186e9
 FAMILIES = ("ff", "fi", "if", "ii")
 STREAMS = ("nbody", "real")
-CHANNELS = ("dipoles", "densities", "combined")
+CHANNELS = ("pairs", "reals", "combined", "dipoles")
 
 
 def minkowski(a, b):
@@ -936,7 +946,7 @@ class CSRealIntegrand:
         alpha,
         kappa,
         technical_cut,
-        channels="dipoles",
+        channels="pairs",
     ):
         ms = madspace()
         from madspace.nlo import nlo_scale
@@ -945,10 +955,9 @@ class CSRealIntegrand:
             raise ValueError(f"nlo.cs: channels of {CHANNELS} expected, not {channels}")
         entry = block["reals"][index]
         if channels != "dipoles" and subprocesses[entry["subprocess"]].lepton_power:
-            raise NotImplementedError(
-                "nlo.cs: no densities of the channels with dressed leptons, whose "
-                "mappings have no inverse"
-            )
+            # the mappings of dressed leptons have no inverse for the densities
+            channels = "dipoles"
+        self.channels_kind = channels
         source = subprocesses[entry["subprocess"]]
         self.source = source
         self.context = context
@@ -991,6 +1000,9 @@ class CSRealIntegrand:
         self.dipoles, self.channels, self.forward, self.dimensions = [], [], [], []
         mappings, kernels, symmetry = [], [], []
         channel_mappings, discrete_mappings = [], []
+        # with channels="pairs" one channel per singular pair {i, j} of the
+        # dipoles, on the first Born diagram of the first dipole of the pair
+        pairs = set()
         for d in block["cs"]:
             if d["real"] != index:
                 continue
@@ -1013,6 +1025,14 @@ class CSRealIntegrand:
                 )
                 if b == 0:
                     mappings.append(mapping)
+                if channels == "reals":
+                    # the channels of the diagrams alone
+                    continue
+                if channels == "pairs":
+                    pair = frozenset((d["i"], d["j"]))
+                    if b > 0 or pair in pairs:
+                        continue
+                    pairs.add(pair)
                 channel_mappings.append(mapping)
                 discrete_mappings.append(born_mapping)
                 self.channels.append((len(self.dipoles), b))
@@ -1026,7 +1046,7 @@ class CSRealIntegrand:
         # the channels of the diagrams of the real emission, and the inverse
         # maps of all channels for their densities
         self.inverse = None
-        if channels == "combined":
+        if channels in ("combined", "reals", "pairs"):
             path = os.path.join(source.directory, "real_channels_structure.json")
             with open(path) as stream:
                 structure = json.load(stream)
@@ -1338,9 +1358,10 @@ class CSRealIntegrand:
         of the model, so that the blocks are those of the providers."""
         ms = madspace()
         element = ms.MatrixElement
-        if self.inverse is None or len(self.inverse) != len(self.channels):
+        if self.inverse is None:
             raise NotImplementedError(
-                "nlo.cs: the C++ integrand has the combined channels only"
+                "nlo.cs: the C++ integrand takes the densities of the channels, "
+                "which dressed leptons and channels='dipoles' have not"
             )
         source = self.source
         apis = source.libraries(context)
@@ -1530,7 +1551,7 @@ class CSRun(NLORun):
     for all), kappa of the final-state gluon kernels with a massive
     spectator, the technical cut of the real stream, the streams to
     integrate (nbody, real or both) and the channels of the real stream
-    (dipoles, densities or combined, see the module)."""
+    (pairs, reals, combined or dipoles, see the module)."""
 
     scheme = "cs"
     work_directory = "madspace_cs"
@@ -1542,7 +1563,7 @@ class CSRun(NLORun):
         kappa=2.0 / 3.0,
         technical_cut=1e-6,
         streams=STREAMS,
-        channels="dipoles",
+        channels="pairs",
         **options,
     ):
         super().__init__(output, **options)
@@ -1636,10 +1657,12 @@ def main(argv=None):
     )
     parser.add_argument(
         "--channels",
-        default="dipoles",
+        default="pairs",
         choices=CHANNELS,
-        help="the channels of the real stream: per dipole and Born diagram, "
-        "or combined with those of the diagrams of the real emission",
+        help="the channels of the real stream: the diagrams of the real "
+        "emission with one dipole per singular pair (pairs), the diagrams "
+        "alone (reals), with all dipoles on all Born diagrams (combined), or "
+        "all dipoles with the weights of the first driver (dipoles)",
     )
     parser.add_argument(
         "--streams",

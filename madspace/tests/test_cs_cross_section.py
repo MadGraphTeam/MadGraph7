@@ -25,10 +25,10 @@ with those of MG5aMC also for a W at rest in the partonic frame (p p > w+),
 isolated photons (p p > a a, with longer runs), elastic photon beams (a a >
 t t~) and QED corrections in the complex-mass scheme (p p > e+ e- [QED]).
 MADSPACE_FKS_POINTS sets the number of points per channel of an iteration,
-POINTS by default, with which the tests take about four minutes on one
-core, most of it for the real streams of p p > t t~ (108 channels) and e+
-e- > j j j (192). p p > e+ e- j (1072 channels, seven minutes a run there)
-runs only with MADSPACE_FKS_SLOW=1.
+POINTS by default, with which the tests take a few minutes on one core,
+most of it for the real streams of p p > t t~ (66 channels) and e+ e- > j
+j j (112). p p > e+ e- j (672 channels in its real stream, about five
+minutes a run there) runs only with MADSPACE_FKS_SLOW=1.
 """
 
 import copy
@@ -86,7 +86,7 @@ def make_run(name, alpha=1.0, streams=STREAMS, points=POINTS, **options):
     if name in SLOW_REFERENCES and not SLOW:
         pytest.skip(f"{name} runs only with MADSPACE_FKS_SLOW=1")
     data = reference(name)
-    tag = "_".join([name, str(alpha), *streams])
+    tag = "_".join([name, str(alpha), *streams, options.get("channels", "pairs")])
     factor, grid_iterations, max_iterations = LONGER_RUNS.get(name, (1, 2, 3))
     return CSRun(
         fks_output(data["output"]),
@@ -228,22 +228,27 @@ def test_s_hat_shift(monkeypatch):
 
 
 @needs_outputs
-def test_combined_channels():
-    """With the channels of the diagrams of the real processes as well, whose
-    weights are the densities of the mappings, the real stream of e+ e- > j j
-    at a fixed scale without cuts is (1 - C_F) alpha_s / pi sigma_LO, and the
-    NLO of p p > t t~ that of MG5aMC, within PULL errors."""
+@pytest.mark.parametrize("channels", ["combined", "reals", "dipoles"])
+def test_channel_sets(channels):
+    """With the channels of all dipoles and diagrams (combined), of the
+    diagrams alone (reals) and those of the first driver (dipoles), besides
+    those of the default (pairs) in the other tests: the real stream of e+ e-
+    > j j at a fixed scale without cuts is (1 - C_F) alpha_s / pi sigma_LO,
+    and the NLO of p p > t t~ that of MG5aMC, within PULL errors."""
     data = reference("epem_jj_fixed")
-    run = make_run("epem_jj_fixed", streams=("real",), channels="combined")
+    run = make_run("epem_jj_fixed", streams=("real",), channels=channels)
     run.run()
-    assert any(m is None for integrand in run.integrands for m, _ in integrand.channels)
+    diagrams = [
+        m is None for integrand in run.integrands for m, _ in integrand.channels
+    ]
+    assert any(diagrams) == (channels != "dipoles")
     a = alpha_s_of(run, float(data["run_card"]["mur_ref_fixed"])) / math.pi
     lo = data["lo"]["sigma"]
     sigma, error = run.combination([1.0, 0.0, 0.0])
     assert abs(sigma - (1 - CF) * a * lo) < PULL * error, (sigma, error)
     run.close()
     data = reference("pp_ttx")
-    run = make_run("pp_ttx", channels="combined")
+    run = make_run("pp_ttx", channels=channels)
     run.run()
     ours = run.result()
     run.close()
@@ -336,16 +341,22 @@ def test_info_json():
 
 @pytest.fixture(scope="module")
 def real_stream():
-    """The runs with the real stream alone, set up and not run, by reference
-    and technical cut, closed at the end of the module."""
+    """The runs with the real stream alone, set up and not run, by reference,
+    technical cut and channels, closed at the end of the module."""
     runs = {}
 
-    def get(name, technical_cut):
-        if (name, technical_cut) not in runs:
-            run = make_run(name, streams=("real",), technical_cut=technical_cut)
+    def get(name, technical_cut, channels="pairs"):
+        key = name, technical_cut, channels
+        if key not in runs:
+            run = make_run(
+                name,
+                streams=("real",),
+                technical_cut=technical_cut,
+                channels=channels,
+            )
             run.setup()
-            runs[name, technical_cut] = run
-        return runs[name, technical_cut]
+            runs[key] = run
+        return runs[key]
 
     yield get
     for run in runs.values():
@@ -559,16 +570,19 @@ def test_decay_limits(real_stream, name):
 
 @needs_outputs
 def test_technical_cut(real_stream):
-    """The technical cut is the region of each channel, both variables of its
-    dipole at or above it, the cutoff of its CSMapping. An event outside it
-    has neither the real emission nor the dipoles in that channel, the soft
-    gluons of 1e-6 GeV of the reference, where the real of the Fortran is
-    off, are outside every channel and the events away from the limits
-    inside all. The events of the mapping of a channel are in its region and
-    none is cut, also at random numbers of the emission piled towards
-    zero."""
+    """With the channels of the dipoles (channels="dipoles"), the technical
+    cut is the region of each channel, both variables of its dipole at or
+    above it, the cutoff of its CSMapping. An event outside it has neither
+    the real emission nor the dipoles in that channel, the soft gluons of
+    1e-6 GeV of the reference, where the real of the Fortran is off, are
+    outside every channel and the events away from the limits inside all.
+    The events of the mapping of a channel are in its region and none is
+    cut, also at random numbers of the emission piled towards zero. The
+    densities of the other channel sets drop the few of those events that lie
+    on the cutoff, where the inverse of the mapping finds the variables below
+    it by rounding."""
     data = dipole_reference("pp_ttx")
-    run = real_stream("pp_ttx", 1e-6)
+    run = real_stream("pp_ttx", 1e-6, "dipoles")
     points = [p for p in data["points"] if p["real"] == 0]
     integrand = real_integrand(run, data["reals"][0]["pdgs"])
     momenta = np.array([p["momenta"] for p in points])
