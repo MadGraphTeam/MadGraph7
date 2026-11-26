@@ -1947,6 +1947,36 @@ class TestHelRecyclingFilter(unittest.TestCase):
                          (False, self.hrf.cards_key([self.cards['b']])))
         self.assertEqual(self.me_path(root), 'lib/libmadmatrix_sm_P1_x_{device}_{fptype}.so')
 
+    def test_gpu_libraries_follow_the_new_name(self):
+        """A cuda/hip library is the plain matrix element whatever the filter:
+        one built before the filter changed (a GPU run before the first CPU
+        launch) is given the new name too, so that a gridpack of the CPU run,
+        which ships lib/ as it is, finds it on a GPU. CPU libraries are not
+        carried: they are rebuilt for the new filter."""
+        root, pdir = self.output()
+        lib = os.path.join(root, 'lib')
+        os.makedirs(lib)
+        built = ['libmadmatrix_sm_P1_x_cuda_d.so', 'libmadmatrix_sm_P1_x_cuda_v.so',
+                 'libmadmatrix_sm_P1_x_hip_f.so', 'libmadmatrix_sm_P1_x_scalar_d.so',
+                 'libmadmatrix_sm_P1_xy_cuda_d.so']
+        for name in built:
+            with open(os.path.join(lib, name), 'w') as fsock:
+                fsock.write(name)
+        result, _measured, _written = self.update(root, [self.cards['b']],
+                                                  ([1, 2], [[1, 3], [2, 3]]))
+        me_path = result['SubProcesses/P1_x']
+        self.assertRegex(me_path, r'_hr[0-9a-f]{8}_\{device\}')
+        for device, fptype in (('cuda', 'd'), ('cuda', 'v'), ('hip', 'f')):
+            with open(os.path.join(root, me_path.format(device=device, fptype=fptype))) as fsock:
+                self.assertEqual(fsock.read(),
+                                 'libmadmatrix_sm_P1_x_%s_%s.so' % (device, fptype))
+        self.assertFalse(os.path.exists(os.path.join(
+            root, me_path.format(device='scalar', fptype='d'))))
+        # nothing of another process, and the old names stay
+        self.assertEqual(sorted(n for n in os.listdir(lib) if n not in built),
+                         sorted(os.path.basename(me_path.format(device=d, fptype=f))
+                                for d, f in (('cuda', 'd'), ('cuda', 'v'), ('hip', 'f'))))
+
     def test_launch_param_cards(self):
         # what mg7/madtrex.py hands update() for a MadtRex reweighting. Not
         # through that module: it imports madspace, which must not be imported

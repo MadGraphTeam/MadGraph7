@@ -429,6 +429,32 @@ def defer_at_output(root, exporters):
                            'output': {'recycled': False}})
 
 
+def carry_gpu_libraries(root, old_me_path, new_me_path):
+    """Give the cuda/hip libraries built under `old_me_path` the name
+    `new_me_path` too (both relative to `root`).
+
+    A cuda/hip build is the plain matrix element whatever the filter (see
+    backend/gpu/SigmaKin.cc), so the library of the new name is the one
+    already built. Without its copy a GPU library built before the filter
+    changed (by a GPU run before the first CPU launch measured the filter) is
+    lost to subprocesses.json: a gridpack of the CPU run ships lib/ as it is,
+    and on a GPU looks for the new name. An existing library of the new name
+    is kept."""
+    if old_me_path == new_me_path:
+        return
+    pattern = re.compile(
+        re.escape(old_me_path)
+        .replace(re.escape('{device}'), '(?P<device>(?:cuda|hip)[^/]*?)')
+        .replace(re.escape('{fptype}'), '(?P<fptype>[^/_.]+)') + '$')
+    for path in glob.glob(pjoin(root, old_me_path.format(device='*', fptype='*'))):
+        match = pattern.search(os.path.relpath(path, root).replace(os.sep, '/'))
+        if not match:
+            continue
+        target = pjoin(root, new_me_path.format(**match.groupdict()))
+        if not os.path.exists(target):
+            shutil.copy2(path, target)
+
+
 def update(root, cards, pdirs, nb_core=None, subprocesses_json=None, log=None):
     """The launch-time pass: make the build of every --hel_recycling P*
     directory of `pdirs` (relative to `root`) right at every one of `cards`.
@@ -519,8 +545,10 @@ def update(root, cards, pdirs, nb_core=None, subprocesses_json=None, log=None):
     for entry in entries:
         pdir = entry.get('path')
         if pdir in tags:
-            entry['me_path'] = tagged_me_path(entry['me_path'], tags[pdir])
+            previous = entry['me_path']
+            entry['me_path'] = tagged_me_path(previous, tags[pdir])
             me_paths[pdir] = entry['me_path']
+            carry_gpu_libraries(root, previous, entry['me_path'])
     with open(subprocesses_json, 'w') as fsock:
         json.dump(entries, fsock)
     return me_paths
