@@ -384,3 +384,12 @@ The distinct inputs are in `data/refused_ggg_3p28_3p18_20gev_142610e_v15_ct1.txt
 - in the heptagons, 3-point sub-Grams, conditioning 2.7e-32, 5.8e-78 and 0.
 
 **Reading.** Each refused call drops its loop, so CTModeRun 1 lacks 12 loops and CTModeRun 2 lacks 6. The direction with fewer missing loops is closer to the prediction on both poles. That fits the remaining 2e-4 to 4e-4 being these loops, but it is no proof until TIRust serves them. The finite part is not quotable yet for the same reason. Sent to TIRust on 2026-11-26.
+
+**TIRust's diagnosis** (2026-11-26, no fix yet). The messages above come from TIRust's earlier tiers. At 256 and 512 bits the call is finally refused by the pentagon-pinch gate (issue #40): "Gram matrix decided only by the supplied invariants' mismatch".
+- The Gram-free (Denner–Dittmaier) pentagon reduction stops at rank 5, so a rank-7 pentagon gets ranks 6 and 7 from the Gram recursion.
+- The gate amplifies the about 1e-16 mismatch between the binary64 shifts and the snapped invariants by κ², with κ = 3.5e3 to 5.0e3. That gives 1.3e-9 to 3.9e-9, above its 1.2e-10 floor.
+- At rank 5 that power is zero, which is why the v11-class calls are served.
+
+With the gate bypassed (TIRust's local debug build), all nine are served at 256 and 512 bits. Their contraction identities hold to 1e-13 or better. Rotating the shifts in binary64 moves the frame-independent contractions by at most 2.6e-14.
+
+TIRust's user is to choose between two fixes: loosen the gate to the measured growth, or extend the Gram-free reduction to rank 7.
