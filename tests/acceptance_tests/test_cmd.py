@@ -4999,7 +4999,95 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
                                 max(5e-9, r['accuracy']), process)
                 self.assertAlmostEqual(r['single_norm'], single, 8, process)
                 self.assertAlmostEqual(r['double_norm'], double, 8, process)
-         
+
+    def raised_power_tirust(self):
+        """The TIRust library directory for P-wave virtuals: $TIRUST_LIB, else
+        the configured installation. Skips the test unless it has raised
+        propagator powers (the pinned installation does not yet)."""
+        import madgraph.various.tirust_install as tirust_install
+        tirust = os.environ.get('TIRUST_LIB') or self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+        try:
+            raised = tirust_install.supports_raised_powers(str(tirust))
+        except MadGraph5Error:
+            raised = False
+        if not raised:
+            self.skipTest('TIRust in %s has no raised propagator powers (set '
+                          'TIRUST_LIB to an installation that has them)' % tirust)
+        return str(tirust)
+
+    def run_two_pwave(self, process, name, energy, npoints):
+        """Output, build and run a two-P-wave process at the seed-1 points of
+        the two-P-wave benchmark (docs/benchmarkfolder/data/raw/two_pwave),
+        with TIRust and MadLoop's default stability test."""
+        import sys
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+        tirust = self.raised_power_tirust()
+        outdir = onia_loop_check.output_process(
+            'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, name),
+            extra=['set tirust %s --no_save' % tirust], regenerate=True)
+        pdir = onia_loop_check.subprocess_dir(outdir)
+        onia_loop_check.build_driver(pdir)
+        masses = onia_loop_check.driver_masses(pdir)
+        points = onia_loop_check.points_lib.generate_points(
+            masses[2:], count=npoints, energy=energy, seed=1,
+            incoming_masses=tuple(masses[:2]))
+        onia_loop_check.set_reduction(outdir, [9])
+        results = onia_loop_check.run_points(
+            pdir, [p['momenta'] for p in points], warmup=0)
+        self.assertEqual(len(results), npoints)
+        return results
+
+    def test_two_pwave_loop_standalone(self):
+        """One-loop QCD virtual of e+ e- > chic0 hc: two P-wave bound states
+        (loop_sm_onia, m_c = 1.55 GeV). No parton is coloured, so there is
+        no 1/eps^2, and the whole 1/eps is the dipole-dipole term of He,
+        Kniehl and Wang (arXiv:1809.07993). Per Born * alpha_s/(2 pi) at
+        mu = sqrt(s):
+        - the prediction of ONIA_IR_POLES against the analytic value of the
+          pole derivation (research/two_pwave, sigma3_check.py);
+        - the computed 1/eps against the prediction;
+        - the finite part against the benchmark (at 10.58 GeV, the value of
+          quadruple precision, which is the same at both points).
+        Needs TIRust with raised propagator powers, two of them dotted
+        (TIRUST_LIB)."""
+        cases = [(7.0, 1, 0.7215546628699606, 21.9602612422),
+                 (10.58, 2, 0.7116719452362145, 38.381344559631)]
+        for i, (energy, npoints, pole, finite) in enumerate(cases):
+            results = self.run_two_pwave(
+                'e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]', 'twopw_ee_%d' % i,
+                energy, npoints)
+            for r in results:
+                tag = '%g GeV' % energy
+                self.assertEqual(r['ret_code'] // 100, 2, tag)
+                self.assertLess(abs(r['predicted_single_norm'] / pole - 1.), 1e-12, tag)
+                self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.),
+                                1e-8, tag)
+                self.assertLess(abs(r['double_norm']), 1e-9, tag)
+                self.assertLess(abs(r['finite_norm'] / finite - 1.),
+                                max(5e-9, r['accuracy']), tag)
+
+    def test_two_pwave_gg_loop_standalone(self):
+        """One-loop QCD virtual of g g > chic0 chic0 (two P-wave bound
+        states with gluon partons: the massive soft terms, the P -> S term of
+        each state and the dipole-dipole term) at 8 GeV, point 0 of the
+        benchmark: 1/eps^2 = -2 C_A, the computed 1/eps against
+        ONIA_IR_POLES (whose terms are checked against app. B of the
+        two-P-wave manuscript in research/two_pwave/appendix_b.py) and the
+        finite part against the benchmark. Needs TIRust with raised
+        propagator powers, two of them dotted (TIRUST_LIB); the output
+        takes a few minutes to build."""
+        r, = self.run_two_pwave('g g > chic0(1|3P01) chic0(1|3P01) [virt=QCD]',
+                                'twopw_gg', 8.0, 1)
+        self.assertEqual(r['ret_code'] // 100, 2)
+        self.assertLess(abs(r['predicted_single_norm'] / -2.1119773787306015 - 1.), 1e-12)
+        self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.), 1e-8)
+        self.assertLess(abs(r['double_norm'] / -6. - 1.), 1e-9)
+        self.assertLess(abs(r['finite_norm'] / 128.62581220811 - 1.),
+                        max(5e-9, r['accuracy']))
+
     def test_standalone_density(self):
         """test that standalone density is working"""
 
