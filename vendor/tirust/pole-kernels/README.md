@@ -7,9 +7,10 @@ origin separation belongs to TIRust's tensor executor; these scalar outputs are
 the total poles, including the cancellation in a scaleless bubble.
 
 The committed Rust kernels are generated from oneloopmaster revision
-`07fc754f656c4744c9464f7c0f47d00b708b37e6`, the revision TIRust `1c130a8` uses (unchanged since `2b9ba96`),
+`cdbc912ab7b8327a23fe5fc08ddb0c58b9d55a21`, the revision TIRust `6ba4b53` uses,
 with Symbolica community `d0424f9e414d3007889f8a98b404a1b1a91b37a7`. Regenerating
-them there gave kernel sources byte-identical to the earlier generation from
+them there gave kernel sources byte-identical to the earlier generations from
+`07fc754f656c4744c9464f7c0f47d00b708b37e6` and
 `bd703d09a78f7849a6b86a07096e6f222fc01193`; only the revision recorded in
 `generated_manifest.txt` changed. The generator requests only the Laurent
 tags `[-1, -2]` through the public `OneLoopExpressions::evaluator` and

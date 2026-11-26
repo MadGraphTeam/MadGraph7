@@ -1813,6 +1813,96 @@ mod tests {
         }
         assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
     }
+    /// Rank >= 1 triangles near a vanishing Källén function
+    /// (huashengshao/TIRust#62). The binary64 gates refuse them; the tiers
+    /// serve each from the tier its estimate admits, every slot within 1e-14
+    /// of 1024 bits.
+    #[test]
+    fn near_degenerate_triangles_take_the_precision_tiers() {
+        use symbolica::domains::float::RealLike;
+        let hex = |t: &[u64]| t.iter().map(|&x| f64::from_bits(x)).collect::<Vec<f64>>();
+        // qcd_n4_uux_zzgg call 558753 (MadLoop main, served Direct 5.1e-4 off):
+        // massless lines, s01 = 0, s12 and s02 equal to 5e-4, rank 2.
+        let forward_p = hex(&[
+            0, 0, 0, 0,
+            0xc062c491605eb7a9, 0xc02a14a7a7116eda, 0xc06153719ae7e3cd, 0xc04c1c32c04695ed,
+            0xc056d96573e66afa, 0xc023086cb106fb70, 0x406becf467ba34dd, 0xc088bb7469ed2f2b,
+        ]);
+        let forward_s = hex(&[
+            0, 0, 0xc12462d688689107, 0, 0, 0xc12463ecba23e8bb, 0xc12462d688689107, 0xc12463ecba23e8bb, 0,
+        ]);
+        // Nearly collinear timelike legs: s02 = (a + b)^2 (1 + 1e-11), rank 1
+        // (served Direct 7.6e-6 off at the default gate).
+        let (a, b, eta) = (1.3f64, 2.1f64, 1e-11f64);
+        let offset = [0.3, -0.7, 0.2, 1.1];
+        let c2 = (a + b) * (a + b) * (1.0 + eta);
+        let alpha = (c2 - b * b + a * a) / (2.0 * a);
+        let d2 = [alpha, 0.0, (alpha * alpha - c2).sqrt(), 0.0];
+        let collinear_p: Vec<f64> = [[0.0; 4], [a, 0.0, 0.0, 0.0], d2]
+            .iter()
+            .flat_map(|d| (0..4).map(move |k| offset[k] + d[k]))
+            .collect();
+        let mut collinear_s = vec![0.0; 9];
+        for i in 0..3 {
+            for j in 0..3 {
+                let d: Vec<f64> = (0..4).map(|k| collinear_p[4 * i + k] - collinear_p[4 * j + k]).collect();
+                collinear_s[i + 3 * j] = d[0] * d[0] - d[1] * d[1] - d[2] * d[2] - d[3] * d[3];
+            }
+        }
+        let cases: [(&str, i32, &[f64], &[f64], [C64; 3], f64, [u64; DP_ROUTE_FIELDS]); 2] = [
+            ("lightlike-forward", 2, &forward_p, &forward_s, [C64::default(); 3], f64::from_bits(0x412e848000000000),
+                I62_FORWARD_ROUTES),
+            ("near-collinear", 1, &collinear_p, &collinear_s,
+                [C64 { re: 3.1, im: 0.0 }, C64 { re: 5.7, im: 0.0 }, C64 { re: 2.2, im: 0.0 }], 9.0, I62_COLLINEAR_ROUTES),
+        ];
+        for (label, rank, p, s, m, mu2, expected) in cases {
+            let (key, nc) = dimensions(3, rank).unwrap();
+            let c = handle();
+            assert_eq!(unsafe { ml_tirust_register_plan(c, 3, rank) }, SUCCESS);
+            let mut out = vec![C64::default(); 4 * nc];
+            let status = unsafe {
+                ml_tirust_evaluate_dp(
+                    c, 3, rank, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), mu2,
+                    out.as_mut_ptr(), out.len(), 0, 1, 0, 1,
+                )
+            };
+            assert_eq!(status, SUCCESS, "{label}");
+            let mut routes = [0u64; DP_ROUTE_STATS_COUNT];
+            assert_eq!(unsafe { ml_tirust_dp_route_statistics(c, routes.as_mut_ptr(), DP_ROUTE_STATS_COUNT) }, SUCCESS);
+            eprintln!("{label}: routes {:?}", &routes[..DP_ROUTE_FIELDS]);
+            assert_eq!(routes[..DP_ROUTE_FIELDS], expected, "{label}");
+            let state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+            let mut reference = state.plans[&key].workspace(Float::new(1024)).unwrap();
+            reference.set_input_precision(53);
+            reference.set_stability_threshold(mp_threshold(1024));
+            let lifted = dp_batch(3, p, s, &m, mu2).unwrap();
+            let batch = KinematicsBatch {
+                rows: 1,
+                components: 1,
+                values: lifted.values.iter().map(|z| Complex::new(Float::with_val(1024, z.re), Float::with_val(1024, z.im))).collect(),
+            };
+            let values = reference.reduce_batch(&batch).unwrap();
+            let exact = values.lane(0).unwrap();
+            let mut worst = 0.0f64;
+            for slot in 0..4 {
+                let at = |k: usize| (exact[k * 4 + slot].re.to_f64(), exact[k * 4 + slot].im.to_f64());
+                let scale = (0..nc).map(|k| at(k).0.hypot(at(k).1)).fold(0.0, f64::max);
+                for k in 0..nc {
+                    let (re, im) = at(k);
+                    let got = out[slot * nc + k];
+                    let error = (got.re - re).hypot(got.im - im);
+                    worst = worst.max(error / scale.max(1e-300));
+                    assert!(error <= 1e-14 * scale.max(1e-300), "{label}, slot {slot}: error {error:e}, scale {scale:e}");
+                }
+            }
+            eprintln!("{label}: worst slot-relative error {worst:e}");
+            drop(state);
+            assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+        }
+    }
+    // The double-double tier refuses it on its 34-bit floor; 256 bits serves.
+    const I62_FORWARD_ROUTES: [u64; DP_ROUTE_FIELDS] = [0, 0, 0, 1, 0, 0, 0, 1, 1, 0];
+    const I62_COLLINEAR_ROUTES: [u64; DP_ROUTE_FIELDS] = [0, 0, 1, 0, 0, 0, 0, 1, 0, 0];
     #[test]
     fn qp_gram_refusal_is_evaluated_again_at_512_bits() {
         use symbolica::domains::float::RealLike;

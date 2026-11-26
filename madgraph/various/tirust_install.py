@@ -24,7 +24,7 @@ logger = logging.getLogger('madgraph.tirust_install')
 CONFIG_NAME = 'tirust-config.json'
 ABI_VERSION = 1
 UPSTREAM_URL = "https://github.com/huashengshao/TIRust"
-UPSTREAM_REVISION = "1c130a81c4d1145ad5368664b580070eab9ebd7c"
+UPSTREAM_REVISION = "6ba4b5315e245f1006f113fdf2e6315549608228"
 # Linux is qualified; macOS builds the same bridge as a Mach-O dylib.
 SUPPORTED_SYSTEMS = ('Linux', 'Darwin')
 SHARED_LIBRARY = ('libmadloop_tirust.dylib' if platform.system() == 'Darwin'
