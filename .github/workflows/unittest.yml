@@ -335,7 +335,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_allow_reversed_initial_state test_boost_to_restframe test_get_helicity_accepts_merged_map_kwarg test_identity_mapping test_merged_map_remapping test_out1_out2_are_inverse test_parse_event_nlo test_reordered_final_state test_y_eta_massless -t0
+            ./tests/test_manager.py test_allow_reversed_initial_state test_boost_to_restframe test_get_helicity_accepts_merged_map_kwarg test_identity_mapping test_merged_map_remapping test_out1_out2_are_inverse test_parse_event_nlo test_nlo_weight_letterless_exponent test_reordered_final_state test_y_eta_massless -t0
 
       # ---- unittest_config_location ----
       # tests/unit_tests/various/test_lhapdf_resolve.py: where the configuration

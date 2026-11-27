@@ -18,6 +18,10 @@ ANNOUNCEMENT:
        renormalisation scale of 62 of 65 H events was not among its scales); the FxFx EW
        Sudakov reweighting reads it. It is now kept per sector and fold, as the colours and
        shower scales of the H events. Unfolded runs are unchanged.
+   RF: The Python reading of <mgrwgt> (NLO reweighting, systematics) stopped with a
+       ValueError on a value below 1e-99, which Fortran writes without its exponent letter
+       (0.389379660000-190), e.g. the negligible weight of the soft Born added to some S
+       events.
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the
