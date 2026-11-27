@@ -375,8 +375,9 @@ def test_umami_runtime_is_the_program_of_a_crossed_member(
                         "flow:" + ",".join(str(perm[x - 1] + 1) for x in flow.word)
                         for flow in template.physics.color_flows
                     ]
-                    swapped += flow_ids[mapped.index(entry["color_id"])] != (
-                        runtime["color_id"]
+                    swapped += (
+                        flow_ids[mapped.index(entry["color_id"])]
+                        != (runtime["color_id"])
                     )
                     reference = references.setdefault(
                         member.expression,
@@ -388,12 +389,11 @@ def test_umami_runtime_is_the_program_of_a_crossed_member(
                     }
                     column = flows[_strings(own, member.expression)]
                     points = _member_points(member.expression)
-                    signed = [
-                        _signed(point, runtime["permutation"], runtime["momentum_signs"])
-                        for point in points
-                    ]
+                    perm_r, signs_r = runtime["permutation"], runtime["momentum_signs"]
+                    signed = [_signed(point, perm_r, signs_r) for point in points]
                     rows = template.evaluate_assignments(
-                        signed, [[runtime["assignment"]]] * len(points),
+                        signed,
+                        [[runtime["assignment"]]] * len(points),
                         output="helicity-flow",
                     )
                     resolved = reference.evaluate_resolved(points)
@@ -403,7 +403,8 @@ def test_umami_runtime_is_the_program_of_a_crossed_member(
                             complex(line[column]).real
                             for line in resolved.values[point]
                         )
-                        _close(value, expected, abs(expected), (entry["process_id"], point))
+                        label = (entry["process_id"], point)
+                        _close(value, expected, abs(expected), label)
                     checked += 1
     assert checked > 0
     # pp2j has d d~ > g g style members whose second flow is an orbit copy

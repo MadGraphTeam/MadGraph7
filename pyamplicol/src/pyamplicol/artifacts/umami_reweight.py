@@ -526,7 +526,8 @@ def _switch_calls(
                     sorted(zip(patterns, signs, strict=True))
                 )
                 if derived_ids is not None and (derived != own or sigma_c != sigma_e):
-                    derived_ids.setdefault(rep, set()).add((assignment, sigma_c, derived))
+                    keys = derived_ids.setdefault(rep, set())
+                    keys.add((assignment, sigma_c, derived))
             call["entries"].append(entry)
         if call["evaluations"][0] != source or call["legs"] != list(
             described[call["evaluations"][0]][2]
@@ -847,8 +848,10 @@ def switch_catalogue(
 
     def build_calls(derived: dict[int, set[tuple]]) -> list[dict[str, Any]]:
         order_columns.evaluation[:] = evaluation_column
-        calls = _switch_calls(described, range(len(described)), call_key, pattern_tables,
-                              member_ids, incoming, conjugated_of, derived)
+        calls = _switch_calls(
+            described, range(len(described)), call_key, pattern_tables,
+            member_ids, incoming, conjugated_of, derived,
+        )
         pure = [_pure_qcd(processes[e[0]]) for e in described] if SWITCH_C_DEDUP else []
         if any(pure):
             call_of = [0] * len(described)
@@ -876,17 +879,19 @@ def switch_catalogue(
                 )
         return calls
 
+    def over_cap(derived: dict[int, set[tuple]]) -> set[int]:
+        cap = MAX_RELABELLED_ASSIGNMENTS
+        return {r for r, keys in derived.items() if len(keys) > cap}
+
     derived: dict[int, set[tuple]] = {}
     calls = build_calls(derived)
-    over = {rep for rep, keys in derived.items() if len(keys) > MAX_RELABELLED_ASSIGNMENTS}
+    over = over_cap(derived)
     if over and cross_side:
         # per template side: fewer moved slots, so fewer derived ids
         side_keyed.update(over)
         derived = {}
         calls = build_calls(derived)
-        over = {
-            rep for rep, keys in derived.items() if len(keys) > MAX_RELABELLED_ASSIGNMENTS
-        }
+        over = over_cap(derived)
     if over:
         worst = max(over, key=lambda rep: len(derived[rep]))
         raise ValueError(
