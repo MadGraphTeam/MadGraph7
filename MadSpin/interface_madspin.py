@@ -1708,6 +1708,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         parser.add_option("-n", "--name",
                   default="",
                   help="When NOT run in standalone instruct MadGraph7 where to store the events file")
+        parser.add_option("--prepare_only", action="store_true", default=False,
+                  help="only prepare the ms_dir (decay gridpacks, matrix "
+                       "elements, maximum weights) from these events, without "
+                       "decaying them: what a gridpack carrying MadSpin ships")
         return parser
     
     def parse_launch(self, line):
@@ -2317,6 +2321,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             self.me_run_name = options.name # Only use by MadGraph7
         else:
             self.me_run_name = ''
+        self.prepare_only = options.prepare_only
 
         try:
             if 'noborn' in self.banner.get_detail('proc_card', 'generate'):
@@ -2339,6 +2344,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if spinmode == 'full':
             spinmode = 'madspin'
             self.options['spinmode'] = spinmode
+        if self.prepare_only:
+            if spinmode not in ('madspin', 'onshell', 'PA', 'none'):
+                raise self.InvalidCmd(
+                    "launch --prepare_only supports the spinmodes madspin "
+                    "(full), onshell, PA and none, not %s" % spinmode)
+            if not self.options['ms_dir']:
+                raise self.InvalidCmd(
+                    "launch --prepare_only prepares an ms_dir: set ms_dir first")
 
         logger.info("Running MadSpin in spinmode %s" % spinmode)
         self._check_fixed_order_spinmode(spinmode)
@@ -2741,8 +2754,13 @@ class MadSpinInterface(extended_cmd.Cmd):
                         evt_decayfile[pdg] = self.generate_events(pdg, min(nb_event,100000), mg5)
                     else:
                         evt_decayfile[pdg] = self.generate_events(pdg, min(nb_needed,100000), mg5, cumul=True)
-                    
-                     
+
+        if getattr(self, 'prepare_only', False):
+            # spinmode none caches nothing but the decay gridpacks
+            logger.info("MadSpin: %s is prepared (decay gridpacks); no event "
+                        "was decayed", self.path_me)
+            return
+
         # Compute the branching ratio.
         if not self.options['cross_section']:
             br = 1
@@ -3152,6 +3170,151 @@ class MadSpinInterface(extended_cmd.Cmd):
             os.replace(events_path, target)
         return NpyDecayPool(target, width), width
 
+    # ------------------------------------------------------------------
+    # mg7 decay gridpacks (ms_dir)
+    # ------------------------------------------------------------------
+    # Under ms_dir with the mg7 generator, each decay_<pdg>_<i> is an mg7
+    # gridpack: integrated once by the run that creates the ms_dir, then only
+    # run (bin/generate_events --seed --events --output_dir) by every later
+    # one. Such a directory runs without MadGraph and without a compiler, which
+    # is what lets an mg7 production gridpack carry a prepared MadSpin.
+
+    @staticmethod
+    def _is_mg7_decay_gridpack(decay_dir):
+        """Whether ``decay_dir`` is an mg7 gridpack (as opposed to an mg7
+        output, a madevent gridpack, or nothing yet)."""
+        return (os.path.isfile(pjoin(decay_dir, 'data', 'data.json'))
+                and os.path.isfile(pjoin(decay_dir, 'bin', 'generate_events')))
+
+    @staticmethod
+    def _madspace_pythonpath():
+        """The directory holding the madspace package, for the PYTHONPATH of an
+        mg7 decay gridpack: such a gridpack ships no madspace of its own (one
+        per decay channel would be ~10 MB each) and imports the one of the
+        environment. The MadGraph install's build first -- the one MadSpin's
+        own mg7 runs use -- then whatever this interpreter finds, which is how
+        a production gridpack hands its bundled madspace down."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+        install = pjoin(root, 'madspace', 'install')
+        if os.path.isdir(pjoin(install, 'madspace')):
+            return install
+        try:
+            import importlib.util
+            spec = importlib.util.find_spec('madspace')
+        except (ImportError, ValueError):
+            spec = None
+        if spec is not None and spec.submodule_search_locations:
+            return os.path.dirname(list(spec.submodule_search_locations)[0])
+        return None
+
+    def _mg7_gridpack_env(self):
+        env = os.environ.copy()
+        path = self._madspace_pythonpath()
+        if path:
+            env['PYTHONPATH'] = os.pathsep.join(
+                [path] + [p for p in env.get('PYTHONPATH', '').split(os.pathsep) if p])
+        return env
+
+    def _build_mg7_decay_gridpack(self, decay_dir, seed):
+        """Turn the mg7 output ``decay_dir`` into an mg7 gridpack, in place, and
+        return the partial width its integration measured.
+
+        The output is integrated once (run_mode minimal: grids and maximum
+        weights, no events), then replaced by the gridpack that run saved. The
+        gridpack leaves madspace, madtrex and the sources out: it runs with the
+        madspace of whoever runs it (_madspace_pythonpath)."""
+        run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
+        run_card = banner.RunCardMG7(run_card_path)
+        for key, value in (
+                ('run.seed', int(seed)),
+                ('gridpack.save_gridpack', True),
+                ('gridpack.run_mode', 'minimal'),
+                ('gridpack.compress', False),
+                ('gridpack.include_source', False),
+                ('gridpack.include_madspace', False),
+                ('gridpack.include_madspace_source', False),
+                ('gridpack.include_madtrex', False),
+                ('gridpack.include_madtrex_source', False),
+                ('gridpack.output_dir', ''),
+                ('gridpack.temp_output_dir', '')):
+            run_card.set(key, value, user=True)
+        run_card.remove_all_histograms()
+        run_card.write(run_card_path)
+        with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
+            fsock.write(self.banner['slha'])
+
+        events_dir = pjoin(decay_dir, 'Events')
+        before = set(misc.glob('*', events_dir)) if os.path.isdir(events_dir) else set()
+        log_path = pjoin(decay_dir, 'mg7_generation.log')
+        with open(log_path, 'a') as logfile, self._phase('decay_mg7_launch'):
+            returncode = misc.call(
+                [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'), '-f'],
+                cwd=decay_dir, stdout=logfile, stderr=subprocess.STDOUT)
+        new_runs = sorted(set(misc.glob('*', events_dir)) - before) \
+            if os.path.isdir(events_dir) else []
+        if returncode or not new_runs or \
+                not os.path.isdir(pjoin(new_runs[-1], 'gridpack')):
+            raise self.InvalidCmd(
+                'building the mg7 decay gridpack failed in %s (exit %s); see %s'
+                % (decay_dir, returncode, log_path))
+        run_dir = new_runs[-1]
+        try:
+            with open(pjoin(run_dir, 'info.json')) as fsock:
+                width = float(json.load(fsock)['process']['mean'])
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise self.InvalidCmd('no partial width in %s: %s'
+                                  % (pjoin(run_dir, 'info.json'), error))
+
+        # the gridpack replaces the output it was made from; the build log goes
+        # with it
+        build = decay_dir + '.build'
+        if os.path.exists(build):
+            _force_rmtree(build)
+        os.rename(decay_dir, build)
+        shutil.move(pjoin(build, 'Events', os.path.basename(run_dir), 'gridpack'),
+                    decay_dir)
+        shutil.copy(pjoin(build, 'mg7_generation.log'), decay_dir)
+        _force_rmtree(build)
+        return width
+
+    def _run_mg7_decay_gridpack(self, decay_dir, nb_event, run_name='run_01',
+                                seed=None):
+        """Generate ``nb_event`` decay events with the mg7 decay gridpack
+        ``decay_dir`` into ``Events/<run_name>/events.npy``. Returns
+        ``(pool, partial_width)``, the width being the one measured when the
+        gridpack was built: every run reusing the ms_dir applies the same
+        branching ratio."""
+        target_dir = pjoin(decay_dir, 'Events', run_name)
+        if os.path.exists(target_dir):
+            _force_rmtree(target_dir)
+        command = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
+                   '--events', str(int(nb_event)), '--output_dir', target_dir,
+                   '--output_format', 'lhe_npy', '--verbosity', 'log']
+        if seed is not None:
+            command += ['--seed', str(int(seed))]
+        threads = getattr(self, '_gen_nb_core', None)
+        if threads:
+            command += ['--cpu_thread_pool_size', str(int(threads))]
+        log_path = pjoin(target_dir + '.log')
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'w') as logfile, self._phase('decay_mg7_launch'):
+            returncode = misc.call(command, cwd=decay_dir, stdout=logfile,
+                                   stderr=subprocess.STDOUT,
+                                   env=self._mg7_gridpack_env())
+        events_path = pjoin(target_dir, _NPY_POOL_NAME)
+        if returncode or not os.path.exists(events_path):
+            tail = ''
+            try:
+                with open(log_path) as fsock:
+                    tail = '\n'.join(fsock.read().splitlines()[-30:])
+            except OSError:
+                pass
+            raise self.InvalidCmd(
+                'the mg7 decay gridpack %s failed (exit %s); see %s\n%s'
+                % (decay_dir, returncode, log_path, tail))
+        width = self._load_partial_width(decay_dir)
+        return NpyDecayPool(events_path, width), width
+
     # File in which a decay directory records the partial width that was
     # measured when it was built. Only the gridpack (ms_dir) path needs it: the
     # native path regenerates -- and so re-measures -- on every run, while a
@@ -3190,10 +3353,12 @@ class MadSpinInterface(extended_cmd.Cmd):
     # go looking for -- ``run_from_pickle`` (madspin.pkl),
     # ``get_max_weight``/``_read_upfront_cache`` (max_wgt, max_wgt_sequential*,
     # pure_interference*), ``decay_all_events`` (production_me/all_ME.pkl under
-    # use_old_dir) and the decay gridpacks themselves, whose measured partial
+    # use_old_dir, ms_me_cache.pkl in the density modes) and the decay
+    # gridpacks themselves, whose measured partial
     # widths live in ``ms_partial_width.dat`` beside them.
     CACHED_MATERIAL = ('madspin.pkl', 'max_wgt*', 'pure_interference*',
-                       'decay_*_*', pjoin('production_me', 'all_ME.pkl'))
+                       'decay_*_*', pjoin('production_me', 'all_ME.pkl'),
+                       madspin.decay_all_events_onshell.ME_CACHE)
 
     def _holds_cached_material(self, directory):
         """Whether ``directory`` already carries results of an earlier run.
@@ -3668,9 +3833,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             decay_dir = pjoin(self.path_me, "decay_%s_%s" %(str(pdg).replace("-","x"),i))
             # Pin the output format explicitly rather than relying on MG5's
             # default: the directory is driven below by the matching runner, so
-            # the two must agree. Gridpack mode stays on Fortran madevent -- it
-            # drives the decay directory through run.sh, which the mg7 output
-            # does not provide.
+            # the two must agree. Gridpack mode (ms_dir) keeps an existing
+            # madevent gridpack (run.sh) on madevent, and builds a new decay
+            # directory as an mg7 gridpack when mg7 is the generator.
             # NB: ``self.options[...]`` inside a try, not ``.get(k, default)``:
             # ConfigFile aliases ``get`` to ``__getitem__``, which takes no
             # default and raises TypeError when given one. The except branch
@@ -3688,11 +3853,17 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # LHE files. It reads mg7's numpy pool directly now -- every
                 # worker strides the one mmap (NpyDecayPool), so there is
                 # nothing to split and that demotion is gone.
-                if use_gridpack:
-                    # gridpack (ms_dir) drives the decay directory through
-                    # run.sh, and the mg7 output provides no run.sh.
-                    logger.info('gridpack mode: generating decay events with '
-                                'madevent rather than mg7')
+                if use_gridpack and self._is_mg7_decay_gridpack(decay_dir):
+                    # built by an earlier run: it runs with the madspace of
+                    # this environment, whatever MadGraph this is (a gridpack
+                    # ships none to build with)
+                    pass
+                elif use_gridpack and os.path.exists(decay_dir):
+                    # an ms_dir whose decay directories are madevent gridpacks
+                    # (run.sh): keep driving them the way they were built
+                    logger.info('gridpack mode: %s is a madevent gridpack, '
+                                'generating its decay events with madevent',
+                                decay_dir)
                     output_format = 'madevent'
                 elif not self._mg7_available():
                     # WARNING, not info: mg7 is the default, so this says the
@@ -3726,7 +3897,14 @@ class MadSpinInterface(extended_cmd.Cmd):
                     mg5.exec_cmd("output %s %s -f" % (output_format, decay_dir))
                 
                 options = dict(mg5.options)
-                if use_gridpack:
+                if use_gridpack and output_format == 'mg7':
+                    # ms_dir with the mg7 generator: the decay directory
+                    # becomes an mg7 gridpack, integrated once here; every
+                    # later run only generates from it (_run_mg7_decay_gridpack)
+                    pwidth = self._build_mg7_decay_gridpack(
+                        decay_dir, self._next_decay_seed())
+                    self._store_partial_width(decay_dir, pwidth)
+                elif use_gridpack:
                     # gridpack mode -> build the integration grid once here
                     if decay_dir in self.me_int:
                         me5_cmd = self.me_int[decay_dir]
@@ -3787,9 +3965,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             if output_format == 'mg7':
                 # mg7 delivers exactly the requested number of events, so ask
                 # for what is needed rather than madevent's 0.8x undershoot.
-                out[i], pwidth = self.generate_events_mg7(
-                    decay_dir, nb_event, run_name=run_name,
-                    seed=self._next_decay_seed())
+                if use_gridpack:
+                    out[i], pwidth = self._run_mg7_decay_gridpack(
+                        decay_dir, nb_event, run_name=run_name,
+                        seed=self._next_decay_seed())
+                else:
+                    out[i], pwidth = self.generate_events_mg7(
+                        decay_dir, nb_event, run_name=run_name,
+                        seed=self._next_decay_seed())
                 if output_width:
                     channel_widths[i] = pwidth
                     width = width + pwidth if cumul else width * pwidth
@@ -4344,6 +4527,13 @@ class MadSpinInterface(extended_cmd.Cmd):
         time_maxwgt = time.time() - time_maxwgt
         logger.info(f"Time for max-weight scan = {time_maxwgt:.2f} sec")
         self._add_phase('max_weight_scan', time_maxwgt)
+        if getattr(self, 'prepare_only', False):
+            # everything a later run reuses is in the ms_dir now: the decay
+            # gridpacks, the compiled matrix elements, the maximum weights
+            logger.info("MadSpin: %s is prepared (decay gridpacks, matrix "
+                        "elements, maximum weight); no event was decayed",
+                        self.path_me)
+            return
 
         #5. generate the decay (for each production event)
         # The per-event unweighting loop is embarrassingly parallel (events are
