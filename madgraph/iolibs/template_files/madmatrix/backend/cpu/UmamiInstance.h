@@ -27,6 +27,12 @@ namespace madmatrix
     // them it has looked at, and the helicities that contribute to one of them
     std::size_t learned = 0;
     bool good_hel[ProcessData::ncomb] = {};
+    // and those of each flavor, good_hel_flavor[iflavor * ncomb + ihel], each a
+    // subset of good_hel (ProcessParameters::goodHelFlavor), when good_hel_by_flavor:
+    // after a scan, or a choice that carries them; otherwise good_hel serves every
+    // flavor (a choice without them, keep_every_helicity)
+    bool good_hel_flavor[ProcessData::nmaxflavor * ProcessData::ncomb] = {};
+    bool good_hel_by_flavor = false;
     // where RAMBO has no phase space (a decay below threshold), every helicity is
     // kept: the first events cannot choose (see umami.cc)
     bool keep_every_helicity = false;

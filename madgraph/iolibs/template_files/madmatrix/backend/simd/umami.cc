@@ -98,6 +98,7 @@ namespace
   void keep_all_helicities( UmamiInstance* instance )
   {
     for( bool& good : instance->good_hel ) good = true;
+    instance->good_hel_by_flavor = false;
     instance->learned = nlearn;
     instance->csym_bad = false;
     sigmaKin_setGoodHel( instance->process.parameters(), instance->good_hel ); // no scan: no C-parity dedup
@@ -117,16 +118,21 @@ namespace
   {
     ProcessParameters& params = instance->process.parameters();
     bool is_good_hel[ProcessData::ncomb];
+    constexpr std::size_t nflavorhel = (std::size_t)ProcessData::nmaxflavor * ProcessData::ncomb;
+    std::unique_ptr<bool[]> is_good_hel_flavor( new bool[nflavorhel] );
     const int scanned = sigmaKin_getGoodHel(
       params, momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       is_good_hel,
-      count );
+      count, is_good_hel_flavor.get() );
     for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
       if( is_good_hel[ihel] ) instance->good_hel[ihel] = true;
+    for( std::size_t i = 0; i < nflavorhel; i++ )
+      if( is_good_hel_flavor[i] ) instance->good_hel_flavor[i] = true;
+    instance->good_hel_by_flavor = true;
     // one C-parity verdict for every scan of the instance
     if( sigmaKin_csymScanBad() ) instance->csym_bad = true;
     sigmaKin_setCsymVerdict( instance->csym_bad );
-    sigmaKin_setGoodHel( params, instance->good_hel );
+    sigmaKin_setGoodHel( params, instance->good_hel, instance->good_hel_flavor );
     return scanned;
   }
 
@@ -136,6 +142,8 @@ namespace
     instance->learned = 0;
     instance->csym_bad = false;
     for( bool& good : instance->good_hel ) good = false;
+    for( bool& good : instance->good_hel_flavor ) good = false;
+    instance->good_hel_by_flavor = false;
     instance->process.parameters().hrStale = false; // see hr_check_stale (SigmaKin.cc)
     instance->keep_every_helicity = no_phase_space( instance );
   }
@@ -885,23 +893,32 @@ extern "C"
   // chosen, as madmatrix_set_helicity_choice takes them: choice[0] is a set of
   // flags -- 1 if --hel_recycling has to use the plain code (hr_check_stale,
   // SigmaKin.cc), 2 if the C-parity dedup holds (params.csymOk: every good row is
-  // paired with its mirror, of the same |M|^2 at every scan point) -- then the rows
-  // of the helicity table that are kept. Returns the size of the
-  // choice, written if it is at most `capacity`, or -1 while the instance is still
-  // choosing.
+  // paired with its mirror, of the same |M|^2 at every scan point), 4 if the rows
+  // of each flavor follow -- then the rows of the helicity table that are kept,
+  // then (flag 4, a flavor-merged process) ncomb * ( 1 + iflavor ) + ihel for every
+  // row ihel of flavor iflavor (ProcessParameters::goodHelFlavor). Returns the size
+  // of the choice, written if it is at most `capacity`, or -1 while the instance is
+  // still choosing.
   int madmatrix_get_helicity_choice( UmamiHandle handle, int* choice, int capacity )
   {
     UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
     if( instance->learned < nlearn ) return -1;
+    const bool by_flavor = instance->good_hel_by_flavor && ProcessData::nmaxflavor > 1;
     int size = 1;
     for( bool good : instance->good_hel ) size += good ? 1 : 0;
+    if( by_flavor )
+      for( int i = 0; i < ProcessData::nmaxflavor * ProcessData::ncomb; i++ )
+        size += instance->good_hel_flavor[i] && instance->good_hel[i % ProcessData::ncomb] ? 1 : 0;
     if( choice != nullptr && size <= capacity )
     {
       int k = 0;
       const ProcessParameters& params = instance->process.parameters();
-      choice[k++] = ( params.hrStale ? 1 : 0 ) | ( params.csymOk ? 2 : 0 );
+      choice[k++] = ( params.hrStale ? 1 : 0 ) | ( params.csymOk ? 2 : 0 ) | ( by_flavor ? 4 : 0 );
       for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
         if( instance->good_hel[ihel] ) choice[k++] = ihel;
+      if( by_flavor )
+        for( int i = 0; i < ProcessData::nmaxflavor * ProcessData::ncomb; i++ )
+          if( instance->good_hel_flavor[i] && instance->good_hel[i % ProcessData::ncomb] ) choice[k++] = ProcessData::ncomb + i;
     }
     return size;
   }
@@ -918,16 +935,27 @@ extern "C"
   {
     UmamiInstance* instance = static_cast<UmamiInstance*>( handle );
     if( choice == nullptr || size < 1 ) return UMAMI_ERROR;
+    // flag 4: the rows of each flavor follow, as ncomb * ( 1 + iflavor ) + ihel
+    const bool by_flavor = ( choice[0] & 4 ) != 0;
+    const int nvalue = by_flavor ? ProcessData::ncomb * ( 1 + ProcessData::nmaxflavor ) : ProcessData::ncomb;
     for( int k = 1; k < size; ++k )
-      if( choice[k] < 0 || choice[k] >= ProcessData::ncomb ) return UMAMI_ERROR;
+      if( choice[k] < 0 || choice[k] >= nvalue ) return UMAMI_ERROR;
     for( bool& good : instance->good_hel ) good = false;
-    for( int k = 1; k < size; ++k ) instance->good_hel[choice[k]] = true;
+    for( bool& good : instance->good_hel_flavor ) good = false;
+    for( int k = 1; k < size; ++k )
+    {
+      if( choice[k] < ProcessData::ncomb )
+        instance->good_hel[choice[k]] = true;
+      else
+        instance->good_hel_flavor[choice[k] - ProcessData::ncomb] = true;
+    }
+    instance->good_hel_by_flavor = by_flavor;
     instance->learned = nlearn;
     ProcessParameters& params = instance->process.parameters();
     params.hrStale = ( choice[0] & 1 ) != 0;
     instance->csym_bad = ( choice[0] & 2 ) == 0;
     sigmaKin_setCsymVerdict( instance->csym_bad );
-    sigmaKin_setGoodHel( params, instance->good_hel );
+    sigmaKin_setGoodHel( params, instance->good_hel, by_flavor ? instance->good_hel_flavor : nullptr );
     return UMAMI_SUCCESS;
   }
 }

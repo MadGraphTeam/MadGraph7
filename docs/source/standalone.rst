@@ -67,7 +67,14 @@ with spin), so that it holds in every frame. With crossing, one list serves the
 base process and every crossing it folds: each row of the crossing table is
 evaluated too, a crossing that moves a mass on points of its own masses. Where the
 process has no phase space at all (a decay below threshold, whose momenta are off
-shell), every helicity is kept. At run time they
+shell), every helicity is kept. A flavor-merged matrix element is scanned for every
+flavor it serves: it keeps the union of their good helicities and, as the
+Fortran output does (``GOODHEL(NCOMB,NFLAV)``), the list of each flavor, every
+crossing of it together. The CPU builds skip, for a SIMD page of one flavor, the
+rows of the union that flavor does not have (UMAMI sorts the events of a call so
+that a page holds one flavor): in ``p p > w+ j j``, ``d d~ > w+ s c~`` has 6 good
+helicities of the 15 that ``q q~ > w+ q q~`` keeps. A GPU build evaluates the
+union for every flavor, the lanes of a warp carrying different flavors. At run time they
 are chosen as in the Fortran standalone output, on the events the library is
 called with: every helicity is evaluated on the first 16 events, and the ones that
 contribute to one of them are kept for the rest of the run (or until a parameter
@@ -83,7 +90,8 @@ it, and every instance of the run, on every thread and device, is given that
 choice (``madmatrix_choose_good_helicities``, ``madmatrix_get_helicity_choice``,
 ``madmatrix_set_helicity_choice``; the choice also carries whether the C-parity
 dedup of the CPU builds holds, which an instance that is given a choice cannot
-test itself). It then depends on the cards only, and a run on a GPU evaluates the
+test itself, and the good helicities of each flavor of a flavor-merged matrix
+element). It then depends on the cards only, and a run on a GPU evaluates the
 helicities of a run on a CPU. A helicity that is a power of m/sqrt(s) below the
 others matters near threshold only: the all-plus helicities of g g > h g in the
 ``heft`` model are (m_H^2/s)^4 of the rest, 1e-14 at 13 TeV, 1e-9 at 1.5 TeV and

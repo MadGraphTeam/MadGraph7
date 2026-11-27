@@ -1441,12 +1441,15 @@ class TestCmdShell2(unittest.TestCase,
         per-flavor matrix element of every flavor served by a merged matrix
         element.
 
-        the standalone (madmatrix) export computes a single global good-helicity list once, as the
-        union over all flavor combinations (see sigmaKin_getGoodHel). A
-        flavor-blind filter -- one that seeds the good helicities from only the
-        flavor(s) of the first sampled events -- would drop a helicity that
+        the standalone (madmatrix) export scans every flavor combination
+        (see sigmaKin_getGoodHel) and keeps the union of their good helicities,
+        with the list of each flavor on its own, which the CPU builds use to
+        skip the rows a flavor does not have (ProcessParameters::goodHelFlavor).
+        A flavor-blind filter -- one that seeds the good helicities from only
+        the flavor(s) of the first sampled events -- would drop a helicity that
         vanishes for the seeding flavor but contributes for another merged
-        flavor, giving a too-small |M|^2 for that other flavor.
+        flavor, giving a too-small |M|^2 for that other flavor; so would a
+        per-flavor list given to the wrong flavor.
 
         We compare the standalone (madmatrix) per-flavor values (check_sa.exe 'matrix'
         mode) against the Fortran standalone ones, which
@@ -1503,6 +1506,132 @@ class TestCmdShell2(unittest.TestCase,
         self.assertTrue(any(v != 0.0 for v in standalone),
                         'all matrix elements vanished for u u~ > j j')
         self._assert_me_lists_close(mg7, standalone, atol=1e-7)
+
+    def test_madmatrix_goodhel_per_flavor_choice(self):
+        """The good helicities of each flavor travel with the helicity choice.
+
+        A flavor-merged matrix element keeps, besides the union of the good
+        helicities of its flavors, the list of each flavor, and a CPU build
+        skips for a flavor the rows it does not have (Fortran's
+        GOODHEL(NCOMB,NFLAV)). An mg7 run chooses the good helicities before
+        the run and gives the choice to every instance
+        (madmatrix_get/set_helicity_choice), so the lists of the flavors are
+        in the choice: flag 4 of choice[0], then ncomb * (1 + iflavor) + ihel
+        for every row ihel of flavor iflavor.
+
+        u u~ > j j QCD=0 (as test_madmatrix_goodhel_filter): u u~ > d d~ is
+        s-channel only and has fewer good helicities than u u~ > u u~. The
+        choice made on RAMBO points carries the lists, one flavor has fewer
+        rows than the union, an instance given the choice keeps it, a choice
+        without the lists (the format before them) is still taken, and both
+        give the same |M|^2 for every flavor on generic points.
+        """
+        import ctypes
+        import glob
+        import math
+
+        self.do('import model sm')
+        self.do('generate u u~ > j j QCD=0')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, 'the library did not build:\n%s'
+                         % make.stdout.decode(errors='replace')[-3000:])
+        with open(pjoin(proc_dir, 'ProcessData.h')) as fsock:
+            data = fsock.read()
+        ncomb = int(re.search(r'constexpr int ncomb = (\d+);', data).group(1))
+        nflav = int(re.search(r'constexpr int nmaxflavor = (\d+);', data).group(1))
+        self.assertGreater(nflav, 1, 'u u~ > j j QCD=0 is not flavor-merged')
+        lib = ctypes.CDLL(glob.glob(pjoin(self.out_dir, 'lib',
+                                          'libmadmatrix_*_P*_scalar_d.so'))[0])
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
+        lib.madmatrix_choose_good_helicities.argtypes = [
+            ctypes.c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_int]
+
+        def instance():
+            handle = ctypes.c_void_p()
+            self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
+            return handle
+
+        def get(handle):
+            size = lib.madmatrix_get_helicity_choice(handle, None, 0)
+            self.assertGreater(size, 0)
+            choice = (ctypes.c_int * size)()
+            lib.madmatrix_get_helicity_choice(handle, choice, size)
+            return list(choice)
+
+        def given(choice):
+            handle = instance()
+            self.assertEqual(0, lib.madmatrix_set_helicity_choice(
+                handle, (ctypes.c_int * len(choice))(*choice), len(choice)))
+            return handle
+
+        chooser = instance()
+        self.assertEqual(0, lib.madmatrix_choose_good_helicities(chooser, 1000., 0., 0))
+        choice = get(chooser)
+        self.assertTrue(choice[0] & 4, 'the choice has no list per flavor: %s' % choice)
+        union = set(v for v in choice[1:] if v < ncomb)
+        rows = [set() for _ in range(nflav)]
+        for v in choice[1:]:
+            if v >= ncomb:
+                rows[(v - ncomb) // ncomb].add((v - ncomb) % ncomb)
+        for iflav, own in enumerate(rows):
+            self.assertTrue(own, 'flavor %d has no good helicity' % iflav)
+            self.assertTrue(own <= union, 'flavor %d has rows outside the union' % iflav)
+        self.assertEqual(set().union(*rows), union)
+        self.assertTrue(any(len(own) < len(union) for own in rows),
+                        'every flavor has every row of the union: %s' % choice)
+
+        by_flavor = given(choice)
+        self.assertEqual(get(by_flavor), choice, 'the choice was not kept')
+        old = [choice[0] & ~4] + sorted(union)
+        union_only = given(old)
+        self.assertEqual(get(union_only), old)
+        self.assertNotEqual(0, lib.madmatrix_set_helicity_choice(
+            instance(), (ctypes.c_int * 2)(0, ncomb), 2),
+            'a row past the table was taken without flag 4')
+
+        # generic massless 2 > 2 points at 1 TeV, every flavor on each
+        npar, energy = 4, 1000.
+        points = [(0.3 + 0.4 * k / 7., 0.5 + 0.7 * k) for k in range(8)]
+        nevt = len(points) * nflav
+        mom = (ctypes.c_double * (4 * npar * nevt))()
+        flavors = (ctypes.c_uint * nevt)()
+        for ip, (costh, phi) in enumerate(points):
+            sinth = math.sqrt(1. - costh * costh)
+            e = energy / 2.
+            legs = [(e, 0., 0., e), (e, 0., 0., -e),
+                    (e, e * sinth * math.cos(phi), e * sinth * math.sin(phi), e * costh),
+                    (e, -e * sinth * math.cos(phi), -e * sinth * math.sin(phi), -e * costh)]
+            for iflav in range(nflav):
+                i = ip * nflav + iflav
+                flavors[i] = iflav
+                for ipart, p in enumerate(legs):
+                    for mu in range(4):
+                        mom[nevt * (npar * mu + ipart) + i] = p[mu]
+
+        def evaluate(handle):
+            me = (ctypes.c_double * nevt)()
+            # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2,
+            # UMAMI_OUT_MATRIX_ELEMENT = 0
+            status = lib.umami_matrix_element(
+                handle, ctypes.c_size_t(nevt), ctypes.c_size_t(nevt), ctypes.c_size_t(0),
+                ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
+                (ctypes.c_void_p * 2)(ctypes.addressof(mom), ctypes.addressof(flavors)),
+                ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                (ctypes.c_void_p * 1)(ctypes.addressof(me)))
+            self.assertEqual(0, status)
+            return list(me)
+
+        for i, (a, b) in enumerate(zip(evaluate(by_flavor), evaluate(union_only))):
+            self.assertGreater(b, 0.)
+            self.assertAlmostEqual(a, b, delta=1e-12 * b,
+                                   msg='flavor %d: the rows of the flavor give another '
+                                       '|M|^2 than the union' % flavors[i])
 
     def _openmp_compile_base(self, proc_dir, source='CPPProcess.cc'):
         """(base command, OpenMP flags) for compiling `source` in proc_dir.

@@ -41,6 +41,19 @@ namespace madmatrix
     int goodHel[ProcessData::ncomb] = {};
     int nGoodHelRows = 0;      // the good rows before the C-parity reduction (madmatrix_good_helicity_count)
     bool csymOk = false;       // cpu/simd: the good helicities are the C-parity representatives, each counted twice
+#ifndef MADMATRIX_GPUIMPL
+    // cpu/simd: the good helicities of each flavor (the flavor id modulo nmaxflavor,
+    // every crossing of it together), as Fortran's GOODHEL(NCOMB,NFLAV): bit ighel of
+    // goodHelFlavor[iflavor] is set when the row goodHel[ighel] contributes to that
+    // flavor. goodHel is their union; a flavor-merged matrix element has rows that
+    // vanish for some of its flavors (a W attached to the other quark line), and the
+    // helicity loop of sigmaKin skips them for a page of those flavors (UMAMI sorts a
+    // call so that a SIMD page holds one flavor). Set by sigmaKin_setGoodHel: every
+    // bit of goodHel when the scan did not tell the flavors apart. Not on GPUs, where
+    // the lanes of a warp may carry different flavors and goodHel serves all of them.
+    static constexpr int nGoodHelWords = ( ProcessData::ncomb + 63 ) / 64;
+    unsigned long long goodHelFlavor[ProcessData::nmaxflavor][nGoodHelWords] = {};
+#endif
     // --hel_recycling: an amplitude the recycled build skips does not vanish at
     // these parameters, so this instance uses the plain code. Set by
     // sigmaKin_getGoodHel at one of its scans of the good helicities (hr_check_stale
