@@ -17,6 +17,7 @@ onium + jet virtuals against the MG5 2.5.5 onia outputs.
 | `research/mg255_swave/` | the S-wave onium + jet comparison with MG5 2.5.5 (`data/cmp_*.json`) |
 | `research/pwave_fd/` | the P-wave checks: finite differences, literature values, poles |
 | `research/stability/` | the stability profiles (after appendix C of arXiv:1604.01363): `stability.py` |
+| `research/estimate_gap/` | the trace of MadLoop's estimate gap at the softest u u~ > eta_c g point (double-precision loop coefficients of two nearly degenerate pentagons, amplified by the contraction) |
 | `scripts/stability_plot.py`, `figures/stability.svg`, `figures/stability_octets.svg`, `figures/stability_v16.svg`, `figures/stability_v16_octets.svg` | their figures (the P-wave colour octets in the second; the last two: TIRust da7902b + bridge v16 against the builds of the records) and `data/stability.json` |
 
 ## Reproduction

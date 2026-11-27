@@ -1010,8 +1010,19 @@ and the 80-bit switch on da7902b are in @stability-v16 and @ep.
   ratio is at the softest $u overline(u) -> eta_c thin g$ point
   ($sqrt(s) = #fixed(vx.estimate_below.worst.sqrts, 4)$ GeV): an error of
   #sci(vx.estimate_below.worst.error) against an estimate of
-  #sci(vx.estimate_below.worst.accuracy), in both setups, so it is common to
-  the two loop directions and not from the heavy quarks (not traced).
+  #sci(vx.estimate_below.worst.accuracy), in both setups. Traced
+  (`research/estimate_gap`): the error sits in two pentagons, those of
+  $u$, $overline(u)$, the 1.5 MeV gluon and both constituents. TIRust's tensor
+  integrals there are right (to $1.7 dot 10^(-12)$ of the largest, against
+  quadruple precision) but large, up to $2.5 dot 10^8$, since the pentagon is
+  nearly degenerate. Their contraction with MadLoop's loop coefficients
+  cancels by $5 dot 10^4$. MadLoop builds those coefficients in double
+  precision, with errors of $5 dot 10^(-14)$ of the largest. That gives
+  $3 dot 10^(-9)$ per pentagon. Quadruple-precision coefficients rounded to
+  double give $5 dot 10^(-13)$. Both loop directions contract the same
+  coefficients (with a tensor-integral library only the integrals are
+  recomputed), so MadLoop's test cannot see it; one rotation of the point
+  (`NRotations_DP = 1`) does (estimate $5.1 dot 10^(-9)$).
 
   *Everything else* reproduces its record, as @tab:v16all shows: the P-wave
   poles are closer to the prediction than on 48958d1 and 370b632, and the
