@@ -29,7 +29,9 @@ import sys
 import time
 
 from madgraph.iolibs.template_files.mg7 import combine_cluster
+from madgraph.mg7 import gridpack_madspin
 from madgraph.mg7 import launch
+from madgraph.mg7.bootstrap import INSTALL_DIR as _MADSPACE_INSTALL_DIR
 from madgraph.various.banner import RunCardMG7
 from madgraph.iolibs.template_files.mg7 import merge_gridpacks
 from madgraph.various import cluster as cluster_module
@@ -462,6 +464,17 @@ class ClusterRun:
             gridpack_path, card, self.backends["deploy"],
             self.process.custom_function_paths, self.process.subprocess_data,
             run_mode)
+        # MadSpin, prepared on a sample of the merged gridpack: every
+        # generation job then decays its own events with it
+        if gridpack_madspin.madspin_wanted(
+                self.card, getattr(self.process, "madspin_switch", None)):
+            try:
+                gridpack_madspin.add_madspin(
+                    gridpack_path, self.state["seed"], None,
+                    str(_MADSPACE_INSTALL_DIR),
+                    self.card["run"]["cpu_thread_pool_size"])
+            except gridpack_madspin.GridpackMadSpinError as error:
+                raise ClusterRunError(str(error)) from error
         return gridpack_path
 
     @staticmethod
@@ -580,6 +593,12 @@ class ClusterRun:
         logger.info(
             "cluster run done: %d events, cross section %.6g +- %.2g pb, in %s",
             process["count_unweighted"], process["mean"], process["error"], self.run_path)
+        if "decayed" in info:
+            logger.info(
+                "the events were decayed with MadSpin in each job: cross section "
+                "x BR %.6g +- %.2g pb, in %s", info["decayed"]["mean"],
+                info["decayed"]["error"],
+                os.path.join(self.run_path, combine_cluster.DECAYED_FILE))
 
     def finish_gridpack_only(self, gridpack_path: str) -> None:
         final_path = os.path.join(self.run_path, "gridpack")
@@ -593,10 +612,19 @@ class ClusterRun:
         logger.info("cluster run done: the merged gridpack is in %s", final_path)
 
 
-def check_supported(switch, reweight) -> None:
+def check_supported(switch, reweight, card=None) -> None:
     """The cluster mode only generates the events (and the post-processing of
-    the run card): the tools run on them afterwards."""
+    the run card): the tools run on them afterwards. MadSpin is the exception
+    when the merged gridpack carries it ([gridpack] include_madspin): each
+    generation job decays its own events."""
     tools = launch.selected_tools(switch or {})
+    if "MadSpin" in tools and card is not None:
+        try:
+            carried = gridpack_madspin.madspin_wanted(card, True)
+        except gridpack_madspin.GridpackMadSpinError as error:
+            raise ClusterRunError(str(error)) from error
+        if carried:
+            tools.remove("MadSpin")
     if tools:
         raise ClusterRunError(
             "cluster mode does not run " + ", ".join(tools) + " yet: switch "
@@ -609,9 +637,12 @@ def check_supported(switch, reweight) -> None:
 
 def run_cluster(switch=None, reweight=None) -> None:
     """Run the generation of this process directory on a batch system."""
-    check_supported(switch, reweight)
+    check_supported(switch, reweight,
+                    RunCardMG7(os.path.join("Cards", "run_card.toml")))
     launch.compute_auto_widths()
     process = launch.MadgraphProcess.for_steering()
+    if switch:
+        process.madspin_switch = not launch._off(switch.get("madspin"))
     if process.run_card["cluster"]["mode"] == "full" and \
             process.run_card["generation"]["events"] <= 0:
         raise ClusterRunError("[generation] events must be positive in cluster mode")
