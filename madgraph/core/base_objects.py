@@ -1630,6 +1630,174 @@ class Model(PhysicsObject):
 
         return key
 
+    def get_merged_flavor_key(self, inter, ids):
+        """The flavor key (one flavor index per particle, 0 for an unmerged
+        one) that merge_flavor(ids) gives to the single FLV_Coupling entry of
+        this interaction, or None when the interaction does not map to one
+        key (a merged leg of an earlier merge whose couplings went back to
+        plain strings, several keys already, the W+/W- merge)."""
+
+        if ids[0] == -ids[1]:
+            return None
+        previous = None
+        has_plain = False
+        for coup in inter.get('couplings').values():
+            if isinstance(coup, FLV_Coupling):
+                keys = set(coup.get('flavors'))
+                if len(keys) != 1 or (previous is not None and keys != {previous}):
+                    return None
+                previous = keys.pop()
+            else:
+                has_plain = True
+        merged = self.get('merged_particles')
+        flav = []
+        for i, p in enumerate(inter.get('particles')):
+            pdg = p.get('pdg_code')
+            if pdg in ids:
+                flav.append(ids.index(pdg) + 1)
+            elif pdg in merged:
+                if previous is None or has_plain or not previous[i]:
+                    return None
+                flav.append(previous[i])
+            else:
+                flav.append(0)
+        return tuple(flav)
+
+    @staticmethod
+    def bipartite_edge_colouring(edges):
+        """Colour the edges (left, right) of a bipartite graph so that no two
+        edges sharing a vertex have the same colour, with as many colours as
+        the largest vertex degree (Konig's theorem). Returns the colour of
+        each edge, 0, 1, ...; deterministic in the edge order.
+
+        Each edge is coloured with a colour a free at its left end; if a is
+        taken at the right end, the path alternating a and b (a colour free
+        at the right end) that starts there is swapped, which frees a at the
+        right end without reaching the left one."""
+
+        at = {}
+        colour = [None] * len(edges)
+        ends = lambda e: (('L', edges[e][0]), ('R', edges[e][1]))
+        for e in range(len(edges)):
+            u, v = ends(e)
+            cu = at.setdefault(u, {})
+            cv = at.setdefault(v, {})
+            a = next(c for c in itertools.count() if c not in cu)
+            if a in cv:
+                b = next(c for c in itertools.count() if c not in cv)
+                path, x, col = [], v, a
+                while col in at.get(x, {}):
+                    f = at[x][col]
+                    path.append(f)
+                    fu, fv = ends(f)
+                    x = fv if x == fu else fu
+                    col = b if col == a else a
+                for f in path:
+                    for end in ends(f):
+                        del at[end][colour[f]]
+                for f in path:
+                    colour[f] = b if colour[f] == a else a
+                    for end in ends(f):
+                        at[end][colour[f]] = f
+            colour[e] = a
+            cu[a] = e
+            cv[a] = e
+        return colour
+
+    @staticmethod
+    def flavor_tables_conflict(flavor_keys):
+        """True when two of these flavor keys need the same row (flavor of
+        the first fermion) or the same column (flavor of the second) of one
+        table: a merged vertex holds one partner per flavor on each side
+        (FLV_Coupling.get_shared_partner_slot)."""
+
+        pairs = set(FLV_Coupling.get_partner_indices(k) for k in flavor_keys)
+        return len(set(p[0] for p in pairs)) != len(pairs) or \
+               len(set(p[1] for p in pairs)) != len(pairs)
+
+    def get_flavor_mixing_merge_keys(self, interactions, ids, new_part):
+        """The merge key (get_get_merge_key) of each interaction for
+        merge_flavor(ids), with the flavor pairs of a mixing vertex spread
+        over the fewest tables.
+
+        The "delta" of get_get_merge_key splits a vertex with two merged
+        fermions into the three cyclic diagonals of a 3x3 mixing matrix. That
+        is the minimum for three merged generations, but not for fewer: with
+        d, u, s, c merged it puts V_cd and V_us into two vertices of their
+        own while they share neither a row nor a column (one table holds one
+        partner per flavor on each side). Here the vertices that share the
+        particles and orders of the key are regrouped:
+
+          * the tables holding a same-generation pair (u d, c s, ve e, ...),
+            the ones that remain with a diagonal mixing matrix, are kept
+            as they are, so a diagonal model is not changed at all;
+          * the other flavor pairs are spread over the fewest tables, a
+            colouring of the edges of the bipartite graph rows x columns
+            (bipartite_edge_colouring); for d, u, s, c this gives one table
+            {u s, c d} next to {u d, c s}, for three generations the two
+            off-diagonal cyclic diagonals again.
+
+        The new grouping is used only when it has fewer tables than the
+        delta one (or the delta one cannot be written). The vertices are
+        regrouped only when they all have two merged fermion legs, one
+        flavor key and the same type, loop particles, Lorentz and colour
+        structures. A vertex with one merged fermion and an unmerged one (t
+        or b next to the merged light quarks) keeps one vertex per flavor:
+        the current that builds the merged fermion from the unmerged one has
+        no merged flavor to follow, so it needs one flavor per vertex
+        (HelasWavefunction.AmbiguousFlavorError)."""
+
+        keys = [self.get_get_merge_key(inter, ids, new_part) for inter in interactions]
+        groups = collections.OrderedDict()
+        for i, key in enumerate(keys):
+            groups.setdefault(key[:2], []).append(i)
+
+        merged = self.get('merged_particles')
+        def origin(inter, flav, pos):
+            pdg = inter.get('particles')[pos].get('pdg_code')
+            return pdg if pdg in ids else merged[pdg][flav[pos] - 1]
+
+        for base, members in groups.items():
+            if len(set(keys[i][2] for i in members)) < 2:
+                continue
+            flavors = {}
+            for i in members:
+                flav = self.get_merged_flavor_key(interactions[i], ids)
+                if flav is None or len([f for f in flav if f]) != 2:
+                    break
+                flavors[i] = flav
+            else:
+                signature = set((inter.get('type'),
+                                 str(inter.get('loop_particles')),
+                                 tuple(inter.get('lorentz')),
+                                 tuple(str(c) for c in inter.get('color')))
+                                for inter in (interactions[i] for i in members))
+                if len(signature) != 1:
+                    continue
+                classes = collections.OrderedDict()
+                diagonal = set()
+                for i in members:
+                    classes.setdefault(keys[i][2], []).append(flavors[i])
+                    a, b = sorted(origin(interactions[i], flavors[i], pos)
+                                  for pos, f in enumerate(flavors[i]) if f)
+                    if a % 2 == 1 and b == a + 1:
+                        diagonal.add(keys[i][2])
+                others = [i for i in members if keys[i][2] not in diagonal]
+                edges = []
+                for i in others:
+                    edge = FLV_Coupling.get_partner_indices(flavors[i])
+                    if edge not in edges:
+                        edges.append(edge)
+                colours = self.bipartite_edge_colouring(edges)
+                old = set(keys[i][2] for i in others)
+                old_ok = not any(self.flavor_tables_conflict(classes[d]) for d in old)
+                if len(set(colours)) < len(old) or not old_ok:
+                    for i in others:
+                        edge = FLV_Coupling.get_partner_indices(flavors[i])
+                        keys[i] = (base[0], base[1],
+                                   ('mixing', colours[edges.index(edge)]))
+        return keys
+
     def merge_flavor(self, ids):
         """Merge leptons/or quarks into a single particle 
         and assign one flavor index to the merged particle.
@@ -1656,27 +1824,28 @@ class Model(PhysicsObject):
         # need to track if such interaction already exist and update if it does
         # Note that we need to support both the case where the interaction did not have any flavor index before
         # and the case where it had one from a previous merge (think lepto-quark)
-        new_interactions = {} #key is the tuple of the particle 
-        for inter in self.get('interactions')[:]:
-            if any(p.get('pdg_code') in ids for p in inter.get('particles')):
-                key = self.get_get_merge_key(inter, ids, new_part)
-                if key in new_interactions:
-                    new_interactions[key].update_flavor(inter, ids, new_part, anti_part)
-                    self.get('interactions').remove(inter)
-                    if not any(p.get('pdg_code') in self['merged_particles'] for p in inter.get('particles')):
-                        self['unmerged_interactions'].append(inter)
-                else:
-                    #inter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
-                    self.get('interactions').remove(inter)
-                    newinter = copy.deepcopy(inter)
-                    newinter.set('color', inter.get('color')) # avoid deepcopy issue with color objects
-                    new_interactions[key] = newinter
-                    newinter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
-                    self.get('interactions').append(newinter)
-                    if not any(p.get('pdg_code') in self['merged_particles'] for p in inter.get('particles')):
-                        self['unmerged_interactions'].append(inter)
-                
-                        
+        new_interactions = {} #key is the tuple of the particle
+        to_merge = [inter for inter in self.get('interactions')
+                    if any(p.get('pdg_code') in ids for p in inter.get('particles'))]
+        merge_keys = self.get_flavor_mixing_merge_keys(to_merge, ids, new_part)
+        for inter, key in zip(to_merge, merge_keys):
+            if key in new_interactions:
+                new_interactions[key].update_flavor(inter, ids, new_part, anti_part)
+                self.get('interactions').remove(inter)
+                if not any(p.get('pdg_code') in self['merged_particles'] for p in inter.get('particles')):
+                    self['unmerged_interactions'].append(inter)
+            else:
+                #inter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
+                self.get('interactions').remove(inter)
+                newinter = copy.deepcopy(inter)
+                newinter.set('color', inter.get('color')) # avoid deepcopy issue with color objects
+                new_interactions[key] = newinter
+                newinter.pass_interaction_to_flavor_mode(ids, new_part, anti_part)
+                self.get('interactions').append(newinter)
+                if not any(p.get('pdg_code') in self['merged_particles'] for p in inter.get('particles')):
+                    self['unmerged_interactions'].append(inter)
+            
+                    
         # for vertex which preserve flavor and has identical couplings. Move it back
         # to previous mode
         for inter in new_interactions.values():

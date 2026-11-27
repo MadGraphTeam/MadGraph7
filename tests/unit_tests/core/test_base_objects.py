@@ -2584,3 +2584,140 @@ class FLVCouplingTableTest(unittest.TestCase):
                         {(1, 0, 0): 'GC_XD', (3, 0, 0): 'GC_XS'},
                         {(0, 2, 0): 'GC_1'}):
             FLV(flavors=flavors).assert_table_representable()
+
+
+class FlavorMixingTablesTest(unittest.TestCase):
+    """A merged vertex with flavor mixing (W q q' with a non-diagonal CKM)
+    is split into as few flavor tables as the mixing allows: one partner per
+    flavor on each side of a table (FLV_Coupling.get_shared_partner_slot),
+    so as many tables as flavors a single flavor couples to."""
+
+    @staticmethod
+    def w_tables(model, pdgs):
+        """The flavor keys of each merged vertex with these particles."""
+        tables = []
+        for inter in model.get('interactions'):
+            if [p.get_pdg_code() for p in inter.get('particles')] != pdgs:
+                continue
+            coups = list(inter.get('couplings').values())
+            self_check = [c for c in coups
+                          if isinstance(c, base_objects.FLV_Coupling)]
+            for coup in self_check:
+                coup.assert_table_representable()
+            tables.append(frozenset(k for c in self_check
+                                    for k in c.get('flavors')))
+        return set(tables)
+
+    def test_ckm_four_light_flavors_two_tables(self):
+        """sm-ckm (massive b): d, u, s, c are merged, and the full CKM W
+        vertex gives {u d, c s} and {u s, c d}, not three tables (the
+        delta of get_get_merge_key, made for three generations, left V_cd
+        and V_us one vertex each)."""
+        import madgraph.models.import_ufo as import_ufo
+        model = import_ufo.import_model('sm-ckm')
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4])
+        self.assertEqual(self.w_tables(model, [-81, 81, 24]),
+                         {frozenset([(2, 1, 0), (4, 3, 0)]),
+                          frozenset([(2, 3, 0), (4, 1, 0)])})
+        self.assertEqual(self.w_tables(model, [-81, 81, -24]),
+                         {frozenset([(1, 2, 0), (3, 4, 0)]),
+                          frozenset([(1, 4, 0), (3, 2, 0)])})
+        # V_ud and V_cs keep their table, V_us and V_cd their couplings
+        for inter in model.get('interactions'):
+            if [p.get_pdg_code() for p in inter.get('particles')] == [-81, 81, 24]:
+                flavors = inter.get('couplings')[(0, 0)].get('flavors')
+                if (2, 3, 0) in flavors:
+                    self.assertEqual(flavors, {(2, 3, 0): 'GC_101',
+                                               (4, 1, 0): 'GC_103'})
+        # one merged leg next to t or b: one vertex per flavor, as before
+        self.assertEqual(self.w_tables(model, [-6, 81, 24]),
+                         {frozenset([(0, 1, 0)]), frozenset([(0, 3, 0)])})
+        self.assertEqual(self.w_tables(model, [-81, 5, 24]),
+                         {frozenset([(2, 0, 0)]), frozenset([(4, 0, 0)])})
+
+    def test_ckm_three_generations_and_diagonal(self):
+        """Three merged generations keep the three cyclic diagonals (the
+        minimum: d couples to u, c, t), five flavors (t massive) three tables
+        too, and the diagonal sm one table."""
+        import madgraph.models.import_ufo as import_ufo
+        model = import_ufo.import_model('sm-zeromass_ckm')
+        self.assertEqual(model.get('merged_particles')[81], [1, 2, 3, 4, 5])
+        self.assertEqual(self.w_tables(model, [-81, 81, 24]),
+                         {frozenset([(2, 1, 0), (4, 3, 0)]),
+                          frozenset([(2, 3, 0), (4, 5, 0)]),
+                          frozenset([(2, 5, 0), (4, 1, 0)])})
+        model = import_ufo.import_model('sm')
+        self.assertEqual(self.w_tables(model, [-81, 81, 24]),
+                         {frozenset([(2, 1, 0), (4, 3, 0)])})
+
+    def test_lepton_mixing_tables(self):
+        """A PMNS-like mixing (every charged lepton with every neutrino),
+        with leptons and neutrinos merged in two steps: the tables of the
+        second step are built from the keys of the first one. e, mu with
+        three neutrinos need three tables (a lepton has three partners),
+        e, mu with two neutrinos two, and the diagonal one is unchanged."""
+        import madgraph.models.import_ufo as import_ufo
+        base = import_ufo.import_model('sm', options={'apply_flavor_grouping': False})
+
+        def with_pmns(neutrinos):
+            model = copy.deepcopy(base)
+            new_id = max(i.get('id') for i in model.get('interactions'))
+            for inter in list(model.get('interactions')):
+                pdgs = [p.get_pdg_code() for p in inter.get('particles')]
+                if pdgs not in ([-12, 11, 24], [-11, 12, -24]):
+                    continue
+                for lep in (11, 13):
+                    for nu in neutrinos:
+                        if (lep, nu) == (11, 12):
+                            continue
+                        new = copy.deepcopy(inter)
+                        new.set('color', inter.get('color'))
+                        new_id += 1
+                        new.set('id', new_id)
+                        new.set('particles', base_objects.ParticleList(
+                            [model.get_particle(-nu if p == -12 else nu if p == 12
+                                                else -lep if p == -11 else lep if p == 11
+                                                else p) for p in pdgs]))
+                        new.set('couplings', {(0, 0): 'GC_PMNS_%d_%d' % (lep, nu)})
+                        model.get('interactions').append(new)
+            return model
+
+        model = with_pmns([12, 14, 16])
+        model.merge_flavor([11, 13])
+        model.merge_flavor([12, 14, 16])
+        tables = self.w_tables(model, [-83, 82, 24])
+        self.assertEqual(len(tables), 3)
+        self.assertIn(frozenset([(1, 1, 0), (2, 2, 0)]), tables)
+        self.assertEqual(set().union(*tables),
+                         set((nu, lep, 0) for lep in (1, 2) for nu in (1, 2, 3)))
+
+        model = with_pmns([12, 14])
+        model.merge_flavor([11, 13])
+        model.merge_flavor([12, 14])
+        self.assertEqual(self.w_tables(model, [-83, 82, 24]),
+                         {frozenset([(1, 1, 0), (2, 2, 0)]),
+                          frozenset([(1, 2, 0), (2, 1, 0)])})
+        self.assertEqual(self.w_tables(model, [-82, 83, -24]),
+                         {frozenset([(1, 1, 0), (2, 2, 0)]),
+                          frozenset([(1, 2, 0), (2, 1, 0)])})
+
+    def test_bipartite_edge_colouring(self):
+        """As many colours as the largest degree, no colour twice at a
+        vertex, on complete and irregular bipartite graphs."""
+        colouring = base_objects.Model.bipartite_edge_colouring
+        graphs = [[(r, c) for r in range(n) for c in range(m)]
+                  for n, m in ((2, 2), (2, 3), (3, 3), (4, 3), (5, 5))]
+        graphs.append([(0, 0), (0, 1), (1, 1), (1, 2), (2, 0), (2, 2), (3, 0),
+                       (0, 3), (3, 3), (4, 1)])
+        # an order that needs the alternating-path swap
+        graphs.append([(0, 0), (1, 1), (0, 1), (2, 0), (2, 2), (1, 2)])
+        for edges in graphs:
+            colours = colouring(edges)
+            degree = max(max(sum(1 for e in edges if e[side] == v)
+                             for v in set(e[side] for e in edges))
+                         for side in (0, 1))
+            self.assertEqual(len(set(colours)), degree, edges)
+            self.assertEqual(set(colours), set(range(degree)))
+            for side in (0, 1):
+                seen = set((e[side], c) for e, c in zip(edges, colours))
+                self.assertEqual(len(seen), len(edges), edges)

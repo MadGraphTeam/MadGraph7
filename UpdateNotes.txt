@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: flavor grouping puts the flavor pairs of a vertex with flavor mixing into as few merged
+       vertices as the mixing allows (as many as partners of one flavor). With d, u, s, c
+       merged and a full CKM (sm-ckm), the W vertex now has two flavor tables, {V_ud, V_cs}
+       and {V_us, V_cd}, instead of three (V_us and V_cd were alone in a vertex): p p > w+ j j
+       goes from 42 to 30 diagrams, p p > w+ w- j from 70 to 52. Three merged generations keep
+       the three cyclic diagonals, and models without mixing are unchanged. A vertex with one
+       merged quark next to t or b still has one vertex per flavor.
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the
