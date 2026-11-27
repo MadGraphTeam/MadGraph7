@@ -253,7 +253,13 @@ ANNOUNCEMENT:
          (the bound-state layer of MadLoop), for any [QCD] process, e.g.
          "generate p p > Jpsi(1|3S11) j [QCD]": a fully automated NLO. It needs
          TIRust for the threshold integrals of quarkonia ("install tirust").
-         P-wave bound states keep the built-in or user virtual;
+         The virtual is sampled over the helicities as for elementary particles
+         (NHelForMCoverHels of FKS_params.dat; a bound state's J_z is one of the
+         helicities). P-wave bound states keep the built-in or user virtual;
+       - a Born that vanishes identically (colour or C parity, e.g. q g >
+         J/psi q, or Landau-Yang) without a P-wave soft current has no virtual
+         and no Born channels: its finite real emission is integrated in the
+         real-emission channels only;
        - diagrams that vanish by C parity or colour are left out of the colour
          flows. The generation warns when a real emission has a soft or collinear
          region whose Born was not generated (use p = j = all massless flavours);

@@ -6494,16 +6494,10 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         for path in [card_path, pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'),
                      pjoin(self.dir_path, 'SubProcesses', 'MadLoopParams.dat')]:
             card.write(path)
-        # MadLoop's bound-state layer sums over the polarisations of the bound
-        # states and refuses the selection of a helicity configuration
-        # (SLOOPMATRIXHEL): the virtual sums over the helicities explicitly
-        # (BinothLHA.f's MC over helicities needs SLOOPMATRIXHEL)
-        fks_card = pjoin(self.dir_path, 'Cards', 'FKS_params.dat')
-        if os.path.exists(fks_card):
-            text = open(fks_card).read()
-            new = re.sub(r'(?m)^(#NHelForMCoverHels\s*\n)\s*-?\d+', r'\g<1>-1', text, count=1)
-            if new != text:
-                open(fks_card, 'w').write(new)
+        # BinothLHA.f's MC over helicities (FKS_params.dat NHelForMCoverHels)
+        # works as for elementary legs: SLOOPMATRIXHEL of the bound-state
+        # layer numbers the physical configurations as the FKS Born (a bound
+        # state takes J_z = -J..J), and HelFilter.dat lists them all.
 
     def write_pmass_file(self, writer, matrix_element):
         """pmass.inc. The MadLoop exporter's version (bound states of a loop

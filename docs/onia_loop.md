@@ -132,7 +132,10 @@ of this layer for Borns with S-wave bound states (`fks_onia.madloop_virtual`):
 `generate p p > Jpsi(1|3S11) j [QCD]` is a complete NLO calculation. The FKS
 output links `onia_loop.f` into its `V*` directories, and its run fills the
 LDMEs of `COMMON/LDME` from the onia card for it (`ONIA_SET_LDME_COMMON`).
-P-wave bound states keep the built-in or user virtual there, since this
+`BinothLHA.f` samples the helicities of the virtual with the weights of the
+FKS Born and calls `SLOOPMATRIXHEL_THRES` (`NHelForMCoverHels` of
+`FKS_params.dat`, default 4; -1 sums them explicitly). A Born that vanishes
+identically gets no `V*` directory. P-wave bound states keep the built-in or user virtual there, since this
 layer's P-wave HELAS library is in dual numbers for every process of an
 output.
 
