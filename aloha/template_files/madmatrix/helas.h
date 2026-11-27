@@ -689,26 +689,20 @@
     // redone with |p|, and r^.p^ = |r||p| - r.p is computed without the cancellation
     // of two nearly collinear momenta, as |r x p|^2/(|r||p| + |r.p|) + (|r.p| - r.p).
     // The zeros are then zeros to the rounding of the arithmetic, at any angle.
-    const fptype_momenta_sv rm1 = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, iref );
-    const fptype_momenta_sv rm2 = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, iref );
-    const fptype_momenta_sv rm3 = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, iref );
-    const fptype_momenta_sv pm1 = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
-    const fptype_momenta_sv pm2 = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
-    const fptype_momenta_sv pm3 = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
-    // the three-vector products in the precision of the momenta (FP64 in FPTYPE=v)
-    const fptype_momenta_sv rpm = rm1 * pm1 + rm2 * pm2 + rm3 * pm3;
-    const fptype_momenta_sv cxm = rm2 * pm3 - rm3 * pm2;
-    const fptype_momenta_sv cym = rm3 * pm1 - rm1 * pm3;
-    const fptype_momenta_sv czm = rm1 * pm2 - rm2 * pm1;
-    const fptype_momenta_sv crossm = cxm * cxm + cym * cym + czm * czm;
-    const fptype_amp_sv rp3 = fpamp_of_mom( rpm );
-    const fptype_amp_sv cross2 = fpamp_of_mom( crossm );
-    const fptype_amp_sv r1 = fpamp_of_mom( rm1 );
-    const fptype_amp_sv r2 = fpamp_of_mom( rm2 );
-    const fptype_amp_sv r3 = fpamp_of_mom( rm3 );
-    const fptype_amp_sv p1 = fpamp_of_mom( pm1 );
-    const fptype_amp_sv p2 = fpamp_of_mom( pm2 );
-    const fptype_amp_sv p3 = fpamp_of_mom( pm3 );
+    // Everything is in the precision of the amplitudes (FP32 in FPTYPE=v): the
+    // formula has no cancellation left, and the zeros are those of the momenta as
+    // the other wavefunctions see them, converted to that precision.
+    const fptype_amp_sv r1 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, iref ) );
+    const fptype_amp_sv r2 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, iref ) );
+    const fptype_amp_sv r3 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, iref ) );
+    const fptype_amp_sv p1 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar ) );
+    const fptype_amp_sv p2 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar ) );
+    const fptype_amp_sv p3 = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar ) );
+    const fptype_amp_sv rp3 = r1 * p1 + r2 * p2 + r3 * p3;
+    const fptype_amp_sv cx = r2 * p3 - r3 * p2;
+    const fptype_amp_sv cy = r3 * p1 - r1 * p3;
+    const fptype_amp_sv cz = r1 * p2 - r2 * p1;
+    const fptype_amp_sv cross2 = cx * cx + cy * cy + cz * cz;
     const fptype_amp sqh = fpsqrt( 0.5 );
     const fptype_amp_sv hel = nhel;
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( vc.w );

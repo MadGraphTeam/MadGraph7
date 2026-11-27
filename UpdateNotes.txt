@@ -16,7 +16,9 @@ ANNOUNCEMENT:
        1e-3 rad). The C++ vxxxxxr now builds the polarisation of the lightlike projection
        of the momentum, with r.p computed without the cancellation of two nearly collinear
        momenta, so that they are zeros to rounding at any angle: the recycled build agrees
-       with the build without recycling to 1e-15 there.
+       with the build without recycling to 1e-15 there. Since that formula has no
+       cancellation, vxxxxxr is computed in the precision of the amplitudes only: no
+       FP64 is left in it with FPTYPE=v (r.p was made in FP64 before).
        With a massive external leg, the --hel_recycling warm-up now drops these pairs too,
        with the same 1e-12 relative rule instead of exact zeros only (g g > t t~ g g:
        1.05 times faster in axial gauge than in Feynman gauge, against 1.00). The
