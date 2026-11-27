@@ -228,8 +228,42 @@ quadruple precision, and every point and J/psi polarisation is right. With
 physical masses only the 1.5 MeV point is rescued, and the other accuracies
 stay near 1e-9.
 
-MadLoop's rotation of the point (`NRotations_DP = 1`, a permutation of the
-axes) catches the worst point, but not the transverse J/psi alone
+**Contraction rounding.** With a tensor-integral library the reversed loop
+direction recomputes only the integrals: both passes contract the same
+double-precision loop coefficients. Where that contraction cancels strongly,
+the rounding of the coefficients is amplified unseen. An example is a pentagon
+with both constituents at P/2 and a soft gluon, nearly degenerate. Its tensor
+integrals reach 2.5e8 and the contraction cancels by 5e4. In
+`u u~ > etac(1|1S01) g` with a 1.5 MeV gluon the result is then 2.2e-9 off,
+against an estimate of 4.3e-12. Bound-state outputs therefore also bound the
+accuracy from below by `ONIA_TIRK epsilon max_pass sum_j |c_j I_j| / |c0|`:
+- the sum runs over the loops of the finite part (`ONIA_TIRABS`, accumulated
+  in `TIR_interface.f`);
+- it is taken relative to the finite part of the same pass, before the
+  bound-state normalisation (`ONIA_TIRREL`);
+- `ONIA_TIRK = 300`;
+- it is zero in an extended-precision pass.
+
+The constant was calibrated against quadruple precision
+(`docs/benchmarkfolder/research/estimate_gap`). At 550 points of 18 processes
+the largest K any point needs is 236. The estimates of the S-wave processes
+rise by a median factor 1 to 130, to 2e-8 at most, so no point is rescued
+because of the term.
+
+**What it does not catch:**
+- the raised-power integrals of P waves;
+- a loop invariant at a two-particle threshold that double precision cannot
+  hit. In `g g > Jpsi(1|3S18) g` the gluon carrying the octet's momentum P
+  has a charm loop at p^2 = M^2 = 4 m_c^2. At sqrt(s) = 203 GeV, P^2
+  computed from the boosted momenta is 2e-13 below the threshold, and the
+  square-root behaviour of the bubble there costs 4e-8 of the result, the
+  same in both directions and in a rotation.
+
+**Rotations.** MadLoop's rotation of the point (`NRotations_DP = 1`, a
+permutation of the axes) catches the contraction rounding and most of the
+P-wave misses, at 1.4 to 2 times the time per point; it does not catch the
+threshold bubble. It catches the worst soft point too, but not the transverse
+J/psi alone
 (`ONIA_SELECT_JZ`) there, which stays 33% off. It also costs one more
 double-precision evaluation per point, about +50%. Bound-state outputs leave
 it at MadLoop's default, 0.

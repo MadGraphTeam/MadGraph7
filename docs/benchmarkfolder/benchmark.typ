@@ -1022,7 +1022,17 @@ and the 80-bit switch on da7902b are in @stability-v16 and @ep.
   double give $5 dot 10^(-13)$. Both loop directions contract the same
   coefficients (with a tensor-integral library only the integrals are
   recomputed), so MadLoop's test cannot see it; one rotation of the point
-  (`NRotations_DP = 1`) does (estimate $5.1 dot 10^(-9)$).
+  (`NRotations_DP = 1`) does (estimate $5.1 dot 10^(-9)$). Bound-state
+  outputs now add a contraction-rounding term to the estimate,
+  $K epsilon sum_j |c_j I_j|$ over the loops relative to the finite part,
+  with $K = 300$ calibrated at 550 points of 18 processes
+  (`research/estimate_gap`, @stability-v16). It gives $2.8 dot 10^(-9)$ at this
+  point. The counts above are of the estimate before the term. The $""^3 S_1^((8))$
+  channels have a second gap the term does not cover: at 203 GeV the charm
+  bubble on the gluon that carries the octet sits at its threshold,
+  $p^2 = 4 m_c^2$, which double precision misses by $2 dot 10^(-13)$ after
+  the boost. That costs $4 dot 10^(-8)$, the same in both loop directions
+  (open items).
 
   *Everything else* reproduces its record, as @tab:v16all shows: the P-wave
   poles are closer to the prediction than on 48958d1 and 370b632, and the
@@ -1041,7 +1051,9 @@ estimate over random phase-space points.
   reversed loop direction, a pass in which TIRust also moves each invariant
   by one unit in its last place, and one Lorentz rotation of the point
   (`NRotations_DP = 1`). For bound states it is at least the counterterm
-  rounding estimate (@mg255).
+  rounding estimate (@mg255), and, since 2026-11-27, the contraction-rounding
+  estimate (@v16all; not in the profiles below but in
+  @stability-v16).
 - *No rescue.* The quadruple-precision rescue is switched off
   (`MLStabThres` $= 10^(99)$), so what is recorded is the double-precision
   estimate. A refused integral sets it to 1.
@@ -1243,6 +1255,17 @@ and the bridge patch v16, the candidate of @twopw16 and @v16all (case suffix
     ($u overline(u) -> chi_(b 0) thin g$) and $8.0 dot 10^(-8)$
     ($g g -> chi_(b 0) thin g$), the largest $2.3 dot 10^(-4)$, and the 80-bit
     switch lowers them by about $2000$.
+  - *With the contraction-rounding term* of the estimate (@v16all), all 36
+    profiles without the switch were run again
+    (`research/estimate_gap/data/profiles_term_summary.json`). Still no point
+    is at or above $10^(-3)$. The S-wave and 20 GeV medians rise by up to a
+    factor 93, mostly from $10^(-13)$ to $10^(-11)$ ($g g -> eta_b thin g$ at
+    1 TeV: $9 dot 10^(-11)$ to $8 dot 10^(-9)$). At 1 TeV 0.08% of the
+    $g g -> J\/psi thin g$ points and 0.01% of the $g g -> Upsilon thin g$
+    points are at or above $10^(-6)$ (largest $5 dot 10^(-6)$), where none
+    was. The P waves at 1 TeV are unchanged; their estimate comes from the
+    raised-power integrals. The figures and @tab:stability show the profiles
+    before the term.
   - *Time.* The median time per point is 0.84 to 1.38 times that of
     5025e12, and 1.01 to 1.14 times that of d17085a with the switch. These
     runs are unpaired, on a shared host under a load of 250 to 320 of its

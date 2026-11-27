@@ -47,6 +47,14 @@ C     may reverse them in place), for the integrals with a doubled line
       %(real_dp_format)s PW_PL(0:3,NLOOPLINE)
       %(mass_dp_format)s PW_M2L(NLOOPLINE)
 ## }
+## if(Onia){
+C     A bound state: the scale of the contraction of the
+C     finite part, sum_j |c_j I_j|, summed over the loops
+C     of a double-precision pass (CTMODE 1, 2) for the
+C     accuracy estimate of loop_matrix.f
+      %(real_dp_format)s ONIA_TIRABS(2),ONIA_TIRTERM
+      COMMON/%(proc_prefix)sONIA_TIRABS/ONIA_TIRABS
+## }
 C  
 C LOCAL VARIABLES 
 C
@@ -333,6 +341,15 @@ C The zero index is dummy and means no caching at all since TIR_CACHE_SIZE=0.
 ## }
 	 ENDDO
       ENDDO
+## if(Onia and not AmplitudeReduction){
+      IF(CTMODE.EQ.1.OR.CTMODE.EQ.2) THEN
+        ONIA_TIRTERM=0.0d0
+        DO J=0,NLOOPCOEFS-1
+          ONIA_TIRTERM=ONIA_TIRTERM+ABS(LOOPCOEFS(J,I_SQSO,I_LOOPGROUP)*TIRCOEFS(J,1))
+        ENDDO
+        ONIA_TIRABS(CTMODE)=ONIA_TIRABS(CTMODE)+2.0d0*NORMALIZATION*ONIA_TIRTERM
+      ENDIF
+## }
 ## if(OniaPwave){
 C     A P-wave bound state: the derivatives of the propagators in the
 C     relative momentum, the integrals with one doubled line (onia_loop.f)

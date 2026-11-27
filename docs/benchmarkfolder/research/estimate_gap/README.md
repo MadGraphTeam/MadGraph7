@@ -44,4 +44,53 @@ The output path is set at the top of each script.
 
 - **Size.** The error is 2e-9 at a 1.5 MeV gluon, and about 1e-11 at the next points (√s = 3.11 GeV). It is far below `MLStabThres`, and below every target of the report.
 - **Scope.** It is a property of MadLoop's TIR path (double-precision numerator coefficients times an ill-conditioned tensor basis), not of TIRust or of the heavy quarks.
-- **A fix for the estimate.** MadLoop's estimate could cover it with a contraction term, like the counterterm-rounding term: c · ε · Σ|c_j I_j| / |Σ c_j I_j|, where c is the coefficient precision in units of ε. Here c ≈ 500 would give 3e-9. The alternative is one rotation (`NRotations_DP = 1`, about +50% per point). Neither is applied.
+- **A fix for the estimate.** A contraction term like the counterterm-rounding term covers it. It is now applied with a calibrated constant (below, "The contraction-rounding term"). One rotation (`NRotations_DP = 1`) also covers it, at 1.4 to 2 times the time per point.
+
+## A second gap: threshold bubbles of the ³S₁⁽⁸⁾ channels
+
+In `g g`, `u g` and `u u~ > Jpsi(1|3S18) + jet` at √s = 203 GeV (`PS2.input`), MadLoop's estimate (2.7e-9, 3.8e-9, 1.2e-9) is 14 to 90 times below the true error (3.8e-8, 1.5e-7, 1.1e-7).
+
+- `instr.py` and `probe.py` show the error sits in three loop groups, each off by the same 3.5e-7. All three are charm bubbles (masses m_c, m_c) on the gluon that carries the octet's momentum P.
+- Substituting TIRust's quadruple-precision integrals does not remove the error, and neither does substituting the quadruple-precision coefficients.
+- Shifting the inputs by one binary64 unit moves quadruple precision by 4e-12 but double precision by 3.8e-8.
+- **Cause.** The bubble sits at p² = M² = 4 m_c², the threshold, where it behaves like √(p² − 4 m_c²). At 203 GeV, P² computed in double precision from the boosted momenta is 2.2e-13 (relative) below the threshold. A rounding of the components of order 100 GeV gives about 1000 units of P². The quadruple-precision pass rebuilds the momenta with P² exact to 1e-32.
+- **Why the test misses it.**
+  - The bubble is the same in both loop directions.
+  - TIRust's check-pass shift (one unit) is far below the 1000-unit offset.
+  - A rotation (a permutation of the axes) rounds P² the same way.
+- **Possible fix.** Snap a loop invariant to (m_i + m_j)² when it lies within the rounding of the momentum components. This belongs to TIRust's decision on degenerate kinematics or to MadLoop's bound-state interface. Not done here.
+
+## The contraction-rounding term
+
+Bound-state outputs bound the accuracy from below by ONIA_TIRK ε max_pass Σ_loops Σ_j |c_j I_j| / |c₀|.
+
+**Where it is computed:**
+- `ONIA_TIRABS` is accumulated in `TIR_interface.f`, per double-precision pass.
+- The ratio is taken in `loop_matrix.f` against the finite part of the same pass, both in the normalisation of the loop groups, before the bound-state factors (`ONIA_TIRREL`).
+- The term enters next to the counterterm term (`ONIA_CTACC`).
+
+A first version divided by the final, normalised finite part. That is off by a process-dependent factor (256 in g g → ³S₁⁽⁸⁾ g), which is why its first calibration with K = 10 inflated the S-wave estimates at 1 TeV by up to 800.
+
+**Calibration.** `sets.py` generates the outputs with `ONIA_TIRK = 0`, and `calib2.py` records MadLoop's estimate without the term, ε·ONIA_TIRREL and the true error. The records are in `data/cal_<set>.json`. The sets:
+- the ten 2.5.5 cases (b, t excluded);
+- the three ³S₁⁽⁸⁾ channels;
+- the 24 P-wave points of u u~ / g g → χ_c0 g at 1 TeV;
+- 200 random g g → J/ψ g points, 60 g g → c c̄[¹S₀⁽⁸⁾] g points and 60 e⁺e⁻ → c c̄[³P₀⁽⁸⁾] g points at 1 TeV (setup A of the profiles).
+
+That is 550 points of 18 processes.
+
+**Results:**
+- MadLoop's estimate is below the error at 13 S-wave points where the contraction is the cause. They need K = 1 to 236; the largest is the traced u u~ → η_c g point.
+- With K = 300 all of them are covered.
+- The S-wave estimates rise by a median factor 1 to 130 (largest single factor 7400, at an estimate of 2e-14), to at most 2e-8. No point reaches `MLStabThres`.
+- Not covered, at any K:
+  - the ³S₁⁽⁸⁾ threshold bubbles (they would need K ≈ 4e4);
+  - the P-wave singlets at 1 TeV (K ≈ 5e4);
+  - 19 of the 60 P-wave octet points, low by factors 1 to 47, whose errors are in the raised-power integrals.
+
+**One rotation instead** (`rot.py`, `NRotations_DP = 1`, same points):
+- It catches the contraction misses, all P-wave singlet misses and 17 of the 19 octet misses.
+- It misses the threshold bubbles (worst factor 800).
+- It costs 1.4 to 2.0 times the time per point.
+
+It stays an option for users who need P-wave estimates at the 1e-8 level.

@@ -351,6 +351,14 @@
   [
    "25a823e463",
    "docs/benchmarkfolder: stability profiles and the 80-bit switch on TIRust da7902b + v16"
+  ],
+  [
+   "4d57e5f505",
+   "docs/benchmarkfolder: 2.5.5 comparison with b, t excluded from the loops"
+  ],
+  [
+   "feb4f3126d",
+   "docs/benchmarkfolder: trace of the estimate gap at the softest u u~ > eta_c g point"
   ]
  ],
  "decisions": [
@@ -391,6 +399,7 @@
   "*80-bit switch:* the bridge patch v2 (inputs as hi + lo words, check pass at the input precision) into MadGraph, then the TIRust pin with it (@ep).",
   "*Two P-wave bound states:* a TIRust pin with two dotted propagators and the rank-7 pentagons of raised-power plans (da7902b, TIRust PR \\#71; 4f1b06c, in TIRust main, serves those of @tab:ee2p and @tab:gg2p) and its bridge patch v16 in MadGraph; a quadruple-precision pass of $g g -> chi_(c 0) thin chi_(c 0)$ takes about 75 minutes, nearly all in MadLoop's binary128 numerator. No one-loop finite part is published to compare with (@twopw).",
   "*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters' output (it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.",
+  "*Threshold bubbles in double precision:* in the $\"\"^3 S_1^((8))$ channels the gluon that carries the octet has a charm bubble exactly at its threshold, $p^2 = M^2 = 4 m_c^2$. After a boost, $P^2$ in double precision misses it by $10^3$ units (2e-13 at 203 GeV), and the square-root behaviour costs $4 dot 10^(-8)$ that neither loop direction, TIRust's check pass nor a rotation sees (`research/estimate_gap`). Fix: snap such an invariant to $(m_i + m_j)^2$ within the rounding of the momentum components, in TIRust or in MadLoop's bound-state interface.",
   "*Sealed latch fixture:* `ReductionLatchLifecycleTest` compiles stubs from the sealed `tests/input_files/tirust_reduction_latch/stub_check.py` (its SHA-256 is pinned). It renders the stability policy of `loop_matrix_standalone.inc` with the `ninjars_available` switch only, and refuses the bound-state switches there (the counterterm-rounding estimate and the 80-bit rotations), so the test fails on `onia_loop`. The fixture's owner has to admit them."
  ],
  "perf_note": "*Where the time goes* (`research/perf_audit.md`, $g g -> t overline(t) g$ with Ninja, before these changes): the loop-numerator updaters (`UPDATE_WL` and the DP-terminal updaters) 45% of the time, the counterterm colour loop 16%, the HELAS routines 8%, the IEEE mode queries of the private updaters 3%. In the audit's full stack (these five changes and C) the colour loop takes 2% and the IEEE queries 0.2%. Not applied: C, the rank-limited clearing of the updaters' output (identical results, but it breaks tests that pin full clearing), and the opt-in `-march` builds."

@@ -311,6 +311,14 @@ C
 C     The squared finite terms of the counterterm interference of the last
 C     double-precision evaluation, and the accuracy they imply
       %(real_dp_format)s ONIA_CTSQ, ONIA_CTACC
+C     The scale of the contraction of the loop coefficients
+C     with the tensor integrals, sum_j |c_j I_j| per pass
+C     (TIR_interface.f), the same relative to the finite part
+C     of the pass, and the accuracy it implies with ONIA_TIRK
+C     units of rounding per term
+      %(real_dp_format)s ONIA_TIRABS(2), ONIA_TIRREL(2), ONIA_TIRACC, ONIA_TIRK
+      PARAMETER (ONIA_TIRK=300.0d0)
+      COMMON/%(proc_prefix)sONIA_TIRABS/ONIA_TIRABS
 ## }
 ## if(OniaPwave) {
       LOGICAL %(proc_prefix)sONIA_PW_DIRECTION, %(proc_prefix)sONIA_PW_CT_INPUT
@@ -1581,6 +1589,13 @@ C MadLoop jumps to this label during stability checks when it recomputes the sam
 
 C Make sure that the loop calls are performed since this is new evaluation.
 CTCALL_REQ_SO_DONE=.FALSE.
+## if(Onia) {
+C The contraction scale of this pass (TIR_interface.f)
+IF (CTMODE.EQ.1.OR.CTMODE.EQ.2) THEN
+  ONIA_TIRABS(CTMODE)=0.0d0
+  ONIA_TIRREL(CTMODE)=0.0d0
+ENDIF
+## }
 
 ## if(iregi_available) {
 C     Free cache when using IREGI
@@ -1660,6 +1675,17 @@ DO I=1,NLOOPGROUPS
   ENDIF
 ENDDO
 
+## if(Onia) {
+C The contraction scale of this pass relative to its finite
+C part, both in the normalisation of the loop groups
+IF (CTMODE.EQ.1.OR.CTMODE.EQ.2) THEN
+  IF (ANS(1,0).NE.0.0d0) THEN
+    ONIA_TIRREL(CTMODE)=ONIA_TIRABS(CTMODE)/ABS(ANS(1,0))
+  ELSEIF (ONIA_TIRABS(CTMODE).GT.0.0d0) THEN
+    ONIA_TIRREL(CTMODE)=1.0d0/EPSILON(1.0d0)
+  ENDIF
+ENDIF
+## }
 C Make sure that no NaN is present in the result
 DO K=1,NSQUAREDSO
   DO J=1,3
@@ -2130,8 +2156,23 @@ C   precision, which computes the counterterms in quadruple precision too.
     ELSE
       ONIA_CTACC=0.0d0
     ENDIF
+C   The two evaluations also share the loop coefficients:
+C   with a tensor-integral library the reversed loop
+C   direction recomputes only the integrals and contracts
+C   the same double-precision coefficients. Where the
+C   contraction cancels strongly (a nearly degenerate
+C   loop, e.g. both constituents at P/2 and a soft jet),
+C   the rounding of the coefficients is amplified unseen.
+C   Its estimate, ONIA_TIRK epsilon sum_j |c_j I_j| over
+C   the loops of the finite part, relative to the finite
+C   part of the pass (both before the bound-state
+C   normalisation), was calibrated against quadruple
+C   precision (research/estimate_gap of
+C   docs/benchmarkfolder). It is zero in an
+C   extended-precision pass, which does not use them.
+    ONIA_TIRACC=MIN(1.0d0,ONIA_TIRK*EPSILON(1.0d0)*MAX(ONIA_TIRREL(1),ONIA_TIRREL(2)))
     DO I=0,NSQUAREDSO
-      ACC(I)=MAX(ACC(I),ONIA_CTACC)
+      ACC(I)=MAX(ACC(I),ONIA_CTACC,ONIA_TIRACC)
     ENDDO
 ## }
 ## if(ninjars_available) {

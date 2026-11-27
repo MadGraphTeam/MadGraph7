@@ -158,6 +158,13 @@ OPEN_ITEMS = [
     'published to compare with (@twopw).',
     '*MadLoop speed, not yet applied:* rank-limited clearing of the DP updaters\' output '
     '(it breaks tests that pin full clearing) and the opt-in `-march` builds of the audit.',
+    '*Threshold bubbles in double precision:* in the $""^3 S_1^((8))$ channels the gluon that '
+    'carries the octet has a charm bubble exactly at its threshold, $p^2 = M^2 = 4 m_c^2$. After a '
+    'boost, $P^2$ in double precision misses it by $10^3$ units (2e-13 at 203 GeV), and the '
+    'square-root behaviour costs $4 dot 10^(-8)$ that neither loop direction, TIRust\'s check pass nor '
+    'a rotation sees (`research/estimate_gap`). Fix: snap such an invariant to $(m_i + m_j)^2$ '
+    'within the rounding of the momentum components, in TIRust or in MadLoop\'s bound-state '
+    'interface.',
     '*Sealed latch fixture:* `ReductionLatchLifecycleTest` compiles stubs from the sealed '
     '`tests/input_files/tirust_reduction_latch/stub_check.py` (its SHA-256 is pinned). It '
     'renders the stability policy of `loop_matrix_standalone.inc` with the `ninjars_available` '
