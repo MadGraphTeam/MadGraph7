@@ -28,6 +28,7 @@
       INTEGER NSQAMPSO
       PARAMETER (NSQAMPSO=3)
       DOUBLE PRECISION WGT_HEL(NSQAMPSO, MAX_BHEL)
+      common/c_born_hel_split/wgt_hel
       DOUBLE PRECISION SUM_HEL(NSQAMPSO)
       INTEGER I, IHEL
       INTEGER N_NONZERO_ORD
@@ -36,7 +37,7 @@
       DOUBLE PRECISION BORN_WGT_RECOMP_DIRECT
       DOUBLE COMPLEX LOC_SAVEAMP(3,MAX_BHEL)
       DOUBLE PRECISION RAN2
-      call sborn_hel_buffered(P,BORN_WGT_RECOMP_DIRECT,LOC_SAVEAMP,WGT_HEL)
+      call sborn_hel(p,born_wgt_recomp_direct)
       N_NONZERO_ORD = 0
       SUM_ALL = 0D0
       DO I = 1, NSQAMPSO

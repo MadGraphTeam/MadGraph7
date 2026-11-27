@@ -357,10 +357,38 @@ c     that only the component of kperp transverse to the mother enters.
       BORN_ACTIVE_HELICITY_FRAME=SAVED_HELICITY_FRAME
       RETURN
       END
-      subroutine sborn_amp_frame(p_in,amp2,jamp2,ret_amp_split,
+      SUBROUTINE SBORN_AMP_FRAME(P_IN,AMP2,JAMP2,RET_AMP_SPLIT
+     $ ,RET_AMP_SPLIT_CNT,ANS_SUMMED,ANS_CNT,RET_SAVEAMP)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'genps.inc'
+      INCLUDE 'orders.inc'
+      INCLUDE 'born_nhel.inc'
+      DOUBLE PRECISION P_IN(0:3,NEXTERNAL-1),ANS_SUMMED
+      DOUBLE PRECISION AMP2(NGRAPHS),JAMP2(0:NCOLOR)
+      DOUBLE PRECISION RET_AMP_SPLIT(AMP_SPLIT_SIZE)
+      DOUBLE COMPLEX RET_AMP_SPLIT_CNT(AMP_SPLIT_SIZE,2,NSPLITORDERS)
+      DOUBLE COMPLEX ANS_CNT(2,NSPLITORDERS)
+      DOUBLE COMPLEX RET_SAVEAMP(NGRAPHS,MAX_BHEL)
+      DOUBLE PRECISION PROVIDER_AMP2(NGRAPHS),PROVIDER_JAMP2(0:NCOLOR)
+      COMMON/TO_AMPS/PROVIDER_AMP2,PROVIDER_JAMP2
+      DOUBLE COMPLEX PROVIDER_ANS_CNT(2,NSPLITORDERS)
+      COMMON/C_BORN_CNT/PROVIDER_ANS_CNT
+      CALL SBORN_FRAME(P_IN,ANS_SUMMED)
+      AMP2=PROVIDER_AMP2
+      JAMP2=PROVIDER_JAMP2
+      RET_AMP_SPLIT=AMP_SPLIT
+      RET_AMP_SPLIT_CNT=AMP_SPLIT_CNT
+      ANS_CNT=PROVIDER_ANS_CNT
+      RET_SAVEAMP=(0D0,0D0)
+      END
+      subroutine sborn_amp_saved_frame(p_in,amp2,jamp2,ret_amp_split,
      $     ret_amp_split_cnt,ans_summed,ans_cnt,ret_saveamp)
 c**************************************************************************
-c     Returned-amplitude Born interface in the frame selected by me_frame.
+c     sborn_amp_frame with the per-helicity Born amplitudes always filled.
+c     In outputs with the native Born provider, sborn_amp_frame takes the
+c     Born from the provider and returns no amplitudes; callers that need
+c     them (the EW Sudakov) use this routine.
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
