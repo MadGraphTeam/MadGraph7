@@ -44,7 +44,11 @@ def crossed_member_templates(artifact: Path) -> dict[str, str]:
 
     from pyamplicol.artifacts.process_groups import read_process_groups
 
-    groups = read_process_groups(artifact)
+    try:
+        groups = read_process_groups(artifact)
+    except ArtifactError:
+        # Loading the requested processes reports an unreadable artifact.
+        return {}
     if groups is None:
         return {}
     return {
@@ -294,23 +298,20 @@ class RecurrenceExportInvocation:
                     f"process:{process_id}", f"Exporting {process_id}"
                 ) as phase:
                     member = process_id if process_id in crossed else None
+                    # A crossed member is an assignment of its loaded template,
+                    # which serves all of them (and its own export).
+                    owner = process_id if member is None else crossed[member]
                     with step("load", "Loading the process"):
-                        if member is None:
+                        if owner in templates:
+                            runtime = templates[owner]
+                        else:
                             runtime = Runtime.load(
                                 self.artifact,
-                                process=process_id,
+                                process=owner,
                                 model_parameters=parameters,
                             )
-                        else:
-                            # A crossed member is an assignment of its loaded template.
-                            template = crossed[member]
-                            if template not in templates:
-                                templates[template] = Runtime.load(
-                                    self.artifact,
-                                    process=template,
-                                    model_parameters=parameters,
-                                )
-                            runtime = templates[template]
+                            if owner in crossed.values():
+                                templates[owner] = runtime
                     with step("export", "Exporting its recurrence programs"):
                         export = (
                             runtime.export_recurrence(color_flows=colours)
