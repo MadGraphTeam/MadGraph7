@@ -5,6 +5,14 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   RF: MC@NLO events (also FxFx and MC@NLO-Delta): AQCDUP was the alpha_s left over from the
+       last phase-space evaluation (typically a real emission or MC term of another FKS
+       sector or fold), not that of the event: for p p > e+ e- [QCD] it was right for 1 of
+       319 S and 39 of 81 H events, for FxFx p p > e+ e- (+j) for 2 of 227 S and 23 of 73 H
+       events. It is now alpha_s at the renormalisation scale of the event kinematics, as
+       used for its contributions: of the Born kinematics for S events, of the real-emission
+       kinematics for H events (for FxFx from their clustering). MadSpin and the reweight
+       interface use this value.
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the

@@ -106,6 +106,7 @@ c get info on beam and PDFs
       use extra_weights
       use process_module
       use scale_module
+      use weight_lines, only: g_strong,picked_scale_contr
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
@@ -161,12 +162,12 @@ c limits; Delta additionally records the effective directed scales.
          scalup_a(1:npart,1:npart)=shower_scale_a(1:npart,1:npart)
       endif
 c
-      aqcd=g**2/(4d0*pi)
+c The coupling in coupl.inc is that of the last phase-space evaluation
+c (and 'setrun' in 'write_header_init' resets it). Use the one stored
+c with the picked event's contributions.
+      aqcd=g_strong(picked_scale_contr())**2/(4d0*pi)
       aqed=dble(gal(1)**2/(4d0*pi))
 c
-c 'write_header_init' should be called after 'aqcd' has been set,
-c because it includes a call to 'setrun', which resets the value of
-c alpha_s to the one in the param_card.dat (without any running).
       if (firsttime) then
          call write_header_init
          firsttime=.false.
