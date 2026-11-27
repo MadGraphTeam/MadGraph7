@@ -521,7 +521,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=07fc754f656c4744c9464f7c0f47d00b708b37e6#07fc754f656c4744c9464f7c0f47d00b708b37e6"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=cdbc912ab7b8327a23fe5fc08ddb0c58b9d55a21#cdbc912ab7b8327a23fe5fc08ddb0c58b9d55a21"
 dependencies = [
  "bincode",
  "symbolica",

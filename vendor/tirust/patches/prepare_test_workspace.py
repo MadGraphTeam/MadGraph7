@@ -33,7 +33,7 @@ native-f64-abc = ["iregi-masters/native-f64-abc"]
 iregi-masters = {{ path = {q(source / "crates/iregi-masters")} }}
 madloop-pole-kernels = {{ path = {q(source / "madloop-pole-kernels")} }}
 symbolica = {{ version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "native_code_generation", "bincode", "serde", "tracing_max_level_info"] }}
-oneloop = {{ git = "https://github.com/alphal00p/oneloopmaster.git", rev = "07fc754f656c4744c9464f7c0f47d00b708b37e6", default-features = false, features = ["generated-evaluators", "rust-codegen"] }}
+oneloop = {{ git = "https://github.com/alphal00p/oneloopmaster.git", rev = "cdbc912ab7b8327a23fe5fc08ddb0c58b9d55a21", default-features = false, features = ["generated-evaluators", "rust-codegen"] }}
 thiserror = "2"
 serde = {{ version = "1", features = ["derive"] }}
 [dev-dependencies]
