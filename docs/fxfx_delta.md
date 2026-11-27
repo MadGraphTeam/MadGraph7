@@ -155,6 +155,53 @@ The merged pT(WZ) integrals agree within about 1%. The sub-GeV tail of
 H-event starting scales is removed by the Sudakov factor, and the number
 of @1 H events drops by about 22%.
 
+### Optional: one alpha_s of the H events at k_T
+
+The shower generates its hardest emission with the coupling evaluated at
+about the emission scale. Set `#FxFxDeltaHAlphasKT` to `.true.` in
+`Cards/FKS_params.dat` to give the H events the same choice for their
+extra power of `alpha_s`. Every H contribution is multiplied by
+
+```
+alpha_s(k_T) / alpha_s(mu_R)
+```
+
+`k_T` is the scalar H-event scale written as `SCALUP`: the geometric mean
+of the directed starting scales, or their smallest value with
+`FxFxDeltaHMinScale`. H events without a Delta reconstruction keep the
+ordinary FxFx fallback scale, and that scale is used for them. Both
+couplings are those of the hard calculation (`alphas`: the same
+`alpha_s(MZ)` and running as the matrix elements and PDFs), not the
+coupling of the shower, so the factor is a change of scale only. Below
+2 GeV, the floor of dynamic renormalisation scales in `set_ren_scale`,
+`alpha_s(k_T)` is frozen. `alpha_s(mu_R)` is the coupling stored with each
+H record (`g_strong`).
+
+The factor is applied in the integrand, before unweighting, to all H
+records of the physical event, after `P_H` of `FxFxDeltaHMinScale` and
+including the inner-history H sum of `MCExplicitKLSum`
+(`alphas_kt_H_records` in `driver_mintMC.f`). S events are unchanged, so
+the cross section changes at second order. It is off by default, only
+acts on FxFx-Delta H events with QCD matching, and a new integration is
+needed after changing it. Scale variations obtained by reweighting vary
+this power of `alpha_s` with `mu_R`, like the other powers.
+
+Validation with `p p > e+ ve` and `p p > x0` (HEFT) + 0,1 jet (13 TeV,
+FxFx, Pythia8, 10^6 events each): new integrations with the switch
+agree with the switch-off samples whose H events are reweighted by the
+same factor, with `mu_R` rebuilt from their `<clustering>` records:
+
+| | e+ ve, geometric mean | H, smallest scale |
+| --- | ---: | ---: |
+| Absolute cross section, predicted / run (pb) | 25455 ± 23 / 25481 ± 23 | 60.513 ± 0.055 / 60.541 ± 0.054 |
+| Signed event-file sum, reweighted / run (pb) | 16889 ± 19 / 16900 ± 19 | 48.002 ± 0.038 / 47.985 ± 0.037 |
+| Merged rate, run / reweighted (three `Qcut`) | 1.002 to 1.003 ± 0.002 | 1.001 to 1.002 ± 0.002 |
+
+The merged distributions agree with chi2/ndf of about 1. The switch
+raises the merged rates by about 1% for e+ ve and by up to 1% for H (at
+the lowest merging scale). For t tbar + 0,1 jet it lowers them by 0.3 to
+2.7%, because the t tbar @0 H events have a net negative weight.
+
 ## Event format and shower interface
 
 FxFx-Delta events use the ordinary FxFx format:
@@ -350,7 +397,9 @@ CI job:
 - `test_mcatnlo_delta_scales` also checks the minimal-scale H probability
   against closed forms for final- and initial-state lines and across a
   table hole under a starting scale, and `test_fxfx_delta_weights` checks
-  that only the event's H records are multiplied.
+  that only the event's H records are multiplied, by `P_H` and, with
+  `FxFxDeltaHAlphasKT`, by `alpha_s(k_T)/alpha_s(mu_R)` with its 2 GeV
+  floor.
 - `test_fxfx_delta_lhe` round-trips ordinary FxFx, FxFx-Delta and
   standalone Delta events through both Fortran readers and the Python
   parser.

@@ -305,6 +305,20 @@
 ! Default :: .false.
 !
 ! ==========================================================================
+! FxFx-Delta H-event coupling (ickkw=3 with mcatnlo_delta only).
+! .true. evaluates one power of alpha_s of every H contribution at the
+! scalar H-event shower scale k_T (SCALUP: the geometric mean of the
+! directed Delta starting scales, or their smallest value with
+! FxFxDeltaHMinScale) instead of at mu_R, i.e. multiplies it by
+! alpha_s(k_T)/alpha_s(mu_R) before unweighting. Both couplings are those
+! of the hard calculation (same alpha_s(MZ) and running), with the 2 GeV
+! floor of dynamic renormalisation scales. S events are unchanged. Rerun
+! the integration after changing this setting.
+#FxFxDeltaHAlphasKT
+.false.
+! Default :: .false.
+!
+! ==========================================================================
 ! FxFx analytic Sudakov finite terms (ickkw=3 only).
 ! Always enabled for FxFx with PYTHIA8 matching, regardless of this flag.
 ! Other modes default to .false.; fixed-order runs do not enable them

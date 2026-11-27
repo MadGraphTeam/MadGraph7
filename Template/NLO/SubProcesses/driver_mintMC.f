@@ -651,7 +651,7 @@ c
      $     generate_born_contribution,generate_real_phase_space
       use mc_native_context, only: mc_begin_real_point,mc_end_real_point
       use FKSParams, only: MCSubtractionAtFixedFlow,
-     $     fxfx_delta_H_min_scale
+     $     fxfx_delta_H_min_scale,fxfx_delta_H_alphas_kt
       use weight_lines
       use mint_module
       use mc_counterterms, only: fksfather,gfactsf,gfactcl,
@@ -1088,6 +1088,12 @@ c check if event or counter-event passes cuts
 ! including the complete inner-history sum. S records are unchanged.
             if (prob_H_min.ne.1d0)
      $           call scale_H_records(first_native_H,prob_H_min)
+! With FxFxDeltaHAlphasKT one alpha_s of these H records is taken at the
+! scalar H scale (the SCALUP of the event) instead of at mu_R.
+            if (fxfx_delta_H_alphas_kt.and.mcatnlo_delta.and.ickkw.eq.3
+     $           .and..not.qed_matching)
+     $           call alphas_kt_H_records(first_native_H,
+     $           emsca_H_hard(iFKS,ifold_counter))
             call mc_end_real_point()
          enddo
          call apply_born_spread_weight(ifold_counter)
@@ -2271,5 +2277,29 @@ c which passed the coupling-order selection of add_wgt.
       double precision factor
       do ict=first,icontr
          if (H_event(ict)) wgt(:,ict)=wgt(:,ict)*factor
+      enddo
+      end
+
+
+      subroutine alphas_kt_H_records(first,kt)
+! FxFxDeltaHAlphasKT: multiply the H records from first on by
+! alpha_s(kt)/alpha_s(mu_R), i.e. take one power of alpha_s at the scalar
+! H-event scale kt instead of at the record's own renormalisation scale.
+! Both couplings are those of the hard calculation (alphas; g_strong holds
+! each record's coupling at its mu_R), and kt gets the 2 GeV floor of the
+! dynamic renormalisation scale in set_ren_scale. Scale variations by
+! reweighting vary this power with mu_R like the others. S records and
+! records without a power of g_strong keep their weights.
+      use weight_lines, only: icontr,H_event,wgt,g_strong,QCDpower
+      implicit none
+      integer first,ict
+      double precision kt,g2_kt,alphas,minscale,pi
+      parameter (minscale=2d0)
+      parameter (pi=3.1415926535897932385d0)
+      external alphas
+      g2_kt=4d0*pi*alphas(max(minscale,kt))
+      do ict=first,icontr
+         if (H_event(ict).and.QCDpower(ict).ge.2)
+     $        wgt(:,ict)=wgt(:,ict)*g2_kt/g_strong(ict)**2
       enddo
       end

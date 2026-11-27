@@ -39,7 +39,7 @@ class TestBornFlowRejection(unittest.TestCase):
         noops = ('find_iproc_map', 'setup_event_attributes', 'update_fks_dir',
                  'init_process_module_nbody_wrapper',
                  'set_FxFx_scale', 'set_FxFx_delta_H_scale', 'scale_H_records',
-                 'set_cms_stuff',
+                 'alphas_kt_H_records', 'set_cms_stuff',
                  'set_born_spread_point',
                  'set_alphaS', 'include_multichannel_enhance', 'compute_ewsudakov',
                  'compute_shower_scale_nbody', 'save_shower_scale_nbody',

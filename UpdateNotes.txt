@@ -144,6 +144,11 @@ ANNOUNCEMENT:
        read the Sudakov tables through their monotone envelope, so that
        statistical zeros of the final-state tables at low scales and large
        dipole masses cannot divide by zero (seen in t t~ + jets).
+   RF: Add FxFxDeltaHAlphasKT (FKS_params.dat, default off) for FxFx-Delta:
+       every H contribution is multiplied by alpha_s(k_T)/alpha_s(mu_R)
+       before unweighting, with k_T the scalar H-event shower scale
+       (SCALUP) and the coupling of the hard calculation (2 GeV floor).
+       S events are unchanged. Changing it requires a new integration.
    RF: FxFx: max_n_matched_jets in proc_characteristics counts only the
        Born-level light jets. It included the real-emission parton, so a
        @0 + @1 sample recorded 2 and the shower interface rejected the
