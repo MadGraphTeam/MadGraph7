@@ -140,6 +140,8 @@ def _remove(path):
 def generate_artifact(pyamplicol, artifact, accuracy, process, model,
                       flavor_unions=True, workers=None, flavor_union_crossing=False,
                       selector_only_full_colour=False):
+    """Generate one artifact. flavor_union_crossing is off unless a job sets it;
+    the MG default is in MadGraphCmd.options_madgraph."""
     from pyamplicol.config import resolve_config
     # workers and cores are left to pyamplicol, which clamps them without a
     # license, unless ``workers`` splits the CPUs between concurrent artifacts

@@ -619,9 +619,12 @@ def _export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
     crossed flavours in the LC artifact (option amplicol_flavor_union_crossing,
     which needs the unions);
     ``selector_only_full_colour`` generates the full-colour artifact with only its
-    one-helicity-per-point programs (option amplicol_selector_only_full_colour)."""
+    one-helicity-per-point programs (option amplicol_selector_only_full_colour).
+    The keyword defaults of the crossing and selector-only options are off; the MG
+    defaults are in MadGraphCmd.options_madgraph, which ProcessExporterMG7 passes."""
     if flavor_union_crossing and not flavor_unions:
-        logger.info('amplicol_flavor_union_crossing has no effect without '
+        # debug: the crossing default makes this the usual unions-off case
+        logger.debug('amplicol_flavor_union_crossing has no effect without '
                     'amplicol_flavor_unions')
         flavor_union_crossing = False
     pyamplicol = check_pyamplicol(interactive, jobs)

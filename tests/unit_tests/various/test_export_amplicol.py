@@ -82,9 +82,13 @@ class TestGenerationInProcess(unittest.TestCase):
 
     def test_flavor_union_crossing_needs_unions(self):
         jobs = []
-        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
-                        flavor_union_crossing=True)
+        with self.assertLogs(export_amplicol.logger, 'DEBUG') as logs:
+            self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
+                            flavor_union_crossing=True)
         self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': False}])
+        # the default crossing reaches this with unions off: not shown at info level
+        noop = [record for record in logs.records if 'no effect' in record.getMessage()]
+        self.assertEqual([record.levelname for record in noop], ['DEBUG'])
 
     def test_flavor_union_crossing_sets_the_process_option(self):
         from madgraph.iolibs import amplicol_generation
