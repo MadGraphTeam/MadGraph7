@@ -75,18 +75,25 @@ code, and everything below is one file inside it.
 are marked.
 
   [run]             seed, device (cpu/gpu), cpu_mode, madspace_cpu_mode,
-                    the thread pools, output_format, verbosity          <-
+                    precision, the thread pools, verbosity              <-
+  [output]          run_name, output_format, LHE compression,
+                    lifetimes in the LHE file (time_of_flight)          <-
   [beam]            beam energies, PDF
+  [scale]           renormalization/factorization scales
   [generation]      events, the survey iterations and target precision,
                     batch sizes, systematics                            <-
   [cuts]            the cuts
   [phasespace]      how phase space is built                            <-
+  [merging]         MLM and CKKW-L merging, shown for a merged sample
   [vegas]           the default integrator                              <-
   [madnis]          the trainable one                                   <-
   [multiparticles]  labels, as in the process line
-  [histograms]      what to plot
-  [postprocessing]  systematics after the fact
+  [histograms]      what to plot, and whether to make the plots
   [gridpack]        self-contained event generation
+
+[vegas], [merging], [gridpack] and most of [madnis] are hidden from
+the card by default: `update vegas` (or madnis, ...) at the launch prompt adds
+them, and `set vegas.bins 32` works either way.
 
 Start with the phase space, because a badly channelled integration cannot be
 rescued by a better integrator:
@@ -144,7 +151,9 @@ There is no separate training command: training is a phase inside
 `[run] device` says so and torch can see one, and the CPU otherwise.
 
 **When you do want to override it**, set `enable = true` or `false` outright,
-and then touch things in this order:
+and then touch things in this order (the card only shows `enable` and
+`train_batches`: `update madnis` at the launch prompt adds the rest, and
+`set madnis.<option>` works either way):
 
   1. `train_batches`, `batch_size_per_channel` -- how much training, and how
      much per channel. Everything else is secondary.

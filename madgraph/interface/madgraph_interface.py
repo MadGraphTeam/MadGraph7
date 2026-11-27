@@ -13546,6 +13546,35 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
         aloha.t_channel_width = not self.options[args[0]]
 
+    def warn_reachable_zero_width_poles(self):
+        """Warn when zerowidth_external dropped the width of an internal
+        propagator that can go on shell (e.g. W- > d u~ in u d~ > w+ w+ d u~):
+        without a cut removing that pole the cross section is not finite.
+        The masses are evaluated with the default parameters of the model."""
+        try:
+            reader = model_reader.ModelReader(self._curr_model)
+            reader.set_parameters_and_couplings()
+            values = reader.get('parameter_dict')
+        except Exception as error:
+            logger.debug('zerowidth_external: no pole check (%s)', error)
+            return
+        def mass_value(name):
+            if str(name).upper() == 'ZERO':
+                return 0.
+            value = values[name]
+            return abs(value) if isinstance(value, complex) else value
+        report = []
+        for me in self._curr_matrix_elements.get_matrix_elements():
+            poles = me.get_reachable_zero_width_poles(mass_value)
+            report.extend('  ' + pole for pole in poles)
+        if report:
+            logger.warning("zerowidth_external: the width of these internal "
+                "propagators was dropped although they can go on shell; "
+                "the cross section is finite only if a cut removes the "
+                "pole region (e.g. mmjj, mmll), otherwise set "
+                "\"zerowidth_external\" to False before the output:\n%s"
+                % '\n'.join(report))
+
     def help_set2_zerowidth_external(self):
         logger.info("zerowidth_external <value>",'$MG:color:GREEN')
         logger.info(" > (default: True) [generation/output-time option for tree-level output]")
@@ -15204,6 +15233,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                             "set to zero in their internal propagators [new]\n if "
                             "you want to keep them set \"zerowidth_external\" to "
                             "False", '$MG:BOLD')
+                self.warn_reachable_zero_width_poles()
 
         calls = 0
 

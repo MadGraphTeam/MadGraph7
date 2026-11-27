@@ -84,13 +84,12 @@ class MG7ClusterModeTest(unittest.TestCase):
     def _card(self, **settings):
         settings = dict({
             'run.seed': _SEED,
-            'run.output_format': 'lhe',
-            'run.postprocessing_histograms': False,
-            'run.make_plots': False,
+            'output.output_format': 'lhe',
+            'histograms.postprocessing_histograms': False,
+            'histograms.make_plots': False,
             'beam.pdf': 'NNPDF23_lo_as_0130_qed',
             'generation.events': _EVENTS,
             'systematics.enable': False,
-            'postprocessing.systematics': False,
             'madnis.enable': False,
             'cluster.enable': False,
             'cluster.type': 'local_parallel',
@@ -168,7 +167,7 @@ class MG7ClusterModeTest(unittest.TestCase):
         self._card(**{'cluster.enable': True, 'cluster.fix_max_weight': False,
                       'phasespace.merge_subprocesses': True,
                       'cluster.subprocesses_per_job': 1,
-                      'run.output_format': 'lhe_npy'})
+                      'output.output_format': 'lhe_npy'})
         try:
             events_dir = self._run('cluster_minimal')
         finally:

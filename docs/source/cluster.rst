@@ -6,7 +6,7 @@ subprocess after the other. In cluster mode, the subprocesses are trained in par
 batch system, and the events are generated in parallel as well. It is built on
 :doc:`gridpacks`, and steered by the ``[cluster]`` section of the :doc:`run card
 <run_card>`. It is off by default, and the cluster sections are then left out of
-``Cards/run_card.toml``: ``set cluster.enable true`` at the launch prompt adds them. The cluster
+``Cards/run_card.toml``: ``set cluster.enable true`` (or ``update cluster``) at the launch prompt adds them. The cluster
 setup of a site, like its batch system and queues, goes into the cluster sections of
 ``input/default_run_card_mg7.toml``: a run card without these sections takes their values
 whenever it is loaded, so they also hold for processes created before.
@@ -45,8 +45,8 @@ How it works
    to ``Events/<run_name>_NN``, in the ``output_format`` of the run card. The cross
    section is the mean of the cross sections of the jobs weighted with their number of
    events, which is what the concatenated events measure, and its error follows from the
-   independence of the jobs. The legacy post-processing of the ``[postprocessing]``
-   section is run on the result.
+   independence of the jobs. The LHE post-processing of the ``[output]``
+   section (``time_of_flight``) is run on the result.
 
 With ``mode = "gridpack_only"``, the run stops after the merging and the merged
 gridpack is written to ``Events/<run_name>_NN/gridpack``. It is a normal gridpack, see

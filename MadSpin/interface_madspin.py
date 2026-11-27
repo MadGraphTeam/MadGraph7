@@ -1136,7 +1136,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         i.e. exactly the value NLO samples always had. An NLO run_card has no
         beam polarisation.
 
-        An mg7 run_card (``run.me_frame``) is read the same way, but its
+        An mg7 run_card (``beam.me_frame``) is read the same way, but its
         default ``[]`` gives 0, not 6: madspace evaluates the matrix element on
         the lab-frame momenta it writes out unless me_frame names a frame, and
         0 is exactly "no frame, stay in the lab" to MadSpin -- ``_frame_boost``
@@ -1152,7 +1152,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             frame_id = sum(2**n for n in run_card['me_frame'])
             beampol = [0., 0.]
         elif isinstance(run_card, banner.RunCardMG7):
-            frame_id = sum(2**n for n in run_card['run']['me_frame'])
+            frame_id = sum(2**n for n in run_card['beam']['me_frame'])
             beampol = [0., 0.]
         else:
             frame_id = 6
@@ -3075,7 +3075,7 @@ class MadSpinInterface(extended_cmd.Cmd):
         # pool to the next, so the reader being replaced already has it and
         # _worker_refill passes it on. Nothing is added to the owner->waiter
         # publish contract, which stays exactly the one ms_refill.gen marker.
-        run_card['run']['output_format'] = 'lhe_npy'
+        run_card['output']['output_format'] = 'lhe_npy'
         # nobody looks at the plots of a decay pool, and filling them costs
         # an observable evaluation per event: same as `set histograms OFF`
         run_card.remove_all_histograms()

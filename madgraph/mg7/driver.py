@@ -145,7 +145,7 @@ class ExistingRun:
     """The run directory Events/<run_name> of an earlier generation, with
     what run_reweighting() needs of a MadgraphProcess: run_path, events_path
     (the file the generation wrote: events.npy for the npy formats, else
-    events.lhe[.gz]) and run_card["run"]["output_format"] (from the files)."""
+    events.lhe[.gz]) and run_card["output"]["output_format"] (from the files)."""
 
     def __init__(self, run_name, events_dir="Events"):
         self.run_path = os.path.abspath(os.path.join(events_dir, run_name))
@@ -166,7 +166,7 @@ class ExistingRun:
         if self.events_path is None:
             raise ValueError("no event file (events.npy, events.lhe[.gz]) in %s"
                              % self.run_path)
-        self.run_card = {"run": {"output_format": output_format}}
+        self.run_card = {"run": {}, "output": {"output_format": output_format}}
 
 
 def list_runs(events_dir="Events") -> list:
@@ -331,9 +331,9 @@ def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=N
     # after the systematics weights): events.npy or events.lhe[.gz]
 
     if decision.backend == "madtrex":
-        if process.run_card["run"]["output_format"] == "compact_npy":
+        if process.run_card["output"]["output_format"] == "compact_npy":
             raise ValueError(
-                "MadtRex reweighting requires run_card [run] output_format to be "
+                "MadtRex reweighting requires run_card [output] output_format to be "
                 "'lhe' or 'lhe_npy': 'compact_npy' discards the per-event flavor/"
                 "helicity information MadtRex needs to match events to the "
                 "matrix element library")
@@ -394,7 +394,7 @@ def lhe_via_binary(process, reweight) -> bool:
     (deliver_lhe_from_binary()): MadtRex reads and extends the npy events
     much faster than an LHE file, which it would decompress, parse and
     rewrite in full. Not when an LHE-only step runs before the reweighting:
-    the run_card [postprocessing] time_of_flight or legacy systematics (see
+    the run_card [output] time_of_flight (see
     run_lhe_postprocessing()), nor for a validation MadtRex cannot run (see
     madtrex_unavailable())."""
     if reweight is None:
@@ -407,15 +407,13 @@ def lhe_via_binary(process, reweight) -> bool:
         return False
     if process.gridpack_run_mode != "regular":
         return False
-    if process.run_card["run"]["output_format"] != "lhe":
+    if process.run_card["output"]["output_format"] != "lhe":
         return False
-    cfg = process.run_card["postprocessing"]
+    cfg = process.run_card["output"]
     try:
         if float(cfg.get("time_of_flight", -1.0)) >= 0:
             return False
     except (TypeError, ValueError):
-        return False
-    if cfg.get("systematics") and not process.run_card["systematics"]["enable"]:
         return False
     return True
 
@@ -452,12 +450,24 @@ def deliver_lhe_from_binary(process) -> None:
 def validation_fptype(run_card):
     """The FPTYPE of run_card [run] validation -- a precision name (all64,
     ...) mapped to its FPTYPE, any other value as given -- or None when it
-    is unset ("", "none")."""
+    is unset ("", "none"). The value is "FPTYPE" or "FPTYPE:N" (see
+    validation_events)."""
     from madgraph.mg7.common import fptype_of
     value = run_card["run"].get("validation", "")
-    if value is None or str(value).strip().lower() in ("", "none"):
+    fptype = str(value or "").partition(":")[0].strip()
+    if fptype.lower() in ("", "none"):
         return None
-    return fptype_of(str(value).strip())
+    return fptype_of(fptype)
+
+
+def validation_events(run_card) -> int:
+    """How many events run_card [run] validation checks, from its
+    "FPTYPE:N" value, evenly spaced through the sample; 0 is all of them."""
+    _, colon, events = str(run_card["run"].get("validation", "") or "").partition(":")
+    try:
+        return int(events) if colon else 0
+    except ValueError:
+        return 0
 
 
 def madtrex_unavailable() -> str:
@@ -506,7 +516,7 @@ def run_precision_validation(process):
     if fptype is None:
         return None
     log = logging.getLogger("madevent")
-    if process.run_card["run"]["output_format"] == "compact_npy":
+    if process.run_card["output"]["output_format"] == "compact_npy":
         log.warning(
             "run_card [run] validation = %s is skipped: MadtRex needs the per-event "
             "flavor/helicity information that output_format 'compact_npy' discards "
@@ -521,7 +531,7 @@ def run_precision_validation(process):
         from madgraph.iolibs.template_files.mg7 import madtrex
         return madtrex.run_precision_validation(
             fptype, events_path=process.events_path, process_directory=os.getcwd(),
-            max_events=int(process.run_card["run"].get("validation_events", 0) or 0))
+            max_events=validation_events(process.run_card))
     except Exception as error:
         _report_failure(log, "precision validation", error, process.run_path)
         return None
@@ -643,7 +653,8 @@ def run_scan(iterator, card_path, switch=None, reweight=None) -> None:
     forwarded to run_single() so every scan point is reweighted in turn."""
     import tomllib
     with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
-        run_name = tomllib.load(f).get("run", {}).get("run_name", "run")
+        card = tomllib.load(f)
+        run_name = card.get("output", {}).get("run_name", "run")
 
     from madgraph.models import check_param_card as param_card_mod
     is_param_scan = isinstance(iterator, param_card_mod.ParamCardIterator)
@@ -706,7 +717,7 @@ def run_generation(switch=None, reweight=None) -> None:
 def _lhe_needed_by(switch, card, reweight=None) -> "str | None":
     """Why the run needs an LHE event file, or None when it does not: every
     post-processing tool run_selected_tools drives, the classic reweighting
-    module and the run_card [postprocessing] steps read the LHE file. MadtRex
+    module and the run_card [output] time_of_flight read the LHE file. MadtRex
     also reads the npy events. ``card`` is the raw TOML content of the
     run_card, ``reweight`` the prepare_reweighting() decision."""
     if reweight is not None and reweight.backend == "classic":
@@ -714,17 +725,12 @@ def _lhe_needed_by(switch, card, reweight=None) -> "str | None":
     tools = selected_tools(switch) if switch else []
     if tools:
         return tools[0]
-    cfg = card.get("postprocessing", {})
+    cfg = card.get("output", {})
     try:
         if float(cfg.get("time_of_flight", -1.0)) >= 0:
             return "time_of_flight"
     except (TypeError, ValueError):
         pass
-    # the legacy systematics.py path only runs when madspace did not compute
-    # the weights itself (see run_lhe_postprocessing)
-    if cfg.get("systematics") \
-            and not card.get("systematics", {}).get("enable", True):
-        return "systematics"
     return None
 
 
@@ -744,8 +750,8 @@ def force_lhe_output_if_needed(switch, reweight=None) -> None:
         return
     with open(path, "rb") as f:
         card = tomllib.load(f)
-    output_format = card.get("run", {}).get(
-        "output_format", RunCardMG7()["run"]["output_format"])
+    output_format = card.get("output", {}).get(
+        "output_format", RunCardMG7()["output"]["output_format"])
     if output_format == "lhe":
         return
     reason = _lhe_needed_by(switch, card, reweight)
@@ -756,10 +762,10 @@ def force_lhe_output_if_needed(switch, reweight=None) -> None:
     text, count = re.subn(r'(?m)^(\s*output_format\s*=\s*)("[^"]*"|\'[^\']*\'|\S+)',
                           r'\g<1>"lhe"', text, count=1)
     if not count:
-        text, count = re.subn(r'(?m)^\[run\][^\n]*\n', '\\g<0>output_format = "lhe"\n',
+        text, count = re.subn(r'(?m)^\[output\][^\n]*\n', '\\g<0>output_format = "lhe"\n',
                               text, count=1)
     if not count:
-        text += '\n[run]\noutput_format = "lhe"\n'
+        text += '\n[output]\noutput_format = "lhe"\n'
     with open(path, "w") as f:
         f.write(text)
     logging.getLogger("madevent").info(

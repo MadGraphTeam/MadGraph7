@@ -74,7 +74,8 @@ _INVOCATION_DIR = os.getcwd()
 
 def main() -> None:
     run_card = load_run_card()
-    run_args = run_card["run"]
+    # the output settings (run_name, output_format, gzip) are in [output]
+    run_args = {**run_card["run"], **run_card.get("output", {})}
     gen_args = run_card["generation"]
     grid_args = run_card.get("gridpack", {})
     amplicol_args = run_card.get("amplicol", {})

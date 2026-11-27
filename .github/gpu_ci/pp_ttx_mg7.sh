@@ -40,12 +40,12 @@ python3 "$REPO/bin/madgraph" "$TAG.mg7" 2>&1 | tee output.log
 CARD=PROC_$TAG/Cards/run_card.toml
 sed -i.orig -E -e "s/^device = .*/device = [\"$BACKEND\"]/" \
                -e "s/^events = [0-9]+/events = $NEVENTS/" \
-               -e "s/^pdf([12]) = \".*\"$/pdf\1 = \"$PDF_SET\"/" "$CARD"
+               -e "s/^pdf([12]) = \"[^\"]*\"/pdf\1 = \"$PDF_SET\"/" "$CARD"
 grep -n -E '^(device|events|pdf[12]) =' "$CARD"
 # the sed above is silent when a key is renamed in the run_card template, which
 # then runs the template's default PDF set instead (not in the LHAPDF cache)
 for key in pdf1 pdf2; do
-    grep -q -E "^$key = \"$PDF_SET\"$" "$CARD" || { echo "::error::cannot set $key = $PDF_SET in $CARD"; exit 1; }
+    grep -q -E "^$key = \"$PDF_SET\"( |$)" "$CARD" || { echo "::error::cannot set $key = $PDF_SET in $CARD"; exit 1; }
 done
 
 section "Running on $BACKEND"

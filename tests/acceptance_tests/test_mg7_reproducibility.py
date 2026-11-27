@@ -149,7 +149,7 @@ class MG7ReproducibilityTest(unittest.TestCase):
         mg.exec_cmd('output mg7 %s' % run_dir)
         # the hashes are taken on the LHE file; npy is the default output
         self._set_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'),
-                           **{'run.output_format': 'lhe'})
+                           **{'output.output_format': 'lhe'})
         return run_dir
 
     def _set_run_card(self, toml_path, **settings):
@@ -197,10 +197,6 @@ class MG7ReproducibilityTest(unittest.TestCase):
             toml,
             **{
                 'generation.events': _EVENTS,
-                # Keep the test scoped to madspace's own seeding: LHE-level
-                # post-processing (systematics) is orthogonal and would only
-                # add runtime here.
-                'postprocessing.systematics': False,
             }
         )
 
@@ -240,7 +236,6 @@ class MG7ReproducibilityTest(unittest.TestCase):
         toml = pjoin(run_dir, 'Cards', 'run_card.toml')
         base_settings = {
             'generation.events': _EVENTS,
-            'postprocessing.systematics': False,
             'madnis.enable': True,
             'madnis.train_batches': 60,
         }
@@ -303,7 +298,6 @@ class MG7ReproducibilityTest(unittest.TestCase):
             toml,
             **{
                 'generation.events': _EVENTS,
-                'postprocessing.systematics': False,
                 'gridpack.save_gridpack': True,
                 'madnis.enable': True,
                 'madnis.train_batches': 100,
@@ -347,7 +341,6 @@ class MG7ReproducibilityTest(unittest.TestCase):
             toml,
             **{
                 'generation.events': _EVENTS,
-                'postprocessing.systematics': False,
                 'gridpack.save_gridpack': True,
             }
         )

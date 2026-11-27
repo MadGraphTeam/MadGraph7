@@ -52,8 +52,6 @@ from madgraph.mg7.postprocess import (  # noqa: F401
     selected_tools,
     run_selected_tools,
     _add_time_of_flight,
-    _lhapdf_config_path,
-    _run_systematics,
     run_lhe_postprocessing,
 )
 from madgraph.mg7.driver import (  # noqa: F401

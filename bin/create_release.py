@@ -30,7 +30,8 @@ It performs the following actions:
      (preserves the madgraph/VERSION symlink; ignores untracked/gitignored
      working-tree files).
   3. Prune bin/ to the release-facing scripts only.
-  4. Materialize the default config/run-card files.
+  4. Materialize the default config/run-card files, and point the mg7
+     run_card's documentation link at this version's docs.
   5. Vendor offline copies of collier/ninja/SMWidth/the HEPToolsInstaller
      bundle into vendor/ (unless --skip-vendor; any failure aborts the release).
   6. Write input/authors.md (first-contribution date per author, used by the
@@ -200,6 +201,22 @@ def materialize_config(filepath):
                 pjoin(filepath, 'proc_card.dat'))
 
 
+def pin_docs_link(filepath, version):
+    """Point the mg7 run_card's docs link at docs/v<version>/; prereleases
+    publish no docs of their own, so they keep latest/."""
+    if '-' in version:
+        return
+    card = pjoin(filepath, 'madgraph', 'iolibs', 'template_files', 'mg7',
+                 'run_card.toml')
+    with open(card) as f:
+        text = f.read()
+    old = 'https://docs.madgraph.org/latest/'
+    if old not in text:
+        sys.exit(f"ERROR: {card} has no '{old}' documentation link to pin")
+    with open(card, 'w') as f:
+        f.write(text.replace(old, f'https://docs.madgraph.org/v{version}/'))
+
+
 def vendor_offline_tools(filepath):
     """Bundle offline copies of collier/ninja/SMWidth and the
     HEPToolsInstaller scripts, so a release tarball can be used without
@@ -299,6 +316,7 @@ def main():
     filepath = archive_source(args.version, workdir)
     prune_bin(filepath)
     materialize_config(filepath)
+    pin_docs_link(filepath, args.version)
     if not args.skip_vendor:
         vendor_offline_tools(filepath)
     write_authors(filepath)

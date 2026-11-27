@@ -329,9 +329,8 @@ def describe_state(interface, indent='  '):
 def lhapdf_configured(interface):
     """Whether this MG7 has a usable lhapdf-config.
 
-    Scale and PDF variations are computed by systematics.py, which imports the
-    python lhapdf module and finds it through lhapdf-config
-    (mg7/launch.py:_lhapdf_config_path).  Without it the run still produces a
+    Scale and PDF variations need the LHAPDF sets, found through
+    lhapdf-config (mg7/options.py:lhapdf_paths).  Without it the run still produces a
     cross section and its integration error -- only the theory uncertainty is
     missing.  Reported as a tri-state so a tutorial can say "not configured
     here" when it knows, and stay general when it cannot tell.
