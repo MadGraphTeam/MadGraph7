@@ -322,7 +322,8 @@ is shared: the runtime's helicity `k` is the program's output `k`, and
 The metadata keeps a replay for a union member only when it exchanges slots of
 equal member flavour and side. Such a permutation maps the member's selected
 patterns, and their signs, onto themselves, so the signs apply as stored; the
-metadata writer refuses a kept replay that does not. A flavour-blind
+metadata writer, given the template's pattern table, refuses a kept replay
+that does not. A flavour-blind
 (non-union) member has no `assignment_key`: its `runtime.factor` already
 includes its group factor, and its runtime may be a structurally equal
 representative, so take the program from `(runtime.process_id,
