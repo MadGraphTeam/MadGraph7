@@ -34,7 +34,7 @@ C     times the unselected result.
       IMPLICIT NONE
       INTEGER NEXTERNAL, NEXTERNAL_PHYS
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
-      %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), ANS(0:3,*)
+      %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), ANS(0:3,0:*)
       %(real_dp_format)s P(0:3,NEXTERNAL)
       INTEGER USERHEL
       COMMON/%(proc_prefix)sUSERCHOICE/USERHEL
