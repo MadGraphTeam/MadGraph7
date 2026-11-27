@@ -232,6 +232,8 @@ tutorial = Tutorial(
     description='merge t t~ + 0 and 1 jet with MLM, shower with Pythia8 and '
                 'check the DJR plots',
     aliases=('merging',),
+    section='advanced',
+    ai_generated=False,
     order='sequence',
     see_also=('lo', 'gridpack', 'decays'),
     steps=[
