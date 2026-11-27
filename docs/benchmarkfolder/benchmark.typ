@@ -1096,9 +1096,17 @@ propagators. MadGraph's bridge is unchanged apart from the pin.
   ($|t|\/s approx 10^(-9)$) stays unstable even in quadruple precision with
   every revision. Its weight is negligible: the Born is flat there, and the
   phase space goes as $theta^2$.
+- *Stability profiles* (@stability-pin): every S- and P-wave profile is
+  rerun on the pin. No point is refused, and no S-wave point is at or
+  above $10^(-3)$. MadGraph's bridge has neither the binary64 gate nor the
+  relation tiers, so the $J\/psi$, $Upsilon$ tail above $10^(-6)$ stays
+  (1.9% and 1.7% at 1 TeV), and the P-wave estimates are those of 48958d1
+  and 370b632: at 1 TeV 75% of the $u overline(u) -> chi_(c 0) thin g$
+  points still need the quadruple-precision rescue.
 - *Still outside the pin:* TIRust PR \#71 (da7902b, the rank-7 pentagons
   without Gram determinants) and the bridge patch v16 (the 80-bit switch,
-  @ep). TIRust main has moved on (PRs \#76, \#77), for a later pin.
+  @ep, with the gate and the relation tiers). TIRust main has moved on
+  (PRs \#76, \#77), for a later pin.
 
 = Stability profiles <stability>
 
@@ -1112,8 +1120,8 @@ estimate over random phase-space points.
   by one unit in its last place, and one Lorentz rotation of the point
   (`NRotations_DP = 1`). For bound states it is at least the counterterm
   rounding estimate (@mg255), and, since 2026-11-27, the contraction-rounding
-  estimate (@v16all; not in the profiles below but in
-  @stability-v16).
+  estimate (@v16all; not in the profiles below but in those of the pin,
+  @stability-pin, and in a rerun of @stability-v16).
 - *No rescue.* The quadruple-precision rescue is switched off
   (`MLStabThres` $= 10^(99)$), so what is recorded is the double-precision
   estimate. A refused integral sets it to 1.
@@ -1141,8 +1149,10 @@ estimate over random phase-space points.
   figure of their own (@fig:stability-octets).
 - *Reference.* $g g -> t overline(t) thin g$, of the paper's first process
   class, with MadLoop's default chain, as a reference.
+- *The pin.* Every S and P wave again on the pin `6ba4b53`, since
+  2026-11-27 (@stability-pin).
 
-#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the pinned one (S waves), 48958d1 or 370b632 (P waves), dotted 5025e12 (PR \#56) with the bridge's gate and relation tiers, dash-dotted the P waves with the 80-bit switch (@ep); dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
+#figure(caption: [Fraction of the points whose double-precision accuracy estimate is at least $Delta$ (cumulative, logarithmic axes), charmonium top, bottomonium bottom. Colour: the process (a bottomonium process has that of its charmonium analogue). Line style: the TIRust build, solid the old pin `1c130a81` (S waves), 48958d1 or 370b632 (P waves), dotted 5025e12 (PR \#56) with the bridge's gate and relation tiers, dash-dotted the P waves with the 80-bit switch (@ep); dashed: the reference. The vertical line marks $Delta = 10^(-3)$, MadLoop's rescue threshold (`MLStabThres`).])[
   #image("figures/stability.svg", width: 100%)
 ] <fig:stability>
 
@@ -1150,7 +1160,7 @@ estimate over random phase-space points.
   #image("figures/stability_octets.svg", width: 100%)
 ] <fig:stability-octets>
 
-#figure(caption: [The profiles in numbers (the table view of @fig:stability, @fig:stability-octets and, for TIRust da7902b, @fig:stability-v16 and @fig:stability-v16-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
+#figure(caption: [The profiles in numbers (the table view of @fig:stability, @fig:stability-octets and, for TIRust da7902b and the pin `6ba4b53`, @fig:stability-v16, @fig:stability-v16-octets, @fig:stability-pin and @fig:stability-pin-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
   #tstyle(table(columns: (auto, auto, 1fr, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, center, left, right, right, right, right, right),
     table.header([Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt]),
@@ -1160,8 +1170,8 @@ estimate over random phase-space points.
 ] <tab:stability>
 
 #box-note[
-  - *Refusals of the old pin.* The profiles labelled pinned use `1c130a81`,
-    the pin until 2026-11-27. The plateaus of the S-wave processes are the
+  - *Refusals of the old pin.* The S-wave profiles of the figures above use
+    `1c130a81`, the pin until 2026-11-27. The plateaus of the S-wave processes are the
     same points in all three processes of a family, reported unstable with
     estimate 1 because that revision refuses integrals there. They are 3.0% (charmonium) and 3.0% (bottomonium) in setup A, and
     1.2% and 1.7% in setup B.
@@ -1172,7 +1182,8 @@ estimate over random phase-space points.
       where $t approx u$: 16% to 42% of the points with $|cos theta| < 0.05$.
     - TIRust 5025e12 (PR \#56) serves all of them. With the bridge's binary64
       gate no S-wave point is then above $10^(-6)$, in either setup, and
-      every point is stable.
+      every point is stable. The pin `6ba4b53` serves them too, without
+      the gate (@stability-pin).
   - *S waves otherwise.* Apart from the refusals, the S-wave profiles are
     steep: the median estimate is $10^(-13)$ to $10^(-8)$, and no point is
     between $10^(-3)$ and 1.
@@ -1333,6 +1344,69 @@ and the bridge patch v16, the candidate of @twopw16 and @v16all (case suffix
     switch is in @tab:ep-cost.
 ]
 
+== The profiles on the pin 6ba4b53 <stability-pin>
+
+Every S- and P-wave profile was run again on 2026-11-27 on the pin `6ba4b53`
+as installed in HEPTools, with MadGraph's bridge (@pin6ba; case suffix `6ba`,
+outputs of `018f772126`). Unlike the profiles above, these estimates include
+the contraction-rounding term (@v16all). @fig:stability-pin and
+@fig:stability-pin-octets show them against the builds of the records, and
+@tab:stability lists them last.
+
+#figure(caption: [As @fig:stability, on the pin `6ba4b53` (dotted), against the builds of the records (solid: the old pin `1c130a81` for the S waves, 48958d1 and 370b632 for the P waves). At 1 TeV each P-wave dotted curve lies on its solid one. Dashed: the reference.])[
+  #image("figures/stability_pin.svg", width: 100%)
+] <fig:stability-pin>
+
+#figure(caption: [As @fig:stability-octets, on the pin `6ba4b53` (dotted), against 48958d1 (solid). At 1 TeV the dotted curves of the $""^3 P_0^((8))$, $""^3 P_2^((8))$ and $""^1 P_1^((8))$ octets lie on their solid ones.])[
+  #image("figures/stability_pin_octets.svg", width: 100%)
+] <fig:stability-pin-octets>
+
+#box-note[
+  - *No refusals.* The pin serves every point of the 36 profiles (no
+    estimate is 1). No S-wave point is at or above $10^(-3)$, in either
+    setup: the plateaus of the old pin (3% at 1 TeV) are gone.
+  - *The S-wave tail stays.* MadGraph's bridge has neither the binary64 gate
+    (patch 0006, MadGraph7\#528) nor the relation tiers of @stability.
+    - At 1 TeV 1.90% of the $g g -> J\/psi thin g$ points and 1.68% of the
+      $g g -> Upsilon thin g$ points are at or above $10^(-6)$, the largest
+      at $10^(-4)$, as with 5025e12 without the gate (1.8% and 1.7%). At
+      20 GeV three points of each are, and three of $g g -> eta_b thin g$
+      (largest $1.1 dot 10^(-5)$). Of the other S-wave profiles only one
+      point is ($g g -> eta_c thin g$, 1 TeV: $1.2 dot 10^(-6)$).
+    - It is a true error. At the first 16 tail points of
+      $g g -> J\/psi thin g$ at 1 TeV
+      (`research/pwave_stability/data/tail_jpsig_A_6ba4b53.json`), against
+      quadruple precision, the pin is off by $1.2 dot 10^(-8)$ to
+      $3.2 dot 10^(-6)$, and MadLoop's estimate is at least twice that. At
+      the 15 of them that are among the points of the 5025e12 check in
+      @stability, its double-precision values equal those of 5025e12
+      without the gate to $1.2 dot 10^(-14)$, and the quadruple-precision
+      values of both agree to $6 dot 10^(-15)$.
+    - Apart from the tail, the S-wave medians are within 13% of those of
+      da7902b with the bridge patch v16 and the contraction-rounding term
+      (`research/estimate_gap/data/profiles_term_summary.json`).
+  - *The P waves are those of 48958d1 and 370b632.* At 1 TeV every
+    P-wave estimate equals that of the record's build at every point (to
+    the three digits stored), apart from the $""^3 P_1^((8))$ octets, which
+    stay below $10^(-10)$ and are raised by the contraction-rounding term.
+    At 20 GeV that term raises the smallest estimates; the fractions at or
+    above $10^(-6)$ are those of the records.
+    - So without the relation tiers, at 1 TeV 75% of the
+      $u overline(u) -> chi_(c 0) thin g$ points, 40% of the
+      $g g -> chi_(c 0) thin g$ points, 8.8% of the
+      $u overline(u) -> chi_(b 0) thin g$ points and 0.2% of the
+      $g g -> chi_(b 0) thin g$ points are at or above $10^(-3)$, and in
+      production MadLoop rescues them in quadruple precision. In the paired
+      runs of @stability that costs 3.5 s and 18 s per point on average for
+      the two $chi_(c 0)$ channels, against 0.10 s and 1.2 s with the tiers.
+    - The charmonium octets keep 62% to 65% of their points at or above
+      $10^(-6)$ at 1 TeV (largest $2.2 dot 10^(-5)$).
+  - *Time.* The median times per point are 1.0 to 2.1 times those of the
+    records. These runs are unpaired, three at once on a shared host under
+    a load of 200 to 350 of its 384 threads, so this does not measure
+    TIRust; the paired timing on the pin is in @pin6ba.
+]
+
 == The 80-bit switch <ep>
 
 `#PWaveExtendedPrecision .TRUE.` in `MadLoopParams.dat` (off by default)
@@ -1484,7 +1558,7 @@ contracted in the basis of the colour flows (`54a0c4cac1`).
 - Two P-wave states (`data/raw/two_pwave/`): `hkw_phase0.json` collects the outputs of `research/two_pwave/kernel_check.py` and `sigma3_check.py` (the derivation) and its $e^+ e^- -> chi_(c 0) thin h_c$ reference; `ee_dp.json`, `ee_qp.json`, `gg_dp_*.json` are `research/two_pwave/qp_check.py OUTDIR OUT ...` ($e^+ e^-$: `7:1 10.58:2 30:1 --modes 1,2` and `10.58:1 --modes 4`; $g g$: `8:2 12:2`, `20:4`, `50:2 200:2` with `--modes 1,2,-1 --thres 1.0d-3`), and `gg_qp_*.json` are `research/two_pwave/qp_point.py OUTDIR OUT E 1 4`, on outputs generated with TIRust 4f1b06c and the bridge patch v9 (`research/pwave_fd/build.sh`).
 - Two P-wave states on TIRust da7902b with the bridge patch v16 (@twopw16; `data/raw/two_pwave/v16_*.json`, described in `research/two_pwave/FIXTURES.md`): `v16_gg_chic0_chic0.json` is the rerun of the $g g -> chi_(c 0) thin chi_(c 0)$ points with `qp_check.py` and `qp_point.py`, with its comparison against the records above; `v16_ggg_3p28_3p18_ct1.json`, `_ct2.json` (one loop direction each), `v16_uu_chic0_3p08.json` (with a `CTModeRun` 4 point and `appendix_b.py terms`) and `v16_gg_chic1_chib0.json` (with the Born at the tree output's check point) are `qp_check.py` records.
 - The examples on TIRust da7902b (@v16all; `data/raw/v16all/`, 2026-11-27, outputs generated at `86b1b68571` with `set tirust LIB`, `LIB` the installation of @twopw16): the same commands as above with `LIB` in place of the earlier builds: `tools/onia_loop_validate.py --libs 9 --tirust LIB` (`validate.json`); the 2.5.5 points with `research/mg255_swave/ml_side.py`'s `CASES_1E4` and its settings, then again in `CTModeRun` 4 (`mg255_<case>.json`: `dp`, `qp` and the reference `ref`), and the same with its `CASES`, $b$, $t$ excluded (`mg255excl_<case>.json`); `research/mg255_swave/pol_jpsi.py OUTDIR LIB -1,4` (`pol.json`); `research/pwave_fd/pw_check.py` with `TIRUST_LIB=LIB` (`ENERGY` 10 for the $e^+ e^-$ cases, 20 for $g g -> chi_(c 0) g$ and the quark ones); `psi_chic.py --tirust LIB` and `--exact --modes=-1,4,5`; `qp_floor.py`; `research/two_pwave/qp_check.py` and `appendix_b.py table2` with the specifications of the records; `research/pwave_fd/unequal_mass.py OUTDIR OUT 20:2 30:2 --modes 1,2`.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP`, `TIRUST_LIB16` for the scratch TIRust builds, the last the da7902b installation of @twopw16 for the cases `...16` and `...16ep`, run on 2026-11-27 with `NWORKERS=24`; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`, `figures/stability_v16.svg` and `figures/stability_v16_octets.svg`.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP`, `TIRUST_LIB16` for the scratch TIRust builds, the last the da7902b installation of @twopw16 for the cases `...16` and `...16ep`, run on 2026-11-27 with `NWORKERS=24`; the cases `...6ba` run on the configured TIRust, the pin `6ba4b53` in HEPTools, on 2026-11-27 at `018f772126` with `NWORKERS=24`, three runs at once; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`, `figures/stability_v16.svg`, `figures/stability_v16_octets.svg`, `figures/stability_pin.svg` and `figures/stability_pin_octets.svg`. The tail check on the pin: `research/pwave_stability/tail.py jpsig A data/raw/stability/jpsig6ba_A.json 1e-6 16 OUTDIR`, `OUTDIR` the profile's output.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost; on TIRust da7902b with the bridge patch v16 the same, with outputs generated at `86b1b68571` (`ep_switch_*_da7902b_v16.json`, `cost_*_production_ep_v16.json`).
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json data/raw/validate_tirustda7902b.json --two-pwave data/raw/two_pwave --v16all data/raw/v16all --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;

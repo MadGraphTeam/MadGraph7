@@ -16,7 +16,10 @@ bottomonium process takes the colour of its charmonium analogue; a run with
 TIRust 5025e12 with the bridge's binary64 gate and relation tiers (PR #56; case suffix 56)
 takes the colour of its process, dotted; a P-wave run with the 80-bit switch
 (#PWaveExtendedPrecision; TIRust d17085a with the bridge v2; suffix ep) dash-dotted;
-the reference process of the paper is a dashed neutral line in every row."""
+the reference process of the paper is a dashed neutral line in every row. The
+runs on TIRust da7902b with the bridge v16 (suffixes 16, 16ep) and on the pin
+6ba4b53 (suffix 6ba) are drawn against the base cases in figures of their own
+(figures/stability_v16*.svg, figures/stability_pin*.svg)."""
 import glob
 import json
 import os
@@ -68,10 +71,21 @@ V16_OCTET_FAMILIES = [
     ('bottomonium octets v16', OCTET_FAMILIES[1][1],
      V16_OCT['b'] + [c + '16' for c in V16_OCT['b']] + [c + '16ep' for c in V16_OCT['b']]),
 ]
+# the pin 6ba4b53 (suffix 6ba, since 2026-11-27) against the builds of the base cases
+PIN_FAMILIES = [
+    ('charmonium pin', V16_FAMILIES[0][1], V16_S + [c + '6ba' for c in V16_S]),
+    ('bottomonium pin', V16_FAMILIES[1][1], V16_B + [c + '6ba' for c in V16_B]),
+]
+PIN_OCTET_FAMILIES = [
+    ('charmonium octets pin', OCTET_FAMILIES[0][1], V16_OCT['c'] + [c + '6ba' for c in V16_OCT['c']]),
+    ('bottomonium octets pin', OCTET_FAMILIES[1][1], V16_OCT['b'] + [c + '6ba' for c in V16_OCT['b']]),
+]
 # (file suffix, families, legend columns); colour = process, line style = TIRust build
 FIGURES = [('', FAMILIES, 3), ('_octets', OCTET_FAMILIES, 4), ('_v16', V16_FAMILIES, 3),
-           ('_v16_octets', V16_OCTET_FAMILIES, 4)]
-ALL_FAMILIES = FAMILIES + OCTET_FAMILIES + V16_FAMILIES + V16_OCTET_FAMILIES
+           ('_v16_octets', V16_OCTET_FAMILIES, 4), ('_pin', PIN_FAMILIES, 3),
+           ('_pin_octets', PIN_OCTET_FAMILIES, 4)]
+ALL_FAMILIES = FAMILIES + OCTET_FAMILIES + V16_FAMILIES + V16_OCTET_FAMILIES + PIN_FAMILIES + \
+    PIN_OCTET_FAMILIES
 REFERENCE = 'ttg'
 ORDER = [c for _, _, cases in ALL_FAMILIES for c in cases] + [REFERENCE]
 LABEL = {
@@ -124,17 +138,20 @@ for q in 'cb':
 # dash-dotted, 5025e12, the head of PR #56, with the bridge patch for the binary64 gate 0006 and
 # the relation tiers (suffix 56), dotted
 CANDIDATE = '5025e12'
-BUILD_STYLE = {'': '-', '08': '-.', '56': ':', 'ep': '-.', '16': ':', '16ep': '-.'}
+BUILD_STYLE = {'': '-', '08': '-.', '56': ':', 'ep': '-.', '16': ':', '16ep': '-.', '6ba': ':'}
 BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s + gate (PR #56)' % CANDIDATE,
              'ep': '80-bit switch, TIRust d17085a + bridge v2',
-             '16': 'TIRust da7902b + bridge v16 (PR #71)', '16ep': '80-bit switch, v16'}
+             '16': 'TIRust da7902b + bridge v16 (PR #71)', '16ep': '80-bit switch, v16',
+             '6ba': 'TIRust 6ba4b53 (the pin)'}
 STYLE = {'ttg': '--'}
 
 
 def build_of(case):
-    # no base case ends in 08, 16, 56 or ep (they end in g)
+    # no base case ends in 08, 16, 56, ep or 6ba (they end in g)
     if case.endswith('16ep'):
         return '16ep'
+    if case.endswith('6ba'):
+        return '6ba'
     return case[-2:] if case[-2:] in ('08', '16', '56', 'ep') else ''
 
 
@@ -142,9 +159,10 @@ def base_of(case):
     return case[:-len(build_of(case))] if build_of(case) else case
 
 
-for c in [c for _, _, cases in ALL_FAMILIES for c in cases if build_of(c) in ('16', '16ep')]:
+for c in [c for _, _, cases in ALL_FAMILIES for c in cases if build_of(c) in ('16', '16ep', '6ba')]:
     base = base_of(c)
-    LABEL[c] = LABEL[base].replace(', TIRust 370b632', '') + (', v16, 80-bit' if build_of(c) == '16ep' else ', v16')
+    LABEL[c] = LABEL[base].replace(', TIRust 370b632', '') + {
+        '16': ', v16', '16ep': ', v16, 80-bit', '6ba': ', pin 6ba4b53'}[build_of(c)]
     TYPST[c], COLOR[c] = TYPST[base], COLOR[base]
 for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if build_of(c) == 'ep']:
     base = c[:-2]
@@ -188,9 +206,18 @@ def accuracies(points):
     return np.array([max(p['accuracy'], 1e-17) for p in points])
 
 
+OLD_PIN = '1c130a81'
+
+
 def reducer(meta):
+    # 'pinned': the pin of the run's date, 1c130a81 until 2026-11-27; the runs on the pin since
+    # then record its revision
     if meta['libs'] == '9':
-        return 'TIRust ' + ('(pinned)' if meta['tirust'] == 'pinned' else meta['tirust'].split(' (')[0])
+        if meta['tirust'] == 'pinned':
+            return 'TIRust %s (old pin)' % OLD_PIN
+        if meta['tirust'].startswith('pinned '):
+            return 'TIRust %s (pin)' % meta['tirust'].split()[1][:7]
+        return 'TIRust ' + meta['tirust'].split(' (')[0]
     return '|'.join(LIBNAMES.get(l, l) for l in meta['libs'].split('|'))
 
 
@@ -257,12 +284,12 @@ def plot(runs, out, family_list, ncol=3):
         procs = [Line2D([], [], color=COLOR[c], lw=1.4, label=LABEL[c].replace(', TIRust 370b632', ''))
                  for c in base]
         ref = [h for h, l in zip(handles, labels) if l == LABEL[REFERENCE]]
-        builds = sorted(set(reducer(runs[(c, s)][0]).replace('TIRust ', '').replace('(pinned)', 'pinned')
+        builds = sorted(set(reducer(runs[(c, s)][0]).replace('TIRust ', '')
                             for c in base for s in setups if (c, s) in runs),
-                        key=lambda b: (b != 'pinned', b))
+                        key=lambda b: ('old pin' not in b, b))
         keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label='TIRust ' + ', '.join(builds))]
         keys += [Line2D([], [], color=INK2, lw=1.4, ls=BUILD_STYLE[b], label=BUILD_KEY[b])
-                 for b in ('08', '56', 'ep', '16', '16ep') if any(build_of(c) == b for c in cases)]
+                 for b in ('08', '56', 'ep', '16', '16ep', '6ba') if any(build_of(c) == b for c in cases)]
         blank = Line2D([], [], alpha=0, label=' ')
         cells = procs + ref
         cells += [blank] * (-len(cells) % ncol) + keys
