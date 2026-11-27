@@ -72,6 +72,13 @@ class Step(object):
               something.  For a lesson which has more to say than fits at the
               top of a question: the rest is said as the reader gets to it,
               once the answer it follows from has been typed.
+    question_gate
+              callable(interface, line) -> a string saying why such a
+              question may not close yet, or None.  Asked when the reader
+              closes the question (Enter, done, 0): a refusal is printed and
+              the question stays open.  For a lesson whose next step needs a
+              card setting -- the gridpack one, `save_gridpack` -- the run
+              should not start without it.
     on_failure
               printed when a command which would have triggered this step
               *raised* instead of running, before the generic "that command did
@@ -111,7 +118,8 @@ class Step(object):
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
                  setup=None, title=None, question_hint=None, on_failure=None,
-                 sticky=False, entry=None, gate=None, question_progress=None):
+                 sticky=False, entry=None, gate=None, question_progress=None,
+                 question_gate=None):
         self.key = key
         self.entry = entry
         self.text = text
@@ -122,6 +130,7 @@ class Step(object):
         self.title = title
         self.question_hint = question_hint
         self.question_progress = question_progress
+        self.question_gate = question_gate
         self.on_failure = on_failure
         self.sticky = sticky
         self.gate = gate
@@ -1005,6 +1014,19 @@ class TutorialSession(object):
             except Exception:
                 return None
         return hint
+
+    def question_gate(self, line, interface=None):
+        """Why the question the current step is watching may not close on
+        `line`, or None.  A gate which raises lets it close."""
+
+        step = self.current
+        hook = step.question_gate if step is not None else None
+        if not callable(hook):
+            return None
+        try:
+            return hook(interface, line)
+        except Exception:
+            return None
 
     def question_progress(self, line, interface=None):
         """What the current step has to say about `line`, answered to a

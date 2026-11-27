@@ -7408,6 +7408,65 @@ class RunCardMG7(RunCard):
             if internal not in self.hidden_param:
                 self.hidden_param.append(internal)
 
+    def bare_key_matches(self, key):
+        """The section.key names a bare `key` (as `set events 10` takes it)
+        stands for: one, several when it is ambiguous, none when unknown."""
+        key = key.lower()
+        return ['%s.%s' % (section, key)
+                for section, keys in self.toml_sections.items() if key in keys]
+
+    def do_help(self, name):
+        """Help on one parameter of the card: where it sits (its section, and
+        whether that part of the card is hidden), its current and default
+        values, the accepted values and what it does.  `name` is the
+        section.key name; RunCard.do_help answers for anything else."""
+
+        name = name.lower()
+        if name not in self.section_of:
+            return super(RunCardMG7, self).do_help(name)
+        section = self.section_of[name]
+        key = name[len(section) + 1:]
+        fmt = self.format_toml_value
+        value = self[name]
+        default = self.toml_defaults.get(name)
+        # the form `set` takes: the bare key unless another section has it
+        set_name = key if len(self.bare_key_matches(key)) == 1 else name
+
+        group = None
+        for group_name, (_sections, params) in self.option_groups.items():
+            if name in params:
+                group = group_name
+                break
+        # shown_groups: what the card writer itself shows (an enabled
+        # cluster mode, a merged sample, ...), not only `update` requests
+        if group and group not in self.shown_groups(self.option_groups):
+            where = ('hidden: `update %s` adds the [%s] options to the card'
+                     % (group, group))
+        elif name in self.hidden_param and \
+                not getattr(self, '_write_all_hidden', False):
+            where = ('hidden: written in the card only once changed, '
+                     '`update to_full` writes it')
+        else:
+            where = 'shown in the card'
+
+        out = ['%s  (section [%s], %s)' % (set_name, section, where),
+               '   current value: %s' % fmt(value)]
+        if default is not None:
+            changed = '' if value == default else '   <- changed'
+            out.append('   default value: %s%s' % (fmt(default), changed))
+        allowed = [str(v) for v in self.allowed_value.get(name, []) or []
+                   if v != '*']
+        if allowed:
+            kind = ('suggested' if '*' in self.allowed_value[name]
+                    else 'allowed')
+            out.append('   %s values: %s' % (kind, ', '.join(allowed)))
+        if self.comments.get(name):
+            out.append('   %s' % self.comments[name].replace('\n', '\n   '))
+        out.append('   to change it: set %s VALUE' % set_name)
+        text = '\n'.join(out)
+        logger.info(text)
+        return text
+
     def gzip_configuration(self):
         """The ``misc.configure_gzip`` settings given by the [run] section:
         'auto' lets misc pick pigz, and a positive thread pool size caps it."""

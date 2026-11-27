@@ -60,7 +60,14 @@ logger_plugin = logging.getLogger('tutorial_plugin') # for stdout
 #                      reading by definition.
 question_hint = None
 question_progress = None
+#   question_gate      callable(line) -> why a question may not close on `line`
+#                      (Enter, done, 0), or None to let it close.  A lesson
+#                      which needs a card setting before the run starts.
+question_gate = None
 suppress_timeout = False
+# the SmartQuestion being asked, innermost first: what a hook above reads the
+# live state of the question from (the run_card of a card question, say)
+active_question = None
 
 
 # Options MG7 used to have and does not support any more. Setting one must not
@@ -193,6 +200,19 @@ def get_question_progress(line):
     anything. None -- the usual answer -- prints nothing."""
 
     hook = question_progress
+    if not callable(hook):
+        return None
+    try:
+        return hook(line)
+    except Exception:
+        return None
+
+
+def get_question_gate(line):
+    """Why the question may not close on `line`, or None (the usual answer):
+    a broken gate never keeps anyone in a question."""
+
+    hook = question_gate
     if not callable(hook):
         return None
     try:
@@ -2426,10 +2446,30 @@ class SmartQuestion(BasicCmd):
         reproduce the run: replaying it would answer every question with the
         default. Commands answered from a script are recorded by ask() for the
         same reason.
+
+        A closing answer (Enter, done, 0) a tutorial refuses (question_gate)
+        is replaced by `tutorial_wait`, which does nothing: every postcmd then
+        asks again, as after any other command.
         """
 
+        if (line or '').strip() in self.CLOSING_ANSWERS:
+            refusal = get_question_gate((line or '').strip())
+            if refusal:
+                logger_tuto.info(refusal, '$MG:BOLD')
+                self._waiting_on = (line or "").strip()
+                return 'tutorial_wait'
         record_answer_in_history(getattr(self, 'mother_interface', None), line)
         return BasicCmd.precmd(self, line)
+
+    # answers which close a question
+    CLOSING_ANSWERS = ('', 'done', '0')
+
+    def do_tutorial_wait(self, line):
+        # no docstring: kept out of `help`.  A closing answer the tutorial
+        # refused (see precmd); shown in the history as what was typed -- a
+        # space for Enter, since the redraw keeps no entry for an empty
+        # answer and would erase the refusal printed with it
+        self.lastcmd = getattr(self, '_waiting_on', '') or ' '
 
     def preloop(self):
         """Initializing before starting the main loop"""
@@ -2458,6 +2498,7 @@ class SmartQuestion(BasicCmd):
         self._history_seq = -1   # _cmd_seq already appended to _answer_history
         self._hint_text = ''     # tutorial hint as printed, redrawn under the box
         self._progress_key = None # (_cmd_seq, line) whose progress was printed
+        self._drawn_text = None  # the question text as last drawn
 
         if 'case' in opt:
             self.casesensitive = opt['case']
@@ -2489,6 +2530,21 @@ class SmartQuestion(BasicCmd):
             # postcmd() can call this twice for one input; only the first
             # call followed a real input() prompt.
             is_new_input = self._cmd_seq != self._history_seq
+            if (not is_new_input and not self._redraw.tainted
+                    and text == self._drawn_text and self._answer_history):
+                # the second call for one answer, and the box has not changed:
+                # what was printed since the first one (a tutorial's progress
+                # line, say) is already on screen, under the box.  Drawing the
+                # box again would only repeat it -- for good, once a box taller
+                # than the screen has pushed the first copy into the
+                # scrollback.  Keep it with the answer, so the next redraw
+                # erases it with the rest.
+                captured = ''.join(self._redraw.captured)
+                self._redraw.captured = []
+                if captured:
+                    extra = captured if captured.endswith('\n') else captured + '\n'
+                    self._answer_history[-1] += extra
+                return
             captured = ''.join(self._redraw.captured)
             self._redraw.captured = []
             interstitial_lines = captured.count('\n')
@@ -2559,6 +2615,7 @@ class SmartQuestion(BasicCmd):
                 self._prev_box_lines = text.count('\n') + 1
                 self._redraw.captured = []
         self._has_drawn = True
+        self._drawn_text = text
 
     def __call__(self, question, reprint_opt=True, **opts):
 
@@ -2568,6 +2625,8 @@ class SmartQuestion(BasicCmd):
         if self.overwrite_display and sys.stdout.isatty():
             self._redraw = _StdoutLineCounter()
             self._redraw.__enter__()
+        global active_question
+        outer_question, active_question = active_question, self
         try:
             if reprint_opt:
                 self.display_question()
@@ -2580,6 +2639,7 @@ class SmartQuestion(BasicCmd):
                     self._redraw.captured = []
             return self.cmdloop()
         finally:
+            active_question = outer_question
             if self._redraw is not None:
                 self._redraw.__exit__()
                 self._redraw = None

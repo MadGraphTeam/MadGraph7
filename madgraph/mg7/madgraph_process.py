@@ -2014,14 +2014,6 @@ class MadgraphProcess:
         # run-card entries hel_recycling_max_mb / hel_recycling_row_color_sum
         # (else HRMAXMB / HRNOBLAS from the environment), passed to make.
         hr_args = self.hel_recycling_make_args()
-        if recycled and len(gpu_backends) < len(resolved):
-            limit = hr_args[0].split("=", 1)[1]
-            logger.info(
-                "--hel_recycling: %s use the recycled matrix element on the cpu "
-                "unless its tables exceed %s MB per SIMD page (run.hel_recycling_max_mb, "
-                "0 for no limit)", ", ".join(recycled),
-                {"": "10 (default)", "0": "<no limit>"}.get(limit, limit)
-            )
         hr_flags = ":".join(arg.split("=", 1)[1] for arg in hr_args)
         # the good helicities are chosen on a CPU build (helicity_choice()):
         # the CPU one of the run, else one in scalar double precision

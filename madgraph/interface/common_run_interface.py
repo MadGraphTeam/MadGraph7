@@ -6199,13 +6199,13 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         
         start = 0
         card = ''
-        if  args[0]+'_card' in self.all_card_name+ self.cards:
+        if  args[0]+'_card' in self.all_card_name + list(self.cards):
             args[0] += '_card'
-        elif  args[0]+'.dat' in self.all_card_name+ self.cards:
+        elif  args[0]+'.dat' in self.all_card_name + list(self.cards):
             args[0] += '.dat'
-        elif  args[0]+'_card.dat' in self.all_card_name+ self.cards:
+        elif  args[0]+'_card.dat' in self.all_card_name + list(self.cards):
             args[0] += '_card.dat'
-        if args[0] in self.all_card_name + self.cards:
+        if args[0] in self.all_card_name + list(self.cards):
             start += 1
             card = args[0]
             if len(args) == 1:
@@ -6233,7 +6233,24 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 if banner:
                     logger.info('*** END HELP ***', '$MG:BOLD')  
                 return card
-                    
+
+        # mg7 TOML run card: a bare key, as `set` takes it ('save_gridpack'
+        # for 'gridpack.save_gridpack'); an ambiguous one gets every match
+        if card in ('', 'run_card') and \
+                hasattr(self.run_card, 'bare_key_matches') and \
+                '.' not in args[start]:
+            matches = self.run_card.bare_key_matches(args[start])
+            if len(matches) > 1:
+                logger.info('%s is in several sections: use the full name',
+                            args[start], '$MG:BOLD')
+                for name in matches:
+                    self.run_card.do_help(name)
+                if banner:
+                    logger.info('*** END HELP ***', '$MG:BOLD')
+                return card
+            elif matches:
+                args[start] = matches[0]
+
         #### RUN CARD
         if args[start] in [l.lower() for l in self.run_card.keys()] and card in ['', 'run_card']:
             if args[start] not in self.run_set:
@@ -6359,7 +6376,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             self.stdout.write(line)
             self.stdout.flush()
 
-        valid = ['dependent', 'missing', 'to_slha1', 'to_slha2', 'to_full']
+        valid = ['dependent', 'missing', 'to_slha1', 'to_slha2', 'to_full',
+                 'all', 'list']
         valid += self.update_block
 
         arg = line[:begidx].split()
@@ -6681,6 +6699,33 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             raise InvalidCmd(text)
         logger.warning(text)
 
+    ENABLE_WORDS = {'enable': 'True', 'disable': 'False'}
+
+    def expand_enable_shortcut(self, args):
+        """On an mg7 card, for a section with an `enable` key (cluster,
+        madnis, vegas, systematics, ...):
+
+            set cluster.enable / set cluster enable    -> cluster.enable True
+            set cluster.disable / set cluster disable  -> cluster.enable False
+
+        Anything else, or a section with no `enable`, is returned as is."""
+
+        sections = getattr(self.run_card, 'toml_sections', None)
+        if not sections or not args:
+            return args
+        start = 1 if args[0] == 'run_card' and len(args) > 1 else 0
+        rest = args[start:]
+        if len(rest) == 1 and '.' in rest[0]:
+            section, _, word = rest[0].partition('.')
+        elif len(rest) == 2 and '.' not in rest[0]:
+            section, word = rest[0], rest[1].lower()
+        else:
+            return args
+        if word not in self.ENABLE_WORDS or \
+                'enable' not in sections.get(section, []):
+            return args
+        return args[:start] + ['%s.enable' % section, self.ENABLE_WORDS[word]]
+
     def do_set(self, line):
         """ edit the value of one parameter in the card"""
 
@@ -6703,6 +6748,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         args[:-1] = [ a.lower() for a in args[:-1]]
         if len(args) == 1: #special shortcut without argument -> lowercase
             args = [args[0].lower()]
+        args = self.expand_enable_shortcut(args)
         # special shortcut:
         if args[0] in self.special_shortcut:
             targettypes , cmd = self.special_shortcut[args[0]]
@@ -7861,9 +7907,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     update missing:   add to the current param_card missing blocks/parameters.
                     update to_slha1: pass SLHA2 card to SLHA1 convention. (beta)
                     update to_slha2: pass SLHA1 card to SLHA2 convention. (beta)
-                    update to_full [run_card]
+                    update to_full [run_card]: add every hidden block and every hidden parameter
                     update XXX [where XXX correspond to a hidden block of the run_card]:
                     supported block are %s
+                    update all: add all the hidden blocks above (not the hidden parameters outside of them)
+                    update list: show this help
         """, ', '.join(self.update_block))
     
     
@@ -7874,6 +7922,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     update to_slha2: pass SLHA1 card to SLHA2 convention. (beta)
                     update to_full [run_card]
                     update XXX [where XXX correspond to a hidden block of the run_card]
+                    update all: every hidden block of the run_card
+                    update list: the hidden blocks (same as help update)
         """
         args = self.split_arg(line)
         if len(args)==0:
@@ -7925,6 +7975,21 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             self.param_card = param_card_mod.ParamCard(self.paths['param'])            
         elif args[0] == 'to_full':
             return self.update_to_full(args[1:])
+        elif args[0] == 'list':
+            self.help_update()
+        elif args[0] == 'all':
+            # every hidden block (option group of an mg7 card), as if each
+            # had been asked for by name -- unlike to_full, the hidden
+            # parameters outside of these blocks stay hidden
+            added = [name for name in self.update_block
+                     if name not in self.run_card.display_block]
+            if not added:
+                logger.info('all optional blocks are already in the run_card')
+                return
+            self.run_card.display_block.extend(added)
+            self.modified_card.add('run') # delay writing of the run_card
+            logger.info('add optional blocks %s to the run_card',
+                        ', '.join(added))
         elif args[0] in self.update_block:
             self.run_card.display_block.append(args[0].lower())
             self.modified_card.add('run') # delay writing of the run_card
@@ -9344,6 +9409,21 @@ class AskforEditCardWithSwitch(object):
             return cmd.ControlSwitch.default(self, line, raise_error=True)
         except cmd.NotValidInput:
             return AskforEditCard.default(self, line)
+
+    def do_help(self, line, *args, **opts):
+        """`help NAME` for a switch is the switch's help; for anything else
+        (a card parameter, a command, a card) the card editor's.
+
+        ControlSwitch comes first in the method order and knows only the
+        switches: `help save_gridpack` used to print nothing at all."""
+
+        words = line.split()
+        if not words:
+            cmd.ControlSwitch.do_help(self, line)
+            return AskforEditCard.do_help(self, line, *args, **opts)
+        if words[0] in self.switch or hasattr(self, 'ans_%s' % words[0]):
+            return cmd.ControlSwitch.do_help(self, line)
+        return AskforEditCard.do_help(self, line, *args, **opts)
 
     def postcmd(self, stop, line):
         # ControlSwitch.postcmd cooperatively calls AskforEditCard.postcmd

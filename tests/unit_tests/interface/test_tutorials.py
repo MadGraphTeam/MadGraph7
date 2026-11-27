@@ -89,6 +89,8 @@ class _TutorialTestCase(unittest.TestCase):
         import madgraph.interface.extended_cmd as extended_cmd
 
         extended_cmd.question_hint = None
+        extended_cmd.question_progress = None
+        extended_cmd.question_gate = None
         extended_cmd.suppress_timeout = False
 
     def run_lines(self, tutorial_name, lines):
@@ -2976,3 +2978,221 @@ class DisplayModellistTest(unittest.TestCase):
         interface.check_display(['modellist'])      # does not raise
         self.assertRaises(madgraph.InvalidCmd,
                           interface.check_display, ['particles'])
+
+
+class GridpackSubprocessGateTest(unittest.TestCase):
+    """The gridpack tutorial needs two subprocesses or more: its cluster half
+    trains one job per subprocess, and a single one runs nothing in parallel.
+    The lesson after `generate` names the reader's own subprocesses."""
+
+    class _Process(object):
+
+        def __init__(self, name):
+            self.name = name
+
+        def base_string(self):
+            return self.name
+
+        def get(self, key):
+            return {'legs': []}[key]
+
+    class _Amplitude(object):
+        """`name`, or (`name`, [crossings recorded on it])."""
+
+        def __init__(self, name):
+            name, crossed = name if isinstance(name, tuple) else (name, [])
+            Process = GridpackSubprocessGateTest._Process
+            self.process = Process(name)
+            # as MultiProcess records them: (process, base_perm, cross_perm)
+            self.crossed = [(Process(c), None, None) for c in crossed]
+
+        def get(self, key):
+            return {'process': self.process, 'decay_chains': [],
+                    'crossed_processes': self.crossed,
+                    'diagrams': [1]}[key]
+
+        def get_number_of_diagrams(self):
+            return 1
+
+    def _run(self, names, line):
+        """The gridpack intro, then `line` with `names` generated."""
+
+        captured = []
+
+        class _Handler(logging.Handler):
+            def emit(self, record):
+                captured.append(record.getMessage())
+
+        logger = logging.getLogger('tutorial')
+        saved = (logger.handlers, logger.propagate, logger.level)
+        logger.handlers = [_Handler()]
+        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        try:
+            interface = _Recording()
+            interface._curr_model = None
+            interface._curr_amps = []
+            tutorial_mixin.attach(interface, tutorials.start('gridpack'))
+            interface.postcmd(None, 'tutorial gridpack')
+            interface._curr_amps = [self._Amplitude(n) for n in names]
+            interface.postcmd(None, line)
+            # the code spans back to the backticks they were written with
+            text = re.sub(r'\$GREEN(.*?)\$_RESET', r'`\1`', captured[-1])
+            return interface._tutorial_session.index, text
+        finally:
+            (logger.handlers, logger.propagate, logger.level) = saved
+
+    def test_a_single_subprocess_is_refused(self):
+        index, text = self._run(['e+ e- > t t~'], 'generate e+ e- > t t~')
+        self.assertEqual(index, 0)
+        self.assertIn('a single subprocess, `e+ e- > t t~`', text)
+        self.assertIn('generate p p > t t~', text)
+        self.assertNotIn('output', text)
+
+    def test_two_subprocesses_are_named(self):
+        index, text = self._run(['g g > t t~', 'Q Qx > t t~'],
+                                'generate p p > t t~')
+        self.assertEqual(index, 1)
+        self.assertIn('Remember the two subprocesses', text)
+        self.assertIn('`g g > t t~`', text)
+        self.assertIn('`Q Qx > t t~`', text)
+        # no crossing here: nothing to say about it
+        self.assertNotIn('Crossing', text)
+        # the merged label is explained (no model here: the fallback words)
+        self.assertIn('`Q` stands for the light quarks', text)
+        self.assertIn('output', text)
+
+    def test_no_merged_label_no_explanation(self):
+        index, text = self._run(['g g > t t~', 'u u~ > t t~'],
+                                'generate g g > t t~ ; add process ...')
+        self.assertEqual(index, 1)
+        self.assertNotIn('stands for', text)
+
+    def test_the_readers_own_process_is_named(self):
+        names = ['g g > z z', 'Q Qx > z z', 'g Q > z z Q']
+        index, text = self._run(names, 'generate p p > z z j')
+        self.assertEqual(index, 1)
+        self.assertIn('Remember the three subprocesses', text)
+        for name in names:
+            self.assertIn('`%s`' % name, text)
+        self.assertNotIn('t t~', text)
+
+    def test_crossings_count_and_are_named(self):
+        """`p p > z j` is one amplitude, `g Q > z Q`, with its crossings
+        recorded on it.  They are three subprocesses of the output -- the beam
+        swaps fold into their mirrors -- so the gate lets it through."""
+
+        crossed = ('g Q > z Q', ['g Qx > z Qx', 'Q Qx > z g',
+                                 'Qx g > z Qx', 'Qx Q > z g'])
+        index, text = self._run([crossed], 'generate p p > z j')
+        self.assertEqual(index, 1)
+        self.assertIn('Remember the three subprocesses', text)
+        self.assertIn('Crossing symmetry is on', text)
+        self.assertIn('`g Qx > z Qx`, `Q Qx > z g`  from `g Q > z Q`', text)
+        self.assertNotIn('Qx g >', text)
+
+    def test_it_sits_with_the_validated_tutorials(self):
+        tutorial = tutorials.get('gridpack')
+        self.assertEqual(tutorial.section, 'advanced')
+        self.assertFalse(tutorial.ai_generated)
+
+    def test_run_mode_is_an_optional_step_at_the_card_question(self):
+        """`help run_mode` at the gridpack card question gets the advice on
+        which mode to pick; the lesson itself does not list the modes."""
+
+        step = tutorials.get('gridpack').steps[2]
+        self.assertIn('help run_mode', step.question_hint)
+        advice = step.question_progress(None, 'help run_mode')
+        for mode in ('minimal', 'fix_max_weight', 'regular'):
+            self.assertIn(mode, advice)
+        self.assertNotIn('fix_max_weight', step.text(None))
+
+    def test_enter_waits_for_save_gridpack(self):
+        """The first launch may not close its card question until
+        save_gridpack is true; the advice follows the card as it is."""
+
+        import madgraph.interface.extended_cmd as extended_cmd
+        import madgraph.interface.tutorials.gridpack as gridpack
+
+        class _Question(object):
+            def __init__(self, on):
+                self.run_card = {'gridpack.save_gridpack': on}
+
+        step = tutorials.get('gridpack').steps[2]
+        saved = extended_cmd.active_question
+        try:
+            extended_cmd.active_question = _Question(False)
+            self.assertIn('save_gridpack', step.question_gate(None, ''))
+            self.assertIn('set save_gridpack true',
+                          step.question_progress(None, 'help run_mode'))
+            extended_cmd.active_question = _Question(True)
+            self.assertIsNone(step.question_gate(None, ''))
+            advice = step.question_progress(None, 'help run_mode')
+            self.assertIn('is true', advice)
+            self.assertNotIn('set save_gridpack true', advice)
+            # a question with no such parameter (a yes/no one) is never held
+            extended_cmd.active_question = object()
+            self.assertIsNone(step.question_gate(None, ''))
+        finally:
+            extended_cmd.active_question = saved
+
+    def test_a_refused_closing_answer_keeps_the_question_open(self):
+        """precmd turns a closing answer the gate refuses into the no-op
+        tutorial_wait; any other answer, or no gate, goes through."""
+
+        import madgraph.interface.extended_cmd as extended_cmd
+
+        question = extended_cmd.SmartQuestion('Q', allow_arg=['0', 'done'])
+        try:
+            extended_cmd.question_gate = lambda line: 'not yet'
+            self.assertEqual(question.precmd(''), 'tutorial_wait')
+            self.assertEqual(question.precmd('done'), 'tutorial_wait')
+            self.assertEqual(question.precmd('set events 10'), 'set events 10')
+            question.do_tutorial_wait('')
+            self.assertEqual(question.lastcmd, 'done')
+            extended_cmd.question_gate = lambda line: None
+            self.assertEqual(question.precmd('done'), 'done')
+            extended_cmd.question_gate = lambda line: 1 / 0
+            self.assertEqual(question.precmd('done'), 'done')
+        finally:
+            extended_cmd.question_gate = None
+
+    def test_parallel_jobs_advice_follows_the_machine(self):
+        """The cluster card question advises as many parallel jobs as the
+        run ever has at once, and the cores each one then gets."""
+
+        import madgraph.interface.tutorials.gridpack as gridpack
+
+        saved = gridpack._cores_here
+        try:
+            gridpack._cores_here = lambda: 16
+            hint = tutorials.get('gridpack').steps[5].question_hint(None)
+            # two training jobs, 10000 / 2500 = 4 generation jobs
+            self.assertIn('set cluster.parallel_jobs 4', hint)
+            self.assertIn('gives each of them 4 cores', hint)
+            self.assertIn('the 16 cores', hint)
+            gridpack._cores_here = lambda: 2
+            hint = tutorials.get('gridpack').steps[5].question_hint(None)
+            self.assertIn('set cluster.parallel_jobs 2', hint)
+            self.assertIn('gives each of them 1 core.', hint)
+        finally:
+            gridpack._cores_here = saved
+
+    def test_two_gridpack_jobs_in_parallel(self):
+        import madgraph.interface.tutorials.gridpack as gridpack
+        command = gridpack._run_parallel()
+        self.assertTrue(command.startswith('shell '))
+        self.assertEqual(command.count('bin/generate_events'), 2)
+        self.assertIn('--seed 42', command)
+        self.assertIn('--seed 43', command)
+        self.assertIn('--output_dir JOB_1', command)
+        self.assertIn('--output_dir JOB_2', command)
+        self.assertIn('--cpu_thread_pool_size %d' % gridpack._half_cores(),
+                      command)
+        # `;` would split the line at the MG7 prompt
+        self.assertTrue(command.endswith('& wait'))
+        self.assertNotIn(';', command)
+        # the lesson that follows reads the two jobs back
+        later = tutorials.get('gridpack').steps[5].text(None)
+        self.assertIn('JOB_1/events.lhe.gz', later)
+        self.assertIn('JOB_2/events.lhe.gz', later)

@@ -475,12 +475,15 @@ def _arm_question_hooks(session, interface=None):
     extended_cmd.question_hint = lambda: _question_hint(session, interface)
     extended_cmd.question_progress = \
         lambda line: _question_progress(session, line, interface)
+    extended_cmd.question_gate = \
+        lambda line: _question_gate(session, line, interface)
     extended_cmd.suppress_timeout = True
 
 
 def _disarm_question_hooks():
     extended_cmd.question_hint = None
     extended_cmd.question_progress = None
+    extended_cmd.question_gate = None
     extended_cmd.suppress_timeout = False
 
 
@@ -489,6 +492,13 @@ def _question_hint(session, interface=None):
 
     hint = session.question_hint(interface)
     return to_terminal(hint) if hint else None
+
+
+def _question_gate(session, line, interface=None):
+    """Why the current step keeps its question open, styled, or None."""
+
+    text = session.question_gate(line, interface)
+    return to_terminal(text) if text else None
 
 
 def _question_progress(session, line, interface=None):

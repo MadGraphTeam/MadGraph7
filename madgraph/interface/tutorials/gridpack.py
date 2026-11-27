@@ -22,7 +22,9 @@ as processes on this machine, so the tutorial works without a scheduler.
 from __future__ import absolute_import
 
 import os
+import textwrap
 
+import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   counts_line, output_name,
@@ -84,6 +86,77 @@ def _run_gridpack(interface=None):
             % _gridpack(interface))
 
 
+def _events_in(directory):
+    """The events file a gridpack run left in `directory`, or None."""
+
+    for name in ('events.lhe.gz', 'events.lhe', 'events.npy'):
+        if os.path.exists(os.path.join(directory, name)):
+            return os.path.join(directory, name)
+    return None
+
+
+def _gridpack_events(interface=None):
+    """The events of the newest run of the gridpack, as typed at the prompt;
+    where the first run puts them before anything has run."""
+
+    events = os.path.join(_gridpack(interface), 'Events')
+    try:
+        runs = [os.path.join(events, name) for name in os.listdir(events)]
+        runs = [d for d in runs if os.path.isdir(d)]
+        for run in sorted(runs, key=os.path.getmtime, reverse=True):
+            found = _events_in(run)
+            if found:
+                return _shown(found)
+    except Exception:
+        pass
+    return os.path.join(events, 'run_01', 'events.lhe.gz')
+
+
+def _grid_run_card(interface=None):
+    """The gridpack's own run card, as typed at the prompt (in the unpacked
+    directory when `compress` packed the gridpack)."""
+
+    gridpack = _gridpack(interface)
+    if gridpack.endswith('.tar.gz'):
+        gridpack = os.path.join(os.path.dirname(gridpack), 'gridpack')
+    return os.path.join(gridpack, 'Cards', 'grid_run_card.toml')
+
+
+def _cores_here():
+    return os.cpu_count() or 2
+
+
+def _cores_word(count):
+    return '%d core%s' % (count, '' if count == 1 else 's')
+
+
+def _half_cores():
+    return max(1, _cores_here() // 2)
+
+
+JOBS = ('JOB_1', 'JOB_2')
+
+
+def _run_parallel(interface=None):
+    """Two gridpack jobs at once, half of the cores each, then wait."""
+
+    command = ('%s/bin/generate_events --events 10000 --seed %d '
+               '--cpu_thread_pool_size %d --output_dir %s > %s.log')
+    gridpack = _gridpack(interface)
+    # no `;`: the MG7 prompt splits a line on it, and `wait` would be read
+    # as an MG7 command
+    return 'shell %s & %s & wait' % tuple(
+        command % (gridpack, 42 + i, _half_cores(), job, job)
+        for i, job in enumerate(JOBS))
+
+
+def _job_events(number):
+    """Where job `number` of the parallel run put its events."""
+
+    job = JOBS[number - 1]
+    return _shown(_events_in(job) or os.path.join(job, 'events.lhe.gz'))
+
+
 def _launch(interface=None):
     return 'launch %s' % output_name(interface, RUN)
 
@@ -104,37 +177,324 @@ def _cluster_result(interface):
     return 'The combined cross section is %s.\n\n' % found if found else ''
 
 
+# cluster mode trains one job per subprocess: with a single one there is
+# nothing to run in parallel, and the cluster half of the lesson shows nothing
+MIN_SUBPROCESSES = 2
+# what the text says before anything is generated (`tutorial index`, ...)
+DEFAULT_SUBPROCESSES = ['g g > t t~', 'Q Qx > t t~']
+# subprocesses listed one per line after `generate`; more are counted
+LISTED = 8
+NUMBERS = {2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six',
+           7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten'}
+
+
+def _cores(amplitude):
+    """The production amplitudes: a decay chain's own, or the amplitude."""
+
+    try:
+        # a plain Amplitude has no 'decay_chains' and raises here
+        if amplitude.get('decay_chains'):
+            return amplitude.get('amplitudes')
+    except Exception:
+        pass
+    return [amplitude]
+
+
+def _beam_swap_key(name):
+    """`Qx g > z Qx` and `g Qx > z Qx` are one subprocess, the mirror of the
+    other: the same key."""
+
+    initial, _, final = name.partition(' > ')
+    return tuple(sorted(initial.split())), final
+
+
+def _subprocess_tree(interface):
+    """[(base, [crossings])] for the last `generate`, as MG5 names them.
+
+    One base per amplitude; a decay chain counts its production processes,
+    which are what gets integrated.  With crossing symmetry on (the
+    default), a subprocess that is a crossing of another is not generated: it
+    is recorded on its base (`crossed_processes`), and each still becomes a
+    subprocess of the output -- one training job in cluster mode -- except a
+    beam swap, which folds into its mirror.  Empty when nothing is generated.
+    """
+
+    tree, seen = [], set()
+    for amplitude in getattr(interface, '_curr_amps', None) or []:
+        for core in _cores(amplitude):
+            try:
+                base = core.get('process').base_string()
+            except Exception:
+                continue
+            if _beam_swap_key(base) in seen:
+                continue
+            seen.add(_beam_swap_key(base))
+            crossings = []
+            try:
+                recorded = core.get('crossed_processes') or []
+            except Exception:
+                recorded = []
+            for entry in recorded:
+                try:
+                    name = entry[0].base_string()
+                except Exception:
+                    continue
+                if _beam_swap_key(name) not in seen:
+                    seen.add(_beam_swap_key(name))
+                    crossings.append(name)
+            tree.append((base, crossings))
+    return tree
+
+
+def _subprocesses(interface):
+    """Every subprocess of the last `generate`, crossings included."""
+
+    found = []
+    for base, crossings in _subprocess_tree(interface):
+        found.append(base)
+        found.extend(crossings)
+    return found
+
+
+def _crossing_note(interface):
+    """Which subprocesses are crossings, when crossing symmetry made any."""
+
+    crossed = [(base, crossings)
+               for base, crossings in _subprocess_tree(interface) if crossings]
+    if not crossed:
+        return ''
+    lines = '\n'.join('  %s  from `%s`' % (', '.join('`%s`' % c for c in cs),
+                                           base)
+                      for base, cs in crossed)
+    return ("""
+
+Crossing symmetry is on, so some of these are crossings of another:
+
+%s
+
+A crossing has the same diagrams as its base, with legs moved between the
+initial and the final state. MG7 generates the diagrams once and evaluates
+the crossing with the code of its base. It is still a subprocess of its own,
+with its own PDFs and phase space, so it gets its own training job in
+cluster mode.""" % lines)
+
+
+def _merged_quark_note(interface, names):
+    """What `Q` and `Qx` mean, when the reader's subprocesses show them."""
+
+    if not {'Q', 'Qx'} & set(' '.join(names).split()):
+        return ''
+    try:
+        model = interface._curr_model
+        names = [model.get_particle(pdg).get('name')
+                 for pdg in model.get('merged_particles')[81]]
+        flavours = ' and '.join([', '.join(names[:-1]), names[-1]]
+                                if len(names) > 1 else names)
+    except Exception:
+        flavours = 'the light quarks'
+    return ('\n\n`Q` stands for %s, and `Qx` for their antiquarks.\n'
+            'They have the same matrix element, so they share one '
+            'subprocess.' % flavours)
+
+
+def _number(count):
+    return NUMBERS.get(count, str(count))
+
+
+def _listed(names, limit=4):
+    """`a`, `b` and `c` -- the first few, and how many more."""
+
+    shown = ['`%s`' % name for name in names[:limit]]
+    if len(names) > limit:
+        shown.append('%d more' % (len(names) - limit))
+    if len(shown) == 1:
+        return shown[0]
+    return '%s and %s' % (', '.join(shown[:-1]), shown[-1])
+
+
+def _reader_subprocesses(interface):
+    """The reader's subprocesses, or the ones the text assumes."""
+
+    return _subprocesses(interface) or DEFAULT_SUBPROCESSES
+
+
+def _enough_subprocesses(interface=None, line=None):
+    """The gate on the `generate` lesson: at least two subprocesses.
+
+    Any process makes a gridpack, but the cluster half of the tutorial trains
+    one job per subprocess, and with a single one there is nothing to run in
+    parallel.  So a one-subprocess process does not move the tutorial on: it
+    says why and suggests one that does.
+    """
+
+    found = _subprocesses(interface)
+    if len(found) >= MIN_SUBPROCESSES:
+        return True
+    what = ('a single subprocess, %s' % _listed(found) if found
+            else 'no subprocess')
+    return ("""
+%(counts)sThat is %(what)s.
+
+Cluster mode, later in this tutorial, gives each subprocess a training job of
+its own, so it needs at least two to have anything to run in parallel. The
+tutorial stays here.
+
+Generate a simple process with two subprocesses or more, for example:
+
+%(p)s generate p p > t t~""" % {'p': P, 'what': what,
+                                 'counts': counts_line(interface)})
+
+
+def _remember_subprocesses(interface):
+    """The `generate` lesson: the reader's own subprocesses, named."""
+
+    names = _reader_subprocesses(interface)
+    shown = names if len(names) <= LISTED else names[:LISTED - 1]
+    lines = '\n'.join('  `%s`' % name for name in shown)
+    if len(shown) < len(names):
+        lines += '\n  ... and %d more' % (len(names) - len(shown))
+    return ('Remember the %s subprocesses. They matter later, for cluster '
+            'mode.\n\n%s%s%s' % (_number(len(names)), lines,
+                                 _crossing_note(interface),
+                                 _merged_quark_note(interface, names)))
+
+
+def _training_jobs(interface):
+    """The sentence on the training jobs of the reader's process.
+
+    Starts a line of its own and is wrapped here: the names are the reader's,
+    so its length is not known when the lesson is written.
+    """
+
+    names = _reader_subprocesses(interface)
+    if len(names) == 2:
+        text = ('Here that means two jobs, one for `%s` and one for `%s`.'
+                % tuple(names))
+    else:
+        text = ('Here that means %s jobs, one for each subprocess listed '
+                'after `generate`.' % _number(len(names)))
+    return textwrap.fill(text + ' Further jobs then generate the events.',
+                         width=76)
+
+
 FIRST_LAUNCH_HINT = """
-Type this, then press Enter.
+The gridpack settings are in the [gridpack] section of the run card, hidden
+by default. `update gridpack` shows it, `update list` lists the hidden
+sections and `update all` shows them all. `set` also works on a hidden
+option directly. To turn the gridpack on, type this, then press Enter.
 
   set save_gridpack true
 
-`update gridpack` shows the whole [gridpack] section in the card first.
+The run then optimises the grids as usual and stores the gridpack,
+**without generating events**. Optional: `help run_mode` for the other ways
+it can end.
 """
+
+RUN_MODE_ADVICE = """Which `run_mode` to pick:
+
+  minimal         The default, right for most samples. Each gridpack run
+                  finds the maximum weights itself.
+  fix_max_weight  When each job makes few events, a few thousand or less:
+                  the maximum weights are found once, here, and all jobs
+                  unweight the same way. Slower to create. It also adds
+                  bin/event_stream.py, to stream events into Python.
+  regular         When this run should also produce a first sample.
+
+Keep the default for this tutorial. %(next)s"""
+
+TURN_IT_ON = "Type `set save_gridpack true`, then press Enter."
+START = "Press Enter to start the run."
+
+
+def _save_gridpack_on():
+    """`save_gridpack` in the card being edited right now: True or False, or
+    None when the question asked is not one with that parameter."""
+
+    question = extended_cmd.active_question
+    run_card = getattr(question, 'run_card', None)
+    try:
+        return bool(run_card['gridpack.save_gridpack'])
+    except Exception:
+        return None
+
+
+def _next_move():
+    """What to do next at the card question, given the card as it is."""
+
+    if _save_gridpack_on():
+        return "`save_gridpack` is true. " + START
+    return TURN_IT_ON
 
 
 def _first_launch_progress(interface, line):
     words = (line or '').replace('=', ' ').split()
+    if words[:2] in (['help', 'run_mode'], ['help', 'gridpack.run_mode']):
+        return RUN_MODE_ADVICE % {'next': _next_move()}
+    if words[:2] in (['set', 'run_mode'], ['set', 'gridpack.run_mode']):
+        return "`run_mode` is set. " + _next_move()
     if words[:2] in (['set', 'save_gridpack'],
                      ['set', 'gridpack.save_gridpack']):
+        if _save_gridpack_on() is False:
+            return "`save_gridpack` is false: the run would make no gridpack. " \
+                   + TURN_IT_ON
         return "Now press Enter to start the run."
-    if words[:2] == ['update', 'gridpack']:
-        return ("The [gridpack] section is in the card now. "
-                "Type `set save_gridpack true`, then press Enter.")
+    if words[:2] in (['update', 'gridpack'], ['update', 'all'],
+                     ['update', 'to_full']):
+        return "The [gridpack] section is in the card now. " + _next_move()
+    return None
+
+
+def _first_launch_gate(interface, line):
+    """The run this lesson starts has to make the gridpack the next lessons
+    are about: Enter, done or 0 wait until `save_gridpack` is true."""
+
+    if _save_gridpack_on() is False:
+        return ("Not yet: `save_gridpack` is false, so this run would make no "
+                "gridpack. " + TURN_IT_ON)
     return None
 
 
 CLUSTER_LAUNCH_HINT = """
+**Cluster mode.** A normal run trains the subprocesses one after the other,
+in one process. Cluster mode gives each subprocess its own training job, and
+all of them run in parallel.
+%(jobs)s
+
+A real cluster needs a scheduler. This tutorial uses `local_parallel`
+instead. It runs the same jobs as separate processes on this machine.
+Moving to a real cluster later is one line in the card.
+
 Type these lines, then press Enter.
 
-  set cluster.enable true            turn on cluster mode
+  set cluster enable                 turn on cluster mode
   set cluster.type local_parallel    run the jobs on this machine
-  set events 10000                   events in total
-  set cluster.events_per_job 2500    four generation jobs
+  set events %(events)d                   events in total
+  set cluster.events_per_job %(per_job)d    %(gen_jobs)s generation jobs
 
-`set cluster.parallel_jobs 2` limits the jobs running at once. The
-default, -1, uses every core.
+The jobs share the %(cores)d cores of this machine. `cluster.parallel_jobs`
+is how many run at once, each on its share of the cores. The default, -1,
+runs one job per core, each on a single core. This run never has more than
+%(at_once)d jobs at once (%(train)d training, %(gen)d generation), so
+`set cluster.parallel_jobs %(at_once)d` gives each of them %(share)s.
 """
+
+# the events of the cluster run, and how they are split into jobs
+CLUSTER_EVENTS = 10000
+EVENTS_PER_JOB = 2500
+
+
+def _cluster_launch_hint(interface=None):
+    """The card question of the cluster launch: what cluster mode does with
+    the reader's own subprocesses, then the lines to type."""
+
+    train = len(_reader_subprocesses(interface))
+    gen = -(-CLUSTER_EVENTS // EVENTS_PER_JOB)
+    at_once = min(_cores_here(), max(train, gen))
+    return CLUSTER_LAUNCH_HINT % {
+        'jobs': _training_jobs(interface), 'events': CLUSTER_EVENTS,
+        'per_job': EVENTS_PER_JOB, 'gen_jobs': _number(gen), 'gen': gen,
+        'train': train, 'cores': _cores_here(), 'at_once': at_once,
+        'share': _cores_word(max(1, _cores_here() // at_once))}
 
 
 def _cluster_launch_progress(interface, line):
@@ -148,7 +508,7 @@ GRIDPACK_ONLY_HINT = """
 Cluster mode is still on. Type these lines, then press Enter.
 
   set cluster.mode gridpack_only    stop after the training
-  set madnis.enable true            train MadNIS
+  set madnis enable                 train MadNIS
   set madnis.train_batches 2000     a short training
 
 The [gridpack] options also apply to the merged gridpack.
@@ -184,7 +544,9 @@ This tutorial assumes you have run a process before. If not, start with
   * **Cluster mode** splits a run into batch jobs that run in parallel. It is
     built on gridpacks.
 
-We use a small process, so that every run is quick.
+Please start by generating a simple process, so that every run is quick. It
+needs at least two subprocesses, because cluster mode gives each subprocess a
+training job of its own. For example:
 
 %(p)s generate p p > t t~
 """ % {'p': P},
@@ -192,29 +554,28 @@ We use a small process, so that every run is quick.
      solution='generate p p > t t~'),
 
 Step('generate', lambda interface: """
-%(counts)sRemember the two subprocesses, `g g > t t~` and `q q~ > t t~`.
-They matter later, for cluster mode.
+%(counts)s%(subprocesses)s
 
 %(p)s output %(run)s
-""" % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
-     title='a process with two subprocesses',
+""" % {'p': P, 'run': RUN, 'counts': counts_line(interface),
+       'subprocesses': _remember_subprocesses(interface)},
+     title='a process with several subprocesses',
+     # a single subprocess leaves cluster mode nothing to run in parallel:
+     # the reader is asked for another process and the tutorial waits here
+     gate=_enough_subprocesses,
      solution='output %s' % RUN),
 
 Step('output', lambda interface: """
-The gridpack settings are in the `[gridpack]` section of
-`Cards/run_card.toml`. The section is hidden by default. It appears once you
-change one of its settings, and `set` works on it all the same.
-
-With `save_gridpack` on, the run does the survey and optimises the grids as
-usual. Then it **stops without generating events** and stores the gridpack.
-
-Launch, type `set save_gridpack true` at the card question, and press Enter.
+Whether a run makes a gridpack is a setting of the run card. After the
+`launch` command, MG7 offers you the cards to edit. Turn the gridpack on
+there. The card question shows what to type.
 
 %(p)s %(launch)s
 """ % {'p': P, 'launch': _launch(interface)},
      title='turn the gridpack on',
      question_hint=FIRST_LAUNCH_HINT,
      question_progress=_first_launch_progress,
+     question_gate=_first_launch_gate,
      hint="`set save_gridpack true` at the card question, then Enter.",
      solution=_launch),
 
@@ -229,17 +590,24 @@ It is self-contained.
   madspace/              a compiled copy of madspace
   Events/                the output of each gridpack run
 
-The cuts, beams, masses and the integration are fixed in the gridpack. Each
-run reads `grid_run_card.toml` for what can still change, like the number of
-events, the seed, the devices and the output format. Each of these also has a
-command-line option.
+The cuts, beams, masses and the integration are fixed in the gridpack. What
+can still change, like the number of events, the seed, the devices and the
+output format, is read by each run from
+
+  %(grid_card)s
+
+Its defaults are those of the run that made the gridpack, so nothing needs
+editing. To change a setting, either edit that card, or give the matching
+command-line option. The option is recommended: it applies to that run only,
+leaves the card as it is, and lets jobs sharing the gridpack differ.
 
 Now run it. `shell` runs a command from this prompt. In a real study, a job
 script would call the gridpack on a cluster node.
 
 %(p)s %(run_gp)s
 """ % {'p': P, 'found': _gridpack_found(interface),
-       'run_gp': _run_gridpack(interface)},
+       'run_gp': _run_gridpack(interface),
+       'grid_card': _grid_run_card(interface)},
      title='what is in a gridpack',
      hint="`shell PATH/bin/generate_events --events N --seed S` runs the "
           "gridpack.",
@@ -247,22 +615,50 @@ script would call the gridpack on a cluster node.
 
 Step('shell', lambda interface: """
 That run had no survey and no training, so it was much faster than a full
-run. The events are in
+run. Its last line says where the events are:
 
-  %(gridpack)s/Events/run_01/events.lhe.gz
+  %(events)s
 
 A gridpack writes LHE by default, since its events usually go to a shower.
 `--output_format` selects one of the npy formats instead.
 
-Three options matter when several jobs share a gridpack.
+Four options matter when several jobs share a gridpack.
 
-  --seed              must differ between jobs. The default, -1, draws a new
-                      seed and records it.
-  --output_dir        writes the events there instead of into the gridpack.
-  --temp_output_dir   holds the large temporary files. `auto` makes a new
-                      directory per run in $TMPDIR, so jobs do not collide.
+  --seed                  must differ between jobs. The default, -1, draws a
+                          new seed and records it.
+  --output_dir            writes the events there instead of into the
+                          gridpack.
+  --temp_output_dir       holds the large temporary files. `auto` makes a new
+                          directory per run in $TMPDIR, so jobs do not collide.
+  --cpu_thread_pool_size  how many cores a job uses. The default, -1, takes
+                          them all.
 
 `--help` lists all options.
+
+Try it: run two jobs at the same time, each with its own seed and output
+directory, and each on half of the %(cores)d cores of this machine. Each `&`
+starts a job in the background, and `wait` waits for both. Their output goes
+to JOB_1.log and JOB_2.log.
+
+%(p)s %(parallel)s
+""" % {'p': P, 'events': _gridpack_events(interface),
+       'cores': _cores_here(), 'parallel': _run_parallel(interface)},
+     title='running a gridpack',
+     hint="Two `generate_events` commands joined by `&`, each with its own "
+          "`--seed` and `--output_dir`, then `& wait` (no `;`: MG7 splits "
+          "the line there).",
+     solution=_run_parallel),
+
+Step('shell', lambda interface: """
+Both jobs ran at the same time, on %(half)d cores each. Each one wrote its
+events into its own directory, and the last line of its log says where:
+
+  %(job1)s      seed 42
+  %(job2)s      seed 43
+
+Different seeds give independent samples, so the two files together are one
+sample twice as large. The same seed twice would give the same events twice.
+On a cluster, each job is one such command, on a node of its own.
 
 **What goes into the gridpack** is set in the `[gridpack]` section. By
 default it holds compiled code only. That keeps it small and ready to run,
@@ -283,46 +679,27 @@ example with `pip install madspace`. Then set `include_madspace = false`, and
 the gridpack uses the installed copy. It must be the same madspace version
 that created the gridpack. Otherwise the gridpack stops with an error.
 
-`run_mode` sets how the run that creates the gridpack ends.
-
-  minimal         The default. No events. Each gridpack run estimates the
-                  maximum weights itself.
-  fix_max_weight  No events. Each channel runs until its maximum weight is
-                  known, and the gridpack stores it. All gridpack runs then
-                  unweight the same way. This is slower to create, but better
-                  when each job makes few events. It also adds
-                  bin/event_stream.py to stream events into Python.
-  regular         A normal run with events, then the gridpack.
-
-Next comes **cluster mode**. A normal run trains the subprocesses one after
-the other, in one process. Cluster mode gives each subprocess its own
-training job, and all of them run in parallel. Here that means two jobs, one
-for `g g > t t~` and one for `q q~ > t t~`. Further jobs then generate the
-events.
-
-A real cluster needs a scheduler. This tutorial uses `local_parallel`
-instead. It runs the same jobs as separate processes on this machine.
-Moving to a real cluster later is one line in the card.
-
-Launch the same output again and turn on cluster mode at the card question.
-The hint there lists the lines to type.
+Next comes **cluster mode**, which splits a whole run into jobs that run in
+parallel. Launch the same output again: the card question explains it and
+lists the lines to type.
 
 %(p)s %(launch)s
-""" % {'p': P, 'gridpack': _gridpack(interface),
+""" % {'p': P, 'half': _half_cores(), 'job1': _job_events(1),
+       'job2': _job_events(2),
        'launch': _launch(interface)},
-     title='running a gridpack, and what to put in it',
-     question_hint=CLUSTER_LAUNCH_HINT,
+     title='parallel gridpack jobs, and what to put in a gridpack',
+     question_hint=_cluster_launch_hint,
      question_progress=_cluster_launch_progress,
-     hint="At the card question, `set cluster.enable true` and "
+     hint="At the card question, `set cluster enable` and "
           "`set cluster.type local_parallel`, then Enter.",
      solution=_launch),
 
 Step('launch', lambda interface: """
 %(result)sThat was a whole run, split into jobs.
 
-  1. **Training.** One job per subprocess, here two in parallel. Each job
-     runs its own survey and training and saves a gridpack.
-  2. **Merging.** The two gridpacks become one with all channels.
+  1. **Training.** One job per subprocess, here %(nsub)s in parallel. Each
+     job runs its own survey and training and saves a gridpack.
+  2. **Merging.** The %(nsub)s gridpacks become one with all channels.
   3. **Generation.** Several jobs run the merged gridpack, each with its own
      seed. `events_per_job` sets how many.
   4. **Combining.** The events are joined into an ordinary run in
@@ -361,6 +738,7 @@ short training that finishes quickly here. For a real sample, use more
 %(p)s %(launch)s
 """ % {'p': P, 'launch': _launch(interface),
        'result': _cluster_result(interface),
+       'nsub': _number(len(_reader_subprocesses(interface))),
        'run': _shown(_latest_run(interface) or
                      os.path.join(output_name(interface, RUN), 'Events',
                                   'run_02'))},
@@ -368,7 +746,7 @@ short training that finishes quickly here. For a real sample, use more
      question_hint=GRIDPACK_ONLY_HINT,
      question_progress=_gridpack_only_progress,
      hint="At the card question, `set cluster.mode gridpack_only`, "
-          "`set madnis.enable true` and `set madnis.train_batches 2000`, "
+          "`set madnis enable` and `set madnis.train_batches 2000`, "
           "then Enter.",
      solution=_launch),
 
@@ -403,7 +781,7 @@ off for a large sample. On a cluster, each job would run this command with
 its own `--seed`.
 
 Cluster mode stays on in the card of this output. Turn it off with
-`set cluster.enable false` at the next launch. Cluster mode only generates
+`set cluster disable` at the next launch. Cluster mode only generates
 events. Run the shower, MadSpin, Delphes or reweighting on its events
 afterwards.
 

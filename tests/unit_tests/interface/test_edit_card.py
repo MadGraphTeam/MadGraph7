@@ -647,6 +647,161 @@ class TestEditCardCmd(unittest.TestCase):
         self.assertIn('vegas', data)
         self.assertIn('cluster', data)
 
+    def test_mg7_update_all_and_list(self):
+        """update all adds every option group of the mg7 card, but not the
+        hidden parameters outside of them (that is update to_full); update
+        list is help update."""
+        import shutil
+        import tempfile
+        import tomllib
+        import madgraph.various.banner as banner_mod
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        os.mkdir(pjoin(d, 'Cards'))
+        paths = {'run': pjoin(d, 'Cards', 'run_card.toml'),
+                 'run_default': pjoin(d, 'Cards', 'run_card_default.toml')}
+        for path in paths.values():
+            banner_mod.RunCardMG7().write(path)
+
+        def sections():
+            with open(paths['run'], 'rb') as f:
+                return tomllib.load(f)
+
+        cmd = runcmd.AskforEditCard('', cards=paths, mode='auto',
+                                    mother_interface=FakeInterface(d))
+        cmd.do_update('all')
+        cmd.write_card('run')
+        data = sections()
+        for group in ('vegas', 'gridpack', 'cluster', 'merging', 'amplicol'):
+            self.assertIn(group, data)
+        self.assertIn('flow_layers', data['madnis'])
+        # hidden parameters outside of the groups stay hidden
+        self.assertNotIn('t_channel', data['phasespace'])
+        self.assertNotIn('nb_retry', data['cluster'])
+
+        # a second time has nothing left to add
+        cmd.modified_card.discard('run')
+        cmd.do_update('all')
+        self.assertNotIn('run', cmd.modified_card)
+
+        with self.assertLogs('madgraph.stdout', level='INFO') as logs:
+            cmd.do_update('list')
+        self.assertIn('gridpack', '\n'.join(logs.output))
+        self.assertIn('update all', '\n'.join(logs.output))
+
+    def test_mg7_help_on_a_parameter(self):
+        """help NAME on the mg7 card: the bare key as `set` takes it, its
+        section and whether it is hidden, current and default values, and
+        the comment; an ambiguous key answers for every section."""
+        import shutil
+        import tempfile
+        import madgraph.various.banner as banner_mod
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        os.mkdir(pjoin(d, 'Cards'))
+        paths = {'run': pjoin(d, 'Cards', 'run_card.toml'),
+                 'run_default': pjoin(d, 'Cards', 'run_card_default.toml')}
+        for path in paths.values():
+            banner_mod.RunCardMG7().write(path)
+        cmd = runcmd.AskforEditCard('', cards=paths, mode='auto',
+                                    mother_interface=FakeInterface(d))
+        run_card = cmd.run_card
+        answered = []
+        original = run_card.do_help
+        run_card.do_help = lambda name: answered.append(original(name))
+
+        cmd.do_help('save_gridpack')
+        text = answered.pop()
+        self.assertIn('section [gridpack]', text)
+        self.assertIn('`update gridpack`', text)
+        self.assertIn('current value: false', text)
+        self.assertIn('default value: false', text)
+        self.assertIn(run_card.comments['gridpack.save_gridpack'], text)
+
+        cmd.do_set('events 5000')
+        cmd.do_help('events')
+        text = answered.pop()
+        self.assertIn('current value: 5000', text)
+        self.assertIn('<- changed', text)
+        self.assertIn('shown in the card', text)
+
+        cmd.do_help('t_channel')
+        self.assertIn('allowed values: propagator', answered.pop())
+
+        # enabling cluster mode writes its sections: no longer hidden
+        cmd.do_help('cluster.enable')
+        self.assertIn('hidden', answered.pop())
+        cmd.do_set('cluster enable')
+        cmd.do_help('cluster.enable')
+        self.assertIn('shown in the card', answered.pop())
+
+        cmd.do_help('enable')
+        self.assertGreater(len(answered), 1)
+        self.assertTrue(all(text.split()[0].endswith('.enable')
+                            for text in answered))
+
+    def test_mg7_enable_disable_shortcuts(self):
+        """set SECTION.enable / SECTION.disable, and set SECTION enable /
+        disable, for every section with an `enable` key; other sections
+        and explicit values are left alone."""
+        import shutil
+        import tempfile
+        import madgraph.various.banner as banner_mod
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        os.mkdir(pjoin(d, 'Cards'))
+        paths = {'run': pjoin(d, 'Cards', 'run_card.toml'),
+                 'run_default': pjoin(d, 'Cards', 'run_card_default.toml')}
+        for path in paths.values():
+            banner_mod.RunCardMG7().write(path)
+        cmd = runcmd.AskforEditCard('', cards=paths, mode='auto',
+                                    mother_interface=FakeInterface(d))
+        run_card = cmd.run_card
+        for line, key, value in [
+                ('cluster.enable', 'cluster.enable', True),
+                ('cluster.disable', 'cluster.enable', False),
+                ('cluster enable', 'cluster.enable', True),
+                ('cluster disable', 'cluster.enable', False),
+                ('run_card madnis Enable', 'madnis.enable', True),
+                ('madnis.disable', 'madnis.enable', False),
+                ('vegas disable', 'vegas.enable', False),
+                ('systematics.disable', 'systematics.enable', False),
+                ('cluster.enable true', 'cluster.enable', True),
+                ('cluster.enable false', 'cluster.enable', False)]:
+            cmd.do_set(line)
+            self.assertIs(run_card[key], value, line)
+        # a section without `enable` is not touched by the shortcut
+        self.assertEqual(cmd.expand_enable_shortcut(['gridpack', 'enable']),
+                         ['gridpack', 'enable'])
+        self.assertEqual(cmd.expand_enable_shortcut(['events', '10']),
+                         ['events', '10'])
+
+    def test_unchanged_question_is_drawn_once_per_answer(self):
+        """postcmd reasks twice for one answer: the second call must not
+        draw the box again (with a box taller than the screen the copy below
+        stays for good), but keep what was printed since with the answer."""
+        import io
+        import sys
+        question = ext_cmd.SmartQuestion('QUESTION', allow_arg=['a'])
+        saved = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            question._redraw = ext_cmd._StdoutLineCounter().__enter__()
+            question.display_question()
+            question._cmd_seq, question.lastcmd = 1, 'set x 1'
+            sys.stdout.write('printed by the command\n')
+            question.display_question()     # first call for the answer
+            sys.stdout.write('tutorial progress\n')
+            before = sys.stdout.getvalue()
+            question.display_question()     # second call, nothing changed
+            after = sys.stdout.getvalue()
+            question._redraw.__exit__()
+        finally:
+            sys.stdout = saved
+        self.assertEqual(before, after)
+        self.assertIn('tutorial progress', question._answer_history[-1])
+        self.assertEqual(before.count('QUESTION'), 2)
+
     def test_dynamical_scale_choice_ht(self):
         """set dynamical_scale_choice HT/n on the LO, NLO and mg7 cards"""
         import shutil

@@ -261,6 +261,7 @@ def main() -> None:
     # run generation
     event_generator.generate()
     output_format = args.output_format
+    events_path = os.path.join(run_path, "events.npy")
     if output_format == "compact_npy":
         event_generator.combine_to_compact_npy(
             os.path.join(run_path, "events.npy"), systematics
@@ -296,6 +297,8 @@ def main() -> None:
         if gzip_device is None:
             compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),
                          args.cpu_thread_pool_size)
+            lhe_path += ".gz"
+        events_path = lhe_path
     else:
         raise ValueError("Unknown output format")
     if systematics is not None:
@@ -307,6 +310,9 @@ def main() -> None:
     if args.done_file:
         with open(os.path.join(_INVOCATION_DIR, args.done_file), "w") as f:
             f.write("done\n")
+    # where the events are: a gridpack run is usually scripted, and its run
+    # directory (Events/run_NN, or --output_dir) is not otherwise printed
+    print(f"Events written to {os.path.abspath(events_path)}")
 
 
 if __name__ == '__main__':
