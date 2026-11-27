@@ -44,11 +44,13 @@ namespace madmatrix
                        fptype_amp* allNumerators,         // output: multichannel numerators[nevt], running_sum_over_helicities
                        fptype_amp* allDenominators,       // output: multichannel denominators[nevt], running_sum_over_helicities
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array (C++ implementation)
-                       const int nevt );                 // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       const int nevt,                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       bool* isGoodHelFlavor = nullptr ); // output: isGoodHelFlavor[nmaxflavor*ncomb], the good helicities of each flavor (if not nullptr)
 
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( ProcessParameters& params, // output: the good helicities of the process
-                       const bool* isGoodHel );  // input: isGoodHel[ncomb] - host array
+                       const bool* isGoodHel,    // input: isGoodHel[ncomb] - host array
+                       const bool* isGoodHelFlavor = nullptr ); // input: isGoodHelFlavor[nmaxflavor*ncomb], each a subset of isGoodHel; nullptr: isGoodHel for every flavor
 
   // A crossing-table row with no phase space at its own masses (a crossed
   // decay lighter than its products, see scan_points in umami.cc): set before

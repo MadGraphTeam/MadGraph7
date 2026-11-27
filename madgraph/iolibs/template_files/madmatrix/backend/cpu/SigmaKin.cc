@@ -374,6 +374,33 @@ namespace madmatrix
     return params.csymOk;
   }
 
+  // The good helicities of the flavors of one page (two in mixed precision), as
+  // bits over the positions in params.goodHel: the rows of goodHelFlavor
+  // (ProcessParameters.h) of every flavor its lanes carry. UMAMI sorts a call so
+  // that a page holds one flavor; OR-ing over the lanes keeps a page of several
+  // complete all the same. The helicity loops of sigmaKin and hr_page skip the
+  // other rows: they vanish for the flavor of the page, and computing them was the
+  // cost of a merged matrix element over a dedicated one (6 of the 15 rows of
+  // q q~ > w+ q q~ for d d~ > w+ s c~).
+  struct PageHelMask
+  {
+    unsigned long long bits[ProcessParameters::nGoodHelWords];
+    bool has( const int ighel ) const { return ( ( bits[ighel / 64] >> ( ighel % 64 ) ) & 1ULL ) != 0; }
+  };
+
+  inline PageHelMask
+  page_hel_mask( const ProcessParameters& params, const unsigned int* iflavorVec, const int ievt00, const int nlanes )
+  {
+    PageHelMask mask;
+    for( int w = 0; w < ProcessParameters::nGoodHelWords; w++ ) mask.bits[w] = 0;
+    for( int ie = 0; ie < ( iflavorVec != nullptr ? nlanes : nmaxflavor ); ie++ )
+    {
+      const unsigned int iflavor = iflavorVec != nullptr ? iflavorVec[ievt00 + ie] % (unsigned int)nmaxflavor : (unsigned int)ie;
+      for( int w = 0; w < ProcessParameters::nGoodHelWords; w++ ) mask.bits[w] |= params.goodHelFlavor[iflavor][w];
+    }
+    return mask;
+  }
+
   const short* getHelicities()
   {
     return &cHel[0][0];
@@ -1050,6 +1077,7 @@ namespace madmatrix
            const fptype_sv& csymExtra,
            [[maybe_unused]] const fptype_sv* csymExtra2,
            const bool storeChannelWeights,
+           const PageHelMask& helMask,       // the rows of the flavor of the page (page_hel_mask)
            const int ievt00 )
   {
     using E_ACCESS = HostAccessMatrixElements;
@@ -1106,6 +1134,7 @@ namespace madmatrix
       {
         cxtype_sv* jamp_sv = ghelJamp_sv + (size_t)ighel * nParity * ncolor;
         for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>();
+        if( !helMask.has( ighel ) ) continue; // a row of another flavor: zero jamps
         hr_row_or_plain( params, cGoodHel[ighel], allmomenta, allcouplings, iflavorVec, ampAll_sv, jampAll_sv, numAll_sv, jamp_sv,
                          storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
       }
@@ -1116,6 +1145,12 @@ namespace madmatrix
 #endif
     for( int ighel = 0; ighel < cNGoodHel; ighel++ )
     {
+      if( !helMask.has( ighel ) )
+      {
+        // a row of another flavor: the running sum stays
+        MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
+        continue;
+      }
       const fptype_sv me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
       cxtype_amp_sv jamp_sv[nParity * njampso] = {};
       hr_row_or_plain( params, cGoodHel[ighel], allmomenta, allcouplings, iflavorVec, ampAll_sv, jampAll_sv, numAll_sv, jamp_sv,
@@ -1216,7 +1251,8 @@ namespace madmatrix
                        fptype_amp* allNumerators,        // output: multichannel numerators[nevt], running_sum_over_helicities
                        fptype_amp* allDenominators,      // output: multichannel denominators[nevt], running_sum_over_helicities
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
-                       const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       const int nevt,                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
+                       bool* isGoodHelFlavor )           // output: isGoodHelFlavor[nmaxflavor*ncomb] (if not nullptr), the good helicities of each flavor
   {
     // Allocate arrays at build time to contain at least 16 events (or at least neppV events if neppV>16, e.g. in future VPUs)
     constexpr int maxtry0 = goodHelScanEvents; // 16, but at least neppV
@@ -1233,6 +1269,11 @@ namespace madmatrix
     // flavors (extra helicities simply contribute 0 for a given flavor at run
     // time, exactly as in the scalar standalone_cpp per-flavor good-hel filter).
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
+    // and the list of each flavor on its own (ProcessParameters::goodHelFlavor),
+    // the union over the crossings of that flavor: sigmaKin skips the rows of the
+    // union a page's flavor does not have, as Fortran's GOODHEL(NCOMB,NFLAV)
+    if( isGoodHelFlavor != nullptr )
+      for( int i = 0; i < nmaxflavor * ncomb; i++ ) isGoodHelFlavor[i] = false;
 #ifdef MADMATRIX_HR_CHECK
     // --hel_recycling: record which amplitudes are alive at these parameters (hr_check_stale)
     HrCheck check;
@@ -1359,15 +1400,22 @@ namespace madmatrix
     // of the sum over helicities at one of the events -- not exactly 0 with a
     // massive leg (see limhel) -- OR-ed over the ids: one list for every crossing
     const double relhel = hel_massive ? 0. : limhel;
+    bool* isGoodHelThisFlavor = isGoodHelFlavor != nullptr ? isGoodHelFlavor + ( iflav % nmaxflavor ) * ncomb : nullptr;
     for( int ievt = 0; ievt < maxtry; ++ievt )
     {
       fptype sumhel = 0;
       for( int ihel = 0; ihel < ncomb; ihel++ ) sumhel += std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] );
       for( int ihel = 0; ihel < ncomb; ihel++ )
-        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * relhel / ncomb ) isGoodHel[ihel] = true;
+        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * relhel / ncomb )
+        {
+          isGoodHel[ihel] = true;
+          if( isGoodHelThisFlavor != nullptr ) isGoodHelThisFlavor[ihel] = true;
+        }
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
     close_good_hel( isGoodHel, cHel );
+    if( isGoodHelFlavor != nullptr )
+      for( int iflavor = 0; iflavor < nmaxflavor; iflavor++ ) close_good_hel( isGoodHelFlavor + iflavor * ncomb, cHel );
 #ifdef MADMATRIX_HR_CHECK
     hrCheck = nullptr;
     // stale if it is at one of the scans of an instance (until reset_good_helicities, umami.cc)
@@ -1380,7 +1428,8 @@ namespace madmatrix
 
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( ProcessParameters& params, // output: the good helicities of the process
-                       const bool* isGoodHel )   // input: isGoodHel[ncomb] - host array
+                       const bool* isGoodHel,    // input: isGoodHel[ncomb] - host array
+                       const bool* isGoodHelFlavor ) // input: isGoodHelFlavor[nmaxflavor*ncomb] (nullptr: isGoodHel for every flavor)
   {
     int nGoodHel = 0;
     int goodHel[ncomb] = { 0 }; // all zeros https://en.cppreference.com/w/c/language/array_initialization#Notes
@@ -1420,6 +1469,21 @@ namespace madmatrix
         for( int h = n; h < ncomb; h++ ) params.goodHel[h] = 0;
         params.nGoodHel = n;
         nGoodHel = n;
+      }
+    }
+    // The rows of each flavor, as bits over the positions in params.goodHel. A
+    // C-parity representative stands for its mirror too: it is kept for a flavor
+    // that has either (they have the same |M|^2 when the dedup holds).
+    for( int iflavor = 0; iflavor < nmaxflavor; iflavor++ )
+    {
+      unsigned long long* mask = params.goodHelFlavor[iflavor];
+      for( int w = 0; w < ProcessParameters::nGoodHelWords; w++ ) mask[w] = 0;
+      const bool* flavorGood = isGoodHelFlavor != nullptr ? isGoodHelFlavor + iflavor * ncomb : nullptr;
+      for( int ighel = 0; ighel < params.nGoodHel; ighel++ )
+      {
+        const int ihel = params.goodHel[ighel];
+        const bool good = flavorGood == nullptr || flavorGood[ihel] || ( params.csymOk && flavorGood[cFlip[ihel]] );
+        if( good ) mask[ighel / 64] |= 1ULL << ( ighel % 64 );
       }
     }
 #ifdef MG_HR_PROBE
@@ -1663,6 +1727,8 @@ namespace madmatrix
       fptype_sv csymExtra{};
       for( int ie = 0; ie < neppV; ie++ )
         reinterpret_cast<fptype*>( &csymExtra )[ie] = ( allihel == nullptr && csym_lane_on( params, iflavorVec[ievt00 + ie] ) ) ? (fptype)1. : (fptype)0.;
+      // the good helicities of the flavor of this page (page_hel_mask)
+      const PageHelMask helMask = page_hel_mask( params, iflavorVec, ievt00, neppV );
 
 #ifdef MADMATRIX_HEL_RECYCLING
       // --hel_recycling: the recycled block for every helicity row of this page at
@@ -1674,7 +1740,7 @@ namespace madmatrix
       {
         hr_page( params, allmomenta, allcouplings, iflavorVec, allMEs, allNumerators, allDenominators, jamp2_sv, MEs_ighel,
                  nullptr, csymExtra, nullptr,
-                 allChannelIds != nullptr || allrnddiagram != nullptr, ievt00 );
+                 allChannelIds != nullptr || allrnddiagram != nullptr, helMask, ievt00 );
       }
       else
 #endif
@@ -1697,6 +1763,7 @@ namespace madmatrix
           const int ihel = ( allihel != nullptr ? -1 : cGoodHel[ighel] ); // unused with allihel
           cxtype_sv* jamp_sv = ghelJamp_sv.data() + (size_t)ighel * nParity * ncolor;
           for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>(); // calculate_jamps accumulates into jamp_sv
+          if( allihel == nullptr && !helMask.has( ighel ) ) continue; // a row of another flavor: zero jamps
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
           calculate_jamps( params, ( allihel != nullptr ? nullptr : cHel[ihel] ), allihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
@@ -1719,6 +1786,12 @@ namespace madmatrix
         for( int ighel = 0; ighel < nhelEval; ighel++ )
         {
           const int ihel = ( allihel != nullptr ? -1 : cGoodHel[ighel] ); // unused with allihel
+          if( allihel == nullptr && !helMask.has( ighel ) )
+          {
+            // a row of another flavor: the running sum stays
+            MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
+            continue;
+          }
           // Snapshot the running |M|^2 sum before this helicity's contribution is
           // added, so the C-parity step below can add the very same contribution again
           const fptype_sv me1before = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );

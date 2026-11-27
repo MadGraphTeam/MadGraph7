@@ -969,17 +969,21 @@ extern "C"
   // (madmatrix_choose_good_helicities), so that a run on a GPU evaluates the
   // helicities of a run on a CPU. They are kept until
   // umami_set_parameter changes a parameter. The flags of choice[0] are not used
-  // here. UMAMI_ERROR, and nothing changes, if the choice does not fit the
+  // here, nor the rows of each flavor that follow with flag 4 (ncomb and above):
+  // the lanes of a warp may carry different flavors, so every one evaluates the
+  // union. UMAMI_ERROR, and nothing changes, if the choice does not fit the
   // helicities of this process.
   UmamiStatus madmatrix_set_helicity_choice( UmamiHandle handle, const int* choice, int size )
   {
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( choice == nullptr || size < 1 ) return UMAMI_ERROR;
+    const int nvalue = ( choice[0] & 4 ) != 0 ? ProcessData::ncomb * ( 1 + ProcessData::nmaxflavor ) : ProcessData::ncomb;
     for( int k = 1; k < size; ++k )
-      if( choice[k] < 0 || choice[k] >= ProcessData::ncomb ) return UMAMI_ERROR;
+      if( choice[k] < 0 || choice[k] >= nvalue ) return UMAMI_ERROR;
     DeviceGuard guard( instance->device ); // deviceParams.update copies to it
     for( bool& good : instance->good_hel ) good = false;
-    for( int k = 1; k < size; ++k ) instance->good_hel[choice[k]] = true;
+    for( int k = 1; k < size; ++k )
+      if( choice[k] < ProcessData::ncomb ) instance->good_hel[choice[k]] = true;
     instance->learned = nlearn;
     ProcessParameters& params = instance->process.parameters();
     sigmaKin_setGoodHel( params, instance->good_hel );
