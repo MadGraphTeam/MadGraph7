@@ -58,6 +58,8 @@ class UmamiProcessInput:
     group_members: tuple[GroupMember, ...] = ()
     # Pattern count of a flavour-union template (its pattern table), if known.
     union_pattern_count: int | None = None
+    # Its (fundamental, antifundamental) slot pairs per pattern, if known.
+    union_pattern_pairs: Sequence[Sequence[Sequence[int]]] | None = None
 
 
 def _records(value: Any) -> list[Mapping[str, Any]]:
@@ -315,6 +317,33 @@ def _picker(indices):
         index = indices[0]
         return lambda values: (values[index],)
     return itemgetter(*indices)
+
+
+def _replay_keeps_signs(
+    permutation: Sequence[int],
+    pattern_pairs: Sequence[Sequence[Sequence[int]]],
+    patterns: Sequence[int],
+    signs: Sequence[int],
+) -> bool:
+    """Whether slot map ``permutation`` takes each selected pattern's endpoint
+    pairs ``(f, a) -> (permutation[f], permutation[a])`` to a selected pattern
+    of the same sign."""
+
+    index = {
+        frozenset((int(f), int(a)) for f, a in pairs): pattern
+        for pattern, pairs in enumerate(pattern_pairs)
+    }
+    selected = dict(zip(patterns, signs, strict=True))
+    for pattern, sign in selected.items():
+        image = index.get(
+            frozenset(
+                (permutation[int(f)], permutation[int(a)])
+                for f, a in pattern_pairs[pattern]
+            )
+        )
+        if image is None or selected.get(image) != sign:
+            return False
+    return True
 
 
 def _safe_replay(process: UmamiProcessInput) -> dict[str, tuple[str, tuple[int, ...]]]:
@@ -1378,6 +1407,22 @@ def _build_provider(
                         f"uncomputed flow {color_id!r} of its template"
                     )
                 rep_color, perm = color_id, tuple(identity)
+            if (
+                assignment is not None
+                and assignment[0]
+                and process.union_pattern_pairs is not None
+                and not _replay_keeps_signs(
+                    perm,
+                    process.union_pattern_pairs,
+                    assignment[2][0],
+                    assignment[2][1],
+                )
+            ):
+                # Signs apply as stored only if the replay fixes the selection.
+                raise ValueError(
+                    f"UMAMI flavour-union member {source_id!r}: the replay of flow "
+                    f"{color_id!r} does not map its signed pattern selection to itself"
+                )
             runtime = {
                 "process_index": process_index,
                 "process_id": process.process_id,

@@ -1253,3 +1253,17 @@ def test_otf_restore_and_append_keep_crossed_records(tmp_path):
     assert calls[0]["schema_version"] == 6
     assert _runtimes(calls[1], "m") == _runtimes(calls[0], "m")
     assert calls[1] == calls[0]
+
+
+def test_kept_replays_must_fix_a_members_signed_pattern_selection() -> None:
+    from pyamplicol.artifacts.umami import _replay_keeps_signs
+
+    # (fundamental, antifundamental) slot pairs of two pairing patterns
+    pairs = (((0, 1), (2, 3)), ((2, 1), (0, 3)))
+    swap = (2, 1, 0, 3)  # exchanges slots 0 and 2: pattern 0 <-> pattern 1
+    assert _replay_keeps_signs((0, 1, 2, 3), pairs, (0,), (1,))
+    assert _replay_keeps_signs(swap, pairs, (0, 1), (1, 1))
+    assert not _replay_keeps_signs(swap, pairs, (0,), (1,))
+    assert not _replay_keeps_signs(swap, pairs, (0, 1), (1, -1))
+    # an image outside the table is no symmetry either
+    assert not _replay_keeps_signs((1, 0, 2, 3), pairs, (0, 1), (1, 1))
