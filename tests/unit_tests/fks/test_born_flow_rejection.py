@@ -118,6 +118,9 @@ class TestBornFlowRejection(unittest.TestCase):
     def test_rejection_with_explicit_outer_fks_sum(self):
         self.check_mode('explicit')
 
+    def test_fxfx_clustering_record_per_sector_and_fold(self):
+        self.check_mode('fxfx_records')
+
     def test_outer_rejection_with_native_sector_matching(self):
         self.check_mode('legacy')
 

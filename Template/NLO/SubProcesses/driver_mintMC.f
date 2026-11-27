@@ -1037,6 +1037,10 @@ c Include the FxFx Sudakovs into the prefactors
                call set_FxFx_scale(2,p1_cnt(0,1,0))
                call set_cms_stuff(mohdr)
                if (p(0,1).gt.0d0) call set_FxFx_scale(3,p)
+c Keep this fold's real clustering record with its owner (as the H
+c colours): the common one is overwritten by later folds.
+               call save_event_clustering_H(iFKS,ifold_counter,
+     $              p(0,1).gt.0d0)
             endif
 c check if event or counter-event passes cuts
             call set_cms_stuff(izero)

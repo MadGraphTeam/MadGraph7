@@ -13,6 +13,11 @@ ANNOUNCEMENT:
        used for its contributions: of the Born kinematics for S events, of the real-emission
        kinematics for H events (for FxFx from their clustering). MadSpin and the reweight
        interface use this value.
+   RF: FxFx with folding: the <clustering type="real"> record of an H event was that of the
+       last fold evaluated for its FKS sector, not of the event (with folding 2, 2, 2 the
+       renormalisation scale of 62 of 65 H events was not among its scales); the FxFx EW
+       Sudakov reweighting reads it. It is now kept per sector and fold, as the colours and
+       shower scales of the H events. Unfolded runs are unchanged.
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the
