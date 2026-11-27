@@ -962,9 +962,10 @@ def test_relabelled_switch_calls_equal_their_evaluations(built, kind):
     """With the union's pattern table, the switch evaluates every template leg
     type once: an evaluation at legs l is its assignment relabelled by
     pi[r] = c^-1[l[r]] at the call's legs c. Each must equal the assignment at
-    its own legs (the phase-5 call), with the same orderings. Every relabelling
-    keeps template sides and particles (the core's symmetry check), so a call's
-    requests share its crossing."""
+    its own legs (the phase-5 call), with the same orderings. A relabelling keeps
+    a slot's side and particle or, with crossing, moves it across sides with the
+    same all-outgoing flavour (the core's symmetry check, relabelling.v2); every
+    request of a call has the crossing of its first evaluation."""
 
     from pyamplicol.artifacts.umami_reweight import switch_catalogue
 
@@ -984,6 +985,7 @@ def test_relabelled_switch_calls_equal_their_evaluations(built, kind):
     assert any(call.get("permutations") for call in relabelled["calls"])
     runtimes = {}
     points = _points(2)
+    moved = 0
 
     def gather(point, evaluation):
         signs = evaluation.get("signs") or [1] * len(evaluation["legs"])
@@ -998,17 +1000,16 @@ def test_relabelled_switch_calls_equal_their_evaluations(built, kind):
         process = data["runtime_processes"][call["process"]]
         pdgs = process["pdgs"]
         for permutation in call["permutations"] or ():
-            # Python copy of the core's validate_symmetry
+            # Python copy of the core's validate_symmetry (v2)
             assert sorted(permutation) == list(range(len(pdgs)))
-            assert all(
-                (r < 2) == (image < 2) and pdgs[r] == pdgs[image]
-                for r, image in enumerate(permutation)
-            )
+            for r, image in enumerate(permutation):
+                if (r < 2) == (image < 2):
+                    assert pdgs[r] == pdgs[image]
+                else:
+                    assert kind == "crossing"
+                    assert pdgs[image] == (21 if pdgs[r] == 21 else -pdgs[r])
+                    moved += 1
         first = relabelled["evaluations"][call["evaluations"][0]]
-        assert all(
-            relabelled["evaluations"][e].get("signs") == first.get("signs")
-            for e in call["evaluations"]
-        )
         runtime = runtimes.setdefault(
             call["process"], Runtime.load(artifact, process=process["id"])
         )
@@ -1020,6 +1021,10 @@ def test_relabelled_switch_calls_equal_their_evaluations(built, kind):
                 call["assignments"], permutations, strict=True
             )
         ]
+        # every request reads the call's gather: it has the call's crossing
+        records = runtime.flavour_union_assignments
+        signs = first.get("signs") or [1] * len(pdgs)
+        assert all(records[i]["momentum_signs"] == signs for i in ids)
         gathered = [gather(p, first) for p in points]
         values = runtime.evaluate_assignments(gathered, [ids] * len(points))
         for evaluation, entry in zip(call["evaluations"], call["entries"], strict=True):
@@ -1031,6 +1036,9 @@ def test_relabelled_switch_calls_equal_their_evaluations(built, kind):
             assert [row[entry] for row in values] == pytest.approx(
                 [row[0] for row in expected], rel=1e-12
             )
+    # cross-side requests only with crossing (this set has none; see
+    # test_umami_flavour_union_crossing for pp4j)
+    assert moved == 0 or kind == "crossing"
 
 
 # t t~ j: the switch exchanges the massless partons only, the tops keep their slots

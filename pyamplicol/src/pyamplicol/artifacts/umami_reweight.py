@@ -15,6 +15,8 @@ A flavour-union reference evaluates its members as assignments of their
 template's runtime (one native call per template and slot permutation in the
 switch). A crossed member (process.flavor_union_crossing) reads sign-flipped
 momenta with helicities flipped by rho; a call of the switch shares one crossing.
+With rusticol.flavour-union-relabelling.v2 a call spans template sides: it is
+keyed by the all-outgoing flavour per event slot (``SWITCH_CROSS_SIDE``).
 Pure-QCD orderings read the summed leading colour of one member of their
 charge-conjugate class (``SWITCH_C_DEDUP``); the targets keep their own.
 Full-colour targets are the members' own processes of the target artifact, or
@@ -37,6 +39,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .._internal.versions import (
+    FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY,
+    FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY,
+)
 from ..generation.process_grouping import ProcessGroupMap
 from .umami_c import _power, helicity_export
 from .umami_reweight_data import (
@@ -71,6 +77,26 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9_]+")
 # Pure-QCD switch totals share one evaluation per charge-conjugate class (False:
 # one per flavour, for A/B comparisons).
 SWITCH_C_DEDUP = os.environ.get("PYAMPLICOL_SWITCH_C_DEDUP", "1") != "0"
+# Switch calls of a template merge across sides by all-outgoing flavour when the
+# core relabels across sides (False: per template side, for A/B comparisons).
+SWITCH_CROSS_SIDE = os.environ.get("PYAMPLICOL_SWITCH_CROSS_SIDE", "1") != "0"
+
+
+def runtime_capabilities() -> frozenset[str]:
+    """The runtime capabilities of the native core the providers link: the
+    extension's query when it has one, else those of this build's core (the
+    extension and the C SDK come from one build)."""
+    try:
+        from .. import _rusticol
+    except ImportError:
+        _rusticol = None
+    query = getattr(_rusticol, "supported_runtime_capabilities", None)
+    if query is not None:
+        return frozenset(query())
+    return frozenset({
+        FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY,
+        FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY,
+    })
 
 
 def _identifier(value: object) -> str:
@@ -403,71 +429,102 @@ class SwitchTargetTable:
         return self.pdgs[index * self.width:(index + 1) * self.width].tolist()
 
 
+def _sides_crossed(legs: Sequence[int], incoming: int) -> tuple[bool, ...]:
+    # template slot r reads an event slot of the other side
+    return tuple((r < incoming) != (slot < incoming) for r, slot in enumerate(legs))
+
+
 def _switch_calls(
     described: Sequence[tuple],
     indices: Iterable[int],
     call_key: Callable[[int], tuple],
     pattern_tables: Mapping[int, tuple],
     member_ids: Mapping[tuple[int, int], tuple[str, tuple]],
+    incoming: int = 2,
+    conjugated: Mapping[tuple[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     """The native calls of the switch evaluations ``indices``. One call per
     (runtime, legs): the assignments of a template share it. With a pattern
-    table, one per (template, leg types): an evaluation at legs l is its
-    assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c (those of its
-    first evaluation)."""
-    calls: dict[tuple, dict[str, Any]] = {}
-    entry_of: dict[tuple, int] = {}
+    table, one per ``call_key`` (template and leg flavours): an evaluation at legs
+    l is its assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c,
+    those of its first evaluation (the legs source: the C code gathers the
+    momenta and crossing signs there), uncrossed when the call has one."""
+    groups: dict[tuple, list[int]] = {}
     for index in indices:
-        rep, assignment, legs, _, _ = described[index]
+        groups.setdefault(call_key(index), []).append(index)
+    calls = []
+    for key, members in groups.items():
+        source = next((i for i in members if described[i][4] is None), members[0])
+        rep, assignment, legs, _, rho = described[source]
         table = pattern_tables.get(rep) if assignment >= 0 else None
-        key = call_key(index)
-        call = calls.setdefault(
-            key,
-            {
-                "process": rep,
-                "legs": list(legs),
-                "evaluations": [],
-                "assignments": [] if assignment >= 0 else None,
-                "permutations": [] if table is not None else None,
-                "entries": [],
-            },
-        )
-        call["evaluations"].append(index)
-        if assignment < 0:
-            call["entries"].append(0)
-            continue
-        if table is None:
-            call["entries"].append(len(call["assignments"]))
-            call["assignments"].append(assignment)
-            continue
-        inverse = {slot: r for r, slot in enumerate(call["legs"])}
-        permutation = tuple(inverse[slot] for slot in legs)
-        patterns, signs, numerator, denominator = member_ids[(rep, assignment)][1]
-        if patterns == ("template",):
-            derived: tuple = patterns
-        else:
-            pairs, lookup = table
-            moved = [
-                tuple(sorted((permutation[f], permutation[a]) for f, a in pairs[p]))
-                for p in patterns
-            ]
-            derived = tuple(sorted(
-                (lookup[pattern], sign)
-                for pattern, sign in zip(moved, signs, strict=True)
-            ))
-        entry = entry_of.setdefault(
-            (key, derived, numerator, denominator), len(call["assignments"])
-        )
-        if entry == len(call["assignments"]):
-            call["assignments"].append(assignment)
-            call["permutations"].append(list(permutation))
-        call["entries"].append(entry)
-    for call in calls.values():
+        call: dict[str, Any] = {
+            "process": rep,
+            "legs": list(legs),
+            "evaluations": [],
+            "assignments": [] if assignment >= 0 else None,
+            "permutations": [] if table is not None else None,
+            "entries": [],
+        }
+        calls.append(call)
+        # relabelled requests take the source's crossing (sigma' = sigma_c), which
+        # the core refuses for a conjugated base
+        crossed = rho is not None
+        entry_of: dict[tuple, int] = {}
+        inverse = {slot: r for r, slot in enumerate(legs)}
+        sigma_c = _sides_crossed(legs, incoming)
+        for index in [source, *(i for i in members if i != source)]:
+            rep_i, assignment, legs_i, _, _ = described[index]
+            if rep_i != rep or (assignment < 0) != (call["assignments"] is None):
+                raise AssertionError(f"switch call {key!r} mixes runtimes")
+            if crossed and conjugated and conjugated.get((rep, assignment), False):
+                raise AssertionError(
+                    f"switch call {key!r} crosses conjugated assignment {assignment}"
+                )
+            call["evaluations"].append(index)
+            if assignment < 0:
+                call["entries"].append(0)
+                continue
+            if table is None:
+                call["entries"].append(len(call["assignments"]))
+                call["assignments"].append(assignment)
+                continue
+            permutation = tuple(inverse[slot] for slot in legs_i)
+            # the crossing of the relabelled id: sigma_e flipped where r moves
+            sigma_e = _sides_crossed(legs_i, incoming)
+            if any(
+                (sigma_e[r] ^ ((r < incoming) != (p < incoming))) != sigma_c[p]
+                for r, p in enumerate(permutation)
+            ):
+                raise AssertionError(f"switch call {key!r} changes a crossing")
+            patterns, signs, numerator, denominator = member_ids[(rep, assignment)][1]
+            if patterns == ("template",):
+                derived: tuple = patterns
+            else:
+                pairs, lookup = table
+                moved = [
+                    tuple(sorted((permutation[f], permutation[a]) for f, a in pairs[p]))
+                    for p in patterns
+                ]
+                derived = tuple(sorted(
+                    (lookup[pattern], sign)
+                    for pattern, sign in zip(moved, signs, strict=True)
+                ))
+            entry = entry_of.setdefault(
+                (derived, numerator, denominator), len(call["assignments"])
+            )
+            if entry == len(call["assignments"]):
+                call["assignments"].append(assignment)
+                call["permutations"].append(list(permutation))
+            call["entries"].append(entry)
+        if call["evaluations"][0] != source or call["legs"] != list(
+            described[call["evaluations"][0]][2]
+        ):
+            raise AssertionError(f"switch call {key!r} has another legs source")
         # identity relabellings need no runtime call
         permutations = call["permutations"]
         if permutations is not None and all(p == sorted(p) for p in permutations):
             call["permutations"] = None
-    return list(calls.values())
+    return calls
 
 
 def switch_catalogue(
@@ -493,6 +550,8 @@ def switch_catalogue(
     # per (runtime, assignment): its process id and its value class (equal
     # patterns, signs and factor give equal values, so they share evaluations)
     member_ids: dict[tuple[int, int], tuple[str, tuple]] = {}
+    # per (runtime, assignment): whether the member is conjugated (never crossed)
+    conjugated_of: dict[tuple[int, int], bool] = {}
     # per template runtime: its pattern table (endpoint pairs per pattern) and lookup
     pattern_tables: dict[int, tuple[list[list[tuple[int, int]]], dict[tuple, int]]] = {}
     if groups is None:
@@ -543,6 +602,7 @@ def switch_catalogue(
                         factor["denominator"],
                     )
                     member_ids[(rep, assignment)] = (member["process_id"], value_class)
+                    conjugated_of[(rep, assignment)] = bool(member["conjugated"])
     # LHE colour tags of every flow of a runtime process, in its legs
     flows: dict[int, dict[str, int]] = {index: {} for index in by_id.values()}
     for channel in reference["channels"]:
@@ -744,14 +804,25 @@ def switch_catalogue(
                 append_weight(weight)
                 append_target(target)
                 append_arrangement(arrangement)
+    cross_side = SWITCH_CROSS_SIDE and (
+        FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY
+        in runtime_capabilities()
+    )
+
     def call_key(index: int) -> tuple:
         rep, assignment, legs, _, _ = described[index]
         if assignment < 0:
             return (rep, legs, index)
         if pattern_tables.get(rep) is None:
             return (rep, legs)
-        # template particle and side per event slot: relabellings keep both
         types = [0] * len(legs)
+        if cross_side:
+            # all-outgoing template flavour per event slot, kept across sides
+            for r, slot in enumerate(legs):
+                pdg = processes[rep]["pdgs"][r]
+                types[slot] = _conjugate(pdg) if r < incoming else pdg
+            return (rep, tuple(types))
+        # template particle and side per event slot: same-side relabellings keep both
         sides = [False] * len(legs)
         for r, slot in enumerate(legs):
             types[slot] = processes[rep]["pdgs"][r]
@@ -759,7 +830,7 @@ def switch_catalogue(
         return (rep, tuple(types), tuple(sides))
 
     calls = _switch_calls(described, range(len(described)), call_key, pattern_tables,
-                          member_ids)
+                          member_ids, incoming, conjugated_of)
     pure = [_pure_qcd(processes[e[0]]) for e in described] if SWITCH_C_DEDUP else []
     if any(pure):
         call_of = [0] * len(described)
@@ -782,7 +853,7 @@ def switch_catalogue(
             )
             calls = _switch_calls(
                 described, sorted(set(order_columns.evaluation)), call_key,
-                pattern_tables, member_ids,
+                pattern_tables, member_ids, incoming, conjugated_of,
             )
     targets = SwitchTargetTable(
         target_evaluation, target_color_set, color_sets, target_pdgs, n

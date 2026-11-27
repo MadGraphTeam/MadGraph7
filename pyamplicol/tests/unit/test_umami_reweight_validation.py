@@ -514,3 +514,93 @@ def test_charge_conjugate_totals_cross_arrangements_without_a_width(
         assert read in (own, _conjugate(own))
         crossing += before["arrangement"] not in arrangements[after["evaluation"]]
     assert crossing
+
+
+def _union_calls(described, conjugated=None):
+    from pyamplicol.artifacts.umami_reweight import _switch_calls
+
+    # one template-class value per assignment (distinct factors: distinct entries)
+    member_ids = {
+        (0, a): (f"m{a}", (("template",), (), a, 1)) for _, a, *_ in described
+    }
+    tables = {0: ([[(1, 0)]], {((1, 0),): 0})}
+    return _switch_calls(
+        described, range(len(described)), lambda _: ("key",), tables, member_ids, 2,
+        conjugated,
+    )
+
+
+def test_switch_calls_take_an_uncrossed_legs_source():
+    # template u u~ > g g: assignment 1 crosses slots 1 and 2, assignment 2 does not
+    crossed = (0, 1, (0, 2, 1, 3), "m1", (1, -1, 1, 1))
+    plain = (0, 2, (0, 1, 2, 3), "m2", None)
+    (call,) = _union_calls([crossed, plain])
+    # the C code gathers legs and signs at evaluations[0]: the uncrossed one
+    assert call["evaluations"] == [1, 0]
+    assert call["legs"] == [0, 1, 2, 3]
+    assert call["assignments"] == [2, 1] and call["entries"] == [0, 1]
+    # the crossed request moves slots 1 and 2 across sides onto the call's crossing
+    assert call["permutations"] == [[0, 1, 2, 3], [0, 2, 1, 3]]
+    # all crossed: the first one is the source
+    other = (0, 3, (2, 0, 1, 3), "m3", (-1, 1, 1, 1))
+    (call,) = _union_calls([crossed, other])
+    assert call["evaluations"] == [0, 1] and call["legs"] == [0, 2, 1, 3]
+
+
+def test_switch_calls_never_cross_a_conjugated_assignment():
+    crossed = (0, 1, (0, 2, 1, 3), "m1", (1, -1, 1, 1))
+    other = (0, 2, (2, 0, 1, 3), "m2", (-1, 1, 1, 1))
+    _union_calls([crossed, other], {(0, 1): False, (0, 2): False})
+    with pytest.raises(AssertionError, match="conjugated assignment 2"):
+        _union_calls([crossed, other], {(0, 1): False, (0, 2): True})
+    # an uncrossed source keeps a conjugated request uncrossed
+    plain = (0, 3, (0, 1, 2, 3), "m3", None)
+    (call,) = _union_calls([crossed, plain], {(0, 1): False, (0, 3): True})
+    assert call["evaluations"][0] == 1
+
+
+def _cross_side_union():
+    # template d d~ > d d~; s~ c~ > s~ c~ crosses slots 0 and 2 (s line on (1, 0))
+    member = _record(
+        "s~_c~_to_s~_c~", [-3, -4, -3, -4], [2, 0, 1, 3], (-1, 1, -1, 1), (-1, 1, -1, 1)
+    )
+    groups = {"groups": [{
+        "representative": {"process_id": "r0"},
+        "flavour_union_pattern_pairs": [[[1, 0], [2, 3]], [[1, 3], [2, 0]]],
+        "members": [_record("r0", [1, -1, 1, -1], [0, 1, 2, 3]), member],
+    }]}
+    groups["groups"][0]["members"][0]["flavour_union_patterns"] = [0, 1]
+    groups["groups"][0]["members"][0]["flavour_union_pattern_signs"] = [1, 1]
+    reference = _switch_reference(([1, -1, 1, -1], [-3, -4, -3, -4]), [0.0] * 4)
+    reference["runtime_processes"] = reference["runtime_processes"][:1]
+    return reference, groups
+
+
+@pytest.mark.parametrize("supported", [True, False])
+def test_switch_calls_span_template_sides_with_cross_side_relabelling(
+    monkeypatch, supported
+):
+    import pyamplicol.artifacts.umami_reweight as module
+
+    reference, groups = _cross_side_union()
+    if not supported:
+        # an older core: same-side relabellings only (template-side call key)
+        monkeypatch.setattr(module, "runtime_capabilities", lambda: frozenset())
+    catalogue = switch_catalogue(reference, groups, 1)
+    monkeypatch.setattr(module, "SWITCH_CROSS_SIDE", False)
+    old = switch_catalogue(reference, groups, 1)
+    assert catalogue["evaluations"] == old["evaluations"]
+    assert catalogue["ordering_table"] == old["ordering_table"]
+    moves = [
+        p for call in catalogue["calls"] for p in call["permutations"] or ()
+        if any((r < 2) != (image < 2) for r, image in enumerate(p))
+    ]
+    if not supported:
+        assert catalogue["calls"] == old["calls"] and not moves
+        return
+    # the two final orders of s~ c~ share a call: d in <-> d~ out (slots 0 and 3)
+    assert len(catalogue["calls"]) < len(old["calls"])
+    assert [3, 1, 2, 0] in moves
+    for call in catalogue["calls"]:
+        first = catalogue["evaluations"][call["evaluations"][0]]
+        assert call["legs"] == first["legs"]

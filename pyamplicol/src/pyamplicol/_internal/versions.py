@@ -82,6 +82,10 @@ FLAVOUR_UNION_ASSIGNMENTS_RUNTIME_CAPABILITY = "rusticol.flavour-union-assignmen
 FLAVOUR_UNION_CROSSING_RUNTIME_CAPABILITY = "rusticol.flavour-union-assignments.v2"
 # Runtime feature: Runtime.relabel_assignment and flavour-union pattern tables.
 FLAVOUR_UNION_RELABELLING_RUNTIME_CAPABILITY = "rusticol.flavour-union-relabelling.v1"
+# Runtime feature: relabellings across sides with the same all-outgoing flavour.
+FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY = (
+    "rusticol.flavour-union-relabelling.v2"
+)
 # Runtime feature: flavour-union templates of contracted (full) colour.
 FLAVOUR_UNION_CONTRACTED_RUNTIME_CAPABILITY = "rusticol.flavour-union-contracted-colour.v1"
 COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY = "compiled-plane-arena-v1"

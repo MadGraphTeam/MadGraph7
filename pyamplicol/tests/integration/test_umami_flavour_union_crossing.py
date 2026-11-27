@@ -249,6 +249,65 @@ def test_crossed_metadata_has_momentum_signs_and_keeps_templates_together(built)
         )
 
 
+def test_cross_side_switch_requests_equal_their_evaluations(built):
+    """With rusticol.flavour-union-relabelling.v2 a switch call spans template
+    sides (all-outgoing call key): a request moved across sides, relabelled at
+    the call's gather, equals its evaluation at its own legs."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts.umami_reweight import switch_catalogue
+
+    artifact = built["artifacts"]["crossing"]
+    groups = json.loads((artifact / "process-groups.json").read_text())
+    (data, _), *_ = built["umami"]["crossing"]
+    catalogue = switch_catalogue(data, groups, 2)
+    points = _member_points(_SETS[built["name"]])
+
+    def gather(point, evaluation):
+        signs = evaluation.get("signs") or [1] * len(evaluation["legs"])
+        return tuple(
+            tuple(s * v for v in point[slot])
+            for s, slot in zip(signs, evaluation["legs"], strict=True)
+        )
+
+    moved = 0
+    for call in catalogue["calls"]:
+        permutations = call["permutations"] or ()
+        crossing = [
+            e for e, p in enumerate(permutations)
+            if any((r < 2) != (image < 2) for r, image in enumerate(p))
+        ]
+        if not crossing:
+            continue
+        process = data["runtime_processes"][call["process"]]
+        runtime = Runtime.load(artifact, process=process["id"])
+        first = catalogue["evaluations"][call["evaluations"][0]]
+        ids = {
+            e: runtime.relabel_assignment(call["assignments"][e], permutations[e])
+            for e in crossing
+        }
+        records = runtime.flavour_union_assignments
+        signs = first.get("signs") or [1] * len(process["pdgs"])
+        assert all(records[i]["momentum_signs"] == signs for i in ids.values())
+        values = runtime.evaluate_assignments(
+            [gather(p, first) for p in points], [list(ids.values())] * len(points)
+        )
+        for evaluation, entry in zip(call["evaluations"], call["entries"], strict=True):
+            if entry not in ids:
+                continue
+            own = catalogue["evaluations"][evaluation]
+            expected = runtime.evaluate_assignments(
+                [gather(p, own) for p in points], [[own["assignment"]]] * len(points)
+            )
+            column = list(ids).index(entry)
+            # cross-side relabelling: roundoff up to ~3.5e-10 on rare points (R1)
+            assert [row[column] for row in values] == pytest.approx(
+                [row[0] for row in expected], rel=1e-9
+            )
+            moved += 1
+    assert moved or built["name"] == "pp2j"
+
+
 def _helicity_index(data):
     return {tuple(vector): label for label, vector in enumerate(data["helicities"])}
 
