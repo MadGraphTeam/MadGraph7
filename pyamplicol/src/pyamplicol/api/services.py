@@ -729,6 +729,7 @@ class Runtime:
         *,
         color_flows: Sequence[str | ColorFlow] | None = None,
         reference_momenta: Momenta | None = None,
+        crossed_member: str | None = None,
     ) -> dict[str, object]:
         """Export this process's prepared LC recurrence without evaluating it.
 
@@ -739,6 +740,10 @@ class Runtime:
         Supplying ``reference_momenta`` also evaluates the batched f64 path and
         attaches its per-helicity values and caller-order momenta to every
         program. The default export does not execute any phase-space points.
+        ``crossed_member`` names a crossed flavour-union member of this loaded
+        template (such members cannot be loaded): its programs are the template's
+        with the member's identity, crossing, helicity labels, flows, pattern
+        signs and factor; colour flows and reference momenta are the member's.
         """
 
         if self._virtual:
@@ -753,10 +758,13 @@ class Runtime:
             raise CompatibilityError(
                 "runtime backend does not support recurrence export"
             )
-        result = operation(
-            color_flows=_selector_ids(
-                color_flows, expected_type=ColorFlow, name="color-flow"
-            )
+        selected = _selector_ids(
+            color_flows, expected_type=ColorFlow, name="color-flow"
+        )
+        result = (
+            operation(color_flows=selected)
+            if crossed_member is None
+            else operation(color_flows=selected, crossed_member=crossed_member)
         )
         if not isinstance(result, Mapping):
             raise EvaluationError("runtime backend returned invalid recurrence export")
@@ -764,7 +772,9 @@ class Runtime:
         if reference_momenta is not None:
             from .recurrence_export import attach_reference_points
 
-            export = attach_reference_points(export, self, reference_momenta)
+            export = attach_reference_points(
+                export, self, reference_momenta, crossed_member=crossed_member
+            )
         return export
 
     def save(self, path: os.PathLike[str] | str) -> None:

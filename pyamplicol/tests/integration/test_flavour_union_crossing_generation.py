@@ -232,3 +232,102 @@ def test_every_crossed_member_has_a_full_colour_target_route(
             assert len(process["pdgs"]) == len(member.pdgs)
             routed += 1
     assert routed > 0
+
+
+def test_crossed_members_export_as_template_references(
+    artifacts: tuple[str, dict[str, Path]], tmp_path: Path
+) -> None:
+    """The CLI exports each crossed member as a reference to its template's program
+    (v2, sigma crossing, rho helicity labels, own flows, signs and factor); its
+    reference values equal the member's own separately generated program."""
+    from pyamplicol.cli.recurrence_export import parse_export_recurrence
+
+    name, paths = artifacts
+    kept = os.environ.get("PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS")
+    if kept and name == "pp2j":
+        # CI's Rust parity test interprets the crossed exports bit for bit as well.
+        destination = Path(kept) / "flavour-union-crossing"
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(paths["crossing"], destination)
+    crossed = [
+        (template_id, member)
+        for template_id, _, members in _crossed_groups(paths["crossing"])
+        for member in members
+    ]
+    points = {
+        member.process_id: _member_points(member.expression) for _, member in crossed
+    }
+    references = tmp_path / "points.json"
+    references.write_text(json.dumps(points), encoding="utf-8")
+    output = tmp_path / "export.json"
+    parse_export_recurrence(
+        [
+            str(paths["crossing"]),
+            "-o",
+            str(output),
+            "--process",
+            crossed[0][1].process_id,
+            "--reference-points",
+            str(references),
+        ]
+        + [
+            option
+            for _, member in crossed[1:]
+            for option in ("--process", member.process_id)
+        ]
+    ).run()
+    combined = json.loads(output.read_text(encoding="utf-8"))
+    assert combined["schema_version"] == 3
+    assert combined["execution_semantics"] == "rusticol-batched-f64-v2"
+    full = {
+        (entry["process_key"], entry["colour_id"]): entry
+        for entry in combined["programs"]
+        if "program_reference" not in entry
+    }
+    entries = [entry for entry in combined["programs"] if "program_reference" in entry]
+    checked = 0
+    for template_id, member in crossed:
+        template = Runtime.load(paths["crossing"], process=template_id)
+        own = [entry for entry in entries if entry["process_key"] == member.process_id]
+        assert len(own) == len(template.physics.color_flows)
+        perm, sigma = list(member.permutation), list(member.crossing_momentum_signs)
+        reference = Runtime.load(paths["reference"], process=member.expression)
+        member_helicity = {h.id: i for i, h in enumerate(reference.physics.helicities)}
+        member_flows = {
+            _strings(flow.word, member.expression): i
+            for i, flow in enumerate(reference.physics.color_flows)
+        }
+        resolved = reference.evaluate_resolved(points[member.process_id])
+        for entry in own:
+            target = entry["program_reference"]
+            assert target["process_key"] == template_id
+            program = full[(target["process_key"], target["colour_id"])]
+            assert entry["crossing"] == [
+                {"program_leg": r, "caller_leg": leg, "sign": float(s)}
+                for r, (leg, s) in enumerate(zip(perm, sigma, strict=True))
+            ]
+            assert [leg["pdg"] for leg in entry["caller_legs"]] == list(member.pdgs)
+            assert entry["group_factor"] == {
+                "numerator": member.factor.numerator,
+                "denominator": member.factor.denominator,
+            }
+            signs = [0] * len(program["pattern_signs"])
+            for pattern, sign in zip(
+                member.patterns or (), member.pattern_signs or (), strict=True
+            ):
+                signs[pattern] = sign
+            assert entry["pattern_signs"] == signs
+            # template helicity order; ids are the member's own labels
+            assert len(entry["helicity_outputs"]) == len(program["helicity_outputs"])
+            columns = [member_helicity[h["id"]] for h in entry["helicity_outputs"]]
+            word = [int(label) for label in entry["colour_id"][5:].split(",")]
+            flow = member_flows[_strings(word, member.expression)]
+            values = entry["reference_values"]["values"]
+            for point, row in enumerate(values):
+                line = resolved.values[point]
+                scale = max(abs(complex(v).real) for col in line for v in col)
+                for k, value in enumerate(row):
+                    expected = complex(line[columns[k]][flow]).real
+                    _close(value, expected, scale, (member.expression, point, k))
+            checked += 1
+    assert checked > 0

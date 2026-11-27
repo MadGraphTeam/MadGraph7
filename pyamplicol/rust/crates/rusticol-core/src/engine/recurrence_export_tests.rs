@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: 0BSD
 
+use super::recurrence_export::{EXECUTION_SEMANTICS, UNCROSSED_EXECUTION_SEMANTICS};
 use super::*;
 use crate::direct_arena::{
     DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
@@ -839,6 +840,47 @@ fn scalar_source(
     }
 }
 
+/// v1 unless a Weyl source sees an energy sign disagreeing with its helicity.
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn recurrence_export_declares_v2_only_for_crossed_weyl_sources() {
+    use super::recurrence_export::required_execution_semantics;
+    let mut source = scalar_source(0, ExportComplex::ONE);
+    source.family = "weyl".into();
+    source.helicity = -1;
+    source.chirality = 1;
+    let mut program = arithmetic_program(vec![], vec![source]);
+    // Incoming-like form (-p): sgn(E) = -1 agrees with helicity = -chirality.
+    program.momentum_forms[0][0].coefficient = -1.0;
+    assert_eq!(
+        required_execution_semantics(std::slice::from_ref(&program)),
+        UNCROSSED_EXECUTION_SEMANTICS
+    );
+    program.crossing = Some(vec![RecurrenceExportCrossing {
+        program_leg: 0,
+        caller_leg: 0,
+        sign: -1.0,
+    }]);
+    assert_eq!(
+        required_execution_semantics(std::slice::from_ref(&program)),
+        EXECUTION_SEMANTICS
+    );
+    // Scalars never need v2; a multi-term Weyl form is not provably v1.
+    program.runs[0].sources[0].family = "scalar".into();
+    assert_eq!(
+        required_execution_semantics(std::slice::from_ref(&program)),
+        UNCROSSED_EXECUTION_SEMANTICS
+    );
+    program.runs[0].sources[0].family = "weyl".into();
+    program.crossing = None;
+    let term = program.momentum_forms[0][0].clone();
+    program.momentum_forms[0].push(term);
+    assert_eq!(
+        required_execution_semantics(std::slice::from_ref(&program)),
+        EXECUTION_SEMANTICS
+    );
+}
+
 #[cfg(feature = "f64-symjit")]
 fn scalar_closure(left: u32, right: u32) -> DirectExportInstruction {
     DirectExportInstruction::Closure {
@@ -1501,11 +1543,81 @@ fn check_every_exported_process(root: &Path) {
         ids
     };
     assert!(!process_ids.is_empty());
+    // Union members (template id, crossed); crossed ones load only as assignments.
+    let mut union_members = BTreeMap::<String, (String, bool)>::new();
+    {
+        let artifact = VerifiedArtifact::open(root).unwrap();
+        if let Some(payload) = artifact
+            .manifest()
+            .payloads
+            .iter()
+            .find(|payload| payload.role == PayloadRole::ProcessGroups)
+        {
+            let groups: Value =
+                serde_json::from_slice(&artifact.read_payload(&payload.path).unwrap()).unwrap();
+            for group in groups["groups"].as_array().unwrap() {
+                let template = group["representative"]["process_id"].as_str().unwrap();
+                for member in group["members"].as_array().unwrap() {
+                    if member["flavour_union_patterns"].is_array() {
+                        union_members.insert(
+                            member["process_id"].as_str().unwrap().to_owned(),
+                            (
+                                template.to_owned(),
+                                member["crossing_momentum_signs"].is_array(),
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+    }
     let points = 5;
     let mut tested_programs = 0;
     let mut tested_values = 0;
+    let mut tested_assignments = 0;
+    let mut crossed_programs = 0;
     let mut representatives = BTreeMap::<String, RecurrenceExport>::new();
+    let mut templates = BTreeMap::<String, NativeRuntime>::new();
     for process_id in process_ids {
+        if let Some((template, true)) = union_members.get(&process_id) {
+            let template = templates
+                .entry(template.clone())
+                .or_insert_with(|| NativeRuntime::load(root, Some(template), None).unwrap());
+            let export = template
+                .export_recurrence_crossed_member(&process_id, None)
+                .unwrap();
+            assert_eq!(export.schema_version, 3);
+            assert_eq!(export.execution_semantics, EXECUTION_SEMANTICS);
+            // A member-physical point: member leg i takes template slot i's momentum.
+            let base = super::recurrence_integration_tests::generated_recurrence_validation_point(
+                template,
+            );
+            let momenta = scaled_points(&base, points);
+            for program in &export.programs {
+                let actual = check_against_assignments(
+                    template,
+                    &process_id,
+                    program,
+                    &export,
+                    &momenta,
+                    points,
+                );
+                // The reference contract: the template's own program, member fields overlaid.
+                let referenced = overlay_reference(root, &mut representatives, program);
+                let overlaid = interpret_recurrence_export(
+                    &referenced,
+                    &representatives[&program.representative_process_key].kernels,
+                    &momenta,
+                    points,
+                );
+                assert_export_values(&referenced, &overlaid, &actual);
+                tested_programs += 1;
+                crossed_programs += 1;
+                tested_assignments += 1;
+                tested_values += actual.len();
+            }
+            continue;
+        }
         let mut runtime = NativeRuntime::load(root, Some(&process_id), None).unwrap();
         let export = runtime.export_recurrence(None).unwrap();
         assert_eq!(
@@ -1516,6 +1628,8 @@ fn check_every_exported_process(root: &Path) {
                 2
             }
         );
+        // No Weyl source of a loadable process sees a crossed energy sign.
+        assert_eq!(export.execution_semantics, UNCROSSED_EXECUTION_SEMANTICS);
         let base =
             super::recurrence_integration_tests::generated_recurrence_validation_point(&runtime);
         let mut caller = base.clone();
@@ -1548,39 +1662,29 @@ fn check_every_exported_process(root: &Path) {
             let actual = interpret_recurrence_export(program, &export.kernels, &momenta, points);
             assert_eq!(expected.color_ids.len(), 1);
             assert_export_values(program, &actual, &expected.values);
+            // Same-side union members: also bitwise against the template's assignment API.
+            if let Some((template, false)) = union_members.get(&process_id) {
+                let template = templates
+                    .entry(template.clone())
+                    .or_insert_with(|| NativeRuntime::load(root, Some(template), None).unwrap());
+                check_against_assignments(
+                    template,
+                    &process_id,
+                    program,
+                    &export,
+                    &momenta,
+                    points,
+                );
+                tested_assignments += 1;
+            }
             // Validate the CLI member-reference contract independently: take
             // executable data exclusively from the named representative and
             // overlay exactly the metadata fields emitted by the CLI.
             if program.process_key != program.representative_process_key {
-                if !representatives.contains_key(&program.representative_process_key) {
-                    let mut representative =
-                        NativeRuntime::load(root, Some(&program.representative_process_key), None)
-                            .unwrap();
-                    representatives.insert(
-                        program.representative_process_key.clone(),
-                        representative.export_recurrence(None).unwrap(),
-                    );
-                }
-                let representative = &representatives[&program.representative_process_key];
-                let mut referenced = representative
-                    .programs
-                    .iter()
-                    .find(|candidate| candidate.colour_id == program.representative_colour_id)
-                    .expect("member names an existing representative colour")
-                    .clone();
-                referenced.process_key = program.process_key.clone();
-                referenced.process = program.process.clone();
-                referenced.colour_id = program.colour_id.clone();
-                referenced.representative_process_key = program.representative_process_key.clone();
-                referenced.representative_colour_id = program.representative_colour_id.clone();
-                referenced.caller_legs = program.caller_legs.clone();
-                referenced.crossing = program.crossing.clone();
-                referenced.group_factor = program.group_factor;
-                referenced.helicity_outputs = program.helicity_outputs.clone();
-                referenced.pattern_signs = program.pattern_signs.clone();
+                let referenced = overlay_reference(root, &mut representatives, program);
                 let actual = interpret_recurrence_export(
                     &referenced,
-                    &representative.kernels,
+                    &representatives[&program.representative_process_key].kernels,
                     &momenta,
                     points,
                 );
@@ -1596,7 +1700,117 @@ fn check_every_exported_process(root: &Path) {
         root.display()
     );
     eprintln!(
-        "recurrence export parity for {}: {tested_programs} programs, {tested_values} per-helicity values, including all requested provider members",
+        "recurrence export parity for {}: {tested_programs} programs ({crossed_programs} of crossed members), {tested_values} per-helicity values, {tested_assignments} programs against the assignment API, including all requested provider members",
         root.display()
     );
+}
+
+/// `points` copies of `base`, the p-th scaled by 1 + 0.17 p, `[point][leg][component]`.
+#[cfg(feature = "f64-symjit")]
+fn scaled_points(base: &[[f64; 4]], points: usize) -> Vec<f64> {
+    (0..points)
+        .flat_map(|point| {
+            base.iter().flat_map(move |leg| {
+                leg.iter()
+                    .map(move |value| value * (1.0 + point as f64 * 0.17))
+            })
+        })
+        .collect()
+}
+
+/// Interpret a member's program at caller momenta and require the template's
+/// `evaluate_assignments` at `q[program_leg] = sign * p[caller_leg]` bit for bit.
+#[cfg(feature = "f64-symjit")]
+fn check_against_assignments(
+    template: &mut NativeRuntime,
+    member: &str,
+    program: &RecurrenceExportProgram,
+    export: &RecurrenceExport,
+    caller: &[f64],
+    points: usize,
+) -> Vec<f64> {
+    let count = program.external_count;
+    let assignment = template
+        .flavour_union_assignments()
+        .unwrap()
+        .iter()
+        .position(|entry| entry.relabelled.is_none() && entry.process_id == member)
+        .expect("member is an assignment of its template");
+    let mut momenta = caller.to_vec();
+    if let Some(crossing) = &program.crossing {
+        for point in 0..points {
+            for entry in crossing {
+                for component in 0..4 {
+                    momenta[(point * count + entry.program_leg) * 4 + component] =
+                        entry.sign * caller[(point * count + entry.caller_leg) * 4 + component];
+                }
+            }
+        }
+    }
+    let physics = template.process_physics().unwrap().clone();
+    let helicities = physics.helicities.len();
+    let colours = physics.color_components.len();
+    let colour = physics
+        .color_components
+        .iter()
+        .position(|colour| colour.id() == program.representative_colour_id)
+        .expect("member names a template colour");
+    let mut rows = vec![0.0; points * helicities * colours];
+    template
+        .evaluate_assignments_f64_into(
+            &momenta,
+            points,
+            &(0..=points).collect::<Vec<_>>(),
+            &vec![assignment as u32; points],
+            None,
+            None,
+            AssignmentOutputMode::PerHelicityFlow,
+            &mut rows,
+        )
+        .unwrap();
+    assert_eq!(program.helicity_outputs.len(), helicities);
+    let expected = (0..points)
+        .flat_map(|point| {
+            let rows = &rows;
+            (0..helicities)
+                .map(move |helicity| rows[(point * helicities + helicity) * colours + colour])
+        })
+        .collect::<Vec<_>>();
+    let actual = interpret_recurrence_export(program, &export.kernels, caller, points);
+    assert_export_values(program, &actual, &expected);
+    actual
+}
+
+/// The named representative program with exactly the CLI's member fields overlaid.
+#[cfg(feature = "f64-symjit")]
+fn overlay_reference(
+    root: &Path,
+    representatives: &mut BTreeMap<String, RecurrenceExport>,
+    program: &RecurrenceExportProgram,
+) -> RecurrenceExportProgram {
+    if !representatives.contains_key(&program.representative_process_key) {
+        let mut representative =
+            NativeRuntime::load(root, Some(&program.representative_process_key), None).unwrap();
+        representatives.insert(
+            program.representative_process_key.clone(),
+            representative.export_recurrence(None).unwrap(),
+        );
+    }
+    let mut referenced = representatives[&program.representative_process_key]
+        .programs
+        .iter()
+        .find(|candidate| candidate.colour_id == program.representative_colour_id)
+        .expect("member names an existing representative colour")
+        .clone();
+    referenced.process_key = program.process_key.clone();
+    referenced.process = program.process.clone();
+    referenced.colour_id = program.colour_id.clone();
+    referenced.representative_process_key = program.representative_process_key.clone();
+    referenced.representative_colour_id = program.representative_colour_id.clone();
+    referenced.caller_legs = program.caller_legs.clone();
+    referenced.crossing = program.crossing.clone();
+    referenced.group_factor = program.group_factor;
+    referenced.helicity_outputs = program.helicity_outputs.clone();
+    referenced.pattern_signs = program.pattern_signs.clone();
+    referenced
 }

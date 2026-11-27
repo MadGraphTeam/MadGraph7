@@ -954,7 +954,7 @@ pub(super) fn charge_conjugate_color_id(id: &str) -> Cow<'_, str> {
     }
 }
 
-fn canonical_helicity_id(values: &[i32]) -> String {
+pub(super) fn canonical_helicity_id(values: &[i32]) -> String {
     format!(
         "h:{}",
         values
@@ -965,7 +965,7 @@ fn canonical_helicity_id(values: &[i32]) -> String {
     )
 }
 
-fn canonical_color_id(word: &[usize]) -> String {
+pub(super) fn canonical_color_id(word: &[usize]) -> String {
     if word.is_empty() {
         return "flow:singlet".to_string();
     }

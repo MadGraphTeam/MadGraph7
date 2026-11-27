@@ -2480,7 +2480,8 @@ def test_lc_recurrence_export_is_resolved_complete_and_static(
     runtime = Runtime.load(artifact)
     capture = runtime.export_recurrence()
     assert capture["schema_version"] == 2
-    assert capture["execution_semantics"] == "rusticol-batched-f64-v2"
+    # No crossed Weyl slot: v1, which v2 reproduces on every state it reaches.
+    assert capture["execution_semantics"] == "rusticol-batched-f64-v1"
     assert capture["artifact_id"] == load_manifest(artifact).artifact_id
     # JSON rejects non-finite values; the remaining arithmetic fields must be
     # literal numbers, including parameters and source masses, not expressions.

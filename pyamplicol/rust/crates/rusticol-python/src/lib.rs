@@ -613,6 +613,25 @@ impl Runtime {
         .map_err(python_error)
     }
 
+    /// Export a crossed flavour-union member of this loaded template.
+    #[pyo3(signature=(member, color_flows=None))]
+    fn export_recurrence_crossed_member_json(
+        &mut self,
+        py: Python<'_>,
+        member: String,
+        color_flows: Option<Vec<String>>,
+    ) -> PyResult<String> {
+        let _unlock = pyamplicol::unlock();
+        let runtime = SameThreadNativeRuntimeBorrow::new(&mut self.runtime);
+        py.detach(move || {
+            runtime.run(|runtime| {
+                runtime.export_recurrence_crossed_member_json(&member, color_flows.as_deref())
+            })
+        })
+        .and_then(|result| result)
+        .map_err(python_error)
+    }
+
     fn metadata_json(&self) -> PyResult<String> {
         let _unlock = pyamplicol::unlock();
         self.runtime.metadata_json().map_err(python_error)

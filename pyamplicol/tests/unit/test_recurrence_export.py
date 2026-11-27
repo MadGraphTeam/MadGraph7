@@ -691,3 +691,66 @@ def test_cli_replaces_the_output_through_a_renamed_temporary(
     assert json.loads(destination.read_text(encoding="utf-8")) == _export("p0")
     assert destination.stat().st_mode & 0o777 == 0o644
     assert sorted(path.name for path in tmp_path.iterdir()) == ["capture.json"]
+
+
+def test_cli_exports_crossed_members_through_their_loaded_template(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import pyamplicol.artifacts
+    import pyamplicol.artifacts.process_groups
+
+    template = SimpleNamespace(process_id="t0", crossing_momentum_signs=None)
+    crossed = SimpleNamespace(process_id="x", crossing_momentum_signs=(1, -1, -1, 1))
+    monkeypatch.setattr(
+        pyamplicol.artifacts,
+        "load_manifest",
+        lambda artifact: SimpleNamespace(processes=({"id": "t0", "aliases": ()},)),
+    )
+    monkeypatch.setattr(
+        pyamplicol.artifacts.process_groups,
+        "read_process_groups",
+        lambda artifact: SimpleNamespace(
+            groups={"t0": SimpleNamespace(members=[template, crossed])},
+            members=lambda: iter([template, crossed]),
+        ),
+    )
+    loads, exports = [], []
+
+    def load(artifact: Path, *, process: str, model_parameters: object) -> object:
+        loads.append(process)
+
+        def export(
+            *, color_flows: object, crossed_member: str | None = None
+        ) -> dict[str, object]:
+            exports.append(crossed_member)
+            result = _export(crossed_member or process)
+            program = result["programs"][0]
+            program["representative_process_key"] = "t0"
+            # v2 only where a crossed Weyl slot needs it; the file takes the newest.
+            result["execution_semantics"] = (
+                "rusticol-batched-f64-v1"
+                if crossed_member is None
+                else "rusticol-batched-f64-v2"
+            )
+            if crossed_member is not None:
+                program["crossing"] = [
+                    {"program_leg": 0, "caller_leg": 1, "sign": -1.0}
+                ]
+            return result
+
+        return SimpleNamespace(export_recurrence=export)
+
+    monkeypatch.setattr(Runtime, "load", load)
+    destination = tmp_path / "capture.json"
+    RecurrenceExportInvocation(artifact=tmp_path, output=destination).run()
+    result = json.loads(destination.read_text(encoding="utf-8"))
+    # Crossed members never load: one template runtime serves them.
+    assert loads == ["t0"]
+    assert exports == [None, "x"]
+    assert list(result) == list(_export("t0"))
+    assert result["execution_semantics"] == "rusticol-batched-f64-v2"
+    member = result["programs"][1]
+    assert member["process_key"] == "x"
+    assert member["program_reference"] == {"process_key": "t0", "colour_id": "flow:0"}
+    assert member["crossing"] == [{"program_leg": 0, "caller_leg": 1, "sign": -1.0}]
+    assert "body" not in member

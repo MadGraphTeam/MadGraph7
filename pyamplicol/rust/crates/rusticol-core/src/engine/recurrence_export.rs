@@ -172,6 +172,9 @@ const PATTERN_RESOLVED_SCHEMA_VERSION: u32 = 3;
 /// `recurrence_export_golden.rs` pin its bits: a change to the exported
 /// arithmetic must bump this string and regenerate them.
 pub(crate) const EXECUTION_SEMANTICS: &str = "rusticol-batched-f64-v2";
+/// Declared when no Weyl source can disagree with its sign of E (no crossed slot):
+/// v2 differs from v1 only on those states, which v1 zeroed.
+pub(crate) const UNCROSSED_EXECUTION_SEMANTICS: &str = "rusticol-batched-f64-v1";
 
 struct ExportContext {
     artifact: VerifiedArtifact,
@@ -536,7 +539,7 @@ impl NativeRuntime {
             },
             rusticol_version: env!("CARGO_PKG_VERSION").to_owned(),
             artifact_id: self.artifact_id.clone(),
-            execution_semantics: EXECUTION_SEMANTICS.to_owned(),
+            execution_semantics: required_execution_semantics(&programs).to_owned(),
             parameters,
             programs,
             kernels: kernels.into_values().collect(),
@@ -565,6 +568,198 @@ impl NativeRuntime {
         serde_json::to_string(&self.export_recurrence(colours)?).map_err(|error| {
             RusticolError::serialization(format!("could not serialize recurrence export: {error}"))
         })
+    }
+
+    /// Export the crossed flavour-union member `member` of this loaded template:
+    /// the template's programs at `q[r] = sigma_r * p_member[pi_r]`, with the
+    /// member's identity, legs, crossing, rho-relabelled helicity labels (template
+    /// order), own flow ids, pattern signs and factor. Crossed members cannot be
+    /// loaded on their own; `colours` are the member's flow ids.
+    pub fn export_recurrence_crossed_member(
+        &mut self,
+        member: &str,
+        colours: Option<&[String]>,
+    ) -> RusticolResult<RecurrenceExport> {
+        if self.process_group.is_some() || self.input_crossing_map.is_some() {
+            return Err(RusticolError::compatibility(format!(
+                "a crossed flavour-union member is exported from its template loaded \
+                 by its own id, not from {:?}",
+                self.process_key
+            )));
+        }
+        let assignments = self.flavour_union_assignments().ok_or_else(|| {
+            RusticolError::compatibility(format!(
+                "{:?} is not a pattern-resolved flavour-union template",
+                self.process_key
+            ))
+        })?;
+        let index = assignments
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, assignment)| {
+                assignment.relabelled.is_none() && assignment.process_id == member
+            })
+            .map(|(index, _)| index)
+            .ok_or_else(|| {
+                RusticolError::selector(format!(
+                    "{member:?} is not a flavour-union member of template {:?}",
+                    self.process_key
+                ))
+            })?;
+        let assignment = assignments[index].clone();
+        if assignment.crossing == 0 {
+            return Err(RusticolError::compatibility(format!(
+                "flavour-union member {member:?} is not crossed: export it by loading it"
+            )));
+        }
+        let crossing = self
+            .flavour_union_crossing(index)
+            .cloned()
+            .ok_or_else(|| RusticolError::internal("assignment crossing left the table"))?;
+        let physics = self.physics_v1.get()?.clone();
+        let count = physics.external_particles.len();
+        let names = assignment
+            .expression
+            .split_whitespace()
+            .filter(|token| *token != ">")
+            .collect::<Vec<_>>();
+        if assignment.permutation.len() != count
+            || assignment.pdgs.len() != count
+            || names.len() != count
+            || crossing.momentum_signs.len() != count
+            || crossing.helicity_signs.len() != count
+        {
+            return Err(RusticolError::integrity(format!(
+                "crossed member {member:?} does not have one leg per template slot"
+            )));
+        }
+        let initial_count = physics
+            .external_particles
+            .iter()
+            .take_while(|particle| particle.role == crate::ParticleRole::Initial)
+            .count();
+        // Template flow id -> member flow id: word labels through pi, as member loads.
+        let mut flow_ids = Vec::with_capacity(physics.color_components.len());
+        for colour in &physics.color_components {
+            let PhysicsColorComponentV1::LcFlow(flow) = colour else {
+                return Err(RusticolError::compatibility(
+                    "recurrence export requires LC colour flows",
+                ));
+            };
+            let word = flow
+                .word
+                .iter()
+                .map(|label| {
+                    label
+                        .checked_sub(1)
+                        .and_then(|slot| assignment.permutation.get(slot))
+                        .map(|leg| leg + 1)
+                        .ok_or_else(|| {
+                            RusticolError::artifact("LC color-flow label is not a template slot")
+                        })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            flow_ids.push((flow.id.clone(), canonical_color_id(&word)));
+        }
+        let template_colours = colours
+            .map(|requested| {
+                requested
+                    .iter()
+                    .map(|id| {
+                        flow_ids
+                            .iter()
+                            .find(|(_, own)| own == id)
+                            .map(|(template, _)| template.clone())
+                            .ok_or_else(|| {
+                                let available = flow_ids
+                                    .iter()
+                                    .map(|(_, own)| own.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                RusticolError::selector(format!(
+                                    "unknown recurrence export colour {id:?} for process \
+                                     {member:?} ({}); colour-flow IDs are per process, this \
+                                     process has: {available}",
+                                    assignment.expression
+                                ))
+                            })
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()
+            })
+            .transpose()?;
+        let mut export = self.export_recurrence(template_colours.as_deref())?;
+        let caller_legs = (0..count)
+            .map(|leg| RecurrenceExportLeg {
+                pdg: assignment.pdgs[leg],
+                name: names[leg].to_owned(),
+                role: if leg < initial_count {
+                    crate::ParticleRole::Initial
+                } else {
+                    crate::ParticleRole::Final
+                },
+            })
+            .collect::<Vec<_>>();
+        let crossing_entries = assignment
+            .permutation
+            .iter()
+            .enumerate()
+            .map(|(slot, leg)| RecurrenceExportCrossing {
+                program_leg: slot,
+                caller_leg: *leg,
+                sign: f64::from(crossing.momentum_signs[slot]),
+            })
+            .collect::<Vec<_>>();
+        // lambda_member[pi_r] = rho_r * lambda_template[r], in template helicity order.
+        let helicity_outputs = physics
+            .helicities
+            .iter()
+            .map(|helicity| {
+                let mut values = vec![0; count];
+                for (slot, leg) in assignment.permutation.iter().enumerate() {
+                    values[*leg] = i32::from(crossing.helicity_signs[slot]) * helicity.values[slot];
+                }
+                RecurrenceExportHelicity {
+                    id: canonical_helicity_id(&values),
+                    helicities: values,
+                }
+            })
+            .collect::<Vec<_>>();
+        let pattern_signs = assignment
+            .signs
+            .iter()
+            .map(|sign| *sign as i32)
+            .collect::<Vec<_>>();
+        for program in &mut export.programs {
+            program.colour_id = flow_ids
+                .iter()
+                .find(|(template, _)| *template == program.colour_id)
+                .map(|(_, own)| own.clone())
+                .ok_or_else(|| RusticolError::integrity("exported colour left the template"))?;
+            program.process_key = assignment.process_id.clone();
+            program.process = assignment.expression.clone();
+            program.caller_legs = caller_legs.clone();
+            program.crossing = Some(crossing_entries.clone());
+            program.helicity_outputs = helicity_outputs.clone();
+            program.group_factor = assignment.factor;
+            program.pattern_signs = Some(pattern_signs.clone());
+        }
+        export.execution_semantics = required_execution_semantics(&export.programs).to_owned();
+        Ok(export)
+    }
+
+    pub fn export_recurrence_crossed_member_json(
+        &mut self,
+        member: &str,
+        colours: Option<&[String]>,
+    ) -> RusticolResult<String> {
+        serde_json::to_string(&self.export_recurrence_crossed_member(member, colours)?).map_err(
+            |error| {
+                RusticolError::serialization(format!(
+                    "could not serialize recurrence export: {error}"
+                ))
+            },
+        )
     }
 
     fn recurrence_export_context(&self) -> RusticolResult<ExportContext> {
@@ -665,6 +860,47 @@ impl NativeRuntime {
             colour_ids,
             alpha_s_parameter,
         })
+    }
+}
+
+/// v1 unless some Weyl source, at physical caller momenta (E > 0) taken through
+/// the program's crossing, sees an energy sign that disagrees with its stored
+/// helicity (helicity != chirality * sgn(E)); only v2 evaluates those states.
+pub(super) fn required_execution_semantics(programs: &[RecurrenceExportProgram]) -> &'static str {
+    let disagrees = |program: &RecurrenceExportProgram, source: &DirectExportSource| {
+        if source.family != "weyl" {
+            return false;
+        }
+        let Some([term]) = program
+            .momentum_forms
+            .get(source.momentum_form as usize)
+            .map(Vec::as_slice)
+        else {
+            return true;
+        };
+        let crossing_sign = program
+            .crossing
+            .as_ref()
+            .and_then(|entries| {
+                entries
+                    .iter()
+                    .find(|entry| entry.program_leg == term.leg as usize)
+            })
+            .map_or(1.0, |entry| entry.sign);
+        let sign = term.coefficient * crossing_sign;
+        !(sign == 1.0 || sign == -1.0) || source.helicity != source.chirality * sign as i32
+    };
+    let crossed = programs.iter().any(|program| {
+        program
+            .runs
+            .iter()
+            .flat_map(|run| &run.sources)
+            .any(|source| disagrees(program, source))
+    });
+    if crossed {
+        EXECUTION_SEMANTICS
+    } else {
+        UNCROSSED_EXECUTION_SEMANTICS
     }
 }
 

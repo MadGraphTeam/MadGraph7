@@ -340,8 +340,8 @@ jobs:
         # The restricted child must run first with an uninitialized parent.
         # The recurrence export tests keep their generated d d~ > z g
         # artifacts (both LC layouts, and one with packed payloads) and a
-        # u u~ > j j flavour-union artifact for the
-        # Rust parity test below, which interprets their exports and compares
+        # u u~ > j j flavour-union artifact and a crossing-on p p > j j one for
+        # the Rust parity test below, which interprets their exports and compares
         # them with RustiCol bit for bit.
         env:
           PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS: ${{ runner.temp }}/recurrence-export
@@ -364,6 +364,7 @@ jobs:
             tests/integration/test_recurrence_generation_runtime.py::test_lc_recurrence_export_is_resolved_complete_and_static \
             tests/integration/test_recurrence_export_packed.py \
             "tests/integration/test_flavour_union_templates.py::test_recurrence_export_sums_union_patterns[uu2j]" \
+            "tests/integration/test_flavour_union_crossing_generation.py::test_crossed_members_export_as_template_references[pp2j]" \
             -q
       # One-loop support: a light subset of the loop tests (no nightly or
       # provider-campaign tier) and a generate/evaluate smoke of a virtual
@@ -476,7 +477,7 @@ jobs:
           env PYTHON=$PWD/.venv/bin/python just rust-check
       - name: Test Rust workspace (30 GiB RSS limit)
         env:
-          RUSTICOL_RECURRENCE_ARTIFACT: ${{ runner.temp }}/recurrence-export/topology-replay:${{ runner.temp }}/recurrence-export/all-flow-union:${{ runner.temp }}/recurrence-export/packed:${{ runner.temp }}/recurrence-export/flavour-union
+          RUSTICOL_RECURRENCE_ARTIFACT: ${{ runner.temp }}/recurrence-export/topology-replay:${{ runner.temp }}/recurrence-export/all-flow-union:${{ runner.temp }}/recurrence-export/packed:${{ runner.temp }}/recurrence-export/flavour-union:${{ runner.temp }}/recurrence-export/flavour-union-crossing
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-test

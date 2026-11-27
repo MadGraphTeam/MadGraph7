@@ -39,6 +39,26 @@ def provider_process_ids(artifact: Path) -> tuple[str, ...]:
     return tuple(identifiers)
 
 
+def crossed_member_templates(artifact: Path) -> dict[str, str]:
+    """Crossed flavour-union members and their templates: no runtime loads them."""
+
+    from pyamplicol.artifacts.process_groups import read_process_groups
+
+    groups = read_process_groups(artifact)
+    if groups is None:
+        return {}
+    return {
+        member.process_id: template
+        for template, group in getattr(groups, "groups", {}).items()
+        for member in group.members
+        if getattr(member, "crossing_momentum_signs", None) is not None
+    }
+
+
+# Each version reproduces the previous one's bits on every state that one reaches.
+_EXECUTION_SEMANTICS = ("rusticol-batched-f64-v1", "rusticol-batched-f64-v2")
+
+
 def _plural(count: int, noun: str) -> str:
     return f"{count:,} {noun}" + ("" if count == 1 else "s")
 
@@ -124,6 +144,18 @@ def _member_reference(program: Mapping[str, object]) -> dict[str, object]:
         **{key: program[key] for key in metadata if key in program},
         "program_reference": {"process_key": target[0], "colour_id": target[1]},
     }
+
+
+def _combined_semantics(semantics: set[str]) -> str:
+    """The newest of known versions (a crossed member needs v2); else one value."""
+
+    if semantics <= set(_EXECUTION_SEMANTICS):
+        return max(semantics, key=_EXECUTION_SEMANTICS.index)
+    if len(semantics) != 1:
+        raise ArtifactError(
+            f"recurrence export execution semantics differ: {sorted(semantics)}"
+        )
+    return next(iter(semantics))
 
 
 def add_export_options(parser: argparse.ArgumentParser) -> None:
@@ -232,8 +264,11 @@ class RecurrenceExportInvocation:
         )
         if len(set(processes)) != len(processes):
             raise ConfigurationError("--process IDs must be unique")
+        crossed = crossed_member_templates(Path(self.artifact))
+        templates: dict[str, Any] = {}
         combined: dict[str, object] | None = None
         highest_schema = 0
+        semantics: set[str] = set()
         programs: dict[tuple[str, str], Mapping[str, object]] = {}
         owners: dict[tuple[str, str], str] = {}
         kernels: dict[str, object] = {}
@@ -258,14 +293,32 @@ class RecurrenceExportInvocation:
                 with reporter.phase(
                     f"process:{process_id}", f"Exporting {process_id}"
                 ) as phase:
+                    member = process_id if process_id in crossed else None
                     with step("load", "Loading the process"):
-                        runtime = Runtime.load(
-                            self.artifact,
-                            process=process_id,
-                            model_parameters=parameters,
-                        )
+                        if member is None:
+                            runtime = Runtime.load(
+                                self.artifact,
+                                process=process_id,
+                                model_parameters=parameters,
+                            )
+                        else:
+                            # A crossed member is an assignment of its loaded template.
+                            template = crossed[member]
+                            if template not in templates:
+                                templates[template] = Runtime.load(
+                                    self.artifact,
+                                    process=template,
+                                    model_parameters=parameters,
+                                )
+                            runtime = templates[template]
                     with step("export", "Exporting its recurrence programs"):
-                        export = runtime.export_recurrence(color_flows=colours)
+                        export = (
+                            runtime.export_recurrence(color_flows=colours)
+                            if member is None
+                            else runtime.export_recurrence(
+                                color_flows=colours, crossed_member=member
+                            )
+                        )
                     phase.summary = _plural(
                         len(cast(Sequence[object], export["programs"])), "program"
                     )
@@ -291,19 +344,25 @@ class RecurrenceExportInvocation:
                                 f"{process_key!r} must be a JSON momentum batch"
                             )
                     export = attach_reference_points(
-                        export, runtime, cast("Momenta", points)
+                        export,
+                        runtime,
+                        cast("Momenta", points),
+                        crossed_member=member,
                     )
                 # Pattern-resolved programs raise the schema by one; keep the highest.
                 schema_version = int(export["schema_version"])
                 selected = cast(Sequence[Mapping[str, object]], export["programs"])
                 pattern_resolved = any("pattern_signs" in p for p in selected)
                 highest_schema = max(highest_schema, schema_version)
+                semantics.add(str(export["execution_semantics"]))
                 identity = {
                     key: value
                     for key, value in export.items()
                     if key not in _PER_PROCESS_KEYS
                 }
                 identity["schema_version"] = schema_version - pattern_resolved
+                # Combined after the loop, keeping the key's position.
+                identity["execution_semantics"] = None
                 if combined is None:
                     combined = identity
                 elif identity != combined:
@@ -350,6 +409,7 @@ class RecurrenceExportInvocation:
         if combined is None:
             raise ArtifactError("artifact has no processes to export")
         combined["schema_version"] = highest_schema
+        combined["execution_semantics"] = _combined_semantics(semantics)
         combined["parameters"] = [
             resolved_parameters[name] for name in sorted(resolved_parameters)
         ]

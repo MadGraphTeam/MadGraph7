@@ -901,18 +901,29 @@ class RusticolRuntimeBackend:
         return result
 
     def export_recurrence(
-        self, *, color_flows: Sequence[str] | None = None
+        self,
+        *,
+        color_flows: Sequence[str] | None = None,
+        crossed_member: str | None = None,
     ) -> Mapping[str, object]:
         """Read the resolved recurrence from the native runtime without execution."""
 
-        operation = getattr(self._runtime, "export_recurrence_json", None)
+        name = (
+            "export_recurrence_json"
+            if crossed_member is None
+            else "export_recurrence_crossed_member_json"
+        )
+        operation = getattr(self._runtime, name, None)
         if not callable(operation):
             raise CompatibilityError(
                 "installed native runtime has no recurrence export binding"
+                + ("" if crossed_member is None else " for crossed members")
             )
+        members = () if crossed_member is None else (crossed_member,)
         raw = _invoke(
             self._native_module,
             operation,
+            *members,
             color_flows=_normalized_selectors(color_flows),
         )
         try:
