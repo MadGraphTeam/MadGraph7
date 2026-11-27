@@ -16,8 +16,15 @@ ANNOUNCEMENT:
        1e-3 rad). The C++ vxxxxxr now builds the polarisation of the lightlike projection
        of the momentum, with r.p computed without the cancellation of two nearly collinear
        momenta, so that they are zeros to rounding at any angle: the recycled build agrees
-       with the build without recycling to 1e-15 there. Processes with a massive external
-       leg (g g > t t~ g g) still drop exact zeros only, as before.
+       with the build without recycling to 1e-15 there.
+       With a massive external leg, the --hel_recycling warm-up now drops these pairs too,
+       with the same 1e-12 relative rule instead of exact zeros only (g g > t t~ g g:
+       1.05 times faster in axial gauge than in Feynman gauge, against 1.00). The
+       exact-zero rule dated from when the warm-up sampled one energy, where an amplitude
+       suppressed by powers of m/E looks like a residual; its points now go down to 1.1
+       times the threshold, where such an amplitude is not suppressed. The recycled builds
+       agree with the plain ones to rounding from threshold to 13 TeV (g g > b b~ b b~
+       with a massive b, heft g g > h g, e+ e- > w+ w- z, u u~ > w+ w- g, g g > t t~ g g).
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the

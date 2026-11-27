@@ -476,10 +476,10 @@ namespace madmatrix
   // getGoodHel samples, so an amplitude is dropped at a base row only if it
   // vanishes for every crossing served; sigmaKin_setGoodHel prints it under
   // MG_DUMP_GOODHEL. Scalar double builds only.
-  // With a massive external leg (hel_massive) only an exact 0 is dropped, as for
-  // the rows (see limhel): the points sit at one sqrt(s), where an amplitude
-  // suppressed by powers of m/E against the others of its row can look like a
-  // residual although near threshold it is not.
+  // The rule is the same with a massive external leg: the probe points
+  // (choose_good_helicities_for_probe) spread from 1.1 times the threshold up to
+  // 1.5 TeV, so an amplitude suppressed by powers of m/E against the others of its
+  // row at high energy is alive near threshold, where it is not suppressed.
   // Under --axial_gauge the zeros of the reference-vector choice are dropped with
   // the relative rule: vxxxxxr (helas.h) builds the polarisation of the lightlike
   // projection of the momentum, so that they are zeros to rounding at any angle,
@@ -501,7 +501,7 @@ namespace madmatrix
   inline void
   hr_probe_close( const int ihel )
   {
-    static const double zeroamp_tol = hel_massive ? 0. : 1e-12;
+    static const double zeroamp_tol = 1e-12;
     if( hrProbeSeen.empty() )
     {
       hrProbeSeen.resize( ncomb );
