@@ -232,7 +232,7 @@ def build_lhe_meta(status, seed: int, systematics=None):
     # IDWTUP and XMAXUP of this run, as launch.lhe_weight_info: negative when
     # the sample can hold negative weights, and the unit weight sigma_abs
     negative = status.mean < 0 or status.mean_abs > abs(status.mean) * (1 + 1e-12)
-    data["weight_mode"] = -4 if negative else 3
+    data["weight_mode"] = -4 if negative else 4
     return ms.LHEMeta(
         # positional: the pybind arg name for max_weight is non-kwarg-safe
         processes=[ms.LHEProcess(status.mean, status.error, status.mean_abs, 1)],

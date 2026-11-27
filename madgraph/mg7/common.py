@@ -168,7 +168,7 @@ def me_parameters(run_card):
     |M|^2 of an interference (see interference_helicities_summed). That one is
     only sent when asked for: a library made before it existed refuses an
     unknown parameter."""
-    parameters = {"bwcutoff": float(run_card["phasespace"]["bw_cutoff"])}
+    parameters = {"bwcutoff": float(run_card['cuts.bw_cutoff'])}
     if interference_helicities_summed(run_card):
         parameters["interference_helicity_summed"] = 1.
     return parameters
@@ -183,7 +183,7 @@ def mlm_pdf_ladder(run_card, mlm_clustering, is_decay=False, leptonic=False):
     beam = run_card["beam"]
     return bool(
         mlm_clustering and not is_decay and not leptonic
-        and beam["dynamical_scale_choice"] != "ckkwl"
+        and run_card["scale.dynamical_scale_choice"] != "ckkwl"
         and beam["pdf_reweighting"]
         and (beam["scale_scheme"] == "madevent"
              or beam["clustering_mean_pdf_ladder"]))
@@ -193,7 +193,7 @@ def mlm_clustering_history(run_card):
     """The clustering_history of the scale's MLM clustering. Pinned to
     all_diagrams under "ckkwl", keeping that scale a function of the momenta."""
     beam = run_card["beam"]
-    if beam["dynamical_scale_choice"] == "ckkwl":
+    if run_card["scale.dynamical_scale_choice"] == "ckkwl":
         return "all_diagrams"
     return beam["clustering_history"]
 
@@ -230,12 +230,13 @@ def lhe_helicities(meta, run_card):
 def lhe_weight_info(status):
     """(IDWTUP, XMAXUP) for the LHE <init> block of a run with this generator
     status. The events are unweighted to +-sigma_abs, keeping the sign of the
-    integrand, and XMAXUP is that unit weight rather than the signed cross
-    section. A sample that can hold negative weights -- an interference --
-    declares it with IDWTUP = -4, as madevent does: the cross section is then
-    the mean of the signed event weights. With -3 a shower takes it as
-    |XSECUP| times the mean sign instead (Pythia8 does), which is not the
-    cross section, and +3 is for positive weights only. gridpack.py applies the
-    same rule inline, since it must not import this module."""
+    integrand, and XMAXUP is that mean weight rather than the signed cross
+    section. |IDWTUP| = 3 would denote that events have unit weight (i.e w=1)
+    and that the differential cross section is given by w*sigma_abs, whereas
+    |IDWTUP| = 4 means that the cross section is given by the mean/sum of all
+    event weights. The sign of IDWTUP denotes whether there are any negative 
+    weights or not. For positive definite samples, we declare IDWTUP = 4; for
+    samples that hold negative weights -- interferences -- declare it with
+    IDWTUP = -4, as madevent does. For details, see hep-ph/0109068."""
     negative = status.mean < 0 or status.mean_abs > abs(status.mean) * (1 + 1e-12)
-    return (-4 if negative else 3), status.mean_abs
+    return (-4 if negative else 4), status.mean_abs

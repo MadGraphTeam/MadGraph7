@@ -1911,8 +1911,10 @@ NamedVector<Value> Integrand::build_common_part(
               std::pair{"helicity_index", MatrixElement::helicity_index_out},
               std::pair{"diagram_index", MatrixElement::diagram_index_out}}) {
             int index = me_output_index(me_first, me_output);
+            // only a per-event MLM history draws a diagram (all_diagrams leaves -1)
             if (index == -1 && me_output == MatrixElement::diagram_index_out &&
-                _energy_scale && _energy_scale->is_mlm()) {
+                _energy_scale && _energy_scale->is_mlm() &&
+                _energy_scale->mlm_history_per_diagram()) {
                 outputs.push_back(name, scatter_or_drop(zeros_int, mlm_diagram));
                 continue;
             }

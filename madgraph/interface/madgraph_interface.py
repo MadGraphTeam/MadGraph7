@@ -1025,7 +1025,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --jamp_orbit=[True|False]: [madevent|standalone_fortran|mg7] look for the shared color-factor sub-expressions by whole orbits of the color basis symmetry.")
         logger.info("      --t_strategy: [madevent] allows to change ordering strategy for t-channel.")
         logger.info("      --hel_recycling=False: [madevent|standalone|mg7] forbids helicity recycling optimization (the plain matrix element)")
-        logger.info("      --hel_recycling=True: [standalone_fortran|standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default for standalone|mg7, off by default for standalone_fortran). C++: CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. A warm-up at generation time measures the good helicities and the vanishing amplitudes; an mg7 launch measures them again at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
+        logger.info("      --hel_recycling=True: [standalone_fortran|standalone|mg7] build each wavefunction once per helicity copy instead of once per helicity row, and skip the amplitudes that vanish at a helicity (on by default for standalone|mg7, off by default for standalone_fortran). C++: CPU/SIMD backends only: a cuda/hip build of the same output is the plain matrix element (the recycled build keeps every amplitude of every helicity of an event, MB per event, where a GPU thread holds one helicity). A CPU build also takes the plain matrix element when the recycled tables exceed HRMAXMB MB per SIMD page (make or environment variable, default 10, 0 for no limit): the recycled build moves a fixed amount of memory per event, which wider SIMD does not make cheaper. The default is tuned for every core of a node busy with one thread each: with two threads per core (SMT) a smaller limit (a few MB) can be faster, with few busy cores a larger one. An mg7 output keeps the plain matrix element until its first launch; the launch measures the good helicities and the vanishing amplitudes at its param_card (each scan point, and the cards of a MadtRex reweighting) and rebuilds only when they change. Anywhere else (a standalone output whose param_card is edited, a parameter set through UMAMI) the build checks at run time that the amplitudes it skips still vanish, and uses the plain matrix element, with a warning, when one does not.")
         logger.info("      --hel_recycling_chunk=<n>: [standalone_fortran|standalone|mg7] statements per function when the recycled block is cut up (default 1500 Fortran, 200 C++; 0 keeps it in one piece).")
         logger.info("      --hel_recycling_jamp=rows|fold|expanded: [standalone|mg7] how the recycled build makes the color flows: rows (default) stores every amplitude per helicity row and runs the plain color code once per row, as the fortran recycler does; fold adds each amplitude into per-row shared sub-expressions; expanded into every color flow.")
         logger.info("      --hel_recycling_tables=False: [standalone|mg7] write the recycled amplitudes as straight-line code instead of tables (default True; straight-line code stops fitting in the caches on large processes).")
@@ -13546,6 +13546,35 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0])
         aloha.t_channel_width = not self.options[args[0]]
 
+    def warn_reachable_zero_width_poles(self):
+        """Warn when zerowidth_external dropped the width of an internal
+        propagator that can go on shell (e.g. W- > d u~ in u d~ > w+ w+ d u~):
+        without a cut removing that pole the cross section is not finite.
+        The masses are evaluated with the default parameters of the model."""
+        try:
+            reader = model_reader.ModelReader(self._curr_model)
+            reader.set_parameters_and_couplings()
+            values = reader.get('parameter_dict')
+        except Exception as error:
+            logger.debug('zerowidth_external: no pole check (%s)', error)
+            return
+        def mass_value(name):
+            if str(name).upper() == 'ZERO':
+                return 0.
+            value = values[name]
+            return abs(value) if isinstance(value, complex) else value
+        report = []
+        for me in self._curr_matrix_elements.get_matrix_elements():
+            poles = me.get_reachable_zero_width_poles(mass_value)
+            report.extend('  ' + pole for pole in poles)
+        if report:
+            logger.warning("zerowidth_external: the width of these internal "
+                "propagators was dropped although they can go on shell; "
+                "the cross section is finite only if a cut removes the "
+                "pole region (e.g. mmjj, mmll), otherwise set "
+                "\"zerowidth_external\" to False before the output:\n%s"
+                % '\n'.join(report))
+
     def help_set2_zerowidth_external(self):
         logger.info("zerowidth_external <value>",'$MG:color:GREEN')
         logger.info(" > (default: True) [generation/output-time option for tree-level output]")
@@ -15204,6 +15233,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                             "set to zero in their internal propagators [new]\n if "
                             "you want to keep them set \"zerowidth_external\" to "
                             "False", '$MG:BOLD')
+                self.warn_reachable_zero_width_poles()
 
         calls = 0
 

@@ -5906,6 +5906,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
     })
             
         self.update_block += [b.name for b in self.run_card.blocks]
+        # the option groups of an mg7 run_card.toml
+        self.update_block += list(getattr(self.run_card, 'option_groups', ()))
         
         return self.run_set
 
@@ -6114,10 +6116,10 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         half = n != 1
         factor = 2. / n if half else 1.
         if isinstance(self.run_card, banner_mod.RunCardMG7):
-            fixed = ['beam.fixed_ren_scale', 'beam.fixed_fact_scale']
-            cmds = ['beam.dynamical_scale_choice %s' % (
+            fixed = ['scale.fixed_ren_scale', 'scale.fixed_fact_scale']
+            cmds = ['scale.dynamical_scale_choice %s' % (
                         'half_transverse_mass' if half else 'transverse_mass'),
-                    'beam.scale_factor %r' % factor]
+                    'scale.scale_factor %r' % factor]
         elif isinstance(self.run_card, banner_mod.RunCardNLO):
             fixed = ['fixed_ren_scale', 'fixed_fac_scale']
             cmds = ['dynamical_scale_choice %d' % (3 if half else 2),

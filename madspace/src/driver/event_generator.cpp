@@ -191,25 +191,44 @@ void EventGenerator::run_generate(GenerateMode mode) {
             }
         }
 
-        std::size_t job_id_before = _job_id;
-        std::size_t unweight_dispatched = start_jobs();
-        std::size_t round_in_flight = (_job_id - job_id_before) + unweight_dispatched;
+        // A thread count change pauses the dispatch until the jobs in flight are
+        // done, then the round resumes from its queue: the events do not change.
+        auto dispatch = [&](bool pipeline = true) -> std::size_t {
+            if (_pending_thread_count) {
+                return 0;
+            }
+            std::size_t job_id_before = _job_id;
+            std::size_t unweight_dispatched = start_jobs();
+            return (_job_id - job_id_before) + unweight_dispatched +
+                (pipeline ? start_pipeline_jobs() : 0);
+        };
+        apply_thread_count();
+        std::size_t round_in_flight = dispatch(false);
+        auto resume = [&] {
+            if (!_pending_thread_count) {
+                return false;
+            }
+            apply_thread_count();
+            round_in_flight = dispatch();
+            return round_in_flight > 0;
+        };
 
         // Wait for the round to commit before updating the channel fractions.
-        while (round_in_flight > 0) {
+        while (round_in_flight > 0 || resume()) {
             std::size_t job_id = wait_for_result(round_in_flight);
             if (stopping()) {
                 // no new batches; the ones in flight still commit and unweight
                 _ready_jobs.clear();
+            } else if (mode == GenerateMode::events && _pending_target_count &&
+                       *_pending_target_count != _config.target_count) {
+                // end the round early, the new target applies after it
+                drop_ready_jobs();
             }
             if (WeightingPipeline::owns_job(job_id)) {
                 _pipeline->commit_job(job_id);
                 update_counts();
                 print_gen_update(false);
-                std::size_t job_id_refill = _job_id;
-                std::size_t refill_unweight_dispatched = start_jobs();
-                round_in_flight += (_job_id - job_id_refill) +
-                    refill_unweight_dispatched + start_pipeline_jobs();
+                round_in_flight += dispatch();
                 continue;
             }
             auto& job = _running_jobs.at(job_id);
@@ -237,10 +256,7 @@ void EventGenerator::run_generate(GenerateMode mode) {
                     _running_jobs.erase(commit_id);
                 }
             }
-            std::size_t job_id_refill = _job_id;
-            std::size_t refill_unweight_dispatched = start_jobs();
-            round_in_flight += (_job_id - job_id_refill) + refill_unweight_dispatched +
-                start_pipeline_jobs();
+            round_in_flight += dispatch();
         }
         drain_pipeline();
 
@@ -493,6 +509,25 @@ std::size_t EventGenerator::wait_for_result(std::size_t& in_flight) {
     std::rethrow_exception(aborted ? aborted : exception);
 }
 
+void EventGenerator::drop_ready_jobs() {
+    for (auto& ready_job : _ready_jobs) {
+        std::size_t channel_index = ready_job.channel_index;
+        if (ready_job.is_vegas_batch) {
+            // dispatched atomically, so none of it is running
+            _channel_optimizing.at(channel_index) = false;
+        } else {
+            // finish_channel_job() clears the pending flag once the running part
+            // commits
+            _channel_batch_dispatch_done.at(channel_index) = true;
+            if (_channel_job_counts.at(channel_index) == 0) {
+                _channel_batch_pending.at(channel_index) = false;
+            }
+        }
+    }
+    _ready_jobs.clear();
+    _ready_job_rr_cursor = 0;
+}
+
 void EventGenerator::reset_jobs() {
     _running_jobs.clear();
     if (_pipeline) {
@@ -664,24 +699,35 @@ void EventGenerator::update_integral_status() {
     sum_channel_status(_channels, _status);
 }
 
-void EventGenerator::apply_pending_changes() {
+void EventGenerator::apply_thread_count() {
     if (_pending_thread_count) {
         for (auto& context : _contexts) {
             if (context->device()->device_type() == DeviceType::cpu) {
                 context->thread_pool().set_thread_count(*_pending_thread_count);
             }
         }
-        Logger::info(std::format("CPU thread count set to {}", *_pending_thread_count));
+        // a log line would break the pretty boxes
+        if (_config.verbosity == Verbosity::log) {
+            Logger::info(
+                std::format("CPU thread count set to {}", *_pending_thread_count)
+            );
+        }
         _pending_thread_count.reset();
     }
+}
+
+void EventGenerator::apply_pending_changes() {
+    apply_thread_count();
     if (_pending_target_count && _generate_mode == GenerateMode::events) {
-        Logger::info(
-            std::format(
-                "requested events changed from {} to {}",
-                _config.target_count,
-                *_pending_target_count
-            )
-        );
+        if (_config.verbosity == Verbosity::log) {
+            Logger::info(
+                std::format(
+                    "requested events changed from {} to {}",
+                    _config.target_count,
+                    *_pending_target_count
+                )
+            );
+        }
         _config.target_count = *_pending_target_count;
         _status.count_target = *_pending_target_count;
         _pending_target_count.reset();

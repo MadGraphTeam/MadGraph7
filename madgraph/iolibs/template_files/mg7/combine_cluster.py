@@ -173,11 +173,11 @@ def open_text(path: str, mode: str = "rt"):
 def patch_init(lines: list, status: dict, negative: bool) -> list:
     """The lines of an <init> block of one process, with the cross section,
     error and maximal weight of ``status`` and the weight convention IDWTUP of
-    a sample that has (-4) or has not (3) negative weights."""
+    a sample that has (-4) or has not (4) negative weights."""
     if len(lines) != 2:
         raise CombineError("only an <init> block of a single process is supported")
     beams = lines[0].split()
-    beams[8] = "-4" if negative else "3"
+    beams[8] = "-4" if negative else "4"
     return [
         " ".join(beams) + "\n",
         "%.10e %.10e %.10e %s\n" % (

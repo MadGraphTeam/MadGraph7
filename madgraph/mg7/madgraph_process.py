@@ -76,8 +76,10 @@ class GenerationControl:
 
     MENU_TIMEOUT = 60
 
-    def __init__(self, event_generator, run_path):
+    def __init__(self, event_generator, run_path, pretty=False):
         self.event_generator = event_generator
+        # the menu shows the changes, a log line would break it
+        self.pretty = pretty
         self.control_path = os.path.join(run_path, "control")
         self.armed = False
         self.installed = False
@@ -128,6 +130,8 @@ class GenerationControl:
         try:
             if os.path.exists(self.control_path):
                 self.run_control_file()
+                # below its log lines
+                self.event_generator.redraw_progress()
                 return
             tty = self.open_tty()
             if tty is None:
@@ -154,12 +158,15 @@ class GenerationControl:
     def set_events(self, count):
         self.event_generator.set_target_count(count)
         self.pending_events = count
-        logger.info("requested events set to %d (from the end of the running batches)", count)
+        if not (self.pretty and self.in_menu):
+            logger.info("requested events set to %d (from the end of the running batches)",
+                        count)
 
     def set_threads(self, count):
         self.event_generator.set_thread_count(count)
         self.pending_threads = count
-        logger.info("CPU threads set to %d (from the end of the running batches)", count)
+        if not (self.pretty and self.in_menu):
+            logger.info("CPU threads set to %d (from the end of the running batches)", count)
 
     def run_control_file(self):
         with open(self.control_path) as f:
@@ -344,7 +351,7 @@ class MadgraphProcess:
                 "(ktdurham/ptlund); the subprocesses are kept separate"
             )
             merge_subprocesses = False
-        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] in (
+        if merge_subprocesses and self.run_card["scale"]["dynamical_scale_choice"] in (
                 "mlm", "ckkwl"):
             # A merged subprocess bundles matrix elements whose legs differ -
             # q q~ > l l g next to q g > l l q - while the MLM clustering is
@@ -355,7 +362,7 @@ class MadgraphProcess:
             logger.warning(
                 "merge_subprocesses is not supported with dynamical_scale_choice "
                 "= %s; the subprocesses are kept separate",
-                self.run_card["beam"]["dynamical_scale_choice"]
+                self.run_card["scale"]["dynamical_scale_choice"]
             )
             merge_subprocesses = False
         if merge_subprocesses:
@@ -397,7 +404,7 @@ class MadgraphProcess:
         process does not have and so changes the frame from one multiplicity
         to the next without a word.
         """
-        me_frame = list(self.run_card["run"]["me_frame"])
+        me_frame = list(self.run_card["beam"]["me_frame"])
         pdgs = [clean_pids(meta["incoming"]) + clean_pids(meta["outgoing"])
                 for meta in self.subprocess_data]
         counts = sorted({len(pdg_list) for pdg_list in pdgs})
@@ -578,7 +585,7 @@ class MadgraphProcess:
             self.run_path = os.path.abspath(os.path.expanduser(output_dir))
             os.makedirs(self.run_path, exist_ok=True)
         else:
-            self.run_path = new_run_path(self.run_card["run"]["run_name"])
+            self.run_path = new_run_path(self.run_card["output"]["run_name"])
         # temporary npy files of the channel generators
         self.auto_temp_path = temp_dir == "auto"
         if self.auto_temp_path:
@@ -880,15 +887,15 @@ class MadgraphProcess:
         With the option off, madevent still drops the dR cuts, and only zeroes
         a pt or pair-mass cut that sits above xqcut - it never tightens.
         """
-        if self.is_decay or self.run_card["beam"]["dynamical_scale_choice"] != "mlm":
+        if self.is_decay or self.run_card["scale"]["dynamical_scale_choice"] != "mlm":
             return
-        xqcut = self.run_card["phasespace"]["xqcut"]
+        xqcut = self.run_card["merging"]["xqcut"]
         if xqcut <= 0:
             return
         for key in ("jet-delta_r", "jet-lepton-delta_r"):
             if cuts.get(key, {}).get("min", 0.0) > 0.0:
                 cuts[key]["min"] = 0.0
-        auto = self.run_card["phasespace"]["auto_ptj_mjj"]
+        auto = self.run_card["merging"]["auto_ptj_mjj"]
         # Both halves of madevent's rule matter, and for different reasons.
         #
         # ptj reaches the phase space only for jets that are leaf children of
@@ -912,7 +919,7 @@ class MadgraphProcess:
         """The CKKW-L merging cut (ktdurham or ptlund) of the run card, as
         (measure, minimum, merging pdg ids), or None."""
         self.merging_cut = None
-        ps = self.run_card["phasespace"]
+        ps = self.run_card["merging"]
         if self.is_decay or not self.run_card.is_ckkwl_merged():
             return
         if float(ps["ktdurham"]) > 0:
@@ -1036,6 +1043,7 @@ class MadgraphProcess:
 
     def init_beam(self) -> None:
         beam_args = self.run_card["beam"]
+        scale_args = self.run_card["scale"]
 
         # built lazily by build_systematics (needs the subprocess data)
         self.systematics = None
@@ -1103,13 +1111,13 @@ class MadgraphProcess:
         # topologies of each subprocess, so the EnergyScale is built later, in
         # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
         # "ckkwl" is the same clustering without the alpha_s and pdf ladders.
-        self.ckkwl_scale = beam_args["dynamical_scale_choice"] == "ckkwl"
+        self.ckkwl_scale = scale_args["dynamical_scale_choice"] == "ckkwl"
         if not self.is_decay:
             # the jets of the clustering and of a merging cut have to be the
             # massless quarks of the model: no free max_jet_flavor when merging
             self.run_card.check_mlm_max_jet_flavor(
                 _proc_characteristic().get("max_jet_flavor", 0))
-        if beam_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
+        if scale_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
@@ -1124,19 +1132,19 @@ class MadgraphProcess:
                     beam_args["mlm_shower_start"] == "hardest_scale"
                 )
                 cfg.mlm_collider_energy = self.e_cm
-                cfg.mlm_max_jet_flavor = int(beam_args["max_jet_flavor"])
-        elif beam_args["dynamical_scale_choice"] in dynamical_scales:
+                cfg.mlm_max_jet_flavor = int(self.run_card["cuts.max_jet_flavor"])
+        elif scale_args["dynamical_scale_choice"] in dynamical_scales:
             self.mlm_clustering = False
             self.scale_kwargs = dict(
                 dynamical_scale_type=dynamical_scales[
-                    beam_args["dynamical_scale_choice"]
+                    scale_args["dynamical_scale_choice"]
                 ],
-                ren_scale_fixed=beam_args["fixed_ren_scale"],
-                fact_scale_fixed=beam_args["fixed_fact_scale"],
-                ren_scale=beam_args["ren_scale"],
-                fact_scale1=beam_args["fact_scale1"],
-                fact_scale2=beam_args["fact_scale2"],
-                scale_factor=float(beam_args.get("scale_factor", 1.)),
+                ren_scale_fixed=scale_args["fixed_ren_scale"],
+                fact_scale_fixed=scale_args["fixed_fact_scale"],
+                ren_scale=scale_args["ren_scale"],
+                fact_scale1=scale_args["fact_scale1"],
+                fact_scale2=scale_args["fact_scale2"],
+                scale_factor=float(scale_args["scale_factor"]),
             )
         else:
             raise ValueError("Unknown dynamical scale choice")
@@ -1148,16 +1156,16 @@ class MadgraphProcess:
             # The merging needs the scales of its own clustering history: a
             # custom scale or a factor on it would move the merging scale away
             # from the one the shower is matched to.
-            choice = beam_args["dynamical_scale_choice"]
+            choice = scale_args["dynamical_scale_choice"]
             if self.custom_functions.pop("scale", None) is not None:
                 logger.warning(
                     "custom scale ignored under dynamical_scale_choice = %s", choice)
-            if float(beam_args.get("scale_factor", 1.)) != 1.:
+            if float(scale_args["scale_factor"]) != 1.:
                 logger.warning(
                     "scale_factor ignored under dynamical_scale_choice = %s", choice)
             # lepton beams have no factorisation scale, fixed by default
-            if beam_args["fixed_ren_scale"] or (
-                    beam_args["fixed_fact_scale"] and not self.leptonic):
+            if scale_args["fixed_ren_scale"] or (
+                    scale_args["fixed_fact_scale"] and not self.leptonic):
                 logger.warning(
                     "fixed_ren_scale/fixed_fact_scale ignored under "
                     "dynamical_scale_choice = %s: the scales come from the "
@@ -1170,7 +1178,7 @@ class MadgraphProcess:
                 logger.warning(
                     "dynamical_scale_choice = %s has no meaning for a decay; "
                     "using the decaying mass as a fixed scale instead",
-                    beam_args["dynamical_scale_choice"]
+                    scale_args["dynamical_scale_choice"]
                 )
                 self.mlm_clustering = False
                 self.ckkwl_scale = False
@@ -1202,8 +1210,8 @@ class MadgraphProcess:
             if self.is_decay:
                 self.fixed_alphas_info = self.write_fixed_alphas_info()
             else:
-                fixed = ([float(beam_args["ren_scale"])]
-                         if beam_args["fixed_ren_scale"] else [])
+                fixed = ([float(scale_args["ren_scale"])]
+                         if scale_args["fixed_ren_scale"] else [])
                 self.fixed_alphas_info = self.write_fixed_alphas_info(
                     scales=fixed, nodes_per_decade=50, split_thresholds=True)
             self.alphas_grid = ms.AlphaSGrid(self.fixed_alphas_info)
@@ -1425,7 +1433,7 @@ class MadgraphProcess:
         # the emission scale of the MLM alpha_s vertices, which only an MLM
         # sample with per-vertex alpha_s has
         if (self.mlm_clustering and not self.is_decay
-                and self.run_card["beam"]["dynamical_scale_choice"] != "ckkwl"
+                and self.run_card["scale"]["dynamical_scale_choice"] != "ckkwl"
                 and self.run_card["beam"]["alphas_reweighting"] != "none"):
             config.alps = [float(v) for v in syst["alps"]]
         else:
@@ -1441,7 +1449,7 @@ class MadgraphProcess:
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
         # alternative dynamical scales get the same factor as the nominal one
-        config.scale_factor = float(self.run_card["beam"].get("scale_factor", 1.))
+        config.scale_factor = float(self.run_card["scale.scale_factor"])
         config.write_inputs = bool(syst["write_inputs"])
         config.has_pdf = not self.leptonic
         # Without parton luminosity -- a decay, or leptonic beams -- there is no
@@ -1520,12 +1528,11 @@ class MadgraphProcess:
             return []
         if isinstance(entries, str):
             entries = [entries]
-        beam = self.run_card["beam"]
         generated = None
         # a custom scale replaces dynamical_scale_choice, so no variation is redundant
         custom_scale = "scale" in getattr(self, "custom_functions", {})
-        if not (beam["fixed_ren_scale"] and beam["fixed_fact_scale"] or custom_scale):
-            generated = self._DYN_SCALE_CODES.get(beam["dynamical_scale_choice"])
+        if not (self.run_card["scale.fixed_ren_scale"] and self.run_card["scale.fixed_fact_scale"] or custom_scale):
+            generated = self._DYN_SCALE_CODES.get(self.run_card["scale.dynamical_scale_choice"])
         codes = []
         for raw in entries:
             entry = str(raw).strip().lower()
@@ -1593,7 +1600,7 @@ class MadgraphProcess:
         written events and all their variation weights (info.json
         "event_histograms"); None without histograms."""
         if not self.hist_data \
-                or not self.run_card["run"]["postprocessing_histograms"]:
+                or not self.run_card['histograms.postprocessing_histograms']:
             self.event_histograms = None
             return None
         context = ms.Context(device=ms.cpu_device(), thread_count=1)
@@ -1832,6 +1839,7 @@ class MadgraphProcess:
         cfg = ms.GeneratorConfig()
         cfg.target_count = gen_args["events"]
         cfg.vegas_damping = vegas_args["damping"]
+        cfg.adaptive_discrete = vegas_args["adaptive_discrete"]
         cfg.max_overweight_truncation = gen_args["max_overweight_truncation"]
         cfg.freeze_max_weight_after = gen_args["freeze_max_weight_after"]
         cfg.start_batch_size = vegas_args["start_batch_size"]
@@ -2515,7 +2523,8 @@ class MadgraphProcess:
         if self.gridpack_run_mode != "regular":
             self.finish_without_events()
             return
-        with GenerationControl(self.event_generator, self.run_path) as control:
+        pretty = self.event_generator_config.verbosity == ms.Verbosity.pretty
+        with GenerationControl(self.event_generator, self.run_path, pretty) as control:
             control.armed = True
             self.event_generator.generate()
             control.armed = False
@@ -2528,7 +2537,7 @@ class MadgraphProcess:
         density = self.lepton_density
         has_beamstrahlung = density is not None and density.has_beamstrahlung
         if output_format is None:
-            output_format = self.run_card["run"]["output_format"]
+            output_format = self.run_card["output"]["output_format"]
             if has_beamstrahlung and output_format != "lhe":
                 # The beamstrahlung split is sampled onto the written LHE
                 # events (see below); the npy formats and their later
@@ -2579,7 +2588,7 @@ class MadgraphProcess:
             self.event_generator.combine_to_lhe(
                 lhe_path, self.lhe_completer,
                 self.build_lhe_meta(), systematics, histograms, gzip_device,
-                self.run_card["run"]["lhe_gzip_algorithm"]
+                self.run_card["output"]["lhe_gzip_algorithm"]
             )
             # A dressed-lepton density folds beamstrahlung into the PDF, so
             # the initial-state momenta carry x = x_BS * x_ISR and a shower
@@ -2608,7 +2617,7 @@ class MadgraphProcess:
 
     def lhe_gzip_device(self):
         """The device that gzips the LHE output, None to gzip it on the CPU."""
-        if self.run_card["run"]["lhe_compression"] != "auto":
+        if self.run_card["output"]["lhe_compression"] != "auto":
             return None
         return next((device for device in self.devices if device.supports_gzip()), None)
 
@@ -2634,7 +2643,7 @@ class MadgraphProcess:
         per bin by madspace, so drawing them directly is both fewer steps and
         more than histograms.py can do without the LHAPDF python module.
         """
-        if histograms is None or not self.run_card["run"]["make_plots"]:
+        if histograms is None or not self.run_card['histograms.make_plots']:
             return
         out_dir = os.path.join(self.run_path, self.plot_dir_name)
         try:
@@ -2660,7 +2669,7 @@ class MadgraphProcess:
         numbers are the ones info.json carries, bands included, so this is off
         by default -- it is a second copy in another format, for the runs that
         are going to be plotted."""
-        if histograms is None or not self.run_card["run"]["write_hwu"]:
+        if histograms is None or not self.run_card['histograms.write_hwu']:
             return
         try:
             data = json.loads(histograms.to_json(self.systematics))
@@ -2781,7 +2790,7 @@ class MadgraphProcess:
                 error = py8_bstrahl.beamstrahlung_setup_error(
                     self._lepton_density_name,
                     self.beam_energies[0], self.beam_energies[1],
-                    self.run_card["beam"]["dynamical_scale_choice"] == "mlm")
+                    self.run_card["scale"]["dynamical_scale_choice"] == "mlm")
                 if error:
                     raise ValueError(error)
         return self._lepton_density
@@ -2827,10 +2836,9 @@ class MadgraphProcess:
         hands to the luminosity. With a dynamical scale annotate_lhe reads it
         back per event from SCALUP, which mg7 writes as mu_F.
         """
-        beam = self.run_card["beam"]
-        if not beam["fixed_fact_scale"]:
+        if not self.run_card["scale.fixed_fact_scale"]:
             return None
-        return float(beam["fact_scale1"])
+        return float(self.run_card["scale.fact_scale1"])
 
     def _beam_info(self):
         """Return (beam_pdg_ids, beam_energies) for the LHE <init> block.
@@ -2958,7 +2966,7 @@ class MadgraphProcess:
         ]
         return ms.LHECompleter(
             subproc_args=subproc_args,
-            bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
+            bw_cutoff=self.run_card['cuts.bw_cutoff']
         )
 
     @staticmethod
@@ -3200,8 +3208,8 @@ class MadgraphProcess:
         # A gridpack is run to feed a shower or detector chain, which reads
         # LHE, so it writes LHE by default whatever format this run used
         # (bin/generate_events --output_format still selects an npy output).
-        previous_output_format = run_card["run"]["output_format"]
-        run_card["run"]["output_format"] = "lhe"
+        previous_output_format = run_card["output"]["output_format"]
+        run_card["output"]["output_format"] = "lhe"
         # the directories of this run mean nothing on the machine running the gridpack
         previous_dirs = (run_card["gridpack"]["temp_output_dir"],
                          run_card["gridpack"]["output_dir"])
@@ -3212,7 +3220,7 @@ class MadgraphProcess:
                 os.path.join(cards_path, "grid_run_card.toml"))
         finally:
             run_card["run"]["cpu_mode"] = previous_cpu_mode
-            run_card["run"]["output_format"] = previous_output_format
+            run_card["output"]["output_format"] = previous_output_format
             (run_card["gridpack"]["temp_output_dir"],
              run_card["gridpack"]["output_dir"]) = previous_dirs
 
@@ -3246,7 +3254,7 @@ class MadgraphProcess:
         parent, name = os.path.split(gridpack_path)
         if run_card["gridpack"]["compress"]:
             archive_path = gridpack_path + ".tar.gz"
-            use_pigz = run_card["run"]["use_pigz"]
+            use_pigz = run_card["output"]["use_pigz"]
             pigz = (shutil.which("pigz") if use_pigz is not False else None)
             if pigz:
                 # multi-threaded gzip

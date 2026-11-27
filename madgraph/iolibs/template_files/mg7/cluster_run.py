@@ -173,7 +173,7 @@ class ClusterRun:
     def find_unfinished_run(self, digest: str):
         """The newest run directory of this run name, when it was left
         unfinished by a run with the same cards."""
-        prefix = os.path.join("Events", self.card["run"]["run_name"] + "_")
+        prefix = os.path.join("Events", self.card["output"]["run_name"] + "_")
         runs = sorted((d for d in glob.glob(prefix + "*") if d[len(prefix):].isnumeric()),
                       key=lambda d: int(d[len(prefix):]))
         if not runs:
@@ -194,7 +194,7 @@ class ClusterRun:
         digest = card_hash()
         run_path = self.find_unfinished_run(digest)
         if run_path is None:
-            run_path = launch.new_run_path(self.card["run"]["run_name"])
+            run_path = launch.new_run_path(self.card["output"]["run_name"])
             os.makedirs(os.path.join(run_path, "cluster"))
             seed = launch.resolve_seed(self.card["run"]["seed"])
             unit_count = len(self.process.merged_subprocess_data
@@ -372,8 +372,8 @@ class ClusterRun:
             ("run.seed", job["seed"]),
             ("run.device", self.devices["train"]),
             ("run.verbosity", "log"),
-            ("run.make_plots", False),
-            ("run.postprocessing_histograms", False),
+            ("histograms.make_plots", False),
+            ("histograms.postprocessing_histograms", False),
             ("run.cpu_thread_pool_size", threads),
             ("gridpack.save_gridpack", True),
             ("gridpack.run_mode", "fix_max_weight" if fix_max_weight else "minimal"),
@@ -509,7 +509,7 @@ class ClusterRun:
                 "--seed", str(job["seed"]), "--events", str(job["events"]),
                 "--output_dir", job_dir, "--done_file", os.path.join(job_dir, "done"),
                 "--verbosity", "log", "--temp_output_dir", "auto",
-                "--output_format", self.card["run"]["output_format"],
+                "--output_format", self.card["output"]["output_format"],
                 "--cpu_thread_pool_size", str(threads),
                 "--device", *self.devices["deploy"],
             ]
@@ -573,9 +573,7 @@ class ClusterRun:
         self.deploy(gridpack_path)
         self.set_stage("combine")
         info = self.combine()
-        # the steering process has no systematics calculator: the jobs' weights
-        launch.run_lhe_postprocessing(self.process, native_weight_count=len(
-            info.get("systematics", {}).get("variations", [])))
+        launch.run_lhe_postprocessing(self.process)
         self.set_stage("done")
         self.clean_deploy_data()
         process = info["process"]

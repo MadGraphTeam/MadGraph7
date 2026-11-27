@@ -303,7 +303,7 @@ class ProbeEnvironmentTest(unittest.TestCase):
 
     def test_mg7(self):
         with open(os.path.join(self.dir, 'Cards', 'run_card.toml'), 'w') as f:
-            f.write('[run]\noutput_format = "lhe" # options\n')
+            f.write('[output]\noutput_format = "lhe" # options\n')
         madtrex = os.path.join(self.dir, 'mtx')
         os.makedirs(os.path.join(madtrex, 'madtrex'))
         found = rb.probe_environment(self.dir, {'mg5_path': '/mg5'},

@@ -2427,7 +2427,7 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         """
         run_card = self.banner.run_card
         if isinstance(run_card, banner.RunCardMG7):
-            me_frame = list(run_card['run']['me_frame'])
+            me_frame = list(run_card['beam']['me_frame'])
             if not me_frame:
                 return []
         elif 'me_frame' in run_card:

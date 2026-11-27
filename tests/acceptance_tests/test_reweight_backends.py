@@ -68,7 +68,7 @@ REWEIGHT = textwrap.dedent("""
     class Process:
         run_path = os.path.join("Events", {run!r})
         events_path = os.path.join(run_path, "events.lhe.gz")
-        run_card = {{"run": {{"output_format": "lhe"}}}}
+        run_card = {{"output": {{"output_format": "lhe"}}}}
     launch.run_reweighting(Process(), launch.REWEIGHT_CARD, requested={backend!r})
 """)
 
@@ -363,10 +363,12 @@ class ReweightBackendsAgreeTest(unittest.TestCase):
         for old, new in (('events = 100000', 'events = 2000'),
                          ('dynamical_scale_choice = "half_transverse_mass"',
                           'dynamical_scale_choice = "mlm"'),
-                         ('xqcut = 0.0', 'xqcut = 20.0'),
                          ('[beam]\n', '[beam]\nclustering_history = "diagram"\n')):
             self.assertIn(old, text)
             text = text.replace(old, new, 1)
+        # g g > t t~ g alone is not merged: its card has no [merging] section
+        self.assertNotIn('[merging]', text)
+        text += '\n[merging]\nxqcut = 20.0\n'
         with open(run_card, 'w') as f:
             f.write(text)
         card = os.path.join(self.tmp, 'mlm.dat')

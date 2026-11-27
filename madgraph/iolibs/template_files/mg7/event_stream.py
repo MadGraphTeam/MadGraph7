@@ -172,7 +172,8 @@ class EventStream:
         # events fetched for the iterator but not returned yet
         self._pending = collections.deque()
         run_card = load_run_card()
-        run_args = run_card["run"]
+        # the output settings (run_name, output_format, gzip) are in [output]
+        run_args = {**run_card["run"], **run_card.get("output", {})}
         gen_args = run_card["generation"]
         madspace_data = load_madspace_data()
         if not source_hash_matches(madspace_data):

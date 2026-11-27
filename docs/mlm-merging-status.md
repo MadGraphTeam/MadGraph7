@@ -31,7 +31,7 @@ The branch was 699 commits behind. Most of the conflict surface was not real:
   were re-applied to `launch.py`. The matrix element is now built in a loop over
   backends, so `me_inputs` is computed once before that loop.
 * `run_card.toml` is now a template filled from `banner.py`, so `"mlm"`,
-  `beam.jet_radius` and `beam.max_jet_flavor` are declared there. The MLM
+  `merging.jet_radius` and `cuts.max_jet_flavor` are declared there. The MLM
   clustering options other than `max_jet_flavor` (`jet_radius`, `scale_scheme`,
   `alphas_reweighting`, `pdf_reweighting`, `clustering_history`, ...) are
   hidden: the template has no line for them, and `RunCardMG7.write` adds one at
@@ -145,7 +145,7 @@ comparison against the validated madevent MLM disagree.
 
 * **No Sudakov reweighting**, which is the other half of what the NLO code does.
 
-## The generation-level merging cut: `phasespace.xqcut`
+## The generation-level merging cut: `merging.xqcut`
 
 MLM merging needs the matrix element to stop describing radiation the shower is
 meant to produce, which madevent enforces with `xqcut`. madspace had no

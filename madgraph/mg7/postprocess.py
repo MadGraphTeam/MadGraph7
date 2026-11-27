@@ -6,7 +6,7 @@ import sys
 import time
 
 from madgraph.mg7 import npy_to_lhe
-from madgraph.mg7.options import lhapdf_paths, load_mg5_options
+from madgraph.mg7.options import load_mg5_options
 
 def _find_event_file(run_path):
     """Locate the LHE event file produced by generate_events (if any)."""
@@ -282,98 +282,19 @@ def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
         _misc.gzip(lhe_path)
 
 
-def _lhapdf_config_path():
-    """Path to lhapdf-config so systematics can import the python lhapdf
-    module (required to compute PDF/scale variations)."""
-    return lhapdf_paths().config
-
-
-def _run_systematics(lhe_path, cfg, log):
-    """Run systematics.py (scale/PDF variations) on the LHE file, reusing the
-    exact worker madevent uses (systematics.call_systematics)."""
-    try:
-        import madgraph.various.systematics as systematics
-    except ImportError:
-        import internal.systematics as systematics
-
-    def fmt(vals):
-        return ','.join(str(v) for v in vals)
-
-    opts = []
-    if cfg.get('systematics_mur'):
-        opts.append('--mur=%s' % fmt(cfg['systematics_mur']))
-    if cfg.get('systematics_muf'):
-        opts.append('--muf=%s' % fmt(cfg['systematics_muf']))
-    if cfg.get('systematics_pdf'):
-        opts.append('--pdf=%s' % fmt(cfg['systematics_pdf']))
-    extra = cfg.get('systematics_str_options', '')
-    if extra:
-        opts.extend(extra.split())
-    # The mg7 LHE has no <mgrwt> block, so systematics cannot read the per-event
-    # LO reweighting info. For a process with a single alpha_s power (stored in
-    # SubProcesses/proc_characteristics at output time) it can be reconstructed
-    # from the events: pass that power as --lo_nqcd. -1 means the QCD power is
-    # not uniform, so the reconstruction is not applicable.
-    if not any(o.startswith('--lo_nqcd') for o in opts):
-        try:
-            from madgraph.various import banner as _banner_mod
-        except ImportError:
-            import internal.banner as _banner_mod
-        pc_path = os.path.join('SubProcesses', 'proc_characteristics')
-        if os.path.exists(pc_path):
-            try:
-                nqcd = int(_banner_mod.ProcCharacteristic(pc_path)['single_qcd_order'])
-            except Exception:
-                nqcd = -1
-            if nqcd >= 0:
-                opts.append('--lo_nqcd=%d' % nqcd)
-    # tell systematics where to find lhapdf (so it can link the python module)
-    if not any(o.startswith('--lhapdf_config') for o in opts):
-        lhapdf_config = _lhapdf_config_path()
-        if lhapdf_config:
-            opts.append('--lhapdf_config=%s' % lhapdf_config)
-
-    log.info('Running systematics on %s %s', lhe_path, ' '.join(opts))
-    systematics.call_systematics([lhe_path, lhe_path] + opts,
-                                 log=lambda x: log.info(str(x)))
-
-
-def run_lhe_postprocessing(process, native_weight_count=None) -> None:
-    """Run the LHE-level post-processings configured in the run_card
-    [postprocessing] section on the generated event file (displaced-vertex
-    time-of-flight and systematics). Only applies when an LHE file exists.
-    ``native_weight_count``: the madspace scale/PDF weights of the events, by
-    default those of process.systematics."""
+def run_lhe_postprocessing(process) -> None:
+    """Run the LHE-level post-processing configured in the run_card
+    [output] section on the generated event file (displaced-vertex
+    time-of-flight). Only applies when an LHE file exists."""
     lhe_path = _find_event_file(process.run_path)
     if lhe_path is None:
         return
     # process.run_card is a RunCardMG7; the section view exposes .get(key, def)
     try:
-        cfg = process.run_card["postprocessing"]
+        cfg = process.run_card["output"]
     except Exception:
         return
     log = logging.getLogger('madevent')
-
-    if cfg.get('systematics') and getattr(process, 'is_decay', False):
-        # Scale and PDF variations are a beam quantity. A decay has neither, so
-        # systematics can only fail here ("not supported for pdlabel=none") --
-        # and it is not free: MadSpin reruns the launcher for every pool refill.
-        log.info("decay mode: skipping systematics (no beams to vary)")
-    elif cfg.get('systematics'):
-        if native_weight_count is None:
-            native = getattr(process, 'systematics', None)
-            native_weight_count = 0 if native is None else native.weight_count
-        if native_weight_count > 0:
-            log.warning("[postprocessing] systematics is ignored: the scale/PDF "
-                        "weights were already computed by madspace ([systematics] "
-                        "section); set systematics.enable = false to use the legacy "
-                        "systematics.py path instead.")
-        else:
-            try:
-                _run_systematics(lhe_path, cfg, log)
-            except Exception as error:
-                _report_failure(log, "systematics computation", error,
-                                os.path.dirname(lhe_path))
 
     tof = cfg.get('time_of_flight', -1.0)
     try:

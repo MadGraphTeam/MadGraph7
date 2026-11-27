@@ -101,7 +101,7 @@ class Env:
     output_type: 'str | None' = 'mg7'
     # the events to reweight are NLO events (an aMC@NLO output)
     nlo_events: bool = False
-    # [run] output_format of an mg7 run_card.toml (compact_npy, lhe_npy, lhe)
+    # [output] output_format of an mg7 run_card.toml (compact_npy, lhe_npy, lhe)
     output_format: 'str | None' = None
     # the classic module can run (MadGraph + f2py), and why not otherwise
     classic_available: bool = True
@@ -271,7 +271,7 @@ def strip_backend_line(text):
 
 
 def _read_output_format(me_dir):
-    """[run] output_format of Cards/run_card.toml, or None."""
+    """[output] output_format of Cards/run_card.toml, or None."""
     path = os.path.join(me_dir, 'Cards', 'run_card.toml')
     try:
         import tomllib
@@ -286,7 +286,7 @@ def _read_output_format(me_dir):
             return None
         match = re.search(r'''^\s*output_format\s*=\s*["']([^"']*)["']''', text, re.M)
         return match.group(1) if match else None
-    value = card.get('run', {}).get('output_format')
+    value = card.get('output', {}).get('output_format')
     if value is None:
         # MadGraph always writes it out; RunCardMG7's default otherwise
         return 'lhe_npy'
@@ -369,7 +369,7 @@ def _madtrex_problems(env):
     if env.nlo_events:
         problems.append('MadtRex does not reweight NLO events')
     if env.output_format == 'compact_npy':
-        problems.append("MadtRex needs run_card [run] output_format 'lhe' or 'lhe_npy': "
+        problems.append("MadtRex needs run_card [output] output_format 'lhe' or 'lhe_npy': "
                         "'compact_npy' drops the flavour/helicity information it matches "
                         "events with")
     if not env.madtrex_installed:
