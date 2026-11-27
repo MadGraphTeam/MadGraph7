@@ -29,7 +29,11 @@ channels of one subprocess (a P* directory of the output) and
 - histogram_runtime(histograms, jets) and histogram_sums(runtime, result,
   jacobian, choice), the weights of the histograms of a batch,
 - name, incoming, beams, energy, born_pdgs, matrix_element_calls() and
-  close().
+  close(),
+- takes_virtual and provider, for the integrands that take the virtual:
+  the setup checks that the poles of the virtual of the provider cancel
+  those of the subtraction terms (pole_check, as BinothLHA.f of MadFKS, with
+  IRPoleCheckThreshold of FKS_params.dat) and stops where they do not.
 
 The integration follows the fixed-order run of MadFKS (driver_mintFO.f with
 mint): every iteration adapts the grids, the choice and the virtual trick
@@ -532,8 +536,10 @@ def read_param_card(path):
 
 
 def read_fks_params(path):
-    """VirtualFraction and MinVirtualFraction of FKS_params.dat."""
+    """VirtualFraction, MinVirtualFraction and IRPoleCheckThreshold of
+    FKS_params.dat."""
     values = dict(VirtualFraction=1.0, MinVirtualFraction=0.005)
+    values["IRPoleCheckThreshold"] = 1e-5
     if not os.path.isfile(path):
         return values
     with open(path) as f:
@@ -543,6 +549,156 @@ def read_fks_params(path):
         if line.startswith("#") and key in values:
             values[key] = float(lines[k + 1].lower().replace("d", "e"))
     return values
+
+
+# the points of the pole check of a subprocess, those MadFKS tries before it
+# stops (nbadmax + 1 of BinothLHA.f), and the random points to find them
+POLE_CHECK_POINTS = 6
+POLE_CHECK_TRIES = 2000
+
+
+def pole_check(provider, run_card, param_card, n_f, n_l, context, threshold, seed=1):
+    """The check of BinothLHA.f of MadFKS that the poles of the virtual of
+    the provider cancel those of the integrated subtraction terms, here those
+    of the I operator of Catani and Seymour (CSInsertion, the same poles for
+    any scheme), at Born points of the first channel that pass the cuts, at
+    mu = sqrt(s_hat). A point passes where for every NLO order (|dS| + |dD|)
+    / (|S_avg| + |D_avg|) < threshold (S and D the single and double pole of
+    the virtual and minus those of I, d their difference, avg their mean),
+    as also where MadLoop flags the point (return code ending in 7), and
+    points of the initialization of MadLoop (tens of the code 3 or 4) do not
+    count. The check passes at the first point that passes, as in MadFKS.
+
+    It leaves out NLO orders whose subtraction terms CSInsertion does not
+    have: QED corrections with tagged photons, extra counterterms, and NLO
+    orders that are no correction of a Born order, and those above max_nlo,
+    which MadFKS does not compute. Returns the number of
+    points it compared, 0 where it compared none (also for a negative
+    threshold, which turns it off as in MadFKS).
+
+    Raises:
+        RuntimeError: where the first POLE_CHECK_POINTS points all fail.
+    """
+    if threshold < 0:
+        return 0
+    from madgraph.mg7.nlo.cs import correction_orders, mapping_outputs
+    from madgraph.mg7.nlo.provider import boost_z, partonic_rapidity
+
+    ms = madspace()
+    configurations = provider.fks_configurations
+    orders = configurations["orders"]
+    try:
+        corrections = correction_orders(orders, ("QCD", "QED"))
+    except NotImplementedError:
+        return 0
+    # the NLO orders MadFKS computes, up to max_nlo (keep_order_cnt): an
+    # output of QCD corrections lists the QED corrections too
+    top = orders.get("max_nlo")
+    for group, entries in corrections.items():
+        corrections[group] = [
+            (
+                n
+                if n is not None
+                and (top is None or all(a <= b for a, b in zip(orders["nlo"][n], top)))
+                else None
+            )
+            for n in entries
+        ]
+    if provider.born_input_count() != len(orders["born"]):
+        return 0
+    groups = ["QCD"]
+    if provider.tagged_factors() is None:
+        groups.append("QED")
+    # the NLO orders that the groups of corrections reach, without those of
+    # the QED corrections with tagged photons
+    left_out = {n for n in corrections["QED"] if n is not None and "QED" not in groups}
+    checked = sorted(
+        {n for g in groups for n in corrections[g] if n is not None} - left_out
+    )
+    if not checked:
+        return 0
+    incoming = configurations["nincoming"]
+    pdgs = configurations["born_pdgs"]
+    masses = [float(param_card["mass"].get(str(abs(pdg)), 0.0)) for pdg in pdgs]
+    beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
+    if incoming == 1:
+        energy, leptonic = masses[0], True
+    else:
+        energy = 2 * math.sqrt(real(run_card["ebeam1"]) * real(run_card["ebeam2"]))
+        leptonic = beams == (0, 0) or beam_kind(run_card) == "dressed"
+    channel = provider.channels()[0]
+    mapping = ms.PhaseSpaceMapping(
+        born_topology(masses, incoming, channel), energy, leptonic=leptonic
+    )
+    forward = ms.FunctionRuntime(mapping.forward_function(), context)
+    cuts = Runtime(
+        ms.NLOCuts([pdgs], incoming=incoming, unresolved=0, **run_cuts(run_card)),
+        context,
+    )
+    rng = np.random.default_rng(seed)
+    r = rng.random((POLE_CHECK_TRIES, mapping.random_dim()))
+    momenta, _, _, _, det = mapping_outputs(forward.call([r]), len(r))
+    layout = np.zeros(len(momenta), dtype=np.int32)
+    passes = (cuts(momenta, layout_index=layout)["mask"] != 0) & (det > 0)
+    momenta = momenta[passes][: 4 * POLE_CHECK_POINTS]
+    if not len(momenta):
+        return 0
+    cm = boost_z(momenta, -partonic_rapidity(momenta, incoming))
+    per_position, _, _ = provider.born(cm, np.zeros(len(cm), dtype=np.int32))
+    born = provider.born_orders_of(per_position)
+    keep = np.abs(born).sum(1) > 0
+    cm, born = cm[keep][:POLE_CHECK_POINTS], born[keep][:POLE_CHECK_POINTS]
+    if not len(cm):
+        return 0
+    count, b = born.shape
+    total = cm[:, :incoming].sum(1)
+    mu = np.sqrt(np.maximum(total[:, 0] ** 2 - (total[:, 1:] ** 2).sum(1), 0.0))
+    values, codes = provider.virtual(cm, mu)
+    positions = [provider.position(o) for o in orders["nlo"]]
+    virtual = np.stack(
+        [values["double"][:, positions], values["single"][:, positions]], -1
+    )
+    expected = np.zeros_like(virtual)
+    options = dict(born_orders=b, n_f=n_f, incoming=incoming)
+    if "QCD" in groups and any(n is not None for n in corrections["QCD"]):
+        insertion = Runtime(ms.CSInsertion(pdgs, masses, **options), context)
+        colors = provider.color_correlated(cm)
+        alpha_s = np.full(count, 1 / (4 * math.pi))
+        poles = insertion(cm, colors, alpha_s, mu)["poles"]
+        for k, n in enumerate(corrections["QCD"]):
+            if n is not None:
+                expected[:, n] -= poles[:, k]
+    if "QED" in groups and any(n is not None for n in corrections["QED"]):
+        insertion = Runtime(
+            ms.CSInsertion(pdgs, masses, qed=True, n_l=n_l, **options), context
+        )
+        _, alpha, _ = provider.couplings()
+        poles = insertion(cm, born, np.full(count, alpha), mu)["poles"]
+        for k, n in enumerate(corrections["QED"]):
+            if n is not None:
+                expected[:, n] -= poles[:, k]
+    difference = np.abs(virtual - expected).sum(-1)[:, checked]
+    average = np.abs((virtual + expected) / 2).sum(-1)[:, checked]
+    relative = np.where(
+        average > 0, difference / np.where(average > 0, average, 1), difference
+    )
+    flagged = codes % 10 == 7
+    initialization = np.isin((codes % 100) // 10, (3, 4))
+    passed = (relative < threshold).all(1) | flagged
+    compared = ~initialization
+    if not compared.any() or passed[compared].any():
+        return int(compared.sum())
+    worst = int(np.argmax(relative.max(1)))
+    raise RuntimeError(
+        f"nlo.core: the poles of the virtual of {provider.directory} do not "
+        f"cancel those of the subtraction terms at {int(compared.sum())} points "
+        f"(IRPoleCheckThreshold {threshold}): at the worst point the double "
+        f"and single poles of the NLO orders {[orders['nlo'][n] for n in checked]} "
+        f"are {virtual[worst][checked].tolist()} for the virtual and "
+        f"{expected[worst][checked].tolist()} from the subtraction terms. "
+        f"A model with resonances and EW corrections needs the complex-mass "
+        f"scheme"
+    )
 
 
 def light_flavors(output):
@@ -1217,6 +1373,21 @@ class NLORun:
         self.integrands = self.make_integrands(
             [os.path.join(root, name) for name in names], n_f, n_l
         )
+        # the poles of the virtual against those of the subtraction terms, on
+        # the integrands that take the virtual
+        threshold = self.fks_params["IRPoleCheckThreshold"]
+        for integrand in self.integrands:
+            if getattr(integrand, "takes_virtual", False):
+                points = pole_check(
+                    integrand.provider,
+                    self.run_card,
+                    self.param_card,
+                    n_f,
+                    n_l,
+                    self.context,
+                    threshold,
+                )
+                logger.info("poles of %s: checked at %d points", integrand.name, points)
         self.channels = [
             Channel(integrand, k, self.fks_params, self.bins)
             for integrand in self.integrands

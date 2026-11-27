@@ -464,6 +464,8 @@ class CSBornIntegrand(CSGeneratorIntegrand):
     integrand of nlo.core, without a discrete choice)."""
 
     choice_key = "choice_probabilities"
+    # the pole check of the setup of the run (pole_check of nlo.core)
+    takes_virtual = True
 
     def __init__(
         self,

@@ -221,6 +221,8 @@ def test_s_hat_shift(monkeypatch):
     monkeypatch.setattr(ms, "PhaseSpaceMapping", steeper)
     data = reference("pp_epem")
     run = make_run("pp_epem", points=2 * POINTS)
+    # without the pole check, whose Born mapping has no shift
+    run.fks_params["IRPoleCheckThreshold"] = -1.0
     run.run()
     mll_sf = float(data["run_card"]["mll_sf"])
     assert shifts and all(s == pytest.approx(mll_sf**2, rel=1e-12) for s in shifts)

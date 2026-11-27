@@ -129,6 +129,8 @@ class SubprocessIntegrand:
     of its FKS configuration (an integrand of nlo.core)."""
 
     choice_key = "configuration_probabilities"
+    # the pole check of the setup of the run (pole_check of nlo.core)
+    takes_virtual = True
 
     def __init__(self, directory, run_card, param_card, couplings, context, n_f, n_l):
         ms = madspace()
