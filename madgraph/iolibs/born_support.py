@@ -274,7 +274,14 @@ def statements(source):
             continue
         body = line[6:] if len(line) > 6 else ''
         if len(line) > 5 and line[5] not in ' 0':
-            pending += ' ' + body
+            # A long HELAS call can put its closing parenthesis on a new
+            # line. Its continuation indentation is not argument padding.
+            # Leave quoted calls alone so literal contents stay untouched.
+            if (re.match(r'''\s*call\b[^'"]*$''', pending, re.I)
+                    and body.lstrip().startswith(')')):
+                pending += body.lstrip()
+            else:
+                pending += ' ' + body
         else:
             if pending:
                 yield pending
