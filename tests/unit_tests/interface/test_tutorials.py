@@ -1749,7 +1749,8 @@ class TestMenuSections(unittest.TestCase):
         is not basic' -- which is what it used to collect by default."""
 
         self.assertEqual(sorted(self.named('advanced')[0]),
-                         ['bsm', 'decays', 'madloop', 'model', 'syntax'])
+                         ['bsm', 'decays', 'gridpack', 'madloop', 'model',
+                          'syntax'])
 
     def test_exercises_is_its_own_section(self):
         self.assertIn('exercises', self.named('exercises')[0])

@@ -168,6 +168,8 @@ tutorial = Tutorial(
     description='create and run a gridpack, and parallelise a run with '
                 'cluster mode',
     aliases=('cluster',),
+    section='advanced',
+    ai_generated=False,
     order='sequence',
     see_also=('lo', 'mg7'),
     steps=[
