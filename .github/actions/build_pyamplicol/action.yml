@@ -57,10 +57,13 @@ runs:
         key: pyamplicol-cargo-${{ runner.os }}-${{ hashFiles('pyamplicol/Cargo.lock', 'pyamplicol/rust-toolchain.toml') }}
         restore-keys: ${{ github.ref != 'refs/heads/main' && format('pyamplicol-cargo-{0}-', runner.os) || '' }}
 
-    - name: Prepared models
-      if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
-      uses: ./.github/actions/pyamplicol_prepared_models
-
+    # No pyamplicol_prepared_models step: install.py handles the packs itself.
+    # It downloads the release archive, checks it against this source tree and,
+    # when it is stale, regenerates the packs with a bootstrap wheel built in
+    # the Cargo tree above (PYAMPLICOL_BUILD_CACHE_ROOT=build/cache), which its
+    # own wheel build then reuses. Its download also overwrites any packs an
+    # earlier step put in the source tree, and that action builds without the
+    # cache root, in a fresh temporary directory: a second, cold build.
     - name: Build and install pyamplicol (only on cache miss)
       if: steps.cache-pyamplicol.outputs.cache-hit != 'true'
       run: python3 pyamplicol/install.py --source --yes
