@@ -199,26 +199,33 @@ class MG7AmplicolTest(unittest.TestCase):
                                color_accuracy='lc')
         self.assert_compatible(madmatrix, leading[:2], 8. / 9.)
 
-    def test_pp_jjj(self):
-        """Quark lines and the expansion of the multiparticle labels."""
-        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
-        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'])[:2]
-        self.assert_compatible(amplicol, madmatrix)
-
-    def test_pp_jjj_crossing(self):
-        """Crossed flavour unions in the leading-colour artifact: 3 programs
-        instead of 7, and the same cross section."""
-        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
-        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'],
-                                options=['amplicol_flavor_union_crossing True'])
-        self.assert_compatible(amplicol[:2], madmatrix)
-        lc, = glob.glob(pjoin(amplicol[2], 'SubProcesses', 'A*', 'lc'))
+    def lc_groups(self, run_dir):
+        """The process groups of the leading-colour artifact: schema version,
+        number of groups and whether a member is crossed."""
+        lc, = glob.glob(pjoin(run_dir, 'SubProcesses', 'A*', 'lc'))
         with open(pjoin(lc, 'process-groups.json')) as stream:
             groups = json.load(stream)
-        self.assertEqual(groups['schema_version'], 2)
-        self.assertEqual(len(groups['groups']), 3)
-        self.assertTrue(any('crossing_momentum_signs' in member
-                            for group in groups['groups'] for member in group['members']))
+        crossed = any('crossing_momentum_signs' in member
+                      for group in groups['groups'] for member in group['members'])
+        return groups['schema_version'], len(groups['groups']), crossed
+
+    def test_pp_jjj(self):
+        """Quark lines and the expansion of the multiparticle labels, with the
+        default crossed flavour unions in the leading-colour artifact: 3 programs
+        instead of 7."""
+        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'])
+        self.assert_compatible(amplicol[:2], madmatrix)
+        self.assertEqual(self.lc_groups(amplicol[2]), (2, 3, True))
+
+    def test_pp_jjj_uncrossed(self):
+        """Uncrossed flavour unions (the same-seed reference of the docs): 7
+        leading-colour programs, and the same cross section."""
+        madmatrix = self.run_mg7('mm', ['p p > j j j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'],
+                                options=['amplicol_flavor_union_crossing False'])
+        self.assert_compatible(amplicol[:2], madmatrix)
+        self.assertEqual(self.lc_groups(amplicol[2]), (1, 7, False))
 
     def test_pp_jjj_selector_only(self):
         """A full-colour artifact with only its one-helicity-per-point programs
@@ -284,11 +291,12 @@ class MG7AmplicolTest(unittest.TestCase):
         self.assert_compatible(amplicol, madmatrix, relative=0.03)
 
     def test_pp_jjj_ckkwl(self):
-        """The ktdurham merging cut and the ckkwl scale."""
+        """The ktdurham merging cut and the ckkwl scale, with the default
+        crossed flavour unions."""
         madmatrix = self.run_mg7('mm', ['p p > j j j'], merging='ckkwl')[:2]
-        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'],
-                                merging='ckkwl')[:2]
-        self.assert_compatible(amplicol, madmatrix, relative=0.03)
+        amplicol = self.run_mg7('amp', ['p p > j j j [amplicol]'], merging='ckkwl')
+        self.assert_compatible(amplicol[:2], madmatrix, relative=0.03)
+        self.assertTrue(self.lc_groups(amplicol[2])[2])
 
     def test_mixed(self):
         """[amplicol] and madmatrix processes in one output."""
