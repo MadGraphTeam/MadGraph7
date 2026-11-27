@@ -561,7 +561,34 @@ pyamplicol evaluate artifacts/loop_generate \
   --set evaluation.phase_space.points=4 --set evaluation.phase_space.sqrt_s=2000
 ```
 
-`check` draws its own points (`[check] points`, `seed`, `sqrt_s`).
+**Cuts.** `--pt-min PT` and `--delta-r-min DR` (`evaluation.phase_space.pt_min`,
+`delta_r_min`; unset or 0: none; `evaluate`, `profile` and `check`) require,
+by rejection, a transverse momentum above `PT` of every massless parton, photon
+and charged lepton of the final state, and a distance (Δη² + Δφ²)^(1/2) above
+`DR` of every pair of them (pseudorapidity η; azimuth difference Δφ in
+[0, π]). The legs are found from the artifact's model (a massless final leg
+that is coloured, electrically charged or a vector); massive legs and
+neutrinos are not cut. Point i is the first of its own attempts that
+passes: the point drawn from seed + i itself when it passes,
+else attempts from seeds derived from seed + i, so a point depends on its own
+seed only and the points that pass are the same with and without the cuts.
+A `pt_min` that the legs' energies cannot give is refused at once; other cuts
+without a success in `cut_attempts` attempts of a point (default 100000) are an
+error, found only after all those attempts of every such point: lower
+`cut_attempts` when trying tight cuts. A decay (no beams) refuses cuts, also as one of the
+processes of a `check`. The stability run records them (`stability_setup.cuts`,
+with the legs; the samples file's `cuts`); the runtime setup line and the
+stability tables' titles name them.
+
+```console
+pyamplicol profile artifacts/loop_gg_ggg --stability --sqrt-s 1000 \
+  --pt-min 25 --delta-r-min 0.7
+```
+
+`check` draws its own points (`[check] points`, `seed`, `sqrt_s`), within the
+same cuts. `check ARTIFACT` takes the cuts the artifact's configuration records
+(the generating card's); each option given replaces its own cut only, and a 0
+switches that cut off (`--pt-min 0 --delta-r-min 0`: no cut).
 
 ### Saved virtual artifacts
 
@@ -598,10 +625,11 @@ hazard"); a binary64 fallback point is served unguarded; `ninjars` and `tirust` 
 without a fallback or guard (`tirust` serves every arithmetic; `ninjars`
 without stability checks was exposed to that hazard until NinjaRS's
 conditioning bound, 71eddb15); an explicit backend that cannot serve the call is refused.
-`--reduction-target X` sets TIRust's target accuracy (the relative accuracy
+`--reduction-target X` sets the target accuracy (the relative accuracy
 of each point's result, default 1e-5; it sets the calibrated acceptance of
-TIRust's checked method choice and, never below 1e-5, is the fallback
-guard's threshold).
+TIRust's checked method choice, NinjaRS's cancellation rescue per lane at
+X / 64, and, never below 1e-5, is the fallback guard's threshold;
+`evaluate`, `profile` and `check` read it).
 `--kinematics-improvement VARIANT` (`z-shift`, `rescaling`, `projection` or `off`; default
 `z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1, finished by
 the projection where MadLoop leaves the point inexact) and
@@ -988,7 +1016,11 @@ fallback), no stability checks, no rescue, no best-effort re-evaluation of a
 refused point (a point without a value is counted `failed`); a reduction lane
 the unchecked backend still refuses is rescued inside the timed call (the
 header says "refused lanes rescued"; `--no-lane-rescue` times pure binary64
-calls, such points then without a value). `--checked`
+calls, such points then without a value). The unchecked reduction also has
+NinjaRS's cancellation rescue off (no trigger, no re-reduction: python-api.md,
+"NinjaRS's cancellation rescue"), so the default runtime pass is the most
+optimistic baseline, its values and time those of the reduction without the
+rescue, bit for bit. `--checked`
 (`benchmark.checked = true`) times the checked mode instead: the backends'
 own acceptance checks, a refused point returned with its best-effort value
 and timed as such (its unchecked re-evaluation and its uncertainty's checks
@@ -1245,7 +1277,12 @@ of the points done per backend and precision and an estimated time to
 completion; Ctrl-C stops the run and prints the tables of the points
 evaluated so far with a one-line notice (`stability_setup.requested`,
 `measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
-The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default
+The runtime timing runs before the pool, one process per backend. The
+stability run's evaluations are CHECKED (unless `--reduction-unchecked`): the
+precision it reports for an input arithmetic includes NinjaRS's cancellation
+rescue of the lanes whose binary64 reduction cancels beyond the target
+(python-api.md, "NinjaRS's cancellation rescue"), and each point's records
+say how many lanes it re-reduced and in which precision (below). Each backend evaluates every point in pure binary64 with the default
 checks: one default rotation on a point NinjaRS serves, one default rotation
 and the rescaled reduction-direction check on a point TIRust serves (per
 point under `--loop-reduction auto`: a per-point NinjaRS fallback point keeps
@@ -1391,7 +1428,9 @@ best-effort value, or none); `best_effort` and its `uncertainty` (relative);
 of the reference's total finite part at its precision; null when it failed
 or with `--ground-truth none`), `reference_reason` and `reference_certified`
 (an arbitrary-precision reference's certification: `"agreement"` with another
-backend's reference, `"checks"` from its checked evaluation; null for a
+backend's reference, `"checks"` from its checked evaluation; `false` for a
+reference served with lanes without accuracy evidence, see
+`reference_uncertified`; null for a
 reference that failed and in every run without an arbitrary-precision
 ground truth, whose records carry the column all the same: every run's
 table has the same fields); `true_relative_error` and `true_digits` (null
@@ -1401,7 +1440,27 @@ first evaluation: plain, or checked with one backend) and
 into the table's `tasks` list of `[seconds, points]` of the task that
 evaluated the point (inside a batched call there is no per-sample time);
 `lane_rescue` (the point's lane rescue, e.g. `"reduction lanes rescued in
-double-double"`; null without one).
+double-double"`; null without one); `reduction_rescue_lanes` and
+`reduction_rescue_carrier` (the lanes NinjaRS's cancellation rescue
+re-reduced within the reduction, over the point's evaluations: the reference
+call and its rotated evaluations, and the highest precision it used,
+`"double-double"` or `"arbitrary"`; 0 and null without one); `uncertified`
+(why lanes of the point were served without accuracy evidence, the reasons of
+`VirtualLaneDiagnostic.uncertified` joined by "; ": a lane below the
+resolution of its own terms, a vanishing lane, a lane outside NinjaRS's
+rescue domain without refined kinematics; the point's value is kept, its
+accuracy is not established; null otherwise); `reference_uncertified` (the
+same for the point's REFERENCE: the reasons of its lanes served without
+accuracy evidence; such a reference is not certified, its
+`reference_certified` is `false` whatever its estimate or agreement, and the
+true digits are measured against it all the same; null otherwise).
+`per_point` carries the same fields, and each backend's stability row (per
+measured precision) the totals `reduction_rescued_points`,
+`reduction_rescued_lanes`, `reduction_rescue_carriers` (per precision its
+lanes), `uncertified_points` and `uncertified_reference_points` (the measured
+points whose reference is not certified for that reason); the text report
+lists such points under the kind `reduction rescue`. Points whose reference
+carries no such lane are unchanged.
 Values, sectors, momenta and the reference are
 exact; the relative errors and scales carry 4 significant digits, the
 digits 3 decimals, the task seconds microseconds. Non-finite numbers are the
@@ -1413,8 +1472,8 @@ against `stability_setup.target`).
 `--samples-output PATH` (`benchmark.samples_output`) writes the same records
 to their own file instead, as its own phase: one JSON document with
 `schema` `"pyamplicol.profile-samples/1"`, `process`, `seed`, `sqrt_s`,
-`inputs` (the setup's table) and `backends` (each backend's table). The
-report's `samples` then name it (`{"output": PATH, "points": N}`); this also
+`cuts`, `inputs` (the setup's tables) and `backends` (each backend's table).
+The report's `samples` then name it (`{"output": PATH, "points": N}`); this also
 works with the human tables. Without `--json` or `--samples-output` no
 per-sample record is built.
 
@@ -1445,7 +1504,10 @@ on the loaded runtime's own pools.
 
 ## Check
 
-`pyamplicol check` runs the pole and Ward checks of a one-loop request:
+`pyamplicol check` runs the pole and Ward checks of a one-loop request
+(checked reduction, at `evaluation.reduction_target` / `--reduction-target`,
+default 1e-5, which drives TIRust's acceptance and NinjaRS's cancellation
+rescue; the checks' own pass criteria do not depend on it):
 
 ```console
 pyamplicol check loop_gg_zgg_generate.toml              # a run card's request
@@ -1482,7 +1544,7 @@ of the initial state, on NinjaRS at every carrier:
 | Check | Born-interfered | Loop-induced | Criterion |
 | --- | --- | --- | --- |
 | poles | every squared-order sector's 1/eps and 1/eps^2 against Catani's operator of the requested corrections (QCD; QED where requested), formed natively | the finiteness probe: the amplitude's poles against the row term floor S_k(h) (the pre-cancellation scale) | binary64 with the recommended checks: \|pole - Catani\| <= 10 E + 1e-12 \|Catani\|; double-double: 1e-12 relative; finiteness: within 10 x its own estimate |
-| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 E with E <= 1e-9 S (scope); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
+| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 max(E, n u S) with E <= 1e-9 S (scope; n u S: the binary64 resolution of a sum of the evaluation's n reduction lanes, u = 2^-53, since the reduction-direction estimate does not see the binary64 numerators' rounding); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
 | goldstone | not applicable (the probe is amplitude-level) | k.A(V) = eta M_V A(G) on one leg of every massive-vector species with a Goldstone partner, in 't Hooft-Feynman gauge | within 10 x its estimate |
 
 `--precision auto` (default) runs binary64 first and double-double only for a
@@ -1537,10 +1599,25 @@ bound: <= 1 passes), the deviation and E over the row's scale where formed
 (`dev / scale`, `E / scale`: a binary64 pole row's pre-cancellation scale S;
 a double-double pole row's |Catani|, its criterion being relative; a
 Born-interfered Ward row's physical scale; a probe's row term floor
-S_k(h)), the fallback's reason and the verdict. The exit code is 0 iff
-every applicable check passed, 1 on any failure, and 3 when a process had
-nothing to check (or an applicable check did not run); an "undecided" row
-counts as a failure (1). `--json` returns the
+S_k(h)), the fallback's reason and the verdict. A row whose residual
+includes reduction lanes served without accuracy evidence is judged with their
+reducer-stated absolute bound B (propagated to the row's quantity with each
+lane's contraction weight; only the fast engine's double-double re-reduction
+states a bound, when finite, normal and positive: a lane of the generic
+engine's ladder has none): residual + B within the bound passes, residual - B
+above it fails, anything between (or a lane without a bound) is
+`inconclusive`, never a pass. A Ward row's physical scale takes the interval
+its own such lanes give it: the row passes only if it passes at every scale
+in the interval and fails only if it fails at every one; the next carrier of the ladder evaluates it
+again and the deciding carrier is recorded. Loop-induced probes that served
+such a lane are inconclusive (the bound of |A|^2, a product, is not formed).
+A process's status is a closed aggregate: `failed` if a row failed or is
+undecided; else `inconclusive` if a row is inconclusive or carries an
+unrecognized verdict; else `nothing checked` if no row passed or an
+applicable check did not run; else `passed`. The exit code is 0 iff every
+process passed, 1 on any failure, 4 when a process is inconclusive (and none
+failed), and 3 when a process had nothing to check (or an applicable check
+did not run); an "undecided" row counts as a failure (1). `--json` returns the
 `CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
 `carriers`, `regeneration`, `seconds`, `exit_code`, and per process `process`,
 `expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,
@@ -1548,7 +1625,10 @@ counts as a failure (1). `--json` returns the
 arbitrary-precision carrier's digit count); `carriers` ends with `arbitrary`
 under `auto`; `source` names the run card or artifact checked. Python:
 `pyamplicol.api.check(target, points=..., seed=..., precision=..., model=...,
-sqrt_s=..., arbitrary_digits=...)`.
+sqrt_s=..., arbitrary_digits=..., cuts=..., kinematics_improvement=...,
+kinematics_improvement_binary64=...)` (`cuts`: a
+`pyamplicol.generation.phase_space_cuts.PhaseSpaceCuts`; its None values keep
+the configuration's, its zeros switch that cut off).
 
 Cost: one probe-slice generation per process (about the generation's own
 cost: the request-model preparation included) plus a few evaluations per

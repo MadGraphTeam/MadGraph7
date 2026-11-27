@@ -10,12 +10,14 @@
 
 use super::batch::{Batch, BatchCarrier, Data};
 use super::v2_reduce::{
-    FamilyGroup, PoleSelection, Poles, ReduceOptions, ReductionFrame, V2Reducer,
+    FamilyGroup, GroupRefinementSource, PoleSelection, Poles, ReduceOptions, ReductionFrame,
+    V2Reducer,
 };
 use crate::Complex;
 use rusticol_core::loop_execution::v2::{
-    BackendStatistics, ExactLanes, FamilyLanes, LaneOutcome, MeasuredLane, Reduced, RescueCarrier,
-    RescueOutput, TrackedPrecision, V2Backend, tracked_uncertainty,
+    BackendStatistics, ExactLanes, FamilyLanes, LaneOutcome, LocalRescue, MeasuredLane, Reduced,
+    RefinementSource, RescueCarrier, RescueOutput, TrackedPrecision, V2Backend,
+    tracked_uncertainty,
 };
 use rusticol_core::loop_v2::dress::{Carrier, cast, exact_value};
 use rusticol_core::loop_v2::retest::ReductionCheck;
@@ -240,10 +242,11 @@ impl V2Backends {
 
     /// The target accuracy of the following reductions (TIRust: its
     /// calibrated method-choice acceptance, `v2_tir::acceptance_of`, set on
-    /// the built backend; NinjaRS: nothing it drives).
+    /// the built backend; NinjaRS: its cancellation rescue's per-lane
+    /// target, [`V2Reducer::set_target`]).
     pub fn set_target(&mut self, target: f64) {
         match self {
-            Self::NinjaRs(_) => {}
+            Self::NinjaRs(backend) => backend.reducer.set_target(target),
             #[cfg(feature = "tir")]
             Self::TiRust(backend) => backend.set_acceptance(crate::v2_tir::acceptance_of(target)),
         }
@@ -263,6 +266,18 @@ impl V2Backends {
             #[cfg(feature = "tir")]
             Self::TiRust(backend) => backend.set_unchecked(unchecked),
         }
+    }
+
+    /// pyAmpliCol's best-effort pass of the following reductions
+    /// ([`V2Reducer::set_best_effort_pass`]; NinjaRS only, TIRust's
+    /// best-effort pass is its unchecked mode).
+    pub fn set_best_effort_pass(&mut self, on: bool) {
+        match self {
+            Self::NinjaRs(backend) => backend.reducer.set_best_effort_pass(on),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => {}
+        }
+        let _ = on;
     }
 
     /// The unchecked mode of the following reductions.
@@ -382,6 +397,49 @@ impl<T: TypedBatch> V2Backend<T> for V2Backends {
     ) -> RusticolResult<Reduced<T>> {
         match self {
             Self::NinjaRs(backend) => backend.reduce(groups, poles, check),
+            #[cfg(feature = "tir")]
+            Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, check),
+        }
+    }
+
+    fn take_local_rescues(&mut self) -> Vec<LocalRescue> {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::take_local_rescues(backend),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Vec::new(),
+        }
+    }
+
+    fn take_uncertified(&mut self) -> Vec<(usize, usize, &'static str)> {
+        self.uncertified_lanes()
+    }
+
+    fn take_uncertified_bounds(&mut self) -> Vec<(usize, usize, [f64; 3])> {
+        match self {
+            Self::NinjaRs(backend) => std::mem::take(&mut backend.uncertified_bounds),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Vec::new(),
+        }
+    }
+
+    /// NinjaRS's ([`V2Reducer::refinement_carrier`]); none on TIRust.
+    fn refinement_carrier(&self, zero: &T) -> Option<RescueCarrier> {
+        match self {
+            Self::NinjaRs(backend) => V2Backend::<T>::refinement_carrier(backend, zero),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => None,
+        }
+    }
+
+    fn reduce_refined(
+        &mut self,
+        groups: &[FamilyLanes<T>],
+        source: &dyn RefinementSource<T>,
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<T>> {
+        match self {
+            Self::NinjaRs(backend) => backend.reduce_refined(groups, source, poles, check),
             #[cfg(feature = "tir")]
             Self::TiRust(backend) => T::tir_reduce(backend, groups, poles, check),
         }
@@ -544,10 +602,21 @@ where
     Ok(RescueOutput {
         outcomes: (read(direct), retest.map(read)),
         tracked,
+        uncertified: backend.uncertified_lanes(),
     })
 }
 
 impl V2Backends {
+    /// The lanes the last reduction served without accuracy evidence
+    /// ([`V2Backend::take_uncertified`]; none on TIRust).
+    fn uncertified_lanes(&mut self) -> Vec<(usize, usize, &'static str)> {
+        match self {
+            Self::NinjaRs(backend) => std::mem::take(&mut backend.uncertified),
+            #[cfg(feature = "tir")]
+            Self::TiRust(_) => Vec::new(),
+        }
+    }
+
     /// The index of this backend's rescue backend in `carrier`
     /// ([`RescueBackends`]), built on first use and kept, with this
     /// backend's CURRENT settings (review F1, 2026-11-19): the acceptance
@@ -613,14 +682,42 @@ impl V2Backends {
         }
     }
 
-    /// This backend's acceptance (TIRust) or masters (NinjaRS) on its kept
-    /// rescue backend `index`.
+    /// This backend's acceptance (TIRust) or masters, call target and
+    /// checks switch (NinjaRS) on its kept rescue backend `index`, at its
+    /// creation and at every reuse.
     fn sync_rescue(&mut self, index: usize) {
         match self {
             Self::NinjaRs(main) => {
                 let masters = main.masters;
+                let target = main.reducer.target();
+                let unchecked = main.reducer.unchecked();
+                // The lane rescue's last carrier returns a lane refused there
+                // too whose best value is consistent with zero within its own
+                // bound, uncertified (`V2Reducer::set_vanishing`).
+                let carrier = main.rescue.0[index].0;
+                let last = rescue_carriers(main.reducer.precision_bits())
+                    .last()
+                    .copied();
+                let vanishing = (last == Some(carrier)).then_some(match carrier {
+                    RescueCarrier::DoubleDouble => super::v2_reduce::UNCERTIFIED_VANISHING_DD,
+                    RescueCarrier::Arbitrary(_) => {
+                        super::v2_reduce::UNCERTIFIED_VANISHING_ARBITRARY
+                    }
+                });
                 if let Self::NinjaRs(kept) = &mut main.rescue.0[index].1 {
                     kept.masters = masters;
+                    kept.reducer.set_vanishing(vanishing);
+                    // The retry reduces at the call's lane target, and its
+                    // own NinjaRS rescue (the generic engines' cancellation
+                    // ladder) follows the call's checks switch: none in the
+                    // unchecked mode. The lane rescue's outer checks are its
+                    // own and unchanged.
+                    if kept.reducer.target() != target {
+                        kept.reducer.set_target(target);
+                    }
+                    if kept.reducer.unchecked() != unchecked {
+                        kept.reducer.set_unchecked(unchecked);
+                    }
                 }
             }
             #[cfg(feature = "tir")]
@@ -698,6 +795,15 @@ pub struct V2ReductionBackend {
     pub masters: PoleSelection,
     /// The lane rescue's backends ([`RescueBackends`]).
     pub rescue: RescueBackends,
+    /// The lanes the last reduction rescued within NinjaRS
+    /// ([`V2Backend::take_local_rescues`]).
+    pub local: Vec<LocalRescue>,
+    /// The lanes the last reduction served without accuracy evidence
+    /// ([`V2Backend::take_uncertified`]).
+    pub uncertified: Vec<(usize, usize, &'static str)>,
+    /// Their absolute bounds where the reducer states one
+    /// ([`V2Backend::take_uncertified_bounds`]).
+    pub uncertified_bounds: Vec<(usize, usize, [f64; 3])>,
 }
 
 impl V2ReductionBackend {
@@ -706,6 +812,9 @@ impl V2ReductionBackend {
             reducer,
             masters,
             rescue: RescueBackends::default(),
+            local: Vec::new(),
+            uncertified: Vec::new(),
+            uncertified_bounds: Vec::new(),
         }
     }
 }
@@ -742,6 +851,7 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
             return BackendStatistics::default();
         };
         let exact = self.reducer.take_exact_lanes();
+        let rescued = self.reducer.take_rescued_lanes();
         BackendStatistics {
             seconds: vec![
                 ("reduction: masters", masters.nanoseconds as f64 * 1e-9),
@@ -754,6 +864,7 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 ("master requests", masters.total_requests()),
                 ("master evaluations", masters.total_evaluated()),
                 ("binary64 lanes on the exact engine", exact),
+                ("lanes rescued by NinjaRS", rescued),
             ],
         }
     }
@@ -761,6 +872,90 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
     fn reduce(
         &mut self,
         groups: &[FamilyLanes<T>],
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<T>> {
+        self.reduce_with(groups, None, poles, check)
+    }
+
+    /// The fast engine's in the checked mode ([`V2Reducer::refinement_carrier`]),
+    /// for a binary64 evaluation.
+    fn refinement_carrier(&self, zero: &T) -> Option<RescueCarrier> {
+        (T::bits(zero) == f64::MANTISSA_DIGITS)
+            .then(|| self.reducer.refinement_carrier())
+            .flatten()
+    }
+
+    fn reduce_refined(
+        &mut self,
+        groups: &[FamilyLanes<T>],
+        source: &dyn RefinementSource<T>,
+        poles: Poles,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<T>> {
+        self.reduce_with(groups, Some(source), poles, check)
+    }
+
+    fn take_uncertified(&mut self) -> Vec<(usize, usize, &'static str)> {
+        std::mem::take(&mut self.uncertified)
+    }
+
+    fn take_uncertified_bounds(&mut self) -> Vec<(usize, usize, [f64; 3])> {
+        std::mem::take(&mut self.uncertified_bounds)
+    }
+
+    fn take_local_rescues(&mut self) -> Vec<LocalRescue> {
+        std::mem::take(&mut self.local)
+    }
+}
+
+/// The executor's [`RefinementSource`] as the reducer's binary64
+/// [`GroupRefinementSource`]: one lane's low parts, rounded to binary64 (they
+/// are binary64 values for a binary64 evaluation). A lane the source cannot
+/// refine is served without (`false`).
+struct SourceAdapter<'a, T> {
+    source: &'a dyn RefinementSource<T>,
+}
+
+impl<T: TypedBatch> GroupRefinementSource for SourceAdapter<'_, T> {
+    fn lane(
+        &self,
+        group: usize,
+        row: usize,
+        shifts: &mut [ninjars::fast::RMom],
+        s_matrix: &mut [f64],
+        masses_squared: &mut [ninjars::fast::C64],
+    ) -> bool {
+        use symbolica::domains::float::RealLike;
+        let Ok(lane) = self.source.lane(group, row) else {
+            return false;
+        };
+        if lane.shifts.len() != 4 * shifts.len() || lane.s_matrix.len() != s_matrix.len() {
+            return false;
+        }
+        for (k, shift) in shifts.iter_mut().enumerate() {
+            for (mu, x) in shift.iter_mut().enumerate() {
+                *x = RealLike::to_f64(&lane.shifts[4 * k + mu].re);
+            }
+        }
+        for (x, z) in s_matrix.iter_mut().zip(&lane.s_matrix) {
+            *x = RealLike::to_f64(&z.re);
+        }
+        if let Some(masses) = &lane.masses {
+            for (m, z) in masses_squared.iter_mut().zip(masses) {
+                *m = ninjars::fast::C64::new(RealLike::to_f64(&z.re), RealLike::to_f64(&z.im));
+            }
+        }
+        true
+    }
+}
+
+impl V2ReductionBackend {
+    /// [`V2Backend::reduce`] and [`V2Backend::reduce_refined`].
+    fn reduce_with<T: TypedBatch>(
+        &mut self,
+        groups: &[FamilyLanes<T>],
+        source: Option<&dyn RefinementSource<T>>,
         poles: Poles,
         check: Option<ReductionCheck>,
     ) -> RusticolResult<Reduced<T>> {
@@ -797,10 +992,12 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 },
             )
             .collect();
+        let adapter = source.map(|source| SourceAdapter { source });
         let output = self
             .reducer
-            .reduce(
+            .reduce_refined(
                 &family_groups,
+                adapter.as_ref().map(|a| a as &dyn GroupRefinementSource),
                 ReduceOptions {
                     poles,
                     check: check.map(frame),
@@ -808,6 +1005,18 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 },
             )
             .map_err(failure)?;
+        self.uncertified = output.uncertified.clone();
+        self.uncertified_bounds = output.uncertified_bounds.clone();
+        self.local = output
+            .rescued
+            .iter()
+            .map(|&(group, lane, carrier, estimate)| LocalRescue {
+                group,
+                lane,
+                carrier,
+                estimate,
+            })
+            .collect();
         let read = |batches: Vec<super::reduction::ReductionBatch>| {
             batches
                 .into_iter()
@@ -933,6 +1142,49 @@ mod rescue_settings_tests {
         let bits = carrier.bits() as i32;
         assert!(u > size * 2f64.powi(53 - bits - 16), "{u} vs {size}");
         assert!(u < size * 2f64.powi(53 - bits + 16), "{u} vs {size}");
+    }
+
+    /// A retry (lane rescue) reducer takes the call's target and checks
+    /// switch when it is built and when it is reused: a non-default target
+    /// reaches its cancellation ladder, and an unchecked call's retry runs
+    /// no ladder (no stability test, no trigger).
+    #[test]
+    fn a_kept_ninjars_rescue_backend_follows_the_target_and_the_switch() {
+        use crate::reduction_policy::{DEFAULT_TARGET, rescue_lane_target};
+        let reducer = V2Reducer::new("double", None, "fast", true).expect("NinjaRS");
+        let mut ninja = V2Backends::NinjaRs(V2ReductionBackend::new(reducer, PoleSelection::BOTH));
+        let kept = |ninja: &mut V2Backends, index: usize| match &ninja.rescue_store().0[index].1 {
+            V2Backends::NinjaRs(kept) => (kept.reducer.target(), kept.reducer.ladder_state()),
+            #[cfg(feature = "tir")]
+            V2Backends::TiRust(_) => panic!("a NinjaRS retry"),
+        };
+        for carrier in [RescueCarrier::DoubleDouble, RescueCarrier::Arbitrary(40)] {
+            let index = ninja.rescue_index(carrier).unwrap();
+            let lane = Some(rescue_lane_target(DEFAULT_TARGET));
+            assert_eq!(
+                kept(&mut ninja, index),
+                (DEFAULT_TARGET, Some((lane, true)))
+            );
+            // A non-default target, on reuse.
+            ninja.set_target(1e-3);
+            assert_eq!(ninja.rescue_index(carrier).unwrap(), index);
+            let lane = Some(rescue_lane_target(1e-3));
+            assert_eq!(kept(&mut ninja, index), (1e-3, Some((lane, true))));
+            // The unchecked mode: no ladder in the retry.
+            ninja.set_unchecked(true);
+            assert_eq!(ninja.rescue_index(carrier).unwrap(), index);
+            assert_eq!(kept(&mut ninja, index), (1e-3, Some((lane, false))));
+            ninja.set_unchecked(false);
+            ninja.set_target(DEFAULT_TARGET);
+        }
+        // Built fresh under a non-default target and the unchecked mode.
+        let reducer = V2Reducer::new("double", None, "fast", true).expect("NinjaRS");
+        let mut fresh = V2Backends::NinjaRs(V2ReductionBackend::new(reducer, PoleSelection::BOTH));
+        fresh.set_target(1e-7);
+        fresh.set_unchecked(true);
+        let index = fresh.rescue_index(RescueCarrier::DoubleDouble).unwrap();
+        let lane = Some(rescue_lane_target(1e-7));
+        assert_eq!(kept(&mut fresh, index), (1e-7, Some((lane, false))));
     }
 
     #[test]

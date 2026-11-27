@@ -240,6 +240,7 @@ def _flat_points(config: RunConfig):
         points=space.points,
         seed=space.seed,
         sqrt_s=space.sqrt_s,
+        cuts=space.cuts,
     )
 
 
@@ -774,6 +775,14 @@ class DefaultCliServices:
                 Literal["auto", "double", "double-double"], str(config.check.precision)
             ),
             model=config.check.model,
+            sqrt_s=config.check.sqrt_s,
+            arbitrary_digits=config.check.arbitrary_digits,
+            cuts=config.evaluation.phase_space.cuts,
+            kinematics_improvement=config.evaluation.kinematics_improvement,
+            kinematics_improvement_binary64=(
+                config.evaluation.kinematics_improvement_binary64
+            ),
+            reduction_target=config.evaluation.reduction_target,
             source=None if self._card is None else str(self._card),
             progress=progress,
         )

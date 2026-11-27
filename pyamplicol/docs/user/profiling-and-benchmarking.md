@@ -292,6 +292,21 @@ pyamplicol profile artifacts/pp_zjj --progress off --json > profile.json
 JSON mode reserves stdout for the machine-readable result; diagnostics stay on
 stderr.
 
+**References without accuracy evidence.** In a `--stability` run the
+reference of a point (its re-run at the ground truth's precision) can itself
+contain reduction lanes served without accuracy evidence (a lane that
+vanishes within the resolution of its own terms, one outside NinjaRS's rescue
+domain without refined kinematics). Such a reference is not certified, by its
+estimate or by agreement: its per-sample record has `reference_certified`
+`false` and `reference_uncertified` (the reasons, joined by "; "); the
+point's `true_digits` are still measured against it and reported, flagged by
+the same field in `per_point` (`reference_uncertified`); each backend's
+stability row (per measured precision) counts them in
+`uncertified_reference_points`. Points whose reference carries no such lane
+are unchanged (the fields are additive: `reference_uncertified` null, the
+count 0). The full list of per-sample fields is in the
+[command-line reference](command-line-interface.md), `profile --stability`.
+
 ## Python API
 
 The typed API accepts either a loaded runtime or an artifact path:

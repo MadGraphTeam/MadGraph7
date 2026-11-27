@@ -1019,7 +1019,11 @@ def test_auto_serves_a_point_tirust_refuses_on_ninjars(artifacts, loop_native):
     assert "TIRust method-choice lane refused by its check" in (
         explicit.diagnostics[0].detail
     )
-    other = runtime.evaluate(points, reduction="ninjars", **options)
+    # At the same target as the "auto" call: the target drives NinjaRS's
+    # cancellation rescue too.
+    other = runtime.evaluate(
+        points, reduction="ninjars", reduction_target=target, **options
+    )
     auto = runtime.evaluate(points, reduction_target=target, **options)
     backends = _per_point(auto, explicit, other)
     assert backends[0] == "ninjars", f"target {target:e}"

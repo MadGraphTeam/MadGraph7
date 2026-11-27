@@ -699,20 +699,26 @@ def test_native_term_floor_equals_the_python_oracle(li, name):
     numerators through the reducer) per (loop order, row) and Laurent
     coefficient, after the per-row floor (``induced.row_scales``)."""
 
-    from pyamplicol.loops.v2 import induced
+    from pyamplicol.loops.v2 import induced, reduction
     from pyamplicol.loops.v2.assemble import Precision, _fraction
 
     precision = Precision.double()
     slice_ = li.slice(name)
     point, scale, parameters = li.point(name)
-    native = induced.row_scales(
-        _evaluation(li.executor(name), point, scale, parameters, precision)
-    )
     exact = tuple(tuple(_fraction(x) for x in p) for p in point)
-    python = slice_._evaluate(
-        exact, scale, dict(parameters), precision, "all", "reversed"
-    )
-    oracle = induced.row_scales(python)
+    # On equal footing: the Python reference has no lane rescue, so both
+    # sides reduce without NinjaRS's cancellation rescue (the unchecked
+    # setting); a lane that cancels catastrophically is then the same
+    # binary64 reduction on both.
+    with reduction.running(None, unchecked=True):
+        native = induced.row_scales(
+            _evaluation(li.executor(name), point, scale, parameters, precision)
+        )
+        python = slice_._evaluate(
+            exact, scale, dict(parameters), precision, "all", "reversed"
+        )
+        # The oracle's unit numerators are reduced here, lazily.
+        oracle = induced.row_scales(python)
     assert set(native) == set(oracle) and native
     for key, values in native.items():
         for value, reference in zip(values, oracle[key], strict=True):

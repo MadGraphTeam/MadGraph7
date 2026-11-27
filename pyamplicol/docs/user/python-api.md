@@ -932,8 +932,9 @@ method choice in these carriers too, so a row its gates refuse is not sent
 straight to the dear 500-digit step). Its coefficients are the binary64 ones,
 lifted exactly (the numerators are not recomputed); its kinematic inputs are
 rebuilt in the higher carrier from the point's improved kinematics (exact
-momentum conservation and on-shell external legs in that carrier, as
-`kinematics_improvement` improves a point evaluated there). This is why the
+momentum conservation and on-shell external legs in that carrier, with the
+call's `kinematics_improvement` variant, exactly as a point evaluated there
+is improved; with `"off"` the given point itself). This is why the
 rescue cannot live inside the reduction library alone: from its binary64
 inputs alone, lifted exactly, the shifts and the invariants stay
 inconsistent at binary64's rounding, which the reduction of such a lane
@@ -1019,6 +1020,159 @@ g g > g g g g g, TIRust's 0.03 to 0.4 s; NinjaRS's 500-digit engine about
 35 s on 6-gluon points. Memory: about 19 MB (NinjaRS double-double) and
 640 MB (NinjaRS 500 digits) on 6-gluon points, about 57 MB for TIRust's
 500-digit engine.
+
+### NinjaRS's cancellation rescue
+
+In the checked reduction (the default of `evaluate`, `check` and the
+stability run of `profile`; off with `reduction_unchecked=True`, the
+"maximally optimistic" mode `profile --runtime` times), NinjaRS measures, for
+every lane its binary64 reduction serves, an error estimate: the unit
+roundoff times the moduli of the terms it summed (each coefficient times its
+master integral, and the rational terms), over the lane's finite part. A
+lane whose estimate exceeds its target (a nearly degenerate cut, e.g. a
+two-mass triangle with P² close to Q² in g g > g g g, cancels its bubble
+coefficients by many orders) is reduced again, within NinjaRS, in
+double-double: every cut level and master at the point improved in
+double-double (pyAmpliCol's kinematics improvement, the same point the lane
+rescue above and a double-double evaluation use: exact conservation and
+on-shell external legs in that carrier), only the numerator's coefficients
+staying the binary64 ones. pyAmpliCol hands NinjaRS that point lazily, for
+the lanes it asks for only: per lane the low parts of its shifts, invariants
+and (when not exact) squared masses against the binary64 values, whose high
+parts are the binary64 pass's inputs bit for bit. A re-reduced lane whose own
+estimate still misses the target is refused (status `Unstable`,
+"cancellation rescue: ...") and goes to the lane rescue above; every other
+lane keeps its binary64 value bit for bit. A point such a lane leaves
+without a value (the lane rescue off, or refusing too) is, under the default
+`on_failure="best-effort"`, returned with its best value, status
+`"best-effort"` (never a success), the refusal and an uncertainty
+(`VirtualBestEffort`, below): its best-effort evaluation is the unchecked
+reduction with NinjaRS's cancellation rescue kept on, which serves such a
+lane its better value (the binary64 one or the re-reduced one, whichever
+NinjaRS's estimate prefers) instead of refusing it; `"return"` keeps the point
+failed, `"raise"` raises. In a binary64 evaluation through the Python API
+the improved point of these rescues (NinjaRS's and the lane rescue's) is
+always the default variant's (z-shift), whatever `kinematics_improvement`
+says, `"off"` included (measured: the projection variant gives the same
+worst and median digits on g g > g g g, g g > g g g g and g g > t t~ g);
+NinjaRS uses its own repair (exactly zero invariants made light-like) only
+for a lane no improved point reaches.
+
+The target is the call's `reduction_target` (default 1e-5, the relative
+accuracy of each point's result) divided by a safety factor of 64
+(`reduction_policy::RESCUE_SAFETY`): a point's error is at most its largest
+lane error times the cross-lane condition number Σ|lane| / |Σ lane| (measured
+1.5 to 12 on g g > g g g, growing with the number of lanes), and NinjaRS's
+estimate bounds a lane's error, so a lane target of `target / 64` keeps the
+point within `target` where the lanes cancel by less than 64 (a margin of
+about 5 over five gluons for higher multiplicities). Measured (checked binary64
+against double-double references on g g > g g g, g g > g g g g, g g > t t~ g
+and u u~ > e- e+ g g g): no point below 5 digits and a worst point error of
+0.014 of the target. A lane small in its sum is judged more strictly than
+needed, which costs time only.
+The lane rescue's own reductions (double-double, MPFR) take the same lane
+target: a target far below what any carrier reaches makes every flagged lane
+climb each carrier's precision ladder and still be refused (slow), so the
+point ends best-effort or failed.
+
+Each point's lane diagnostic records it in its own field,
+`VirtualLaneDiagnostic.reduction_rescue` (`VirtualReductionRescue`, None when
+NinjaRS re-reduced no lane of the point): `lanes` gives per precision
+(`"double-double"`) the lanes NinjaRS re-reduced and served, counted over the
+point's evaluations (the reference and its rotated evaluations), `estimate`
+the largest relative error estimate of those re-reductions (each at most the
+lane target). `lane_rescue` (`VirtualLaneRescue`) keeps its meaning: lanes the
+backend refused and pyAmpliCol's lane rescue served; NinjaRS's own rescue
+never appears there and does not add the rescaled reduction-direction check
+to the point's estimate. A rescued lane's precision is limited by its
+binary64 coefficients (about 8 digits where the cancellation was
+catastrophic); the rescue removes the loss of all digits, not the
+coefficients' rounding.
+
+NinjaRS's generic engine (the binary64 lanes routed to it: squared masses or
+invariants between 0 and 1e-9 in the model's units, or an invariant within
+1e-9 of a real squared mass; and every double-double and arbitrary-precision
+evaluation) has the same rescue in the checked mode, its cancellation
+ladder: the same lane target, a lane whose measured loss misses it reduced
+again in a higher precision chosen from the loss (double-double for a
+binary64 base, MPFR above), refused `Unstable` for the lane rescue when no
+precision tried meets the target, and recorded in `reduction_rescue` (a
+precision above double-double as `"arbitrary"`). At the default target a
+double-double evaluation's lanes keep about 70 of their 106 bits even at the
+worst `g g > g g g` points measured, so the ladder rarely acts there; a
+smaller `reduction_target` makes it act. The unchecked mode runs neither.
+
+Lanes served without accuracy evidence. A lane NinjaRS's generic engine finds
+below the resolution of its own terms (`BelowResolution`: its value lies below
+the rescue precision's rounding of the terms it sums; a lane zero by a symmetry
+and a lane whose terms cancel beyond every precision tried look alike), and a
+lane the fast engine's rescue measured above its target but could not take
+without refined kinematics (an on-shell massive leg, for a caller that supplies
+no improved point: the Python reference executor, a re-test frame), are served
+at their value; the point's value is returned, and its accuracy is NOT
+established: `VirtualLaneDiagnostic.uncertified` names the reasons ("a
+reduction lane vanishes within the resolution of its own terms (no symmetry
+proof)", "a reduction lane is outside NinjaRS's rescue domain without refined
+kinematics"), the detail adds "accuracy not established: ...", and
+`accuracy_established` stays False, whatever the point's stability estimate
+says. The same holds for a VANISHING lane: one refused by NinjaRS's rescue and
+by every carrier of the lane rescue whose best value at the highest precision
+tried is consistent with zero within its own absolute bound in every Laurent
+coefficient ("a reduction lane vanishes within the resolution of its own terms
+at double-double | arbitrary precision; no symmetry proof"); a refused lane
+whose best value is not consistent with zero stays refused (best effort). A
+binary64 lane that NinjaRS's fast-engine rescue refuses, and whose re-reduced
+(double-double) value is consistent with zero within that re-reduction's own
+absolute error estimate in every Laurent coefficient, is served the same way
+(reason "... at double-double; no symmetry proof") by the reduction itself,
+without going to the lane rescue: a default binary64 evaluation of a
+configuration that vanishes identically (the Born-zero helicity rows of a
+resolved g g > g g, say) touches no Symbolica state and needs no licence, as
+before the rescue existed. What this gives up: a lane that loses more than
+about 100 bits to cancellation and is in truth not zero is returned at its ~0
+re-reduced value, uncertified, instead of being recovered by the lane rescue's
+arbitrary-precision carrier; a caller who wants that recovery asks for it with
+a rescue policy: a level whose result has such a lane is never met, so the
+policy either escalates to a higher carrier or, where its stall rule keeps
+that level's result (a level that gains nothing over the one before), returns
+it uncertified, with the reason. A refused lane whose re-reduced value is not
+consistent with zero keeps the lane rescue, then best effort. The
+status stays `"success"` so that generation and every consumer keep working
+(the previous release returned the same number without saying so); nothing of
+this certifies a value.
+Limits: this is the conservative form; a point-level budget (the summed
+absolute bounds of such lanes against the point's result) that would certify
+the points where such a lane cannot matter is not implemented; exact zeros
+proven at generation (colour and fold zeros) are named as such already.
+`profile --stability` carries the marking (per point and sample
+`uncertified`, the backend total `uncertified_points`), and the
+helicity-selected, resolved and correlated outputs carry the same reasons;
+so do the CLI's JSON (`diagnostics[].uncertified` of `evaluate --json`) and
+the native SDKs: the C ABI's diagnostics record "uncertified" (per successful
+point id with such a lane, its reasons; points without one absent), which the
+C++, Fortran, packaged Rust and Rust SDK wrappers hand out unchanged
+([Native APIs](native-apis.md)). Under a rescue policy a level whose result has such a lane is never met:
+the policy escalates, or returns the point not established with the reason
+(at its last level, or where its stall rule keeps an earlier level's result);
+never as met.
+
+Limits. Lane results of subnormal magnitude (below about 2.2e-308) from the
+binary64 fast engine are outside the rescue's accuracy coverage; the generic
+engine's ladder never serves a subnormal value as a success. The improved
+(cured) kinematics, pyAmpliCol's own and a caller's
+higher-accuracy input, feed the fast engine's rescue only: the generic
+engine's ladder projects the lane's base-precision inputs onto exact shells
+in its rescue precision itself. The Python reference executor (an oracle
+path) has no rescue, and its NinjaRS-reduced points are never certified
+(uncertified reason "the Python reference executor does not report the
+reduction's certification"; a rescue-policy level on it is never met). The
+reduction-direction check's re-test frame is rescued with NinjaRS's own
+repair of the kinematics (exactly zero invariants made light-like), not the
+improved point. Under a rescue policy (`stability=VirtualRescuePolicy(...)`)
+each level's lane target is that level's target / 64, not the call's
+`reduction_target`. The SDKs' per-point diagnostics do not record which lanes
+NinjaRS rescued (as for the lane rescue); the Python API, the CLI and
+`profile`'s records do.
 
 ### Best-effort values of refused points
 

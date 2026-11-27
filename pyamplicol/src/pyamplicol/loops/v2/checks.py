@@ -107,15 +107,25 @@ UNDECIDED = "undecided"
 NOT_APPLICABLE = "not applicable"
 NO_PREDICTION = "no prediction"
 NOT_RUN = "not run"
-VERDICTS = (PASS, FAIL, UNDECIDED, NOT_APPLICABLE, NO_PREDICTION, NOT_RUN)
+# A criterion that reads reduction lanes served without accuracy evidence and
+# cannot be decided with their absolute bound (``ward.judged``): never a
+# pass; the ladder's next carrier evaluates the row again.
+INCONCLUSIVE = "inconclusive"
+VERDICTS = (PASS, FAIL, UNDECIDED, NOT_APPLICABLE, NO_PREDICTION, NOT_RUN, INCONCLUSIVE)
+# The verdicts that carry their reason and neither pass nor fail a process.
+_NEUTRAL = (NOT_APPLICABLE, NO_PREDICTION)
 
 # Process statuses and the exit code of a report (``CheckReport.exit_code``).
 PASSED = "passed"
 FAILED = "failed"
 NOTHING_CHECKED = "nothing checked"
+# A process none of whose rows failed but one of which is inconclusive or
+# carries a verdict outside ``VERDICTS``: never passed.
+INCONCLUSIVE_STATUS = "inconclusive"
 EXIT_PASSED = 0
 EXIT_FAILED = 1
 EXIT_NOTHING_CHECKED = 3
+EXIT_INCONCLUSIVE = 4
 
 POLE_NAMES = {1: "1/eps", 2: "1/eps^2"}
 
@@ -159,6 +169,37 @@ def catani_dd_comparison(
         abs(values[k] - catani[k - 1]) / max(abs(catani[k - 1]), 1e-300) for k in (1, 2)
     ]
     return catani, errors, all(e <= CATANI_DD_FLOOR for e in errors)
+
+
+def uncertified_verdict(residual: float, bound: float, uncertain: float) -> str:
+    """A criterion's verdict (``residual`` <= ``bound`` passes) when the
+    residual includes reduction lanes served without accuracy evidence of
+    absolute bound ``uncertain`` (``ward.judged``: PASS iff residual +
+    uncertain <= bound, FAIL iff residual - uncertain > bound, INCONCLUSIVE
+    otherwise or for an infinite bound)."""
+
+    from .ward import judged
+
+    found = judged(residual, bound, uncertain)
+    return PASS if found is True else FAIL if found is False else INCONCLUSIVE
+
+
+def _uncertain(result: Any, sector: Any, k: int) -> float:
+    """The absolute bound of the lanes served without accuracy evidence on
+    coefficient ``k`` of ``sector`` of a result (``ward.uncertified_bounds``:
+    infinite where not attributable)."""
+
+    from .ward import uncertified_bounds
+
+    virtual = result.components["virtual"]
+    width = len(next(iter(virtual.values())).coefficients)
+    return uncertified_bounds(result, list(virtual), width)[sector][k]
+
+
+_INCONCLUSIVE_REASON = (
+    "inconclusive: reduction lanes served without accuracy evidence, of "
+    "absolute bound {bound:.3g}, straddle the criterion"
+)
 
 
 # ------------------------------------------------------- the rung's rule
@@ -385,9 +426,12 @@ class CheckRow:
 @dataclass(frozen=True)
 class ProcessCheck:
     """The checks of one process: its rows, the slice they ran on and the
-    status (``PASSED``: every row with a verdict passed and one did;
-    ``FAILED``: a row failed or is undecided; ``NOTHING_CHECKED``: no row
-    passed or failed, or a check that applies did not run)."""
+    status, a closed aggregate (``status_of``): ``FAILED`` if a row failed
+    or is undecided; else ``INCONCLUSIVE_STATUS`` if a row is inconclusive
+    or carries a verdict outside ``VERDICTS``; else ``NOTHING_CHECKED`` if
+    no row passed or a check that applies did not run; else ``PASSED``
+    (every row passed, or carries its reason as not applicable or without a
+    prediction)."""
 
     process: str
     expression: str
@@ -400,14 +444,24 @@ class ProcessCheck:
     status: str = ""
 
     def __post_init__(self) -> None:
-        verdicts = {row.verdict for row in self.rows}
-        if FAIL in verdicts or UNDECIDED in verdicts:
-            status = FAILED
-        elif PASS in verdicts and NOT_RUN not in verdicts:
-            status = PASSED
-        else:
-            status = NOTHING_CHECKED
-        object.__setattr__(self, "status", status)
+        object.__setattr__(self, "status", status_of(row.verdict for row in self.rows))
+
+
+def status_of(verdicts: Any) -> str:
+    """The closed aggregate of a process's row verdicts (``ProcessCheck``):
+    FAILED, else INCONCLUSIVE (an inconclusive or an unrecognized verdict),
+    else NOTHING_CHECKED (no pass, or a check that did not run), else
+    PASSED."""
+
+    found = set(verdicts)
+    if FAIL in found or UNDECIDED in found:
+        return FAILED
+    if INCONCLUSIVE in found or not found <= set(VERDICTS):
+        return INCONCLUSIVE_STATUS
+    if PASS not in found or NOT_RUN in found:
+        return NOTHING_CHECKED
+    assert found <= {PASS, *_NEUTRAL}
+    return PASSED
 
 
 @dataclass(frozen=True)
@@ -416,7 +470,8 @@ class CheckReport:
     card or artifact whose request was regenerated in memory), the point
     count, seed and carriers, every process's checks, and the exit code
     (``EXIT_PASSED`` iff every process passed, ``EXIT_FAILED`` on any
-    failure, else ``EXIT_NOTHING_CHECKED``)."""
+    failure, else ``EXIT_INCONCLUSIVE`` if a process is inconclusive, else
+    ``EXIT_NOTHING_CHECKED``)."""
 
     source: str
     source_kind: str
@@ -439,6 +494,8 @@ class CheckReport:
         statuses = {process.status for process in self.processes}
         if FAILED in statuses:
             code = EXIT_FAILED
+        elif INCONCLUSIVE_STATUS in statuses:
+            code = EXIT_INCONCLUSIVE
         elif statuses == {PASSED}:
             code = EXIT_PASSED
         else:
@@ -598,7 +655,10 @@ def _pole_rows_binary64(result: Any, index: int, target: float) -> dict[Any, Che
             ratio = (
                 deviation / bound if bound else (0.0 if not deviation else float("inf"))
             )
-            verdict = NOT_RUN if reason else PASS if deviation <= bound else FAIL
+            uncertain = _uncertain(result, sector, k)
+            verdict = (
+                NOT_RUN if reason else uncertified_verdict(deviation, bound, uncertain)
+            )
             over = scale[k] if scale is not None else 0.0
             rows[(sector, k)] = CheckRow(
                 "poles",
@@ -609,7 +669,12 @@ def _pole_rows_binary64(result: Any, index: int, target: float) -> dict[Any, Che
                 _short(ratio),
                 _short(deviation / over) if over else None,
                 _short(absolute[k] / over) if over and absolute is not None else None,
-                reason=reason,
+                reason=reason
+                or (
+                    _INCONCLUSIVE_REASON.format(bound=uncertain)
+                    if verdict == INCONCLUSIVE
+                    else None
+                ),
             )
     return rows
 
@@ -635,15 +700,23 @@ def _pole_rows_dd(
             if result.stability is not None and catani[k - 1]:
                 absolute = result.stability.absolute[sector].coefficients[k]
                 estimate = abs(float(absolute)) / abs(catani[k - 1])
+            size = max(abs(catani[k - 1]), 1e-300)
+            uncertain = _uncertain(result, sector, k)
+            verdict = uncertified_verdict(
+                errors[k - 1] * size, CATANI_DD_FLOOR * size, uncertain
+            )
             rows[(sector, k)] = CheckRow(
                 "poles",
                 f"{_sector_name(sector)} {POLE_NAMES[k]}",
                 index,
                 carrier,
-                PASS if errors[k - 1] <= CATANI_DD_FLOOR else FAIL,
+                verdict,
                 _short(errors[k - 1] / CATANI_DD_FLOOR),
                 _short(errors[k - 1]),
                 _short(estimate),
+                reason=_INCONCLUSIVE_REASON.format(bound=uncertain)
+                if verdict == INCONCLUSIVE
+                else None,
             )
     return rows
 
@@ -1038,8 +1111,12 @@ def _ward_row(
     elif row["passed"] is None:
         reason = "no criterion: the binary64 evaluation carries no estimate"
     factor = "c = 1" if tuple(row["factor"]) == (1, 0) else "c = i"
+    if row.get("inconclusive") and row["born_passed"]:
+        reason = f"inconclusive: {row['inconclusive']}"
     if row["passed"] is True:
         verdict = PASS
+    elif row.get("inconclusive") and row["born_passed"]:
+        verdict = INCONCLUSIVE
     elif not row["born_passed"] or reason is None:
         verdict = FAIL
     else:
@@ -1340,6 +1417,7 @@ def induced_rows(
             improve=lambda point, scale, carrier: _improved(
                 executor, point, scale, carrier, kinematics
             ),
+            uncertified_escalates=True,
         )
         for entry, result in zip(entries, decided, strict=True):
             rows.append(_probe_row(entry, result, index))
@@ -1427,6 +1505,16 @@ def _probe_row(entry: Mapping[str, Any], result: Any, index: int) -> CheckRow:
     verdict = PASS if result.passed else FAIL
     if not result.passed and undecided([Part(result.worst, ESTIMATE_FACTOR, 1.0)]):
         verdict = UNDECIDED
+    reason = None
+    if getattr(result, "uncertified", False):
+        # A run served a lane without accuracy evidence: the amplitude-level
+        # residue is quadratic in |A|^2 terms and the lane's bound is not
+        # propagated through it, so the probe decides nothing.
+        verdict = INCONCLUSIVE
+        reason = (
+            "inconclusive: a probe run served reduction lanes without accuracy "
+            "evidence, whose bound is not propagated to the amplitude-level probe"
+        )
     return CheckRow(
         check,
         subject,
@@ -1437,6 +1525,7 @@ def _probe_row(entry: Mapping[str, Any], result: Any, index: int) -> CheckRow:
         _short(deviation),
         _short(estimate),
         fallback=fallback_text,
+        reason=reason,
         kinematics=improved,
     )
 
@@ -1581,9 +1670,7 @@ def _check_points(
             out=rows,
         )
     else:
-        born_interfered_rows(
-            target, points, carriers, rung, kinematics, out=rows
-        )
+        born_interfered_rows(target, points, carriers, rung, kinematics, out=rows)
 
 
 __all__ = [
@@ -1591,10 +1678,13 @@ __all__ = [
     "CATANI_FLOOR",
     "ESTIMATES",
     "EXIT_FAILED",
+    "EXIT_INCONCLUSIVE",
     "EXIT_NOTHING_CHECKED",
     "EXIT_PASSED",
     "FAIL",
     "FAILED",
+    "INCONCLUSIVE",
+    "INCONCLUSIVE_STATUS",
     "NOTHING_CHECKED",
     "NOT_APPLICABLE",
     "NOT_RUN",
@@ -1619,6 +1709,8 @@ __all__ = [
     "reporting",
     "rung_digits",
     "status",
+    "status_of",
+    "uncertified_verdict",
     "undecided",
     "ward_applicability",
 ]

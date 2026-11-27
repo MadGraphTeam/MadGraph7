@@ -26,7 +26,8 @@ moved `conj` into its numeric trait, which GammaLoop's Spenso implements:
 FeynKit and Spenso come from the fork ValentinHirschi/gammaloop
 `pyamplicol-community` `ea3faaae` (alphal00p/gammaloop `d1904bf2` plus that
 one change), the revision NinjaRS pins. NinjaRS
-(`a2546170`, main after PR #20: `f7f5e165` with PR #16's box-Gram bound
+(`e1d94412`, main after PR #23, the local cancellation rescue, and PR #22, on top
+of `a2546170`, main after PR #20: `f7f5e165` with PR #16's box-Gram bound
 and PR #19's records of why a lane is refused, + `ninjars_symbolica::reserve`,
 the history-independent exact evaluators; main `3116e5e6` = `ac66cf6c` + PR #16,
 `ac66cf6c` = branch `symbolica-community-2`: main `b51b7465`'s crate sources, the

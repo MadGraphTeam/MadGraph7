@@ -46,6 +46,88 @@ Version 1.0.1 uses published Symbolica 3.0.0, SymJIT 2.26.4 and
 ufo-model-loader 1.0.0, as recorded in the dependency lockfiles. No local
 dependency source patches or unpublished wheels are needed.
 
+## Changes after 1.0.3
+
+**NinjaRS no longer loses a lane's digits silently.** At ordinary phase-space
+points a few NinjaRS reduction lanes lost most of their binary64 digits to
+cancellation at a nearly degenerate cut (a triangle with two massive legs of
+nearly equal virtuality) while reporting success: 122 of 10,000
+`g g > g g g` points had fewer than 5 correct digits (the original Ninja
+behaves the same; TIRust does not). In the checked reduction (the default of
+`evaluate`, `check`, the SDKs, `profile --stability` and `profile --checked`)
+NinjaRS now measures each lane's cancellation and reduces a lane whose
+estimated error misses its target again, alone, in a higher precision: the
+fast binary64 engine re-reduces the whole lane in double-double at the point
+pyAmpliCol improved to exact energy-momentum conservation and exact on-shell
+legs (callers that hold their momenta in a higher precision can supply them:
+C `rusticol_virtual_evaluate_refined`, C++ `evaluate_refined`, Fortran
+`evaluate(..., corrections=)`, Rust SDK `evaluate_refined`; the Python API
+and the CLI read exact decimal momenta), and the generic engine (routed
+binary64 lanes, double-double, arbitrary precision) climbs a precision ladder
+chosen from the measured loss. The target is the existing
+`evaluation.reduction_target` (default 1e-5 relative per point in every
+arithmetic; `--reduction-target`; Python `reduction_target=`; SDK
+`set_reduction_target`), held per lane at `reduction_target / 64`: a point's
+error is at most its largest lane error times the cross-lane condition
+number, measured at most 12 at five gluons, with a margin for higher
+multiplicities ([Python API](python-api.md), "NinjaRS's cancellation
+rescue").
+
+A lane whose rescue misses its target is refused (`cancellation rescue:
+estimated error ... target <= ...`) and goes to the lane rescue as before;
+under the default `on_failure="best-effort"` a point left without a value is
+returned `"best-effort"` with the better of its binary64 and re-reduced
+values. Lanes served without accuracy evidence (below the resolution of their
+own terms at the highest precision tried, vanishing within their own bound at
+every carrier, or outside the rescue's domain without refined kinematics)
+keep their value and status `"success"`, but are marked: Python
+`VirtualLaneDiagnostic.uncertified` and `accuracy_established` false,
+`profile`'s `uncertified` column and `uncertified_points` total, the CLI's
+`evaluate --json` diagnostics and the native SDKs' diagnostics record
+"uncertified" (per point id, its reasons). A binary64 lane the rescue refuses
+whose re-reduced value is consistent with zero within the re-reduction's own
+bound is served that way by the reduction itself, without the lane rescue (a
+configuration that vanishes identically needs no Symbolica state, as in
+1.0.3); given up: a lane that loses more than about 100 bits and is in truth
+not zero comes back ~0 uncertified instead of being recovered at arbitrary
+precision; a rescue policy (never met on an uncertified result) escalates
+such a point to a higher carrier or returns it uncertified with the reason
+(its stall rule can keep an uncertified level). The checks that read such
+lanes (`pyamplicol check`'s Ward and pole rows and probes, the stored-process
+checks) test their residue together with the lanes' reducer-stated absolute
+bounds: a row the bounds cannot decide is `inconclusive` (exit code 4), never
+a pass. Each point records what the
+reduction rescued (`VirtualLaneDiagnostic.reduction_rescue`; `profile`'s
+`reduction_rescue_lanes`, `reduction_rescue_carrier` and the backend totals
+`reduction_rescued_*`).
+
+**The switch.** The unchecked reduction (`evaluation.reduction_unchecked`,
+`--reduction-unchecked`, the default of `profile --runtime`) has no trigger
+and no rescue: its values are those of 1.0.3 bit for bit (1,322 of 1,322
+points compared), at the same cost.
+
+Measured (checked, binary64, default target, against double-double
+references): `g g > g g g` (10,000 points) worst -4.88 -> 6.85 digits, below
+5 digits 122 -> 0, below 8 491 -> 21; `g g > g g g g` (300) -2.34 -> 7.45;
+`u u~ > e- e+ g g g` (500) -0.26 -> 7.44; `g g > t t~ g` (2,000) 4.47 -> 9.47.
+Points without a re-reduced lane are unchanged bit for bit. Cost of the
+checked evaluation (one core): +24 % on `g g > g g g`, +89 % on
+`g g > g g g g`; the unchecked one is unchanged. Limits: a rescued binary64
+lane keeps the binary64 numerator coefficients (about 8 digits where the
+cancellation was catastrophic); some re-reduced points end a few tenths of a
+digit worse than before (none below 7.7 digits measured); losses inside the
+box mu-expansion and box Gram of the generic engine are not measured by its
+trigger; double-double evaluations at the default target are unchanged (the
+ladder acts at smaller targets); subnormal lane results of the binary64 fast engine
+are outside the rescue's coverage; the Python reference executor has no
+rescue and its NinjaRS-reduced points are marked uncertified.
+
+Fixed: the UMAMI one-loop provider aborted a whole bulk call when one row was
+returned best-effort.
+
+Dependencies: NinjaRS `e1d94412` (main after alphal00p/ninjars#23); the other
+pins and the Python dependencies are those of 1.0.3.
+
 ## 1.0.3 release
 
 **Changed default: a refused point no longer interrupts a run.** A one-loop

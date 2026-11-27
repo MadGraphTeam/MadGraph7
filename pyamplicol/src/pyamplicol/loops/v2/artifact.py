@@ -117,13 +117,18 @@ from pyamplicol.api.virtual_results import (
     VirtualLaneRescue,
     VirtualPoleParts,
     VirtualReduction,
+    VirtualReductionRescue,
     VirtualRescuePolicy,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
     best_effort_detail,
     computes_poles,
+    reduction_rescue_text,
     rescue_text,
+    served_by_lane_rescue,
     splits_poles,
+    uncertified_detail,
+    uncertified_reasons,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.config.models import lane_rescue as lane_rescue_value
@@ -3014,8 +3019,11 @@ class V2VirtualRuntime:
             parts.append(self._pole_parts(result) if splits_poles(poles) else None)
             best = None if own is None else own.best_effort
             rescue = (
-                VirtualLaneRescue.of(result.lane_rescue) if result.lane_rescue else None
+                VirtualLaneRescue.of(result.lane_rescue)
+                if served_by_lane_rescue(result.lane_rescue)
+                else None
             )
+            own_rescue = VirtualReductionRescue.of(result.lane_rescue)
             # A rescued point names its lane rescue (review B2), as the
             # observables runtime's diagnostics do.
             text = (
@@ -3027,6 +3035,14 @@ class V2VirtualRuntime:
                 + "; "
                 + rescue_text(rescue, rescued_checks(checks) is not None)
             )
+            if own_rescue is not None:
+                text += "; " + reduction_rescue_text(own_rescue)
+            # Lanes served without accuracy evidence (below the resolution of
+            # their own terms; outside NinjaRS's rescue domain without refined
+            # kinematics): the value is returned, its accuracy is not
+            # established.
+            uncertified = uncertified_reasons(result.lane_rescue)
+            text += uncertified_detail(uncertified)
             diagnostics.append(
                 VirtualLaneDiagnostic(
                     "success" if best is None else "best-effort",
@@ -3047,6 +3063,8 @@ class V2VirtualRuntime:
                     reduction=(served or {}).get(index, reduction),
                     finiteness=result.finiteness,
                     lane_rescue=rescue,
+                    reduction_rescue=own_rescue,
+                    uncertified=uncertified,
                 )
             )
         return VirtualEvaluation(

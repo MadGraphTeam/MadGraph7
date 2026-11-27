@@ -910,6 +910,21 @@ or `"tirust"` has no fallback and no guard, nor has a TIR-only artifact
 (NinjaRS refused typed); a library built without TIRust takes NinjaRS under
 `"auto"`, with the reason, and refuses `"tirust"`.
 
+Lanes served without accuracy evidence. The diagnostics record
+`"uncertified"` maps the id of every successful point whose value includes a
+reduction lane served without accuracy evidence to its reasons (sorted,
+distinct), in the Python API's words (`VirtualLaneDiagnostic.uncertified`,
+[Python API](python-api.md), "Lanes served without accuracy evidence"): a
+lane that vanishes within the resolution of its own terms (for example the
+Born-zero helicity rows of a resolved g g > g g, whose reduction lanes vanish
+identically), or one outside NinjaRS's rescue domain without refined
+kinematics. Such a point keeps its value and its status, but its accuracy is
+not established; points without such a lane are absent (`{}` when there is
+none). The field is additive (the ABI version is unchanged and no other field
+changes meaning), and the C++ (`diagnostics_json()`), Fortran
+(`diagnostics_json`), packaged Rust and Rust SDK (`diagnostics_json`)
+wrappers hand out the same record.
+
 At near-planar 2 -> 3 points of pentagon families whose rank equals their
 propagator count (all-vector quark loops: measured on loop-induced
 g g > z z z, z z g, z g g, a a g, a g g and W+ W- g) NinjaRS's reduction can
@@ -948,6 +963,33 @@ the caller's inputs in the caller's leg order, before anything is evaluated
 `diagnostics_json` records it per point (`"kinematics"`: the Python API's
 `VirtualKinematics` fields); another value is an invalid argument
 ([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Higher-accuracy input kinematics:
+`rusticol_virtual_evaluate_refined(handle, request, corrections, words,
+&result)` (C++ `evaluate_refined(momenta, corrections, point_count, mu_r2,
+...)`, Fortran `evaluate(..., corrections=c)` with `c(4,leg,point,word)`, the
+packaged Rust wrapper's `evaluate_refined`, the Rust SDK crate's
+`Runtime::evaluate_refined` and `evaluate_decimal`) evaluates at
+`momenta[i] + Σ_w corrections[w * momentum_count + i]`, exactly (one word: a
+double-double point; more words: any precision). Every `momenta[i]` must be
+the binary64 rounding of its refined component (round to nearest, ties to
+even), else the call returns `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` naming the
+point, leg and component, and evaluates nothing. The refined point is the
+call's exact input: every carrier, the kinematics improvement, the lane
+rescue and NinjaRS's cancellation rescue start from it
+([Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Additive symbol, ABI version 2 kept. The target accuracy
+(`rusticol_virtual_set_reduction_target`) also sets NinjaRS's cancellation
+rescue in the checked reduction (per lane `target / 64`; [Python
+API](python-api.md), "NinjaRS's cancellation rescue"); the unchecked setting
+turns that rescue off. A point a lane refused by that rescue leaves without a
+value (lane rescue off, or refusing too) is, under the default failure policy
+`"best-effort"`, returned as `RUSTICOL_VIRTUAL_BEST_EFFORT` with its best value
+(its best-effort evaluation is the unchecked reduction with NinjaRS's rescue
+kept on, which serves the refused lane its better value), the refusal and the uncertainty in `diagnostics_json`
+(`"best_effort"`) and `rusticol_virtual_result_copy_uncertainties`; the UMAMI
+provider returns its value with status 5 (BEST_EFFORT). The rescues' improved
+points follow `rusticol_virtual_set_kinematics_improvement` (as the
+double-double and arbitrary-precision calls do; `"off"`: the given point).
 The lane rescue `rusticol_virtual_set_lane_rescue(handle, on)` (C++
 `set_lane_rescue(bool)`, Fortran `set_lane_rescue(logical)`, the packaged
 Rust wrapper's `set_lane_rescue(bool)`; 1 or 0, default 1, as the Python

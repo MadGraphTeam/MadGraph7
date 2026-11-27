@@ -3021,6 +3021,7 @@ class _PointBatches:
             points=count,
             seed=space.seed + len(self.source),
             sqrt_s=space.sqrt_s,
+            cuts=space.cuts,
         ).as_inputs(exact=False)
 
     def __call__(self, k: int, size: int | None = None) -> Momenta:
@@ -3866,6 +3867,19 @@ def lane_rescue_reason(diagnostic: Any) -> str | None:
     if rescue is None:
         return None
     return f"reduction lanes rescued in {rescue.carrier}"
+
+
+def reduction_rescue(diagnostic: Any) -> tuple[int, str] | None:
+    """A point's rescue within the reduction backend from its
+    ``VirtualLaneDiagnostic`` (``reduction_rescue``: NinjaRS's cancellation
+    rescue in the checked mode): the lanes it re-reduced in a higher
+    precision over the point's evaluations, and the highest such precision;
+    None without one."""
+
+    rescue = getattr(diagnostic, "reduction_rescue", None)
+    if rescue is None:
+        return None
+    return int(rescue.count), str(rescue.precision)
 
 
 def failure_reason(diagnostic: Any) -> str:

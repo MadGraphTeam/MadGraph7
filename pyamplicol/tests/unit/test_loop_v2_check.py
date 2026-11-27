@@ -167,6 +167,209 @@ def test_statuses_and_exit_codes_follow_the_rows():
 
 
 @pytest.mark.loop_fast
+def test_the_aggregate_is_closed_and_an_inconclusive_row_never_passes():
+    """A process's status is a closed aggregate (``checks.status_of``): a
+    pass next to an inconclusive row, or next to a verdict outside
+    ``VERDICTS``, is INCONCLUSIVE (exit code 4), never PASSED; a failure
+    wins over it; every row passing (with reasoned neutral rows) is PASSED;
+    the text report names the status."""
+
+    import prettytable
+
+    from pyamplicol.loops.v2 import checks
+    from pyamplicol.reporting.checks import check_report_summary
+
+    def process(*verdicts):
+        rows = tuple(
+            checks.CheckRow("ward", "leg 1", 0, "double", verdict)
+            for verdict in verdicts
+        )
+        return checks.ProcessCheck(
+            "p", "a > b", "virtual", "zero", (), "ninjars", rows, 0.0
+        )
+
+    def report(*processes):
+        return checks.CheckReport(
+            "x", "card", 1, 0, "auto", ("double",), processes, "", 0.0
+        )
+
+    inconclusive = process(checks.PASS, checks.INCONCLUSIVE)
+    unknown = process(checks.PASS, "maybe")
+    passed = process(checks.PASS, checks.PASS, checks.NOT_APPLICABLE)
+    assert inconclusive.status == checks.INCONCLUSIVE_STATUS == "inconclusive"
+    assert unknown.status == checks.INCONCLUSIVE_STATUS
+    assert passed.status == checks.PASSED
+    assert process(checks.FAIL, checks.INCONCLUSIVE).status == checks.FAILED
+    assert report(passed, inconclusive).exit_code == checks.EXIT_INCONCLUSIVE == 4
+    assert report(passed, unknown).exit_code == checks.EXIT_INCONCLUSIVE
+    assert report(inconclusive, process(checks.FAIL)).exit_code == checks.EXIT_FAILED
+    assert report(passed).exit_code == checks.EXIT_PASSED
+    assert not report(passed, inconclusive).passed
+
+    text = check_report_summary(
+        report(passed, inconclusive), prettytable=prettytable, color=False
+    )
+    assert "check INCONCLUSIVE (exit code 4)" in text
+    assert ": inconclusive" in text
+
+
+@pytest.mark.loop_fast
+def test_the_stored_checks_never_scale_a_violation_away():
+    """``stored_checks.compare_carriers`` (the external reviewer's inputs):
+    both carriers return (finite, 1/eps, 1/eps^2) = (0, 1, 0), Catani
+    predicts (0, 0), no uncertified lane, zero direction error: the
+    double-double Catani comparison FAILS (the absolute deviation 1 against
+    the double-double tolerance with its zero-denominator convention; a
+    vanishing prediction never scales it away), and it is no inconclusive
+    row."""
+
+    from types import SimpleNamespace
+
+    from tools.loop_benchmark import stored_checks
+
+    sector = (("QCD", 4),)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def result(poles=None):
+        return SimpleNamespace(
+            born={sector: 1.0},
+            components={"virtual": {sector: laurent(0.0, 1.0, 0.0)}},
+            stability=SimpleNamespace(absolute={sector: laurent(0.0, 0.0, 0.0)}),
+            ir_poles=poles,
+            uncertified_bound={},
+        )
+
+    binary64, dd = result(), result({sector: (0.0, 0.0)})
+    out = stored_checks.compare_carriers(binary64, dd)
+    assert out["passed"] is False and out["inconclusive"] is False, out
+    # The prediction met: passes.
+    met = result({sector: (1.0, 0.0)})
+    assert stored_checks.compare_carriers(binary64, met)["passed"] is True
+
+
+@pytest.mark.loop_fast
+def test_a_normalization_uncertain_ward_point_stays_asserted():
+    """The stored Ward stage (the external reviewer's inputs): a row whose
+    physical scale is 1 +- 2 with E = 2e-9 and residue 0 is inconclusive and
+    nominally out of the binary64 scope, but in scope at the true scale 3:
+    it is not ``scope_excluded``, its point stays asserted, and with one
+    clean passing point the stage is NOT a pass (one inconclusive)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2 import ward
+    from pyamplicol.loops.v2.assemble import COMPONENTS
+    from pyamplicol.loops.v2.stability import REDUCTION
+    from tools.loop_benchmark import stored_checks
+
+    sector = ("QCD", 6)
+
+    def laurent(*values):
+        return SimpleNamespace(coefficients=tuple(values))
+
+    def point(virtual, estimate=(1e-30,), bound=None):
+        components = {name: {sector: laurent(1.0)} for name in COMPONENTS}
+        components["virtual"] = {sector: laurent(*virtual)}
+        return SimpleNamespace(
+            components=components,
+            born={sector: 1.0},
+            loop_born={sector: 0.0},
+            stability=SimpleNamespace(
+                budgets={REDUCTION: {}}, absolute={sector: laurent(*estimate)}
+            ),
+            uncertified_bound={} if bound is None else {sector: bound},
+        )
+
+    uncertain = ward.ward_row(
+        point((1.0,), bound=(2.0,)), point((0.0,), (2e-9,)), "double"
+    )
+    assert uncertain["passed"] is None and uncertain["inconclusive"]
+    assert uncertain["in_scope"] is False and uncertain["scope_excluded"] is False
+    clean = ward.ward_row(point((1.0,)), point((0.0,)), "double")
+    assert clean["passed"] is True
+
+    def record(index, row):
+        asserted = not row["scope_excluded"]
+        found_passed = row["passed"]
+        return {
+            "index": index,
+            "carrier": "double",
+            "asserted": asserted,
+            "passed": found_passed if asserted else None,
+            "rows": [
+                {k: v for k, v in row.items() if k in stored_checks._WARD_ROW_KEYS}
+            ],
+        }
+
+    stage = stored_checks.ward_stage([record(0, clean), record(1, uncertain)])
+    assert stage == {"asserted": 2, "passed": False, "inconclusive": 1}
+    assert stored_checks.ward_stage([record(0, clean)])["passed"] is True
+    # Demonstrably out of scope at every scale: excluded, as before.
+    far = ward.ward_row(point((1.0,)), point((0.0,), (2e-9,)), "double")
+    assert far["scope_excluded"] is True
+
+
+@pytest.mark.loop_fast
+def test_the_stored_rescue_stages_never_meet_an_uncertified_level():
+    """``stored_checks.rescue_level0`` / ``rescue_level1`` (the stored
+    rescue stages, as the production policy): a binary64 point with a lane
+    served without accuracy evidence is sent up whatever its estimate (here
+    0); a double-double point with one is not met whatever its estimate,
+    its reasons kept; clean points as before."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.api.virtual_results import UNCERTIFIED
+    from tools.loop_benchmark import stored_checks
+
+    reason = "a reduction lane vanishes within the resolution of its own terms"
+    sector = (("QCD", 4),)
+
+    def result(relative, unsure):
+        return SimpleNamespace(
+            stability=SimpleNamespace(relative=relative),
+            lane_rescue=((UNCERTIFIED + reason, 1),) if unsure else (),
+            components={
+                "virtual": {sector: SimpleNamespace(coefficients=(1.0, 0.0, 0.0))}
+            },
+        )
+
+    estimates, unsure, up = stored_checks.rescue_level0(
+        {0: result(0.0, True), 1: result(1e-9, False), 2: result(1e-3, False)},
+        1e-5,
+    )
+    assert up == [0, 2] and unsure[0] == (reason,) and not unsure[1]
+    assert estimates[0] == 0.0
+    flagged = stored_checks.rescue_level1(result(0.0, True), 1e-5)
+    assert flagged["met"] is False and flagged["uncertified"] == [reason]
+    assert stored_checks.rescue_level1(result(1e-9, False), 1e-5)["met"] is True
+
+
+@pytest.mark.loop_fast
+def test_a_criterion_with_uncertified_lanes_is_three_way():
+    """``ward.judged`` / ``checks.uncertified_verdict``: a residual with
+    lanes served without accuracy evidence of bound B passes only when
+    residual + B is within the bound, fails only when residual - B is
+    above it, is inconclusive between and for an infinite B; without such
+    lanes (B = 0) it is the plain criterion."""
+
+    import math
+
+    from pyamplicol.loops.v2 import checks
+    from pyamplicol.loops.v2.ward import judged
+
+    assert judged(0.5, 1.0, 0.0) is True and judged(1.5, 1.0, 0.0) is False
+    assert judged(0.5, 1.0, 0.4) is True
+    assert judged(0.5, 1.0, 0.6) is None
+    assert judged(2.0, 1.0, 0.5) is False
+    assert judged(0.0, 1.0, math.inf) is None
+    assert checks.uncertified_verdict(0.5, 1.0, 0.6) == checks.INCONCLUSIVE
+    assert checks.uncertified_verdict(0.5, 1.0, 0.0) == checks.PASS
+
+
+@pytest.mark.loop_fast
 def test_the_catani_criterion_is_the_harness_rule():
     """|pole - Catani| <= 10 E + 1e-12 |Catani| per coefficient (binary64)
     and 1e-12 relative in double-double, as stored_checks.py applied it."""

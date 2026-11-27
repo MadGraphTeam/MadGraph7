@@ -76,7 +76,7 @@ pub(super) fn master_selection(value: &str) -> PyResult<PoleSelection> {
 /// `(propagators, shifts, masses_squared, scales_squared, s_matrix, coefficients)`
 /// of batches with equal row identities; see `runtime::FamilyGroup`.
 #[pyclass]
-struct V2Reducer(runtime::V2Reducer);
+struct V2Reducer(runtime::V2Reducer, Vec<(usize, usize, &'static str)>);
 
 #[pymethods]
 impl V2Reducer {
@@ -96,7 +96,7 @@ impl V2Reducer {
         let mut reducer =
             runtime::V2Reducer::new(arithmetic, precision, engine, cache_masters).map_err(error)?;
         reducer.set_unchecked(unchecked);
-        Ok(Self(reducer))
+        Ok(Self(reducer, Vec::new()))
     }
     #[getter]
     fn precision_bits(&self) -> u32 {
@@ -194,7 +194,7 @@ impl V2Reducer {
             masters,
         };
         let reducer = &mut self.0;
-        let output = py
+        let mut output = py
             .detach(|| {
                 if !keep_masters {
                     reducer.clear_masters();
@@ -202,7 +202,18 @@ impl V2Reducer {
                 reducer.reduce(&groups, options)
             })
             .map_err(error)?;
+        self.1 = std::mem::take(&mut output.uncertified);
         Ok(reduction_batches(output))
+    }
+    /// The lanes of the last [`Self::reduce`] served without accuracy
+    /// evidence (`runtime::V2Output::uncertified`: a lane that vanishes
+    /// within the resolution of its own terms, one outside NinjaRS's rescue
+    /// domain without refined kinematics), as `(group, row, reason)` in
+    /// either frame; empty when every served lane is certified. Taken: a
+    /// second call returns nothing until the next reduction.
+    fn take_uncertified(&mut self) -> Vec<(usize, usize, &'static str)> {
+        let _unlock = pyamplicol::unlock();
+        std::mem::take(&mut self.1)
     }
 }
 

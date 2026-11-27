@@ -1208,12 +1208,23 @@ pub struct V2Runtime {
     target: f64,
     /// The unchecked mode of every evaluation ([`V2Runtime::set_unchecked`]).
     unchecked: bool,
+    /// [`V2Runtime::set_best_effort_pass`].
+    best_effort_pass: bool,
+    /// [`V2Runtime::set_rescue_kinematics`].
+    rescue_kinematics: Option<kinematics_improvement::Variant>,
     /// The lane rescue of every evaluation ([`V2Runtime::set_lane_rescue`]).
     lane_rescue: bool,
     /// Per point of the last executor call of a batch, whether the lane
     /// rescue served one of its lanes (`PointResult::rescued`; read by the
     /// stability monitor, `monitor::rescued_estimates`).
     pub(crate) rescued_last: Vec<bool>,
+    /// Per point of the evaluations since [`V2Runtime::take_uncertified`],
+    /// the reasons of its lanes served without accuracy evidence
+    /// (`PointResult::uncertified`, the companion's included), merged over
+    /// every executor call of the same points (a stability check's rotated
+    /// evaluations) and placed at the call's point index across the scale
+    /// partition (`partitioned`).
+    uncertified: Vec<BTreeSet<&'static str>>,
     backends: BTreeMap<V2Precision, V2Backends>,
     /// The other backend's, for the stability monitoring's cross-backend
     /// check (`monitor`), built on first use.
@@ -1459,8 +1470,11 @@ impl V2Runtime {
             reduction,
             target,
             unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
+            best_effort_pass: false,
+            rescue_kinematics: Some(kinematics_improvement::DEFAULT_VARIANT),
             lane_rescue: crate::reduction_policy::DEFAULT_LANE_RESCUE,
             rescued_last: Vec::new(),
+            uncertified: Vec::new(),
             backends,
             cross_backends: BTreeMap::new(),
             scaleless_inputs: native.scaleless.map(Arc::new),
@@ -1735,6 +1749,33 @@ impl V2Runtime {
         }
     }
 
+    /// Merge one executor call's per-point uncertified reasons
+    /// ([`V2Runtime::uncertified`]) at the call's point indices.
+    pub(crate) fn merge_uncertified<'a>(
+        &mut self,
+        points: impl Iterator<Item = impl Iterator<Item = &'static str> + 'a>,
+    ) {
+        for (index, reasons) in points.enumerate() {
+            if self.uncertified.len() <= index {
+                self.uncertified.resize_with(index + 1, BTreeSet::new);
+            }
+            self.uncertified[index].extend(reasons);
+        }
+    }
+
+    /// Per point of the evaluations since the last call (one entry per point
+    /// of the batch; empty: none of its lanes was served without accuracy
+    /// evidence), the reasons of its lanes served without accuracy evidence,
+    /// sorted and distinct: such a point's accuracy is not established (the
+    /// Python API's `VirtualLaneDiagnostic.uncertified`). Taken: the next
+    /// call starts empty.
+    pub fn take_uncertified(&mut self) -> Vec<Vec<&'static str>> {
+        std::mem::take(&mut self.uncertified)
+            .into_iter()
+            .map(|reasons| reasons.into_iter().collect())
+            .collect()
+    }
+
     /// The input checks of a batch and its evaluation, per exact `mu_R²`
     /// where the model needs it (`partitions`).
     fn partitioned<P>(
@@ -1764,15 +1805,25 @@ impl V2Runtime {
             parts[part].1.push(index);
         }
         let mut out: Vec<Option<P>> = (0..momenta.len()).map(|_| None).collect();
+        // The parts' uncertified lanes at the call's point indices.
+        let mut uncertified = std::mem::take(&mut self.uncertified);
         for (scale, indices) in parts {
             let part_momenta: Vec<Vec<Rational>> =
                 indices.iter().map(|&i| momenta[i].clone()).collect();
             let part_scales = vec![scale.clone(); indices.len()];
             let points = batch(self, &part_momenta, &part_scales)?;
+            let part = std::mem::take(&mut self.uncertified);
+            for (&index, reasons) in indices.iter().zip(part) {
+                if uncertified.len() <= index {
+                    uncertified.resize_with(index + 1, BTreeSet::new);
+                }
+                uncertified[index].extend(reasons);
+            }
             for (index, point) in indices.into_iter().zip(points) {
                 out[index] = Some(point);
             }
         }
+        self.uncertified = uncertified;
         Ok(out
             .into_iter()
             .map(|point| point.expect("every point is in one part"))
@@ -1947,6 +1998,35 @@ impl V2Runtime {
         Ok((points, records))
     }
 
+    /// The refinement's kinematic inputs (`V2Options::refinement`): the
+    /// point improved in the backend's refinement carrier, the initial
+    /// states first in label order, whatever the lane rescue's setting
+    /// (NinjaRS's own rescue follows the checked mode alone, the backend
+    /// answering `refinement_carrier`); none when the legs do not put the
+    /// initial states first.
+    pub(crate) fn refinement_inputs(&self) -> RescueInputs {
+        let initial = self
+            .record
+            .legs
+            .iter()
+            .take_while(|&&(_, initial, _)| initial)
+            .count();
+        let ordered = !self.record.legs[initial..]
+            .iter()
+            .any(|&(_, initial, _)| initial);
+        match self.rescue_kinematics {
+            Some(variant) if ordered && initial > 0 && initial < self.record.legs.len() => {
+                RescueInputs::Improved {
+                    n_initial: initial,
+                    variant,
+                }
+            }
+            // The improvement "off", or no initial states first: none
+            // (NinjaRS's own repair serves its rescue).
+            _ => RescueInputs::Off,
+        }
+    }
+
     /// The lane rescue's kinematic inputs (`V2Options::rescue`): the point
     /// improved in the rescue carrier, the initial states first in label
     /// order as the kinematics improvement takes them; the exact inputs when
@@ -1964,10 +2044,16 @@ impl V2Runtime {
         let ordered = !self.record.legs[initial..]
             .iter()
             .any(|&(_, initial, _)| initial);
-        if ordered && initial > 0 && initial < self.record.legs.len() {
-            RescueInputs::Improved { n_initial: initial }
-        } else {
-            RescueInputs::Exact
+        match self.rescue_kinematics {
+            Some(variant) if ordered && initial > 0 && initial < self.record.legs.len() => {
+                RescueInputs::Improved {
+                    n_initial: initial,
+                    variant,
+                }
+            }
+            // The improvement "off" (as an evaluation in the rescue carrier
+            // then takes the given point), or no initial states first.
+            _ => RescueInputs::Exact,
         }
     }
 
@@ -1992,6 +2078,10 @@ impl V2Runtime {
         if !self.backends.contains_key(&precision) {
             let mut backend = precision.backend(self.reduction, &self.process.plan, self.target)?;
             backend.set_unchecked(self.unchecked);
+            backend.set_best_effort_pass(self.best_effort_pass);
+            // NinjaRS's cancellation rescue follows the target too (TIRust's
+            // acceptance was built with it).
+            backend.set_target(self.target);
             self.backends.insert(precision, backend);
         }
         Ok(self.backends.get_mut(&precision).expect("the backend"))
@@ -2071,8 +2161,8 @@ impl V2Runtime {
     /// accuracy of each point's result, `reduction_policy::DEFAULT_TARGET`
     /// by default; validated by `reduction_policy::target`): TIRust's
     /// method-choice acceptance follows it (`v2_tir::acceptance_of`), set on
-    /// the built backends (their plans stay); NinjaRS has no setting it
-    /// drives.
+    /// the built backends (their plans stay); NinjaRS's cancellation rescue
+    /// follows it per lane (`reduction_policy::rescue_lane_target`).
     pub fn set_target(&mut self, target: f64) -> RusticolResult<()> {
         let target = crate::reduction_policy::target(target).map_err(|refusal| match refusal {
             crate::reduction_policy::Refusal::Invalid(message)
@@ -2119,6 +2209,30 @@ impl V2Runtime {
     /// The unchecked mode of the following evaluations.
     pub fn unchecked(&self) -> bool {
         self.unchecked
+    }
+
+    /// The kinematics improvement of the rescues' points (the lane rescue's
+    /// and NinjaRS's cancellation rescue's, `V2Options::rescue` /
+    /// `refinement`): the call's variant, as an evaluation in the rescue
+    /// carrier improves its points; `None` (the setting "off"): the lane
+    /// rescue takes the given point and NinjaRS's rescue its own repair.
+    pub fn set_rescue_kinematics(&mut self, variant: Option<kinematics_improvement::Variant>) {
+        self.rescue_kinematics = variant;
+    }
+
+    /// The SDK's best-effort pass of the following evaluations
+    /// (`V2Reducer::set_best_effort_pass`).
+    pub fn set_best_effort_pass(&mut self, on: bool) {
+        if on != self.best_effort_pass {
+            self.best_effort_pass = on;
+            for backend in self
+                .backends
+                .values_mut()
+                .chain(self.cross_backends.values_mut())
+            {
+                backend.set_best_effort_pass(on);
+            }
+        }
     }
 
     /// The lane rescue of the following evaluations (on by default,
@@ -2196,6 +2310,7 @@ impl V2Runtime {
             contraction: contraction(&self.artifact.metadata.color_contraction),
             check,
             rescue: self.rescue_inputs(),
+            refinement: self.refinement_inputs(),
             ..V2Options::default()
         };
         self.backend(precision)?;
@@ -2285,6 +2400,13 @@ impl V2Runtime {
                         .is_some_and(|twin| served(&twin[index]))
             })
             .collect();
+        self.merge_uncertified(results.iter().enumerate().map(|(index, result)| {
+            result.uncertified.iter().map(|(_, reason)| *reason).chain(
+                twin_results
+                    .iter()
+                    .flat_map(move |twin| twin[index].uncertified.iter().map(|(_, r)| *r)),
+            )
+        }));
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
             let twin = twin_results.as_ref().map(|twin| &twin[index]);

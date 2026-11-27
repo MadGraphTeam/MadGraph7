@@ -807,3 +807,208 @@ def test_a_loaded_process_does_not_depend_on_its_artifact_path(stored, tmp_path)
     shutil.copytree(stored["gg_plain"], artifact)
     shutil.rmtree(tmp_path / "moved")
     assert calls(loaded) == in_place
+
+
+# ------------------------------------------- lanes that vanish identically
+
+VANISHING = (
+    "a reduction lane vanishes within the resolution of its own terms at "
+    "double-double; no symmetry proof"
+)
+
+VANISHING_CPP = r"""
+#include "rusticol_virtual.hpp"
+#include <cstdlib>
+#include <iostream>
+#include <sstream>
+#include <vector>
+int main(int argc, char **argv) {
+    std::vector<double> momenta;
+    std::istringstream values(argv[3]);
+    for (std::string v; std::getline(values, v, ',');)
+        momenta.push_back(std::strtod(v.c_str(), nullptr));
+    rusticol::VirtualRuntime runtime(argv[1], std::string(argv[2]));
+    const double scale = std::strtod(argv[4], nullptr);
+    auto result = runtime.evaluate(momenta, 1, {scale}, {}, true);
+    std::cout << "diagnostics " << result.diagnostics_json() << "\n";
+    return 0;
+}
+"""
+
+VANISHING_FORTRAN = """
+program vanishing
+  use, intrinsic :: iso_c_binding
+  use rusticol_virtual
+  implicit none
+  character(len=4096) :: artifact, process, text
+  real(c_double) :: momenta(4, 4, 1), scales(1)
+  type(virtual_runtime) :: runtime
+  type(virtual_evaluation) :: result
+  integer(c_int) :: ierr
+  call get_command_argument(1, artifact)
+  call get_command_argument(2, process)
+  call get_command_argument(3, text)
+  read(text, *) momenta
+  call get_command_argument(4, text)
+  read(text, *) scales(1)
+  call runtime%load(trim(artifact), process=trim(process), ierr=ierr)
+  if (ierr /= VIRTUAL_OK) stop 1
+  call runtime%evaluate(momenta, scales, result, resolved=.true., ierr=ierr)
+  if (ierr /= VIRTUAL_OK) stop 2
+  write(*, '(a)') 'diagnostics '//result%diagnostics_json
+  call runtime%close()
+end program
+"""
+
+VANISHING_RUST = """
+#[path = "{wrapper}"]
+#[allow(dead_code)]
+mod rusticol;
+use rusticol::virtual_amplitudes::Runtime;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {{
+    let args: Vec<String> = std::env::args().collect();
+    let momenta: Vec<f64> = args[3].split(',').map(|v| v.parse().unwrap()).collect();
+    let scale: f64 = args[4].parse()?;
+    let mut runtime = Runtime::open(&args[1], Some(args[2].as_str()), None, None)?;
+    let result = runtime.evaluate(&momenta, 1, None, &[scale], true, None)?;
+    println!("diagnostics {{}}", result.diagnostics_json);
+    Ok(())
+}}
+"""
+
+
+@pytest.mark.loop_physics
+def test_a_vanishing_helicity_row_is_served_uncertified_through_every_interface(
+    stored, tmp_path
+):
+    """The helicity rows of g g > g g whose Born vanishes have reduction lanes
+    that vanish identically (the top-loop triangles of the resolved
+    columns). NinjaRS's cancellation rescue measures them above the lane
+    target (the relative error of a zero) and refuses them; their
+    re-reduced value is consistent with zero within that re-reduction's own
+    absolute bound, so the reducer serves it uncertified, without
+    pyAmpliCol's lane rescue (whose higher carriers touch Symbolica state:
+    ``test_binary64_observable_calls_touch_no_symbolica_state``). The point
+    keeps status "success" and its value, its accuracy is not established,
+    and the reason reaches the Python API, the CLI's JSON and the C ABI's
+    diagnostics "uncertified" (so C++, Fortran and the packaged Rust
+    wrapper, which hand out the same record); the summed evaluation, whose
+    lanes do not vanish, carries none."""
+
+    import ctypes
+
+    from pyamplicol import Runtime
+    from pyamplicol.cli.main import _json_value
+    from tests.unit.test_loop_v2_sdk_extras import (
+        SDK,
+        WRAPPER,
+        _compiler,
+        _error,
+        _open,
+        _request,
+        _sdk,
+        _staged_sdk,
+    )
+
+    record = _record("gg_gg")
+    point = [[float(c) for c in p] for p in record["points"][0]]
+    scale = float(record["scales_squared"][0])
+    exact = [[[repr(c) for c in p] for p in point]]
+    runtime = Runtime.load(stored["gg_gg"], process="gg")
+    resolved = runtime.evaluate_resolved(exact, mu_r2=[repr(scale)])
+    (diagnostic,) = resolved.diagnostics
+    assert diagnostic.status == "success" and diagnostic.has_value
+    assert not diagnostic.accuracy_established
+    assert diagnostic.uncertified == (VANISHING,), diagnostic.detail
+    assert diagnostic.lane_rescue is None, diagnostic.detail
+    (summed,) = runtime.evaluate(exact, mu_r2=[repr(scale)]).diagnostics
+    assert summed.uncertified == (), summed.detail
+    assert _json_value(resolved)["diagnostics"][0]["uncertified"] == [VANISHING]
+
+    sdk = _sdk()
+    handle = _open(sdk, stored["gg_gg"], "gg")
+    try:
+        found = {}
+        for resolved_call in (True, False):
+            request, _keep = _request([point], [scale], resolved_call)
+            result = ctypes.c_void_p()
+            status = sdk.rusticol_virtual_evaluate(
+                handle, ctypes.byref(request), ctypes.byref(result)
+            )
+            assert status == 0, _error(sdk)
+            try:
+                needed = ctypes.c_size_t()
+                get = sdk.rusticol_virtual_result_diagnostics_json
+                assert get(result, None, ctypes.c_size_t(0), ctypes.byref(needed)) == 0
+                buffer = ctypes.create_string_buffer(needed.value)
+                assert get(result, buffer, needed, ctypes.byref(needed)) == 0
+                found[resolved_call] = json.loads(buffer.value)
+            finally:
+                sdk.rusticol_virtual_result_free(result)
+    finally:
+        sdk.rusticol_virtual_free(handle)
+    assert found[True]["uncertified"] == {"0": [VANISHING]}
+    assert found[False]["uncertified"] == {}
+
+    build = _staged_sdk()
+    link = [f"-L{build}", "-lrusticol_loop_sdk", f"-Wl,-rpath,{build}", "-lm"]
+    (tmp_path / "client.cpp").write_text(VANISHING_CPP)
+    (tmp_path / "client.f90").write_text(VANISHING_FORTRAN)
+    (tmp_path / "client.rs").write_text(VANISHING_RUST.format(wrapper=WRAPPER))
+    commands = {
+        "cpp": [
+            _compiler("CXX", "c++"),
+            "-std=c++17",
+            f"-I{SDK / 'include'}",
+            str(tmp_path / "client.cpp"),
+            *link,
+            "-o",
+            str(tmp_path / "client-cpp"),
+        ],
+        "fortran": [
+            _compiler("FC", "gfortran"),
+            "-std=f2018",
+            f"-J{tmp_path}",
+            str(SDK / "fortran" / "rusticol_virtual.f90"),
+            str(tmp_path / "client.f90"),
+            *link,
+            "-o",
+            str(tmp_path / "client-fortran"),
+        ],
+        "rust": [
+            _compiler("RUSTC", "rustc"),
+            "--edition=2021",
+            str(tmp_path / "client.rs"),
+            "-o",
+            str(tmp_path / "client-rust"),
+            "-L",
+            f"native={build}",
+            "-l",
+            "dylib=rusticol_loop_sdk",
+            "-C",
+            f"link-arg=-Wl,-rpath,{build}",
+        ],
+    }
+    flat = ",".join(repr(c) for p in point for c in p)
+    for language, command in commands.items():
+        subprocess.run(command, check=True, cwd=tmp_path)
+        momenta = flat.replace(",", " ") if language == "fortran" else flat
+        run = subprocess.run(
+            [
+                str(tmp_path / f"client-{language}"),
+                str(stored["gg_gg"]),
+                "gg",
+                momenta,
+                repr(scale),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+            check=False,
+        )
+        assert run.returncode == 0, (language, run.stdout[-2000:], run.stderr[-2000:])
+        (line,) = [x for x in run.stdout.splitlines() if x.startswith("diagnostics ")]
+        assert json.loads(line[len("diagnostics ") :])["uncertified"] == {
+            "0": [VANISHING]
+        }, language

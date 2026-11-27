@@ -40,11 +40,11 @@ brotli = { version = "8.0", optional = true }
 flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "a2546170c400956d9aaffd3151e6b0d6c7edf475", optional = true }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "e1d94412dd44bb18059471edb0a84310cbaebafd", optional = true }
 # NinjaRS's reserved symbols (`ninjars_symbolica::reserve`), registered before
 # this crate registers any other symbol (`symbol_order`); the revision of
 # `ninjars` (one source per NinjaRS crate: tests/unit/test_ninjars_single_source.py).
-ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "a2546170c400956d9aaffd3151e6b0d6c7edf475", optional = true }
+ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "e1d94412dd44bb18059471edb0a84310cbaebafd", optional = true }
 # The loop consumer's TIRust pin (rusticol-loop-reduction's `iregi-rust`, the
 # same revision): its capability query only (feature `tir`).
 iregi-rust = { git = "https://github.com/huashengshao/TIRust.git", rev = "1c130a81c4d1145ad5368664b580070eab9ebd7c", optional = true }

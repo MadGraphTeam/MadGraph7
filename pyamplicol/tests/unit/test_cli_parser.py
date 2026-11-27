@@ -1021,3 +1021,16 @@ def test_profile_takes_the_measured_precisions(tmp_path, monkeypatch) -> None:
             parse_cli(
                 ("profile", "artifact", "--measured-precisions", *wrong)
             ).resolve()
+
+
+@pytest.mark.parametrize("command", ["evaluate", "profile", "check"])
+def test_reduction_target_is_an_option_of_evaluate_profile_and_check(command, tmp_path):
+    """``--reduction-target X`` is ``evaluation.reduction_target`` on the
+    three sub-commands that evaluate loops (TIRust's acceptance and NinjaRS's
+    cancellation rescue read it)."""
+
+    target = tmp_path / "artifact"
+    parsed = build_parser().parse_args(
+        (command, str(target), "--reduction-target", "1e-7")
+    )
+    assert getattr(parsed, "evaluation.reduction_target") == 1e-7

@@ -151,6 +151,10 @@ class GoldstoneResult:
     phase: tuple[float, float] | None
     goldstone_ratio: float
     scales: Mapping = field(default_factory=lambda: MappingProxyType({}))
+    # Whether a run of either side served a reduction lane without accuracy
+    # evidence (``induced.ProbeResult.uncertified``): ``pyamplicol check``
+    # reads the probe as inconclusive.
+    uncertified: bool = False
 
     @property
     def worst(self) -> float:
@@ -355,6 +359,9 @@ def probe(
         (phase.real, phase.imag) if goldstone_ratio > ESTIMATE_FACTOR else None,
         goldstone_ratio,
         MappingProxyType(physical),
+        uncertified=any(
+            getattr(run, "uncertified_bound", None) for run in (side_v, side_g)
+        ),
     )
 
 

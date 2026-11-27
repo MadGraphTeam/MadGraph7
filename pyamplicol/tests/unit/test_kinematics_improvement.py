@@ -241,6 +241,36 @@ EXACT = [
 CALL = {"mu_r2": "8315.06", "poles": "none", "on_failure": "return"}
 
 
+def _same_values(found, reference, digits: int) -> None:
+    """Resolved values bit for bit, except components that vanish within the
+    carrier's rounding of the point (``10^-digits`` of its largest
+    component): helicity rows zero by symmetry, whose lanes NinjaRS's
+    rescue refuses and pyAmpliCol's lane rescue serves at its last carrier
+    from the point improved there (the z-shift route) or from the given
+    point (``kinematics_improvement="off"``), so their rounding noise
+    differs between the two routes; every other component stays bitwise."""
+
+    from decimal import Decimal
+
+    def leaves(value):
+        if hasattr(value, "finite"):
+            yield value.finite
+        elif isinstance(value, (tuple, list)):
+            for item in value:
+                yield from leaves(item)
+
+    a, b = list(leaves(found)), list(leaves(reference))
+    assert len(a) == len(b)
+    size = max((abs(Decimal(str(x))) for x in a if x is not None), default=Decimal(0))
+    floor = size * Decimal(10) ** -digits
+    for x, y in zip(a, b, strict=True):
+        if repr(x) != repr(y):
+            assert abs(Decimal(str(x))) <= floor and abs(Decimal(str(y))) <= floor, (
+                x,
+                y,
+            )
+
+
 def _recommended():
     """``RECOMMENDED_CHECKS``: one rotation, the rescaled reduction-direction
     check."""
@@ -396,10 +426,13 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         )
         found = runtime.evaluate_resolved([point], **call)
         assert found.diagnostics[0].kinematics.produced == "z-shift", carrier
-        assert repr(found.values) == repr(
+        rounding = 30
+        _same_values(
+            found.values,
             runtime.evaluate_resolved(
                 improved, kinematics_improvement="off", **call
-            ).values
+            ).values,
+            rounding,
         )
         # The resolved route's stability rotations act on the improved
         # point, never on the binary64 one rotated then lifted (DECISIONS
@@ -410,7 +443,7 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         reference = runtime.evaluate_resolved(
             improved, kinematics_improvement="off", **checked
         )
-        assert repr(found.values) == repr(reference.values)
+        _same_values(found.values, reference.values, rounding)
         assert found.stability[0] is not None
         assert repr(found.stability) == repr(reference.stability)
         many = runtime.evaluate_correlated_many([point], requests, **call)
@@ -457,12 +490,16 @@ def test_the_resolved_correlated_and_rescue_routes(gg):
         at, _ = backend.improved_points(
             [point], arithmetic=level.arithmetic, **digits, mu_r2=CALL["mu_r2"]
         )
+        # At the level's target (it drives NinjaRS's cancellation rescue,
+        # the generic engines' ladder included).
+        target = {} if level.target is None else {"reduction_target": level.target}
         checked = runtime.evaluate(
             at,
             arithmetic=level.arithmetic,
             **digits,
             stability_checks=level.checks,
             kinematics_improvement="off",
+            **target,
             **CALL,
         )
         assert attempt.estimate == checked.stability[0].relative, level

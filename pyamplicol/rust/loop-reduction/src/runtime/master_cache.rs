@@ -240,6 +240,21 @@ impl<M: FastMasters> FastMasters for MasterCache<M> {
         self.inner.requires_scaleless_bubbles()
     }
 
+    /// Forwarded uncached (NinjaRS's cancellation rescue, double-double
+    /// masters at a lane's refined arguments: few calls, every argument a
+    /// new point), so the rescue reaches the provider's double-double
+    /// masters (oneloopmaster's) behind the cache instead of its closed
+    /// forms and binary64 masters.
+    fn evaluate_rescue(
+        &mut self,
+        family: FastMaster,
+        args: &[ninjars::fast::dd::Cd],
+        out: &mut [[ninjars::fast::dd::Cd; 3]],
+        ok: &mut [bool],
+    ) -> Result<bool> {
+        self.inner.evaluate_rescue(family, args, out, ok)
+    }
+
     fn evaluate(
         &mut self,
         family: FastMaster,

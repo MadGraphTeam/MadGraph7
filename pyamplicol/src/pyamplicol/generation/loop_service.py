@@ -2079,6 +2079,10 @@ def check_loop_requests(
     stored=None,
     sqrt_s=None,
     arbitrary_digits=None,
+    cuts=None,
+    kinematics_improvement=None,
+    kinematics_improvement_binary64=None,
+    reduction_target=None,
 ):
     """``pyamplicol check`` (``loops.v2.checks``): every process the request
     serves, regenerated IN MEMORY through this service's own preparation
@@ -2088,7 +2092,8 @@ def check_loop_requests(
     phase-space points of the generation's validation convention
     (``_validation_momenta`` at seeds ``seed``, ``seed + 1``, ...: decays at
     rest, scatterings in the centre-of-mass frame; ``sqrt_s`` replaces a
-    scattering's energy, ``check.sqrt_s``) in the
+    scattering's energy, ``check.sqrt_s``; within ``cuts``,
+    ``phase_space_cuts.PhaseSpaceCuts``) in the
     carriers of ``induced.probe_carriers(precision)`` (None: binary64, then
     double-double where binary64 fails, is refused or is out of scope, then
     the arbitrary-precision rung for a row double-double leaves undecided,
@@ -2115,17 +2120,29 @@ def check_loop_requests(
     carriers = probe_carriers(precision)
     memo = PreparationMemo(store_for(backend._run_config.model))
     # Each double-double / arbitrary-precision rung improves its lifted
-    # point as Runtime.evaluate does (m-lit lit-psimprove (G5)): the run
-    # card's [evaluation] kinematics settings, else the policy's defaults.
+    # point as Runtime.evaluate does (m-lit lit-psimprove (G5)): the settings
+    # given, else the run card's [evaluation] ones, else the policy's defaults.
     from pyamplicol import kinematics as _kinematics
 
     evaluation = getattr(backend._run_config, "evaluation", None)
     kinematics = _kinematics.resolve(
-        getattr(evaluation, "kinematics_improvement", None),
-        getattr(evaluation, "kinematics_improvement_binary64", None),
+        kinematics_improvement,
+        kinematics_improvement_binary64,
+        default_setting_=getattr(evaluation, "kinematics_improvement", None),
+        default_binary64_=getattr(evaluation, "kinematics_improvement_binary64", None),
+    )
+    # The reduction's target accuracy (TIRust's acceptance, NinjaRS's
+    # cancellation rescue): the one given, else the run card's
+    # [evaluation] reduction_target, else the default.
+    from pyamplicol.loops.v2.reduction import targeting
+
+    target = (
+        reduction_target
+        if reduction_target is not None
+        else getattr(evaluation, "reduction_target", None)
     )
     checked = []
-    with born_dag_scope():
+    with born_dag_scope(), targeting(target):
         context = _prepare(
             backend,
             processes,
@@ -2149,6 +2166,7 @@ def check_loop_requests(
                 count=points,
                 unavailable=f"check momenta unavailable for {name}",
                 sqrt_s=sqrt_s,
+                cuts=cuts,
             )
             try:
                 checked.append(
@@ -2246,25 +2264,63 @@ def _loop_induced_candidates(context, entry, process, validation, index):
     )
 
 
-def _validation_momenta(context, entry, *, seed, count, unavailable, sqrt_s=None):
+def _validation_momenta(
+    context, entry, *, seed, count, unavailable, sqrt_s=None, cuts=None
+):
     """``count`` phase-space points of the generation's validation convention
     (``build_process_validation_point`` at seeds ``seed``, ``seed + 1``,
-    ...; ``sqrt_s`` replaces a scattering's energy): the four-vectors, or
-    ``GenerationError`` "``unavailable``: <why>"."""
+    ...; ``sqrt_s`` replaces a scattering's energy; within ``cuts``, by
+    rejection, point by point): the four-vectors, or ``GenerationError``
+    "``unavailable``: <why>"."""
 
-    momenta = []
-    for sample in range(count):
+    from .phase_space_cuts import CutsError, draw_accepted, is_cut_particle
+
+    def draw(point_seed):
         record = build_process_validation_point(
             entry.process_ir,
             context.resolved.model,
             process_id=entry.request.name,
-            seed=seed + sample,
+            seed=point_seed,
             sqrt_s=sqrt_s,
         )
         if not record.available:
             raise GenerationError(f"{unavailable}: {record.error}")
-        momenta.append(record.four_vectors)
-    return momenta
+        return record.four_vectors
+
+    seeds = [seed + sample for sample in range(count)]
+    initial = len(entry.process_ir.initial_pdgs)
+    if cuts is None or not cuts.active or initial == 1:
+        if cuts is not None and cuts.active:
+            raise GenerationError(
+                f"{unavailable}: evaluation.phase_space.pt_min / delta_r_min "
+                "need the beams of a scattering, not a decay"
+            )
+        return [draw(point_seed) for point_seed in seeds]
+    model = context.resolved.model
+    particles = {
+        int(particle.pdg_code): particle
+        for particle in context.resolved.compiled.ir.particles
+    }
+    legs = [
+        initial + leg
+        for leg, pdg in enumerate(entry.process_ir.final_pdgs)
+        if model.mass(int(pdg)) == 0.0
+        and is_cut_particle(
+            spin=int(particles[int(pdg)].spin),
+            color=int(particles[int(pdg)].color),
+            charge=float(particles[int(pdg)].charge or 0.0),
+        )
+    ]
+    if not legs:
+        return [draw(point_seed) for point_seed in seeds]
+    try:
+        energy = sum(momentum[0] for momentum in draw(seed)[:initial])
+        cuts.require_possible(len(legs), energy)
+        return draw_accepted(
+            seeds, lambda tries: [draw(s) for s in tries], lambda p: p, cuts, legs
+        )
+    except CutsError as error:
+        raise GenerationError(f"{unavailable}: {error}") from error
 
 
 def _loop_induced_fold(backend, context, process, request, candidates, correlators):

@@ -101,12 +101,13 @@ use crate::FourMomentum;
 use ninjars::fast::TensorUvResidues;
 use ninjars::fast::tensor_layout::{block_offset, monomials, ncoeff};
 use ninjars::fast::{
-    C64, FastAmplitude, FastInput, FastOptions, FastResult, FastStatus, RMom, TensorNumerator,
+    C64, FastAmplitude, FastInput, FastOptions, FastRefinementSource, FastResult, FastStatus, RMom,
+    TensorNumerator,
 };
 use ninjars_symbolica::OneLoopNativeMasters;
 pub use ninjars_symbolica::PoleSelection;
 pub use rusticol_core::loop_execution::v2::Poles;
-use rusticol_core::loop_execution::v2::{TrackedPrecision, TrackedSums};
+use rusticol_core::loop_execution::v2::{RescueCarrier, TrackedPrecision, TrackedSums};
 use std::collections::{BTreeMap, HashMap};
 use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
 
@@ -139,13 +140,57 @@ pub fn fast_engine_threshold() -> f64 {
 pub fn fast_options(unchecked: bool) -> FastOptions {
     let defaults = FastOptions::default();
     if unchecked {
+        // Reduction checks off: no cancellation trigger and no rescue
+        // (`FastOptions::cancellation_rescue`), every value the binary64
+        // reduction's bit for bit.
         FastOptions {
             stability_threshold: 0.0,
             relative_tolerance: 0.0,
+            cancellation_rescue: false,
             ..defaults
         }
     } else {
-        defaults
+        // Reduction checks on: the cancellation rescue on explicitly (NinjaRS
+        // defaults it off for callers without a test of their own), at
+        // NinjaRS's default target unless the caller sets one
+        // ([`fast_options_at`]).
+        FastOptions {
+            cancellation_rescue: true,
+            ..defaults
+        }
+    }
+}
+
+/// Whether pyAmpliCol's best-effort pass keeps NinjaRS's cancellation
+/// rescue on ([`fast_options_best_effort`]). On: the best-effort pass is the
+/// unchecked reduction (zero stability thresholds) with the rescue, so a
+/// lane the checked rescue refused is served from its result slot
+/// (`FastEngine::reduce_lanes`: NinjaRS keeps the better of the binary64
+/// and the re-reduced values there), and the lanes the rescue meets the
+/// target on with their re-reduced values; the generic engines' ladder does
+/// the same with a refused lane's best value (`GenericEngine::set_best_effort`).
+/// Off: the plain unchecked reduction (binary64 values).
+pub const RESCUE_IN_BEST_EFFORT: bool = true;
+
+/// The fast engine's options in pyAmpliCol's BEST-EFFORT pass
+/// ([`V2Reducer::set_best_effort_pass`]): the unchecked mode's zero
+/// stability thresholds (`fast_options(true)`), with the cancellation rescue
+/// at `lane_target` when [`RESCUE_IN_BEST_EFFORT`] is on.
+pub fn fast_options_best_effort(lane_target: f64) -> FastOptions {
+    FastOptions {
+        cancellation_rescue: RESCUE_IN_BEST_EFFORT,
+        rescue_target: RESCUE_IN_BEST_EFFORT.then_some(lane_target),
+        ..fast_options(true)
+    }
+}
+
+/// [`fast_options`] with the cancellation rescue's per-lane target
+/// `lane_target` (`FastOptions::rescue_target`;
+/// `reduction_policy::rescue_lane_target` of the call's target). Unchecked: no rescue, the target unused.
+pub fn fast_options_at(unchecked: bool, lane_target: f64) -> FastOptions {
+    FastOptions {
+        rescue_target: (!unchecked).then_some(lane_target),
+        ..fast_options(unchecked)
     }
 }
 
@@ -260,11 +305,52 @@ pub struct FamilyGroup<'a> {
     pub coefficients: &'a Batch,
 }
 
+/// The rescue-precision kinematics of a [`V2Reducer::reduce_refined`]
+/// call's lanes, on demand (pyAmpliCol's
+/// `rusticol_core::loop_execution::v2::RefinementSource`; NinjaRS's
+/// `FastRefinementSource`): the low parts of lane `row` of group `group`
+/// written into `shifts` (`n`), `s_matrix` (`n²`) and `masses_squared`
+/// (`n`), zeroed on entry; `false`: none for this lane (NinjaRS's own
+/// repair serves it). Asked by the fast engine's cancellation rescue for the
+/// lanes it flags only (direct frame).
+pub trait GroupRefinementSource {
+    fn lane(
+        &self,
+        group: usize,
+        row: usize,
+        shifts: &mut [RMom],
+        s_matrix: &mut [f64],
+        masses_squared: &mut [C64],
+    ) -> bool;
+}
+
 /// Raw Laurent integrals `[finite, 1/ε, 1/ε²]` (finite only without poles),
 /// one batch per input group, in the input row order.
 pub struct V2Output {
     pub direct: Vec<ReductionBatch>,
     pub check: Option<Vec<ReductionBatch>>,
+    /// The direct frame's lanes `(group, row)` the engine re-reduced in a
+    /// higher carrier within its own reduction (the fast engine's
+    /// cancellation rescue), with that carrier and the re-reduction's
+    /// relative error estimate.
+    pub rescued: Vec<(usize, usize, RescueCarrier, f64)>,
+    /// The lanes `(group, row)` served without accuracy evidence, in either
+    /// frame, with the reason ([`UNCERTIFIED_BELOW_RESOLUTION`],
+    /// [`UNCERTIFIED_OUTSIDE_DOMAIN`]).
+    pub uncertified: Vec<(usize, usize, &'static str)>,
+    /// Of the lanes of [`Self::uncertified`], those whose served value comes
+    /// with an absolute error bound per Laurent coefficient `[finite, 1/eps,
+    /// 1/eps^2]` (the largest over the frames that served the lane
+    /// uncertified): the fast engine's double-double re-reduction's own
+    /// absolute estimate of a lane consistent with zero, where credible
+    /// (finite, normal and positive). An uncertified lane absent here has
+    /// no bound a check may use: one outside NinjaRS's rescue domain keeps
+    /// its binary64 value, and the generic engine's ladder records give none
+    /// (their rung bound is formed in f64, can overflow to a reported zero
+    /// and can belong to another rung than the value served). A check that
+    /// reads such a lane's value tests its residue together with these
+    /// bounds, and is inconclusive where one is missing.
+    pub uncertified_bounds: Vec<(usize, usize, [f64; 3])>,
 }
 
 /// Declared rank whose dense tensor has `columns` coefficients.
@@ -309,6 +395,10 @@ struct BucketInput<T> {
     scales: Vec<Complex<T>>,
     s_matrix: Vec<Complex<T>>,
     coefficients: Vec<Complex<T>>,
+    /// Each lane's `(group, row)` in the reduce call (empty in tests that
+    /// build an input by hand): what a [`GroupRefinementSource`] is asked
+    /// by.
+    origins: Vec<(usize, usize)>,
 }
 
 impl<T: Carrier> BucketInput<T> {
@@ -331,6 +421,7 @@ impl<T: Carrier> BucketInput<T> {
             scales: Vec::with_capacity(lanes),
             s_matrix: Vec::with_capacity(lanes * n * n),
             coefficients: Vec::with_capacity(lanes * width),
+            origins: Vec::with_capacity(lanes),
         };
         let map = FrameMap::new(frame, n, prototype);
         for &(group, row) in members {
@@ -349,6 +440,7 @@ impl<T: Carrier> BucketInput<T> {
             let source = &lanes.coefficients[row * declared..row * declared + width];
             map.coefficients(source, rank, &origin, &mut input.coefficients);
             input.ids.push(lanes.ids[row]);
+            input.origins.push((group, row));
         }
         input
     }
@@ -368,8 +460,12 @@ impl<T: Carrier> BucketInput<T> {
             scales: Vec::with_capacity(lanes),
             s_matrix: Vec::with_capacity(lanes * n * n),
             coefficients: Vec::with_capacity(lanes * width),
+            origins: Vec::with_capacity(if self.origins.is_empty() { 0 } else { lanes }),
         };
         for lane in (0..self.ids.len()).filter(|&lane| keep[lane]) {
+            if !self.origins.is_empty() {
+                input.origins.push(self.origins[lane]);
+            }
             input.ids.push(self.ids[lane]);
             input
                 .shifts
@@ -398,10 +494,48 @@ struct Outcome<T> {
     status: String,
     value: Option<[Complex<T>; 3]>,
     uv: Option<Complex<T>>,
+    /// The carrier the engine re-reduced the lane in within its own
+    /// reduction (the fast engine's cancellation rescue), with the
+    /// re-reduction's own relative error estimate, if it did.
+    rescued: Option<(RescueCarrier, f64)>,
+    /// Why the lane's value, though served, is no accuracy evidence
+    /// ([`UNCERTIFIED_BELOW_RESOLUTION`], [`UNCERTIFIED_OUTSIDE_DOMAIN`]):
+    /// its point's accuracy is not established.
+    uncertified: Option<&'static str>,
+    /// With `uncertified`, the absolute error bound of the served value per
+    /// Laurent coefficient, where the engine states one
+    /// ([`V2Output::uncertified_bounds`]).
+    bound: Option<[f64; 3]>,
 }
 
+/// The reason of a lane the generic engine serves below the resolution of
+/// its own terms (NinjaRS's `BelowResolution`): its value is returned, its
+/// relative accuracy is not certified (a symmetry zero and a lane whose
+/// terms cancel beyond every rung look alike).
+pub const UNCERTIFIED_BELOW_RESOLUTION: &str =
+    "a reduction lane vanishes within the resolution of its own terms (no symmetry proof)";
+/// The reason of a lane NinjaRS's rescue measured above its target but
+/// could not take without refined kinematics (an on-shell massive leg), its
+/// binary64 value kept for a caller that supplies none.
+pub const UNCERTIFIED_OUTSIDE_DOMAIN: &str =
+    "a reduction lane is outside NinjaRS's rescue domain without refined kinematics";
+/// The reasons of a lane refused by NinjaRS's rescue and by every carrier of
+/// pyAmpliCol's lane rescue whose best value at the highest precision tried
+/// is consistent with zero within its own absolute bound
+/// ([`V2Reducer::set_vanishing`]): returned, its accuracy not established.
+pub const UNCERTIFIED_VANISHING_DD: &str = "a reduction lane vanishes within the resolution of \
+     its own terms at double-double; no symmetry proof";
+pub const UNCERTIFIED_VANISHING_ARBITRARY: &str = "a reduction lane vanishes within the \
+     resolution of its own terms at arbitrary precision; no symmetry proof";
+
 trait BucketEngine<T> {
-    fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>>;
+    /// `source`: the lanes' rescue-precision kinematics on demand (the
+    /// fast engine's cancellation rescue; others ignore it).
+    fn reduce(
+        &mut self,
+        input: &BucketInput<T>,
+        source: Option<&dyn GroupRefinementSource>,
+    ) -> ExecutionResult<Vec<Outcome<T>>>;
     /// The carrier's working precision in binary digits (the UV residue
     /// lifts its inputs to it).
     fn precision(&self) -> u32;
@@ -418,6 +552,7 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
     buckets: &Buckets,
     frame: Option<ReductionFrame>,
     poles: Poles,
+    source: Option<&dyn GroupRefinementSource>,
 ) -> ExecutionResult<Vec<Vec<Option<Outcome<T>>>>> {
     let mut outcomes: Vec<Vec<Option<Outcome<T>>>> = groups
         .iter()
@@ -431,8 +566,10 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
         let undo = FrameMap::new(frame, n, &prototype).undo();
         let width = ncoeff(rank);
         let residues = (poles == Poles::Split).then(|| TensorUvResidues::new(n, rank));
-        for (lane, (&(group, row), mut outcome)) in
-            members.iter().zip(engine.reduce(&input)?).enumerate()
+        for (lane, (&(group, row), mut outcome)) in members
+            .iter()
+            .zip(engine.reduce(&input, source)?)
+            .enumerate()
         {
             if let (Some(residues), true) = (&residues, outcome.value.is_some()) {
                 outcome.uv = Some(residues.residue_at(
@@ -524,10 +661,13 @@ fn output_batches<T: BatchCarrier>(
 /// numerators and cached native masters; lanes that reach one of their
 /// absolute thresholds go to the generic binary64 engine (module docs).
 struct FastEngine {
-    /// Per (propagators, rank, unchecked) the engine's amplitude: the
-    /// options are part of the key, so a checked and an unchecked reduction
-    /// never share one ([`fast_options`]).
-    amplitudes: HashMap<(usize, usize, bool), FastAmplitude>,
+    /// Per (propagators, rank, unchecked, best-effort pass, lane target
+    /// bits) the engine's amplitude: the options are part of the key, so a
+    /// checked, an unchecked and a best-effort reduction, or two targets,
+    /// never share one ([`fast_options_at`], [`fast_options_best_effort`]).
+    amplitudes: HashMap<(usize, usize, bool, bool, u64), FastAmplitude>,
+    /// The best-effort pass ([`V2Reducer::set_best_effort_pass`]).
+    best_effort: bool,
     /// The unchecked mode of the following reductions ([`fast_options`]).
     unchecked: bool,
     numerators: HashMap<usize, TensorNumerator>,
@@ -541,8 +681,13 @@ struct FastEngine {
     exact: Option<GenericEngine<f64>>,
     /// Lanes reduced by `exact` since the last [`V2Reducer::take_exact_lanes`].
     exact_lanes: u64,
+    /// Lanes NinjaRS's cancellation rescue re-reduced since the last
+    /// [`V2Reducer::take_rescued_lanes`].
+    rescued_lanes: u64,
     /// Lanes per call ([`FAST_CHUNK_LANES`]).
     chunk_lanes: usize,
+    /// The cancellation rescue's per-lane target ([`V2Reducer::set_target`]).
+    lane_target: f64,
 }
 
 impl FastEngine {
@@ -557,7 +702,12 @@ impl FastEngine {
             threshold: fast_engine_threshold(),
             exact: None,
             exact_lanes: 0,
+            rescued_lanes: 0,
+            best_effort: false,
             chunk_lanes: FAST_CHUNK_LANES,
+            lane_target: crate::reduction_policy::rescue_lane_target(
+                crate::reduction_policy::DEFAULT_TARGET,
+            ),
         })
     }
 
@@ -593,15 +743,19 @@ impl BucketEngine<f64> for FastEngine {
         0.0
     }
 
-    fn reduce(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
+    fn reduce(
+        &mut self,
+        input: &BucketInput<f64>,
+        source: Option<&dyn GroupRefinementSource>,
+    ) -> ExecutionResult<Vec<Outcome<f64>>> {
         let routed = self.routed(input);
         if !routed.contains(&true) {
-            return self.reduce_fast(input);
+            return self.reduce_fast(input, source);
         }
         self.exact_lanes += routed.iter().filter(|&&r| r).count() as u64;
         let kept: Vec<bool> = routed.iter().map(|&r| !r).collect();
         let mut fast = if kept.contains(&true) {
-            self.reduce_fast(&input.select(&kept))?
+            self.reduce_fast(&input.select(&kept), source)?
         } else {
             Vec::new()
         }
@@ -609,11 +763,19 @@ impl BucketEngine<f64> for FastEngine {
         // The generic engine parses and evaluates Symbolica expressions: it
         // runs under pyAmpliCol's library key on this thread (module docs,
         // 'Absolute thresholds'), whichever thread the executor reduces on.
+        let (unchecked, lane_target, best_effort) =
+            (self.unchecked, self.lane_target, self.best_effort);
         let mut exact = {
             let _unlock = pyamplicol::unlock();
             self.exact
-                .get_or_insert_with(|| GenericEngine::new(0_f64))
-                .reduce(&input.select(&routed))?
+                .get_or_insert_with(|| {
+                    let mut engine = GenericEngine::new(0_f64);
+                    engine.set_checked(!unchecked);
+                    engine.set_cancellation_target(Some(lane_target));
+                    engine.set_best_effort(best_effort);
+                    engine
+                })
+                .reduce(&input.select(&routed), None)?
         }
         .into_iter();
         routed
@@ -637,10 +799,14 @@ impl BucketEngine<f64> for FastEngine {
 pub(super) const FAST_CHUNK_LANES: usize = 1024;
 
 impl FastEngine {
-    fn reduce_fast(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
+    fn reduce_fast(
+        &mut self,
+        input: &BucketInput<f64>,
+        source: Option<&dyn GroupRefinementSource>,
+    ) -> ExecutionResult<Vec<Outcome<f64>>> {
         let (lanes, chunk) = (input.ids.len(), self.chunk_lanes.max(1));
         if lanes <= chunk {
-            return self.reduce_lanes(input);
+            return self.reduce_lanes(input, source);
         }
         let mut outcomes = Vec::with_capacity(lanes);
         for start in (0..lanes).step_by(chunk) {
@@ -648,12 +814,16 @@ impl FastEngine {
             let keep: Vec<bool> = (0..lanes)
                 .map(|lane| (start..end).contains(&lane))
                 .collect();
-            outcomes.extend(self.reduce_lanes(&input.select(&keep))?);
+            outcomes.extend(self.reduce_lanes(&input.select(&keep), source)?);
         }
         Ok(outcomes)
     }
 
-    fn reduce_lanes(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
+    fn reduce_lanes(
+        &mut self,
+        input: &BucketInput<f64>,
+        source: Option<&dyn GroupRefinementSource>,
+    ) -> ExecutionResult<Vec<Outcome<f64>>> {
         let (n, rank, lanes) = (input.n, input.rank, input.ids.len());
         let shifts = input
             .shifts
@@ -683,10 +853,23 @@ impl FastEngine {
             .iter()
             .map(|z| C64::new(z.re, z.im))
             .collect();
-        let amplitude = match self.amplitudes.entry((n, rank, self.unchecked)) {
+        let key = (
+            n,
+            rank,
+            self.unchecked,
+            self.best_effort,
+            self.lane_target.to_bits(),
+        );
+        let options = if self.best_effort {
+            fast_options_best_effort(self.lane_target)
+        } else {
+            fast_options_at(self.unchecked, self.lane_target)
+        };
+        let amplitude = match self.amplitudes.entry(key) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-            std::collections::hash_map::Entry::Vacant(entry) => entry
-                .insert(FastAmplitude::new(n, rank, fast_options(self.unchecked)).map_err(error)?),
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(FastAmplitude::new(n, rank, options).map_err(error)?)
+            }
         };
         let numerator = self
             .numerators
@@ -699,8 +882,16 @@ impl FastEngine {
         self.results.resize(lanes, FastResult::default());
         self.statuses.clear();
         self.statuses.resize(lanes, FastStatus::NotEvaluated);
+        // The rescue-precision kinematics on demand (`FastRefinementSource`):
+        // NinjaRS asks for the lanes it flags.
+        let adapter = source
+            .filter(|_| input.origins.len() == lanes)
+            .map(|source| RefinementAdapter {
+                origins: &input.origins,
+                source,
+            });
         amplitude
-            .evaluate(
+            .evaluate_refined_with(
                 &FastInput {
                     lanes,
                     shifts: &shifts,
@@ -708,38 +899,186 @@ impl FastEngine {
                     scales_squared: &scales,
                     s_matrix: Some(&s_matrix),
                 },
+                adapter.as_ref().map(|a| a as &dyn FastRefinementSource),
                 numerator,
                 &mut self.masters,
                 &mut self.results,
                 &mut self.statuses,
             )
             .map_err(error)?;
+        // NinjaRS's record of its rescue: per re-reduced lane its precision,
+        // and whether it met the target (a miss is the lane's `Unstable`
+        // status, typed).
+        let mut rescued = vec![None; lanes];
+        // Per refused lane whose slot holds its re-reduced value, that
+        // re-reduction's absolute error estimate (the vanishing rule below).
+        let mut refused_bound = vec![None; lanes];
+        for (lane, rescue) in ninjars::fast::take_rescues() {
+            if rescue.served
+                && let Some(slot) = rescued.get_mut(lane)
+            {
+                *slot = Some((rescue_carrier(rescue.precision_bits), rescue.estimate));
+            } else if !rescue.served
+                && rescue.outcome == ninjars::fast::RescueOutcome::Missed
+                && rescue.held_bits == rescue.precision_bits
+                && let Some(slot) = refused_bound.get_mut(lane)
+            {
+                *slot = Some(rescue.absolute);
+            }
+        }
+        // NinjaRS's own count (lanes re-reduced, with or without a
+        // refinement): the statistics.
+        self.rescued_lanes += ninjars::fast::take_rescued_lanes();
         // Taken after a successful evaluation only, which suffices: NinjaRS's
         // `FastAmplitude::evaluate` forgets the thread's earlier records on
         // entry (`clear_instabilities`), so those of a failed evaluation
         // never reach the next one.
         let records = super::lane_status::fast_instabilities(lanes);
+        let best_effort = self.best_effort;
+        let refined = source.is_some();
         Ok(self
             .statuses
             .iter()
             .zip(&self.results)
             .zip(&records)
-            .map(|((&status, result), record)| {
-                if status == FastStatus::Success {
-                    Outcome {
-                        status: "success".into(),
-                        value: Some(result.laurent.map(|z| Complex::new(z.re, z.im))),
-                        uv: None,
+            .zip(&rescued)
+            .zip(&refused_bound)
+            .map(
+                |((((&status, result), record), &rescued), &refused_bound)| {
+                    // The best-effort pass serves a lane the rescue refused from
+                    // its result slot: the value NinjaRS keeps there for a refused
+                    // lane (`CancellationRescue`: the better of the binary64 and
+                    // the re-reduced values; `RescueOutsideDomain`, a flagged lane
+                    // the rescue cannot take: the binary64 value).
+                    let missed = status == FastStatus::Unstable
+                        && record.as_ref().is_some_and(|r| {
+                            matches!(
+                                r.test,
+                                ninjars::fast::InstabilityTest::CancellationRescue
+                                    | ninjars::fast::InstabilityTest::RescueOutsideDomain
+                            )
+                        })
+                        && result.laurent.iter().all(|z| z.is_finite());
+                    // A caller that supplies no refined kinematics (the Python
+                    // reference executor, the slice evaluation, a call without
+                    // initial states) cannot give NinjaRS's rescue the point it
+                    // needs for a lane outside its domain (an on-shell massive
+                    // leg): such a lane keeps its binary64 value and status, as
+                    // before the rescue existed, instead of failing there.
+                    let unrefined_outside = !refined
+                        && status == FastStatus::Unstable
+                        && record.as_ref().is_some_and(|r| {
+                            matches!(r.test, ninjars::fast::InstabilityTest::RescueOutsideDomain)
+                        })
+                        && result.laurent.iter().all(|z| z.is_finite());
+                    // A lane the rescue refused whose re-reduced (double-double)
+                    // value, held in its slot, is consistent with zero within
+                    // that re-reduction's own absolute error estimate in every
+                    // Laurent coefficient (`vanishes_within`): served at that
+                    // value, uncertified, without pyAmpliCol's lane rescue (whose
+                    // higher carriers could only confirm a zero or, for a lane
+                    // that loses more than about 100 bits and is in truth not
+                    // zero, recover it; a rescue policy escalates such a point,
+                    // its levels never met by an uncertified result).
+                    let vanishing = !best_effort
+                        && missed
+                        && record.as_ref().is_some_and(|r| {
+                            matches!(r.test, ninjars::fast::InstabilityTest::CancellationRescue)
+                        })
+                        && refused_bound
+                            .is_some_and(|bound| vanishes_within(&result.laurent, bound));
+                    if status == FastStatus::Success
+                        || (best_effort && missed)
+                        || unrefined_outside
+                        || vanishing
+                    {
+                        Outcome {
+                            status: "success".into(),
+                            value: Some(result.laurent.map(|z| Complex::new(z.re, z.im))),
+                            uv: None,
+                            rescued,
+                            uncertified: if vanishing {
+                                Some(UNCERTIFIED_VANISHING_DD)
+                            } else {
+                                unrefined_outside.then_some(UNCERTIFIED_OUTSIDE_DOMAIN)
+                            },
+                            // NinjaRS states one absolute estimate, of the
+                            // finite part's terms: taken for every coefficient,
+                            // where credible (`credible_bound`).
+                            bound: refused_bound
+                                .filter(|&b| vanishing && credible_bound(b))
+                                .map(|b| [b; 3]),
+                        }
+                    } else {
+                        Outcome {
+                            status: super::lane_status::fast_status(status, record.as_ref()),
+                            value: None,
+                            uv: None,
+                            rescued: None,
+                            uncertified: None,
+                            bound: None,
+                        }
                     }
-                } else {
-                    Outcome {
-                        status: super::lane_status::fast_status(status, record.as_ref()),
-                        value: None,
-                        uv: None,
-                    }
-                }
-            })
+                },
+            )
             .collect())
+    }
+}
+
+/// Whether an absolute bound is credible as a check budget: finite, and a
+/// normal positive number (a bound that underflowed to zero or into the
+/// subnormal range cannot be told from one whose terms are nonzero; an exact
+/// zero is not proven to come from exactly zero terms here).
+fn credible_bound(bound: f64) -> bool {
+    bound.is_finite() && bound >= f64::MIN_POSITIVE
+}
+
+/// Whether a refused lane's re-reduced Laurent coefficients are all
+/// consistent with zero within `bound`, that re-reduction's own absolute
+/// error estimate (NinjaRS's `Rescue::absolute`: the moduli of its terms at
+/// their carriers' units, at least the box-Gram and mu-expansion losses).
+/// All three coefficients are tested, whatever the pole selection (the fast
+/// engine computes all three): a finite bound and finite values only.
+fn vanishes_within(laurent: &[C64; 3], bound: f64) -> bool {
+    bound.is_finite()
+        && laurent.iter().all(|z| {
+            let modulus = z.re.hypot(z.im);
+            modulus.is_finite() && modulus <= bound
+        })
+}
+
+/// A [`GroupRefinementSource`] as NinjaRS's `FastRefinementSource` for one
+/// fast-engine call: lane `i` of the call is `origins[i]`; the lanes asked
+/// NinjaRS asks for the lanes it re-reduces only.
+struct RefinementAdapter<'a> {
+    origins: &'a [(usize, usize)],
+    source: &'a dyn GroupRefinementSource,
+}
+
+/// The lane-rescue carrier of NinjaRS's rescue precision in bits
+/// (`Rescue::precision_bits`: 106 is double-double, more is MPFR at those
+/// bits' decimal digits).
+fn rescue_carrier(bits: u32) -> RescueCarrier {
+    if bits <= 106 {
+        RescueCarrier::DoubleDouble
+    } else {
+        RescueCarrier::Arbitrary((f64::from(bits) * std::f64::consts::LOG10_2).floor() as u32)
+    }
+}
+
+impl FastRefinementSource for RefinementAdapter<'_> {
+    fn lane(
+        &self,
+        lane: usize,
+        shifts: &mut [RMom],
+        s_matrix: &mut [f64],
+        masses_squared: &mut [C64],
+    ) -> bool {
+        let Some(&(group, row)) = self.origins.get(lane) else {
+            return false;
+        };
+        self.source
+            .lane(group, row, shifts, s_matrix, masses_squared)
     }
 }
 
@@ -753,6 +1092,17 @@ where
     prototype: T,
     /// The masters' pole selection of every reduction plan.
     selection: PoleSelection,
+    /// NinjaRS's cancellation ladder on every plan (the checked mode; off in
+    /// the UNCHECKED mode, [`V2Reducer::set_unchecked`]).
+    checked: bool,
+    /// The ladder's lane target ([`Self::set_cancellation_target`]).
+    target: Option<f64>,
+    /// pyAmpliCol's best-effort pass ([`Self::set_best_effort`]).
+    best_effort: bool,
+    /// The reason under which a lane the ladder refuses is returned when its
+    /// best value is consistent with zero ([`V2Reducer::set_vanishing`]: the
+    /// lane rescue's last carrier only); None: such lanes stay refused.
+    vanishing: Option<&'static str>,
 }
 
 impl<T: Carrier> GenericEngine<T>
@@ -764,6 +1114,60 @@ where
             reductions: HashMap::new(),
             prototype,
             selection: PoleSelection::BOTH,
+            checked: !crate::reduction_policy::DEFAULT_UNCHECKED,
+            // The same per-lane target as the fast engine's cancellation
+            // rescue (`reduction_policy::rescue_lane_target` of the call's
+            // target; [`V2Reducer::set_target`] moves both).
+            target: Some(crate::reduction_policy::rescue_lane_target(
+                crate::reduction_policy::DEFAULT_TARGET,
+            )),
+            best_effort: false,
+            vanishing: None,
+        }
+    }
+
+    /// Whether the plans carry NinjaRS's cancellation ladder: the checked
+    /// mode, and the best-effort pass (which serves a refused lane's best
+    /// value, as the fast engine's best-effort pass does).
+    fn ladder_on(&self) -> bool {
+        self.checked || (self.best_effort && RESCUE_IN_BEST_EFFORT)
+    }
+
+    /// pyAmpliCol's best-effort pass ([`V2Reducer::set_best_effort_pass`]),
+    /// following the fast engine's [`RESCUE_IN_BEST_EFFORT`]: when it is on,
+    /// the ladder runs (also in the unchecked mode) and a lane it refuses
+    /// (`Missed`, `Failed`) is served from its best available value (the
+    /// ladder's `LaneRescue::best`: the smallest estimate among the base pass
+    /// and its rungs); off (today), the pass is the unchecked reduction, as
+    /// on the fast engine.
+    fn set_best_effort(&mut self, on: bool) {
+        if on != self.best_effort {
+            let before = self.ladder_on();
+            self.best_effort = on;
+            if self.ladder_on() != before {
+                self.reductions.clear();
+            }
+        }
+    }
+
+    /// The ladder's target relative accuracy per lane of every plan (`None`:
+    /// NinjaRS's carrier default). Plans built later take it too.
+    fn set_cancellation_target(&mut self, target: Option<f64>) {
+        self.target = target;
+        for reductions in self.reductions.values_mut() {
+            reductions.set_cancellation_target(target);
+        }
+    }
+
+    /// The checked mode of the following reductions: plans are rebuilt with
+    /// or without NinjaRS's cancellation ladder (measurement included).
+    fn set_checked(&mut self, checked: bool) {
+        if checked != self.checked {
+            let before = self.ladder_on();
+            self.checked = checked;
+            if self.ladder_on() != before {
+                self.reductions.clear();
+            }
         }
     }
 
@@ -775,6 +1179,40 @@ where
             }
         }
     }
+}
+
+/// A ladder record's own absolute bound per Laurent coefficient (the
+/// record's finite bound, else its estimate times its term moduli), or None
+/// without either.
+fn zero_bound<T: NativeFloat>(record: &crate::LadderLaneRecord<T>) -> Option<[f64; 3]>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let bound = match (record.absolute_bound, record.term_moduli) {
+        (Some(bound), _) if bound.iter().all(|b| b.is_finite()) => bound,
+        (_, Some(moduli)) if record.estimate.is_finite() => moduli.map(|m| m * record.estimate),
+        _ => return None,
+    };
+    bound.iter().all(|b| b.is_finite()).then_some(bound)
+}
+
+/// The bound ([`zero_bound`]) of a refused ladder record whose best value is
+/// consistent with zero within it in every Laurent coefficient; None when
+/// the lane is not eligible (no best value, no finite bound, or a value
+/// outside it).
+fn consistent_with_zero<T: NativeFloat>(record: &crate::LadderLaneRecord<T>) -> Option<[f64; 3]>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let best = record.best.as_ref()?;
+    let bound = zero_bound(record)?;
+    best.iter()
+        .zip(bound)
+        .all(|(z, b)| {
+            let modulus = z.re.to_f64().hypot(z.im.to_f64());
+            modulus.is_finite() && modulus <= b
+        })
+        .then_some(bound)
 }
 
 fn template(rank: usize) -> (String, Vec<String>) {
@@ -814,7 +1252,14 @@ where
         self.prototype.clone()
     }
 
-    fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>> {
+    fn reduce(
+        &mut self,
+        input: &BucketInput<T>,
+        _source: Option<&dyn GroupRefinementSource>,
+    ) -> ExecutionResult<Vec<Outcome<T>>> {
+        let ladder = self.ladder_on();
+        let serve_best = self.best_effort && RESCUE_IN_BEST_EFFORT;
+        let vanishing = self.vanishing;
         let reductions = match self.reductions.entry((input.n, input.rank)) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
@@ -826,6 +1271,10 @@ where
                     self.prototype.clone(),
                 )?;
                 reductions.set_pole_selection(self.selection);
+                if ladder {
+                    reductions.enable_cancellation_ladder()?;
+                    reductions.set_cancellation_target(self.target);
+                }
                 entry.insert(reductions)
             }
         };
@@ -838,24 +1287,116 @@ where
         let mut outcomes = Vec::with_capacity(lanes);
         for start in (0..lanes).step_by(GENERIC_CHUNK_LANES) {
             let end = (start + GENERIC_CHUNK_LANES).min(lanes);
+            // Chunk-local lane ids (the position in the chunk): the bucket's
+            // ids number each family's rows from zero, so two families of one
+            // chunk share ids; the ladder's records are matched by these.
+            let local: Vec<u64> = (0..(end - start) as u64).collect();
             let reduced = reductions.evaluate_native(
-                &input.ids[start..end],
+                &local,
                 &shifts[start * n..end * n],
                 &input.masses[start * n..end * n],
                 &input.scales[start..end],
                 &input.coefficients[start * width..end * width],
                 Some(&input.s_matrix[start * n * n..end * n * n]),
             )?;
-            outcomes.extend(reduced.into_iter().map(|lane| {
-                Outcome {
-                    status: lane
-                        .status
-                        .strip_prefix("epsilon sector 0: ")
-                        .map_or(lane.status.clone(), str::to_owned),
-                    value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
-                    uv: None,
+            // NinjaRS's cancellation ladder (checked mode, best-effort pass):
+            // a lane it re-reduced and served is recorded with the carrier of
+            // its last rung (the point records, as the fast engine's
+            // rescue); in the best-effort pass a lane it refused is served
+            // from its best value.
+            let mut rescued: Vec<Option<(RescueCarrier, f64)>> = vec![None; end - start];
+            let mut best: Vec<Option<[Complex<T>; 3]>> = vec![None; end - start];
+            let mut rescued_vanishing: Vec<Option<(RescueCarrier, f64)>> = vec![None; end - start];
+            let mut zero_reason: Vec<Option<&'static str>> = vec![None; end - start];
+            for record in reductions.take_ladder_records() {
+                let Ok(row) = usize::try_from(record.id) else {
+                    continue;
+                };
+                if row >= end - start {
+                    continue;
                 }
-            }));
+                if record.served && !record.rungs.is_empty() {
+                    // One lane per epsilon sector: the highest carrier and the
+                    // largest estimate of its sectors.
+                    let carrier = rescue_carrier(record.precision_bits);
+                    rescued[row] = Some(match rescued[row] {
+                        Some((before, estimate)) => (
+                            match (before, carrier) {
+                                (RescueCarrier::Arbitrary(d), RescueCarrier::Arbitrary(e)) => {
+                                    RescueCarrier::Arbitrary(d.max(e))
+                                }
+                                (RescueCarrier::Arbitrary(d), _) => RescueCarrier::Arbitrary(d),
+                                _ => carrier,
+                            },
+                            estimate.max(record.estimate),
+                        ),
+                        None => (carrier, record.estimate),
+                    });
+                } else if !record.served
+                    && record.sector == 0
+                    && record.outcome == crate::LadderOutcome::BelowResolution
+                {
+                    // A vanishing lane (its value below the rung's resolution of
+                    // its own terms: no relative accuracy can be stated, its
+                    // absolute error is below the target times the base pass's
+                    // rounding of its terms) is served at its rung value, not
+                    // refused: a lane that cancels to zero by symmetry would
+                    // otherwise fail at every carrier. Recorded as a rescue.
+                    best[row] = record.best;
+                    let carrier = rescue_carrier(record.precision_bits);
+                    rescued_vanishing[row] = Some((carrier, record.estimate));
+                } else if let Some(reason) = vanishing
+                    && !record.served
+                    && record.sector == 0
+                    && consistent_with_zero(&record).is_some()
+                {
+                    // Refused by the fast rescue and every earlier carrier of
+                    // the lane rescue, and here at the highest precision
+                    // tried, with a best value within its own absolute bound
+                    // of zero: returned, its accuracy not established.
+                    best[row] = record.best;
+                    zero_reason[row] = Some(reason);
+                } else if !record.served && serve_best && record.sector == 0 {
+                    // The engine's numerators live in epsilon sector 0 (the
+                    // others are zero, `template`): its best value is the lane's.
+                    best[row] = record.best;
+                }
+            }
+            outcomes.extend(
+                reduced
+                    .into_iter()
+                    .zip(rescued)
+                    .zip(best)
+                    .zip(rescued_vanishing)
+                    .zip(zero_reason)
+                    .map(|((((lane, rescued), best), vanishing), zero)| match best {
+                        Some(value) if lane.value.is_none() => Outcome {
+                            status: "success".into(),
+                            value: Some(value),
+                            uv: None,
+                            uncertified: vanishing.map(|_| UNCERTIFIED_BELOW_RESOLUTION).or(zero),
+                            // No check budget from the generic ladder's records:
+                            // its rung bound is formed in f64 (a term modulus
+                            // times 256 can overflow and read as zero) and can
+                            // belong to another rung than the value served.
+                            // The lane is served, its bound unavailable
+                            // (`V2Output::uncertified_bounds`).
+                            bound: None,
+                            rescued: vanishing,
+                        },
+                        _ => Outcome {
+                            status: lane
+                                .status
+                                .strip_prefix("epsilon sector 0: ")
+                                .map_or(lane.status.clone(), str::to_owned),
+                            value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
+                            uv: None,
+                            rescued,
+                            uncertified: None,
+                            bound: None,
+                        },
+                    }),
+            );
         }
         Ok(outcomes)
     }
@@ -876,6 +1417,8 @@ pub struct V2Reducer {
     precision_bits: u32,
     /// [`Self::set_unchecked`].
     unchecked: bool,
+    /// [`Self::set_target`].
+    target: f64,
 }
 
 impl V2Reducer {
@@ -907,7 +1450,88 @@ impl V2Reducer {
             engines,
             precision_bits: bits,
             unchecked: crate::reduction_policy::DEFAULT_UNCHECKED,
+            target: crate::reduction_policy::DEFAULT_TARGET,
         })
+    }
+
+    /// The call's target accuracy (the user's `reduction_target`,
+    /// `reduction_policy::DEFAULT_TARGET` by default): the fast engine's
+    /// cancellation rescue re-reduces a lane whose measured error estimate
+    /// exceeds `reduction_policy::rescue_lane_target(target)` (checked mode
+    /// only; [`fast_options`]).
+    pub fn set_target(&mut self, target: f64) {
+        self.target = target;
+        // One lane target for both engines: the fast engine's cancellation
+        // rescue and the generic engines' cancellation ladder.
+        let lane_target = crate::reduction_policy::rescue_lane_target(target);
+        match &mut self.engines {
+            Engines::Fast(engine) => {
+                engine.lane_target = lane_target;
+                if let Some(exact) = &mut engine.exact {
+                    exact.set_cancellation_target(Some(lane_target));
+                }
+            }
+            Engines::Double(engine) => engine.set_cancellation_target(Some(lane_target)),
+            Engines::DoubleDouble(engine) => engine.set_cancellation_target(Some(lane_target)),
+            Engines::Arbitrary(engine) => engine.set_cancellation_target(Some(lane_target)),
+        }
+    }
+
+    /// The call's target accuracy ([`Self::set_target`]).
+    pub fn target(&self) -> f64 {
+        self.target
+    }
+
+    /// The reason under which the generic engines return a lane their
+    /// ladder refuses but whose best value is consistent with zero within its
+    /// own absolute bound (None: such lanes stay refused). pyAmpliCol's lane
+    /// rescue sets it on its LAST carrier only, so that such a lane has been
+    /// refused by the fast rescue and every earlier carrier first.
+    pub fn set_vanishing(&mut self, reason: Option<&'static str>) {
+        match &mut self.engines {
+            Engines::Fast(engine) => {
+                if let Some(exact) = &mut engine.exact {
+                    exact.vanishing = reason;
+                }
+            }
+            Engines::Double(engine) => engine.vanishing = reason,
+            Engines::DoubleDouble(engine) => engine.vanishing = reason,
+            Engines::Arbitrary(engine) => engine.vanishing = reason,
+        }
+    }
+
+    /// The generic engine's cancellation ladder: its lane target and whether
+    /// its plans carry it (`None` for the fast engine). Tests.
+    #[cfg(test)]
+    pub(crate) fn ladder_state(&self) -> Option<(Option<f64>, bool)> {
+        match &self.engines {
+            Engines::Fast(_) => None,
+            Engines::Double(e) => Some((e.target, e.ladder_on())),
+            Engines::DoubleDouble(e) => Some((e.target, e.ladder_on())),
+            Engines::Arbitrary(e) => Some((e.target, e.ladder_on())),
+        }
+    }
+
+    /// pyAmpliCol's best-effort pass (a point no configured alternative
+    /// accepted, evaluated again for its best value, `on_failure=
+    /// "best-effort"`): the fast engine reduces unchecked, with its
+    /// cancellation rescue only when [`RESCUE_IN_BEST_EFFORT`] is on (then a
+    /// lane whose rescue misses the target is served from its result slot,
+    /// [`fast_options_best_effort`]); the generic engines follow the same
+    /// constant (`GenericEngine::set_best_effort`). Off (the default)
+    /// everywhere else; the user's unchecked mode is unaffected.
+    pub fn set_best_effort_pass(&mut self, on: bool) {
+        match &mut self.engines {
+            Engines::Fast(engine) => {
+                engine.best_effort = on;
+                if let Some(exact) = &mut engine.exact {
+                    exact.set_best_effort(on);
+                }
+            }
+            Engines::Double(engine) => engine.set_best_effort(on),
+            Engines::DoubleDouble(engine) => engine.set_best_effort(on),
+            Engines::Arbitrary(engine) => engine.set_best_effort(on),
+        }
     }
 
     pub fn precision_bits(&self) -> u32 {
@@ -916,19 +1540,27 @@ impl V2Reducer {
 
     /// The unchecked mode of the following reductions (m-lit lit-unchecked,
     /// off by default): the fast engine's zero stability thresholds
-    /// ([`fast_options`]; its amplitudes are kept per mode). The generic
-    /// engines (double-double, MPFR, and the binary64 lanes routed to them)
-    /// have no stability threshold to zero (no NinjaRS cancellation test is
-    /// enabled here; only exactly singular cuts and non-finite results
-    /// fail): the mode changes nothing there. That is no accuracy statement:
-    /// their values are unverified with or without the mode (NinjaRS's
-    /// near-planar hazard of rank-n pentagon families, docs/user/
-    /// python-api.md); pyAmpliCol's stability checks, its rescue stack and
-    /// the per-point fallback's guard check them.
+    /// ([`fast_options`]; its amplitudes are kept per mode) and no
+    /// cancellation rescue. The generic engines (double-double, MPFR, and the
+    /// binary64 lanes routed to them) run NinjaRS's cancellation ladder in
+    /// the checked mode only (its stability test, measured cancellation and
+    /// re-reduction in a higher precision, `GenericEngine::set_checked`); in
+    /// the unchecked mode their plans carry neither, and their values are the
+    /// generic reduction's bit for bit. Either way pyAmpliCol's stability
+    /// checks, its rescue stack and the per-point fallback's guard check the
+    /// values.
     pub fn set_unchecked(&mut self, unchecked: bool) {
         self.unchecked = unchecked;
-        if let Engines::Fast(engine) = &mut self.engines {
-            engine.unchecked = unchecked;
+        match &mut self.engines {
+            Engines::Fast(engine) => {
+                engine.unchecked = unchecked;
+                if let Some(exact) = &mut engine.exact {
+                    exact.set_checked(!unchecked);
+                }
+            }
+            Engines::Double(engine) => engine.set_checked(!unchecked),
+            Engines::DoubleDouble(engine) => engine.set_checked(!unchecked),
+            Engines::Arbitrary(engine) => engine.set_checked(!unchecked),
         }
     }
 
@@ -1004,6 +1636,15 @@ impl V2Reducer {
         }
     }
 
+    /// Lanes the fast engine's cancellation rescue re-reduced since the
+    /// last call (NinjaRS's `take_rescued_lanes`); 0 for the generic engines.
+    pub fn take_rescued_lanes(&mut self) -> u64 {
+        match &mut self.engines {
+            Engines::Fast(engine) => std::mem::take(&mut engine.rescued_lanes),
+            _ => 0,
+        }
+    }
+
     /// Number of distinct cached master rows.
     pub fn cached_masters(&self) -> usize {
         match &self.engines {
@@ -1018,11 +1659,44 @@ impl V2Reducer {
         }
     }
 
+    /// The carrier of the rescue-precision kinematics this reducer reads
+    /// ([`Self::reduce_refined`]): the fast engine's cancellation rescue
+    /// (NinjaRS `FastOptions::cancellation_rescue`), on in the checked mode
+    /// only (`fast_options`), reads double-double, the lowest lane-rescue
+    /// carrier above binary64
+    /// (`rusticol_core::loop_execution::v2::rescue_carriers`); none in the
+    /// unchecked mode and on the generic engines (their own rescue is not wired here).
+    pub fn refinement_carrier(&self) -> Option<RescueCarrier> {
+        match &self.engines {
+            Engines::Fast(engine)
+                if !self.unchecked || (engine.best_effort && RESCUE_IN_BEST_EFFORT) =>
+            {
+                super::v2_execution::rescue_carriers(self.precision_bits)
+                    .first()
+                    .copied()
+            }
+            _ => None,
+        }
+    }
+
     /// Reduce every lane of every group, then optionally every lane again in
     /// `options.check`'s frame with the same cached masters.
     pub fn reduce(
         &mut self,
         groups: &[FamilyGroup<'_>],
+        options: ReduceOptions,
+    ) -> ExecutionResult<V2Output> {
+        self.reduce_refined(groups, None, options)
+    }
+
+    /// [`Self::reduce`] with the lanes' rescue-precision kinematics on
+    /// demand ([`GroupRefinementSource`]): the fast engine's cancellation
+    /// rescue asks for the lanes it flags (direct frame); every other value
+    /// is [`Self::reduce`]'s bit for bit.
+    pub fn reduce_refined(
+        &mut self,
+        groups: &[FamilyGroup<'_>],
+        source: Option<&dyn GroupRefinementSource>,
         options: ReduceOptions,
     ) -> ExecutionResult<V2Output> {
         macro_rules! run {
@@ -1036,7 +1710,7 @@ impl V2Reducer {
                         })
                     })
                     .collect::<ExecutionResult<Vec<_>>>()?;
-                run($engine, &groups, options, self.precision_bits)
+                run($engine, &groups, options, self.precision_bits, source)
             }};
         }
         match &mut self.engines {
@@ -1066,18 +1740,62 @@ fn run<T: BatchCarrier, E: BucketEngine<T>>(
     groups: &[Lanes<'_, T>],
     options: ReduceOptions,
     bits: u32,
+    source: Option<&dyn GroupRefinementSource>,
 ) -> ExecutionResult<V2Output> {
     let buckets = buckets(groups)?;
-    let direct = reduce_groups(engine, groups, &buckets, None, options.poles)?;
+    let direct = reduce_groups(engine, groups, &buckets, None, options.poles, source)?;
+    let rescued = direct
+        .iter()
+        .enumerate()
+        .flat_map(|(group, rows)| {
+            rows.iter().enumerate().filter_map(move |(row, outcome)| {
+                outcome
+                    .as_ref()
+                    .and_then(|o| o.rescued)
+                    .map(|(carrier, estimate)| (group, row, carrier, estimate))
+            })
+        })
+        .collect();
     let check = options
         .check
-        .map(|frame| reduce_groups(engine, groups, &buckets, Some(frame), options.poles))
+        .map(|frame| reduce_groups(engine, groups, &buckets, Some(frame), options.poles, None))
         .transpose()?;
+    let mut uncertified: Vec<(usize, usize, &'static str)> = Vec::new();
+    // Per uncertified lane its bound, the largest over the frames; None once
+    // a frame served it uncertified without one.
+    let mut bounds: BTreeMap<(usize, usize), Option<[f64; 3]>> = BTreeMap::new();
+    for frame in std::iter::once(&direct).chain(check.as_ref()) {
+        for (group, rows) in frame.iter().enumerate() {
+            for (row, outcome) in rows.iter().enumerate() {
+                let Some(outcome) = outcome.as_ref() else {
+                    continue;
+                };
+                let Some(reason) = outcome.uncertified else {
+                    continue;
+                };
+                if !uncertified.iter().any(|&(g, r, _)| (g, r) == (group, row)) {
+                    uncertified.push((group, row, reason));
+                }
+                let entry = bounds.entry((group, row)).or_insert(Some([0.0; 3]));
+                *entry = match (*entry, outcome.bound) {
+                    (Some(a), Some(b)) => Some([a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])]),
+                    _ => None,
+                };
+            }
+        }
+    }
+    let uncertified_bounds = bounds
+        .into_iter()
+        .filter_map(|((group, row), bound)| bound.map(|b| (group, row, b)))
+        .collect();
     Ok(V2Output {
         direct: output_batches(groups, direct, options.poles, bits)?,
         check: check
             .map(|outcomes| output_batches(groups, outcomes, options.poles, bits))
             .transpose()?,
+        rescued,
+        uncertified,
+        uncertified_bounds,
     })
 }
 
@@ -1126,6 +1844,55 @@ fn lanes<'a, T>(
 mod tests {
     use super::*;
 
+    /// The call's target and the checks switch reach NinjaRS's options: the
+    /// checked mode rescues at `target / RESCUE_SAFETY`, the unchecked mode
+    /// has no rescue, the best-effort pass rescues at the target with zero
+    /// stability thresholds; the reducer's `set_target` and
+    /// `set_best_effort_pass` reach its fast engine, and its refinement
+    /// carrier follows the switch.
+    #[test]
+    fn the_target_and_the_switch_reach_the_fast_engine_options() {
+        let lane = crate::reduction_policy::rescue_lane_target(1e-6);
+        assert_eq!(lane, 1e-6 / crate::reduction_policy::RESCUE_SAFETY);
+        let checked = fast_options_at(false, lane);
+        assert!(checked.cancellation_rescue);
+        assert_eq!(checked.rescue_target, Some(lane));
+        let unchecked = fast_options_at(true, lane);
+        assert!(!unchecked.cancellation_rescue);
+        assert_eq!(unchecked.rescue_target, None);
+        assert_eq!(unchecked.stability_threshold, 0.0);
+        let best = fast_options_best_effort(lane);
+        assert_eq!(best.cancellation_rescue, RESCUE_IN_BEST_EFFORT);
+        assert_eq!(best.rescue_target, RESCUE_IN_BEST_EFFORT.then_some(lane));
+        assert_eq!(
+            (best.stability_threshold, best.relative_tolerance),
+            (0.0, 0.0)
+        );
+        let mut reducer = V2Reducer::new("double", None, "fast", true).unwrap();
+        reducer.set_target(1e-6);
+        let Engines::Fast(engine) = &reducer.engines else {
+            panic!("the fast engine");
+        };
+        assert_eq!(engine.lane_target, lane);
+        assert_eq!(
+            reducer.refinement_carrier(),
+            Some(RescueCarrier::DoubleDouble)
+        );
+        reducer.set_unchecked(true);
+        assert_eq!(reducer.refinement_carrier(), None);
+        reducer.set_best_effort_pass(true);
+        let Engines::Fast(engine) = &reducer.engines else {
+            panic!("the fast engine");
+        };
+        assert!(engine.best_effort);
+        assert_eq!(
+            reducer.refinement_carrier(),
+            RESCUE_IN_BEST_EFFORT.then_some(RescueCarrier::DoubleDouble)
+        );
+        let generic = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        assert_eq!(generic.refinement_carrier(), None);
+    }
+
     #[test]
     fn true_and_declared_ranks() {
         let rank = 3;
@@ -1161,6 +1928,7 @@ mod tests {
             scales: vec![complex(scale); lanes],
             s_matrix: vec![complex(&zero); lanes],
             coefficients: vec![complex(&Float::with_val(256, 1)); lanes],
+            origins: Vec::new(),
         };
         (engine, input)
     }
@@ -1192,22 +1960,513 @@ mod tests {
                     scales: vec![c(1.0e6); lanes],
                     s_matrix: vec![c(0.0); lanes * n * n],
                     coefficients: vec![c(1.0); lanes * ncoeff(1)],
+                    origins: Vec::new(),
                 }
             };
             let masses: Vec<f64> = (0..lanes * n)
                 .map(|k| 29929.0 + 7.0 * (k % 700) as f64)
                 .collect();
             let mut engine = FastEngine::new(true).unwrap();
-            let chunked = engine.reduce(&input(&masses)).unwrap();
+            let chunked = engine.reduce(&input(&masses), None).unwrap();
             let mut whole = FastEngine::new(true).unwrap();
             whole.chunk_lanes = usize::MAX;
-            let one = whole.reduce(&input(&masses)).unwrap();
+            let one = whole.reduce(&input(&masses), None).unwrap();
             assert_eq!(chunked.len(), lanes);
             for lane in 0..lanes {
                 assert_eq!(one[lane].status, chunked[lane].status, "n {n} lane {lane}");
                 assert_eq!(one[lane].value, chunked[lane].value, "n {n} lane {lane}");
             }
         }
+    }
+
+    /// One lane target for both NinjaRS engines: the call's target reaches
+    /// the fast engine's cancellation rescue and the generic engines'
+    /// cancellation ladder as the same number (from construction on); the
+    /// ladder runs in the checked mode and in the best-effort pass only.
+    #[test]
+    fn one_lane_target_and_one_switch_for_both_engines() {
+        use crate::reduction_policy::{DEFAULT_TARGET, rescue_lane_target};
+        // The switch is explicit: NinjaRS's own default of the rescue does
+        // not decide pyAmpliCol's checked mode.
+        assert!(
+            fast_options(false).cancellation_rescue,
+            "checked: rescue on"
+        );
+        assert!(
+            !fast_options(true).cancellation_rescue,
+            "unchecked: rescue off"
+        );
+        assert!(fast_options_at(false, 1e-8).cancellation_rescue);
+        assert_eq!(fast_options_at(false, 1e-8).rescue_target, Some(1e-8));
+        assert!(!fast_options_at(true, 1e-8).cancellation_rescue);
+        assert!(crate::facade_options().cancellation_rescue, "legacy facade");
+        let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+        let Engines::Fast(engine) = &fast.engines else {
+            panic!("fast engine")
+        };
+        assert_eq!(engine.lane_target, rescue_lane_target(DEFAULT_TARGET));
+        fast.set_target(1e-3);
+        let Engines::Fast(engine) = &fast.engines else {
+            panic!("fast engine")
+        };
+        assert_eq!(engine.lane_target, rescue_lane_target(1e-3));
+        for (arithmetic, digits) in [
+            ("double", None),
+            ("double-double", None),
+            ("arbitrary", Some(40)),
+        ] {
+            let mut reducer = V2Reducer::new(arithmetic, digits, "generic", true).unwrap();
+            let state = |reducer: &V2Reducer| match &reducer.engines {
+                Engines::Double(e) => (e.target, e.ladder_on()),
+                Engines::DoubleDouble(e) => (e.target, e.ladder_on()),
+                Engines::Arbitrary(e) => (e.target, e.ladder_on()),
+                Engines::Fast(_) => panic!("generic engine"),
+            };
+            let default = Some(rescue_lane_target(DEFAULT_TARGET));
+            assert_eq!(state(&reducer), (default, true), "{arithmetic}");
+            reducer.set_target(1e-3);
+            assert_eq!(
+                state(&reducer),
+                (Some(rescue_lane_target(1e-3)), true),
+                "{arithmetic}"
+            );
+            reducer.set_unchecked(true);
+            assert!(!state(&reducer).1, "{arithmetic}: no ladder unchecked");
+            reducer.set_best_effort_pass(true);
+            assert_eq!(
+                state(&reducer).1,
+                RESCUE_IN_BEST_EFFORT,
+                "{arithmetic}: the best-effort pass follows the fast engine's"
+            );
+            reducer.set_best_effort_pass(false);
+            assert!(!state(&reducer).1, "{arithmetic}");
+        }
+    }
+
+    /// The best-effort pass serves each refused lane its OWN best value:
+    /// two lanes of different families that share the row id 0 in one
+    /// generic chunk (tadpoles of distinct masses), refused by the ladder at
+    /// a target no rung meets, come back with their own values (those of
+    /// the checked reduction at the default target, which serves them).
+    #[test]
+    fn best_effort_serves_each_lane_its_own_best_value() {
+        let _unlock = pyamplicol::unlock(); // `tadpoles`
+        let scale = Float::with_val(256, 1_000_000);
+        let masses = [Float::with_val(256, 29929), Float::with_val(256, 8315)];
+        let (mut checked, input) = tadpoles(&masses, &scale);
+        let expected = checked.reduce(&input, None).unwrap();
+        assert!(expected.iter().all(|o| o.status == "success"));
+        let (mut engine, mut shared) = tadpoles(&masses, &scale);
+        shared.ids = vec![0, 0];
+        engine.set_checked(false);
+        engine.set_best_effort(true);
+        engine.set_cancellation_target(Some(1e-320));
+        let served = engine.reduce(&shared, None).unwrap();
+        use symbolica::domains::float::RealLike;
+        let finite = |o: &Outcome<Float>| o.value.as_ref().expect("a value")[0].re.clone();
+        let relative =
+            |x: &Float, y: &Float| (x.clone() - y.clone()).to_f64().abs() / y.to_f64().abs();
+        let (a, b) = (finite(&expected[0]), finite(&expected[1]));
+        assert!(relative(&a, &b) > 1e-3, "distinct values");
+        for (lane, want) in [(0, a), (1, b)] {
+            if RESCUE_IN_BEST_EFFORT {
+                assert_eq!(served[lane].status, "success", "lane {lane}");
+                let got = finite(&served[lane]);
+                assert!(
+                    relative(&got, &want) <= 1e-60,
+                    "lane {lane}: {got} vs its own {want}"
+                );
+            }
+        }
+    }
+
+    /// One bubble lane through the reducer (shifts 0 and (1,0,0,0), squared
+    /// masses 4, mu^2 = 1, poles none) with the rank-1 numerator
+    /// `c0 + c1 q0`, in the reducer's carrier `T`: its status, whether it was
+    /// served without accuracy evidence (`V2Output::uncertified`), the
+    /// estimate of a rescue within the reduction, and its finite part.
+    fn bubble<T: BatchCarrier>(
+        reducer: &mut V2Reducer,
+        zero: T,
+        c0: Complex<T>,
+        c1: T,
+        finite: impl Fn(&super::super::batch::Data) -> Complex<f64>,
+    ) -> (String, bool, Option<f64>, Option<Complex<f64>>)
+    where
+        T: From<f64> + Clone,
+    {
+        let _unlock = pyamplicol::unlock(); // generic engine
+        let bits = reducer.precision_bits();
+        let c = |x: f64| Complex::new(T::from(x), zero.clone());
+        let batch = |values: Vec<Complex<T>>, columns| {
+            Batch::typed(values, vec![0], columns, bits).unwrap()
+        };
+        let mut shifts = vec![c(0.0); 8];
+        shifts[4] = c(1.0);
+        let shifts = batch(shifts, 8);
+        let masses = batch(vec![c(4.0), c(4.0)], 2);
+        let scales = batch(vec![c(1.0)], 1);
+        let s_matrix = batch(vec![c(0.0), c(1.0), c(1.0), c(0.0)], 4);
+        let mut numerator = vec![c(0.0); ncoeff(1)];
+        numerator[0] = c0;
+        numerator[1] = Complex::new(c1, zero.clone());
+        let coefficients = batch(numerator, ncoeff(1));
+        let group = FamilyGroup {
+            propagators: 2,
+            shifts: &shifts,
+            masses_squared: &masses,
+            scales_squared: &scales,
+            s_matrix: &s_matrix,
+            coefficients: &coefficients,
+        };
+        let options = ReduceOptions {
+            poles: Poles::None,
+            ..ReduceOptions::default()
+        };
+        let output = reducer.reduce(&[group], options).unwrap();
+        let status = output.direct[0].statuses()[0].1.clone();
+        let uncertified = output.uncertified.iter().any(|&(g, r, _)| (g, r) == (0, 0));
+        let estimate = output
+            .rescued
+            .iter()
+            .find(|r| (r.0, r.1) == (0, 0))
+            .map(|r| r.3);
+        let value =
+            (status == "success").then(|| finite(output.direct[0].values().unwrap().data()));
+        (status, uncertified, estimate, value)
+    }
+
+    fn dd_finite(data: &super::super::batch::Data) -> Complex<f64> {
+        use symbolica::domains::float::RealLike;
+        match data {
+            super::super::batch::Data::DoubleDouble(v) => {
+                Complex::new(v[0].re.to_f64(), v[0].im.to_f64())
+            }
+            _ => panic!("a double-double batch"),
+        }
+    }
+
+    /// The external review's lane: `N = 2^k (1 + 2 q0) + i` on the bubble
+    /// above, whose 2^k part integrates to zero by symmetry (the integral is
+    /// that of `N = i` for every k), its terms cancelling by 2^k. Never a
+    /// certified success with a wrong value: either a success equal to the
+    /// `N = i` lane's value (k = 360: the ladder climbs and meets the target),
+    /// or served without accuracy evidence or refused (k = 800: below the
+    /// resolution of every rung).
+    #[test]
+    fn a_lane_below_every_rung_is_never_a_certified_success() {
+        let dd = |x: f64| DoubleFloat::from(x);
+        let mut reducer = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        let (status, _, _, reference) = bubble(
+            &mut reducer,
+            dd(0.0),
+            Complex::new(dd(0.0), dd(1.0)),
+            dd(0.0),
+            dd_finite,
+        );
+        assert_eq!(status, "success");
+        let reference = reference.unwrap();
+        for k in [360, 800] {
+            let mut reducer = V2Reducer::new("double-double", None, "generic", true).unwrap();
+            let big = dd(2f64.powi(k));
+            let (status, uncertified, _, value) = bubble(
+                &mut reducer,
+                dd(0.0),
+                Complex::new(big.clone(), dd(1.0)),
+                big.clone() + big,
+                dd_finite,
+            );
+            if status == "success" && !uncertified {
+                let value = value.unwrap();
+                let error =
+                    ((value.re - reference.re).powi(2) + (value.im - reference.im).powi(2)).sqrt();
+                let size = (reference.re.powi(2) + reference.im.powi(2)).sqrt();
+                assert!(
+                    error <= 1e-12 * size,
+                    "k {k}: certified success {value:?} against {reference:?}"
+                );
+            }
+        }
+    }
+
+    /// The vanishing rule of the lane rescue's last carrier
+    /// (`V2Reducer::set_vanishing`): a lane zero by symmetry (`N = 1 + 2 q0`
+    /// on the bubble above, whose integral is exactly 0), refused by the
+    /// ladder, is returned with the uncertified reason when the rule is on,
+    /// and never a certified success when it is off; a refused lane whose
+    /// best value is NOT consistent with zero (`N = 1` at a lane target no
+    /// rung meets) stays refused with the rule on.
+    #[test]
+    fn a_vanishing_lane_is_returned_uncertified_and_a_refused_one_stays_refused() {
+        let dd = |x: f64| DoubleFloat::from(x);
+        let mut off = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        let (status, uncertified, _, _) = bubble(
+            &mut off,
+            dd(0.0),
+            Complex::new(dd(1.0), dd(0.0)),
+            dd(2.0),
+            dd_finite,
+        );
+        assert!(
+            status != "success" || uncertified,
+            "rule off: {status} certified"
+        );
+        let mut on = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        on.set_vanishing(Some(UNCERTIFIED_VANISHING_DD));
+        let (status, uncertified, _, value) = bubble(
+            &mut on,
+            dd(0.0),
+            Complex::new(dd(1.0), dd(0.0)),
+            dd(2.0),
+            dd_finite,
+        );
+        assert_eq!(status, "success");
+        assert!(uncertified, "returned without its uncertified reason");
+        let value = value.unwrap();
+        assert!(value.re.hypot(value.im) < 1e-20, "{value:?}");
+        let mut refused = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        refused.set_vanishing(Some(UNCERTIFIED_VANISHING_DD));
+        refused.set_target(1e-40 * crate::reduction_policy::RESCUE_SAFETY);
+        let (status, uncertified, _, _) = bubble(
+            &mut refused,
+            dd(0.0),
+            Complex::new(dd(1.0), dd(0.0)),
+            dd(0.0),
+            dd_finite,
+        );
+        assert!(
+            status != "success" && !uncertified,
+            "a non-vanishing lane served: {status}"
+        );
+    }
+
+    /// The ordinary scalar bubble (`N = 1`) in binary64 at a lane target of
+    /// 1e-25, below what the fast engine's rescue can certify (its estimate
+    /// keeps the binary64 coefficients' 2^-53): a typed refusal for the lane
+    /// rescue, never a success claiming an estimate above the target.
+    #[test]
+    fn a_target_below_the_carrier_floor_is_refused_not_accepted() {
+        let mut reducer = V2Reducer::new("double", None, "fast", true).unwrap();
+        reducer.set_target(1e-25 * crate::reduction_policy::RESCUE_SAFETY);
+        let f64_finite = |data: &super::super::batch::Data| match data {
+            super::super::batch::Data::Double(v) => v[0],
+            _ => panic!("a binary64 batch"),
+        };
+        let (status, uncertified, estimate, _) = bubble(
+            &mut reducer,
+            0.0_f64,
+            Complex::new(1.0, 0.0),
+            0.0,
+            f64_finite,
+        );
+        assert!(
+            status != "success" || (!uncertified && estimate.is_none_or(|e| e <= 1e-25)),
+            "{status}, estimate {estimate:?}"
+        );
+    }
+
+    /// The fast engine's vanishing rule (`vanishes_within`): in binary64 a
+    /// lane zero by symmetry (`N = 1 + 2 q0` on the bubble above) that
+    /// NinjaRS's rescue refuses is served at its re-reduced value,
+    /// uncertified, by the reducer itself (no `set_vanishing`: the lane rescue
+    /// is not involved). The reviewer's lane `N = 2^k (1 + 2 q0) + i`, in
+    /// truth the `N = i` lane's value for every k, is never a certified
+    /// success with a wrong value: certified and right (small k), served
+    /// uncertified, or refused (large k: beyond double-double's resolution of
+    /// its own terms, the case the rule gives up to an explicit rescue
+    /// policy); and the double-double generic engine, the next level of
+    /// such a policy, recovers it.
+    #[test]
+    fn the_fast_engine_serves_a_vanishing_lane_uncertified_and_never_certifies_a_wrong_one() {
+        let f64_finite = |data: &super::super::batch::Data| match data {
+            super::super::batch::Data::Double(v) => v[0],
+            _ => panic!("a binary64 batch"),
+        };
+        let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+        let (status, uncertified, _, value) =
+            bubble(&mut fast, 0.0_f64, Complex::new(1.0, 0.0), 2.0, f64_finite);
+        assert_eq!(status, "success");
+        assert!(
+            uncertified,
+            "a vanishing lane served as a certified success"
+        );
+        let value = value.unwrap();
+        assert!(value.re.hypot(value.im) < 1e-14, "{value:?}");
+        let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+        let (status, uncertified, _, reference) =
+            bubble(&mut fast, 0.0_f64, Complex::new(0.0, 1.0), 0.0, f64_finite);
+        assert_eq!(status, "success");
+        assert!(!uncertified);
+        let reference = reference.unwrap();
+        let size = reference.re.hypot(reference.im);
+        let mut outcomes = Vec::new();
+        for k in [20, 60, 120, 400] {
+            let big = 2f64.powi(k);
+            let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+            let (status, uncertified, _, value) = bubble(
+                &mut fast,
+                0.0_f64,
+                Complex::new(big, 1.0),
+                2.0 * big,
+                f64_finite,
+            );
+            if status == "success" && !uncertified {
+                let value = value.unwrap();
+                let error = (value.re - reference.re).hypot(value.im - reference.im);
+                assert!(
+                    error <= 1e-6 * size,
+                    "k {k}: certified success {value:?} against {reference:?}"
+                );
+            }
+            outcomes.push((k, status, uncertified));
+        }
+        // The next carrier recovers a lane the binary64 rule gives up: the
+        // double-double generic engine, whose cancellation ladder climbs
+        // (a policy's double-double level).
+        let dd = |x: f64| DoubleFloat::from(x);
+        let big = dd(2f64.powi(120));
+        let mut generic = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        let (status, uncertified, _, value) = bubble(
+            &mut generic,
+            dd(0.0),
+            Complex::new(big.clone(), dd(1.0)),
+            big.clone() + big,
+            dd_finite,
+        );
+        assert_eq!(status, "success", "{outcomes:?}");
+        assert!(!uncertified, "{outcomes:?}");
+        let value = value.unwrap();
+        let error = (value.re - reference.re).hypot(value.im - reference.im);
+        assert!(error <= 1e-12 * size, "{value:?} against {reference:?}");
+        eprintln!("fast-engine outcomes of N = 2^k (1 + 2 q0) + i: {outcomes:?}");
+    }
+
+    /// The bound of a vanishing lane (`V2Output::uncertified_bounds`): the
+    /// symmetry-zero bubble (`N = 1 + 2 q0`) carries one that covers its
+    /// served value and is small next to its terms; the reviewer's lane
+    /// `N = 2^400 (1 + 2 q0) + i`, served ~0 uncertified while its true
+    /// value is the `N = i` lane's, carries one that covers that true
+    /// value: a check that adds the bounds of the uncertified lanes to its
+    /// residue cannot pass on two matching wrong zeros.
+    #[test]
+    fn a_vanishing_lane_carries_a_bound_that_covers_its_true_value() {
+        let _unlock = pyamplicol::unlock();
+        let run = |c0: Complex<f64>, c1: f64| {
+            let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+            let batch = |values: Vec<Complex<f64>>, columns| {
+                Batch::typed(values, vec![0], columns, 53).unwrap()
+            };
+            let c = |x: f64| Complex::new(x, 0.0);
+            let mut shifts = vec![c(0.0); 8];
+            shifts[4] = c(1.0);
+            let shifts = batch(shifts, 8);
+            let masses = batch(vec![c(4.0), c(4.0)], 2);
+            let scales = batch(vec![c(1.0)], 1);
+            let s_matrix = batch(vec![c(0.0), c(1.0), c(1.0), c(0.0)], 4);
+            let mut numerator = vec![c(0.0); ncoeff(1)];
+            numerator[0] = c0;
+            numerator[1] = c(c1);
+            let coefficients = batch(numerator, ncoeff(1));
+            let group = FamilyGroup {
+                propagators: 2,
+                shifts: &shifts,
+                masses_squared: &masses,
+                scales_squared: &scales,
+                s_matrix: &s_matrix,
+                coefficients: &coefficients,
+            };
+            let options = ReduceOptions {
+                poles: Poles::None,
+                check: Some(ReductionFrame::REVERSED),
+                ..ReduceOptions::default()
+            };
+            fast.reduce(&[group], options).unwrap()
+        };
+        let finite = |output: &V2Output| match output.direct[0].values().unwrap().data() {
+            super::super::batch::Data::Double(v) => v[0],
+            _ => panic!("a binary64 batch"),
+        };
+        let zero = run(Complex::new(1.0, 0.0), 2.0);
+        assert_eq!(zero.uncertified.len(), 1);
+        let &(_, _, bound) = zero.uncertified_bounds.first().expect("a bound");
+        let value = finite(&zero);
+        assert!(value.re.hypot(value.im) <= bound[0], "{value:?} {bound:?}");
+        assert!(bound[0] < 1e-12, "{bound:?}");
+        let truth = finite(&run(Complex::new(0.0, 1.0), 0.0));
+        let big = 2f64.powi(400);
+        let wrong = run(Complex::new(big, 1.0), 2.0 * big);
+        if !wrong.uncertified.is_empty() {
+            let value = finite(&wrong);
+            let bound = wrong
+                .uncertified_bounds
+                .first()
+                .map(|&(_, _, b)| b[0])
+                .unwrap_or(f64::INFINITY);
+            let error = (value.re - truth.re).hypot(value.im - truth.im);
+            assert!(error <= bound, "error {error:e} above the bound {bound:e}");
+        }
+    }
+
+    /// The external reviewer's generic double-double case: the bubble
+    /// `N = 2^1018 (1 + 2 q0) + i` (true finite part -1.3435472012813139 i)
+    /// comes back from the generic double-double engine at or near zero as
+    /// an uncertified lane, its ladder having reached a rung where a single
+    /// cut's term modulus (4.3e306) times 256 overflows in f64 and the
+    /// record's bound reads zero. No bound is exported for it: a check that
+    /// depends on the lane is inconclusive.
+    #[test]
+    fn a_generic_ladder_lane_exports_no_bound() {
+        let _unlock = pyamplicol::unlock();
+        let dd = |x: f64| DoubleFloat::from(x);
+        let mut generic = V2Reducer::new("double-double", None, "generic", true).unwrap();
+        let bits = generic.precision_bits();
+        let c = |x: f64| Complex::new(dd(x), dd(0.0));
+        let batch = |values: Vec<Complex<DoubleFloat>>, columns| {
+            Batch::typed(values, vec![0], columns, bits).unwrap()
+        };
+        let mut shifts = vec![c(0.0); 8];
+        shifts[4] = c(1.0);
+        let shifts = batch(shifts, 8);
+        let masses = batch(vec![c(4.0), c(4.0)], 2);
+        let scales = batch(vec![c(1.0)], 1);
+        let s_matrix = batch(vec![c(0.0), c(1.0), c(1.0), c(0.0)], 4);
+        let big = 2f64.powi(1018);
+        let mut numerator = vec![c(0.0); ncoeff(1)];
+        numerator[0] = Complex::new(dd(big), dd(1.0));
+        numerator[1] = c(2.0 * big);
+        let coefficients = batch(numerator, ncoeff(1));
+        let group = FamilyGroup {
+            propagators: 2,
+            shifts: &shifts,
+            masses_squared: &masses,
+            scales_squared: &scales,
+            s_matrix: &s_matrix,
+            coefficients: &coefficients,
+        };
+        let options = ReduceOptions {
+            poles: Poles::None,
+            ..ReduceOptions::default()
+        };
+        let output = generic.reduce(&[group], options).unwrap();
+        let status = output.direct[0].statuses()[0].1.clone();
+        let uncertified = output.uncertified.iter().any(|&(g, r, _)| (g, r) == (0, 0));
+        // Whatever the ladder decides, an uncertified lane of the generic
+        // engine carries no check budget, and a served value is never a
+        // certified success unless it is right.
+        assert!(
+            output.uncertified_bounds.is_empty(),
+            "{:?}",
+            output.uncertified_bounds
+        );
+        if status == "success" && !uncertified {
+            let value = dd_finite(output.direct[0].values().unwrap().data());
+            assert!(
+                (value.im + 1.3435472012813139).abs() <= 1e-12 && value.re.abs() <= 1e-12,
+                "a certified success {value:?}"
+            );
+        }
+        assert!(credible_bound(1e-300) && !credible_bound(0.0));
+        assert!(!credible_bound(f64::INFINITY) && !credible_bound(1e-310));
     }
 
     #[test]
@@ -1220,7 +2479,7 @@ mod tests {
         let scale = Float::with_val(256, 1_000_000);
         let masses = [Float::with_val(256, 29929), Float::with_val(53, 29929)];
         let (mut engine, input) = tadpoles(&masses, &scale);
-        let outcomes = engine.reduce(&input).unwrap();
+        let outcomes = engine.reduce(&input, None).unwrap();
         assert_eq!(outcomes[0].status, "success");
         assert!(outcomes[0].value.is_some());
         assert!(
@@ -1329,10 +2588,10 @@ mod tests {
             .map(|k| Float::with_val(256, 29929 + 7 * k as i64))
             .collect();
         let (mut engine, input) = tadpoles(&masses, &scale);
-        let chunked = engine.reduce(&input).unwrap();
+        let chunked = engine.reduce(&input, None).unwrap();
         for (k, mass) in masses.iter().enumerate() {
             let (mut single, one) = tadpoles(std::slice::from_ref(mass), &scale);
-            let alone = single.reduce(&one).unwrap();
+            let alone = single.reduce(&one, None).unwrap();
             assert_eq!(alone[0].status, "success");
             assert_eq!(chunked[k].value, alone[0].value, "lane {k}");
         }

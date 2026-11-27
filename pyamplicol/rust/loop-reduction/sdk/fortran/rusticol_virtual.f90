@@ -325,6 +325,16 @@ module rusticol_virtual
       type(c_ptr) :: output
       integer(c_int) :: value
     end function
+    function c_evaluate_refined(handle, request, corrections, words, output) &
+        bind(C, name="rusticol_virtual_evaluate_refined") result(value)
+      import :: c_ptr, c_int, c_size_t, c_batch_request
+      type(c_ptr), value :: handle
+      type(c_batch_request), intent(in) :: request
+      type(c_ptr), value :: corrections
+      integer(c_size_t), value :: words
+      type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
     function c_evaluate_selected(handle, request, selection, output) &
         bind(C, name="rusticol_virtual_evaluate_selected") result(value)
       import :: c_ptr, c_int, c_batch_request, c_selection
@@ -956,9 +966,15 @@ contains
       merge(1_c_int32_t,0_c_int32_t,cross_backend)),ierr,error_message=error_message)
   end subroutine
 
-  subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message)
+  ! corrections (optional): caller-supplied higher-accuracy kinematics,
+  ! shape (4,external_leg,point,word); the point is momenta + sum over words,
+  ! exactly (rusticol_virtual_evaluate_refined); momenta must hold the
+  ! binary64 roundings of the refined components.
+  subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,ierr,error_message, &
+      corrections)
     class(virtual_runtime), intent(inout) :: self
     real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
+    real(c_double), contiguous, target, optional, intent(in) :: corrections(:,:,:,:)
     type(virtual_evaluation), intent(out) :: output
     integer(c_int64_t), contiguous, target, optional, intent(in) :: point_ids(:)
     logical, optional, intent(in) :: resolved
@@ -1002,7 +1018,22 @@ contains
     if (present(r2_strategy)) then
       strategy=cstring(r2_strategy); request%r2_strategy=c_loc(strategy)
     end if
-    status=c_evaluate(handle_of(self),request,result_handle)
+    if (present(corrections)) then
+      if (size(corrections,1)/=4 .or. size(corrections,2)/=size(momenta,2) .or. &
+          size(corrections,3)/=size(momenta,3)) then
+        call finish(VIRTUAL_INVALID_ARGUMENT,ierr, &
+          'corrections must have shape (4,external_leg,point,word)',error_message)
+        return
+      end if
+      if (size(corrections,kind=c_size_t)>0) then
+        status=c_evaluate_refined(handle_of(self),request,c_loc(corrections), &
+          size(corrections,4,kind=c_size_t),result_handle)
+      else
+        status=c_evaluate(handle_of(self),request,result_handle)
+      end if
+    else
+      status=c_evaluate(handle_of(self),request,result_handle)
+    end if
     if (status/=VIRTUAL_OK) then
       call finish(status,ierr,error_message=error_message); return
     end if

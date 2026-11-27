@@ -413,6 +413,8 @@ pub struct Runtime {
     /// (`reduction_policy::DEFAULT_UNCHECKED`, off, until
     /// [`Runtime::set_reduction_unchecked`]).
     unchecked: bool,
+    /// The failure policy's best-effort pass is running (`best_effort`).
+    best_effort_pass: bool,
     /// The lane rescue of later evaluations
     /// (`reduction_policy::DEFAULT_LANE_RESCUE`, on, until
     /// [`Runtime::set_lane_rescue`]).
@@ -565,6 +567,7 @@ impl Runtime {
             reduction,
             target,
             unchecked: reduction_policy::DEFAULT_UNCHECKED,
+            best_effort_pass: false,
             lane_rescue: reduction_policy::DEFAULT_LANE_RESCUE,
             on_failure: OnFailure::default(),
             checks: StabilityChecks::default(),
@@ -975,6 +978,10 @@ impl Runtime {
         native.set_reduction(Reduction::parse(&choice.effective)?)?;
         native.set_target(self.target)?;
         native.set_unchecked(self.unchecked);
+        native.set_best_effort_pass(self.best_effort_pass);
+        // The rescues' points follow the call's kinematics improvement, as
+        // its double-double and arbitrary-precision evaluations do.
+        native.set_rescue_kinematics(self.kinematics);
         native.set_lane_rescue(self.lane_rescue);
         Ok(Choice {
             unchecked: self.unchecked,
@@ -1143,6 +1150,49 @@ impl Runtime {
             .iter()
             .map(|&v| exact_double(v))
             .collect::<RusticolResult<_>>()?;
+        let exact_scales = scales
+            .iter()
+            .map(|&v| exact_double(v))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        self.evaluate_decimal(
+            exact_momenta,
+            point_ids.to_vec(),
+            exact_scales,
+            resolved,
+            strategy,
+        )
+    }
+    /// [`Runtime::evaluate`] at caller-supplied higher-accuracy kinematics
+    /// (the C ABI's `rusticol_virtual_evaluate_refined`): component `i` of
+    /// the point is `momenta[i] + Σ_w corrections[w * momenta.len() + i]`
+    /// exactly (`words` binary64 correction words per component: one gives a
+    /// double-double point, more any precision). Every `momenta[i]` must be
+    /// the binary64 value nearest to its refined component (round to
+    /// nearest, ties to even): the binary64 evaluation reads the point the
+    /// refinement refines; otherwise the call is refused, naming the point,
+    /// leg and component, and nothing is evaluated. The refined point is
+    /// then the call's exact input ([`Runtime::evaluate_decimal`]): every
+    /// carrier, the kinematics improvement, the lane rescue and the
+    /// reduction's own rescue start from it. `words` 0 is
+    /// [`Runtime::evaluate`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_refined(
+        &mut self,
+        momenta: &[f64],
+        corrections: &[f64],
+        words: usize,
+        point_ids: &[u64],
+        scales: &[f64],
+        resolved: bool,
+        strategy: Option<&str>,
+    ) -> RusticolResult<Evaluation> {
+        let exact_momenta = refined_momenta(
+            momenta,
+            corrections,
+            words,
+            point_ids,
+            self.shape.external_count,
+        )?;
         let exact_scales = scales
             .iter()
             .map(|&v| exact_double(v))
@@ -1665,6 +1715,87 @@ fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>>
         .collect()
 }
 
+/// The exact decimal literals of refined momenta
+/// ([`Runtime::evaluate_refined`]): `momenta[i]` plus its `words` correction
+/// words, exactly; refused unless `momenta[i]` is the binary64 rounding of
+/// that sum.
+pub fn refined_momenta(
+    momenta: &[f64],
+    corrections: &[f64],
+    words: usize,
+    point_ids: &[u64],
+    external_count: usize,
+) -> RusticolResult<Vec<String>> {
+    use rusticol_core::loop_v2::dress::cast;
+    if corrections.len() != product(&[words, momenta.len()])? {
+        return Err(invalid(
+            "refined momenta need words * momentum_count correction words",
+        ));
+    }
+    let exact = |value: f64, what: &str| -> RusticolResult<Rational> {
+        Rational::try_from(value)
+            .map_err(|_| invalid(format!("SDK binary64 inputs must be finite ({what})")))
+    };
+    momenta
+        .iter()
+        .enumerate()
+        .map(|(i, &hi)| {
+            if words == 0 {
+                return exact_double(hi);
+            }
+            let mut value = exact(hi, "momenta")?;
+            for w in 0..words {
+                value = &value + &exact(corrections[w * momenta.len() + i], "correction words")?;
+            }
+            if cast(&0f64, &value) != hi {
+                let width = 4 * external_count.max(1);
+                let point = point_ids
+                    .get(i / width)
+                    .copied()
+                    .unwrap_or((i / width) as u64);
+                return Err(invalid(format!(
+                    "refined momenta: point {point}, leg {}, component {}: the binary64 momentum \
+                     {hi:e} is not the binary64 rounding of its refined value {:e}; momenta must \
+                     hold the nearest binary64 values of the refined point",
+                    (i % width) / 4,
+                    ["E", "px", "py", "pz"][i % 4],
+                    cast(&0f64, &value),
+                )));
+            }
+            Ok(dyadic_decimal(&value))
+        })
+        .collect()
+}
+
+/// The exact decimal literal of a dyadic rational (a finite sum of binary64
+/// values): `n / 2^k = n 5^k / 10^k`, scaled by ten until integral.
+fn dyadic_decimal(value: &Rational) -> String {
+    let sign = if value.is_negative() { "-" } else { "" };
+    let mut scaled = if value.is_negative() {
+        -value.clone()
+    } else {
+        value.clone()
+    };
+    let ten = Rational::from(10);
+    let mut k = 0usize;
+    while !scaled.is_integer() {
+        scaled = &scaled * &ten;
+        k += 1;
+    }
+    let digits = scaled.to_string();
+    if k == 0 {
+        return format!("{sign}{digits}");
+    }
+    let padded = format!("{digits:0>width$}", width = k + 1);
+    let (whole, fraction) = padded.split_at(padded.len() - k);
+    let fraction = fraction.trim_end_matches('0');
+    if fraction.is_empty() {
+        format!("{sign}{whole}")
+    } else {
+        format!("{sign}{whole}.{fraction}")
+    }
+}
+
 fn exact_double(value: f64) -> RusticolResult<String> {
     if !value.is_finite() {
         return Err(invalid("SDK binary64 inputs must be finite"));
@@ -1917,6 +2048,11 @@ pub(crate) struct FallbackPoint {
 pub(crate) struct Fallbacks {
     fallback: Option<String>,
     points: BTreeMap<usize, FallbackPoint>,
+    /// Per index in the batch, the reasons of the point's lanes served
+    /// without accuracy evidence (`V2Runtime::take_uncertified`, of the
+    /// evaluation whose outcome the point keeps: the fallback's for a point
+    /// it served); points without one are absent.
+    uncertified: BTreeMap<usize, Vec<&'static str>>,
 }
 
 impl Fallbacks {
@@ -1941,6 +2077,33 @@ impl Fallbacks {
                 })
                 .collect(),
         )
+    }
+    /// The record of the uncertified points (diagnostics "uncertified"):
+    /// per successful point id with a lane served without accuracy evidence,
+    /// its reasons (sorted, distinct). Such a point has a value and status
+    /// "success", but its accuracy is not established.
+    fn uncertified_record(&self, ids: &[u64], successful: &[u64]) -> serde_json::Value {
+        serde_json::Value::Object(
+            self.uncertified
+                .iter()
+                .filter(|(index, reasons)| {
+                    !reasons.is_empty() && successful.contains(&ids[**index])
+                })
+                .map(|(&index, reasons)| (ids[index].to_string(), serde_json::json!(reasons)))
+                .collect(),
+        )
+    }
+    /// Keep the uncertified reasons of `found` (one entry per point of an
+    /// evaluation) at the batch indices `indices` (None: the point's own).
+    fn keep_uncertified(&mut self, found: Vec<Vec<&'static str>>, indices: Option<&[usize]>) {
+        for (local, reasons) in found.into_iter().enumerate() {
+            let index = indices.map_or(local, |indices| indices[local]);
+            if reasons.is_empty() {
+                self.uncertified.remove(&index);
+            } else {
+                self.uncertified.insert(index, reasons);
+            }
+        }
     }
     /// The indices of the points the fallback served.
     fn served(&self) -> impl Iterator<Item = (usize, &str)> {
@@ -1999,7 +2162,15 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     arithmetic: Arithmetic,
     mut evaluate: impl FnMut(&mut V2Runtime, Option<&[usize]>) -> RusticolResult<Vec<P>>,
 ) -> RusticolResult<(Vec<P>, Fallbacks)> {
-    let mut points = match evaluate(native, None) {
+    let _ = native.take_uncertified();
+    let first = evaluate(native, None);
+    let mut record = Fallbacks {
+        fallback: choice.fallback.clone(),
+        points: BTreeMap::new(),
+        uncertified: BTreeMap::new(),
+    };
+    record.keep_uncertified(native.take_uncertified(), None);
+    let mut points = match first {
         Ok(points) => points,
         Err(error)
             if choice.fallback.is_some()
@@ -2011,10 +2182,6 @@ pub(crate) fn with_fallback<P: PointOutcome>(
                 .collect()
         }
         Err(error) => return Err(error),
-    };
-    let mut record = Fallbacks {
-        fallback: choice.fallback.clone(),
-        points: BTreeMap::new(),
     };
     let Some(fallback) = choice.fallback.as_deref() else {
         return Ok((points, record));
@@ -2029,10 +2196,14 @@ pub(crate) fn with_fallback<P: PointOutcome>(
     // with the fallback's own evaluation of the served points (its outcome
     // carries the estimate of the outputs the call returns).
     let checking = reduction_policy::fallback_guarded(arithmetic.name());
-    let again = native.on_other(|native| evaluate(native, Some(&failed)))?;
+    let (again, again_uncertified) = native.on_other(|native| {
+        let again = evaluate(native, Some(&failed))?;
+        Ok((again, native.take_uncertified()))
+    })?;
     if again.len() != failed.len() {
         return Err(invalid("the fallback evaluation lost points"));
     }
+    record.keep_uncertified(again_uncertified, Some(&failed));
     let guarded: Vec<Option<f64>> = again
         .iter()
         .map(|point| match point.reasons() {
@@ -2589,6 +2760,7 @@ impl Evaluation {
                 let mut fallbacks = Fallbacks {
                     fallback: request.reduction.fallback.clone(),
                     points: BTreeMap::new(),
+                    uncertified: BTreeMap::new(),
                 };
                 for (rows, members) in &groups {
                     let call = InducedCall::Selection {
@@ -2615,6 +2787,9 @@ impl Evaluation {
                     )?;
                     for (local, record) in part.points {
                         fallbacks.points.insert(members[local], record);
+                    }
+                    for (local, reasons) in part.uncertified {
+                        fallbacks.uncertified.insert(members[local], reasons);
                     }
                     for (&point, value) in members.iter().zip(found) {
                         points[point] = Some(summed(value.into_point()));
@@ -2717,6 +2892,7 @@ impl Evaluation {
                 let mut fallbacks = Fallbacks {
                     fallback: request.reduction.fallback.clone(),
                     points: BTreeMap::new(),
+                    uncertified: BTreeMap::new(),
                 };
                 for (rows, members) in &groups {
                     let kept: BTreeSet<usize> = rows.iter().copied().collect();
@@ -2740,6 +2916,9 @@ impl Evaluation {
                     )?;
                     for (local, record) in part.points {
                         fallbacks.points.insert(members[local], record);
+                    }
+                    for (local, reasons) in part.uncertified {
+                        fallbacks.uncertified.insert(members[local], reasons);
                     }
                     for (&point, value) in members.iter().zip(found) {
                         points[point] = Some(one(value));
@@ -3088,6 +3267,14 @@ pub(crate) fn diagnostics(
         // reasons in "failures") and the reason. Every other point is the
         // call's effective backend's.
         "fallbacks": fallbacks.record(requested),
+        // Per successful point id whose value includes a reduction lane
+        // served without accuracy evidence (a lane that vanishes within the
+        // resolution of its own terms, one outside NinjaRS's rescue domain
+        // without refined kinematics): the reasons. Such a point has status
+        // "success" and a value, but its accuracy is not established (the
+        // Python API's `VirtualLaneDiagnostic.uncertified`). Points without
+        // one are absent. Additive: no other field changes.
+        "uncertified": fallbacks.uncertified_record(requested, successful),
         "requested_point_ids":requested,
         "successful_point_ids":successful,
         "failures": failures
@@ -3125,6 +3312,57 @@ pub(crate) fn diagnostics(
 mod tests {
     use super::*;
     use symbolica::domains::rational::Rational;
+
+    /// `evaluate_refined`'s inputs: a double-double point (one word) round
+    /// trips exactly as decimal literals, words 0 is the binary64 input,
+    /// and momenta that are not the binary64 roundings of the refined point
+    /// are refused naming the point, leg and component.
+    #[test]
+    fn refined_momenta_are_exact_and_consistent() {
+        use rusticol_core::loop_v2::dress::parse_rational;
+        let hi = [1.0, -0.1, 3.0e2, 0.0, 1.0, 2.0, 3.0, 4.0];
+        let lo = [
+            2f64.powi(-60),
+            -1.0e-20,
+            1.0e-15,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -2f64.powi(-80),
+        ];
+        let texts = refined_momenta(&hi, &lo, 1, &[7], 2).unwrap();
+        for ((text, &h), &l) in texts.iter().zip(&hi).zip(&lo) {
+            let exact = &Rational::try_from(h).unwrap() + &Rational::try_from(l).unwrap();
+            assert_eq!(parse_rational(text).unwrap(), exact, "{text}");
+        }
+        assert_eq!(
+            texts[0],
+            "1.000000000000000000867361737988403547205962240695953369140625"
+        );
+        let plain = refined_momenta(&hi, &[], 0, &[7], 2).unwrap();
+        assert_eq!(plain[1], exact_double(-0.1).unwrap());
+        // Two words: any precision.
+        let two =
+            refined_momenta(&hi[..1], &[2f64.powi(-60), 2f64.powi(-120)], 2, &[7], 1).unwrap();
+        let exact = &(&Rational::from(1) + &Rational::try_from(2f64.powi(-60)).unwrap())
+            + &Rational::try_from(2f64.powi(-120)).unwrap();
+        assert_eq!(parse_rational(&two[0]).unwrap(), exact);
+        let mut far = lo;
+        far[6] = 1e-9; // 3 + 1e-9 does not round to 3
+        let refusal = refined_momenta(&hi, &far, 1, &[7], 2)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains("point 7, leg 1, component py")
+                && refusal.contains("binary64 rounding"),
+            "{refusal}"
+        );
+        assert!(
+            refined_momenta(&hi, &lo[..4], 1, &[7], 2).is_err(),
+            "whole words only"
+        );
+    }
 
     #[test]
     fn pole_selection_parses_every_selection_of_the_api() {

@@ -8,9 +8,11 @@ flat_final_state``, the product's flat generator: RAMBO on diet, arXiv:
 scattering in its centre-of-mass frame with the beams along +-z, a 1 -> n
 decay in the rest frame of the decaying particle, a 2 -> 1 process at its
 single point. Point i is drawn from seed + i, so a point does not depend on
-how many are drawn.
+how many are drawn. Cuts (``generation.phase_space_cuts``) reject attempts of a point,
+so a point still depends on its own seed alone.
 
-Nothing is read from the model: the external masses are those of the
+Except for which legs the cuts act on (the artifact's model record), nothing
+is read from the model: the external masses are those of the
 artifact's own validation point (``processes/<id>/validation-momenta.json``,
 written at generation with the generation's masses), m^2 = E^2 - |p|^2 in
 exact decimal arithmetic on its stored digits. A square below the rounding
@@ -21,14 +23,21 @@ mass), so it is above threshold for any process the artifact holds.
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pyamplicol.config import ConfigurationError
+
+if TYPE_CHECKING:
+    from pyamplicol.generation.phase_space import FlatFinalState
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
 
 # The stored components are binary64 values: a squared mass below this many
 # roundings of E^2 is a massless leg.
@@ -46,6 +55,7 @@ class FlatPoints:
     masses: tuple[float, ...]
     initial: int
     process_id: str
+    cut_legs: tuple[int, ...] = ()
 
     def as_inputs(self, *, exact: bool) -> list[list[list[object]]]:
         """The points as evaluation inputs: decimal numbers (exact, a loop
@@ -169,13 +179,16 @@ def draw_flat_points(
     points: int,
     seed: int,
     sqrt_s: float | None,
+    cuts: PhaseSpaceCuts | None = None,
 ) -> FlatPoints:
     """``points`` flat phase-space points of the artifact's process
     (``process``: an id or alias, None the default process) from ``seed``
     at ``sqrt_s`` (None: the validation point's energy; a decay or a 2 -> 1
-    process takes its mass and refuses another value)."""
+    process takes its mass and refuses another value), within ``cuts``
+    (``generation.phase_space_cuts``; None: none)."""
 
     from pyamplicol.generation.phase_space import flat_final_states
+    from pyamplicol.generation.phase_space_cuts import CutsError, draw_accepted
 
     process_id = _process_id(artifact, process)
     validation = _validation_point(artifact, process_id)
@@ -211,15 +224,33 @@ def draw_flat_points(
             f"evaluation.phase_space.sqrt_s = {energy} is below the threshold "
             f"of the final state (sum of masses {sum(masses[initial:])})"
         )
-    finals = (
-        flat_final_states(
-            masses[initial:],
-            sqrt_s=energy,
-            seeds=[seed + index for index in range(points)],
-        )
-        if final > 1
-        else ()
-    )
+    seeds = [seed + index for index in range(points)]
+    cut_legs: tuple[int, ...] = ()
+    if cuts is not None and cuts.active:
+        if initial == 1:
+            raise ConfigurationError(
+                "evaluation.phase_space.pt_min / delta_r_min need the beams of "
+                f"a scattering; {process_id!r} is a decay"
+            )
+        # Indices into the final state, as ``flat_final_states`` orders it.
+        cut_legs = _cut_legs(artifact, process_id, masses[initial:])
+
+    def draw(attempt_seeds: list[int]) -> list[FlatFinalState]:
+        return flat_final_states(masses[initial:], sqrt_s=energy, seeds=attempt_seeds)
+
+    finals: Sequence[FlatFinalState]
+    if final <= 1:
+        finals = ()
+    elif cuts is not None and cut_legs:
+        try:
+            cuts.require_possible(len(cut_legs), energy)
+            finals = draw_accepted(
+                seeds, draw, lambda state: state.momenta, cuts, cut_legs
+            )
+        except CutsError as error:
+            raise ConfigurationError(str(error)) from error
+    else:
+        finals = draw(seeds)
     drawn = []
     for index in range(points):
         if initial == 1:
@@ -236,8 +267,56 @@ def draw_flat_points(
             legs.extend(finals[index].momenta)
         drawn.append(tuple(tuple(float(x) for x in leg) for leg in legs))
     return FlatPoints(
-        tuple(drawn), float(energy), int(seed), masses, initial, process_id
+        tuple(drawn),
+        float(energy),
+        int(seed),
+        masses,
+        initial,
+        process_id,
+        tuple(initial + leg for leg in cut_legs),
     )
+
+
+def _cut_legs(
+    artifact: Path, process_id: str, masses: Sequence[float]
+) -> tuple[int, ...]:
+    """The final-state legs the cuts act on (``phase_space_cuts``): the
+    massless ones (``masses``, the validation point's) whose particle (the
+    artifact's own model record) is a parton, photon or charged lepton."""
+
+    path = artifact / "processes" / process_id / "validation-momenta.json"
+    record = json.loads(path.read_text())
+    pdgs = [int(entry["pdg"]) for entry in record["points"][0]][-len(masses) :]
+    model = artifact / "model" / "compiled-model.json"
+    try:
+        particles = _model_particles(str(model), model.stat().st_mtime_ns)
+        return tuple(
+            leg
+            for leg, (pdg, mass) in enumerate(zip(pdgs, masses, strict=True))
+            if mass == 0.0 and particles[pdg]
+        )
+    except (OSError, ValueError, KeyError) as error:
+        raise ConfigurationError(
+            f"cannot read the final-state particles of {process_id!r} from {model} "
+            f"({error!r}) for the phase-space cuts"
+        ) from error
+
+
+@functools.lru_cache(maxsize=4)
+def _model_particles(model: str, _mtime: int) -> dict[int, bool]:
+    """Per PDG code of the artifact's model: whether the cuts act on it."""
+
+    from pyamplicol.generation.phase_space_cuts import is_cut_particle
+
+    record = json.loads(Path(model).read_text())
+    return {
+        int(entry["pdg_code"]): is_cut_particle(
+            spin=int(entry["spin"]),
+            color=int(entry["color"]),
+            charge=float(entry["charge"] or 0.0),
+        )
+        for entry in record["ir"]["particles"]
+    }
 
 
 def _initial_count_from_point(

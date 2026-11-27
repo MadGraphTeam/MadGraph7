@@ -235,9 +235,10 @@ def test_unchecked_tirust_serves_every_point_and_keeps_the_checked_values(
     computed (no check row, no lane refused by its check), and the points the
     checked call serves keep their values bitwise. ``"auto"`` under the
     setting is a pure TIRust call (every lane on TIRust, no fallback, the
-    values bitwise), explicit NinjaRS unchecked keeps NinjaRS's values (it
-    refuses nothing here), and a call's ``reduction_unchecked=False``
-    overrides the runtime's setting (the checked values and failures)."""
+    values bitwise), explicit NinjaRS unchecked keeps NinjaRS's values where
+    its checked cancellation rescue did not act, and a call's
+    ``reduction_unchecked=False`` overrides the runtime's setting (the
+    checked values and failures)."""
 
     from pyamplicol import Runtime
 
@@ -275,7 +276,17 @@ def test_unchecked_tirust_serves_every_point_and_keeps_the_checked_values(
         assert lane.reduction.effective == "tirust", lane.reduction
         assert lane.reduction.fallback == "ninjars" and lane.reduction.unchecked
     explicit = runtime.evaluate(points, reduction="ninjars", **options)
-    assert repr(explicit.values) == repr(ninjars.values)
+    # Checked NinjaRS runs its cancellation rescue (python-api.md, "NinjaRS's
+    # cancellation rescue"), unchecked NinjaRS not: the values agree bitwise
+    # on the points it did not rescue; a lane whose re-reduction misses its
+    # target is refused, typed, and with the lane rescue off (this module)
+    # fails its point.
+    for p, value in enumerate(ninjars.values):
+        lane = ninjars.diagnostics[p]
+        if value is None:
+            assert "cancellation rescue" in lane.detail, lane.detail
+        elif lane.reduction_rescue is None:
+            assert repr(explicit.values[p]) == repr(value), p
     assert all(lane.reduction.unchecked for lane in explicit.diagnostics)
     again = runtime.evaluate(
         points, reduction="tirust", reduction_unchecked=False, **options

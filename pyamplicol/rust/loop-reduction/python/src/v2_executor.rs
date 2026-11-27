@@ -705,6 +705,19 @@ struct Evaluation {
     /// monomial), carrier)` (`PointResult::rescued_moments`, apart from the
     /// lanes).
     rescued_moments: Vec<Vec<((usize, usize), &'static str)>>,
+    /// Per point the lanes the reduction backend rescued within its own
+    /// reduction, `((family, order, column), carrier, estimate)`
+    /// (`PointResult::local_rescued`: NinjaRS's cancellation rescue, with
+    /// the re-reduction's relative error estimate).
+    local_rescued: Vec<Vec<((usize, usize, usize), &'static str, f64)>>,
+    /// Per point the lanes served without accuracy evidence, `((family,
+    /// order, column), reason)` (`PointResult::uncertified`).
+    uncertified: Vec<Vec<((usize, usize, usize), &'static str)>>,
+    /// Per point the absolute bounds `((family, order, column), [finite,
+    /// 1/eps, 1/eps^2])` of its uncertified lanes that have one, in the
+    /// lane's own units (`PointResult::uncertified_bounds`); an uncertified
+    /// lane absent here has no finite bound.
+    uncertified_bounds: Vec<Vec<((usize, usize, usize), [f64; 3])>>,
     report: ReportObject,
 }
 
@@ -846,6 +859,39 @@ fn export_evaluation<T: Exchanged + Real>(
                 r.rescued_moments
                     .iter()
                     .map(|(family, monomial, carrier)| ((*family, *monomial), carrier.name()))
+                    .collect()
+            })
+            .collect(),
+        local_rescued: results
+            .iter()
+            .map(|r| {
+                r.local_rescued
+                    .iter()
+                    .map(|(key, carrier, estimate)| {
+                        (
+                            (key.family, key.order, key.column),
+                            carrier.name(),
+                            *estimate,
+                        )
+                    })
+                    .collect()
+            })
+            .collect(),
+        uncertified: results
+            .iter()
+            .map(|r| {
+                r.uncertified
+                    .iter()
+                    .map(|(key, reason)| ((key.family, key.order, key.column), *reason))
+                    .collect()
+            })
+            .collect(),
+        uncertified_bounds: results
+            .iter()
+            .map(|r| {
+                r.uncertified_bounds
+                    .iter()
+                    .map(|(key, bound)| ((key.family, key.order, key.column), *bound))
                     .collect()
             })
             .collect(),
@@ -2261,12 +2307,17 @@ impl V2Executor {
     /// `unchecked` is the call's unchecked setting (m-lit lit-unchecked,
     /// default off): the backend reduces without its own acceptance and
     /// refusal checks (`V2Backends::set_unchecked`), fixed for the call.
-    /// `initial_states` (the process's initial states, first in leg order)
+    /// `best_effort`: the failure policy's best-effort pass
+    /// (`V2Backends::set_best_effort_pass`: NinjaRS keeps its cancellation
+    /// rescue and serves a lane whose rescue misses its target from its best
+    /// value; default off). `kinematics_improvement`: the call's setting
+    /// ("z-shift", "rescaling", "projection" or "off"; None: the
+    /// default), which the rescues' improved points follow. `initial_states` (the process's initial states, first in leg order)
     /// lets the lane rescue rebuild a refused lane's kinematic inputs from
     /// the point improved in the rescue carrier (`RescueInputs::Improved`);
     /// without it they are the given point's exact inputs. `lane_rescue`
     /// false turns the lane rescue off (`evaluation.lane_rescue`).
-    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false, initial_states=None, lane_rescue=true))]
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both", contraction="auto", part_points=None, fill_points=None, input_budget=None, rows=None, basis=None, components=None, families=None, dipoles=None, raw_lanes=false, term_scale=false, reduction="ninjars", unchecked=false, initial_states=None, lane_rescue=true, target=None, best_effort=false, kinematics_improvement=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -2297,8 +2348,12 @@ impl V2Executor {
         unchecked: bool,
         initial_states: Option<usize>,
         lane_rescue: bool,
+        target: Option<f64>,
+        best_effort: bool,
+        kinematics_improvement: Option<&str>,
     ) -> PyResult<Evaluation> {
         let _unlock = pyamplicol::unlock();
+        let target = super::v2::reduction_target(target)?;
         let reduction = Reduction::parse(reduction).map_err(error)?;
         let poles = match poles {
             Some(value) => v2::poles_option(&value)?,
@@ -2331,9 +2386,26 @@ impl V2Executor {
         // The lane rescue's inputs (`V2Options::rescue`): the point improved
         // in the rescue carrier, its `initial_states` initial states first;
         // its exact inputs without them.
-        if let Some(n_initial) = initial_states {
+        // The call's kinematics improvement (`kinematics_improvement`, its
+        // setting's text; None: the default variant), as an evaluation in the
+        // rescue carrier improves its points; "off": the given point.
+        let variant = match kinematics_improvement {
+            None => Some(rusticol_core::kinematics_improvement::DEFAULT_VARIANT),
+            Some(text) => rusticol_core::kinematics_improvement::setting(text).map_err(error)?,
+        };
+        if let (Some(n_initial), Some(variant)) = (initial_states, variant) {
             options.rescue =
-                rusticol_core::loop_execution::v2::RescueInputs::Improved { n_initial };
+                rusticol_core::loop_execution::v2::RescueInputs::Improved { n_initial, variant };
+        }
+        // The refinement's inputs (`V2Options::refinement`): the same
+        // improved point, read by NinjaRS's own cancellation rescue in the
+        // checked mode (the backend names its carrier); unchecked: none, and
+        // nothing is computed.
+        if let (Some(n_initial), Some(variant), true) =
+            (initial_states, variant, !unchecked || best_effort)
+        {
+            options.refinement =
+                rusticol_core::loop_execution::v2::RescueInputs::Improved { n_initial, variant };
         }
         // `evaluation.lane_rescue` off: a refused lane fails its point.
         if !lane_rescue {
@@ -2419,6 +2491,15 @@ impl V2Executor {
         )?;
         backend.set_masters(masters).map_err(error)?;
         backend.set_unchecked(unchecked);
+        // The best-effort pass (`best_effort`, the failure policy's
+        // re-evaluation): NinjaRS keeps its cancellation rescue and serves a
+        // lane whose rescue misses the target from its best value.
+        backend.set_best_effort_pass(best_effort);
+        // The call's target drives NinjaRS's cancellation rescue (its
+        // per-lane threshold); TIRust's acceptance is `prepare_reduction`'s.
+        if reduction == Reduction::NinjaRs {
+            backend.set_target(target);
+        }
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         let dipoles = dipoles.as_ref().map(|d| &*d.correlator);

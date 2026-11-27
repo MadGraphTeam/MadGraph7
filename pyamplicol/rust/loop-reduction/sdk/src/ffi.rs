@@ -693,6 +693,47 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate(
         Ok(())
     })
 }
+/// [`rusticol_virtual_evaluate`] at caller-supplied higher-accuracy
+/// kinematics ([`Runtime::evaluate_refined`]): `corrections` holds `words`
+/// binary64 correction words per momentum component, word-major
+/// (`corrections[w * momentum_count + i]`); NULL only with `words` 0.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_evaluate_refined(
+    handle: *mut VirtualHandle,
+    request: *const BatchRequest,
+    corrections: *const f64,
+    words: usize,
+    output: *mut *mut VirtualResult,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let request = reference(request)?;
+        if request.resolved > 1 {
+            return Err(bad("resolved must be zero or one"));
+        }
+        let handle = mutable(handle)?;
+        let ids = request_ids(&handle.0, request)?;
+        let count = product(&[words, request.momentum_count])?;
+        let corrections: &[f64] = if words == 0 {
+            &[]
+        } else {
+            values(corrections, count)?
+        };
+        let result = handle.0.evaluate_refined(
+            values(request.momenta, request.momentum_count)?,
+            corrections,
+            words,
+            &ids,
+            values(request.mu_r2, request.scale_count)?,
+            request.resolved == 1,
+            text(request.r2_strategy)?,
+        )?;
+        *output = Box::into_raw(Box::new(VirtualResult(result)));
+        Ok(())
+    })
+}
+
 /// String IDs of a selector array (`count` NUL-terminated strings; a zero
 /// count omits the selector).
 unsafe fn selector_ids(

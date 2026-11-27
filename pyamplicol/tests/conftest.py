@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from functools import cache
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -366,7 +368,8 @@ def pytest_runtest_makereport(item, call):
     ):
         report.outcome = "failed"
         report.longrepr = call.excinfo.value.msg
-    if call.excinfo is not None and call.excinfo.errisinstance(ImportError):
+    missing = (ImportError, AttributeError)
+    if call.excinfo is not None and call.excinfo.errisinstance(missing):
         # MadGraph7: a test needing upstream-only tooling skips (see below).
         name = _upstream_only_module(call.excinfo.value)
         if name is not None:
@@ -480,7 +483,29 @@ _UPSTREAM_ONLY_TESTS = frozenset(
 
 
 def _upstream_only_module(error: BaseException) -> str | None:
+    if isinstance(error, AttributeError):
+        # An upstream-only package of which only JSON data is kept (e.g.
+        # tools/loop_benchmark/streams/) imports as an empty namespace package:
+        # its code is reached as a missing attribute, not as a missing module.
+        module = getattr(error, "obj", None)
+        package = module.__name__ if isinstance(module, ModuleType) else ""
+        if (
+            package.startswith(tuple(f"{root}." for root in _UPSTREAM_ONLY_PACKAGES))
+            and getattr(module, "__file__", None) is None
+        ):
+            return f"{package}.{error.name}"
+        return None
     name = getattr(error, "name", None) or ""
+    if name in _UPSTREAM_ONLY_PACKAGES:
+        # `from tools.loop_benchmark import stored_checks` names the package,
+        # not the missing submodule: test the submodule instead.
+        missing = getattr(error, "name_from", None)
+        if missing is None:
+            match = re.match(r"cannot import name '([\w.]+)'", str(error))
+            missing = match.group(1) if match else None
+        if missing is None:
+            return None
+        name = f"{name}.{missing}"
     if name in _UPSTREAM_ONLY_TOOLS:
         return name
     if (

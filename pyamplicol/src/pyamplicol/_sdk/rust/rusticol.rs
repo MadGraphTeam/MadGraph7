@@ -492,6 +492,69 @@ pub mod virtual_amplitudes {
             })?);
             result.copy()
         }
+        /// `rusticol_virtual_evaluate_refined`: [`Self::evaluate`] at
+        /// caller-supplied higher-accuracy kinematics: component `i` is
+        /// `momenta[i] + Σ_w corrections[w * momenta.len() + i]` exactly
+        /// (one word: a double-double point); `momenta` must hold the
+        /// binary64 roundings of the refined components (an
+        /// invalid-argument error otherwise).
+        #[allow(clippy::too_many_arguments)]
+        pub fn evaluate_refined(
+            &mut self,
+            momenta: &[f64],
+            corrections: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            resolved: bool,
+            strategy: Option<&str>,
+        ) -> Result<Evaluation> {
+            self.validate_inputs(momenta, point_count, point_ids)?;
+            let words = if momenta.is_empty() {
+                0
+            } else {
+                corrections.len() / momenta.len()
+            };
+            if words * momenta.len() != corrections.len() {
+                return Err(Error::new(
+                    ErrorKind::InvalidArgument,
+                    "corrections must hold whole words of momenta.len() values",
+                ));
+            }
+            let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let request = ffi::BatchRequest {
+                momenta: momenta.as_ptr(),
+                momentum_count: momenta.len(),
+                point_count,
+                point_ids: point_ids.map_or(ptr::null(), |ids| ids.as_ptr()),
+                mu_r2: mu_r2.as_ptr(),
+                scale_count: mu_r2.len(),
+                resolved: u32::from(resolved),
+                r2_strategy: optional_pointer(&strategy),
+            };
+            let mut result = ptr::null_mut();
+            // SAFETY: buffers and strings remain borrowed for this one bulk call.
+            check(unsafe {
+                ffi::rusticol_virtual_evaluate_refined(
+                    self.handle.as_ptr(),
+                    &request,
+                    if words == 0 {
+                        ptr::null()
+                    } else {
+                        corrections.as_ptr()
+                    },
+                    words,
+                    &mut result,
+                )
+            })?;
+            let result = OwnedResult(NonNull::new(result).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidResponse,
+                    "virtual evaluation returned null",
+                )
+            })?);
+            result.copy()
+        }
         /// `rusticol_virtual_evaluate_selected`: the selected helicity rows
         /// of a loop-induced process or, at every colour accuracy, of a
         /// Born-interfered one (`resolved` false: their sum per
@@ -1163,6 +1226,13 @@ pub mod virtual_amplitudes {
             pub(super) fn rusticol_virtual_evaluate(
                 handle: *mut c_void,
                 request: *const BatchRequest,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_evaluate_refined(
+                handle: *mut c_void,
+                request: *const BatchRequest,
+                corrections: *const f64,
+                words: usize,
                 output: *mut *mut c_void,
             ) -> c_int;
             pub(super) fn rusticol_virtual_result_free(handle: *mut c_void) -> c_int;

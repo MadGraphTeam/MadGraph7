@@ -1194,8 +1194,10 @@ hundred points of five processes): rows that pass
 the conditioning gates carry binary64's own reduction error (measured up to
 about 1e-7 relative), so a target tighter than that can be missed; it is a
 calibrated acceptance, not a certificate. In double-double and arbitrary
-precision, where TIRust's method choice is off, it acts on nothing, and
-NinjaRS has no setting it drives. A target that is not a finite positive
+precision, where TIRust's method choice is off, it acts on nothing. On
+NinjaRS's binary64 engine, in the checked reduction, it sets the target of
+NinjaRS's cancellation rescue, `reduction_target / 64` per lane
+([Python API](python-api.md), "NinjaRS's cancellation rescue"). A target that is not a finite positive
 number is refused. `evaluation.reduction_unchecked = true` (CLI
 `--reduction-unchecked`, Python `reduction_unchecked=True`, the SDKs'
 `set_reduction_unchecked`; default false) reduces without the backends' own
@@ -1455,6 +1457,39 @@ carriers, the default `"arbitrary"` at 16 digits included) improve toward
 the exact executors' external masses at that precision; binary64 (the
 switch) toward the binary64 masses of the native runtime's external
 wavefunctions, the same code as the C ABI's.
+
+##### Higher-accuracy input kinematics
+
+A caller who has the point to more digits than binary64 (its own
+phase-space generator in quadruple or arbitrary precision) can give it as
+such, and every carrier then starts from it: the binary64 evaluation reads
+its rounding (each input rounded once), the improvement above and the
+rescues (the lane rescue, and the cancellation rescue of NinjaRS's fast
+engine: [Python API](python-api.md), "NinjaRS's cancellation rescue") start
+from the given point instead of its binary64 rounding (NinjaRS's generic
+engine, whose cancellation ladder serves the double-double and
+arbitrary-precision evaluations, projects its own lanes' inputs instead). A point physical to the carrier's
+digits is moved by the improvement only at that carrier's rounding (it
+re-solves pz and the initial energies from the shells), so it is in effect
+used as given; a less accurate one is made exact in the carrier. How:
+
+| Surface | How to give the point |
+|---|---|
+| Python API | `momenta` as `Decimal` or decimal strings (any digits), e.g. `"-1.2500000000000000000000000000000001e2"`; a `float` is read by its shortest decimal |
+| CLI | `--momenta FILE`: JSON numbers with as many digits as wanted (read exactly, never through binary64) or decimal strings |
+| Rust SDK | `Runtime::evaluate_decimal` (decimal literals), or `evaluate_refined` (below) |
+| C, C++, Fortran, packaged Rust | `rusticol_virtual_evaluate_refined` ([Native APIs](native-apis.md)): the binary64 momenta plus binary64 correction words per component, refused unless the momenta are the binary64 roundings of the refined point |
+
+The UMAMI provider's interface is binary64 by its standard and takes no
+refinement.
+
+How far the improvement moves a binary64 point: on 3000 profiling points each
+of g g > g g, g g > g g g and g g > t t~ g, in units of sqrt(ŝ) times
+binary64's unit roundoff, the double-double point lies a median 0.4 to 2
+such units from the input, 99 % within 150, at most 5.3e3 (a final-state
+leg nearly transverse to the beams, whose pz the default variant re-solves
+from its shell); the projection variant stays within 1.5 units (invariants
+within 4.7 units of ŝ). Either is at most 6e-13 relative.
 
 #### Leading-colour helicity and colour-flow selection
 
@@ -2103,6 +2138,9 @@ runtime_threads = 1      # --runtime-threads: native threads of each runtime tim
 [evaluation.phase_space]
 seed = 1                 # --seed: point i from seed + i
 sqrt_s = 1000.0          # --sqrt-s (null: the artifact's validation-point energy)
+# pt_min = 25.0          # --pt-min: cuts on the massless partons, photons and
+# delta_r_min = 0.7      # --delta-r-min: charged leptons (unset or 0: none)
+# cut_attempts = 100000  # attempts per point before the cuts are refused (unset: 100000)
 ```
 
 The flat points (the timed points without a momenta file, and the stability

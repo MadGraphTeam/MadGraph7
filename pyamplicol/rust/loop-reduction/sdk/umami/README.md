@@ -103,8 +103,12 @@ batch call, with no event-by-event evaluator loop.
 A successful function call writes every requested point's status. Numerical
 outputs are written only for successful points. Failed
 numerical slots and every slot outside the slice stay untouched. Status values
-are those in `rusticol_virtual.h` (plan v4 returns failed or accuracy not
-established). This mandatory status
+are those in `rusticol_virtual.h` (plan v4 returns failed, accuracy not
+established, or best effort: under the default failure policy a point no
+configured alternative accepted, written with its best value and the status
+`RUSTICOL_VIRTUAL_BEST_EFFORT` (5), never a success; its uncertainty and
+reason are not carried by UMAMI's outputs, the SDK's result diagnostics carry
+them). This mandatory status
 output prevents stale caller-buffer values from masquerading as valid results.
 Do not treat signed virtual values or resolved components as probabilities.
 Random selection keys and `UMAMI_OUT_MATRIX_ELEMENT` are deliberately unsupported;

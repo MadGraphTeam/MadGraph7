@@ -84,9 +84,50 @@ const FALLBACK: &str = "ninjars";
 /// each point's evaluated result, every squared-order sector against its
 /// own size (the rescue's `"relative"` metric). TIRust's method-choice
 /// acceptance follows it through its calibration (`v2_tir::acceptance_of`);
-/// NinjaRS has no setting it drives. The one definition (Python reads it
+/// NinjaRS's cancellation rescue in the checked mode follows it per lane
+/// ([`rescue_lane_target`]). The one definition (Python reads it
 /// from [`policy_json`], the native SDKs from here).
 pub const DEFAULT_TARGET: f64 = 1e-5;
+
+/// The safety factor between a call's target ([`DEFAULT_TARGET`], the
+/// user's `reduction_target`) and the per-lane target of NinjaRS's
+/// cancellation rescue (`FastOptions::rescue_target`): a lane is
+/// re-reduced in the rescue precision when its measured error estimate
+/// `u * (Σ |terms|) / |lane|` exceeds [`rescue_lane_target`]`(target) =
+/// target / RESCUE_SAFETY`.
+///
+/// DERIVATION. A point's result `R = Σ_l L_l` (one squared-order sector)
+/// over its lanes `L_l`; a lane with relative error `e_l` contributes
+/// `e_l |L_l|`, so `|δR| / |R| <= max_l e_l * κ`, `κ = Σ_l |L_l| / |R|` the
+/// point's cross-lane condition number. The trigger estimates `e_l` by
+/// `u Σ|terms| / |L_l|`, which the true error exceeds by a factor `c` (the
+/// rounding inside the terms themselves). So `e_l <= target / (κ c)` per
+/// lane keeps the point within its target: `RESCUE_SAFETY = κ c`.
+/// MEASURED (g g > g g g LC, binary64, 2026-11-23): `κ` between 1.5 and 5
+/// on the complex finite part, at most 12 on its real part (11 points, 77
+/// lanes each). NinjaRS's estimate is now conservative (`c <= 1`: it bounds
+/// the rounding inside the terms too), so `κ` alone sets the factor, with a
+/// margin for higher multiplicities, whose `κ` grows with the number of
+/// lanes: 64 (`κ <= 12` measured at five gluons, times about 5). EVIDENCE (a
+/// scan of the factor through the call's target, checked binary64 against
+/// double-double references: the first 2,000 and the 122 worst g g > g g g
+/// LC points, 300 of g g > g g g g, 501 of g g > t t~ g, 500 of
+/// u u~ > e- e+ g g g): at 64 no point keeps fewer than 5 digits and the
+/// worst point error is 0.014 of the target (0.014, 0.0036, 3e-5 and 0.0037
+/// per row), as at 1000, at a quarter of its cost (checked g g > g g g
+/// +26 % against v1.0.3 instead of +45 %); at 16 the worst point of 10,000
+/// g g > g g g LC points reached 0.175 of the target. A point whose lanes
+/// cancel more (`κ > 64`) is held less strictly than its target by the
+/// rescue alone; pyAmpliCol's own stability checks still measure its error.
+/// A lane that is small in its sum is judged too strictly, which costs time
+/// only.
+pub const RESCUE_SAFETY: f64 = 64.0;
+
+/// The per-lane target of NinjaRS's cancellation rescue for a call's
+/// `target` ([`RESCUE_SAFETY`]).
+pub fn rescue_lane_target(target: f64) -> f64 {
+    target / RESCUE_SAFETY
+}
 
 /// The default decimal digits of arbitrary precision (USER 2026-11-18: 'going
 /// to arb prec has large overhead, so setting 500 digits there to amortize

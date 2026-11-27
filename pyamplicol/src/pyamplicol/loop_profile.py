@@ -79,7 +79,7 @@ import os
 import re
 import statistics
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Container, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -89,6 +89,7 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from pyamplicol.benchmarking import VirtualProfileResult
     from pyamplicol.config import RunConfig
+    from pyamplicol.generation.phase_space_cuts import PhaseSpaceCuts
 
 # The stability points of a run whose plan has none (never used: a plan
 # with the stability run asked for sets its points).
@@ -467,6 +468,23 @@ class StabilityPoint:
     # The point's lane rescue (``benchmarking.lane_rescue_reason``:
     # "reduction lanes rescued in <carrier>"), None without one.
     lane_rescue: str | None = None
+    # The reduction's own rescue of the point (NinjaRS's cancellation
+    # rescue in the checked mode, ``VirtualLaneRescue.local``): the lanes it
+    # re-reduced in a higher precision, over the point's evaluations (the
+    # reference and its rotated evaluations), and the highest such
+    # precision ("double-double", "arbitrary"; None: no lane).
+    reduction_rescue_lanes: int = 0
+    reduction_rescue_carrier: str | None = None
+    # Why lanes of the point were served without accuracy evidence
+    # (``VirtualLaneDiagnostic.uncertified``, joined by "; "): its value is
+    # returned, its accuracy is not established. None otherwise.
+    uncertified: str | None = None
+    # Why lanes of the point's REFERENCE were served without accuracy
+    # evidence (the reference evaluation's ``VirtualLaneDiagnostic.
+    # uncertified``, joined by "; "): the reference is not certified, the
+    # true digits are measured against it all the same (flagged here). None
+    # otherwise.
+    reference_uncertified: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -505,6 +523,19 @@ class BackendStability:
     # Measured points served with a lane rescue (``StabilityPoint.
     # lane_rescue``).
     lane_rescued: int = 0
+    # The reduction's own rescue (``StabilityPoint.reduction_rescue_lanes``):
+    # the points with a lane it re-reduced, those lanes, and per precision
+    # its lanes (``_with_reduction_rescues``).
+    reduction_rescued_points: int = 0
+    reduction_rescued_lanes: int = 0
+    reduction_rescue_carriers: tuple[tuple[str, int], ...] = ()
+    # The points served with lanes without accuracy evidence
+    # (``StabilityPoint.uncertified``).
+    uncertified_points: int = 0
+    # The measured points whose reference was served with lanes without
+    # accuracy evidence (``StabilityPoint.reference_uncertified``): measured
+    # against a reference that is not certified.
+    uncertified_reference_points: int = 0
     # The evaluations of the run per precision: "binary64" (the checked call
     # with its stability estimate) and the reference's arithmetic
     # ("double-double", or "arbitrary" with its "digits"), each
@@ -545,6 +576,10 @@ class BackendStability:
                         point.reason,
                         _rounded(point.uncertainty_digits, 3),
                         point.lane_rescue,
+                        point.reduction_rescue_lanes,
+                        point.reduction_rescue_carrier,
+                        point.uncertified,
+                        point.reference_uncertified,
                     ]
                     for point in self.per_point
                 ),
@@ -563,6 +598,10 @@ PER_POINT_FIELDS = (
     "reason",
     "uncertainty_digits",
     "lane_rescue",
+    "reduction_rescue_lanes",
+    "reduction_rescue_carrier",
+    "uncertified",
+    "reference_uncertified",
 )
 # The columns of a backend's per-sample records (``_sample_records``).
 SAMPLE_FIELDS = (
@@ -593,6 +632,15 @@ SAMPLE_FIELDS = (
     # exact agreement: "inf").
     "estimate_digits_uncapped",
     "true_digits_uncapped",
+    # The reduction's own rescue of the point (``StabilityPoint``).
+    "reduction_rescue_lanes",
+    "reduction_rescue_carrier",
+    # Lanes served without accuracy evidence (``StabilityPoint``).
+    "uncertified",
+    # The reference's lanes served without accuracy evidence: its reasons
+    # (``StabilityPoint.reference_uncertified``); such a reference has
+    # ``reference_certified`` false.
+    "reference_uncertified",
 )
 # The columns of the points' inputs (``stability_setup.samples``).
 INPUT_FIELDS = ("index", "momenta", "mu_r2")
@@ -836,15 +884,16 @@ def _runtime_setup(
     rows: Sequence[Any] = (),
     truth: GroundTruth | None = None,
     lane_rescue: bool = True,
+    cuts: PhaseSpaceCuts | None = None,
 ) -> str:
     """The runtime setup line; ``checked``: the checked mode
     (``benchmark.checked``), else the optimistic pass; ``lane_rescue``: the
     timed calls rescue refused reduction lanes (``evaluation.lane_rescue``,
     in both modes); ``seed``: of the flat
-    points (None: the caller's points); ``threads``: the native threads each
-    backend's timed calls report (one: one core, ``one_core``; another count
-    is named); ``rows``: the backends' runtimes (their calls, points per
-    call, warm-ups and reference points)."""
+    points (None: the caller's points), drawn within ``cuts``;
+    ``threads``: the native threads each backend's timed calls report (one:
+    one core, ``one_core``; another count is named); ``rows``: the backends'
+    runtimes (their calls, points per call, warm-ups and reference points)."""
 
     from pyamplicol.loops.v2.reduction import NAMES
 
@@ -857,7 +906,11 @@ def _runtime_setup(
         reduction += ", refused lanes rescued"
 
     points = (
-        "points of --momenta" if seed is None else f"distinct flat points (seed {seed})"
+        "points of --momenta"
+        if seed is None
+        else f"distinct flat points (seed {seed}"
+        + ("" if cuts is None else "".join(f", {cut}" for cut in cuts.described()))
+        + ")"
     )
     counts = sorted(set(threads) - {1})
     core = (
@@ -2373,6 +2426,7 @@ def profile_loop(
             runtime_rows or (),
             truth,
             evaluation.lane_rescue,
+            evaluation.phase_space.cuts,
         )
         if want_runtime
         else None,
@@ -3139,6 +3193,7 @@ def _measure(
         points=DEFAULT_LANES,
         seed=space.seed,
         sqrt_s=space.sqrt_s,
+        cuts=space.cuts,
     ).as_inputs(exact=False)
     initial = sum(1 for leg in physics.external_particles if leg.state == "incoming")
     scales = (
@@ -3956,7 +4011,7 @@ def _stability_records(
                 **common,
             )
         records: list[tuple[Any, ...]] = []
-        from pyamplicol.benchmarking import lane_rescue_reason
+        from pyamplicol.benchmarking import lane_rescue_reason, reduction_rescue
 
         for index, value, estimate, reason, status, uncertainty, lane in zip(
             indices,
@@ -4002,11 +4057,11 @@ def _stability_records(
                     ],
                     lane_rescue_reason(lane),
                     # A wider precision's total as its exact decimal text.
-                    *(
-                        (None if value is None else _exact_text(value),)
-                        if measured
-                        else ()
-                    ),
+                    None if value is None or not measured else _exact_text(value),
+                    # The reduction's own rescue: (lanes, precision) or None.
+                    reduction_rescue(lane),
+                    # Lanes served without accuracy evidence: the reasons.
+                    "; ".join(getattr(lane, "uncertified", ()) or ()) or None,
                 )
             )
     else:
@@ -4023,11 +4078,12 @@ def _stability_records(
             **common,
         )
         records = []
-        for index, value, reason, estimate in zip(
+        for index, value, reason, estimate, lane in zip(
             indices,
             result.values,
             _reasons(result),
             result.stability if checks is not None else [None] * len(indices),
+            result.diagnostics,
             strict=True,
         ):
             if (
@@ -4047,6 +4103,9 @@ def _stability_records(
                     f"binary64's unit roundoff {float(_UNIT_ROUNDOFF):.1e}"
                 )
             exact = None if value is None else _exact_total(value)
+            # The reference's lanes served without accuracy evidence: the
+            # reference is then not certified (``harvest``).
+            unsure = "; ".join(getattr(lane, "uncertified", ()) or ()) or None
             records.append(
                 (
                     index,
@@ -4056,9 +4115,67 @@ def _stability_records(
                     # A checked reference's own estimate (what it certifies:
                     # ``_point_caps``).
                     *(() if estimate is None else (float(estimate.relative),)),
+                    *(
+                        ()
+                        if unsure is None or value is None
+                        else (_ReferenceUncertified(unsure),)
+                    ),
                 )
             )
     return records
+
+
+def _agreement_dispositions(
+    totals: Mapping[str, Any], flagged: Container[str]
+) -> tuple[dict[str, str], Fraction | None]:
+    """How the backends' plain references of one point are certified
+    (``decide``): per backend "none" (no value), "agreement" (it agrees with
+    another backend's reference that is NOT flagged: a reference served
+    with lanes without accuracy evidence is never certification evidence
+    for anything) or "check" (its checked re-run decides); and the spread
+    of the agreeing clean references (``agreed``: the agreement's
+    resolution), None unless at least two references, none of them
+    flagged, all agree."""
+
+    valued = [b for b, total in totals.items() if total is not None]
+    clean = [b for b in valued if b not in flagged]
+    out: dict[str, str] = {}
+    for backend, total in totals.items():
+        if total is None:
+            out[backend] = "none"
+        elif any(
+            _references_agree(total, totals[other])
+            for other in clean
+            if other != backend
+        ):
+            out[backend] = "agreement"
+        else:
+            out[backend] = "check"
+    spread = None
+    values = [totals[b] for b in valued]
+    if (
+        len(values) > 1
+        and len(clean) == len(valued)
+        and all(
+            _references_agree(a, b)
+            for k, a in enumerate(values)
+            for b in values[k + 1 :]
+        )
+    ):
+        spread = max(
+            abs(a - b) / max(abs(a), abs(b)) if a or b else Fraction(0)
+            for k, a in enumerate(values)
+            for b in values[k + 1 :]
+        )
+    return out, spread
+
+
+class _ReferenceUncertified(str):
+    """The reasons of a reference point's lanes served without accuracy
+    evidence, appended to its worker record (``_stability_records``) and
+    taken off it on arrival (``harvest``)."""
+
+    __slots__ = ()
 
 
 # The task kind of a reference evaluated with its checks (``_stability_records``):
@@ -4673,6 +4790,7 @@ def _stability(
     # every point's inputs (the per-point record).
     inputs: dict[int, tuple[Any, Any]] = {}
     sqrt_s: list[float] = []
+    cut_legs: list[tuple[int, ...]] = []
 
     def draw(start: int, size: int) -> tuple[list[Any], list[Any] | Any]:
         flat = draw_flat_points(
@@ -4681,9 +4799,11 @@ def _stability(
             points=size,
             seed=space.seed + start,
             sqrt_s=space.sqrt_s,
+            cuts=space.cuts,
         )
         if not sqrt_s:
             sqrt_s.append(flat.sqrt_s)
+            cut_legs.append(flat.cut_legs)
         batch = list(flat.as_inputs(exact=False))
         scales = evaluation.mu_r2 if evaluation.mu_r2 is not None else flat.mu_r2()
         for k, point in enumerate(batch):
@@ -4792,6 +4912,10 @@ def _stability(
     # Per backend and point certified by its checks (one backend, or the
     # checked re-run), that reference's own estimate: what it certifies.
     certified: dict[str, dict[int, float]] = {b: {} for b in backends}
+    # Per backend the references served with lanes without accuracy evidence
+    # (``_ReferenceUncertified``), by point: added to their records as the
+    # sixth entry once every stream is back.
+    reference_unsure: dict[str, dict[int, str]] = {b: {} for b in backends}
     # Per backend the reference tasks (plain or checked) submitted and not
     # harvested: a point may still need its checked re-run.
     flight = dict.fromkeys(backends, 0)
@@ -4812,27 +4936,17 @@ def _stability(
         if any(index not in plain[b] for b in alive):
             return
         found = {b: plain[b].pop(index) for b in alive}
-        valued = [b for b in alive if found[b][1] is not None]
-        totals = [found[b][1][0][0] for b in valued]
-        if len(totals) > 1 and all(
-            _references_agree(a, b)
-            for k, a in enumerate(totals)
-            for b in totals[k + 1 :]
-        ):
-            agreed[index] = max(
-                abs(a - b) / max(abs(a), abs(b)) if a or b else Fraction(0)
-                for k, a in enumerate(totals)
-                for b in totals[k + 1 :]
-            )
+        disposition, spread = _agreement_dispositions(
+            {b: None if found[b][1] is None else found[b][1][0][0] for b in alive},
+            {b for b in alive if index in reference_unsure[b]},
+        )
+        if spread is not None:
+            agreed[index] = spread
         for backend in alive:
             record = found[backend]
-            if record[1] is None:
+            if disposition[backend] == "none":
                 dd[backend][index] = (*record, None)
-            elif any(
-                _references_agree(record[1][0][0], found[other][1][0][0])
-                for other in valued
-                if other != backend
-            ):
+            elif disposition[backend] == "agreement":
                 dd[backend][index] = (*record, "agreement")
             else:
                 checking.append((backend, index))
@@ -5009,6 +5123,19 @@ def _stability(
         return tasks
 
     def harvest(backend: str, precision: str, records: Any, wall: float) -> None:
+        if precision != "binary64" and precision not in ext:
+            # A reference record's lanes served without accuracy evidence:
+            # kept apart (``reference_unsure``), the record as before. A
+            # checked re-run's record replaces the plain one's.
+            stripped = []
+            for record in records:
+                if record and isinstance(record[-1], _ReferenceUncertified):
+                    reference_unsure[backend][record[0]] = str(record[-1])
+                    record = record[:-1]
+                else:
+                    reference_unsure[backend].pop(record[0], None)
+                stripped.append(record)
+            records = stripped
         if precision in ext:
             # A measured precision's stream: its own records and time.
             truth_stream = unified is not None and precision == unified.stream
@@ -5025,6 +5152,12 @@ def _stability(
                 # Also the reference: its accepted values (a best-effort
                 # or failed point has none, as the plain evaluation).
                 references = [_reference_of(record) for record in records]
+                for record in records:
+                    unsure = record[10] if len(record) > 10 else None
+                    if unsure and record[1] is not None:
+                        reference_unsure[backend][record[0]] = unsure
+                    else:
+                        reference_unsure[backend].pop(record[0], None)
                 for record in references:
                     tasks_of[backend][("reference", record[0])] = (
                         wall,
@@ -5205,6 +5338,15 @@ def _stability(
     # are taken over the points every backend evaluated (a complete run
     # evaluates them all).
     common = set.intersection(*evaluated.values()) if evaluated else set()
+    # The references served with lanes without accuracy evidence: the reasons
+    # as their record's sixth entry (``_sample_records``,
+    # ``_with_reference_uncertified``).
+    for backend, unsure in reference_unsure.items():
+        for index, reasons in unsure.items():
+            found = dd.get(backend, {}).get(index)
+            if found is not None and found[1] is not None:
+                head = (*found[:5], *(None,) * (5 - len(found[:5])))
+                dd[backend][index] = (*head, reasons)
     # The statistics and the per-sample records take seconds on large runs
     # (a few per 10^4 points): a phase of their own, never a silent tail.
     from pyamplicol.loops.v2.reduction import NAMES
@@ -5281,6 +5423,7 @@ def _stability(
                     samples=samples,
                 )
             )
+            rows[-1] = _with_reduction_rescues(rows[-1], b64[backend])
             continue
         rows.append(
             replace(
@@ -5302,6 +5445,9 @@ def _stability(
                 ),
                 samples=samples,
             )
+        )
+        rows[-1] = _with_reference_uncertified(
+            _with_reduction_rescues(rows[-1], b64[backend]), dd[backend]
         )
 
     measured_rows = {
@@ -5367,6 +5513,12 @@ def _stability(
         else {**memory, "workers": int(memory.get("probed_workers", workers))},
         "seed": space.seed,
         "sqrt_s": sqrt_s[0] if sqrt_s else space.sqrt_s,
+        # The cuts of the drawn points (None: no cut) and the legs (from 0, in
+        # the process's order) they act on.
+        "cuts": {
+            **space.cuts.record(),
+            "legs": list(cut_legs[0]) if cut_legs else [],
+        },
         "generator": (
             "flat (RAMBO on diet), beams along +-z in the centre-of-mass frame"
         ),
@@ -5561,7 +5713,11 @@ def _measured_rows(
         )
         rows.append(
             replace(
-                row,
+                _with_reduction_rescues(row, own)
+                if precision.estimates_only
+                else _with_reference_uncertified(
+                    _with_reduction_rescues(row, own), references[backend]
+                ),
                 samples=samples,
                 precision_timing={
                     precision.arithmetic: {
@@ -5675,6 +5831,16 @@ def _stability_causes(
                         "stability",
                         "lane rescue",
                         point.lane_rescue,
+                    )
+                )
+            if point.reduction_rescue_lanes:
+                causes.append(
+                    (
+                        stability_row.backend,
+                        "stability",
+                        "reduction rescue",
+                        "lanes re-reduced in "
+                        f"{point.reduction_rescue_carrier} within the reduction",
                     )
                 )
             kind = _CAUSE_KINDS.get(point.status)
@@ -5800,6 +5966,7 @@ def _write_samples(
         "process": process,
         "seed": setup.get("seed"),
         "sqrt_s": setup.get("sqrt_s"),
+        "cuts": setup.get("cuts"),
         "inputs": held(setup.get("samples")),
         "backends": {
             row.backend: held(row.samples) for row in rows if row.samples is not None
@@ -6005,6 +6172,76 @@ def _stop_pool(executor: Any) -> None:
         raise
 
 
+def _reduction_rescue_of(record: Sequence[Any]) -> tuple[int, str] | None:
+    """A binary64 stability record's reduction rescue (its tenth entry:
+    ``(lanes, precision)``; absent in a shorter record)."""
+
+    return record[9] if len(record) > 9 else None
+
+
+def _with_reduction_rescues(
+    row: BackendStability, records: Mapping[int, Sequence[Any]]
+) -> BackendStability:
+    """``row`` with the reduction's own rescue of each of its points (its
+    record's, ``_reduction_rescue_of``) and their totals."""
+
+    per_point: list[StabilityPoint] = []
+    points = lanes = uncertain = 0
+    carriers: dict[str, int] = {}
+    for point in row.per_point:
+        record = records.get(point.index)
+        local = None if record is None else _reduction_rescue_of(record)
+        reasons = None if record is None or len(record) <= 10 else record[10]
+        if reasons:
+            uncertain += 1
+            point = replace(point, uncertified=reasons)
+        if local is None:
+            per_point.append(point)
+            continue
+        count, carrier = local
+        points += 1
+        lanes += count
+        carriers[carrier] = carriers.get(carrier, 0) + count
+        per_point.append(
+            replace(
+                point,
+                reduction_rescue_lanes=count,
+                reduction_rescue_carrier=carrier,
+            )
+        )
+    return replace(
+        row,
+        per_point=tuple(per_point),
+        reduction_rescued_points=points,
+        reduction_rescued_lanes=lanes,
+        reduction_rescue_carriers=tuple(sorted(carriers.items())),
+        uncertified_points=uncertain,
+    )
+
+
+def _with_reference_uncertified(
+    row: BackendStability, references: Mapping[int, Sequence[Any]]
+) -> BackendStability:
+    """``row`` with each measured point's reference served with lanes without
+    accuracy evidence (its reference record's sixth entry: the reasons)
+    marked (``StabilityPoint.reference_uncertified``) and counted
+    (``BackendStability.uncertified_reference_points``); every other number
+    as it was."""
+
+    per_point: list[StabilityPoint] = []
+    count = 0
+    for point in row.per_point:
+        record = references.get(point.index)
+        reasons = None if record is None or len(record) <= 5 else record[5]
+        if reasons and point.status != "reference-failed":
+            count += 1
+            point = replace(point, reference_uncertified=reasons)
+        per_point.append(point)
+    if not count:
+        return row
+    return replace(row, per_point=tuple(per_point), uncertified_reference_points=count)
+
+
 def _rescue_of(record: Sequence[Any]) -> str | None:
     """A binary64 stability record's lane rescue (its eighth entry, absent
     in a shorter record)."""
@@ -6158,7 +6395,9 @@ def _sample_records(
     (the exact decimal text of its total finite part at its precision; null
     when it failed or without a ground truth), ``reason`` and ``certified``
     (an arbitrary-precision reference's certification: "agreement" with
-    another backend's, "checks" from its checked re-run; null otherwise);
+    another backend's, "checks" from its checked re-run; False for a
+    reference served with lanes without accuracy evidence, whose reasons are
+    the row's last field ``reference_uncertified``; null otherwise);
     ``true_relative_error`` and ``true_digits`` (null without both values);
     ``binary64_task``, ``reference_task`` (the reference's first
     evaluation: plain, or checked with one backend) and
@@ -6190,9 +6429,11 @@ def _sample_records(
             if record is None:
                 continue
             point_cap = cap if isinstance(cap, (int, float)) else cap[index]
-            padded: tuple[Any, ...] = (*record, *(None,) * (9 - len(record)))
+            padded: tuple[Any, ...] = (*record, *(None,) * (11 - len(record)))
             _, value, summary, reason, status, uncertainty, sectors, rescue = padded[:8]
             text = padded[8]
+            local = padded[9]
+            uncertified = padded[10]
             exact_total = None if value is None else _total_finite(value)
             total = None if exact_total is None else float(exact_total)
             estimate: list[object] = [None] * 6
@@ -6216,12 +6457,19 @@ def _sample_records(
                 or float(summary.relative) > target
             )
             reference_value = reference_reason = certified = error = digits = None
+            unsure = None
             if truth.present:
                 ref = reference.get(index)
                 if ref is not None:
                     reference_value = None if len(ref) < 4 else ref[3]
                     reference_reason = ref[2]
                     certified = None if len(ref) < 5 else ref[4]
+                    unsure = None if len(ref) < 6 else ref[5]
+                    if unsure:
+                        # Lanes of the reference served without accuracy
+                        # evidence: not certified, whatever its estimate or
+                        # agreement says.
+                        certified = False
                     if ref[1] is not None and exact_total is not None:
                         exact = relative_error(exact_total, _total_finite(ref[1]))
                         error = _significant(exact)
@@ -6253,6 +6501,10 @@ def _sample_records(
                 rescue,
                 uncapped_estimate,
                 uncapped_true,
+                0 if local is None else local[0],
+                None if local is None else local[1],
+                uncertified,
+                unsure,
             ]
 
     encoded = encode_rows(rows(), len(indices), progress)
