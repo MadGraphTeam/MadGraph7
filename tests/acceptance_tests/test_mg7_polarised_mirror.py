@@ -106,7 +106,7 @@ class MG7PolarisedMirrorTest(unittest.TestCase):
         card = RunCardMG7(toml)
         card.set('generation.events', _EVENTS, user=True)
         card.set('run.seed', _SEED, user=True)
-        card.set('run.me_frame', me_frame, user=True)
+        card.set('beam.me_frame', me_frame, user=True)
         # the scale/PDF variation weights are irrelevant here and cost time
         card.set('systematics.enable', False, user=True)
         card.write(toml)

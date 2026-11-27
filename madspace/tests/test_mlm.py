@@ -1946,7 +1946,7 @@ def t_channel_integrand_outputs(
     under MLM (pdf reweighting by default), with the built-in flat test matrix
     element and a flat PDF of the given value. clustering_kwargs go to
     t_channel_clustering (scale_scheme madevent unless given); min_scale is the
-    scale floor of the EnergyScale, beam.min_scale in a run."""
+    scale floor of the EnergyScale, scale.min_scale in a run."""
     context = ms.Context(device=ms.cpu_device(), thread_count=1)
     alphas_file = tmp_path / "alphas.info"
     alphas_file.write_text(
@@ -2012,7 +2012,7 @@ def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000, **kwargs):
 # mirror, which is where a weight_after_cuts left out of the weight product
 # would drop the ladder's veto without a trace. With no jet cut, the geometric
 # mean mu_R of clustering_mean falls below the alpha_s grid for a few percent of
-# the events, so that case runs with the 2 GeV floor of beam.min_scale, which
+# the events, so that case runs with the 2 GeV floor of scale.min_scale, which
 # drops them as a run does (without it their weight is 0 * NaN).
 LADDER_SCHEMES = [
     pytest.param(

@@ -460,19 +460,22 @@ class LeptonicAlphaSTest(unittest.TestCase):
         return info['AlphaS_Qs'], info['AlphaS_Vals']
 
     def beam(self, **changes):
-        beam = {'ebeam1': 250.0, 'ebeam2': 250.0, 'leptonic': True,
-                'pdf1': 'NNPDF23_lo_as_0130_qed',
-                'pdf2': 'NNPDF23_lo_as_0130_qed',
-                'dynamical_scale_choice': 'half_transverse_mass',
-                'fixed_ren_scale': False, 'fixed_fact_scale': True,
-                'ren_scale': 91.188, 'fact_scale1': 91.188,
-                'fact_scale2': 91.188, 'scale_factor': 1.0}
-        beam.update(changes)
-        return beam
+        """The [beam] and [scale] sections, with `changes` in either."""
+        sections = {
+            'beam': {'ebeam1': 250.0, 'ebeam2': 250.0, 'leptonic': True,
+                     'pdf1': 'NNPDF23_lo_as_0130_qed',
+                     'pdf2': 'NNPDF23_lo_as_0130_qed'},
+            'scale': {'dynamical_scale_choice': 'half_transverse_mass',
+                      'fixed_ren_scale': False, 'fixed_fact_scale': True,
+                      'ren_scale': 91.188, 'fact_scale1': 91.188,
+                      'fact_scale2': 91.188, 'scale_factor': 1.0}}
+        for key, value in changes.items():
+            next(s for s in sections.values() if key in s)[key] = value
+        return sections
 
-    def init_beam(self, process, beam):
+    def init_beam(self, process, sections):
         process.run_card = mock.MagicMock()
-        process.run_card.__getitem__.side_effect = {'beam': beam}.__getitem__
+        process.run_card.__getitem__.side_effect = sections.__getitem__
         process.is_decay = False
         process.custom_functions = {}
         process.contexts = []
@@ -491,6 +494,23 @@ class LeptonicAlphaSTest(unittest.TestCase):
         qs, values = self.read(process.fixed_alphas_info)
         for q, value in zip(qs, values):
             self.assertAlmostEqual(value, runner(q), places=10)
+
+    def test_a_real_run_card(self):
+        """init_beam reads each setting from its own section of a RunCardMG7"""
+        from madgraph.various.banner import RunCardMG7
+        card = RunCardMG7()
+        card.set('beam.leptonic', True)
+        card.set('scale.fixed_ren_scale', True)
+        card.set('scale.ren_scale', 137.0)
+        process = self.process()
+        process.run_card = card
+        process.is_decay = False
+        process.custom_functions = {}
+        process.contexts = []
+        process.ensure_pdf_set = mock.Mock(
+            side_effect=AssertionError('PDF set resolved for leptonic beams'))
+        process.init_beam()
+        self.assertIn(137.0, self.read(process.fixed_alphas_info)[0])
 
     def test_a_fixed_scale_is_a_node(self):
         process = self.process()

@@ -4748,7 +4748,7 @@ already exists and is not a fifo file."""%fifo_path)
                              'the heaviest quark the events were clustered as a jet')
             # The matching clusters the showered event with the D the events
             # were clustered with at generation (the hidden run_card d of
-            # madevent, beam.jet_radius of mg7; 1.0 by default in both)
+            # madevent, merging.jet_radius of mg7; 1.0 by default in both)
             set_mlm_matching('JetMatching:coneRadius', float(self.run_card['d']),
                              'the jet radius D the events were clustered with')
             # And the value of etaj_max is already infinity by default.

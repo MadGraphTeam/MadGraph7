@@ -136,7 +136,7 @@ def build_topologies(
     )):
         mass = process.get_mass(pid)
         width = process.get_width(pid)
-        bw_cutoff = process.run_card["phasespace"]["bw_cutoff"]
+        bw_cutoff = process.run_card['cuts.bw_cutoff']
         if i in channel["on_shell_propagators"]:
             e_min = mass - bw_cutoff * width
             e_max = mass + bw_cutoff * width
@@ -333,7 +333,7 @@ class MadgraphSubprocess:
         # MadEvent's cut_decays = F: the decay products of on-shell propagators
         # are left out of every cut selection (a pair cut then needs both
         # members to be cut), while the histograms still see them
-        if self.process.run_card["phasespace"]["cut_decays"]:
+        if self.process.run_card['cuts.cut_decays']:
             uncut = set()
         else:
             uncut = decay_products(self.meta, self.unmerged_meta)
@@ -378,10 +378,10 @@ class MadgraphSubprocess:
         # filled by MadgraphProcess.build_event_histograms at combine time
         # They cost an observable evaluation per integration point, and the
         # plots/HwU are drawn from the post-processing ones instead, so they
-        # are only filled on request ([run] weighted_histograms).
+        # are only filled on request ([histograms] weighted_histograms).
         momentum_hists = [item for item in self.process.hist_data
                           if not item.from_weight] \
-            if self.process.run_card["run"]["weighted_histograms"] else []
+            if self.process.run_card['histograms.weighted_histograms'] else []
         self.histograms = (
             ms.ObservableHistograms([
                 ms.HistItem(
@@ -408,7 +408,7 @@ class MadgraphSubprocess:
         if self.process.leptonic:
             min_scale = max_scale = 0.0
         else:
-            min_scale = self.process.run_card["beam"]["min_scale"]
+            min_scale = self.process.run_card["scale"]["min_scale"]
             max_scale = self.process.max_scale
         if self.process.mlm_clustering:
             self.scale = self.build_mlm_scale(min_scale, max_scale)
@@ -440,11 +440,11 @@ class MadgraphSubprocess:
             scale_scheme=getattr(
                 ms.MLMClustering.ScaleScheme,
                 "madevent" if ckkwl else beam["scale_scheme"]),
-            xqcut=0.0 if ckkwl else self.process.run_card["phasespace"]["xqcut"],
-            bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
-            jet_radius=beam["jet_radius"],
+            xqcut=0.0 if ckkwl else self.process.run_card["merging"]["xqcut"],
+            bw_cutoff=self.process.run_card['cuts.bw_cutoff'],
+            jet_radius=self.process.run_card["merging.jet_radius"],
             hadronic=not self.process.leptonic,
-            max_jet_flavor=beam["max_jet_flavor"],
+            max_jet_flavor=self.process.run_card["cuts.max_jet_flavor"],
             parton_line_scheme=getattr(
                 ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
             alphas_scheme=getattr(
@@ -579,10 +579,10 @@ class MadgraphSubprocess:
             measure,
             list(pids),
             mask,
-            d_parameter=float(self.process.run_card["phasespace"]["dparameter"]),
+            d_parameter=float(self.process.run_card["merging"]["dparameter"]),
             hadronic1=hadronic,
             hadronic2=hadronic,
-            max_jet_flavor=int(self.process.run_card["beam"]["max_jet_flavor"]),
+            max_jet_flavor=int(self.process.run_card['cuts.max_jet_flavor']),
         )
         return ms.MergingCut(scale, value) if scale.active() else None
 
@@ -1058,7 +1058,7 @@ class MadgraphSubprocess:
             raise ValueError(
                 f"subprocess {self.meta['incoming']} > {self.meta['outgoing']}: "
                 "the pair mass cuts exclude the whole on-shell window "
-                f"(bw_cutoff = {self.process.run_card['phasespace']['bw_cutoff']}) "
+                f"(bw_cutoff = {self.process.run_card['cuts.bw_cutoff']}) "
                 f"of every channel of flavour(s) {uncovered}, so their cross "
                 "section is zero; loosen the cut or remove that decay"
             )

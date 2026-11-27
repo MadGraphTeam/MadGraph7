@@ -94,8 +94,9 @@ def _set_toml_key(text, section, key, value):
     `value`, whatever it was; the same key of any other table (the `enable`
     of [vegas] next to the one of [systematics]) is left alone. A regex
     spanning from the section header to the next `key = ...` would not stop
-    at the end of the table."""
-    lines, current = text.split('\n'), None
+    at the end of the table. A key missing from the card (in a hidden option
+    group) is added to its table, which is created if needed."""
+    lines, current, found = text.split('\n'), None, False
     for i, line in enumerate(lines):
         header = re.match(r'^\s*\[+\s*([^\]]+?)\s*\]+\s*(#.*)?$', line)
         if header:
@@ -103,7 +104,15 @@ def _set_toml_key(text, section, key, value):
         elif current == section and \
                 re.match(r'^\s*%s\s*=' % re.escape(key), line):
             lines[i] = '%s = %s' % (key, value)
-    return '\n'.join(lines)
+            found = True
+    text = '\n'.join(lines)
+    if found:
+        return text
+    line = '%s = %s' % (key, value)
+    header = re.search(r'(?m)^\[%s\][ \t]*\n' % re.escape(section), text)
+    if header:
+        return text[:header.end()] + line + '\n' + text[header.end():]
+    return text.rstrip('\n') + '\n\n[%s]\n%s\n' % (section, line)
 
 
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
@@ -135,11 +144,9 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
     t = re.sub(r'events = \d+', 'events = 50000', t)
-    # Switch both systematics paths off: [postprocessing] systematics (the
-    # legacy systematics.py pass) and the native [systematics] enable, which
-    # defaults to true and is the one that actually costs the time here. The
-    # cross-section these callers read does not depend on either.
-    t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
+    # Switch the systematics off: [systematics] enable defaults to true and
+    # costs the time here; the cross-section these callers read does not
+    # depend on it.
     t = _set_toml_key(t, 'systematics', 'enable', 'false')
     open(toml, 'w').write(t)
     env = dict(os.environ)
@@ -251,8 +258,9 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
     t = re.sub(r'events = \d+', 'events = %d' % events, t)
-    for pat, repl in (toml_edits or []):
-        t = re.sub(pat, repl, t)
+    for edit in (toml_edits or []):
+        # a (pattern, replacement) pair, or a function of the card text
+        t = edit(t) if callable(edit) else re.sub(edit[0], edit[1], t)
     open(toml, 'w').write(t)
 
     env = dict(os.environ)
@@ -1528,8 +1536,6 @@ class TestMECmdShell(unittest.TestCase):
         for lo, nom, hi in zip(env['low'], hist['bin_values'], env['high']):
             self.assertLessEqual(lo, nom + 1e-12)
             self.assertGreaterEqual(hi, nom - 1e-12)
-        # no legacy systematics.py run happened
-        self.assertFalse(glob.glob(pjoin(run, '*systematics*crash.log')))
 
     def test_systematics_mixed_order_mg7(self):
         """A process whose |M|^2 mixes several alpha_s powers (u u~ > d d~ with
@@ -1565,34 +1571,6 @@ class TestMECmdShell(unittest.TestCase):
                abs(rwgt['7'] - evt.wgt) > 1e-6 * abs(evt.wgt):
                 moved += 1
         self.assertGreater(moved, 0, 'the mu_R weights equal the nominal weight')
-
-    def test_systematics_mg7_legacy(self):
-        """The legacy path ([postprocessing] systematics = true, systematics.py
-        + the LHAPDF python module) still works when the native computation is
-        switched off, and reads the reweighting inputs from the LHE (the
-        single alpha_s power recorded at output time, single_qcd_order)."""
-        datadir = _mg7_datadir_or_skip(self)
-        run = _run_mg7_postproc(
-            self,
-            ['set automatic_html_opening False --no_save',
-             'import model sm',
-             'generate u u > u u'],
-            pjoin(self.path, 'MG7_syst_legacy'), datadir,
-            switch_lines=None,   # -f: run_lhe_postprocessing runs systematics
-            toml_edits=[(r'\nenable = true\nmur', '\nenable = false\nmur'),
-                        (r'\nsystematics = false\n', '\nsystematics = true\n'),
-                        (r'systematics_pdf = \[[^\]]*\]',
-                         'systematics_pdf = ["central"]')],
-            events=100, tolerated_crashes=('*systematics*',))
-
-        lhe_path = pjoin(run, 'events.lhe')
-        if not os.path.exists(lhe_path):
-            misc.gunzip(pjoin(run, 'events.lhe.gz'), keep=True, stdout=lhe_path)
-        crash = glob.glob(pjoin(run, '*systematics*crash.log'))
-        if crash:
-            self.skipTest('legacy systematics.py could not run (LHAPDF python '
-                          'module?): %s' % open(crash[0]).read()[-500:])
-        self._check_systematics_weights(lhe_path)
 
     def test_relaunch_switch_defaults_mg7(self):
         """Re-launching an mg7 output must not turn every tool on.
@@ -1752,7 +1730,7 @@ class TestMECmdShell(unittest.TestCase):
         toml = pjoin(self.run_dir, 'Cards', 'run_card.toml')
         t = open(toml).read()
         t = _re.sub(r'(?m)^events = \d+', 'events = 2000', t)
-        t = _re.sub(r'(?m)^save_gridpack = .*', 'save_gridpack = true', t)
+        t = _set_toml_key(t, 'gridpack', 'save_gridpack', 'true')
         open(toml, 'w').write(t)
 
         env = dict(os.environ)
@@ -4322,7 +4300,7 @@ set draw_rivet_plots True
     def test_add_time_of_flight_mg7(self):
         """time-of-flight LHE post-processing chained on the mg7 output.
 
-        Mirrors test_add_time_of_flight: the run_card.toml [postprocessing]
+        Mirrors test_add_time_of_flight: the run_card.toml [output]
         time_of_flight threshold is applied to the generated events (this is the
         mg7 equivalent of the madevent 'add_time_of_flight' command), and the
         invariant lifetime written on the LHE particles is checked against the
@@ -4335,8 +4313,8 @@ set draw_rivet_plots True
              'generate p p > w+ z'],
             pjoin(self.path, 'MG7_tof'), datadir,
             switch_lines=None,
-            toml_edits=[(r'time_of_flight = -?[\d.eE+-]+',
-                         'time_of_flight = 4e-14')],
+            toml_edits=[lambda t: _set_toml_key(t, 'output', 'time_of_flight',
+                                                '4e-14')],
             events=100)
 
         event = pjoin(run, 'events.lhe')

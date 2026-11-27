@@ -48,14 +48,14 @@ Run `python madspace/install.py --help` for the full list of options. The option
 last build are remembered, so `--source --system -y` rebuilds with the same settings.
 
 If [nvCOMP](https://developer.nvidia.com/nvcomp) 5 is found, the CUDA backend also
-gzip-compresses LHE output on the GPU (`run.lhe_compression = "auto"` in MadGraph7). Point
+gzip-compresses LHE output on the GPU (`output.lhe_compression = "auto"` in MadGraph7). Point
 CMake at an nvCOMP install with `nvcomp_ROOT`:
 
 ```sh
 nvcomp_ROOT=/path/to/nvcomp python madspace/install.py --source --system --cuda
 ```
 
-`run.lhe_gzip_algorithm` picks the nvCOMP algorithm, from 0 (fastest) to 5 (smallest
+`output.lhe_gzip_algorithm` picks the nvCOMP algorithm, from 0 (fastest) to 5 (smallest
 output, the default).
 
 Without nvCOMP (logged as info), and on HIP (a warning: hipCOMP has no gzip compressor),
