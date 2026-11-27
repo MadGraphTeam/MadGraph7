@@ -281,10 +281,10 @@ call.
 | `runtime` field | Meaning |
 | --- | --- |
 | `process_index`, `process_id` | The `runtime_processes` row and stored process that run: the template for a union entry, possibly a structurally equal representative otherwise. |
-| `color_id` | The LC flow of that process that runs, `null` for contracted colour. For a union entry always a template flow (the replay representative); the member's own flow id is `members[].color_id`. |
+| `color_id` | The LC flow of that process that runs, `null` for contracted colour. For a union entry always a template flow (the replay or identical-orbit representative); the member's own flow id is `members[].color_id`. |
 | `color_axis` | Union entries: the index of `color_id` on the runtime's colour axis, the per-point flow selector. |
 | `color_index` | Index into `color_flows`: the physical contribution's LHE colour tags, returned as `UMAMI_OUT_COLOR_INDEX`. |
-| `permutation` | Runtime leg `j` reads input leg `permutation[j]`; it composes the channel's relabelling, the member relation and any kept replay. |
+| `permutation` | Runtime leg `j` reads input leg `permutation[j]`; it composes the channel's relabelling, the member relation, any kept replay and any relabelling of identical outgoing particles onto the orbit representative whose runtime the member shares. |
 | `momentum_signs` | Crossed union members only: runtime leg `j` takes `momentum_signs[j]` times that momentum. |
 | `factor` | `1.0` on union entries (the runtime applies the member factor to the assignment), the group factor of a flavour-blind member, otherwise `1.0`. |
 | `assignment`, `assignment_key` | Union entries: the assignment id on the template runtime and its process id (the member's, or the template's own). |
@@ -294,7 +294,8 @@ A union member's pattern signs and pattern selection, its factor and its
 charge conjugation are not in the metadata: read them from
 `process-groups.json` or from the member entries of a
 [recurrence export](../reference/recurrence-export.md#reached-through-umami),
-which keys them by `assignment_key`. The flavour weights in
+which keys them by `assignment_key`. Only the signs and the factor of that
+entry apply; the program is the runtime's `(process_id, color_id)`. The flavour weights in
 `matrix_elements[].factor` (in MadGraph7 the flavour factor of a subprocess)
 are applied by the integrator, MadSpace, not by the provider.
 

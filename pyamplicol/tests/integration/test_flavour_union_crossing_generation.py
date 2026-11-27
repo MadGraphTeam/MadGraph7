@@ -98,7 +98,7 @@ def artifacts(
     expression = _SETS[name][0]
     root = tmp_path_factory.mktemp(f"crossing-{name}")
     jobs = {
-        "crossing": _config("lc", unions=True, crossing=True, bundle=False),
+        "crossing": _config("lc", unions=True, crossing=True, bundle=True),
         "reference": _config("lc", unions=False, crossing=False, bundle=False),
         "full": _config("full", unions=True, crossing=False, bundle=True),
     }
@@ -331,3 +331,80 @@ def test_crossed_members_export_as_template_references(
                     _close(value, expected, scale, (member.expression, point, k))
             checked += 1
     assert checked > 0
+
+
+def test_umami_runtime_is_the_program_of_a_crossed_member(
+    artifacts: tuple[str, dict[str, Path]],
+) -> None:
+    """As the recurrence-export docs say: the program is the runtime's
+    ``(process_id, color_id)`` at ``runtime.permutation``/``momentum_signs``,
+    never the member's own flow mapped through pi (identical-orbit members run
+    another template flow at a relabelled gather)."""
+    _, paths = artifacts
+    members = {
+        member.process_id: member
+        for _, _, crossed in _crossed_groups(paths["crossing"])
+        for member in crossed
+    }
+    templates: dict[str, Runtime] = {}
+    references: dict[str, Runtime] = {}
+    checked = swapped = 0
+    for document in load_umami_metadata(paths["crossing"]):
+        for channel in document["channels"]:
+            for process in channel["processes"]:
+                for entry in process["members"]:
+                    runtime = entry["runtime"]
+                    member = members.get(entry["process_id"])
+                    if member is None or "momentum_signs" not in runtime:
+                        continue
+                    template_id = runtime["process_id"]
+                    template = templates.setdefault(
+                        template_id,
+                        Runtime.load(paths["crossing"], process=template_id),
+                    )
+                    flow_ids = [
+                        "flow:" + ",".join(map(str, flow.word))
+                        for flow in template.physics.color_flows
+                    ]
+                    axis = flow_ids.index(runtime["color_id"])
+                    assert runtime["color_axis"] == axis
+                    perm = list(member.permutation)
+                    # the flow that program_reference would name
+                    own = [int(x) for x in entry["color_id"][5:].split(",")]
+                    mapped = [
+                        "flow:" + ",".join(str(perm[x - 1] + 1) for x in flow.word)
+                        for flow in template.physics.color_flows
+                    ]
+                    swapped += flow_ids[mapped.index(entry["color_id"])] != (
+                        runtime["color_id"]
+                    )
+                    reference = references.setdefault(
+                        member.expression,
+                        Runtime.load(paths["reference"], process=member.expression),
+                    )
+                    flows = {
+                        _strings(flow.word, member.expression): i
+                        for i, flow in enumerate(reference.physics.color_flows)
+                    }
+                    column = flows[_strings(own, member.expression)]
+                    points = _member_points(member.expression)
+                    signed = [
+                        _signed(point, runtime["permutation"], runtime["momentum_signs"])
+                        for point in points
+                    ]
+                    rows = template.evaluate_assignments(
+                        signed, [[runtime["assignment"]]] * len(points),
+                        output="helicity-flow",
+                    )
+                    resolved = reference.evaluate_resolved(points)
+                    for point, row in enumerate(rows):
+                        value = sum(line[axis] for line in row[0])
+                        expected = sum(
+                            complex(line[column]).real
+                            for line in resolved.values[point]
+                        )
+                        _close(value, expected, abs(expected), (entry["process_id"], point))
+                    checked += 1
+    assert checked > 0
+    # pp2j has d d~ > g g style members whose second flow is an orbit copy
+    assert swapped > 0

@@ -306,16 +306,20 @@ export through shared ids:
   to `runtime.process_id`). Signs and factor do not vary over a member's
   flows.
 - `runtime.color_id` is always one of the template's flow ids (the replay
-  representative the provider runs). The member's own flow id is
-  `members[].color_id` in the metadata and `colour_id` on the member entry;
-  they coincide only for an unpermuted, unconjugated member whose flow the
-  metadata does not replay.
+  or identical-orbit representative the provider runs). The member's own flow
+  id is `members[].color_id` in the metadata and `colour_id` on the member
+  entry. Do not look the program up by the member's flow: the metadata may
+  give a physical member the runtime of a replay representative, or of
+  another member in the same orbit of identical outgoing particles, and that
+  runtime runs a different template flow.
 
-From a member entry, `program_reference`, `pattern_signs` and `group_factor`
-apply through UMAMI. `crossing`, `caller_legs` and the helicity id strings do
-not: `runtime.permutation` (and `runtime.momentum_signs` for a crossed member)
-already contains the member relation, the channel's relabelling and any kept
-replay, so applying `crossing` as well would relabel twice. Helicity index `k`
+From a member entry, only `pattern_signs` and `group_factor` apply through
+UMAMI. The program is always `(runtime.process_id, runtime.color_id)`, never
+the member entry's `program_reference`. `crossing`, `caller_legs` and the
+helicity id strings do not apply either: `runtime.permutation` (and
+`runtime.momentum_signs` for a crossed member) already contains the member
+relation, the channel's relabelling, any kept replay and any identical-orbit
+relabelling, so applying `crossing` as well would relabel twice. Helicity index `k`
 is shared: the runtime's helicity `k` is the program's output `k`, and
 `runtime.helicity_export[k]` gives its label in the channel's leg order.
 
