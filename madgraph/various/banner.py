@@ -4728,7 +4728,11 @@ def mlm_matching_needed(proc_def):
 
 class RunCardLO(RunCard):
     """an object to handle in a nice way the run_card information"""
-    
+
+    # GPD processes switch off use_syst (check_validity); the message is
+    # printed once per process
+    _gpd_syst_notified = False
+
     blocks = [heavy_ion_block, beam_pol_block, syscalc_block, ecut_block,
              frame_block, eva_pdf_block, mlm_block, ckkw_block, psoptim_block,
               pdlabel_block, fixedfacscale, running_block, mom_resh_block]
@@ -5192,7 +5196,24 @@ class RunCardLO(RunCard):
                 raise InvalidRunCard( "Heavy ion mode is only supported for lpp1=1/2/5")
         if self['lpp2'] not in [1,2,5]:
             if self['nb_proton2'] !=1 or self['nb_neutron2'] !=0:
-                raise InvalidRunCard( "Heavy ion mode is only supported for lpp2=1/2/5")   
+                raise InvalidRunCard( "Heavy ion mode is only supported for lpp2=1/2/5")
+
+        # GPD processes (a beam of type 5): the systematics reweighting assumes
+        # collinear PDFs on both beams, whereas the amplitude of a GPD process
+        # is not a product of PDFs (the shadow leg, PDG 23, has none: the
+        # reweighting stopped with an exception after the events were written)
+        if 5 in (abs(self['lpp1']), abs(self['lpp2'])) and self['use_syst']:
+            msg = "GPD process (lpp = 5): use_syst set to False. The systematics reweighting " + \
+                  "assumes collinear PDFs and does not apply to GPD processes; vary the scales " + \
+                  "and the PDF set with separate runs."
+            # the card is checked at every reading: say it once per process
+            if not RunCardLO._gpd_syst_notified:
+                RunCardLO._gpd_syst_notified = True
+                if 'use_syst' in self.user_set:
+                    logger.warning(msg)
+                else:
+                    logger.info(msg)
+            self['use_syst'] = False
 
 
         # check that fixed_fac_scale(1/2) is setting as expected

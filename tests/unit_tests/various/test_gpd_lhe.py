@@ -248,6 +248,24 @@ class GPDRunCardTest(unittest.TestCase):
         self.assertEqual(card.get_idbmup(5, beam=2), 1000822080)
         self.assertEqual(card.get_idbmup(5, beam=1), 2212)
 
+    def test_lpp5_no_systematics(self):
+        """GPD beams switch off the systematics reweighting (it assumes collinear
+        PDFs and stopped with an exception after the events of a GPD run), also
+        with an electron on beam 1; other beams keep it."""
+        for lpp1, lpp2 in ((5, 5), (0, 5)):
+            card = banner.RunCardLO()
+            card.set('lpp1', lpp1)
+            card.set('lpp2', lpp2)
+            card.set('use_syst', True)
+            card.check_validity()
+            self.assertFalse(card['use_syst'])
+        card = banner.RunCardLO()
+        card.set('lpp1', 1)
+        card.set('lpp2', 1)
+        card.set('use_syst', True)
+        card.check_validity()
+        self.assertTrue(card['use_syst'])
+
 
 if __name__ == '__main__':
     unittest.main()
