@@ -215,6 +215,7 @@ def launch(out, values, order, accuracy, work, name):
     env = {k: v for k, v in os.environ.items() if k != "MADFKS_INTEGRAND_DUMP"}
     log = os.path.join(work, f"{run_name}_launch.log")
     summary = os.path.join(out, "Events", run_name, "summary.txt")
+    mfir.mfr.release_lock(out)
     with open(script, "w") as f:
         f.write(f"launch {out} -n {run_name}\n")
         f.write(f"fixed_order=ON\norder={order}\ndone\n")
@@ -238,6 +239,7 @@ def build(out, values, work, name):
     executables = glob.glob(os.path.join(out, "SubProcesses", "P*", "madevent_mintFO"))
     for stale in executables:
         os.remove(stale)
+    mfir.mfr.release_lock(out)
     log = os.path.join(work, f"{name}_build.log")
     with open(log, "w") as f:
         command = [sys.executable, os.path.join(out, "bin", "aMCatNLO"), script]

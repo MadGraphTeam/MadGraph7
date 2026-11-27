@@ -81,7 +81,10 @@ of lhaid (its densities and alpha_s at the scales of the run) and the PDF
 uncertainty of LHAPDF (FKSCrossSection with pdf_variations).
 
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photons
-of gamma-UPC and FxFx.
+of gamma-UPC and FxFx. The run refuses settings of MadFKS it would
+otherwise ignore: cuts by PDG code, functions of the user other than the
+scale (custom_fcts), more than one dynamical scale choice or PDF set, and
+beams of different energies. EW Sudakov runs only without the generator.
 """
 
 import argparse

@@ -10,7 +10,8 @@ NLOIterationState, EventGenerator.integrate):
 - the results of the state against the sums of the points;
 - runs of FKSRun through the generator against the cross sections of MG5aMC
   per subprocess, with their histograms;
-- the refusal of the survey and the generation of a fixed-order channel.
+- the refusal of the survey and the generation of a fixed-order channel,
+  and of EW Sudakov through the generator.
 
 The runs are those of test_fks_cross_section.py on the aMC@NLO outputs of
 MADSPACE_FKS_OUTPUTS.
@@ -263,7 +264,8 @@ def test_discrete_choice():
 
 
 def test_refusals():
-    """The survey refuses a fixed-order channel."""
+    """The survey refuses a fixed-order channel, and a run through the
+    generator EW Sudakov, whose blocks the C++ integrand cannot ask for."""
     with fks_setup("epem_jj_fixed") as run:
         integrand = run.integrands[0]
         generator = integrand.generator_integrand(
@@ -286,3 +288,6 @@ def test_refusals():
             event_generator.survey()
         with pytest.raises(ValueError, match="fixed order"):
             event_generator.generate()
+    _, run = run_of("epem_ttx_sdk", generator=True)
+    with pytest.raises(NotImplementedError, match="EW Sudakov"):
+        run.run()

@@ -64,6 +64,7 @@ its own probabilities: e+ e- -> j j at a fixed scale after 1000 batches
 with it, p p > t t~ 5.1e-3 with and without it).
 """
 
+import ast
 import json
 import logging
 import math
@@ -419,6 +420,30 @@ def first(value):
     return value[0] if isinstance(value, (list, tuple)) else value
 
 
+def entries(value):
+    """The entries of a list of the run card, as a list, as the text of
+    the card (separated by commas or spaces) or as a single value."""
+    if isinstance(value, str):
+        return value.replace(",", " ").split()
+    if not isinstance(value, (list, tuple)):
+        return [] if value is None else [value]
+    return [entry for entry in value if str(entry).strip()]
+
+
+def pdg_keys(value):
+    """The PDG codes of a dictionary of the run card by PDG code
+    (pt_min_pdg), as a dictionary or as the text of the card."""
+    if isinstance(value, str):
+        text = value.strip()
+        if text in ("", "{}"):
+            return []
+        try:
+            value = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            return [text]
+    return [pdg for pdg in dict(value or {}) if pdg != "__type__"]
+
+
 def scale_variations(run_card):
     """The pairs of factors of mu_R and mu_F of the scale variations of the
     run card (reweight_scale with rw_rscale and rw_fscale), in the order of
@@ -570,11 +595,49 @@ def beam_kind(run_card):
     return {1: "hadrons", 2: "photons", 3: "dressed"}.get(beam, "leptons")
 
 
-def check_run_card(run_card):
+def incoming_count(output):
+    """The number of incoming particles of the processes of an aMC@NLO
+    output (ninitial of its proc_characteristics), 2 where it has none."""
+    path = os.path.join(output, "SubProcesses", "proc_characteristics")
+    if os.path.isfile(path):
+        with open(path) as f:
+            for line in f:
+                key, _, value = line.partition("=")
+                if key.strip() == "ninitial":
+                    return int(value.strip())
+    return 2
+
+
+def check_run_card(run_card, incoming=2):
     """Raises NotImplementedError for the settings the driver does not
-    cover."""
+    cover, for processes of incoming particles. Settings of MadFKS that the
+    driver would otherwise ignore are among them: cuts by PDG code, the
+    functions of the user (custom_fcts, such as dummy_cuts), more than one
+    dynamical scale choice or PDF set, and beams of different energies (the
+    lab frame of the cuts and histograms is the center-of-mass frame of the
+    beams)."""
     if integer(run_card.get("ickkw", 0)) != 0:
         raise NotImplementedError("nlo.core: no FxFx merging (ickkw)")
+    for key in ("pt_min_pdg", "pt_max_pdg", "mxx_min_pdg"):
+        if pdg_keys(run_card.get(key)):
+            raise NotImplementedError(f"nlo.core: no cuts by PDG code ({key})")
+    if entries(run_card.get("custom_fcts")):
+        raise NotImplementedError(
+            "nlo.core: no functions of the user (custom_fcts), the scale of "
+            "the user is dynamical_scale_choice 0 or 10"
+        )
+    for key in ("dynamical_scale_choice", "lhaid"):
+        if len(entries(run_card.get(key, []))) > 1:
+            raise NotImplementedError(
+                f"nlo.core: one value of {key}, not {run_card[key]}"
+            )
+    energies = [run_card.get(f"ebeam{k}") for k in (1, 2)]
+    if incoming == 2 and None not in energies:
+        if real(energies[0]) != real(energies[1]):
+            raise NotImplementedError(
+                f"nlo.core: beams of different energies {energies[0]} and "
+                f"{energies[1]}"
+            )
     from madgraph.various.banner import is_upc_label
 
     beams = (integer(run_card["lpp1"]), integer(run_card["lpp2"]))
@@ -1091,7 +1154,7 @@ class NLORun:
         self.madnis_batches = madnis_batches
         self.madnis_discrete = madnis_discrete
         self.run_card = read_run_card(self.output, run_card)
-        check_run_card(self.run_card)
+        check_run_card(self.run_card, incoming_count(self.output))
         self.param_card = param_card or read_param_card(
             os.path.join(self.output, "Cards", "param_card.dat")
         )
@@ -1268,6 +1331,12 @@ class NLORun:
                     raise NotImplementedError(
                         f"the event generator of madspace does not run the "
                         f"{self.scheme} integrands yet"
+                    )
+                if getattr(integrand, "ew_sudakov", None) is not None:
+                    # its blocks have no UMAMI outputs yet, so that the C++
+                    # integrand cannot ask for them
+                    raise NotImplementedError(
+                        "nlo.core: EW Sudakov runs without the generator"
                     )
             self.write_status("survey")
             config = ms.GeneratorConfig()

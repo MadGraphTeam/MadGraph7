@@ -117,12 +117,13 @@ With generator (see nlo.core) the channels of both streams run in the C++
 event generator of madspace (CSIntegrand, with the virtual trick of the
 n-body stream in NLOIterationState), also with a MadNIS training
 (madnis_batches), with the histograms of CSHistograms (CSObservableHistograms
-of madspace), but not for the real stream of dressed leptons.
+of madspace), with every channel set but channels="dipoles".
 
 Not covered yet: PDF schemes other than MSbar, densities of eMELA, photons of gamma-UPC, the
 scale and PDF variations of reweight_scale and reweight_PDF and the Sudakov
 approximation of the EW corrections of --ewsudakov, which the run leaves out
-with a warning.
+with a warning. The run refuses the settings of MadFKS it would otherwise
+ignore (check_run_card of nlo.core).
 """
 
 import argparse
@@ -1424,7 +1425,7 @@ class CSRealIntegrand(CSGeneratorIntegrand):
         if self.inverse is None:
             raise NotImplementedError(
                 "nlo.cs: the C++ integrand takes the densities of the channels, "
-                "which dressed leptons and channels='dipoles' have not"
+                "which channels='dipoles' have not"
             )
         source = self.source
         apis = source.libraries(context)

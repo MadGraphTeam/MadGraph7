@@ -244,6 +244,26 @@ def run(cmd, cwd, log, stdin=None):
         )
 
 
+def release_lock(output):
+    """Removes the lock RunWeb that a launch of MadGraph leaves in the
+    output where it was killed, so that the next launch runs. Raises
+    RuntimeError where the process of the lock still runs."""
+    lock = os.path.join(output, "RunWeb")
+    if not os.path.exists(lock):
+        return
+    with open(lock) as f:
+        text = f.read().strip()
+    try:
+        os.kill(int(text), 0)
+    except (ValueError, ProcessLookupError):
+        print(f"removing the stale lock {lock} (process {text})")
+        os.remove(lock)
+        return
+    except PermissionError:
+        pass
+    raise RuntimeError(f"{output} is in use by process {text} (lock {lock})")
+
+
 def madgraph(script, cwd, log, env=None, expect=None):
     """Runs a MadGraph7 script with the Python of this script, as MadGraph
     exits with 0 also where it fails. Raises RuntimeError with the end of the
