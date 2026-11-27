@@ -29,8 +29,8 @@ from madgraph.interface.tutorials.session import Step, Tutorial, TutorialSession
 logger = logging.getLogger('madgraph')
 
 # modules of this package holding a module-level `tutorial`, in menu order
-_MODULES = ['lo', 'syntax', 'mg7', 'gridpack', 'madevent', 'model', 'bsm',
-            'standalone', 'decays', 'nlo', 'madloop', 'checks', 'exercises']
+_MODULES = ['lo', 'syntax', 'mg7', 'gridpack', 'mlm', 'madevent', 'model',
+            'bsm', 'standalone', 'decays', 'nlo', 'madloop', 'checks', 'exercises']
 
 _REGISTRY = []          # list of Tutorial, in menu order
 _BY_NAME = {}           # name or alias (lowercased) -> Tutorial
