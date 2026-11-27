@@ -172,8 +172,11 @@ class TestCmdGPD(unittest.TestCase):
                          dsqrt_q2fact2=91.188, nevents=2000, use_syst=False, nhel=0).items():
             rc.set(k, v, user=True)
         rc.write(card)
+        # the per-point quadrature (the madevent default is mc), whose errors
+        # are those of the phase-space integration alone
         set_gpd_card(pjoin(self.out_dir, 'Cards', 'gpd_card.dat'),
-                     {'gpd_model': 'toy2', 'gpd_tmodel': '1', 'gpd_tslope_g': '2.25'})
+                     {'gpd_model': 'toy2', 'gpd_tmodel': '1', 'gpd_tslope_g': '2.25',
+                      'gpd_x_integration': 'quadrature'})
         me = MECmd.MadEventCmdShell(me_dir=self.out_dir)
         me.no_notification()
         me.exec_cmd('set automatic_html_opening False')

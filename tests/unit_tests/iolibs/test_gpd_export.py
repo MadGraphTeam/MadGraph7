@@ -198,6 +198,25 @@ class GPDExportTextTest(unittest.TestCase):
         text = gpd_export.makefile_lines(base.replace('-ldhelas', '-ldhelas2'))
         self.assertIn("LINKLIBS =  -L$(LIBDIR) -lgpd -ldhelas2 -lmodel", text)
 
+    def test_gpd_card_defaults(self):
+        """Standalone outputs: toy model and the x quadrature (deterministic
+        CFFs); madevent outputs: the dd model and the two-replica Monte Carlo
+        x integration. Otherwise the two cards are the same."""
+        def values(card):
+            out = {}
+            for line in card.splitlines():
+                w = line.split('!')[0].split('#')[0].split('=')
+                if len(w) == 2:
+                    out[w[1].strip()] = w[0].strip()
+            return out
+        sa, me = values(gpd_export.GPD_CARD), values(gpd_madevent.GPD_CARD_MADEVENT)
+        self.assertEqual((sa['gpd_model'], sa['gpd_x_integration']), ('toy', 'quadrature'))
+        self.assertEqual((me['gpd_model'], me['gpd_x_integration']), ('dd', 'mc'))
+        self.assertEqual(set(sa), set(me))
+        for k in sa:
+            if k not in ('gpd_model', 'gpd_x_integration'):
+                self.assertEqual(sa[k], me[k], k)
+
     def test_gpd_decl(self):
         text = gpd_export.gpd_decl('PROC1_', 7)
         self.assertNotIn('PGPDD', text)

@@ -52,6 +52,18 @@ import madgraph.iolibs.gpd_export as gpd_export
 pjoin = os.path.join
 SHADOW_PDG = 23
 
+# Cards/gpd_card.dat of a madevent output: the standalone card with the
+# double-distribution model and the two-replica Monte Carlo x integration as
+# defaults (the x integral then rides along with the phase space; the
+# per-point quadrature of the dd model costs a DD integral at every x node)
+GPD_CARD_MADEVENT = gpd_export.GPD_CARD.replace(
+    "GPD settings of a standalone output (madgraph/iolibs/gpd_export.py)",
+    "GPD settings of a madevent output (madgraph/iolibs/gpd_madevent.py)").replace(
+    "toy      = gpd_model           ! toy | toy2 | toy3 | grid (dd needs the PDFs of madevent)",
+    "dd       = gpd_model           ! dd | toy | toy2 | toy3 | grid").replace(
+    "quadrature = gpd_x_integration ! quadrature | mc",
+    "mc       = gpd_x_integration   ! mc (two Monte Carlo replicas in x) | quadrature (per point)")
+
 # shadow process string -> the GPD channel amplitudes it stands for
 SHADOWS = {}
 
@@ -586,9 +598,7 @@ def finish_output(exporter, dir_path):
     card = pjoin(dir_path, 'Cards', 'gpd_card.dat')
     if not os.path.exists(card):
         with open(card, 'w') as fsock:
-            fsock.write(gpd_export.GPD_CARD.replace(
-                "toy      = gpd_model           ! toy | toy2 | toy3 | grid (dd needs the PDFs of madevent)",
-                "dd       = gpd_model           ! dd | toy | toy2 | toy3 | grid"))
+            fsock.write(GPD_CARD_MADEVENT)
     mk = pjoin(dir_path, 'SubProcesses', 'makefile')
     text = open(mk).read()
     if '-lgpd' not in text:
