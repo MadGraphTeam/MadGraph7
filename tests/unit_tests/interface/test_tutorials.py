@@ -3176,13 +3176,13 @@ class GridpackSubprocessGateTest(unittest.TestCase):
         saved = gridpack._cores_here
         try:
             gridpack._cores_here = lambda: 16
-            hint = tutorials.get('gridpack').steps[5].question_hint(None)
+            hint = tutorials.get('gridpack').steps[7].question_hint(None)
             # two training jobs, 10000 / 2500 = 4 generation jobs
             self.assertIn('set cluster.parallel_jobs 4', hint)
             self.assertIn('gives each of them 4 cores', hint)
             self.assertIn('the 16 cores', hint)
             gridpack._cores_here = lambda: 2
-            hint = tutorials.get('gridpack').steps[5].question_hint(None)
+            hint = tutorials.get('gridpack').steps[7].question_hint(None)
             self.assertIn('set cluster.parallel_jobs 2', hint)
             self.assertIn('gives each of them 1 core.', hint)
         finally:
@@ -3206,6 +3206,111 @@ class GridpackSubprocessGateTest(unittest.TestCase):
         later = tutorials.get('gridpack').steps[5].text(None)
         self.assertIn('JOB_1/events.lhe.gz', later)
         self.assertIn('JOB_2/events.lhe.gz', later)
+
+    def _madspin_question(self, madspin, save_gridpack):
+        class _Question(object):
+            def __init__(self):
+                self.switch = {'madspin': madspin}
+                self.run_card = {'gridpack.save_gridpack': save_gridpack}
+        return _Question()
+
+    def test_decays_in_the_gridpack_come_before_cluster_mode(self):
+        steps = tutorials.get('gridpack').steps
+        self.assertEqual([step.key for step in steps[5:9]],
+                         ['shell', 'launch', 'shell', 'launch'])
+        self.assertIn('decay its events', steps[5].text(None))
+        self.assertIn('madspin/ms_dir/', steps[6].text(None))
+        self.assertIn('without MadGraph and without a compiler', steps[6].text(None))
+        decayed = steps[7].text(None)
+        for option in ('--no_madspin', '--keep_undecayed', '--seed'):
+            self.assertIn(option, decayed)
+        self.assertIn('cluster mode', decayed)
+        self.assertIn('set cluster enable', steps[7].question_hint(None))
+        # MadSpin is no longer something to run after a cluster run
+        final = steps[-1].text(None)
+        self.assertNotIn('Run the shower, MadSpin', final)
+        self.assertIn('each generation job decays its own events', final)
+
+    def test_madspin_card_question_hint(self):
+        import madgraph.interface.tutorials.gridpack as gridpack
+        hint = tutorials.get('gridpack').steps[5].question_hint(None)
+        for line in ('madspin=ON', 'decay t > w+ b, w+ > l+ vl',
+                     'decay t~ > w- b~, w- > l- vl~', 'set save_gridpack true',
+                     'madspin_card.dat'):
+            self.assertIn(line, hint)
+        saved = gridpack._subprocesses
+        try:
+            gridpack._subprocesses = lambda interface: ['Q Qx > z g', 'g Q > z Q']
+            hint = tutorials.get('gridpack').steps[5].question_hint(None)
+            self.assertNotIn('decay t > w+ b', hint)
+            self.assertIn('decay z > l+ l-', hint)
+        finally:
+            gridpack._subprocesses = saved
+
+    def test_enter_waits_for_madspin_and_save_gridpack(self):
+        import madgraph.interface.extended_cmd as extended_cmd
+        step = tutorials.get('gridpack').steps[5]
+        saved = extended_cmd.active_question
+        try:
+            extended_cmd.active_question = self._madspin_question('OFF', True)
+            self.assertIn('madspin=ON', step.question_gate(None, ''))
+            self.assertIn('madspin=ON', step.question_progress(
+                None, 'decay t > w+ b, w+ > l+ vl'))
+            extended_cmd.active_question = self._madspin_question('ON', False)
+            self.assertIn('save_gridpack', step.question_gate(None, ''))
+            self.assertIn('MadSpin is on', step.question_progress(None, 'madspin=ON'))
+            self.assertIn('set save_gridpack true',
+                          step.question_progress(None, 'madspin=ON'))
+            extended_cmd.active_question = self._madspin_question('ON', True)
+            self.assertIsNone(step.question_gate(None, ''))
+            self.assertIn('Press Enter', step.question_progress(
+                None, 'set save_gridpack true'))
+            self.assertIn('`madspin_card.dat` now decays t', step.question_progress(
+                None, 'decay t > w+ b, w+ > l+ vl'))
+            # a question with neither (a yes/no one) is never held
+            extended_cmd.active_question = object()
+            self.assertIsNone(step.question_gate(None, ''))
+        finally:
+            extended_cmd.active_question = saved
+
+    def test_latest_run_is_the_last_one_made(self):
+        """Not the last one modified: the info.json of a run is written again
+        when a later launch of the same session ends."""
+        import os
+        import shutil
+        import tempfile
+        import madgraph.interface.tutorials.gridpack as gridpack
+        path = tempfile.mkdtemp(prefix='tutorial_runs_')
+        try:
+            for name in ('run_01', 'run_02', 'run_10'):
+                os.makedirs(os.path.join(path, 'Events', name))
+            os.utime(os.path.join(path, 'Events', 'run_10'), (1, 1))
+
+            class _Interface(object):
+                _done_export = (path, 'mg7')
+            self.assertEqual(gridpack._latest_run(_Interface()),
+                             os.path.join(path, 'Events', 'run_10'))
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+
+    def test_decayed_events_are_shown_first(self):
+        import gzip
+        import os
+        import shutil
+        import tempfile
+        import madgraph.interface.tutorials.gridpack as gridpack
+        path = tempfile.mkdtemp(prefix='tutorial_decayed_')
+        try:
+            for name in ('events.lhe.gz', 'events_decayed.lhe.gz'):
+                with gzip.open(os.path.join(path, name), 'wt') as f:
+                    f.write('<LesHouchesEvents>\n<init>\n2212 2212 1 1 0 0 0 0 4 1\n'
+                            '1.7e+01 1e-01 1.7e+01 1\n</init>\n')
+            self.assertEqual(gridpack._events_in(path),
+                             os.path.join(path, 'events_decayed.lhe.gz'))
+            self.assertIn('17 pb', gridpack._decayed_result(path))
+            self.assertEqual(gridpack._decayed_result(os.path.join(path, 'no')), '')
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
 
 
 class TutorialRunFilesTest(unittest.TestCase):

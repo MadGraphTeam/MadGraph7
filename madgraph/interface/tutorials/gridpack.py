@@ -14,7 +14,8 @@
 ################################################################################
 """The `gridpack` tutorial -- gridpacks and cluster runs.
 
-Creates a gridpack, runs it, and then parallelises a run with cluster mode.
+Creates a gridpack, runs it, makes one that decays its events with MadSpin,
+and then parallelises a run with cluster mode.
 The cluster part uses `type = "local_parallel"`, which runs the same batch jobs
 as processes on this machine, so the tutorial works without a scheduler.
 """
@@ -42,6 +43,17 @@ def _process_dir(interface):
     return done[0] if done else None
 
 
+def _run_order(path):
+    """Sort key of a run directory, newest last: its number (run_NN), then
+    when it was created. Not its modification time: the info.json of a run
+    can be written again once a later run has ended."""
+
+    stat = os.stat(path)
+    suffix = os.path.basename(path).rsplit('_', 1)[-1]
+    return (int(suffix) if suffix.isdigit() else -1,
+            getattr(stat, 'st_birthtime', stat.st_mtime))
+
+
 def _latest_run(interface):
     """The newest Events/<run> directory of the output, or None."""
 
@@ -49,7 +61,7 @@ def _latest_run(interface):
         events = os.path.join(_process_dir(interface), 'Events')
         runs = [os.path.join(events, name) for name in os.listdir(events)]
         runs = [d for d in runs if os.path.isdir(d)]
-        return max(runs, key=os.path.getmtime) if runs else None
+        return max(runs, key=_run_order) if runs else None
     except Exception:
         return None
 
@@ -98,9 +110,11 @@ def _run_gridpack(interface=None):
 
 
 def _events_in(directory):
-    """The events file a gridpack run left in `directory`, or None."""
+    """The events file a gridpack run left in `directory`, or None: the
+    decayed events when the gridpack carries MadSpin."""
 
-    for name in ('events.lhe.gz', 'events.lhe', 'events.npy'):
+    for name in ('events_decayed.lhe.gz', 'events.lhe.gz', 'events.lhe',
+                 'events.npy'):
         if os.path.exists(os.path.join(directory, name)):
             return os.path.join(directory, name)
     return None
@@ -114,7 +128,7 @@ def _gridpack_events(interface=None):
     try:
         runs = [os.path.join(events, name) for name in os.listdir(events)]
         runs = [d for d in runs if os.path.isdir(d)]
-        for run in sorted(runs, key=os.path.getmtime, reverse=True):
+        for run in sorted(runs, key=_run_order, reverse=True):
             found = _events_in(run)
             if found:
                 return _shown(found)
@@ -183,7 +197,18 @@ def _gridpack_found(interface):
 
 def _cluster_result(interface):
     found = run_line(interface)
-    return 'The combined cross section is %s.\n\n' % found if found else ''
+    text = 'The combined cross section is %s.\n\n' % found if found else ''
+    run = _latest_run(interface)
+    if run and os.path.exists(os.path.join(run, 'events_decayed.lhe.gz')):
+        text += ('%s\n\n  %s\n\n%s'
+                 % (textwrap.fill(
+                        'MadSpin was still on, so each generation job also '
+                        'decayed its own events, with the MadSpin of the '
+                        'merged gridpack. The decayed events are combined in',
+                        width=76),
+                    _shown(os.path.join(run, 'events_decayed.lhe.gz')),
+                    _decayed_result(run)))
+    return text
 
 
 # cluster mode trains one job per subprocess: with a single one there is
@@ -463,6 +488,145 @@ def _first_launch_gate(interface, line):
     return None
 
 
+# the decays the lesson suggests, when the reader's process has top quarks
+TOP_DECAYS = ('decay t > w+ b, w+ > l+ vl', 'decay t~ > w- b~, w- > l- vl~')
+
+
+def _has_tops(interface):
+    """Whether the reader's process has top quarks to decay (True when
+    nothing is generated: the text then assumes the suggested p p > t t~)."""
+
+    names = _subprocesses(interface)
+    if not names:
+        return True
+    return any(particle in ('t', 't~')
+               for name in names for particle in name.split(' > ')[-1].split())
+
+
+def _decay_lines(interface=None):
+    """The `decay` lines to type at the card question, with what they do."""
+
+    if _has_tops(interface):
+        return ('  %-34s the top quark: W+ b, then W+ to e+ or mu+\n'
+                '  %-34s the same for the top antiquark'
+                % TOP_DECAYS)
+    return ('  decay X > ...                      one line per particle of your\n'
+            '                                     process to decay, e.g.\n'
+            '                                     `decay z > l+ l-`')
+
+
+MADSPIN_LAUNCH_HINT = """
+**Decays in the gridpack.** MadSpin decays the unstable particles of each
+event, keeping their spin correlations. When MadSpin is on while the gridpack
+is made, everything it needs is prepared now, once, and every run of the
+gridpack decays its own events. Where it runs, the gridpack needs neither
+MadGraph nor a compiler.
+
+Type these lines, then press Enter.
+
+  madspin=ON                         decay the events with MadSpin
+%(decays)s
+  set save_gridpack true             make a gridpack, if it is not on any more
+
+The decays are the `decay` lines of `madspin_card.dat`. A `decay` line typed
+here replaces the decay of that particle in the card. `l+` stands for e+ and
+mu+, `vl` for their neutrinos. To see or edit the whole card, open it from the
+list above.
+"""
+
+MADSPIN_ON = "Type `madspin=ON`, then press Enter."
+
+
+def _question_switch(name):
+    """The value of switch `name` of the question asked right now, upper
+    case, or None when that question has no such switch."""
+
+    question = extended_cmd.active_question
+    try:
+        return str(question.switch[name]).upper()
+    except Exception:
+        return None
+
+
+def _madspin_on():
+    """The madspin switch of the question asked right now: True or False, or
+    None when the question asked is not one with that switch."""
+
+    value = _question_switch('madspin')
+    if value is None:
+        return None
+    return value not in ('OFF', 'NOT AVAIL.', 'NOT AVAIL', 'NONE', '')
+
+
+def _madspin_next_move():
+    """What is still missing at the MadSpin card question."""
+
+    if _madspin_on() is False:
+        return MADSPIN_ON
+    if _save_gridpack_on() is False:
+        return TURN_IT_ON
+    return "MadSpin and `save_gridpack` are on. " + START
+
+
+def _madspin_launch_progress(interface, line):
+    words = (line or '').replace('=', ' ').split()
+    lowered = [word.lower() for word in words]
+    if lowered[:1] == ['madspin'] or lowered[:2] == ['set', 'madspin']:
+        if _madspin_on():
+            return ("MadSpin is on: its card, `madspin_card.dat`, is in the "
+                    "list above. Now the decays, or " + _madspin_next_move())
+        return "MadSpin is off. " + MADSPIN_ON
+    if lowered[:1] == ['decay']:
+        return ("`madspin_card.dat` now decays %s that way. %s"
+                % (words[1] if len(words) > 1 else 'that particle',
+                   _madspin_next_move()))
+    if words[:2] in (['set', 'save_gridpack'],
+                     ['set', 'gridpack.save_gridpack']):
+        if _save_gridpack_on() is False:
+            return ("`save_gridpack` is false: the run would make no gridpack. "
+                    + TURN_IT_ON)
+        return "`save_gridpack` is true. " + _madspin_next_move()
+    return None
+
+
+def _madspin_launch_gate(interface, line):
+    """The run this lesson starts has to make a gridpack that decays its
+    events: Enter, done or 0 wait until MadSpin and `save_gridpack` are on."""
+
+    if _madspin_on() is False:
+        return ("Not yet: MadSpin is off, so the gridpack would not decay its "
+                "events. " + MADSPIN_ON)
+    if _save_gridpack_on() is False:
+        return ("Not yet: `save_gridpack` is false, so this run would make no "
+                "gridpack. " + TURN_IT_ON)
+    return None
+
+
+def _decayed_result(directory):
+    """The sigma x BR of the decayed events in `directory`, as a sentence, or
+    '' when it cannot be read."""
+
+    import gzip
+    path = os.path.join(directory or '', 'events_decayed.lhe.gz')
+    try:
+        with gzip.open(path, 'rt') as f:
+            text = f.read(200000)
+        init = text[text.index('<init>'):text.index('</init>')].splitlines()
+        return textwrap.fill(
+            'Their cross section, in the <init> block, is %.4g pb: the '
+            'production cross section times the branching ratio of the '
+            'decays.' % float(init[2].split()[0]), width=76) + '\n\n'
+    except Exception:
+        return ''
+
+
+def _gridpack_run_dir(interface=None):
+    """The newest run directory of the gridpack, or None."""
+
+    events = _gridpack_events(interface)
+    return os.path.dirname(events) if events else None
+
+
 CLUSTER_LAUNCH_HINT = """
 **Cluster mode.** A normal run trains the subprocesses one after the other,
 in one process. Cluster mode gives each subprocess its own training job, and
@@ -534,8 +698,8 @@ def _gridpack_only_progress(interface, line):
 tutorial = Tutorial(
     name='gridpack',
     title='gridpacks and cluster runs',
-    description='create and run a gridpack, and parallelise a run with '
-                'cluster mode',
+    description='create and run a gridpack, decay its events with MadSpin, '
+                'and parallelise a run with cluster mode',
     aliases=('cluster',),
     section='advanced',
     ai_generated=False,
@@ -688,15 +852,73 @@ example with `pip install madspace`. Then set `include_madspace = false`, and
 the gridpack uses the installed copy. It must be the same madspace version
 that created the gridpack. Otherwise the gridpack stops with an error.
 
-Next comes **cluster mode**, which splits a whole run into jobs that run in
-parallel. Launch the same output again: the card question explains it and
-lists the lines to type.
+A gridpack can also **decay its events**. Launch the same output again, with
+MadSpin on: the card question explains it and lists the lines to type.
 
 %(p)s %(launch)s
 """ % {'p': P, 'half': _half_cores(), 'job1': _job_events(1),
        'job2': _job_events(2),
        'launch': _launch(interface)},
      title='parallel gridpack jobs, and what to put in a gridpack',
+     question_hint=lambda interface: MADSPIN_LAUNCH_HINT % {
+         'decays': _decay_lines(interface)},
+     question_progress=_madspin_launch_progress,
+     question_gate=_madspin_launch_gate,
+     hint="At the card question, `madspin=ON`, the `decay` lines and "
+          "`set save_gridpack true`, then Enter.",
+     solution=_launch),
+
+Step('launch', lambda interface: """
+%(found)s
+It is the gridpack of before, plus MadSpin, prepared for your decays:
+
+  madspin/ms_dir/          the prepared decays: one small gridpack for each
+                           decay channel, the compiled matrix elements of the
+                           spin correlations and the maximum weights
+  madspin/python/          the MadGraph and MadSpin Python it runs with, and
+                           the model
+  Cards/madspin_card.dat   the decays, for the record
+
+All of it was built during this run, from a sample the new gridpack made
+itself. So the decays cost each gridpack run seconds, and the gridpack still
+runs without MadGraph and without a compiler.
+
+Run it as before.
+
+%(p)s %(run_gp)s
+""" % {'p': P, 'found': _gridpack_found(interface),
+       'run_gp': _run_gridpack(interface)},
+     title='decays in the gridpack',
+     hint="`shell PATH/bin/generate_events --events N --seed S` runs the "
+          "gridpack.",
+     solution=_run_gridpack),
+
+Step('shell', lambda interface: """
+That run generated the events, then decayed them with MadSpin, in one go.
+Its last line says where the decayed events are:
+
+  %(events)s
+
+%(xsec)sMadSpin draws its own random numbers, from a seed derived from `--seed`.
+The same `--seed` gives the same decayed events, so jobs sharing the gridpack
+only need different seeds, as before.
+
+  --no_madspin       write the undecayed events, as without MadSpin
+  --keep_undecayed   keep the undecayed events.lhe.gz next to the decayed ones
+
+The decays themselves are fixed in the gridpack, like the cuts. To change
+them, make a new gridpack. MadSpin decays LHE events, so the npy output
+formats need `--no_madspin`.
+
+Next comes **cluster mode**, which splits a whole run into jobs that run in
+parallel. Launch the same output again: the card question explains it and
+lists the lines to type.
+
+%(p)s %(launch)s
+""" % {'p': P, 'events': _gridpack_events(interface),
+       'xsec': _decayed_result(_gridpack_run_dir(interface)),
+       'launch': _launch(interface)},
+     title='running a gridpack with decays',
      question_hint=_cluster_launch_hint,
      question_progress=_cluster_launch_progress,
      hint="At the card question, `set cluster enable` and "
@@ -713,7 +935,8 @@ Step('launch', lambda interface: """
      seed. `events_per_job` sets how many.
   4. **Combining.** The events are joined into an ordinary run in
      `%(run)s`, in the `output_format` of the run card. The cross section is
-     averaged over the jobs.
+     averaged over the jobs. With MadSpin on, each generation job decays its
+     own events first, and the decayed events are the ones joined.
 
 The logs of all jobs are in `%(run)s/cluster/`. If a run is interrupted or a
 job fails, launch again without changing the cards. The run continues and
@@ -780,7 +1003,8 @@ Run it the same way as the first one.
 
 Step('shell', lambda interface: """
 These events come from the merged gridpack, with the trained MadNIS
-channels. They are in
+channels. MadSpin is still on, so the merged gridpack carries it too and has
+decayed them. They are in
 
   %(events)s
 
@@ -790,15 +1014,18 @@ off for a large sample. On a cluster, each job would run this command with
 its own `--seed`.
 
 Cluster mode stays on in the card of this output. Turn it off with
-`set cluster disable` at the next launch. Cluster mode only generates
-events. Run the shower, MadSpin, Delphes or reweighting on its events
-afterwards.
+`set cluster disable` at the next launch. MadSpin stays on as well: in
+cluster mode each generation job decays its own events with the MadSpin of
+the merged gridpack. The other tools -- the shower, Delphes, reweighting --
+run on the events of a cluster run afterwards.
 
 In short:
 
   * `save_gridpack = true` turns a run into a gridpack. `[gridpack]` sets
     what goes into it and how the run ends.
   * `bin/generate_events --events N --seed S` runs a gridpack.
+  * MadSpin on while the gridpack is made: every gridpack run decays its own
+    events. `--no_madspin` skips it, `--keep_undecayed` keeps both.
   * `[cluster] enable = true` splits a run into jobs. `type` picks the
     scheduler, or `local_parallel` for this machine. `mode` picks events or
     a merged gridpack.

@@ -114,7 +114,7 @@ def decay_with_madspin(events_path: str, run_path: str, seed: int,
         "--nb_core", str(threads if threads > 0 else (os.cpu_count() or 1)),
         "--work_dir", run_path,
     ]
-    log_path = os.path.join(run_path, "madspin.log")
+    log_path = os.path.abspath(os.path.join(run_path, "madspin.log"))
     print(f"Decaying the events with MadSpin (seed {madspin_seed(seed)}), "
           f"log in {log_path}", flush=True)
     with open(log_path, "w") as log:
