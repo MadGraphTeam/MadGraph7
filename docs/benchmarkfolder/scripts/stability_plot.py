@@ -50,9 +50,28 @@ OCTET_FAMILIES = [
       'bb1p18g56', 'bb3p08gep', 'bb3p18gep', 'bb3p28gep',
       'bb1p18gep']),
 ]
+# TIRust da7902b with the bridge patch v16 (suffix 16; with the 80-bit switch 16ep) against the
+# builds of the base cases, in figures of their own
+V16_S = ['etacg', 'jpsig', 'etac8g', 'chic0g', 'ggchic0g']
+V16_B = ['etabg', 'upsg', 'etab8g', 'chib0g', 'ggchib0g']
+V16_PW = ('chic0g', 'ggchic0g', 'chib0g', 'ggchib0g')
+V16_FAMILIES = [
+    ('charmonium v16', 'charmonium: loop_sm_onia-c_mass ($m_c = 1.55$ GeV, $n_l = 3$)',
+     V16_S + [c + '16' for c in V16_S] + [c + '16ep' for c in V16_S if c in V16_PW]),
+    ('bottomonium v16', 'bottomonium: loop_sm_onia-no_tau_mass ($m_b = 4.7$ GeV, $n_l = 4$)',
+     V16_B + [c + '16' for c in V16_B] + [c + '16ep' for c in V16_B if c in V16_PW]),
+]
+V16_OCT = {q: [q * 2 + k + 'g' for k in ('3p08', '3p18', '3p28', '1p18')] for q in 'cb'}
+V16_OCTET_FAMILIES = [
+    ('charmonium octets v16', OCTET_FAMILIES[0][1],
+     V16_OCT['c'] + [c + '16' for c in V16_OCT['c']] + [c + '16ep' for c in V16_OCT['c']]),
+    ('bottomonium octets v16', OCTET_FAMILIES[1][1],
+     V16_OCT['b'] + [c + '16' for c in V16_OCT['b']] + [c + '16ep' for c in V16_OCT['b']]),
+]
 # (file suffix, families, legend columns); colour = process, line style = TIRust build
-FIGURES = [('', FAMILIES, 3), ('_octets', OCTET_FAMILIES, 4)]
-ALL_FAMILIES = FAMILIES + OCTET_FAMILIES
+FIGURES = [('', FAMILIES, 3), ('_octets', OCTET_FAMILIES, 4), ('_v16', V16_FAMILIES, 3),
+           ('_v16_octets', V16_OCTET_FAMILIES, 4)]
+ALL_FAMILIES = FAMILIES + OCTET_FAMILIES + V16_FAMILIES + V16_OCTET_FAMILIES
 REFERENCE = 'ttg'
 ORDER = [c for _, _, cases in ALL_FAMILIES for c in cases] + [REFERENCE]
 LABEL = {
@@ -105,21 +124,28 @@ for q in 'cb':
 # dash-dotted, 5025e12, the head of PR #56, with the bridge patch for the binary64 gate 0006 and
 # the relation tiers (suffix 56), dotted
 CANDIDATE = '5025e12'
-BUILD_STYLE = {'': '-', '08': '-.', '56': ':', 'ep': '-.'}
+BUILD_STYLE = {'': '-', '08': '-.', '56': ':', 'ep': '-.', '16': ':', '16ep': '-.'}
 BUILD_KEY = {'08': 'TIRust 08edee3 + gate 0006', '56': 'TIRust %s + gate (PR #56)' % CANDIDATE,
-             'ep': '80-bit switch, TIRust d17085a + bridge v2'}
+             'ep': '80-bit switch, TIRust d17085a + bridge v2',
+             '16': 'TIRust da7902b + bridge v16 (PR #71)', '16ep': '80-bit switch, v16'}
 STYLE = {'ttg': '--'}
 
 
 def build_of(case):
-    # no base case ends in 08, 56 or ep (they end in g)
-    return case[-2:] if case[-2:] in ('08', '56', 'ep') else ''
+    # no base case ends in 08, 16, 56 or ep (they end in g)
+    if case.endswith('16ep'):
+        return '16ep'
+    return case[-2:] if case[-2:] in ('08', '16', '56', 'ep') else ''
 
 
 def base_of(case):
-    return case[:-2] if build_of(case) else case
+    return case[:-len(build_of(case))] if build_of(case) else case
 
 
+for c in [c for _, _, cases in ALL_FAMILIES for c in cases if build_of(c) in ('16', '16ep')]:
+    base = base_of(c)
+    LABEL[c] = LABEL[base].replace(', TIRust 370b632', '') + (', v16, 80-bit' if build_of(c) == '16ep' else ', v16')
+    TYPST[c], COLOR[c] = TYPST[base], COLOR[base]
 for c in [c for _, _, cases in FAMILIES + OCTET_FAMILIES for c in cases if build_of(c) == 'ep']:
     base = c[:-2]
     LABEL[c] = LABEL[base].replace(', TIRust 370b632', '') + ', 80-bit'
@@ -236,7 +262,7 @@ def plot(runs, out, family_list, ncol=3):
                         key=lambda b: (b != 'pinned', b))
         keys = [Line2D([], [], color=INK2, lw=1.4, ls='-', label='TIRust ' + ', '.join(builds))]
         keys += [Line2D([], [], color=INK2, lw=1.4, ls=BUILD_STYLE[b], label=BUILD_KEY[b])
-                 for b in ('08', '56', 'ep') if any(build_of(c) == b for c in cases)]
+                 for b in ('08', '56', 'ep', '16', '16ep') if any(build_of(c) == b for c in cases)]
         blank = Line2D([], [], alpha=0, label=' ')
         cells = procs + ref
         cells += [blank] * (-len(cells) % ncol) + keys

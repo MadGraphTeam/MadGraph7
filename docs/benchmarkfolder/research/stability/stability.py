@@ -18,7 +18,8 @@ jpsig08 and upsg08), TIRUST_LIB56 (TIRust 5025e12, the head of PR #56,
 with the bridge patch for the binary64 gate 0006 and the relation tiers, for the cases with the
 suffix 56), TIRUST_LIBEP (TIRust d17085a with the bridge patch v2 for the gate, the relation
 tiers, the low words and the extended inputs, whose metadata has raised_power_extended_inputs:
-the cases with the suffix ep, which run with #PWaveExtendedPrecision .TRUE.), NWORKERS (16),
+the cases with the suffix ep, which run with #PWaveExtendedPrecision .TRUE.), TIRUST_LIB16
+(TIRust da7902b with the bridge patch v16: the suffixes 16 and 16ep), NWORKERS (16),
 NPOINTS (to override the number of points)."""
 import concurrent.futures
 import json
@@ -71,6 +72,11 @@ CASES.update({c + '56': CASES[c][:2] + ('TIRUST_LIB56', CASES[c][3]) for c in SW
 # double-precision passes in extended precision, TIRust with the extended inputs
 EXTENDED = [c + 'ep' for c in PWAVE]
 CASES.update({c + 'ep': CASES[c][:2] + ('TIRUST_LIBEP', CASES[c][3]) for c in PWAVE})
+# every S and P wave on TIRust da7902b (PR #71, on TIRust main) with the bridge patch v16, and every
+# P wave there with the 80-bit switch too (v16 has the extended inputs)
+CASES.update({c + '16': CASES[c][:2] + ('TIRUST_LIB16', CASES[c][3]) for c in PWAVE + SWAVE})
+EXTENDED += [c + '16ep' for c in PWAVE]
+CASES.update({c + '16ep': CASES[c][:2] + ('TIRUST_LIB16', CASES[c][3]) for c in PWAVE})
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)
     'A': (1000., 50.),   # the setup of arXiv:1604.01363

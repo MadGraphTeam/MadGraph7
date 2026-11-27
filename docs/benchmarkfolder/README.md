@@ -17,7 +17,7 @@ onium + jet virtuals against the MG5 2.5.5 onia outputs.
 | `research/mg255_swave/` | the S-wave onium + jet comparison with MG5 2.5.5 (`data/cmp_*.json`) |
 | `research/pwave_fd/` | the P-wave checks: finite differences, literature values, poles |
 | `research/stability/` | the stability profiles (after appendix C of arXiv:1604.01363): `stability.py` |
-| `scripts/stability_plot.py`, `figures/stability.svg`, `figures/stability_octets.svg` | their figures (the P-wave colour octets in the second) and `data/stability.json` |
+| `scripts/stability_plot.py`, `figures/stability.svg`, `figures/stability_octets.svg`, `figures/stability_v16.svg`, `figures/stability_v16_octets.svg` | their figures (the P-wave colour octets in the second; the last two: TIRust da7902b + bridge v16 against the builds of the records) and `data/stability.json` |
 
 ## Reproduction
 

@@ -933,7 +933,7 @@ built on TIRust's main branch, which has PRs \#47, \#55, \#56 and \#58). The
 outputs were generated from `86b1b68571`, and the points and settings are
 those of the records. @tab:v16all compares each group with its record. The
 processes of @twopw16 were first run on da7902b. The stability profiles
-(@stability) and the 80-bit switch (@ep) were not rerun.
+and the 80-bit switch on da7902b are in @stability-v16 and @ep.
 
 #let v16-groups = (
   analytic: ([Analytic results, $2 -> 2$ poles (@analytic, @twotwo, TIRust column of @tab:reducers)], [pinned], [$c_0$ (rel.) or poles]),
@@ -1059,7 +1059,7 @@ estimate over random phase-space points.
   #image("figures/stability_octets.svg", width: 100%)
 ] <fig:stability-octets>
 
-#figure(caption: [The profiles in numbers (the table view of @fig:stability and @fig:stability-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
+#figure(caption: [The profiles in numbers (the table view of @fig:stability, @fig:stability-octets and, for TIRust da7902b, @fig:stability-v16 and @fig:stability-v16-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
   #tstyle(table(columns: (auto, auto, 1fr, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, center, left, right, right, right, right, right),
     table.header([Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt]),
@@ -1191,6 +1191,46 @@ estimate over random phase-space points.
     class.
 ]
 
+== The profiles on TIRust da7902b <stability-v16>
+
+Every S- and P-wave profile was run again on 2026-11-27 with TIRust da7902b
+and the bridge patch v16, the candidate of @twopw16 and @v16all (case suffix
+`16`), and every P wave also with the 80-bit switch on that build (suffix
+`16ep`; v16 has the extended inputs). @fig:stability-v16 and
+@fig:stability-v16-octets show them against the builds of the records, and
+@tab:stability lists them after the others.
+
+#figure(caption: [As @fig:stability, on TIRust da7902b with the bridge patch v16 (dotted) and with the 80-bit switch on that build (dash-dotted, P waves), against the builds of the records (solid: the pinned TIRust for the S waves, 48958d1 and 370b632 for the P waves). Dashed: the reference.])[
+  #image("figures/stability_v16.svg", width: 100%)
+] <fig:stability-v16>
+
+#figure(caption: [As @fig:stability-octets, on TIRust da7902b with the bridge patch v16 (dotted) and with the 80-bit switch (dash-dotted), against 48958d1 (solid).])[
+  #image("figures/stability_v16_octets.svg", width: 100%)
+] <fig:stability-v16-octets>
+
+#box-note[
+  - *No point at or above $10^(-3)$* in any of the 60 profiles. The
+    refusals of the pinned TIRust (the S-wave plateaus of 3% at 1 TeV) are
+    gone, and no S-wave point is at or above $10^(-6)$, in either setup.
+  - *The same estimates as the candidates before.* Without the 80-bit
+    switch the estimates equal those of 5025e12 with the gate and relation
+    tiers (to the three digits stored) at 98% of the 296000 points; the
+    others are at 20 GeV, where they move by at most a factor 6 either way,
+    with the same largest values. With the switch they equal those of
+    d17085a with the bridge patch v2 at all 176000 points. The conclusions
+    above for those builds hold for da7902b: at 1 TeV the median P-wave
+    estimate is $3.9 dot 10^(-5)$ ($u overline(u) -> chi_(c 0) thin g$),
+    $8.1 dot 10^(-6)$ ($g g -> chi_(c 0) thin g$), $3.1 dot 10^(-7)$
+    ($u overline(u) -> chi_(b 0) thin g$) and $8.0 dot 10^(-8)$
+    ($g g -> chi_(b 0) thin g$), the largest $2.3 dot 10^(-4)$, and the 80-bit
+    switch lowers them by about $2000$.
+  - *Time.* The median time per point is 0.84 to 1.38 times that of
+    5025e12, and 1.01 to 1.14 times that of d17085a with the switch. These
+    runs are unpaired, on a shared host under a load of 250 to 320 of its
+    384 threads, so this does not measure TIRust; the paired cost of the
+    switch is in @tab:ep-cost.
+]
+
 == The 80-bit switch <ep>
 
 `#PWaveExtendedPrecision .TRUE.` in `MadLoopParams.dat` (off by default)
@@ -1208,7 +1248,8 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
 - *TIRust.* The code is written only for an installation whose metadata
   has `raised_power_extended_inputs`. Here that is TIRust d17085a (PR \#56)
   with the bridge patch v2 (gate, relation tiers, low words, extended
-  inputs). The bridge is not in MadGraph yet.
+  inputs), and TIRust da7902b with the bridge patch v16, which has them
+  too. The bridge is not in MadGraph yet.
 - *Check pass.* In its check pass (the reversed loop of MadLoop's
   stability test) TIRust moves the invariants by $2^(-52)$, one binary64
   unit. With extended inputs the bridge v2 moves them by
@@ -1217,7 +1258,7 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
   gained only about one digit: 18 times ($u overline(u)$) and 24 times
   ($g g$) in the worst point.
 
-#figure(caption: [The 80-bit switch at the 24 points of `research/pwave_stability` ($sqrt(s) = 1$ TeV), against quadruple precision: the largest and the median error of the finite part and the time per point, with `CTModeRun -1` (MadLoop's stability test, no rescue) or `CTModeRun 1` (one pass).])[
+#figure(caption: [The 80-bit switch at the 24 points of `research/pwave_stability` ($sqrt(s) = 1$ TeV), against quadruple precision: the largest and the median error of the finite part and the time per point, with `CTModeRun -1` (MadLoop's stability test, no rescue) or `CTModeRun 1` (one pass), TIRust d17085a with the bridge patch v2. On TIRust da7902b with the bridge patch v16 (2026-11-27) every error of the first three rows is the same to within $10^(-4)$ of its size and MadLoop's estimates are identical; its times are 1.02 to 1.33 times these (unpaired, on a loaded host).])[
   #tstyle(table(columns: (1fr, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right),
     table.header([Mode], [$u overline(u) -> chi_(c 0) thin g$], [s/pt], [$g g -> chi_(c 0) thin g$], [s/pt]),
@@ -1227,14 +1268,18 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
     [80-bit, `CTModeRun -1`, check pass $2^(-52)$], [$1.6 dot 10^(-6)$ / $9.8 dot 10^(-8)$], [0.54], [$1.7 dot 10^(-7)$ / $4.1 dot 10^(-8)$], [5.45]))
 ] <tab:ep-accuracy>
 
-#figure(caption: [Cost of the 80-bit switch: paired alternating runs of two copies of one output (TIRust d17085a with the bridge patch v2), off and on, in MadLoop's default settings (`CTModeRun -1`, rescue at $10^(-3)$, no rotation); median of the batch medians of the time per point, four pairs.])[
-  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto),
-    stroke: tstroke, fill: thead-fill, align: (left, center, right, right, right, right),
-    table.header([Process], [$sqrt(s)$], [points], [off, ms], [on, ms], [ratio]),
-    [$u overline(u) -> chi_(c 0) thin g$], [1 TeV], [200], [94.6], [548], [5.8],
-    [$u overline(u) -> chi_(c 0) thin g$], [20 GeV], [200], [94.3], [544], [5.8],
-    [$g g -> chi_(c 0) thin g$], [1 TeV], [48], [1029], [5519], [5.4],
-    [$g g -> chi_(c 0) thin g$], [20 GeV], [48], [1036], [5508], [5.3]))
+#figure(caption: [Cost of the 80-bit switch: paired alternating runs of two copies of one output, off and on, in MadLoop's default settings (`CTModeRun -1`, rescue at $10^(-3)$, no rotation); median of the batch medians of the time per point, four pairs. TIRust d17085a with the bridge patch v2, and da7902b with the bridge patch v16 (2026-11-27, outputs generated at `86b1b68571`). No point was rescued in quadruple precision.])[
+  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, left, center, right, right, right, right),
+    table.header([Process], [TIRust], [$sqrt(s)$], [points], [off, ms], [on, ms], [ratio]),
+    [$u overline(u) -> chi_(c 0) thin g$], [d17085a + v2], [1 TeV], [200], [94.6], [548], [5.8],
+    [$u overline(u) -> chi_(c 0) thin g$], [d17085a + v2], [20 GeV], [200], [94.3], [544], [5.8],
+    [$g g -> chi_(c 0) thin g$], [d17085a + v2], [1 TeV], [48], [1029], [5519], [5.4],
+    [$g g -> chi_(c 0) thin g$], [d17085a + v2], [20 GeV], [48], [1036], [5508], [5.3],
+    [$u overline(u) -> chi_(c 0) thin g$], [da7902b + v16], [1 TeV], [200], [103.5], [580], [5.6],
+    [$u overline(u) -> chi_(c 0) thin g$], [da7902b + v16], [20 GeV], [200], [97.3], [566], [5.8],
+    [$g g -> chi_(c 0) thin g$], [da7902b + v16], [1 TeV], [48], [1116], [5640], [5.1],
+    [$g g -> chi_(c 0) thin g$], [da7902b + v16], [20 GeV], [48], [1093], [5696], [5.2]))
 ] <tab:ep-cost>
 
 #box-note[
@@ -1247,7 +1292,8 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
     ($g g$). In double precision that happens at 3 and 1 points, by up to
     3 and 10.
   - *Cost* (@tab:ep-cost). 5.3 to 5.8 times double precision, at both
-    energies, with no point rescued in quadruple precision. The quadruple
+    energies, with no point rescued in quadruple precision (5.1 to 5.8 on
+    da7902b with the bridge patch v16). The quadruple
     precision rescue of the whole point costs about 40 times.
   - *Profiles* (dash-dotted in @fig:stability and @fig:stability-octets, all
     P waves, both setups): no P-wave point has an estimate at or above $10^(-7)$; the largest is
@@ -1331,8 +1377,8 @@ contracted in the basis of the colour flows (`54a0c4cac1`).
 - Two P-wave states (`data/raw/two_pwave/`): `hkw_phase0.json` collects the outputs of `research/two_pwave/kernel_check.py` and `sigma3_check.py` (the derivation) and its $e^+ e^- -> chi_(c 0) thin h_c$ reference; `ee_dp.json`, `ee_qp.json`, `gg_dp_*.json` are `research/two_pwave/qp_check.py OUTDIR OUT ...` ($e^+ e^-$: `7:1 10.58:2 30:1 --modes 1,2` and `10.58:1 --modes 4`; $g g$: `8:2 12:2`, `20:4`, `50:2 200:2` with `--modes 1,2,-1 --thres 1.0d-3`), and `gg_qp_*.json` are `research/two_pwave/qp_point.py OUTDIR OUT E 1 4`, on outputs generated with TIRust 4f1b06c and the bridge patch v9 (`research/pwave_fd/build.sh`).
 - Two P-wave states on TIRust da7902b with the bridge patch v16 (@twopw16; `data/raw/two_pwave/v16_*.json`, described in `research/two_pwave/FIXTURES.md`): `v16_gg_chic0_chic0.json` is the rerun of the $g g -> chi_(c 0) thin chi_(c 0)$ points with `qp_check.py` and `qp_point.py`, with its comparison against the records above; `v16_ggg_3p28_3p18_ct1.json`, `_ct2.json` (one loop direction each), `v16_uu_chic0_3p08.json` (with a `CTModeRun` 4 point and `appendix_b.py terms`) and `v16_gg_chic1_chib0.json` (with the Born at the tree output's check point) are `qp_check.py` records.
 - The examples on TIRust da7902b (@v16all; `data/raw/v16all/`, 2026-11-27, outputs generated at `86b1b68571` with `set tirust LIB`, `LIB` the installation of @twopw16): the same commands as above with `LIB` in place of the earlier builds: `tools/onia_loop_validate.py --libs 9 --tirust LIB` (`validate.json`); the 2.5.5 points through `research/mg255_swave/ml_side.py`'s cases and settings, then again in `CTModeRun` 4 (`mg255_<case>.json`: `dp`, `qp` and the reference `ref`); `research/mg255_swave/pol_jpsi.py OUTDIR LIB -1,4` (`pol.json`); `research/pwave_fd/pw_check.py` with `TIRUST_LIB=LIB` (`ENERGY` 10 for the $e^+ e^-$ cases, 20 for $g g -> chi_(c 0) g$ and the quark ones); `psi_chic.py --tirust LIB` and `--exact --modes=-1,4,5`; `qp_floor.py`; `research/two_pwave/qp_check.py` and `appendix_b.py table2` with the specifications of the records; `research/pwave_fd/unequal_mass.py OUTDIR OUT 20:2 30:2 --modes 1,2`.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
-- The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP`, `TIRUST_LIB16` for the scratch TIRust builds, the last the da7902b installation of @twopw16 for the cases `...16` and `...16ep`, run on 2026-11-27 with `NWORKERS=24`; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`, `figures/stability_v16.svg` and `figures/stability_v16_octets.svg`.
+- The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost; on TIRust da7902b with the bridge patch v16 the same, with outputs generated at `86b1b68571` (`ep_switch_*_da7902b_v16.json`, `cost_*_production_ep_v16.json`).
 - This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json data/raw/validate_tirustda7902b.json --two-pwave data/raw/two_pwave --v16all data/raw/v16all --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,

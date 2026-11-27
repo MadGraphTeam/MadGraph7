@@ -110,8 +110,9 @@ STATUS_LINES = [
     'With $b$ and $t$ excluded from the loops instead of at $10^4$ GeV, the 2.5.5 comparison '
     'agrees at every point, to $4 dot 10^(-10)$ in quadruple and $1.4 dot 10^(-8)$ in double '
     'precision; with the $10^4$ GeV quarks their counterterm rounding leaves up to '
-    '$1.5 dot 10^(-5)$ at a 0.9 MeV jet, even in quadruple precision. The stability profiles '
-    'and the 80-bit switch were not rerun.',
+    '$1.5 dot 10^(-5)$ at a 0.9 MeV jet, even in quadruple precision. The stability profiles on '
+    'da7902b equal those of 5025e12 and of the 80-bit switch on d17085a (@stability-v16), and so '
+    'do the 80-bit accuracy and cost (@ep).',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process. The final campaign, after all '
     'the bound-state work (`4ba297a911`, 15 pairs, pinned cores), gives upper 95% bounds of '
