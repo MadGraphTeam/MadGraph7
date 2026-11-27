@@ -1,0 +1,71 @@
+{
+ "output": "P0_epem_chic013P01hc11P11",
+ "note": "MadLoop's two-P-wave poles against app. B of the two-P-wave manuscript\n(/shared/external/madloop_onia/Manuscript/Quarkonium_FKS/JHEP_2Pwave,\neq. (B.2) = eq:Vpoles of paper.tex).\n\n    appendix_b.py table2 OUTDIR OUT.json MODE m_c:ENERGY[:NPTS] ...\n    appendix_b.py terms  OUTDIR OUT.json ENERGY:NPTS ...\n\ntable2: e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD] at the points of the\nmanuscript's table 2 (tab:chic0hc): the computed 1/eps per Born alpha_s/2pi\nand ONIA_IR_POLES, in CTModeRun MODE (MLStabThres 1d99), with m_c set in\nthe param_card (the bound-state masses follow it).\n\nterms: patches OUTDIR in place (pass a copy) so that ONIA_IR_POLES prints\nthe parts of its 1/eps in the order of eq. (B.2):\n  APPB_T1  POLES(1), POLES(2), BORN2   lines 1-4 (point-like quarkonia)\n  APPB_T3  4 f1 Re Z_G, 4 f2 Re Z_V, Im Z_G, Im Z_V, w   line 6 (dipole-dipole)\n  APPB_T2  C1, C2, PDD                 lines 4-5 per state, and line 6\nand evaluates the output in CTModeRun 1 at the points of qp_check.py\n(seed 1), next to the computed 1/eps.\n",
+ "rows": [
+  {
+   "m_c": 1.5,
+   "energy": 100.0,
+   "omega": 554.5555555555555,
+   "point": 0,
+   "mode": "4",
+   "c1": 0.6674548216506307,
+   "predicted": 0.667454821650643,
+   "c2": 0.0,
+   "predicted_c2": 0.0,
+   "code": 120,
+   "time": 190.0176
+  },
+  {
+   "m_c": 1.5,
+   "energy": 100.0,
+   "omega": 554.5555555555555,
+   "point": 1,
+   "mode": "4",
+   "c1": 0.6674548216507193,
+   "predicted": 0.6674548216507389,
+   "c2": 0.0,
+   "predicted_c2": 0.0,
+   "code": 120,
+   "time": 186.2176
+  },
+  {
+   "m_c": 1.5,
+   "energy": 1000.0,
+   "omega": 55554.555555555555,
+   "point": 0,
+   "mode": "4",
+   "c1": 0.6666746644918199,
+   "predicted": 0.6666746644951691,
+   "c2": 0.0,
+   "predicted_c2": 0.0,
+   "code": 120,
+   "time": 192.4659
+  },
+  {
+   "m_c": 1.5,
+   "energy": 1000.0,
+   "omega": 55554.555555555555,
+   "point": 1,
+   "mode": "4",
+   "c1": 0.6666746644935985,
+   "predicted": 0.6666746644979161,
+   "c2": 0.0,
+   "predicted_c2": 0.0,
+   "code": 120,
+   "time": 194.8895
+  },
+  {
+   "m_c": 1.5,
+   "energy": 10.58,
+   "omega": 5.218688888888889,
+   "point": 0,
+   "mode": "4",
+   "c1": 0.7099924782710478,
+   "predicted": 0.7099924782710534,
+   "c2": 0.0,
+   "predicted_c2": 0.0,
+   "code": 120,
+   "time": 225.138
+  }
+ ]
+}

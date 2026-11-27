@@ -1,0 +1,465 @@
+{
+ "note": "e+ e- -> J/psi chi_cJ (J = 0, 1, 2), an S-wave and a P-wave bound state,\nagainst the analytic NLO cross sections of Wang, Ma and Chao\n(arXiv:1107.2646; psi_chic_ref.py) and the helicity tables of Dong, Feng and\nJia (arXiv:1107.4351).\n\n    psi_chic.py --work DIR --json OUT.json [--J 0,1,2] [--tirust LIB --tirust-label REV]\n                [--energy 10.58] [--mu 3.0] [--modes -1,4] [--exact]\n\nFor each J, the process e+ e- > Jpsi(1|3S11) chicJ(1|3PJ1) / z t t~ b b~ QED=2\n[virt=QCD] of loop_sm_onia-c_mass (m_c = 1.5 GeV; b and t excluded from the\nloops, the limit m_b, m_t -> infinity of the n_l = 3 reference; photon\nexchange only, no QED fragmentation) is evaluated at the\nfour Gauss-Legendre nodes in cos(theta) (azimuth 0.7) in each CTModeRun mode\n(-1: MadLoop's stability test at its default threshold 1.0d-3; 4: quadruple\nprecision). Born and virtual are of the form alpha + beta cos^2(theta) (one\nphoton, spin 1), so the four nodes integrate them exactly, and the fit\nalpha + beta x^2 through them checks that form. Recorded per mode:\n- the cross-section average of the finite part, <c0> = int B c0 / int B,\n  against psi_chic_ref.madloop_c0 (units of Born * alpha_s/(2 pi), n_l = 3);\n- the split into helicity differences lambda = 0 (sin^2 theta) and\n  |lambda| = 1 (1 + cos^2 theta): the LO shares against the helicity\n  amplitudes of Dong et al. (exact), and the virtual of each part against\n  their table 2 (two to three digits);\n- the poles against zero and against ONIA_IR_POLES.\n\n--exact replaces the nodes by points whose momenta are exact in binary64:\nsqrt(s) = 18.5 GeV, E = 9.25 and |p| = 8.75 GeV for both onia of mass 3 GeV,\nand p = 8.75 (sin, 0, cos) with (cos, sin) = (-0.8, 0.6), (-0.6, 0.8), (0, 1),\n(0.6, 0.8), (0.8, 0.6). The three values of cos^2 test the form\nalpha + beta cos^2(theta), and its fit gives the integrals.\n",
+ "energy": 18.5,
+ "mu": 3.0,
+ "mc": 1.5,
+ "nodes": [
+  [
+   -0.8,
+   0.6
+  ],
+  [
+   -0.6,
+   0.8
+  ],
+  [
+   0.0,
+   1.0
+  ],
+  [
+   0.6,
+   0.8
+  ],
+  [
+   0.8,
+   0.6
+  ]
+ ],
+ "phi": 0.0,
+ "exact": true,
+ "tirust": "6ba4b53 (PR 557 pin) + onia_loop bridge",
+ "reference": {
+  "k_factors": [
+   {
+    "sqrts": 10.6,
+    "mu": 3.0,
+    "alpha_s": 0.259,
+    "K": [
+     1.573067506147181,
+     0.9111009768232661,
+     0.7837134834277854
+    ],
+    "reference": [
+     1.57,
+     0.91,
+     0.78
+    ],
+    "source": "WMC table 1"
+   },
+   {
+    "sqrts": 10.6,
+    "mu": 5.3,
+    "alpha_s": 0.211,
+    "K": [
+     1.785381242721987,
+     1.2460957690256702,
+     1.1423167686146802
+    ],
+    "reference": [
+     1.79,
+     1.25,
+     1.14
+    ],
+    "source": "WMC table 1"
+   },
+   {
+    "sqrts": 10.58,
+    "mu": 3.0,
+    "alpha_s": 0.259,
+    "K": [
+     1.5726972731555426,
+     0.9101613976932189,
+     0.7842165204175001
+    ],
+    "reference": [
+     1.5743801652892562,
+     0.9098360655737706,
+     0.7840909090909091
+    ],
+    "source": "DFJ table 2"
+   },
+   {
+    "sqrts": 10.58,
+    "mu": 5.29,
+    "alpha_s": 0.211,
+    "K": [
+     1.7840225987494844,
+     1.244273294801414,
+     1.141669553082585
+    ],
+    "reference": [
+     1.7846790890269149,
+     1.2469135802469136,
+     1.136752136752137
+    ],
+    "source": "DFJ table 1"
+   }
+  ],
+  "lo_ratios": [
+   [
+    0.16814677353402271,
+    0.16814677353402271
+   ],
+   [
+    0.24211042021213136,
+    0.24211042021213136
+   ]
+  ]
+ },
+ "cases": {
+  "0": {
+   "process": "e+ e- > Jpsi(1|3S11) chic0(1|3P01) / z t t~ b b~ QED=2 [virt=QCD]",
+   "masses": [
+    0.0,
+    0.0,
+    3.0,
+    3.0
+   ],
+   "modes": {
+    "-1": {
+     "c0": 17.19008258312773,
+     "c0_reference": 17.190082584909767,
+     "c0_relative_deviation": 1.0366661240691222e-10,
+     "form_residual_born": 1.0124263045347275e-15,
+     "form_residual_virtual": 8.784957863671081e-13,
+     "lo_shares": [
+      0.28658946910356425,
+      0.7134105308964358
+     ],
+     "lo_shares_reference": [
+      0.2865894691035677,
+      0.7134105308964324
+     ],
+     "lo_share_deviation": 3.4416913763379853e-15,
+     "group_A_nf4": [
+      5.442021309727701,
+      9.213933476599685
+     ],
+     "group_A_dfj_table2": [
+      6.02853421145245,
+      7.19118009508971
+     ],
+     "max_pole": 8.890132952586866e-11,
+     "max_pole_deviation": 8.890132952586866e-11,
+     "max_predicted_pole": 0.0,
+     "codes": [
+      213
+     ],
+     "max_accuracy": 1.5873e-09,
+     "ms_per_point": 142.12763999999999,
+     "points": [
+      {
+       "born": 1.225541961199588e-09,
+       "finite": 4.193766485656617e-10,
+       "single": -2.014495590141505e-21,
+       "double": 0.0,
+       "accuracy": 1.8245e-10,
+       "ret_code": 213,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 0.1375461,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 18.22107182979092,
+       "single_norm": -8.752578135741937e-11,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1905790907353463e-09,
+       "finite": 3.8642356422578444e-10,
+       "single": -1.5053774341734454e-21,
+       "double": 0.0,
+       "accuracy": 5.0273e-10,
+       "ret_code": 213,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 0.1342128,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 17.282366544694565,
+       "single_norm": -6.732634087059985e-11,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1456268287098948e-09,
+       "finite": 3.440553129332158e-10,
+       "single": -1.4561638227975915e-21,
+       "double": 0.0,
+       "accuracy": 1.5873e-09,
+       "ret_code": 213,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 0.1088545,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 15.991269929696559,
+       "single_norm": -6.768071259732332e-11,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1905790907353457e-09,
+       "finite": 3.864235642257742e-10,
+       "single": -1.5005876222182373e-21,
+       "double": 0.0,
+       "accuracy": 5.0078e-10,
+       "ret_code": 213,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 0.1752001,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 17.282366544694113,
+       "single_norm": -6.711212182819775e-11,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.2255419611995882e-09,
+       "finite": 4.1937664856541324e-10,
+       "single": -2.0461552414624402e-21,
+       "double": 0.0,
+       "accuracy": 1.8214e-10,
+       "ret_code": 213,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 0.1548247,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 18.221071829780122,
+       "single_norm": -8.890132952586866e-11,
+       "double_norm": 0.0
+      }
+     ]
+    },
+    "4": {
+     "c0": 17.190082584909863,
+     "c0_reference": 17.190082584909767,
+     "c0_relative_deviation": 5.580151744693729e-15,
+     "form_residual_born": 1.0124263045347275e-15,
+     "form_residual_virtual": 2.963386022553189e-16,
+     "lo_shares": [
+      0.28658946910356425,
+      0.7134105308964358
+     ],
+     "lo_shares_reference": [
+      0.2865894691035677,
+      0.7134105308964324
+     ],
+     "lo_share_deviation": 3.4416913763379853e-15,
+     "group_A_nf4": [
+      5.44202131624985,
+      9.213933475228647
+     ],
+     "group_A_dfj_table2": [
+      6.02853421145245,
+      7.19118009508971
+     ],
+     "max_pole": 4.518739478292428e-15,
+     "max_pole_deviation": 4.518739478292428e-15,
+     "max_predicted_pole": 0.0,
+     "codes": [
+      120
+     ],
+     "max_accuracy": -1.0,
+     "ms_per_point": 7954.484999999999,
+     "points": [
+      {
+       "born": 1.225541961199588e-09,
+       "finite": 4.1937664855669414e-10,
+       "single": -1.040034217443382e-25,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 10.35861,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 18.221071829401296,
+       "single_norm": -4.518739478292428e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1905790907353463e-09,
+       "finite": 3.864235642616721e-10,
+       "single": 8.441442774589003e-26,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 7.386924,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 17.2823665462996,
+       "single_norm": 3.775341922763005e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1456268287098948e-09,
+       "finite": 3.440553130252152e-10,
+       "single": 4.281305904815475e-26,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 4.073295,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 15.991269933972578,
+       "single_norm": 1.9898985948459226e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1905790907353457e-09,
+       "finite": 3.864235642616721e-10,
+       "single": 8.441442774589003e-26,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 8.855382,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 17.282366546299606,
+       "single_norm": 3.7753419227630066e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.2255419611995882e-09,
+       "finite": 4.1937664855669414e-10,
+       "single": -1.040034217443382e-25,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 9.098214,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 18.221071829401296,
+       "single_norm": -4.5187394782924276e-15,
+       "double_norm": 0.0
+      }
+     ]
+    },
+    "5": {
+     "c0": 17.190082584909863,
+     "c0_reference": 17.190082584909767,
+     "c0_relative_deviation": 5.580151744693729e-15,
+     "form_residual_born": 1.0124263045347275e-15,
+     "form_residual_virtual": 2.963386022553189e-16,
+     "lo_shares": [
+      0.28658946910356425,
+      0.7134105308964358
+     ],
+     "lo_shares_reference": [
+      0.2865894691035677,
+      0.7134105308964324
+     ],
+     "lo_share_deviation": 3.4416913763379853e-15,
+     "group_A_nf4": [
+      5.44202131624985,
+      9.213933475228647
+     ],
+     "group_A_dfj_table2": [
+      6.02853421145245,
+      7.19118009508971
+     ],
+     "max_pole": 4.518739478292428e-15,
+     "max_pole_deviation": 4.518739478292428e-15,
+     "max_predicted_pole": 0.0,
+     "codes": [
+      120
+     ],
+     "max_accuracy": -1.0,
+     "ms_per_point": 7699.823000000001,
+     "points": [
+      {
+       "born": 1.225541961199588e-09,
+       "finite": 4.1937664855669414e-10,
+       "single": -1.040034217443382e-25,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 10.09614,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 18.221071829401296,
+       "single_norm": -4.518739478292428e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1905790907353463e-09,
+       "finite": 3.864235642616721e-10,
+       "single": 8.441442774589003e-26,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 6.892827,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 17.2823665462996,
+       "single_norm": 3.775341922763005e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1456268287098948e-09,
+       "finite": 3.440553130252152e-10,
+       "single": 4.281305904815475e-26,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 3.717877,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 15.991269933972578,
+       "single_norm": 1.9898985948459226e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.1905790907353457e-09,
+       "finite": 3.864235642616721e-10,
+       "single": 8.441442774589003e-26,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 8.666852,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 17.282366546299606,
+       "single_norm": 3.7753419227630066e-15,
+       "double_norm": 0.0
+      },
+      {
+       "born": 1.2255419611995882e-09,
+       "finite": 4.1937664855669414e-10,
+       "single": -1.040034217443382e-25,
+       "double": 0.0,
+       "accuracy": -1.0,
+       "ret_code": 120,
+       "ao2pi": 0.01878028328484365,
+       "mu": 3.0,
+       "time": 9.125419,
+       "predicted_single_norm": 0.0,
+       "predicted_double_norm": 0.0,
+       "finite_norm": 18.221071829401296,
+       "single_norm": -4.5187394782924276e-15,
+       "double_norm": 0.0
+      }
+     ]
+    }
+   },
+   "qp_directions_max_difference": 0.0
+  }
+ }
+}

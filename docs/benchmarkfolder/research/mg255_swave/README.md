@@ -39,32 +39,32 @@ The paths are those of the scratch workspace in which the scripts ran.
 
 μ_R = 11 GeV. The reference is evaluated directly (`calcoption=3`). Each case uses the reference's `PS*.input` points (for J/ψ those of g g > etac g, same m_c) and three random points at each of three energies. "Stable" means the points MadLoop reports stable (return codes 1xx to 3xx). The columns give the largest relative difference of the finite part and the largest absolute differences of the 1/ε and 1/ε² coefficients, all in units of Born·α_s/2π:
 
-| Case | Stable points (√s, GeV) | Finite | 1/ε | 1/ε² | Points reported unstable |
-|---|---|---|---|---|---|
-| g g > etac g | 12 (5–203) | 1.2e-10 | 3.1e-11 | 3e-11 | 4 (√s ≤ 3.15) |
-| g u > etac u | 13 (3.15–203) | 3.7e-9 | 2.2e-8 | 2e-9 | 3 (√s ≤ 3.12) |
-| u g > etac u | 13 (3.15–203) | 2.5e-9 | 2.3e-8 | 7e-9 | 3 (√s ≤ 3.12) |
-| u u~ > etac g | 12 (5–203) | 2.5e-11 | 2.1e-9 | 5e-10 | 4 (√s ≤ 3.15) |
-| g g > Jpsi g | 12 (5–203) | 2.3e-11 | 1.2e-10 | 6e-12 | 4 (√s ≤ 3.15) |
-| g g > etab g | 9 (11–200) | 6.5e-10 | 3.2e-10 | 8e-11 | 8 (√s ≤ 11.2) |
-| g u > etab u | 16 (9.506–200) | 1.6e-12 | 2.2e-11 | 6e-12 | 0 |
-| u g > etab u | 16 (9.506–200) | 2.6e-11 | 6.4e-10 | 1e-10 | 0 |
-| u u~ > etab g | 11 (11–200) | 9.3e-11 | 6.8e-10 | 7e-10 | 5 (√s ≤ 9.55) |
-| g g > Upsilon g | 9 (11–200) | 8.2e-10 | 4.2e-9 | 9e-11 | 7 (√s ≤ 11) |
+| Case | Stable points (√s, GeV) | Finite | Estimate there | 1/ε | 1/ε² | Points reported unstable |
+|---|---|---|---|---|---|---|
+| g g > etac g | 16 (3.102–203.1) | 1.2e-10 | 1.1e-8 | 3.4e-10 | 2.7e-11 | 0 |
+| g u > etac u | 16 (3.102–203.1) | 3.7e-9 | 6.1e-9 | 2.2e-8 | 1.7e-9 | 0 |
+| u g > etac u | 16 (3.102–203.1) | 2.5e-9 | 1.7e-8 | 2.3e-8 | 6.5e-9 | 0 |
+| u u~ > etac g | 16 (3.102–203.1) | 3.4e-7 | 1.1e-6 | 1.1e-5 | 1.4e-6 | 0 |
+| g g > Jpsi g | 16 (3.102–203.1) | 1.4e-8 | 1.4e-5 | 1.1e-7 | 1.1e-8 | 0 |
+| g g > etab g | 17 (9.506–200) | 6.5e-10 | 1.8e-10 | 2.7e-8 | 3.4e-9 | 0 |
+| g u > etab u | 16 (9.506–200) | 1.6e-12 | 1.5e-10 | 2.2e-11 | 6.4e-12 | 0 |
+| u g > etab u | 16 (9.506–200) | 2.6e-11 | 9.8e-11 | 6.4e-10 | 1.3e-10 | 0 |
+| u u~ > etab g | 16 (9.506–200) | 1.0e-7 | 4.7e-7 | 4.1e-6 | 1.5e-6 | 0 |
+| g g > Upsilon g | 16 (9.506–200) | 1.3e-8 | 3.1e-8 | 5.3e-8 | 4.0e-9 | 0 |
 
-With b, t excluded (2026-11-27, pinned TIRust). With them at 10⁴ GeV the finite parts were within 2.3e-6 (g g > etac g), 1.0e-6, 3.4e-7, 3.3e-7, 1.3e-8, 6.5e-8, 6.5e-7, 3.8e-7, 2.8e-7 and 2.8e-9, in the order of the table (`docs/benchmarkfolder/data/raw/v16all/pinned1e4_cmp_<case>.json`); the polarisation items below keep that setup.
+With b, t excluded and the TIRust pin 6ba4b53 (2026-11-27, at `47557d1af4`). Every point is stable; the largest deviations are at the near-threshold points, each within MadLoop's estimate ("Estimate there": its accuracy estimate at the point of the largest deviation). With the old pin 1c130a81, 38 of the 161 points were reported unstable (√s ≤ 3.15 GeV for charmonium, ≤ 11.2 GeV for bottomonium) and the others agreed within 3.7e-9 (`docs/benchmarkfolder/data/raw/v16all/pinned1c130a81_cmp_<case>.json`). With b, t at 10⁴ GeV the finite parts were within 2.3e-6 (g g > etac g), 1.0e-6, 3.4e-7, 3.3e-7, 1.3e-8, 6.5e-8, 6.5e-7, 3.8e-7, 2.8e-7 and 2.8e-9, in the order of the table (`docs/benchmarkfolder/data/raw/v16all/pinned1e4_cmp_<case>.json`); the polarisation items below keep that setup.
 
 - **Borns.** The Borns agree up to the LDMEs of the model: 0.3867 against 1.16/3 for η_c (ratio 1.000086), 3.093 against 9.28/3 for η_b (ratio 0.999892), and 1.16 for J/ψ and Υ (ratio 1).
 - **J/ψ.** `Jpsi_double_cs_NEW` evaluates the virtual directly, and MadLoop agrees with it to 1.3e-8. Its grid differs from that evaluation by up to 6.8e-4, and the earlier comparison with the grid of `2.5.5_Onia` gave 1.3e-4. The other grids (`calcoption=1`) agree with their direct evaluation to 1e-8, except for Υ, where they differ by up to 1.1e-4.
 - **J/ψ polarisation.** `Jpsi_double_cs_NEW` also gives the transverse and longitudinal J/ψ in the helicity frame of the partonic centre-of-mass frame. `pol_jpsi.py` evaluates MadLoop with `ONIA_SELECT_JZ` (J_z = ±1 and 0) at the same points (`data/pol_gg_jpsig.json`). The polarised Borns agree to 1e-12.
-  - **Pinned TIRust, at the 12 stable points.** T agrees within 2.3e-8 and L within 9.2e-7. L's double-precision value carries MadLoop's rounding of ~1e-7 relative to its suppressed Born.
+  - **The old pin 1c130a81, at the 12 stable points.** T agrees within 2.3e-8 and L within 9.2e-7. L's double-precision value carries MadLoop's rounding of ~1e-7 relative to its suppressed Born.
   - **TIRust 08edee3 in forced quadruple precision, at all 16 points.** T, L and their sum agree within 3e-12, and the 1/ε coefficients within 5e-11.
   - **TIRust 08edee3 in double precision.** Every point is reported stable, but at the soft points the result is wrong: up to 440% for L at √s = 3.1015. The cause is MadLoop's double-precision R2 counterterms of the 10⁴ GeV b and t (next item), not TIRust.
-- **Points reported unstable.** All of them have a soft or low-p_T jet: p_T below 0.05 GeV for charmonium, and up to 0.86 GeV in g g > etab/Upsilon g, which are stable from 1.05 GeV. All are in the gg and qq̄ channels; the qg channels are stable down to p_T = 6 MeV.
+- **Points the old pin 1c130a81 reported unstable.** All of them have a soft or low-p_T jet: p_T below 0.05 GeV for charmonium, and up to 0.86 GeV in g g > etab/Upsilon g, which are stable from 1.05 GeV. All are in the gg and qq̄ channels; the qg channels are stable down to p_T = 6 MeV.
   - At these points TIRust refuses some integrals in both precisions: the Coulomb triangle, and the Coulomb boxes and pentagons with the jet attached.
   - MadLoop returns code 4x0 with accuracy 1, and the 1/ε coefficient misses −2C_F or −C_F/2 of the Born.
   - MadLoop's own pole prediction (`ONIA_IR_POLES`) agrees with the reference at these points.
-- **With TIRust 08edee3** (not pinned) these points are served, and at the softest ones MadLoop's double precision is silently wrong. For example, g g > Upsilon g at √s = 9.51 is 5.6e-3 off, and g g > Jpsi g at 3.1015 is 22% off, with accuracy estimates of 1e-8 to 1e-12. Quadruple precision gives the reference.
+- **With TIRust 08edee3** (PR #56, now in the pin) these points are served, and at the softest ones MadLoop's double precision is silently wrong. For example, g g > Upsilon g at √s = 9.51 is 5.6e-3 off, and g g > Jpsi g at 3.1015 is 22% off, with accuracy estimates of 1e-8 to 1e-12. Quadruple precision gives the reference.
   - **Not TIRust.** With every TIRust array replaced by its quadruple-precision value (call dumps and substitution, scratch), the double-precision result is unchanged. The loop part agrees between the two precisions to 4e-8.
   - **The cause.** The R2 counterterms of the gluon self-energy with the b and t quarks (`R2_GGB`, `R2_GGT`) carry M² ≈ 1e8 for the 10⁴ GeV masses that decouple them here. They multiply current contractions that vanish exactly (1e-17 in quadruple precision, ±17 in double precision).
   - **Scaling.** The error scales with M². For g g > Jpsi g at 3.1015 it is 22% with m_b = m_t = 1e4, 4.9e-3 with 1e3, and 1.7e-4 with the physical 4.75 and 173.

@@ -1,0 +1,264 @@
+{
+ "output": "P0_epem_chic013P01hc11P11",
+ "masses": [
+  0.0,
+  0.0,
+  3.1,
+  3.1
+ ],
+ "modes": [
+  "1",
+  "2"
+ ],
+ "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+ "records": [
+  {
+   "energy": 7.0,
+   "point": 0,
+   "momenta": [
+    [
+     "0x1.c000000000000p+1",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "0x1.c000000000000p+1"
+    ],
+    [
+     "0x1.c000000000000p+1",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "-0x1.c000000000000p+1"
+    ],
+    [
+     "0x1.c000000000000p+1",
+     "0x1.4a2a8724baa8cp+0",
+     "-0x1.90f0aba256412p-1",
+     "-0x1.34a7ecfe4918dp-1"
+    ],
+    [
+     "0x1.c000000000000p+1",
+     "-0x1.4a2a8724baa8cp+0",
+     "0x1.90f0aba256412p-1",
+     "0x1.34a7ecfe4918dp-1"
+    ]
+   ],
+   "ctmode1": {
+    "born": 2.0978937696032868e-09,
+    "finite": 8.652131956049412e-10,
+    "single": 2.842856051581753e-11,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 7.0,
+    "time": 3.251294,
+    "predicted_single_norm": 0.7215546628699611,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 21.960261242264544,
+    "single_norm": 0.7215546628740235,
+    "double_norm": 0.0
+   },
+   "ctmode2": {
+    "born": 2.0978937696032868e-09,
+    "finite": 8.652131956019501e-10,
+    "single": 2.8428560516425117e-11,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 7.0,
+    "time": 3.578488,
+    "predicted_single_norm": 0.7215546628699611,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 21.960261242188626,
+    "single_norm": 0.7215546628894448,
+    "double_norm": 0.0
+   }
+  },
+  {
+   "energy": 10.58,
+   "point": 0,
+   "momenta": [
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "0x1.528f5c28f5c29p+2"
+    ],
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "-0x1.528f5c28f5c29p+2"
+    ],
+    [
+     "0x1.528f5c28f5c28p+2",
+     "0x1.b383f625d2db4p+1",
+     "-0x1.086f9e71e09ebp+1",
+     "-0x1.9724504ecf5f2p+0"
+    ],
+    [
+     "0x1.528f5c28f5c28p+2",
+     "-0x1.b383f625d2db4p+1",
+     "0x1.086f9e71e09ebp+1",
+     "0x1.9724504ecf5f2p+0"
+    ]
+   ],
+   "ctmode1": {
+    "born": 6.304336834457866e-10,
+    "finite": 4.5442449437966007e-10,
+    "single": 8.425998817567369e-12,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 10.58,
+    "time": 3.093524,
+    "predicted_single_norm": 0.7116719452362144,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 38.38134455965579,
+    "single_norm": 0.7116719452321423,
+    "double_norm": 0.0
+   },
+   "ctmode2": {
+    "born": 6.304336834457866e-10,
+    "finite": 4.5442449437959555e-10,
+    "single": 8.425998817544313e-12,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 10.58,
+    "time": 3.454603,
+    "predicted_single_norm": 0.7116719452362144,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 38.38134455965034,
+    "single_norm": 0.711671945230195,
+    "double_norm": 0.0
+   }
+  },
+  {
+   "energy": 10.58,
+   "point": 1,
+   "momenta": [
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "0x1.528f5c28f5c29p+2"
+    ],
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "-0x1.528f5c28f5c29p+2"
+    ],
+    [
+     "0x1.528f5c28f5c29p+2",
+     "-0x1.4d1645699401bp-1",
+     "0x1.38cbaf6edb34dp-2",
+     "-0x1.0e73d993806d7p+2"
+    ],
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x1.4d1645699401bp-1",
+     "-0x1.38cbaf6edb34dp-2",
+     "0x1.0e73d993806d7p+2"
+    ]
+   ],
+   "ctmode1": {
+    "born": 1.0927212324554127e-09,
+    "finite": 7.876471483202569e-10,
+    "single": 1.4604657165634032e-11,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 10.58,
+    "time": 2.836809,
+    "predicted_single_norm": 0.7116719452362154,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 38.38134451441059,
+    "single_norm": 0.711671945216181,
+    "double_norm": 0.0
+   },
+   "ctmode2": {
+    "born": 1.0927212324554127e-09,
+    "finite": 7.876471487568561e-10,
+    "single": 1.4604657166211553e-11,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 10.58,
+    "time": 2.567087,
+    "predicted_single_norm": 0.7116719452362154,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 38.38134453568568,
+    "single_norm": 0.7116719452443231,
+    "double_norm": 0.0
+   }
+  },
+  {
+   "energy": 30.0,
+   "point": 0,
+   "momenta": [
+    [
+     "0x1.e000000000000p+3",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "0x1.e000000000000p+3"
+    ],
+    [
+     "0x1.e000000000000p+3",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "-0x1.e000000000000p+3"
+    ],
+    [
+     "0x1.e000000000000p+3",
+     "0x1.74c7d6e9aa10fp+3",
+     "-0x1.c4b07d030c7b6p+2",
+     "-0x1.5c7e803d5a38dp+2"
+    ],
+    [
+     "0x1.e000000000000p+3",
+     "-0x1.74c7d6e9aa10fp+3",
+     "0x1.c4b07d030c7b6p+2",
+     "0x1.5c7e803d5a38dp+2"
+    ]
+   ],
+   "ctmode1": {
+    "born": 1.9524286376977604e-12,
+    "finite": 2.4348456867172624e-12,
+    "single": 2.475753854934226e-14,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 30.0,
+    "time": 3.101047,
+    "predicted_single_norm": 0.6751965334555092,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 66.4039836606151,
+    "single_norm": 0.6751964587637029,
+    "double_norm": 0.0
+   },
+   "ctmode2": {
+    "born": 1.9524286376977604e-12,
+    "finite": 2.434845721798782e-12,
+    "single": 2.4757542581828886e-14,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 110,
+    "ao2pi": 0.01878028328484365,
+    "mu": 30.0,
+    "time": 3.116457,
+    "predicted_single_norm": 0.6751965334555092,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 66.40398461737088,
+    "single_norm": 0.6751965687391225,
+    "double_norm": 0.0
+   }
+  }
+ ]
+}

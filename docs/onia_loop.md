@@ -78,7 +78,11 @@ numerators. Their predicted poles are complete, the dipole-dipole term
 included. Their virtual needs TIRust integrals with two dotted propagators
 or a tripled one, at the thresholds of both pairs, and with a jet pentagons
 of rank 7:
-- **With the pinned TIRust (1c130a81).** The virtual is reported unstable.
+- **With the TIRust pin 6ba4b53** (since 2026-11-27; MadGraph's own bridge).
+  It serves `e+ e- > chic0 hc`, `g g > chic0 chic0` and
+  `u u~ > chic0 Jpsi(1|3P08)`: the three acceptance tests below pass on it.
+  The processes with a jet (rank-7 pentagons) were not rerun on it. With the
+  old pin 1c130a81 the virtual was reported unstable.
 - **With the TIRust candidate da7902b and the bridge patch v16** (TIRust PR
   #71, not yet in MadGraph). It serves every integral of the processes
   below. The earlier candidate 4f1b06c (TIRust main) with the bridge patch v9
@@ -228,9 +232,8 @@ The guard applies when the bound states have coloured constituents
 constituents of a leptonium. (IREGI has a separate limitation there: at
 leptonium scales, M = 20 MeV and below, it drops the loop and reports the
 result stable; it is right at M = 2 GeV.)
-When TIRust refuses an integral (two bound states in one process, see the
-open items of the benchmark report; the binary128 path of the pinned
-revision, for instance at most points of `g g > Jpsi(1|3S11) g` at
+When TIRust refuses an integral (with the old pin 1c130a81: two bound
+states in one process, or its binary128 path, for instance at most points of `g g > Jpsi(1|3S11) g` at
 sqrt(s) = 5 GeV with `CTModeRun = 4`), its contribution is missing and the
 point is reported unstable (`H=4`, accuracy 1) in every mode. With
 `CTModeRun = -1` MadLoop's stability tests do this: a refusal counts as a
@@ -379,7 +382,7 @@ at a time. The pieces are:
 
 Status:
 - At zero relative momentum, TIRust 48958d1 (part of huashengshao/TIRust PR #56,
-  stacked on #47 and #55, not yet in the pinned revision) serves every
+  stacked on #47 and #55; these PRs are in the pin 6ba4b53) serves every
   integral of the 2 -> 1 processes, the Coulomb box with its gluon line
   doubled included. Earlier revisions refuse that box, and the point is then
   reported unstable. With 48958d1 the one-loop literature values are
